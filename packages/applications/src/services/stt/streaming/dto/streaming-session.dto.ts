@@ -379,6 +379,17 @@ export interface StreamingTranscriptMessage {
   /** Per-word timestamps, if enabled in pipeline config */
   wordTimestamps?: Array<{ word: string; start: number; end: number; confidence: number | null }>;
   /**
+   * TASK-985 (M-03) — wall-clock ms the ASR spent decoding THIS utterance, as reported by the
+   * STT worker (`inference_ms` on the Redis result entry).
+   *
+   * It has been on the wire from `apps/stt` all along and the bridge parsed it into a local
+   * and then dropped it, so no consumer has ever seen it. It is the one number that separates
+   * "the model is slow" from "the transport is slow" — without it, a client, a dashboard and
+   * an operator watching the same slow caption cannot tell a GPU under contention from a
+   * congested Redis relay. Absent from an older worker that does not stamp it.
+   */
+  inferenceMs?: number;
+  /**
    * TASK-951 R2 — the session's client-declared context, echoed VERBATIM.
    *
    * The object the client sent to `POST audio/transcription-jobs/stream/session`

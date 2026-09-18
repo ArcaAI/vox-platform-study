@@ -870,7 +870,21 @@ export class TranscriptionJobController {
     //  - Mint a one-shot stream ticket scoped to this session.
     //    The SDK appends it to the WS URL; the gateway consumes it on first
     //    open and rejects (4401) every subsequent attempt.
-    const [issuedTicket] = await Promise.all([
+    //
+    // TASK-985 M-64 — COMPENSATE a failure here, because the STT session already exists.
+    //
+    // These three writes run AFTER `createSession` succeeded, so a rejection (a Redis blip, a
+    // ticket-mint failure) used to propagate straight out of the handler with nothing undone:
+    // the client got a 500, and the admitted STT session went on holding its GPU slot and its
+    // model pin until STT's own 300 s idle reaper — a session nobody would ever connect to,
+    // because the ticket it needed is exactly what failed to mint.
+    //
+    // `interrupted: true` is the correct flag: the session was aborted before it served a
+    // single frame. It produces no spurious ledger row, because `usageSegments` drops
+    // zero-duration segments. The compensation is best-effort and its own failure is swallowed
+    // — the caller must see the ORIGINAL error, not a cleanup error that would send them
+    // debugging the wrong hop.
+    const postCreateWrites = Promise.all([
       this.streamTicketService.issueTicket({
         userId: ownerId,
         tenantId,
@@ -894,6 +908,17 @@ export class TranscriptionJobController {
         ...(metadataSchema ? { metadataSchema } : {}),
       }),
     ]);
+
+    let issuedTicket: Awaited<ReturnType<StreamTicketService['issueTicket']>>;
+    try {
+      [issuedTicket] = await postCreateWrites;
+    } catch (error) {
+      await this.sessionService.removeSession(result.sessionId, /* interrupted */ true, tenantId).catch(() => {});
+      // Drop the binding too: a half-written binding is a session id that can still mint a
+      // ticket against an upstream that no longer exists, which is the false-resume path.
+      await this.streamSessionTenantBinding.clear(result.sessionId).catch(() => {});
+      throw error;
+    }
 
     // Preseed contract — capture voiceProfileSeeded if the
     // streaming service surfaces it.

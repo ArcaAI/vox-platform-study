@@ -1,7 +1,15 @@
 import {
+  IAppSettingsService,
   IOriginRegistry,
   ISocketRegistryService,
   MAX_STREAM_METADATA_BYTES,
+  STT_EGRESS_HIGH_WATERMARK_BYTES_KEY,
+  STT_GATEWAY_DEFAULTS,
+  STT_GATEWAY_UNKNOWN_AGENT,
+  STT_RESUME_GRACE_MS_KEY,
+  STT_RESUME_MAX_REPLAY_AGE_MS_KEY,
+  STT_WS_PING_INTERVAL_MS_KEY,
+  STT_WS_PING_MISSES_KEY,
   StreamingAudioBridgeService,
   StreamingSessionService,
   type ClippedMetadataSpan,
@@ -14,6 +22,11 @@ import {
   jsonSchemaValueProblems,
   metadataByteLength,
   setMetadataAt,
+  sttGatewayAudioEgressDroppedTotal,
+  sttGatewayAudioIngestDroppedTotal,
+  sttGatewayClientAudioDroppedTotal,
+  sttGatewayCommitLatencySeconds,
+  sttGatewayFirstPartialSeconds,
 } from '@arcaai/applications';
 import { Inject, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
@@ -68,6 +81,21 @@ export const WS_GENERIC_AUTH_REASON = 'Authentication failed';
 export const WS_SESSION_SUPERSEDED_REASON = 'Session resumed elsewhere';
 
 /**
+ * TASK-985 ST-5 — read a DEPRECATED positive-number env seed, or `undefined` when it is unset
+ * or unusable.
+ *
+ * `undefined` is the load-bearing return. The two remaining env names are pre-resolution SEEDS
+ * for one release: a stored registry row always beats them, and the code default beats them
+ * only when they are absent. Folding the default in here (`?? 32768`) would make "unset" and
+ * "set to the default" indistinguishable, and the resolver could no longer tell whether it was
+ * honouring an operator's deprecated value or nobody's.
+ */
+function readPositiveEnv(name: string): number | undefined {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? raw : undefined;
+}
+
+/**
  * Bounded per-session transcript replay buffer.
  *
  * The gateway keeps the last `RESUME_BUFFER_SIZE` transcript messages for
@@ -78,21 +106,49 @@ export const WS_SESSION_SUPERSEDED_REASON = 'Session resumed elsewhere';
 export const RESUME_BUFFER_SIZE = 200;
 
 /**
+ * TASK-985 M-03 — bound on {@link SessionInfo.audioClockSamples}. Same order as the resume
+ * buffer, and evicted the same way (oldest first): a sample older than the whole buffer can no
+ * longer be referenced by any final a client has not already seen.
+ */
+export const AUDIO_CLOCK_SAMPLE_CAP = 200;
+
+/**
+ * TASK-985 M-03 — one audio-clock sample per this many SECONDS OF AUDIO, not per frame.
+ *
+ * A frame is 8–100 ms, so sampling every frame would grow the ring 10–125×/s for a precision
+ * nothing consumes: the histogram's finest bucket is 500 ms. 100 ms of audio bounds the
+ * quantisation error of a commit-latency sample to 100 ms, two orders below that bucket.
+ */
+export const AUDIO_CLOCK_SAMPLE_INTERVAL_SEC = 0.1;
+
+/**
  * Fallback when no session meta was bound (legacy clients / Redis blip at
  * handshake). Matches the historical hardcoded rate.
  */
 export const DEFAULT_SAMPLE_RATE = 16000;
 
 /**
- * WS egress backpressure threshold. When the client
- * socket's `bufferedAmount` exceeds this many bytes, partial transcripts are
- * dropped and final transcripts are queued until the socket drains.
- * Default 512 KiB; overridable via `STT_WS_EGRESS_HIGH_WATERMARK_BYTES`.
+ * WS egress backpressure threshold. When the client socket's `bufferedAmount` exceeds this many
+ * bytes, partial transcripts are dropped and final transcripts are queued until it drains.
+ *
+ * @deprecated TASK-985 (ST-5, removed in R4) — governed by
+ * `sttStreaming.egressHighWatermarkBytes` (`global-kv`, `globalOnly`, `open-to-default`).
+ *
+ * This const is now ONLY the deprecated `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` env seed, and it is
+ * a pre-resolution seed: a stored registry row always wins. Two things were wrong with it as a
+ * governing value. It is read at MODULE SCOPE, so it is fixed for the process lifetime and a
+ * change needs a pod restart — which disqualifies it from being an env var at all
+ * (`09-infrastructure-devops.md` §Configuration Tiers, corollary L1); and it was declared in
+ * `turbo.json#globalEnv` and `.env.sample`, so the declaration advertised a mutability the code
+ * did not have (D8 §8 N-7). The 512 KiB default was also wrong on its own terms: it is roughly
+ * 50 seconds of captions in flight to a client that is already behind. The governed default is
+ * 32 KiB.
+ *
+ * Kept exported because existing tests import it and because the env name is honoured for one
+ * release; it is the LAST resort, below both the registry row and the code default.
  */
-export const WS_EGRESS_HIGH_WATERMARK_BYTES = (() => {
-  const raw = Number(process.env.STT_WS_EGRESS_HIGH_WATERMARK_BYTES);
-  return Number.isFinite(raw) && raw > 0 ? raw : 512 * 1024;
-})();
+const WS_EGRESS_HIGH_WATERMARK_BYTES_ENV = readPositiveEnv('STT_WS_EGRESS_HIGH_WATERMARK_BYTES');
+export const WS_EGRESS_HIGH_WATERMARK_BYTES = WS_EGRESS_HIGH_WATERMARK_BYTES_ENV ?? STT_GATEWAY_DEFAULTS[STT_EGRESS_HIGH_WATERMARK_BYTES_KEY];
 
 /**
  * Bound on the per-session queue of finals awaiting a
@@ -110,17 +166,17 @@ export const WS_EGRESS_FINAL_QUEUE_LIMIT = 200;
 export const WS_EGRESS_FLUSH_POLL_MS = 50;
 
 /**
- * Resume grace window. On a TRANSIENT socket drop the gateway
- * keeps the session (its resume buffer, seq counter, and upstream STT-v2
- * session) alive for this long so the SAME session can reconnect and continue
- * without a duplicate flood or a silent freeze. Only when the window expires
- * with no reconnect is the upstream finalized. Overridable via
- * `STT_WS_RESUME_GRACE_MS`; default 15s.
+ * Resume grace window. On a TRANSIENT socket drop the gateway keeps the session (its resume
+ * buffer, seq counter, and upstream STT-v2 session) alive for this long so the SAME session can
+ * reconnect and continue without a duplicate flood or a silent freeze. Only when the window
+ * expires with no reconnect is the upstream finalized.
+ *
+ * @deprecated TASK-985 (ST-5, removed in R4) — governed by `sttStreaming.resumeGraceMs`. Same
+ * reasoning, and the same pre-resolution-seed contract, as
+ * {@link WS_EGRESS_HIGH_WATERMARK_BYTES} above.
  */
-export const WS_RESUME_GRACE_MS = (() => {
-  const raw = Number(process.env.STT_WS_RESUME_GRACE_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 15_000;
-})();
+const WS_RESUME_GRACE_MS_ENV = readPositiveEnv('STT_WS_RESUME_GRACE_MS');
+export const WS_RESUME_GRACE_MS = WS_RESUME_GRACE_MS_ENV ?? STT_GATEWAY_DEFAULTS[STT_RESUME_GRACE_MS_KEY];
 
 /**
  * Stable consumer-group name the gateway uses when subscribing
@@ -132,10 +188,41 @@ export const WS_RESUME_GRACE_MS = (() => {
  */
 export const WS_RESULT_CONSUMER_GROUP = 'captions';
 
+/**
+ * The STABLE consumer NAME the gateway reads under, within {@link WS_RESULT_CONSUMER_GROUP}.
+ *
+ * TASK-985 M-48. The group was already stable; the consumer name was not — the bridge minted
+ * `reader-<counter>` per subscription. A grace-window rebind therefore created a consumer whose
+ * own pending-entries list was EMPTY, read it, found nothing and went live at `'>'`, while the
+ * dead reader's read-but-unacked results stayed in ITS pending list, reclaimable only by an
+ * XAUTOCLAIM at 30 s idle — longer than the 15 s grace window, by which point the session could
+ * already be finalized. Those results were lost, and because client-side `seq`s are contiguous
+ * (the gateway assigns them) the loss was SILENT.
+ *
+ * With one name per session the rebind inherits the same pending list and the reader's existing
+ * initial `'0'` read recovers it deterministically. That makes redelivery ROUTINE rather than
+ * exceptional — which is why {@link SttWsGateway.tagAndBuffer} now carries a re-emission guard:
+ * `readResultStream` is explicitly at-least-once, so a redelivered entry must reuse the seq it
+ * was first given instead of being handed a new one and reaching the client twice.
+ */
+export const wsResultConsumerName = (sessionId: string): string => `captions-${sessionId}`;
+
 /** Buffered transcript ready for replay. */
 interface BufferedTranscript {
   seq: number;
   msg: { type: string; seq?: number; [key: string]: unknown };
+  /**
+   * TASK-985 ST-5 — the STT-side utterance ordinal this entry belongs to, when the worker
+   * stamped one. It is the key coalescing works on: every partial of utterance `k` is
+   * SUPERSEDED by the next partial of utterance `k`, so the buffer keeps only the newest.
+   * Absent on an older worker that does not stamp it — such an entry is never coalesced,
+   * which degrades to exactly today's behaviour rather than to a guess.
+   */
+  utteranceIndex?: number;
+  /** Finals are NEVER coalesced and never aged out — each is distinct clinical content. */
+  isFinal: boolean;
+  /** `Date.now()` at buffering, for the replay age bound. */
+  atMs: number;
 }
 
 interface SessionInfo {
@@ -197,6 +284,84 @@ interface SessionInfo {
    * change purely so a cross-instance reconnect can rebuild it.
    */
   metadataSpans: MetadataSpan[];
+  /**
+   * TASK-985 ST-5 — this session's egress high watermark, resolved ONCE at the handshake from
+   * `sttStreaming.egressHighWatermarkBytes`.
+   *
+   * Per session, not per relay: `relayResult` runs once per transcript on the latency path and
+   * must stay synchronous, and a watermark that changed mid-session would make the drop
+   * decision non-reproducible from the logs. A registry write therefore governs the next
+   * session to OPEN, which the descriptor says in as many words.
+   */
+  egressHighWatermarkBytes: number;
+  /**
+   * TASK-985 QW-1 — the client asked for this session to stop (`{type:'stop'}`).
+   *
+   * It is what makes `interrupted` correct on the ledger row. The browser SDK never sends
+   * `{type:'close'}` — it calls `disconnect()` — so the gateway only ever saw a socket drop and
+   * finalized with `'grace window expired'`, stamping `interrupted = true` on a session the
+   * clinician had stopped cleanly. With this latch, finalizing on the upstream's terminal
+   * `closed` status can tell the two apart without waiting for an SDK change.
+   */
+  stopRequested?: boolean;
+  /**
+   * TASK-985 M-47 — consecutive keepalive pings this socket has not answered.
+   *
+   * Reset to 0 by every `pong` (and by a rebind). At
+   * `sttStreaming.wsPingMissesBeforeTerminate` the socket is terminated, which routes through
+   * the ordinary disconnect path, so a flaky client still gets its full grace window.
+   */
+  missedPongs: number;
+  /**
+   * TASK-985 M-03 — `Date.now()` when this session's FIRST audio frame was forwarded upstream,
+   * and whether its first partial has already been observed. Together they are the
+   * `stt_gateway_first_partial_seconds` sample, taken exactly once per session.
+   */
+  firstFrameForwardedAt?: number;
+  firstPartialObserved?: boolean;
+  /**
+   * TASK-985 M-03 — the session's AUDIO CLOCK, sampled against the wall clock.
+   *
+   * Commit latency is "how long after the speaker finished a sentence did it go solid", and the
+   * only honest way to measure it on this side is to remember WHEN the audio at a given offset
+   * was forwarded. A final carries an `endTime` on the session's audio clock
+   * ({@link SessionInfo.audioBytesForwarded} ÷ bytes-per-second), so the newest sample at or
+   * before that offset gives the instant that audio left the gateway.
+   *
+   * Bounded at {@link AUDIO_CLOCK_SAMPLE_CAP} entries and throttled to one sample per
+   * {@link AUDIO_CLOCK_SAMPLE_INTERVAL_SEC} of audio, so a 125 frame/s session adds one entry
+   * every ~10 frames rather than one per frame, and a long consultation cannot grow it without
+   * bound. The cap loses the OLDEST samples, which are the ones no future final can reference.
+   */
+  audioClockSamples: Array<{ audioSec: number; atMs: number }>;
+  /** Audio-clock offset (seconds) of the newest entry in {@link audioClockSamples}. */
+  lastAudioClockSampleSec: number;
+  /**
+   * TASK-985 M-03 — the ASR agent slug, for the metric label.
+   *
+   * Currently always undefined: the slug is resolved at `POST .../stream/session` and is NOT
+   * carried on the session meta record the gateway reads at handshake, so there is nowhere to
+   * read it from without a cross-lane change to `StreamSessionMeta`. It degrades to
+   * `STT_GATEWAY_UNKNOWN_AGENT`, which is honest and has cardinality 1. See that constant for
+   * why the label must NOT be widened to a tenant id or an agent UUID instead.
+   */
+  agentSlug?: string;
+  /**
+   * TASK-985 M-67 — audio frames the CLIENT reports it discarded before sending, read off its
+   * end-of-session `{type:'client_stats'}` frame. A CLAIM, recorded separately from the
+   * gateway's own observed drop count and never summed with it.
+   */
+  clientReportedDroppedFrames?: number;
+  /**
+   * TASK-985 M-48 — the re-emission guard the stable consumer name makes necessary.
+   *
+   * Maps an STT-side transcript IDENTITY to the seq it was first given. `readResultStream` is
+   * explicitly at-least-once, and with a stable consumer name a rebind now deliberately
+   * re-reads the dead reader's pending entries — so without this a redelivered result would be
+   * tagged with a SECOND seq and reach the client twice as two different transcripts. Bounded
+   * in lockstep with {@link resumeBuffer}.
+   */
+  emittedSeqByIdentity: Map<string, number>;
   /** Frames whose async Redis write failed. */
   droppedAudioFrames: number;
   /** Partials dropped because the WS egress buffer was over the threshold. */
@@ -276,7 +441,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * per-instance Redis key never expires between connect/disconnect bursts (key
    * TTL is 45s in `SocketRegistryService`). Cleared on module destroy.
    */
-  private socketHeartbeat?: ReturnType<typeof setInterval>;
+  private socketHeartbeat?: ReturnType<typeof setTimeout>;
+  /** Keys already warned about for using their deprecated env seed (one line per process). */
+  private readonly deprecatedEnvWarned = new Set<string>();
 
   constructor(
     private readonly sessionService: StreamingSessionService,
@@ -302,20 +469,141 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     @Optional()
     @Inject(IOriginRegistry)
     private readonly originRegistry?: IOriginRegistry,
+    // TASK-985 ST-5 — the governed WS transport budgets (egress watermark, resume grace, replay
+    // age, ping cadence). Optional and TRAILING so every existing positional construction keeps
+    // compiling; absent ⇒ each key falls to its deprecated env seed and then to the code
+    // default, which is what an unwritten `GlobalSetting` row resolves to anyway.
+    @Optional()
+    @Inject(IAppSettingsService)
+    private readonly appSettings?: IAppSettingsService,
   ) {}
+
+  /**
+   * Resolve one governed WS-transport budget: **stored row → deprecated env seed → code
+   * default**.
+   *
+   * The order is the deprecation contract (`docs/operations/deprecation-register.md`): the env
+   * name is honoured for one release so an operator who set it in a deployment does not lose
+   * their value the moment this lands, but it can never overrule a control-plane write — the
+   * whole point of the move is that the control plane is now the authority.
+   *
+   * `hasSetting` is what makes the three tiers separable: `getValueWithDefault` alone cannot
+   * tell "row says 32768" from "no row, here is your fallback", so an env seed would silently
+   * lose to the default. Reading the row is a synchronous cache hit; this is called on the
+   * handshake and on a disconnect, never per frame or per transcript.
+   */
+  private resolveBudget(key: string, envSeed: number | undefined): number {
+    const codeDefault = STT_GATEWAY_DEFAULTS[key as keyof typeof STT_GATEWAY_DEFAULTS];
+    if (this.appSettings?.hasSetting(key)) {
+      const stored = this.appSettings.getValueWithDefault<number>(key, codeDefault);
+      if (typeof stored === 'number' && Number.isFinite(stored) && stored > 0) return stored;
+    }
+    if (envSeed !== undefined) {
+      this.warnDeprecatedEnvOnce(key);
+      return envSeed;
+    }
+    return codeDefault;
+  }
+
+  /** One WARN per key per process — a per-session line would be one per consultation. */
+  private warnDeprecatedEnvOnce(key: string): void {
+    if (this.deprecatedEnvWarned.has(key)) return;
+    this.deprecatedEnvWarned.add(key);
+    this.logger.warn({
+      message: 'Using a DEPRECATED environment variable for an STT WS transport budget — set the governed setting instead (removed in R4)',
+      settingKey: key,
+    });
+  }
 
   onModuleInit(): void {
     // Publish an initial 0 immediately, then refresh on a cadence well under the
     // 45s key TTL so a live instance never expires between socket events.
     this.publishSocketCount();
-    this.socketHeartbeat = setInterval(() => this.publishSocketCount(), 20_000);
+    this.scheduleHeartbeat();
+  }
+
+  /**
+   * TASK-985 M-47 — the heartbeat, re-scheduled after each tick instead of a fixed
+   * `setInterval`.
+   *
+   * It was a 20 s interval that only refreshed the Redis socket count. It now ALSO carries the
+   * WebSocket keepalive, and the keepalive's cadence is governed
+   * (`sttStreaming.wsPingIntervalMs`) — a `setInterval` fixed at construction could not honour
+   * a control-plane write without a pod restart, which is the same tier violation ST-5 exists
+   * to remove. Re-reading the budget per tick costs one synchronous cache hit every ~20 s.
+   */
+  private scheduleHeartbeat(): void {
+    const intervalMs = this.resolveBudget(STT_WS_PING_INTERVAL_MS_KEY, undefined);
+    const timer = setTimeout(() => {
+      this.publishSocketCount();
+      this.sweepSocketLiveness();
+      this.scheduleHeartbeat();
+    }, intervalMs);
     // Don't keep the event loop alive for the heartbeat alone.
-    this.socketHeartbeat.unref?.();
+    (timer as unknown as { unref?: () => void }).unref?.();
+    this.socketHeartbeat = timer;
+  }
+
+  /**
+   * TASK-985 M-47 — ping every live socket; terminate the ones that stopped answering.
+   *
+   * ## What was broken
+   *
+   * There was no keepalive at all (`ping`/`pong`/`isAlive` appeared nowhere in this file). A
+   * HALF-OPEN client — one whose egress a firewall or a sleeping laptop silently dropped, so
+   * TCP never closes and `handleDisconnect` never runs — kept its `SessionInfo`, its upstream
+   * STT session, its model pin and a GPU SLOT until STT's own 300 s idle reaper noticed, up to
+   * ten minutes counting the reaper interval. On a cluster with six allocatable GPU units in
+   * total, that is a materially expensive way to learn a laptop closed its lid.
+   *
+   * ## Why terminate rather than close
+   *
+   * `terminate()` routes through the ordinary disconnect path, so a genuinely flaky client
+   * still gets its full resume grace window and can reconnect onto the same session. This
+   * shortens DETECTION from ~300 s to one-to-two ping intervals; it does not remove
+   * resumability. A polite `close()` would wait for a close handshake the peer is, by
+   * hypothesis, no longer able to complete.
+   *
+   * Sockets in the grace window are not pinged: they have no live client by definition, and
+   * their timer already owns their fate.
+   */
+  private sweepSocketLiveness(): void {
+    const maxMisses = this.resolveBudget(STT_WS_PING_MISSES_KEY, undefined);
+    for (const [client, session] of [...this.sessions.entries()]) {
+      if (session.finalizing) continue;
+      if (client.readyState !== client.OPEN) continue;
+      if (session.missedPongs >= maxMisses) {
+        this.logger.warn({
+          message: 'Terminating a WS socket that stopped answering keepalive pings (half-open client)',
+          sessionId: session.sessionId,
+          missedPongs: session.missedPongs,
+          maxMisses,
+        });
+        // `terminate` is a `ws` method; a unit-test double may not have it. Falling back to
+        // `close` keeps the sweep honest in tests rather than throwing on the hot path.
+        const socket = client as unknown as { terminate?: () => void; close?: (code?: number, reason?: string) => void };
+        if (typeof socket.terminate === 'function') socket.terminate();
+        else socket.close?.(1001, 'Keepalive timeout');
+        continue;
+      }
+      // Count the ping as missed OPTIMISTICALLY, and let the `pong` handler clear it. The
+      // alternative — mark on the NEXT tick if no pong arrived — needs a second piece of state
+      // to remember that a ping was outstanding, and gets the same answer.
+      session.missedPongs += 1;
+      const socket = client as unknown as { ping?: () => void };
+      if (typeof socket.ping === 'function') {
+        try {
+          socket.ping();
+        } catch {
+          // A socket that cannot even be pinged is already gone; the next tick terminates it.
+        }
+      }
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
     if (this.socketHeartbeat) {
-      clearInterval(this.socketHeartbeat);
+      clearTimeout(this.socketHeartbeat);
       this.socketHeartbeat = undefined;
     }
     // On SIGTERM / rolling deploy, best-effort FINALIZE every
@@ -383,7 +671,21 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    */
   private getPerTenantSessionCounts(): Record<string, number> {
     const counts: Record<string, number> = {};
-    for (const session of this.sessions.values()) {
+    // TASK-985 M-68 — iterate `sessionsById`, NOT `sessions`.
+    //
+    // `sessions` is keyed by SOCKET and `handleDisconnect` deletes from it immediately, while
+    // the session itself survives in `sessionsById` for the whole resume grace window still
+    // holding its upstream STT session, its model pin and a GPU slot. So a tenant that dropped
+    // and reconnected five sockets in fifteen seconds showed a count of 1 while holding 5
+    // upstream sessions — and this map is what `SocketRegistryService.getTenantAggregateCount`
+    // publishes and what `EntitlementsService` compares against `maxConcurrentSessions`. The
+    // cap was therefore enforced against the wrong set, in the permissive direction, exactly
+    // during the churn that makes a cap matter.
+    //
+    // `finalizing` sessions are excluded: they have already released (or are releasing) their
+    // upstream, so counting them would swing the error to the restrictive side instead.
+    for (const session of this.sessionsById.values()) {
+      if (session.finalizing) continue;
       const tenantId = session.tenantId;
       if (!tenantId) continue;
       counts[tenantId] = (counts[tenantId] ?? 0) + 1;
@@ -673,6 +975,12 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       ...(metadataSchema ? { metadataSchema } : {}),
       audioBytesForwarded,
       metadataSpans,
+      // TASK-985 ST-5 — resolved ONCE, here, so the per-transcript relay path stays synchronous.
+      egressHighWatermarkBytes: this.resolveBudget(STT_EGRESS_HIGH_WATERMARK_BYTES_KEY, WS_EGRESS_HIGH_WATERMARK_BYTES_ENV),
+      missedPongs: 0,
+      audioClockSamples: [],
+      lastAudioClockSampleSec: -Infinity,
+      emittedSeqByIdentity: new Map<string, number>(),
       droppedAudioFrames: 0,
       droppedPartialResults: 0,
       partialDropSignalled: false,
@@ -762,11 +1070,20 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * `session.client`, so a rebind redirects output to the reconnected socket.
    * Any prior subscription is torn down first (exactly one live reader).
    */
-  private subscribeSessionResults(session: SessionInfo): void {
+  private subscribeSessionResults(session: SessionInfo, options?: { reclaimMinIdleMs?: number }): void {
     session.resultSubscription?.unsubscribe();
     session.resultSubscription = this.bridgeService
       .subscribeToResults(session.sessionId, {
         consumerGroup: WS_RESULT_CONSUMER_GROUP,
+        // TASK-985 M-48 — a STABLE consumer name, so a rebind inherits the dead reader's
+        // pending entries instead of starting with an empty PEL and abandoning them for
+        // 30 s (longer than the grace window). See {@link wsResultConsumerName}.
+        consumerName: wsResultConsumerName(session.sessionId),
+        // TASK-985 M-48 — and, on the REBIND path only, reclaim at min-idle 0. The gateway
+        // disconnected the previous reader itself, so there is no live consumer whose
+        // in-flight could be stolen; on a FIRST subscribe the option is omitted and the
+        // bridge's conservative 30 s default applies.
+        ...(options?.reclaimMinIdleMs !== undefined ? { reclaimMinIdleMs: options.reclaimMinIdleMs } : {}),
         // TASK-951 R2 — read ONCE at handshake and handed to the reader, so the echo costs
         // nothing per transcript. A grace-window rebind re-subscribes through this same method
         // with the SessionInfo it kept, so a resumed session keeps echoing without a second read.
@@ -797,6 +1114,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
           this.sendError(session.client, 'STREAM_ERROR', 'Result stream encountered an error');
         },
         complete: () => {
+          // The synthesized closing frame goes out FIRST: the client learns the stream is over
+          // while its session still exists, so a `{type:'close'}` it sends in response is not
+          // answered with NO_SESSION.
           if (session.client.readyState === session.client.OPEN) {
             session.client.send(
               JSON.stringify({
@@ -806,11 +1126,67 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
               }),
             );
           }
+          // TASK-985 QW-1 (D8 §1.5 item 5) — FINALIZE ON THE TERMINAL `closed` STATUS.
+          //
+          // This subscription completes only on a terminal upstream status: an unsubscribe
+          // (disconnect, rebind, finalize) detaches this observer first, so `complete` is not
+          // delivered on those paths. So reaching here means STT is genuinely done with the
+          // session, and the gateway should tear down NOW rather than wait for a grace window
+          // that will then stamp the ledger row `interrupted = true`.
+          //
+          // Why that flag was wrong: the browser SDK never sends `{type:'close'}` — it calls
+          // `disconnect()` — so an ordinary clean stop reached `finalizeSession(session,
+          // 'grace window expired')` 15 s later and billed a consultation the clinician ended
+          // normally as an abort. `stopRequested` is the gateway's own record of the client's
+          // intent, and the gateway is the ONLY party that has it: `_build_teardown_summary`
+          // says in its own docstring that STT has no notion of "interrupted".
+          //
+          // SEQUENCING (D8 §6.2 edge 3): this brings the DELETE forward into the window that
+          // used to answer 204, so it REQUIRES L-STT's teardown-summary stash to be in place —
+          // without it, ledger coverage gets worse before it gets better. The stash lands
+          // first in the merge order, and `StreamingSessionService.removeSession` now counts
+          // (and WARNs about) every teardown that still yields no summary, so if the two ever
+          // separate the loss is visible instead of silent.
+          if (session.finalizing) return;
+          this.finalizeSession(session, session.stopRequested ? 'session closed by client' : 'upstream closed');
         },
       });
   }
 
-  /** Explicit readiness ack the client gates its first send on. */
+  /**
+   * Explicit readiness ack the client gates its first send on.
+   *
+   * ## The contract (TASK-985 M-22), stated here because it is the server half of a two-sided
+   * promise
+   *
+   * ```ts
+   * { type: 'ready', sessionId: string, fromSeq: number, sessionEpochMs?: number }
+   * ```
+   *
+   * `ready` is emitted EXACTLY ONCE per socket, and only after BOTH of:
+   *   1. the session is registered in `sessions` / `sessionsById` (so a `resume` or an audio
+   *      frame can find it), and
+   *   2. the result subscription is live (so nothing published upstream between the handshake
+   *      and now is missed).
+   *
+   * `fromSeq` is the next seq the client should expect — `resultSeq + 1` — so a client that
+   * reconnects can tell immediately whether it is behind.
+   *
+   * **Why the ordering is load-bearing.** `handleConnection` awaits the ticket consume and the
+   * session-meta lookup. A client that sends `{type:'resume'}` the instant its socket opens
+   * therefore races registration and is answered `NO_SESSION`; its resume is dropped, it
+   * believes it resumed, and the transcript silently freezes while the microphone keeps
+   * capturing. `ready` is the deterministic gate that closes that race — a timing guess (a
+   * `setTimeout` before the first send) narrows it and cannot close it.
+   *
+   * **The client half is not done yet.** `SttWebSocketClient.connect()` resolves on `ws.onopen`
+   * and sends its resume handshake from that same handler, and `ready` falls through its
+   * message switch to `default:` and is logged as an unknown type. So the gate exists and
+   * nobody stands at it. Making `connect()` resolve on `ready` (bounded by a timeout, resolving
+   * with a WARN rather than rejecting so a pre-`ready` gateway still works) is L-SDK's half, in
+   * both `@arcaai/vox` and `packages/vox-node`, along with documenting the frame in
+   * `stt-socket-protocol.ts`.
+   */
   private sendReady(session: SessionInfo): void {
     this.sendJson(session.client, {
       type: 'ready',
@@ -832,6 +1208,15 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * audio and the resume handshake was unanswerable.
    */
   private attachMessageHandler(client: WebSocket, sessionId: string): void {
+    // TASK-985 M-47 — the pong handler is registered HERE, beside the message handler, so the
+    // grace-window rebind (which re-attaches message handling onto the new socket) re-registers
+    // it too. A pong clears the miss count outright rather than decrementing it: the question
+    // the counter answers is "how many consecutive pings went unanswered", and any pong makes
+    // that zero.
+    client.on('pong', () => {
+      const session = this.sessions.get(client);
+      if (session) session.missedPongs = 0;
+    });
     client.on('message', (data: Buffer, isBinary: boolean) => {
       this.handleMessage(client, data, isBinary).catch((err) => {
         this.logger.error({
@@ -877,6 +1262,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       session.graceTimer = undefined;
     }
     session.finalizing = false;
+    // TASK-985 M-47 — a socket that just completed a handshake has, by construction, answered.
+    // Carrying the dead socket's miss count onto it would terminate a healthy reconnect.
+    session.missedPongs = 0;
     // A genuine grace-window continuation: the upstream STT-v2 session, resume
     // buffer, and seq are all intact, so a subsequent resume handshake IS
     // honorable (F-06).
@@ -913,7 +1301,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     this.attachMessageHandler(client, session.sessionId);
     // Re-establish the captions reader (stable group → resumes from the
     // persisted cursor, no 0-0 flood). Redirects to the new socket.
-    this.subscribeSessionResults(session);
+    // TASK-985 M-48 — min-idle 0: the previous reader was disconnected by THIS gateway on the
+    // transient drop, so its read-but-unacked results are recoverable immediately instead of
+    // sitting unreclaimable for 30 s inside a 15 s grace window.
+    this.subscribeSessionResults(session, { reclaimMinIdleMs: 0 });
 
     this.logger.log({
       message: 'WebSocket client reconnected within grace window (C3-01)',
@@ -943,10 +1334,30 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    */
   private relayResult(client: WebSocket, session: SessionInfo, msg: { type: string; isFinal?: boolean; [key: string]: unknown }): void {
     const isTranscript = msg?.type === 'transcript';
-    const backpressured = this.isEgressOverThreshold(client) || session.pendingFinalResults.length > 0;
+    const backpressured = this.isEgressOverThreshold(session) || session.pendingFinalResults.length > 0;
+
+    // TASK-985 M-43 — clear the once-per-episode partial-drop latch the moment the socket is
+    // healthy again.
+    //
+    // It was cleared ONLY inside `flushPendingFinals`, which runs only while finals are queued.
+    // A back-pressure episode that dropped partials but queued no final therefore left
+    // `partialDropSignalled = true` FOREVER, and every later episode for the life of that
+    // session was silent — the exact opposite of the comment on the field, which promises "a
+    // later episode signals again". This is the one line that makes that promise true.
+    if (!backpressured && session.partialDropSignalled) session.partialDropSignalled = false;
+
+    // TASK-985 M-03 — the two latency histograms, observed on ARRIVAL at the gateway, ahead of
+    // the back-pressure branch below. That placement is deliberate: both measure how long the
+    // ASR took to produce a hypothesis, not whether this particular socket could receive it. A
+    // partial dropped under back-pressure still proves the pipeline answered in that time, and
+    // an egress problem is already counted, separately and unambiguously, by
+    // `stt_gateway_audio_egress_dropped_total`. Folding egress health into a pipeline-latency
+    // histogram would make a congested client look like a slow model.
+    if (isTranscript) this.observeTranscriptLatency(session, msg);
 
     if (isTranscript && backpressured && msg.isFinal !== true) {
       session.droppedPartialResults++;
+      sttGatewayAudioEgressDroppedTotal.inc({ kind: 'partial' });
       this.logger.debug({
         message: 'Dropped partial transcript — WS egress backpressure (P1-4)',
         sessionId: session.sessionId,
@@ -980,8 +1391,79 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     return (client as { bufferedAmount?: number }).bufferedAmount ?? 0;
   }
 
-  private isEgressOverThreshold(client: WebSocket): boolean {
-    return this.getBufferedAmount(client) > WS_EGRESS_HIGH_WATERMARK_BYTES;
+  /**
+   * TASK-985 ST-5 — the watermark is now the SESSION's, resolved once at handshake, instead of
+   * a module-scope env constant fixed for the process lifetime.
+   */
+  private isEgressOverThreshold(session: SessionInfo): boolean {
+    return this.getBufferedAmount(session.client) > session.egressHighWatermarkBytes;
+  }
+
+  /**
+   * TASK-985 M-03 — observe `first_partial_seconds` and `commit_latency_seconds`.
+   *
+   * ## first partial
+   *
+   * One sample per session: the interval from the first audio frame forwarded upstream to the
+   * first partial relayed back. That is the number a clinician experiences as "did it hear me",
+   * and it is measured across the whole round trip the gateway is responsible for.
+   *
+   * ## commit latency, against the AUDIO clock
+   *
+   * A final carries `endTime` in seconds on the session's own audio clock. The ring buffer
+   * remembers when the audio at each offset was forwarded, so the newest sample at or before
+   * `endTime` is the instant the last audio of that utterance left the gateway; the delta is
+   * how long the speaker waited for their sentence to go solid. Deriving it from wall clocks
+   * instead would fold in client-side buffering and be unusable across a resume.
+   *
+   * A sample is SKIPPED, never faked, when the ring holds nothing at or before `endTime` —
+   * which happens for a session resumed onto a gateway that never saw the earlier audio. An
+   * invented number in a latency histogram is worse than a missing one.
+   *
+   * Never throws: metrics must not be able to break a caption relay.
+   */
+  private observeTranscriptLatency(session: SessionInfo, msg: { isFinal?: boolean; [key: string]: unknown }): void {
+    const agentSlug = session.agentSlug ?? STT_GATEWAY_UNKNOWN_AGENT;
+
+    if (msg.isFinal !== true) {
+      if (!session.firstPartialObserved && session.firstFrameForwardedAt != null) {
+        session.firstPartialObserved = true;
+        sttGatewayFirstPartialSeconds.observe({ agentSlug }, (Date.now() - session.firstFrameForwardedAt) / 1000);
+      }
+      return;
+    }
+
+    const endTime = typeof msg.endTime === 'number' && Number.isFinite(msg.endTime) ? msg.endTime : undefined;
+    if (endTime === undefined) return;
+    const sample = this.findAudioClockSample(session, endTime);
+    if (!sample) return;
+    sttGatewayCommitLatencySeconds.observe({ agentSlug }, Math.max(0, Date.now() - sample.atMs) / 1000);
+  }
+
+  /**
+   * Newest audio-clock sample at or before `audioSec`, by binary search.
+   *
+   * The ring is append-only and strictly increasing in `audioSec` (the clock never rewinds —
+   * see {@link SessionInfo.audioBytesForwarded}), which is what makes a binary search valid
+   * over it. Linear scanning 200 entries per FINAL would also be fine; the search is here
+   * because the invariant that permits it is worth stating.
+   */
+  private findAudioClockSample(session: SessionInfo, audioSec: number): { audioSec: number; atMs: number } | undefined {
+    const samples = session.audioClockSamples;
+    let lo = 0;
+    let hi = samples.length - 1;
+    let found: { audioSec: number; atMs: number } | undefined;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const candidate = samples[mid]!;
+      if (candidate.audioSec <= audioSec) {
+        found = candidate;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return found;
   }
 
   /**
@@ -1002,6 +1484,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     if (session.pendingFinalResults.length > WS_EGRESS_FINAL_QUEUE_LIMIT) {
       const dropped = session.pendingFinalResults.shift();
       session.droppedFinalResults++;
+      sttGatewayAudioEgressDroppedTotal.inc({ kind: 'final' });
       const droppedSeq = (dropped as { seq?: number } | undefined)?.seq;
       this.logger.error({
         message: 'Final transcript dropped — bounded WS egress queue overflow (C3-03 / P1-4)',
@@ -1024,6 +1507,30 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * loss. Tiny control frame; sent even while the transcript stream is
    * backpressured (its congestion is what forced the drop). Recoverable from
    * the durable transcript on the client side.
+   */
+  /**
+   * TASK-985 M-43 — the `gap` contract, both reasons, documented at the one place they are
+   * produced.
+   *
+   * ```ts
+   * { type: 'gap', reason: 'egress_partial_dropped', sessionId: string, droppedPartials: number }
+   * { type: 'gap', reason: 'egress_overflow',       sessionId: string, droppedSeq?: number }
+   * ```
+   *
+   * `egress_partial_dropped` is ADVISORY: partials are drafts, and the next one supersedes
+   * whatever was lost, so a client should surface it as a transient "captions are behind"
+   * state and nothing more. `egress_overflow` is NOT advisory — a FINAL was dropped, so a
+   * `seq` the client will never receive exists, and the content survives only in the durable
+   * transcript. A client that ignores it renders a consultation with a hole in it and no
+   * indication there is one.
+   *
+   * Neither frame is seq-tagged and neither is buffered for resume: both describe the
+   * TRANSPORT's state right now, not a point in the transcript.
+   *
+   * Both frames are currently IGNORED by both SDKs — they fall through
+   * `SttWebSocketClient.handleMessage`'s switch to `default:` and are logged as an unknown
+   * message type, and `packages/vox-node`'s `RealtimeSttSocket` has no `gap` in its event map.
+   * That is L-SDK's half; the server side is correct and is pinned by tests here.
    */
   private emitPartialDropMarker(session: SessionInfo): void {
     if (session.partialDropSignalled) return;
@@ -1075,8 +1582,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       return;
     }
     // Drained ⇒ the episode is over; a NEW one must be able to signal again.
-    if (!this.isEgressOverThreshold(client)) session.partialDropSignalled = false;
-    while (session.pendingFinalResults.length > 0 && !this.isEgressOverThreshold(client)) {
+    // (TASK-985 M-43: `relayResult` now clears this too, which is what covers an episode that
+    // dropped partials without ever queueing a final — the case this poll never runs for.)
+    if (!this.isEgressOverThreshold(session)) session.partialDropSignalled = false;
+    while (session.pendingFinalResults.length > 0 && !this.isEgressOverThreshold(session)) {
       const next = session.pendingFinalResults.shift()!;
       client.send(JSON.stringify(next));
     }
@@ -1112,13 +1621,93 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     if (msg?.type !== 'transcript') {
       return msg;
     }
+
+    // TASK-985 M-48 — the re-emission guard the stable consumer name makes MANDATORY.
+    //
+    // `readResultStream` is explicitly at-least-once, and the stable consumer name now makes a
+    // rebind deliberately re-read the dead reader's pending entries. Without this, a
+    // redelivered result would be assigned a SECOND seq and arrive as a second, distinct
+    // transcript: the client would render the same sentence twice with no way to tell they were
+    // one utterance. Reusing the original seq makes redelivery exactly what the contract says
+    // it is — the same message, again — and the client's own `seq` de-duplication handles it.
+    const identity = this.transcriptIdentity(msg);
+    if (identity !== undefined) {
+      const seenSeq = session.emittedSeqByIdentity.get(identity);
+      if (seenSeq !== undefined) {
+        return { ...msg, seq: seenSeq };
+      }
+    }
+
     session.resultSeq += 1;
     const tagged = { ...msg, seq: session.resultSeq };
-    session.resumeBuffer.push({ seq: session.resultSeq, msg: tagged });
+    if (identity !== undefined) session.emittedSeqByIdentity.set(identity, session.resultSeq);
+
+    const isFinal = msg.isFinal === true;
+    const utteranceIndex = typeof msg.utteranceIndex === 'number' && Number.isFinite(msg.utteranceIndex) ? msg.utteranceIndex : undefined;
+
+    // TASK-985 ST-5 / M-38 — COALESCE superseded partials in the resume buffer.
+    //
+    // A partial of utterance `k` is superseded, in full, by the next partial of utterance `k`:
+    // the ASR is restating the same utterance, not adding a new one. The buffer used to keep
+    // every one of them and replay every one on resume, so a client that dropped for ten
+    // seconds was handed ~30 stale repaints of text it would immediately overwrite. Under ST-1
+    // — where a partial carries the WHOLE utterance rather than a 3 s tail — those 30 entries
+    // become 30 stale WHOLE UTTERANCES, which is why D4 §3.4 calls this a PREREQUISITE of the
+    // commit-geometry change rather than a parallel nicety.
+    //
+    // FINALS ARE NEVER COALESCED. A final is distinct clinical content; two finals are two
+    // things the clinician said, even when they share an utterance index with a partial. The
+    // coalescing key is therefore (utteranceIndex AND not final), never utteranceIndex alone.
+    //
+    // A worker that stamps no `utteranceIndex` (older STT) gets today's behaviour exactly:
+    // nothing is coalesced, because nothing can be proven superseded.
+    if (!isFinal && utteranceIndex !== undefined) {
+      const superseded = session.resumeBuffer.findIndex((entry) => !entry.isFinal && entry.utteranceIndex === utteranceIndex);
+      if (superseded >= 0) session.resumeBuffer.splice(superseded, 1);
+    }
+
+    session.resumeBuffer.push({
+      seq: session.resultSeq,
+      msg: tagged,
+      isFinal,
+      atMs: Date.now(),
+      ...(utteranceIndex !== undefined ? { utteranceIndex } : {}),
+    });
     if (session.resumeBuffer.length > RESUME_BUFFER_SIZE) {
       session.resumeBuffer.splice(0, session.resumeBuffer.length - RESUME_BUFFER_SIZE);
     }
+    // The identity map is bounded in lockstep with the buffer it guards: an entry the buffer
+    // can no longer replay is one no redelivery needs to be matched against either. Oldest
+    // first, which for an insertion-ordered Map is iteration order.
+    while (session.emittedSeqByIdentity.size > RESUME_BUFFER_SIZE) {
+      const oldest = session.emittedSeqByIdentity.keys().next();
+      if (oldest.done) break;
+      session.emittedSeqByIdentity.delete(oldest.value);
+    }
     return tagged;
+  }
+
+  /**
+   * The STT-side identity of a transcript, or `undefined` when it cannot be established.
+   *
+   * A REDELIVERY is byte-identical to its first delivery — same Redis entry, re-read from the
+   * pending list — so identity is the tuple that distinguishes two genuinely different results:
+   * utterance ordinal, finality, both audio-clock bounds, and the text itself. Two consecutive
+   * partials of one utterance differ in at least the text; the same entry read twice differs in
+   * nothing.
+   *
+   * `undefined` when the worker stamps no `utteranceIndex`, which disables the guard rather
+   * than guessing — degrading to exactly the pre-TASK-985 behaviour for an older STT.
+   */
+  private transcriptIdentity(msg: { [key: string]: unknown }): string | undefined {
+    const utteranceIndex = msg.utteranceIndex;
+    if (typeof utteranceIndex !== 'number' || !Number.isFinite(utteranceIndex)) return undefined;
+    const isFinal = msg.isFinal === true ? '1' : '0';
+    const startTime = typeof msg.startTime === 'number' ? msg.startTime : '';
+    const endTime = typeof msg.endTime === 'number' ? msg.endTime : '';
+    const text = typeof msg.text === 'string' ? msg.text : '';
+    const resultType = typeof msg.resultType === 'string' ? msg.resultType : '';
+    return `${utteranceIndex}|${isFinal}|${resultType}|${startTime}|${endTime}|${text}`;
   }
 
   handleDisconnect(client: WebSocket): void {
@@ -1142,6 +1731,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       // the droppedAudioFrames pattern above.
       droppedPartialResults: session.droppedPartialResults,
       droppedFinalResults: session.droppedFinalResults,
+      // TASK-985 M-67 — the CLIENT's own count, reported on its `client_stats` frame. Logged
+      // beside the server-observed counts and never summed with them: one is measured, the
+      // other is asserted by the party with the incentive to under-report.
+      ...(session.clientReportedDroppedFrames != null ? { clientReportedDroppedFrames: session.clientReportedDroppedFrames } : {}),
       activeSessions: this.sessions.size,
     });
 
@@ -1171,7 +1764,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     if (session.graceTimer) {
       clearTimeout(session.graceTimer);
     }
-    const timer = setTimeout(() => this.finalizeSession(session, 'grace window expired'), WS_RESUME_GRACE_MS);
+    // TASK-985 ST-5 — resolved HERE rather than at import, so a control-plane write reaches the
+    // next drop instead of the next pod restart. It is deliberately not resolved at handshake
+    // like the watermark: the window is a property of the DISCONNECT, and a session that opened
+    // an hour ago should be governed by the operator's current answer, not the one in force
+    // when it started.
+    const graceMs = this.resolveBudget(STT_RESUME_GRACE_MS_KEY, WS_RESUME_GRACE_MS_ENV);
+    const timer = setTimeout(() => this.finalizeSession(session, 'grace window expired'), graceMs);
     (timer as unknown as { unref?: () => void }).unref?.();
     session.graceTimer = timer;
   }
@@ -1213,6 +1812,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       message: 'Streaming session finalized',
       sessionId: session.sessionId,
       reason,
+      // TASK-985 M-67 — carried onto the finalize line too, so the one log an operator greps
+      // for a lost consultation holds both sides of the transport accounting.
+      ...(session.clientReportedDroppedFrames != null ? { clientReportedDroppedFrames: session.clientReportedDroppedFrames } : {}),
     });
 
     // Clear the sessionId→tenant binding so a stream ticket can NO longer be
@@ -1239,6 +1841,17 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   async handleMessage(client: WebSocket, rawData: string | Buffer, isBinary?: boolean): Promise<void> {
     const session = this.sessions.get(client);
     if (!session) {
+      // TASK-985 QW-1 — a `close` arriving after the session is already gone is NORMAL now, not
+      // an error. Finalizing on the upstream's terminal `closed` status means the gateway can
+      // legitimately finish with a session while its socket is still open, so the SDK's polite
+      // `close` after its drain would otherwise be answered with NO_SESSION — a scary error for
+      // a client that did exactly the right thing. Every other frame still gets the error: it
+      // means the client is streaming into nothing and needs to know.
+      if (!isBinary && this.isCloseFrame(rawData)) {
+        this.sendJson(client, { type: 'status', status: 'closed', message: 'Session already finalized' });
+        client.close(1000, 'Session closed by client');
+        return;
+      }
       this.sendError(client, 'NO_SESSION', 'No active session for this connection');
       return;
     }
@@ -1290,7 +1903,28 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         }
 
         case 'stop': {
+          // TASK-985 QW-1 — record the client's INTENT before asking STT to finalize.
+          //
+          // This latch is the whole of the `interrupted` fix on the gateway side: it survives a
+          // transient drop (it lives on the `SessionInfo`, which a rebind keeps), and it is
+          // what lets the terminal-`closed` finalize below distinguish "the clinician ended the
+          // consultation" from "the socket died". STT cannot make that distinction and does not
+          // try to — `_build_teardown_summary` says so in its own docstring.
+          session.stopRequested = true;
           await this.bridgeService.writeControlCommand(session.sessionId, 'finalize');
+          break;
+        }
+
+        case 'client_stats': {
+          // TASK-985 M-67 — the SERVER-side half of client-drop accounting.
+          //
+          // `droppedAudioFrames` counts failed XADDs only, so a client that discarded frames
+          // before they ever reached the gateway — a saturated uplink, a full send buffer, a
+          // worker that fell behind — was invisible to every server-side signal, and a
+          // consultation with a hole in it looked, from here, like one the speaker was quiet
+          // during. This frame carries the client's own count so the loss is at least
+          // ATTRIBUTABLE. It is a claim, recorded and metered as such.
+          this.recordClientStats(session, msg);
           break;
         }
 
@@ -1332,6 +1966,11 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * `lastSeq` resume protocol handles recovery.
    */
   private forwardAudioFrame(session: SessionInfo, seq: number, data: Buffer): void {
+    // TASK-985 M-03 — the start of the `first_partial_seconds` interval. Set on SUBMISSION of
+    // the first frame, for the same reason the audio clock below is: the Redis ack is
+    // deliberately not awaited, and a start time that only existed after a successful write
+    // would move under a transient failure.
+    session.firstFrameForwardedAt ??= Date.now();
     // TASK-951 R2 (clarified) — the session's audio clock, advanced on BOTH frame kinds (this
     // is the one place binary and JSON audio converge, which is exactly why the counter lives
     // here and not at the two call sites). One addition per frame: the binary fast path keeps
@@ -1342,11 +1981,28 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     // sample count on every transient write failure, which is the one thing it must never do.
     session.audioBytesForwarded += data.length;
 
+    // TASK-985 M-03 — sample the audio clock against the wall clock, throttled to one entry per
+    // AUDIO_CLOCK_SAMPLE_INTERVAL_SEC of audio. This is what makes commit latency measurable:
+    // a final's `endTime` is an offset on this clock, and the sample at or before it says when
+    // that audio left the gateway. See `observeTranscriptLatency`.
+    const audioSec = this.audioSecForwarded(session);
+    if (audioSec - session.lastAudioClockSampleSec >= AUDIO_CLOCK_SAMPLE_INTERVAL_SEC) {
+      session.lastAudioClockSampleSec = audioSec;
+      session.audioClockSamples.push({ audioSec, atMs: Date.now() });
+      if (session.audioClockSamples.length > AUDIO_CLOCK_SAMPLE_CAP) {
+        session.audioClockSamples.splice(0, session.audioClockSamples.length - AUDIO_CLOCK_SAMPLE_CAP);
+      }
+    }
+
     // The carrier was derived ONCE at handshake — passing it
     // here is a reference copy, not propagator work, so the 10–125 frames/s/session
     // path keeps its cost profile.
     this.bridgeService.writeAudioFrame(session.sessionId, seq, data, session.sampleRate, 'pcm_s16le', false, session.traceCarrier).catch((err) => {
       session.droppedAudioFrames++;
+      // TASK-985 M-03 / M-67 (server half) — until now this count lived only in a per-session
+      // log line, so a Redis blip that silently discarded a minute of a consultation's audio
+      // was invisible to every dashboard.
+      sttGatewayAudioIngestDroppedTotal.inc();
       this.logger.error({
         message: 'Error forwarding audio frame',
         sessionId: session.sessionId,
@@ -1355,6 +2011,55 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         error: err instanceof Error ? err.message : String(err),
       });
       this.sendError(session.client, 'BRIDGE_ERROR', 'Failed to forward audio frame');
+    });
+  }
+
+  /**
+   * TASK-985 QW-1 — is this text frame a `{type:'close'}`?
+   *
+   * Parsed defensively and in isolation, because it runs on the path where there is NO session
+   * to report an error against: anything unparseable is simply "not a close", and falls through
+   * to the ordinary NO_SESSION answer.
+   */
+  private isCloseFrame(rawData: string | Buffer): boolean {
+    try {
+      const parsed = JSON.parse(Buffer.isBuffer(rawData) ? rawData.toString('utf8') : String(rawData)) as { type?: unknown };
+      return parsed?.type === 'close';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * TASK-985 M-67 — record the client's end-of-session transport self-report.
+   *
+   * ## The frame
+   *
+   * `{ type: 'client_stats', droppedFrames?: number, sentFrames?: number }`, sent by the SDK
+   * immediately before `stop`/`close`. Both fields are optional and independently validated:
+   * a client that can only count one of them still gets the other recorded, and a malformed
+   * value is IGNORED rather than answered with an error — a stats frame must never be able to
+   * fail a consultation, and this arrives at the exact moment the client is trying to leave.
+   *
+   * ## Why the counter is separate from the ingest one
+   *
+   * `stt_gateway_audio_ingest_dropped_total` is what the gateway OBSERVED. This is what the
+   * client CLAIMS. Summing them into one series would make an unverifiable number look
+   * measured, and the two have genuinely different trust: a client with a bug that
+   * under-reports is exactly the client whose audio is missing.
+   */
+  private recordClientStats(session: SessionInfo, msg: { [key: string]: unknown }): void {
+    const dropped = msg.droppedFrames;
+    if (typeof dropped === 'number' && Number.isFinite(dropped) && dropped >= 0) {
+      session.clientReportedDroppedFrames = dropped;
+      if (dropped > 0) sttGatewayClientAudioDroppedTotal.inc(dropped);
+    }
+    this.logger.log({
+      message: 'Client reported end-of-session transport stats',
+      sessionId: session.sessionId,
+      ...(typeof dropped === 'number' ? { clientDroppedFrames: dropped } : {}),
+      ...(typeof msg.sentFrames === 'number' ? { clientSentFrames: msg.sentFrames } : {}),
+      serverDroppedAudioFrames: session.droppedAudioFrames,
     });
   }
 
@@ -1502,11 +2207,62 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     // Success — continuation from the NEXT unseen seq, then replay the unseen
     // buffered transcripts in order. An empty buffer (or a caught-up client)
     // still gets `resumed fromSeq: lastSeq + 1` and continues with live results.
-    const toReplay = buffer.filter((b) => b.seq > lastSeq);
+    const unseen = buffer.filter((b) => b.seq > lastSeq);
+    const toReplay = this.selectReplay(unseen);
     this.sendJson(client, { type: 'resumed', sessionId: session.sessionId, fromSeq: lastSeq + 1 });
     for (const entry of toReplay) {
       this.sendJson(client, entry.msg);
     }
+    if (toReplay.length !== unseen.length) {
+      this.logger.debug({
+        message: 'Resume replay coalesced superseded partials (ST-5)',
+        sessionId: session.sessionId,
+        unseen: unseen.length,
+        replayed: toReplay.length,
+      });
+    }
+  }
+
+  /**
+   * TASK-985 ST-5 / M-38 — which unseen buffered entries are still worth replaying.
+   *
+   * `tagAndBuffer` already keeps at most one partial per utterance; this is the second half,
+   * applied at REPLAY time because it depends on what the client missed rather than on what was
+   * buffered.
+   *
+   * Three rules, in the order they are cheap to state:
+   *
+   * 1. **Every final is replayed.** A final is distinct clinical content. It is never
+   *    coalesced, never aged out, and never superseded — this method must not be able to lose
+   *    one.
+   * 2. **A partial superseded by a final is dropped.** If the replay set contains a final for
+   *    utterance `k`, every partial with `utteranceIndex <= k` is a draft of something the
+   *    client is about to receive in its finished form. Replaying it makes the live region
+   *    repaint backwards through text that has already been committed.
+   * 3. **A partial older than `sttStreaming.resumeMaxReplayAgeMs` is dropped.** The speaker
+   *    kept talking while the socket was down; a ten-second-old draft of an utterance is not
+   *    what the ASR believes any more, and painting it is worse than painting nothing.
+   *
+   * Dropped entries leave GAPS in the replayed `seq` sequence. That is intended and safe: the
+   * client's contract is "everything after `lastSeq` that still matters", it already handles
+   * discontinuity (it is told about drops with `gap` frames), and a partial's seq carries no
+   * clinical content of its own.
+   */
+  private selectReplay(unseen: BufferedTranscript[]): BufferedTranscript[] {
+    const maxAgeMs = this.resolveBudget(STT_RESUME_MAX_REPLAY_AGE_MS_KEY, undefined);
+    const now = Date.now();
+    let highestFinalUtterance = -Infinity;
+    for (const entry of unseen) {
+      if (entry.isFinal && entry.utteranceIndex !== undefined && entry.utteranceIndex > highestFinalUtterance) {
+        highestFinalUtterance = entry.utteranceIndex;
+      }
+    }
+    return unseen.filter((entry) => {
+      if (entry.isFinal) return true;
+      if (now - entry.atMs > maxAgeMs) return false;
+      if (entry.utteranceIndex !== undefined && entry.utteranceIndex <= highestFinalUtterance) return false;
+      return true;
+    });
   }
 
   private sendJson(client: WebSocket, payload: unknown): void {
