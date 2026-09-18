@@ -1582,16 +1582,22 @@ describe('SttWsGateway', () => {
   // =========================================================================
   // WS egress backpressure.
   //
-  // Contract: when the client socket's `bufferedAmount` exceeds the 512 KiB
+  // Contract: when the client socket's `bufferedAmount` exceeds the governed
   // threshold, PARTIAL transcripts are dropped (per-session counter + log)
   // while FINAL transcripts are queued (bounded) and flushed IN ORDER once
   // the socket drains below the threshold. Normal delivery resumes after the
   // drain. Disconnect logs include the dropped-partial count (mirror of the
-  // droppedAudioFrames pattern). Tests pin the spec values (512 KiB / 200),
+  // droppedAudioFrames pattern). Tests pin the spec values (32 KiB / 200),
   // not the exported constants, so a silent constant change fails loudly.
+  //
+  // TASK-985 ST-5 moved the watermark from a module-scope `process.env` read to the governed
+  // `sttStreaming.egressHighWatermarkBytes`, and re-tuned its default 512 KiB -> 32 KiB: half a
+  // megabyte of queued captions is ~50 seconds of transcript in flight to a client that is
+  // already not keeping up, and all of it is clinically useless by the time it drains. The pin
+  // below is updated deliberately, which is exactly what it exists to force.
   // =========================================================================
   describe('WS egress backpressure', () => {
-    const THRESHOLD_BYTES = 512 * 1024;
+    const THRESHOLD_BYTES = 32 * 1024;
     const FINAL_QUEUE_LIMIT = 200;
     /** Generous wait for the drain-poll flush (poll cadence is sub-100ms). */
     const FLUSH_WAIT_MS = 150;
@@ -1613,7 +1619,7 @@ describe('SttWsGateway', () => {
       return { client, resultSubject };
     };
 
-    it('drops partial transcripts while bufferedAmount exceeds the 512 KiB threshold, and says so ONCE', async () => {
+    it('drops partial transcripts while bufferedAmount exceeds the 32 KiB threshold, and says so ONCE', async () => {
       const { client, resultSubject } = await connectWithSubject('sess-bp-partial');
 
       client.bufferedAmount = THRESHOLD_BYTES + 1;
