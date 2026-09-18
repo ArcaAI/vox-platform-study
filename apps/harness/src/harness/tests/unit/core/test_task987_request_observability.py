@@ -40,6 +40,17 @@ from harness.main import create_app
 #: pod buried the lines that answer real questions. These tests are about the LOG
 #: LINE, not the handler, so they ask for something unrouted — a 404 still
 #: traverses RequestContext + AccessLog and carries the same fields.
+#: An unrouted path does NOT reliably answer 404. Five of the six services run a
+#: service-token middleware that refuses an UNKNOWN path BEFORE FastAPI can route
+#: it, so the same request is 401 there — and on guardrail the reject branch is
+#: only reached when `accepted_service_tokens` is non-empty, which makes the status
+#: depend on whether an env file supplied a token. Asserting either one pins the
+#: ENVIRONMENT, not the behaviour. These tests are about the LOG LINE, and both
+#: statuses traverse RequestContext and AccessLog identically, so accept both.
+#: (TASK-990 F7 found `/api/v1/health/startup` the same way: a missing route
+#: wearing an auth error's clothes.)
+_UNROUTED_STATUSES = (401, 404)
+
 _NON_PROBE_PATH = "/api/v1/__access_log_subject__"
 
 
@@ -100,7 +111,7 @@ class TestServiceComesUpWithAnUnreachableCollector:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get(_NON_PROBE_PATH)
 
-        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
+        assert resp.status_code in _UNROUTED_STATUSES  # see _UNROUTED_STATUSES
         # An unroutable endpoint is a RUNTIME export failure (lazy gRPC connect),
         # not a configuration failure — tracing stays "on" (R-2).
         assert app.state.tracer_provider is not None
@@ -128,7 +139,7 @@ class TestAccessLogLine:
         self, async_client, json_log_lines: list[dict]
     ) -> None:
         resp = await async_client.get(_NON_PROBE_PATH, headers={"X-Request-ID": "req-fixture-abc"})
-        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
+        assert resp.status_code in _UNROUTED_STATUSES  # see _UNROUTED_STATUSES
 
         complete_lines = [r for r in json_log_lines if r.get("event") == "request.complete"]
 

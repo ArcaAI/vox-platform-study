@@ -33,6 +33,17 @@ from guardrail.main import create_app
 #: pod buried the lines that answer real questions. These tests are about the LOG
 #: LINE, not the handler, so they ask for something unrouted — a 404 still
 #: traverses RequestContext + AccessLog and carries the same fields.
+#: An unrouted path does NOT reliably answer 404. Five of the six services run a
+#: service-token middleware that refuses an UNKNOWN path BEFORE FastAPI can route
+#: it, so the same request is 401 there — and on guardrail the reject branch is
+#: only reached when `accepted_service_tokens` is non-empty, which makes the status
+#: depend on whether an env file supplied a token. Asserting either one pins the
+#: ENVIRONMENT, not the behaviour. These tests are about the LOG LINE, and both
+#: statuses traverse RequestContext and AccessLog identically, so accept both.
+#: (TASK-990 F7 found `/api/v1/health/startup` the same way: a missing route
+#: wearing an auth error's clothes.)
+_UNROUTED_STATUSES = (401, 404)
+
 _NON_PROBE_PATH = "/api/v1/__access_log_subject__"
 
 #: The real liveness endpoint. Still needed by the tests that assert it is
@@ -137,14 +148,14 @@ class TestAccessLogAndRequestContext:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(_NON_PROBE_PATH)
 
-        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
+        assert resp.status_code in _UNROUTED_STATUSES  # see _UNROUTED_STATUSES
 
         lines = _request_complete_lines(stream)
         assert len(lines) == 1
         line = lines[0]
         assert isinstance(line["request_id"], str) and line["request_id"]
         assert isinstance(line["duration_ms"], int | float)
-        assert line["status_code"] == 404
+        assert line["status_code"] in _UNROUTED_STATUSES
 
     async def test_inbound_request_id_is_echoed_exactly_once(self) -> None:
         app = create_app()
@@ -152,7 +163,7 @@ class TestAccessLogAndRequestContext:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(_NON_PROBE_PATH, headers={"X-Request-ID": "req-abc-123"})
 
-        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
+        assert resp.status_code in _UNROUTED_STATUSES  # see _UNROUTED_STATUSES
         assert resp.headers.get_list("x-request-id") == ["req-abc-123"]
 
     async def test_request_complete_line_carries_the_inbound_request_id(self) -> None:
@@ -163,7 +174,7 @@ class TestAccessLogAndRequestContext:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(_NON_PROBE_PATH, headers={"X-Request-ID": "req-abc-123"})
 
-        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
+        assert resp.status_code in _UNROUTED_STATUSES  # see _UNROUTED_STATUSES
         lines = _request_complete_lines(stream)
         assert len(lines) == 1
         assert lines[0]["request_id"] == "req-abc-123"
@@ -179,7 +190,7 @@ class TestAccessLogAndRequestContext:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(_NON_PROBE_PATH, headers={"X-Tenant-Id": "tenant-xyz"})
 
-        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
+        assert resp.status_code in _UNROUTED_STATUSES  # see _UNROUTED_STATUSES
         lines = _request_complete_lines(stream)
         assert len(lines) == 1
         assert lines[0]["tenant_id"] == "tenant-xyz"
@@ -194,7 +205,7 @@ class TestAccessLogAndRequestContext:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(_NON_PROBE_PATH)
 
-        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
+        assert resp.status_code in _UNROUTED_STATUSES  # see _UNROUTED_STATUSES
         lines = _request_complete_lines(stream)
         assert len(lines) == 1
         assert "tenant_id" not in lines[0]
