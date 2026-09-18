@@ -10,6 +10,7 @@ import { useAgenticStore } from '../store';
 import type { ContextItem, TranscriptionResult } from '../types';
 import { AgenticError } from '../types';
 import type { TranscriptSegment, AudioStartOptions, DualCaptureResult, ProviderSwitchInfo, ActivePipelineInfo } from '../types/audio';
+import type { AudioProcessingConstraints } from '../types/audio';
 import { applyCaptureConstraints, resolveCaptureConstraints } from '../core/captureConstraints';
 import { CONTEXT_ENDPOINTS, TRANSCRIPT_SEGMENT_SUBTYPE } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
@@ -223,7 +224,11 @@ export function useArcaAudio() {
    */
   const sourceCounterRef = useRef(0);
   /** Session-wide `getUserMedia` processing switches, inherited by runtime adds. */
-  const audioProcessingRef = useRef<Record<string, boolean>>({});
+  // TASK-985 (M-33 / OD-L) — typed as the resolver's own return, not a loose
+  // `Record<string, boolean>`: `resolveCaptureConstraints` returns a closed set of
+  // named capture constraints, and widening it here would let a typo become a
+  // silently-ignored constraint, which is the class of defect M-33 is about.
+  const audioProcessingRef = useRef<AudioProcessingConstraints>({});
   /** Detach functions for the per-track `ended` listeners; run on teardown. */
   const endedListenersRef = useRef<(() => void)[]>([]);
 

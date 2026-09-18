@@ -871,7 +871,16 @@ export interface ProviderConfig {
   /**
    * Language locale for transcription.
    */
-  language: LanguageLocale;
+  // TASK-985 (QW-2 / M-02) — OPTIONAL, because absent is a meaningful value on the
+  // streaming path and no other value can express it. The backend's backfill is
+  // `if not language_mode:`, so a literal here is not "no opinion" — it beats the
+  // tenant's configured ASR agent. Sending nothing is the only way to say "the agent
+  // decides", and that is the correct default for a clinical session.
+  //
+  // The engines that genuinely need a locale — the in-browser Whisper pipeline and the
+  // non-streaming remote provider — keep their own `?? DEFAULT_LANGUAGE_LOCALE` at the
+  // point of use, because they have no agent to defer to.
+  language?: LanguageLocale;
 
   /**
    * End-user language mode id. Forwarded to the STT session on the

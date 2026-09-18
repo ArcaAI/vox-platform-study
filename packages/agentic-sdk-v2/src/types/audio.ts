@@ -100,6 +100,20 @@ export interface AudioActions {
  * Transcription result from STT
  */
 export interface TranscriptionResult {
+  /**
+   * TASK-985 (M-27) — how many leading characters of `text` the server considers
+   * SETTLED. Optional and additive: `@arcaai/stt` carries it through the transport,
+   * the store keeps it beside the string as `currentInterim`, and nothing renders on
+   * it yet by design (OD-K sequences the UI half behind the server-side commit fix,
+   * because today's settled prefix is not monotone and a clinician would watch it
+   * shrink). `0` and absent are DIFFERENT: absent means the server said nothing.
+   */
+  stableChars?: number;
+
+  /** TASK-985 (M-27) — which utterance this partial belongs to; the key egress and
+   * resume coalescing dedupe on. */
+  utteranceIndex?: number;
+
   /** Transcribed text */
   text: string;
   /** Whether this is a final result */
