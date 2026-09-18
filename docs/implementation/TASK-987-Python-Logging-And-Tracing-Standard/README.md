@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — Wave 1 |
+| **Status** | In Progress — Wave 1 merged, Wave 2 next |
 | **Type** | `infrastructure` (+ `bugfix` for the P0 items) |
 | **Branch** | `dev-2.2` |
 | **Scope** | `apps/{stt,text,guardrail,nlp,harness,tts}`, new `packages/py-obs`, and the `arca/hope-v2-deployment` repo |
@@ -321,6 +321,22 @@ INFO at import time and the bug surfaced immediately as two failing tests.
 Fixed in-lane with a one-line rename to `extra={"ping_message": ...}`, after grepping every other
 `activity.logger.*` call site for reserved keys. This is the ticket paying for itself: a service whose
 logging was never switched on in tests was hiding a crash behind that fact.
+
+#### F-21 (P2) — ambient `OTEL_SERVICE_NAME=api-gateway` leaks into every Python service locally
+
+Found by lane A. The root `.env.dev` / `.env.test` set a bare `OTEL_SERVICE_NAME=api-gateway`,
+intended for the NestJS gateway. `hope_env.load_env()` puts it into the real `os.environ`, and
+`ObservabilityConfig.from_env` honours a bare `OTEL_SERVICE_NAME` override **by design** (R-2). So in
+any local or CI pytest session, once one service's settings module is imported, every service's
+`service` log field and `service.name` resource attribute can silently become `"api-gateway"`.
+
+**Pre-existing, newly visible.** The old code had the identical exposure; it never surfaced because
+`otel_enabled` defaulted false and logging was often never configured at all. Making logging
+unconditional is what exposed it — the same shape as F-20.
+
+**In-cluster is unaffected**: `hope-platform-config` does not set `OTEL_SERVICE_NAME`, and the
+services that need a specific name set their own. The fix is a per-service `<SVC>_OTEL_SERVICE_NAME`
+in the env samples, which is a shared surface — orchestrator or lane D2, not a service lane.
 
 ---
 
@@ -984,6 +1000,53 @@ it), and `TTS_OTEL_ENABLED` (honoured for one release; vetoes only when explicit
 WebSocket trace propagation is out of scope and is named in §7's out-of-scope table.
 
 **Its most valuable output was not its diff** — see **F-16**, the eager exporter import.
+
+### Lane A — stt — COMPLETE, verified, MERGED
+
+| | |
+|---|---|
+| Branch | `task-987-stt` @ `e81b500eb` |
+| Gates (orchestrator re-run, post-merge) | **3518 passed**, 73 skipped, 3 xfailed; 2 failed + 176 errors, all pre-existing (below); lint clean; mypy "no issues found in 139 source files" |
+
+The heaviest lane: F-04 (worker had no `TracerProvider`), F-08 (`BaseHTTPMiddleware` → pure ASGI),
+F-13 (the PHI hook STT had never passed), and `redact_id` moved to the package with its one caller
+re-pointed. The Dockerfile needed the COPY in **four** places — stt's multi-stage GPU build scaffolds
+the workspace more than once.
+
+**Every "pre-existing" claim independently reproduced on unmodified code** rather than accepted:
+the 176 `apps/stt/tests/e2e/**` errors (a Postgres enum-vs-table creation-order bug in the
+testcontainers bootstrap: `type "core.AiModelAvailability" does not exist`) and
+`test_minio_credentials_default_to_empty` both fail identically on the primary checkout with none of
+lane A's changes. `test_streaming_quality_scorecard` needs a live gateway and ASR model.
+
+**Also found: F-21**, the ambient `OTEL_SERVICE_NAME` hazard.
+
+---
+
+## Wave 1 — merged and re-verified
+
+All six lanes merged into `dev-2.2` with `--no-ff`, no conflicts, and **every suite re-run after the
+merge** (a clean merge is not a passing build):
+
+| Service | Post-merge result |
+|---|---|
+| guardrail | 540 passed |
+| tts | 464 passed, 3 skipped |
+| nlp | 696 passed · 2 pre-existing failures |
+| text | 1793 passed, 4 skipped |
+| harness | 2655 passed |
+| stt | 3518 passed, 73 skipped · 2 pre-existing failures, 176 pre-existing errors |
+
+**9666 passing.** The only failures are the four reproduced on unmodified code. All six worktrees
+removed and their branches deleted after merging, in that order.
+
+### Orchestrator items completed after the merge
+
+| Item | Result |
+|---|---|
+| **Second `uv lock`** (the gap lane B found in the plan) | `hope-obs` now appears **13×** as a real dependency, not just a `[manifest]` member. Also removed `opentelemetry-instrumentation-logging` fleet-wide. Without this, `uv sync --frozen` fails in every Docker build and Python CI job |
+| **F-17 Dockerfiles** | guardrail and tts were the last two missing the COPY; added. STT needed it in four places |
+| **F-16 lazy exporter** | `import hope_obs`: **498 → 350 modules**, gRPC no longer loaded until `build_tracer_provider` runs. Two tests patched `hope_obs.tracing.OTLPSpanExporter`, which no longer exists as a module attribute — repointed at the source module, which is the correct target for a lazily imported symbol |
 
 ### Lane G — harness — COMPLETE, verified, awaiting merge
 
