@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress |
+| Status | Completed |
 | Type | bugfix + infrastructure |
 | Branch | `dev-2.2` (hope-v2) · `main` (hope-v2-deployment) |
 | Opened | 2026-09-18 |
@@ -282,7 +282,53 @@ touched in those two services and re-running: identical results. Owned by the co
 session, which is mid-fix. These block the push because CI would go red and `promote-dev` would
 never run.
 
-### Owner items
+### Closing evidence — verified against the live `hope-v2-dev` cluster, 2026-09-19
+
+Pipeline **1251 green** on `14f7e2b1e` (23m). `promote-dev` committed
+`55f88e5 promote(dev): dev-14f7e2b1 from pipeline #920`; Argo synced; the fleet rolled.
+
+**F15 — the CI→cluster loop is closed, first time.** `verify-dev` is blocking, carries no
+`allow_failure`, and shares `promote-dev`'s rule; `promote-dev` demonstrably ran, so a green
+pipeline means `verify-dev` ran and passed. Confirmed independently: the live gateway reports
+`version: "0.0.0-dev-2-2.14f7e2b1"` — this pipeline's own sha8.
+
+**F6 + F7 — all six Python services, live** (previously a hardcoded literal, and 401 on startup):
+
+| service | `/health` version | `/health/startup` |
+|---|---|---|
+| stt · text · guardrail · nlp · tts · harness | `0.0.0-dev-2-2.14f7e2b1` | **200** (was 401) |
+
+**F8 — admin-console, live through the ingress** (all three were 401 or a login redirect before):
+`/api/health` 200 reporting `0.0.0-dev-2-2.14f7e2b1`, `/api/health/live` 200, `/api/health/ready` 200.
+
+**F10 — the stt-worker heartbeat, live.** `/tmp/stt-worker-heartbeat` holds **two files, named `75`
+and `76`** — one per Dramatiq worker PID, which is the whole point: a healthy fork cannot mask a
+hung sibling, the blind spot port 9191 had. Both fresh; mtime advanced over a 20s observation; the
+exec probe command evaluates to PASS.
+
+**F1 + F2 + F3 + F4 + F14** were verified live at merge time (see the 2026-09-19 rows above):
+STT `/health/ready` and `/health/live` answering, `/internal/streaming/drain` **401 without a
+token** (not exempted), PostSync smoke test 9/9, pipeline 1244's `probes` gate green.
+
+### Worktrees
+
+All four lane worktrees merged, then removed, and their branches deleted — `task-990/py`,
+`task-990/worker`, `task-990/admin` (into `dev-2.2`) and `task-990/probe-alignment` (into
+`hope-v2-deployment` `main`). Merge was verified with `git merge-base --is-ancestor` for each
+BEFORE removal, per rule 14 §5.
+
+### A note on method, since it decided most of this ticket
+
+Three separate checks in this ticket reported success on work they never did: a `probes` gate run
+against four empty render files (`kustomize` was not installed, and the shell redirect created them
+anyway); a red proof taken against the wrong base after a concurrent session committed between a
+`git merge` and the `git rev-parse` on the next line; and — in the parallel TASK-985 session — a
+`sed` whose BSD-incompatible pattern silently failed to mutate the file under test. All three have
+the same signature as the ticket's own founding defect: **a check pointed at something that cannot
+fail.** Every gate added here was therefore required to fail on demand before being believed, and
+the mutation used to prove it was asserted to have applied.
+
+## Owner items
 
 - **O-1 (F18)** — nlp's `service.version` is env-settable and still feeds the OTel resource, so a
   trace's `service.version` can contradict the image. Rule 09 says build identity must never be
