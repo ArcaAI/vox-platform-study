@@ -105,6 +105,47 @@ describe('buildUrl', () => {
       expect(url).toBe('http://localhost:8868/api/v1/consultations?status=RUNNING');
     });
 
+    /**
+     * A list-valued query param is REPEATED, never comma-joined. The gateway
+     * accepts both spellings (`parseIdsQuery` in `export-users.query.ts` splits
+     * on commas AND flattens a repeated param), but `String(['a','b'])` is a
+     * silent lossy join: one value containing a comma and the set the server
+     * reconstructs is not the set that was sent. `append` per item cannot.
+     */
+    it('repeats a list-valued query param once per item', () => {
+      const url = buildUrl('http://localhost:8868', 'admin/users/export', {
+        query: { format: 'csv', ids: ['id-a', 'id-b'] },
+      });
+      expect(url).toBe('http://localhost:8868/api/v1/admin/users/export?format=csv&ids=id-a&ids=id-b');
+    });
+
+    it('encodes each item of a list-valued query param independently', () => {
+      const url = buildUrl('http://localhost:8868', 'consultations', {
+        query: { tag: ['a,b', 'c d'] },
+      });
+      expect(url).toBe('http://localhost:8868/api/v1/consultations?tag=a%2Cb&tag=c+d');
+    });
+
+    /**
+     * An EMPTY selection must vanish, not serialize as `ids=`. The gateway reads
+     * an absent `ids` as "no id scope" (export the whole view) and would read a
+     * present-but-empty one as a selection it has to parse; `parseIdsQuery`
+     * deliberately answers `undefined` rather than `[]` for the same reason.
+     */
+    it('omits a list-valued query param that is empty', () => {
+      const url = buildUrl('http://localhost:8868', 'admin/users/export', {
+        query: { format: 'csv', ids: [] },
+      });
+      expect(url).toBe('http://localhost:8868/api/v1/admin/users/export?format=csv');
+    });
+
+    it('coerces list items of mixed primitive types', () => {
+      const url = buildUrl('http://localhost:8868', 'consultations', {
+        query: { n: [1, 2], flag: [true] },
+      });
+      expect(url).toBe('http://localhost:8868/api/v1/consultations?n=1&n=2&flag=true');
+    });
+
     it('adds no "?" when query is present but empty', () => {
       const url = buildUrl('http://localhost:8868', 'consultations', { query: {} });
       expect(url).toBe('http://localhost:8868/api/v1/consultations');
