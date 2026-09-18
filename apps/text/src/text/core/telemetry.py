@@ -1,44 +1,56 @@
-"""Compatibility shim — re-exports from observability.py.
+"""Text's own GenAI-span helpers, plus a `get_tracer` compatibility shim.
 
-All OTel setup logic has moved to ``text.core.observability``.
-This file preserves backward-compatible imports for existing code
-that does ``from text.core.telemetry import get_tracer`` or
-``from text.core.telemetry import setup_telemetry``.
+Tracing SETUP (the `TracerProvider`, the OTLP exporter, FastAPI/httpx
+instrumentation, the PHI `server_request_hook`) moved to `hope_obs` and is wired
+once in `text.main.create_app` via `configure_observability` (TASK-987). What
+stays here is TEXT-SPECIFIC: the `gen_ai.*` semantic-convention attribute
+stamper every provider adapter uses, and a `get_tracer` wrapper so the eight
+`text.providers.*` modules (plus a few tests) that import
+`text.core.telemetry.get_tracer` keep working unchanged — rewriting eight call
+sites for a package-relocation with no behavioural difference would balloon
+this diff for nothing.
+
+`docs/operations/telemetry-phi-guardrails.md` — `gen_ai.*` is TEXT's namespace
+alone (`hope_obs`'s R-7 note); this module is where it is allowed to live.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import Any
 
-from text.core.observability import get_tracer, setup_opentelemetry
+from hope_obs import get_tracer as _hope_get_tracer
+from opentelemetry.trace import Tracer
 
-if TYPE_CHECKING:
-    from fastapi import FastAPI
-    from opentelemetry.sdk.trace import TracerProvider
-
-__all__ = ["get_tracer", "setup_telemetry", "setup_opentelemetry"]
+__all__ = ["get_tracer", "set_generation_span_attributes"]
 
 
-def setup_telemetry(
-    app: FastAPI,
+def get_tracer(name: str = "text") -> Tracer:
+    """Same signature every provider module has always called; delegates to hope_obs."""
+    return _hope_get_tracer(name)
+
+
+def set_generation_span_attributes(
+    span: Any,
     *,
-    endpoint: str = "http://localhost:4317",
-    service_name: str = "text",
-    service_namespace: str = "hope",
-    deployment_environment: str = "production",
-    insecure: bool = True,
-) -> TracerProvider:
-    """Legacy wrapper — delegates to setup_opentelemetry.
+    provider: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    finish_reasons: list[str],
+) -> None:
+    """Stamp OpenTelemetry GenAI semantic-convention attributes on a generation
+    span.
 
-    Returns the TracerProvider for backward compatibility.
+    No-op when there is no recording span (invalid/no-op span, tracing disabled),
+    so it is always safe to call from the request path.
     """
-    setup_opentelemetry(
-        app,
-        endpoint=endpoint,
-        service_name=service_name,
-        service_namespace=service_namespace,
-        deployment_environment=deployment_environment,
-        insecure=insecure,
-        logs_enabled=False,
-    )
-    return cast("TracerProvider", app.state.tracer_provider)
+    if span is None:
+        return
+    is_recording = getattr(span, "is_recording", None)
+    if callable(is_recording) and not is_recording():
+        return
+    span.set_attribute("gen_ai.system", provider)
+    span.set_attribute("gen_ai.request.model", model)
+    span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
+    span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
+    span.set_attribute("gen_ai.response.finish_reasons", finish_reasons)

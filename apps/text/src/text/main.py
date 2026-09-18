@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import httpx
@@ -16,9 +17,10 @@ import redis.asyncio as aioredis
 from fastapi import FastAPI
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
+from hope_obs import ObservabilityConfig, configure_observability, shutdown_observability
 
 from text.core.config import Settings, get_settings
-from text.core.logging import get_logger, setup_logging
+from text.core.logging import get_logger
 from text.core.runtime_defaults import (
     HTTPX_MAX_CONNECTIONS,
     HTTPX_MAX_KEEPALIVE,
@@ -33,6 +35,26 @@ if TYPE_CHECKING:
     from text.providers.base import LLMProvider, ProviderRegistry
 
 logger = get_logger(__name__)
+
+
+def _build_observability_config(settings: Settings) -> ObservabilityConfig:
+    """Carry Text's existing settings into the shared `hope_obs` contract (TASK-987).
+
+    `ObservabilityConfig.from_env("text")` alone would miss
+    `TEXT_OTEL_EXPORTER_ENDPOINT` — Text's own env var name, already resolved
+    onto `settings.otel_exporter_endpoint` — and the constant identity fields
+    `Settings` already derives (`otel_service_namespace`,
+    `otel_deployment_environment`). Narrow those in rather than re-deriving
+    them from the process environment a second time; `OTEL_SERVICE_NAME` still
+    overrides `service_name` via `from_env` itself.
+    """
+    return replace(
+        ObservabilityConfig.from_env("text", service_version="2.0.0"),
+        otlp_endpoint=settings.otel_exporter_endpoint.strip() or None,
+        service_namespace=settings.otel_service_namespace,
+        deployment_environment=settings.otel_deployment_environment,
+        log_level=settings.log_level,
+    )
 
 
 def _register_provider_factories(
@@ -112,8 +134,6 @@ def _register_provider_factories(
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage shared resources: httpx client, Redis, providers."""
     settings: Settings = app.state.settings
-
-    setup_logging(settings.log_level)
 
     logger.info("text.starting", port=settings.port, environment=settings.node_env)
 
@@ -335,9 +355,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as exc:
             logger.error("redis.close_unexpected_error", error=str(exc))
 
-    from text.core.observability import shutdown_opentelemetry
-
-    shutdown_opentelemetry(app)
+    shutdown_observability(app)
 
     logger.info("text.shutdown_complete")
 
@@ -402,7 +420,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.effective_config_client = None
     app.state.config_invalidation_task = None
     app.state.tracer_provider = None
-    app.state.logger_provider = None
 
     from text.core.exception_handlers import register_exception_handlers
 
@@ -418,16 +435,14 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     # deployment ever turned it on; keeping it would leave a way to widen a PHI
     # service's origin policy from an env file.
 
-    # LIFO order: last-added runs first.
-    # RequestLoggingMiddleware added before RequestIDMiddleware in code
-    # so it executes AFTER request_id is bound to contextvars.
-    from text.api.middleware.logging import RequestLoggingMiddleware
-
-    app.add_middleware(RequestLoggingMiddleware)
-
-    from text.api.middleware.request_id import RequestIDMiddleware
-
-    app.add_middleware(RequestIDMiddleware)
+    # Logging, request context (X-Request-ID / X-Tenant-Id binding) and — when
+    # `settings.otel_exporter_endpoint` is set — tracing, all via `hope_obs`
+    # (TASK-987). `configure_observability` adds its own two middlewares
+    # (`AccessLogMiddleware` then `RequestContextMiddleware`, context
+    # OUTERMOST), so it must run AFTER `ServiceAuthMiddleware` above: LIFO
+    # means the LAST-added middleware runs FIRST, and request context must be
+    # bound before auth runs so even a refused request is correlated.
+    configure_observability(app, _build_observability_config(settings))
 
     from text.api.endpoints.embeddings import router as embeddings_router
     from text.api.endpoints.generate import router as generate_router
@@ -449,19 +464,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(stream_router, prefix="/api/v1")
     app.include_router(translate_router, prefix="/api/v1")
     app.include_router(embeddings_router, prefix="/api/v1")
-
-    if settings.otel_enabled:
-        from text.core.observability import setup_opentelemetry
-
-        setup_opentelemetry(
-            app,
-            endpoint=settings.otel_exporter_endpoint,
-            service_name=settings.otel_service_name,
-            service_namespace=settings.otel_service_namespace,
-            deployment_environment=settings.otel_deployment_environment,
-            insecure=settings.otel_insecure,
-            logs_enabled=True,
-        )
 
     # Prometheus is always exposed. `/metrics` is scrape-only and carries no PHI,
     # and a metrics endpoint that can be switched off from an env file is an

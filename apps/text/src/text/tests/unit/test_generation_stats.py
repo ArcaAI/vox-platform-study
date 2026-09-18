@@ -295,7 +295,7 @@ class TestNormalizeStopReason:
 
 class TestObservabilityGenAiSpan:
     def test_set_generation_span_attributes(self):
-        from text.core.observability import set_generation_span_attributes
+        from text.core.telemetry import set_generation_span_attributes
 
         span = MagicMock()
         span.is_recording.return_value = True
