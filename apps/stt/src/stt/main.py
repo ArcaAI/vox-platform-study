@@ -11,12 +11,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
+from hope_obs import configure_logging, configure_observability, shutdown_observability
 
 from stt.core.config.settings import Settings, get_settings
 from stt.core.database.connection import close_database, initialize_database
-from stt.core.logging import get_logger, setup_logging
+from stt.core.logging import get_logger
 from stt.core.messaging.broker import close_redis, initialize_redis
 from stt.core.storage.minio_client import close_minio, initialize_minio
+from stt.core.telemetry import build_observability_config
 from stt.health.api.routes import internal_router
 from stt.health.api.routes import router as health_router
 from stt.models.resolvable_routes import router as model_resolvable_router
@@ -29,7 +31,7 @@ from stt.transcription.api.routes import router as transcription_router
 from stt.voice_profile.api.routes import router as voice_profile_router
 
 settings = get_settings()
-setup_logging(settings.log_level)
+configure_logging(build_observability_config(settings))
 logger = get_logger(__name__)
 
 
@@ -152,8 +154,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. `DEPLOYMENT_ENVIRONMENT` / `NODE_ENV` is the same
-    # repo-wide convention `stt.core.telemetry._deployment_environment` uses
-    # stt has no dedicated `environment` settings field.
+    # repo-wide convention `hope_obs.ObservabilityConfig.from_env` resolves
+    # `deployment_environment` from — stt has no dedicated `environment`
+    # settings field.
     app.state.service_release_task = None
     app.state.service_release_http_client = None
     try:
@@ -219,14 +222,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await close_redis()
     await close_database()
 
-    telemetry = getattr(app.state, "telemetry", None)
-    if telemetry is not None:
-        if telemetry.logger_provider:
-            telemetry.logger_provider.force_flush()
-            telemetry.logger_provider.shutdown()
-        if telemetry.tracer_provider:
-            telemetry.tracer_provider.force_flush()
-            telemetry.tracer_provider.shutdown()
+    shutdown_observability(app)
 
     logger.info("STT Service shutdown complete")
 
@@ -275,13 +271,18 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     app.add_middleware(ServiceAuthMiddleware)
 
-    from stt.core.middleware.logging import RequestLoggingMiddleware
-
-    app.add_middleware(RequestLoggingMiddleware)
-
-    from stt.core.middleware.request_id import RequestIDMiddleware
-
-    app.add_middleware(RequestIDMiddleware)
+    # `configure_observability` installs `AccessLogMiddleware` then
+    # `RequestContextMiddleware` (context outermost) — replacing the deleted
+    # `RequestLoggingMiddleware` / `RequestIDMiddleware` pair (F-08: both were
+    # `BaseHTTPMiddleware`, on the most latency-sensitive service in the
+    # fleet). Called here, between auth and CORS, so the execution order
+    # (outer -> inner) stays CORS -> RequestContext -> AccessLog -> auth ->
+    # routes, exactly as before. It also builds the OTLP tracer when
+    # `obs_config.tracing_enabled`; `FastAPIInstrumentor` wraps the app's
+    # `build_middleware_stack` lazily, so routers may be registered before or
+    # after this call.
+    obs_config = build_observability_config(app_settings)
+    configure_observability(app, obs_config)
 
     if app_settings.cors_origins:
         app.add_middleware(
@@ -302,17 +303,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(transcription_router, tags=["Transcription"])
     app.include_router(streaming_router, tags=["Streaming"])
     app.include_router(voice_profile_router, tags=["Voice Profile"])
-
-    # OpenTelemetry (must be after routers for FastAPIInstrumentor)
-    if app_settings.otel_enabled:
-        from stt.core.telemetry import setup_telemetry
-
-        _telemetry_result = setup_telemetry(
-            app,
-            endpoint=app_settings.otel_exporter_endpoint,
-            service_name=app_settings.otel_service_name,
-        )
-        app.state.telemetry = _telemetry_result
 
     # Prometheus metrics
     if app_settings.metrics_enabled:

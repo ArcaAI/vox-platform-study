@@ -32,38 +32,23 @@ from typing import Any
 import httpx
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
+from hope_obs import configure_worker_observability
 
 from stt.core.config.settings import get_settings
-from stt.core.logging import get_logger, setup_logging
+from stt.core.logging import get_logger
 from stt.core.messaging.broker import configure_broker
+from stt.core.telemetry import build_observability_config
 
 settings = get_settings()
-setup_logging(settings.log_level)
+
+# F-04: installs the SAME logging chain as the API AND a real TracerProvider
+# (`hope_obs.runtime.worker_service_name` applies the no-double-suffix rule —
+# a worker Deployment that already names itself `hope-stt-v2-worker` via
+# `OTEL_SERVICE_NAME` is not mangled into `…-worker-worker`). Before this the
+# worker only exported logs: every span it opened was non-recording, so a
+# batch transcription could never be joined to the request that enqueued it.
+_worker_observability = configure_worker_observability(build_observability_config(settings))
 logger = get_logger(__name__)
-
-
-def _worker_service_name(configured: str) -> str:
-    """Return the worker's OTel service name without double-suffixing.
-
-    The suffix exists so a worker started from the API's own service name
-    (``stt``) reports as ``stt-worker``. But deployments set
-    ``OTEL_SERVICE_NAME`` on the worker Deployment directly — in-cluster it is
-    ``hope-stt-v2-worker`` — and appending unconditionally produced the
-    ``hope-stt-v2-worker-worker`` label observed live in Loki.
-    Only append when the operator has not already named it.
-    """
-    return configured if configured.endswith("-worker") else f"{configured}-worker"
-
-
-_worker_logger_provider = None
-if settings.otel_enabled:
-    from stt.core.telemetry import setup_telemetry_logs
-
-    _worker_logger_provider = setup_telemetry_logs(
-        enabled=True,
-        endpoint=settings.otel_exporter_endpoint,
-        service_name=_worker_service_name(settings.otel_service_name),
-    )
 
 # Configure the Dramatiq broker FIRST (before importing actors)
 broker = configure_broker(settings.redis_url)
@@ -318,9 +303,10 @@ def main() -> None:
 
     _stop_service_release_registration(service_release_box)
 
-    if _worker_logger_provider is not None:
-        _worker_logger_provider.force_flush()
-        _worker_logger_provider.shutdown()
+    # Flushes buffered spans (and the logging chain) before the process exits —
+    # idempotent and never raises, safe on the SIGTERM path even if tracing
+    # was never enabled (`tracer_provider is None`).
+    _worker_observability.shutdown()
 
     logger.info("Worker shutdown complete")
 
