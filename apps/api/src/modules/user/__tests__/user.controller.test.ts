@@ -586,6 +586,28 @@ describe('UserController', () => {
 
       expect(result.failed).toEqual([{ id: 'user-1', reason: 'plain string reason' }]);
     });
+
+    // ---------------------------------------------------------------------
+    // TASK-986 R5 — route DECLARATION ORDER is load-bearing.
+    //
+    // Express registers routes in class-declaration order and `:id` matches
+    // any literal segment, so while `delete(':id')` was declared FIRST,
+    // `DELETE /admin/users/bulk` was captured by it and answered 404 "User not
+    // found" for every caller — the handler below was unreachable over HTTP.
+    // The sibling `@Get('export')` carries the same constraint and the same
+    // comment.
+    //
+    // Every other test in this describe calls `bulkDelete` as a METHOD, which
+    // bypasses routing entirely and is exactly why the suite stayed green
+    // through the defect. This one pins the order; the HTTP proof lives in
+    // `tests/e2e/task-986-users-bulk-and-export.spec.ts`.
+    // ---------------------------------------------------------------------
+    it('is DECLARED BEFORE the `/:id` delete so `DELETE /admin/users/bulk` is not shadowed', () => {
+      const methods = Object.getOwnPropertyNames(UserController.prototype);
+      expect(methods).toContain('bulkDelete');
+      expect(methods).toContain('delete');
+      expect(methods.indexOf('bulkDelete')).toBeLessThan(methods.indexOf('delete'));
+    });
   });
 
   describe('POST /admin/users/:id/reset-password (resetPassword)', () => {
@@ -962,6 +984,86 @@ describe('UserController', () => {
 
       await expect(scoped.exportUsers({ format: 'csv' } as any)).rejects.toBeInstanceOf(ForbiddenException);
       expect(mockUserExportService.build).not.toHaveBeenCalled();
+    });
+
+    // -----------------------------------------------------------------------
+    // TASK-986 R6 — selection-scoped export (`ids`).
+    //
+    // The id set NARROWS the SAME tenant-scoped query the unscoped export
+    // already runs; it never becomes a by-id fetch. That is the whole security
+    // argument: a caller cannot reach a row by naming it, because the branch
+    // that chooses `fetchAll` vs `fetchAllByTenantId` runs FIRST and unchanged,
+    // and the id set only ever rides along as an extra `filters` token.
+    // -----------------------------------------------------------------------
+    it('scopes the export to the named ids via an id[in] filter token', async () => {
+      mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
+      mockUserExportService.build.mockResolvedValue(fakeFile);
+
+      await controller.exportUsers({ format: 'csv', ids: ['user-1', 'user-2'] } as any);
+
+      expect(mockUserService.fetchAll).toHaveBeenCalledWith(expect.objectContaining({ filters: 'id[in]:user-1|user-2' }));
+    });
+
+    it('ANDs the id filter onto the caller own CSV filters (never replaces them)', async () => {
+      mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
+      mockUserExportService.build.mockResolvedValue(fakeFile);
+
+      await controller.exportUsers({ format: 'csv', filters: 'resourceStatus[equals]:ENABLED', ids: ['user-1'] } as any);
+
+      expect(mockUserService.fetchAll).toHaveBeenCalledWith(expect.objectContaining({ filters: 'resourceStatus[equals]:ENABLED;id[in]:user-1' }));
+    });
+
+    it('leaves the query untouched when ids is absent or empty (full-view export)', async () => {
+      mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
+      mockUserExportService.build.mockResolvedValue(fakeFile);
+
+      await controller.exportUsers({ format: 'csv', ids: [] } as any);
+
+      const [params] = mockUserService.fetchAll.mock.calls[0] as [Record<string, unknown>];
+      expect(params.filters).toBeUndefined();
+      expect(params.ids).toBeUndefined();
+    });
+
+    it('a named CROSS-TENANT id is never exported: the id set rides the caller tenant-scoped query', async () => {
+      // The service answers what the DB would: only the caller own-tenant row.
+      // `theirs-1` is named by the caller and simply is not in the scoped set.
+      mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
+      mockUserExportService.build.mockResolvedValue(fakeFile);
+      const cls = createMockCls({ id: 'u-1', tenantId: 't-A', roles: ['TENANT_ADMIN'] }, 't-A');
+      const scoped = new UserController(
+        mockUserService as any,
+        mockApiKeyService as any,
+        mockUserSettingsService as any,
+        mockUserRoleAssignmentService as any,
+        mockUserProfileService as any,
+        mockVoiceProfileService as any,
+        mockUserDepartmentService as any,
+        mockUserPasswordService as any,
+        mockUserExportService as any,
+        cls as any,
+      );
+
+      await scoped.exportUsers({ format: 'csv', ids: ['user-1', 'theirs-1'] } as any);
+
+      // Still the tenant-scoped read — naming ids does NOT unlock the
+      // cross-tenant `fetchAll`, and never becomes a by-id lookup.
+      expect(mockUserService.fetchAllByTenantId).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 't-A', filters: 'id[in]:user-1|theirs-1' }),
+      );
+      expect(mockUserService.fetchAll).not.toHaveBeenCalled();
+      expect(mockUserService.fetchById).not.toHaveBeenCalled();
+      // The foreign id is absent from the serialized rows.
+      const [, rows] = mockUserExportService.build.mock.calls[0] as [string, Array<{ id: string }>];
+      expect(rows.map((r) => r.id)).toEqual(['user-1']);
+    });
+
+    it('honours an explicit tenantId scope alongside ids (same assertCanReadTenant guard)', async () => {
+      mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
+      mockUserExportService.build.mockResolvedValue(fakeFile);
+
+      await controller.exportUsers({ format: 'csv', tenantId: 't-B', ids: ['user-1'] } as any);
+
+      expect(mockUserService.fetchAllByTenantId).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't-B', filters: 'id[in]:user-1' }));
     });
   });
 
