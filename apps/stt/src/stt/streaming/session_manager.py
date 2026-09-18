@@ -31,7 +31,11 @@ import structlog
 
 from stt.core.api_client.gateway import APIGatewayClient
 from stt.core.config.settings import get_settings
-from stt.core.exceptions import ModelNotCacheServedError, SessionManagerDrainingError
+from stt.core.exceptions import (
+    ModelError,
+    ModelNotCacheServedError,
+    SessionManagerDrainingError,
+)
 from stt.core.metering import normalize_device
 from stt.core.metrics import (
     streaming_inference_queue_dropped,
@@ -46,7 +50,7 @@ from stt.streaming.capacity_guard import CapacityGuard
 from stt.streaming.commit_policy import LocalAgreementPolicy, normalize_for_comparison
 from stt.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser
 from stt.streaming.denoiser import StreamingDenoiser
-from stt.streaming.engine_switch import EngineSwitchController
+from stt.streaming.engine_switch import SWITCHABLE_ASR_ERRORS, EngineSwitchController
 from stt.streaming.execution_profile import ExecutionProfile
 from stt.streaming.inference import StreamingInferenceWorker
 from stt.streaming.preprocessor import AudioUtterance, StreamingPreprocessor
@@ -90,6 +94,33 @@ _STEADY_STATE_ENQUEUE_TIMEOUT_S = 1.0
 # transcript is PHI, so the record says enough to locate the divergence and
 # no more; the final itself is persisted through the normal result path.
 _HANDOVER_LOG_CHARS = 200
+
+# TASK-985 M-24 — how many CONSECUTIVE empty decodes of a buffer that carried
+# SPEECH are treated as engine failure rather than as a quiet room.
+#
+# The whole design turns on that qualifier. pywhispercpp discards
+# `whisper_full`'s return code, so an engine failure and a genuinely silent
+# utterance are the same value at the Python level: an empty segment list. A
+# fallback armed by silence would swap the engine mid-consultation for no
+# reason; a fallback that never arms leaves the declared chain unreachable by
+# construction, which is what the code does today.
+#
+# Counted PER SESSION here because that is the scope this module owns. The
+# poisoned thing is a per-MODEL-CONTEXT backend shared by every session on it,
+# so the adapter-side counter (L-DECODE's half, which also covers the two
+# unambiguous conditions — an unrecoverable rebuild and a still-poisoned
+# backend) arms sooner and is the primary signal. This one is the backstop that
+# works with the adapter exactly as it stands.
+_EMPTY_DECODE_FAILURE_STREAK = 3
+
+# RMS floor above which a decoded buffer is taken to have carried speech.
+# Mirrors the adapter's own `_EMPTY_SPAN_RMS_FLOOR`, which already makes this
+# distinction to gate its dead-zone retry. CAUTION, and it is why
+# `_decode_carried_speech` prefers a pre-normalization figure when the
+# preprocessor supplies one: `AudioUtterance.samples` is PEAK-NORMALIZED (gain
+# reaches 20x), so this threshold has been validated as a RETRY gate and never
+# as a SILENCE discriminator.
+_EMPTY_DECODE_SPEECH_RMS_FLOOR = 0.01
 
 # TASK-985 M-23 — how long an UNCLAIMED teardown summary is kept for the
 # gateway's DELETE, and how many may be held at once. Both are bootstrap
@@ -387,6 +418,9 @@ class SessionManager:
         # Strong references to the fire-and-forget push-backs fired by stash
         # eviction — without them the event loop may GC a task mid-flight.
         self._stash_pushback_tasks: set[asyncio.Task[None]] = set()
+        # TASK-985 M-24 — consecutive empty decodes of buffers that carried
+        # speech, per session. See ``_note_decode_outcome``.
+        self._empty_decode_streaks: dict[str, int] = {}
         self._running = False
         # PLANNED scale-down flag — distinct from the startup
         # crash-recovery replay path above. Set by begin_drain(); rejects new
@@ -1799,6 +1833,7 @@ class SessionManager:
         self._switch_controllers.pop(session_id, None)
         self._provider_overrides.pop(session_id, None)
         self._session_voice_profiles.pop(session_id, None)
+        self._empty_decode_streaks.pop(session_id, None)
         self._fallback_pipeline_ids.pop(session_id, None)
         self._session_language_modes.pop(session_id, None)
         self._session_channel_counts.pop(session_id, None)
@@ -3034,10 +3069,21 @@ class SessionManager:
                         session.add_result(result)
                         session.utterance_count = utt.utterance_index + 1
                         self._check_final_handover(session.session_id, result.text)
+                    # TASK-985 M-24 — an empty decode of a buffer that carried
+                    # SPEECH is failure evidence, not a clean utterance. Left
+                    # counting as a success it also RESET the consecutive-failure
+                    # run, so the very silence the failure produces disarmed the
+                    # threshold switch: an alternating empty/non-empty pattern
+                    # could never reach it even once the empty decodes started
+                    # raising. Raises at the streak, inside this `try`, so the
+                    # classifier below sees it like any other engine failure.
+                    empty_with_speech = self._note_decode_outcome(
+                        session.session_id, utt, result
+                    )
                     # A clean utterance resets the consecutive-failure
                     # run that arms the threshold auto-switch.
                     controller = self._switch_controllers.get(session.session_id)
-                    if controller is not None:
+                    if controller is not None and not empty_with_speech:
                         controller.record_success()
                 except Exception as exc:
                     # Classify the failure through the engine-switch
@@ -3089,6 +3135,82 @@ class SessionManager:
                     queue.task_done()
 
         return asyncio.create_task(_loop(), name=f"inference-{session.session_id}")
+
+    def _decode_carried_speech(self, utterance: AudioUtterance) -> bool:
+        """Did the buffer just decoded actually contain speech?
+
+        TASK-985 M-24 — the distinction the empty-decode heuristic rests on. A
+        silent utterance decoding to nothing is CORRECT behaviour and must never
+        arm a failover.
+
+        Prefers a pre-normalization RMS stamped by the preprocessor
+        (``source_rms``) when one is present — see the L-SEG request on this
+        ticket. ``AudioUtterance.samples`` is peak-normalized with a gain that
+        reaches 20x, so measuring it is measuring the normalizer as much as the
+        room. The fallback is still better than no test at all: the peak window
+        is floored, so a normalized silent frame does sit low.
+        """
+        source_rms = getattr(utterance, "source_rms", None)
+        if isinstance(source_rms, (int, float)) and not isinstance(source_rms, bool):
+            return float(source_rms) >= _EMPTY_DECODE_SPEECH_RMS_FLOOR
+        samples = getattr(utterance, "samples", None)
+        if samples is None or len(samples) == 0:
+            return False
+        try:
+            rms = float(np.sqrt(np.mean(np.square(np.asarray(samples, dtype=np.float32)))))
+        except Exception:  # noqa: BLE001 — a diagnostic must never break a decode
+            return False
+        return rms >= _EMPTY_DECODE_SPEECH_RMS_FLOOR
+
+    def _note_decode_outcome(
+        self, session_id: str, utterance: AudioUtterance, result: Any
+    ) -> bool:
+        """Account one decode against the empty-with-speech failure streak.
+
+        Returns whether THIS decode was empty-with-speech, so the caller can
+        withhold ``record_success`` for it. Raises ``ModelError`` once the
+        streak reaches the threshold, which is what finally makes the declared
+        fallback chain reachable: ``EngineSwitchController`` arms on
+        ``CloudASRTranscriptionError`` / ``ModelError``, and whisper.cpp — the
+        primary engine class for every served session — can raise neither.
+
+        Prefers the adapter's own verdict (``result.empty_with_speech``, an
+        L-INFER request on this ticket) because it can exclude the known-benign
+        4.50-4.70 s dead-zone span, whose retry with a pulled-back boundary is
+        the one empty-with-speech case that is NOT an engine fault.
+        """
+        declared = getattr(result, "empty_with_speech", None)
+        if isinstance(declared, bool):
+            empty_with_speech = declared
+        else:
+            text = getattr(result, "text", None)
+            empty_with_speech = not (isinstance(text, str) and text.strip()) and (
+                self._decode_carried_speech(utterance)
+            )
+
+        if not empty_with_speech:
+            self._empty_decode_streaks.pop(session_id, None)
+            return False
+
+        streak = self._empty_decode_streaks.get(session_id, 0) + 1
+        self._empty_decode_streaks[session_id] = streak
+        threshold = int(
+            getattr(self, "_empty_decode_failure_streak", _EMPTY_DECODE_FAILURE_STREAK)
+        )
+        logger.warning(
+            "stt.stream.empty_decode_with_speech",
+            session_id=session_id,
+            utterance_index=getattr(utterance, "utterance_index", None),
+            streak=streak,
+            threshold=threshold,
+        )
+        if streak >= threshold:
+            self._empty_decode_streaks.pop(session_id, None)
+            raise ModelError(
+                f"{streak} consecutive empty decodes of buffers carrying speech; "
+                "treating the ASR backend as failed"
+            )
+        return True
 
     async def _drain_inference_queue(self, session_id: str) -> None:
         """Wait for all pending utterances in the inference queue to finish.
@@ -3582,11 +3704,79 @@ class SessionManager:
             session.utterance_count = utterance.utterance_index + 1
             if result.is_final:
                 self._check_final_handover(session.session_id, result.text)
+            self._note_decode_outcome(session.session_id, utterance, result)
+        except SWITCHABLE_ASR_ERRORS as exc:
+            # TASK-985 N-3 — this handler's broad `except` swallowed every ASR
+            # failure, so the switch controller was DEAF on exactly the path
+            # that matters most: the tail. The closing utterance is the one
+            # utterance most worth recovering, and it is the one whose failure
+            # could never arm the fallback.
+            #
+            # Deliberately NOT re-raised, which is what the design dossier
+            # proposed: this method is reached from `_flush_final_utterance`
+            # during teardown, whose caller turns any exception into "forcing
+            # session removal" — losing the MinIO uploads, the durable
+            # transcript and the teardown summary to rescue one utterance.
+            # Routing it through `record_failure` arms the fallback exactly as
+            # the steady-state loop does, and the retry below is the same
+            # buffer-handoff that loop performs.
+            await self._recover_inline_after_switch(session, utterance, exc)
         except Exception as exc:
             logger.warning(
                 "Inline inference failed",
                 session_id=session.session_id,
                 error=str(exc),
+            )
+
+    async def _recover_inline_after_switch(
+        self,
+        session: StreamSession,
+        utterance: AudioUtterance,
+        exc: BaseException,
+    ) -> None:
+        """Classify an inline ASR failure and re-run the utterance if we switched.
+
+        TASK-985 N-3 — the tail path's equivalent of the inference loop's
+        failure branch. Never raises: teardown must complete either way.
+        """
+        controller = self._switch_controllers.get(session.session_id)
+        switched = False
+        if controller is not None:
+            try:
+                switched = await controller.record_failure(
+                    exc, utterance_index=utterance.utterance_index
+                )
+            except Exception as switch_exc:  # noqa: BLE001 — never fail teardown
+                logger.error(
+                    "Engine switch attempt failed on the inline/tail path",
+                    session_id=session.session_id,
+                    error=str(switch_exc),
+                )
+        logger.warning(
+            "stt.stream.inline_inference_failed",
+            session_id=session.session_id,
+            utterance_index=utterance.utterance_index,
+            error=str(exc),
+            error_type=type(exc).__name__,
+            switched=switched,
+        )
+        if not switched:
+            return
+        worker = self._inference_workers.get(session.session_id)
+        if worker is None:
+            return
+        try:
+            result = await worker.process_utterance(session.session_id, utterance)
+            session.add_result(result)
+            session.utterance_count = utterance.utterance_index + 1
+            if result.is_final:
+                self._check_final_handover(session.session_id, result.text)
+        except Exception as retry_exc:  # noqa: BLE001 — floor: one lost utterance
+            logger.warning(
+                "Tail utterance re-run on fallback engine failed; dropping it",
+                session_id=session.session_id,
+                utterance_index=utterance.utterance_index,
+                error=str(retry_exc),
             )
 
     def _begin_tail_flush(self, session_id: str) -> tuple[bool, asyncio.Event]:
@@ -3736,6 +3926,20 @@ class SessionManager:
                     session_id=session.session_id,
                 )
                 await self._run_inline_inference(session, final_utt)
+        except SWITCHABLE_ASR_ERRORS as exc:
+            # TASK-985 N-3 — an engine failure should have been classified by
+            # `_run_inline_inference` (or by the inference loop, for the queued
+            # path). Reaching here means a switchable error escaped one of them,
+            # which is a HOLE in the fallback wiring rather than a flush
+            # problem: log it as such rather than as a generic warning. Still
+            # swallowed — teardown must complete — but no longer indistinguishable
+            # from a preprocessor hiccup.
+            logger.error(
+                "stt.stream.tail_flush_switchable_error_escaped",
+                session_id=session.session_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
         except Exception as exc:
             logger.warning(
                 "Failed to flush final utterance during finalization",
