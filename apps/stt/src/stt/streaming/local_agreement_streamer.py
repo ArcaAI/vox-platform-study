@@ -60,9 +60,53 @@ DecodeFn = Callable[[np.ndarray], list[TsWord]]
 
 _MALAYALAM_RE = re.compile(r"[ഀ-ൿ]")
 
+#: How far apart two hypotheses may sit, in seconds, and still be treated as ONE
+#: seam. Beyond it a repeated n-gram is speech that genuinely recurred, not the
+#: same audio transcribed twice. The value is the ``HypothesisBuffer.insert``
+#: rule below, named so the FINAL-publish seam guard
+#: (``StreamingInferenceWorker._dedup_forced_boundary``) can enforce the same
+#: window rather than inventing a second one (TASK-985 QW-10 (a)).
+SEAM_WINDOW_S = 1.0
+
+#: Longest repeated n-gram the seam de-dup will strip. Local-agreement hypotheses
+#: re-emit at most a few confirmed words; a longer match is a phrase the speaker
+#: repeated.
+MAX_SEAM_NGRAM = 5
+
 
 def _is_malayalam(token: str) -> bool:
     return bool(_MALAYALAM_RE.search(token))
+
+
+def seam_repeat_len(
+    committed: Sequence[str],
+    incoming: Sequence[str],
+    max_ngram: int = MAX_SEAM_NGRAM,
+) -> int:
+    """How many leading tokens of *incoming* repeat the tail of *committed*.
+
+    The single definition of the seam rule. Returns the LONGEST ``n`` in
+    ``1..max_ngram`` for which ``committed[-n:] == incoming[:n]`` under the
+    comparison below, or ``0``.
+
+    Comparison is case-insensitive and ignores trailing sentence punctuation, so
+    a decode that re-emits a confirmed word with a comma after it still matches
+    — the same normalisation ``postprocessing.overlap.dedup_overlap`` uses, so
+    the two agree on what "the same word" means.
+    """
+    if not committed or not incoming or max_ngram <= 0:
+        return 0
+    left = [_seam_norm(t) for t in committed]
+    right = [_seam_norm(t) for t in incoming]
+    best = 0
+    for n in range(1, min(len(left), len(right), max_ngram) + 1):
+        if left[-n:] == right[:n]:
+            best = n
+    return best
+
+
+def _seam_norm(token: str) -> str:
+    return token.lower().rstrip(".,!?;:")
 
 
 def join_words(words: Sequence[TsWord]) -> str:
@@ -102,16 +146,17 @@ class HypothesisBuffer:
         self._new = [w for w in shifted if w.start > self.last_committed_time - 0.1]
         if not self._new or not self.committed:
             return
-        # Drop a leading n-gram (up to 5 words) that repeats the committed tail —
-        # guards against the re-decode re-emitting already-confirmed words.
-        if abs(self._new[0].start - self.last_committed_time) < 1.0:
-            cn, nn = len(self.committed), len(self._new)
-            for i in range(1, min(cn, nn, 5) + 1):
-                tail = " ".join(w.text for w in self.committed[-i:])
-                head = " ".join(w.text for w in self._new[:i])
-                if tail == head:
-                    del self._new[:i]
-                    break
+        # Drop a leading n-gram that repeats the committed tail — guards against
+        # the re-decode re-emitting already-confirmed words. The rule itself
+        # lives in `seam_repeat_len` so the final-publish seam guard in
+        # `inference.py` enforces the same one (TASK-985 QW-10 (a)).
+        if abs(self._new[0].start - self.last_committed_time) < SEAM_WINDOW_S:
+            repeat = seam_repeat_len(
+                [w.text for w in self.committed],
+                [w.text for w in self._new],
+            )
+            if repeat:
+                del self._new[:repeat]
 
     def flush(self) -> list[TsWord]:
         """Commit the agreed prefix of the current vs previous hypothesis."""
