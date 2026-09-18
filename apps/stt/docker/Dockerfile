@@ -33,6 +33,13 @@
 # local builds default to the locally-built `hope-python-base:latest`.
 ARG BASE_IMAGE=hope-python-base:latest
 
+# CUDA architectures whisper.cpp's kernels are compiled for, and the value baked
+# into the runtime image so the load-time preflight can check it against the card
+# the pod was actually given. Declared globally and re-declared in each stage that
+# needs it, so the compiled set and the asserted set can never disagree. Full
+# reasoning at the pywhispercpp install below.
+ARG CUDA_ARCHITECTURES="86-real;89-real;89-virtual"
+
 # =============================================================================
 # Stage 1: Builder — base Python packages from the workspace lock (CPU, no ML)
 # =============================================================================
@@ -274,8 +281,27 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 #   CMAKE_CUDA_ARCHITECTURES pinned deliberately: ggml defaults to `native`, which
 #                            probes the BUILDER's GPU — on a GPU-less CI runner that
 #                            yields a wrong-arch or CPU-only build, failing silently
-#                            exactly like the wheel did. 89 = Ada Lovelace
-#                            (RTX A2000 Ada / L4 / 4090). Update with the deploy GPU.
+#                            exactly like the wheel did.
+#
+#                            It used to be the single value `89` (Ada Lovelace:
+#                            RTX 2000 Ada / L4 / 4090) with a comment reading
+#                            "update with the deploy GPU" — a note nobody reads
+#                            while writing a cluster plan. The AWS plan's `g5` is
+#                            an A10G, sm_86, and an sm_89-only build has NO
+#                            runnable kernel on it: whisper.cpp does not error,
+#                            it logs `use gpu = 1` and decodes on the CPU thread
+#                            pool. The list is now a build arg covering both,
+#                            plus PTX so a NEWER card JIT-compiles rather than
+#                            falling back:
+#                              86-real     SASS for A10G / A6000 / 3090
+#                              89-real     SASS for the RTX 2000 Ada on VM 200
+#                              89-virtual  PTX, JIT-compiled on sm_89 and above
+#                            A card OLDER than sm_86 (a T4, sm_75) is still not
+#                            covered, deliberately — every extra arch costs build
+#                            time and image size, and that case is now a loud
+#                            failure at container start instead of silent CPU
+#                            decode. Override per build with
+#                            `--build-arg CUDA_ARCHITECTURES=...`.
 #   BUILD_SHARED_LIBS=OFF REQUIRED, not an optimization. Upstream's CMakeLists is
 #                            `add_subdirectory(whisper.cpp)` + link `whisper`, with no
 #                            install rule and no RPATH, so a shared whisper.cpp build
@@ -295,16 +321,36 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 #
 # Set inline rather than as ENV: with setup.py's env->define conversion, a persistent
 # ENV would leak these defines into any later source build in this stage.
+#
+# The semicolons are CMake's list separator and survive the shell because the
+# whole assignment is double-quoted: `;` is only a command separator while a
+# command is being PARSED, never in the result of a parameter expansion, so the
+# list reaches setup.py as a single token.
+ARG CUDA_ARCHITECTURES
 RUN --mount=type=cache,target=/root/.cache/uv \
-    CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89 -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON" \
+    CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES} -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON" \
     uv pip install --python /opt/venv/bin/python \
         --reinstall-package pywhispercpp \
         "pywhispercpp @ git+https://github.com/absadiki/pywhispercpp@v1.5.0"
 
-# Build-time gate. The CUDA driver library (libcuda.so.1) is injected by the
-# NVIDIA container runtime on a GPU node and is intentionally absent from this
-# driverless CUDA devel builder. Inspect the extension with ldd here instead of
-# importing it; the runtime pod must provide the driver before loading the model.
+# Build-time gate, in two halves that prove different things.
+#
+# `ldd` proves LINKAGE: the extension resolves libcudart/libcublas and carries no
+# dangling libwhisper. It cannot be an import test — the CUDA driver library
+# (libcuda.so.1) is injected by the NVIDIA container runtime on a GPU node and is
+# intentionally absent from this driverless devel builder.
+#
+# `cuobjdump` proves the KERNELS: which GPU architectures the compiled device
+# code can actually run on. That is a different question, and it is the one that
+# was never asked — an sm_89-only extension links perfectly on an sm_86 card and
+# then silently decodes on the CPU.
+#
+# The kernel half has three outcomes, deliberately not two. A listing that LACKS
+# a requested architecture is conclusive and fails the build. A missing cuobjdump
+# or an empty listing is INCONCLUSIVE and only warns: this gate must never be the
+# thing that takes the only STT build path down over a toolchain assumption, and
+# docker/cuda-preflight.py re-checks the same property at container start on the
+# node that actually holds the card.
 RUN set -eu; \
     ext=$(find /opt/venv/lib/python3.11/site-packages -type f -name '_pywhispercpp*.so' -print -quit); \
     test -n "$ext" \
@@ -317,7 +363,25 @@ RUN set -eu; \
       exit 1; \
     fi; \
     printf '%s\n' "$ldd_output" | grep -qiE "libcudart|libcublas" \
-      || { echo "FATAL: pywhispercpp linked no CUDA runtime — whisper.cpp would fall back to CPU"; exit 1; }
+      || { echo "FATAL: pywhispercpp linked no CUDA runtime — whisper.cpp would fall back to CPU"; exit 1; }; \
+    cuobjdump=$(command -v cuobjdump 2>/dev/null || echo /usr/local/cuda/bin/cuobjdump); \
+    if [ ! -x "$cuobjdump" ]; then \
+      echo "WARNING: cuobjdump not found — kernel-arch gate skipped, checked at container start instead"; \
+    else \
+      elf_list=$("$cuobjdump" --list-elf "$ext" 2>/dev/null || true); \
+      if [ -z "$elf_list" ]; then \
+        echo "WARNING: cuobjdump listed no ELF images — kernel-arch gate inconclusive"; \
+      else \
+        printf '%s\n' "$elf_list"; \
+        for arch in $(printf '%s' "${CUDA_ARCHITECTURES}" | tr ';,' '  '); do \
+          case "$arch" in ""|*-virtual) continue ;; esac; \
+          sm="sm_${arch%-real}"; \
+          printf '%s\n' "$elf_list" | grep -q "$sm" \
+            || { echo "FATAL: no $sm kernel image in $ext (CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES})"; exit 1; }; \
+        done; \
+        echo "kernel images present for: ${CUDA_ARCHITECTURES}"; \
+      fi; \
+    fi
 
 # The workspace path deps (hope-runtime-models, hope-env, hope-otel, hope-obs)
 # resolve as EDITABLE under `uv pip install` (tool.uv.sources workspace=true) —
@@ -405,6 +469,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY --from=ml-builder --chown=hope:hope /opt/python /opt/python
 COPY --from=ml-builder --chown=hope:hope /opt/venv /opt/venv
 COPY --chown=hope:hope apps/stt/src ./src
+# Load-time CUDA gate, run from CMD below. Kept out of src/ on purpose: it is a
+# property of the IMAGE (which architectures were compiled into it), not of the
+# application, and it must be runnable before a single application module is
+# imported.
+COPY --chown=hope:hope apps/stt/docker/cuda-preflight.py ./docker/cuda-preflight.py
 
 # ── Bake build identity, LAST layer ─────────────────────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
@@ -438,16 +507,34 @@ RUN set -eu; \
 USER hope
 
 # HF_HOME below is the STANDALONE default and is DELIBERATELY OVERRIDDEN in the
-# cluster. `/models` is created and chowned to `hope` above, so a
-# plain `docker run` of this image has a writable cache. But the deployed
-# Deployment (arca/hope-v2-deployment, deployment/k8s/base/stt.yaml) sets
-# HOME=/home/hope, HF_HOME=/home/hope/.cache/huggingface and
-# HUGGINGFACE_CACHE_DIR=/home/hope/.cache/huggingface/hub, and mounts the
-# persistent `models-cache` hostPath at that hub path. Host env beats image env
-# (00-project-context.md §Precedence), so the HF_HOME line below is INERT in
-# every deployed environment — when a cached weight is missing, look at the
-# manifest, not here. Guarded by tests/test_hf_home_manifest_divergence_task817.py.
-ENV PATH="/opt/venv/bin:$PATH" \
+# cluster. `/models` is created and chowned to `hope` above, so a plain
+# `docker run` of this image has a writable cache.
+#
+# The deployed Deployment (arca/hope-v2-deployment, deployment/k8s/base/stt.yaml)
+# points the cache at the s3fs-mounted models BUCKET instead:
+#   HF_HOME=/mnt/models-bucket/hf
+#   HF_HUB_CACHE=/mnt/models-bucket/hf/hub
+#   HUGGINGFACE_CACHE_DIR=/mnt/models-bucket/hf/hub   <- the one apps/stt reads
+#   HF_HUB_OFFLINE=1
+# with s3://hope-models mounted read-only at /mnt/models-bucket by a native s3fs
+# sidecar (TASK-855). Host env beats image env (00-project-context.md
+# §Precedence), so the HF_HOME line below is INERT in every deployed environment
+# — when a cached weight is missing, look at the manifest and the bucket, not
+# here.
+#
+# The node-local `models-cache` hostPath this comment used to describe is RETIRED
+# — nothing mounts it and nothing reads it, so its path is deliberately not
+# repeated here. Guarded by tests/test_hf_home_manifest_divergence_task817.py,
+# which pins the live bucket paths AND asserts the retired one is gone. The
+# previous version of that test required the retired path, so the test and this
+# comment agreed with each other and with nothing else.
+#
+# Note the value below is a WRITABLE path, which is why the manifest must also
+# set HF_HUB_OFFLINE=1: without it an absent weight is a silent download attempt
+# into an ephemeral cache rather than a named failure.
+ARG CUDA_ARCHITECTURES
+ENV STT_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
+    PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/src \
@@ -464,7 +551,12 @@ EXPOSE 8861
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD ["/opt/venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8861/api/v1/health')"]
 
-CMD ["/opt/venv/bin/python", "-m", "uvicorn", "stt.main:app", "--host", "0.0.0.0", "--port", "8861"]
+# The preflight runs BEFORE the server and `exec`s it, so uvicorn still becomes
+# PID 1 and still receives SIGTERM directly — the preStop drain hook in the
+# deployment repo depends on that. A CPU-only host skips the check and continues;
+# only a GPU that this image has no kernels for stops the boot. See
+# docker/cuda-preflight.py.
+CMD ["/bin/sh", "-c", "/opt/venv/bin/python /app/docker/cuda-preflight.py && exec /opt/venv/bin/python -m uvicorn stt.main:app --host 0.0.0.0 --port 8861"]
 
 # =============================================================================
 # Stage 5: Worker — Dramatiq worker extending ml-runtime
@@ -495,4 +587,40 @@ FROM ml-runtime AS worker
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD ["/bin/sh", "-c", "d=/tmp/stt-worker-heartbeat; n=$(find $d -type f 2>/dev/null | wc -l); [ $n -gt 0 ] && [ $(find $d -type f -mmin -1 | wc -l) -eq $n ]"]
 
-CMD ["/opt/venv/bin/python", "-m", "dramatiq", "stt.worker", "--processes", "2", "--threads", "4"]
+# ── WHY `--processes 1`, AND WHERE THESE TWO NUMBERS COME FROM ──────────────
+#
+# This was `--processes 2`. The dramatiq CLI FORKS that many children and each
+# child imports this module independently, so 2 meant two model caches and two
+# CUDA contexts — on the same cards a clinician's realtime session is decoding
+# on. The pod requests exactly ONE `nvidia.com/gpu` unit, which under the
+# cluster's ×3 time-slicing is a SLICE of a shared card with no memory isolation
+# (09-infrastructure-devops.md §Topology): a second context there does not buy
+# parallelism, it buys contention and a second copy of every resident weight.
+# Batch work is the thing that should yield, so the worker holds one context.
+#
+# `--threads 4` is NOT an independent opinion: it transcribes
+# `stt.workers.concurrency`, whose registered default is 4
+# (packages/applications/.../service-runtime.descriptors.ts, mapped to
+# `worker_threads` in stt/core/control_plane.py). Two facts make it a literal
+# here anyway, and both are worth knowing before changing it:
+#
+#   1. A CLI argument is read before any Python in this image runs, so it cannot
+#      be fetched from the control plane — it is bootstrap floor by construction,
+#      like `replicas`. Deploy-time overrides belong in the Deployment's `args:`,
+#      the same place `replicas` lives; the manifest sets none today, so this CMD
+#      is what runs.
+#   2. `stt.worker.main()` DOES resolve the governed value
+#      (`resolve_worker_concurrency`) — but the image runs
+#      `python -m dramatiq stt.worker`, not `main()`, so that resolution never
+#      executes in the deployed worker and this literal is the live value. That
+#      divergence is a real defect and it is NOT fixed here (it lives in
+#      apps/stt/src, another lane's file); keeping the literal equal to the
+#      descriptor's default is what stops it becoming a SILENT one.
+#
+# There is deliberately NO descriptor for the PROCESS count and none is invented
+# here: a new env var would be exactly the ungoverned config surface
+# 09-infrastructure-devops.md §Configuration Tiers forbids. If one is ever wanted
+# it belongs beside `stt.workers.concurrency` as `stt.workers.processes` — but
+# note it can never take effect without a restart, which is the test that says a
+# value is deploy-shaped rather than control-plane-shaped.
+CMD ["/bin/sh", "-c", "/opt/venv/bin/python /app/docker/cuda-preflight.py && exec /opt/venv/bin/python -m dramatiq stt.worker --processes 1 --threads 4"]

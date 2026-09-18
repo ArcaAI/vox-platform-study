@@ -479,6 +479,64 @@ local dev stack; and the post-merge quality gates.
 fixtures and must be deleted once BP-2's arms are no longer being re-run.
 
 
+### 6.5 Deployment-repo handover — L-DEPLOY (M-59, and what M-25 leaves open)
+
+`arca/hope-v2-deployment` is a separate repo and no lane in this ticket may edit it. Everything below is
+written to be applied there verbatim; nothing here is a change this repo can make.
+
+**M-59 — right-size the STT memory reservation (`deployment/k8s/base/stt.yaml`).**
+
+| Container | Today | 14-day peak | Recommended |
+|---|---|---|---|
+| `stt` (`hope-stt`) | requests 8Gi · limits 24Gi | 1.19 GiB working set · 1.95 GiB RSS | requests **3Gi** · limits **12Gi** |
+| `stt-worker` (`hope-stt-worker`) | requests 8Gi · limits 16Gi | same class of workload | requests **3Gi** · limits **12Gi**, after `--processes 1` has run one clinic week |
+
+The request is the number that matters: it is subtracted from the node's allocatable memory whether or not
+it is used, and VM 200 has 62.8 GiB for roughly a dozen workloads. 8Gi against a 1.19 GiB peak reserves
+~6.8 GiB per container for nothing, twice. The limit is the safety net and should stay generous — 12Gi is
+still 6x the observed peak — because the thing that can OOM here is a decode, and an OOMKill mid-session
+loses a consultation. Apply after one more clinic week of data, not on this sample alone.
+
+The worker's own recommendation now has a second reason: with `--processes 2` it held two model caches, so
+part of its 8Gi was structural. `--processes 1` (this lane, `apps/stt/docker/Dockerfile`) removes that,
+which is why its resize should wait for a week of measurement on the new image rather than being applied
+blind alongside it.
+
+**M-59, second half — VRAM has no reservation and no alert.** `nvidia.com/gpu: "1"` under the cluster's
+×3 time-slicing is a slice of a shared card with no memory isolation: a CUDA OOM in one pod can take out
+its card-mates, and nothing currently watches for it. Add a DCGM alert on framebuffer used > 85 % per GPU.
+That is the only one of these four numbers that guards against a failure the pod cannot recover from.
+
+**M-25 — the two halves TASK-990 shipped are live; one question is left.** Readiness now points at
+`/api/v1/health/ready`, liveness at `/api/v1/health/live`, the `sleep 10` preStop is an authenticated
+`POST /internal/streaming/drain` followed by a bounded readiness poll, and `terminationGracePeriodSeconds`
+is 120. The CI half is closed in this lane (`changes:` scoping on `build-stt` / `build-stt-worker`). What
+remains is **OD-G**: `maxSurge: 1` cannot schedule a second STT pod while all 6 `nvidia.com/gpu` slices are
+allocated (LM Studio 4, STT 1, STT worker 1), so a rollout is still a hard cut whenever it does happen.
+Releasing one LM Studio slice (4 → 3) is the owner's call, not this lane's.
+
+**One thing the CI scoping forced outside L-DEPLOY's stated file boundary.** `scan-stt`,
+`scan-stt-worker` (`.gitlab/ci/scan.yml`) and the four `sbom-`/`sign-stt*` jobs
+(`.gitlab/ci/publish.yml`) carry a NON-optional `needs:` on the STT builds, and in GitLab a `needs:` on a
+rules-excluded job is a pipeline-CREATION error rather than a skipped job. All six ran on
+`!reference [.rules-stt, rules]`, which is wider than the build in three places — unconditional on `dev`,
+plus `v*` tags and `prod-*` branches where no STT image is built at all. Scoping only the builds would
+therefore have broken every `dev-*` and `staging-*` pipeline; `dev-2.2` survives by accident, because
+`.skip-vuln-scan-on-dev-2-x` drops the scans before the mismatch can bite. All six now reference
+`.build-stt-rules` behind their own `when: never` guards, so each is a strict subset of the build it needs
+and cannot outlive it. No coverage is lost: a scan or a signature for an image this pipeline never built
+was never a real job.
+
+**Two constraints the manifest must now respect** (new with this lane's Dockerfile):
+
+- `hope-stt` and `hope-stt-worker` must continue to set **no `command:` and no `args:`**. Both images'
+  `CMD` now runs `docker/cuda-preflight.py` and then `exec`s the server or the worker; a manifest-level
+  `command:` silently drops the preflight, which is the only thing standing between a wrong-arch image and
+  silent CPU decode. `exec` keeps the server as PID 1, so SIGTERM and the preStop drain are unaffected.
+- If a worker **process count** other than 1 is ever wanted, it belongs in the Deployment's `args:` — the
+  same place `replicas` lives. It cannot come from the control plane: the dramatiq CLI reads it before any
+  application Python runs. There is deliberately no env var for it.
+
 **Appendix A: refuted, do not re-raise.**
 
 | Id | Claim | Why it was refuted |
@@ -640,6 +698,7 @@ re-fetched source, and each would have caused harm if implemented as written:
 
 | Date | Change |
 |---|---|
+| 2026-09-19 | **L-DEPLOY landed (QW-6, M-51, M-52, M-60; M-59 documented).** `build-stt` / `build-stt-worker` are now the only change-filtered build jobs — `.build-stt-rules` in `.gitlab/ci/build.yml`, because `.rules-stt`'s own `dev` clause is unconditional and referencing it would have narrowed nothing; `promote.sh` already skips an unbuilt service and leaves its digest pinned, so a skipped build means no roll. CUDA architectures widened from `89` to `86-real;89-real;89-virtual` behind a `CUDA_ARCHITECTURES` build arg (the AWS plan's `g5` is an A10G, sm_86, with no runnable kernel on the old pin), plus a build-time `cuobjdump` kernel gate and a load-time `docker/cuda-preflight.py` that refuses to boot when the allocated GPU is not covered. Worker `--processes 2` → `1` (two model caches and two CUDA contexts on the cards realtime shares); no descriptor exists for a process count and none was invented — see the CMD note for where `stt.workers.processes` would belong. M-60's stale triad half-fixed: the Dockerfile now describes the live s3fs bucket cache and the test pins it in both directions (the retired path must be ABSENT), the remaining two passages being in the deployment repo. M-59 written up in §6.5 rather than applied — it is a deployment-repo change. Scoping the builds also required scoping the six jobs that `needs:` them (`scan-stt`, `scan-stt-worker`, `sbom-`/`sign-stt*`) onto the same anchor — outside the lane's stated files, but a `needs:` on an excluded job is a pipeline-creation error, so the alternative was a change that only works on `dev-2.2`. |
 | 2026-09-19 | **Implementation wave opened** on owner directive (Waves 1–3; orchestrator owns all realtime transcription measurement and every shared surface; agents barred from running transcription tests). Nine read-only area dossiers produced (capture/transport, segmentation, decoding/language, commit/UX, clinical vocabulary, serving/GPU, observability/evaluation, reliability/lifecycle, SOTA engines). File-owned implementation lanes opened in isolated worktrees, because a file-ownership analysis proved the 22 QW/ST items form ONE connected component through `session_manager.py`, the seed files and `whisper_cpp_asr.py` — no zero-overlap partition by item exists. |
 | 2026-09-19 | **Root cause of the accuracy collapse isolated (§2.7).** Five Global-playground sibling agents; arm A reproduced the served numbers exactly, arm E isolated the pair priming prompt as the single cause (0.885→0.033 medical_wer, keyterm 0/21→21/21). Traced to `e3d61eefb`. Six candidate variables eliminated. M-02 found to be MASKING the defect on the scribe surface, making QW-2 order-dependent: shipping it before the prompt fix would be a 27x regression. OD-B answered for English. |
 | 2026-09-19 | **Corrections to the review found while implementing.** M-25: the drain mechanism is fully BUILT and merely UNWIRED (readiness and liveness both point at `/api/v1/health`, which returns 200 unconditionally) — remedy is three manifest lines, not app code; co-ordinated with the TASK-990 session, which took `base/stt.yaml`. QW-4: `memorySizeMb` is ALREADY set in both seed and DB — verify, do not re-implement. QW-7: D5 proved arithmetically that tightening the lexicon bound cannot admit `Atorvacetam` while rejecting `creating`; the missing axis is a word-of-the-language gate and the bound should be RELAXED. QW-9: D3 warns decode gates on FINALS increase deletion, which is already the dominant error class. QW-4/`audio_ctx`: D3 reversed the recommendation (upstream ships 0; truncation causes endless repetition). M-21: partially shipped already by TASK-989. F9-M2: re-fetched, the paper says prompting HURT Malayalam. New high-severity defects found: D2-N4/N5 (a ~320 ms phantom slide fed to the commit policy every utterance), D4-N6 (per-segment timestamps discarded, which is what actually unblocks ST-1), and a capacity reconciler that can release an in-creation session's slot. |

@@ -88,7 +88,11 @@ scan-stt:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
-    - !reference [.rules-stt, rules]
+    # `.build-stt-rules`, NOT `.rules-stt`: this job `needs:` the build, and a
+    # needs on an excluded job fails PIPELINE CREATION. `.rules-stt` is wider
+    # than the build in three places (unconditional on dev, `v*` tags, prod-*
+    # branches), and there is nothing to scan in any of them.
+    - !reference [.build-stt-rules, rules]
 
 scan-text:
   extends: .trivy-scan
@@ -233,7 +237,11 @@ scan-stt-worker:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
-    - !reference [.rules-stt, rules]
+    # `.build-stt-rules`, NOT `.rules-stt`: this job `needs:` the build, and a
+    # needs on an excluded job fails PIPELINE CREATION. `.rules-stt` is wider
+    # than the build in three places (unconditional on dev, `v*` tags, prod-*
+    # branches), and there is nothing to scan in any of them.
+    - !reference [.build-stt-rules, rules]
 
 scan-python-base:
   extends: .trivy-scan
