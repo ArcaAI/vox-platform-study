@@ -82,9 +82,18 @@ class EngineSwitchController:
         primary_pipeline_id: str,
         fallback_pipeline_id: str | None,
         build_fallback: Callable[[], Awaitable[Any]],
-        # The swap carries the TARGET pipeline id alongside the new
-        # callable so the inference worker's per-utterance provenance stamp is
-        # updated in the same function body as the callable it names.
+        # The swap carries the TARGET pipeline id alongside whatever the builder
+        # returned, so the inference worker's per-utterance provenance stamp is
+        # updated in the same function body as the engine it names.
+        #
+        # TASK-985 M-34 — what a builder returns is OPAQUE here, and that is
+        # load-bearing rather than lazy typing. The manager's builders now
+        # return a whole engine BINDING (callable + that engine's prompt,
+        # decode window, lexicon, punctuation config, language pin and
+        # front-end geometry) because a switch that moves only the callable
+        # leaves the session decoding on one engine with another engine's
+        # parameters. This controller owns WHEN to switch; it must not acquire
+        # opinions about what an engine consists of.
         apply_callable: Callable[[Any, str | None], None],
         publish_switch: Callable[[str, str, str, str, int | None], Awaitable[None]],
         build_primary: Callable[[], Awaitable[Any]] | None = None,
@@ -259,17 +268,17 @@ class EngineSwitchController:
                     return False
                 # Selection is fail-closed: propagate a build failure rather than
                 # pretend a switch happened. The session stays on the primary.
-                new_callable = await self._build_fallback()
+                new_binding = await self._build_fallback()
                 target_pipeline_id = self._fallback_pipeline_id
             elif target == _PRIMARY:
                 if not self.can_switch_to_primary:
                     return False
                 assert self._build_primary is not None  # narrowed by can_switch_to_primary
-                new_callable = await self._build_primary()
+                new_binding = await self._build_primary()
                 target_pipeline_id = self._primary_pipeline_id
             else:
                 return False
-            self._apply_callable(new_callable, target_pipeline_id)
+            self._apply_callable(new_binding, target_pipeline_id)
             self._active = target
             self._consecutive_failures = 0
             await self._emit_switch(target, reason, utterance_index)
