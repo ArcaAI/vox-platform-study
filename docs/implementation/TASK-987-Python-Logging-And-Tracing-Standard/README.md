@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — Wave 1 merged, Wave 2 next |
+| **Status** | In Progress — Waves 0-3 merged, verification lane running |
 | **Type** | `infrastructure` (+ `bugfix` for the P0 items) |
 | **Branch** | `dev-2.2` |
 | **Scope** | `apps/{stt,text,guardrail,nlp,harness,tts}`, new `packages/py-obs`, and the `arca/hope-v2-deployment` repo |
@@ -337,6 +337,43 @@ unconditional is what exposed it — the same shape as F-20.
 **In-cluster is unaffected**: `hope-platform-config` does not set `OTEL_SERVICE_NAME`, and the
 services that need a specific name set their own. The fix is a per-service `<SVC>_OTEL_SERVICE_NAME`
 in the env samples, which is a shared surface — orchestrator or lane D2, not a service lane.
+
+#### F-22 (P1, fixed) — two services silently ignored the canonical endpoint
+
+Found by **lane D2, which refused part of its own brief rather than execute it.** Told that every
+service now falls back to `OTEL_EXPORTER_OTLP_ENDPOINT` and asked to retire harness's prefixed
+variable, it read the merged Wave-1 code, found the premise false, stopped, and reported. It was
+right.
+
+`text` and `harness` both built their config with `otlp_endpoint=settings.otel_exporter_endpoint or
+None`, which **overwrites** whatever `from_env` already resolved from the canonical name. A manifest
+setting only `OTEL_EXPORTER_OTLP_ENDPOINT` would have taken both dark — a direct violation of R-2,
+in the two services that had just adopted it. `nlp` and `tts` had it right
+(`or base.otlp_endpoint`); `guardrail` resolves the canonical name first; `stt` only overrides inside
+its deprecation branch.
+
+Fixed in `6c3dd6b03`. Proven with the prefixed names unset:
+
+```
+harness endpoint from canonical name -> http://otel-collector:4317 | tracing: True
+```
+
+The lesson is about briefs, not code: the instruction was wrong, the lane was told to execute it, and
+what saved the deployment was an agent that verified a premise instead of trusting it.
+
+#### F-23 (P1, fixed) — the F-16 fix broke four tests in three services, and the orchestrator missed it
+
+Making the OTLP exporter import lazy removed `OTLPSpanExporter` as a module attribute of
+`hope_obs.tracing`. Four service tests patched it by that path — guardrail ×2, harness, tts. The
+orchestrator verified that change against **`py-obs`'s own suite alone**, on the reasoning that a
+purely internal import move could not affect consumers. It could, and did.
+
+Caught only because the F-22 fix forced a re-run of the service suites. Repointed at the source
+module in `6c3dd6b03`, which is the correct target for a lazily imported symbol.
+
+**Recorded because the failure mode is the ticket's own thesis:** "this change obviously cannot break
+anything" is the reasoning that produced F-03, F-20 and F-21 — code that was never exercised and so
+was never known to be wrong.
 
 ---
 
@@ -1000,6 +1037,59 @@ it), and `TTS_OTEL_ENABLED` (honoured for one release; vetoes only when explicit
 WebSocket trace propagation is out of scope and is named in §7's out-of-scope table.
 
 **Its most valuable output was not its diff** — see **F-16**, the eager exporter import.
+
+### Lane P — parity gate — COMPLETE, verified, MERGED
+
+| | |
+|---|---|
+| Branch | `task-987-parity` @ `2c4995dd9` |
+| File | `tests/contracts/test_observability_parity.py` (673 lines), 45 assertions over six services × seven groups |
+| Gate (orchestrator re-run, post-merge) | **45 passed** |
+
+All seven required checks implemented, no service found in violation, and **three RED proofs** pasted
+— a deleted Dockerfile COPY, a rogue `structlog.configure(`, and a removed `hope-obs` dependency —
+each reverted with `git checkout HEAD --` rather than a stash.
+
+**Its most valuable output was reporting that nothing ran it.** `tests/contracts/` is 100% Vitest;
+`pnpm test:unit` ignores `.py` entirely; no CI job referenced the directory; each service's `:test`
+is scoped to its own tree. It flagged that instead of leaving a file that reads as coverage and is
+not — and it declined to wire itself in, because `package.json` and `.gitlab/ci/**` are §4 shared
+surfaces. Correct on both counts.
+
+Wired by the orchestrator in `e803d671d`: `pnpm test:obs-parity`, inclusion in `pnpm test:py`, and a
+dedicated `test-observability-parity` CI job that deliberately does **not** sit behind
+`SKIP_TESTS_PY` — a service drifting off the contract must fail the pipeline even when that service's
+own suite is skipped.
+
+Two more gaps it found: `pnpm test:py` never called `py-obs:test` (the script existed since Wave 0),
+and `apps/stt/docker/Dockerfile.apple` was missing the `py-obs` COPY — outside the gate's own F-17
+set of six primary Dockerfiles. Both closed in the same commit.
+
+### Lane D2 — env unification — COMPLETE, verified, MERGED
+
+| | |
+|---|---|
+| Repo / branch | `hope-v2-deployment` @ `task-987-d2` → merged to `main` as `bf2d723` |
+| Gates | dev overlay renders; `standalone`/`staging`/`prod` all still render |
+
+Retired the per-service enable flags and endpoints for guardrail, nlp, tts and stt; **deleted the
+hardcoded `GUARDRAIL_V2_OTEL_ENABLED: "false"` from `base/guardrail.yaml`** (the D1 trap — removing
+the overlay override without this would have turned guardrail's tracing back off via its own
+deprecation veto); added `OTEL_TRACES_SAMPLER_ARG=1.0`; added `hope.entity_type` and `hope.label` to
+the collector allow-list beside the already-present `hope.model`.
+
+It checked every base manifest for the same hardcoded-`false` shape and reported the result per
+service with file:line — guardrail was the only one.
+
+**The Grafana derived field already existed** (`grafana-datasources.yaml`, matcher
+`"traceId"\s*:\s*"(\w+)"`, traced to TASK-854/847), matching `hope_obs`'s exact JSON key. Nothing
+to add — reported rather than invented.
+
+**It left harness's variables in place on purpose**, which is how F-22 was found. With F-22 fixed
+harness now resolves the canonical name, but **F-19 still blocks that cleanup**: `temporal/client.py`
+gates its `TracingInterceptor` on the old AND-form, so removing `HARNESS_OTEL_ENABLED` would stop
+Temporal spans while the app and worker tracer stayed on. Retiring those two variables is a
+follow-up that depends on F-19, not on this ticket.
 
 ### Orchestrator-owned documentation and the F-18 upstream half — DONE
 
