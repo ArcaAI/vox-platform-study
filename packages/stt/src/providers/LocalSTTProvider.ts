@@ -8,6 +8,7 @@
  * to keep the UI responsive. Falls back to main thread if Workers unavailable.
  */
 
+import { DEFAULT_LANGUAGE_LOCALE } from '../types/index.js';
 import type { TranscriptionResult, STTStats, LocalProviderConfig, ComputeDevice } from '../types/index.js';
 import type { TranscribeOptions } from '../engines/types.js';
 import { resolveLocalWhisperModel } from '../types/index.js';
@@ -96,7 +97,11 @@ export class LocalSTTProvider extends BaseSTTProvider {
 
     await this.engine.init({
       model: model,
-      language: config.language,
+      // TASK-985 (QW-2) — `ProviderConfig.language` is optional, because on the
+      // STREAMING path absent is the only way to say "the tenant's agent decides".
+      // This engine is the in-browser Whisper pipeline: there is no agent behind it
+      // to defer to, so it genuinely needs a locale and supplies its own default.
+      language: config.language ?? DEFAULT_LANGUAGE_LOCALE,
       device: config.device,
       quantized: config.quantized,
       modelPath: modelPath,
