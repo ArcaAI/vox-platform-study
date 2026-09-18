@@ -1,8 +1,16 @@
 """Custom Prometheus metrics for STT operations.
 
-Covers transcription jobs, streaming sessions, model loading, VAD
-processing, and inference latency — the key signals needed for the
-AI Pipeline Performance dashboard in Grafana.
+Covers transcription jobs, streaming sessions (incl. utterance boundaries,
+decode-lock contention and ingest lag), model loading, and inference latency —
+the key signals needed for the AI Pipeline Performance dashboard in Grafana.
+
+TASK-985 D7 — this module is the METRIC CONTRACT other STT-side call sites
+code against; see
+``docs/implementation/TASK-985-Realtime-Transcription-Review-And-Best-Practices/README.md``
+(findings M-03, M-18, M-19, M-20, M-21, M-44, M-45). VAD-specific metrics
+(``VAD_SEGMENTS_DETECTED``/``VAD_PROCESSING_LATENCY``) and the model-cache
+hit/miss counters were deleted here (M-19) — see the comments at their former
+location, kept so nobody re-adds them under a different name.
 """
 
 from __future__ import annotations
@@ -136,6 +144,133 @@ STREAMING_SCRIPT_MISMATCH_TOTAL = Counter(
     "Final transcripts whose script contradicted the session's pinned language",
 )
 
+# TASK-985 M-45 — the denominator `stt_streaming_script_mismatch_total` and
+# `stt_streaming_inference_queue_dropped_total` never had: neither ratio-shaped
+# alert (`SttTranscriptUtterancesDropped`/`SttScriptMismatch` in the deployment
+# repo's `alert-rules.yaml`) could be expressed as a percentage without this,
+# so both fire on a bare `increase(...) > 0` today.
+#
+# ONE call site, enforced structurally by this being the only place that
+# increments it: `preprocessor.py`'s `_emit_utterance()` (the single function
+# every emit path — force-emit, semantic/silence-timeout endpoint, tail
+# `flush()` — already funnels through) via `record_utterance()` below, plus
+# ONE additional site in `session_manager.py`'s crash-recovery branch for
+# `reason="recovery"` (a recovered session reconstructs one utterance-shaped
+# span without ever calling `_emit_utterance()` live). Do NOT add a second
+# increment site anywhere else — e.g. a future decode-time/post-ASR
+# repeat-guard in `inference.py` — that would double-count the same
+# utterance; key a new decode-time signal off a DIFFERENT metric name.
+STREAMING_UTTERANCES_TOTAL = Counter(
+    "stt_streaming_utterances_total",
+    "Utterances closed in streaming mode",
+    ["is_final", "engine", "reason"],
+)
+
+# Closed 5-value enum for `stt_streaming_utterances_total{reason}` AND the
+# `stt.streaming.utterance.closed` log line — ONE source of truth (import
+# these rather than re-declaring the strings). Deliberately NARROWER than
+# `EndpointDecision.reason`'s 7 values (`semantic_endpointer.py:58-65`): the
+# other six (`disabled`, `no_hypothesis`, `too_short`, `below_silence_floor`,
+# `incomplete_trailing_filler`, `low_confidence`) are per-FRAME "why not yet"
+# decisions inside the 300ms partial cadence — effectively unbounded in
+# volume — and belong on a separate Counter keyed on that 7-value set if ever
+# wanted (M-39), never as a label on this series. The only
+# `EndpointDecision.reason` that can pair with `should_endpoint=True` is
+# `REASON_ENDPOINT`, so `REASON_SEMANTIC` below never needs the sub-reason to
+# stay bounded.
+REASON_MAX_DURATION = "max_duration"  # force-emit: utterance hit _max_utterance_frames
+REASON_SEMANTIC = "semantic"  # _should_semantic_endpoint() returned True
+REASON_SILENCE_TIMEOUT = "silence_timeout"  # fixed-timer backstop
+REASON_FORCE_FLUSH = "force_flush"  # tail flush at session stop (preprocessor.flush())
+REASON_RECOVERY = "recovery"  # crash-recovery single-segment reconstruction
+
+UTTERANCE_REASONS = frozenset(
+    {
+        REASON_MAX_DURATION,
+        REASON_SEMANTIC,
+        REASON_SILENCE_TIMEOUT,
+        REASON_FORCE_FLUSH,
+        REASON_RECOVERY,
+    }
+)
+
+
+def record_utterance(*, is_final: bool, engine: str, reason: str) -> None:
+    """Record one utterance boundary crossing (M-45's ratio denominator).
+
+    ONE call site — see the design note on `STREAMING_UTTERANCES_TOTAL` above.
+
+    ``engine`` should be the SAME string `record_streaming_teardown` already
+    receives for this session (i.e. `resolve_usage_attribution`'s output, or
+    ``"unknown"`` — see `batch_service.py:resolve_usage_attribution`), so this
+    series stays filterable by the same `engine` value as `stt_streaming_rtf`
+    / `stt_streaming_audio_duration_seconds`. NOT validated here: unlike
+    `reason`, `engine` is a format-derived enum owned by another module (still
+    bounded to low tens — see `ASR_FORMAT_TO_NAME` — just not this function's
+    to police).
+
+    Raises ``ValueError`` for a `reason` outside `UTTERANCE_REASONS` — this
+    label has no external dependency (it is declared once, right here), so
+    catching a typo or an undeclared value here is strictly better than
+    letting it silently become a new Prometheus series.
+    """
+    if reason not in UTTERANCE_REASONS:
+        raise ValueError(
+            f"Unknown utterance reason {reason!r}; must be one of {sorted(UTTERANCE_REASONS)}"
+        )
+    STREAMING_UTTERANCES_TOTAL.labels(
+        is_final="true" if is_final else "false", engine=engine, reason=reason
+    ).inc()
+
+
+# TASK-985 M-26 — lock-ACQUISITION wait, not hold time. Time the interval at
+# the call site (`start = time.monotonic()` before `with self._lock:`, then
+# call this immediately after acquiring — `whisper_cpp_asr.py:465`, right
+# before `_decode_spans_locked`); a context manager here would necessarily
+# time the whole locked block, not just the wait to get into it.
+STREAMING_LOCK_WAIT_SECONDS = Histogram(
+    "stt_streaming_lock_wait_seconds",
+    "Time spent waiting to acquire the streaming decode lock, by model/engine",
+    ["model", "engine"],
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
+)
+
+
+def record_lock_wait(*, model: str, engine: str, seconds: float) -> None:
+    """Record one streaming decode-lock acquisition wait (M-26 concurrency signal).
+
+    ``engine`` is a per-adapter constant (e.g. ``"whisper_cpp"`` for
+    `WhisperCppEngine` — a faster-whisper/CT2 adapter would pass its own
+    constant), not a per-request lookup.
+    """
+    STREAMING_LOCK_WAIT_SECONDS.labels(model=model, engine=engine).observe(max(0.0, seconds))
+
+
+# TASK-985 M-03 — deliberately UNLABELLED, matching the
+# `STREAMING_INFERENCE_QUEUE_DROPPED_TOTAL` precedent above ("unlabeled on
+# purpose"): a per-session or per-tenant label on a transport-timing
+# histogram is both a cardinality risk and adds nothing a log line + trace
+# span doesn't already give at session grain.
+STREAMING_INGEST_LAG_SECONDS = Histogram(
+    "stt_ingest_lag_seconds",
+    "Delay between the gateway forwarding an audio frame and STT reading it",
+    buckets=[0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+)
+
+
+def observe_ingest_lag(seconds: float) -> None:
+    """M-03: one frame's ingest lag.
+
+    Call site: `session_manager.py:_on_frame`, first line —
+    ``observe_ingest_lag(max(0.0, time.time() - frame.ts))``. `AudioFrame.ts`
+    already carries the gateway-forward epoch time (`schemas.py:70`); that
+    field's docstring currently says "client-side timestamp", which is wrong
+    (new defect, not this lane's file to fix — see the TASK-985 D7 dossier's
+    new-defects table).
+    """
+    STREAMING_INGEST_LAG_SECONDS.observe(max(0.0, seconds))
+
+
 # ---------------------------------------------------------------------------
 # Model loading metrics
 # ---------------------------------------------------------------------------
@@ -147,30 +282,52 @@ MODEL_LOAD_LATENCY = Histogram(
     buckets=[0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0],
 )
 
-MODEL_CACHE_HITS = Counter(
-    "stt_model_cache_hits_total",
-    "Model cache hit count",
-)
 
-MODEL_CACHE_MISSES = Counter(
-    "stt_model_cache_misses_total",
-    "Model cache miss count (cold load required)",
-)
+@contextmanager
+def track_model_load_latency(*, model: str, engine: str) -> Iterator[None]:
+    """Time one model load onto `stt_model_load_latency_seconds` (M-19: wired, not dead).
 
-# ---------------------------------------------------------------------------
-# VAD (Voice Activity Detection) metrics
-# ---------------------------------------------------------------------------
+    Wrap the `await loader.load(model_config)` call in `ModelCache._load_by_slug`
+    (`apps/stt/src/stt/models/cache.py:467`) — this was the ONLY declared-but-dead
+    metric M-19 found worth wiring rather than deleting: it is the ONLY latency
+    signal for the M-17 cold-start story (session-create p95 vs warm p95 had no
+    server-side latency breakdown before this, only the gateway's end-to-end
+    `durationMs`).
 
-VAD_SEGMENTS_DETECTED = Counter(
-    "stt_vad_segments_total",
-    "Total speech segments detected by VAD",
-)
+    ``model``/``engine`` are bounded to resident `AiModel` slugs (low tens
+    platform-wide) — the same bound `model_running_instances` already accepts,
+    no new cardinality risk.
+    """
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        MODEL_LOAD_LATENCY.labels(model=model, engine=engine).observe(time.perf_counter() - start)
 
-VAD_PROCESSING_LATENCY = Histogram(
-    "stt_vad_processing_latency_seconds",
-    "VAD processing latency per audio chunk",
-    buckets=[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
-)
+
+# TASK-985 M-19 — MODEL_CACHE_HITS/MODEL_CACHE_MISSES were deleted here.
+# Confirmed dead by grep: defined, never `.inc()`'d anywhere under
+# `apps/stt/src`. They are also fully SUPERSEDED by the SHARED
+# `model_cache_loads_total{cache}` / `model_cache_evictions_total{cache,reason}`
+# / `model_cache_resident_models{cache}` contract below
+# (`build_model_cache_metrics_sink()`, wired into every `ModelCache` at
+# `models/cache.py:302`) — that sink is the FIXED cross-service contract the
+# `infrastructure/grafana/dashboards/model-retention.json` dashboard reads.
+# Do NOT re-add a hit/miss counter under a different name: it would be a
+# second, disagreeing source of truth for the same fact. See
+# docs/implementation/TASK-985-Realtime-Transcription-Review-And-Best-Practices/README.md
+# M-19.
+
+# TASK-985 M-19 — VAD_SEGMENTS_DETECTED/VAD_PROCESSING_LATENCY were deleted
+# here. Confirmed dead by grep: defined, never `.inc()`/`.observe()`'d
+# anywhere under `apps/stt/src`. VAD latency is ALREADY covered by the
+# generic `model_inference_latency_seconds{service="stt",model="silero-vad-v5"}`
+# via `track_model_inference("silero-vad-v5")` (`vad/silero_service.py:158`) —
+# a second, VAD-specific histogram would duplicate that signal under a
+# different name. `VAD_SEGMENTS_DETECTED` had no natural call site: the
+# preprocessor's own onset/offset logic decides speech segments (the `reason`
+# enum on `STREAMING_UTTERANCES_TOTAL` above), so a redundant "VAD segment"
+# counter would double-count against it. Do NOT re-add either.
 
 # ---------------------------------------------------------------------------
 # Worker / queue metrics
@@ -328,6 +485,52 @@ def streaming_session_started(active_count: int) -> None:
 def streaming_session_ended(active_count: int) -> None:
     """A streaming session was removed: sync the active gauge to the live count."""
     STREAMING_SESSIONS_ACTIVE.set(max(0, active_count))
+
+
+# TASK-985 M-19 — `stt_streaming_sessions_total{status}` FIX, not a new metric.
+# `streaming_session_started` above is the ONLY call that has ever incremented
+# `STREAMING_SESSIONS_TOTAL` — always with `status="started"` —
+# `streaming_session_ended` only syncs the active gauge. So the SLO doc's
+# `sum(rate(...{status=~"closed|recovered|reaped"}[5m])) /
+#  sum(rate(...{status="started"}[5m]))`-shaped query divided a numerator
+# series that was either absent or permanently zero. This is the missing
+# `finished` half.
+SESSION_FINISHED_STATUSES = frozenset({"closed", "recovered", "reaped", "failed"})
+
+
+def streaming_session_finished(status: str) -> None:
+    """Record one terminal streaming-session outcome.
+
+    Call ONCE per terminal outcome, from `session_manager.py` (line numbers
+    as of TASK-985 D7; re-check before wiring, this file moves fast):
+
+    - ``"closed"`` — the normal path, beside the existing
+      `record_streaming_teardown(..., status="closed", ...)` call in
+      `_build_teardown_summary` (~:4220, called from `_finalize_session_locked`).
+    - ``"recovered"`` — a session that was reconstructed after a crash
+      restart, on ITS OWN eventual close. `_build_teardown_summary`'s
+      "RECOVERED session" branch (~:4189) builds that session's usage
+      SEGMENT, not a session-finish event — confirm with the session-lifecycle
+      lane whether the recovered flag is available where `streaming_session_finished`
+      is actually called (likely still `_build_teardown_summary`/
+      `_finalize_session_locked`, with `status="recovered"` instead of
+      `"closed"` when the session was never a live creation) before wiring.
+    - ``"reaped"`` — `_reap_expired_sessions`' success branch (~:4746,
+      `await self._finalize_session(session)` succeeds).
+    - ``"failed"`` — that same function's `except Exception` branch (~:4768,
+      "Failed to reap session gracefully; forcing removal"), and any
+      `remove_session` call that runs without a prior `_finalize_session`.
+
+    Raises ``ValueError`` outside this closed 4-value set — ``"started"`` is
+    handled separately by `streaming_session_started` and is not a valid
+    argument here.
+    """
+    if status not in SESSION_FINISHED_STATUSES:
+        raise ValueError(
+            f"Unknown terminal session status {status!r}; must be one of "
+            f"{sorted(SESSION_FINISHED_STATUSES)}"
+        )
+    STREAMING_SESSIONS_TOTAL.labels(status=status).inc()
 
 
 def streaming_inference_queue_dropped() -> None:
