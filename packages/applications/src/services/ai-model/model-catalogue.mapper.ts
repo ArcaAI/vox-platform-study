@@ -30,9 +30,15 @@ function capabilitiesOf(entity: AiModelEntity): CatalogueModelResponse['capabili
   const caps = asPlainObject(meta.capabilities) ?? meta;
   const params = Array.isArray(caps.supportedGenerationParams) ? (caps.supportedGenerationParams as string[]) : undefined;
   const ssml = typeof caps.supportsSsml === 'boolean' ? caps.supportsSsml : undefined;
+  // The declared context window (owner directive 2026-09-18). A positive integer or nothing:
+  // a 0/negative/NaN value is a mis-seeded row, and surfacing it would hand a caller a budget
+  // that can only produce an empty prompt.
+  const rawContext = caps.contextLength;
+  const contextLength = typeof rawContext === 'number' && Number.isInteger(rawContext) && rawContext > 0 ? rawContext : undefined;
   return {
     ...(params ? { supportedGenerationParams: params } : {}),
     ...(ssml !== undefined ? { supportsSsml: ssml } : {}),
+    ...(contextLength !== undefined ? { contextLength } : {}),
   };
 }
 
