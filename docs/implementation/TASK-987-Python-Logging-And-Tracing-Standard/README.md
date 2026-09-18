@@ -265,7 +265,7 @@ Confirmed by the orchestrator across the fleet (note STT's Dockerfile is at the 
 | stt | env, otel, runtime-models | ❌ |
 | guardrail | env, runtime-models | ❌ |
 | nlp | env, runtime-models, **obs** | ✅ fixed by lane E on the orchestrator's addendum (`60297ee49`) |
-| harness | async-contract, env, runtime-models | ❌ |
+| harness | async-contract, env, runtime-models, **obs** | ✅ fixed by lane G on the orchestrator's addendum |
 | tts | env, runtime-models | ❌ |
 
 An addendum was sent to the three lanes still running; lane E received it in time and fixed its own
@@ -287,6 +287,40 @@ instance of the rule "know what survives". Two defensible fixes, both lane D2's 
 meter attributes into the `hope.*` namespace (preferred — it is what §3 R-7 asks for anyway), or
 extend `allowed_keys`. NLP's **Prometheus-native** metrics are unaffected: Prometheus scrapes them
 directly and they never touch the collector.
+
+#### F-19 (P2) — `temporal/client.py`'s `TracingInterceptor` still uses the pre-R-2 AND-gate
+
+Found by lane G. After adoption, harness's FastAPI app and its Temporal worker follow R-2 (endpoint
+presence, with the deprecated flag as a veto), but `temporal/client.py` still gates its
+`TracingInterceptor` on `Settings.otel_tracing_enabled` — the old `otel_enabled AND
+bool(otel_exporter_endpoint)`.
+
+Today the two agree, because lane D1 set both variables in `overlays/dev`. **A future manifest that
+sets only the endpoint would get a recording `TracerProvider` with no Temporal spans flowing through
+it** — a half-traced service that looks instrumented. Migrating `client.py` is deliberately out of
+lane G's scope (workflow-adjacent Temporal wiring) and belongs to a follow-up, but it must not be
+lost: it is the same paired-gate shape lane D1 warned about and lane P now asserts against.
+
+#### F-20 (P1, fixed) — a latent `KeyError` crash in `ping_activity`, exposed by correct wiring
+
+`apps/harness/src/harness/temporal/activities.py`'s `ping_activity` called
+`activity.logger.info(..., extra={"message": payload.message})`. `"message"` is a **reserved
+`LogRecord` attribute**: stdlib `Logger.makeRecord` raises the moment that logger is actually enabled
+at INFO. Confirmed independently by the orchestrator:
+
+```
+KeyError: "Attempt to overwrite 'message' in LogRecord"
+```
+
+It never fired because harness logging was never actually configured during the unit-test session —
+ASGI lifespan events do not run under `httpx.ASGITransport`, and the worker's `setup_logging` call was
+never exercised either — so the root logger sat at Python's default WARNING and the `.info()` call was
+silently disabled. Lane G's correct wiring (configure in `create_app()`, per R-1's own contract) set
+INFO at import time and the bug surfaced immediately as two failing tests.
+
+Fixed in-lane with a one-line rename to `extra={"ping_message": ...}`, after grepping every other
+`activity.logger.*` call site for reserved keys. This is the ticket paying for itself: a service whose
+logging was never switched on in tests was hiding a crash behind that fact.
 
 ---
 
@@ -950,6 +984,23 @@ it), and `TTS_OTEL_ENABLED` (honoured for one release; vetoes only when explicit
 WebSocket trace propagation is out of scope and is named in §7's out-of-scope table.
 
 **Its most valuable output was not its diff** — see **F-16**, the eager exporter import.
+
+### Lane G — harness — COMPLETE, verified, awaiting merge
+
+| | |
+|---|---|
+| Branch | `task-987-harness` @ `784457432` |
+| Gates (orchestrator re-run) | `pnpm harness:test` → **2655 passed in 140.92s**; lint "All checks passed!"; mypy "no issues found in 155 source files" |
+| Replay compatibility | `test_replay_compat.py` 100% covered and green in the re-run — workflow code was never opened |
+
+Harness gained request-id and access-log middleware (F-06 — it had no middleware directory at all),
+and its Temporal worker now installs a recording `TracerProvider` through the shared helper, with
+`.shutdown()` wired into the existing `finally` block so spans flush on SIGTERM.
+`temporal/client.py`'s `TracingInterceptor` wiring is byte-for-byte unchanged, as instructed.
+
+**It also fixed a latent crash — see F-20** — and **flagged a residual inconsistency it correctly
+refused to fix — see F-19.** Both are the kind of thing only found by wiring a service properly and
+then reading what changed.
 
 ### Lane B — text — COMPLETE (after a stall + recovery), verified, awaiting merge
 
