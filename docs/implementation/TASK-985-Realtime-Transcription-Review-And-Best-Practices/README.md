@@ -376,7 +376,70 @@ Recommendation first; each row presents the evidence and asks rather than overri
 
 ## 6. Implementation Summary
 
-`Pending`. This ticket changes no code. Follow-up tickets are expected for: BP-1/BP-2/BP-3 (baseline re-capture, geometry and prompt matrix, SDK operating point), BP-4/BP-4b (corpus replay and agent-field A/Bs), BP-5 (observability), BP-8 (browser capture A/B), QW-1 (tail race), QW-2 (SDK defaults), QW-3 (knob honesty), QW-6 (rollout hygiene), QW-9 (decoding gates on finals), QW-10 (repetition guard), QW-11 (reconnect ring buffer), QW-12 (nightly gate), QW-13 (room-tone false onsets), and the ST-1/ST-2 redesign once OD-A to OD-D are answered. TASK-937 lane F scope must widen to M-34; TASK-937 R-3 acceptance must include M-27 and the OD-K sequencing.
+**Status: in flight (2026-09-19).** This section is the execution record for the Waves 1-3 implementation
+wave. The review's original line — "this ticket changes no code" — is superseded by the owner directive of
+2026-09-19.
+
+### 6.1 How the work is partitioned — by FILE, not by item
+
+A file-ownership analysis over §2.4's own `file:line` citations found that the 22 QW/ST items form **ONE
+connected component**: `apps/stt/src/stt/streaming/session_manager.py` is touched by 10 items,
+`seed/25-agents.ts` by 7, `seed/ai-models/audio.ts` by 6, `whisper_cpp_asr.py` by 8. **No partition of the
+item set into non-overlapping lanes exists.** Lanes are therefore defined by FILE OWNERSHIP, with each lane
+implementing whatever items fall inside its files and raising a *cross-lane patch request* for anything
+outside them. The orchestrator routes those requests and owns every shared surface (merges, DB writes,
+the dev stack, and all realtime transcription measurement).
+
+| Lane | Owns | Items |
+|---|---|---|
+| L-OBS | `core/metrics.py`, `packages/py-obs/.../middleware.py` | BP-5 metric contract, M-19, M-44, M-45 |
+| L-CONTRACT | `packages/types`, `workflow-contract/agent-schemas.ts`, `build-resolved-asr-spec.ts`, `pipeline/spec.py`+`dto.py`, both seed files | QW-3, QW-8/9 schema, ST-3 row slot, M-14, M-35, M-49, M-57, M-58 |
+| L-DECODE | `streaming/whisper_cpp_asr.py`, `faster_whisper_asr.py`, `whisper_cpp_loader.py` | D4-N6 segment timestamps, M-14, QW-8, M-24 adapter half, M-62 |
+| L-SEG | `streaming/preprocessor.py`, `semantic_endpointer.py`, `vad/**` | QW-13, M-07, M-13, M-39, ST-2, D2-N4 |
+| L-LEX | `postprocessing/lexicon.py` | QW-7 (redirected), M-31 |
+| L-INFER | `streaming/inference.py`, `local_agreement_streamer.py` | M-09 prompt budget, QW-10, D3-N1, D4-N3, M-41 |
+| L-SESSION | `streaming/session_manager.py`, `session.py`, `redis_streams.py`, `engine_switch.py`, `api/routes.py`, `main.py` | QW-1 tail latch, M-23, M-24 session half, M-29, M-34, M-64/65/66, QW-4/OD-F, D2-CL1 |
+| L-GATEWAY | `apps/api/.../streaming/**`, `streamingAudioBridge`, `stt-gateway.descriptors.ts` | M-03 gateway half, M-22, M-38, M-47, M-48, M-64, M-67, M-68, ST-5 |
+| L-SDK | `packages/agentic-sdk-v2`, `packages/stt`, `packages/room`, `vox-node` socket, playground, `apps/example` | QW-2, QW-11, M-05, M-27 transport half, M-33, M-36, M-53/54/55/56/63/69 |
+| L-EVAL | `apps/stt/tests/integration/**`, `.gitlab/ci/test.yml`, `ci-gates.md` | BP-1 fingerprint, QW-12, ST-4, M-11, M-15, M-16, M-42 |
+| L-COMMIT *(pending L-DECODE)* | `streaming/commit_policy.py` | ST-1, M-08, D4-N1, D2-N5 |
+| L-DEPLOY *(pending TASK-990)* | `apps/stt/docker/Dockerfile`, `.gitlab/ci/build.yml` | QW-6 CI scoping, M-51, M-52, M-60 |
+
+Lanes write code and tests but **do not run them** — a fresh worktree has no `node_modules`, and per the
+owner directive no gating test runs until the work is merged to `dev-2.2`.
+
+### 6.2 Merge order (constraint-driven, not arbitrary)
+
+1. **L-OBS** — defines the metric surface every other lane's call sites reference.
+2. **L-CONTRACT** — the resolved-spec and schema shape L-DECODE/L-INFER/L-SESSION code against (D8: the chain type change precedes M-34). **Invariant: M-57 and the seed `hotwords: []` removal must be in ONE commit — split, they turn the lexicon stage off platform-wide.**
+3. **L-DECODE** — emits per-segment timestamps, which unblocks L-COMMIT.
+4. **L-SEG** — adds `normalizer_gain` and fixes `start_time`; L-INFER consumes the field, L-COMMIT depends on the slide fix. **Internal: QW-13 merges with or before the M-13 threshold change (0.6 -> 0.5 LOWERS the onset bar).**
+5. **L-LEX** — independent.
+6. **L-INFER** — needs L-SEG's field, L-DECODE's kwargs, L-OBS's metrics, L-CONTRACT's schema.
+7. **L-SESSION** — **internal order is mandatory: the tail LATCH before the in-band terminal frame**, because the frame makes `_on_frame` the first finalizer and moves the tail flush later, widening the race.
+8. **L-GATEWAY** — needs L-SESSION's teardown-summary stash (which brings DELETE into today's 204 window).
+9. **L-SDK** — last. Two reasons: `quietWindowMs: 0` before the latch is a pure latency regression, and QW-2 must not precede the prompt fix (see below).
+10. **L-EVAL** — after the code, so the baseline fingerprint describes what is actually served.
+11. **L-COMMIT**, then **L-DEPLOY**.
+
+### 6.3 The hard sequencing constraint
+
+> **QW-2 must never merge before the pair-prompt fix.** §2.7 measured that the SDK's `languageMode: 'auto'`
+> is currently masking the collapse: `auto` scores 0.033/0.048/0.131 while the agent's `ml-en` scores
+> 0.885/0.935/0.918. QW-2's stated goal — "agent ml-en reaches the scribe" — is therefore the harmful
+> outcome until OD-B is applied. Landing QW-2 alone is a 27x accuracy regression on the primary clinical
+> surface.
+
+### 6.4 Orchestrator-only actions (not delegated)
+
+All realtime transcription measurement; every merge into `dev-2.2`; DB writes (the
+`stt.modelCache.ttlSeconds = 3600` SYSTEM write, the disposable `t985-arm-*` sibling agents in the Global
+playground tenant, and their removal); `pnpm install` / `db:push` / `db:seed`; starting or restarting the
+local dev stack; and the post-merge quality gates.
+
+**Cleanup owed:** the five `t985-arm-{a..e}` agents in the Global tenant are disposable measurement
+fixtures and must be deleted once BP-2's arms are no longer being re-run.
+
 
 **Appendix A: refuted, do not re-raise.**
 
