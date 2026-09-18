@@ -354,12 +354,16 @@ class Settings(BaseSettings):
         default=600, validation_alias=moved_alias("TTS_MODEL_CACHE_TTL_SECONDS")
     )
 
-    # Observability. Default OFF (never
-    # require a reachable collector to boot/serve). `otel_exporter_endpoint`
-    # defaults to empty (no hardcoded localhost target) so tracing activates
-    # ONLY when BOTH `otel_enabled` AND an endpoint are explicitly set — see
-    # `main.create_app`. TTS receives clinical text to synthesise, so
-    # `core/observability.py` wires a PHI-redaction hook into every span.
+    # Observability (TASK-987 — `tts.core.observability` adapts these onto the
+    # shared `hope_obs.ObservabilityConfig`). Default OFF (never require a
+    # reachable collector to boot/serve). `otel_exporter_endpoint` defaults to
+    # empty (no hardcoded localhost target) so tracing activates once an
+    # endpoint is set. TTS receives clinical text to synthesise, so
+    # `hope_obs` wires a PHI-redaction hook into every span unconditionally.
+    #
+    # `otel_enabled` is DEPRECATED (TASK-987 R-2: an endpoint's presence is
+    # the only enable signal, there is no boolean) but still HONOURED for one
+    # release — see `build_observability_config`'s deprecation-warning path.
     otel_enabled: bool = False
     otel_exporter_endpoint: str = ""
     otel_service_name: str = "tts"
@@ -374,6 +378,13 @@ class Settings(BaseSettings):
         or os.getenv("NODE_ENV")
         or "development"
     )
+    # NOW UNUSED (TASK-987, reported for the deprecation register):
+    # `otel_insecure` — `hope_obs.ObservabilityConfig.insecure` is a derived
+    # property of the endpoint's URL scheme, never a separate flag (R-2), so
+    # there is nothing left to pass this to. `otel_logs_enabled` — the OTLP
+    # log-export path it gated is deleted outright (R-5); Alloy already tails
+    # stdout to Loki. Both fields are kept (not read) rather than removed —
+    # deleting them is an orchestrator-owned deprecation-register action.
     otel_insecure: bool = True
     otel_logs_enabled: bool = True
 

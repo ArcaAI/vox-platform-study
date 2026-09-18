@@ -1,41 +1,25 @@
-"""Structured logging configuration using structlog (JSON output)."""
+"""Structured logging for TTS — thin re-export shim over ``hope_obs`` (TASK-987).
+
+The real implementation (structlog + stdlib bridge, JSON on stdout,
+``traceId``/``spanId`` stamping) now lives in ``hope_obs.logging``. This
+module stays as a ONE-RELEASE migration aid because seven modules across
+``tts.providers``, ``tts.api.middleware`` and ``tts.routing`` import
+``get_logger`` from this exact path; new code should import
+``from hope_obs import get_logger`` directly.
+
+``setup_logging`` is superseded by ``hope_obs.configure_observability``,
+which ``tts.core.observability.setup_observability`` calls from
+``create_app()``. It is kept here, calling straight into
+``hope_obs.configure_logging``, only so nothing that still imports it breaks.
+"""
 
 from __future__ import annotations
 
-import logging
-import sys
-from typing import cast
+from hope_obs import ObservabilityConfig, configure_logging, get_logger
 
-import structlog
+__all__ = ["get_logger", "setup_logging"]
 
 
 def setup_logging(log_level: str = "info") -> None:
-    """Configure structlog with JSON output for production."""
-    level = getattr(logging, log_level.upper(), logging.INFO)
-
-    structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.stdlib.filter_by_level,
-            structlog.stdlib.add_logger_name,
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.UnicodeDecoder(),
-            structlog.processors.JSONRenderer(),
-        ],
-        wrapper_class=structlog.stdlib.BoundLogger,
-        context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        cache_logger_on_first_use=True,
-    )
-
-    logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level)
-    logging.getLogger("uvicorn.access").disabled = True
-
-
-def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    """Get a bound logger instance."""
-    return cast("structlog.stdlib.BoundLogger", structlog.get_logger(name))
+    """Configure structlog + stdlib logging via ``hope_obs``. Idempotent."""
+    configure_logging(ObservabilityConfig(service_name="tts", log_level=log_level))

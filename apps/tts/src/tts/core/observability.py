@@ -1,191 +1,125 @@
-"""OpenTelemetry setup for TTS.
+"""OpenTelemetry + structured-logging wiring for TTS — adapter over
+``hope_obs`` (TASK-987).
 
-Manages traces, logs, and FastAPI/httpx auto-instrumentation. Mirrors the
-pattern in ``apps/text/src/text/core/observability.py`` (the reference
-implementation for this fleet), with one deliberate hardening: the whole
-setup is wrapped so a broken/unreachable collector degrades to no-tracing
-instead of taking the process down (a service may
-expose telemetry but must never require a reachable observability backend to
-start or serve traffic).
+Before this migration, TTS carried its own hand-rolled OTel setup and was the
+fleet's HARDENED reference on two axes this module still guarantees, now by
+delegating to the shared package instead of re-implementing it:
 
-TTS receives clinical text on every synthesis request, so the PHI
-sanitisation hook is MANDATORY and is always passed to
-``FastAPIInstrumentor.instrument_app`` via ``server_request_hook`` — a hook
-that exists but isn't wired in is exactly the OBS-19 bug found (and fixed)
-in NLP.
+* **Never raises.** A service may expose telemetry but must never require a
+  reachable observability backend to start or serve traffic —
+  ``hope_obs.configure_observability`` guarantees this; see
+  ``TestNeverRaises`` in ``tts/tests/test_otel_tracing_task636.py``.
+* **The PHI hook is mandatory.** TTS receives clinical text on every
+  synthesis request. ``hope_obs.tracing.instrument_fastapi`` passes
+  ``phi_sanitization_hook`` to ``FastAPIInstrumentor`` UNCONDITIONALLY — there
+  is no argument that switches it off, so there is nothing this module needs
+  to wire. Pinned by ``TestPhiHookWiring``.
+
+This module's own job, now that both guarantees live upstream, is narrower:
+translate TTS's ``Settings`` (the ``TTS_``-prefixed env contract the dev
+cluster actually sets) into the shared ``ObservabilityConfig``.
+
+The WebSocket streaming endpoint (``api/endpoints/stream_ws.py``) stays
+UNINSTRUMENTED — cross-service trace-context propagation over WebSocket is
+separate, out-of-scope work; unchanged by this migration and still a
+standing trace gap (see the TASK-987 lane-H report).
 """
 
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING, Any
+import warnings
+from dataclasses import replace
+from typing import TYPE_CHECKING
 
-from opentelemetry import trace
-from opentelemetry._logs import set_logger_provider
-from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
-try:
-    from opentelemetry.instrumentation.logging import LoggingInstrumentor
-except ImportError:
-    LoggingInstrumentor = None  # type: ignore[assignment, misc]
-
-if TYPE_CHECKING:
-    from fastapi import FastAPI
-
-_TRACER_VERSION = "0.1.0"
-
-# TTS's WebSocket streaming endpoint (`api/endpoints/stream_ws.py`) is
-# deliberately NOT instrumented here — cross-service trace-context
-# propagation over WebSocket is separate, out-of-scope work.
-_EXCLUDED_URLS = (
-    "/health,"
-    "/health/live,"
-    "/health/ready,"
-    "/api/v1/health,"
-    "/api/v1/health/live,"
-    "/api/v1/health/ready,"
-    "/api/v1/docs,"
-    "/api/v1/redoc,"
-    "/api/v1/openapi.json,"
-    "/metrics"
+from hope_obs import (
+    ObservabilityConfig,
+    configure_observability,
+    get_logger,
+    get_tracer,
+    shutdown_observability,
 )
 
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from fastapi import FastAPI
 
-def _phi_sanitization_hook(span: Any, scope: dict[str, Any]) -> None:
-    """Redact potentially sensitive request/response body attributes.
+    from tts.core.config import Settings
 
-    TTS synthesises clinical text — an unhooked instrumentor is free to
-    attach request/response bodies to spans that land in the trace backend.
+__all__ = [
+    "build_observability_config",
+    "get_tracer",
+    "setup_observability",
+    "shutdown_observability",
+]
+
+_logger = get_logger(__name__)
+
+#: TTS has never carried its own build/version file; the version string a
+#: span's `service.version` attribute needs is a static literal here, the
+#: same way the pre-migration module hardcoded `_TRACER_VERSION = "0.1.0"`.
+_SERVICE_VERSION = "0.1.0"
+
+
+def build_observability_config(settings: Settings) -> ObservabilityConfig:
+    """Translate TTS's own ``Settings`` into the shared ``ObservabilityConfig``.
+
+    ``ObservabilityConfig.from_env`` resolves the GENERIC ``OTEL_*`` names
+    (TASK-987 R-2); TTS's ``Settings`` carries the ``TTS_``-prefixed ones the
+    dev cluster actually sets (``TTS_OTEL_EXPORTER_ENDPOINT`` etc, via
+    ``hope_settings_sources``). Settings values win whenever set, so an
+    operator who has only ever set the ``TTS_`` names still gets tracing.
+
+    ``TTS_OTEL_ENABLED`` is DEPRECATED — R-2 replaces it with "an endpoint is
+    the only enable signal", there is no boolean — but it is still HONOURED
+    for one release rather than silently dropped: `hope-v2-dev` sets it
+    alongside the endpoint today, and if an operator ever sets it to
+    ``false`` explicitly, tracing stays off even with an endpoint configured.
+    A deprecation warning fires whenever the variable is set at all (true or
+    false), so the operator has a path to removing it.
     """
-    if not span.is_recording():
-        return
-    for attr in ("http.request.body.content", "http.response.body.content"):
-        if span.attributes and attr in span.attributes:
-            span.set_attribute(attr, "[REDACTED]")
+    config = ObservabilityConfig.from_env("tts", service_version=_SERVICE_VERSION)
+
+    # `or config.<field>` rather than a conditionally-built kwargs dict: each
+    # TTS setting wins over whatever `from_env` resolved only when it is
+    # actually set (non-empty) — an unset `TTS_` field must never blank out a
+    # value `from_env` found on the generic `OTEL_*` names.
+    config = replace(
+        config,
+        otlp_endpoint=settings.otel_exporter_endpoint or config.otlp_endpoint,
+        service_name=settings.otel_service_name or config.service_name,
+        service_namespace=settings.otel_service_namespace or config.service_namespace,
+        deployment_environment=(
+            settings.otel_deployment_environment or config.deployment_environment
+        ),
+        log_level=settings.log_level or config.log_level,
+    )
+
+    # `settings.otel_insecure` and `settings.otel_logs_enabled` are NOT read
+    # here. `insecure` is now a derived property of the endpoint's scheme
+    # (never a separate flag — R-2), and OTLP log export is deleted outright
+    # (R-5). Both fields are now-unused config; see the lane-H report.
+    if "otel_enabled" in settings.model_fields_set:
+        warnings.warn(
+            "TTS_OTEL_ENABLED is deprecated (TASK-987, removed in R4): "
+            "an OTEL_EXPORTER_OTLP_ENDPOINT / TTS_OTEL_EXPORTER_ENDPOINT is "
+            "now the only tracing enable signal.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        _logger.warning(
+            "tts.otel_enabled_flag_deprecated",
+            otel_enabled=settings.otel_enabled,
+        )
+        if not settings.otel_enabled:
+            config = replace(config, otlp_endpoint=None)
+
+    return config
 
 
-def setup_opentelemetry(
-    app: FastAPI,
-    *,
-    endpoint: str = "http://localhost:4317",
-    service_name: str = "tts",
-    service_namespace: str = "hope",
-    deployment_environment: str = "production",
-    insecure: bool = True,
-    logs_enabled: bool = True,
-) -> None:
-    """Configure OTel tracing, log export, and auto-instrumentation.
+def setup_observability(app: FastAPI, settings: Settings) -> None:
+    """Configure logging, request context, access logs and tracing.
 
-    Stores ``tracer_provider`` and ``logger_provider`` on ``app.state`` for
-    graceful shutdown in the lifespan teardown. Never raises: any failure
-    (unreachable collector, bad endpoint, exporter construction error) is
-    caught, logged, and treated as "tracing stays off" — callers (``main.py``)
-    only invoke this when the master switch AND an endpoint are both set, but
-    a reachable collector is still not a boot precondition.
+    Call from ``create_app()``, before the app starts serving — logging (and
+    the request-context/access-log middlewares) are installed unconditionally,
+    tracing only when the resolved config carries an endpoint. Never raises.
     """
-    logger = logging.getLogger(__name__)
-    try:
-        resource = Resource.create(
-            {
-                "service.name": service_name,
-                "service.version": _TRACER_VERSION,
-                "service.namespace": service_namespace,
-                "deployment.environment": deployment_environment,
-                "telemetry.sdk.language": "python",
-            }
-        )
-
-        # --- Traces ---
-        tracer_provider = TracerProvider(resource=resource)
-        span_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=insecure)
-        tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
-        trace.set_tracer_provider(tracer_provider)
-        app.state.tracer_provider = tracer_provider
-
-        # --- Logs ---
-        logger_provider = None
-        if logs_enabled:
-            log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=insecure)
-            logger_provider = LoggerProvider(resource=resource)
-            logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
-            set_logger_provider(logger_provider)
-
-            handler = LoggingHandler(level=logging.DEBUG, logger_provider=logger_provider)
-            logging.getLogger().addHandler(handler)
-
-            if LoggingInstrumentor is not None:
-                LoggingInstrumentor().instrument(set_logging_format=False)
-            else:
-                logger.warning(
-                    "tts.otel_logging_instrumentor_missing: continuing without LoggingInstrumentor"
-                )
-
-        app.state.logger_provider = logger_provider
-
-        # --- Auto-instrumentation ---
-        FastAPIInstrumentor.instrument_app(
-            app,
-            excluded_urls=_EXCLUDED_URLS,
-            server_request_hook=_phi_sanitization_hook,
-        )
-        HTTPXClientInstrumentor().instrument()
-
-        logger.info(
-            "tts.otel_initialised: traces=True logs=%s endpoint=%s service=%s",
-            logs_enabled,
-            endpoint,
-            service_name,
-        )
-    except Exception as exc:  # noqa: BLE001 — degrade to no-tracing, never crash boot
-        logger.warning("tts.otel_setup_failed: %s", exc)
-        if not hasattr(app.state, "tracer_provider"):
-            app.state.tracer_provider = None
-        if not hasattr(app.state, "logger_provider"):
-            app.state.logger_provider = None
-
-
-def shutdown_opentelemetry(app: FastAPI) -> None:
-    """Flush and shut down all OTel providers, then uninstrument."""
-    logger = logging.getLogger(__name__)
-
-    tracer_provider = getattr(app.state, "tracer_provider", None)
-    if tracer_provider is not None:
-        try:
-            tracer_provider.force_flush(timeout_millis=5000)
-            tracer_provider.shutdown()
-        except Exception as exc:
-            logger.warning("tts.otel_tracer_shutdown_failed: %s", exc)
-
-    logger_provider = getattr(app.state, "logger_provider", None)
-    if logger_provider is not None:
-        try:
-            logger_provider.force_flush(timeout_millis=5000)
-            logger_provider.shutdown()
-        except Exception as exc:
-            logger.warning("tts.otel_logger_shutdown_failed: %s", exc)
-
-    if LoggingInstrumentor is not None:
-        try:
-            LoggingInstrumentor().uninstrument()
-        except Exception:
-            pass
-
-    try:
-        FastAPIInstrumentor().uninstrument_app(app)
-    except Exception:
-        pass
-
-    logger.info("tts.otel_shutdown_complete")
-
-
-def get_tracer(name: str = "tts") -> trace.Tracer:
-    """Get a tracer instance for creating spans."""
-    return trace.get_tracer(name, _TRACER_VERSION)
+    configure_observability(app, build_observability_config(settings))
