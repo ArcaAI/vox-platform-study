@@ -22,7 +22,12 @@ describe('ConfigManager', () => {
 
     it('should return correct field value', () => {
       expect(manager.getValue('audio', 'sampleRate')).toBe(16000);
-      expect(manager.getValue('stt', 'language')).toBe('en');
+      // TASK-985 (QW-2 / M-02) — the SDK no longer INVENTS a language. This default
+      // was an opinion that beat the tenant's configured ASR agent: `'auto'` and
+      // `'en'` were spread onto every session body, and the backend backfill is
+      // `if not language_mode:`, which a truthy `'auto'` skips. Absent is the
+      // correct resting state — the agent decides.
+      expect(manager.getValue('stt', 'language')).toBeUndefined();
     });
   });
 
@@ -121,7 +126,7 @@ describe('ConfigManager', () => {
       manager.setTenantConfig({}, ['stt.language']);
       const result = manager.setUserValue('stt.language', 'fr');
       expect(result).toBe(false);
-      expect(manager.getResolved().stt.language).toBe('en');
+      expect(manager.getResolved().stt.language).toBeUndefined(); // TASK-985 QW-2 — absent, not 'en'
     });
   });
 
@@ -245,7 +250,7 @@ describe('ConfigManager', () => {
       manager.setUserPreferences({ stt: { language: 'hi' } });
       expect(manager.getResolved().stt.language).toBe('hi');
       manager.clearUserPreferences();
-      expect(manager.getResolved().stt.language).toBe('en');
+      expect(manager.getResolved().stt.language).toBeUndefined(); // TASK-985 QW-2 — absent, not 'en'
       expect(manager.getResolved().audio.sampleRate).toBe(22050);
     });
 
@@ -391,7 +396,7 @@ describe('ConfigManager', () => {
       mgr.setReadOnly(true);
       mgr.clearUserPreferences();
       expect(persist).not.toHaveBeenCalled();
-      expect(mgr.getResolved().stt.language).toBe('en');
+      expect(mgr.getResolved().stt.language).toBeUndefined(); // TASK-985 QW-2 — absent, not 'en'
     });
   });
 
@@ -408,7 +413,7 @@ describe('ConfigManager', () => {
     it('should replace existing user preferences entirely', () => {
       manager.setUserPreferences({ stt: { language: 'fr' } });
       manager.loadExternalPreferences({ audio: { noiseSuppression: false } });
-      expect(manager.getResolved().stt.language).toBe('en');
+      expect(manager.getResolved().stt.language).toBeUndefined(); // TASK-985 QW-2 — absent, not 'en'
       expect(manager.getResolved().audio.noiseSuppression).toBe(false);
     });
 

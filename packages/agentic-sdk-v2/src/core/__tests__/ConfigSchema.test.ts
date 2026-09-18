@@ -38,7 +38,9 @@ describe('ConfigSchema', () => {
     it('should have correct stt defaults', () => {
       expect(SYSTEM_DEFAULTS.stt.provider).toBe('backend');
       expect(SYSTEM_DEFAULTS.stt.defaultModel).toBe('whisper-tiny');
-      expect(SYSTEM_DEFAULTS.stt.language).toBe('en');
+      // TASK-985 (QW-2 / M-02) — no invented language. See
+      // PluginManager.streamingTransport.test.ts for why this default was harmful.
+      expect(SYSTEM_DEFAULTS.stt.language).toBeUndefined();
       expect(SYSTEM_DEFAULTS.stt.availableModels).toHaveLength(3);
     });
 

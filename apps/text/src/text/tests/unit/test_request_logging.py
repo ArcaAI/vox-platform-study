@@ -23,6 +23,14 @@ from text.core.config import Settings
 from text.models.task import TaskState, TaskStatus
 from text.providers.base import ProviderRegistry
 
+#: TASK-985 (M-44) — a path no router claims. The shared access-log middleware
+#: now excludes every PROBE spelling (`/health*`, `/ready`, `/live`, `/metrics`,
+#: bare and `/api/v1`-prefixed): 913 `request.complete` lines an hour on an idle
+#: pod buried the lines that answer real questions. These tests are about the LOG
+#: LINE, not the handler, so they ask for something unrouted — a 404 still
+#: traverses RequestContext + AccessLog and carries the same fields.
+_NON_PROBE_PATH = "/api/v1/__access_log_subject__"
+
 # ── Shared fixtures ──
 
 
@@ -118,14 +126,14 @@ class TestRequestStartLogged:
     @pytest.mark.asyncio
     async def test_request_start_logged(self, client):
         with structlog.testing.capture_logs() as cap_logs:
-            await client.get("/api/v1/health")
+            await client.get(_NON_PROBE_PATH)
 
         start_logs = [log_line for log_line in cap_logs if log_line.get("event") == "request.start"]
         assert (
             len(start_logs) >= 1
         ), f"Expected request.start, got events: {[log_line.get('event') for log_line in cap_logs]}"
         assert start_logs[0]["method"] == "GET"
-        assert start_logs[0]["path"] == "/api/v1/health"
+        assert start_logs[0]["path"] == _NON_PROBE_PATH
 
 
 class TestRequestCompleteLogged:
@@ -134,9 +142,9 @@ class TestRequestCompleteLogged:
     @pytest.mark.asyncio
     async def test_request_complete_logged(self, client):
         with structlog.testing.capture_logs() as cap_logs:
-            resp = await client.get("/api/v1/health")
+            resp = await client.get(_NON_PROBE_PATH)
 
-        assert resp.status_code == 200
+        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
         complete_logs = [
             log_line for log_line in cap_logs if log_line.get("event") == "request.complete"
         ]
@@ -145,8 +153,8 @@ class TestRequestCompleteLogged:
         ), f"Expected request.complete, got events: {[log_line.get('event') for log_line in cap_logs]}"
         log = complete_logs[0]
         assert log["method"] == "GET"
-        assert log["path"] == "/api/v1/health"
-        assert log["status_code"] == 200
+        assert log["path"] == _NON_PROBE_PATH
+        assert log["status_code"] == 404
         assert "duration_ms" in log
 
 
@@ -184,7 +192,7 @@ class TestDurationMsPositive:
     @pytest.mark.asyncio
     async def test_duration_ms_is_positive(self, client):
         with structlog.testing.capture_logs() as cap_logs:
-            await client.get("/api/v1/health")
+            await client.get(_NON_PROBE_PATH)
 
         complete_logs = [
             log_line for log_line in cap_logs if log_line.get("event") == "request.complete"

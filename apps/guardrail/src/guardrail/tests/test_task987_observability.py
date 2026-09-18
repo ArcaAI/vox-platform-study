@@ -27,6 +27,16 @@ from httpx import ASGITransport, AsyncClient
 
 from guardrail.main import create_app
 
+#: TASK-985 (M-44) — a path no router claims. The shared access-log middleware
+#: now excludes every PROBE spelling (`/health*`, `/ready`, `/live`, `/metrics`,
+#: bare and `/api/v1`-prefixed): 913 `request.complete` lines an hour on an idle
+#: pod buried the lines that answer real questions. These tests are about the LOG
+#: LINE, not the handler, so they ask for something unrouted — a 404 still
+#: traverses RequestContext + AccessLog and carries the same fields.
+_NON_PROBE_PATH = "/api/v1/__access_log_subject__"
+
+#: The real liveness endpoint. Still needed by the tests that assert it is
+#: SERVED — those are about the endpoint, not about the access log.
 LIVE_PATH = "/api/v1/health/live"
 
 
@@ -125,24 +135,24 @@ class TestAccessLogAndRequestContext:
 
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(LIVE_PATH)
+            resp = await client.get(_NON_PROBE_PATH)
 
-        assert resp.status_code == 200
+        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
 
         lines = _request_complete_lines(stream)
         assert len(lines) == 1
         line = lines[0]
         assert isinstance(line["request_id"], str) and line["request_id"]
         assert isinstance(line["duration_ms"], int | float)
-        assert line["status_code"] == 200
+        assert line["status_code"] == 404
 
     async def test_inbound_request_id_is_echoed_exactly_once(self) -> None:
         app = create_app()
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(LIVE_PATH, headers={"X-Request-ID": "req-abc-123"})
+            resp = await client.get(_NON_PROBE_PATH, headers={"X-Request-ID": "req-abc-123"})
 
-        assert resp.status_code == 200
+        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
         assert resp.headers.get_list("x-request-id") == ["req-abc-123"]
 
     async def test_request_complete_line_carries_the_inbound_request_id(self) -> None:
@@ -151,9 +161,9 @@ class TestAccessLogAndRequestContext:
 
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(LIVE_PATH, headers={"X-Request-ID": "req-abc-123"})
+            resp = await client.get(_NON_PROBE_PATH, headers={"X-Request-ID": "req-abc-123"})
 
-        assert resp.status_code == 200
+        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
         lines = _request_complete_lines(stream)
         assert len(lines) == 1
         assert lines[0]["request_id"] == "req-abc-123"
@@ -167,9 +177,9 @@ class TestAccessLogAndRequestContext:
 
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(LIVE_PATH, headers={"X-Tenant-Id": "tenant-xyz"})
+            resp = await client.get(_NON_PROBE_PATH, headers={"X-Tenant-Id": "tenant-xyz"})
 
-        assert resp.status_code == 200
+        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
         lines = _request_complete_lines(stream)
         assert len(lines) == 1
         assert lines[0]["tenant_id"] == "tenant-xyz"
@@ -182,9 +192,9 @@ class TestAccessLogAndRequestContext:
 
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(LIVE_PATH)
+            resp = await client.get(_NON_PROBE_PATH)
 
-        assert resp.status_code == 200
+        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
         lines = _request_complete_lines(stream)
         assert len(lines) == 1
         assert "tenant_id" not in lines[0]
