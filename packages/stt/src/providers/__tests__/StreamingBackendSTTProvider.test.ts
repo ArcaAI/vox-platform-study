@@ -224,7 +224,16 @@ describe('StreamingBackendSTTProvider', () => {
     });
 
     it('resamples to 16 kHz, converts to Int16 LE PCM, and sends a binary frame', async () => {
-      const samples = new Float32Array([0.0, 0.5, -0.5, 1.0, -1.0]);
+      // TASK-985 (M-53) — ONE REAL CAPTURE FRAME, not five samples. The streaming
+      // resampler holds back a guard region on the right so every output it emits
+      // has complete kernel support on both sides (that right-side reach is the
+      // seam the stateless version left behind). Five samples is ~0.1 ms, less
+      // than one kernel reach, so it legitimately yields no output at all — the
+      // old expectation only held because the stateless path convolved against
+      // zero-padding and emitted the artefact. 3840 samples is the 80 ms frame
+      // the capture worklet actually sends.
+      const samples = new Float32Array(3840);
+      for (let i = 0; i < samples.length; i += 1) samples[i] = Math.sin((i / 48000) * 2 * Math.PI * 440);
       await provider.processAudio(samples, 48000);
 
       expect(wsClient.sendAudioFrame).toHaveBeenCalledTimes(1);
