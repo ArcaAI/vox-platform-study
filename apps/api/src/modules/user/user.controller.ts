@@ -207,9 +207,12 @@ export class UserController {
     summary: 'Export users (csv | xlsx | pdf)',
     description:
       'Streams the tenant-scoped Users list as a file attachment, honouring the same filters/sort/search as the list. ' +
+      'Pass `ids` to export an explicit SELECTION instead of the whole view: the id set NARROWS the same tenant-scoped ' +
+      'query, so an id outside the caller scope is simply absent from the file (it is never a by-id fetch). ' +
       `Capped at ${UserController.EXPORT_LIMIT} rows (FLAG). CASL-gated by the class-level manage:User.`,
   })
   @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx', 'pdf'] })
+  @ApiQuery({ name: 'ids', required: false, description: 'Comma-separated user ids to export (the console selection). Narrows, never widens.' })
   @ApiResponse({ status: 200, description: 'File attachment (csv/xlsx/pdf)' })
   @ApiResponse({ status: 403, description: 'Tenant context required to export users' })
   @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
@@ -237,7 +240,11 @@ export class UserController {
   private async collectExportRows(query: ExportUsersQuery): Promise<UserExportRow[]> {
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
-    const params = this.withDefaultSort({ ...query, page: 1, limit: UserController.EXPORT_LIMIT });
+    // `ids` is not a query param the service understands — it is folded into
+    // `filters` by `withIdScope` below — so it must not ride along into the
+    // service call (`forbidUnknownValues` protects the INBOUND DTO, not this).
+    const { ids: _ids, ...rest } = query;
+    const params = this.withIdScope(this.withDefaultSort({ ...rest, page: 1, limit: UserController.EXPORT_LIMIT }), query.ids);
 
     let result;
     if (query.tenantId) {
@@ -261,6 +268,34 @@ export class UserController {
     const enrichment = await this.userService.getExportEnrichment(ids, query.tenantId ?? callerTenantId);
 
     return result.data.map((entity) => this.toExportRow(UserDtoMapper.ToResponse(entity), enrichment[entity.id]));
+  }
+
+  /**
+   * Fold an explicit id SELECTION into the query as an extra `id[in]:…` token
+   * of the CSV filter grammar, ANDed onto whatever `filters` the caller
+   * already sent (`;` is the grammar's AND separator).
+   *
+   * This is the whole security argument for selection-scoped export, so it is
+   * worth stating plainly: the id set is a FILTER, never a lookup. The branch
+   * in {@link collectExportRows} that picks `fetchAll` vs
+   * `fetchAllByTenantId` runs FIRST and is untouched, and
+   * `fetchAllByTenantId` applies its tenant membership predicate as `where`,
+   * which WINS over `filters` on key collision when the repository merges the
+   * two (`formatFindAllProps`). So a caller naming another tenant's user id
+   * gets a query that reads "rows in MY tenant whose id is in this set" — the
+   * foreign row simply is not in the answer, and the file cannot contain it.
+   * Naming an id can only ever REMOVE rows, never reach one. That is also why
+   * a cross-tenant id is silently absent rather than a 404: an export is a set
+   * read, and the house 404-over-403 posture applies to by-id routes, which
+   * this deliberately is not.
+   *
+   * Every id is `@IsUUID`-validated on the DTO, so no item can carry a `;`,
+   * `|`, `[` or `]:` and forge a second filter token.
+   */
+  private withIdScope(params: PaginatedQuery, ids?: string[]): PaginatedQuery {
+    if (!ids?.length) return params;
+    const idToken = `id[in]:${ids.join('|')}`;
+    return { ...params, filters: params.filters ? `${params.filters};${idToken}` : idToken };
   }
 
   /**
@@ -420,20 +455,21 @@ export class UserController {
     return UserDtoMapper.ToResponse(result);
   }
 
-  @ApiEndpoint({
-    returnedModel: UserResponse,
-    method: HttpMethod.DELETE,
-    path: '/:id',
-    by: ['id'],
-  })
-  @ApiParam({ name: 'id', description: 'User ID', type: String })
-  @ApiResponse({ status: 404, description: 'User not found' })
-  async delete(@Param('id') id: string): Promise<UserResponse> {
-    await this.assertUserInScope(id);
-    const result = await this.userService.deleteById(id);
-    return UserDtoMapper.ToResponse(result);
-  }
-
+  // -------------------------------------------------------------------------
+  // Bulk delete.
+  //
+  // Declared BEFORE the `/:id` delete so `DELETE /admin/users/bulk` is never
+  // captured as an id lookup (the same constraint `@Get('export')` above
+  // carries, for the same reason). Express registers routes in
+  // class-declaration order and `:id` matches ANY literal segment, so while
+  // this method sat below `delete`, every `DELETE /admin/users/bulk` was
+  // answered by `delete(id = 'bulk')` -> `assertUserInScope('bulk')` -> 404
+  // "User not found", and the handler below was unreachable over HTTP for
+  // every caller and every credential class. Moving either method back below
+  // the other re-breaks it. The routing proof is
+  // `tests/e2e/task-986-users-bulk-and-export.spec.ts`; the unit tests in this
+  // module call `bulkDelete` as a METHOD and therefore cannot see it.
+  // -------------------------------------------------------------------------
   /**
    * Bulk delete users with partial-failure semantics: per-id catch (not a
    * `throw` on the first failure), returning the structured
@@ -452,12 +488,26 @@ export class UserController {
    * inspect `failed.length > 0` and trigger their own compensating
    * workflow against the `succeeded` set.
    */
+  // Explicit, and ABOVE `@ApiEndpoint` so it wins the `summary` (decorators
+  // apply bottom-up, so the topmost one is applied last). Needed because the
+  // JSDoc above is a MAINTAINER note — why a per-id catch, why the declaration
+  // order — and the Swagger CLI plugin would otherwise publish that whole essay
+  // as this route's one-line summary, which is what it used to do.
+  @ApiOperation({
+    summary: 'Delete many users in one call (partial-failure envelope)',
+    description:
+      'Deletes every id that resolves inside the caller tenant and reports the rest under `failed` — the call never throws ' +
+      'mid-batch, so a partial result is observable and the failed ids are retryable idempotently. Each id runs the same ' +
+      'by-id tenant-scope guard as `DELETE /admin/users/:id`, so a cross-tenant id is recorded as failed and is NEVER deleted. ' +
+      'CASL-gated by the class-level manage:User.',
+  })
   @ApiEndpoint({
     returnedModel: BulkDeleteUsersResponse,
     method: HttpMethod.DELETE,
     path: 'bulk',
     append: '(bulk delete)',
   })
+  @ApiResponse({ status: 400, description: 'Bad request — `ids` must be a non-empty array of strings' })
   async bulkDelete(@Body() body: BulkDeleteUsersRequest): Promise<BulkDeleteUsersResponse> {
     const succeeded: UserResponse[] = [];
     const failed: BulkDeleteUserFailure[] = [];
@@ -476,6 +526,20 @@ export class UserController {
     }
 
     return { succeeded, failed };
+  }
+
+  @ApiEndpoint({
+    returnedModel: UserResponse,
+    method: HttpMethod.DELETE,
+    path: '/:id',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'User ID', type: String })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async delete(@Param('id') id: string): Promise<UserResponse> {
+    await this.assertUserInScope(id);
+    const result = await this.userService.deleteById(id);
+    return UserDtoMapper.ToResponse(result);
   }
 
   /**

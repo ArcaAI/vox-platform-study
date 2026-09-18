@@ -98,6 +98,16 @@ describe('users client — directory + lifecycle', () => {
     expect(calls[0].url).toBe('/api/hope/admin/users/bulk-actions');
     expect(calls[1].url).toBe('/api/hope/admin/users/export?format=csv');
   });
+
+  // TASK-986 R6 — a selection-scoped export. The gateway query string carries
+  // scalars only, so the id set travels COMMA-SEPARATED, like `filters`/`sort`.
+  // (That an EMPTY selection sends no `ids` at all is the SCREEN's rule — it is
+  // what decides the scope — and is pinned in users-list-screen.test.tsx.)
+  it('carries a selection-scoped export through as a comma-separated ids param', async () => {
+    const calls = installFetchMock(() => new Response(new Blob(['csv']), { headers: { 'content-type': 'text/csv' } }));
+    await exportUsers({ format: 'csv', ids: 'u-1,u-2' });
+    expect(calls[0].url).toBe('/api/hope/admin/users/export?format=csv&ids=u-1%2Cu-2');
+  });
 });
 
 describe('users client — sub-resources', () => {
