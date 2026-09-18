@@ -48,6 +48,10 @@ vi.mock('../SttWebSocketClient', () => ({
     onStatus(cb: (status: unknown) => void) {
       captured.onStatus = cb;
     }
+    // TASK-985 M-43 — the gateway's `gap` frame is routed out here too.
+    onGap(cb: (gap: unknown) => void) {
+      captured.onGap = cb;
+    }
   },
 }));
 

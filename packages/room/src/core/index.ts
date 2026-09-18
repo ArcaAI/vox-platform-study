@@ -4,7 +4,12 @@
  * Core classes and utilities for audio processing.
  */
 
-export { AudioContextManager, getNewAudioContext, type AudioContextAcquireOptions } from './AudioContextManager.js';
+export {
+  AudioContextManager,
+  getNewAudioContext,
+  type AudioContextAcquireOptions,
+  type AudioContextDiagnosticLogger,
+} from './AudioContextManager.js';
 export { AudioTrack, type AudioTrackOptions } from './AudioTrack.js';
 export { ProcessorPipeline } from './ProcessorPipeline.js';
 export { Room, RoomEvent, RoomState, createLocalTracks, type RoomEventMap } from './Room.js';

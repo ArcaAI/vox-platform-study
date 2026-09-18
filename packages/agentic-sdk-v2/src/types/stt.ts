@@ -556,9 +556,56 @@ export interface WsResumeFailedMessage {
 }
 
 /**
+ * The gateway's FIRST frame after a successful handshake (TASK-985 M-22).
+ *
+ * It is emitted only once the gateway has registered its result-stream handler,
+ * which makes it the honest "you may send audio now" signal — an open socket is
+ * not one. Until this was modelled it fell into `handleMessage`'s `default:`
+ * branch and was logged as an unknown message type.
+ */
+export interface WsReadyMessage {
+  type: 'ready';
+  sessionId: string;
+  /** The next result sequence the server will emit on this connection. */
+  fromSeq?: number;
+  /** Epoch ms the session's audio clock is anchored to, when the gateway reports one. */
+  sessionEpochMs?: number;
+}
+
+/**
+ * The gateway DISCARDED results it could not deliver (TASK-985 M-43).
+ *
+ * The downlink counterpart of a backpressure drop: a drop loses AUDIO on the
+ * way up, a gap loses TEXT on the way down. Surfacing it is what lets a
+ * clinician tell a pause in the room from a hole in the caption stream — before
+ * this it, too, fell into the `default:` "unknown message type" branch.
+ */
+export interface WsGapMessage {
+  type: 'gap';
+  /**
+   * `egress_partial_dropped` — partials were shed to keep up (the finals are
+   * unaffected). `egress_overflow` — a result was lost outright.
+   * Typed as a widened string because the gateway may add reasons.
+   */
+  reason: 'egress_partial_dropped' | 'egress_overflow' | (string & {});
+  sessionId?: string;
+  /** How many partials were shed (reason `egress_partial_dropped`). */
+  droppedPartials?: number;
+  /** The result sequence lost (reason `egress_overflow`), when the gateway knows it. */
+  droppedSeq?: number;
+}
+
+/**
  * Union of all server-to-client WebSocket messages.
  */
-export type WsServerMessage = WsTranscriptResult | WsStatusMessage | WsErrorMessage | WsResumedMessage | WsResumeFailedMessage;
+export type WsServerMessage =
+  | WsTranscriptResult
+  | WsStatusMessage
+  | WsErrorMessage
+  | WsResumedMessage
+  | WsResumeFailedMessage
+  | WsReadyMessage
+  | WsGapMessage;
 
 // =============================================================================
 // Transcription Job Types

@@ -137,8 +137,23 @@ function SessionControlsCard({
           <dt className="text-muted-foreground text-xs">Transcription agent</dt>
           <dd className="truncate text-xs">{agentName ?? '\u2014'}</dd>
           <dt className="text-muted-foreground text-xs">Capture</dt>
+          {/*
+            TASK-985 M-69 — "VAD auto-pause on" was false for every tenant.
+            Nothing in this hook runs a VAD: the browser never runs a model
+            (TASK-865), so segmentation is a server-side decision of the
+            tenant's ASR agent. A clinician reading that line would have
+            attributed a mid-sentence cut to a client feature that does not
+            exist, and looked for a switch that is not there.
+
+            The rate is REPORTED, not asserted: `new AudioContext({ sampleRate })`
+            is a request some browsers clamp, and the honest line is the rate
+            capture actually got. When they differ, the frames are converted to
+            the declared 16 kHz before they go on the wire (M-55).
+          */}
           <dd className="text-xs">
-            16 kHz mono {'\u00b7'} VAD auto-pause on {'\u00b7'} echo cancel on {'\u00b7'} noise suppression on
+            {live.captureSampleRate ? `${(live.captureSampleRate / 1000).toFixed(live.captureSampleRate % 1000 === 0 ? 0 : 1)} kHz` : '16 kHz'} mono{' '}
+            {'\u00b7'} echo cancel on {'\u00b7'} noise suppression on {'\u00b7'} segmentation by the ASR agent
+            {live.captureSampleRate && live.captureSampleRate !== 16_000 ? ` \u00b7 resampled to 16 kHz` : ''}
           </dd>
           {live.session ? (
             <>
@@ -159,7 +174,26 @@ function SessionControlsCard({
           ) : null}
           {live.reconnectAttempt > 0 ? <StatusBadge label={`Reconnect attempt ${live.reconnectAttempt}`} colorRole="warning" /> : null}
           {live.droppedFrameCount > 0 ? <StatusBadge label={`Audio dropped ${live.droppedFrameCount}`} colorRole="warning" /> : null}
+          {live.transcriptGapThisSession ? <StatusBadge label="Transcript incomplete" colorRole="warning" /> : null}
         </div>
+
+        {/*
+          TASK-985 M-43 — a gap is TEXT the gateway produced and then discarded,
+          which no amount of scrolling back will recover. It is deliberately not
+          folded into the "Audio dropped" badge above: that one is audio that
+          never arrived, and telling a clinician to check their microphone when
+          the microphone is fine sends them after the wrong thing. It persists
+          for the rest of the session because the transcript stays incomplete
+          for the rest of the session.
+        */}
+        {live.transcriptGapThisSession ? (
+          <p role="status" className="bg-warning/10 text-foreground rounded-md border px-2 py-1 text-xs">
+            Some transcript text was dropped before it reached this screen
+            {live.lastGapReason === 'egress_partial_dropped'
+              ? ' (live previews only \u2014 the finalized text is unaffected).'
+              : ' \u2014 the transcript above is incomplete.'}
+          </p>
+        ) : null}
 
         {/* ≥44px touch target on the record control (rule 11 §7). */}
         <Button variant="destructive" className="h-11 w-full" onClick={onStop} disabled={busy}>

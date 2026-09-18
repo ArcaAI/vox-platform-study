@@ -60,8 +60,30 @@ const DEFAULT_RESUME_TIMEOUT_MS = 3000;
  * manager.release();
  * ```
  */
+/**
+ * The minimum a consumer has to provide for this manager's diagnostics to reach
+ * their telemetry (TASK-985 M-63).
+ *
+ * Structural and deliberately tiny: `@arcaai/room` must not depend on
+ * `@arcaai/vox`'s `ISDKLogger` (the dependency runs the other way), and the
+ * `context` is `unknown` so any logger shape can be adapted with a one-line
+ * object literal.
+ */
+export interface AudioContextDiagnosticLogger {
+  warn(message: string, context?: unknown): void;
+}
+
 export class AudioContextManager {
   private static instance: AudioContextManager | null = null;
+
+  /**
+   * Where this manager's diagnostics go. Static because the diagnostic that
+   * matters most is emitted from the STATIC {@link AudioContextManager.getInstance},
+   * before any instance a caller could configure exists.
+   *
+   * Unset ⇒ `console.warn`, i.e. exactly today's behaviour.
+   */
+  private static diagnosticLogger: AudioContextDiagnosticLogger | null = null;
 
   private audioContext: AudioContext | null = null;
   private referenceCount = 0;
@@ -113,15 +135,47 @@ export class AudioContextManager {
         (options.sampleRate !== undefined && options.sampleRate !== existing.sampleRate) ||
         (options.latencyHint !== undefined && options.latencyHint !== existing.latencyHint)
       ) {
-        console.warn(
+        AudioContextManager.warn(
           `[AudioContextManager] getInstance called with different options. ` +
             `Existing: sampleRate=${existing.sampleRate}, latencyHint=${existing.latencyHint}. ` +
             `Requested: sampleRate=${options.sampleRate}, latencyHint=${options.latencyHint}. ` +
             `Using existing instance.`,
+          {
+            existingSampleRate: existing.sampleRate,
+            existingLatencyHint: existing.latencyHint,
+            requestedSampleRate: options.sampleRate,
+            requestedLatencyHint: options.latencyHint,
+          },
         );
       }
     }
     return AudioContextManager.instance;
+  }
+
+  /**
+   * Route this manager's diagnostics through the host's logger.
+   *
+   * The singleton's most important diagnostic — "you asked for a different
+   * sample rate than the live context has, and you are getting the existing
+   * one" — was a raw `console.warn`. That is the ONE message that explains a
+   * capture graph silently running at another consumer's rate (TASK-985 M-63),
+   * and it was invisible to anyone piping SDK logs to their own telemetry:
+   * unsearchable in production, and absent from any bug report that did not
+   * include a browser console.
+   *
+   * Pass `null` to go back to `console.warn`.
+   */
+  static setDiagnosticLogger(logger: AudioContextDiagnosticLogger | null): void {
+    AudioContextManager.diagnosticLogger = logger;
+  }
+
+  /** Emit through the host logger when one is set, else the console. */
+  private static warn(message: string, context?: Record<string, unknown>): void {
+    if (AudioContextManager.diagnosticLogger) {
+      AudioContextManager.diagnosticLogger.warn(message, context);
+      return;
+    }
+    console.warn(message);
   }
 
   /**
@@ -196,7 +250,10 @@ export class AudioContextManager {
       `assume a fixed rate and will produce audible artefacts otherwise.`;
 
     if (opts.allowMismatch) {
-      console.warn(`[AudioContextManager] ${message}`);
+      AudioContextManager.warn(`[AudioContextManager] ${message}`, {
+        actualSampleRate: ctx.sampleRate,
+        requiredSampleRate: opts.requireSampleRate,
+      });
       return;
     }
 

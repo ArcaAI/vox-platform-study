@@ -523,6 +523,28 @@ export interface TranscriptionResult {
    * Processing latency in milliseconds.
    */
   latencyMs?: number;
+
+  /**
+   * Length, in characters, of the leading prefix of {@link TranscriptionResult.text}
+   * the backend considers SETTLED on a partial — the rest may still be revised
+   * (TASK-985 M-27, transport half).
+   *
+   * TRANSPORT ONLY. Nothing renders differently on it yet, and nothing should:
+   * today's server-side value is not monotone within an utterance (it can
+   * shrink), so splitting the caption on it would turn an invisible server
+   * defect into a visible one. It is carried so the live harness and the
+   * playground can OBSERVE a settled prefix at all. Absent on finals and on any
+   * backend that does not publish it.
+   */
+  stableChars?: number;
+
+  /**
+   * Ordinal of the utterance this result belongs to, from the backend. Partials
+   * and the final of one utterance share it, so a consumer can tell "the same
+   * sentence, revised" from "the next sentence" without string comparison
+   * (TASK-985 M-27). Absent on backends that do not stamp it.
+   */
+  utteranceIndex?: number;
 }
 
 /**
