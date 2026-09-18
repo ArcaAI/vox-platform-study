@@ -114,8 +114,11 @@ USER console
 
 EXPOSE 3000
 
-# /login is the public route (the session gate 307s everything else).
+# Real liveness probe (TASK-990) — process-only, no session, no downstream
+# dependency; see src/app/api/health/live/route.ts. `/login` only proved
+# Next.js could render a public page, never that the BFF could serve a
+# request end to end.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/login || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health/live || exit 1
 
 CMD ["node", "apps/admin-console/server.js"]

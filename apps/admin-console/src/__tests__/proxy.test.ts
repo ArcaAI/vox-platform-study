@@ -53,3 +53,20 @@ describe('proxy (public SSO and password-reset routes)', () => {
     expect(response.status).toBe(200); // NextResponse.next() reports 200/no redirect
   });
 });
+
+describe('proxy (public Kubernetes health probes — TASK-990)', () => {
+  it.each(['/api/health', '/api/health/live', '/api/health/ready'])(
+    'lets an unauthenticated request (no session cookie, as a kubelet sends) through to %s',
+    (path) => {
+      const response = proxy(requestFor(path));
+      expect(response.status).toBe(200); // NextResponse.next() reports 200/no redirect
+    },
+  );
+
+  it('does not widen access to a health-adjacent path that was never allow-listed', () => {
+    // Exact-match only: `/api/health` being public must not make
+    // `/api/health/services` (or any other suffix) public by prefix.
+    const response = proxy(requestFor('/api/health/services'));
+    expect(response.status).toBe(401);
+  });
+});
