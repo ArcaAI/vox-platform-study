@@ -235,8 +235,24 @@ export class TenantController {
   })
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Either the row is a RESERVED tenant (SYSTEM / Global — no PATCH is accepted), or the body changes `plan` and the caller is not a platform administrator.',
+  })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  // AUTH-NOTE: the class decorator UNDERSTATES this route's gate — TenantService.update
+  // adds TWO imperative checks the `action + subject` pairs cannot express (TASK-986):
+  //   1. Reserved rows (SYSTEM `00000000-…`, Global `50000000-…`) refuse EVERY PATCH
+  //      (owner ruling D-5). 403, not the 404-over-403 cross-tenant posture: both ids
+  //      are declared constants, so there is no existence to hide.
+  //   2. `plan` is a SUPER_ADMIN-only FIELD (owner decision D-1). The seed grants a
+  //      tenant admin `update:Tenant` on its OWN id, and there is no super-admin CASL
+  //      subject, so "every field but this one" cannot be declared. The service resolves
+  //      EXISTENCE first (`findById`), so an unknown id is still 404 and the gate is
+  //      never an existence oracle; it fires only when the request actually CHANGES the
+  //      plan. Do not widen either check without reading the service.
   async update(
     @Param('id') id: string,
     @Body() request: UpdateTenantRequest,
