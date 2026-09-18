@@ -1,148 +1,135 @@
-"""OpenTelemetry tracing setup for Guardrail.
+"""Logging, request context and tracing for Guardrail, via ``hope_obs`` (TASK-987).
 
-Guardrail — the platform's content-safety / PII / prompt-injection engine —
-previously shipped with ZERO OTel code, so none of its request paths were
-traceable in Tempo/Grafana. It is also the most compliance-sensitive service
-in the fleet: every request carries raw clinical text on
-``/api/guardrail/analyze`` and ``/api/medical/*``.
+Guardrail — the platform's content-safety / PII / prompt-injection engine — is
+the most compliance-sensitive service in the fleet: every request carries raw
+clinical text on ``/api/guardrail/analyze`` and ``/api/medical/*``. Before
+TASK-987 this module hand-rolled its own OTel setup (mirroring
+``apps/text/src/text/core/observability.py``) and had NO request-id
+middleware, NO access log, and NO ``merge_contextvars`` in its logging chain
+(findings F-05, F-06, F-09 in
+``docs/implementation/TASK-987-Python-Logging-And-Tracing-Standard/README.md``).
+All of that is now ``hope_obs``'s job; this module narrows the two fields
+guardrail's own settings disagree with the shared package's defaults on, and
+keeps the legacy env contract alive for one more release.
 
-Mirrors ``apps/text/src/text/core/observability.py`` (the fleet's reference
-implementation): resource attributes, ``BatchSpanProcessor`` +
-``OTLPSpanExporter`` for traces, FastAPI + httpx auto-instrumentation, and a
-mandatory PHI-sanitization ``server_request_hook``. The hook existing but
-never being *passed* to the instrumentor was the exact defect already fixed
-in NLP (``apps/nlp/src/nlp/core/observability.py``) — this module
-wires it from the start so it cannot regress the same way.
+**Two narrowings on top of ``ObservabilityConfig.from_env("guardrail")``:**
 
-Default-OFF invariant: ``setup_opentelemetry`` is only invoked by
-``guardrail.main.create_app`` when BOTH ``Settings.otel_enabled`` is true AND
-``Settings.otel_exporter_endpoint`` is non-empty. Every failure mode inside
-this module (unreachable/misconfigured collector, instrumentation error) is
-caught and logged — a reachable collector is never a boot- or request-path
-dependency, so ``setup_opentelemetry`` never raises.
+1. ``log_level`` — guardrail's root ``Settings`` carries
+   ``env_prefix="GUARDRAIL_V2_"`` (``core/config.py``), so the variable an
+   operator actually sets is ``GUARDRAIL_V2_LOG_LEVEL``. ``from_env`` derives
+   ``<SVC>_LOG_LEVEL`` from the ``service_name`` ARGUMENT it was called with
+   ("guardrail" → ``GUARDRAIL_LOG_LEVEL``), which nothing in this fleet sets.
+   Reading it through ``settings.log_level`` instead — which pydantic already
+   resolved from the correct prefixed variable — is the fix, exactly as R-1's
+   own docstring for ``from_env`` prescribes.
+2. ``otlp_endpoint`` — the SAME trap one layer down. TASK-987 lane D1 turned
+   tracing on in ``hope-v2-dev`` by setting
+   ``GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT`` (the name this service's OWN
+   ``Settings.otel_exporter_endpoint`` field reads), not the fleet-wide
+   ``OTEL_EXPORTER_OTLP_ENDPOINT`` name ``from_env`` looks for. Silently
+   preferring only the generic name would leave the already-deployed manifest
+   dark again — the exact F-02 shape. ``_resolve_otlp_endpoint`` reads both,
+   generic first.
+
+**The default-OFF and never-raises invariants this module's previous version
+described are unchanged and are now ``hope_obs``'s guarantee, not this one's:**
+tracing is off unless an endpoint resolves, and
+``hope_obs.configure_observability`` never raises — a reachable collector is
+never a boot- or request-path dependency.
+
+**``GUARDRAIL_V2_OTEL_ENABLED`` — honoured, not read, for one more release.**
+Under R-2 there is no enable BOOLEAN any more: endpoint presence alone decides.
+But the flag is still live in the deployed manifest (D1 set it to ``true``
+alongside the endpoint), and a manifest that instead sets it to a FALSY value
+to intentionally keep tracing off must keep working rather than being silently
+overridden the moment this service adopts the new contract. So the flag is
+read as an explicit OFF-switch only: set and falsy forces ``otlp_endpoint`` to
+``None`` regardless of what is otherwise configured, logged once as a
+deprecation warning. It can no longer turn tracing ON by itself — only an
+endpoint does that now.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import os
+from dataclasses import replace
+from typing import TYPE_CHECKING
 
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from hope_obs import (
+    ObservabilityConfig,
+    configure_observability,
+    get_tracer,
+    shutdown_observability,
+)
 
 from guardrail.core.logging import get_logger
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
+    from guardrail.core.config import Settings
+
 logger = get_logger(__name__)
 
-_TRACER_VERSION = "1.0.0"
+#: The fleet-wide R-2 name, checked first.
+_GENERIC_ENDPOINT_VAR = "OTEL_EXPORTER_OTLP_ENDPOINT"
+#: What lane D1 actually set in `hope-v2-dev` — guardrail's own legacy name,
+#: read by `Settings.otel_exporter_endpoint`. Migrating the manifest itself to
+#: the generic name is lane D2's job, after this lane merges and is promoted.
+_LEGACY_ENDPOINT_VAR = "GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT"
+#: The retired master switch — honoured as an off-switch only, per R-2.
+_LEGACY_ENABLED_VAR = "GUARDRAIL_V2_OTEL_ENABLED"
 
-_EXCLUDED_URLS = (
-    "/api/health,"
-    "/api/health/live,"
-    "/api/health/ready,"
-    "/api/v1/health,"
-    "/api/v1/health/live,"
-    "/api/v1/health/ready,"
-    "/docs,"
-    "/redoc,"
-    "/openapi.json,"
-    "/metrics"
-)
-
-
-def _phi_sanitization_hook(span: Any, scope: dict[str, Any]) -> None:
-    """Redact potentially PHI-bearing request/response body span attributes.
-
-    Guardrail receives raw clinical text on every content-safety/medical
-    validation call. Without this hook wired into the instrumentor, FastAPI
-    auto-instrumentation is free to attach request/response bodies to spans
-    that land in Tempo.
-    """
-    if not span.is_recording():
-        return
-    for attr in ("http.request.body.content", "http.response.body.content"):
-        if span.attributes and attr in span.attributes:
-            span.set_attribute(attr, "[REDACTED]")
+__all__ = [
+    "build_observability_config",
+    "get_tracer",
+    "setup_observability",
+    "shutdown_opentelemetry",
+]
 
 
-def setup_opentelemetry(
-    app: FastAPI,
-    *,
-    endpoint: str,
-    service_name: str = "guardrail",
-    service_namespace: str = "hope",
-    insecure: bool = True,
-) -> None:
-    """Configure OTel tracing plus FastAPI/httpx auto-instrumentation.
+def _resolve_otlp_endpoint() -> str | None:
+    """The endpoint, generic R-2 name first, guardrail's legacy name second."""
+    return os.getenv(_GENERIC_ENDPOINT_VAR) or os.getenv(_LEGACY_ENDPOINT_VAR) or None
 
-    Stores ``tracer_provider`` on ``app.state`` (``None`` on failure) for the
-    lifespan teardown to check. Never raises — any error constructing the
-    exporter/provider or instrumenting the app is caught and logged, and the
-    service continues with tracing degraded to a no-op rather than failing
-    startup.
-    """
-    app.state.tracer_provider = None
-    try:
-        resource = Resource.create(
-            {
-                "service.name": service_name,
-                "service.version": _TRACER_VERSION,
-                "service.namespace": service_namespace,
-                "telemetry.sdk.language": "python",
-            }
+
+def build_observability_config(settings: Settings) -> ObservabilityConfig:
+    """Resolve the one ``ObservabilityConfig`` guardrail hands to ``hope_obs``."""
+    endpoint = _resolve_otlp_endpoint()
+
+    legacy_enabled_raw = os.getenv(_LEGACY_ENABLED_VAR)
+    if legacy_enabled_raw is not None:
+        logger.warning(
+            "guardrail.otel_enabled_flag.deprecated",
+            variable=_LEGACY_ENABLED_VAR,
+            detail=(
+                "tracing now enables on an OTLP endpoint's presence alone "
+                "(TASK-987 R-2); this flag is honoured as an explicit "
+                "off-switch for one release only and will then be removed"
+            ),
         )
+        if not settings.otel_enabled:
+            # Explicit false: an operator relying on the flag to keep tracing
+            # off must not have it silently overridden by an endpoint that
+            # happens to be configured beside it.
+            endpoint = None
 
-        tracer_provider = TracerProvider(resource=resource)
-        span_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=insecure)
-        tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
-        trace.set_tracer_provider(tracer_provider)
+    return replace(
+        ObservabilityConfig.from_env("guardrail"),
+        log_level=settings.log_level,
+        otlp_endpoint=endpoint,
+    )
 
-        FastAPIInstrumentor.instrument_app(
-            app,
-            excluded_urls=_EXCLUDED_URLS,
-            server_request_hook=_phi_sanitization_hook,
-        )
-        HTTPXClientInstrumentor().instrument()
 
-        app.state.tracer_provider = tracer_provider
-        logger.info(
-            "guardrail.otel_initialized",
-            endpoint=endpoint,
-            service_name=service_name,
-        )
-    except Exception as exc:  # noqa: BLE001 — a reachable collector is never a boot dependency
-        logger.warning("guardrail.otel_setup_failed", error=str(exc))
+def setup_observability(app: FastAPI, settings: Settings) -> None:
+    """Configure logging, request context and tracing for the app. Never raises."""
+    configure_observability(app, build_observability_config(settings))
 
 
 def shutdown_opentelemetry(app: FastAPI) -> None:
-    """Flush and shut down the tracer provider, then uninstrument. Never raises."""
-    tracer_provider = getattr(app.state, "tracer_provider", None)
-    if tracer_provider is not None:
-        try:
-            tracer_provider.force_flush(timeout_millis=5000)
-            tracer_provider.shutdown()
-        except Exception as exc:
-            logger.warning("guardrail.otel_tracer_shutdown_failed", error=str(exc))
+    """Flush spans and uninstrument, in the lifespan teardown. Never raises.
 
-    try:
-        FastAPIInstrumentor().uninstrument_app(app)
-    except Exception:
-        pass
-    try:
-        HTTPXClientInstrumentor().uninstrument()
-    except Exception:
-        pass
-
-    logger.info("guardrail.otel_shutdown_complete")
-
-
-def get_tracer(name: str = "guardrail") -> trace.Tracer:
-    """Get a tracer instance for creating spans."""
-    return trace.get_tracer(name, _TRACER_VERSION)
+    Kept under its historical name — ``guardrail.main``'s lifespan imports it
+    by this name, and TASK-987 does not require renaming every call site.
+    """
+    shutdown_observability(app)
