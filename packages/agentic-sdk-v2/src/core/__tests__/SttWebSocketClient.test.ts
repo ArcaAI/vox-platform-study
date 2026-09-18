@@ -1144,15 +1144,21 @@ describe('SttWebSocketClient', () => {
     // a distinct SUCCESS signal fired only when the transport actually
     // re-opens. `onReconnected` fires on the reconnect open, never on the first
     // connect.
-    it('should fire onReconnected only when a reconnect attempt re-opens the socket (C6-02)', async () => {
+    // TASK-985 M-22 — `onReconnected` now fires from the server's `ready`
+    // frame, not from the raw socket open, and strictly AFTER the resume
+    // handshake. That ordering is the whole point: a consumer replaying
+    // buffered audio from this callback must know the handshake is already on
+    // the wire ahead of it.
+    it('should fire onReconnected when the reconnected socket reports READY, not merely open (C6-02)', async () => {
       vi.useFakeTimers();
       const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
 
       const onReconnected = vi.fn();
       reconnectClient.onReconnected(onReconnected);
 
-      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-r&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'ready', sessionId: 'sess-r', fromSeq: 1 }));
       await p;
 
       // Initial connect is NOT a reconnect — no success signal.
@@ -1164,10 +1170,43 @@ describe('SttWebSocketClient', () => {
       // The socket is still not back — a fresh WS exists but has not opened yet.
       expect(onReconnected).not.toHaveBeenCalled();
 
-      // The reconnect attempt's socket opens — the transport is genuinely back.
+      // The reconnect attempt's socket OPENS. The transport is back, but the
+      // gateway has not said it is carrying results yet.
       lastMockWs!.simulateOpen();
-      expect(onReconnected).toHaveBeenCalledTimes(1);
+      expect(onReconnected).not.toHaveBeenCalled();
       expect(reconnectClient.isConnected()).toBe(true);
+
+      // …and now it does.
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'ready', sessionId: 'sess-r', fromSeq: 43 }));
+      expect(onReconnected).toHaveBeenCalledTimes(1);
+
+      mathRandomSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    // The fallback half of the same mechanism: a gateway that never sends
+    // `ready` must not leave a reconnected session unresumed forever.
+    it('falls back to the pre-ready behaviour when no `ready` frame arrives within the grace window', async () => {
+      vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+      const onReconnected = vi.fn();
+      reconnectClient.onReconnected(onReconnected);
+
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-r&tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await vi.advanceTimersByTimeAsync(SttWebSocketClient.DEFAULT_READY_GRACE_MS + 1);
+      await p;
+
+      lastMockWs!.close(1006, 'Lost');
+      await vi.advanceTimersByTimeAsync(101);
+      lastMockWs!.simulateOpen();
+      expect(onReconnected).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(SttWebSocketClient.DEFAULT_READY_GRACE_MS + 1);
+      expect(onReconnected).toHaveBeenCalledTimes(1);
+      const resumeFrames = lastMockWs!.sent.filter((m) => typeof m === 'string' && (m as string).includes('"type":"resume"'));
+      expect(resumeFrames).toHaveLength(1);
 
       mathRandomSpy.mockRestore();
       vi.useRealTimers();
@@ -2591,6 +2630,13 @@ describe('SttWebSocketClient', () => {
       await vi.advanceTimersByTimeAsync(101);
       // The reconnect attempt creates a new MockWebSocket.
       lastMockWs!.simulateOpen();
+
+      // TASK-985 M-22 — an OPEN socket is not a resumable one. The gateway
+      // registers its result-stream handler and only then emits `ready`; a
+      // handshake sent on the raw open asked to replay from `lastSeq` before
+      // anything was listening, and the replay was lost.
+      expect(lastMockWs!.sent.filter((m) => typeof m === 'string' && (m as string).includes('"type":"resume"'))).toHaveLength(0);
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'ready', sessionId: 'sess-abc', fromSeq: 43 }));
 
       // First message on the resumed socket should be the resume handshake.
       const resumeFrames = lastMockWs!.sent.filter((m) => typeof m === 'string' && (m as string).includes('"type":"resume"'));

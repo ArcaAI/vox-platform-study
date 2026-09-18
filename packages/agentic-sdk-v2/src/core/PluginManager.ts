@@ -21,6 +21,7 @@ import type {
   UserPreferences,
 } from '../types';
 import type { SttConnectionState, ProviderSwitchInfo } from '../types/audio';
+import type { WsGapMessage } from '../types/stt';
 import { DEFAULT_NOISE_FILTER_CONFIG, DEFAULT_VAD_CONFIG, DEFAULT_STT_CONFIG, DEFAULT_NER_CONFIG } from './constants';
 import type { ISDKLogger } from './logger';
 import { TranscriptionPipeline, createTranscriptionPipeline } from './TranscriptionPipeline';
@@ -119,6 +120,14 @@ export interface PluginEventCallbacks {
    * render a degraded-connection signal.
    */
   onAudioDrop?: (droppedFrameCount: number) => void;
+  /**
+   * The gateway DISCARDED transcript results it could not deliver (TASK-985
+   * M-43). The downlink mirror of {@link PluginCallbacks.onAudioDrop}: that one
+   * is audio lost on the way up, this one is text lost on the way down. A
+   * clinician cannot tell a pause in the room from a hole in the captions
+   * unless this reaches the screen.
+   */
+  onSttGap?: (gap: WsGapMessage) => void;
   /**
    * Streaming STT connection-health transition, driven
    * the streaming client's reconnect callbacks. The vox hook maps it onto the
@@ -655,14 +664,22 @@ export class PluginManager {
         enabled: sttConfig.enabled ?? false,
         location: sttConfig.provider === 'local' ? 'browser' : sttConfig.provider === 'backend' ? 'backend' : 'auto',
         provider: sttConfig.provider ?? DEFAULT_STT_CONFIG.provider,
-        language: this.runtimeOptions.language ?? prefs?.language ?? sttConfig.language ?? DEFAULT_STT_CONFIG.language,
-        // End-user language mode. Runtime option wins, else the
-        // AudioPluginConfig value. When neither pins a mode we default to
-        // 'auto' so an un-selected session AUTO-DETECTS the language (the
-        // backend resolves 'auto' to no language override) rather than relying
-        // on a hardcoded default — pipelines no longer pin a language
-        // A dev/end-user pick (ml/en/ml-en/vi/…) still wins.
-        languageMode: this.runtimeOptions.languageMode ?? sttConfig.languageMode ?? 'auto',
+        // TASK-985 QW-2 / M-02 — NO trailing default on either field.
+        //
+        // ⚠ MERGE HAZARD: removing these defaults is correct AND it uncovers a
+        // server-side prompt defect that `languageMode: 'auto'` was masking —
+        // 'auto' resolves to an unprompted decode, the agent's own configured
+        // mode to a pair-primed one that scores far worse. Ship this WITH the
+        // prompt-configuration fix, not ahead of it. See TASK-985 §2.7.
+        //
+        // Why a literal is not harmless: the backend backfills with
+        // `if not language_mode:` and `'auto'` is a truthy string AND a real
+        // catalog entry, so sending it is an OPINION that beats the tenant's
+        // agent — the opposite of "let the agent decide". The only way to say
+        // "no opinion" on this wire is to send no field at all, which
+        // `JSON.stringify` does for `undefined`.
+        language: this.runtimeOptions.language ?? prefs?.language ?? sttConfig.language,
+        languageMode: this.runtimeOptions.languageMode ?? sttConfig.languageMode,
         // Pre-start engine selection. Start-time only — there is no
         // static sttConfig.startOn — so it comes solely from the runtime option.
         ...(this.runtimeOptions.startOn ? { startOn: this.runtimeOptions.startOn } : {}),
@@ -850,6 +867,12 @@ export class PluginManager {
     wsClient.onReconnect(() => this.callbacks.onSttConnectionState?.('reconnecting'));
     wsClient.onReconnected(() => this.callbacks.onSttConnectionState?.('connected'));
     wsClient.onReconnectFailed(() => this.callbacks.onSttConnectionState?.('error'));
+    // TASK-985 M-43 — route the gateway's `gap` frame out. Note these
+    // reconnect registrations are ADDITIVE now (see `SttWebSocketClient`): the
+    // STT provider registers its own reconnect listeners for the ring buffer on
+    // this same client, and single-slot registration silently disabled one of
+    // the two features depending on construction order.
+    wsClient.onGap((gap) => this.callbacks.onSttGap?.(gap));
     // The gateway echoes the RESOLVED pipeline + the engine actually opened on
     // Route it out so the store's `activePipeline` is server-derived
     // rather than an echo of what the client asked for — the request is silent

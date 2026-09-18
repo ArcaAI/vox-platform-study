@@ -175,6 +175,8 @@ export type {
   TranscriptionSegment,
   // WS-B: Structured transcript and start options
   TranscriptSegment,
+  // TASK-985 M-27 — the live partial plus its commit geometry (transport only).
+  SttInterim,
   // Word-level timestamps carried through the store
   TranscriptWord,
   VADEvent,
@@ -357,6 +359,10 @@ export type {
   WsMetadataSpan,
   WsServerMessage,
   WsStatusMessage,
+  // TASK-985 M-22/M-43 — the two frames that used to fall into the client's
+  // "unknown message type" branch.
+  WsReadyMessage,
+  WsGapMessage,
   WsStopMessage,
   // WebSocket protocol (server → client)
   WsTranscriptResult,

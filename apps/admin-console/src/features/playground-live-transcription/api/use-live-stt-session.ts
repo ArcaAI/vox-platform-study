@@ -12,12 +12,18 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createAudioCapture, float32ToInt16, type AudioCaptureHandle } from '@arcaai/stt';
+// `createStreamingResampler` is PCM plumbing, not a model — the same carve-out
+// that already lets this file import `createAudioCapture` / `float32ToInt16`
+// under the TASK-865 client-AI import ban. The type is taken via `ReturnType`
+// rather than imported, so exactly ONE new name needs allow-listing.
+import { createAudioCapture, createStreamingResampler, float32ToInt16, type AudioCaptureHandle } from '@arcaai/stt';
 import { SttWebSocketClient } from '@arcaai/vox/core';
 import { publicEnv } from '@/config/public-env';
 import { GatewayError } from '@/shared/api';
 import { buildStreamWsUrl, closeStreamSession, createStreamSession, refreshStreamTicket } from './client';
 import type { WsErrorPayload, WsTranscriptPayload } from './types';
+
+type StreamingResampler = ReturnType<typeof createStreamingResampler>;
 
 export type LiveSttStatus = 'idle' | 'requesting_mic' | 'creating_session' | 'connecting' | 'streaming' | 'reconnecting' | 'stopping' | 'error';
 
@@ -68,6 +74,12 @@ interface SttStreamClient {
   isConnected(): boolean;
   sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean;
   sendStop(): void;
+  /**
+   * Send `{type:'stop'}`, hold the socket open for the tail finals, then send
+   * `{type:'close'}` and disconnect (TASK-985 M-05). Optional here only so
+   * partial test fakes need not stub it; the real client always implements it.
+   */
+  stopAndDrain?(drainTimeoutMs?: number, quietWindowMs?: number): Promise<void>;
   onTranscript(cb: (result: WsTranscriptPayload) => void): void;
   onWsError(cb: (error: WsErrorPayload) => void): void;
   onDisconnect(cb: () => void): void;
@@ -77,6 +89,8 @@ interface SttStreamClient {
   onReconnected?(cb: () => void): void;
   /** Optional in this structural view so partial test fakes need not stub it; the real client always implements it. */
   onBackpressureDrop?(cb: (reason: 'queue_full' | 'buffered_amount_high') => void): void;
+  /** The gateway DISCARDED results it could not deliver (TASK-985 M-43). */
+  onGap?(cb: (gap: { reason: string; droppedPartials?: number; droppedSeq?: number }) => void): void;
 }
 
 export interface StartLiveSttOptions {
@@ -112,6 +126,24 @@ export interface UseLiveSttSessionResult {
    * transcript stays permanently incomplete. Cleared only on start/stop (C6-01).
    */
   audioLostThisSession: boolean;
+  /**
+   * Session-sticky latch: true once the gateway has reported DISCARDING any
+   * transcript result this session (TASK-985 M-43).
+   *
+   * Deliberately separate from {@link audioLostThisSession}: that one is audio
+   * that never reached the server, this one is text the server produced and
+   * then dropped. They have different causes and different remedies, and
+   * collapsing them would tell a clinician "check your microphone" when the
+   * microphone is fine.
+   */
+  transcriptGapThisSession: boolean;
+  /** The most recent gap's reason, for the banner copy. `null` when there has been none. */
+  lastGapReason: string | null;
+  /**
+   * The rate the browser ACTUALLY granted the capture context, which is not
+   * necessarily the 16 kHz that was requested. `null` before capture starts.
+   */
+  captureSampleRate: number | null;
   start: (options: StartLiveSttOptions) => Promise<void>;
   stop: () => Promise<void>;
 }
@@ -131,6 +163,9 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [droppedFrameCount, setDroppedFrameCount] = useState(0);
   const [audioLostThisSession, setAudioLostThisSession] = useState(false);
+  const [transcriptGapThisSession, setTranscriptGapThisSession] = useState(false);
+  const [lastGapReason, setLastGapReason] = useState<string | null>(null);
+  const [captureSampleRate, setCaptureSampleRate] = useState<number | null>(null);
 
   const statusRef = useRef<LiveSttStatus>('idle');
   useEffect(() => {
@@ -140,6 +175,13 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
   const wsClientRef = useRef<SttStreamClient | null>(null);
   const captureRef = useRef<AudioCaptureHandle | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  /**
+   * TASK-985 M-55/M-53 — converts capture frames to the 16 kHz the session
+   * DECLARES, keeping kernel history across frames. `null` when the granted
+   * context rate already is 16 kHz (the common case), in which case frames pass
+   * through untouched.
+   */
+  const resamplerRef = useRef<StreamingResampler | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const rowIdRef = useRef(0);
@@ -148,6 +190,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
   const releaseAudio = useCallback(() => {
     captureRef.current?.destroy();
     captureRef.current = null;
+    resamplerRef.current = null;
+    setCaptureSampleRate(null);
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       void audioContextRef.current.close().catch(() => {});
     }
@@ -218,6 +262,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
       setReconnectAttempt(0);
       setDroppedFrameCount(0);
       setAudioLostThisSession(false);
+      setTranscriptGapThisSession(false);
+      setLastGapReason(null);
       rowIdRef.current = 0;
 
       // 1. Microphone first — a denied prompt must not burn a session
@@ -248,6 +294,38 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
       }
       setMicPermission('granted');
       setMicLabel(track.label || 'Default microphone');
+
+      // 1b. Capture context BEFORE the session is created (TASK-985 M-55).
+      //
+      // `new AudioContext({ sampleRate })` is a REQUEST. Safari and some
+      // ALSA/PulseAudio stacks clamp it to the hardware rate and say nothing.
+      // This hook used to create the context AFTER session create, never read
+      // the granted rate back, and send un-resampled frames while telling the
+      // backend they were 16 kHz — so on those browsers the service received
+      // audio running 2.75-3x fast and labelled as if it were not. That does
+      // not look like a capture bug; it looks like the model is broken.
+      //
+      // Creating it here lets the granted rate be KNOWN before anything is
+      // declared, and the converter below guarantees the wire really is 16 kHz.
+      let audioContext: AudioContext;
+      try {
+        audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+      } catch (contextError) {
+        releaseAudio();
+        setError(contextError instanceof Error ? contextError.message : 'Could not open an audio context.');
+        setStatus('error');
+        return;
+      }
+      audioContextRef.current = audioContext;
+      // A runtime that does not report a rate is a runtime we cannot convert
+      // for; assume the request was honoured rather than building a converter
+      // out of `undefined`. Real browsers always report one.
+      const grantedRate =
+        typeof audioContext.sampleRate === 'number' && Number.isFinite(audioContext.sampleRate) && audioContext.sampleRate > 0
+          ? audioContext.sampleRate
+          : SAMPLE_RATE;
+      setCaptureSampleRate(grantedRate);
+      resamplerRef.current = grantedRate === SAMPLE_RATE ? null : createStreamingResampler(grantedRate, SAMPLE_RATE);
 
       // 2. Session create through the BFF (429 = designed quota panel).
       setStatus('creating_session');
@@ -347,6 +425,13 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
         setDroppedFrameCount((count) => count + 1);
         setAudioLostThisSession(true);
       });
+      // TASK-985 M-43 — the DOWNLINK loss. Until the client modelled the `gap`
+      // frame it was logged as an unknown message type and the transcript just
+      // silently skipped, under a green "streaming" badge.
+      client.onGap?.((gap) => {
+        setTranscriptGapThisSession(true);
+        setLastGapReason(gap.reason);
+      });
 
       const wsUrl = buildStreamWsUrl(publicEnv.apiHost, created.wsUrl || '/ws/stt/stream', {
         sessionId: created.sessionId,
@@ -368,17 +453,20 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
         return;
       }
 
-      // 4. Worklet capture — coalesced Float32 frames, sent as Int16 PCM.
+      // 4. Worklet capture — coalesced Float32 frames, sent as Int16 PCM at the
+      //    rate the session was told about, whatever rate the browser granted.
       try {
-        const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
-        audioContextRef.current = audioContext;
         captureRef.current = await createAudioCapture(audioContext, track, (frame) => {
           if (!client.isConnected()) return;
-          client.sendAudioFrame(float32ToInt16(frame));
+          const resampler = resamplerRef.current;
+          const wireFrame = resampler ? resampler.push(frame) : frame;
+          if (wireFrame.length > 0) client.sendAudioFrame(float32ToInt16(wireFrame));
 
           const now = Date.now();
           if (now - levelCommitAtRef.current >= LEVEL_COMMIT_MS) {
             levelCommitAtRef.current = now;
+            // Measured on the RAW capture frame on purpose: the meter reports
+            // what the microphone is hearing, not what survived conversion.
             let sum = 0;
             for (const sample of frame) sum += sample * sample;
             const rms = Math.sqrt(sum / (frame.length || 1));
@@ -406,18 +494,37 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
     if (!wsClientRef.current && !sessionIdRef.current) return;
     setStatus('stopping');
 
-    try {
-      if (wsClientRef.current?.isConnected()) {
-        wsClientRef.current.sendStop();
-      }
-    } catch {
-      // best-effort finalize
-    }
-
+    // Microphone off IMMEDIATELY — the recording indicator must not stay lit
+    // while we wait for the tail. Then, and only then, wait for the transcript.
     releaseAudio();
 
-    wsClientRef.current?.disconnect();
+    const client = wsClientRef.current;
     wsClientRef.current = null;
+    if (client) {
+      // TASK-985 M-05 — DRAIN, do not slam the door.
+      //
+      // This used to send `{type:'stop'}` and call `disconnect()` on the same
+      // tick. `stop` is what makes the server FINALIZE, so the last utterance
+      // of the consultation is emitted after it — straight into a socket this
+      // hook had already closed. The clinician watched their final sentence
+      // never appear (it is in the durable transcript; it is missing from the
+      // screen they were reading).
+      //
+      // `stopAndDrain()` sends the same `{type:'stop'}` frame, holds the socket
+      // open for the tail, and then sends `{type:'close'}` so the gateway files
+      // this as the deliberate stop it was rather than waiting out its grace
+      // window and recording the session as interrupted.
+      try {
+        if (client.isConnected() && client.stopAndDrain) {
+          await client.stopAndDrain();
+        } else {
+          client.disconnect();
+        }
+      } catch {
+        // A drain that throws must not strand the session DELETE below.
+        client.disconnect();
+      }
+    }
 
     if (sessionIdRef.current) {
       await closeStreamSession(sessionIdRef.current).catch(() => {});
@@ -428,6 +535,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
     setReconnectAttempt(0);
     setDroppedFrameCount(0);
     setAudioLostThisSession(false);
+    setTranscriptGapThisSession(false);
+    setLastGapReason(null);
     // Transcript history stays on screen for review after the session ends.
     setStatus('idle');
   }, [releaseAudio]);
@@ -447,6 +556,9 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
     reconnectAttempt,
     droppedFrameCount,
     audioLostThisSession,
+    transcriptGapThisSession,
+    lastGapReason,
+    captureSampleRate,
     start,
     stop,
   };

@@ -102,7 +102,9 @@ describe('RealtimeSttSocket — sending', () => {
     await connecting;
 
     socket.sendPcm16(new Uint8Array([1, 2, 3, 4]));
-    socket.finalize();
+    const finalized = socket.finalize();
+    opened.emitMessage(JSON.stringify({ type: 'status', status: 'closed' }));
+    await finalized;
 
     expect(opened.sent[0]).toBeInstanceOf(Uint8Array);
     expect(JSON.parse(String(opened.sent[1]))).toEqual({ type: 'stop' });
@@ -119,16 +121,95 @@ describe('RealtimeSttSocket — sending', () => {
 });
 
 describe('RealtimeSttSocket#finalize', () => {
-  it('sends the {type:"stop"} wire frame — the gateway finalizes AND closes the session for it', async () => {
+  // TASK-985 M-05 — the old title claimed the gateway "finalizes AND closes the
+  // session for it". It does not close the socket, and the doc comment saying
+  // so is what left callers closing on their own schedule (or not at all).
+  it('sends the {type:"stop"} wire frame and resolves on the terminal status', async () => {
     const socket = makeSocket();
     const connecting = socket.connect();
     const opened = await FakeWebSocket.opened();
     opened.emitOpen();
     await connecting;
 
-    socket.finalize();
-
+    const finalized = socket.finalize();
     expect(JSON.parse(String(opened.sent[0]))).toEqual({ type: 'stop' });
+
+    // Still pending: the tail has not been delivered yet, which is precisely
+    // what a caller needs to be able to wait for.
+    opened.emitMessage(JSON.stringify({ type: 'status', status: 'finalizing' }));
+    opened.emitMessage(JSON.stringify({ type: 'transcript', text: 'the tail', isFinal: true, seq: 9 }));
+    opened.emitMessage(JSON.stringify({ type: 'status', status: 'closed' }));
+
+    await expect(finalized).resolves.toBeUndefined();
+    // It does NOT close the socket — `close()` is what sends `{type:'close'}`.
+    expect(opened.closed).toBe(false);
+    expect(opened.sent.map((frame) => String(frame))).not.toContain(JSON.stringify({ type: 'close' }));
+  });
+
+  it('resolves (never rejects) when the server answers nothing at all', async () => {
+    vi.useFakeTimers();
+    try {
+      const socket = makeSocket();
+      const connecting = socket.connect();
+      const opened = await FakeWebSocket.opened();
+      opened.emitOpen();
+      await connecting;
+
+      const finalized = socket.finalize(1_000);
+      await vi.advanceTimersByTimeAsync(1_001);
+      await expect(finalized).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('RealtimeSttSocket#waitForClosed', () => {
+  it('resolves with the close event once the transport actually tears down', async () => {
+    const socket = makeSocket();
+    const connecting = socket.connect();
+    const opened = await FakeWebSocket.opened();
+    opened.emitOpen();
+    await connecting;
+
+    const closing = socket.waitForClosed();
+    socket.close();
+    opened.emitClose(1000);
+
+    await expect(closing).resolves.toMatchObject({ code: 1000, requested: true });
+  });
+});
+
+describe('RealtimeSttSocket — ready and gap frames (TASK-985 M-22 / M-43)', () => {
+  it('emits `ready` instead of silently ignoring the gateway\'s first frame', async () => {
+    const socket = makeSocket();
+    const ready = vi.fn();
+    socket.on('ready', ready);
+    const connecting = socket.connect();
+    const opened = await FakeWebSocket.opened();
+    opened.emitOpen();
+    await connecting;
+
+    opened.emitMessage(JSON.stringify({ type: 'ready', sessionId: 'sess-1', fromSeq: 1 }));
+
+    expect(ready).toHaveBeenCalledWith(expect.objectContaining({ type: 'ready', sessionId: 'sess-1', fromSeq: 1 }));
+  });
+
+  it('emits `gap` on its own channel, NOT as an error — a discarded result is an outcome, not a retry', async () => {
+    const socket = makeSocket();
+    const gap = vi.fn();
+    const error = vi.fn();
+    socket.on('gap', gap);
+    socket.on('error', error);
+    const connecting = socket.connect();
+    const opened = await FakeWebSocket.opened();
+    opened.emitOpen();
+    await connecting;
+
+    opened.emitMessage(JSON.stringify({ type: 'gap', reason: 'egress_overflow', sessionId: 'sess-1', droppedSeq: 12 }));
+
+    expect(gap).toHaveBeenCalledWith(expect.objectContaining({ reason: 'egress_overflow', droppedSeq: 12 }));
+    expect(error).not.toHaveBeenCalled();
   });
 });
 
@@ -140,7 +221,9 @@ describe('RealtimeSttSocket#stop (deprecated)', () => {
     opened.emitOpen();
     await connecting;
 
-    socket.stop();
+    const stopped = socket.stop();
+    opened.emitMessage(JSON.stringify({ type: 'status', status: 'closed' }));
+    await stopped;
 
     expect(JSON.parse(String(opened.sent[0]))).toEqual({ type: 'stop' });
   });

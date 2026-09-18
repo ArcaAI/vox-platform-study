@@ -266,6 +266,38 @@ export interface TranscriptSegment {
 }
 
 /**
+ * The live PARTIAL, with the backend's commit geometry attached (TASK-985
+ * M-27, transport half).
+ *
+ * Distinct from {@link TranscriptSegment}, which is a COMMITTED row: this is
+ * the one in-flight hypothesis, replaced wholesale by the next partial and
+ * cleared when the final for its utterance commits.
+ *
+ * Both geometry fields are optional and both are TRANSPORT ONLY today. Do not
+ * render a settled/tentative split on `stableChars` yet: the server-side value
+ * is not monotone within an utterance (it can shrink), so a UI that trusted it
+ * would make an invisible server defect visible as text that un-commits itself.
+ */
+export interface SttInterim {
+  /** The partial hypothesis, verbatim — the same text published to `currentTranscript`. */
+  text: string;
+  /**
+   * Length in characters of the leading prefix of `text` the backend considers
+   * settled. Absent when the backend does not publish it — which is NOT the
+   * same as `0`, and the two must not be collapsed.
+   */
+  stableChars?: number;
+  /**
+   * Ordinal of the utterance this partial belongs to. Its own final carries the
+   * same value, so a consumer can tell "the same sentence, revised" from "the
+   * next sentence" without comparing strings.
+   */
+  utteranceIndex?: number;
+  /** Epoch ms this partial was received by the client. */
+  receivedAt: number;
+}
+
+/**
  * Result of a dual-capture session: the unprocessed microphone blob (`raw`)
  * and the noise-filtered/VAD-gated pipeline output blob (`processed`).
  * Structurally identical to `DualStreamRecorderResult` in

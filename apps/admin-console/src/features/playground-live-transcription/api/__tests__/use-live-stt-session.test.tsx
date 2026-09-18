@@ -20,6 +20,8 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
     connectedUrl: string | null = null;
     connectImpl: () => Promise<void> = async () => {};
     disconnected = false;
+    drained = false;
+    closeFrameSent = false;
     stopSent = false;
     /** When true, sendAudioFrame drops the frame like the real client's watermark. */
     dropFrames = false;
@@ -64,6 +66,19 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
       this.stopSent = true;
     }
 
+    /**
+     * TASK-985 M-05 — mirrors the real client: send `{type:'stop'}`, hold the
+     * socket open for the tail, then `{type:'close'}` and disconnect. The fake
+     * records the ORDER so a test can prove the drain happened rather than a
+     * same-tick close.
+     */
+    async stopAndDrain(): Promise<void> {
+      this.stopSent = true;
+      this.drained = true;
+      this.closeFrameSent = true;
+      this.disconnected = true;
+    }
+
     onTranscript(cb: Handler): void {
       this.handlers.transcript = cb;
     }
@@ -88,6 +103,9 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
     onBackpressureDrop(cb: Handler): void {
       this.handlers.backpressureDrop = cb;
     }
+    onGap(cb: Handler): void {
+      this.handlers.gap = cb;
+    }
   }
 
   const capture = {
@@ -107,6 +125,15 @@ vi.mock('@arcaai/stt', () => ({
     return { usesWorklet: true, destroy: capture.destroy, setEnabled: capture.setEnabled };
   }),
   float32ToInt16: vi.fn((frame: Float32Array) => new Int16Array(frame.length)),
+  // Only reached when the browser refuses the requested 16 kHz; the stubbed
+  // AudioContext grants it, so this exists to keep the module shape honest.
+  createStreamingResampler: vi.fn((_from: number, _to: number) => ({
+    fromRate: _from,
+    toRate: _to,
+    push: (frame: Float32Array) => frame,
+    flush: () => new Float32Array(0),
+    reset: () => {},
+  })),
 }));
 
 interface RecordedCall {
@@ -172,6 +199,9 @@ beforeEach(() => {
     'AudioContext',
     class {
       state = 'running';
+      // The granted rate, which is what the hook reads back and declares
+      // (TASK-985 M-55) — a real AudioContext always reports one.
+      sampleRate = 16_000;
       close = vi.fn(async () => {});
     },
   );
@@ -355,7 +385,11 @@ describe('useLiveSttSession', () => {
     hook.unmount();
   });
 
-  it('stop(): sends the stop frame, tears down capture and socket, DELETEs the session', async () => {
+  // TASK-985 M-05 — stop() used to send `{type:'stop'}` and `disconnect()` on
+  // the SAME tick. `stop` is what makes the server finalize, so the last
+  // utterance is emitted after it, into a socket this hook had already closed:
+  // the clinician's final sentence never reached the screen they were reading.
+  it('stop(): DRAINS the socket (stop frame, tail window, close frame), tears down capture, DELETEs the session', async () => {
     const { calls, hook } = await startedHook();
     const ws = FakeSttWsClient.instances[0];
 
@@ -364,6 +398,10 @@ describe('useLiveSttSession', () => {
     });
 
     expect(ws.stopSent).toBe(true);
+    expect(ws.drained).toBe(true);
+    // `{type:'close'}` tells the gateway this was deliberate, so the session is
+    // not filed as interrupted after its grace window expires (M-23).
+    expect(ws.closeFrameSent).toBe(true);
     expect(ws.disconnected).toBe(true);
     expect(capture.destroy).toHaveBeenCalled();
     expect(micTrack.stop).toHaveBeenCalled();

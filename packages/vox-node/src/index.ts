@@ -217,6 +217,9 @@ export type {
   SttResumedMessage,
   SttServerMessage,
   SttStatusMessage,
+  // TASK-985 M-22/M-43 — the readiness signal and the discarded-results signal.
+  SttReadyMessage,
+  SttGapMessage,
   SttStopMessage,
   SttTranscriptResult,
   SttWordTimestamp,

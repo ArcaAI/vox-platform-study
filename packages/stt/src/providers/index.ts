@@ -21,6 +21,8 @@ export {
   type StreamingSessionLike,
   type StreamingWsClientLike,
   type StreamingTranscriptPayload,
+  // TASK-985 M-43 — the gateway's `gap` frame (text it discarded on the way down).
+  type StreamingGapPayload,
 } from './StreamingBackendSTTProvider.js';
 
 // Backward compatibility alias

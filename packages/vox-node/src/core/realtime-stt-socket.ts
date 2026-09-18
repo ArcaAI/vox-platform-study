@@ -38,7 +38,15 @@
  */
 
 import { SocketUnavailableError } from './errors';
-import type { SttErrorMessage, SttResumeFailedMessage, SttResumedMessage, SttStatusMessage, SttTranscriptResult } from '../types/stt';
+import type {
+  SttErrorMessage,
+  SttGapMessage,
+  SttReadyMessage,
+  SttResumeFailedMessage,
+  SttResumedMessage,
+  SttStatusMessage,
+  SttTranscriptResult,
+} from '../types/stt';
 
 /**
  * TASK-951 — hard ceiling on ONE {@link RealtimeSttSocket.setMetadata} object, in bytes of
@@ -79,6 +87,18 @@ export interface RealtimeSttSocketEvents {
    */
   error: SttErrorMessage | SttResumeFailedMessage | Error;
   resumed: SttResumedMessage;
+  /**
+   * The gateway is ready to carry results on THIS connection (TASK-985 M-22).
+   * Gate your first `sendPcm16` on it when you care that the earliest partials
+   * of a consultation are not produced before anything is listening.
+   */
+  ready: SttReadyMessage;
+  /**
+   * The gateway DISCARDED results (TASK-985 M-43). A real hole in the
+   * transcript, not a retryable hiccup — the audio was transcribed and the text
+   * was then dropped, so no resume brings it back.
+   */
+  gap: SttGapMessage;
   close: RealtimeSttCloseEvent;
 }
 
@@ -138,6 +158,14 @@ const DEFAULT_WS_PATH = '/ws/stt/stream';
 const DEFAULT_REFRESH_SKEW_MS = 10_000;
 const DEFAULT_RESUME_ATTEMPTS = 3;
 const DEFAULT_RESUME_DELAY_MS = 500;
+/**
+ * How long {@link RealtimeSttSocket.finalize} and
+ * {@link RealtimeSttSocket.waitForClosed} wait for the server's terminal frame
+ * before proceeding anyway (TASK-985 M-05). Generous, because the tail decode
+ * of a long utterance runs on a shared model lock — and bounded, because a
+ * teardown that can hang is a teardown a caller cannot use.
+ */
+const DEFAULT_FINALIZE_TIMEOUT_MS = 5_000;
 
 /** Strip trailing slashes and a trailing `/api/v1`, then swap the scheme for its socket form. */
 function socketOrigin(baseUrl: string): string {
@@ -162,7 +190,8 @@ function defaultSleep(ms: number): Promise<void> {
  * socket.on('transcript', (t) => { if (t.isFinal) append(t.text); });
  * await socket.connect();
  * for await (const frame of pcm16Frames) socket.sendPcm16(frame);
- * socket.finalize();  // finalize the utterance — this ALSO ends the session
+ * await socket.finalize();  // ends the SESSION and waits for the tail
+ * socket.close();           // ends the SOCKET — the gateway never does it for you
  * ```
  */
 export class RealtimeSttSocket {
@@ -278,18 +307,80 @@ export class RealtimeSttSocket {
   /**
    * Finalize the current utterance — and, despite the name, END THE SESSION.
    *
-   * Sends the `{type:'stop'}` wire frame. The gateway forwards it to the tenant's
-   * ASR service as a `finalize` control command, which flushes the tail of the
-   * utterance and then CLOSES the session — observed live as
-   * `status finalizing` → `status closed`, with the session's Redis status
-   * ending `closed`. The gateway itself will close this socket once that flush
-   * completes; there is no grace window in which the session can still accept
-   * more audio, and the session CANNOT be resumed afterward. If you need to
-   * keep streaming past this utterance, do not call this — this is the last
-   * thing you send on a session, not a mid-stream punctuation mark.
+   * Sends the `{type:'stop'}` wire frame. The gateway forwards it to the
+   * tenant's ASR service as a `finalize` control command, which flushes the
+   * tail of the utterance: you see `status: finalizing`, then the last
+   * transcripts, then `status: closed`. The session CANNOT be resumed
+   * afterward, so this is the last thing you send on a session, not a
+   * mid-stream punctuation mark.
+   *
+   * **It does NOT close this socket, and the gateway does not close it for
+   * you.** This method's doc used to say it did (TASK-985 M-05); it never has.
+   * Call {@link close} once this resolves — `close` is what sends
+   * `{type:'close'}`, and without it the gateway sees an ordinary transport
+   * close, waits out its grace window, and files the session as INTERRUPTED
+   * even though you stopped it deliberately.
+   *
+   * Resolves on the terminal `status` frame (`closed` / `cancelled`), so the
+   * caller knows WHEN the tail has been delivered instead of guessing. It
+   * resolves — never rejects — on `timeoutMs`, because a server that has gone
+   * quiet is a reason to proceed with teardown, not to strand it.
+   *
+   * ```ts
+   * await socket.finalize();   // tail delivered
+   * socket.close();            // { type: 'close' } — the clean, immediate end
+   * await socket.waitForClosed();
+   * ```
    */
-  finalize(): void {
+  finalize(timeoutMs = DEFAULT_FINALIZE_TIMEOUT_MS): Promise<void> {
     this.requireSocket().send(JSON.stringify({ type: 'stop' }));
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        unsubStatus();
+        unsubClose();
+        resolve();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      const unsubStatus = this.on('status', (status) => {
+        if (status.status === 'closed' || status.status === 'cancelled') finish();
+      });
+      // A server that closes the transport instead of answering has also
+      // finished; waiting out the timeout after that would be pure latency.
+      const unsubClose = this.on('close', () => finish());
+    });
+  }
+
+  /**
+   * Resolve once the transport has actually torn down — the `close` event.
+   *
+   * Use it after {@link finalize} + {@link close} when teardown has to be
+   * COMPLETE before the next thing happens (releasing a device, ending a
+   * process), rather than merely requested. Resolves on `timeoutMs` with a
+   * synthesised event rather than rejecting: a socket that will not report its
+   * own close must not wedge a caller's shutdown path.
+   */
+  waitForClosed(timeoutMs = DEFAULT_FINALIZE_TIMEOUT_MS): Promise<RealtimeSttCloseEvent> {
+    if (!this.socket) return Promise.resolve({ requested: this.requestedClose, resuming: false });
+    return new Promise<RealtimeSttCloseEvent>((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        unsub();
+        resolve({ requested: this.requestedClose, resuming: false });
+      }, timeoutMs);
+      const unsub = this.on('close', (event) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        unsub();
+        resolve(event);
+      });
+    });
   }
 
   /**
@@ -303,8 +394,8 @@ export class RealtimeSttSocket {
    * for source compatibility; it delegates to {@link finalize} and sends the
    * exact same wire frame.
    */
-  stop(): void {
-    this.finalize();
+  stop(): Promise<void> {
+    return this.finalize();
   }
 
   /**
@@ -510,6 +601,14 @@ export class RealtimeSttSocket {
         return;
       case 'resume_failed':
         this.emit('error', parsed as SttResumeFailedMessage);
+        return;
+      case 'ready':
+        this.emit('ready', parsed as SttReadyMessage);
+        return;
+      case 'gap':
+        // Deliberately NOT routed to `error`: a gap is a settled outcome the
+        // caller must record, not a failure they can retry (TASK-985 M-43).
+        this.emit('gap', parsed as SttGapMessage);
         return;
       default:
         // A not-yet-modelled server frame. Silently ignored rather than
