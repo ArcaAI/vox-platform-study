@@ -28,6 +28,14 @@ const PUBLIC_PATHS = new Set([
   '/reset-password',
   '/api/auth/reset-password',
   '/api/auth/forgot-password',
+  // Kubernetes probes (TASK-990): a kubelet carries no session cookie, so
+  // these three must be reachable unauthenticated. Exact-path match only —
+  // nothing else under /api/health is opened, and none of the three returns
+  // anything session-scoped; see src/app/api/health/{,live/,ready/}route.ts
+  // for what each one asserts.
+  '/api/health',
+  '/api/health/live',
+  '/api/health/ready',
 ]);
 
 function isPublic(pathname: string): boolean {
