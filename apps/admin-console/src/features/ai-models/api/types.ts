@@ -25,16 +25,57 @@ export const ASR_TASK_TYPE = 'AUTOMATIC_SPEECH_RECOGNITION';
 // in `@/shared/catalog`), so the ranges are copied here rather than imported.
 // =============================================================================
 
+/**
+ * TASK-985 (QW-8) — the subset a row may narrow PER DECODE PASS. `partial` is the
+ * in-flight re-decode, `final` the committing one; a gate that is right on one is
+ * wrong on the other, so they are separable. Precedence is pass → flat → default.
+ */
+export interface AiModelAsrProfileDecodingPass {
+  beamSize?: number;
+  temperature?: number;
+  logprobThreshold?: number;
+  entropyThreshold?: number;
+  noSpeechThreshold?: number;
+  singleSegment?: boolean;
+  suppressBlank?: boolean;
+  suppressNonSpeechTokens?: boolean;
+  maxTokens?: number;
+  audioCtx?: number;
+}
+
+/**
+ * MUST TRACK `AiModelAsrProfileDecoding` in `@arcaai/types` FIELD FOR FIELD.
+ *
+ * This is a hand-mirrored copy by the convention stated above, which makes it a
+ * drift generator with nothing behind it: nothing fails when the canonical type
+ * gains a field, until someone USES that field here — and then it fails in the
+ * image build rather than at the boundary, which is where TASK-985 found it.
+ * `hotwordsInPrompt` was the field in use; eight others had drifted silently and
+ * are added here too, so the console can express the decode surface the gateway
+ * DTO already validates.
+ *
+ * `tests/contracts/admin-console-asr-profile-mirror.contract.test.ts` now asserts
+ * this parity, so the next divergence fails at the contract instead of the build.
+ */
 export interface AiModelAsrProfileDecoding {
   beamSize?: number;
   temperature?: number;
   noSpeechThreshold?: number;
   compressionRatioThreshold?: number;
+  entropyThreshold?: number;
   logprobThreshold?: number;
   conditionOnPrevTokens?: boolean;
   noRepeatNgramSize?: number;
   prevTextContextWords?: number;
+  singleSegment?: boolean;
+  suppressBlank?: boolean;
+  suppressNonSpeechTokens?: boolean;
+  maxTokens?: number;
+  audioCtx?: number;
   hotwords?: string[];
+  hotwordsInPrompt?: boolean;
+  partial?: AiModelAsrProfileDecodingPass;
+  final?: AiModelAsrProfileDecodingPass;
 }
 
 export interface AiModelAsrProfile {
@@ -57,7 +98,25 @@ export const AI_MODEL_ASR_PROFILE_WINDOW_RANGES: Readonly<Record<'maxDecodeWindo
 };
 
 /** Mirrors `AI_MODEL_ASR_PROFILE_DECODING_RANGES` (`@arcaai/types`). */
-export const AI_MODEL_ASR_PROFILE_DECODING_RANGES: Readonly<Record<keyof Omit<AiModelAsrProfileDecoding, 'conditionOnPrevTokens' | 'hotwords'>, AsrProfileRange>> = {
+export const AI_MODEL_ASR_PROFILE_DECODING_RANGES: Readonly<
+  Record<
+    keyof Omit<
+      AiModelAsrProfileDecoding,
+      // Non-numeric members have no range: booleans and the two per-pass blocks.
+      // The `Omit` is what keeps this table honest — a new NUMERIC field fails to
+      // compile until it is given bounds, which is the intended pressure.
+      | 'conditionOnPrevTokens'
+      | 'hotwords'
+      | 'hotwordsInPrompt'
+      | 'singleSegment'
+      | 'suppressBlank'
+      | 'suppressNonSpeechTokens'
+      | 'partial'
+      | 'final'
+    >,
+    AsrProfileRange
+  >
+> = {
   beamSize: { min: 1, max: 10, integer: true },
   temperature: { min: 0, max: 1 },
   noSpeechThreshold: { min: 0, max: 1 },
@@ -65,6 +124,10 @@ export const AI_MODEL_ASR_PROFILE_DECODING_RANGES: Readonly<Record<keyof Omit<Ai
   logprobThreshold: { min: -10, max: 0 },
   noRepeatNgramSize: { min: 0, max: 10, integer: true },
   prevTextContextWords: { min: 0, max: 200, integer: true },
+  // TASK-985 (QW-8/QW-9) — bounds copied from the canonical table, not invented.
+  entropyThreshold: { min: 0, max: 10 },
+  maxTokens: { min: 0, max: 224, integer: true },
+  audioCtx: { min: 0, max: 1500, integer: true },
 };
 
 export const AI_MODEL_ASR_PROFILE_HOTWORDS_MAX_ITEMS = 64;
