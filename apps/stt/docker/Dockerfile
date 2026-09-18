@@ -471,4 +471,28 @@ CMD ["/opt/venv/bin/python", "-m", "uvicorn", "stt.main:app", "--host", "0.0.0.0
 # =============================================================================
 FROM ml-runtime AS worker
 
+# The worker binds NO HTTP port, but only overrides CMD — so it inherits
+# ml-runtime's HEALTHCHECK, which GETs http://localhost:8861/api/v1/health.
+# Nothing listens on 8861 in this container, so that check can never pass and
+# the worker reports unhealthy forever under `docker run` / compose. Kubernetes
+# ignores Docker HEALTHCHECK entirely and uses the manifest's probes, so this is
+# a defect in the ARTIFACT rather than a cluster fault — but it is still a
+# defect, and an image that lies about its own health is worse than one that
+# says nothing.
+#
+# apps/harness/Dockerfile answers the same inheritance with `HEALTHCHECK NONE`,
+# which is the minimum correct fix. We can now do better without adding a
+# surface: the worker writes a per-process liveness heartbeat (see
+# src/stt/worker.py — what a fresh file does and does not prove is documented
+# there), so the same signal Kubernetes will exec-probe is available locally.
+#
+# The check requires EVERY heartbeat file to be fresh, not merely one: with
+# `--processes N` each worker process writes its own file named after its PID,
+# and "at least one is fresh" would let a healthy fork mask a hung sibling —
+# precisely the blind spot the :9191 exporter probe already had.
+#
+# Keep this in sync with the manifest's exec probe in arca/hope-v2-deployment.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD ["/bin/sh", "-c", "d=/tmp/stt-worker-heartbeat; n=$(find $d -type f 2>/dev/null | wc -l); [ $n -gt 0 ] && [ $(find $d -type f -mmin -1 | wc -l) -eq $n ]"]
+
 CMD ["/opt/venv/bin/python", "-m", "dramatiq", "stt.worker", "--processes", "2", "--threads", "4"]
