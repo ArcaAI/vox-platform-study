@@ -10,6 +10,7 @@ import { useAgenticStore } from '../store';
 import type { ContextItem, TranscriptionResult } from '../types';
 import { AgenticError } from '../types';
 import type { TranscriptSegment, AudioStartOptions, DualCaptureResult, ProviderSwitchInfo, ActivePipelineInfo } from '../types/audio';
+import { applyCaptureConstraints, resolveCaptureConstraints } from '../core/captureConstraints';
 import { CONTEXT_ENDPOINTS, TRANSCRIPT_SEGMENT_SUBTYPE } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
 import { AudioContextManager, AudioMixer } from '@arcaai/room';
@@ -428,10 +429,17 @@ export function useArcaAudio() {
         // only knows the pipelineId) still honours the user's selection
         // published by `useArcaSpeechToText`. The backend resolves the mode to
         // the actual language, so this alone is sufficient. (compat start-coordination fix.)
-        // When nobody has picked a mode, default to 'auto' so the session
-        // AUTO-DETECTS the language instead of a hardcoded default — pipelines
-        // no longer pin a language. A dev/end-user pick still wins.
-        languageMode: options?.languageMode ?? store.sttLanguageMode ?? 'auto',
+        //
+        // TASK-985 QW-2 / M-02 — and NOTHING after that. The `?? 'auto'` that
+        // used to close this line was written as "let the session auto-detect",
+        // but `'auto'` is a real catalog entry, not a no-opinion sentinel: the
+        // backend's `if not language_mode:` backfill sees a truthy string and
+        // never consults the tenant's ASR agent. Undeclared must stay
+        // undeclared all the way to the wire.
+        //
+        // ⚠ MERGE HAZARD: this literal was MASKING a server-side prompt defect.
+        // Land it with the prompt-configuration fix, not ahead of it. TASK-985 §2.7.
+        languageMode: options?.languageMode ?? store.sttLanguageMode,
         // Pre-start engine selection. Start-time only — the session
         // opens on the tenant-admin default provider when 'fallback'.
         startOn: options?.startOn,
@@ -521,14 +529,20 @@ export function useArcaAudio() {
         // request shape untouched — `{ audio: true }` for the default mic, not
         // `{ audio: {} }`, which is a different request that every pre-608
         // integrator's behaviour hangs off.
-        {
-          const processing: Record<string, boolean> = {};
-          for (const key of ['echoCancellation', 'noiseSuppression', 'autoGainControl'] as const) {
-            const value = options?.audioProcessing?.[key];
-            if (typeof value === 'boolean') processing[key] = value;
-          }
-          audioProcessingRef.current = processing;
-        }
+        //
+        // TASK-985 M-33 — the resolved tenant/user cascade is now part of this.
+        // `AudioConfigSchema` has declared and permission-tagged these three
+        // switches all along (`CONFIG_PERMISSIONS['audio.noiseSuppression']` &c.,
+        // `permission: 'user'`), the platform resolves them into
+        // `store.resolvedConfig.audio`… and nothing read them. A tenant admin
+        // could set them and capture would ignore it.
+        //
+        // Precedence is unchanged and unsurprising: the per-call option still
+        // wins over the cascade. Behaviour is unchanged too — the schema
+        // defaults all three ON and so does every browser — which is the point:
+        // OD-L (should the governed default ship with NS/AGC OFF?) is the
+        // owner's to answer once BP-8 reports, not this change's to pre-empt.
+        audioProcessingRef.current = resolveCaptureConstraints(store.resolvedConfig, options?.audioProcessing);
 
         // Register the array on the teardown ref FIRST and push into it as each
         // stream is acquired — see the `sourceStreamsRef` contract. A rejection
@@ -573,12 +587,61 @@ export function useArcaAudio() {
         // fail below, so a mic that disappears during initialize is still seen.
         sourceStreams.forEach(watchSourceForLoss);
 
+        // A `getUserMedia` constraint is a REQUEST, made once, that the browser
+        // may narrow or ignore. Re-assert the resolved set on every live track
+        // so what capture ACTUALLY runs under is stated, not hoped for — and so
+        // a caller-INJECTED stream (which never went through a request of ours)
+        // is held to the same constraints as a mic we opened. Failures are
+        // diagnostics, never a reason to fail a session that is capturing.
+        //
+        // After the loss watchers on purpose: this awaits, and a mic unplugged
+        // during that await must still be seen.
+        await applyCaptureConstraints(
+          sourceStreams.flatMap((source) => source.getAudioTracks?.() ?? []),
+          audioProcessingRef.current,
+          (constraintError) => {
+            logger?.debug('Capture constraints were refused by the device — continuing with the browser defaults', {
+              operation: 'startAudio',
+              component: 'useArcaAudio',
+              error: constraintError as Error,
+              attributes: { requested: audioProcessingRef.current },
+            });
+          },
+        );
+
         // The first source is the session's `activeStream` (what mute/unmute and
         // the level meter act on), exactly as the primary mic was pre-597.
         const stream = sourceStreams[0];
 
+        // TASK-985 M-63 — route the manager's own diagnostics into the SDK
+        // logger BEFORE asking for the singleton, because the message that
+        // matters is emitted by the static accessor itself: "you asked for
+        // 48 kHz, the live context is someone else's rate, you are getting
+        // theirs". The capture graph then runs at a rate nobody in this file
+        // chose, and until now the only trace of it was a raw `console.warn`
+        // that never reached a consumer's telemetry or a bug report.
+        //
+        // Optional call on purpose: an SDK build can meet an older
+        // `@arcaai/room` that has no such method, and a missing DIAGNOSTIC must
+        // never be what stops a consultation from recording.
+        AudioContextManager.setDiagnosticLogger?.({
+          warn: (message, context) =>
+            logger?.warn(message, {
+              operation: 'acquireAudioContext',
+              component: 'useArcaAudio',
+              attributes: (context ?? {}) as Record<string, unknown>,
+            }),
+        });
         const ctxManager = AudioContextManager.getInstance({ sampleRate: 48000 });
         const audioContext = await ctxManager.acquire();
+        // The rate that actually governs capture — and therefore the rate the
+        // STT stage resamples FROM. Recorded explicitly so a session that ran
+        // at another consumer's rate is legible after the fact.
+        logger?.info('Capture AudioContext acquired', {
+          operation: 'startAudio',
+          component: 'useArcaAudio',
+          attributes: { requestedSampleRate: 48000, actualSampleRate: audioContext.sampleRate },
+        });
 
         store.setActiveStream(stream);
         store.setActiveAudioContext(audioContext);
@@ -757,6 +820,9 @@ export function useArcaAudio() {
           onTranscription: (result: TranscriptionResult) => {
             if (result.isFinal) {
               store.setCurrentTranscript('');
+              // TASK-985 M-27 — the utterance is committed, so its in-flight
+              // hypothesis is gone with it.
+              store.setCurrentInterim?.(null);
 
               // a whitespace-only final carries no clinical
               // value, so suppress the segment, the context POST, and the NER
@@ -869,6 +935,17 @@ export function useArcaAudio() {
               }
             } else {
               store.setCurrentTranscript(result.text);
+              // TASK-985 M-27, transport half — the SAME text, plus the
+              // backend's commit geometry. `currentTranscript` stays a bare
+              // string and stays authoritative for every existing reader (four
+              // are v1-compat surfaces); this is purely additive, and nothing
+              // renders on it yet by design — see `SttInterim`.
+              store.setCurrentInterim?.({
+                text: result.text,
+                ...(typeof result.stableChars === 'number' ? { stableChars: result.stableChars } : {}),
+                ...(typeof result.utteranceIndex === 'number' ? { utteranceIndex: result.utteranceIndex } : {}),
+                receivedAt: Date.now(),
+              });
             }
           },
           onVADEvent: (event) => {
@@ -890,6 +967,21 @@ export function useArcaAudio() {
           onAudioDrop: () => {
             store.markAudioLost();
             store.incrementDroppedFrames();
+          },
+          // TASK-985 M-43 — the DOWNLINK loss. `onAudioDrop` above is audio
+          // that never reached the server; this is text the server produced and
+          // then discarded because it could not deliver it. Both leave the
+          // transcript permanently incomplete, so both latch the same
+          // session-sticky signal: a clinician reading captions needs to know
+          // the difference between "the room went quiet" and "words are
+          // missing", and a green badge over a hole says the wrong one.
+          onSttGap: (gap) => {
+            store.markAudioLost();
+            logger?.warn('Transcript gap reported by the gateway', {
+              operation: 'onSttGap',
+              component: 'useArcaAudio',
+              attributes: { reason: gap.reason, droppedPartials: gap.droppedPartials, droppedSeq: gap.droppedSeq },
+            });
           },
           // Streaming connection-health transitions from the STT client's
           // reconnect callbacks. `switched_fallback` is set
@@ -1145,6 +1237,20 @@ export function useArcaAudio() {
       }
       sourceIdToStreamRef.current.set(id, stream);
 
+      // TASK-985 M-33 — assert the session's capture constraints on the joining
+      // source. The `getUserMedia` above only REQUESTS them, and a
+      // caller-supplied stream never went through it at all; without this a mic
+      // plugged in mid-consultation can run under different DSP from the ones
+      // already in the mix.
+      void applyCaptureConstraints(stream.getAudioTracks?.() ?? [], audioProcessingRef.current, (constraintError) => {
+        logger?.debug('Capture constraints were refused by the joining source', {
+          operation: 'addSource',
+          component: 'useArcaAudio',
+          error: constraintError as Error,
+          attributes: { id, requested: audioProcessingRef.current },
+        });
+      });
+
       // A mic joining a MUTED session must arrive muted. Otherwise plugging one
       // in silently un-mutes part of the room — the mute state the clinician
       // set would only apply to the sources that happened to be present when
@@ -1249,9 +1355,22 @@ export function useArcaAudio() {
     const isRemote = prefs.workflowMode === 'remote';
     const custom = (prefs.custom ?? {}) as Record<string, unknown>;
 
+    // TASK-985 M-56 — prefer the ASR AGENT the preferences name over the
+    // deprecated pipeline id (TASK-865: selection is `agentSlug` or nothing).
+    //
+    // CLIENT HALF ONLY, and it cannot be more than that: `RemoteConfigResponse`
+    // has no `agentSlug` field to read, so on today's gateway this branch never
+    // fires and `startFromPreferences` can still only start on a `pipelineId`.
+    // The server contract has to grow the field for this to close — raised as a
+    // cross-lane request. Reading it defensively here means the client half
+    // lands once, and adding the field server-side is then sufficient.
+    const agentSlug = isRemote ? (prefs.remoteConfig as { agentSlug?: string } | undefined)?.agentSlug : undefined;
+
     const options: AudioStartOptions = {
       language: prefs.language,
-      pipelineId: isRemote ? prefs.remoteConfig?.pipelineId : undefined,
+      // Never both: an agent slug and a pipeline id are alternative selectors,
+      // and `StreamingSessionManager` carries at most one on the session body.
+      ...(agentSlug ? { agentSlug } : { pipelineId: isRemote ? prefs.remoteConfig?.pipelineId : undefined }),
       deviceId: typeof custom.deviceId === 'string' ? custom.deviceId : undefined,
       secondaryDeviceId: typeof custom.secondaryDeviceId === 'string' ? custom.secondaryDeviceId : undefined,
       dualCaptureEnabled: custom.dualCaptureEnabled === true,
@@ -1260,7 +1379,12 @@ export function useArcaAudio() {
     getLogger()?.debug('Starting audio from preferences', {
       operation: 'startFromPreferences',
       component: 'useArcaAudio',
-      attributes: { workflowMode: prefs.workflowMode, language: options.language, hasPipeline: !!options.pipelineId },
+      attributes: {
+        workflowMode: prefs.workflowMode,
+        language: options.language,
+        hasAgentSlug: !!agentSlug,
+        hasPipeline: !!options.pipelineId,
+      },
     });
 
     return startAudio(options);

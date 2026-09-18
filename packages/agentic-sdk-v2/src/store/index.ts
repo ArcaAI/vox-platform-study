@@ -27,6 +27,8 @@ export {
   selectIsMuted,
   selectIsSpeaking,
   selectCurrentTranscript,
+  // TASK-985 M-27 — the same partial, plus `stableChars` / `utteranceIndex`.
+  selectCurrentInterim,
   selectSessionLoading,
   selectSessionError,
   selectContextItems,

@@ -93,6 +93,9 @@ export {
   AudioContextManager,
   getNewAudioContext,
   type AudioContextAcquireOptions,
+  // TASK-985 M-63 — lets the host route the singleton's rate-mismatch warning
+  // into its own telemetry instead of the raw browser console.
+  type AudioContextDiagnosticLogger,
 
   // AudioTrack
   AudioTrack,

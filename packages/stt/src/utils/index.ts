@@ -34,6 +34,9 @@ export {
   multiChannelToMono,
   prepareAudioForWhisper,
   prepareFloat32ForWhisper,
+  // TASK-985 M-53 — stateful, rate-exact streaming converter (keeps kernel history across frames).
+  createStreamingResampler,
+  type StreamingResampler,
   int16ToFloat32,
   float32ToInt16,
   bytesToFloat32,

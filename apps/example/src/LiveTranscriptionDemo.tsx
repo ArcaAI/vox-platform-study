@@ -1,15 +1,39 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+/**
+ * Minimal live-transcription demo (TASK-985 M-54).
+ *
+ * Previously this file hand-rolled the whole `/ws/stt/stream` protocol against
+ * a raw `WebSocket`: its own reconnect story (none), its own readiness story
+ * (none — it started sending on `onopen`), its own downsampler (a box average,
+ * which aliases), and a stop that sent `{type:'stop'}` and `{type:'close'}`
+ * back to back and closed the socket on the same tick. That last one is the
+ * interesting bug: `stop` is what makes the server FINALIZE, so the final
+ * transcript of the recording is emitted *after* it — into a socket this file
+ * had already closed. The demo silently taught every reader to lose their last
+ * sentence.
+ *
+ * It now uses `SttWebSocketClient` from `@arcaai/vox/core`, which is the same
+ * client the admin console uses, and which owns all four of those concerns:
+ * ticket-refreshing reconnects, the `ready` gate, the stop-DRAIN (stop → tail
+ * finals → `{type:'close'}` → disconnect), and backpressure accounting.
+ *
+ * What is deliberately still hand-written here is the CAPTURE — a
+ * `ScriptProcessorNode` and a simple decimator — because this app's job is to
+ * be readable with no SDK beyond the socket client. A production browser
+ * integration should use `useArcaAudio` from `@arcaai/vox`, which does capture
+ * properly (worklet, anti-aliased rate conversion, device handling).
+ */
 
-type TranscriptMessage = {
-  type: string;
-  final?: boolean;
-  text?: string;
-  timestamp?: number;
-  [key: string]: any;
-};
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { SttWebSocketClient } from '@arcaai/vox/core';
 
 type LiveTranscriptionDemoProps = {
   apiBaseUrl: string;
+  /**
+   * The published ASR Agent to transcribe with (TASK-865). Omit it and the
+   * tenant's own agent assignment decides — which is the recommended default.
+   */
+  agentSlug?: string;
+  /** @deprecated TASK-865 — removed in R4. Prefer `agentSlug`, or neither. */
   pipelineId?: string;
   apiKey?: string;
   tenantId?: string;
@@ -20,21 +44,20 @@ type StreamSessionResponse = {
   status: string;
   wsUrl: string;
   ticket: string;
+  ticketExpiresAt?: number;
   maxConcurrent?: number;
   currentActive?: number;
 };
 
-export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
-  apiBaseUrl,
-  pipelineId,
-  apiKey,
-  tenantId,
-}) => {
+/** The wire rate the session declares. Frames are converted to it before sending. */
+const WIRE_SAMPLE_RATE = 16000;
+
+export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({ apiBaseUrl, agentSlug, pipelineId, apiKey, tenantId }) => {
   const [status, setStatus] = useState<string>('Idle');
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [transcript, setTranscript] = useState<string>('');
 
-  const wsRef = useRef<WebSocket | null>(null);
+  const clientRef = useRef<SttWebSocketClient | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -42,79 +65,61 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
   const sessionIdRef = useRef<string | null>(null);
   const isStoppingRef = useRef<boolean>(false);
 
-  const buildWebSocketUrl = useCallback((baseUrl: string, wsPath: string, sessionId: string, ticket: string) => {
-    const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    const normalizedWsPath = wsPath.startsWith('/') ? wsPath : `/${wsPath}`;
-    const wsBaseUrl = normalizedBaseUrl.replace(/^http/, 'ws');
-
-    return `${wsBaseUrl}${normalizedWsPath}?sessionId=${encodeURIComponent(sessionId)}&ticket=${encodeURIComponent(ticket)}`;
-  }, []);
-
   const appendTranscript = useCallback((line: string) => {
     setTranscript((prev) => prev + line + '\n');
   }, []);
 
-  const downsampleBuffer = useCallback((buffer: Float32Array, inputSampleRate: number, outputSampleRate: number) => {
-    if (outputSampleRate >= inputSampleRate) {
-      return buffer;
-    }
+  /**
+   * Decimate to 16 kHz by averaging.
+   *
+   * Good enough to read; NOT good enough to ship. It performs no low-pass
+   * filtering, so content above 8 kHz folds back into the speech band as
+   * aliasing and costs consonant accuracy. The SDK's own path
+   * (`@arcaai/stt`'s `createStreamingResampler`) uses a Kaiser-windowed-sinc
+   * polyphase converter that keeps kernel history across frames; use that, not
+   * this, in anything real.
+   */
+  const downsample = useCallback((buffer: Float32Array, inputSampleRate: number): Float32Array => {
+    if (inputSampleRate <= WIRE_SAMPLE_RATE) return buffer;
 
-    const sampleRateRatio = inputSampleRate / outputSampleRate;
-    const newLength = Math.round(buffer.length / sampleRateRatio);
-    const result = new Float32Array(newLength);
-    let offsetResult = 0;
-    let offsetBuffer = 0;
+    const ratio = inputSampleRate / WIRE_SAMPLE_RATE;
+    const result = new Float32Array(Math.round(buffer.length / ratio));
+    let readCursor = 0;
 
-    while (offsetResult < result.length) {
-      const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
-      let accum = 0;
+    for (let i = 0; i < result.length; i += 1) {
+      const nextCursor = Math.round((i + 1) * ratio);
+      let sum = 0;
       let count = 0;
-
-      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i += 1) {
-        accum += buffer[i];
+      for (let j = readCursor; j < nextCursor && j < buffer.length; j += 1) {
+        sum += buffer[j] ?? 0;
         count += 1;
       }
-
-      result[offsetResult] = count > 0 ? accum / count : 0;
-      offsetResult += 1;
-      offsetBuffer = nextOffsetBuffer;
+      result[i] = count > 0 ? sum / count : 0;
+      readCursor = nextCursor;
     }
 
     return result;
   }, []);
 
-  const convertFloat32ToInt16 = useCallback((buffer: Float32Array) => {
+  const toInt16 = useCallback((buffer: Float32Array): Int16Array => {
     const result = new Int16Array(buffer.length);
-
     for (let i = 0; i < buffer.length; i += 1) {
       const sample = Math.max(-1, Math.min(1, buffer[i] ?? 0));
       result[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
     }
-
     return result;
   }, []);
 
   const buildRequestHeaders = useCallback(() => {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (apiKey) {
-      headers['X-API-Key'] = apiKey;
-    }
-
-    if (tenantId) {
-      headers['X-Tenant-ID'] = tenantId;
-    }
-
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['X-API-Key'] = apiKey;
+    if (tenantId) headers['X-Tenant-ID'] = tenantId;
     return headers;
   }, [apiKey, tenantId]);
 
   const deleteStreamSession = useCallback(async () => {
     const sessionId = sessionIdRef.current;
-    if (!sessionId) {
-      return;
-    }
+    if (!sessionId) return;
 
     try {
       await fetch(`${apiBaseUrl}/api/v1/audio/transcription-jobs/stream/session/${sessionId}`, {
@@ -134,44 +139,46 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
       processorNodeRef.current.disconnect();
       processorNodeRef.current = null;
     }
-
     if (sourceNodeRef.current) {
       sourceNodeRef.current.disconnect();
       sourceNodeRef.current = null;
     }
-
     if (audioContextRef.current) {
       void audioContextRef.current.close();
       audioContextRef.current = null;
     }
-
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
     }
   }, []);
 
   const stopAll = useCallback(async () => {
-    if (isStoppingRef.current) {
-      return;
-    }
+    if (isStoppingRef.current) return;
     isStoppingRef.current = true;
 
     try {
+      // Microphone off first — the recording indicator must not stay lit while
+      // we wait for the tail.
       teardownAudio();
 
-      const ws = wsRef.current;
-      wsRef.current = null;
+      const client = clientRef.current;
+      clientRef.current = null;
 
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (client) {
+        // THE POINT OF THIS FILE'S REWRITE. `stopAndDrain()` sends
+        // `{type:'stop'}`, keeps the socket open until the server's terminal
+        // status (so the final transcript still arrives), then sends
+        // `{type:'close'}` and disconnects. The old code sent both frames and
+        // closed immediately, and the last utterance was lost from the screen
+        // every single time.
+        setStatus('Finalizing…');
         try {
-          ws.send(JSON.stringify({ type: 'stop' }));
-          ws.send(JSON.stringify({ type: 'close' }));
+          await client.stopAndDrain();
         } catch (err) {
-          console.error('Failed to send websocket shutdown message', err);
+          console.error('Drain failed; closing anyway', err);
+          client.disconnect();
         }
-
-        ws.close();
       }
 
       await deleteStreamSession();
@@ -183,146 +190,126 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
   }, [deleteStreamSession, teardownAudio]);
 
   const start = useCallback(async () => {
-    setStatus('Creating streaming session...');
+    setStatus('Creating streaming session…');
     setTranscript('');
     setIsRunning(true);
 
     try {
-      if (!pipelineId) {
-        throw new Error('Missing pipelineId');
-      }
+      if (!apiKey) throw new Error('Missing apiKey');
+      if (!tenantId) throw new Error('Missing tenantId');
 
-      if (!apiKey) {
-        throw new Error('Missing apiKey');
-      }
-
-      if (!tenantId) {
-        throw new Error('Missing tenantId');
-      }
-
+      // Selection is `agentSlug` or nothing: omit both and the tenant's
+      // agent-assignment cascade picks. `pipelineId` is the deprecated
+      // selector and is only sent when a caller explicitly still passes one.
       const res = await fetch(`${apiBaseUrl}/api/v1/audio/transcription-jobs/stream/session`, {
         method: 'POST',
         headers: buildRequestHeaders(),
         body: JSON.stringify({
-          pipelineId,
-          sampleRate: 16000,
+          ...(agentSlug ? { agentSlug } : pipelineId ? { pipelineId } : {}),
+          sampleRate: WIRE_SAMPLE_RATE,
         }),
       });
 
       if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Session request failed: ${res.status} ${errorText}`);
+        throw new Error(`Session request failed: ${res.status} ${await res.text()}`);
       }
       const session: StreamSessionResponse = await res.json();
-      console.log('Streaming session response', session);
       sessionIdRef.current = session.sessionId;
 
-      const wsUrl = buildWebSocketUrl(apiBaseUrl, session.wsUrl, session.sessionId, session.ticket);
+      const client = new SttWebSocketClient(undefined, {
+        enabled: true,
+        // Every reconnect needs a FRESH ticket: the first one is consumed by
+        // the first handshake, so reusing the URL verbatim closes 4401.
+        refreshTicket: async () => {
+          const refreshed = await fetch(
+            `${apiBaseUrl}/api/v1/audio/transcription-jobs/stream/session/${session.sessionId}/refresh-ticket`,
+            { method: 'POST', headers: buildRequestHeaders() },
+          ).then((r) => r.json());
+          return refreshed.ticket as string;
+        },
+      });
+      clientRef.current = client;
 
-      setStatus(`Connecting WebSocket for session ${session.sessionId}...`);
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+      client.onTranscript((result) => {
+        appendTranscript(`${result.isFinal ? '[FINAL] ' : '[PARTIAL] '}${result.text}`);
+      });
+      client.onStatus((update) => {
+        appendTranscript(`[STATUS] ${update.status}${update.message ? ` ${update.message}` : ''}`);
+      });
+      client.onWsError((err) => {
+        appendTranscript(`[ERROR] ${err.code}: ${err.message}`);
+      });
+      // Results the gateway DISCARDED — text that was produced and dropped, so
+      // no reconnect brings it back. Worth showing in a demo precisely because
+      // it is the failure that otherwise looks like silence (TASK-985 M-43).
+      client.onGap((gap) => {
+        appendTranscript(`[GAP] transcript text was dropped (${gap.reason})`);
+      });
+      client.onBackpressureDrop(() => {
+        appendTranscript('[DROP] outbound audio was dropped — the uplink is behind');
+      });
 
-      ws.binaryType = 'arraybuffer';
+      const wsBase = apiBaseUrl.replace(/\/+$/, '').replace(/^http/, 'ws');
+      const wsPath = session.wsUrl.startsWith('/') ? session.wsUrl : `/${session.wsUrl}`;
+      const wsUrl =
+        `${wsBase}${wsPath}?sessionId=${encodeURIComponent(session.sessionId)}` +
+        `&ticket=${encodeURIComponent(session.ticket)}&tenantId=${encodeURIComponent(tenantId)}`;
 
-      ws.onopen = async () => {
-        setStatus('WebSocket connected. Requesting microphone access...');
+      setStatus(`Connecting WebSocket for session ${session.sessionId}…`);
+      await client.connect(wsUrl);
 
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              channelCount: 1,
-              sampleRate: 16000,
-            },
-            video: false,
-          });
-          mediaStreamRef.current = stream;
+      // An OPEN socket is not a ready one: the gateway registers its
+      // result-stream handler and only then emits `{type:'ready'}`. Audio sent
+      // before that frame is ingested with nothing listening for its results,
+      // so the first partials of a recording can vanish (TASK-985 M-22).
+      // Resolves immediately once `ready` has arrived, and resolves anyway on
+      // its own timeout so an older gateway still works.
+      setStatus('Waiting for the session to be ready…');
+      await client.whenReady();
 
-          const audioContext = new AudioContext();
-          audioContextRef.current = audioContext;
+      setStatus('Requesting microphone access…');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, sampleRate: WIRE_SAMPLE_RATE },
+        video: false,
+      });
+      mediaStreamRef.current = stream;
 
-          const sourceNode = audioContext.createMediaStreamSource(stream);
-          sourceNodeRef.current = sourceNode;
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
 
-          const processorNode = audioContext.createScriptProcessor(4096, 1, 1);
-          processorNodeRef.current = processorNode;
+      const sourceNode = audioContext.createMediaStreamSource(stream);
+      sourceNodeRef.current = sourceNode;
 
-          processorNode.onaudioprocess = (event) => {
-            if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-              return;
-            }
+      const processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+      processorNodeRef.current = processorNode;
 
-            const inputData = event.inputBuffer.getChannelData(0);
-            const downsampled = downsampleBuffer(inputData, audioContext.sampleRate, 16000);
-            const pcm16 = convertFloat32ToInt16(downsampled);
-            wsRef.current.send(pcm16.buffer);
-          };
-
-          sourceNode.connect(processorNode);
-          processorNode.connect(audioContext.destination);
-
-          setStatus('Streaming microphone audio...');
-        } catch (err: any) {
-          console.error('getUserMedia failed', err);
-          setStatus('Microphone permission denied or unavailable');
-          stopAll();
-        }
+      processorNode.onaudioprocess = (event) => {
+        const live = clientRef.current;
+        if (!live || !live.isConnected()) return;
+        const input = event.inputBuffer.getChannelData(0);
+        // `audioContext.sampleRate` is the rate the browser GAVE us, which is
+        // not necessarily the one requested above — read it, never assume it.
+        live.sendAudioFrame(toInt16(downsample(input, audioContext.sampleRate)));
       };
 
-      ws.onmessage = (event) => {
-        try {
-          const msg: TranscriptMessage = JSON.parse(event.data);
-          if (msg.type === 'transcript') {
-            const prefix = msg.isFinal || msg.final ? '[FINAL] ' : '[PARTIAL] ';
-            appendTranscript(prefix + (msg.text ?? ''));
-          } else if (msg.type === 'error') {
-            appendTranscript(`[ERROR] ${msg.message ?? 'Unknown stream error'}`);
-          } else if (msg.type === 'status') {
-            appendTranscript(`[STATUS] ${msg.status ?? 'unknown'} ${msg.message ?? ''}`.trim());
-          } else {
-            appendTranscript('[INFO] ' + event.data);
-          }
-        } catch (e) {
-          appendTranscript('[RAW] ' + event.data);
-        }
-      };
+      sourceNode.connect(processorNode);
+      processorNode.connect(audioContext.destination);
 
-      ws.onerror = (err) => {
-        console.error('WebSocket error', err);
-        setStatus('WebSocket error');
-      };
-
-      ws.onclose = () => {
-        teardownAudio();
-        wsRef.current = null;
-        setIsRunning(false);
-        if (!isStoppingRef.current) {
-          setStatus('WebSocket closed');
-          void deleteStreamSession();
-        }
-      };
-    } catch (err: any) {
+      setStatus('Streaming microphone audio…');
+    } catch (err: unknown) {
       console.error(err);
-      setStatus('Error: ' + err.message);
+      setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      teardownAudio();
+      clientRef.current?.disconnect();
+      clientRef.current = null;
+      void deleteStreamSession();
       setIsRunning(false);
     }
-  }, [
-    apiBaseUrl,
-    appendTranscript,
-    apiKey,
-    buildRequestHeaders,
-    buildWebSocketUrl,
-    convertFloat32ToInt16,
-    deleteStreamSession,
-    downsampleBuffer,
-    pipelineId,
-    teardownAudio,
-    tenantId,
-  ]);
+  }, [agentSlug, apiBaseUrl, apiKey, appendTranscript, buildRequestHeaders, deleteStreamSession, downsample, pipelineId, teardownAudio, tenantId, toInt16]);
 
   useEffect(() => {
     return () => {
-      stopAll();
+      void stopAll();
     };
   }, [stopAll]);
 

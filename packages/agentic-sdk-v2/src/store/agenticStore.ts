@@ -20,7 +20,7 @@ import type {
   PipelineStateInfo,
   TenantAudioConfig,
 } from '../types';
-import type { TranscriptSegment, SttConnectionState, ActivePipelineInfo } from '../types/audio';
+import type { TranscriptSegment, SttConnectionState, ActivePipelineInfo, SttInterim } from '../types/audio';
 import { DEFAULT_AUDIO_PLUGIN_STATES } from '../types';
 import type { AgenticClient } from '../core/AgenticClient';
 import type { PluginManager } from '../core/PluginManager';
@@ -67,8 +67,32 @@ export interface AgenticState {
   audioLevel: number;
   isSpeaking: boolean;
   currentTranscript: string;
+  /**
+   * The live partial, with the backend's commit geometry attached (TASK-985
+   * M-27, transport half). `null` between utterances.
+   *
+   * `currentTranscript` above stays a bare string and stays authoritative for
+   * every existing reader (four of them are v1-compat surfaces); this is the
+   * SAME text plus `stableChars` / `utteranceIndex`. Nothing renders
+   * differently on it yet, deliberately: today's server-side `stableChars` is
+   * not monotone within an utterance, so splitting the caption on it would turn
+   * an invisible server defect into a visible one. This exists so the harness
+   * and the playground can OBSERVE a settled prefix at all.
+   */
+  currentInterim: SttInterim | null;
   transcriptSegments: TranscriptSegment[];
-  audioLanguage: string;
+  /**
+   * Per-capture STT language.
+   *
+   * TASK-985 QW-2 / M-02 — `undefined` is the initial value and it MEANS
+   * something: "nobody has expressed a language", which is what lets the
+   * session body omit the field and the tenant's ASR agent decide. It used to
+   * initialise to `'en'`, which was indistinguishable from a clinician
+   * choosing English and overrode the agent on every session.
+   * `useArcaAudio()` still surfaces `'en'` as its DISPLAY fallback, so a
+   * language picker reads the same as before.
+   */
+  audioLanguage: string | undefined;
   /**
    * End-user STT language mode id, e.g. `'en'`, `'ml'`, `'ml-en'`
    * `'auto'`. Undefined ⇒ no mode selected (pipeline default). Re-applied on a
@@ -259,9 +283,11 @@ export interface AgenticActions {
   setAudioLevel: (level: number) => void;
   setIsSpeaking: (speaking: boolean) => void;
   setCurrentTranscript: (transcript: string) => void;
+  /** Publish (or clear, with `null`) the live partial and its commit geometry. */
+  setCurrentInterim: (interim: SttInterim | null) => void;
   setTranscriptSegments: (segments: TranscriptSegment[]) => void;
   addTranscriptSegment: (segment: TranscriptSegment) => void;
-  setAudioLanguage: (language: string) => void;
+  setAudioLanguage: (language: string | undefined) => void;
   setSttLanguageMode: (mode: string | undefined) => void;
   setPendingSttProvider: (provider: 'primary' | 'fallback' | null) => void;
   setAudioPlugins: (plugins: AudioPluginStates) => void;
@@ -401,8 +427,10 @@ const initialState: AgenticState = {
   audioLevel: 0,
   isSpeaking: false,
   currentTranscript: '',
+  currentInterim: null,
   transcriptSegments: [],
-  audioLanguage: 'en',
+  // TASK-985 QW-2 — `undefined`, not `'en'`. See the field's own doc comment.
+  audioLanguage: undefined,
   sttLanguageMode: undefined,
   pendingSttProvider: null,
   audioPlugins: DEFAULT_AUDIO_PLUGIN_STATES,
@@ -566,6 +594,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   setAudioLevel: (level) => set({ audioLevel: level }),
   setIsSpeaking: (speaking) => set({ isSpeaking: speaking }),
   setCurrentTranscript: (transcript) => set({ currentTranscript: transcript }),
+  setCurrentInterim: (interim) => set({ currentInterim: interim }),
   setTranscriptSegments: (segments) => set({ transcriptSegments: segments }),
   addTranscriptSegment: (segment) => set((state) => ({ transcriptSegments: [...state.transcriptSegments, segment] })),
   setAudioLanguage: (language) => set({ audioLanguage: language }),
@@ -645,6 +674,9 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       entities: [],
       summaries: [],
       currentTranscript: '',
+      // Carries the same raw transcript text as `currentTranscript`, so it is
+      // wiped wherever that is (TASK-985 M-27).
+      currentInterim: null,
       transcriptSegments: [],
       dnaStyle: null,
       tenantConfig: null,
@@ -740,6 +772,9 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       entities: [],
       summaries: [],
       currentTranscript: '',
+      // Carries the same raw transcript text as `currentTranscript`, so it is
+      // wiped wherever that is (TASK-985 M-27).
+      currentInterim: null,
       transcriptSegments: [],
       dnaStyle: null,
       // Logout ends the capture context; clear the audio-drop signal.
@@ -927,6 +962,13 @@ export const selectSummaries = (state: AgenticState) => state.summaries;
 export const selectIsMuted = (state: AgenticState) => state.isMuted;
 export const selectIsSpeaking = (state: AgenticState) => state.isSpeaking;
 export const selectCurrentTranscript = (state: AgenticState) => state.currentTranscript;
+/**
+ * The live partial WITH the backend's commit geometry (TASK-985 M-27).
+ * `selectCurrentTranscript` above remains the plain-string reader every
+ * existing consumer uses; this is the additive one. Nothing renders a
+ * settled/tentative split on it yet — see {@link SttInterim}.
+ */
+export const selectCurrentInterim = (state: AgenticState) => state.currentInterim;
 /**
  * Running count of outbound audio frames dropped this session. Read
  * from the EXTERNAL vox UI with `useArcaStore(selectAudioDropped)` (never a

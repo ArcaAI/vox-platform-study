@@ -40,7 +40,12 @@ import {
 import type { STTProvider } from '../providers/types.js';
 import { LocalSTTProvider } from '../providers/LocalSTTProvider.js';
 import { RemoteSTTProvider } from '../providers/BackendSTTProvider.js';
-import { StreamingBackendSTTProvider, type StreamingSessionLike, type StreamingWsClientLike } from '../providers/StreamingBackendSTTProvider.js';
+import {
+  StreamingBackendSTTProvider,
+  type StreamingGapPayload,
+  type StreamingSessionLike,
+  type StreamingWsClientLike,
+} from '../providers/StreamingBackendSTTProvider.js';
 import { getSTTBrowserSupport } from '../utils/browserSupport.js';
 import { WHISPER_SAMPLE_RATE } from '../utils/audioResampler.js';
 import { createAudioCapture, type AudioCaptureHandle } from './audioCapture.js';
@@ -148,6 +153,14 @@ export class STTProcessor extends BaseProcessor {
    * remote provider produces drops; other providers never invoke it.
    */
   private backpressureDropCallback: ((droppedFrameCount: number) => void) | null = null;
+
+  /**
+   * PUSH channel for server `gap` frames (TASK-985 M-43), re-emitted from the
+   * streaming provider's `onGap`. The downlink mirror of
+   * {@link backpressureDropCallback}: that is audio lost on the way up, this is
+   * text the gateway discarded on the way down.
+   */
+  private gapCallback: ((gap: StreamingGapPayload) => void) | null = null;
 
   constructor(options: STTOptions = {}) {
     super('stt-processor', options.debugMode);
@@ -387,6 +400,15 @@ export class STTProcessor extends BaseProcessor {
    */
   onBackpressureDrop(cb: (droppedFrameCount: number) => void): void {
     this.backpressureDropCallback = cb;
+  }
+
+  /**
+   * Register a callback fired when the backend reports that it DISCARDED
+   * results it could not deliver (TASK-985 M-43). Only the streaming remote
+   * provider produces them. Single-slot; set before `onInit` to catch every gap.
+   */
+  onGap(cb: (gap: StreamingGapPayload) => void): void {
+    this.gapCallback = cb;
   }
 
   /**
@@ -774,10 +796,32 @@ export class STTProcessor extends BaseProcessor {
     provider.onDrop((droppedFrameCount) => {
       this.backpressureDropCallback?.(droppedFrameCount);
     });
+    // TASK-985 M-43 — the downlink twin of the drop channel above. Without this
+    // hop a `gap` frame dead-ends in the provider and the clinician reads a
+    // transcript with a silent hole in it.
+    provider.onGap((gap) => {
+      this.gapCallback?.(gap);
+    });
 
     await provider.init({
       sessionId: this.sessionId,
-      language: audio.language ?? DEFAULT_LANGUAGE_LOCALE,
+      // TASK-985 QW-2 / M-02 — NO default here.
+      //
+      // ⚠ MERGE HAZARD: this default (and the SDK's `languageMode: 'auto'`) is
+      // currently MASKING a server-side prompt defect — 'auto' resolves to an
+      // unprompted decode, while the agent's own configured mode resolves to a
+      // pair-primed one that scores far worse. Removing the default is correct
+      // and it EXPOSES that defect; it must land with the prompt-configuration
+      // fix, not ahead of it. See TASK-985 §2.7.
+      //
+      // The backend's backfill is `if not language_mode:` — a literal is not
+      // "no opinion", it beats the tenant's agent. Sending nothing is the only
+      // way to say "the agent decides". Every OTHER `?? DEFAULT_LANGUAGE_LOCALE`
+      // in this file stays: those configure the in-browser Whisper engine (and
+      // the non-streaming remote provider), which have no agent to fall back to
+      // and genuinely need a locale. Only the STREAMING session-create path,
+      // which this is, reaches the tenant's ASR agent.
+      language: audio.language,
       // End-user language mode — forwarded to the STT session, which
       // resolves it against the session engine and 422s an unservable mode.
       // Read from options directly (the default config carries no mode).
