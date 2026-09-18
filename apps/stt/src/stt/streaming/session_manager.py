@@ -3363,6 +3363,24 @@ class SessionManager:
 
         async def _on_frame(frame: AudioFrame) -> None:
             if session.status != SessionStatus.ACTIVE:
+                # TASK-985 M-29 — this is a LOSS, not a no-op, and it used to be
+                # silent. `stt:control` and `stt:audio` are two Redis streams
+                # with no mutual ordering, so a control FINALIZE flips the
+                # status to FINALIZING while unread audio entries are still
+                # queued behind it — 80-160 ms of the closing utterance at
+                # steady state, more under back-pressure. Count it and say so
+                # once, so the residual is measurable after the gateway moves
+                # `stop` in-band (a zero-length `final=1` frame on `stt:audio`,
+                # which is ordered against the audio by construction).
+                session.frames_dropped_after_finalize += 1
+                if not session._dropped_after_finalize_warned:
+                    session._dropped_after_finalize_warned = True
+                    logger.warning(
+                        "stt.stream.frame_dropped_after_finalize",
+                        session_id=session.session_id,
+                        seq=frame.seq,
+                        status=session.status.value,
+                    )
                 return
 
             session.record_frame(seq=frame.seq, data=frame.data, sample_rate=frame.sr)
@@ -3421,10 +3439,26 @@ class SessionManager:
 
             # If final frame, trigger finalization
             if frame.final:
+                # TASK-985 M-29 — the terminal frame is the ORDERED stop signal:
+                # appended to `stt:audio` itself, it is reached strictly after
+                # every earlier entry, so the "unread audio at FINALIZE" window
+                # above is removed rather than narrowed. A zero-length body is
+                # deliberate — `record_frame` adds `len(data)//2 == 0` samples,
+                # so the marker cannot inflate `total_duration_seconds`, which
+                # is the BILLED quantity.
+                #
+                # Note the consequence for ordering, which is why the tail latch
+                # had to land first: once the gateway sends this instead of a
+                # control FINALIZE, `_on_frame` becomes the FIRST finalizer and
+                # the tail flush starts only after the whole audio backlog has
+                # drained — i.e. LATER, which WIDENS the window in which the
+                # SDK's DELETE overtakes it. Without `_run_tail_flush`'s
+                # completion latch this change makes M-04 more likely, not less.
                 logger.info(
                     "Final frame received",
                     session_id=session.session_id,
                     seq=frame.seq,
+                    bytes=len(frame.data),
                 )
                 try:
                     # F-32 / TASK-985 M-04 — one tail flush per session across
