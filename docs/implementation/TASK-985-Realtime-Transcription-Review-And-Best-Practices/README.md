@@ -292,6 +292,44 @@ fine-tuned no-prompt **35.15%** -> fine-tuned WITH prompt **35.74% (worse)**, an
 rows read 12.21% no-prompt vs 15.63% with-prompt. Together with TASK-946's internal 77%-content-loss arm,
 nothing on record supports the pair prompt helping either Malayalam or code-switched audio.
 
+
+#### 2.7.1 The Malayalam half, measured (2026-09-19) — OD-B answered in both languages
+
+§2.7's arms were English-only, and the pair priming prompt exists for CODE-SWITCHED audio, so the honest
+scope limit was that it might help there. The owner supplied five aligned clips from a Malayalam-English
+clinical talk (probiotics / microbiome / antibiotics), 16 kHz mono, each with a reference transcript, and
+they are genuinely code-switched — e.g. `"ഹലോ everyone, I am Dr Manoj Johnson, lifestyle physician"`,
+`"antibiotic എടുക്കുമ്പോൾ gastric related ഒക്കെ balance ചെയ്യാൻ"`.
+
+The SAME two sibling agents were used, so this is the same single-variable comparison as §2.7 — arm A
+(`ml-en`: `language=None` + pair prompt) against arm E (`auto`: `language=None`, no prompt). Metric is CER
+(§5: primary for Malayalam and code-switch), computed against the supplied references.
+
+| clip | ref chars | CER — prompt ON | CER — prompt OFF | hyp chars ON -> OFF | finals ON |
+|---|---|---|---|---|---|
+| 0001 | 211 | 0.896 | **0.474** | 31 -> 134 | 1 |
+| 0002 | 203 | 0.946 | **0.695** | 14 -> 81 | 1 |
+| 0003 | 199 | 1.000 | **0.940** | 0 -> 23 | **0** |
+| 0013 | 236 | 0.924 | **0.720** | 26 -> 100 | 1 |
+| 0015 | 302 | 0.904 | **0.722** | 43 -> 132 | 1 |
+| **mean** | | **0.934** | **0.710** | ~3-4x more content | |
+
+**The pair prompt is harmful on code-switched Malayalam too.** With it ON the decoder returned 31 / 14 / 0 /
+26 / 43 characters against references of 211 / 203 / 199 / 236 / 302, and one clip produced NO final at all.
+So the last caveat on OD-B is closed: the prompt is net-harmful in both languages, which is also the
+direction of the external record (F9-M2 re-fetch: Malayalam 35.15 % no-prompt vs 35.74 % with-prompt;
+ASCEND code-switch 12.21 % vs 15.63 %).
+
+**What this does NOT say.** Arm E's CER of 0.47-0.94 is still poor in absolute terms. Removing the prompt
+recovers most of the LOST CONTENT; it does not make the served fine-tune good at this audio. Script
+fidelity is independently bad in both arms — on clip 0001 the reference is 52.1 % Latin and the hypothesis
+9.3 %, while on clip 0015 the reference is 0 % Latin and the hypothesis 28.8 %. That is a model/LID problem
+(M-09, and D9's option table), not a prompt problem, and it is not addressed by OD-B.
+
+**Fixture provenance.** The clips are an owner-supplied recording of a named clinician, held OUTSIDE the
+repository. They are NOT committed, and the driver reads them by absolute path, matching the
+`STT_MLEN_EVAL_DIR` posture in `apps/stt/tests/integration/README-mlen-eval.md`.
+
 ## 3. Best practices
 
 Every external number cites its F9 practice id; Appendix C lists the source, URL, year and whether the page was fetched or only seen in search results.
@@ -349,7 +387,7 @@ Recommendation first; each row presents the evidence and asks rather than overri
 | Id | Decision | Recommendation | Evidence | Record |
 |---|---|---|---|---|
 | OD-A | `partialWindowSec` for the served agents (3 vs 6 vs 15) | Measure before choosing: do not touch the seed until BP-2 reports; then promote the winner and remove the agent-level override if the row value wins. If a value must be chosen before that, 15 is the only measured point with 0 % garbage partials on the three-point curve (31 % at 6 s, 10 % at 10 s, 0 % at 15 s), at the cost of first-partial latency moving with the window (TASK-934 recorded commit p50 rising ~0.8 s when the window widened); 3 is extrapolated past the harmful end of that curve | M-01; `session_manager.py:489-495`; `25-agents.ts:255-259`; today's finals are independent of this knob | TASK-938 R-2 (Review), TASK-946 §7 (undone), Lane F2 `ea174814e` (protocol never run) |
-| OD-B | Pair priming prompt on ml-en (module switch ON) | **ANSWERED BY MEASUREMENT 2026-09-19 (§2.7) — recommend OFF.** Arm E (`auto`) vs arm A (`ml-en`) is a single-variable comparison of the pair prompt (both resolve to `language=None`; they differ only in `initial_prompt`). With the prompt: 0.885 / 0.935 / 0.918 medical_wer, keyterm 0/21. Without it: 0.033 / 0.048 / 0.131, keyterm 21/21. The flag was flipped True by `e3d61eefb`; it reads False at the baseline commit, which is why the 2026-09-09 capture recorded the good numbers. Recommended: (1) set `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = False` now — a one-line revert of that flag; (2) ST-3 moves the template to `AiModel._metadata.asr.initialPrompt` so it becomes governed configuration, A/B-able per tenant without a deploy; (3) Malayalam remains unmeasured here, but the external record now points the same way (F9-M2 re-fetch: ml fine-tuned no-prompt 35.15 % vs with-prompt 35.74 %; ASCEND code-switch 12.21 % vs 15.63 %) as does TASK-946's 77 % content-loss arm. **Owner call required before any change to a served default.** | §2.7 arms A/D/E; `language_modes.py:427-470`; `e3d61eefb` vs `0c865ccfb:language_modes.py:230` | TASK-946 OD-2 (now answered for English) |
+| OD-B | Pair priming prompt on ml-en (module switch ON) | **ANSWERED BY MEASUREMENT 2026-09-19 (§2.7) — recommend OFF.** Arm E (`auto`) vs arm A (`ml-en`) is a single-variable comparison of the pair prompt (both resolve to `language=None`; they differ only in `initial_prompt`). With the prompt: 0.885 / 0.935 / 0.918 medical_wer, keyterm 0/21. Without it: 0.033 / 0.048 / 0.131, keyterm 21/21. The flag was flipped True by `e3d61eefb`; it reads False at the baseline commit, which is why the 2026-09-09 capture recorded the good numbers. Recommended: (1) set `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = False` now — a one-line revert of that flag; (2) ST-3 moves the template to `AiModel._metadata.asr.initialPrompt` so it becomes governed configuration, A/B-able per tenant without a deploy; (3) Malayalam remains unmeasured here, but the external record now points the same way (F9-M2 re-fetch: ml fine-tuned no-prompt 35.15 % vs with-prompt 35.74 %; ASCEND code-switch 12.21 % vs 15.63 %) as does TASK-946's 77 % content-loss arm. **APPLIED 2026-09-19 on owner approval** — `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = False`, with the measurement recorded at the flag. Confirmed in BOTH languages (see §2.7.1). | §2.7 arms A/D/E; `language_modes.py:427-470`; `e3d61eefb` vs `0c865ccfb:language_modes.py:230` | TASK-946 OD-2 (now answered for English) |
 | OD-C | VAD OFF by default (energy endpointing) | Run BP-7 and BP-4b arm (2) as the owed listening pass; the energy gate reads normalized audio and opens on room tone (M-07, fixed independently by QW-13), and no reference streaming stack uses energy as the endpointer (F9-V1/V2). Recommend Silero ON with the F9-V1 settings if the room-tone test confirms | M-07, M-13; `preprocessor.py:351,696`; F9-V1/V2 | TASK-977 D-1(b) (accepted "pending the listening pass") |
 | OD-D | Commit rule for TASK-937 R-3 | (a) N-of-M agreement with timestamp-anchored slicing (ST-1), because the exact-prefix alignment collapses to 0 on real audio and the UI cannot show a settled prefix at all today (M-27) | M-08, M-27; `commit_policy.py:200,271,321`; F9-S2 | TASK-937 OD-2 (unanswered) |
 | OD-E | `hotwordsInPrompt` tiers: one (model row only, M-35) vs two (agent then model, TASK-946 §7 plan per TASK-934 OD-4(a)) | One tier on the model row: the switch is a property of the fine-tune, the agent-tier read is dead today, and two tiers add a drift surface | M-35; `build-resolved-asr-spec.ts:328`; `agent-schemas.ts:423` | TASK-946 §7 vs TASK-937 R-4 (in conflict) |
