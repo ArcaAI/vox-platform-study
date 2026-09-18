@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, Matches } from 'class-validator';
 import { PaginatedQuery } from '@arcaai/applications';
 import type { UserExportFormat } from '../user-export.service';
 
@@ -50,11 +50,20 @@ export class ExportUsersQuery extends PaginatedQuery {
    * ever remove rows from the result, never reach one outside the caller's
    * scope (see `collectExportRows`).
    *
-   * `@IsUUID` is not decoration: the id set is composed into an `id[in]:…`
-   * token of the CSV filter grammar, whose separators are `;` `|` `[` `]:`.
-   * Constraining every item to a UUID makes a filter-injection token
-   * unrepresentable at the edge rather than relying on the grammar to be
-   * hostile-input-safe. `ArrayMaxSize` matches the export row cap.
+   * The shape constraint is not decoration: the id set is composed into an
+   * `id[in]:…` token of the CSV filter grammar, whose separators are
+   * `;` `|` `[` `]:`. Pinning every item to hex-and-hyphens makes a
+   * filter-injection token unrepresentable at the edge rather than relying on
+   * the grammar to be hostile-input-safe. `ArrayMaxSize` matches the export
+   * row cap.
+   *
+   * It is deliberately a SHAPE match and not `@IsUUID`, which enforces the
+   * version nibble: this platform's reserved rows are not version-compliant
+   * uuids (`60000000-…` the system user, `70000000-…` every seeded account),
+   * so `@IsUUID('all')` answered `400 each value in ids must be a UUID` for a
+   * selection containing any of them — "Export selected" worked for runtime
+   * uuidv7 rows and failed for every seeded one. Pinned by
+   * `__tests__/export-users.query.task986.test.ts`.
    */
   @ApiPropertyOptional({
     description: 'Export only these user ids (comma-separated, or repeated). Narrows the tenant-scoped set; it never widens it.',
@@ -65,6 +74,9 @@ export class ExportUsersQuery extends PaginatedQuery {
   @Transform(({ value }) => parseIdsQuery(value))
   @IsArray()
   @ArrayMaxSize(10000)
-  @IsUUID('all', { each: true })
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
+    each: true,
+    message: 'each value in ids must be a uuid-shaped id (hex and hyphens only)',
+  })
   ids?: string[];
 }
