@@ -276,7 +276,7 @@ class TestNeverRaises:
 
     def test_create_app_does_not_raise_when_exporter_construction_fails(self) -> None:
         with patch(
-            "hope_obs.tracing.OTLPSpanExporter",
+            "opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter",
             side_effect=RuntimeError("collector unreachable"),
         ):
             from tts.main import create_app

@@ -61,12 +61,19 @@ def build_observability_config(settings: Settings) -> ObservabilityConfig:
     as a veto — see the module docstring — so a manifest that still sets it
     keeps its current, deliberately-off behaviour until it migrates.
     """
+    base = ObservabilityConfig.from_env("harness", service_version=_SERVICE_VERSION)
     config = replace(
-        ObservabilityConfig.from_env("harness", service_version=_SERVICE_VERSION),
+        base,
         service_name=settings.otel_service_name,
         service_namespace=settings.otel_service_namespace,
         deployment_environment=settings.otel_deployment_environment,
-        otlp_endpoint=settings.otel_exporter_endpoint or None,
+        # `or base.otlp_endpoint`, never `or None` (TASK-987 F-22). R-2 makes the
+        # canonical `OTEL_EXPORTER_OTLP_ENDPOINT` the enable signal, and
+        # `from_env` has already resolved it. Overwriting with `None` when
+        # HARNESS_OTEL_EXPORTER_ENDPOINT happens to be unset would discard it and
+        # take the app AND the Temporal worker dark — which is exactly why lane D2
+        # could not retire that variable from the dev overlay.
+        otlp_endpoint=settings.otel_exporter_endpoint or base.otlp_endpoint,
         log_level=settings.log_level,
     )
 

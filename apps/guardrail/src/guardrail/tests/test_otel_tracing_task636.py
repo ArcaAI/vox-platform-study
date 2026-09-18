@@ -372,7 +372,7 @@ class TestSetupDegradesGracefully:
         monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
 
         with patch(
-            "hope_obs.tracing.OTLPSpanExporter",
+            "opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter",
             side_effect=RuntimeError("collector unreachable"),
         ):
             app = FastAPI()
@@ -384,7 +384,7 @@ class TestSetupDegradesGracefully:
         monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
 
         with patch(
-            "hope_obs.tracing.OTLPSpanExporter",
+            "opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter",
             side_effect=RuntimeError("collector unreachable"),
         ):
             app = FastAPI()
