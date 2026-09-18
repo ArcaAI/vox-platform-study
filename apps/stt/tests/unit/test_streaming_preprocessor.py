@@ -1743,9 +1743,16 @@ class TestTask505ReviewFixes:
         # 1-indexed) and completes 6 wall-clock frames later → frame 10.
         assert frames_fed == 10
 
-    def test_normalizer_never_amplifies_noise_floor(self):
+    def test_normalizer_gain_is_capped_at_20x(self):
         # Divisor floor (gain ceiling 20×): ambient noise at 0.002 peak must
         # not be normalized to full scale during long pauses.
+        #
+        # TASK-985 (M-07): the assertion is true and worth keeping, but the old
+        # NAME ("never amplifies noise floor") stated a property this code does
+        # not have — it amplifies the floor by exactly 20×, it merely stops
+        # short of full scale. That name is why M-07 hid for so long: the gate
+        # tests it implied were never written. They are now, in
+        # `tests/unit/streaming/test_task985_segmentation.py`.
         pp = StreamingPreprocessor(session_id="floor", normalize=True)
         noise = np.full(_FRAME_SIZE_16K, 0.002, dtype=np.float32)
         out = None
@@ -1753,6 +1760,7 @@ class TestTask505ReviewFixes:
             out = pp._normalize_frame(noise.copy())
         assert out is not None
         assert float(np.max(out)) <= 0.05
+        assert pp.normalizer_gain == pytest.approx(20.0)
 
     @pytest.mark.asyncio
     async def test_flush_single_blip_not_emitted(self):
