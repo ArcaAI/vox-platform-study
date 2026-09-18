@@ -92,7 +92,13 @@ SERVICES: tuple[ServiceSpec, ...] = (
         ("harness.core.config", "harness.eval.config", "harness.sensors.config"),
     ),
     ServiceSpec("nlp", 8864, "Medical NLP", ("nlp.core.config",)),
-    ServiceSpec("stt", 8861, "Speech-to-Text", ("stt.core.config.settings",)),
+    # `stt.worker` is listed for the same reason as every other entry: it DEFINES
+    # a `BaseSettings` subclass (`WorkerHeartbeatSettings`, `env_prefix=
+    # "STT_WORKER_HEARTBEAT_"`). Without it the scanner could not see those three
+    # names, so `env:sync` computed a globalEnv that omitted them and silently
+    # deleted the declaration TASK-990 had added by hand — a generated artifact
+    # quietly undoing a correct change, which is worse than either state alone.
+    ServiceSpec("stt", 8861, "Speech-to-Text", ("stt.core.config.settings", "stt.worker")),
     ServiceSpec("text", 8862, "Text Generation & Summarization", ("text.core.config",)),
     ServiceSpec("tts", 8865, "Text-to-Speech", ("tts.core.config",)),
 )
