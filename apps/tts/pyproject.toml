@@ -51,18 +51,27 @@ dependencies = [
     "hope-runtime-models",
     # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
+    # --- Shared logging & tracing runtime (TASK-987) ---
+    "hope-obs",
     # --- OpenTelemetry tracing ---
+    # `opentelemetry-instrumentation-logging` is DROPPED (TASK-987 R-5): the
+    # OTLP log-export path it backed is deleted (Alloy already tails stdout to
+    # Loki), and `hope_obs` needs no logging instrumentation to stamp
+    # traceId/spanId onto log lines. The rest stay direct dependencies because
+    # `core/observability.py` and the test suite import them by name (Resource,
+    # TracerProvider, FastAPIInstrumentor) even though `hope_obs` also declares
+    # them transitively.
     "opentelemetry-api>=1.44.0",
     "opentelemetry-sdk>=1.44.0",
     "opentelemetry-instrumentation-fastapi>=0.65b0",
     "opentelemetry-instrumentation-httpx>=0.65b0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
-    "opentelemetry-instrumentation-logging>=0.65b0",
 ]
 
 [tool.uv.sources]
 hope-runtime-models = { workspace = true }
 hope-env = { workspace = true }
+hope-obs = { workspace = true }
 
 [project.optional-dependencies]
 # --- Self-hosted local engines, split by engine ---
@@ -203,6 +212,7 @@ pythonpath = [
     "src",
     "../../packages/py-env/src",
     "../../packages/py-runtime-models/src",
+    "../../packages/py-obs/src",
     "../../scripts/pytest-support",
 ]
 addopts = [

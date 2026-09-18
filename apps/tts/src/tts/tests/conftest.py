@@ -16,7 +16,7 @@ from httpx import ASGITransport, AsyncClient
 
 from tts.core.config import Settings
 
-assert_source_tree(["tts", "hope_env", "hope_runtime_models"], __file__)
+assert_source_tree(["tts", "hope_env", "hope_runtime_models", "hope_obs"], __file__)
 
 # `tts.main` builds a module-level `app = create_app()` for the uvicorn
 # entrypoint (`uvicorn tts.main:app` — see apps/tts/Dockerfile and
