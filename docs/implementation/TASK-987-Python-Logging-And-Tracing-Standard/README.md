@@ -264,13 +264,13 @@ Confirmed by the orchestrator across the fleet (note STT's Dockerfile is at the 
 | text | async-contract, env, otel, runtime-models, **obs** | ✅ fixed by lane B |
 | stt | env, otel, runtime-models | ❌ |
 | guardrail | env, runtime-models | ❌ |
-| nlp | env, runtime-models | ❌ |
+| nlp | env, runtime-models, **obs** | ✅ fixed by lane E on the orchestrator's addendum (`60297ee49`) |
 | harness | async-contract, env, runtime-models | ❌ |
 | tts | env, runtime-models | ❌ |
 
-**Orchestrator-owned follow-up**, since three lanes had already finished when this was found and a
-fourth finished before the addendum reached it: add the COPY to the five remaining Dockerfiles in
-one commit after the Wave-1 merges. The deeper gap — five services have no Dockerfile-sources test
+An addendum was sent to the three lanes still running; lane E received it in time and fixed its own
+Dockerfile. **Orchestrator-owned follow-up** for guardrail and tts (both had already finished), plus
+stt and harness if their addendum did not land: add the COPY after the Wave-1 merges. The deeper gap — five services have no Dockerfile-sources test
 at all — is worth a follow-up ticket, not scope creep here.
 
 #### F-18 (P2) — NLP's OTel metric attributes are silently dropped by the collector allow-list
