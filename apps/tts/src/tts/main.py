@@ -19,19 +19,24 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
+from hope_obs import get_logger
 
 from tts.core.config import Settings, get_settings
-from tts.core.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Manage shared resources. Phase 1: logging only."""
+    """Manage shared resources.
+
+    Logging, request-context/access-log middlewares and tracing are already
+    configured by ``tts.core.observability.setup_observability``, called from
+    ``create_app()`` before this lifespan ever runs (TASK-987) — so this line
+    is already a structured JSON log by the time it is emitted.
+    """
     settings: Settings = app.state.settings
 
-    setup_logging(settings.log_level)
     logger.info(
         "tts.starting",
         host=settings.host,
@@ -225,9 +230,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if app.state.service_release_http_client is not None:
         await app.state.service_release_http_client.aclose()
 
-    from tts.core.observability import shutdown_opentelemetry
+    from tts.core.observability import shutdown_observability
 
-    shutdown_opentelemetry(app)
+    shutdown_observability(app)
 
     logger.info("tts.shutdown_complete")
 
@@ -248,7 +253,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     app.state.settings = settings
     app.state.tracer_provider = None
-    app.state.logger_provider = None
 
     from tts.catalog.voices import VoiceCatalog
     from tts.providers.base import ProviderRegistry
@@ -302,22 +306,15 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(speech_router, prefix="/api/v1")
     app.include_router(stream_ws_router, prefix="/api/v1")
 
-    # Default OFF — activates only when BOTH the master
-    # switch AND an endpoint are set (never require a
-    # reachable observability backend to start or serve traffic). The
-    # WebSocket streaming surface is deliberately NOT instrumented here.
-    if settings.otel_enabled and settings.otel_exporter_endpoint:
-        from tts.core.observability import setup_opentelemetry
+    # Logging, request-context/access-log middlewares and tracing (TASK-987).
+    # Logging and the middlewares are ALWAYS configured; tracing activates
+    # only when the resolved config carries an OTLP endpoint (never require a
+    # reachable observability backend to start or serve traffic — see
+    # `tts.core.observability.setup_observability`). The WebSocket streaming
+    # surface is deliberately NOT instrumented here.
+    from tts.core.observability import setup_observability
 
-        setup_opentelemetry(
-            app,
-            endpoint=settings.otel_exporter_endpoint,
-            service_name=settings.otel_service_name,
-            service_namespace=settings.otel_service_namespace,
-            deployment_environment=settings.otel_deployment_environment,
-            insecure=settings.otel_insecure,
-            logs_enabled=settings.otel_logs_enabled,
-        )
+    setup_observability(app, settings)
 
     if settings.metrics_enabled:
         from prometheus_fastapi_instrumentator import Instrumentator
