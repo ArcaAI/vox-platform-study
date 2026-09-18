@@ -148,7 +148,16 @@ export const DEFAULT_SAMPLE_RATE = 16000;
  * release; it is the LAST resort, below both the registry row and the code default.
  */
 const WS_EGRESS_HIGH_WATERMARK_BYTES_ENV = readPositiveEnv('STT_WS_EGRESS_HIGH_WATERMARK_BYTES');
-export const WS_EGRESS_HIGH_WATERMARK_BYTES = WS_EGRESS_HIGH_WATERMARK_BYTES_ENV ?? STT_GATEWAY_DEFAULTS[STT_EGRESS_HIGH_WATERMARK_BYTES_KEY];
+/**
+ * The CODE DEFAULT, and only that. It is NOT the effective watermark for any session —
+ * {@link SttWsGateway.resolveBudget} owns that, and it consults the governed row and the
+ * deprecated env seed first.
+ *
+ * It used to be `env ?? default`, which made an imported constant mean different things in
+ * different environments: a test that compared against it was really comparing against whatever
+ * `.env.test` happened to say. Reading the default is the only use an importer has for it.
+ */
+export const WS_EGRESS_HIGH_WATERMARK_BYTES = STT_GATEWAY_DEFAULTS[STT_EGRESS_HIGH_WATERMARK_BYTES_KEY];
 
 /**
  * Bound on the per-session queue of finals awaiting a
@@ -176,7 +185,8 @@ export const WS_EGRESS_FLUSH_POLL_MS = 50;
  * {@link WS_EGRESS_HIGH_WATERMARK_BYTES} above.
  */
 const WS_RESUME_GRACE_MS_ENV = readPositiveEnv('STT_WS_RESUME_GRACE_MS');
-export const WS_RESUME_GRACE_MS = WS_RESUME_GRACE_MS_ENV ?? STT_GATEWAY_DEFAULTS[STT_RESUME_GRACE_MS_KEY];
+/** The CODE DEFAULT — see {@link WS_EGRESS_HIGH_WATERMARK_BYTES} for why it is not the env value. */
+export const WS_RESUME_GRACE_MS = STT_GATEWAY_DEFAULTS[STT_RESUME_GRACE_MS_KEY];
 
 /**
  * Stable consumer-group name the gateway uses when subscribing
@@ -352,6 +362,20 @@ interface SessionInfo {
    * gateway's own observed drop count and never summed with it.
    */
   clientReportedDroppedFrames?: number;
+  /**
+   * TASK-985 ST-5 — the highest seq DROPPED FROM THE FRONT of {@link resumeBuffer} by the
+   * `RESUME_BUFFER_SIZE` bound. 0 while nothing has been evicted.
+   *
+   * It exists because coalescing broke the assumption `handleResume` used to make. That guard
+   * read `resumeBuffer[0].seq` as "the oldest seq still available", which was true only while
+   * the buffer was append-and-trim: entries left exactly one way, off the front, in seq order.
+   * Coalescing removes SUPERSEDED partials from the MIDDLE and the FRONT, so `resumeBuffer[0]`
+   * is now routinely a high seq with perfectly serviceable gaps below it — and a client
+   * resuming from a seq inside one of those gaps was told `resume_failed / buffer_overflow`
+   * and had to abandon the session. Eviction and coalescing had to become separable, and this
+   * is the half that means "genuinely gone".
+   */
+  evictedThroughSeq: number;
   /**
    * TASK-985 M-48 — the re-emission guard the stable consumer name makes necessary.
    *
@@ -980,6 +1004,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       missedPongs: 0,
       audioClockSamples: [],
       lastAudioClockSampleSec: -Infinity,
+      evictedThroughSeq: 0,
       emittedSeqByIdentity: new Map<string, number>(),
       droppedAudioFrames: 0,
       droppedPartialResults: 0,
@@ -1674,7 +1699,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       ...(utteranceIndex !== undefined ? { utteranceIndex } : {}),
     });
     if (session.resumeBuffer.length > RESUME_BUFFER_SIZE) {
-      session.resumeBuffer.splice(0, session.resumeBuffer.length - RESUME_BUFFER_SIZE);
+      const overflow = session.resumeBuffer.length - RESUME_BUFFER_SIZE;
+      const evicted = session.resumeBuffer.splice(0, overflow);
+      // Only a SIZE eviction makes a seq unrecoverable. A coalesced partial is superseded, not
+      // lost — its content is in the newer partial or the final that replaced it — so the two
+      // removals must never share a counter. See {@link SessionInfo.evictedThroughSeq}.
+      const highestEvicted = evicted[evicted.length - 1]?.seq ?? 0;
+      if (highestEvicted > session.evictedThroughSeq) session.evictedThroughSeq = highestEvicted;
     }
     // The identity map is bounded in lockstep with the buffer it guards: an entry the buffer
     // can no longer replay is one no redelivery needs to be matched against either. Oldest
@@ -2196,12 +2227,20 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     }
 
     const buffer = session.resumeBuffer;
-    if (buffer.length > 0) {
-      const minAvailableSeq = buffer[0]!.seq;
-      if (lastSeq < minAvailableSeq - 1) {
-        this.sendJson(client, { type: 'resume_failed', sessionId: session.sessionId, reason: 'buffer_overflow', minAvailableSeq });
-        return;
-      }
+    // TASK-985 ST-5 — the overflow guard asks "was anything the client still needs EVICTED?",
+    // which is `session.evictedThroughSeq`, not `buffer[0].seq`.
+    //
+    // Those two were the same number until coalescing landed, and reading the second for the
+    // first was a live defect: a coalesced partial leaves a hole at the FRONT of the buffer, so
+    // `buffer[0].seq` jumps ahead of everything the client actually missed and an ordinary
+    // reconnect got `resume_failed / buffer_overflow`. The client's only recourse is to abandon
+    // the session and open a fresh one — strictly worse than the stale-partial replay the
+    // coalescing removed, and it would have hit every reconnect on a session whose first
+    // utterance was still in progress.
+    if (lastSeq < session.evictedThroughSeq) {
+      const minAvailableSeq = session.evictedThroughSeq + 1;
+      this.sendJson(client, { type: 'resume_failed', sessionId: session.sessionId, reason: 'buffer_overflow', minAvailableSeq });
+      return;
     }
 
     // Success — continuation from the NEXT unseen seq, then replay the unseen

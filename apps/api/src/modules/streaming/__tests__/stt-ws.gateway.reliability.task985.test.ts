@@ -70,11 +70,21 @@ const createMockSocket = (bufferedAmount = 0): MockSocket => {
 const framesOn = (socket: MockSocket): Array<Record<string, unknown>> =>
   socket.send.mock.calls.map((call: unknown[]) => JSON.parse(String(call[0])) as Record<string, unknown>);
 
-/** Settings facade double: only the keys a test explicitly writes count as "stored rows". */
-const settingsWith = (rows: Record<string, number>) => ({
-  hasSetting: vi.fn((key: string) => key in rows),
-  getValueWithDefault: vi.fn(<T,>(key: string, fallback: T) => (key in rows ? (rows[key] as unknown as T) : fallback)),
-});
+/**
+ * Settings facade double: the caller's rows LAYERED OVER the code defaults.
+ *
+ * Layering matters. The budgets resolve `governed row -> deprecated env seed -> code default`,
+ * so any key a test does not pin would otherwise fall through to whatever the ambient
+ * environment says — and unit runs load `.env.test`. A test must never be reading a number no
+ * source file in the change names.
+ */
+const settingsWith = (rows: Record<string, number> = {}) => {
+  const resolved: Record<string, number> = { ...STT_GATEWAY_DEFAULTS, ...rows };
+  return {
+    hasSetting: vi.fn((key: string) => key in resolved),
+    getValueWithDefault: vi.fn(<T,>(key: string, fallback: T) => (key in resolved ? (resolved[key] as unknown as T) : fallback)),
+  };
+};
 
 /** Prometheus read helpers — the register is process-global, so every assertion is a DELTA. */
 const counterTotal = async (metric: any, labels?: Record<string, string>): Promise<number> => {
@@ -103,7 +113,7 @@ describe('SttWsGateway — TASK-985 reliability', () => {
 
   const buildReq = (sessionId: string) => ({ url: `/ws/stt/stream?sessionId=${sessionId}&ticket=t-${sessionId}` });
 
-  const build = (settings?: ReturnType<typeof settingsWith>) => {
+  const build = (settings: ReturnType<typeof settingsWith> = settingsWith()) => {
     results = new Subject<Record<string, unknown>>();
     sessionService = { getSessionStatus: vi.fn(), removeSession: vi.fn().mockResolvedValue(undefined) };
     bridgeService = {
@@ -287,6 +297,30 @@ describe('SttWsGateway — TASK-985 reliability', () => {
       const replayed = framesOn(socket).filter((f) => f.type === 'transcript');
       expect(replayed.map((f) => f.text)).toEqual(['stale final']);
       vi.useRealTimers();
+    });
+
+    it('a resume AFTER coalescing is not mistaken for a buffer overflow', async () => {
+      // The defect this pins shipped with the coalescing itself. The overflow guard read
+      // `resumeBuffer[0].seq` as "the oldest seq still available", which stopped being true the
+      // moment a superseded partial could be removed from the FRONT of the buffer: seqs 1 and 2
+      // below are coalesced away, so `buffer[0].seq` is 2 while the client legitimately asks to
+      // continue from 1. The client was answered `resume_failed / buffer_overflow`, whose only
+      // recourse is to abandon the session and open a fresh one — strictly worse than the stale
+      // replay coalescing removed, and it would have hit EVERY reconnect during a first
+      // utterance.
+      const socket = await connect('sess-resume-after-coalesce');
+
+      results.next(transcript({ utteranceIndex: 0, text: 'he' }));
+      results.next(transcript({ utteranceIndex: 0, text: 'hell' }));
+      results.next(transcript({ utteranceIndex: 0, text: 'hello', isFinal: true, endTime: 2 }));
+      socket.send.mockClear();
+
+      await gateway.handleMessage(socket as never, JSON.stringify({ type: 'resume', sessionId: 'sess-resume-after-coalesce', lastSeq: 0 }));
+
+      const frames = framesOn(socket);
+      expect(frames.some((f) => f.type === 'resume_failed'), 'a coalesced gap is not an eviction').toBe(false);
+      expect(frames.find((f) => f.type === 'resumed')).toMatchObject({ fromSeq: 1 });
+      expect(frames.filter((f) => f.type === 'transcript').map((f) => f.text)).toEqual(['hello']);
     });
 
     it('leaves an older worker (no utteranceIndex) on exactly the pre-TASK-985 behaviour', async () => {
