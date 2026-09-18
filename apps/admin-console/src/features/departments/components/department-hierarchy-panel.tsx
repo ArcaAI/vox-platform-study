@@ -1,9 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { IconChevronDown, IconChevronRight, IconRefresh } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronRight, IconDots, IconPencil, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@arcaai/ui/components/shadcn/dropdown-menu';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { cx } from '@/shared/cx';
 import { useDepartmentChildren } from '../api/hooks';
@@ -11,6 +18,37 @@ import type { Department } from '../api/types';
 
 function displayName(department: Department): string {
   return department.name || department.code || department.id;
+}
+
+/**
+ * Per-row Edit/Delete menu. Before this existed, the ONLY way to reach either
+ * action was the "Edit" button inside the Prompt config pane — a control whose
+ * label and placement read as "edit the prompt config", so a user looking to
+ * delete a department had no reason to click it and concluded deletion was
+ * unavailable. The gateway always allowed it; only the affordance was missing.
+ */
+function RowActions({ department, onEdit, onDelete }: { department: Department; onEdit: (id: string) => void; onDelete: (id: string) => void }) {
+  const name = displayName(department);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-xs" aria-label={`Open actions for ${name}`} onClick={(event) => event.stopPropagation()}>
+          <IconDots aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+        <DropdownMenuItem onSelect={() => onEdit(department.id)}>
+          <IconPencil aria-hidden />
+          Edit department
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onSelect={() => onDelete(department.id)}>
+          <IconTrash aria-hidden />
+          Delete department
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function SelectDepartmentButton({ department, selected, onSelect }: { department: Department; selected: boolean; onSelect: (id: string) => void }) {
@@ -30,7 +68,19 @@ function SelectDepartmentButton({ department, selected, onSelect }: { department
   );
 }
 
-function TreeNode({ department, selectedId, onSelect }: { department: Department; selectedId: string; onSelect: (id: string) => void }) {
+function TreeNode({
+  department,
+  selectedId,
+  onSelect,
+  onEdit,
+  onDelete,
+}: {
+  department: Department;
+  selectedId: string;
+  onSelect: (id: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const name = displayName(department);
   return (
@@ -46,14 +96,27 @@ function TreeNode({ department, selectedId, onSelect }: { department: Department
           {expanded ? <IconChevronDown aria-hidden /> : <IconChevronRight aria-hidden />}
         </Button>
         <SelectDepartmentButton department={department} selected={department.id === selectedId} onSelect={onSelect} />
+        <RowActions department={department} onEdit={onEdit} onDelete={onDelete} />
       </div>
-      {expanded ? <TreeChildren parentId={department.id} selectedId={selectedId} onSelect={onSelect} /> : null}
+      {expanded ? <TreeChildren parentId={department.id} selectedId={selectedId} onSelect={onSelect} onEdit={onEdit} onDelete={onDelete} /> : null}
     </li>
   );
 }
 
 /** Lazy per-node children read: mounted (and fetched) only once expanded. */
-function TreeChildren({ parentId, selectedId, onSelect }: { parentId: string; selectedId: string; onSelect: (id: string) => void }) {
+function TreeChildren({
+  parentId,
+  selectedId,
+  onSelect,
+  onEdit,
+  onDelete,
+}: {
+  parentId: string;
+  selectedId: string;
+  onSelect: (id: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
   const children = useDepartmentChildren(parentId);
   const rows = children.data ?? [];
 
@@ -82,7 +145,7 @@ function TreeChildren({ parentId, selectedId, onSelect }: { parentId: string; se
   return (
     <ul className="flex flex-col gap-0.5 pl-4">
       {rows.map((child) => (
-        <TreeNode key={child.id} department={child} selectedId={selectedId} onSelect={onSelect} />
+        <TreeNode key={child.id} department={child} selectedId={selectedId} onSelect={onSelect} onEdit={onEdit} onDelete={onDelete} />
       ))}
     </ul>
   );
@@ -103,6 +166,8 @@ export function DepartmentHierarchyPanel({
   searching,
   selectedId,
   onSelect,
+  onEdit,
+  onDelete,
 }: {
   roots: Department[];
   rootsPending: boolean;
@@ -113,6 +178,8 @@ export function DepartmentHierarchyPanel({
   searching: boolean;
   selectedId: string;
   onSelect: (id: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   return (
     <Card className="gap-3 p-4">
@@ -128,8 +195,9 @@ export function DepartmentHierarchyPanel({
         ) : (
           <ul aria-label="Department hierarchy" className="flex flex-col gap-0.5">
             {searchResults.map((department) => (
-              <li key={department.id} className="flex">
+              <li key={department.id} className="flex items-center gap-1">
                 <SelectDepartmentButton department={department} selected={department.id === selectedId} onSelect={onSelect} />
+                <RowActions department={department} onEdit={onEdit} onDelete={onDelete} />
               </li>
             ))}
           </ul>
@@ -151,7 +219,7 @@ export function DepartmentHierarchyPanel({
       ) : (
         <ul aria-label="Department hierarchy" className="flex flex-col gap-0.5">
           {roots.map((department) => (
-            <TreeNode key={department.id} department={department} selectedId={selectedId} onSelect={onSelect} />
+            <TreeNode key={department.id} department={department} selectedId={selectedId} onSelect={onSelect} onEdit={onEdit} onDelete={onDelete} />
           ))}
         </ul>
       )}
