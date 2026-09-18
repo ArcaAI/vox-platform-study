@@ -7,6 +7,9 @@ stopped there, so every other decoder input stayed the primary's:
     _max_decode_window_sec   the PRIMARY model row's window
     _lexicon_corrector       built from the PRIMARY's postprocessing spec
     _punctuation_config      "
+    _partial_lexicon_corrector / _uses_cadence_fast / _republish_punctuated
+                             DERIVED from the two configs above, and stale for
+                             the same reason unless re-derived with them
     _language (+ script guard derived from it)  the PRIMARY's pin
     front-end geometry       the PRIMARY's partial window / utterance cap
 
@@ -69,9 +72,20 @@ def _fake_worker():
         _postprocessing_config=SimpleNamespace(punctuation="primary-punct"),
         _punctuation_config="primary-punct",
         _lexicon_corrector="primary-lexicon",
+        _partial_lexicon_corrector="primary-lexicon-partial",
         _gloss_callable="primary-gloss",
+        _uses_cadence_fast=True,
+        _republish_punctuated=True,
     )
-    worker._build_lexicon_corrector = lambda cfg: f"lexicon-for:{cfg.name}"
+    worker._build_lexicon_corrector = (
+        lambda cfg, single_token_only=False: (
+            f"lexicon-for:{cfg.name}" + (":partial" if single_token_only else "")
+        )
+    )
+    # `_uses_cadence_fast` is DERIVED from `_punctuation_config`, so the double
+    # has to re-derive it the way the real worker does — a double that answers a
+    # constant cannot show a stale field.
+    worker._resolve_uses_cadence_fast = lambda: worker._punctuation_config == "cadence-fast"
     return worker
 
 
@@ -119,6 +133,8 @@ class TestApplyRederivesWorkerState:
         assert worker._postprocessing_config.name == "fallback"
         assert worker._punctuation_config == "fallback-punct"
         assert worker._lexicon_corrector == "lexicon-for:fallback"
+        # The PARTIAL path has its own width-1 corrector (D5-N7) and it moves too.
+        assert worker._partial_lexicon_corrector == "lexicon-for:fallback:partial"
         assert worker._gloss_callable == "fallback-gloss"
 
     def test_the_script_guard_follows_the_language_pin(self):
@@ -221,3 +237,104 @@ class TestBindingConstruction:
         assert binding.partial_window_s == 8.0
         # A non-positive geometry value is "unset", not "zero".
         assert binding.max_utterance_sec is None
+
+
+class TestApplyRederivesDERIVEDState:
+    """The fields the reassigned ones are DERIVED from must move too.
+
+    ``_apply`` reassigns ``_postprocessing_config`` and ``_punctuation_config``,
+    but three worker fields are computed FROM those at construction and are read
+    every utterance afterwards:
+
+        _partial_lexicon_corrector   the width-1 corrector the PARTIAL path uses
+        _uses_cadence_fast           exact-name match on the punctuation model
+        _republish_punctuated        the punctuated-final follow-up frame gate
+
+    Leaving them behind is the same half-applied switch ``_apply``'s own comment
+    forbids ("a HALF-APPLIED switch is worse than none"), just one level down:
+    the session would run the new engine's finals through the new lexicon while
+    its PARTIALS still snap to the old engine's terms, and would keep judging the
+    new engine's punctuation model against the old one's identity.
+
+    These use a REAL ``StreamingInferenceWorker``; the ``SimpleNamespace`` double
+    above cannot see the gap, because a field nobody assigned is a field nobody
+    misses.
+    """
+
+    @staticmethod
+    def _postprocessing(*, punctuation_model, punctuation_enabled, terms):
+        from stt.pipeline.dto import LexiconConfig, PostprocessingConfig, PunctuationConfig
+
+        return PostprocessingConfig(
+            punctuation=PunctuationConfig(
+                enabled=punctuation_enabled, model=punctuation_model
+            ),
+            lexicon=LexiconConfig(enabled=bool(terms), terms=list(terms)),
+        )
+
+    def _worker(self, postprocessing):
+        from stt.streaming.inference import StreamingInferenceWorker
+
+        return StreamingInferenceWorker(
+            asr_pipeline=lambda samples, sr: "primary",
+            postprocessing_config=postprocessing,
+            active_pipeline_id="primary",
+        )
+
+    def _binding(self, postprocessing):
+        from stt.streaming.session_manager import _EngineBinding
+
+        return _EngineBinding(
+            asr_callable=lambda samples, sr: "fallback",
+            pipeline_config=SimpleNamespace(),
+            initial_prompt=None,
+            postprocessing_config=postprocessing,
+        )
+
+    def test_the_partial_lexicon_corrector_follows_the_config(self):
+        mgr = _make_manager()
+        worker = self._worker(
+            self._postprocessing(
+                punctuation_model="cadence-fast",
+                punctuation_enabled=True,
+                terms=["atorvastatin"],
+            )
+        )
+        mgr._inference_workers["s1"] = worker
+        assert worker._partial_lexicon_corrector is not None
+
+        # The fallback engine configures NO clinical vocabulary.
+        _apply_of(mgr)(
+            self._binding(
+                self._postprocessing(
+                    punctuation_model=None, punctuation_enabled=False, terms=[]
+                )
+            ),
+            "fallback",
+        )
+
+        assert worker._lexicon_corrector is None
+        assert worker._partial_lexicon_corrector is None
+
+    def test_the_cadence_fast_verdict_follows_the_punctuation_model(self):
+        mgr = _make_manager()
+        worker = self._worker(
+            self._postprocessing(
+                punctuation_model="cadence-fast", punctuation_enabled=True, terms=[]
+            )
+        )
+        mgr._inference_workers["s1"] = worker
+        assert worker._uses_cadence_fast is True
+
+        _apply_of(mgr)(
+            self._binding(
+                self._postprocessing(
+                    punctuation_model="cadence-fast", punctuation_enabled=False, terms=[]
+                )
+            ),
+            "fallback",
+        )
+
+        assert worker._punctuation_config.enabled is False
+        assert worker._uses_cadence_fast is False
+        assert worker._republish_punctuated is False

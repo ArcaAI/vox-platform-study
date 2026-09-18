@@ -264,7 +264,7 @@ def config_from_mapping(raw: Mapping[str, object] | None) -> RepeatGuardConfig |
         for key, value in table_raw.items():
             try:
                 n = int(key)
-                allowed = int(value)  # type: ignore[arg-type]
+                allowed = int(value)
             except (TypeError, ValueError):
                 continue
             if n >= 1 and allowed >= 0:

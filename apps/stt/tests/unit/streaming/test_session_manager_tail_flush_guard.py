@@ -90,7 +90,13 @@ def _instrument(mgr, *, flush_delay_s: float = 0.02):
     async def _drain(session_id):  # noqa: ANN001 - test double
         counters["drain"] += 1
 
-    async def _finalize(session):  # noqa: ANN001 - test double
+    async def _finalize(session, *, stash_summary=True):  # noqa: ANN001 - test double
+        # TASK-985 M-23 — `_finalize_session` is keyword-only `stash_summary`:
+        # `end_session` passes False (it RETURNS the summary to the gateway), the
+        # other three finalizers let it default to True and stash. A double that
+        # omits it raises TypeError, which `end_session` swallows into its forced
+        # -removal path — so the counters below read zero for reasons that have
+        # nothing to do with the latch.
         counters["finalize"] += 1
 
     mgr._flush_final_utterance = _flush
@@ -214,7 +220,7 @@ class TestTailCompletionLatch:
         async def _drain(session_id):  # noqa: ANN001 - test double
             events.append("drain_end")
 
-        async def _finalize(session):  # noqa: ANN001 - test double
+        async def _finalize(session, *, stash_summary=True):  # noqa: ANN001 - test double
             events.append("finalize")
 
         mgr._flush_final_utterance = _flush
@@ -301,7 +307,7 @@ class TestTailCompletionLatch:
         async def _drain(session_id):  # noqa: ANN001 - test double
             raise RuntimeError("drain exploded")
 
-        async def _finalize(session):  # noqa: ANN001 - test double
+        async def _finalize(session, *, stash_summary=True):  # noqa: ANN001 - test double
             finalized.append(session.session_id)
 
         mgr._flush_final_utterance = _flush
@@ -338,7 +344,7 @@ class TestTailCompletionLatch:
         async def _drain(session_id):  # noqa: ANN001 - test double
             return None
 
-        async def _finalize(session):  # noqa: ANN001 - test double
+        async def _finalize(session, *, stash_summary=True):  # noqa: ANN001 - test double
             finalized.append(session.session_id)
 
         mgr._flush_final_utterance = _flush
