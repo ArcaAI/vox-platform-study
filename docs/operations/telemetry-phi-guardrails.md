@@ -21,7 +21,7 @@ failure mode the others might miss.
 |---|---|---|---|
 | 1 | **`NO_CONTENT` pinned everywhere** | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT` in every env file, enforced at process boot in production | `.env.sample` / `.env.dev` / `.env.test`; `apps/api/src/bootstrap/genai-content-capture-audit.ts`; `apps/text/src/text/core/config.py` (`TelemetryPhiGuardConfig`) |
 | 2 | **Attribute allow-list** (not a deny-list) | Every `gen_ai.*` attribute a service is allowed to stamp is enumerated explicitly; anything not on the list fails CI | `apps/text/src/text/tests/unit/test_phi_safe_telemetry.py` |
-| 3 | **OTel Collector deny-list** | An independent transform/filter stage drops content-bearing attributes even if a misbehaving library ignores layer 1 | Collector config (§2 below) — defense-in-depth for libraries that ignore the capture switch |
+| 3 | **OTel Collector allow-list** | An independent stage drops every attribute NOT explicitly allowed, even if a misbehaving library ignores layer 1 | Collector config (§2 below) — defense-in-depth for libraries that ignore the capture switch |
 | 4 | **CI assertions** | The allow-list test above runs in `pnpm py:text:test` (and the equivalent job in CI); a new content-bearing attribute anywhere in the scanned tree fails the build before it ships | CI job that runs `py:text:test` |
 
 ### Layer 1 — why `NO_CONTENT` needs an explicit pin, not just a good default
@@ -85,43 +85,51 @@ started — it is a pure static/regex scan, so it is cheap and cannot flake.
 
 ---
 
-## 2. OTel Collector deny-list (layer 3)
+## 2. OTel Collector allow-list (layer 3)
 
-Even with layers 1, 2, and 4 in place, a future dependency upgrade or a new
-auto-instrumented library could start emitting a content-bearing attribute before a
-human notices. The Collector-side filter is the layer that catches that case in a
-running system, independent of application code.
+> **Corrected 2026-09-18 (TASK-987 F-14).** This section previously prescribed a *deny-list* of
+> known-bad `gen_ai.*` keys. The deployed collector has been an **allow-list** for some time —
+> stronger, and the dangerous direction for a doc to be stale in, because a reader assumes a new
+> attribute survives by default. It does not.
 
-Configure the deployed OTel Collector with an `attributes` (or `transform`) processor
-that unconditionally deletes the banned attribute names before any exporter sees them:
+Even with layers 1, 2 and 4 in place, a dependency upgrade or a newly auto-instrumented library
+could start emitting a content-bearing attribute before a human notices. The collector is the layer
+that catches that in a running system, independent of application code.
+
+**What is actually deployed** — `deployment/k8s/base/observability-config.yaml` in the
+`arca/hope-v2-deployment` repo:
 
 ```yaml
 processors:
-  attributes/phi-redact:
-    actions:
-      - key: gen_ai.input.messages
-        action: delete
-      - key: gen_ai.output.messages
-        action: delete
-      - key: gen_ai.system_instructions
-        action: delete
-  # Prefix families need the `transform` processor's OTTL pattern matching
-  # (the `attributes` processor only matches exact keys):
-  transform/phi-redact-prefixes:
-    trace_statements:
-      - context: span
-        statements:
-          - 'delete_matching_keys(attributes, "^gen_ai\\.(prompt|completion|retrieval)\\..*")'
+  redaction/phi:
+    allow_all_keys: false
+    allowed_keys: [ service.name, http.route, trace_id, hope.tenant_id, ... ]  # ~35 keys
+    blocked_values:                       # belt-and-braces, even among allowed keys
+      - "(?i)^(data|blob|file):.*"        # an inlined recording
+      - "^[A-Za-z0-9+/]{512,}={0,2}$"     # a long base64 blob
 
 service:
   pipelines:
-    traces:
-      processors: [attributes/phi-redact, transform/phi-redact-prefixes, batch]
+    logs:    { processors: [memory_limiter, resource, redaction/phi, batch] }
+    traces:  { processors: [memory_limiter, resource, redaction/phi, batch] }
+    metrics: { processors: [memory_limiter, resource, redaction/phi, batch] }
 ```
 
-This is a deny-list deliberately — the Collector cannot know a service's full
-allow-list, so its job is narrower: guarantee the *known-bad* names never leave the
-collector, as a backstop for whatever layers 1/2/4 might miss on a given release.
+Three properties worth knowing before you add an emitter:
+
+1. **It runs on all three pipelines, and before `batch`** — nothing unredacted is ever buffered in
+   memory or flushed on shutdown.
+2. **Anything not allow-listed is dropped, silently.** This is not hypothetical: `apps/nlp`'s OTel
+   metrics carried `model`, `entity_type` and `label`, none of which were on the list, and arrived
+   stripped of every dimension that made them useful (TASK-987 F-18). Use `hope.*` (§3) and add the
+   key to `allowed_keys` **in the same change** as the emitter.
+3. **`exception.message` and `exception.stacktrace` are excluded on purpose** — both routinely embed
+   the offending payload. An exception's *type* reaches Tempo; its message does not. Put the
+   PHI-free detail on the log line instead, and do not "fix" this by adding them.
+
+It redacts **attributes**. A log *body* is not an attribute — which is one more reason Python
+services emit logs to stdout for Alloy rather than over OTLP
+([`observability/python-logging-and-tracing.md`](observability/python-logging-and-tracing.md) §7).
 
 ---
 
