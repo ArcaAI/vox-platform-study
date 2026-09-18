@@ -52,6 +52,13 @@ logger = structlog.get_logger(__name__)
 
 _TARGET_SAMPLE_RATE = 16000
 
+#: Stamped on :attr:`FasterWhisperAsrAdapter.unsupported_decode_knobs` for a knob
+#: the config carries that this engine cannot honour. Same shape as
+#: ``decoding.sources``'s tier names, so a caller merges the two maps and reads one
+#: answer per knob. Per-ENGINE, not per-key: the same wire block means a different
+#: set of live knobs on each adapter.
+UNSUPPORTED_SOURCE = "unsupported:faster-whisper"
+
 # Compute types CTranslate2 accepts, per device family. "auto"/"default"
 # delegate selection to CT2 itself.
 _CT2_COMPUTE_TYPES: set[str] = {
@@ -194,6 +201,11 @@ class FasterWhisperAsrAdapter:
             self._language = None
 
         self._decode_kwargs = self._build_decode_kwargs(inference_config)
+        #: Knobs the caller configured that this engine cannot honour, wire name ->
+        #: :data:`UNSUPPORTED_SOURCE`. PUBLIC, and named identically on the
+        #: whisper.cpp adapter, so the session layer reads ONE attribute whichever
+        #: engine is live.
+        self.unsupported_decode_knobs: dict[str, str] = self._unsupported_knobs(inference_config)
 
     @staticmethod
     def _build_decode_kwargs(inference_config: Any) -> dict[str, Any]:
@@ -226,12 +238,45 @@ class FasterWhisperAsrAdapter:
         condition = getattr(inference_config, "condition_on_prev_tokens", False)
         kwargs["condition_on_previous_text"] = bool(condition)
 
+        # `InferenceConfig.no_repeat_ngram_size` is resolved by the gateway,
+        # carried on the wire, landed on the config — and was then forwarded to
+        # NEITHER streaming engine. whisper.cpp genuinely has no such parameter
+        # (`whisper_full_params` carries no n-gram-block or repetition-penalty
+        # field), but CTranslate2 does, and it is the direct decoder-level answer
+        # to the repetition loops this pipeline's post-hoc string collapse exists
+        # to mop up. Forwarded here so the declared value is the value that runs;
+        # `0` (the wire's "off") still means off.
+        nrns = getattr(inference_config, "no_repeat_ngram_size", None)
+        if isinstance(nrns, int) and not isinstance(nrns, bool) and nrns >= 0:
+            kwargs["no_repeat_ngram_size"] = int(nrns)
+
         # TASK-877 — ResolvedAsrSpec.decoding.vadFilter. The streaming preprocessor
         # has already run VAD, so the agent default is OFF and this stays a
         # deliberate per-agent opt-in rather than a hardcoded False.
         kwargs["vad_filter"] = bool(getattr(inference_config, "vad_filter", False))
 
         return kwargs
+
+    @staticmethod
+    def _unsupported_knobs(inference_config: Any) -> dict[str, str]:
+        """Decode knobs the config carries that CTranslate2 cannot honour.
+
+        Same shape and same purpose as the whisper.cpp adapter's map: a knob a
+        tenant set that never reaches the decoder must say so, rather than leaving
+        ``decoding.sources[key]`` naming a tier that decided nothing. This engine's
+        list is SHORT — it honours beam size, temperature (including the ladder),
+        the compression-ratio / logprob / no-speech gates, previous-text
+        conditioning and n-gram blocking — which is exactly why the same wire block
+        means six live knobs here and a different set on whisper.cpp, and why the
+        map has to be per-engine rather than per-key.
+        """
+        unsupported: dict[str, str] = {}
+        # whisper.cpp's token-distribution entropy gate. CTranslate2 exposes the
+        # compression-ratio gate instead, which is a different quantity gating in
+        # the opposite direction — so this is reported unsupported, never aliased.
+        if getattr(inference_config, "entropy_threshold", None) is not None:
+            unsupported["entropyThreshold"] = UNSUPPORTED_SOURCE
+        return unsupported
 
     def __call__(
         self,
