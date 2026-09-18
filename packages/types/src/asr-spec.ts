@@ -231,8 +231,83 @@ export interface AsrSpecAudioFrontEnd {
   normalize: boolean;
 }
 
-/** TASK-934 — the tier a resolved knob came from (OD-3: agent → model profile → engine default). */
-export type AsrSpecDecodingSource = 'agent' | 'model';
+/**
+ * TASK-934 — the tier a resolved knob came from (OD-3: agent → model profile → engine default).
+ *
+ * TASK-985 (M-14 / QW-3) adds a THIRD answer, and it is not a tier: `unsupported:<library>`
+ * means a tier DID decide the value and **the engine this chain runs cannot honour it**, so
+ * naming a tier would be a lie. `beamSize` was the motivating case — the gateway stamped
+ * `'agent'` for a number pywhispercpp cannot act on, because the sampling strategy is frozen
+ * at `Model()` construction and our context is greedy — and the schema advertised an "engine
+ * default" that no engine applied. Any A/B run by editing such a knob measures noise.
+ *
+ * The VALUE still travels verbatim: this map is provenance, not a filter, and dropping the
+ * number would destroy what the author asked for. What changes is that `sources[key]` now
+ * answers "what decided the behaviour" honestly — and for an unhonoured knob the answer is
+ * "nothing did". The library token is the model row's `libraryName` (e.g. `whisper.cpp`,
+ * `faster-whisper`), so the stamp names the code that would have had to read it.
+ *
+ * OBSERVABILITY ONLY, exactly as before — the runtime must never branch on it.
+ */
+export type AsrSpecDecodingSource = 'agent' | 'model' | `unsupported:${string}`;
+
+/**
+ * TASK-985 (M-14) — per ENGINE LIBRARY, the decode knobs that engine **cannot honour**,
+ * whatever tier set them.
+ *
+ * Verified against the installed code, not inferred, and deliberately CONSERVATIVE: a knob
+ * appears here only when the engine has no field for it at all, or has one that our
+ * construction makes permanently inert. A knob that is merely UNWIRED in an adapter is a
+ * bug to fix, not a capability to declare — declaring it would freeze the bug into the
+ * contract.
+ *
+ * `whisper.cpp` (pywhispercpp 1.5.0 / libwhisper 1.8.4):
+ * - `beamSize` — `whisper_full_default_params` takes the sampling strategy at `Model()`
+ *   construction and `transcribe()` only `setattr`s onto that same params object, so beam
+ *   fields are inert under the greedy context every loader builds. Reaching beam needs a
+ *   SECOND whisper context (a second full weight allocation), not a kwarg.
+ * - `compressionRatioThreshold` — whisper.cpp has no gzip-ratio gate. Its `entropy_thold` is
+ *   a different quantity on a different scale, compared in the opposite direction, so it is
+ *   `entropyThreshold` and NOT an alias (see `AiModelAsrProfileDecoding.entropyThreshold`).
+ * - `noRepeatNgramSize` — `whisper_full_params` carries no n-gram block or repetition
+ *   penalty. This is a real capability gap of the production engine and is why the loop
+ *   guard has to be a post-hoc string collapse.
+ * - `conditionOnPrevTokens` — whisper.cpp's `no_context` governs its OWN `prompt_past`
+ *   between internal windows; our carry-forward is composed into `initial_prompt` instead,
+ *   so this flag has no path to the decoder.
+ *
+ * `faster-whisper` (CTranslate2): the whisper.cpp-native extras have no CT2 equivalent.
+ * `noRepeatNgramSize` is deliberately ABSENT from this list — CT2 supports it and the
+ * adapter simply does not forward it yet, which is a wiring fix, not a gap.
+ *
+ * An engine not named here gets no stamps: "not established" is today's answer and is more
+ * honest than a guess. Adding one is a source read, not a hunch.
+ */
+export const UNSUPPORTED_DECODE_KNOBS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  'whisper.cpp': Object.freeze(['beamSize', 'compressionRatioThreshold', 'noRepeatNgramSize', 'conditionOnPrevTokens']),
+  'faster-whisper': Object.freeze(['entropyThreshold', 'singleSegment', 'suppressBlank', 'suppressNonSpeechTokens', 'maxTokens', 'audioCtx']),
+});
+
+/**
+ * The library token a chain's decode knobs are judged against — `AiModel.libraryName`, the
+ * field `apps/stt` already SELECTS its loader with, falling back to the lower-cased
+ * `format` for a row that predates it.
+ *
+ * `libraryName` and not `format`, for the TASK-944 reason: one format is worn by several
+ * libraries, so `format` cannot name the code that would have had to read the knob.
+ */
+export function asrEngineLibrary(model: { libraryName?: string | null; format: string }): string {
+  return model.libraryName && model.libraryName.length > 0 ? model.libraryName : model.format.toLowerCase();
+}
+
+/**
+ * Does `library` leave `knob` unread? `knob` may be a dotted per-pass path
+ * (`final.maxTokens`); support is a property of the knob, not of the pass.
+ */
+export function isUnsupportedDecodeKnob(library: string, knob: string): boolean {
+  const base = knob.includes('.') ? knob.slice(knob.lastIndexOf('.') + 1) : knob;
+  return (UNSUPPORTED_DECODE_KNOBS[library] ?? []).includes(base);
+}
 
 /** §3.2 `decoding` — replaces `inference.*`. `languageMode` is resolved per engine by `apps/stt`. */
 export interface AsrSpecDecoding {
@@ -283,16 +358,69 @@ export interface AsrSpecDecoding {
    */
   hotwordsInPrompt?: boolean;
   /**
+   * TASK-985 (QW-9) — whisper.cpp's `entropy_thold`, the token-distribution entropy floor.
+   *
+   * A DISTINCT knob from `compressionRatioThreshold`, never an alias of it: they share the
+   * default 2.4 and compare in opposite directions on different scales, so mapping one onto
+   * the other would silently mean the opposite thing. Each engine reports the one it cannot
+   * honour through `sources` (`unsupported:<library>`).
+   */
+  entropyThreshold?: number;
+  /** TASK-985 (QW-8) — whisper.cpp `single_segment`: one segment out of one decode. */
+  singleSegment?: boolean;
+  /** TASK-985 (QW-8) — whisper.cpp `suppress_blank`. */
+  suppressBlank?: boolean;
+  /** TASK-985 (QW-8) — whisper.cpp `suppress_nst`: suppress non-speech tokens. */
+  suppressNonSpeechTokens?: boolean;
+  /** TASK-985 (QW-8) — whisper.cpp `max_tokens`: bound a runaway loop at the decoder. `0` = no limit. */
+  maxTokens?: number;
+  /** TASK-985 (QW-8) — whisper.cpp `audio_ctx`: encoder context frames. `0` = the full trained 1500. */
+  audioCtx?: number;
+  /**
+   * TASK-985 (QW-8) — the EFFECTIVE per-pass narrowing, already folded agent → row.
+   *
+   * `partial` is the in-flight re-decode (~3x a second on an open utterance), `final` the
+   * committing one. Precedence is stated once and tested: **pass block → flat block above →
+   * `apps/stt`'s dataclass default.** Both follow the omit-when-absent rule; an empty block
+   * is never emitted, because "the author narrowed nothing" already has an encoding.
+   */
+  partial?: AsrSpecDecodingPass;
+  final?: AsrSpecDecodingPass;
+  /**
    * TASK-934 — which TIER supplied each knob whose value two tiers could have decided
    * (`'agent'` = the agent's `parameters`, `'model'` = the ASR row's `_metadata.asr`
    * profile). Covers this block's knobs plus `hotwords`, `initialPrompt` and
    * `partialWindowSec`, which travel in `instruction` / `models.asr.metadata` but are
    * decided by the same precedence.
    *
+   * TASK-985 — per-pass knobs are keyed by their DOTTED path (`final.maxTokens`), so one
+   * map explains both the flat block and the two narrowings without a second shape. A key
+   * whose value is `unsupported:<library>` names an engine that cannot act on it at all.
+   *
    * OBSERVABILITY ONLY — the runtime must never branch on it. Omitted (never `{}`) when
    * neither tier decided anything, per the omit-when-absent rule.
    */
   sources?: Readonly<Record<string, AsrSpecDecodingSource>>;
+}
+
+/**
+ * TASK-985 (QW-8) — one decode pass's overrides, on the wire.
+ *
+ * Mirrors {@link AiModelAsrProfileDecodingPass} member for member: the row and the agent
+ * may narrow the same set, because two tiers feeding one engine kwarg must accept the same
+ * values. Every member omit-when-absent.
+ */
+export interface AsrSpecDecodingPass {
+  beamSize?: number;
+  temperature?: number;
+  logprobThreshold?: number;
+  entropyThreshold?: number;
+  noSpeechThreshold?: number;
+  singleSegment?: boolean;
+  suppressBlank?: boolean;
+  suppressNonSpeechTokens?: boolean;
+  maxTokens?: number;
+  audioCtx?: number;
 }
 
 /**
@@ -417,13 +545,36 @@ export interface AsrSpecCore {
  * §3.2 `fallback` — replaces `TenantSttConfig.fallbackPipelineId` /
  * `autoSwitchEnabled`. `kind: 'agent'` = another published SPEECH_TO_TEXT agent
  * (`parameters.fallback.agentSlug`); `kind: 'model'` = the agent's own ordered
- * `AgentModelFallback` chain (first enabled entry) over the same front-end;
- * `kind: 'none'` = nothing to switch to (`spec` is `null`).
+ * `AgentModelFallback` chain over the same front-end; `kind: 'none'` = nothing to
+ * switch to (`chain` is empty and `spec` is `null`).
+ *
+ * TASK-985 (M-49) — the chain is ORDERED and now travels WHOLE. It used to lose every
+ * entry after the first: the agent declared two fallbacks, `asrChainModels` returned
+ * `chain[0]`, and the rest were dropped with no diagnostic. The surviving entry was the
+ * q8_0 quantisation of the failing f16 primary — same weights, same failure modes — so a
+ * failure that took out the primary ended the chain, and the genuinely different engine
+ * behind it was never reachable.
  */
 export interface AsrSpecFallback {
   kind: 'none' | 'agent' | 'model';
   autoSwitch: boolean;
   switchAfterConsecutiveFailures: number;
+  /**
+   * Every fallback engine, in switch order. Empty for `kind: 'none'`; exactly one entry
+   * for `kind: 'agent'` (naming a fallback agent is the explicit choice, and it supersedes
+   * the model chain rather than extending it).
+   *
+   * Each entry resolves against ITS OWN ASR row's profile, so a fallback engine gets its
+   * own decode parameters, prompt, window and language policy instead of inheriting the
+   * primary's — which is the point of putting the profile on the row.
+   */
+  chain: AsrSpecCore[];
+  /**
+   * @deprecated TASK-985 — `chain[0]`, kept for ONE release so the gateway, `apps/stt` and
+   * the committed contract fixture can ship in either order. Every consumer reads `chain`;
+   * this member is removed with the R4 sweep and is registered in
+   * `docs/operations/deprecation-register.md`.
+   */
   spec: AsrSpecCore | null;
 }
 

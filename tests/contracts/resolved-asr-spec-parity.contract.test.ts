@@ -69,6 +69,42 @@ describe('ResolvedAsrSpec parity — producer half', () => {
     } else {
       expect(expected.fallback.kind).toBe('none');
     }
+    // TASK-985 (M-49) — the ORDERED chain is the contract; `spec` is its one-release alias
+    // for `chain[0]`, so the two must agree or a consumer reading either one gets a different
+    // fallback depending on which field it happened to pick.
+    expect(expected.fallback.chain).toBeInstanceOf(Array);
+    expect(expected.fallback.chain[0] ?? null).toEqual(expected.fallback.spec);
+    expect(expected.fallback.chain.length === 0).toBe(expected.fallback.kind === 'none');
+    const runtimeKeys = [expected.runtimeKey, ...expected.fallback.chain.map((core) => core.runtimeKey)];
+    // Every chain entry needs its OWN identity or an engine switch is unobservable.
+    expect(new Set(runtimeKeys).size).toBe(runtimeKeys.length);
+    for (const core of expected.fallback.chain) assertCore(core);
+  });
+
+  it('never names a TIER for a knob the chain’s engine cannot honour (TASK-985 M-14)', () => {
+    // `sources` answers "what decided the behaviour". For a knob no code will read, the honest
+    // answer is "nothing did" — `unsupported:<library>` — and it is decided PER CHAIN, because
+    // the primary and the fallback may run different engines. `platformDefault` is the case
+    // that shows both answers for ONE knob the agent set once.
+    const platform = fixture.platformDefault as FixtureCase;
+    expect(platform.expected.decoding.sources?.beamSize).toBe('unsupported:whisper.cpp');
+    expect(platform.expected.fallback.chain[0].decoding.sources?.beamSize).toBe('agent');
+    // The VALUE still travels: this map is provenance, not a filter.
+    expect(platform.expected.decoding.beamSize).toBe(5);
+
+    // Every stamp everywhere must name the library its own chain runs on.
+    for (const [name, { expected }] of cases) {
+      for (const core of [expected, ...expected.fallback.chain]) {
+        const library = core.models.asr.libraryName ?? core.models.asr.format.toLowerCase();
+        for (const [key, source] of Object.entries(core.decoding.sources ?? {})) {
+          if (!source.startsWith('unsupported:')) {
+            expect(['agent', 'model'], `${name}.${key}`).toContain(source);
+            continue;
+          }
+          expect(source, `${name}.${key}`).toBe(`unsupported:${library}`);
+        }
+      }
+    }
   });
 
   it('omits the additive TASK-877 fields rather than emitting null when the agent set none', () => {
