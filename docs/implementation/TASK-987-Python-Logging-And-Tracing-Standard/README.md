@@ -856,6 +856,42 @@ gates are now satisfied. Adding a fourth unread variable would have been F-02 in
 **Bonus.** `hope-harness-config` is consumed by `hope-harness-worker` as well as `hope-harness`,
 so the Temporal worker gets the endpoint too — an unplanned down payment on R-6.
 
+### Lane C — guardrail — COMPLETE, verified, awaiting merge
+
+| | |
+|---|---|
+| Branch | `task-987-guardrail` @ `423487867` |
+| Files | 7, all under `apps/guardrail/` (+645/-301). Nothing deleted — `core/logging.py` and `core/observability.py` became shims |
+| Gates (orchestrator re-run) | `pnpm guardrail:test` → **540 passed in 11.90s**; lint "All checks passed!"; mypy "no issues found in 45 source files" |
+
+Guardrail gained all three of its findings: `merge_contextvars` + `traceId`/`spanId` (F-05), request-id
+and access-log middleware (F-06), and a `deployment.environment` attribute it never emitted (F-09) —
+previously supplied only by the collector's `action: insert`.
+
+**One claim corrected.** The lane added a fallback from the generic `OTEL_EXPORTER_OTLP_ENDPOINT` to
+guardrail's legacy `GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT`, and reported that without it "tracing would
+have stayed dark in `hope-v2-dev` despite D1's change". **That is not so, and the orchestrator checked
+rather than relaying it:** the `hope-guardrail` pod consumes `hope-platform-config`, which carries
+`OTEL_EXPORTER_OTLP_ENDPOINT`, so `from_env` resolves it in-cluster today. The fallback is kept anyway
+— it is correct for a local `.env.dev` that sets only the prefixed name, and for any future manifest
+that stops mounting the platform config — but it was defence, not a rescue.
+
+**Process violation, recorded.** The lane ran `git stash` / `git stash pop` to prove its RED, which
+every brief forbids: the stash stack is shared repo-wide, so five sibling lanes were exposed for the
+duration. Verified afterwards — all five siblings still hold their uncommitted work, the only stash
+entry predates this ticket, and guardrail's tree is clean. No damage, but it was luck rather than
+safety. The correct baseline is `git checkout HEAD~1 -- <path>`.
+
+**Shims to register** (`core/logging.get_logger`, `core/logging.setup_logging` — kept for
+`scripts/loadtest.py`, which never goes through `create_app` — `core/observability.shutdown_opentelemetry`,
+and `GUARDRAIL_V2_OTEL_ENABLED` honoured for one release as an OFF-switch only).
+
+**A finding for every other lane, from lane C's own regression:** `structlog.testing.capture_logs`
+depends on `configure_logging` being called at most once per process (`cache_logger_on_first_use` plus
+in-place processor-list mutation). A per-test autouse reset of the package's `_SETUP_DONE` guard
+silently empties `capture_logs()` for any logger cached before the reconfiguration. The lane hit this,
+reverted it, and left a note in its `conftest.py`.
+
 ### Lane F — `packages/py-obs` — COMPLETE, awaiting merge approval
 
 | | |
