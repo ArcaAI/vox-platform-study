@@ -197,7 +197,71 @@ Argo API token (owner item).
 
 ## Implementation Summary
 
-_(filled in as lanes land)_
+### Shipped to the cluster (hope-v2-deployment @ 9077e9d, pipeline 1244 green, Argo synced)
+
+| Finding | Change |
+|---|---|
+| F1, F2 | STT readiness → `/api/v1/health/ready`, liveness → `/api/v1/health/live`; preStop POSTs `/internal/streaming/drain` then polls readiness until it stops returning 2xx; `terminationGracePeriodSeconds` 60 → 120 |
+| F3 | Liveness added to Vault (tolerating sealed/uninitialised so it cannot restart the pod its own bootstrap sidecar is unsealing), Temporal, Temporal-UI; Vault also gained a startup probe |
+| F4 | `progressDeadlineSeconds` on all 26 Deployments, sized per workload |
+| F14 | New blocking `probes` CI gate (`scripts/check-probes.py`), plus a hardening fix so it refuses input containing no workloads |
+| F17 | README corrected to the manifest's real sync policy |
+| — | Smoke test's STT check moved off the always-200 `/api/v1/health` |
+
+Live verification: STT `/health/ready` and `/health/live` answer 200; `/internal/streaming/drain`
+answers **401 without a token** (it was not exempted); PostSync smoke test 9/9.
+
+### Merged on `dev-2.2` (local; push pending — see Change History)
+
+| Finding | Change |
+|---|---|
+| F5 | `KokoroProvider.health()` reports real pipeline residency; readiness treats not-yet-loaded as degraded-but-READY so a lazy provider is not mistaken for a broken one |
+| F6 | All six Python services report the baked build-info version instead of a source literal |
+| F7 | `/health/startup` added to all six and exempted in the five service-token middlewares |
+| F8 | admin-console gained `/api/health`, `/api/health/live`, `/api/health/ready`; readiness asserts local config validity and deliberately does NOT call the gateway; Dockerfile `HEALTHCHECK` moved off `/login` |
+| F9 | Documented, not changed (D-1) |
+| F10 | STT Dramatiq worker heartbeat as broker middleware, one file per PID |
+| F11 | Worker-stage `HEALTHCHECK` no longer targets a port Dramatiq never binds |
+| F13 | Dead duplicate health controller deleted |
+| F15 | `verify-dev` CI job — polls the dev gateway until it reports this pipeline's sha8 |
+| F12, F16 | Withdrawn / downgraded (D-6, D-4) |
+| F18 | Recorded, not fixed — owner item O-1 |
+
+### Evidence
+
+- `probes` gate: 31/31/30/30 workloads pass; **fails on pre-merge `main` with 18 violations**
+  (2 exceeded deadlines, 3 missing liveness, both STT probes on the unfailable endpoint).
+- Health parity gate: 67 passed; **proven to bite** — reverting three of six services to genuine
+  pre-fix sources fails it on exactly the right assertions.
+- admin-console: build 13/13, typecheck 13/13, 374 files / 3624 tests passed, post-merge.
+- Python post-merge: harness 2661 passed, tts 479 passed, stt heartbeat 21/21, stt lint + typecheck clean.
+- `verify-dev`: match logic proven against the live endpoint; GitLab CI lint valid, no warnings.
+
+### Known-failing, NOT caused by this ticket
+
+`apps/text/.../test_request_logging.py` (3) and `apps/guardrail/.../test_task987_observability.py`
+(4) fail on the access-log / `request.*` event path. Proven by reverting every file this ticket
+touched in those two services and re-running: identical results. Owned by the concurrent TASK-985
+session, which is mid-fix. These block the push because CI would go red and `promote-dev` would
+never run.
+
+### Owner items
+
+- **O-1 (F18)** — nlp's `service.version` is env-settable and still feeds the OTel resource, so a
+  trace's `service.version` can contradict the image. Rule 09 says build identity must never be
+  settable from configuration.
+- **O-2** — all 13 HPAs are inert: `metrics-server` is deployed and Healthy but serves nothing
+  (`"metric-storage-ready" err="no metrics to serve"`). A cluster-addon fix outside both repos.
+- **O-3** — nlp's startup probe is waived in the new gate pending pass 2; the repoint needs the new
+  image.
+
+### Pass 2 (blocked on images existing)
+
+Repoint nlp's startupProbe to `/api/v1/health/startup`, admin-console's probes to
+`/api/health/live` and `/api/health/ready` (+ a startup probe), and stt-worker's probes to the
+heartbeat exec `d=/tmp/stt-worker-heartbeat; n=$(find $d -type f | wc -l); [ $n -gt 0 ] && [ $(find $d -type f -mmin -1 | wc -l) -eq $n ]`.
+Check `/tmp` is writable in that pod (an `emptyDir` if `readOnlyRootFilesystem` is ever set).
+
 
 ## Change History
 
