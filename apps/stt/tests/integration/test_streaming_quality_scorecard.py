@@ -1192,9 +1192,8 @@ async def test_streaming_quality_scorecard(monkeypatch: pytest.MonkeyPatch) -> N
         for c in gated_clips
         if not c["aggregate"]["passed"]
     ]
-    assert not failures, "streaming quality regression (N=%d aggregate): %s" % (
-        n,
-        "; ".join(failures),
+    assert not failures, (
+        f"streaming quality regression (N={n} aggregate): " + "; ".join(failures)
     )
 
 

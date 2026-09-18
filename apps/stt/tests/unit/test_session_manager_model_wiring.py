@@ -1427,7 +1427,14 @@ class TestReaper:
         count = await mgr.reap_expired_sessions(timeout_s=60)
 
         assert count == 1
-        mgr._finalize_session.assert_awaited_once_with(session)
+        # TASK-985 M-23 — the reaper is the one finalizer that both EMITS and
+        # stashes, so it passes `stash_summary=False` and then pushes the
+        # summary back itself (`_push_streaming_usage_back` + an explicit
+        # `pushed_back=True` stash): it fires precisely when the gateway is
+        # gone, and the stash TTL would lose the row to a pod roll. The
+        # control-FINALIZE and final-frame finalizers below still take the
+        # default (True) — they have nobody to return the summary to.
+        mgr._finalize_session.assert_awaited_once_with(session, stash_summary=False)
 
     @pytest.mark.asyncio
     async def test_reap_skips_active_sessions(self):
@@ -1489,7 +1496,14 @@ class TestReaper:
         queued = mgr._inference_queues["s-old"].get_nowait()
         assert queued is final_utt
         mgr._drain_inference_queue.assert_awaited_once_with("s-old")
-        mgr._finalize_session.assert_awaited_once_with(session)
+        # TASK-985 M-23 — the reaper is the one finalizer that both EMITS and
+        # stashes, so it passes `stash_summary=False` and then pushes the
+        # summary back itself (`_push_streaming_usage_back` + an explicit
+        # `pushed_back=True` stash): it fires precisely when the gateway is
+        # gone, and the stash TTL would lose the row to a pod roll. The
+        # control-FINALIZE and final-frame finalizers below still take the
+        # default (True) — they have nobody to return the summary to.
+        mgr._finalize_session.assert_awaited_once_with(session, stash_summary=False)
 
     @pytest.mark.asyncio
     async def test_reaper_loop_spares_active_session_paused_below_audio_idle(self):

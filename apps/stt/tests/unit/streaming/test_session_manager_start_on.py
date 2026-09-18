@@ -30,6 +30,14 @@ def _make_manager() -> MagicMock:
     mgr._provider_overrides = {}
     mgr._fallback_pipeline_ids = {}
     mgr._session_language_modes = {}
+    # TASK-985 L-SESSION — instance attrs created in `__init__`, so a
+    # `MagicMock(spec=SessionManager)` (which specs off the CLASS) does not
+    # carry them. `_creating` holds the ids of sessions mid-creation so the
+    # capacity reconciler cannot release a slot during a cold model load;
+    # `_empty_decode_streaks` is M-24's empty-with-speech failover counter,
+    # cleared by the engine-switch `_apply`.
+    mgr._creating = set()
+    mgr._empty_decode_streaks = {}
 
     mgr._redis = AsyncMock()
     mgr._worker_id = "test-worker"
