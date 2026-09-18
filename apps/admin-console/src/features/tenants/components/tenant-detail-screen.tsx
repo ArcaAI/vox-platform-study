@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { IconArchive, IconArrowLeft, IconPlayerPause, IconRestore, IconTrash } from '@tabler/icons-react';
+import { IconArchive, IconArrowLeft, IconLock, IconPlayerPause, IconRestore, IconTrash } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
@@ -17,8 +17,11 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
+import { useSession } from '@/shared/auth';
 import { useTenant } from '../api/hooks';
 import type { Tenant } from '../api/types';
+import { isReservedTenant, RESERVED_TENANT_REASON } from '../reserved';
+import { ChangePlanDialog } from './change-plan-dialog';
 import { TenantPlanBadge } from './plan-badge';
 import { ResyncPipelineTemplatesAction } from './resync-pipeline-templates-action';
 import { TenantConfigsTab } from './tenant-configs-tab';
@@ -101,6 +104,12 @@ export function TenantDetailScreen({ id }: { id: string }) {
   useTrailingBreadcrumb(tenant?.name);
   const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('overview'));
   const [lifecycle, setLifecycle] = useState<LifecycleRequest | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
+  // TASK-986 W2 — `plan` is a SUPER_ADMIN-only field on the gateway (D-1), so
+  // the editor is offered to nobody else. Menu visibility only; the server
+  // remains the enforcement point.
+  const session = useSession();
+  const isElevated = session.data?.effectiveIsElevated ?? false;
 
   if (isLoading) {
     return <TenantDetailSkeleton />;
@@ -125,6 +134,7 @@ export function TenantDetailScreen({ id }: { id: string }) {
 
   const tab = (TAB_VALUES as readonly string[]).includes(tabParam) ? tabParam : 'overview';
   const status = tenant.resourceStatus;
+  const reserved = isReservedTenant(tenant.id);
 
   return (
     <Tabs value={tab} onValueChange={(next) => setTabParam(next === 'overview' ? null : next)} className="flex min-h-0 flex-1 flex-col">
@@ -145,33 +155,49 @@ export function TenantDetailScreen({ id }: { id: string }) {
               </>
             }
             actions={
-              <>
-                {status === 'ENABLED' ? (
-                  <Button variant="outline" onClick={() => setLifecycle({ action: 'suspend', tenant })}>
-                    <IconPlayerPause aria-hidden />
-                    Suspend
-                  </Button>
-                ) : null}
-                {status === 'SUSPENDED' || status === 'ARCHIVED' ? (
-                  <Button variant="outline" onClick={() => setLifecycle({ action: 'restore', tenant })}>
-                    <IconRestore aria-hidden />
-                    Restore
-                  </Button>
-                ) : null}
-                {status !== 'ARCHIVED' ? (
-                  <Button variant="outline" onClick={() => setLifecycle({ action: 'archive', tenant })}>
-                    <IconArchive aria-hidden />
-                    Archive
-                  </Button>
-                ) : null}
-                {/* Reconcile this tenant's pipeline
+              reserved ? (
+                // TASK-986 W1 (owner ruling D-5) — the gateway refuses every
+                // lifecycle transition AND every PATCH on the two reserved
+                // rows with a 403. Withhold the actions and say why, rather
+                // than offering a control that can only fail (rule 11 §7).
+                <span className="text-muted-foreground flex items-center gap-2 text-sm">
+                  <IconLock aria-hidden />
+                  {RESERVED_TENANT_REASON}
+                </span>
+              ) : (
+                <>
+                  {isElevated ? (
+                    <Button variant="outline" onClick={() => setPlanOpen(true)}>
+                      Change plan
+                    </Button>
+                  ) : null}
+                  {status === 'ENABLED' ? (
+                    <Button variant="outline" onClick={() => setLifecycle({ action: 'suspend', tenant })}>
+                      <IconPlayerPause aria-hidden />
+                      Suspend
+                    </Button>
+                  ) : null}
+                  {status === 'SUSPENDED' || status === 'ARCHIVED' ? (
+                    <Button variant="outline" onClick={() => setLifecycle({ action: 'restore', tenant })}>
+                      <IconRestore aria-hidden />
+                      Restore
+                    </Button>
+                  ) : null}
+                  {status !== 'ARCHIVED' ? (
+                    <Button variant="outline" onClick={() => setLifecycle({ action: 'archive', tenant })}>
+                      <IconArchive aria-hidden />
+                      Archive
+                    </Button>
+                  ) : null}
+                  {/* Reconcile this tenant's pipeline
                                     catalog against the SYSTEM templates. */}
-                <ResyncPipelineTemplatesAction tenant={tenant} />
-                <Button variant="destructive" onClick={() => setLifecycle({ action: 'delete', tenant })}>
-                  <IconTrash aria-hidden />
-                  Delete
-                </Button>
-              </>
+                  <ResyncPipelineTemplatesAction tenant={tenant} />
+                  <Button variant="destructive" onClick={() => setLifecycle({ action: 'delete', tenant })}>
+                    <IconTrash aria-hidden />
+                    Delete
+                  </Button>
+                </>
+              )
             }
           />
         }
@@ -212,6 +238,7 @@ export function TenantDetailScreen({ id }: { id: string }) {
         </TabsContent>
       </ScreenTemplate>
       <TenantLifecycleDialogs request={lifecycle} onOpenChange={(open) => !open && setLifecycle(null)} onDeleted={() => router.push('/tenants')} />
+      {planOpen ? <ChangePlanDialog tenant={tenant} etag={data?.etag} open={planOpen} onOpenChange={setPlanOpen} /> : null}
     </Tabs>
   );
 }

@@ -50,3 +50,20 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 export function isUuidIdentifier(identifier: string): boolean {
   return typeof identifier === 'string' && UUID_PATTERN.test(identifier);
 }
+
+/**
+ * Id of the reserved "Global" tenant (`__GLOBAL__`), the platform-admin
+ * PLAYGROUND — `SEED_TENANT_ID` in
+ * `packages/database/src/prisma/db_main/seed/00-constants.ts`. Declared here as
+ * a local literal rather than a cross-package import, mirroring the
+ * `SYSTEM_TENANT_ID` / `TENANT_ADMIN_ROLE_ID` precedents above (application
+ * code must not import runtime code from `@arcaai/database`).
+ *
+ * TASK-986 W1 — the reserved-tenant guard used to recognise this row ONLY by
+ * its `key`, which a PATCH could rename; the ID is immutable, so it is the
+ * value the guard must match on. Note that Global is a CUSTOMER tenant, not a
+ * config tier: this constant exists for the LOCKDOWN, never for a runtime
+ * cascade (`00-project-context.md` §"The two reserved tenants are NOT two
+ * config tiers").
+ */
+export const SEED_TENANT_ID = '50000000-0000-0000-0000-000000000000';

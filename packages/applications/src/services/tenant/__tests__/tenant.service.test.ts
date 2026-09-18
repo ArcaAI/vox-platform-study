@@ -143,6 +143,22 @@ const mockTenantBucketService = {
   applyPlanStorageQuota: vi.fn(),
 };
 
+// Mock TenantReferenceSetService (TASK-890 §3.4) — the LAST provisioning step
+// of `create`. TASK-986 W6: this slot used to be filled with the (unused)
+// prompt-version repository mock, so `referenceSet.provision` threw a
+// swallowed TypeError on every create and the wiring was proved only by a
+// source-text grep. The dependency is `@Optional()`, so a DI regression would
+// degrade silently — hence the behavioural assertion further down.
+const mockReferenceSetService = {
+  provision: vi.fn(),
+};
+
+// Mock BillingService (TASK-986 / owner ruling D-7) — the `TenantPlanHistory`
+// writer `create` opens the first plan window with.
+const mockBillingService = {
+  recordPlanChange: vi.fn(),
+};
+
 /**
  * Creates a complete mock tenant entity matching the real TenantEntity structure.
  * This ensures tests don't pass due to incomplete mock data.
@@ -408,6 +424,8 @@ describe('TenantService', () => {
     mockBaseClient.department.findMany.mockResolvedValue([]);
     mockBaseClient.promptTemplate.findMany.mockResolvedValue([]);
     mockPromptVersionRepository.create.mockImplementation(async (entity: any) => entity);
+    mockReferenceSetService.provision.mockResolvedValue({ warnings: [] });
+    mockBillingService.recordPlanChange.mockResolvedValue(undefined);
     mockPromptTemplateRepository.create = vi.fn().mockImplementation(async (entity: any) => entity);
     mockDepartmentRepository.findByCode = vi.fn().mockResolvedValue(null);
 
@@ -424,7 +442,8 @@ describe('TenantService', () => {
       mockClsService as any,
       mockAiModelRepository as any,
       mockAsrPipelineVersionRepository as any,
-      mockPromptVersionRepository as any,
+      mockReferenceSetService as any,
+      mockBillingService as any,
     );
   });
 
@@ -456,6 +475,32 @@ describe('TenantService', () => {
       await service.create({ key: 'NEW_TRIAL', name: 'New Trial' });
 
       expect(TenantFactory.CreateTenant).toHaveBeenCalledWith(expect.objectContaining({ plan: TenantPlan.STARTER }));
+    });
+
+    /**
+     * TASK-986 W6 — the SYSTEM reference set is what gives a new tenant its
+     * agents, prompt templates, workflows and context schemas. Its provider is
+     * `@Optional()`, so a DI regression leaves a tenant with NO platform
+     * content and only a warning in the log; until now the wiring was proved
+     * by a source-text grep, which cannot see that.
+     */
+    it('provisions the SYSTEM reference set for the new tenant', async () => {
+      const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+      mockTenantRepository.create.mockResolvedValue(newTenant);
+
+      await service.create({ key: 'NEW_REF', name: 'New Ref' });
+
+      expect(mockReferenceSetService.provision).toHaveBeenCalledWith('new-tenant-id');
+    });
+
+    it('does not abort tenant creation when the reference-set clone fails', async () => {
+      const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+      mockTenantRepository.create.mockResolvedValue(newTenant);
+      mockReferenceSetService.provision.mockRejectedValueOnce(new Error('clone failed'));
+
+      const result = await service.create({ key: 'NEW_REF', name: 'New Ref' });
+
+      expect(result.id).toBe('new-tenant-id');
     });
 
     it('respects an explicit plan on create (no STARTER override)', async () => {

@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
@@ -9,6 +9,8 @@ import { createWorkerSession } from '../../common/worker-session';
 import { IActiveUserContext } from '../../interfaces';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { GLOBAL_TENANT_KEY } from '../tenant/constants';
+import { IBillingService } from '../billing/IBillingService';
+import { ITenantBucketService } from '../tenant-bucket/ITenantBucketService';
 import { IEntitlementsService } from './IEntitlementsService';
 import { DowngradeDisabledGroup, DowngradeReport, IEntitlementsLifecycleService, TrialExpiryReport } from './IEntitlementsLifecycleService';
 import { EntitlementLimitKey, isTrialExpired, selectResourcesToDisable } from './enforcement';
@@ -65,8 +67,37 @@ export class EntitlementsLifecycleService extends BaseService implements IEntitl
     private readonly schedulerRegistry: SchedulerRegistry,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    /**
+     * TASK-986 (owner ruling D-7) — the `TenantPlanHistory` writer and the
+     * plan-derived bucket quota, both of which this service's two plan-change
+     * paths used to skip. `@Optional()` + trailing, the house convention:
+     * production DI supplies them, the positional unit fixtures need not, and
+     * a missing collaborator degrades to a logged warning rather than failing a
+     * plan change that has already committed.
+     */
+    @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
+    @Optional() @Inject(ITenantBucketService) private readonly tenantBucketService?: ITenantBucketService,
   ) {
     super(eventEmitter, clsService, ResourceType.Tenant);
+  }
+
+  /**
+   * TASK-986 (owner ruling D-7) — append a `TenantPlanHistory` segment and
+   * re-derive the primary bucket's quota for a plan transition. Best-effort:
+   * both run AFTER the plan column is committed, so a failure here must not
+   * turn a successful transition into a failed sweep entry.
+   */
+  private async afterPlanChange(tenantId: EntityId, plan: TenantPlan, changeReason: string): Promise<void> {
+    try {
+      await this.billing?.recordPlanChange(tenantId, plan, new Date(), changeReason);
+    } catch (error) {
+      this.logger.warn(`Failed to record the plan change for tenant ${tenantId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      await this.tenantBucketService?.applyPlanStorageQuota(tenantId, plan);
+    } catch (error) {
+      this.logger.warn(`Failed to apply the plan storage quota for tenant ${tenantId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   onModuleInit(): void {
@@ -117,6 +148,8 @@ export class EntitlementsLifecycleService extends BaseService implements IEntitl
             trialEndsAt: tenant.trialEndsAt,
             at: now,
           });
+
+          await this.afterPlanChange(tenant.id, TenantPlan.STARTER, 'trial-expired');
         });
         tenantIds.push(tenant.id);
       } catch (error) {
@@ -163,6 +196,8 @@ export class EntitlementsLifecycleService extends BaseService implements IEntitl
         resourceId: tenantId,
         data: { plan: newPlan, previousPlan: fromPlan, reason: 'downgrade' },
       });
+
+      await this.afterPlanChange(tenantId, newPlan, 'downgrade');
 
       // Q10 soft-disable is gated behind the kill-switch (Q9): with enforcement
       // OFF the downgrade is a pure relabel — block-new begins only once

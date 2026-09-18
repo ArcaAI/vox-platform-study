@@ -4,6 +4,8 @@ import { CommonServiceModule } from '../baseServices';
 import { GlobalSettingServiceModule } from '../globalSetting/globalSetting.service.module';
 import { TenantServiceModule } from '../tenant/tenant.service.module';
 import { MeteringServiceModule } from '../metering/metering.service.module';
+import { BillingServiceModule } from '../billing/billing.service.module';
+import { TenantBucketServiceModule } from '../tenant-bucket/tenant-bucket.service.module';
 import { PlatformMetricsServiceModule } from '../platform-metrics/platform-metrics.service.module';
 import { IEntitlementsService } from './IEntitlementsService';
 import { EntitlementsService } from './entitlements.service';
@@ -32,6 +34,11 @@ import { EntitlementsLifecycleService } from './entitlements-lifecycle.service';
     TenantServiceModule,
     MeteringServiceModule,
     PlatformMetricsServiceModule,
+    // TASK-986 (owner ruling D-7) — the plan-history writer and the
+    // plan-derived bucket quota the trial-expiry sweep and the explicit
+    // downgrade now maintain. Both are leaves relative to this module.
+    BillingServiceModule,
+    TenantBucketServiceModule,
   ],
   providers: [
     {

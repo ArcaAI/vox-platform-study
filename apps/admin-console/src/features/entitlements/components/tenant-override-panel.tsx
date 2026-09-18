@@ -288,7 +288,17 @@ function OverrideEditorCard({ tenantId }: { tenantId: string }) {
   );
 }
 
-/** Ops actions scoped to the loaded tenant (matrix row 4 downgrade sweep). */
+/**
+ * Ops actions scoped to the loaded tenant (matrix row 4 downgrade sweep).
+ *
+ * TASK-986 W2 (R1) — RE-LABELLED. The route is `POST …/downgrade` and still is,
+ * but the control offered all four plans, so an UPGRADE through it was headed
+ * "Operations", styled as a destructive "Trigger downgrade" and reported
+ * "Downgrade to Enterprise complete". The wording now says what the operation
+ * does — apply a plan's limits and disable what is over quota — and points at
+ * the ONE authoritative plan editor on the tenant detail screen (rule 13), by
+ * plain href rather than a cross-feature import.
+ */
 function DowngradeCard({ tenantId }: { tenantId: string }) {
   const downgrade = useTriggerDowngrade();
   const [plan, setPlan] = useState<TenantPlan>('STARTER');
@@ -299,11 +309,11 @@ function DowngradeCard({ tenantId }: { tenantId: string }) {
       { tenantId, plan },
       {
         onSuccess: (report) => {
-          toast.success(`Downgrade to ${PLAN_LABELS[report.toPlan]} complete \u2014 ${formatNumber(report.totalDisabled)} resources disabled`);
+          toast.success(`Plan limits applied: ${PLAN_LABELS[report.toPlan]} \u2014 ${formatNumber(report.totalDisabled)} resources disabled`);
           setConfirmOpen(false);
         },
         onError: (error) => {
-          toast.error(error instanceof GatewayError ? error.message : 'Could not trigger the downgrade.');
+          toast.error(error instanceof GatewayError ? error.message : 'Could not apply the plan limits.');
           setConfirmOpen(false);
         },
       },
@@ -313,9 +323,14 @@ function DowngradeCard({ tenantId }: { tenantId: string }) {
   return (
     <Card className="gap-3 p-4">
       <div className="flex flex-col gap-1">
-        <h2 className="text-sm font-medium">Operations</h2>
+        <h2 className="text-sm font-medium">Change plan</h2>
         <p className="text-muted-foreground text-xs">
-          Downgrading re-applies the target plan limits and disables resources over quota (audited, reversible per resource).
+          Sets the tenant&apos;s plan and re-applies its limits, disabling any resource over quota (audited, reversible per resource). To change the
+          plan without the quota sweep, use{' '}
+          <a className="underline underline-offset-2" href={`/tenants/${tenantId}`}>
+            the tenant detail screen
+          </a>
+          .
         </p>
       </div>
       <div className="flex flex-wrap items-end gap-3">
@@ -335,16 +350,15 @@ function DowngradeCard({ tenantId }: { tenantId: string }) {
           </Select>
         </div>
         <Button variant="outline" onClick={() => setConfirmOpen(true)} disabled={downgrade.isPending}>
-          Trigger downgrade
+          Change plan
         </Button>
       </div>
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Trigger downgrade?"
-        description={`Re-applies the ${PLAN_LABELS[plan]} plan limits to this tenant and disables anything over quota.`}
-        confirmLabel="Trigger downgrade"
-        destructive
+        title={`Change plan to ${PLAN_LABELS[plan]}?`}
+        description={`Sets this tenant to ${PLAN_LABELS[plan]}, re-applies that plan's limits and disables anything over quota.`}
+        confirmLabel="Change plan"
         onConfirm={handleConfirmed}
         isPending={downgrade.isPending}
       />
