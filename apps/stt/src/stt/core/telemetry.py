@@ -1,145 +1,64 @@
-"""OpenTelemetry setup for STT.
+"""STT's observability configuration — adapter over `hope_obs` (TASK-987).
 
-Configures distributed tracing and log export with OTLP gRPC export to
-the central OTel Collector. Auto-instruments FastAPI (inbound), HTTPX
-(outbound), and stdlib logging so that trace context propagates across
-service boundaries and all logs reach Loki via the Collector.
+The implementation (structured logging, the OTLP tracer, FastAPI/httpx
+instrumentation, the PHI request hook) now lives entirely in `hope_obs`
+(`packages/py-obs`); this module only resolves the ONE `ObservabilityConfig`
+STT's `main.py`/`worker.py` hand it.
+
+Two things this adapter does that `hope_obs.ObservabilityConfig.from_env`
+cannot do on its own:
+
+* Reads STT's *own* settings (`otel_service_name`, `log_level`) so the single
+  `Settings` object stays the source of truth an operator already knows to
+  check, instead of a second, silently-divergent env read.
+* Honours the pre-TASK-987 `otel_enabled` / `otel_exporter_endpoint` pair for
+  one more release (`docs/operations/deprecation-register.md`) when the R-2
+  signal (`OTEL_EXPORTER_OTLP_ENDPOINT`) is absent. In `hope-v2-dev` today the
+  endpoint already reaches STT both ways — via `hope-platform-config`
+  (`OTEL_EXPORTER_OTLP_ENDPOINT`, which `from_env` reads directly) and via
+  `hope-stt-config` (`OTEL_ENABLED` / `OTEL_EXPORTER_ENDPOINT`, which it does
+  not) — so this fallback is a safety net for a manifest that has not
+  migrated yet, not the primary signal.
 """
 
 from __future__ import annotations
 
-import logging
-import os
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+import warnings
+from dataclasses import replace
 
+from hope_obs import ObservabilityConfig
+from hope_obs import get_tracer as _get_tracer
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-if TYPE_CHECKING:
-    from fastapi import FastAPI
+from stt.core.config.settings import Settings
 
-_TRACER_VERSION = "2.0.0"
+__all__ = ["build_observability_config", "get_tracer"]
 
 
-@dataclass
-class TelemetryResult:
-    """Holds references to OTel providers for lifecycle management."""
+def build_observability_config(settings: Settings) -> ObservabilityConfig:
+    """Resolve the one `ObservabilityConfig` for this process (API or worker).
 
-    tracer_provider: TracerProvider | None = None
-    logger_provider: LoggerProvider | None = None
-
-
-def _deployment_environment() -> str:
-    """Resolve the deployment environment for the telemetry resource.
-
-    This used to be the literal string ``"production"``,
-    stamped on every span and log record wherever the service ran — including
-    developer laptops. The OTel collector separately upserted ``"dev"`` over
-    everything, so the two disagreed inside a single pipeline and telemetry
-    outside dev was wrong from both directions.
-
-    Precedence: ``DEPLOYMENT_ENVIRONMENT`` (what the collector and the k8s
-    overlays set) then ``NODE_ENV`` (the repo-wide selector).
-
-    The default is **development**, not production. An unset environment on a
-    laptop tagging local traces as production is the dangerous direction: a
-    mislabelled dev span is noise, a mislabelled prod span corrupts an audit
-    trail.
+    Callers hand the result straight to `hope_obs.configure_observability` /
+    `hope_obs.configure_worker_observability` — the worker path suffixes the
+    service name itself (`hope_obs.runtime.worker_service_name`), so this
+    function returns the API's identity either way.
     """
-    return os.getenv("DEPLOYMENT_ENVIRONMENT") or os.getenv("NODE_ENV") or "development"
+    config = ObservabilityConfig.from_env("stt", service_version=settings.app_version)
+    config = replace(config, service_name=settings.otel_service_name, log_level=settings.log_level)
 
+    if not config.tracing_enabled and settings.otel_enabled:
+        warnings.warn(
+            "STT's OTEL_ENABLED / OTEL_EXPORTER_ENDPOINT pair is deprecated "
+            "(TASK-987 R-2) and honoured for one more release only; set "
+            "OTEL_EXPORTER_OTLP_ENDPOINT instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        config = replace(config, otlp_endpoint=settings.otel_exporter_endpoint)
 
-def _build_resource(service_name: str) -> Resource:
-    environment = _deployment_environment()
-    return Resource.create(
-        {
-            "service.name": service_name,
-            "service.version": _TRACER_VERSION,
-            "service.namespace": "hope",
-            # Both spellings: `.name` is the current semantic convention, the
-            # bare key is the legacy one existing queries still use.
-            "deployment.environment": environment,
-            "deployment.environment.name": environment,
-        }
-    )
-
-
-def setup_telemetry_logs(
-    *,
-    enabled: bool = True,
-    endpoint: str = "http://localhost:4317",
-    service_name: str = "stt",
-) -> LoggerProvider | None:
-    """Set up OTel log export pipeline (usable without FastAPI, e.g. workers).
-
-    Returns the LoggerProvider so callers can shut it down, or None if disabled.
-    """
-    if not enabled:
-        return None
-
-    resource = _build_resource(service_name)
-
-    logger_provider = LoggerProvider(resource=resource)
-    log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=True)
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
-
-    otel_handler = LoggingHandler(
-        level=logging.NOTSET,
-        logger_provider=logger_provider,
-    )
-    logging.getLogger().addHandler(otel_handler)
-
-    LoggingInstrumentor().instrument(set_logging_format=False)
-
-    return logger_provider
-
-
-def setup_telemetry(
-    app: FastAPI,
-    *,
-    endpoint: str = "http://localhost:4317",
-    service_name: str = "stt",
-) -> TelemetryResult:
-    """Configure OpenTelemetry tracing + log export with OTLP gRPC exporter."""
-    resource = _build_resource(service_name)
-
-    provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
-
-    FastAPIInstrumentor.instrument_app(
-        app,
-        excluded_urls="docs,redoc,openapi.json,metrics,health,live,ready",
-    )
-    HTTPXClientInstrumentor().instrument()
-
-    logger_provider = setup_telemetry_logs(
-        enabled=True,
-        endpoint=endpoint,
-        service_name=service_name,
-    )
-
-    return TelemetryResult(
-        tracer_provider=provider,
-        logger_provider=logger_provider,
-    )
+    return config
 
 
 def get_tracer(name: str = "stt") -> trace.Tracer:
-    """Get a tracer instance for creating spans.
-
-    Returns a proxy that always resolves against the current global
-    TracerProvider, so tests can swap providers without stale references.
-    """
-    return trace.get_tracer(name, _TRACER_VERSION)
+    """Re-export of `hope_obs.get_tracer` — kept for this module's one prior caller."""
+    return _get_tracer(name)

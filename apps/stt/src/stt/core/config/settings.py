@@ -804,13 +804,20 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Observability (OpenTelemetry + Prometheus)
     # -------------------------------------------------------------------------
+    # `otel_enabled` / `otel_exporter_endpoint` are DEPRECATED (TASK-987 R-2):
+    # `hope_obs.ObservabilityConfig` reads `OTEL_EXPORTER_OTLP_ENDPOINT`
+    # directly, whose PRESENCE is the only enable signal — a boolean beside an
+    # endpoint is exactly the shape that let NLP ship dead tracing (F-02).
+    # `stt.core.telemetry.build_observability_config` still honours this pair
+    # as a one-release fallback (with a `DeprecationWarning`) when the R-2
+    # endpoint is absent — see `docs/operations/deprecation-register.md`.
     otel_enabled: bool = Field(
         default=False,
-        description="Enable OpenTelemetry distributed tracing",
+        description="DEPRECATED (TASK-987): set OTEL_EXPORTER_OTLP_ENDPOINT instead.",
     )
     otel_exporter_endpoint: str = Field(
         default="http://localhost:4317",
-        description="OTLP gRPC collector endpoint",
+        description="DEPRECATED (TASK-987): set OTEL_EXPORTER_OTLP_ENDPOINT instead.",
     )
     otel_service_name: str = Field(
         default="stt",
