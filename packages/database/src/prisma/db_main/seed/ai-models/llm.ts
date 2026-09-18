@@ -57,25 +57,25 @@ const LM_STUDIO_GENERATION_PARAMS: GenerationParamName[] = [...TEXT_PLANE_GENERA
  * One constant, because the number has to agree with `LMS_CONTEXT` in the deployment repo's
  * `base/lmstudio.yaml`, which is what `lms load --context-length` loads the weights at. The
  * dev overlay no longer patches it: this is the DEFAULT for every environment, and an
- * environment that must differ overrides it there rather than here.
+ * environment that must differ overrides it there — and must lower this with it.
  *
  * It is a BUDGET, and the invariant is one-directional: it must never EXCEED what the engine
- * was loaded with. Under-claiming is safe (the lane simply leaves headroom unused);
- * over-claiming is the bug, because the lane would pass a pre-dispatch check and the engine
- * would still answer `exceed_context_size_error`.
+ * was loaded with. Under-claiming is safe (the lane leaves headroom unused); over-claiming is
+ * the bug, because a pre-dispatch check would pass and the engine would still answer
+ * `exceed_context_size_error`.
  *
- * 131071 is one below the 131072 both gemma rows report as their maximum, so there is exactly
- * one token of slack against the engine's own ceiling. That is deliberate but it is also the
- * whole margin: raising this to the reported maximum, or declaring it on a row LM Studio
- * JIT-loads on some other default, breaks the invariant in the direction that bites.
+ * 131072 IS the maximum the engine reports for this model, so the invariant now holds only at
+ * equality and there is no slack left to absorb a mistake. That is why it is declared on the
+ * PRELOADED row alone — see the E2B/E4B note at the rows themselves.
  *
  * Residency, which is the constraint that actually binds: LM Studio gives each of its
  * `LMS_PARALLEL` slots the FULL context rather than dividing it (measured — a single request
  * was served the whole configured window), so KV-cache memory scales with
- * `context x parallel`. At the 2026-09-18 settings (131071 x 10) that is far more than one
- * RTX 2000 Ada holds; see the ticket README.
+ * `context x parallel`. At the 2026-09-18 settings (131072 x 10) that is more than one
+ * RTX 2000 Ada holds; KV-cache quantization would fix it and is not reachable headless in
+ * LM Studio 0.0.23-1. See the ticket README.
  */
-const LM_STUDIO_CONTEXT_LENGTH = 131071;
+const LM_STUDIO_CONTEXT_LENGTH = 131072;
 
 /**
  * text-generation catalogue (TASK-860 — the owner's catalogue, exactly): the
@@ -207,7 +207,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     metaData: {
       hubArtifact: 'google/gemma-4-E2B-it-qat-q4_0-gguf',
       supportedGenerationParams: LM_STUDIO_GENERATION_PARAMS,
-      // Matches `LMS_CONTEXT` in the deployment repo's lmstudio manifest. Keep them equal.
+      // The PRELOADED model (`LMS_LOAD`), so `LMS_CONTEXT` -> `lms load --context-length`
+      // guarantees the window this declares. Keep the two equal.
       contextLength: LM_STUDIO_CONTEXT_LENGTH,
     },
   },
@@ -246,8 +247,13 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     metaData: {
       hubArtifact: 'google/gemma-4-E4B-it-qat-q4_0-gguf',
       supportedGenerationParams: LM_STUDIO_GENERATION_PARAMS,
-      // Matches `LMS_CONTEXT` in the deployment repo's lmstudio manifest. Keep them equal.
-      contextLength: LM_STUDIO_CONTEXT_LENGTH,
+      // Deliberately NO `contextLength`. This row is not in `LMS_LOAD`, so LM Studio
+      // JIT-loads it without `--context-length`, on a default this seed does not control —
+      // the catalogue reports 131072 for the `@q4_0` variant but 4096 for the unqualified
+      // one. While the declaration equalled a value BELOW the engine maximum it could be a
+      // safe under-claim; at the maximum itself any JIT default lower than that turns it
+      // into an over-claim, which is the one direction the invariant forbids. Undeclared is
+      // honest, and the catalogue mapper omits the field rather than inventing a budget.
     },
   },
 
