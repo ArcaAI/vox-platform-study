@@ -558,6 +558,7 @@ test-stt:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    - pip install --quiet --retries 5 --timeout 120 packages/py-obs
     - pip install --quiet --retries 5 --timeout 120 packages/py-otel
     - cd apps/stt
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
@@ -623,6 +624,7 @@ test-text:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    - pip install --quiet --retries 5 --timeout 120 packages/py-obs
     - pip install --quiet --retries 5 --timeout 120 packages/py-otel
     # `hope-async-contract` is a workspace path dependency of apps/text
     # and is NOT on any package index, so pip
@@ -665,6 +667,7 @@ test-tts:
   script:
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    - pip install --quiet --retries 5 --timeout 120 packages/py-obs
     - cd apps/tts
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - PYTHONPATH=src python -m pytest src/tts/tests/ -v --tb=short --junitxml=../../junit-tts.xml -x
@@ -718,6 +721,7 @@ test-guardrail:
     - export GUARDRAIL_REDIS_URL="${GUARDRAIL_REDIS_URL:-redis://localhost:6379/0}"
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    - pip install --quiet --retries 5 --timeout 120 packages/py-obs
     - cd apps/guardrail
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - PYTHONPATH=src python -m pytest src/guardrail/tests/ -v --tb=short --junitxml=../../junit-guardrail.xml -x
@@ -766,6 +770,7 @@ test-harness:
   script:
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    - pip install --quiet --retries 5 --timeout 120 packages/py-obs
     # `apps/harness` declares hope-async-contract as a workspace dependency
     # (pyproject.toml:70,76). It is not on PyPI, so pip resolves it only when it is
     # installed from the workspace first — exactly as `test-text` already does for
@@ -947,6 +952,7 @@ harness-eval-gate:
   script:
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    - pip install --quiet --retries 5 --timeout 120 packages/py-obs
     # `apps/harness` declares hope-async-contract as a workspace dependency
     # (pyproject.toml:70,76). It is not on PyPI, so pip resolves it only when it is
     # installed from the workspace first — exactly as `test-text` already does for
@@ -1153,6 +1159,7 @@ test-nlp:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    - pip install --quiet --retries 5 --timeout 120 packages/py-obs
     # `llama-cpp-python` (MiniCheck GGUF scorer) publishes NO wheels — pip
     # always builds it from sdist via scikit-build-core/CMake, which fails in
     # `python:3.11-slim` with "Could not find the compiler specified in CC:
