@@ -28,6 +28,29 @@ if TYPE_CHECKING:  # pragma: no cover - typing only; never imported at runtime
 REQUEST_ID_HEADER = b"x-request-id"
 TENANT_ID_HEADER = b"x-tenant-id"
 
+#: TASK-985 M-44 — probe paths excluded from the access log by default:
+#: kubelet liveness/readiness, the Prometheus scrape, and their `/api/v1`
+#: prefixed spellings (the fleet serves both — see the identical bare+prefixed
+#: pairing in ``hope_obs.tracing.EXCLUDED_URLS``, which this mirrors for the
+#: log-noise half of the same finding rather than duplicating a third,
+#: divergent list). Hit multiple times a minute per pod; unconditionally
+#: logging both `request.start` and `request.complete` for each one is the
+#: chatter M-44 names. A constructor default, not an env var: this is a
+#: build-time routing fact that never varies by tenant or deployment (see
+#: ".claude/rules/00-project-context.md" — an actual path list is closer to a
+#: code constant than tenant-facing config).
+DEFAULT_EXCLUDED_ACCESS_LOG_PATHS: frozenset[str] = frozenset(
+    {
+        "/health",
+        "/health/live",
+        "/health/ready",
+        "/api/v1/health",
+        "/api/v1/health/live",
+        "/api/v1/health/ready",
+        "/metrics",
+    }
+)
+
 
 def _header(scope: Scope, name: bytes) -> str | None:
     headers: Iterable[tuple[bytes, bytes]] = scope.get("headers") or []
@@ -107,14 +130,30 @@ class AccessLogMiddleware:
 
     Install it INSIDE ``RequestContextMiddleware`` so every line it writes
     already carries ``request_id`` and ``tenant_id``.
+
+    ``exclude_paths`` (TASK-985 M-44) skips ALL logging — ``request.start``,
+    ``request.complete`` AND ``request.failed`` — for an exact ``scope["path"]``
+    match, defaulting to :data:`DEFAULT_EXCLUDED_ACCESS_LOG_PATHS`. A failure on
+    an excluded path (e.g. a broken liveness probe) is still visible via the
+    pod going unready and via traces/metrics — it does not need a THIRD access
+    log line per minute to be discoverable, and skipping it keeps the
+    exclusion simple: one check, same as the non-HTTP-scope short-circuit
+    above, rather than a second exclusion check duplicated in the exception
+    handler.
     """
 
-    def __init__(self, app: ASGIApp, logger_name: str = "access") -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        logger_name: str = "access",
+        exclude_paths: frozenset[str] = DEFAULT_EXCLUDED_ACCESS_LOG_PATHS,
+    ) -> None:
         self.app = app
         self.logger_name = logger_name
+        self.exclude_paths = exclude_paths
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        if scope["type"] != "http" or scope["path"] in self.exclude_paths:
             await self.app(scope, receive, send)
             return
 
