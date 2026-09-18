@@ -47,6 +47,13 @@ def mock_session_manager():
     # routes.py's synchronous call site gets a real value/None back instead of
     # an unawaited coroutine from the AsyncMock default.
     mgr.get_switch_controller = MagicMock(return_value=None)
+    # TASK-985 M-23 — same reason: `claim_teardown_summary` is a SYNCHRONOUS
+    # method returning `dict | None`, and the DELETE route now calls it on the
+    # "already gone" branch. Left to the AsyncMock default it answers a
+    # coroutine, which is not None, so the route tries
+    # `StreamingSessionTeardownResponse(**coroutine)` and raises. Tests that
+    # exercise the stash set their own return value.
+    mgr.claim_teardown_summary = MagicMock(return_value=None)
     return mgr
 
 

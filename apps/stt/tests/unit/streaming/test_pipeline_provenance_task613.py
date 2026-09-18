@@ -64,6 +64,13 @@ def _controller_for(worker: StreamingInferenceWorker, fallback_callable) -> tupl
     mgr = MagicMock(spec=SessionManager)
     mgr._inference_workers = {"s1": worker}
     mgr._publishers = {}
+    # TASK-985 M-24 — `_apply` clears the empty-with-speech streak on every
+    # swap ("the streak is evidence about the engine that just left"), and a
+    # `spec=`-ed mock does not carry an `__init__`-created attribute. Without
+    # it `_apply` raises, the controller swallows it as "switch attempt
+    # failed; staying on primary", and the provenance stamp never moves.
+    mgr._empty_decode_streaks = {}
+    mgr._pending_front_end_geometry = {}
     mgr._build_fallback_asr_callable = AsyncMock(return_value=fallback_callable)
     mgr._build_primary_asr_callable = AsyncMock(return_value=lambda samples, sr: "primary again")
     controller = SessionManager._make_switch_controller(
