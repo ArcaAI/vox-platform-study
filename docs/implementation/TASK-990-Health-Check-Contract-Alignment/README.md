@@ -138,6 +138,37 @@ reached DEPLOY, the preStop instruction reached PY-HEALTH). Both were re-sent to
 DEPLOY stayed inside its file boundary and flagged the misrouted message rather than acting on it,
 which is the behaviour the lane briefs ask for and the reason the error cost nothing.
 
+**D-8 — NEW FINDING F18, surfaced by the PY-HEALTH lane and NOT in the original audit.**
+The audit recorded nlp's `/health` version as the literal `"0.1.0"`. It is not a literal: it is
+`settings.service.version` (`apps/nlp/src/nlp/core/config.py:206`), a pydantic-settings field whose
+default is `"0.1.0"` but which is **env-settable** via `NLP_SERVICE_VERSION`, `OTEL_SERVICE_VERSION`
+or `SERVICE_VERSION`. That is rule 09's "Build identity is baked into the image, not configuration
+— it must never be made settable from a Deployment manifest, an env file, or `turbo.json#globalEnv`"
+being violated live, not merely a stale constant.
+
+`/health` no longer reads it (F6 fixed that). The field still feeds the **OTel resource**, so a
+trace's `service.version` can still be set to a value that contradicts the image. Left alone
+deliberately — it is observability wiring outside this ticket's scope and belongs with TASK-987's
+owner. **Owner item O-1.**
+
+**D-9 — the `/health/startup` 503 is unreachable over HTTP in a normally assembled app, by design
+of the framework.** Starlette does not route until lifespan startup returns, so a still-starting pod
+fails a startup probe by TIMEOUT rather than by 503. The route is still correct and worth having —
+the kubelet's failure signal is what matters, and a dedicated path lets the manifest give startup a
+long `failureThreshold` while liveness keeps a short one — but the 503 branch is belt-and-braces and
+every docstring says so rather than implying a check that cannot fire.
+
+**D-10 — two brief errors of mine, recorded so the next fan-out does not repeat them.**
+1. The worktree-guard invocation I gave the lanes (`python hope_worktree_guard.py --assert apps/<svc>`)
+   exits 1 for all six from a worktree. `--assert` inspects the CURRENT interpreter's `sys.path` and
+   does not prepend the declared roots; `scripts/dev-service.sh:300` exports `--print-pythonpath`
+   first. Correct form: `PYTHONPATH="$(… --print-pythonpath apps/<svc>)" … --assert apps/<svc>`.
+   As briefed it looks like a guard failure when nothing is wrong.
+2. I told the lane to follow `<subject>-parity.contract.test.ts`. That is the TypeScript/Vitest
+   convention in `tests/contracts/`; the lane's file is Python, correctly named
+   `test_health_contract_parity.py` to match its only Python sibling, `test_observability_parity.py`
+   (TASK-987). A hyphenated name is not an importable module and pytest would not collect it.
+
 ## Implementation Plan — lanes
 
 One writer per worktree; the orchestrator owns merges, pushes and cluster verification.
@@ -176,6 +207,9 @@ _(filled in as lanes land)_
 | 2026-09-18 | F13 landed on `dev-2.2` (85146a554): dead duplicate health controller deleted; `pnpm api:build` 12/12 green. |
 | 2026-09-19 | DEPLOY lane landed on `task-990/probe-alignment` (5 commits): STT probes repointed, smoke test repointed, Vault/Temporal/Temporal-UI liveness added, `progressDeadlineSeconds` on all 26 Deployments, README corrected, new `probes` CI gate (`scripts/check-probes.py`) proven to fail on `main`. preStop drain resumed separately. |
 | 2026-09-19 | hope-v2-deployment main @ 9077e9d PUSHED. Pipeline 1244 green (12 jobs incl. the new `probes` gate). Argo auto-synced; stt/temporal/temporal-ui rolled; PostSync smoke test 9/9. Live: stt `/health/ready` and `/health/live` answer 200, `/internal/streaming/drain` answers 401 without a token. |
+| 2026-09-19 | WORKER merged (73e7c2d08): Dramatiq heartbeat as broker middleware (one file per PID), `HEALTHCHECK` fixed. 21/21 heartbeat tests, stt lint + typecheck green post-merge. Stale harness comment corrected (781d76dbf); heartbeat env vars declared in `globalEnv` (695443146). |
+| 2026-09-19 | PY-HEALTH merged (3bc7686f1): build-info version + `/health/startup` + exempt entries on all six services; TTS Kokoro residency; new `tests/contracts/test_health_contract_parity.py` + a CI job. Gate 67 passed; PROVEN to bite — reverting three services to pre-fix sources fails it on exactly the right assertions. |
+| 2026-09-19 | D-8..D-10 recorded: new finding F18 (nlp build identity env-settable, owner item O-1), the `/health/startup` 503 reachability limit, and two errors in my own lane briefs. |
 | 2026-09-19 | F15 closed: `verify-dev` added to `.gitlab/ci/deploy.yml` — polls the dev gateway until it reports THIS pipeline's sha8, closing the CI→cluster loop with no new credential. GitLab CI lint: valid, no warnings. `promote-dev`'s dev environment gained a `url`. |
 | 2026-09-19 | D-6 recorded: F12 WITHDRAWN — the PDBs are correct; the finding's premise was incomplete. D-7 records a lane-routing error and its containment. |
 | 2026-09-18 | Decisions D-1..D-5 recorded. F9 re-specified (contract, not status codes); F16 downgraded to a note; preStop drain + D-3 auth added to the DEPLOY lane. |
