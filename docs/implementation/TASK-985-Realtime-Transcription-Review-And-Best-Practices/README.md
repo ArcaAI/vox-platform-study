@@ -245,6 +245,14 @@ whisper.cpp, `ResolvedInference(language=None, code_switching=False, streaming_e
 the prompt, and BOTH leave the language unpinned. So E vs A is a clean single-variable comparison of the
 pair priming prompt — the comparison §3 BP-2 assumed would need a code edit.
 
+**The single-variable property was verified downstream too, not just at the resolver.** At
+`session_manager.py:2249-2279` the resolved mode sets `inference_config.language`, `.code_switching` and
+`.streaming_english_gloss`, and separately captures `code_switch_prompt = resolved.initial_prompt`. For
+BOTH `auto` and `ml-en` the first three are `None` / `False` / `False`; `code_switch_prompt` is the ONLY
+value that differs, and its sole consumer is `compose_prompt(code_switch_prompt, initial_prompt)`. The
+adapter's own mode lookup (`whisper_cpp_asr.py:360`) keys on the RESOLVED `language`, which is `None` in
+both arms, so it takes the same branch. No other behavioural divergence exists between the two arms.
+
 **Conclusion: the pair priming prompt alone causes the collapse.**
 - Pinning the language is NOT required to fix it — arm E is unpinned and scores 0.033.
 - Stacking the agent `initialPrompt` on top of the pair prompt makes it worse (D -> A).
