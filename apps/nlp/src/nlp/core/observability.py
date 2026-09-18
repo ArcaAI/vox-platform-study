@@ -1,175 +1,149 @@
-import logging
-from typing import Any
+"""OpenTelemetry tracing + NLP's own OTel metrics (TASK-987 R-2/R-5/R-6/R-7).
+
+Logging, request context and tracing route entirely through `hope_obs` — see
+`nlp.core.logging.build_observability_config`. NLP's OTel `MeterProvider`
+stays HERE and is NOT moved into `hope_obs`: `hope_obs` deliberately has no
+metrics path (NLP is its only consumer, and an abstraction for a single caller
+is exactly what this repo's rules say not to build — orchestrator decision,
+TASK-987 README §6.3 lane E, 2026-09-18). `nlp.core.metrics` creates seven
+live OTel instruments that this module's `MeterProvider` exports; dropping it
+here would silently take away NLP's only metrics-export path.
+
+Finding F-02: `hope-platform-config` already sets `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_TRACES_ENABLED=true` and `OTEL_METRICS_ENABLED=true` on this service, and
+none of it mattered — `setup_opentelemetry` returned at its first line on a
+SIXTH variable, `NLP_OTEL_ENABLED`, that nothing in `hope-v2-dev` ever set.
+Under R-2 there is no such master switch: `OTEL_EXPORTER_OTLP_ENDPOINT`
+presence is the only tracing enable signal, so the three variables the
+operator already set are now sufficient by themselves.
+`NLP_OTEL_ENABLED` is honoured for one more release
+(`docs/operations/deprecation-register.md`, registered by the orchestrator) —
+a live manifest may still set it — but only to emit a deprecation warning; it
+no longer decides anything.
+
+Finding F-03: `nlp.core.logging` no longer defines `JsonFormatter`; NLP logs
+JSON via `hope_obs` like every other service.
+
+R-5: the OTLP log export path this module used to build (`LoggerProvider`,
+`OTLPLogExporter`, `BatchLogRecordProcessor`, `LoggingInstrumentor`) is
+deleted. Alloy already tails stdout to Loki; the OTLP log path was a second,
+differently-shaped copy of the same lines. Correlation survives because
+`traceId`/`spanId` are fields on the JSON line `hope_obs` emits.
+"""
+
+from __future__ import annotations
+
+import os
+import warnings
 
 from fastapi import FastAPI
-from opentelemetry import metrics, trace
-from opentelemetry._logs import set_logger_provider
-from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from hope_obs import ObservabilityConfig, configure_observability, shutdown_observability
+from hope_obs.tracing import build_resource
+from opentelemetry import metrics
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.sdk.resources import (
-    DEPLOYMENT_ENVIRONMENT,
-    SERVICE_NAME,
-    SERVICE_VERSION,
-    TELEMETRY_SDK_LANGUAGE,
-    Resource,
-)
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.resources import Resource
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as prometheus_metrics
 
 from nlp.core.config import settings
-from nlp.core.logging import get_logger
+from nlp.core.logging import build_observability_config, get_logger
 
 logger = get_logger("observability")
 
+#: The retired master switch (F-02/F-11). No longer read for its value —
+#: `os.getenv` presence alone triggers the deprecation warning, so an
+#: operator who explicitly sets it to "false" is warned too: the point is
+#: "this variable does nothing now", not "tracing is on".
+_LEGACY_OTEL_ENABLED_VAR = "NLP_OTEL_ENABLED"
 
-def _phi_sanitization_hook(span: trace.Span, scope: dict[str, Any]) -> None:
-    """Strip attributes that could contain PHI from OTel spans."""
-    if span and span.is_recording():
-        for attr in ("http.request.body", "http.response.body"):
-            span.set_attribute(attr, "[REDACTED]")
+
+def _warn_if_legacy_otel_flag_set() -> None:
+    """F-02's fix, made loud rather than silent for one release (R-2)."""
+    if os.getenv(_LEGACY_OTEL_ENABLED_VAR) is None:
+        return
+    message = (
+        f"{_LEGACY_OTEL_ENABLED_VAR} is deprecated (TASK-987 R-2) and no longer "
+        "gates tracing, metrics or logging — OTEL_EXPORTER_OTLP_ENDPOINT "
+        f"presence is the only enable signal now. {_LEGACY_OTEL_ENABLED_VAR} "
+        "will be removed in a future release; unset it."
+    )
+    warnings.warn(message, DeprecationWarning, stacklevel=2)
+    logger.warning("nlp.otel.legacy_enabled_flag_deprecated", variable=_LEGACY_OTEL_ENABLED_VAR)
 
 
-def _instrument_fastapi(
-    app: FastAPI,
-    tracer_provider: Any | None,
-    excluded_urls: str = "",
-) -> None:
-    """Instrument the app, ALWAYS with the PHI sanitisation hook attached.
+def _build_metrics_resource(config: ObservabilityConfig) -> Resource:
+    """The SAME resource `hope_obs` builds for traces, plus NLP's own extra
+    `NLP_OTEL_RESOURCE_ATTRIBUTES`/`OTEL_RESOURCE_ATTRIBUTES`.
 
-    ``_phi_sanitization_hook`` existed since this module was
-    written and was never passed to the instrumentor — dead code, while TEXT's
-    identical hook *was* wired. NLP receives clinical text on every request, so
-    an unhooked instrumentor is free to attach request/response bodies to spans
-    that land in Tempo.
-
-    There used to be TWO ``instrument_app`` call sites (provider-configured and
-    fallback), which is exactly how the hook came to be missing from both. They
-    are collapsed here so the two cannot drift again.
+    `hope_obs.ObservabilityConfig` carries no field for arbitrary extra
+    resource attributes, so `NLPServiceConfig.resource_attributes` would
+    otherwise be silently dropped the moment tracing moved to `hope_obs`.
+    Merging it onto the shared base keeps it alive for the one signal this
+    module still owns, and keeps traces and metrics agreeing about which
+    process emitted them (R-7).
     """
-    kwargs: dict[str, Any] = {
-        "excluded_urls": excluded_urls,
-        "server_request_hook": _phi_sanitization_hook,
-    }
-    if tracer_provider is not None:
-        kwargs["tracer_provider"] = tracer_provider
+    resource = build_resource(config)
+    extra = settings.service.resource_attributes
+    if extra:
+        resource = resource.merge(Resource.create(extra))
+    return resource
 
-    FastAPIInstrumentor().instrument_app(app, **kwargs)
+
+def _setup_metrics(app: FastAPI, config: ObservabilityConfig) -> None:
+    """NLP's own OTel `MeterProvider`. See the module docstring for why this
+    stays local rather than moving into `hope_obs`.
+
+    Gated on `config.tracing_enabled` (endpoint presence, R-2) AND
+    `settings.service.metrics_enabled` (NLP's own, pre-existing switch —
+    unaffected by this ticket, still gates the Prometheus `/metrics` mount in
+    `setup_prometheus` below via the same field).
+    """
+    app.state.meter_provider = None
+    endpoint = config.otlp_endpoint
+    if not config.tracing_enabled or endpoint is None or not settings.service.metrics_enabled:
+        return
+
+    metric_readers = [
+        PeriodicExportingMetricReader(
+            OTLPMetricExporter(endpoint=endpoint, insecure=config.insecure),
+            export_interval_millis=15000,
+        )
+    ]
+    meter_provider = MeterProvider(
+        resource=_build_metrics_resource(config), metric_readers=metric_readers
+    )
+    metrics.set_meter_provider(meter_provider)
+    app.state.meter_provider = meter_provider
+    logger.info("nlp.otel.metrics_enabled", endpoint=endpoint, service=config.service_name)
 
 
 def setup_opentelemetry(app: FastAPI) -> None:
-    if not settings.service.otel_enabled:
-        logger.info("OpenTelemetry disabled (NLP_OTEL_ENABLED=false)")
-        return
+    """Configure logging, request context, tracing and NLP's own metrics.
 
-    if not settings.service.otlp_endpoint:
-        logger.warning("OTEL_EXPORTER_OTLP_ENDPOINT not set — OpenTelemetry disabled")
-        return
-
-    otlp_endpoint = settings.service.otlp_endpoint
-
-    resource = Resource(
-        attributes={
-            SERVICE_NAME: settings.service.name,
-            SERVICE_VERSION: settings.service.version,
-            TELEMETRY_SDK_LANGUAGE: "python",
-            DEPLOYMENT_ENVIRONMENT: settings.service.environment.value,
-            **settings.service.resource_attributes,
-        },
-    )
-
-    tracer_provider = None
-
-    if settings.service.traces_enabled:
-        tracer_provider = TracerProvider(resource=resource)
-        trace.set_tracer_provider(tracer_provider)
-        app.state.tracer_provider = tracer_provider
-
-        tracer_provider.add_span_processor(
-            BatchSpanProcessor(
-                OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True),
-                max_export_batch_size=512,
-                export_timeout_millis=2000,
-                schedule_delay_millis=500,
-            ),
-        )
-
-    if settings.service.metrics_enabled:
-        metric_readers = [
-            PeriodicExportingMetricReader(
-                OTLPMetricExporter(endpoint=otlp_endpoint, insecure=True),
-                export_interval_millis=15000,
-            )
-        ]
-        meter_provider = MeterProvider(resource=resource, metric_readers=metric_readers)
-        metrics.set_meter_provider(meter_provider)
-        app.state.meter_provider = meter_provider
-
-    log_exporter = OTLPLogExporter(endpoint=otlp_endpoint, insecure=True)
-    logger_provider = LoggerProvider(resource=resource)
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
-    set_logger_provider(logger_provider)
-    app.state.logger_provider = logger_provider
-
-    otel_log_handler = LoggingHandler(level=logging.DEBUG, logger_provider=logger_provider)
-    logging.getLogger().addHandler(otel_log_handler)
-
-    excluded_endpoints = [
-        "/docs",
-        "/redoc",
-        "/openapi.json",
-        "/metrics",
-        "/api/v1/health",
-        "/api/v1/health/live",
-        "/api/v1/health/ready",
-    ]
-
-    excluded_urls = ",".join(excluded_endpoints)
-
-    _instrument_fastapi(app, tracer_provider, excluded_urls)
-
-    if tracer_provider is not None:
-        LoggingInstrumentor().instrument(
-            set_logging_format=False,
-            tracer_provider=tracer_provider,
-        )
-    else:
-        LoggingInstrumentor().instrument(set_logging_format=False)
-
-    logger.info(
-        "OpenTelemetry initialized",
-        extra={
-            "otlp_endpoint": otlp_endpoint,
-            "traces": settings.service.traces_enabled,
-            "metrics": settings.service.metrics_enabled,
-        },
-    )
+    Called once from the lifespan, exactly where this has always been called
+    from. `configure_observability` never raises (hope_obs R-2): a
+    misconfigured or unreachable collector degrades to no-tracing, never to a
+    failed boot — the posture this service already had.
+    """
+    _warn_if_legacy_otel_flag_set()
+    config = build_observability_config()
+    configure_observability(app, config)
+    _setup_metrics(app, config)
 
 
 def shutdown_opentelemetry(app: FastAPI) -> None:
-    if not (settings.service.otel_enabled and settings.service.otlp_endpoint):
-        return
+    """Flush and uninstrument tracing, then shut down NLP's own MeterProvider.
 
-    if hasattr(app.state, "tracer_provider") and app.state.tracer_provider:
-        app.state.tracer_provider.shutdown()
-    if hasattr(app.state, "meter_provider") and app.state.meter_provider:
-        app.state.meter_provider.shutdown()
-    if hasattr(app.state, "logger_provider") and app.state.logger_provider:
-        app.state.logger_provider.shutdown()
-
-    try:
-        LoggingInstrumentor().uninstrument()
-    except Exception:
-        pass
-    FastAPIInstrumentor().uninstrument_app(app)
+    Safe to call after a skipped setup, and safe to call twice — mirrors
+    `hope_obs.shutdown_observability`'s own contract.
+    """
+    shutdown_observability(app)
+    meter_provider = getattr(app.state, "meter_provider", None)
+    if meter_provider is not None:
+        meter_provider.shutdown()
+    app.state.meter_provider = None
 
 
 def setup_prometheus(app: FastAPI) -> None:
@@ -186,7 +160,7 @@ def setup_prometheus(app: FastAPI) -> None:
     ``sum by (service) (rate(http_requests_total[5m]))`` both depend on.
     """
     if not settings.service.metrics_enabled:
-        logger.info("prometheus.disabled", extra={"reason": "metrics_enabled=false"})
+        logger.info("nlp.prometheus.disabled", reason="metrics_enabled=false")
         return
 
     Instrumentator(

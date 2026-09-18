@@ -1,122 +1,59 @@
-import json
-import logging
-import os
-from datetime import UTC, datetime
+"""NLP's logging entry point — a thin shim over ``hope_obs`` (TASK-987 R-3).
+
+Finding F-03: this module used to define ``JsonFormatter``, which read
+``otelTraceID``/``otelSpanID``/``otelTraceFlags`` off the record — and never
+installed it. The single console handler was given a plain
+``logging.Formatter``, so Loki stored unparsed text for this service and the
+trace-correlation plumbing had never executed. ``JsonFormatter`` and
+``LoggingConfig`` are gone; NLP now configures logging exactly the way the
+other five services do, through ``hope_obs``.
+
+Kept as a shim (not inlined at every call site) because dozens of modules do
+``from nlp.core.logging import get_logger`` — rewriting every one would balloon
+this diff without changing behaviour. New code should import
+``hope_obs.get_logger`` directly. Registered by the orchestrator in
+``docs/operations/deprecation-register.md``.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+from hope_obs import ObservabilityConfig, configure_logging, get_logger
+
+from nlp.core.config import settings
+
+__all__ = ["build_observability_config", "get_logger", "setup_logging"]
 
 
-class JsonFormatter(logging.Formatter):
-    """Custom JSON formatter for structured logging with OTel trace correlation."""
+def build_observability_config() -> ObservabilityConfig:
+    """The one ``ObservabilityConfig`` NLP resolves and hands everywhere.
 
-    def format(self, record: logging.LogRecord) -> str:
-        """Format log record as JSON with traceId/spanId from OTel LoggingInstrumentor."""
-        log_data = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-            "module": record.module,
-            "function": record.funcName,
-            "line": record.lineno,
-            "thread": record.thread,
-            "thread_name": record.threadName,
-            "process": record.process,
-        }
+    ``ObservabilityConfig.from_env("nlp", ...)`` already reproduces NLP's exact
+    historic log-level precedence — ``NLP_LOG_LEVEL`` over the bare
+    ``LOG_LEVEL``, name-or-number both accepted (see
+    ``hope_obs.config._service_log_level_var`` /
+    ``hope_obs.logging.resolve_log_level``) — so nothing extra is needed to
+    preserve that behaviour.
 
-        trace_id = getattr(record, "otelTraceID", "0")
-        span_id = getattr(record, "otelSpanID", "0")
-        if trace_id and trace_id != "0":
-            log_data["traceId"] = trace_id
-            log_data["spanId"] = span_id
-            log_data["traceFlags"] = getattr(record, "otelTraceFlags", "00")
-
-        service_name = getattr(record, "otelServiceName", None)
-        if service_name:
-            log_data["service.name"] = service_name
-
-        if record.exc_info:
-            log_data["exception"] = self.formatException(record.exc_info)
-
-        if hasattr(record, "extra_fields"):
-            log_data.update(record.extra_fields)
-
-        return json.dumps(log_data, ensure_ascii=False)
-
-
-class LoggingConfig:
-    """Centralized logging configuration for the NLP application.
-
-    ONE sink: stdout. TASK-883 retired the file/rotation handlers and the eleven
-    `nlp.logging.*` control-plane keys that steered them — the deployment ships
-    stdout → Alloy → Loki and mounts no log volume for this service, so a
-    rotating file wrote to an ephemeral container filesystem nobody read. No
-    behaviour changed with it: `file_enabled` defaulted `false` and no seed ever
-    wrote a row for any of those keys, so a file handler was never built.
-
-    `LOG_LEVEL` stays an env read — it is what an operator reaches for FIRST
-    during an incident, with no control-plane round trip.
+    ``otlp_endpoint`` is widened to also accept ``NLP_OTLP_ENDPOINT``:
+    ``NLPServiceConfig.otlp_endpoint`` has always accepted that alias
+    (`core/config.py`), and `hope_obs` only reads the OTel-standard
+    ``OTEL_EXPORTER_OTLP_ENDPOINT``. Falling back to the base value keeps a
+    deployment that only ever set the standard name working unchanged.
     """
-
-    DEFAULT_LOG_LEVEL = "INFO"
-
-    # Log format template
-    SIMPLE_FORMAT = "[%(asctime)s] %(levelname)s - %(name)s :: %(message)s"
-
-    @classmethod
-    def setup_logging(cls, service_name: str = "nlp") -> logging.Logger:
-        """Install the single stdout handler and return the app logger.
-
-        Args:
-            service_name: Name of the service, used for the returned logger.
-
-        Returns:
-            Logger instance for the main application
-        """
-        # `NLP_LOG_LEVEL` is the name `NLPServiceConfig.log_level`
-        # (core/config.py) and `apps/nlp/.env.sample` declare; the bare
-        # `LOG_LEVEL` is whatever the shared env file last set. Prefixed first,
-        # bare as the fallback. The field is typed `int`, so the same variable
-        # is legitimately written as `20` or as `INFO` — both resolve here.
-        raw_level = (
-            os.getenv("NLP_LOG_LEVEL") or os.getenv("LOG_LEVEL") or cls.DEFAULT_LOG_LEVEL
-        ).strip()
-        log_level = (
-            logging.getLevelName(int(raw_level)) if raw_level.isdigit() else raw_level.upper()
-        )
-        level = getattr(logging, log_level, logging.INFO)
-
-        # Clear any existing handlers to avoid duplication
-        root_logger = logging.getLogger()
-        for handler in root_logger.handlers[:]:
-            root_logger.removeHandler(handler)
-
-        root_logger.setLevel(level)
-
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(level)
-        console_handler.setFormatter(logging.Formatter(cls.SIMPLE_FORMAT))
-        root_logger.addHandler(console_handler)
-
-        app_logger = logging.getLogger(service_name)
-        app_logger.info(
-            "Logging configured for service: %s | Log level: %s | Sink: stdout",
-            service_name,
-            log_level,
-        )
-
-        return app_logger
-
-    @classmethod
-    def get_logger(cls, name: str) -> logging.Logger:
-        """Get a logger instance with the specified name."""
-        return logging.getLogger(name)
+    base = ObservabilityConfig.from_env("nlp", service_version=settings.service.version)
+    return replace(base, otlp_endpoint=settings.service.otlp_endpoint or base.otlp_endpoint)
 
 
-# Convenience function for easy import
-def setup_logging(service_name: str = "nlp") -> logging.Logger:
-    """Setup logging and return main application logger."""
-    return LoggingConfig.setup_logging(service_name)
+def setup_logging(service_name: str = "nlp") -> None:
+    """Install the ``hope_obs`` JSON logging chain. Idempotent (see hope_obs).
 
-
-def get_logger(name: str) -> logging.Logger:
-    """Get a logger instance with the specified name."""
-    return LoggingConfig.get_logger(name)
+    Kept as a zero-argument-friendly entry point for ``nlp.main``'s
+    import-time call; ``service_name`` is accepted for backward compatibility
+    with existing callers (e.g. `tests/test_task883_logging_retirement.py`)
+    but the resolved ``ObservabilityConfig.service_name`` is always ``"nlp"``
+    (or ``OTEL_SERVICE_NAME`` when the operator overrides it) — the same
+    identity every other reader of `NLPServiceConfig` uses.
+    """
+    configure_logging(build_observability_config())
