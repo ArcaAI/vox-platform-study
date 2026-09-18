@@ -139,6 +139,10 @@ describe('TASK-951 — SttWsGateway stream-context echo', () => {
     expect(sessionBinding.lookupSessionMeta).toHaveBeenCalledTimes(1);
     expect(bridgeService.subscribeToResults).toHaveBeenCalledWith('sess-echo', {
       consumerGroup: WS_RESULT_CONSUMER_GROUP,
+      // TASK-985 M-48 — stable per-session consumer name. A FIRST subscribe passes no
+      // `reclaimMinIdleMs`: the bridge's conservative 30 s default is right when no other
+      // consumer has been proven dead.
+      consumerName: 'captions-sess-echo',
       sessionEcho: { context: STREAM_CONTEXT, sessionEpochMs: SESSION_EPOCH_MS, metadataSpans: expect.any(Function) },
     });
   });
@@ -202,6 +206,11 @@ describe('TASK-951 — SttWsGateway stream-context echo', () => {
     expect(bridgeService.subscribeToResults).toHaveBeenCalledTimes(2);
     expect(bridgeService.subscribeToResults).toHaveBeenLastCalledWith('sess-resume', {
       consumerGroup: WS_RESULT_CONSUMER_GROUP,
+      consumerName: 'captions-sess-resume',
+      // TASK-985 M-48 — the REBIND path reclaims at min-idle 0: this gateway disconnected the
+      // previous reader itself, so its read-but-unacked results are recoverable now rather
+      // than in 30 s, which is longer than the grace window they have to survive.
+      reclaimMinIdleMs: 0,
       sessionEcho: { context: STREAM_CONTEXT, sessionEpochMs: SESSION_EPOCH_MS, metadataSpans: expect.any(Function) },
     });
     expect(framesOn(second).find((f) => f.type === 'ready').sessionEpochMs).toBe(SESSION_EPOCH_MS);

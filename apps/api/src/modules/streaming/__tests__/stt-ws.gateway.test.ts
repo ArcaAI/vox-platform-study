@@ -208,6 +208,9 @@ describe('SttWsGateway', () => {
       // re-subscription (never a 0-0 re-read).
       expect(mockBridgeService.subscribeToResults).toHaveBeenCalledWith('sess-sub', {
         consumerGroup: 'captions',
+        // TASK-985 M-48 — and a STABLE consumer NAME, so a rebind inherits the dead reader's
+        // pending entries instead of abandoning them for 30 s inside a 15 s grace window.
+        consumerName: 'captions-sess-sub',
         sessionEcho: { metadataSpans: expect.any(Function) },
       });
     });

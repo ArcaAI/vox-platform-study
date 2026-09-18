@@ -12,6 +12,9 @@ import {
 import { StreamSessionEcho, StreamingTranscriptMessage, StreamingServerMessage, StreamingStatusMessage } from './dto';
 import { deriveSpeakerLabel } from './speaker-label';
 import { metadataInForce } from './stream-metadata-timeline';
+// TASK-985 M-03 — the gateway's Prometheus contract. Imported for the relay-lag observation
+// only; registration is idempotent and side-effect-free beyond the default register.
+import { observeRelayLagFromEntryId } from './stt-gateway.metrics';
 
 /**
  * XREAD BLOCK window in milliseconds. 500 (down from
@@ -47,8 +50,32 @@ export interface SubscribeResultOptions {
    * a reconnect. Omit for a per-subscription unique group (read-all, fan-out).
    */
   consumerGroup?: string;
-  /** Consumer name within the group (default: generated per subscription). */
+  /**
+   * Consumer name within the group (default: generated per subscription).
+   *
+   * TASK-985 M-48 — pass a value STABLE PER SESSION (the WS gateway passes
+   * `captions-{sessionId}`) and a re-subscription inherits the SAME pending-entries list, so
+   * the initial `'0'` read recovers deterministically what the previous, now-dead reader had
+   * taken but not acked. With a generated name the new consumer reads its own empty PEL and
+   * goes live, and the old consumer's in-flight is reachable only by an XAUTOCLAIM at
+   * {@link RESULT_CLAIM_MIN_IDLE_MS} — 30 s, which is LONGER than the 15 s resume grace
+   * window, so those results were lost for the life of the session.
+   *
+   * A stable name is safe here precisely because the gateway keeps exactly ONE live reader per
+   * session: a transient drop unsubscribes this subscription only (never
+   * `unsubscribeFromResults`), so the only other consumer on the name is the dead one.
+   */
   consumerName?: string;
+  /**
+   * TASK-985 M-48 — minimum idle (ms) for the ONE start-up XAUTOCLAIM.
+   *
+   * Defaults to {@link RESULT_CLAIM_MIN_IDLE_MS} (30 s), the right bound when the other
+   * consumer might still be alive. The gateway passes **0** on the grace-window REBIND path,
+   * where it already knows the previous reader is gone (it disconnected that reader itself) and
+   * where waiting 30 s would outlive the session. Not a default, because a caller that has NOT
+   * proven the other consumer dead must not steal its in-flight.
+   */
+  reclaimMinIdleMs?: number;
   /**
    * TASK-951 R2 (D-8) — the session's client-declared context + creation epoch,
    * attached VERBATIM to every transcript this subscription emits.
@@ -375,7 +402,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     if (reader) {
       ctrl.reader = reader;
       // Start reading in background
-      this.readResultStream(streamKey, subject, ctrl, reader, group, consumer, options?.sessionEcho).catch((error) => {
+      this.readResultStream(streamKey, subject, ctrl, reader, group, consumer, options?.sessionEcho, options?.reclaimMinIdleMs).catch((error) => {
         this.logger.error({
           message: 'Result stream reader error',
           sessionId,
@@ -473,6 +500,8 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     consumer: string,
     /** TASK-951 R2 — per-session echo attached to every transcript (undefined ⇒ today's wire). */
     sessionEcho?: StreamSessionEcho,
+    /** TASK-985 M-48 — see {@link SubscribeResultOptions.reclaimMinIdleMs}. */
+    reclaimMinIdleMs?: number,
   ): Promise<void> {
     try {
       await this.ensureResultGroup(reader, streamKey, group);
@@ -488,7 +517,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
         try {
           // Hand off a dead reader's in-flight once on start (XAUTOCLAIM).
           if (!reclaimedStale) {
-            await this.reclaimResultPending(reader, streamKey, group, consumer, subject, sessionEcho);
+            await this.reclaimResultPending(reader, streamKey, group, consumer, subject, sessionEcho, reclaimMinIdleMs);
             reclaimedStale = true;
             if (ctrl.abort) break;
           }
@@ -524,6 +553,10 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
             for (const [entryId, fields] of entries) {
               ackIds.push(entryId);
               delivered++;
+              // TASK-985 M-03 (relay lag). The Redis entry id is `<ms>-<seq>` and the `<ms>`
+              // half is the Redis server's clock at XADD, so gateway-side relay lag is
+              // readable with NO wire-format change and no extra field for STT to write.
+              observeRelayLagFromEntryId(entryId);
               const terminal = this.parseAndEmitResult(subject, fields, sessionEcho);
               if (terminal) {
                 // Ack what we saw, then complete on the terminal status (closed/cancelled).
@@ -598,14 +631,21 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     subject: Subject<StreamingServerMessage>,
     /** TASK-951 R2 — a RECLAIMED result is a result: it carries the same session echo. */
     sessionEcho?: StreamSessionEcho,
+    /** TASK-985 M-48 — 0 on the gateway's rebind path; the 30 s default otherwise. */
+    reclaimMinIdleMs?: number,
   ): Promise<void> {
+    const explicit = typeof reclaimMinIdleMs === 'number' && Number.isFinite(reclaimMinIdleMs) && reclaimMinIdleMs >= 0;
+    const minIdle = explicit ? (reclaimMinIdleMs as number) : RESULT_CLAIM_MIN_IDLE_MS;
     try {
-      const res = (await reader.xautoclaim(streamKey, group, consumer, RESULT_CLAIM_MIN_IDLE_MS, '0-0', 'COUNT', 100)) as XAutoClaimReply;
+      const res = (await reader.xautoclaim(streamKey, group, consumer, minIdle, '0-0', 'COUNT', 100)) as XAutoClaimReply;
       const claimed = Array.isArray(res) && res.length >= 2 ? res[1] : [];
       if (!claimed || claimed.length === 0) return;
       const ackIds: string[] = [];
       for (const [entryId, fields] of claimed) {
         ackIds.push(entryId);
+        // TASK-985 M-03 — a reclaimed entry is measured like any other: its lag is the
+        // interesting one, since it sat in a dead reader's PEL before this one took it.
+        observeRelayLagFromEntryId(entryId);
         if (fields) this.parseAndEmitResult(subject, fields, sessionEcho);
       }
       if (ackIds.length > 0) await reader.xack(streamKey, group, ...ackIds).catch(() => {});
@@ -808,6 +848,17 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     const startTime = parseFloat(data.start_time || '0');
     const endTime = parseFloat(data.end_time || '0');
 
+    // TASK-985 M-03 — decode wall time for THIS utterance, in ms. Guarded the same way every
+    // other numeric field here is: a non-numeric or negative value is read as "not reported"
+    // rather than relayed as a number a dashboard would then average.
+    let inferenceMs: number | undefined;
+    if (data.inference_ms != null && data.inference_ms !== '') {
+      const parsedInference = Number.parseFloat(data.inference_ms);
+      if (Number.isFinite(parsedInference) && parsedInference >= 0) {
+        inferenceMs = parsedInference;
+      }
+    }
+
     // TASK-951 R2 (clarified) — the metadata in force over THIS segment's audio, asked for at
     // EMIT time so a mid-utterance microphone change is reported on the utterance it happened
     // during. `undefined` when the session declared an accessor but nothing was ever set (and
@@ -835,6 +886,12 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       ...(speakerLabel ? { speakerLabel } : {}),
       ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),
       ...(wordTimestamps ? { wordTimestamps } : {}),
+      // TASK-985 M-03 — the per-utterance decode cost STT already publishes
+      // (`schemas.py` `inference_ms`). It was parsed into `data` here and then dropped before
+      // the message was constructed, so the ONE number that separates "the model is slow" from
+      // "the transport is slow" never left this function. Additive and absent-when-absent, so
+      // an older worker's wire is unchanged.
+      ...(inferenceMs != null ? { inferenceMs } : {}),
       // TASK-951 R2 (D-8) — the session's client-declared context, VERBATIM, and the
       // gateway's session epoch. Spread LAST but they cannot collide: `context` and
       // `sessionEpochMs` are gateway-owned names that `apps/stt` never publishes on
