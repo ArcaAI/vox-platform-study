@@ -34,6 +34,14 @@ import structlog
 from harness.core.config import Settings
 from harness.main import create_app
 
+#: TASK-985 (M-44) — a path no router claims. The shared access-log middleware
+#: now excludes every PROBE spelling (`/health*`, `/ready`, `/live`, `/metrics`,
+#: bare and `/api/v1`-prefixed): 913 `request.complete` lines an hour on an idle
+#: pod buried the lines that answer real questions. These tests are about the LOG
+#: LINE, not the handler, so they ask for something unrouted — a 404 still
+#: traverses RequestContext + AccessLog and carries the same fields.
+_NON_PROBE_PATH = "/api/v1/__access_log_subject__"
+
 
 class _JSONLineCollector(logging.Handler):
     """Renders every record through the same JSON shape `hope_obs` installs,
@@ -90,9 +98,9 @@ class TestServiceComesUpWithAnUnreachableCollector:
         app = create_app(settings_override=settings)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.get("/api/v1/health")
+            resp = await client.get(_NON_PROBE_PATH)
 
-        assert resp.status_code == 200
+        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
         # An unroutable endpoint is a RUNTIME export failure (lazy gRPC connect),
         # not a configuration failure — tracing stays "on" (R-2).
         assert app.state.tracer_provider is not None
@@ -102,14 +110,14 @@ class TestRequestIdHeader:
     @pytest.mark.asyncio
     async def test_inbound_request_id_is_echoed_unchanged(self, async_client) -> None:
         resp = await async_client.get(
-            "/api/v1/health", headers={"X-Request-ID": "test-request-id-123"}
+            _NON_PROBE_PATH, headers={"X-Request-ID": "test-request-id-123"}
         )
 
         assert resp.headers.get_list("x-request-id") == ["test-request-id-123"]
 
     @pytest.mark.asyncio
     async def test_request_id_generated_when_absent(self, async_client) -> None:
-        resp = await async_client.get("/api/v1/health")
+        resp = await async_client.get(_NON_PROBE_PATH)
 
         assert resp.headers.get("x-request-id")
 
@@ -119,8 +127,8 @@ class TestAccessLogLine:
     async def test_request_complete_carries_request_id_and_duration(
         self, async_client, json_log_lines: list[dict]
     ) -> None:
-        resp = await async_client.get("/api/v1/health", headers={"X-Request-ID": "req-fixture-abc"})
-        assert resp.status_code == 200
+        resp = await async_client.get(_NON_PROBE_PATH, headers={"X-Request-ID": "req-fixture-abc"})
+        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
 
         complete_lines = [r for r in json_log_lines if r.get("event") == "request.complete"]
 
@@ -128,7 +136,7 @@ class TestAccessLogLine:
         record = complete_lines[-1]
         assert record["request_id"] == "req-fixture-abc"
         assert "duration_ms" in record
-        assert record["path"] == "/api/v1/health"
+        assert record["path"] == _NON_PROBE_PATH
         # No X-Tenant-Id sent on this request — absent is absent, never invented.
         assert "tenant_id" not in record
 
@@ -137,7 +145,7 @@ class TestAccessLogLine:
         self, async_client, json_log_lines: list[dict]
     ) -> None:
         await async_client.get(
-            "/api/v1/health",
+            _NON_PROBE_PATH,
             headers={"X-Request-ID": "req-tenant-check", "X-Tenant-Id": "tenant-abc-123"},
         )
 
@@ -154,7 +162,7 @@ class TestAccessLogLine:
         doc: the health endpoint takes no clinical input, so nothing resembling
         a note/transcript field should ever appear on its access log line.
         """
-        await async_client.get("/api/v1/health")
+        await async_client.get(_NON_PROBE_PATH)
 
         complete_lines = [r for r in json_log_lines if r.get("event") == "request.complete"]
 

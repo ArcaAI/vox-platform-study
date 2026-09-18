@@ -162,16 +162,25 @@ describe('PluginManager.getTranscriptionPipelineConfig', () => {
     expect((cfg.stt as { startOn?: 'primary' | 'fallback' }).startOn).toBeUndefined();
   });
 
-  it("defaults languageMode to 'auto' when neither runtime nor static config pins one", () => {
-    // Constructor stt config carries no languageMode; no runtime pick either.
+  it('sends NO languageMode when neither runtime nor static config pins one', () => {
+    // TASK-985 (QW-2 / M-02) — this test previously asserted `'auto'`, and that
+    // was the defect, not the contract. The old comment's premise ("backend
+    // resolves 'auto' to no language override") is false: the backfill is
+    // `if not language_mode:`, and `'auto'` is a truthy string AND a real
+    // catalog entry, so the literal SKIPPED the tenant's configured ASR agent
+    // instead of deferring to it. An un-selected session must send the field
+    // NOT AT ALL and let the agent decide.
+    //
+    // The blast radius is why this matters: `'auto'` resolves to an unprompted
+    // decode and the agent's `ml-en` to a pair-primed one, which measured
+    // 0.885/0.935/0.918 medical_wer against 0.033/0.048/0.131 (TASK-985 §2.7).
+    // The literal was accidentally shielding the clinical scribe from that.
     manager.setRuntimeOptions({ pipelineId: 'p' });
     const cfg = manager.getTranscriptionPipelineConfig();
-    // An un-selected session must AUTO-DETECT (backend resolves 'auto' to no
-    // language override) rather than fall back to a hardcoded language.
-    expect(cfg.stt.languageMode).toBe('auto');
+    expect(cfg.stt.languageMode).toBeUndefined();
   });
 
-  it('a runtime languageMode pick still overrides the auto default', () => {
+  it('a runtime languageMode pick is still honoured', () => {
     manager.setRuntimeOptions({ pipelineId: 'p', languageMode: 'ml-en' });
     const cfg = manager.getTranscriptionPipelineConfig();
     expect(cfg.stt.languageMode).toBe('ml-en');
