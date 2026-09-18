@@ -23,7 +23,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -112,6 +111,14 @@ def build_tracer_provider(config: ObservabilityConfig) -> TracerProvider | None:
         resource=build_resource(config),
         sampler=build_sampler(config.traces_sampler_ratio),
     )
+    # Imported HERE, not at module scope (TASK-987 F-16). The OTLP gRPC exporter
+    # transitively pulls `opentelemetry.sdk.metrics` and the whole gRPC
+    # C-extension stack — measured at 498 modules for a bare `import hope_obs`.
+    # Every consumer paid that at process start, including a worker that only
+    # wants `get_logger` and a service with no endpoint that will never export a
+    # span. Same reasoning that keeps FastAPI/Starlette typing-only here.
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
     exporter = OTLPSpanExporter(endpoint=config.otlp_endpoint, insecure=config.insecure)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     return provider

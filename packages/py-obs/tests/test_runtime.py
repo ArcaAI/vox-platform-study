@@ -76,7 +76,14 @@ class TestConfigureObservabilityNeverRaises:
         def explode(*args: Any, **kwargs: Any) -> Any:
             raise RuntimeError("bad endpoint")
 
-        monkeypatch.setattr(tracing_module, "OTLPSpanExporter", explode)
+        # Patched at the SOURCE module, not on `hope_obs.tracing`: the exporter is
+        # imported lazily inside `build_tracer_provider` (TASK-987 F-16), so it is
+        # never an attribute of `hope_obs.tracing`. Patching the origin also keeps
+        # this test honest if the import ever moves again.
+        monkeypatch.setattr(
+            "opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter",
+            explode,
+        )
         app = FastAPI()
 
         configure_observability(
@@ -218,7 +225,14 @@ class TestWorkerObservability:
         def explode(*args: Any, **kwargs: Any) -> Any:
             raise RuntimeError("bad endpoint")
 
-        monkeypatch.setattr(tracing_module, "OTLPSpanExporter", explode)
+        # Patched at the SOURCE module, not on `hope_obs.tracing`: the exporter is
+        # imported lazily inside `build_tracer_provider` (TASK-987 F-16), so it is
+        # never an attribute of `hope_obs.tracing`. Patching the origin also keeps
+        # this test honest if the import ever moves again.
+        monkeypatch.setattr(
+            "opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter",
+            explode,
+        )
 
         handle = configure_worker_observability(
             ObservabilityConfig(service_name="stt", otlp_endpoint=UNROUTABLE)
