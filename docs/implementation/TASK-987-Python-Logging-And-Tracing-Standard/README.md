@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | In Progress — Wave 0 |
 | **Type** | `infrastructure` (+ `bugfix` for the P0 items) |
 | **Branch** | `dev-2.2` |
 | **Scope** | `apps/{stt,text,guardrail,nlp,harness,tts}`, new `packages/py-obs`, and the `arca/hope-v2-deployment` repo |
@@ -787,3 +787,4 @@ gate commands with pasted output, and anything left unmerged (stated at the top,
 | Date | Change |
 |---|---|
 | 2026-09-18 | Ticket created. Review of all six Python services recorded as F-01…F-15; standard defined in §3; nine-lane multi-agent plan with disjoint ownership, model tiers and merge order defined in §5-§7. Status: Pending — awaiting approval to spawn Wave 0. |
+| 2026-09-18 | Ticket committed to `dev-2.2` as `20526448a` so every worktree branches from a base that already contains it. **Wave 0 spawned.** Lane F (`opus-5`/high) in worktree `../hope-v2-t987-obs`, branch `task-987-py-obs`. Lane D1 (`sonnet-5`/medium) in `hope-v2-deployment`, branch `task-987-enable-otel` off `main`. Status: In Progress. |
