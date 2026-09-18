@@ -121,12 +121,38 @@ function stubFetch(handler: (url: string, init?: RequestInit) => Response | unde
   return calls;
 }
 
+/**
+ * TASK-986 W2 — the BFF session projection. `plan` is a SUPER_ADMIN-only field
+ * on the gateway, so the detail screen reads `effectiveIsElevated` to decide
+ * whether to offer the editor at all.
+ */
+const ELEVATED_SESSION = {
+  user: { id: 'u-1', username: 'root', email: 'root@example.test', roles: ['SUPER_ADMIN'], tenantId: null },
+  isElevated: true,
+  workingTenantId: 't-1',
+  workingTenantName: 'Sunrise Medical Group',
+  impersonatingUserId: null,
+  impersonatingUsername: null,
+  effectiveUser: { id: 'u-1', username: 'root', email: 'root@example.test', roles: ['SUPER_ADMIN'], tenantId: null, departmentId: null },
+  effectiveIsElevated: true,
+  effectiveTenantId: 't-1',
+};
+
+const TENANT_ADMIN_SESSION = {
+  ...ELEVATED_SESSION,
+  user: { id: 'u-2', username: 'admin', email: 'admin@example.test', roles: ['TENANT_ADMIN'], tenantId: 't-1' },
+  isElevated: false,
+  effectiveUser: { id: 'u-2', username: 'admin', email: 'admin@example.test', roles: ['TENANT_ADMIN'], tenantId: 't-1', departmentId: null },
+  effectiveIsElevated: false,
+};
+
 /** Happy-path handlers for every tenant sub-resource; overrides win. */
 function stubDetailFetch(overrides?: (url: string, init?: RequestInit) => Response | undefined): RecordedCall[] {
   return stubFetch((url, init) => {
     const method = init?.method ?? 'GET';
     const custom = overrides?.(url, init);
     if (custom) return custom;
+    if (method === 'GET' && url === '/api/auth/session') return Response.json(ELEVATED_SESSION);
     if (method === 'GET' && url === '/api/hope/admin/tenants/t-1') return Response.json(DETAIL, { headers: { etag: '"7"' } });
     if (method === 'GET' && url === '/api/hope/admin/tenants/t-1/usage') return Response.json(USAGE);
     if (method === 'GET' && url.startsWith('/api/hope/admin/usage/summary')) return Response.json(STORAGE_BREAKDOWN);
@@ -322,5 +348,67 @@ describe('TenantDetailScreen', () => {
 
     expect(await screen.findByText(/412 precondition failed/i)).toBeDefined();
     expect(screen.getByRole('button', { name: /reload latest/i })).toBeDefined();
+  });
+});
+
+/**
+ * TASK-986 W1 (owner ruling D-5) + W2 (R1 / owner decision D-1).
+ *
+ * The gateway now refuses EVERY PATCH — and every lifecycle transition — on the
+ * two reserved rows with a 403, and `plan` is a SUPER_ADMIN-only field. The
+ * console must not offer a control that can only fail, and must say why
+ * (rule 11 §7).
+ */
+describe('TenantDetailScreen — reserved tenants and the plan editor (TASK-986)', () => {
+  const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+  it('offers the plan editor to an elevated caller and PATCHes `plan` with If-Match', async () => {
+    const calls = stubDetailFetch((url, init) => {
+      if ((init?.method ?? 'GET') === 'PATCH' && url === '/api/hope/admin/tenants/t-1') {
+        return Response.json({ ...DETAIL, plan: 'PRO', version: 8 }, { headers: { etag: '"8"' } });
+      }
+      return undefined;
+    });
+    renderWithProviders(<TenantDetailScreen id="t-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /change plan/i }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByLabelText(/pro/i));
+    fireEvent.click(within(dialog).getByRole('button', { name: /save plan/i }));
+
+    await waitFor(() => {
+      const patch = calls.find((call) => call.method === 'PATCH' && call.url === '/api/hope/admin/tenants/t-1');
+      expect(patch?.body).toEqual({ plan: 'PRO', expectedVersion: 7 });
+      expect(patch?.headers.get('if-match')).toBe('"7"');
+    });
+  });
+
+  it('does not offer the plan editor to a tenant admin (the gateway would 403)', async () => {
+    stubDetailFetch((url, init) => {
+      if ((init?.method ?? 'GET') === 'GET' && url === '/api/auth/session') return Response.json(TENANT_ADMIN_SESSION);
+      return undefined;
+    });
+    renderWithProviders(<TenantDetailScreen id="t-1" />);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sunrise Medical Group' })).toBeDefined();
+    await waitFor(() => expect(screen.queryByRole('button', { name: /change plan/i })).toBeNull());
+  });
+
+  it('withholds every mutating action on a RESERVED tenant and states the reason', async () => {
+    stubFetch((url, init) => {
+      const method = init?.method ?? 'GET';
+      if (method === 'GET' && url === '/api/auth/session') return Response.json(ELEVATED_SESSION);
+      if (method === 'GET' && url === `/api/hope/admin/tenants/${SYSTEM_TENANT_ID}`) {
+        return Response.json({ ...DETAIL, id: SYSTEM_TENANT_ID, key: '__SYSTEM__', name: 'System' }, { headers: { etag: '"1"' } });
+      }
+      return undefined;
+    });
+    renderWithProviders(<TenantDetailScreen id={SYSTEM_TENANT_ID} />);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'System' })).toBeDefined();
+    expect(screen.getByText(/protected platform tenant/i)).toBeDefined();
+    for (const action of [/^suspend$/i, /^archive$/i, /^delete$/i, /change plan/i]) {
+      expect(screen.queryByRole('button', { name: action })).toBeNull();
+    }
   });
 });
