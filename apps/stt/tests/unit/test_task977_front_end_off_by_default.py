@@ -385,7 +385,6 @@ class TestTheFlagReachesTheStreamingPreprocessor:
             preprocess_pool_size=2,
             max_concurrent_streams=4,
             batch_scheduler_max_wait_ms=500,
-            vad_silence_threshold_ms=700,
             multi_gpu_strategy="none",
         )
         manager = SessionManager(redis=AsyncMock(), profile=profile, worker_id="w-977")

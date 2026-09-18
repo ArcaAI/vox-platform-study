@@ -55,7 +55,6 @@ def _spec_with_asr_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
 def _manager() -> MagicMock:
     mgr = MagicMock(spec=SessionManager)
     mgr._profile = MagicMock()
-    mgr._profile.vad_silence_threshold_ms = 500
     mgr._make_endpointer = MagicMock(return_value=None)
     return mgr
 

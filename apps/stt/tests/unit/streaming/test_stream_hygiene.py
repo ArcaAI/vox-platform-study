@@ -45,7 +45,6 @@ def _make_profile(max_streams: int = 10):
         preprocess_pool_size=2,
         max_concurrent_streams=max_streams,
         batch_scheduler_max_wait_ms=500,
-        vad_silence_threshold_ms=700,
         multi_gpu_strategy="none",
     )
 

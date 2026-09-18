@@ -1267,7 +1267,6 @@ class TestSessionManager:
             preprocess_pool_size=4,
             max_concurrent_streams=5,
             batch_scheduler_max_wait_ms=2000,
-            vad_silence_threshold_ms=500,
             multi_gpu_strategy="none",
         )
         redis_mock = AsyncMock()
