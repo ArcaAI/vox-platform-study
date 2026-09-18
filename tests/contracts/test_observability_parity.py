@@ -170,28 +170,6 @@ def _called_names(node: ast.AST) -> set[str]:
     return names
 
 
-def _fastapi_lifespan_targets(node: ast.AST) -> set[str]:
-    """Names passed as ``FastAPI(..., lifespan=<name>)`` inside `node`.
-
-    A `lifespan=` keyword's value is a bare reference, never a `Call` — so
-    `_called_names` cannot see it, and the call graph would dead-end at
-    ``get_app`` for a service (NLP) whose observability wiring lives entirely
-    inside its `lifespan` context manager instead of its app factory. Without
-    this, the BFS below would falsely conclude NLP never configures
-    observability at all.
-    """
-    targets: set[str] = set()
-    for n in ast.walk(node):
-        if isinstance(n, ast.Call):
-            func = n.func
-            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
-            if name == "FastAPI":
-                for kw in n.keywords:
-                    if kw.arg == "lifespan" and isinstance(kw.value, ast.Name):
-                        targets.add(kw.value.id)
-    return targets
-
-
 def _build_call_graph(svc: str) -> dict[str, set[str]]:
     """``function simple name -> names it calls``, unioned across every
     function of that name anywhere in the service (module-unqualified, by
@@ -201,7 +179,18 @@ def _build_call_graph(svc: str) -> dict[str, set[str]]:
         tree = _parse(path)
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                called = _called_names(node) | _fastapi_lifespan_targets(node)
+                # Only REAL calls. A `lifespan=` keyword is deliberately
+                # NOT followed (TASK-987 B-2): this traversal was originally
+                # widened to include it so that NLP — whose
+                # `configure_observability` call lived inside its lifespan —
+                # would pass. It should have failed. Starlette builds
+                # `middleware_stack` on the first `__call__`, and the lifespan
+                # scope IS a `__call__`, so `add_middleware` from there raises,
+                # `hope_obs` catches it, and the service silently ships with no
+                # request-context and no access-log middleware. Widening the
+                # graph made this gate green over a live defect, which is worse
+                # than no gate at all. Keep it narrow.
+                called = _called_names(node)
                 graph.setdefault(node.name, set()).update(called)
     return graph
 
@@ -303,13 +292,23 @@ def _find_paired_gate_boolops(svc: str) -> list[tuple[Path, int, str, str]]:
     hits: list[tuple[Path, int, str, str]] = []
     for path in _iter_service_py_files(svc):
         tree = _parse(path)
-        for func in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        for func in (
+            n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ):
             for node in ast.walk(func):
-                if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And) and len(node.values) == 2:
+                if (
+                    isinstance(node, ast.BoolOp)
+                    and isinstance(node.op, ast.And)
+                    and len(node.values) == 2
+                ):
                     texts = [ast.unparse(v) for v in node.values]
                     a, b = texts
-                    a_enabled, a_endpoint = bool(_ENABLED_WORD_RE.search(a)), bool(_ENDPOINT_WORD_RE.search(a))
-                    b_enabled, b_endpoint = bool(_ENABLED_WORD_RE.search(b)), bool(_ENDPOINT_WORD_RE.search(b))
+                    a_enabled, a_endpoint = bool(_ENABLED_WORD_RE.search(a)), bool(
+                        _ENDPOINT_WORD_RE.search(a)
+                    )
+                    b_enabled, b_endpoint = bool(_ENABLED_WORD_RE.search(b)), bool(
+                        _ENDPOINT_WORD_RE.search(b)
+                    )
                     paired = (a_enabled and not a_endpoint and b_endpoint and not b_enabled) or (
                         b_enabled and not b_endpoint and a_endpoint and not a_enabled
                     )
@@ -362,7 +361,9 @@ def _bare_enabled_gate_before_call(func_node: ast.AST) -> list[str]:
         if "configure_observability" in branch_calls:
             continue
         polarity = "not " if negated else ""
-        hits.append(f"line {node.lineno}: `if {polarity}{inner_text}: return ...` skips configure_observability entirely")
+        hits.append(
+            f"line {node.lineno}: `if {polarity}{inner_text}: return ...` skips configure_observability entirely"
+        )
     return hits
 
 
@@ -381,7 +382,12 @@ def test_service_imports_observability_from_hope_obs(svc: str) -> None:
     """
     imported = any(
         _imports_from_hope_obs(svc, name)
-        for name in ("configure_logging", "configure_observability", "configure_worker_observability", "get_logger")
+        for name in (
+            "configure_logging",
+            "configure_observability",
+            "configure_worker_observability",
+            "get_logger",
+        )
     )
     assert imported, (
         f"F-05/F-06: apps/{svc} has no `from hope_obs import "
@@ -403,10 +409,14 @@ def test_service_defines_no_local_observability_primitives(svc: str) -> None:
     violations: list[str] = []
 
     for path, lineno, text in _find_calls_matching(svc, "structlog.configure"):
-        violations.append(f"{_rel(path)}:{lineno}: local `structlog.configure(...)` call (`{text}`)")
+        violations.append(
+            f"{_rel(path)}:{lineno}: local `structlog.configure(...)` call (`{text}`)"
+        )
 
     for path, lineno, text in _find_calls_matching(svc, "TracerProvider"):
-        violations.append(f"{_rel(path)}:{lineno}: local `TracerProvider(...)` construction (`{text}`)")
+        violations.append(
+            f"{_rel(path)}:{lineno}: local `TracerProvider(...)` construction (`{text}`)"
+        )
 
     for path, lineno in _find_function_defs_named(svc, "_add_otel_context"):
         violations.append(f"{_rel(path)}:{lineno}: local `_add_otel_context` definition")
@@ -448,7 +458,9 @@ def test_service_constructs_no_otlp_log_exporter(svc: str) -> None:
     violations: list[str] = []
     for dotted in ("OTLPLogExporter", "LoggerProvider"):
         for path, lineno, text in _find_calls_matching(svc, dotted):
-            violations.append(f"{_rel(path)}:{lineno}: local `{dotted}(...)` construction (`{text}`)")
+            violations.append(
+                f"{_rel(path)}:{lineno}: local `{dotted}(...)` construction (`{text}`)"
+            )
 
     assert violations == [], (
         f"apps/{svc} still constructs an OTLP log exporter/provider, which R-5 deleted "
@@ -582,7 +594,7 @@ def test_dockerfile_copies_py_obs(svc: str) -> None:
     assert copies_py_obs, (
         f"F-17: {_rel(dockerfile)} declares (or should declare) 'hope-obs' as a uv workspace "
         "dependency but has no `COPY packages/py-obs ./packages/py-obs` line. The next image "
-        "build fails with \"Distribution not found at: file:///app/packages/py-obs\"."
+        'build fails with "Distribution not found at: file:///app/packages/py-obs".'
     )
 
 

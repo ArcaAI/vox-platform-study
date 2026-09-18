@@ -12,7 +12,7 @@ from hope_env.service_registration import start_registration, stop_registration
 from nlp.core.config import settings
 from nlp.core.effective_config import EffectiveConfigClient
 from nlp.core.logging import get_logger
-from nlp.core.observability import setup_opentelemetry, shutdown_opentelemetry
+from nlp.core.observability import shutdown_opentelemetry
 from nlp.dependencies import get_websocket_manager
 from nlp.services.external_text_client import ExternalTextClient
 
@@ -154,7 +154,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         service_token=settings.service.peer_service_token(),
     )
 
-    setup_opentelemetry(app)
+    # Observability is configured in the app FACTORY (`nlp.app.get_app`), not
+    # here: middleware cannot be added once the lifespan is running (TASK-987
+    # B-1). Left as a comment rather than deleted silently so the next reader
+    # does not "restore" it.
 
     await websocket_service.initialize()
 
