@@ -390,6 +390,17 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
    * Written through `upsert`, which re-checks that the slug resolves to an ACTIVE PUBLISHED
    * agent OF THAT TASK inside the tenant — so a failed agent copy surfaces HERE as a refused
    * assignment rather than as a row pointing at nothing.
+   *
+   * ## TASK-986 R3 — DEPARTMENT scope is reported, symmetric with `copyWorkflowAssignments`
+   *
+   * The copy loop below reads TENANT scope only, via `findAllForScope(..., TENANT, ...)` — a
+   * DEPARTMENT-scope row's `scopeId` would be a department of the SOURCE tenant, which is tenant
+   * TOPOLOGY, not content, exactly as for `copyWorkflowAssignments`. That query filters it out
+   * silently, so `reportNonTenantAgentAssignments` runs a separate, read-only scan over EVERY
+   * SYSTEM agent assignment (any scope) and warns for each non-TENANT row it finds, mirroring the
+   * workflow twin's warning. Today this scan is a no-op — SYSTEM seeds only TENANT-scope agent
+   * assignments — but without it a DEPARTMENT-scope row added to SYSTEM later would be dropped
+   * with no trace.
    */
   private async copyAgentAssignments(tenantId: string, summary: ReferenceSetSummary): Promise<void> {
     const outcome = summary.kinds.agentAssignments;
@@ -399,6 +410,7 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
       summary.warnings.push('agentAssignments: the agent-assignment service is not wired, so no assignment was provisioned.');
       return;
     }
+    await this.reportNonTenantAgentAssignments(tenantId, summary);
     for (const task of Object.values(AgentTask)) {
       let sources: Array<{ agentSlug: string; selectorKey: string }> = [];
       try {
@@ -440,6 +452,39 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
             error,
           );
         }
+      }
+    }
+  }
+
+  /**
+   * TASK-986 R3 — read-only visibility scan for `copyAgentAssignments`.
+   *
+   * `findAllForScope` above is called with a fixed `scope: PipelinePolicyScope.TENANT`, so a
+   * DEPARTMENT-scope SYSTEM row never reaches that query at all — it cannot be counted, let alone
+   * warned about. This method reads EVERY SYSTEM agent assignment, any scope, precisely so a
+   * non-TENANT row's exclusion can be REPORTED, the same reasoning `copyWorkflowAssignments` uses
+   * for its own DEPARTMENT-scope rows. It changes nothing about what gets copied — a DEPARTMENT
+   * row is still never provisioned into the tenant.
+   */
+  private async reportNonTenantAgentAssignments(tenantId: string, summary: ReferenceSetSummary): Promise<void> {
+    const outcome = summary.kinds.agentAssignments;
+    let rows: Array<{ scope: PipelinePolicyScope; task: AgentTask; agentSlug: string }> = [];
+    try {
+      rows = await runInTenantContext(this.clsService, SYSTEM_TENANT_ID, () =>
+        this.assignmentRepository.findAll({ filters: { tenantId: SYSTEM_TENANT_ID } as never }),
+      );
+    } catch (error) {
+      outcome.failed += 1;
+      this.warn(summary, 'agentAssignments: the SYSTEM assignments could not be scanned for non-TENANT scope', { tenantId }, error);
+      return;
+    }
+    for (const row of rows) {
+      if (row.scope !== PipelinePolicyScope.TENANT) {
+        outcome.skipped += 1;
+        summary.warnings.push(
+          `agentAssignments: the SYSTEM ${row.scope} assignment for ${row.task} → '${row.agentSlug}' was skipped — a ` +
+            'DEPARTMENT-scope row names a department of the source tenant, which is tenant topology and has no meaning here.',
+        );
       }
     }
   }
