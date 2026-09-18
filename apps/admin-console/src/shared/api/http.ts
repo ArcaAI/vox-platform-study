@@ -94,8 +94,9 @@ async function toGatewayError(response: Response): Promise<GatewayError> {
   const error = await parseGatewayError(response);
   // Every proxied call — query, imperative write, blob download — funnels
   // through here, so this is the one place that sees an expired session
-  // whoever asked for it. `reportUnauthorized` decides which 401s are expiry.
-  if (error.isUnauthorized) reportUnauthorized(error.message);
+  // whoever asked for it. `reportUnauthorized` reads the BFF's own
+  // `x-session-expired` header to tell expiry from a step-up re-auth failure.
+  if (error.isUnauthorized) reportUnauthorized(response);
   return error;
 }
 
