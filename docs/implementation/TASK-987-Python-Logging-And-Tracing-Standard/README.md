@@ -247,6 +247,47 @@ unchanged. **Scheduled as Wave 1.5, orchestrator-owned, AFTER all six service la
 the frozen package mid-wave would force four in-flight lanes to rebase for a change that is
 behaviour-preserving. Recorded here so it is not lost.
 
+#### F-17 (P1) — Adopting `hope_obs` breaks five of six service images, and only one service can tell
+
+A service Dockerfile must `COPY` every workspace package it depends on, or `uv sync --frozen`
+fails in the image build. Declaring `hope-obs` in a service's `pyproject.toml` therefore requires a
+matching COPY — and **only `apps/text` has a test that enforces it**
+(`test_dockerfile_workspace_sources.py`). The text lane hit that test, fixed its own Dockerfile, and
+reported it; nobody else's suite can surface it, because this is a deploy-time break that no unit
+test in those services looks for.
+
+Confirmed by the orchestrator across the fleet (note STT's Dockerfile is at the non-standard path
+`apps/stt/docker/Dockerfile`, which is why a `maxdepth 2` search misses it):
+
+| Service | Shared packages copied today | `py-obs` needed |
+|---|---|---|
+| text | async-contract, env, otel, runtime-models, **obs** | ✅ fixed by lane B |
+| stt | env, otel, runtime-models | ❌ |
+| guardrail | env, runtime-models | ❌ |
+| nlp | env, runtime-models | ❌ |
+| harness | async-contract, env, runtime-models | ❌ |
+| tts | env, runtime-models | ❌ |
+
+**Orchestrator-owned follow-up**, since three lanes had already finished when this was found and a
+fourth finished before the addendum reached it: add the COPY to the five remaining Dockerfiles in
+one commit after the Wave-1 merges. The deeper gap — five services have no Dockerfile-sources test
+at all — is worth a follow-up ticket, not scope creep here.
+
+#### F-18 (P2) — NLP's OTel metric attributes are silently dropped by the collector allow-list
+
+Found by lane E. NLP's OTel-exported metrics carry the attribute keys `model`, `entity_type` and
+`label` (`apps/nlp/src/nlp/core/metrics.py`). The collector's `redaction/phi` allow-list is an
+allow-list over **all three** pipelines, and its only domain keys are `hope.model`,
+`hope.capability`, `hope.tenant_id` and `hope.pipeline_id`. **None of NLP's actual names match, so
+every one of those attributes is dropped in transit** in `hope-v2-dev` — the metrics arrive stripped
+of the dimensions that make them useful.
+
+This is R-7 biting exactly as designed (an allow-list fails closed), and it is the first concrete
+instance of the rule "know what survives". Two defensible fixes, both lane D2's call: rename NLP's
+meter attributes into the `hope.*` namespace (preferred — it is what §3 R-7 asks for anyway), or
+extend `allowed_keys`. NLP's **Prometheus-native** metrics are unaffected: Prometheus scrapes them
+directly and they never touch the collector.
+
 ---
 
 ## 3. The Standard (normative)
@@ -796,7 +837,7 @@ as the reason the module was once duplicated per service. Do not "save time" by 
 |---|---|
 | After F merges | Add `packages/py-obs` to root `pyproject.toml` members; run `uv lock` **once from the primary checkout**; add the `py-obs:*` script block to `package.json` (mirror `py-otel:*`, lines 231-236); add `pip install --quiet --retries 5 --timeout 120 packages/py-obs` to all six Python jobs in `.gitlab/ci/test.yml`; add `OTEL_TRACES_SAMPLER_ARG` to `turbo.json#globalEnv`; run `pnpm setup:python` so `arcaenv` picks up the new editable install. THEN spawn Wave 1. |
 | After each Wave-1 lane | Merge into `dev-2.2` from the PRIMARY checkout with `--no-ff`, re-run that service's gates **after** the merge (a clean merge is not a passing build), then remove the worktree. Never the reverse order. |
-| After Wave 1 | Register the deprecation entries the lanes reported (shims + `*_OTEL_ENABLED`) in `docs/operations/deprecation-register.md`. |
+| After Wave 1 | **Re-run `uv lock` from the primary checkout — mandatory, not optional** (found by lane B). Wave 0's lock added `hope-obs` to `[manifest] members` only; once the six services declare it in their own `dependencies`, no `[[package]]` block lists it and `uv sync --frozen` fails in every Docker build and CI job. Then: add the `packages/py-obs` COPY to the five remaining Dockerfiles (**F-17**); register the deprecation entries the lanes reported (shims, `*_OTEL_ENABLED`, `TTS_OTEL_LOGS_ENABLED`, `TTS_OTEL_INSECURE`) in `docs/operations/deprecation-register.md`; and land the **F-16** lazy-exporter fix in `packages/py-obs` now that no lane is in flight. |
 | After Wave 2 | Run `pnpm lint:all` and the full Python suite set once, on the merged branch. |
 | After Wave 3 | Land the rule update in `.claude/rules/06-python-services.md`, the standard at `docs/operations/observability/python-logging-and-tracing.md`, and the F-14 correction in `docs/operations/telemetry-phi-guardrails.md` §2 (deny-list → the deployed allow-list). |
 
@@ -909,6 +950,61 @@ it), and `TTS_OTEL_ENABLED` (honoured for one release; vetoes only when explicit
 WebSocket trace propagation is out of scope and is named in §7's out-of-scope table.
 
 **Its most valuable output was not its diff** — see **F-16**, the eager exporter import.
+
+### Lane B — text — COMPLETE (after a stall + recovery), verified, awaiting merge
+
+| | |
+|---|---|
+| Branch | `task-987-text` @ `408c23dd7` |
+| Gates (lane-run, full suite) | `pnpm text:test` → **1793 passed, 4 skipped, 16 deselected in 173.19s**; lint clean; mypy "no issues found in 79 source files" |
+
+**The first agent stalled** on the 600s no-progress watchdog, having deleted both middlewares and
+`core/observability.py` but not yet rewired `main.py` — `apps/text` was left uncommitted and
+unimportable. A fresh agent was given the exact file-by-file state and the five dangling call sites,
+told not to revert or redo, and told to background long suites to a log rather than block on them.
+It finished the lane and reversed none of its predecessor's decisions.
+
+The stall is the argument for the return-contract discipline: the first agent's last words were
+"Now let's update `main.py`". A summary taken at face value would have recorded a complete lane over
+a service that did not import.
+
+**Its two findings both reached past its own lane** — see **F-17** (Dockerfile COPY, found through a
+real failing test) and the second `uv lock`, now added to §7. Neither was in any brief.
+
+### Lane E — nlp — COMPLETE, verified, awaiting merge
+
+| | |
+|---|---|
+| Branch | `task-987-nlp` @ `890deeb0d` |
+| Gates (lane-run) | `pnpm nlp:test` → **696 passed, 2 failed**, 1 skipped; lint clean; mypy "no issues found in 64 source files" |
+
+**F-03 is closed.** `JsonFormatter` and the whole `LoggingConfig` class are deleted, and NLP emits
+JSON for the first time. Proof, produced live:
+
+```json
+{"event": "nlp.demo.no_span", "service": "nlp", "logger": "nlp.demo", "level": "info", "timestamp": "2026-09-18T14:21:53.829831Z"}
+{"request_id": "abc123", "duration_ms": 12.3, "event": "nlp.demo.with_span", "service": "nlp", "traceId": "06618cbffe02bc05c01e53d701740eb8", "spanId": "08c71d93481fdb17", "logger": "nlp.demo", "level": "info", "timestamp": "2026-09-18T14:21:53.830423Z"}
+```
+
+`traceId`/`spanId` absent without a span, present with one — the correlation that had never executed.
+**F-02 is closed** by construction: endpoint presence is the signal, and `NLP_OTEL_ENABLED` is
+honoured for one release with a warning. The `MeterProvider` survived, pinned by four tests.
+
+**The two failures are genuinely pre-existing and the orchestrator proved it** rather than accepting
+the claim: `test_metrics_endpoint_task636.py`'s two tests fail **identically on the unmodified primary
+checkout**. Cause is `.env.test` setting `OTEL_METRICS_ENABLED=false`, which resolves
+`metrics_enabled=False`; nothing in lane E's diff touches that field. Out of scope, worth its own
+ticket.
+
+**Two behaviour changes it flagged rather than hid:**
+- `NLP_OTEL_RESOURCE_ATTRIBUTES` now lands on NLP's **metrics** Resource only, not on the trace
+  Resource — `ObservabilityConfig` has no field for arbitrary extra resource attributes. Accepted for
+  now; if those attributes matter on traces, that is a `hope_obs` change, not an NLP one.
+- `OTEL_TRACES_ENABLED` no longer gates tracer creation, which is R-2 working as intended.
+
+Also reported: `.env.test` sets `OTEL_SERVICE_NAME=api-gateway` fleet-wide, which leaks into every
+Python service's test environment. Harmless once a test isolates it, and worth knowing before someone
+debugs a wrongly-named span in a test run.
 
 ### Lane C — guardrail — COMPLETE, verified, awaiting merge
 
