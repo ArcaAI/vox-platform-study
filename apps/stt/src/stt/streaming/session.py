@@ -130,6 +130,16 @@ class StreamSession:
         self._denoise_active: bool = False  # Deprecated: use len(processed_audio_buffer) > 0
         self._vad_active: bool = False
 
+        # TASK-985 M-29 — audio frames that arrived after the session left
+        # ACTIVE and were therefore discarded by `_on_frame`'s first line.
+        # `stt:control` and `stt:audio` are two Redis streams with NO mutual
+        # ordering, so a control FINALIZE can be processed while the ingestion
+        # consumer still has unread audio entries. Counting the discards is what
+        # turns "the last words are missing sometimes" into a number; the fix
+        # itself is the in-band terminal frame, which is the gateway's half.
+        self.frames_dropped_after_finalize: int = 0
+        self._dropped_after_finalize_warned: bool = False
+
         # Ring buffer overflow throttle state
         self._overflow_window_start: float = 0.0
         self._overflow_acc_bytes: int = 0
