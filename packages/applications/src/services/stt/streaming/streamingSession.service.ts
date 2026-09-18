@@ -11,6 +11,9 @@ import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfi
 import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { STT_GATEWAY_DEFAULTS, STT_SESSION_CREATE_TIMEOUT_MS_KEY } from '../../settings-registry/descriptors/stt-gateway.descriptors';
 import { IStreamingSessionService } from './IStreamingSessionService';
+// TASK-985 D8 §1.5 item 4 / §8 N-5 — a teardown that emits no ledger row must be COUNTED, not
+// merely absent. Before this, the M-23 ledger loss required a code read to find.
+import { sttStreamTeardownSummaryMissingTotal } from './stt-gateway.metrics';
 import {
   CreateStreamingSessionRequest,
   SttLanguageModeCatalog,
@@ -400,6 +403,7 @@ export class StreamingSessionService implements IStreamingSessionService {
    */
   async removeSession(sessionId: string, interrupted = false, tenantId?: string | null): Promise<void> {
     let summary: StreamingSessionTeardownSummary | undefined;
+    let teardownStatus = 'unknown';
     try {
       const response = await firstValueFrom(
         this.httpService.delete<StreamingSessionTeardownSummary | undefined>(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}`, {
@@ -407,6 +411,15 @@ export class StreamingSessionService implements IStreamingSessionService {
           headers: await this.sttHeaders(tenantId, SESSION_TENANTLESS_REASON),
         }),
       );
+      teardownStatus = String(response.status);
+      // TASK-985 (D8 §1.5) — a 200 carries the teardown summary. Since the STT-side teardown
+      // STASH landed, that now includes the case where ANOTHER finalizer (the control-path
+      // FINALIZE, the final audio frame) already tore the session down: the route pops the
+      // stashed summary and answers 200 instead of the bare 204 it used to. That is what
+      // restores the `transcribe.stream` row on an ordinary clean stop — the sequence
+      // control-FINALIZE-then-DELETE previously produced NO ledger row at all — and it is what
+      // keeps `interrupted` a GATEWAY decision: STT has no notion of it, and the reaper's
+      // hard-coded `interrupted=True` is the wrong answer for a session the clinician stopped.
       summary = response.status === 200 ? response.data : undefined;
 
       this.logger.log({
@@ -427,7 +440,23 @@ export class StreamingSessionService implements IStreamingSessionService {
 
     if (summary) {
       await this.emitStreamingUsage(summary, interrupted);
+      return;
     }
+
+    // TASK-985 (D8 §8 N-5) — a teardown with no summary emits NO ledger row, and until now
+    // that was indistinguishable from a teardown that had nothing to bill: `removeSession`
+    // treated HTTP 204 and "no summary built" identically, with no warn and no counter. WARN
+    // rather than ERROR because ONE case is legitimate — an idempotent second teardown, whose
+    // first call already emitted — and the counter is what makes the two separable in
+    // aggregate: a rate that tracks session starts is a metering outage, an occasional one is
+    // the idempotent path.
+    sttStreamTeardownSummaryMissingTotal.inc({ status: teardownStatus });
+    this.logger.warn({
+      message: 'Streaming teardown returned no usage summary — no transcribe.stream row was emitted for this session',
+      sessionId,
+      status: teardownStatus,
+      interrupted,
+    });
   }
 
   /**
@@ -486,6 +515,11 @@ export class StreamingSessionService implements IStreamingSessionService {
     // is nothing meaningful to bill against (mirrors the batch path).
     const segments = StreamingSessionService.usageSegments(summary);
     if (segments.length === 0) {
+      // TASK-985 (N-5) — the OTHER way a metered session ends with no ledger row: a summary
+      // arrived but carried no billable segment. Legitimate for a session that failed before
+      // any model loaded; a metering outage if it happens to sessions that transcribed. Same
+      // counter, a distinct `status`, so the two are separable without a code read.
+      sttStreamTeardownSummaryMissingTotal.inc({ status: 'no-segments' });
       return;
     }
     const baseKey = UsageIdempotencyKey.sttStreamSession(summary.session_id);

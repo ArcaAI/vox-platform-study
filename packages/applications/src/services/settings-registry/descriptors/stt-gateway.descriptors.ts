@@ -50,12 +50,42 @@ import { SettingDescriptor } from '../registry.types';
 export const STT_SESSION_CREATE_TIMEOUT_MS_KEY = 'sttStreaming.sessionCreateTimeoutMs';
 
 /**
+ * TASK-985 (ST-5) — the WS egress high watermark, in bytes of `bufferedAmount`.
+ *
+ * Above it the gateway DROPS partial transcripts and QUEUES finals. It was the module-scope
+ * `process.env.STT_WS_EGRESS_HIGH_WATERMARK_BYTES` read at import in `stt-ws.gateway.ts`, i.e.
+ * a value that could only change with a pod restart.
+ */
+export const STT_EGRESS_HIGH_WATERMARK_BYTES_KEY = 'sttStreaming.egressHighWatermarkBytes';
+
+/** TASK-985 (ST-5) — the resume grace window (ms) a transient socket drop keeps the session for. */
+export const STT_RESUME_GRACE_MS_KEY = 'sttStreaming.resumeGraceMs';
+
+/** TASK-985 (ST-5) — the oldest a buffered PARTIAL may be and still be replayed on resume (ms). */
+export const STT_RESUME_MAX_REPLAY_AGE_MS_KEY = 'sttStreaming.resumeMaxReplayAgeMs';
+
+/** TASK-985 (M-47) — how often the gateway pings each live STT socket (ms). */
+export const STT_WS_PING_INTERVAL_MS_KEY = 'sttStreaming.wsPingIntervalMs';
+
+/** TASK-985 (M-47) — consecutive unanswered pings before the socket is terminated. */
+export const STT_WS_PING_MISSES_KEY = 'sttStreaming.wsPingMissesBeforeTerminate';
+
+/**
  * Code defaults for the gateway-side STT budgets — the single source of truth shared by
  * the descriptor below and `StreamingSessionService`, so the two can never disagree
  * about what "no row" means.
  */
 export const STT_GATEWAY_DEFAULTS = {
   [STT_SESSION_CREATE_TIMEOUT_MS_KEY]: 60_000,
+  // TASK-985 ST-5. 512 KiB of queued captions is ~50 s of stale transcript in flight to a
+  // client that is already not keeping up; by the time it drains, everything in it is
+  // clinically useless. 32 KiB bounds the staleness to a few seconds, which is the whole
+  // point of dropping under back-pressure rather than queueing.
+  [STT_EGRESS_HIGH_WATERMARK_BYTES_KEY]: 32 * 1024,
+  [STT_RESUME_GRACE_MS_KEY]: 15_000,
+  [STT_RESUME_MAX_REPLAY_AGE_MS_KEY]: 10_000,
+  [STT_WS_PING_INTERVAL_MS_KEY]: 20_000,
+  [STT_WS_PING_MISSES_KEY]: 2,
 } as const;
 
 export const STT_GATEWAY_SETTINGS: SettingDescriptor[] = [
@@ -85,5 +115,140 @@ export const STT_GATEWAY_SETTINGS: SettingDescriptor[] = [
       'busy returning 201. Set it above the slowest cold start you actually run, not tight: an abort here does ' +
       'not make the session faster, it discards a session STT is about to open.',
     default: STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY],
+  },
+  // ---------------------------------------------------------------------------------------
+  // TASK-985 ST-5 — the five WS-transport budgets, moved off `process.env`.
+  //
+  // ## Why these are a rule violation and not a preference
+  //
+  // `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` and `STT_WS_RESUME_GRACE_MS` were module-scope
+  // `process.env` reads EVALUATED AT IMPORT (`stt-ws.gateway.ts`). Neither is part of the
+  // bootstrap floor: neither is needed to reach the database or to authenticate to Vault, and
+  // both are exactly the kind of value that must change without a restart
+  // (`09-infrastructure-devops.md` §Configuration Tiers, corollary L1 — "env vars are immutable
+  // for the process lifetime"). Worse, both were declared in `turbo.json#globalEnv` and
+  // `.env.sample`, so the DECLARATION implied a mutability the code did not have: an operator
+  // editing the value got nothing until the pod was recycled (D8 §8 N-7).
+  //
+  // The other three never existed at all — they are the new budgets M-47 and the resume-replay
+  // age bound need, registered here rather than added as fresh literals for the same reason.
+  //
+  // ## Why they share the `sessionCreateTimeoutMs` shape exactly
+  //
+  // `global-kv` / `maxScope: 'system'` / `globalOnly: true` / `failMode: 'open-to-default'` /
+  // no `consumedBy`. Each describes the PLATFORM's own socket transport, not a clinical
+  // preference a tenant holds an opinion about; a per-tenant row would multiply the resolution
+  // cardinality of a value read on every session open (and, for the watermark, on every
+  // transcript). No `consumedBy` because no Python reader pulls them — `apps/stt` never sees
+  // the client socket.
+  //
+  // ## `failMode: 'open-to-default'` is right for all five
+  //
+  // Every one is a TUNING knob: an absent row degrades to the code default, never to an outage.
+  // (`failMode` governs an ABSENT VALUE only — a settings-backend error still propagates.)
+  // Contrast provider/model SELECTION, which is `closed`, because substituting a default there
+  // would transcribe with an engine nobody chose.
+  // ---------------------------------------------------------------------------------------
+  {
+    key: STT_EGRESS_HIGH_WATERMARK_BYTES_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'STT WS egress high watermark (bytes)',
+    // DEPRECATED ENV OVERRIDE (TASK-985, removed in R4). Honoured for one release as a
+    // PRE-RESOLUTION seed — a stored row always wins — so an operator who set the old name in a
+    // deployment does not lose their value the moment this lands. Declaring it here is what
+    // puts the name into `turbo.json#globalEnv` as a READ (never into any `.env.sample`), which
+    // is the mechanism the register row depends on.
+    envOverride: ['STT_WS_EGRESS_HIGH_WATERMARK_BYTES'],
+    description:
+      "Bytes of a client socket's `bufferedAmount` above which the gateway stops sending PARTIAL transcripts " +
+      '(dropped, and the client is told once per episode with a `gap` frame) and QUEUES finals until the socket ' +
+      'drains. It is a STALENESS bound, not a throughput dial: the old 512 KiB default is roughly 50 seconds of ' +
+      'captions in flight to a client that is already not keeping up, all of which is clinically useless by the ' +
+      'time it arrives. Raise it only if you would rather deliver old captions than fresh ones. Resolved ONCE per ' +
+      'session at the WebSocket handshake, so a change governs the next session to open, not the ones already running.',
+    default: STT_GATEWAY_DEFAULTS[STT_EGRESS_HIGH_WATERMARK_BYTES_KEY],
+  },
+  {
+    key: STT_RESUME_GRACE_MS_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'STT WS resume grace window (ms)',
+    // DEPRECATED ENV OVERRIDE (TASK-985, removed in R4) — same contract as the watermark above.
+    envOverride: ['STT_WS_RESUME_GRACE_MS'],
+    description:
+      'How long a TRANSIENT socket drop keeps the session — its resume buffer, its seq counter and its upstream ' +
+      'STT session — alive so the same client can reconnect and continue. The cost of a longer window is real: an ' +
+      'in-grace session still holds an upstream STT session, a model pin and a GPU slot, and it counts against the ' +
+      "tenant's concurrency cap for the whole window. Resolved at the moment the socket drops, so a change reaches " +
+      'the next disconnect.',
+    default: STT_GATEWAY_DEFAULTS[STT_RESUME_GRACE_MS_KEY],
+  },
+  {
+    key: STT_RESUME_MAX_REPLAY_AGE_MS_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'STT resume max partial replay age (ms)',
+    description:
+      'The oldest a buffered PARTIAL transcript may be and still be replayed to a client that reconnects inside the ' +
+      'grace window. Finals are NEVER aged out — a final is distinct clinical content and is always replayed. A ' +
+      'partial older than this has been superseded by the speaker continuing, so replaying it repaints the live ' +
+      'region with text the ASR itself no longer believes.',
+    default: STT_GATEWAY_DEFAULTS[STT_RESUME_MAX_REPLAY_AGE_MS_KEY],
+  },
+  {
+    key: STT_WS_PING_INTERVAL_MS_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'STT WS keepalive ping interval (ms)',
+    description:
+      'How often the gateway sends a WebSocket ping to each live STT socket. Detection of a HALF-OPEN client — one ' +
+      'whose egress was firewalled, so TCP never closes — takes between one and two intervals. Before this existed ' +
+      "such a client held its upstream STT session, its model pin and a GPU slot until STT's own 300 s idle reaper, " +
+      'up to ten minutes counting the reaper interval.',
+    default: STT_GATEWAY_DEFAULTS[STT_WS_PING_INTERVAL_MS_KEY],
+  },
+  {
+    key: STT_WS_PING_MISSES_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'STT WS unanswered pings before terminate',
+    description:
+      'Consecutive unanswered pings after which the gateway terminates the socket. Terminating routes through the ' +
+      'ordinary disconnect path, so a genuinely flaky client still gets its full resume grace window — this setting ' +
+      'shortens DETECTION, it does not remove resumability. Below 2 a single lost pong on a congested link ends the ' +
+      "socket, so 2 is the floor worth running; 1 is a valid setting only if you are deliberately trading a client's " +
+      'reconnect for a GPU slot.',
+    default: STT_GATEWAY_DEFAULTS[STT_WS_PING_MISSES_KEY],
   },
 ];
