@@ -494,6 +494,17 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
     if (!wsClientRef.current && !sessionIdRef.current) return;
     setStatus('stopping');
 
+    // TASK-985 M-53 — release the converter's guard region before the mic goes
+    // away. It holds back one kernel reach of input (~2 ms at 48 kHz, ~10 ms at
+    // 44.1 kHz) because the last output of a frame needs audio that has not
+    // arrived yet; at end of capture there is none, so this is the only place
+    // those samples can still be sent. Synchronous, so it costs the mic nothing.
+    const resampler = resamplerRef.current;
+    if (resampler && wsClientRef.current?.isConnected()) {
+      const tail = resampler.flush();
+      if (tail.length > 0) wsClientRef.current.sendAudioFrame(float32ToInt16(tail));
+    }
+
     // Microphone off IMMEDIATELY — the recording indicator must not stay lit
     // while we wait for the tail. Then, and only then, wait for the transcript.
     releaseAudio();

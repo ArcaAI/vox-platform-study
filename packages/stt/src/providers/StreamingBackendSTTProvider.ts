@@ -432,9 +432,12 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       return;
     }
     this.processing = false;
-    // Release the sub-period remainder the streaming converter holds back
-    // (TASK-985 M-53) BEFORE the stop frame, so the last fraction of a sample
-    // period is part of the utterance the server is about to finalize.
+    // Release the guard region the streaming converter holds back (TASK-985
+    // M-53) BEFORE the stop frame, so the last ~2 ms of speech is part of the
+    // utterance the server is about to finalize rather than being dropped on
+    // teardown. The converter holds it back because the last output of a frame
+    // needs signal that had not arrived yet; at end of stream there is none, so
+    // this is where it is released.
     try {
       const tail = this.resampler?.flush();
       if (tail && tail.length > 0 && this.wsClient.isConnected()) {
