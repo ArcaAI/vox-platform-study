@@ -1001,6 +1001,26 @@ WebSocket trace propagation is out of scope and is named in §7's out-of-scope t
 
 **Its most valuable output was not its diff** — see **F-16**, the eager exporter import.
 
+### Orchestrator-owned documentation and the F-18 upstream half — DONE
+
+Landed on `dev-2.2` while Wave 2/3 ran (none of these files belongs to a lane):
+
+| Change | Commit |
+|---|---|
+| **`docs/operations/observability/python-logging-and-tracing.md`** — the standard, written as rules **with the defect each one came from**. A rule without its reason gets re-litigated by the next person who finds it inconvenient | `e494c8d41` |
+| `.claude/rules/06-python-services.md` — points at it and states the contract inline, including the reserved-`LogRecord`-key trap from F-20 | `e494c8d41` |
+| **F-14 corrected** — `telemetry-phi-guardrails.md` §2 prescribed a deny-list of known-bad `gen_ai.*` keys; the deployed collector is an allow-list over all three pipelines. Rewritten to the deployed reality, including the two properties that bite: anything unlisted is dropped silently, and `exception.message`/`exception.stacktrace` are excluded on purpose | `e494c8d41`, `6c5bdce10` |
+| Deprecation register — the six `*_OTEL_ENABLED`/endpoint pairs (OFF-veto for one release), `TTS_OTEL_LOGS_ENABLED` and `TTS_OTEL_INSECURE` (both dead on arrival), and every per-service re-export shim | `e494c8d41` |
+| **F-18 upstream half** — NLP's OTel meter attributes renamed to `hope.model` / `hope.entity_type` / `hope.label`. Prometheus-native labels deliberately untouched: Prometheus scrapes them directly and never touches the collector. 696 passed | `587ba9f46` |
+
+**F-21 deliberately NOT half-fixed.** `apps/api/.env.sample:441` sets a bare, uncommented
+`OTEL_SERVICE_NAME=api-gateway` while every per-service `<SVC>_OTEL_SERVICE_NAME` is commented out,
+so a synced `.env.dev`/`.env.test` can relabel any Python service's logs locally. Whether
+uncommenting the prefixed names actually fixes it depends on whether each service's
+`build_observability_config` overrides `service_name` from its own settings — STT and TTS do,
+the other four were not audited. In-cluster is unaffected (verified: `hope-platform-config` does not
+set `OTEL_SERVICE_NAME`). Recorded with its mechanism rather than patched on a guess.
+
 ### Lane A — stt — COMPLETE, verified, MERGED
 
 | | |
