@@ -133,6 +133,12 @@ class TestBounds:
         because a shared CI box is not a benchmark; it exists to catch an
         algorithmic regression (the pre-memo build cost 798 ms), not to certify a
         number.
+
+        TASK-985 amendment: those figures were the BINARY matcher's. The graded
+        one re-orders the gates so the cheap phonetic comparison decides the
+        ceiling before any word-level edit distance is paid, and it measured
+        ~2.5x faster than the numbers above on this exact case. The ceiling this
+        test guards therefore moved down, not up.
         """
         terms = ["ceftriaxone"] + [f"clinicalterm{i:03d}" for i in range(255)]
         corrector = LexiconCorrector(terms)
