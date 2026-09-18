@@ -797,7 +797,10 @@ sbom-stt:
       artifacts: true
   rules:
     - !reference [.image-signing-guard, rules]
-    - !reference [.rules-stt, rules]
+    # `.build-stt-rules`, NOT `.rules-stt` — see the note on that anchor: this
+    # job `needs:` the build, so a wider condition is a pipeline-creation error
+    # rather than a skipped job.
+    - !reference [.build-stt-rules, rules]
 
 sign-stt:
   extends: .cosign-sign-attest
@@ -808,7 +811,10 @@ sign-stt:
       artifacts: true
   rules:
     - !reference [.image-signing-guard, rules]
-    - !reference [.rules-stt, rules]
+    # `.build-stt-rules`, NOT `.rules-stt` — see the note on that anchor: this
+    # job `needs:` the build, so a wider condition is a pipeline-creation error
+    # rather than a skipped job.
+    - !reference [.build-stt-rules, rules]
 
 # --- STT worker ---
 sbom-stt-worker:
@@ -818,7 +824,10 @@ sbom-stt-worker:
       artifacts: true
   rules:
     - !reference [.image-signing-guard, rules]
-    - !reference [.rules-stt, rules]
+    # `.build-stt-rules`, NOT `.rules-stt` — see the note on that anchor: this
+    # job `needs:` the build, so a wider condition is a pipeline-creation error
+    # rather than a skipped job.
+    - !reference [.build-stt-rules, rules]
 
 sign-stt-worker:
   extends: .cosign-sign-attest
@@ -829,7 +838,10 @@ sign-stt-worker:
       artifacts: true
   rules:
     - !reference [.image-signing-guard, rules]
-    - !reference [.rules-stt, rules]
+    # `.build-stt-rules`, NOT `.rules-stt` — see the note on that anchor: this
+    # job `needs:` the build, so a wider condition is a pipeline-creation error
+    # rather than a skipped job.
+    - !reference [.build-stt-rules, rules]
 
 # --- Database (Prisma migrations image — runs as the ArgoCD PreSync Job) ---
 sbom-database:

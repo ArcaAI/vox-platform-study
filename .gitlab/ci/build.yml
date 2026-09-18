@@ -481,6 +481,71 @@ build-tts:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^TTS-/ || $CI_COMMIT_TAG =~ /^ALL-/
 
+# ── STT build scoping ────────────────────────────────────────────────────────
+# The ONLY build jobs in this file that are change-filtered, and deliberately so.
+#
+# `.build-common-rules` builds every image on every dev/staging push. For most
+# services that is merely wasteful; for STT it is a clinical outage. There is one
+# STT pod, `maxSurge: 1` cannot schedule a second one (all 6 GPU slices are
+# allocated — OD-G), so every rollout is a hard cut of live transcription. A
+# commit to the admin console rolled it too.
+#
+# WHY NOT `!reference [.rules-stt, rules]`: that fragment's dev clause is
+# `- if: $PIPELINE_TYPE == "dev"` with no `changes:` at all (rules.yml, and the
+# header there says so out loud — dev runs everything unconditionally because it
+# is the integration branch). Referencing it would change nothing on the only
+# branch that builds. The filter has to be on this job's OWN dev/staging clause,
+# which is why the never-clause below is spelled out rather than referenced: a
+# rules list is first-match-wins, so an unconditional dev clause inherited from
+# `.build-common-rules` would match before any `changes:` could apply.
+#
+# WHY SKIPPING IS SAFE FOR THE DEPLOY PATH: `promote-dev` does not require this
+# image. `.gitlab/ci/promote.sh` resolves each service's `sha-<sha8>` tag and
+# prints `SKIP <svc> — no <ref> found` when there is none, and `apply_image_pins`
+# only rewrites the overlay for services in `$PROMOTED`. So a skipped STT build
+# leaves the deployment repo pinned to the digest it already runs, Argo sees no
+# change, and the pod is not rolled — which IS the outcome this filter is for.
+#
+# PATHS: every input the built targets actually consume. The GPU stages take
+# their base from nvidia/cuda rather than hope-python-base, so that image is not
+# an input; the workspace root and the shared `hope-*` packages are, because both
+# the frozen CPU sync and the fresh GPU resolve read them. Sibling `pyproject.toml`
+# files are listed because they are COPYed for workspace resolution — they change
+# rarely, and the failure they guard against (a stale image silently deployed) is
+# worse than an occasional extra build. A new branch has nothing to compare
+# against and GitLab evaluates `changes:` as true there, so the bias is toward
+# building.
+#
+# EVERY job that `needs:` an STT image references this anchor and nothing else —
+# the two builds here, `scan-stt` / `scan-stt-worker` (scan.yml) and the four
+# sbom/sign jobs (publish.yml). That is not tidiness. A `needs:` pointing at a job
+# that rules excluded is a pipeline-CREATION error, not a skipped job, so a
+# dependent whose run condition is WIDER than the build's takes the whole pipeline
+# down the first time the build is filtered out. `.rules-stt` is exactly that:
+# wider (unconditional on dev, and it admits `v*` tags and prod-* branches where
+# no STT image is ever built). The release-tag clause is therefore part of this
+# anchor rather than repeated per job.
+.build-stt-rules:
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "prod"
+      when: never
+    # `cicd` exists to exercise the pipeline itself, so it keeps building
+    # unconditionally — same as `.build-common-rules`.
+    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging"
+      changes:
+        - apps/stt/**/*
+        - apps/*/pyproject.toml
+        - packages/py-env/**/*
+        - packages/py-obs/**/*
+        - packages/py-otel/**/*
+        - packages/py-runtime-models/**/*
+        - pyproject.toml
+        - uv.lock
+        - .gitlab/ci/build.yml
+        - .gitlab/ci/templates.yml
+    - if: $CI_COMMIT_TAG =~ /^STT-/ || $CI_COMMIT_TAG =~ /^ALL-/
+
 # ── STT ML Runtime ───────────────────────────────────────────────────────
 
 build-stt:
@@ -507,8 +572,7 @@ build-stt:
     DOCKERFILE: apps/stt/docker/Dockerfile
     BUILD_TARGET: ml-runtime
   rules:
-    - !reference [.build-common-rules, rules]
-    - if: $CI_COMMIT_TAG =~ /^STT-/ || $CI_COMMIT_TAG =~ /^ALL-/
+    - !reference [.build-stt-rules, rules]
 
 # ── STT Worker ───────────────────────────────────────────────────────────
 
@@ -537,8 +601,7 @@ build-stt-worker:
     DOCKERFILE: apps/stt/docker/Dockerfile
     BUILD_TARGET: worker
   rules:
-    - !reference [.build-common-rules, rules]
-    - if: $CI_COMMIT_TAG =~ /^STT-/ || $CI_COMMIT_TAG =~ /^ALL-/
+    - !reference [.build-stt-rules, rules]
 
 # ── Database (Prisma migrations image) ──────────────────────────────────────
 
