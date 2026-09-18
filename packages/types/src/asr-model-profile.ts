@@ -50,6 +50,47 @@ export type AiModelAsrProfileDecoding = {
   /** Terms biased into the decode. Folded into `instruction.hotwords` when the agent names none. */
   hotwords?: string[];
   /**
+   * TASK-985 (QW-9) — whisper.cpp's `entropy_thold`: the token-distribution entropy
+   * BELOW which a decode is treated as degenerate.
+   *
+   * This is deliberately NOT an alias of {@link compressionRatioThreshold}. The two
+   * share the default 2.4 and pywhispercpp's own schema comment calls one "similar to"
+   * the other, but they are different quantities on different scales and compare in
+   * OPPOSITE directions: OpenAI's gate rejects text whose gzip ratio is ABOVE the
+   * threshold, whisper.cpp's rejects a distribution whose entropy is BELOW it. Aliasing
+   * them would silently mean the opposite thing, so they are two keys and each engine
+   * reports the one it cannot honour (see `AsrSpecDecodingSource`).
+   */
+  entropyThreshold?: number;
+  /** whisper.cpp `single_segment` — force one segment out of one decode. Upstream's streaming advice. */
+  singleSegment?: boolean;
+  /** whisper.cpp `suppress_blank`. Engine default `true`; stated so it cannot drift. */
+  suppressBlank?: boolean;
+  /** whisper.cpp `suppress_nst` — suppress non-speech tokens (`[music]`, `(laughter)`). Engine default `false`. */
+  suppressNonSpeechTokens?: boolean;
+  /** whisper.cpp `max_tokens` — bound a runaway loop AT the decoder. `0` = no limit. */
+  maxTokens?: number;
+  /**
+   * whisper.cpp `audio_ctx` — encoder context, `0` = the full trained 1500.
+   *
+   * Truncating below the trained context is a documented cause of endless repetition, and
+   * upstream's own streaming example ships `0`. Treat any reduction as a measured arm.
+   */
+  audioCtx?: number;
+  /**
+   * TASK-985 (QW-8) — PER-PASS narrowing of the flat knobs above.
+   *
+   * A partial re-decodes an utterance that is still open, ~3x a second; a final decodes
+   * it once, for the record. They want different decodes — a partial wants cheap,
+   * bounded and single-segment, a final wants the full one — and the runtime already
+   * branches on `utterance.is_final`, so the profile says so rather than the code.
+   *
+   * Precedence, stated once: **pass block → flat block → the engine dataclass default.**
+   * Absent means "no opinion", never "off".
+   */
+  partial?: AiModelAsrProfileDecodingPass;
+  final?: AiModelAsrProfileDecodingPass;
+  /**
    * TASK-946 (OD-1), the TASK-937 R-4 switch — may this model's engine append
    * {@link hotwords} to its decoder prompt?
    *
@@ -65,8 +106,38 @@ export type AiModelAsrProfileDecoding = {
    * ABSENT is the engine default, and for whisper.cpp that default is OFF. The terms
    * still reach the LEXICON correction stage either way — dropping them from the prompt
    * costs bias, never vocabulary.
+   *
+   * TASK-985 (owner decision OD-E) — this is a ONE-TIER knob: the MODEL ROW and nothing
+   * else. It is a fact about the weights ("this fine-tune tolerates a vocabulary
+   * prompt"), and an agent may swap `modelId` underneath a switch it set, silently
+   * re-enabling the collapse on weights nobody measured with it. The exception to
+   * TASK-934 OD-4(a)'s "agent → model profile" precedence is enforced MECHANICALLY —
+   * `buildResolvedAsrSpec` reads no agent-tier value, so `sources.hotwordsInPrompt` can
+   * only ever be `'model'` — because a rule enforced by a deleted code path cannot drift
+   * and a rule enforced by a comment will.
    */
   hotwordsInPrompt?: boolean;
+}
+
+/**
+ * TASK-985 (QW-8) — the subset of {@link AiModelAsrProfileDecoding} a row may narrow
+ * PER DECODE PASS (`partial` = the in-flight re-decode, `final` = the committing one).
+ *
+ * Every member is optional and means the same thing it does on the flat block; the only
+ * difference is scope. Ranges are shared with the flat block (one engine field, one
+ * accepted range), which is why they live in one table.
+ */
+export type AiModelAsrProfileDecodingPass = {
+  beamSize?: number;
+  temperature?: number;
+  logprobThreshold?: number;
+  entropyThreshold?: number;
+  noSpeechThreshold?: number;
+  singleSegment?: boolean;
+  suppressBlank?: boolean;
+  suppressNonSpeechTokens?: boolean;
+  maxTokens?: number;
+  audioCtx?: number;
 }
 
 /**
@@ -118,9 +189,61 @@ export const AI_MODEL_ASR_PROFILE_DECODING_RANGES: Readonly<Record<string, AiMod
   logprobThreshold: Object.freeze({ min: -10, max: 0 }),
   noRepeatNgramSize: Object.freeze({ min: 0, max: 10, integer: true }),
   prevTextContextWords: Object.freeze({ min: 0, max: 200, integer: true }),
+  // TASK-985 (QW-8/QW-9) — the whisper.cpp decode extras. `entropyThreshold` is a
+  // SEPARATE quantity from `compressionRatioThreshold` above (opposite direction,
+  // different scale) and must never be aliased onto it. `maxTokens` is bounded by
+  // Whisper's own `n_text_ctx / 2` sampling budget; `audioCtx` by the trained 1500-frame
+  // encoder context, and `0` means "the full one" for both.
+  entropyThreshold: Object.freeze({ min: 0, max: 10 }),
+  maxTokens: Object.freeze({ min: 0, max: 224, integer: true }),
+  audioCtx: Object.freeze({ min: 0, max: 1500, integer: true }),
 });
 
-/** Max entries in `decoding.hotwords`; max characters in `initialPrompt`. */
+/**
+ * The BOOLEAN decode knobs, listed so the parser, the admin DTO and the agent schema
+ * agree on the set without three hand-maintained copies. `hotwordsInPrompt` is NOT here:
+ * it is one-tier (OD-E) and parsed on its own.
+ */
+export const AI_MODEL_ASR_PROFILE_DECODING_FLAGS = Object.freeze([
+  'conditionOnPrevTokens',
+  'singleSegment',
+  'suppressBlank',
+  'suppressNonSpeechTokens',
+] as const);
+
+/**
+ * TASK-985 (QW-8) — the members a `decoding.partial` / `decoding.final` block may carry.
+ *
+ * A strict SUBSET of the flat block: per-pass narrowing only makes sense for knobs the
+ * decoder reads per call. `conditionOnPrevTokens`, `noRepeatNgramSize`,
+ * `prevTextContextWords`, `compressionRatioThreshold`, `hotwords` and `hotwordsInPrompt`
+ * are deliberately absent — they are session-level or engine-level policy, not a
+ * per-call kwarg.
+ */
+export const AI_MODEL_ASR_PROFILE_PASS_NUMERIC_KEYS = Object.freeze([
+  'beamSize',
+  'temperature',
+  'logprobThreshold',
+  'entropyThreshold',
+  'noSpeechThreshold',
+  'maxTokens',
+  'audioCtx',
+] as const);
+export const AI_MODEL_ASR_PROFILE_PASS_FLAG_KEYS = Object.freeze(['singleSegment', 'suppressBlank', 'suppressNonSpeechTokens'] as const);
+/** The two decode passes a profile may narrow. */
+export const AI_MODEL_ASR_PROFILE_PASSES = Object.freeze(['partial', 'final'] as const);
+export type AiModelAsrProfileDecodingPassName = (typeof AI_MODEL_ASR_PROFILE_PASSES)[number];
+
+/**
+ * Max entries in `decoding.hotwords`; max CHARACTERS in `initialPrompt`.
+ *
+ * TASK-985 (N-4) — the character cap is a publish-time sanity check and NOTHING MORE.
+ * It is not a token bound: Whisper's decoder window is `n_text_ctx / 2` = 224 tokens, and
+ * 1000 characters of Malayalam is several times that, so on exactly the language that
+ * overflows, this number bounds nothing. The real budget is derived from the loaded model
+ * (`whisper_n_text_ctx`) and enforced in tokens at serve time, where the carry-forward is
+ * evicted from the LEFT so the priming text survives.
+ */
 export const AI_MODEL_ASR_PROFILE_HOTWORDS_MAX_ITEMS = 64;
 export const AI_MODEL_ASR_PROFILE_INITIAL_PROMPT_MAX_LENGTH = 1000;
 
@@ -156,6 +279,43 @@ function isInitialPrompt(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= AI_MODEL_ASR_PROFILE_INITIAL_PROMPT_MAX_LENGTH;
 }
 
+/** One numeric member, range-gated. Visit order is the caller's, so `rejected` stays stable. */
+function takeNumber(raw: Rec, out: Rec, key: string, prefix: string, rejected: string[]): void {
+  const value = raw[key];
+  if (value === undefined) return;
+  const range = AI_MODEL_ASR_PROFILE_DECODING_RANGES[key];
+  if (range && inRange(value, range)) out[key] = value;
+  else rejected.push(`${prefix}${key}`);
+}
+
+/** One boolean member. A truthy STRING is named in `rejected`, never coerced on. */
+function takeFlag(raw: Rec, out: Rec, key: string, prefix: string, rejected: string[]): void {
+  const value = raw[key];
+  if (value === undefined) return;
+  if (typeof value === 'boolean') out[key] = value;
+  else rejected.push(`${prefix}${key}`);
+}
+
+/**
+ * TASK-985 (QW-8) — one `decoding.partial` / `decoding.final` block, parsed.
+ *
+ * Returns `undefined` when nothing survived, so the caller omits the key: an empty
+ * block and an absent one are one state, and the wire must have one encoding of it.
+ */
+function parseDecodingPass(raw: unknown, prefix: string, rejected: string[]): AiModelAsrProfileDecodingPass | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRec(raw)) {
+    rejected.push(prefix.slice(0, -1));
+    return undefined;
+  }
+  const out: Rec = {};
+  for (const key of AI_MODEL_ASR_PROFILE_PASS_NUMERIC_KEYS) takeNumber(raw, out, key, prefix, rejected);
+  for (const key of AI_MODEL_ASR_PROFILE_PASS_FLAG_KEYS) takeFlag(raw, out, key, prefix, rejected);
+  const known = new Set<string>([...AI_MODEL_ASR_PROFILE_PASS_NUMERIC_KEYS, ...AI_MODEL_ASR_PROFILE_PASS_FLAG_KEYS]);
+  for (const key of Object.keys(raw)) if (!known.has(key)) rejected.push(`${prefix}${key}`);
+  return Object.keys(out).length > 0 ? (out as AiModelAsrProfileDecodingPass) : undefined;
+}
+
 /** `decoding`, parsed. Returns `undefined` when nothing survived, so the caller omits the key. */
 function parseDecoding(raw: unknown, prefix: string, rejected: string[]): AiModelAsrProfileDecoding | undefined {
   if (raw === undefined || raw === null) return undefined;
@@ -164,16 +324,8 @@ function parseDecoding(raw: unknown, prefix: string, rejected: string[]): AiMode
     return undefined;
   }
   const out: AiModelAsrProfileDecoding = {};
-  for (const [key, range] of Object.entries(AI_MODEL_ASR_PROFILE_DECODING_RANGES)) {
-    const value = raw[key];
-    if (value === undefined) continue;
-    if (inRange(value, range)) (out as Rec)[key] = value;
-    else rejected.push(`${prefix}${key}`);
-  }
-  if (raw.conditionOnPrevTokens !== undefined) {
-    if (typeof raw.conditionOnPrevTokens === 'boolean') out.conditionOnPrevTokens = raw.conditionOnPrevTokens;
-    else rejected.push(`${prefix}conditionOnPrevTokens`);
-  }
+  for (const key of Object.keys(AI_MODEL_ASR_PROFILE_DECODING_RANGES)) takeNumber(raw, out as Rec, key, prefix, rejected);
+  for (const key of AI_MODEL_ASR_PROFILE_DECODING_FLAGS) takeFlag(raw, out as Rec, key, prefix, rejected);
   if (raw.hotwords !== undefined) {
     if (isHotwordList(raw.hotwords)) out.hotwords = [...raw.hotwords];
     else rejected.push(`${prefix}hotwords`);
@@ -182,11 +334,19 @@ function parseDecoding(raw: unknown, prefix: string, rejected: string[]): AiMode
   // `conditionOnPrevTokens`: a boolean or nothing, and anything else is NAMED in
   // `rejected` rather than coerced, because a truthy string here would silently turn
   // on the exact knob this ticket turned off.
-  if (raw.hotwordsInPrompt !== undefined) {
-    if (typeof raw.hotwordsInPrompt === 'boolean') out.hotwordsInPrompt = raw.hotwordsInPrompt;
-    else rejected.push(`${prefix}hotwordsInPrompt`);
+  takeFlag(raw, out as Rec, 'hotwordsInPrompt', prefix, rejected);
+  // TASK-985 (QW-8) — the two per-pass narrowings, parsed against the same ranges.
+  for (const pass of AI_MODEL_ASR_PROFILE_PASSES) {
+    const block = parseDecodingPass(raw[pass], `${prefix}${pass}.`, rejected);
+    if (block) out[pass] = block;
   }
-  const known = new Set([...Object.keys(AI_MODEL_ASR_PROFILE_DECODING_RANGES), 'conditionOnPrevTokens', 'hotwords', 'hotwordsInPrompt']);
+  const known = new Set<string>([
+    ...Object.keys(AI_MODEL_ASR_PROFILE_DECODING_RANGES),
+    ...AI_MODEL_ASR_PROFILE_DECODING_FLAGS,
+    ...AI_MODEL_ASR_PROFILE_PASSES,
+    'hotwords',
+    'hotwordsInPrompt',
+  ]);
   for (const key of Object.keys(raw)) if (!known.has(key)) rejected.push(`${prefix}${key}`);
   return Object.keys(out).length > 0 ? out : undefined;
 }

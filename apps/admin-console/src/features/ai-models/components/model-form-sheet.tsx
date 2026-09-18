@@ -105,6 +105,7 @@ interface ModelFormValues {
   asrNoRepeatNgramSize: string;
   asrPrevTextContextWords: string;
   asrHotwords: string;
+  asrHotwordsInPrompt: boolean;
   asrInitialPrompt: string;
 }
 
@@ -150,6 +151,7 @@ function toValues(model?: AiModel, seed?: ModelFormSeed): ModelFormValues {
     asrNoRepeatNgramSize: numOrEmpty(model?.asrProfile?.decoding?.noRepeatNgramSize),
     asrPrevTextContextWords: numOrEmpty(model?.asrProfile?.decoding?.prevTextContextWords),
     asrHotwords: model?.asrProfile?.decoding?.hotwords?.join(', ') ?? '',
+    asrHotwordsInPrompt: model?.asrProfile?.decoding?.hotwordsInPrompt ?? false,
     asrInitialPrompt: model?.asrProfile?.initialPrompt ?? '',
     ...(seed ?? {}),
   };
@@ -171,6 +173,11 @@ function toAsrProfileDecoding(values: ModelFormValues): AiModelAsrProfileDecodin
   if (values.asrNoRepeatNgramSize.trim()) decoding.noRepeatNgramSize = Number(values.asrNoRepeatNgramSize);
   if (values.asrPrevTextContextWords.trim()) decoding.prevTextContextWords = Number(values.asrPrevTextContextWords);
   if (values.asrHotwords.trim()) decoding.hotwords = splitList(values.asrHotwords);
+  // TASK-985 (M-35 / OD-E) — the hotword-prompt switch, whose only write path until now was a
+  // direct database write. Omitted when off, like `conditionOnPrevTokens` above: absence means
+  // "the engine default", which for whisper.cpp is off, so the two encode the same behaviour
+  // and the profile stays free of members nobody set.
+  if (values.asrHotwordsInPrompt) decoding.hotwordsInPrompt = true;
   return Object.keys(decoding).length > 0 ? decoding : undefined;
 }
 
@@ -897,6 +904,21 @@ export function ModelFormSheet({
                       placeholder="sephotrioxone, imoxicillin"
                     />
                   </Field>
+                  <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                    <div className="flex flex-col">
+                      <Label htmlFor={`${uid}-asr-hotwords-in-prompt`}>Append hotwords to the decoder prompt</Label>
+                      <span className="text-muted-foreground text-xs">
+                        whisper.cpp has no hotword API, so the prompt is its only bias channel — and on the seeded ml-en code-switch fine-tune that append
+                        measured 2% Latin output against 100% without it. Leave off unless this model was measured with it. The terms still reach the
+                        clinical-vocabulary correction stage either way.
+                      </span>
+                    </div>
+                    <Switch
+                      id={`${uid}-asr-hotwords-in-prompt`}
+                      checked={values.asrHotwordsInPrompt}
+                      onCheckedChange={(checked) => set('asrHotwordsInPrompt', checked)}
+                    />
+                  </div>
                   <Field id={`${uid}-asr-initial-prompt`} label="Initial prompt">
                     <Textarea
                       id={`${uid}-asr-initial-prompt`}

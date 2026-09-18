@@ -134,10 +134,60 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // which stays 7s. `partialWindowSec` and `maxDecodeWindowSec` are no longer required to
     // match ("so the last partial and the final decode the SAME audio" — the old
     // `session_manager.py` comment): TASK-934 lane S decoupled them into two independent
-    // knobs. The final decode stays at this fine-tune's measured 7s accuracy window; the
-    // partial window widens to 15s because a SHORT partial window is where the damage
-    // actually was — 6s partials measured 31% garbage on English streaming output, 15s
-    // measured 0%. Live proof on the merged build: discharge-clip WER 0.274 -> 0.081.
+    // knobs. The final decode stays at this fine-tune's measured 7s accuracy window.
+    //
+    // TASK-985 (M-58) — the next sentence used to read "the partial window widens to 15s",
+    // arguing for a value this row has never carried: `partialWindowSec` below is 6. The
+    // MEASUREMENT behind that sentence stands (6s partials scored 31% garbage on English
+    // streaming output against 0% at 15s; discharge-clip WER 0.274 -> 0.081 on the merged
+    // build) — what is stale is the claim that this row acts on it. It does not, and the
+    // seeded agent narrows the tail further still (`streaming.partialWindowSec: 3`, the
+    // ALaaS Lane F2 latency arm), so the SERVED partial window is 3s, not 6 and not 15.
+    // Treat 6 as an unreverted experiment: widening it is a live A/B arm, not a fix.
+    // TASK-985 (ST-3) — `initialPrompt` is the ROW-LEVEL home for a priming prompt, and this row
+    // DELIBERATELY DECLARES NONE. Absence is the measured-good configuration, so a row with no
+    // opinion produces no priming prompt.
+    //
+    // ST-3 asked for the bilingual template to move here from `apps/stt`
+    // (`language_modes._CODE_SWITCH_PROMPT_TEMPLATE`, rendered per language pair and gated by a
+    // hard-coded `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED`), because a prompt A/B needed a code
+    // change and a deploy. The MECHANISM moved and is what makes the arm configurable; the VALUE
+    // did not, because it was measured on 2026-09-19 (TASK-985 §2.7 / §2.7.1) and is net-harmful
+    // in BOTH languages on these weights. Single-variable, on the served f16 GGUF:
+    //
+    //   English clinical reads   medical_wer   0.885 / 0.935 / 0.918  WITH
+    //                                       -> 0.033 / 0.048 / 0.131  WITHOUT
+    //                            keyterm recall      0/21 WITH -> 21/21 WITHOUT
+    //   Malayalam-English (5 code-switched clinical clips)
+    //                            CER   0.896 / 0.946 / 1.000 / 0.924 / 0.904  WITH
+    //                               -> 0.474 / 0.695 / 0.940 / 0.720 / 0.722  WITHOUT
+    //                            mean CER 0.934 -> 0.710
+    //
+    // With the prompt on, the decoder returned 31/14/0/26/43 characters against references of
+    // 211/203/199/236/302, and one clip produced no final at all. `apps/stt` now ships
+    // `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = False` (owner-approved).
+    //
+    // The template is RETAINED HERE, and only here, so the arm can be re-run by deliberate act —
+    // paste it into this row's `initialPrompt` (or the admin form's Initial prompt field) to turn
+    // the prompt back on for every agent that binds this model and sets no prompt of its own:
+    //
+    //   You are a professional transcriber, fluent in Malayalam and English. You are listening to
+    //   a recording in which a person is potentially speaking both Malayalam and English, and no
+    //   other languages. They may be speaking only one of these languages. They may have a strong
+    //   accent. You are to transcribe utterances of each language accordingly.
+    //
+    // Why a comment and not a disabled field: `parseAiModelAsrProfile` rejects unknown keys and
+    // NAMES them in `rejected`, so a parked `initialPromptDisabled` would WARN on every session
+    // resolve for the life of the row.
+    //
+    // Two facts about how it resolves when a value IS present. The agent's own
+    // `instruction.initialPrompt` OVERRIDES this whole — the two are never concatenated, which is
+    // what lets `decoding.sources.initialPrompt` name one tier truthfully — so this row is the
+    // default for any agent that sets no prompt: a new tenant agent, a cloned reference-set agent
+    // whose prompt was cleared, or a sibling created for an A/B. That reach is the reason the
+    // value is absent rather than merely unused. And the decoder window is 224 TOKENS
+    // (`n_text_ctx / 2`), not 1000 characters: the character cap on the admin field is a sanity
+    // check only, and in Malayalam it bounds nothing.
     metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
@@ -177,6 +227,50 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // on English, 15s measured 0%, and the last partial no longer needs to decode the same
     // span as the final now that the two are independent. Live proof on the merged build:
     // discharge-clip WER 0.274 -> 0.081.
+    // TASK-985 (ST-3) — `initialPrompt` is the ROW-LEVEL home for a priming prompt, and this row
+    // DELIBERATELY DECLARES NONE. Absence is the measured-good configuration, so a row with no
+    // opinion produces no priming prompt.
+    //
+    // ST-3 asked for the bilingual template to move here from `apps/stt`
+    // (`language_modes._CODE_SWITCH_PROMPT_TEMPLATE`, rendered per language pair and gated by a
+    // hard-coded `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED`), because a prompt A/B needed a code
+    // change and a deploy. The MECHANISM moved and is what makes the arm configurable; the VALUE
+    // did not, because it was measured on 2026-09-19 (TASK-985 §2.7 / §2.7.1) and is net-harmful
+    // in BOTH languages on these weights. Single-variable, on the served f16 GGUF:
+    //
+    //   English clinical reads   medical_wer   0.885 / 0.935 / 0.918  WITH
+    //                                       -> 0.033 / 0.048 / 0.131  WITHOUT
+    //                            keyterm recall      0/21 WITH -> 21/21 WITHOUT
+    //   Malayalam-English (5 code-switched clinical clips)
+    //                            CER   0.896 / 0.946 / 1.000 / 0.924 / 0.904  WITH
+    //                               -> 0.474 / 0.695 / 0.940 / 0.720 / 0.722  WITHOUT
+    //                            mean CER 0.934 -> 0.710
+    //
+    // With the prompt on, the decoder returned 31/14/0/26/43 characters against references of
+    // 211/203/199/236/302, and one clip produced no final at all. `apps/stt` now ships
+    // `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = False` (owner-approved).
+    //
+    // The template is RETAINED HERE, and only here, so the arm can be re-run by deliberate act —
+    // paste it into this row's `initialPrompt` (or the admin form's Initial prompt field) to turn
+    // the prompt back on for every agent that binds this model and sets no prompt of its own:
+    //
+    //   You are a professional transcriber, fluent in Malayalam and English. You are listening to
+    //   a recording in which a person is potentially speaking both Malayalam and English, and no
+    //   other languages. They may be speaking only one of these languages. They may have a strong
+    //   accent. You are to transcribe utterances of each language accordingly.
+    //
+    // Why a comment and not a disabled field: `parseAiModelAsrProfile` rejects unknown keys and
+    // NAMES them in `rejected`, so a parked `initialPromptDisabled` would WARN on every session
+    // resolve for the life of the row.
+    //
+    // Two facts about how it resolves when a value IS present. The agent's own
+    // `instruction.initialPrompt` OVERRIDES this whole — the two are never concatenated, which is
+    // what lets `decoding.sources.initialPrompt` name one tier truthfully — so this row is the
+    // default for any agent that sets no prompt: a new tenant agent, a cloned reference-set agent
+    // whose prompt was cleared, or a sibling created for an A/B. That reach is the reason the
+    // value is absent rather than merely unused. And the decoder window is 224 TOKENS
+    // (`n_text_ctx / 2`), not 1000 characters: the character cap on the admin field is a sanity
+    // check only, and in Malayalam it bounds nothing.
     metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
