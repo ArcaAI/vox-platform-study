@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hope-obs"
+version = "0.1.0"
+description = "Shared structured-logging and OpenTelemetry tracing runtime for the HOPE Python services"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11,<3.12"
+
+# Every lower bound here is the bound ALL SIX services already declare in their
+# own `pyproject.toml`, so this package forces nothing new onto anyone and
+# cannot perturb the single root `uv.lock` (the same rule hope-otel states).
+# The one dependency not universal today is
+# `opentelemetry-instrumentation-httpx`, which nlp and harness do not list —
+# it is already in the lock via stt/text/guardrail/tts at the same bound.
+#
+# FastAPI and Starlette are deliberately ABSENT: they are typing-only imports
+# guarded by `TYPE_CHECKING`, and the OTel FastAPI instrumentation is imported
+# lazily inside the functions that need an app. `hope_obs` must import cleanly
+# in a worker process (STT Dramatiq, harness Temporal) that ships no web
+# framework.
+dependencies = [
+    "structlog>=25.5.0",
+    "opentelemetry-api>=1.44.0",
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-instrumentation-httpx>=0.65b0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# PEP 561 — ship inline types, or every `from hope_obs import ...` in an
+# adopting service degrades to `Any` under mypy (same rationale as
+# hope-env / hope-otel / hope-runtime-models).
+[tool.setuptools.package-data]
+hope_obs = ["py.typed"]
+
+[project.optional-dependencies]
+# `fastapi` is a TEST dependency only: the runtime surface is framework-free,
+# but `configure_observability` has to be exercised against a real app because
+# `FastAPIInstrumentor.instrument_app` accepts nothing else.
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.16.3",
+    "mypy>=2.3.1",
+    "black>=26.1.0",
+    "fastapi>=0.141.1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101 assert — pytest's whole idiom.
+"tests/*" = ["S101"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+testpaths = ["tests"]
+# The INVOKING tree's `src/` ahead of anything else, so a run from a worktree
+# tests the code in that worktree even when an editable install in `arcaenv`
+# points at the primary checkout (.claude/rules/14-multi-agent-worktrees.md §4).
+# It also makes the suite runnable before the package is installed at all.
+pythonpath = ["src"]
