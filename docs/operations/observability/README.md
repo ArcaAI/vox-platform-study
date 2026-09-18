@@ -7,7 +7,10 @@ lands incrementally; query Prometheus/Grafana directly for that.
 
 ## Layout
 
-This directory holds only this file.
+| Path | What it holds |
+|---|---|
+| `README.md` (this file) | dashboards, alert rules, and the still-missing paging path |
+| [`python-logging-and-tracing.md`](python-logging-and-tracing.md) | **the standard every Python service emits under** — the shared `hope_obs` package, the env contract, what survives the collector, and what a new service must do (TASK-987) |
 
 ## How it works
 
@@ -92,6 +95,10 @@ Written to stay correct regardless of which alerts currently exist or fire:
 - Grafana's actually-routed hostname (`grafana.taphuynh.dev`) and its own configured
   `GF_SERVER_ROOT_URL` (`grafana-dev.taphuynh.dev`) disagree — this is a known, unresolved issue in
   the deployment repo, not a sign that Grafana is unreachable.
+- **The collector drops anything not on its allow-list, silently.** `redaction/phi` runs on traces,
+  metrics AND logs. A bespoke attribute name never arrives — `apps/nlp`'s metrics carried `model`,
+  `entity_type` and `label` and reached Prometheus stripped of all three. Use `hope.*` and add the key
+  to the allow-list in the same change as the emitter.
 - Before wiring a new metric, trace attribute, or log field into any of the tools above, read
   [`../telemetry-phi-guardrails.md`](../telemetry-phi-guardrails.md). The telemetry plane is a
   separate system from the usage ledger and the HIPAA audit log and must never carry clinical

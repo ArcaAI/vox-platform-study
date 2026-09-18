@@ -203,12 +203,36 @@ validation and spends its retries (`max_retries=3`).
 | `HARNESS_JUDGE_REASONING_MODE`, `HARNESS_JUDGE_SUPPRESS_REASONING`, `HARNESS_JUDGE_EXTRA_BODY` | TASK-968 | — (**removed outright**) | — | `harness.judge.reasoningMode` / `harness.judge.reasoningEffort` (`global-kv`, `globalOnly`, `consumedBy: ['harness']`) | **REMOVED 2026-09-13.** Removed rather than deprecated for the `LIVE_DOC_TEXT_PROVIDER` reason and one more. First: nothing sets them — unset in `.env.dev` / `.env.test` / every `.env.sample` and in `hope-v2-deployment`'s `base/config/*.env`, so there was no value to migrate. Second, and the reason a window would have been actively wrong: the state they encoded is the DEFECT. `reasoning_mode: "auto"` and an absent `extra_body` both mean *let the engine decide*, which TASK-891 measured at 5168 ms / 184 reasoning tokens against 1237 ms / 30 at `minimal` — and `extra_body` is not eval-only, it is baked into `JudgeClient.complete()` so it rode the groundedness + citation-verify sensors on EVERY consultation. Keeping the names alive for two releases would have kept an env var deciding a live clinical pass's token budget. `suppress_reasoning` also collapsed into `reasoningMode: 'none'`: `resolve_prompt` already read the two as one (`if suppress_reasoning or reasoning_mode == "none"`), so it was a second name for one state. The env path is closed STRUCTURALLY, not by convention — dead `validation_alias` names (`…__ENV_REMOVED`), the `apps/tts` pattern the judge CREDENTIAL fields already use — and pinned from both directions by `test_judge_config.py::test_env_cannot_set_the_reasoning_posture` |
 | `LIVE_DOC_SEGMENT_THRESHOLD`, `LIVE_DOC_DEBOUNCE_MS`, `LIVE_DOC_MIN_INTERVAL_MS`, `AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS`, `AGENTIC_CONTEXT_TOKEN_BUDGET_PER_RUN`, `AGENTIC_CONTEXT_TRANSCRIPT_MODE`, `LIVE_DOC_TEXT_TIMEOUT_MS`, `LIVE_DOC_GROUNDEDNESS_ENABLED` | TASK-891 / 932 / 939, declared TASK-940 | R3 | R4 | the `agentic.context.*` / `consultation.realtime.*` / `liveDoc.groundedness.*` descriptors that already govern them | **marked** — these were already overrides before TASK-940; what it added is the DECLARATION (`envOverride`), because a `global-kv` descriptor's env name previously reached `turbo.json#globalEnv` by no mechanism at all and so invalidated no cached task |
 
+| `OTEL_ENABLED` / `OTEL_EXPORTER_ENDPOINT` (stt), `GUARDRAIL_V2_OTEL_ENABLED` / `GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT`, `NLP_OTEL_ENABLED`, `HARNESS_OTEL_ENABLED` / `HARNESS_OTEL_EXPORTER_ENDPOINT`, `TTS_OTEL_ENABLED` / `TTS_OTEL_EXPORTER_ENDPOINT` | TASK-987 | R3 | R4 | `OTEL_EXPORTER_OTLP_ENDPOINT` — **its presence is the enable signal; there is no boolean** (R-2) | **marked.** Six services carried six shapes of enable flag and four shipped with tracing OFF in the only live environment. NLP was the proof that a flag beside an endpoint eventually contradicts it: `hope-platform-config` supplied `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_ENABLED=true` AND `OTEL_METRICS_ENABLED=true`, and NLP exported nothing because it read only `NLP_OTEL_ENABLED`. Each name is honoured for one release as an explicit **OFF-veto only** — setting it `true` is a no-op, `false` still forces tracing off — and each service emits a `DeprecationWarning` plus a structured log line when it is set at all. Not removed outright, because `hope-v2-dev` set several of them at the time of the change; removing them silently would have turned telemetry off for four services that had just got it |
+| `TTS_OTEL_LOGS_ENABLED` | TASK-987 | — (**dead on arrival**) | R4 | — | **marked.** It gated the OTLP log-export path, and R-5 deletes that path from every service: stdout → Alloy → Loki is the one log path, so exporting over OTLP was a second copy of every line with a different shape. There is nothing left for the flag to switch |
+| `TTS_OTEL_INSECURE` | TASK-987 | — (**dead on arrival**) | R4 | derived from the endpoint's URL scheme | **marked.** `ObservabilityConfig.insecure` is now a property of the endpoint (`not endpoint.startswith("https://")`), so there is nowhere left to pass a separate value. A boolean that can contradict the URL it describes is the same defect as the enable flags above, one layer down |
+
 **Why env names are in a deprecation register at all.** An undeclared env read is not a
 dormant surface, it is a live one with no gate over it: `turbo.json#globalEnv` hashes each
 declared name's VALUE into every task's cache key, so a read nobody declared means changing
 that value rebuilds nothing. TASK-940 found 21 such reads across three subsystems while
 `pnpm env:sync --check` reported OK. Retiring a name is therefore a cache-key change as well
 as an API change, and belongs on the same ledger as any other removal.
+
+## Python observability modules (TASK-987)
+
+Every service kept a thin re-export shim at its historical import path rather than rewriting every
+call site for a package relocation with no behavioural difference. Each shim is a one-release
+migration aid; new code imports from `hope_obs` directly.
+
+| Shim | Ticket | Marked in | Remove in | Replacement |
+|---|---|---|---|---|
+| `stt.core.logging.get_logger`, `stt.core.telemetry.get_tracer` | TASK-987 | R3 | R4 | `hope_obs.get_logger` / `hope_obs.get_tracer` |
+| `text.core.logging.get_logger`, `text.core.telemetry.get_tracer` | TASK-987 | R3 | R4 | same. `text.core.telemetry.set_generation_span_attributes` is NOT a shim — the `gen_ai.*` stamper is text-owned and stays |
+| `guardrail.core.logging.{get_logger,setup_logging}`, `guardrail.core.observability.shutdown_opentelemetry` | TASK-987 | R3 | R4 | `hope_obs.{get_logger,configure_logging,shutdown_observability}`. `setup_logging` is kept because `scripts/loadtest.py` calls it directly and never goes through `create_app` |
+| `nlp.core.logging.{get_logger,setup_logging}`, `nlp.core.observability.{setup_opentelemetry,shutdown_opentelemetry}` | TASK-987 | R3 | R4 | `hope_obs` equivalents. The `nlp.core.observability` pair are not pure re-exports — they also own NLP's `MeterProvider` lifecycle, which stays |
+| `harness.core.logging.get_logger` | TASK-987 | R3 | R4 | `hope_obs.get_logger` |
+| `tts.core.logging.{get_logger,setup_logging}` | TASK-987 | R3 | R4 | `hope_obs.{get_logger,configure_logging}` |
+
+Each service additionally keeps a `build_observability_config(settings)` adapter. Those are **not**
+deprecated: translating a service's own `Settings` into the shared `ObservabilityConfig` is exactly
+the service-specific part, and keeping it means the single `Settings` object an operator already
+knows to check stays the source of truth.
 
 ## Admin console routes and features
 
