@@ -412,3 +412,61 @@ PRO and restored to ENTERPRISE. Probe departments `ZZTMP986`/`B`/`C` are left so
 |---|---|
 | 2026-09-18 | Ticket opened. Five parallel read-only investigation lanes; findings re-verified against source, live dev DB and live HTTP probes. R5 root cause (route shadowing) and R4 backend-works both reproduced live. Plan drafted; seven owner decisions raised. |
 | 2026-09-18 | Owner resolved D-1..D-7. Four write lanes implemented and merged `--no-ff` into `dev-2.2`; worktrees removed. Two defects found DURING implementation and fixed: the export id validator rejected every seeded/reserved id, and the departments row-menu delete initially opened its confirm with an empty type-to-confirm token. All gates green except one pre-existing live-DB integration test. Seven live probes recorded in §6. |
+| 2026-09-18 | **Follow-up fix — `05f4a36f5` broke the `@arcaai/vox-node` build.** Adding `ids?: string[]` to the export query made the regenerated admin surface emit an array-typed query param, which the transport's `QueryValue` union (`string \| number \| boolean \| undefined \| null`) did not admit: `src/resources/admin/user.ts(480,7) TS2322`, DTS build error. Because turbo's `^build` graph fans out from that package, `pnpm admin:typecheck` / `admin:lint` could not run **at all** for `apps/admin-console` — the failure surfaced while verifying an unrelated ticket. Fixed in the TRANSPORT, not the generated file: `QueryValue` now admits `readonly QueryPrimitive[]` and `buildQueryString` REPEATS a list (`?ids=a&ids=b`) instead of `String(array)`-joining it. The generator was correct and is unchanged — `gen:admin:check` passes untouched. See §8. |
+
+---
+
+## 8. Follow-up — array-valued query params in the Node SDK transport (2026-09-18)
+
+### Why the generated file was not the thing to fix
+
+`packages/vox-node/src/resources/admin/**` is generated from the route manifest cross-checked
+against `openapi.json`. The DTO declares `@ApiPropertyOptional({ type: [String] })` on `ids`, so
+the OpenAPI document says *array of string*, and
+`buildQueryParams` (`packages/vox-node-codegen/src/surface.ts:359`) renders the declared schema
+faithfully. **The generator was telling the truth**; the transport was the incomplete party, having
+never admitted a legitimate HTTP concept. Narrowing the generator to emit `string` would have made
+the SDK's type contradict the published contract and pushed comma-joining onto every caller.
+
+It is also a class fix rather than an instance fix: `ids` is currently the **only** array-typed
+query param in the generated surface (verified by walking every `query?: {` block across all 384
+routes), so the next route to declare `type: [String]` would have broken the build in exactly the
+same way.
+
+### Why repeated params, not comma-joining
+
+The gateway accepts **both** — `parseIdsQuery` (`apps/api/src/modules/user/dto/export-users.query.ts`)
+flattens a repeated param *and* splits on commas, and the route's `@ApiQuery` documents both. So the
+choice was made on correctness, not compatibility: `String(['a','b'])` yields `a,b`, which is lossy
+the moment one item contains a comma — the set the server rebuilds is not the set that was sent.
+`URLSearchParams.append` per item cannot be.
+
+An **empty** list appends nothing and vanishes from the URL rather than arriving as `ids=`. That is
+deliberate and mirrors `parseIdsQuery`, which answers `undefined` rather than `[]`: an absent `ids`
+means "no id scope, export the whole view", whereas a present-but-empty one would read as a
+selection.
+
+### Changed
+
+| Path | Change |
+|---|---|
+| `packages/vox-node/src/core/url.ts` | `QueryValue` admits `readonly QueryPrimitive[]`; `buildQueryString` repeats list items |
+| `packages/vox-node/src/core/__tests__/url.test.ts` | 4 new cases (repeat, per-item encoding, empty-list omission, mixed primitives) |
+
+`QueryValue` is consumed in exactly one place (`buildQueryString`); `transport.ts` only passes it
+through, so the widening is contained. `QueryPrimitive` needs no barrel export — tsup inlines it
+into the emitted `.d.ts`.
+
+### Evidence
+
+- All 4 new tests seen RED first, failing with the comma-joined URL.
+- `npx turbo run build --filter=@arcaai/vox-node` — **3 successful, 3 total** (was: DTS build error).
+- `pnpm --filter @arcaai/vox-node test` — **39 files / 583 tests** green; `typecheck`, `lint`, and
+  `gen:admin:check` all exit 0 (the last proves no generator drift).
+- `pnpm admin:typecheck` — green, i.e. the `^build` fan-out is unblocked.
+
+### Not changed, deliberately
+
+`apps/admin-console`'s own `buildQuery` (`src/shared/api/http.ts`) still comma-joins, because its
+`QueryParams` type does not accept arrays and the console composes the id list itself. That is not
+broken — the gateway splits on commas — so it is left alone rather than widened speculatively.
