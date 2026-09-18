@@ -564,12 +564,132 @@ test-stt:
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt.xml
     - python -m pytest tests/ -v --tb=short --junitxml=../../junit-stt.xml --ignore=tests/e2e/ --ignore=tests/integration/ -x
+    # TASK-985 QW-12 — the geometry-parity gate is the ONE tests/integration/
+    # file that belongs in this FAST, per-commit lane despite the --ignore
+    # above: it is pure-CPU (reads two committed source files as text, no
+    # services), and it is what makes an ungoverned streaming.*/prompt-state
+    # edit (the e3d61eefb/ea174814e pattern) visible at PR time instead of
+    # only on the next scheduled stt-quality-gate run. Self-skips until BP-1's
+    # live fingerprint capture lands in streaming_thresholds.json.
+    - python -m pytest tests/integration/test_seed_geometry_parity.py -v --tb=short --junitxml=../../junit-stt-geometry-parity.xml
   artifacts:
     when: always
     reports:
-      junit: junit-stt.xml
+      junit:
+        - junit-stt.xml
+        - junit-stt-geometry-parity.xml
     expire_in: 30 days
   rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
+    - !reference [.rules-stt, rules]
+
+# ── STT realtime quality gate (nightly, opt-in) — TASK-985 QW-12 ────────────
+#
+# Drives the WS-gateway streaming scorecard (test_streaming_quality_scorecard.py,
+# N-run aggregate gate), the loss/latency harness (test_streaming_loss_harness.py)
+# and the offline ml-en model gate (test_mlen_quality_gate.py, self-skips
+# without STT_MLEN_EVAL_DIR) against a FULLY LIVE stack, with the BP-1
+# structured fingerprint (streaming_thresholds.json's `_fingerprint` block)
+# pinning model digest + geometry + prompt state. This is the concrete fix
+# for M-16 ("no accuracy or latency gate runs in CI or on a schedule"; the
+# served config scored medical_wer 0.885-0.935 against a 0.033-0.131 baseline
+# — a 27x gap — with zero gate anywhere to see it).
+#
+# OWNER-DECISION SHAPE, identical to harness-eval-gate above (LM Studio has
+# no CI-runnable image and the owner declined a dedicated runner for it): STT
+# needs a GPU + resident ASR model weights that no shared GitLab runner
+# provisions, so this job NEVER boots the stack itself (unlike test-api-e2e's
+# ephemeral API boot, which nothing here needs a GPU for) — it assumes a
+# SCHEDULED pipeline pointed at a runner/host where the full local stack
+# (`pnpm stack:dev` — API :8868, STT :8861, a seeded Postgres+Redis) is
+# ALREADY UP. `allow_failure: true` is the second layer (see harness-eval-gate's
+# own comment for why): a transient unreachable-stack failure on a scheduled
+# run must not need separate triage from a real quality regression.
+stt-quality-gate:
+  stage: test
+  image: python:3.11-slim
+  tags: [test]
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
+  before_script:
+    - !reference [.vault-oidc, before_script]
+  needs:
+    - job: lint-python
+      optional: true
+  allow_failure: true
+  retry:
+    max: 2
+    when: [runner_system_failure, stuck_or_timeout_failure]
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    VAULT_SECRETS: >-
+      ci/DATABASE_URL=DATABASE_URL
+      ci/DATABASE_URL=TEST_DATABASE_URL
+      ci/REDIS_URL=REDIS_URL
+    DATABASE_URL: $CI_DATABASE_URL
+    TEST_DATABASE_URL: $CI_DATABASE_URL
+    REDIS_URL: $CI_REDIS_URL
+    TEST_REDIS_URL: $CI_REDIS_URL
+    # The runner's own already-live stack — see the comment above; this job
+    # never starts either service.
+    STREAM_API_URL: "http://localhost:8868"
+    STREAM_STT_URL: "http://localhost:8861"
+    # STT's own structured JSON-lines log output on this runner, tailed for
+    # the BP-1 `stt.streaming.fingerprint` event. Absent -> every run's
+    # fingerprint is None and the scorecard/geometry gates SKIP WITH A REASON
+    # rather than compare a run against a baseline blind (M-15).
+    STREAM_STT_LOG_PATH: "/var/log/hope/stt.log"
+    STREAM_QUALITY_N: "5"
+  cache:
+    - key: pip-stt
+      paths:
+        - .pip-cache/
+      policy: pull-push
+      fallback_keys:
+        - pip-$CI_DEFAULT_BRANCH
+  script:
+    - echo "── checking the live stack this job never boots itself ──"
+    - >
+      curl -sf --max-time 5 "$STREAM_API_URL/api/v1/health" ||
+      (echo "API unreachable at $STREAM_API_URL — this runner needs the full local stack (pnpm stack:dev) already up" && exit 1)
+    - >
+      curl -sf --max-time 5 "$STREAM_STT_URL/api/v1/health" ||
+      (echo "stt unreachable at $STREAM_STT_URL — this runner needs the full local stack (pnpm stack:dev) already up" && exit 1)
+    - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
+    - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    - pip install --quiet --retries 5 --timeout 120 packages/py-obs
+    - pip install --quiet --retries 5 --timeout 120 packages/py-otel
+    - cd apps/stt
+    - pip install --quiet --retries 5 --timeout 120 ".[test]"
+    - echo "── streaming quality scorecard (N-run aggregate) + loss harness + ml-en offline gate + geometry parity ──"
+    - >
+      python -m pytest
+      tests/integration/test_streaming_quality_scorecard.py
+      tests/integration/test_streaming_loss_harness.py
+      tests/integration/test_mlen_quality_gate.py
+      tests/integration/test_seed_geometry_parity.py
+      -v --tb=short --junitxml=../../junit-stt-quality-gate.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit-stt-quality-gate.xml
+    paths:
+      - apps/stt/stt-quality-scorecard.json
+      - apps/stt/stt-loss-report.json
+    expire_in: 30 days
+  rules:
+    # Disabled by default: a scheduled/manually-triggered pipeline on a
+    # runner with the full GPU-backed stack already up opts in with
+    # RUN_INFRA_TESTS=true — see the comment above. ALSO required (a
+    # pre-merge checklist item, since a nightly schedule alone would let a
+    # bad geometry/prompt-state change merge and only be caught the following
+    # night) on any commit touching seed `streaming.*` / `_metadata.asr`
+    # fields or `apps/stt/src/stt/pipeline/language_modes.py`'s
+    # WHISPER_CPP_*_PRIMING_PROMPT_ENABLED constants.
+    - if: $RUN_INFRA_TESTS != "true"
+      when: never
     - if: $SKIP_TESTS == "true"
       when: never
     - if: $SKIP_TESTS_PY == "true"

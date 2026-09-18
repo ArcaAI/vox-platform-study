@@ -15,17 +15,36 @@ WHAT'S HERE
   optional synonym map folds benign clinical spelling/abbreviation variation
   (with the map, the Python gate intentionally diverges from wer.ts — see
   ``medical_wer``).
+* ``term_restricted_wer(ref, hyp, terms)`` — MedWER-shape WER (F9-K4): errors
+  scored ONLY on a fixed clinical term list — a missed "atorvastatin" moves
+  this metric, a missed "the" does not.
+* ``character_error_rate(ref, hyp)`` — CER, primary metric for Malayalam /
+  code-switch fixtures (F9-E2 — CER correlates better with human judgment
+  than WER there).
 * ``keyterm_recall(keyterms, hyp)`` — fraction of curated clinical keyterms
-  present as a CONTIGUOUS span (verbatim phrase) in the hypothesis. The strict
-  "did we drop the drug / dose / finding" catcher.
+  present as a CONTIGUOUS span (verbatim phrase) in the hypothesis. The
+  strict "did we drop the drug / dose / finding" catcher.
 * ``keyphrase_recall(keyphrases, hyp)`` — fraction present as an ordered
   SUBSEQUENCE (gaps allowed) — a looser recall for longer descriptive phrases
   where an inserted filler word shouldn't zero the phrase.
+* ``extract_fingerprint`` / ``find_fingerprint_in_log`` / ``check_fingerprint``
+  — BP-1's structured session fingerprint: read FROM the session the harness
+  opened, never re-derived from the seed (M-15's root cause). A live run whose
+  fingerprint does not match the baseline's is reported NOT COMPARABLE so the
+  caller can skip-with-reason instead of gating two different configurations
+  against each other.
+* ``median`` / ``mad`` / ``median_mad_bounds`` / ``bootstrap_ci`` — the M-11 /
+  ST-4 robust statistics (median + 2xMAD point estimate; blockwise bootstrap
+  CI wherever a baseline comparison is claimed) that replace a hand-widened
+  epsilon calibrated on N=3 single-final clips.
 * ``build_scorecard(...)`` — composes the quality fields + the reused
   transport metrics into one flat scorecard dict.
-* ``regression_report(scorecard, thresholds)`` — pure verdict (never raises).
+* ``regression_report(scorecard, thresholds)`` — pure verdict (never raises),
+  single run.
 * ``assert_no_regression(scorecard, thresholds)`` — the pass/fail gate: raises
   ``AssertionError`` on any breach (an assertion the loss harness deferred).
+* ``regression_report_aggregate`` / ``assert_no_regression_aggregate`` — the
+  N>=1 multi-run counterparts the live scorecard test gates on.
 
 All WER/recall values are surface-form only — NOT UMLS/MEDCON concept linking
 (that is future work, gated on persisted NamedEntity codes).
@@ -34,8 +53,11 @@ All WER/recall values are surface-form only — NOT UMLS/MEDCON concept linking
 from __future__ import annotations
 
 import json
+import random
 import re
-from collections.abc import Mapping, Sequence
+import statistics
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -215,6 +237,90 @@ def medical_wer(
 
 
 # ---------------------------------------------------------------------------
+# ST-4 (F9-K4 MedWER shape) — term-restricted WER, scored only on a fixed
+# clinical term list. F9-E2 — character error rate, primary for Malayalam /
+# code-switch.
+# ---------------------------------------------------------------------------
+
+
+def term_restricted_wer(
+    reference: str,
+    hypothesis: str,
+    terms: Sequence[str],
+    *,
+    synonyms: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """MedWER-shape WER (F9-K4): errors scored ONLY on a fixed drug / diagnosis /
+    symptom term list, not the whole utterance — a missed "atorvastatin" moves
+    this metric, a missed "the" does not.
+
+    Reference and hypothesis are each filtered down to the tokens that are
+    members of the (normalized, synonym-folded) term vocabulary, in original
+    order, then scored with the same S/D/I Levenshtein backtrace as
+    ``medical_wer``. A term written as "5 milligrams" still matches a
+    hypothesis token folded to "mg" — the vocabulary is built with the SAME
+    normalization + synonym map the words are matched against.
+    """
+    vocab: set[str] = set()
+    for term in terms:
+        vocab.update(_normalize_words(term, synonyms))
+    ref_words = [w for w in _normalize_words(reference, synonyms) if w in vocab]
+    hyp_words = [w for w in _normalize_words(hypothesis, synonyms) if w in vocab]
+    subs, dels, ins = _word_edits(ref_words, hyp_words)
+    n = len(ref_words)
+    if n == 0:
+        wer = 0.0 if len(hyp_words) == 0 else 1.0
+    else:
+        wer = (subs + dels + ins) / n
+    return {
+        "wer": round(wer, 6),
+        "substitutions": subs,
+        "deletions": dels,
+        "insertions": ins,
+        "reference_words": n,
+        "hypothesis_words": len(hyp_words),
+        "term_vocabulary_size": len(vocab),
+    }
+
+
+def character_error_rate(
+    reference: str,
+    hypothesis: str,
+    *,
+    normalized: bool = True,
+) -> dict[str, Any]:
+    """CER = character-level (S + D + I) / len(reference chars).
+
+    Primary metric for Malayalam and code-switched fixtures (F9-E2 — CER
+    correlates better with human judgment than WER there; ``medical_wer``
+    stays primary for English fixtures). ``normalized=True`` (default) runs
+    the SAME ``normalize_text`` ``medical_wer`` uses (lowercase, punctuation
+    strip, whitespace collapse) and scores on the space-stripped character
+    stream, so the two metrics agree on what counts as "the same text" modulo
+    casing/punctuation; ``normalized=False`` scores the raw strings verbatim
+    (script-sensitive, no folding — use for a script-flip regression check).
+    """
+    ref_text = normalize_text(reference) if normalized else reference
+    hyp_text = normalize_text(hypothesis) if normalized else hypothesis
+    ref_chars = list(ref_text.replace(" ", "")) if normalized else list(ref_text)
+    hyp_chars = list(hyp_text.replace(" ", "")) if normalized else list(hyp_text)
+    subs, dels, ins = _word_edits(ref_chars, hyp_chars)
+    n = len(ref_chars)
+    if n == 0:
+        cer = 0.0 if len(hyp_chars) == 0 else 1.0
+    else:
+        cer = (subs + dels + ins) / n
+    return {
+        "cer": round(cer, 6),
+        "substitutions": subs,
+        "deletions": dels,
+        "insertions": ins,
+        "reference_chars": n,
+        "hypothesis_chars": len(hyp_chars),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Clinical keyterm / keyphrase recall
 # ---------------------------------------------------------------------------
 
@@ -302,15 +408,41 @@ def build_scorecard(
     keyphrases: Sequence[str],
     transport_metrics: Mapping[str, Any],
     synonyms: Mapping[str, str] | None = None,
+    term_restricted_terms: Sequence[str] | None = None,
+    cer_primary: bool = False,
 ) -> dict[str, Any]:
     """Compose quality metrics + the reused loss-harness transport metrics.
 
     ``transport_metrics`` is the dict returned by the loss harness's
     ``compute_metrics`` — this pulls out the guardrail fields the gate reads.
+
+    ``term_restricted_terms`` (ST-4/F9-K4), when given, adds
+    ``quality.term_restricted_wer`` scored only on that term list — in
+    addition to, never instead of, ``medical_wer``. ``cer_primary=True``
+    (F9-E2, Malayalam/code-switch fixtures) additionally computes
+    ``quality.cer`` and marks it as the primary quality metric in the card
+    (``quality.primary_metric``); ``medical_wer``/``keyterm_recall`` are
+    still always present so an English-fixture gate is unaffected.
     """
     wer = medical_wer(reference, hypothesis, synonyms=synonyms)
     kt = keyterm_recall(keyterms, hypothesis, synonyms=synonyms)
     kp = keyphrase_recall(keyphrases, hypothesis, synonyms=synonyms)
+
+    quality: dict[str, Any] = {
+        "medical_wer": wer["wer"],
+        "keyterm_recall": kt["recall"],
+        "keyphrase_recall": kp["recall"],
+        "primary_metric": "cer" if cer_primary else "medical_wer",
+        "detail": {"wer": wer, "keyterm": kt, "keyphrase": kp},
+    }
+    if term_restricted_terms:
+        trw = term_restricted_wer(reference, hypothesis, term_restricted_terms, synonyms=synonyms)
+        quality["term_restricted_wer"] = trw["wer"]
+        quality["detail"]["term_restricted_wer"] = trw
+    if cer_primary:
+        cer = character_error_rate(reference, hypothesis)
+        quality["cer"] = cer["cer"]
+        quality["detail"]["cer"] = cer
 
     tm = transport_metrics or {}
     partial = tm.get("partial_revision") or {}
@@ -319,12 +451,7 @@ def build_scorecard(
     seq = loss.get("seq") or {}
 
     return {
-        "quality": {
-            "medical_wer": wer["wer"],
-            "keyterm_recall": kt["recall"],
-            "keyphrase_recall": kp["recall"],
-            "detail": {"wer": wer, "keyterm": kt, "keyphrase": kp},
-        },
+        "quality": quality,
         "transport": {
             "first_partial_ms": tm.get("first_partial_ms"),
             "ttfw_ms": tm.get("ttfw_ms"),
@@ -333,9 +460,16 @@ def build_scorecard(
             # rewrite); partial_revision_rate is retained INFORMATIONAL (full-caption
             # churn incl. the by-design tentative tail — useful for cadence tuning).
             "committed_revision_rate": committed.get("rate"),
+            # M-11 honesty: True only when >=1 partial in the run actually carried a
+            # measurable committed prefix (stableChars > 0). A 0.0 rate with
+            # measurable=False is a vacuous pass (an untested code path), not a clean run.
+            "committed_revision_rate_measurable": committed.get("measurable"),
             "partial_revision_rate": partial.get("rate"),
             "seq_gap_count": seq.get("gap_count"),
             "audio_coverage_ratio": loss.get("audio_coverage_ratio"),
+            "session_create_ms": tm.get("session_create_ms"),
+            "inference_ms": tm.get("inference_ms"),
+            "partial_cadence_ms": tm.get("partial_cadence_ms"),
         },
     }
 
@@ -406,9 +540,26 @@ def regression_report(
     # excluded. The full-caption partial_revision_rate is surfaced but ungated.
     cr_cfg = thresholds.get("committed_revision_rate", {})
     cr = transport.get("committed_revision_rate")
+    cr_measurable = transport.get("committed_revision_rate_measurable")
     if cr is not None and cr_cfg.get("baseline") is not None:
-        lim = cr_cfg["baseline"] + cr_cfg.get("epsilon", 0.0)
-        checks.append(_check("committed_revision_rate", cr, lim, cr <= lim, "<= baseline+eps"))
+        # M-11 honesty: a 0.0 rate where NO partial ever carried a measurable
+        # committed prefix (stableChars > 0) is an UNTESTED code path, not a
+        # clean run — it must not report a vacuous pass. Only trips when the
+        # caller explicitly reports measurable=False; a caller that doesn't
+        # thread the flag (e.g. older synthetic scorecards) is unaffected.
+        if cr_measurable is False and cr == 0.0:
+            checks.append(
+                _check(
+                    "committed_revision_rate",
+                    cr,
+                    None,
+                    False,
+                    "measurable (not vacuously 0.0 — no partial had stableChars > 0)",
+                )
+            )
+        else:
+            lim = cr_cfg["baseline"] + cr_cfg.get("epsilon", 0.0)
+            checks.append(_check("committed_revision_rate", cr, lim, cr <= lim, "<= baseline+eps"))
 
     # --- commit latency P50/P99: <= baseline × (1 + ε_ratio) ------------------
     cl_cfg = thresholds.get("commit_latency_ms", {})
@@ -472,4 +623,463 @@ def assert_no_regression(
             [c for c in report["checks"] if not c["passed"]], ensure_ascii=False
         )
         raise AssertionError("streaming quality regression vs committed thresholds: " + detail)
+    return report
+
+
+# ===========================================================================
+# BP-1 -- structured session fingerprint (M-15 fix)
+# ===========================================================================
+#
+# Read FROM the session the harness opened, NEVER re-derived from the seed --
+# that re-derivation ("what we THINK is served") is M-15's root cause: the
+# committed baseline and the served config silently drifted apart six times
+# over and every `_note` still described the config from 2026-09-09. The
+# fingerprint is machine-written by STT at session-open time (a
+# ``stt.streaming.fingerprint`` structured-log event, extending the existing
+# ``stt.streaming.windows`` line) and machine-compared here -- no human
+# transcription step exists in the loop that could drift.
+
+# The exact D7 (docs/implementation/TASK-985.../scratchpad design dossier
+# section 4) schema. Prompt STATE is a FIRST-CLASS field pair
+# (`promptHash` + the two priming-prompt enable flags), not prose in a
+# `_note` -- that is precisely the signal today's `_note` fields cannot
+# express, and precisely what the `e3d61eefb` regression needed a gate to see.
+FINGERPRINT_EVENT_NAME = "stt.streaming.fingerprint"
+
+FINGERPRINT_FIELDS: tuple[str, ...] = (
+    "agentVersion",
+    "modelSlug",
+    "modelDigest",
+    "maxDecodeWindowSec",
+    "partialWindowSec",
+    "partialIntervalMs",
+    "endpointing",
+    "vadEnabled",
+    "promptHash",
+    "pairPromptEnabled",
+    "singlePromptEnabled",
+    "engineBuild",
+    "device",
+    "sdkOperatingPoint",
+)
+
+# Geometry knobs compared with a small numeric tolerance; everything else
+# (strings, bools, hashes, digests) is exact-match.
+_FINGERPRINT_NUMERIC_TOLERANCE: dict[str, float] = {
+    "maxDecodeWindowSec": 1e-6,
+    "partialWindowSec": 1e-6,
+    "partialIntervalMs": 1e-6,
+}
+
+
+def extract_fingerprint(log_event: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Pull the BP-1 fingerprint out of one decoded structured-log event.
+
+    ``log_event`` is one JSON object as STT's structlog JSON renderer writes
+    it (one per output line). Returns ``None`` unless ``event`` is exactly
+    the ``stt.streaming.fingerprint`` marker -- this module never guesses at a
+    fingerprint from any other event shape.
+    """
+    if not isinstance(log_event, Mapping):
+        return None
+    if log_event.get("event") != FINGERPRINT_EVENT_NAME:
+        return None
+    return {field: log_event.get(field) for field in FINGERPRINT_FIELDS}
+
+
+def find_fingerprint_in_log(log_path: Path, session_id: str) -> dict[str, Any] | None:
+    """Scan a JSON-lines structured log file for ``session_id``'s fingerprint.
+
+    Tolerant of a log file that mixes plain-text and JSON lines (e.g. an
+    ASGI-server access-log preamble, or a line structlog could not render as
+    JSON) -- a line that is not a parseable JSON object is skipped, never
+    raised. Returns the LAST matching event (a session may open more than
+    once across retries; the last is authoritative for what actually ran).
+    """
+    if not log_path.is_file():
+        return None
+    found: dict[str, Any] | None = None
+    with log_path.open(encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or not line.startswith("{"):
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            fp = extract_fingerprint(raw)
+            if fp is None:
+                continue
+            if raw.get("session_id") == session_id or raw.get("sessionId") == session_id:
+                found = fp
+    return found
+
+
+def fingerprint_mismatch(candidate: Mapping[str, Any], baseline: Mapping[str, Any]) -> list[str]:
+    """Field-by-field diff. Returns human-readable mismatch strings (empty = match).
+
+    Only fields present and non-``None`` on BOTH sides are compared -- a field
+    neither side has captured yet is not a false mismatch (``check_fingerprint``
+    separately flags "nothing to compare" via its own ``comparable`` verdict).
+    """
+    mismatches: list[str] = []
+    for field in FINGERPRINT_FIELDS:
+        cand_val = candidate.get(field)
+        base_val = baseline.get(field)
+        if cand_val is None or base_val is None:
+            continue
+        tol = _FINGERPRINT_NUMERIC_TOLERANCE.get(field)
+        if tol is not None:
+            try:
+                mismatched = abs(float(cand_val) - float(base_val)) > tol
+            except (TypeError, ValueError):
+                mismatched = cand_val != base_val
+        else:
+            mismatched = cand_val != base_val
+        if mismatched:
+            mismatches.append(f"{field} {cand_val!r} != baseline {base_val!r}")
+    return mismatches
+
+
+def check_fingerprint(
+    candidate: Mapping[str, Any] | None,
+    baseline: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Decide whether a live run's fingerprint is COMPARABLE to the committed baseline.
+
+    Returns ``{"comparable": bool, "reason": str | None, "mismatched": [...]}``.
+    ``comparable=False`` is the caller's cue to ``pytest.skip(reason)`` instead
+    of gating the run -- the concrete fix for M-15/M-16: a pass must never be
+    reported by silently comparing two different configurations.
+    """
+    if candidate is None:
+        return {
+            "comparable": False,
+            "reason": (
+                "fingerprint not captured for this run (no stt.streaming.fingerprint "
+                "log event found for this session -- see STREAM_STT_LOG_PATH)"
+            ),
+            "mismatched": [],
+        }
+    # An EMPTY block and an all-null SCAFFOLDING block (the shape
+    # streaming_thresholds.json ships in before BP-1's live re-capture) are
+    # the same "nothing to compare" case -- `fingerprint_mismatch` would
+    # otherwise skip every field (both sides None) and report a false match.
+    if not baseline or all(v is None for v in baseline.values()):
+        return {
+            "comparable": False,
+            "reason": (
+                "baseline carries no fingerprint yet (BP-1 has not re-captured "
+                "streaming_thresholds.json under the served spec)"
+            ),
+            "mismatched": [],
+        }
+    mismatched = fingerprint_mismatch(candidate, baseline)
+    if mismatched:
+        return {
+            "comparable": False,
+            "reason": "fingerprint mismatch: " + "; ".join(mismatched),
+            "mismatched": mismatched,
+        }
+    return {"comparable": True, "reason": None, "mismatched": []}
+
+
+# ===========================================================================
+# M-11 / ST-4 -- robust statistics for an N>=5 multi-run gate (stdlib only)
+# ===========================================================================
+#
+# Replaces "one pooled statistic, epsilon hand-widened after seeing the
+# spread on N=3" with: a robust point estimate (median + 2xMAD) for the
+# absolute ceiling/floor, and a blockwise bootstrap CI wherever a BASELINE
+# comparison is claimed. No epsilon is ever widened here to fit an observed
+# spread -- a wide spread is a signal to re-capture on a quiet stack, not to
+# loosen the bound (README Sec.5 "N and statistics").
+
+
+def median(values: Sequence[float]) -> float:
+    return statistics.median(values)
+
+
+def mad(values: Sequence[float]) -> float:
+    """Median Absolute Deviation (unscaled) -- a robust, outlier-resistant spread."""
+    if not values:
+        return 0.0
+    m = statistics.median(values)
+    return statistics.median([abs(v - m) for v in values])
+
+
+def median_mad_bounds(values: Sequence[float], k: float = 2.0) -> tuple[float, float]:
+    """``(median - k*MAD, median + k*MAD)`` -- the robust acceptance band this
+    redesign uses in place of a hand-widened epsilon."""
+    m = statistics.median(values)
+    spread = k * mad(values)
+    return (m - spread, m + spread)
+
+
+def bootstrap_ci(
+    values: Sequence[float],
+    *,
+    statistic: Callable[[Sequence[float]], float] = statistics.median,
+    n_resamples: int = 1000,
+    confidence: float = 0.95,
+    seed: int | None = None,
+) -> tuple[float, float] | None:
+    """Percentile bootstrap CI of ``statistic(values)``.
+
+    BLOCKWISE for a streaming gate (F9-E3, Bisani and Ney): each element of
+    ``values`` is already ONE WHOLE RUN's scalar summary (e.g. one run's
+    ``medical_wer``), so resampling whole elements with replacement resamples
+    whole RUNS, not individual frames/utterances within a run -- it respects
+    the within-run autocorrelation a streaming session has by construction,
+    rather than treating every observation as independent.
+
+    Returns ``None`` for fewer than 2 samples (nothing to resample) -- the
+    caller falls back to ``median_mad_bounds`` in that case.
+    """
+    n = len(values)
+    if n < 2:
+        return None
+    rng = random.Random(seed)
+    resampled = sorted(
+        statistic([values[rng.randrange(n)] for _ in range(n)]) for _ in range(n_resamples)
+    )
+    alpha = (1.0 - confidence) / 2.0
+    lo_idx = max(0, min(n_resamples - 1, int(alpha * n_resamples)))
+    hi_idx = max(0, min(n_resamples - 1, int((1.0 - alpha) * n_resamples) - 1))
+    return (resampled[lo_idx], resampled[hi_idx])
+
+
+# ===========================================================================
+# N>=1 aggregate gate -- the multi-run counterpart of regression_report/
+# assert_no_regression, used by the live scorecard test once it loops N runs
+# per clip (M-11 / ST-4).
+# ===========================================================================
+
+
+def aggregate_metric(
+    values: Sequence[float],
+    *,
+    direction: str,
+    ceiling: float | None = None,
+    floor: float | None = None,
+    baseline: float | None = None,
+    epsilon: float = 0.0,
+    use_bootstrap: bool = True,
+    n_resamples: int = 1000,
+    seed: int | None = None,
+) -> dict[str, Any]:
+    """One metric's N-run verdict.
+
+    ``direction`` is ``"lower"`` (smaller is better, e.g. WER) or ``"higher"``
+    (bigger is better, e.g. recall). The absolute ceiling/floor check always
+    uses the robust point estimate (median). The baseline check uses the
+    WORSE bound of a bootstrap CI when >=2 samples are available (a proper
+    statistical comparison, not a single hand-widened epsilon); with fewer
+    samples, or when ``use_bootstrap=False``, it falls back to the
+    median +/- 2*MAD worst-case bound.
+    """
+    if not values:
+        return {"observed_n": 0, "passed": False, "reason": "no observations"}
+    med = median(values)
+    lo, hi = median_mad_bounds(values)
+    result: dict[str, Any] = {
+        "observed_n": len(values),
+        "median": round(med, 6),
+        "mad_bounds": [round(lo, 6), round(hi, 6)],
+        "values": [round(v, 6) for v in values],
+    }
+    checks: list[dict[str, Any]] = []
+    worse_bound = hi if direction == "lower" else lo
+
+    if ceiling is not None:
+        checks.append(_check("ceiling", med, ceiling, med <= ceiling, "<= ceiling (median)"))
+    if floor is not None:
+        checks.append(_check("floor", med, floor, med >= floor, ">= floor (median)"))
+
+    if baseline is not None:
+        ci = bootstrap_ci(values, n_resamples=n_resamples, seed=seed) if use_bootstrap else None
+        result["bootstrap_ci"] = list(ci) if ci else None
+        if ci is not None:
+            bound = ci[1] if direction == "lower" else ci[0]
+            source = "bootstrap_ci"
+        else:
+            bound = worse_bound
+            source = "median+/-2xMAD"
+        limit = baseline + epsilon if direction == "lower" else baseline - epsilon
+        ok = bound <= limit if direction == "lower" else bound >= limit
+        checks.append(
+            _check(
+                f"vs_baseline ({source})",
+                bound,
+                limit,
+                ok,
+                "<= limit" if direction == "lower" else ">= limit",
+            )
+        )
+
+    result["checks"] = checks
+    result["passed"] = all(c["passed"] for c in checks) if checks else True
+    return result
+
+
+def regression_report_aggregate(
+    scorecards: Sequence[Mapping[str, Any]],
+    thresholds: Mapping[str, Any],
+    *,
+    n_resamples: int = 1000,
+    seed: int | None = None,
+) -> dict[str, Any]:
+    """The N>=1 multi-run counterpart of ``regression_report``.
+
+    Each element of ``scorecards`` is one run's ``build_scorecard(...)``
+    output for the SAME clip/fixture. Aggregates every gated metric across
+    the N runs (median + 2xMAD point estimate; bootstrap CI for a baseline
+    comparison) and refuses to pass a vacuous ``committed_revision_rate``
+    (0.0 across every run with none of them ``measurable`` -- M-11 honesty).
+    """
+    if not scorecards:
+        return {"passed": False, "checks": {}, "error": "no runs to aggregate (N=0)"}
+
+    checks: dict[str, Any] = {}
+
+    def _values(section: str, key: str) -> list[float]:
+        out: list[float] = []
+        for card in scorecards:
+            v = card.get(section, {}).get(key)
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                out.append(float(v))
+        return out
+
+    wer_cfg = thresholds.get("medical_wer", {})
+    wer_vals = _values("quality", "medical_wer")
+    if wer_vals:
+        checks["medical_wer"] = aggregate_metric(
+            wer_vals,
+            direction="lower",
+            ceiling=wer_cfg.get("ceiling"),
+            baseline=wer_cfg.get("baseline"),
+            epsilon=wer_cfg.get("epsilon", 0.0),
+            n_resamples=n_resamples,
+            seed=seed,
+        )
+
+    for name in ("keyterm_recall", "keyphrase_recall"):
+        cfg = thresholds.get(name, {})
+        vals = _values("quality", name)
+        if vals:
+            checks[name] = aggregate_metric(
+                vals,
+                direction="higher",
+                floor=cfg.get("floor"),
+                baseline=cfg.get("baseline"),
+                epsilon=cfg.get("epsilon", 0.0),
+                n_resamples=n_resamples,
+                seed=seed,
+            )
+
+    # committed_revision_rate -- M-11 honesty: a run set where NO run ever had a
+    # measurable committed prefix must not silently pass as "0.0 churn".
+    cr_cfg = thresholds.get("committed_revision_rate", {})
+    cr_pairs: list[tuple[float, Any]] = []
+    for card in scorecards:
+        t = card.get("transport", {})
+        v = t.get("committed_revision_rate")
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            cr_pairs.append((float(v), t.get("committed_revision_rate_measurable")))
+    if cr_pairs:
+        if cr_cfg.get("baseline") is not None and not any(m for _, m in cr_pairs):
+            checks["committed_revision_rate"] = {
+                "observed_n": len(cr_pairs),
+                "passed": False,
+                "reason": (
+                    "committed_revision_rate is vacuously 0.0 across all N runs -- no partial "
+                    "in any run carried a measurable committed prefix (stableChars > 0); an "
+                    "untested code path must not report a green result"
+                ),
+            }
+        else:
+            checks["committed_revision_rate"] = aggregate_metric(
+                [v for v, _ in cr_pairs],
+                direction="lower",
+                baseline=cr_cfg.get("baseline"),
+                epsilon=cr_cfg.get("epsilon", 0.0),
+                n_resamples=n_resamples,
+                seed=seed,
+            )
+
+    cl_cfg = thresholds.get("commit_latency_ms", {})
+    cl_p50_vals: list[float] = []
+    for card in scorecards:
+        cl = card.get("transport", {}).get("commit_latency_ms")
+        if isinstance(cl, Mapping) and isinstance(cl.get("p50"), (int, float)):
+            cl_p50_vals.append(float(cl["p50"]))
+    if cl_p50_vals:
+        base = cl_cfg.get("p50_baseline")
+        ratio = cl_cfg.get("epsilon_ratio", 0.0)
+        checks["commit_latency_ms_p50"] = aggregate_metric(
+            cl_p50_vals,
+            direction="lower",
+            baseline=base,
+            epsilon=(base * ratio) if base is not None else 0.0,
+            n_resamples=n_resamples,
+            seed=seed,
+        )
+
+    gap_cfg = thresholds.get("seq_gap_count", {})
+    gap_vals = _values("transport", "seq_gap_count")
+    if gap_vals and gap_cfg.get("max") is not None:
+        # Zero tolerance: the WORST (max) run counts, never the median -- a
+        # single dropped caption anywhere in N runs is a real drop.
+        worst = max(gap_vals)
+        checks["seq_gap_count"] = {
+            "observed_n": len(gap_vals),
+            "max_observed": worst,
+            "passed": worst <= gap_cfg["max"],
+            "reason": (
+                None
+                if worst <= gap_cfg["max"]
+                else f"seq gap seen in at least one of {len(gap_vals)} runs"
+            ),
+        }
+
+    cov_cfg = thresholds.get("audio_coverage_ratio", {})
+    cov_vals = _values("transport", "audio_coverage_ratio")
+    if cov_vals:
+        checks["audio_coverage_ratio"] = aggregate_metric(
+            cov_vals,
+            direction="higher",
+            baseline=cov_cfg.get("baseline"),
+            epsilon=cov_cfg.get("epsilon", 0.0),
+            n_resamples=n_resamples,
+            seed=seed,
+        )
+
+    if not checks:
+        return {
+            "passed": False,
+            "checks": {},
+            "error": "no observable aggregate metrics across the N runs",
+        }
+    return {"passed": all(c.get("passed") for c in checks.values()), "checks": checks}
+
+
+def assert_no_regression_aggregate(
+    scorecards: Sequence[Mapping[str, Any]],
+    thresholds: Mapping[str, Any],
+    *,
+    n_resamples: int = 1000,
+    seed: int | None = None,
+) -> dict[str, Any]:
+    """Raise ``AssertionError`` on any aggregate breach; else return the verdict."""
+    report = regression_report_aggregate(
+        scorecards, thresholds, n_resamples=n_resamples, seed=seed
+    )
+    if not report["passed"]:
+        failing = {k: v for k, v in report.get("checks", {}).items() if not v.get("passed")}
+        detail = report.get("error") or json.dumps(failing, ensure_ascii=False, default=str)
+        raise AssertionError(
+            f"streaming quality regression (N={len(scorecards)} aggregate) "
+            f"vs committed thresholds: {detail}"
+        )
     return report

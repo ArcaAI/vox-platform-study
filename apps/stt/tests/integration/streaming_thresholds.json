@@ -37,5 +37,22 @@
     "baseline": 0.997,
     "epsilon": 0.005,
     "_note": "Higher is better; GUARDRAIL. baseline 0.994 = worst (lowest) clip median — cardiology_consult_01 and discharge_summary_01 both held 0.994 as their median (discharge touched 0.998 once); medication_review_01 ran higher (0.997/0.998). epsilon 0.005 unchanged — comfortably absorbs the observed 0.994-0.998 spread (VAD-tail jitter)."
-  }
+  },
+  "_fingerprint": {
+    "agentVersion": null,
+    "modelSlug": null,
+    "modelDigest": null,
+    "maxDecodeWindowSec": null,
+    "partialWindowSec": null,
+    "partialIntervalMs": null,
+    "endpointing": null,
+    "vadEnabled": null,
+    "promptHash": null,
+    "pairPromptEnabled": null,
+    "singlePromptEnabled": null,
+    "engineBuild": null,
+    "device": null,
+    "sdkOperatingPoint": null
+  },
+  "_fingerprint_note": "BP-1 scaffolding (TASK-985 D7 dossier Sec.4) -- every field is null until the orchestrator's live re-capture fills it in from the SESSION's own stt.streaming.fingerprint log line (streaming_quality.find_fingerprint_in_log), never hand-derived from the seed. test_streaming_quality_scorecard.py's check_fingerprint() treats an all-null/absent block as NOT COMPARABLE and skips the gate with a reason rather than comparing two different configurations -- the concrete fix for M-15 (both prior baselines described an unserved config) and the 27x served-vs-baseline WER gap the pair priming prompt flag flip (e3d61eefb) produced with no gate to catch it (M-16). test_seed_geometry_parity.py self-skips on this same null block until it is filled."
 }
