@@ -954,22 +954,26 @@ class SessionManager:
         # it is tenant-authored and can carry clinical vocabulary) and the
         # decoder identity alongside the geometry. One line per session, bounded
         # keys, no PHI.
-        segmentation: dict[str, Any] = {}
+        fields: dict[str, Any] = {
+            "session_id": session_id,
+            "model_slug": _spec_asr_slug(pipeline_config),
+            "partial_window_s": preprocessor.partial_window_s,
+            "max_decode_window_sec": max_decode_window_sec,
+            "initial_prompt_chars": len(initial_prompt) if initial_prompt else 0,
+            "has_initial_prompt": bool(initial_prompt),
+            "language": getattr(inference_cfg, "language", None),
+            "vad_model_loaded": vad_service is not None,
+        }
+        # Merged into a dict rather than splatted as kwargs: the preprocessor's
+        # own view names `partial_window_s` too, and a duplicate keyword would
+        # raise TypeError and take the whole session create down over a LOG
+        # line. Its value wins for any key both sides carry — it is the object
+        # that actually applies them, which is the entire point of reading from
+        # it instead of re-deriving here.
         effective = getattr(preprocessor, "effective_segmentation", None)
         if isinstance(effective, dict):
-            segmentation = effective
-        logger.info(
-            "stt.streaming.windows",
-            session_id=session_id,
-            model_slug=_spec_asr_slug(pipeline_config),
-            partial_window_s=preprocessor.partial_window_s,
-            max_decode_window_sec=max_decode_window_sec,
-            initial_prompt_chars=len(initial_prompt) if initial_prompt else 0,
-            has_initial_prompt=bool(initial_prompt),
-            language=getattr(inference_cfg, "language", None),
-            vad_model_loaded=vad_service is not None,
-            **segmentation,
-        )
+            fields.update(effective)
+        logger.info("stt.streaming.windows", **fields)
 
         return _SessionRuntime(
             publisher=publisher,
@@ -3473,9 +3477,7 @@ class SessionManager:
             return False
         return rms >= _EMPTY_DECODE_SPEECH_RMS_FLOOR
 
-    def _note_decode_outcome(
-        self, session_id: str, utterance: AudioUtterance, result: Any
-    ) -> bool:
+    def _note_decode_outcome(self, session_id: str, utterance: AudioUtterance, result: Any) -> bool:
         """Account one decode against the empty-with-speech failure streak.
 
         Returns whether THIS decode was empty-with-speech, so the caller can
@@ -3505,9 +3507,7 @@ class SessionManager:
 
         streak = self._empty_decode_streaks.get(session_id, 0) + 1
         self._empty_decode_streaks[session_id] = streak
-        threshold = int(
-            getattr(self, "_empty_decode_failure_streak", _EMPTY_DECODE_FAILURE_STREAK)
-        )
+        threshold = int(getattr(self, "_empty_decode_failure_streak", _EMPTY_DECODE_FAILURE_STREAK))
         logger.warning(
             "stt.stream.empty_decode_with_speech",
             session_id=session_id,
@@ -3852,9 +3852,7 @@ class SessionManager:
                         self._reset_commit_policy(session.session_id)
                         # TASK-985 M-34 — an utterance boundary is the only
                         # safe moment to change the front-end's geometry.
-                        self._adopt_pending_front_end_geometry(
-                            session.session_id, preprocessor
-                        )
+                        self._adopt_pending_front_end_geometry(session.session_id, preprocessor)
                         # Block partials for next utterance until this final publishes
                         gate = self._final_published_gates.get(session.session_id)
                         if gate is not None:
@@ -5527,12 +5525,8 @@ class SessionManager:
                     # Push the built summary back to the gateway (idempotent on the
                     # session id → a late DELETE never double-bills).
                     if teardown_summary:
-                        await self._push_streaming_usage_back(
-                            teardown_summary, interrupted=True
-                        )
-                        self._stash_teardown_summary(
-                            session_id, teardown_summary, pushed_back=True
-                        )
+                        await self._push_streaming_usage_back(teardown_summary, interrupted=True)
+                        self._stash_teardown_summary(session_id, teardown_summary, pushed_back=True)
                 except Exception as exc:
                     logger.error(
                         "Failed to reap session gracefully; forcing removal",
