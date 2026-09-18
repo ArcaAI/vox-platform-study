@@ -71,8 +71,8 @@ from text.core.metrics import (
     TOKENS_PER_SECOND,
     TOKENS_TOTAL,
 )
-from text.core.observability import set_generation_span_attributes
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
+from text.core.telemetry import set_generation_span_attributes
 from text.models.requests import GenerateRequest, serialize_provider_overrides
 from text.models.responses import (
     ErrorResponse,

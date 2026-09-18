@@ -216,15 +216,14 @@ class TestMiddlewareIsPureAsgi:
     """
 
     def test_no_middleware_subclasses_basehttpmiddleware(self) -> None:
+        from hope_obs.middleware import AccessLogMiddleware, RequestContextMiddleware
         from starlette.middleware.base import BaseHTTPMiddleware
 
         from text.api.middleware.auth import ServiceAuthMiddleware
-        from text.api.middleware.logging import RequestLoggingMiddleware
-        from text.api.middleware.request_id import RequestIDMiddleware
 
         offenders = [
             cls.__name__
-            for cls in (ServiceAuthMiddleware, RequestLoggingMiddleware, RequestIDMiddleware)
+            for cls in (ServiceAuthMiddleware, AccessLogMiddleware, RequestContextMiddleware)
             if issubclass(cls, BaseHTTPMiddleware)
         ]
         assert offenders == [], (

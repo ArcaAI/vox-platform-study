@@ -20,7 +20,8 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 assert_source_tree(
-    ["text", "hope_env", "hope_otel", "hope_async_contract", "hope_runtime_models"], __file__
+    ["text", "hope_env", "hope_obs", "hope_otel", "hope_async_contract", "hope_runtime_models"],
+    __file__,
 )
 
 from text.core.config import InternalAccessConfig, Settings  # noqa: E402

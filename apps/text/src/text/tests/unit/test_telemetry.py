@@ -1,15 +1,16 @@
 """TDD tests for OpenTelemetry tracing (Phase 2 — Tasks 2.1 & 2.2).
 
-RED: Written before implementation.
 Tests cover:
-  - telemetry.py setup_telemetry / get_tracer
+  - telemetry.py get_tracer (the `hope_obs.get_tracer` compat wrapper — setup
+    itself moved to `hope_obs`/`text.main._build_observability_config`,
+    covered in `test_observability.py`; TASK-987)
   - otel_enabled flag integration in create_app
   - GenAI semantic-convention spans on all providers
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from opentelemetry import trace
@@ -55,44 +56,8 @@ def in_memory_exporter():
 
 
 # ---------------------------------------------------------------------------
-# Task 2.1 — telemetry.py: setup_telemetry / get_tracer
+# Task 2.1 — telemetry.py: get_tracer (setup moved to hope_obs, TASK-987)
 # ---------------------------------------------------------------------------
-
-
-class TestSetupTelemetry:
-    """Tests for the setup_telemetry function."""
-
-    def test_setup_telemetry_sets_tracer_provider(self):
-        """After setup_telemetry(), the global provider must be a real TracerProvider."""
-        from text.core.telemetry import setup_telemetry
-
-        app = MagicMock()
-        setup_telemetry(app, endpoint="http://localhost:4317")
-
-        provider = trace.get_tracer_provider()
-        assert isinstance(provider, TracerProvider)
-
-    def test_setup_telemetry_uses_custom_endpoint(self):
-        """setup_telemetry should accept a custom OTLP endpoint."""
-        from text.core.telemetry import setup_telemetry
-
-        app = MagicMock()
-        setup_telemetry(app, endpoint="http://custom:4317")
-
-        provider = trace.get_tracer_provider()
-        assert isinstance(provider, TracerProvider)
-
-    def test_setup_telemetry_uses_service_name(self):
-        """setup_telemetry should accept and use a custom service name."""
-        from text.core.telemetry import setup_telemetry
-
-        app = MagicMock()
-        setup_telemetry(app, endpoint="http://localhost:4317", service_name="my-service")
-
-        provider = trace.get_tracer_provider()
-        assert isinstance(provider, TracerProvider)
-        resource_attrs = dict(provider.resource.attributes)
-        assert resource_attrs["service.name"] == "my-service"
 
 
 class TestGetTracer:
@@ -133,15 +98,9 @@ class TestOtelEnabledFlag:
         provider = trace.get_tracer_provider()
         assert not isinstance(provider, TracerProvider)
 
-    def test_telemetry_setup_when_a_collector_is_configured(self):
-        """An address IS the enable signal — there is no separate flag to
-        disagree with it."""
-        settings = Settings(port=5099, otel_exporter_endpoint="http://collector:4317")
-        with patch("text.core.observability.setup_opentelemetry") as mock_setup:
-            from text.main import create_app
-
-            create_app(settings_override=settings)
-            mock_setup.assert_called_once()
+    # `test_telemetry_setup_when_a_collector_is_configured` moved to
+    # `test_observability.py::TestCreateAppObservability` — that is now where
+    # `create_app`'s `hope_obs` wiring is asserted (TASK-987).
 
     def test_otel_service_name_is_a_constant_not_a_setting(self):
         """The service cannot be told what it is by its environment.
