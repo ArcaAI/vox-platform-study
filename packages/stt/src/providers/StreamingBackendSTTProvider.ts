@@ -24,7 +24,7 @@
 
 import type { TranscriptionResult, STTStats, ProviderConfig, WordTimestamp } from '../types/index.js';
 import { BaseSTTProvider } from './BaseSTTProvider.js';
-import { float32ToInt16, prepareFloat32ForWhisper } from '../utils/audioResampler.js';
+import { createStreamingResampler, float32ToInt16, WHISPER_SAMPLE_RATE, type StreamingResampler } from '../utils/audioResampler.js';
 
 /**
  * Configuration accepted by `StreamingBackendSTTProvider.init`.
@@ -112,6 +112,27 @@ export interface StreamingTranscriptPayload {
    * does not stamp results.
    */
   pipelineId?: string;
+  /**
+   * Committed-prefix length on a PARTIAL, in characters (TASK-985 M-27).
+   * Carried, never rendered on — see {@link TranscriptionResult.stableChars}.
+   */
+  stableChars?: number;
+  /** Utterance ordinal shared by an utterance's partials and its final (TASK-985 M-27). */
+  utteranceIndex?: number;
+}
+
+/**
+ * A server `gap` frame: the gateway DISCARDED results it could not deliver
+ * (TASK-985 M-43). Distinct from a backpressure drop, which loses AUDIO on the
+ * way up; this loses TEXT on the way down, and the two have different remedies.
+ */
+export interface StreamingGapPayload {
+  reason: 'egress_partial_dropped' | 'egress_overflow' | string;
+  sessionId?: string;
+  /** How many partials were shed (reason `egress_partial_dropped`). */
+  droppedPartials?: number;
+  /** The result sequence lost (reason `egress_overflow`), when the gateway knows it. */
+  droppedSeq?: number;
 }
 
 /**
@@ -148,6 +169,26 @@ export interface StreamingWsClientLike {
   onTranscript(cb: (payload: StreamingTranscriptPayload) => void): void;
   /** Register a server-emitted error callback (e.g. `RESUME_FAILED`). */
   onWsError(cb: (err: { code: string; message: string }) => void): void;
+  /**
+   * Resolve once the server's `ready` frame has arrived on the CURRENT
+   * connection — the point at which the gateway has registered its result
+   * handler (TASK-985 M-22). Optional: a client that does not implement it, or
+   * a gateway that never sends `ready`, must not stall the session, so the
+   * provider treats an absent implementation as "already ready".
+   */
+  whenReady?(timeoutMs?: number): Promise<void>;
+  /**
+   * A reconnect ATTEMPT started (socket is down, backoff running). Optional so
+   * partial fakes need not stub it. Returns an unsubscribe when the client
+   * supports multiple listeners.
+   */
+  onReconnect?(cb: (attempt: number) => void): unknown;
+  /** A reconnect attempt genuinely re-opened the socket AND the session resumed. */
+  onReconnected?(cb: () => void): unknown;
+  /** Every reconnect attempt is spent; the session is gone. */
+  onReconnectFailed?(cb: () => void): unknown;
+  /** The gateway discarded results it could not deliver (TASK-985 M-43). */
+  onGap?(cb: (gap: StreamingGapPayload) => void): unknown;
 }
 
 /**
@@ -230,6 +271,41 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
    * STT processor / vox pipeline can propagate a degraded signal to the store.
    */
   private onDropCallback: ((droppedFrameCount: number) => void) | null = null;
+  /**
+   * PUSH channel for server `gap` frames (TASK-985 M-43) — text the gateway
+   * discarded. Single-slot, like {@link onDropCallback}.
+   */
+  private onGapCallback: ((gap: StreamingGapPayload) => void) | null = null;
+
+  // -------------------------------------------------------------------------
+  // Reconnect ring buffer (TASK-985 QW-11 / M-06)
+  // -------------------------------------------------------------------------
+
+  /**
+   * 30 s of mono 16 kHz Int16 PCM (16000 x 2 x 30). Sized to sit just under the
+   * ws client's own 1 MiB-class bufferedAmount budget so neither dwarfs the
+   * other, and so a reconnect that completes inside the SDK's backoff window
+   * replays everything rather than a prefix.
+   */
+  private static readonly RECONNECT_RING_MAX_BYTES = 960_000;
+
+  /** FIFO of already-converted Int16 frames captured while the socket was down. */
+  private reconnectRing: Int16Array[] = [];
+  private reconnectRingBytes = 0;
+  /**
+   * True between `onReconnect` (attempt started) and `onReconnected` /
+   * `onReconnectFailed`. It is what separates "the socket will be back, hold
+   * the audio" from "there is no socket and none is coming, count the loss" —
+   * both of which looked identical (and silent) before.
+   */
+  private isReconnectingLocal = false;
+
+  /**
+   * Stateful 16 kHz converter for THIS session (TASK-985 M-53). Lazily built on
+   * the first frame because the capture rate is only known then, and rebuilt if
+   * the input rate ever changes under us.
+   */
+  private resampler: StreamingResampler | null = null;
 
   constructor(deps: { sessionManager: StreamingSessionLike; wsClient: StreamingWsClientLike }) {
     super();
@@ -243,6 +319,31 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     });
     this.wsClient.onWsError((err) => {
       this.emitError(new Error(`[${err.code}] ${err.message}`));
+    });
+
+    // Registered ONCE, here rather than in `init()`, for the same reason the
+    // two above are: `init()` runs again on every re-init and would stack a
+    // second copy of each listener on the same client.
+    //
+    // These three were fully implemented on the ws client and consumed by
+    // NOBODY on this side — the provider owns `processAudio`, so it was the one
+    // place that could act on a reconnect, and it never listened (TASK-985, D1
+    // defect #2).
+    this.wsClient.onReconnect?.(() => {
+      this.isReconnectingLocal = true;
+    });
+    this.wsClient.onReconnected?.(() => {
+      this.isReconnectingLocal = false;
+      this.flushReconnectRing();
+    });
+    this.wsClient.onReconnectFailed?.(() => {
+      // The session is gone; there is nothing left to replay INTO. Count the
+      // buffered frames as lost (they are) rather than dropping them silently.
+      this.isReconnectingLocal = false;
+      this.discardReconnectRing();
+    });
+    this.wsClient.onGap?.((gap) => {
+      this.onGapCallback?.(gap);
     });
   }
 
@@ -271,6 +372,9 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       typeof streamingConfig.quietWindowMs === 'number' && streamingConfig.quietWindowMs >= 0 ? streamingConfig.quietWindowMs : null;
     this.droppedFrameCount = 0;
     this.bytesSent = 0;
+    this.clearReconnectRing();
+    this.isReconnectingLocal = false;
+    this.resampler = null;
 
     await this.session.createSession({
       // Spread only the selector(s) actually set, so the body carries no
@@ -296,6 +400,23 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     }
     await this.wsClient.connect(url);
 
+    // TASK-985 M-22 — the gateway registers its result-stream handler and only
+    // THEN emits `ready`. Audio sent before that frame is ingested against a
+    // session whose egress is not wired yet, so the first partials of a
+    // consultation can be discarded before anyone subscribes. Wait for it.
+    //
+    // This resolves immediately when the client has already seen `ready`, and
+    // resolves (never rejects) on its own timeout, so a gateway that does not
+    // send the frame — and a duck-typed client that does not implement the
+    // method — degrade to exactly today's behaviour instead of failing to start.
+    if (this.wsClient.whenReady) {
+      try {
+        await this.wsClient.whenReady();
+      } catch {
+        // Best-effort gate: never let a missing readiness signal block capture.
+      }
+    }
+
     this.initialized = true;
   }
 
@@ -311,6 +432,17 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       return;
     }
     this.processing = false;
+    // Release the sub-period remainder the streaming converter holds back
+    // (TASK-985 M-53) BEFORE the stop frame, so the last fraction of a sample
+    // period is part of the utterance the server is about to finalize.
+    try {
+      const tail = this.resampler?.flush();
+      if (tail && tail.length > 0 && this.wsClient.isConnected()) {
+        this.sendInt16Frame(float32ToInt16(tail));
+      }
+    } catch {
+      // best-effort; a failed tail flush must never block the stop frame.
+    }
     try {
       this.wsClient.sendStop();
     } catch {
@@ -319,20 +451,56 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
   }
 
   async processAudio(audio: Float32Array, sampleRate: number): Promise<void> {
-    if (!this.processing || !this.wsClient.isConnected()) {
+    if (!this.processing) {
       return;
     }
-    const resampled = prepareFloat32ForWhisper(audio, sampleRate);
-    const int16 = float32ToInt16(resampled);
-    this.totalAudioProcessed += resampled.length / 16000;
+
+    // Rate conversion is STATEFUL for the life of the session (TASK-985 M-53):
+    // a fresh, pure `resampleSinc` per frame zero-pads both ends of every
+    // ~80 ms frame, stamping a discontinuity into the 16 kHz PCM roughly twelve
+    // times a second. `sampleRate` is the LIVE `AudioContext.sampleRate`, not
+    // the rate anyone requested, so rebuild if it ever moves under us.
+    if (!this.resampler || this.resampler.fromRate !== sampleRate) {
+      this.resampler = createStreamingResampler(sampleRate, WHISPER_SAMPLE_RATE);
+    }
+    const resampled = this.resampler.push(audio);
+    this.totalAudioProcessed += resampled.length / WHISPER_SAMPLE_RATE;
     // Empty frames (result of resampling very short input) must never reach the wire.
+    if (resampled.length === 0) {
+      return;
+    }
+    const int16 = float32ToInt16(resampled);
     if (int16.length === 0) {
       return;
     }
+
+    if (!this.wsClient.isConnected()) {
+      if (this.isReconnectingLocal) {
+        // The socket is coming back. Hold the audio so the reconnect restores a
+        // continuous recording instead of a hole the length of the outage.
+        this.pushToReconnectRing(int16);
+      } else {
+        // Not mid-reconnect and not connected: never connected, already torn
+        // down, or the reconnect budget is spent. This frame is genuinely lost
+        // — it used to return silently and uncounted (TASK-985 M-06), so an
+        // outage looked to the clinician exactly like a quiet room.
+        this.droppedFrameCount++;
+        this.onDropCallback?.(this.droppedFrameCount);
+      }
+      return;
+    }
+
+    this.sendInt16Frame(int16);
+  }
+
+  /**
+   * Send one already-converted frame, honouring the ws client's backpressure
+   * verdict. A dropped frame is real audio lost from the durable transcript, so
+   * it is counted and pushed rather than silently discarded.
+   */
+  private sendInt16Frame(int16: Int16Array): void {
     // Forward the view directly; `WebSocket.send` accepts typed arrays
-    // natively, so the previous ArrayBuffer.slice copy is gone.
-    // Honor the backpressure return: a dropped frame is real audio lost
-    // from the durable transcript, so count it instead of silently discarding it.
+    // natively, so no ArrayBuffer.slice copy is needed.
     const sent = this.wsClient.sendAudioFrame(int16);
     if (sent === false) {
       this.droppedFrameCount++;
@@ -344,6 +512,73 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       // poller can derive the uplink bitrate.
       this.bytesSent += int16.byteLength;
     }
+  }
+
+  /**
+   * Buffer one frame captured during a reconnect, dropping the OLDEST frames
+   * once the ring is over its ceiling.
+   *
+   * Drop-oldest, not drop-newest: if an outage outlasts the ring, the audio
+   * worth keeping is the audio closest to the moment the link returns. Every
+   * eviction is counted on the SAME channel a backpressure drop uses, so the
+   * existing "N frames dropped" / `audioLostThisSession` wiring surfaces it
+   * with no consumer-side change.
+   */
+  private pushToReconnectRing(frame: Int16Array): void {
+    this.reconnectRing.push(frame);
+    this.reconnectRingBytes += frame.byteLength;
+    while (this.reconnectRingBytes > StreamingBackendSTTProvider.RECONNECT_RING_MAX_BYTES && this.reconnectRing.length > 1) {
+      const evicted = this.reconnectRing.shift()!;
+      this.reconnectRingBytes -= evicted.byteLength;
+      this.droppedFrameCount++;
+      this.onDropCallback?.(this.droppedFrameCount);
+    }
+  }
+
+  /**
+   * Replay the ring, oldest first, on the reconnected socket.
+   *
+   * Ordering is safe without any new sequencing primitive: audio frames carry
+   * no sequence number (they are raw binary on one connection, so order IS send
+   * order), the ws client sends its `{type:'resume'}` handshake before it
+   * reports the reconnect, and this drains synchronously — so the handshake
+   * precedes the replay, and the replay precedes any newly captured frame.
+   *
+   * Replayed frames go back through the SAME watermark-gated send path live
+   * audio uses, so a link that is still congested sheds the backlog through the
+   * existing, already-observable backpressure counter instead of a bespoke one.
+   */
+  private flushReconnectRing(): void {
+    const frames = this.reconnectRing;
+    this.reconnectRing = [];
+    this.reconnectRingBytes = 0;
+    for (const frame of frames) {
+      this.sendInt16Frame(frame);
+    }
+  }
+
+  /** Drop the ring and count what it held — the session it belonged to is gone. */
+  private discardReconnectRing(): void {
+    const lost = this.reconnectRing.length;
+    this.clearReconnectRing();
+    for (let i = 0; i < lost; i++) {
+      this.droppedFrameCount++;
+      this.onDropCallback?.(this.droppedFrameCount);
+    }
+  }
+
+  /** Drop the ring WITHOUT counting — for a session boundary, where there is no loss to report. */
+  private clearReconnectRing(): void {
+    this.reconnectRing = [];
+    this.reconnectRingBytes = 0;
+  }
+
+  /**
+   * Bytes currently held for replay across a reconnect. Zero whenever the
+   * socket is up. Visible for diagnostics and tests.
+   */
+  getReconnectBufferedBytes(): number {
+    return this.reconnectRingBytes;
   }
 
   async transcribeSegment(_audio: Float32Array): Promise<TranscriptionResult> {
@@ -398,6 +633,9 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     this.agentSlug = null;
     this.drainTimeoutMs = null;
     this.quietWindowMs = null;
+    this.isReconnectingLocal = false;
+    this.clearReconnectRing();
+    this.resampler = null;
   }
 
   getStats(): STTStats {
@@ -452,6 +690,17 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     this.onDropCallback = cb;
   }
 
+  /**
+   * Register a callback fired when the gateway reports that it DISCARDED
+   * results (TASK-985 M-43). The mirror of {@link onDrop}: that one is audio
+   * lost on the way up, this one is text lost on the way down. Surfacing it is
+   * what lets a clinician tell a pause in the room from a hole in the caption
+   * stream. Single-slot; re-registering replaces the callback.
+   */
+  onGap(cb: (gap: StreamingGapPayload) => void): void {
+    this.onGapCallback = cb;
+  }
+
   private normalizeTranscript(payload: StreamingTranscriptPayload): TranscriptionResult {
     const result: TranscriptionResult = {
       text: payload.text,
@@ -483,6 +732,17 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     // rather than surfacing `undefined` to consumers.
     if (payload.pipelineId) {
       result.pipelineId = payload.pipelineId;
+    }
+    // TASK-985 M-27, transport half: carry the commit geometry through instead
+    // of projecting it away here. Both are set only when the backend published
+    // them, so "this backend does not report a settled prefix" and "this result
+    // has none" stay distinguishable — which they would not be if an absent
+    // field became `0`.
+    if (typeof payload.stableChars === 'number' && Number.isFinite(payload.stableChars) && payload.stableChars >= 0) {
+      result.stableChars = payload.stableChars;
+    }
+    if (typeof payload.utteranceIndex === 'number' && Number.isFinite(payload.utteranceIndex) && payload.utteranceIndex >= 0) {
+      result.utteranceIndex = payload.utteranceIndex;
     }
     return result;
   }

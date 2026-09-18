@@ -93,6 +93,15 @@ vi.mock('@arcaai/stt', () => ({
     return { usesWorklet: true, destroy: capture.destroy, setEnabled: capture.setEnabled };
   }),
   float32ToInt16: vi.fn((frame: Float32Array) => new Int16Array(frame.length)),
+  // Unreached while the stubbed AudioContext grants the requested 16 kHz;
+  // present so the mocked module shape matches the real one (TASK-985 M-55).
+  createStreamingResampler: vi.fn((from: number, to: number) => ({
+    fromRate: from,
+    toRate: to,
+    push: (frame: Float32Array) => frame,
+    flush: () => new Float32Array(0),
+    reset: () => {},
+  })),
 }));
 
 /** Instrumented EventSource double (pattern from transcription-jobs-screen.test.tsx). */
@@ -275,6 +284,9 @@ beforeEach(() => {
     'AudioContext',
     class {
       state = 'running';
+      // The granted rate, which is what the hook reads back and declares
+      // (TASK-985 M-55) — a real AudioContext always reports one.
+      sampleRate = 16_000;
       close = vi.fn(async () => {});
     },
   );

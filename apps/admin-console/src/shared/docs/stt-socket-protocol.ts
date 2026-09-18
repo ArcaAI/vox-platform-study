@@ -14,7 +14,7 @@
  *   - `apps/api/src/modules/streaming/stt-ws.gateway.ts` — handshake `?sessionId=&ticket=`,
  *     client frames `audio` / `metadata` / `stop` / `resume` / `close`, binary frames as raw
  *     PCM16 LE mono at the session's `sampleRate` (default 16000), server frames `ready` /
- *     `transcript` / `status` / `error` / `resumed` / `resume_failed`.
+ *     `transcript` / `status` / `gap` / `error` / `resumed` / `resume_failed`.
  *   - `packages/vox-node/src/types/stt.ts` — the typed mirror of the same frames.
  */
 
@@ -85,6 +85,12 @@ export const STT_SOCKET_FRAMES: readonly SttSocketFrame[] = Object.freeze([
   },
   {
     direction: 'server → client',
+    type: 'gap',
+    example: '{ "type": "gap", "reason": "egress_overflow", "sessionId": "01a0…", "droppedSeq": 42 }',
+    note: 'Results the gateway DISCARDED because it could not deliver them — `egress_partial_dropped` (live previews shed to keep up; the finals are unaffected) or `egress_overflow` (a result lost outright). Not an error and not resumable: the audio was transcribed and the text is gone. Show it, or your user reads a transcript with an invisible hole in it.',
+  },
+  {
+    direction: 'server → client',
     type: 'error',
     example: '{ "type": "error", "code": "STREAM_ERROR", "message": "Result stream encountered an error" }',
     note: 'A refused frame or a broken result stream. After an error on the result stream, reconnect and resume — a refused resume is a real transcript gap, not a hiccup.',
@@ -117,7 +123,7 @@ export const STT_SOCKET_FRAMES: readonly SttSocketFrame[] = Object.freeze([
     direction: 'client → server',
     type: 'close',
     example: '{ "type": "close" }',
-    note: 'Tear the session down. Prefer `stop` first so the last utterance is finalised.',
+    note: 'Tear the session down, immediately and deliberately. Send `stop` first and WAIT for `status: closed` so the last utterance is finalised and delivered, then send this. Without it the gateway sees only a transport close, cannot tell it from a client that fell off the network, waits out its grace window and records the session as INTERRUPTED.',
   },
 ]);
 
@@ -183,7 +189,11 @@ export function sttRawWebSocketSnippet(agentSlug: string, baseUrl: string = FALL
     `                           if (frame.isFinal) append(frame.text); else showPartial(frame.text); break;`,
     `    case 'status':         // 'active' | 'finalizing' | 'closed' | 'rejected'. Your stop() is answered`,
     `                           // with 'finalizing' first — the last finals are still on their way.`,
-    `                           if (frame.status === 'closed') socket.close(); break;`,
+    `                           if (frame.status === 'closed') { socket.send(JSON.stringify({ type: 'close' })); socket.close(); } break;`,
+    `    case 'gap':            // results the gateway DISCARDED — text that is gone for good.`,
+    `                           // Not an error, not resumable. Surface it, or the`,
+    `                           // transcript has an invisible hole in it.`,
+    `                           markTranscriptIncomplete(frame.reason); break;`,
     `    case 'error':          console.error(frame.code, frame.message); break;`,
     `    case 'resumed':        /* results continue from frame.fromSeq */ break;`,
     `    case 'resume_failed':  /* frame.reason: 'unknown_session' | 'buffer_overflow' — a real gap */ break;`,
@@ -194,6 +204,10 @@ export function sttRawWebSocketSnippet(agentSlug: string, baseUrl: string = FALL
     `function startSendingAudio() {`,
     `  for (const chunk of pcm16Chunks()) socket.send(chunk); // ArrayBuffer | Uint8Array`,
     `  socket.send(JSON.stringify({ type: 'stop' }));           // end of speech → the last finals, then status: closed`,
+    `  // DO NOT close here. 'stop' is what makes the server FINALIZE, so the last`,
+    `  // finals arrive AFTER it — closing on the same tick loses them from your UI.`,
+    `  // Wait for { status: 'closed' } (the handler above does), then send`,
+    `  // { type: 'close' } and only then close the socket.`,
     `}`,
     ``,
     `// 4. Reconnect: the first ticket is spent — refresh, reopen, and resume from your cursor.`,

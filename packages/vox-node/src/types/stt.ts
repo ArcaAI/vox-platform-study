@@ -312,4 +312,49 @@ export interface SttResumeFailedMessage {
   minAvailableSeq?: number;
 }
 
-export type SttServerMessage = SttTranscriptResult | SttStatusMessage | SttErrorMessage | SttResumedMessage | SttResumeFailedMessage;
+/**
+ * The gateway's FIRST frame after a successful handshake (TASK-985 M-22).
+ *
+ * It is emitted only once the gateway has registered its result-stream handler,
+ * so it — not the socket opening — is the signal that audio you send will be
+ * transcribed into a stream someone is listening to.
+ */
+export interface SttReadyMessage {
+  type: 'ready';
+  sessionId: string;
+  /** The next result sequence the server will emit on this connection. */
+  fromSeq?: number;
+  /** Epoch ms the session's audio clock is anchored to, when the gateway reports one. */
+  sessionEpochMs?: number;
+}
+
+/**
+ * The gateway DISCARDED results it could not deliver (TASK-985 M-43).
+ *
+ * The downlink counterpart of losing audio on the way up: this is TEXT that was
+ * produced and then dropped. A consumer that ignores it presents a transcript
+ * with an invisible hole in it.
+ */
+export interface SttGapMessage {
+  type: 'gap';
+  /**
+   * `egress_partial_dropped` — partials were shed to keep up (finals
+   * unaffected). `egress_overflow` — a result was lost outright. Widened
+   * because the gateway may add reasons.
+   */
+  reason: 'egress_partial_dropped' | 'egress_overflow' | (string & {});
+  sessionId?: string;
+  /** How many partials were shed (reason `egress_partial_dropped`). */
+  droppedPartials?: number;
+  /** The result sequence lost (reason `egress_overflow`), when the gateway knows it. */
+  droppedSeq?: number;
+}
+
+export type SttServerMessage =
+  | SttTranscriptResult
+  | SttStatusMessage
+  | SttErrorMessage
+  | SttResumedMessage
+  | SttResumeFailedMessage
+  | SttReadyMessage
+  | SttGapMessage;

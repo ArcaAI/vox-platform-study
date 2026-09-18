@@ -10,8 +10,10 @@
  *   - JSON: { type: 'close' }
  *
  * Server → Client:
+ *   - { type: 'ready', sessionId, fromSeq?, sessionEpochMs? }   ← FIRST frame; gate the first send on it
  *   - { type: 'transcript', text, startTime, endTime, isFinal, speakerId?, speakerConfidence?, wordTimestamps?, inference? }
  *   - { type: 'status', status, message }
+ *   - { type: 'gap', reason, sessionId, droppedPartials? | droppedSeq? }
  *   - { type: 'error', code, message }
  *
  * @see SDK-206 Gap Analysis — ASR-R-03
@@ -20,6 +22,8 @@
 import type {
   WsAudioFrame,
   WsErrorMessage,
+  WsGapMessage,
+  WsReadyMessage,
   WsMetadataMessage,
   WsMetadataSpan,
   WsResumeFailedMessage,
@@ -174,8 +178,28 @@ export interface WsDrainOptions {
 export class SttWebSocketClient {
   /** Default bounded queue size. */
   static readonly DEFAULT_MAX_QUEUE_SIZE = 200;
-  /** Default bufferedAmount watermark — 1 MiB. */
-  static readonly DEFAULT_BUFFERED_AMOUNT_HIGH_WATERMARK = 1 * 1024 * 1024;
+  /**
+   * Bytes of 16 kHz mono Int16 PCM per second of audio — 16000 samples x 2
+   * bytes. The constant that turns a `bufferedAmount` into a duration, which is
+   * the only unit a backlog is meaningful in.
+   */
+  static readonly PCM_BYTES_PER_SECOND = 16_000 * 2;
+
+  /**
+   * Default bufferedAmount watermark — 128 KiB, about **4.1 s** of audio
+   * (TASK-985 M-36).
+   *
+   * It was 1 MiB, which is ~33 s: a link slow enough to be losing audio could
+   * sit a full half-minute behind the room before a single frame was dropped
+   * and the clinician saw ANY degraded signal, and the frame dropped at that
+   * point is the NEWEST one — the words being spoken now. Four seconds keeps
+   * the shed window inside the span a clinician can still remember and repeat,
+   * and makes the "audio was lost" signal arrive while it is still actionable.
+   *
+   * It is a default, not a policy: pass `bufferedAmountHighWatermark` to widen
+   * it for a deliberately lossy link.
+   */
+  static readonly DEFAULT_BUFFERED_AMOUNT_HIGH_WATERMARK = 128 * 1024;
   /**
    * Default stop-drain ceiling. Lowered from 5000ms: the
    * server now publishes its terminal `closed` status as soon as the last
@@ -197,12 +221,26 @@ export class SttWebSocketClient {
   private onStatusCb?: (status: WsStatusMessage) => void;
   private onWsErrorCb?: (error: WsErrorMessage) => void;
   private onDisconnectCb?: () => void;
-  private onReconnectCb?: (attempt: number) => void;
-  private onReconnectFailedCb?: () => void;
-  /** Emitted when a reconnect attempt genuinely re-opens the socket. */
-  private onReconnectedCb?: () => void;
+  /**
+   * Reconnect-lifecycle listeners are MULTI-subscriber, unlike the single-slot
+   * callbacks above.
+   *
+   * Two independent consumers legitimately need the same signal on the same
+   * client: `PluginManager` drives the connection-health badge from it, and
+   * `StreamingBackendSTTProvider` drives the reconnect ring buffer from it
+   * (TASK-985 QW-11). Single-slot registration silently gave the signal to
+   * whichever registered LAST and cost the other one its feature.
+   */
+  private readonly onReconnectCbs: Array<(attempt: number) => void> = [];
+  private readonly onReconnectFailedCbs: Array<() => void> = [];
+  /** Emitted when a reconnect attempt genuinely re-opens the socket AND the session is resumed. */
+  private readonly onReconnectedCbs: Array<() => void> = [];
   /** Emitted whenever a frame is dropped due to backpressure. */
   private onBackpressureDropCb?: (reason: 'queue_full' | 'buffered_amount_high') => void;
+  /** Emitted on the server's `ready` frame (TASK-985 M-22). */
+  private onReadyCb?: (ready: WsReadyMessage) => void;
+  /** Emitted on a server `gap` frame — results the gateway discarded (TASK-985 M-43). */
+  private onGapCb?: (gap: WsGapMessage) => void;
 
   /** Reconnection configuration */
   private reconnectOptions: Required<Omit<WsReconnectOptions, 'refreshTicket'>> & {
@@ -260,6 +298,31 @@ export class SttWebSocketClient {
   private pendingDrainNudge: ((event: 'finalizing' | 'transcript') => void) | null = null;
   /** Stop-drain configuration. */
   private drainOptions: Required<WsDrainOptions>;
+
+  // ---------------------------------------------------------------------------
+  // Readiness (TASK-985 M-22)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Grace period, in ms, after a socket OPENS within which a `ready` frame is
+   * expected. When it elapses without one, the client proceeds exactly as it
+   * did before `ready` was modelled (resume handshake + reconnect-success on
+   * the raw open), so an older gateway keeps working instead of wedging.
+   */
+  static readonly DEFAULT_READY_GRACE_MS = 1000;
+
+  /** The `ready` frame for the CURRENT connection, or null before it arrives. */
+  private ready: WsReadyMessage | null = null;
+  /** Resolvers parked by {@link whenReady} while `ready` has not arrived yet. */
+  private pendingReadyResolvers: Array<() => void> = [];
+  /** Fallback timer that completes the post-open handshake when no `ready` arrives. */
+  private readyGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Set at open when this open is a RECONNECT, cleared once the post-open
+   * handshake has run (from `ready` or from the grace timer, whichever is
+   * first) so it can never run twice for one connection.
+   */
+  private pendingResumeSessionId: string | null = null;
 
   constructor(
     logger?: ISDKLogger,
@@ -373,16 +436,18 @@ export class SttWebSocketClient {
             component: 'SttWebSocketClient',
             success: true,
           });
-          if (wasReconnecting && this.currentSessionId) {
-            this.sendResumeHandshake(ws, this.currentSessionId, this.lastReceivedSeq);
-          }
-          if (wasReconnecting) {
-            // The transport genuinely re-opened after a drop.
-            // Signal reconnect SUCCESS so consumers leave their 'reconnecting'
-            // UX and read as live again. Distinct from `onReconnect`, which
-            // fires at attempt-start during backoff (socket not yet back).
-            this.onReconnectedCb?.();
-          }
+          // TASK-985 M-22 — a new connection has no `ready` yet, whatever the
+          // previous one had.
+          this.ready = null;
+          // The resume handshake and the reconnect-SUCCESS signal used to fire
+          // right here, in `onopen`. That raced the gateway: it registers its
+          // result-stream handler and only THEN emits `ready`, so a handshake
+          // sent on the raw open could ask to replay from `lastSeq` before
+          // anything was listening, and the replay was lost. Both now run from
+          // the `ready` frame (or, on a gateway that never sends one, from the
+          // grace timer below — so this is a reordering, not a new dependency).
+          this.pendingResumeSessionId = wasReconnecting ? (this.currentSessionId ?? null) : null;
+          this.armReadyGraceTimer();
           resolve();
         }
       };
@@ -398,6 +463,12 @@ export class SttWebSocketClient {
         cleanup();
         const wasConnected = this.ws !== null;
         this.ws = null;
+        // This connection can no longer become ready. Disarm the grace timer so
+        // it cannot fire a post-open handshake — and, through it, a
+        // reconnect-SUCCESS — against a socket that is already gone.
+        this.clearReadyGraceTimer();
+        this.pendingResumeSessionId = null;
+        this.ready = null;
 
         this.logger?.debug('WebSocket closed', {
           operation: 'onclose',
@@ -504,6 +575,20 @@ export class SttWebSocketClient {
     return this.droppedFrameCount;
   }
 
+  /**
+   * How far behind the room the uplink currently is, in SECONDS of audio
+   * (TASK-985 M-36).
+   *
+   * `bufferedAmount` in bytes is not a quantity anyone can act on; seconds are.
+   * This is the number to show beside a degraded-connection badge, and the one
+   * that tells a clinician whether to keep talking or wait.
+   */
+  getBufferedAudioSeconds(): number {
+    if (!this.ws) return 0;
+    const buffered = (this.ws as { bufferedAmount?: number }).bufferedAmount ?? 0;
+    return buffered / SttWebSocketClient.PCM_BYTES_PER_SECOND;
+  }
+
   /** Highest transcript `seq` received from the server. */
   getLastReceivedSeq(): number {
     return this.lastReceivedSeq;
@@ -537,6 +622,14 @@ export class SttWebSocketClient {
   disconnect(): void {
     this.intentionalDisconnect = true;
     this.cancelReconnect();
+    this.clearReadyGraceTimer();
+    this.pendingResumeSessionId = null;
+    this.ready = null;
+    // Release anyone parked on readiness — this connection is going away, and a
+    // waiter that outlives it would otherwise sit out its whole timeout.
+    const waiters = this.pendingReadyResolvers;
+    this.pendingReadyResolvers = [];
+    for (const resolve of waiters) resolve();
 
     if (this.ws) {
       this.logger?.debug('Disconnecting WebSocket', {
@@ -688,6 +781,31 @@ export class SttWebSocketClient {
       };
     });
 
+    // TASK-985 M-05/M-23 — say goodbye on the APPLICATION protocol, not just the
+    // transport.
+    //
+    // `disconnect()` below only does `ws.close(1000)`. To the gateway that is
+    // indistinguishable from a client that fell off the network: it opens its
+    // grace window, waits it out, and finalizes the session `interrupted: true`
+    // — for a Stop the clinician pressed deliberately. `{type:'close'}` is the
+    // frame that says "this was intentional, finalize now", and nothing in the
+    // SDK was sending it.
+    //
+    // Fixed HERE rather than at each call site on purpose: every consumer of
+    // `stopAndDrain()` gets it, including the ones that were already draining
+    // correctly and the ones that were not.
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify({ type: 'close' }));
+      } catch (error) {
+        this.logger?.warn('Failed to send close control frame after drain (best-effort)', {
+          operation: 'stopAndDrain',
+          component: 'SttWebSocketClient',
+          error: error as Error,
+        });
+      }
+    }
+
     this.disconnect();
   }
 
@@ -718,24 +836,110 @@ export class SttWebSocketClient {
     this.onDisconnectCb = cb;
   }
 
-  /** Called when a reconnection attempt starts. Provides the attempt number. */
-  onReconnect(cb: (attempt: number) => void): void {
-    this.onReconnectCb = cb;
+  /**
+   * Called when a reconnection attempt starts. Provides the attempt number.
+   *
+   * ADDITIVE, not single-slot (see {@link onReconnectCbs}): every registered
+   * listener is called. Returns an unsubscribe function for callers that need
+   * to detach; ignoring it is safe and is what every pre-TASK-985 call site does.
+   */
+  onReconnect(cb: (attempt: number) => void): () => void {
+    return SttWebSocketClient.subscribe(this.onReconnectCbs, cb);
   }
 
-  /** Called when all reconnection attempts have been exhausted. */
-  onReconnectFailed(cb: () => void): void {
-    this.onReconnectFailedCb = cb;
+  /** Called when all reconnection attempts have been exhausted. Additive; returns an unsubscribe. */
+  onReconnectFailed(cb: () => void): () => void {
+    return SttWebSocketClient.subscribe(this.onReconnectFailedCbs, cb);
   }
 
   /**
-   * Called when a reconnection attempt has genuinely re-opened the socket
-   * Fires on the reconnect open only — never on the initial
-   * connect — so consumers can transition a 'reconnecting' surface back to
-   * live. Contrast `onReconnect`, which fires at attempt-start during backoff.
+   * Called when a reconnection attempt has genuinely re-opened the socket AND
+   * the session has been resumed on it.
+   *
+   * Fires on a reconnect only — never on the initial connect — so consumers can
+   * transition a 'reconnecting' surface back to live. Contrast `onReconnect`,
+   * which fires at attempt-start during backoff.
+   *
+   * It now fires from the server's `ready` frame rather than from the raw
+   * socket open, and strictly AFTER the resume handshake has gone out
+   * (TASK-985 M-22). That ordering is what lets a consumer replay buffered
+   * audio from this callback and know the handshake precedes it on the wire.
+   * On a gateway that sends no `ready`, it fires from the grace timer instead,
+   * with the same ordering guarantee.
+   *
+   * Additive; returns an unsubscribe.
    */
-  onReconnected(cb: () => void): void {
-    this.onReconnectedCb = cb;
+  onReconnected(cb: () => void): () => void {
+    return SttWebSocketClient.subscribe(this.onReconnectedCbs, cb);
+  }
+
+  /**
+   * Called on the server's `ready` frame — the gateway has registered its
+   * result-stream handler and the session will now carry results (TASK-985
+   * M-22). Single-slot. Prefer {@link whenReady} when you only need to gate
+   * your first send.
+   */
+  onReady(cb: (ready: WsReadyMessage) => void): void {
+    this.onReadyCb = cb;
+  }
+
+  /**
+   * Called when the gateway reports that it DISCARDED results it could not
+   * deliver (TASK-985 M-43). The downlink mirror of
+   * {@link onBackpressureDrop}: that loses audio on the way up, this loses text
+   * on the way down. Single-slot.
+   */
+  onGap(cb: (gap: WsGapMessage) => void): void {
+    this.onGapCb = cb;
+  }
+
+  /**
+   * Resolve once this connection is READY to carry results.
+   *
+   * Resolves immediately when `ready` has already arrived, on the frame when it
+   * has not, and — deliberately — on `timeoutMs` when it never does. It never
+   * REJECTS: a missing readiness signal is a reason to proceed as before, not a
+   * reason to fail a consultation. Callers that must know the difference read
+   * {@link getReady}.
+   */
+  whenReady(timeoutMs = SttWebSocketClient.DEFAULT_READY_GRACE_MS): Promise<void> {
+    if (this.ready) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        const index = this.pendingReadyResolvers.indexOf(done);
+        if (index >= 0) this.pendingReadyResolvers.splice(index, 1);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        if (!settled) {
+          this.logger?.warn('No `ready` frame within the readiness window — proceeding without the gate', {
+            operation: 'whenReady',
+            component: 'SttWebSocketClient',
+            attributes: { timeoutMs },
+          });
+        }
+        done();
+      }, timeoutMs);
+      this.pendingReadyResolvers.push(done);
+    });
+  }
+
+  /** The `ready` frame for the current connection, or `null` if none has arrived. */
+  getReady(): WsReadyMessage | null {
+    return this.ready;
+  }
+
+  /** Add `cb` to `list` and hand back a detach function. Idempotent on detach. */
+  private static subscribe<T extends (...args: never[]) => void>(list: T[], cb: T): () => void {
+    list.push(cb);
+    return () => {
+      const index = list.indexOf(cb);
+      if (index >= 0) list.splice(index, 1);
+    };
   }
 
   // =========================================================================
@@ -782,7 +986,7 @@ export class SttWebSocketClient {
         component: 'SttWebSocketClient',
         attributes: { maxAttempts: this.reconnectOptions.maxAttempts },
       });
-      this.onReconnectFailedCb?.();
+      this.fireReconnectFailed();
       return;
     }
 
@@ -792,7 +996,7 @@ export class SttWebSocketClient {
         operation: 'attemptReconnect',
         component: 'SttWebSocketClient',
       });
-      this.onReconnectFailedCb?.();
+      this.fireReconnectFailed();
       return;
     }
 
@@ -812,7 +1016,7 @@ export class SttWebSocketClient {
       },
     });
 
-    this.onReconnectCb?.(this.reconnectAttempts);
+    for (const cb of [...this.onReconnectCbs]) cb(this.reconnectAttempts);
 
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
@@ -833,7 +1037,7 @@ export class SttWebSocketClient {
             attributes: { attempt: this.reconnectAttempts },
           });
           this.isReconnecting = false;
-          this.onReconnectFailedCb?.();
+          this.fireReconnectFailed();
           return;
         }
       }
@@ -863,6 +1067,80 @@ export class SttWebSocketClient {
   // =========================================================================
   // Internal
   // =========================================================================
+
+  /** Fire every reconnect-failed listener, over a copy so a detach mid-fire is safe. */
+  private fireReconnectFailed(): void {
+    this.clearReadyGraceTimer();
+    this.pendingResumeSessionId = null;
+    for (const cb of [...this.onReconnectFailedCbs]) cb();
+  }
+
+  /**
+   * Start the fallback window for the server's `ready` frame (TASK-985 M-22).
+   *
+   * Every open arms it; whichever comes first — the frame or this timer — runs
+   * {@link completeOpenHandshake} exactly once for that connection. The timer
+   * exists so a gateway that does not send `ready` (or a proxy that swallows
+   * it) degrades to the pre-TASK-985 behaviour instead of leaving a reconnected
+   * session unresumed.
+   */
+  private armReadyGraceTimer(): void {
+    this.clearReadyGraceTimer();
+    this.readyGraceTimer = setTimeout(() => {
+      this.readyGraceTimer = null;
+      if (this.ready) return;
+      this.logger?.warn('Socket opened but no `ready` frame arrived within the grace window', {
+        operation: 'armReadyGraceTimer',
+        component: 'SttWebSocketClient',
+        attributes: { graceMs: SttWebSocketClient.DEFAULT_READY_GRACE_MS, resuming: this.pendingResumeSessionId !== null },
+      });
+      this.completeOpenHandshake();
+    }, SttWebSocketClient.DEFAULT_READY_GRACE_MS);
+  }
+
+  private clearReadyGraceTimer(): void {
+    if (this.readyGraceTimer !== null) {
+      clearTimeout(this.readyGraceTimer);
+      this.readyGraceTimer = null;
+    }
+  }
+
+  /**
+   * Run the once-per-connection post-open sequence, in the ONE order that is
+   * correct: resume handshake first, reconnect-success second, parked
+   * {@link whenReady} waiters last.
+   *
+   * A consumer replaying buffered audio from `onReconnected` therefore always
+   * sends it AFTER the `{type:'resume'}` frame, which is what makes the replay
+   * land in the resumed session rather than ahead of it.
+   */
+  private completeOpenHandshake(): void {
+    this.clearReadyGraceTimer();
+
+    // Nothing to hand a listener if the socket went away between the open and
+    // this call — a `ready`-less close must not look like a successful resume.
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.pendingResumeSessionId = null;
+      const orphaned = this.pendingReadyResolvers;
+      this.pendingReadyResolvers = [];
+      for (const resolve of orphaned) resolve();
+      return;
+    }
+
+    const resumeSessionId = this.pendingResumeSessionId;
+    this.pendingResumeSessionId = null;
+
+    if (resumeSessionId && this.ws) {
+      this.sendResumeHandshake(this.ws, resumeSessionId, this.lastReceivedSeq);
+    }
+    if (resumeSessionId !== null) {
+      for (const cb of [...this.onReconnectedCbs]) cb();
+    }
+
+    const waiters = this.pendingReadyResolvers;
+    this.pendingReadyResolvers = [];
+    for (const resolve of waiters) resolve();
+  }
 
   private static stripQueryParams(url: string): string {
     try {
@@ -1161,6 +1439,35 @@ export class SttWebSocketClient {
       }
 
       switch (msg.type) {
+        case 'ready': {
+          // TASK-985 M-22 — the gateway's first frame, emitted only after it has
+          // registered the result-stream handler. Until now it fell through to
+          // `default:` and was logged as an unknown message type, which is why
+          // the resume handshake had nothing better than `onopen` to hang off.
+          const ready = msg as unknown as WsReadyMessage;
+          this.ready = ready;
+          this.logger?.debug('Server reported the session ready', {
+            operation: 'handleMessage',
+            component: 'SttWebSocketClient',
+            attributes: { sessionId: ready.sessionId, fromSeq: ready.fromSeq },
+          });
+          this.onReadyCb?.(ready);
+          this.completeOpenHandshake();
+          break;
+        }
+        case 'gap': {
+          // TASK-985 M-43 — results the gateway DISCARDED. Also previously an
+          // "unknown message type" warning, which meant a clinician could not
+          // tell a quiet room from a transcript with a hole in it.
+          const gap = msg as unknown as WsGapMessage;
+          this.logger?.warn('Server reported a result gap — transcript text was discarded', {
+            operation: 'handleMessage',
+            component: 'SttWebSocketClient',
+            attributes: { reason: gap.reason, droppedPartials: gap.droppedPartials, droppedSeq: gap.droppedSeq },
+          });
+          this.onGapCb?.(gap);
+          break;
+        }
         case 'transcript':
           {
             const transcript = SttWebSocketClient.normalizeTranscript(msg);
@@ -1232,7 +1539,7 @@ export class SttWebSocketClient {
           // tears this session down and establishes a fresh one instead of
           // believing it resumed.
           if (failed.reason !== 'buffer_overflow') {
-            this.onReconnectFailedCb?.();
+            this.fireReconnectFailed();
           }
           break;
         }
@@ -1308,6 +1615,8 @@ export class SttWebSocketClient {
       attributes: {
         reason,
         bufferedAmount: (this.ws as { bufferedAmount?: number } | null)?.bufferedAmount,
+        // The same number in the unit that means something clinically.
+        bufferedAudioSeconds: Number(this.getBufferedAudioSeconds().toFixed(2)),
         droppedFrameCount: this.droppedFrameCount,
         highWatermark: this.backpressureOptions.bufferedAmountHighWatermark,
       },

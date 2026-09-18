@@ -48,7 +48,20 @@ export const SttConfigSchema = v.object({
   availableModels: v.optional(v.array(v.object({ id: v.string(), name: v.string(), size: v.optional(v.string()) })), [
     ...DEFAULT_AVAILABLE_STT_MODELS,
   ]),
-  language: v.optional(v.string(), 'en'),
+  // TASK-985 QW-2 / M-02 — NO schema default.
+  //
+  // ⚠ MERGE HAZARD: dropping the `'en'` default (with the SDK's
+  // `languageMode: 'auto'`) is correct AND it uncovers a server-side prompt
+  // defect these literals were masking. Ship it WITH the prompt-configuration
+  // fix, not ahead of it. See TASK-985 §2.7.
+  //
+  // A valibot default is indistinguishable downstream from a tenant that
+  // actually chose English, so it manufactured an opinion the tenant never
+  // expressed and sent it to the gateway, which then never consults the ASR
+  // agent's own configured language. Un-set must parse to `undefined`.
+  // (`UiConfigSchema.language` below is the UI locale picker and keeps its
+  // default — different field, different job.)
+  language: v.optional(v.string()),
   // Resolved REMOTE transcription pipeline id (admin/tenant-assigned).
   // Surfaced through the cascade so consumers (e.g. the consultation recording
   // panel) select the right pipeline instead of a hardcoded default. Optional:

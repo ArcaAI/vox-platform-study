@@ -170,6 +170,8 @@ export {
   type StreamingSessionLike,
   type StreamingWsClientLike,
   type StreamingTranscriptPayload,
+  // TASK-985 M-43 — the gateway's `gap` frame (text it discarded on the way down).
+  type StreamingGapPayload,
 } from './providers/index.js';
 
 // ============================================================================
@@ -240,6 +242,9 @@ export {
   multiChannelToMono,
   prepareAudioForWhisper,
   prepareFloat32ForWhisper,
+  // TASK-985 M-53 — stateful, rate-exact streaming converter (keeps kernel history across frames).
+  createStreamingResampler,
+  type StreamingResampler,
   int16ToFloat32,
   float32ToInt16,
   bytesToFloat32,
