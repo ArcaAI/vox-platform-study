@@ -54,13 +54,14 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.65b0",
     "opentelemetry-instrumentation-httpx>=0.65b0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
-    "opentelemetry-instrumentation-logging>=0.65b0",
     # --- Shared runtime contracts ---
     "hope-runtime-models",
     # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
     # --- Shared OTel trace-propagation helper ---
     "hope-otel",
+    # --- Shared logging & tracing runtime (TASK-987) ---
+    "hope-obs",
     # Async task/event envelope contract
     "hope-async-contract",
     "uuid7>=0.1.0",
@@ -70,6 +71,7 @@ dependencies = [
 hope-runtime-models = { workspace = true }
 hope-env = { workspace = true }
 hope-otel = { workspace = true }
+hope-obs = { workspace = true }
 hope-async-contract = { workspace = true }
 
 [project.optional-dependencies]
@@ -183,6 +185,7 @@ pythonpath = [
     "src",
     "../../packages/py-async-contract/src",
     "../../packages/py-env/src",
+    "../../packages/py-obs/src",
     "../../packages/py-otel/src",
     "../../packages/py-runtime-models/src",
     "../../scripts/pytest-support",
