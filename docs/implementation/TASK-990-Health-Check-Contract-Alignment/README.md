@@ -169,6 +169,43 @@ every docstring says so rather than implying a check that cannot fire.
    `test_health_contract_parity.py` to match its only Python sibling, `test_observability_parity.py`
    (TASK-987). A hyphenated name is not an importable module and pytest would not collect it.
 
+**D-11 — a partitioning flaw of mine, worth recording for the next fan-out.**
+The WORKER lane added a `pydantic-settings` class (`WorkerHeartbeatSettings`) in
+`apps/stt/src/stt/worker.py`, and I then declared its three keys in `turbo.json#globalEnv`
+**by hand**. Both acts were individually correct and together they were wrong: `globalEnv` is a
+GENERATED artifact, produced by `pnpm env:python-surface && pnpm env:sync` from a scanner
+(`scripts/python-env-surface.py`) whose `SERVICES` tuple did not list `stt.worker`. So a correct
+hand declaration and a stale generator were in direct contradiction, `env:python-surface --check`
+was red at the pushed HEAD, and the next person to run `env:sync` silently DELETED the three keys.
+
+The generator wins by default, which means the failure mode points at the hand edit rather than at
+the scanner — the concurrent TASK-985 session nearly removed the declaration on that basis and
+checked first. The correct action was to run the generators, not to edit `turbo.json`; and the
+reason nobody was positioned to notice is that the lane brief confined the agent to
+`worker.py` + `Dockerfile`, while the scanner that needed teaching sat outside that boundary.
+
+**Rule for the next fan-out: when a lane adds a settings class, the lane that owns the generator
+must be in the same wave, or the orchestrator must run the generators before declaring anything by
+hand.** Invocation order matters and the error message says so: `env:python-surface` first (it
+builds the Python manifest), then `env:sync` (which computes `globalEnv` FROM that manifest).
+Fixed under TASK-985 `375ff91a4`, which taught the scanner `stt.worker`: surface 301 → 304 fields,
+globalEnv 495 → 498, both gates agreeing for the first time.
+
+Rider, checked and benign: importing `stt.worker` configures the Dramatiq broker. It does NOT bind
+the Prometheus port — verified by importing it while 9191 was already bound and observing no
+`EADDRINUSE`; the bind happens at worker boot. The settings class stays where it is.
+
+**D-12 — `promote-dev` has no guard against being overtaken (NEW, owner item O-4).**
+Two pipelines can be live on one branch (a second push while the first still builds). Each ends in
+`promote-dev`, which resolves a digest and commits it UNCONDITIONALLY. If the older pipeline
+finishes last it pins the cluster to the older image, behind a green pipeline. Observed directly:
+pipelines 1246, 1247 and 1248 were live in sequence on `dev-2.2` and GitLab did not auto-cancel the
+superseded ones despite `default: interruptible: true`. Mitigated by hand here (1246 and 1247
+cancelled); the durable fix is either enabling auto-cancel for redundant pipelines or having
+`promote-dev` refuse to write a digest for a commit that is an ancestor of what the overlay already
+pins. Note `verify-dev` does NOT catch this: it polls for its OWN sha, so the overtaken pipeline
+fails its check while the cluster sits on the wrong build.
+
 ## Implementation Plan — lanes
 
 One writer per worktree; the orchestrator owns merges, pushes and cluster verification.
@@ -252,6 +289,8 @@ never run.
   settable from configuration.
 - **O-2** — all 13 HPAs are inert: `metrics-server` is deployed and Healthy but serves nothing
   (`"metric-storage-ready" err="no metrics to serve"`). A cluster-addon fix outside both repos.
+- **O-4 (D-12)** — `promote-dev` can be overtaken by an older concurrent pipeline and pin the
+  cluster to an older image behind a green pipeline. `verify-dev` does not catch it.
 - **O-3** — nlp's startup probe is waived in the new gate pending pass 2; the repoint needs the new
   image.
 
@@ -273,6 +312,7 @@ Check `/tmp` is writable in that pod (an `emptyDir` if `readOnlyRootFilesystem` 
 | 2026-09-19 | hope-v2-deployment main @ 9077e9d PUSHED. Pipeline 1244 green (12 jobs incl. the new `probes` gate). Argo auto-synced; stt/temporal/temporal-ui rolled; PostSync smoke test 9/9. Live: stt `/health/ready` and `/health/live` answer 200, `/internal/streaming/drain` answers 401 without a token. |
 | 2026-09-19 | WORKER merged (73e7c2d08): Dramatiq heartbeat as broker middleware (one file per PID), `HEALTHCHECK` fixed. 21/21 heartbeat tests, stt lint + typecheck green post-merge. Stale harness comment corrected (781d76dbf); heartbeat env vars declared in `globalEnv` (695443146). |
 | 2026-09-19 | PY-HEALTH merged (3bc7686f1): build-info version + `/health/startup` + exempt entries on all six services; TTS Kokoro residency; new `tests/contracts/test_health_contract_parity.py` + a CI job. Gate 67 passed; PROVEN to bite — reverting three services to pre-fix sources fails it on exactly the right assertions. |
+| 2026-09-19 | `dev-2.2` PUSHED (61 commits, both tickets). D-11 records a partitioning flaw: a hand-edited `globalEnv` contradicted a stale generator. D-12 records a new owner item O-4 — `promote-dev` has no guard against being overtaken by a concurrent pipeline. |
 | 2026-09-19 | D-8..D-10 recorded: new finding F18 (nlp build identity env-settable, owner item O-1), the `/health/startup` 503 reachability limit, and two errors in my own lane briefs. |
 | 2026-09-19 | F15 closed: `verify-dev` added to `.gitlab/ci/deploy.yml` — polls the dev gateway until it reports THIS pipeline's sha8, closing the CI→cluster loop with no new credential. GitLab CI lint: valid, no warnings. `promote-dev`'s dev environment gained a `url`. |
 | 2026-09-19 | D-6 recorded: F12 WITHDRAWN — the PDBs are correct; the finding's premise was incomplete. D-7 records a lane-routing error and its containment. |
