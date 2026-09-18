@@ -91,6 +91,16 @@ _STEADY_STATE_ENQUEUE_TIMEOUT_S = 1.0
 # no more; the final itself is persisted through the normal result path.
 _HANDOVER_LOG_CHARS = 200
 
+# TASK-985 M-23 — how long an UNCLAIMED teardown summary is kept for the
+# gateway's DELETE, and how many may be held at once. Both are bootstrap
+# defaults of an in-memory map on a PHI service, so the cap is not optional:
+# the TTL bounds how stale a claim may be, the entry cap bounds the damage if
+# no DELETE ever comes. An expired entry is not dropped — it is pushed back to
+# the gateway (see `_sweep_teardown_summaries`), because a summary nobody came
+# for is a ledger row nobody wrote.
+_TEARDOWN_STASH_TTL_S = 120.0
+_TEARDOWN_STASH_MAX_ENTRIES = 256
+
 # TASK-985 M-04 — headroom added to the inference-drain bound to get the
 # tail-wait bound (``_tail_wait_timeout_s``). The tail owner's own work is
 # flush + drain, and the drain is the bounded half; a waiter must therefore
@@ -148,6 +158,23 @@ class _SessionRuntime:
     vad_enabled: bool
     target_sr: int
     effective_diarization: bool
+
+
+@dataclass
+class _StashedTeardown:
+    """A teardown summary waiting for the gateway's DELETE (TASK-985 M-23).
+
+    ``pushed_back`` records that this summary has ALREADY been POSTed to the
+    gateway by its finalizer (the idle reaper does that, because the reaper
+    fires precisely when the gateway is gone and a pod roll inside the stash TTL
+    would otherwise lose the row). The entry is still kept so a late DELETE can
+    claim it and let the gateway make its own ``interrupted`` call — but the
+    expiry sweep must not POST it a second time.
+    """
+
+    summary: dict[str, Any]
+    expires_at: float
+    pushed_back: bool = False
 
 
 def _spec_bundles_of(manager: Any) -> dict[str, ResolvedSpecBundle]:
@@ -353,6 +380,13 @@ class SessionManager:
         # ``_begin_tail_flush``), and the later trigger now has something to
         # AWAIT. Dropped in ``remove_session`` alongside the finalize lock.
         self._tail_flush_done: dict[str, asyncio.Event] = {}
+        # TASK-985 M-23 — teardown summaries built by a NON-HTTP finalizer,
+        # held for the gateway's DELETE to claim. Deliberately NOT dropped by
+        # ``remove_session``: the session is gone precisely when this matters.
+        self._pending_teardown_summaries: dict[str, _StashedTeardown] = {}
+        # Strong references to the fire-and-forget push-backs fired by stash
+        # eviction — without them the event loop may GC a task mid-flight.
+        self._stash_pushback_tasks: set[asyncio.Task[None]] = set()
         self._running = False
         # PLANNED scale-down flag — distinct from the startup
         # crash-recovery replay path above. Set by begin_drain(); rejects new
@@ -1706,7 +1740,9 @@ class SessionManager:
             # F-32 / TASK-985 M-04 — flush the tail at most once per session,
             # and WAIT for it when another trigger claimed it first.
             await self._run_tail_flush(session, self._preprocessors.get(session_id))
-            return await self._finalize_session(session)
+            # TASK-985 M-23 — this caller RETURNS the summary to the gateway,
+            # so it is the one that emits the ledger row; nothing to stash.
+            return await self._finalize_session(session, stash_summary=False)
         except Exception as exc:
             logger.error(
                 "Failed to end session gracefully; forcing removal",
@@ -4146,8 +4182,16 @@ class SessionManager:
                 error=str(re_exc),
             )
 
-    async def _finalize_session(self, session: StreamSession) -> dict[str, Any] | None:
+    async def _finalize_session(
+        self, session: StreamSession, *, stash_summary: bool = True
+    ) -> dict[str, Any] | None:
         """Finalize a session under a per-session lock.
+
+        ``stash_summary`` — TASK-985 M-23. ``False`` for the HTTP ``end_session``
+        caller, which RETURNS the summary to the gateway and is therefore the
+        one that emits the ledger row. Every other finalizer (the final audio
+        frame, the control ``FINALIZE``, the idle reaper) has nobody to return
+        it to, so it stashes it for the DELETE that is still coming.
 
         The four finalize entrypoints (``end_session``, the final audio frame,
         the control-FINALIZE command, and the reaper) can race; without
@@ -4167,7 +4211,7 @@ class SessionManager:
             lock = asyncio.Lock()
             self._finalize_locks[session.session_id] = lock
         async with lock:
-            return await self._finalize_session_locked(session)
+            return await self._finalize_session_locked(session, stash_summary=stash_summary)
 
     def _compute_session_seconds(self, session: StreamSession) -> float:
         """Wall-clock socket open->close seconds (``created_at`` -> ``closed_at``).
@@ -4355,7 +4399,9 @@ class SessionManager:
             "channel_count": self._session_channel_counts.get(session.session_id, 1),
         }
 
-    async def _finalize_session_locked(self, session: StreamSession) -> dict[str, Any] | None:
+    async def _finalize_session_locked(
+        self, session: StreamSession, *, stash_summary: bool = True
+    ) -> dict[str, Any] | None:
         """Finalize a session — mark finalizing, close out the live stream, upload, clean up.
 
         Callers must drain the inference queue *before* calling this
@@ -4589,6 +4635,22 @@ class SessionManager:
                     session_id=session.session_id,
                     error=str(summary_exc),
                 )
+
+            # TASK-985 M-23 — a summary nobody can return is a ledger row
+            # nobody writes. THIS IS BILLING CORRECTNESS, not tidiness: on the
+            # ordinary clean stop the control `FINALIZE` arrives first and
+            # finalizes here, the return value is discarded by `_on_control`,
+            # and the DELETE that follows finds no session and answers 204 —
+            # so `transcribe.stream` gets NO row at all for a consultation that
+            # was fully served. Stashing it lets the DELETE answer 200 with the
+            # same summary.
+            #
+            # The gateway, not STT, stays the owner of `interrupted`: this
+            # summary is IDENTICAL either way (see `_build_teardown_summary` —
+            # "STT has no notion of interrupted"), and which code path called
+            # `removeSession` is knowledge only the gateway has.
+            if stash_summary and teardown_summary is not None:
+                self._stash_teardown_summary(session.session_id, teardown_summary)
 
             # Always clean up in-memory and capacity state, even if graceful
             # close failed.
@@ -4876,7 +4938,16 @@ class SessionManager:
                     # F-32 / TASK-985 M-04 — one tail flush per session across
                     # all triggers, and a bounded WAIT when another claimed it.
                     await self._run_tail_flush(session, self._preprocessors.get(session_id))
-                    teardown_summary = await self._finalize_session(session)
+                    # TASK-985 M-23 — the reaper is the one finalizer that both
+                    # emits AND stashes, in that order. It pushes back
+                    # IMMEDIATELY (below) because it fires precisely when the
+                    # gateway is gone: deferring to the stash TTL would lose the
+                    # row outright to a pod roll inside that window. The entry
+                    # is then kept, marked `pushed_back`, only so a late DELETE
+                    # is answered honestly rather than re-emitting.
+                    teardown_summary = await self._finalize_session(
+                        session, stash_summary=False
+                    )
                     # The reaper is the FINALIZER here, which means
                     # the gateway crashed and its removal retries were exhausted:
                     # no removeSession() caller received the DELETE-teardown
@@ -4884,7 +4955,12 @@ class SessionManager:
                     # Push the built summary back to the gateway (idempotent on the
                     # session id → a late DELETE never double-bills).
                     if teardown_summary:
-                        await self._push_streaming_usage_back(teardown_summary)
+                        await self._push_streaming_usage_back(
+                            teardown_summary, interrupted=True
+                        )
+                        self._stash_teardown_summary(
+                            session_id, teardown_summary, pushed_back=True
+                        )
                 except Exception as exc:
                     logger.error(
                         "Failed to reap session gracefully; forcing removal",
@@ -4895,15 +4971,114 @@ class SessionManager:
 
         return len(to_reap)
 
-    async def _push_streaming_usage_back(self, summary: dict[str, Any]) -> None:
-        """POST a reaper-built teardown summary to the gateway.
+    def _stash_teardown_summary(
+        self, session_id: str, summary: dict[str, Any], *, pushed_back: bool = False
+    ) -> None:
+        """Hold a non-HTTP finalizer's summary for the DELETE that follows.
+
+        TASK-985 M-23. Bounded twice — by TTL (checked on the way out of
+        :meth:`claim_teardown_summary`, swept by the heartbeat) and by entry
+        count, evicting oldest-first. Eviction PUSHES BACK rather than dropping:
+        the entry exists because a real consultation was served, so discarding
+        it silently is the same ledger hole this method exists to close.
+
+        ``pushed_back`` marks a summary whose finalizer already POSTed it (the
+        idle reaper), so neither eviction nor the sweep POSTs it twice.
+        """
+        ttl_s = float(getattr(self, "_teardown_stash_ttl_s", _TEARDOWN_STASH_TTL_S))
+        self._pending_teardown_summaries[session_id] = _StashedTeardown(
+            summary=summary,
+            expires_at=time.monotonic() + ttl_s,
+            pushed_back=pushed_back,
+        )
+        while len(self._pending_teardown_summaries) > _TEARDOWN_STASH_MAX_ENTRIES:
+            # dicts preserve insertion order, so the first key is the oldest.
+            evicted_id = next(iter(self._pending_teardown_summaries))
+            evicted = self._pending_teardown_summaries.pop(evicted_id)
+            logger.warning(
+                "stt.stream.teardown_stash_evicted",
+                session_id=evicted_id,
+                held=len(self._pending_teardown_summaries),
+                cap=_TEARDOWN_STASH_MAX_ENTRIES,
+            )
+            if not evicted.pushed_back:
+                # The gateway never came for it, so it never told us whether the
+                # session was interrupted — and an abandoned teardown is exactly
+                # what `interrupted` means.
+                task = asyncio.create_task(
+                    self._push_streaming_usage_back(evicted.summary, interrupted=True)
+                )
+                self._stash_pushback_tasks.add(task)
+                task.add_done_callback(self._stash_pushback_tasks.discard)
+
+    def claim_teardown_summary(self, session_id: str) -> dict[str, Any] | None:
+        """Pop the stashed teardown summary for ``session_id``, if any.
+
+        Read by ``DELETE /internal/streaming/sessions/{id}`` when the session is
+        already gone: instead of answering 204 ("nothing to summarize") it
+        answers 200 with the summary the finalizer that ran had no way to
+        return. Claiming is destructive so two DELETEs cannot both emit; the
+        ledger's idempotency key would dedup anyway, but not trying is better
+        than relying on it.
+        """
+        entry = self._pending_teardown_summaries.pop(session_id, None)
+        if entry is None:
+            return None
+        if time.monotonic() > entry.expires_at:
+            logger.warning(
+                "stt.stream.teardown_stash_expired_on_claim",
+                session_id=session_id,
+            )
+            return None
+        if entry.pushed_back:
+            # Already POSTed by its finalizer. Returning it here would be a
+            # second emission attempt for the same teardown; the ledger's
+            # idempotency key would dedup it, but not trying is better than
+            # relying on that.
+            logger.info(
+                "stt.stream.teardown_stash_already_pushed",
+                session_id=session_id,
+            )
+            return None
+        return entry.summary
+
+    async def _sweep_teardown_summaries(self) -> None:
+        """Push back teardown summaries no DELETE ever claimed.
+
+        Runs on the worker heartbeat. An expired entry means the gateway never
+        came for it — it crashed, or its removal retries were exhausted — which
+        is the same situation the reaper's push-back already handles, so it gets
+        the same treatment and the same ``interrupted=True`` verdict. The
+        ledger's idempotency key is shared across both paths, so a late claim
+        after a push-back is a no-op at the ledger, never a double charge.
+        """
+        now = time.monotonic()
+        expired = [
+            sid for sid, entry in self._pending_teardown_summaries.items() if now > entry.expires_at
+        ]
+        for session_id in expired:
+            entry = self._pending_teardown_summaries.pop(session_id, None)
+            if entry is None or entry.pushed_back:
+                continue
+            logger.warning(
+                "stt.stream.teardown_stash_unclaimed",
+                session_id=session_id,
+            )
+            await self._push_streaming_usage_back(entry.summary, interrupted=True)
+
+    async def _push_streaming_usage_back(
+        self, summary: dict[str, Any], *, interrupted: bool = True
+    ) -> None:
+        """POST a finalizer-built teardown summary to the gateway.
 
         Best-effort by design: the gateway may still be down (it just crashed),
         so a failure here is logged and dropped — a metering side effect must
         never fail the reaper, and the raw ledger back-rate remains the backstop.
-        ``interrupted=True`` because a reaped session was abandoned, not cleanly
-        stopped. A short-lived client is fine: the reaper runs on a multi-minute
-        idle cadence, so per-call construction cost is irrelevant.
+        ``interrupted`` defaults to ``True`` because every caller of this method
+        is a path where the gateway did NOT come to collect: a reaped session
+        was abandoned, and an unclaimed stash was abandoned by the gateway. A
+        short-lived client is fine: these run on a multi-second-or-worse cadence,
+        so per-call construction cost is irrelevant.
         """
         settings = get_settings()
         base_url = getattr(settings, "api_gateway_url", "")
@@ -4915,7 +5090,7 @@ class SessionManager:
             base_url, api_key, timeout=getattr(settings, "api_gateway_timeout", 30)
         )
         try:
-            await client.record_streaming_usage(summary, interrupted=True)
+            await client.record_streaming_usage(summary, interrupted=interrupted)
         except Exception as exc:  # noqa: BLE001 — best-effort metering side effect
             logger.warning(
                 "stt.stream.usage_pushback_failed",
@@ -5033,6 +5208,8 @@ class SessionManager:
             while self._running:
                 await asyncio.sleep(self._heartbeat_interval_s)
                 await self._reconcile_capacity_guard()
+                # TASK-985 M-23 — teardown summaries the gateway never claimed.
+                await self._sweep_teardown_summaries()
                 key = worker_key(self._worker_id)
                 # Update session list and extend TTL
                 session_ids = list(self._sessions.keys())
