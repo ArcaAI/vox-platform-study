@@ -80,6 +80,14 @@ COPY packages/py-env ./packages/py-env
 # is exactly how pipeline #1100's build-harness / build-harness-worker failed
 # Zero runtime deps.
 COPY packages/py-async-contract ./packages/py-async-contract
+# Shared logging/tracing runtime (`hope-obs`, TASK-987). Same workspace
+# path-dependency rule: harness's pyproject now declares `hope-obs = {
+# workspace = true }`, so `uv sync --frozen --package harness` needs it on
+# disk or layer 1 fails with "Distribution not found at:
+# file:///app/packages/py-obs" (the same failure mode py-async-contract's
+# comment above documents, caught for py-obs by `apps/text`'s
+# `test_dockerfile_workspace_sources.py`).
+COPY packages/py-obs ./packages/py-obs
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package harness --no-dev --extra rag --extra guardrails --extra atomic-fact \
         --no-install-project --no-editable

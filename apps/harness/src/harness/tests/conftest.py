@@ -22,6 +22,7 @@ assert_source_tree(
         "hope_runtime_models",
         "hope_workflow_contract",
         "hope_async_contract",
+        "hope_obs",
     ],
     __file__,
 )
