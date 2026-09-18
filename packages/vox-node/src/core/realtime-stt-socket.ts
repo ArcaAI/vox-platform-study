@@ -204,6 +204,10 @@ export class RealtimeSttSocket {
   private readonly listeners = new Map<RealtimeSttEventName, Set<(payload: never) => void>>();
 
   private socket: SocketLike | null = null;
+
+  /** The socket `close()` asked to shut down, kept until the transport reports it. */
+
+  private closingSocket: SocketLike | null = null;
   private ticket: string;
   private ticketExpiresAt: number;
   /** A ticket is consumed at the handshake — the next connect MUST mint another. */
@@ -415,7 +419,16 @@ export class RealtimeSttSocket {
       // Already gone — closing is still the right next step.
     }
     socket.close(1000);
-    this.socket = null;
+    // TASK-985 — do NOT null `this.socket` here. The transport's own `close`
+    // listener does it, and it guards on `this.socket !== socket` so a
+    // SUPERSEDED socket (one replaced by a resume) cannot emit. Clearing the
+    // reference before the transport reports made that guard swallow the very
+    // close we asked for, so `close()` meant the `close` event never fired and
+    // `waitForClosed()` — whose documented use is exactly `close(); await
+    // waitForClosed()` — could only ever resolve via its 5 s timeout, with a
+    // synthesised event carrying no close code. Hand the socket to
+    // `closingSocket` instead, which keeps the superseded-socket protection.
+    this.closingSocket = socket;
   }
 
   /**
@@ -524,8 +537,11 @@ export class RealtimeSttSocket {
       this.emit('error', new Error(`RealtimeSttSocket (session ${this.sessionId}) reported a transport error.`));
     }) as (event: never) => void);
     socket.addEventListener('close', ((event: { code?: number }) => {
-      if (this.socket !== socket) return;
+      // Accept the live socket, or the one `close()` just asked to shut down.
+      // Anything else is a superseded socket and must stay silent.
+      if (this.socket !== socket && this.closingSocket !== socket) return;
       this.socket = null;
+      this.closingSocket = null;
       const resuming = this.shouldAutoResume();
       this.emit('close', { code: event?.code, requested: this.requestedClose, resuming });
       if (resuming) void this.autoResume();
