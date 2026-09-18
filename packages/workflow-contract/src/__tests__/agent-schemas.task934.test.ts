@@ -35,19 +35,36 @@ const decoding = (...path: string[]) => props(asr, 'decoding', ...path);
 const streaming = (...path: string[]) => props(asr, 'streaming', ...path);
 
 describe('TASK-934 — the ASR agent can set every decode knob (OD-4)', () => {
-  it('declares the six knobs that used to be Python literals', () => {
+  it('declares every decode knob a tier may set, and nothing else', () => {
+    // TASK-985 (QW-8 / QW-9) widened this surface by eight. `partial` and `final`
+    // are the PER-PASS blocks — the same knobs again, scoped to one decode pass,
+    // because a gate that is right on a committing decode is wrong on a partial
+    // (precedence is pass -> flat -> dataclass default). The other six are knobs
+    // whisper.cpp genuinely honours and the schema previously had no way to say.
+    //
+    // `entropyThreshold` is deliberately NOT an alias of `compressionRatioThreshold`:
+    // they share a default of 2.4 and mean opposite things, so aliasing them would
+    // have silently inverted a gate. Both are listed here for that reason.
     expect(Object.keys(decoding().properties as object).sort()).toEqual([
+      'audioCtx',
       'beamSize',
       'chunkLengthSec',
       'codeSwitching',
       'compressionRatioThreshold',
       'conditionOnPrevTokens',
+      'entropyThreshold',
+      'final',
       'languageMode',
       'logprobThreshold',
+      'maxTokens',
       'noRepeatNgramSize',
       'noSpeechThreshold',
+      'partial',
       'prevTextContextWords',
+      'singleSegment',
       'strideLengthSec',
+      'suppressBlank',
+      'suppressNonSpeechTokens',
       'temperature',
       'vadFilter',
       'wordTimestamps',
