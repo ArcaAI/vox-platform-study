@@ -255,6 +255,27 @@ packages/py-obs/
 **This signature block is the interface contract. Lanes implement against it verbatim; a lane that
 needs it changed raises it to the orchestrator rather than diverging locally.**
 
+**As built (lane F, commit `09ab5b00c`) — every name, parameter and default below is implemented
+verbatim, plus these additions, which Wave-1 lanes may rely on:**
+
+- `WorkerObservability` and `clear_request_context()` are also exported (the first is the return
+  type R-1 already names; the second is the symmetric counterpart of `bind_request_context`).
+- **The middlewares are installed for you.** `configure_observability` adds `AccessLogMiddleware`
+  first and `RequestContextMiddleware` last, so the context middleware is outermost and access
+  lines carry `request_id`. A lane does **not** add them by hand. They remain importable from
+  `hope_obs.middleware` if a service must control ordering — raise that rather than doing it
+  silently.
+- `hope_obs.runtime.worker_service_name(configured)` carries the no-double-suffix rule; lane A
+  deletes STT's local `_worker_service_name` rather than keeping both.
+- `from_env` derives `<SVC>_LOG_LEVEL` from the `service_name` **argument**, not from
+  `OTEL_SERVICE_NAME`, so in-cluster STT still reads `STT_LOG_LEVEL` and not
+  `HOPE_STT_V2_LOG_LEVEL`.
+- `opentelemetry-instrumentation-logging` is **not** a dependency and is not needed: the
+  `_add_otel_context` processor injects `traceId`/`spanId` for both the structlog and the stdlib
+  entrance. Adopting services may drop it.
+- Log-line facts to code against: `traceId`/`spanId` are **absent**, not `"0"`, outside a span;
+  `tenant_id` is bound only when `X-Tenant-Id` is present; exactly one `X-Request-ID` is echoed.
+
 ```python
 # hope_obs/config.py
 @dataclass(frozen=True)
@@ -302,10 +323,22 @@ There is **no** `*_OTEL_ENABLED` boolean. The five that exist are deprecated per
 — never silently dropped, because a manifest that still sets one must keep working until it is
 updated. The *default* is off in both worlds: no endpoint, no export.
 
-Tracing stays failure-tolerant: `configure_observability` never raises. An unreachable or
-misconfigured collector degrades to no-tracing and logs a warning. A reachable observability
-backend is never a boot or request-path dependency — this is already the posture in tts/guardrail/
-harness and must not regress.
+Tracing stays failure-tolerant: `configure_observability` never raises, and a reachable
+observability backend is never a boot or request-path dependency — already the posture in
+tts/guardrail/harness, and it must not regress.
+
+**Two failure modes, not one** (corrected by lane F, 2026-09-18; the original wording conflated
+them and would have briefed six lanes to assert something unimplementable):
+
+| Failure | What happens |
+|---|---|
+| **Configuration failure** — exporter construction, instrumentation, bad endpoint string | Caught, warned, `app.state.tracer_provider = None`, tracing off. A partially built provider is shut down rather than leaked. |
+| **Runtime export failure** — a syntactically valid endpoint nothing is listening on | Tracing stays **ON**. OTLP/gRPC connects lazily, so this is not observable at configure time; spans buffer in the `BatchSpanProcessor` and flow when the collector returns. |
+
+Probing the collector at configure time to collapse these into one would make it a boot
+dependency, which this rule forbids. So an unroutable endpoint leaves `tracer_provider` **set**,
+and that is correct. Logging is configured *before* the guarded stages, so failing to instrument
+never costs a service its structured logging.
 
 ### R-3 — Logging shape
 
@@ -641,8 +674,8 @@ pnpm <svc>:typecheck
 |---|---|---|
 | **A** | stt | F-13: pass `phi_sanitization_hook` to `FastAPIInstrumentor` (it never has). F-04: `stt/worker.py` must call `configure_worker_observability` — a real `TracerProvider`, not just logs; keep the no-double-suffix rule at `worker.py:45-56`. F-08: both middlewares are replaced by the pure-ASGI ones from `hope_obs`; delete `core/middleware/{request_id,logging}.py`. Move `redact_id` to `hope_obs` and re-point every caller. Keep `hope_otel` Redis-Stream propagation exactly as is. Verify `tests/test_redis_streams_trace_task636.py` and `tests/unit/test_observability.py` still pass. |
 | **B** | text | Lightest lane — text is already closest to the standard. Delete the duplicated `_add_otel_context`, `_configure_uvicorn_logging` and both middlewares in favour of `hope_obs`. `core/telemetry.py` is already a shim; keep it a shim. Preserve the `gen_ai.*` allow-list test (`tests/unit/test_phi_safe_telemetry.py`) and the `TelemetryPhiGuardConfig` boot guard untouched — they are a different control. Confirm `test_sse_trace_propagation_task636.py`, `test_request_id_middleware.py`, `test_request_logging.py` still pass; port their assertions rather than deleting them. |
-| **C** | guardrail | F-05: gains `merge_contextvars` and `traceId`/`spanId` for the first time. F-09: gains `deployment.environment` (both spellings) — it currently emits none and relies on the collector filling it in. F-06: gains both middlewares. Keep the default-OFF invariant and the never-raises posture the module docstring describes. `tests/test_otel_tracing_task636.py` must keep passing. |
-| **E** | nlp | Largest diff. F-03: delete the never-installed `JsonFormatter` and the whole `LoggingConfig` class; NLP moves to structlog via `hope_obs`. Keep `NLP_LOG_LEVEL` → `LOG_LEVEL` precedence and the numeric-or-name level parsing (both are real behaviours, documented in `core/logging.py:50-63`). F-02: `from_env` must see the endpoint the platform config already supplies; honour `NLP_OTEL_ENABLED` for one release with a deprecation warning. NLP is the only service with an OTel `MeterProvider` — **leave it in place**, retarget it at the shared resource, and report whether its metric attributes survive the collector allow-list (R-7). Verify `tests/test_observability.py` and `tests/test_task883_logging_retirement.py`. |
+| **C** | guardrail | **`from_env("guardrail")` will not find this service's log level** — it lives under `GUARDRAIL_V2_LOG_LEVEL` (root settings prefix `GUARDRAIL_V2_`). Use `dataclasses.replace(ObservabilityConfig.from_env("guardrail"), log_level=settings.log_level)`. F-05: gains `merge_contextvars` and `traceId`/`spanId` for the first time. F-09: gains `deployment.environment` (both spellings) — it currently emits none and relies on the collector filling it in. F-06: gains both middlewares. Keep the default-OFF invariant and the never-raises posture the module docstring describes. `tests/test_otel_tracing_task636.py` must keep passing. |
+| **E** | nlp | Largest diff. F-03: delete the never-installed `JsonFormatter` and the whole `LoggingConfig` class; NLP moves to structlog via `hope_obs`. Keep `NLP_LOG_LEVEL` → `LOG_LEVEL` precedence and the numeric-or-name level parsing (both are real behaviours, documented in `core/logging.py:50-63`). F-02: `from_env` must see the endpoint the platform config already supplies; honour `NLP_OTEL_ENABLED` for one release with a deprecation warning. **NLP's OTel `MeterProvider` stays local to NLP — orchestrator decision, 2026-09-18.** `hope_obs` has no metrics path and gains none: NLP is the only consumer, and an abstraction for a single caller is one this repo's rules tell us not to build. `apps/nlp/src/nlp/core/metrics.py` creates seven live instruments (histograms, counters, an up-down counter) that adoption would otherwise silently drop — keep the block, retarget it at the shared `Resource` from `hope_obs`, and report whether its attributes survive the collector allow-list (R-7). Lane P must permit this as a NAMED exception, not a general one. Verify `tests/test_observability.py` and `tests/test_task883_logging_retirement.py`. |
 | **G** | harness | `core/observability.py` already splits `build_tracer_provider` from `setup_opentelemetry` — that split is the R-6 pattern; preserve it through the shared package. `temporal/worker.py:308-316` becomes a `configure_worker_observability` caller. Do NOT change workflow code in `temporal/workflows.py` or the interpreter: determinism and replay compatibility are at stake, and this ticket has no business there. Run the replay-compat tests and paste them. Keep `TracingInterceptor` wiring in `temporal/client.py` as is. |
 | **H** | tts | F-05: gains `traceId`/`spanId` on log lines. `core/observability.py` is currently the hardened reference (never-raises + mandatory PHI hook) — that behaviour must survive the move, not be lost in it. The WebSocket endpoint `api/endpoints/stream_ws.py` stays uninstrumented (out of scope, documented); note in your report that it remains a trace gap. `tests/test_otel_tracing_task636.py` must keep passing. |
 
@@ -823,6 +856,35 @@ gates are now satisfied. Adding a fourth unread variable would have been F-02 in
 **Bonus.** `hope-harness-config` is consumed by `hope-harness-worker` as well as `hope-harness`,
 so the Temporal worker gets the endpoint too — an unplanned down payment on R-6.
 
+### Lane F — `packages/py-obs` — COMPLETE, awaiting merge approval
+
+| | |
+|---|---|
+| Branch | `task-987-py-obs` @ `09ab5b00c`, worktree `../hope-v2-t987-obs` |
+| Merge target | `dev-2.2` — **not yet merged; awaiting user confirmation of the target branch** |
+| Files | 16, all under `packages/py-obs/` (+2302 lines): 7 modules + `py.typed`, 5 test modules + conftest, `pyproject.toml`, `README.md` |
+
+**Orchestrator verification (re-run, not the lane's claims).** `git show --stat` confirms the
+commit touches nothing outside `packages/py-obs/`. Re-ran in the worktree: **87 passed in 0.39s**;
+`ruff` "All checks passed!"; `mypy` "Success: no issues found in 7 source files". The lane proved
+its RED (`ImportError`, 0 tests collected) and mutation-checked the F-05 guard — setting
+`foreign_pre_chain=None` turns three tests red, including `test_third_party_stdlib_record_is_json`.
+
+**The one correction worth recording.** §6.1 told the lane to assert that an unroutable endpoint
+leaves `app.state.tracer_provider is None`. That is not implementable: OTLP/gRPC connects lazily,
+so an unroutable endpoint is a *runtime export* failure, invisible at configure time, and probing
+for it would make the collector a boot dependency — which R-2 forbids. The lane pushed back with
+the reasoning instead of faking the assertion, and implemented the correct split (see the R-2 table
+above). R-2 and §6.1 have been corrected so the six Wave-1 lanes and lane P are not briefed against
+an impossible test. The as-built implementation is also better than any of the six it replaces: it
+configures logging *before* the guarded stages, so failing to instrument cannot cost a service its
+structured logging, and it shuts down a partially built provider rather than leaking it.
+
+**Decision taken on lane F's observation 1 — NLP's `MeterProvider` stays in NLP.** It is not dead
+code: `apps/nlp/src/nlp/core/metrics.py` creates seven live OTel instruments. `hope_obs` gains no
+metrics path, because NLP is its only consumer. Recorded in §6.3's lane E row and as a named
+exception for lane P.
+
 ---
 
 ## 9. Change History
@@ -830,4 +892,5 @@ so the Temporal worker gets the endpoint too — an unplanned down payment on R-
 | Date | Change |
 |---|---|
 | 2026-09-18 | Ticket created. Review of all six Python services recorded as F-01…F-15; standard defined in §3; nine-lane multi-agent plan with disjoint ownership, model tiers and merge order defined in §5-§7. Status: Pending — awaiting approval to spawn Wave 0. |
+| 2026-09-18 | **Wave 0 complete, both lanes verified, neither merged** (awaiting confirmation of the merge targets). Lane D1 `e4a3dfb`; lane F `09ab5b00c`. R-2 and §6.1 corrected: the "unroutable endpoint → tracer_provider is None" assertion was unimplementable and is now split into configuration vs runtime export failure. As-built API additions recorded in §3 R-1. Lane C brief gains the `GUARDRAIL_V2_LOG_LEVEL` workaround; lane E brief records the decision to keep NLP's `MeterProvider` local; lane P gains the paired-gate assertion. |
 | 2026-09-18 | Ticket committed to `dev-2.2` as `20526448a` so every worktree branches from a base that already contains it. **Wave 0 spawned.** Lane F (`opus-5`/high) in worktree `../hope-v2-t987-obs`, branch `task-987-py-obs`. Lane D1 (`sonnet-5`/medium) in `hope-v2-deployment`, branch `task-987-enable-otel` off `main`. Status: In Progress. |
