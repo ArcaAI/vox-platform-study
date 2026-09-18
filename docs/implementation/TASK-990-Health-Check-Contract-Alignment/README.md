@@ -67,6 +67,54 @@ fleet is not broken; it is inconsistent, and three of those inconsistencies are 
   metrics-server, a cluster-addon decision. Argo reports the Application Healthy regardless.
 - Whether a real PDB (F12) is wanted on single-replica dev workloads.
 
+## Decisions taken during implementation
+
+**D-1 — the fleet health contract (supersedes F9 as originally written).**
+
+| route | purpose | status codes | probed? |
+|---|---|---|---|
+| `/health` | detailed, ops-facing | **always 200**, status in the body | never |
+| `/health/live` | process alive, no dependency checks | 200 | livenessProbe |
+| `/health/ready` | dependencies + drain state | 200 / 503 | readinessProbe |
+| `/health/startup` | initialisation complete | 200 / 503 | startupProbe |
+
+`/health` must stay 200 because a misconfigured pod has to remain able to REPORT that it is
+unwell — which is exactly the rationale already written at
+`apps/stt/src/stt/core/middleware/auth.py:50-52` ("Probes and docs stay reachable even when the
+service is failing closed"). It also matches the gateway, which answers 200 with
+`status: "degraded"`. So F9 was mis-specified: guardrail's always-200 `/health` is CORRECT.
+The risk F9 named — a probe pointed at an endpoint that cannot fail — is real and is closed on
+the manifest side instead: STT's readiness/liveness and the smoke test move off `/api/v1/health`,
+and the new `probes` CI gate rejects any probe targeting a bare `/health`.
+
+**D-2 — the drain fix needs a preStop hook, or F1 changes nothing.** Repointing readiness to
+`/health/ready` makes drain state observable, but nothing SETS it. STT already exposes
+`POST /internal/streaming/drain` (`apps/stt/src/stt/streaming/api/routes.py:454`, docstring:
+"Mark this worker draining — a `preStop` hook (deployment repo) target") and the current preStop
+is a bare `sleep 10` that never calls it. The preStop now POSTs drain, then polls `/health/ready`
+until it stops returning 2xx, bounded and non-fatal, with `terminationGracePeriodSeconds` 60 → 120
+for WebSocket drains. Agreed with the TASK-985 session, which owns the streaming side.
+
+**D-3 — the drain call authenticates with the container's own token, NOT an exemption.**
+`/internal/streaming/drain` requires `X-Service-Token`; the middleware accepts one canonical
+credential, `INTERNAL_ACCESS_TOKEN` (owner decision D-D, `auth.py:44-46`). Exempting the path would
+create an unauthenticated endpoint that removes a pod from service — worse than the bug. A preStop
+`exec` runs inside the container with its env, and the stt container already receives
+`INTERNAL_ACCESS_TOKEN` from `hope-secrets`, so the hook sends it as a header. `EXEMPT_PATHS` gains
+only `/health/startup`.
+
+**D-4 — F16 downgraded to a note, not a deletion.** `smoke-pgbouncer-staging` targets the retired
+external PgBouncer and is dormant behind `SMOKE_PGBOUNCER`. It is pre-existing dead code unrelated
+to the health contract, so it is recorded rather than removed — deleting it would also orphan
+`scripts/smoke-pgbouncer.sh` and the PgBouncer Grafana dashboard. The finding F16 actually pointed
+at is the ABSENCE of post-deploy verification, which is F15.
+
+**D-5 — HPA/metrics-server left alone (owner decision).** `metrics-server` IS deployed in
+`kube-system` and reports Healthy, but serves no data: its startup log repeats
+`"Failed probe" probe="metric-storage-ready" err="no metrics to serve"`, `kubectl top pod` returns
+`0m` for every pod, and all 13 HPAs sit on `FailedGetResourceMetric`. Repairing it is a
+cluster-addon change outside both repos and needs an owner call.
+
 ## Implementation Plan — lanes
 
 One writer per worktree; the orchestrator owns merges, pushes and cluster verification.
@@ -102,3 +150,5 @@ _(filled in as lanes land)_
 | Date | Change |
 |---|---|
 | 2026-09-18 | Ticket opened. Audit of all apps/services + k8s probes + Argo recorded; 17 findings, 5 live defects. |
+| 2026-09-18 | F13 landed on `dev-2.2` (85146a554): dead duplicate health controller deleted; `pnpm api:build` 12/12 green. |
+| 2026-09-18 | Decisions D-1..D-5 recorded. F9 re-specified (contract, not status codes); F16 downgraded to a note; preStop drain + D-3 auth added to the DEPLOY lane. |
