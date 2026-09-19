@@ -479,7 +479,13 @@ export function IngestPane({ gated, onGate }: { gated: boolean; onGate: () => vo
                 <Button type="button" variant="ghost" size="sm" onClick={enterAdvanced} disabled={ingest.isPending}>
                   Ingest as raw JSON
                 </Button>
-                <Button type="submit" size="sm" disabled={!canSubmit}>
+                {/* Disabled ONLY for the two states the user cannot argue with: a request in
+                    flight, and the doctor-context gate. Validation errors deliberately do NOT
+                    disable it — `handleSubmit` guards on `canSubmit` and flips `attemptedSubmit`,
+                    which is what reveals the per-row messages. A button disabled by validation
+                    can never be pressed, so the reason it is disabled can never be shown
+                    (rule 11 §5: a disabled button needs a visible reason). */}
+                <Button type="submit" size="sm" disabled={ingest.isPending || blockedByGate}>
                   {ingest.isPending ? <Spinner /> : <IconUpload aria-hidden />}
                   Queue ingest
                 </Button>
