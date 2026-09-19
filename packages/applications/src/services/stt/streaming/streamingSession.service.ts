@@ -299,6 +299,11 @@ export class StreamingSessionService implements IStreamingSessionService {
         pipelineId: data.pipelineId ?? (data as any).pipeline_id,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         activeEngine: data.activeEngine ?? (data as any).active_engine,
+        // TASK-991 — whether STT actually registered a pushed voice profile. Left
+        // undefined against an older STT that predates the echo, same as pipelineId/
+        // activeEngine above.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        voiceProfileSeeded: data.voiceProfileSeeded ?? (data as any).voice_profile_seeded,
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
