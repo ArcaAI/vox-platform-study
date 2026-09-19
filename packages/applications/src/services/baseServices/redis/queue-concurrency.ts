@@ -48,7 +48,7 @@ export const DEFAULT_PRISMA_PG_MAX = 15;
  * rate (229 req/s) is ~2.9x LOWER than the 667 req/s the ticket first assumed,
  * so the HTTP side of this budget got cheaper — but the binding term is the
  * worker side (6.3 of the 14.3 below), which the measurement does not touch,
- * and the reservation above is a BURST budget that a lower steady rate makes
+ * and {@link HTTP_POOL_RESERVATION} is a BURST budget that a lower steady rate makes
  * more comfortable rather than smaller. Trimming the pool to the new steady
  * figure would be tuning against today's console while the worker table has
  * just gone from 11 serial slots to 39.
