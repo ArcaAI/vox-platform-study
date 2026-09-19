@@ -422,7 +422,13 @@ describe('DnaWritingStyleAdminController', () => {
       expect(result.status).toBe('processing');
     });
 
-    it('should return failed status with error when job failed', async () => {
+    // TASK-991 — `failedReason` is no longer echoed verbatim. It is BullMQ's own
+    // `Error.message`, which for an upstream or infrastructure fault is whatever the
+    // thrower happened to say ("Request failed with status code 503", an axios dump, a
+    // Prisma validation error naming the tenant, the doctor and every column). The route
+    // now answers through the `safeJobError` allow-list: a message the DNA processor
+    // itself raises survives; anything else collapses to one fixed string.
+    it('collapses an unrecognised failure reason to the generic message', async () => {
       mockDnaQueue.getJob.mockResolvedValue({
         id: 'job-3',
         data: { tenantId: 'tenant-1', doctorId: 'doctor-1', userId: 'doctor-1' },
@@ -435,7 +441,22 @@ describe('DnaWritingStyleAdminController', () => {
 
       expect(result.jobId).toBe('job-3');
       expect(result.status).toBe('failed');
-      expect(result.error).toBe('TEXT service unavailable');
+      expect(result.error).toBe('Generation failed');
+    });
+
+    it('passes a known domain failure through unchanged', async () => {
+      mockDnaQueue.getJob.mockResolvedValue({
+        id: 'job-4',
+        data: { tenantId: 'tenant-1', doctorId: 'doctor-1', userId: 'doctor-1' },
+        getState: vi.fn().mockResolvedValue('failed'),
+        returnvalue: undefined,
+        failedReason: 'No approved text samples available for DNA analysis',
+      });
+
+      const result = await controller.getJobStatus('job-4');
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toBe('No approved text samples available for DNA analysis');
     });
 
     it('should return queued status when job is waiting', async () => {
