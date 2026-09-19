@@ -12,13 +12,16 @@ import {
 } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
+import { gatewayKeepAliveAgents } from '../../common';
 import { AgentController } from './agent.controller';
 
 /** `/agents/**` — the Agent business plane (TASK-863 §3.5). */
 @Module({
   imports: [
     AgentServiceModule,
-    HttpModule.register({ timeout: 120000, maxRedirects: 3 }),
+    // TASK-993 lane C — keepAlive pooling shared with `speech.module.ts` (both call
+    // TTS_URL); see `common/gateway-http-agent.ts` for the sizing rationale.
+    HttpModule.register({ timeout: 120000, maxRedirects: 3, ...gatewayKeepAliveAgents }),
     AiProviderConnectionServiceModule,
     UsageLedgerServiceModule,
     EntitlementsServiceModule,
