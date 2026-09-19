@@ -380,7 +380,13 @@
     "pgbv:show:stats": "PGPASSWORD=hope_app_local psql -h 127.0.0.1 -p 6532 -U hope_app -d pgbouncer -c 'SHOW STATS;'",
     "pgbv:push": "dotenv -e packages/database/tests/pgbouncer-validation/.env -- pnpm --filter @arcaai/database db:push",
     "pgbv:test": "dotenv -e packages/database/tests/pgbouncer-validation/.env -- vitest run --config packages/database/tests/pgbouncer-validation/vitest.config.ts",
-    "pgbv:pgbench": "bash packages/database/tests/pgbouncer-validation/pgbench/run-baseline.sh"
+    "pgbv:pgbench": "bash packages/database/tests/pgbouncer-validation/pgbench/run-baseline.sh",
+    "── LOAD — capacity harness (TASK-993), see tests/load/README.md ──": "",
+    "load:session": "tsx tests/load/session/measure-session.ts",
+    "load:run": "tsx tests/load/src/run-load.ts",
+    "load:seed": "tsx tests/load/fixture/seed-load-fixture.ts",
+    "load:lint": "eslint --max-warnings 0 --no-config-lookup --config tests/load/eslint.config.mjs \"tests/load/**/*.ts\"",
+    "load:typecheck": "tsc --noEmit -p tests/load/tsconfig.json"
   },
   "workspaces": [
     "apps/*",

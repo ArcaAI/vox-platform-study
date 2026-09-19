@@ -1,0 +1,41 @@
+{
+  "source": "measured",
+  "recordedAt": "2026-09-19T11:37:45.670Z",
+  "requestsPerMinute": 26,
+  "requestsPerNavigation": 2.18,
+  "idleRequestsPerMinute": 8.5,
+  "routeMix": {
+    "GET admin/health/services": 0.0976,
+    "GET admin/platform/metrics": 0.0976,
+    "GET changelog/unseen": 0.0732,
+    "POST users/me/permission-checks": 0.0732,
+    "GET admin/settings/features/effective": 0.0732,
+    "GET admin/audit-logs": 0.0732,
+    "GET admin/tenants": 0.0732,
+    "GET users/me/settings": 0.0488,
+    "GET admin/rbac/roles": 0.0488,
+    "POST api/auth/login": 0.0244,
+    "GET admin/monitoring/uptime": 0.0244,
+    "GET admin/monitoring/sessions": 0.0244,
+    "GET admin/queues/health/redis": 0.0244,
+    "GET admin/service-releases/current": 0.0244,
+    "GET admin/service-releases": 0.0244,
+    "GET admin/entitlements/enabled": 0.0244,
+    "GET admin/entitlements/plans": 0.0244,
+    "GET admin/settings/features/matrix": 0.0244,
+    "GET admin/rate-limit": 0.0244,
+    "GET admin/queues": 0.0244,
+    "GET admin/audit-logs/cursor": 0.0244,
+    "GET admin/departments": 0.0244,
+    "GET admin/users": 0.0244
+  },
+  "notes": [
+    "walked 11 screens (10 client-side, 1 document loads)",
+    "client-side navigation: 1.60 gateway requests each",
+    "document load: 8.00 gateway requests each (the TanStack cache is destroyed, so every shell query re-runs)",
+    "settle 4000ms per screen, idle window 71s",
+    "409 asset/RSC requests and 0 cookie-only BFF calls were NOT counted as gateway load",
+    "the ACTIVE rate is an upper bound: it assumes a user who navigates continuously with no reading pause beyond the settle window",
+    "SSE/WS byte traffic is not counted — only the requests that open and re-open those streams"
+  ]
+}
