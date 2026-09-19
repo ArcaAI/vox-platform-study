@@ -111,9 +111,12 @@ from text.services.provider_queue import ProviderQueue, QueueFullError
 from text.services.rate_limiter import RateLimitTracker, estimate_tokens
 from text.services.resizable_semaphore import ResizableSemaphore
 from text.services.retry_handler import (
+    DEFAULT_RATE_LIMIT_RETRY_AFTER_S,
     INVALID_REQUEST_ERROR_TYPE,
+    RATE_LIMITED_ERROR_TYPE,
     calculate_backoff,
     is_provider_invalid_request,
+    is_provider_rate_limited,
     provider_error_code_from,
     retry_after_from,
     should_retry,
@@ -350,6 +353,21 @@ def _get_provider_timeout(runtime_timeouts: dict[str, int], provider_name: str) 
     """
     served = runtime_timeouts.get(provider_name)
     return float(served) if served else float(PROVIDER_TIMEOUT_FLOOR_S)
+
+
+def _classify_provider_failure(exc: BaseException) -> str:
+    """The ``error_type`` for a provider exception: one verdict, two readers.
+
+    The retry loop and the terminal ``except Exception`` arm both have to name
+    the same failure, and before TASK-993 they each inlined the classification.
+    Two copies of a three-way rule is how one of them ends up a branch behind
+    the other.
+    """
+    if is_provider_rate_limited(exc):
+        return RATE_LIMITED_ERROR_TYPE
+    if is_provider_invalid_request(exc):
+        return INVALID_REQUEST_ERROR_TYPE
+    return "provider_error"
 
 
 # NOTE — ("`ORJSONResponse` as `default_response_class`") was tried
@@ -718,11 +736,16 @@ async def generate(
                     # large for the loaded context) can never succeed on a retry —
                     # classify it so `should_retry` refuses it unconditionally,
                     # instead of burning the retry budget on a fixed outcome.
-                    error_type = (
-                        INVALID_REQUEST_ERROR_TYPE
-                        if is_provider_invalid_request(exc)
-                        else "provider_error"
-                    )
+                    #
+                    # D-5 (TASK-993): a vendor 429 is the opposite — the one 4xx
+                    # the upstream is ASKING us to come back from, usually with a
+                    # deadline attached. It gets its own type, which `should_retry`
+                    # admits structurally and whose `Retry-After` the backoff below
+                    # then actually reads (before this, the break above made
+                    # `retry_after_from` unreachable for the case it was written
+                    # for). A 408 is transient too, but it is not a rate limit, so
+                    # it stays an ordinary `provider_error`.
+                    error_type = _classify_provider_failure(exc)
                     last_exc = exc
 
                 if not should_retry(error_type, retry_on, attempt, max_retries):
@@ -1058,17 +1081,27 @@ async def generate(
         GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="failed").inc()
         raise
     except Exception as exc:
-        if cb:
-            cb.record_failure()
-            _update_cb_metric(request_body.provider, cb)
         latency_ms = int((time.monotonic() - start) * 1000)
         # D5: the LAST attempt's exception may still be the deterministic
         # provider 4xx the retry loop above already refused to retry (or, with
         # max_retries=0 / retry_on excluding it, the ONLY attempt) — classify
         # it the same way here so the response is 422 with a `code`, not the
         # generic 502 an operator reads as "the provider is down".
-        is_invalid_request = is_provider_invalid_request(exc)
-        error_type = INVALID_REQUEST_ERROR_TYPE if is_invalid_request else "provider_error"
+        error_type = _classify_provider_failure(exc)
+        is_rate_limited = error_type == RATE_LIMITED_ERROR_TYPE
+        is_invalid_request = error_type == INVALID_REQUEST_ERROR_TYPE
+        if cb:
+            # D-5 (TASK-993): the breaker measures provider HEALTH, and a 429 is
+            # the provider answering correctly — it is evidence about OUR rate,
+            # not its health. `count_rate_limits` (control plane, via
+            # `LaneBudget`) has always been able to say so; no call site ever
+            # told the breaker a failure WAS a rate limit, so the knob was
+            # unreachable and five throttles in a row turned a seconds-long
+            # vendor pause into a 30s outage for every tenant on that provider.
+            # Same reasoning as the `ProviderCredentialsError` and
+            # `ConcurrencyLimitError` arms above, which already decline to count.
+            cb.record_failure(is_rate_limit=is_rate_limited)
+            _update_cb_metric(request_body.provider, cb)
         code = provider_error_code_from(exc) if is_invalid_request else None
         logger.error(
             "generation.failed",
@@ -1101,6 +1134,21 @@ async def generate(
                 tenant_id=x_tenant_id,
             )
         )
+
+        if is_rate_limited:
+            # 429 + `Retry-After`, through the SAME `RateLimitError` path the
+            # pre-emptive limiter above already uses — one 429 contract, not
+            # two. 422 was actively harmful here: `@arcaai/vox-node` retries
+            # 408/429/5xx, so a 422 made the whole chain give up on a condition
+            # that clears on its own. The message is a FIXED sentence: the
+            # vendor's own text can quote the prompt.
+            asked_for = retry_after_from(exc)
+            raise RateLimitError(
+                "The upstream model provider is rate limiting this request.",
+                retry_after=(
+                    asked_for if asked_for is not None else DEFAULT_RATE_LIMIT_RETRY_AFTER_S
+                ),
+            ) from exc
 
         if is_invalid_request:
             raise HTTPException(

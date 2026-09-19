@@ -15,6 +15,16 @@ platform's retry budget against an outcome that cannot change, and the
 generic 502 that used to follow reads as "the provider is down" rather than
 "the request was rejected". `provider_status_code_from` / `provider_error_code_from`
 below classify that shape; `should_retry` refuses it unconditionally.
+
+TASK-993 D-5: that sweep was written for a malformed body and took **429 and
+408 with it**, which are the opposite kind of 4xx — the provider answered
+promptly and correctly, and (for a 429) named a deadline it is asking us to
+honour. Retrying them is not waste, it is the whole point, so
+`_TRANSIENT_PROVIDER_STATUSES` carves them back out. A 429 additionally gets
+its own `RATE_LIMITED_ERROR_TYPE`, which `should_retry` admits STRUCTURALLY —
+the exact mirror of the `invalid_request` refusal, for the mirror reason: it is
+the one error the upstream has explicitly asked us to retry, and a caller that
+skips the backoff amplifies the incident for everyone sharing that upstream.
 """
 
 from __future__ import annotations
@@ -125,6 +135,30 @@ _CONTEXT_WINDOW_PHRASES: tuple[str, ...] = (
     "exceeds the model",
 )
 
+#: The 4xx statuses that are TRANSIENT rather than deterministic — the provider
+#: rejected this ATTEMPT, not this REQUEST, so a later one can succeed. 429
+#: ("you are going too fast") and 408 ("that attempt took too long") are the
+#: only two: every other 4xx describes the request itself.
+_TRANSIENT_PROVIDER_STATUSES = frozenset({408, 429})
+
+#: The error-type value a vendor 429 is classified as. Admitted by
+#: `should_retry` structurally, bounded only by the attempt ceiling.
+RATE_LIMITED_ERROR_TYPE = "rate_limited"
+
+#: The `code` both surfaces answer with for a vendor 429 — the blocking route's
+#: `error_code` (via `RateLimitError`) and the streaming producer's terminal
+#: frame. ONE token, because a client should not have to learn two names for
+#: one condition; `test_retry_and_timeout.py` pins the two together.
+RATE_LIMITED_CODE = "RATE_LIMITED"
+
+#: The wait advertised to the CALLER when a vendor 429 exhausted the retry
+#: budget and the vendor itself named no deadline. A 429 with no `Retry-After`
+#: is a 429 nothing can pace against, which invites the same storm straight
+#: back. Not config and not a tuning knob: it is this error type's contract,
+#: exactly like `CircuitOpenError`'s 30s and `ConcurrencyLimitError`'s 5s in
+#: `core/exception_handlers.py`.
+DEFAULT_RATE_LIMIT_RETRY_AFTER_S = 5.0
+
 
 def provider_status_code_from(exc: BaseException) -> int | None:
     """The HTTP status code a provider's own response carried, if any.
@@ -155,10 +189,27 @@ def provider_status_code_from(exc: BaseException) -> int | None:
     return status if isinstance(status, int) else None
 
 
+def is_provider_rate_limited(exc: BaseException) -> bool:
+    """Whether ``exc`` is a vendor 429 — the provider throttling us.
+
+    Deliberately narrower than "transient 4xx": a 408 is retryable too, but it
+    is not a rate limit, so it must not inherit the 429 RESPONSE mapping. A
+    caller told "429, Retry-After" pauses; a caller told 429 for something
+    nobody rate-limited pauses for no reason.
+    """
+    return provider_status_code_from(exc) == 429
+
+
 def is_provider_invalid_request(exc: BaseException) -> bool:
-    """Whether ``exc`` is a deterministic provider 4xx — never retryable."""
+    """Whether ``exc`` is a deterministic provider 4xx — never retryable.
+
+    The transient statuses are excluded (TASK-993 D-5): they are 4xx by status
+    only, and refusing to retry them is the defect, not the policy.
+    """
     status_code = provider_status_code_from(exc)
-    return status_code is not None and 400 <= status_code < 500
+    if status_code is None or not (400 <= status_code < 500):
+        return False
+    return status_code not in _TRANSIENT_PROVIDER_STATUSES
 
 
 def provider_error_code_from(exc: BaseException) -> str:
@@ -196,9 +247,20 @@ def should_retry(
     provider has already decided synchronously. This is structural, not a
     ``retry_on`` default: a caller that explicitly lists ``"invalid_request"``
     still gets exactly one attempt.
+
+    A vendor 429 (``RATE_LIMITED_ERROR_TYPE``) is the exact mirror: ADMITTED
+    structurally, whatever ``retry_on`` says, because it is the one error the
+    upstream has explicitly asked us to retry — and a request that skips the
+    backoff does not just fail itself, it keeps the upstream saturated for
+    every other tenant on it. ``max_retries`` still bounds it, so a caller that
+    genuinely wants one attempt asks for one attempt; ``retry_on`` is a
+    which-error-CLASSES knob and was never the right place to disable the one
+    class that comes with a deadline attached.
     """
     if error_type == INVALID_REQUEST_ERROR_TYPE:
         return False
     if attempt >= min(max_retries, MAX_RETRIES):
         return False
+    if error_type == RATE_LIMITED_ERROR_TYPE:
+        return True
     return error_type in retry_on
