@@ -329,8 +329,8 @@ export function DoctorDetailDrawer({
         title="Erase this doctor's DNA profile"
         description={
           <>
-            This permanently erases <span className="text-foreground font-medium">every report and version</span> this doctor's writing-style
-            profile holds — not only the one shown here. It cannot be undone. Use this for offboarding or a compliance request — the doctor's own
+            This permanently erases <span className="text-foreground font-medium">every report and version</span> this doctor&apos;s writing-style
+            profile holds — not only the one shown here. It cannot be undone. Use this for offboarding or a compliance request — the doctor&apos;s own
             opt-out toggle is unaffected, so if DNA learning is still enabled for them, a fresh profile will be built from future notes.
           </>
         }
