@@ -362,16 +362,26 @@ describe('FileTranscriptionService', () => {
   // uploadAndTranscribeWithProgress — same agentSlug/pipelineId precedence
   // (the two upload methods share `resolveAgentSelection`; this proves the
   // second call site is actually wired to it, not just `uploadAndTranscribe`)
+  //
+  // This method does NOT go through `fetch`: progress reporting needs upload
+  // events, so it posts through `apiClient.uploadFormData`, which is XHR.
+  // Mocking `mockFetch` here would let a real XMLHttpRequest fly, so the
+  // assertion is made on the FormData handed to that transport instead.
   // =========================================================================
 
   describe('uploadAndTranscribeWithProgress — agentSlug replaces pipelineId (TASK-991)', () => {
+    /** The XHR transport the progress path actually posts through. */
+    function spyOnUpload() {
+      return vi.spyOn(apiClient, 'uploadFormData').mockResolvedValue(createMockTranscribeResponse());
+    }
+
     it('sends agentSlug and NO pipelineId key when the caller named an agent only', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
+      const upload = spyOnUpload();
 
       await service.uploadAndTranscribeWithProgress(file, { agentSlug: 'clinic-asr' });
 
-      const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
+      const callBody = upload.mock.calls[0][1];
       expect(callBody.get('agentSlug')).toBe('clinic-asr');
       expect(callBody.get('pipelineId')).toBeNull();
       expect(mockLogger.warn).not.toHaveBeenCalled();
@@ -379,11 +389,11 @@ describe('FileTranscriptionService', () => {
 
     it('prefers agentSlug when BOTH are passed — pipelineId is dropped from the form data and a warning names the conflict', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
+      const upload = spyOnUpload();
 
       await service.uploadAndTranscribeWithProgress(file, { agentSlug: 'clinic-asr', pipelineId: 'legacy-pipe' });
 
-      const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
+      const callBody = upload.mock.calls[0][1];
       expect(callBody.get('agentSlug')).toBe('clinic-asr');
       expect(callBody.get('pipelineId')).toBeNull();
       expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/both/i), expect.objectContaining({ operation: 'resolveAgentSelection' }));
