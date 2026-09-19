@@ -642,27 +642,6 @@ sign-admin-console:
     - !reference [.image-signing-guard, rules]
     - !reference [.rules-admin-console, rules]
 
-# --- Compat playground (hidden, not deleted) ---
-.sbom-compat-playground:
-  extends: .cyclonedx-sbom
-  needs:
-    - job: .build-compat-playground
-      artifacts: true
-  rules:
-    - !reference [.image-signing-guard, rules]
-    - !reference [.rules-compat-playground, rules]
-
-.sign-compat-playground:
-  extends: .cosign-sign-attest
-  needs:
-    - job: .build-compat-playground
-      artifacts: true
-    - job: .sbom-compat-playground
-      artifacts: true
-  rules:
-    - !reference [.image-signing-guard, rules]
-    - !reference [.rules-compat-playground, rules]
-
 # --- NLP ---
 sbom-nlp:
   extends: .cyclonedx-sbom

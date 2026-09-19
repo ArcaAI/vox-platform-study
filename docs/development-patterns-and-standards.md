@@ -8,7 +8,7 @@ Verification dates: the tooling surface (§2.3–2.4 Python commands, §5.1–5.
 
 Command-level how-to (starting the local stack, per-suite runners, troubleshooting) lives in the companion [development-guide.md](./development-guide.md); this document is the _what the code does_ reference.
 
-Monorepo shape (verified): Turborepo + pnpm workspace (`pnpm-workspace.yaml`: `apps/*` minus the deliberately-excluded `apps/quick-compat-app`, `packages/*`, `packages/agentic-sdk-v2/examples/*`), Node >= 22, pnpm 10.34.5, TypeScript 5.9, Prisma 7, NestJS 11, Vitest 4, Playwright, Python 3.11 (FastAPI) services under `apps/`, one shared conda env `arcaenv` plus a uv workspace (root `pyproject.toml` + single `uv.lock`).
+Monorepo shape (verified): Turborepo + pnpm workspace (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `packages/agentic-sdk-v2/examples/*`), Node >= 22, pnpm 10.34.5, TypeScript 5.9, Prisma 7, NestJS 11, Vitest 4, Playwright, Python 3.11 (FastAPI) services under `apps/`, one shared conda env `arcaenv` plus a uv workspace (root `pyproject.toml` + single `uv.lock`).
 
 ---
 
@@ -319,7 +319,7 @@ Retention is admin-controlled through the control plane, NOT env. Each service's
 
 ## 3. Frontend patterns
 
-`apps/ui-playground` and `apps/admin` were both removed; cite `packages/ui` and `packages/agentic-sdk-v2` as the exemplars. `apps/example` is a standalone raw-WebSocket live-transcription demo — deliberately NOT an SDK consumer (see `apps/example/README.md`).
+`apps/ui-playground`, `apps/admin`, `apps/example`, `apps/compat-playground` and `apps/quick-compat-app` were all removed; cite `packages/ui` and `packages/agentic-sdk-v2` as the exemplars.
 
 ### 3.1 `packages/ui` component conventions
 
@@ -414,7 +414,7 @@ Service unit tests mock repositories + `EventEmitter2` + `ClsService` and assert
 
 ### 5.2 pnpm workspace
 
-`pnpm-workspace.yaml`: `apps/*` (with `!apps/quick-compat-app` deliberately excluded — that demo installs `@arcaai/vox` from the registry and must depend on NO workspace package), `packages/*`, `packages/agentic-sdk-v2/examples/*`; `onlyBuiltDependencies` for Prisma packages; `overrides` pin `class-validator`, `react`/`react-dom` and the React 19 types. No catalog: feature is not used. Internal deps use `workspace:*`. Filters are the house style for scoping: `pnpm --filter @arcaai/database db:generate`, `turbo run build --filter=@arcaai/api...`.
+`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `packages/agentic-sdk-v2/examples/*`; `onlyBuiltDependencies` for Prisma packages; `overrides` pin `class-validator`, `react`/`react-dom` and the React 19 types. No catalog: feature is not used. Internal deps use `workspace:*`. Filters are the house style for scoping: `pnpm --filter @arcaai/database db:generate`, `turbo run build --filter=@arcaai/api...`.
 
 ### 5.3 ESLint
 
@@ -436,7 +436,7 @@ Stages: `install → validate → prepare → test → build → scan → publis
 | `lint-python` (validate.yml)                                                                                                  | ruff over stt, text, nlp, guardrail, harness                                                      |
 | `env-drift-check` (validate.yml)                                                                                              | `.env.sample` / `turbo.json#globalEnv` / per-service samples stay in sync (`pnpm env:sync:check`) |
 | `validate-release-tag` (validate.yml)                                                                                         | release tags match the `<SVC>-<M>.<m>.<p>` grammar                                                |
-| `test-api`, `test-packages`, `test-sdk`, `test-admin-console`, `test-ui-ct` (`.gitlab/ci/test.yml`) | Vitest/Playwright suites. `test-compat-playground` is hidden.                          |
+| `test-api`, `test-packages`, `test-sdk`, `test-admin-console`, `test-ui-ct` (`.gitlab/ci/test.yml`) | Vitest/Playwright suites.                          |
 | `test-stt`, `test-text`, `test-tts`, `test-guardrail`, `test-nlp`, `test-harness`, `harness-eval-gate` (test.yml)             | pytest suites + the harness evaluation gate                                                       |
 | `scan-gitleaks` (`.gitlab/ci/scan.yml`)                                                                                       | gitleaks v8.30.1 `detect` with `.gitleaks.toml`                                                   |
 | `scan-*` (scan.yml)                                                                                                           | Trivy image scans per service                                                                     |

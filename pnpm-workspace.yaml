@@ -1,8 +1,5 @@
 packages:
   - "apps/*"
-  # Standalone demo app: installs @arcaai/vox from GitHub Packages with npm and
-  # deliberately depends on NO workspace package.
-  - "!apps/quick-compat-app"
   - "packages/*"
   - "packages/agentic-sdk-v2/examples/*"
 

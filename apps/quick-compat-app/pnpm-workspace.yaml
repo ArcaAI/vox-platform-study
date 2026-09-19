@@ -1,4 +1,0 @@
-# Makes this directory its OWN pnpm root, so `pnpm install` here ignores the
-# HOPE-v2 workspace above it and resolves every dependency — including
-# @arcaai/vox — from a registry.
-packages: []

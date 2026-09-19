@@ -120,20 +120,6 @@ scan-nlp:
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-nlp, rules]
 
-# Hidden with `.build-compat-playground`. See build.yml for re-enable.
-.scan-compat-playground:
-  extends: .trivy-scan
-  needs:
-    - job: .build-compat-playground
-      artifacts: true
-  variables:
-    SCAN_IMAGE: $IMAGE
-  rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
-      when: never
-    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
-    - !reference [.rules-compat-playground, rules]
-
 # ── Filesystem scan (source code SAST) — runs on ALL pipelines ───────────────
 
 scan-source:

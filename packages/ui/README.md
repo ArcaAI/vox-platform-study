@@ -6,7 +6,7 @@ timelines, data grids, a workflow canvas) behind one workspace package, together
 canonical Tailwind v4 design tokens for the "Calm Clinical Teal" theme. React 19 is a peer
 dependency (with `react-dom`); `react-hook-form` is an optional peer (only needed for `Form`).
 Styling is Tailwind CSS v4, CSS-first, no JS config. Variants use `class-variance-authority` (cva)
-+ `cn()` (clsx + tailwind-merge). Consumed by `apps/admin-console` and `apps/compat-playground`.
++ `cn()` (clsx + tailwind-merge). Consumed by `apps/admin-console`.
 
 ## Layout
 

@@ -50,7 +50,7 @@ pnpm stack:test:doctor       # read-only health probe of the test stack
 ## How it works
 
 - **Package manager / task runner**: pnpm 10.31 workspaces + Turborepo. Root `pnpm test` runs
-  `turbo run test` across all packages except `@arcaai/compat-playground`; each package's `test`
+  `turbo run test` across all packages; each package's `test`
   script is what turbo invokes.
 - **TypeScript tests**: Vitest 4. Unit (colocated `*.test.ts` / `__tests__/`), integration
   (`integration/**`, live test DB), API E2E (Playwright, `apps/api/tests/e2e/*.spec.ts`).
