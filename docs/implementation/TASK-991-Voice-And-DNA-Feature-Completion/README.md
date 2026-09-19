@@ -175,6 +175,38 @@ End-to-end, driven by the orchestrator against a live gateway (`:8968`) and the 
 The test API booting at all is also the boot smoke for lane D's new `AgentRepository` injection:
 deny-by-default route audit and DI graph both passed.
 
+
+## Wave 2 — defects found by the live end-to-end run (2026-09-19)
+
+Provisioned tenant VOX, clinician doctor-1 with an enrolled voice profile, published the `test-dia`
+ASR agent (diarization on, `arcaai-whisper-large-ml-en-gguf-q8_0`), then drove batch + realtime
+through the admin console, `@arcaai/vox` and `@arcaai/vox-node`.
+
+**The voice chain works**: console batch as doctor-1 returned
+`{"speakers_detected":1,"new_speakers_created":0,"speaker_ids":["Dr Manoj Johnson (doctor-1)"]}` —
+`new_speakers_created: 0` means it MATCHED the enrolled profile. Realtime on a doctor-1 JWT
+reported `voiceProfileSeeded: true` with the same label, which also validates lane C in production
+conditions. Accuracy was WER 0.556 / CER 0.466 on every run; the English opening is recognised in
+partials and then DISCARDED by finalization, so the loss is in merge, not recognition.
+
+| # | Defect | Evidence |
+|---|---|---|
+| W2-1 | Service-account BATCH is refused `400 "User context is required"` — the handler reads a CLS user the guard never writes for a machine — yet `route-manifest.json` grants the route `svc:stt:transcription:write` with `forbidServiceAccount: false`. Manifest and runtime disagree. | `transcription-job.controller.ts` ~219, 263-268 |
+| W2-2 | Batch never attaches speaker labels to segments: diarization metadata carries `speaker_ids`, every `transcript_segments[].speaker` is `null`, and `resultMetadata.segments` is `[]` while `transcript_segments` is populated. Realtime attaches them correctly. | measured on jobs `01a0b95a…`, `01a0b95b…` |
+| W2-3 | Batch segment end-times are `t0 + 30000` always (`30000`, `35075` on an 11.72 s clip). Realtime is correct (0 → 11.744). | same jobs |
+| W2-4 | A job can wedge in PROCESSING forever: after a worker restart, redelivery gets `500 "Cannot start job in PROCESSING status"`, which `gateway.py` substring-matches, treats as terminal, ACKs and drops. | `gateway.py:154-165`, `transcribe_file.py:477-480` |
+| W2-5 | `SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS = 1500` (quiet window 250) but whisper.cpp emits the tail final 3-6 s after `finalizing`, so a consumer on defaults ends with partials and NO final. | reproduced twice |
+| W2-6 | `FileTranscribeOptions` has `pipelineId` (deprecated) but no `agentSlug`, so the browser SDK cannot target a named agent though the gateway route accepts one. | `FileTranscriptionService.ts:31-49` |
+| W2-7 | Provisioning a STARTER tenant creates 9 departments against a plan cap of 8 — the tenant is over quota at birth and cannot add one. | `maxDepartments (9/8)` on VOX |
+| W2-8 | A failed provision leaves debris that blocks retry: the tenant is soft-deleted but its unique `key` still collides, and its cloned agents/workflows are orphaned (`tenantId` carries no FK). | observed on the first VOX attempt |
+
+Not defects, recorded so they are not re-investigated: voice-profile labelling requires a HUMAN
+session (profiles seed from the session owner; a service account has no user and an API key is
+bound to its CREATOR via `ApiKey.userId`, which the create DTO cannot override) — machine
+credentials correctly get `Speaker 1`. A long-running dev STT worker does not reload, so after a
+contract change it fails every job with a `ResolvedAsrSpec` validation error until restarted.
+`password123` is correctly refused by the password policy.
+
 ## Follow-ups (not in this ticket)
 
 1. **~24 STT e2e tests assert a retired contract.** Now that they run, they expect the
