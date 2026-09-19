@@ -21,6 +21,10 @@ const mockEventEmitter = { emit: vi.fn() };
 const mockTenantService = {
   create: vi.fn(),
   deleteById: vi.fn(),
+  // W2-8 — the compensating rollback now purges (hard-delete + reference-set/
+  // department/pipeline cleanup) rather than soft-deletes; see
+  // `packages/applications/src/services/tenant/tenant.service.ts`.
+  purgeFailedProvisioning: vi.fn(),
 };
 
 const mockUserService = {
@@ -184,7 +188,7 @@ describe('TenantOnboardingService', () => {
   });
 
   describe('guardrail — never adminless', () => {
-    it('rolls back (soft-deletes) the tenant when TENANT_ADMIN assignment fails', async () => {
+    it('rolls back (purges) the tenant when TENANT_ADMIN assignment fails', async () => {
       mockUserService.fetchById.mockResolvedValue(createMockUserEntity());
       mockUserRoleAssignmentService.create.mockRejectedValue(new Error('seat quota exceeded'));
 
@@ -196,7 +200,10 @@ describe('TenantOnboardingService', () => {
         }),
       ).rejects.toThrow('seat quota exceeded');
 
-      expect(mockTenantService.deleteById).toHaveBeenCalledWith('new-tenant-id');
+      // W2-8 — a compensating PURGE (hard delete + reference-set/department/
+      // pipeline cleanup), not a soft delete: see `TenantService.purgeFailedProvisioning`.
+      expect(mockTenantService.purgeFailedProvisioning).toHaveBeenCalledWith('new-tenant-id');
+      expect(mockTenantService.deleteById).not.toHaveBeenCalled();
     });
 
     it('rolls back when the GEN department was not provisioned', async () => {
@@ -211,13 +218,32 @@ describe('TenantOnboardingService', () => {
         }),
       ).rejects.toThrow();
 
-      expect(mockTenantService.deleteById).toHaveBeenCalledWith('new-tenant-id');
+      expect(mockTenantService.purgeFailedProvisioning).toHaveBeenCalledWith('new-tenant-id');
+    });
+
+    // W2-8 — the bug was observed live on THIS path: a new-local admin
+    // rejected for a password-policy violation. Nothing before this test
+    // exercised the rollback for `createLocalAdmin`'s failure mode — only
+    // the existing-admin path (above) was covered.
+    it('rolls back (purges) the tenant when local admin creation fails (e.g., password policy)', async () => {
+      mockUserService.create.mockRejectedValue(new Error('Password does not meet the tenant policy'));
+
+      await expect(
+        service.provisionTenantWithAdmin({
+          tenantName: 'Acme Health',
+          admin: { kind: 'new-local', email: 'admin@acme.test', password: 'weak' },
+          actor,
+        }),
+      ).rejects.toThrow('Password does not meet the tenant policy');
+
+      expect(mockTenantService.purgeFailedProvisioning).toHaveBeenCalledWith('new-tenant-id');
+      expect(mockTenantService.deleteById).not.toHaveBeenCalled();
     });
 
     it('does not swallow the original error when the rollback itself fails', async () => {
       mockUserService.fetchById.mockResolvedValue(createMockUserEntity());
       mockUserRoleAssignmentService.create.mockRejectedValue(new Error('seat quota exceeded'));
-      mockTenantService.deleteById.mockRejectedValue(new Error('db down'));
+      mockTenantService.purgeFailedProvisioning.mockRejectedValue(new Error('db down'));
 
       await expect(
         service.provisionTenantWithAdmin({
