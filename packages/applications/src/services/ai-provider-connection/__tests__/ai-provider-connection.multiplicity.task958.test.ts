@@ -249,17 +249,23 @@ describe('TASK-958 — refusals (tests 8-10)', () => {
     });
   });
 
+  // TASK-991 (OD-3/OD-4): these two cases used `embeddings` as their example of an
+  // integration plane. That service is now platform-managed and refused for a tenant
+  // BEFORE the multiplicity rule is reached, which would make these assert the lock
+  // rather than the multiplicity contract. `rerank` is on the same plane
+  // (`embeddings`/`rerank`/`vector`/`model-registry`), so the contract under test is
+  // unchanged — only the example moved off the one service that now has its own gate.
   it('(10) refuses a sibling on an integration plane that serves no per-tenant model rows', async () => {
-    const { svc } = makeService({ rows: [makeRow({ service: 'embeddings', provider: 'openai' })] });
+    const { svc } = makeService({ rows: [makeRow({ service: 'vector', provider: 'qdrant' })] });
     await expect(
-      svc.upsertRow('embeddings', 'openai-second', { provider: 'openai', apiKey: 'k', enabled: true, expectedVersion: 0 }, TENANT),
+      svc.upsertRow('vector', 'qdrant-second', { provider: 'qdrant', apiKey: 'k', enabled: true, expectedVersion: 0 }, TENANT),
     ).rejects.toMatchObject({ response: { code: CONNECTION_ERROR_CODES.MULTIPLICITY_UNSUPPORTED } });
   });
 
   it('(10b) still allows the DEFAULT row on an integration plane', async () => {
     const { svc } = makeService();
-    await expect(svc.upsertRow('embeddings', 'openai', { apiKey: 'k', enabled: true, expectedVersion: 0 }, TENANT)).resolves.toMatchObject({
-      slug: 'openai',
+    await expect(svc.upsertRow('vector', 'qdrant', { apiKey: 'k', enabled: true, expectedVersion: 0 }, TENANT)).resolves.toMatchObject({
+      slug: 'qdrant',
       isDefault: true,
     });
   });
