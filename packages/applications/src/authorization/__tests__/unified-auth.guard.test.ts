@@ -397,7 +397,12 @@ describe('UnifiedAuthGuard', () => {
   // ─── 7. Edge Cases ────────────────────────────────────────────────
 
   describe('edge cases', () => {
-    it('should extract client IP from x-forwarded-for header', async () => {
+    // TASK-993 lane J: this used to assert the OPPOSITE — that the guard took
+    // the `X-Forwarded-For` first hop. That address is the cloudflared pod on
+    // this ingress and is caller-chosen off it, and it lands in the audit
+    // trail, so the header is now ignored unless a declared ingress asserted
+    // `CF-Connecting-IP` (see `client-ip-attribution.task993.test.ts`).
+    it('IGNORES x-forwarded-for and audits the socket peer / req.ip instead', async () => {
       const context = createMockContext({
         headers: { 'x-forwarded-for': '203.0.113.50, 70.41.3.18' },
       });
@@ -406,7 +411,7 @@ describe('UnifiedAuthGuard', () => {
 
       await guard.canActivate(context);
 
-      expect(apiKeyService.authenticateByRawKey).toHaveBeenCalledWith('raw-key-123', '203.0.113.50');
+      expect(apiKeyService.authenticateByRawKey).toHaveBeenCalledWith('raw-key-123', '127.0.0.1');
     });
 
     it('should allow JWT-authenticated request with no CASL requirements', async () => {
@@ -668,7 +673,7 @@ describe('UnifiedAuthGuard', () => {
   // ─── 13. getClientIp Edge Cases ───────────────────────────────────
 
   describe('getClientIp edge cases', () => {
-    it('should handle x-forwarded-for as array', async () => {
+    it('ignores a repeated x-forwarded-for too — the array form was no more trustworthy', async () => {
       const context = createMockContext({
         headers: { 'x-forwarded-for': ['203.0.113.50, 70.41.3.18', '10.0.0.1'] },
       });
@@ -680,7 +685,7 @@ describe('UnifiedAuthGuard', () => {
 
       await guard.canActivate(context);
 
-      expect(apiKeyService.authenticateByRawKey).toHaveBeenCalledWith('raw-key-123', '203.0.113.50');
+      expect(apiKeyService.authenticateByRawKey).toHaveBeenCalledWith('raw-key-123', '127.0.0.1');
     });
 
     it('should fall back to socket.remoteAddress when ip is undefined', async () => {

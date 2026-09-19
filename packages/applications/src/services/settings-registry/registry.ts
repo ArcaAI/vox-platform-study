@@ -27,7 +27,7 @@ import { METERING_COMPUTE_SETTINGS } from './descriptors/metering-compute.descri
 import { METERING_STORAGE_SETTINGS } from './descriptors/metering-storage.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
 import { PHI_REDACTION_SETTINGS } from './descriptors/phi-redaction.descriptors';
-import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_PRINCIPAL_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/platform-knobs.descriptors';
+import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_LOCKOUT_SETTINGS, RATE_LIMIT_PRINCIPAL_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/platform-knobs.descriptors';
 import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
 import { PLATFORM_SECRET_SETTINGS } from './descriptors/platform-secrets.descriptors';
 import { SECURITY_POLICY_SETTINGS } from './descriptors/security-policy.descriptors';
@@ -169,6 +169,10 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // The per-principal lane (TASK-993 OD-2) — level two of the two-level
   // bucketing model, resolved by the same service from the same cache.
   ...RATE_LIMIT_PRINCIPAL_SETTINGS,
+  // What a BREACH costs (TASK-993 D-2). Beside the two above because it is the
+  // third axis of the same policy: how many (tier), per whom (principal), and
+  // for how long after overshooting (this).
+  ...RATE_LIMIT_LOCKOUT_SETTINGS,
   // Feature availability — the ONE surface a platform admin uses to decide
   // which features exist, per tenant (TASK-932 R-8). Replaces
   // `FEATURE_FLAG_SETTINGS`, whose file is deleted: the four console visibility

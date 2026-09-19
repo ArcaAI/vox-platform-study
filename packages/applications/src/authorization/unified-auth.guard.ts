@@ -18,6 +18,9 @@ import { IApiKeyRateLimiter, RateLimitResult } from '../services/apiKey/apikey-r
 import { PERMISSION_MODE_KEY, PermissionMode, REQUIRED_PERMISSIONS_KEY, RequiredPermission, SKIP_AUTH_KEY } from './authorization.guard';
 import { AppAbility, PolicyEngine } from './policy.engine';
 import { serviceAccountPolicyRules } from '../services/serviceAccount/service-account-scopes.registry';
+// Relative, not through the package barrel: this guard is INSIDE the package
+// that now owns the primitive (TASK-993 lane J).
+import { resolveAttributedClientIp } from '../common/client-ip';
 
 export const API_KEY_REQUIRED_SCOPES = 'apiKeyRequiredScopes';
 
@@ -1079,13 +1082,25 @@ export class UnifiedAuthGuard implements CanActivate {
 
   // ─── Helpers ────────────────────────────────────────────────────────
 
+  /**
+   * The address this authentication attempt is attributed to.
+   *
+   * It reaches `ApiKeyService.authenticateByRawKey` / the service-account
+   * validator and from there the AUDIT trail, so on a PHI platform it has to
+   * name the caller. It read `X-Forwarded-For` until TASK-993 lane J, which is
+   * wrong twice over on this ingress: the header's last hop is the cloudflared
+   * pod (`Cloudflare edge → cloudflared → Traefik → pod`), so every audited
+   * action named a piece of infrastructure — and the header is caller-supplied,
+   * so a direct caller could choose the address recorded against its own
+   * credential use.
+   *
+   * One shared rule now decides it, the same one the rate limiter's bucket key
+   * uses (`common/client-ip.ts`): `CF-Connecting-IP` is believed only when the
+   * SOCKET PEER is a declared ingress (`RATE_LIMIT_TRUSTED_PROXIES`), otherwise
+   * the socket peer itself.
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private getClientIp(request: any): string {
-    const forwarded = request?.headers?.['x-forwarded-for'];
-    if (forwarded) {
-      const ips = (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',');
-      return ips[0].trim();
-    }
-    return request?.ip || request?.socket?.remoteAddress || 'unknown';
+    return resolveAttributedClientIp(request) ?? 'unknown';
   }
 }

@@ -1,13 +1,15 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerModule, type ThrottlerModuleOptions, type ThrottlerStorage } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerStorageService, type ThrottlerModuleOptions, type ThrottlerStorage } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { RateLimitConfigService } from './rate-limit-config.service';
 import { TieredThrottlerGuard } from './tiered-throttler.guard';
+import { WindowOnlyThrottlerStorage } from './window-only-storage';
 
 /**
  * Configures global rate limiting for the API gateway.
  *
- * Storage:
+ * Storage (both wrapped in `WindowOnlyThrottlerStorage`, which removes the
+ * library's fixed 60s post-breach lockout — TASK-993 D-2):
  *   - Redis-backed (`@nest-lab/throttler-storage-redis`) when a Redis URL is
  *     resolvable AND the process is not running under tests — distributes the
  *     counters across API replicas.
@@ -60,14 +62,20 @@ function resolveRedisUrl(): string | undefined {
         const cfg = new RateLimitConfigService();
 
         // Redis only outside tests and only when a URL is resolvable;
-        // otherwise fall back to the built-in in-memory storage.
+        // otherwise the library's own in-memory storage. It is constructed
+        // here rather than left to the library's default provider because
+        // BOTH are wrapped below and the wrapper needs the instance.
         const redisUrl = isTestEnv() ? undefined : resolveRedisUrl();
-        const storage: ThrottlerStorage | undefined = redisUrl ? new ThrottlerStorageRedisService(redisUrl) : undefined;
+        const backend: ThrottlerStorage = redisUrl ? new ThrottlerStorageRedisService(redisUrl) : new ThrottlerStorageService();
 
         return {
           throttlers: cfg.getThrottlers(),
           skipIf: () => !cfg.isEnabled(),
-          storage,
+          // TASK-993 D-2. The wrapper is what makes `blockDuration: 0` mean
+          // "no lockout beyond this window" on EITHER backend; without it the
+          // same zero is "no limit at all" in memory and a 500 on Redis. See
+          // `window-only-storage.ts` for the measurements.
+          storage: new WindowOnlyThrottlerStorage(backend),
         };
       },
     }),
