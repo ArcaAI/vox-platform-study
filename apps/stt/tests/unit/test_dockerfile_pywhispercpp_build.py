@@ -60,17 +60,20 @@ def test_the_gate_also_checks_which_kernels_were_compiled_in() -> None:
     )
 
 
-def test_the_source_build_refreshes_uvs_cached_wheel() -> None:
-    """uv keys its built-wheel cache on the source, not on CMAKE_ARGS.
+def test_the_source_build_cannot_be_served_from_uvs_cache() -> None:
+    """uv keys a built wheel on the source, not on CMAKE_ARGS.
 
-    Without `--refresh-package`, widening `CUDA_ARCHITECTURES` re-runs the RUN
-    layer and uv still returns the wheel a previous pipeline compiled for the
-    OLD architecture list — which is how the first `86-real;...` build shipped an
-    sm_89-only extension. `--reinstall-package` reinstalls FROM the cache and
-    does not help.
+    Job 20337 (2026-09-19) ran this step in 8.5s — "Prepared 1 package in 13ms",
+    no compiler — and installed an sm_89-only extension under a correct-looking
+    `CMAKE_CUDA_ARCHITECTURES=86-real;89-real;89-virtual`. `--reinstall-package`
+    reinstalls FROM the cache and `--refresh-package` was measured not to help, so
+    the cache mount must be absent AND `--no-cache` passed.
     """
     dockerfile = _dockerfile_text()
-    install_start = dockerfile.index("CMAKE_ARGS=\"-DGGML_CUDA=ON")
+    install_start = dockerfile.index('CMAKE_ARGS="-DGGML_CUDA=ON')
     install = dockerfile[install_start : dockerfile.index("# Build-time gate")]
 
-    assert "--refresh-package pywhispercpp" in install
+    assert "--no-cache" in install
+    # The RUN directive itself must carry no uv cache mount.
+    run_start = dockerfile.rindex("RUN ", 0, install_start)
+    assert "/root/.cache/uv" not in dockerfile[run_start:install_start]
