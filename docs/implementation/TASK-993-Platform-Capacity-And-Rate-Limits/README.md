@@ -214,17 +214,20 @@ observed window already approaches that ceiling at 33 sessions. Scaled to 1,000 
 reconnect storm becomes self-sustaining: drops → ticket mints → 429 → failed reconnects → retries.
 **Fixing the rate limits without fixing the drop cadence converts one failure into two.**
 
-### 2.13 Docs drift — Redis persistence
+### 2.13 Redis: local and cluster have deliberately DIFFERENT postures (not docs drift)
 
-`components/data-tier/redis.yaml:46-81` runs `--appendonly yes --appendfsync everysec` on an 8Gi
-PVC with `Retain`/`Retain`. **`00-project-context.md` and `09-infrastructure-devops.md` both state
-Redis persistence is disabled for PHI posture — that is stale.** The manifest comment documents the
-deliberate flip: the old `emptyDir` + no-persistence design silently dropped BullMQ jobs (audit
-log, user activity, webhooks) that had already been accepted with a 2xx. Manifest is authoritative;
-the two rule files need correcting.
+Checked directly, because the lane report claimed the rule files were stale and they are not:
 
-Note the interaction: `maxmemory 512mb` + **`noeviction`** means Redis *refuses writes* under
-pressure. The throttler's counters, the socket registry and BullMQ all write to that instance.
+| Where | Config | Verdict |
+|---|---|---|
+| Local compose (`infrastructure/docker/docker-compose.yml:277-282`) | `--appendonly no --save ""`, `maxmemory 64mb`, `allkeys-lru` | persistence genuinely disabled — `09-infrastructure-devops.md:33` is **correct** |
+| Cluster (`hope-v2-deployment` `components/data-tier/redis.yaml:46-81`) | AOF `everysec` on an 8Gi PVC, `maxmemory 512mb`, **`noeviction`** | persistence deliberately ENABLED; the manifest comment records that the old `emptyDir` design silently dropped BullMQ jobs already accepted with a 2xx |
+
+No rule file claims anything about the CLUSTER Redis persistence, so there is nothing to correct
+there. The real hazard is the divergence itself: **local dev evicts (`allkeys-lru`), the cluster
+refuses writes (`noeviction`)**. The throttler counters, the socket registry and every BullMQ queue
+write to that instance, so a memory-pressure failure mode exists in production that local testing
+can never reproduce. Sizing that headroom is lane E's item 4.
 
 ---
 
@@ -259,7 +262,18 @@ TDD per lane: failing test first, then minimal fix, then refactor. Each lane run
 
 ---
 
-## 5. Owner Decisions Required
+## 5. Owner Decisions — ANSWERED 2026-09-19
+
+| # | Decision | Answer |
+|---|---|---|
+| **OD-1** | Headroom over the load model | **3×, then load-test to confirm.** Baseline revised up: a console screen fires 10–15 TanStack queries, so an active user is ~30–50 req/min, not 10. |
+| **OD-2** | Bucketing model | **Two-level: per-principal bucket under a tenant-wide aggregate ceiling.** The plan number becomes a capacity guard, not a per-user budget. |
+| **OD-3** | Scaling | **Fix the pool + drive the HPA off a saturation signal**, not CPU. |
+| **OD-4** | ENTERPRISE `maxUsers` / `maxConcurrentSessions` headroom | Decided by the orchestrator: both currently sit exactly ON the 100-user target, which fails the stated requirement. Lane D raises them with headroom and justifies the figure. |
+
+### Superseded — the original question set
+
+| # | Decision | Why it could not be defaulted |
 
 | # | Decision | Why it cannot be defaulted |
 |---|---|---|
@@ -292,5 +306,6 @@ _Pending._
 
 | Date | Change |
 |---|---|
+| 2026-09-19 | OD-1..OD-4 answered. Lanes A/B/C/D/E dispatched to worktrees; lane F (two-level bucketing) serialized behind A, which owns `modules/throttle/**`. §2.13 corrected — the Redis rule text is accurate; local and cluster differ by design. |
 | 2026-09-19 | Cluster survey added (§2.10–2.13): HPAs exist but cannot fire on the real bottleneck; client IP is `CF-Connecting-IP`; measured 341-reconnects-vs-33-sessions storm; Redis-persistence docs drift. |
 | 2026-09-19 | Ticket opened. Discovery complete across gateway, runtime, Python/provider surfaces. Six defects/findings recorded (D-1…D-5, F-1) with live reproduction of D-1 and D-3. |
