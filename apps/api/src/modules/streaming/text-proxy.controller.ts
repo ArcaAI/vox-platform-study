@@ -197,7 +197,32 @@ const RELAYABLE_ERROR_PHRASES: Readonly<Record<string, string>> = {
   VISION_NOT_SUPPORTED: 'The selected model does not support image input.',
   VALIDATION_ERROR: 'The request was invalid.',
   POOL_UNHEALTHY: 'The AI provider pool is temporarily unavailable.',
+  // TASK-993 lane F — three codes TEXT has always been able to answer with and
+  // that have never reached a client, because a code absent from this map is
+  // replaced by the generic fallback and dropped.
+  //
+  // `RATE_LIMITED` is the one that cost something: lane B made TEXT retry a
+  // vendor 429 and surface it as a real 429 + `Retry-After`, and the gateway
+  // then answered "TEXT service unavailable" with no code and no header — the
+  // caller could not tell a throttle from an outage, so it could not pace
+  // itself. The other two are TASK-946's, in the same position.
+  //
+  // All three are CODES, not bodies: the phrase below is the gateway's own and
+  // no part of the upstream `detail`/`message` crosses with them.
+  RATE_LIMITED: 'The AI provider is rate limiting this request. Retry after the interval given in the Retry-After header.',
+  PROVIDER_INVALID_REQUEST: 'The AI provider rejected the request as invalid.',
+  CONTEXT_WINDOW_EXCEEDED: "The request exceeds the selected model's context window.",
 };
+
+/**
+ * Upper bound on a relayed `Retry-After`, in seconds (TASK-993 lane F).
+ *
+ * A vendor that answers `Retry-After: 86400` would otherwise park a clinician's
+ * console for a day. One hour is far past any real provider backoff and still
+ * bounded, so a misbehaving upstream degrades into a long wait rather than an
+ * indefinite one.
+ */
+const MAX_RELAYED_RETRY_AFTER_SECONDS = 3600;
 
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 // Read budget for an OPEN SSE hop (both the relayed subscription and the
@@ -476,10 +501,51 @@ export class TextProxyController {
     return typeof code === 'string' && CONNECT_PHASE_CODES.has(code);
   }
 
-  private buildUpstreamException(err: unknown, fallbackMessage: string): HttpException {
+  /**
+   * Relay the upstream's `Retry-After` onto this response (TASK-993 lane F).
+   *
+   * `HttpException` carries no headers, and `HttpExceptionEnvelopeFilter`
+   * writes the body with `.status().json()` — which does NOT clear headers
+   * already set — so setting it here survives the throw that follows.
+   *
+   * The VALUE is re-rendered, never forwarded: the upstream string is parsed
+   * to an integer, floored at 1 and capped, and the gateway emits its own
+   * rendering. That is the same posture the body takes (a code may cross, a
+   * string may not), and it means an upstream cannot inject a header value or
+   * hand a client an unbounded sleep. An HTTP-date form is deliberately NOT
+   * honoured: every consumer in this platform reads `retry-after` as a number
+   * (`@arcaai/vox-node` `core/errors.ts`), and a date it silently parses as
+   * `NaN` is worse than no header at all.
+   */
+  private relayRetryAfter(err: unknown, res: Response | undefined): void {
+    if (!res || typeof res.setHeader !== 'function' || res.headersSent) return;
+
+    const raw = (err as AxiosError)?.response?.headers?.['retry-after'];
+    const seconds = Number(Array.isArray(raw) ? raw[0] : raw);
+    if (!Number.isFinite(seconds)) return;
+
+    const bounded = Math.min(MAX_RELAYED_RETRY_AFTER_SECONDS, Math.max(1, Math.ceil(seconds)));
+    try {
+      res.setHeader('Retry-After', String(bounded));
+    } catch {
+      // A response already committed (a stream) cannot take a late header.
+      // Losing the hint must never cost the error itself.
+    }
+  }
+
+  /**
+   * @param res - present only on the handlers that can carry a vendor 429, so
+   *   the upstream `Retry-After` can be relayed (TASK-993 lane F). Omitted
+   *   elsewhere, where there is nothing to relay.
+   */
+  private buildUpstreamException(err: unknown, fallbackMessage: string, res?: Response): HttpException {
     const axiosError = err as AxiosError<UpstreamErrorPayload | string>;
     const status = axiosError.response?.status;
     const payload = axiosError.response?.data;
+
+    if (status === HttpStatus.TOO_MANY_REQUESTS) {
+      this.relayRetryAfter(err, res);
+    }
 
     // The raw upstream error body can echo the assembled
     // clinical prompt / PHI or internal TEXT/LM-Studio stack detail. It MUST NOT
@@ -657,8 +723,11 @@ export class TextProxyController {
   @Authorize()
   @ApiExcludeEndpoint()
   @ApiOperation({ summary: 'Generate text via TEXT (sync or streaming)' })
+  // `@Res({ passthrough: true })` — Nest still serialises the return value and
+  // still routes a thrown exception through the filters; the response object
+  // is taken only so a vendor `Retry-After` can be relayed (TASK-993 lane F).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async generate(@Body() body: TextGenerateRequest): Promise<any> {
+  async generate(@Body() body: TextGenerateRequest, @Res({ passthrough: true }) res?: Response): Promise<any> {
     // OUTSIDE the try below, deliberately: that catch turns everything it sees
     // into `buildUpstreamException` ("TEXT service unavailable"), which would
     // disguise a 429 quota refusal as a 502 the caller cannot act on.
@@ -676,7 +745,7 @@ export class TextProxyController {
         code: (err as AxiosError)?.code,
         upstreamStatus,
       });
-      throw this.buildUpstreamException(err, 'TEXT service unavailable');
+      throw this.buildUpstreamException(err, 'TEXT service unavailable', res);
     }
   }
 
@@ -1097,8 +1166,9 @@ export class TextProxyController {
   @Post('generate/assembled')
   @Authorize()
   @ApiOperation({ summary: 'Generate text with server-side prompt assembly (debug mode)' })
+  // `@Res({ passthrough: true })` for the same reason as `generate()` above.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async generateAssembled(@Body() body: AssembledGenerateRequest): Promise<any> {
+  async generateAssembled(@Body() body: AssembledGenerateRequest, @Res({ passthrough: true }) res?: Response): Promise<any> {
     this.validateAssembledRequest(body);
     this.requireDebugAccess(body.debug);
     // Before the assembly work, and outside the try below (same reason as
@@ -1146,7 +1216,7 @@ export class TextProxyController {
         code: (err as AxiosError)?.code,
         upstreamStatus,
       });
-      throw this.buildUpstreamException(err, 'TEXT service unavailable');
+      throw this.buildUpstreamException(err, 'TEXT service unavailable', res);
     }
   }
 
