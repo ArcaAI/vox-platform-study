@@ -13,12 +13,12 @@
  * @module @arcaai/database/client
  */
 
-import { PrismaPg } from '@prisma/adapter-pg';
 // Load environment variables using centralized utility
 // This respects NODE_ENV to load the correct .env file
 import './env.js';
 import { Prisma, PrismaClient } from './generated/core-prisma-client/client.js';
 import { applyTenantScopeExtension, resolveTenantContext } from './extensions/tenant-scope.js';
+import { createObservedPgAdapter, type PgPoolRole } from './pool-observability.js';
 
 export * from './generated/core-prisma-client/client.js';
 export { Prisma } from './generated/core-prisma-client/client.js';
@@ -52,8 +52,14 @@ export type PrismaClientValidationError = Prisma.PrismaClientValidationError;
  * When DATABASE_URL points at PgBouncer (port 6432 in production), migrations
  * must use DIRECT_URL via `prisma.config.ts` to keep advisory locks intact —
  * they do not survive PgBouncer transaction-mode swaps.
+ *
+ * `role` names WHICH of the process's pools this is, for the saturation
+ * metrics in `pool-observability.ts`. It is a label only — it changes nothing
+ * about how the pool is built. A process holds several of these (see
+ * {@link PgPoolRole}), so an unlabelled pool metric would silently halve the
+ * number an operator reads.
  */
-function createPrismaClient() {
+function createPrismaClient(role: PgPoolRole = 'adhoc') {
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
@@ -66,7 +72,7 @@ function createPrismaClient() {
     throw new Error(`PRISMA_PG_MAX must be a positive integer; got ${JSON.stringify(rawMax)}`);
   }
 
-  const adapter = new PrismaPg({
+  const adapter = createObservedPgAdapter(role, {
     connectionString,
     max,
     connectionTimeoutMillis: 5_000,
@@ -361,8 +367,8 @@ export function applySoftDeleteExtension(prisma: PrismaClient) {
  * `TenantContextProvider` from `apps/api/src/database/`) or a
  * permissive fallback for CLI / seed / migration paths.
  */
-function createExtendedPrismaClient() {
-  const prisma = createPrismaClient();
+function createExtendedPrismaClient(role: PgPoolRole = 'adhoc') {
+  const prisma = createPrismaClient(role);
   const softDeleted = applySoftDeleteExtension(prisma);
   return applyTenantScopeExtension(softDeleted as unknown as PrismaClient, {
     getTenantId: () => resolveTenantContext().tenantId,
@@ -398,7 +404,7 @@ let extendedPrismaInstance: ExtendedCorePrismaClient | null = null;
  */
 export function getPlatformAdminPrismaClient_Unscoped(): CorePrismaClient {
   if (!prismaInstance) {
-    prismaInstance = createPrismaClient();
+    prismaInstance = createPrismaClient('platform-admin');
   }
   return prismaInstance;
 }
@@ -412,7 +418,7 @@ export function getPlatformAdminPrismaClient_Unscoped(): CorePrismaClient {
  */
 export function getExtendedPrismaClient(): ExtendedCorePrismaClient {
   if (!extendedPrismaInstance) {
-    extendedPrismaInstance = createExtendedPrismaClient();
+    extendedPrismaInstance = createExtendedPrismaClient('extended');
   }
   return extendedPrismaInstance;
 }
