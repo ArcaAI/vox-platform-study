@@ -297,6 +297,100 @@ describe('FileTranscriptionService', () => {
   });
 
   // =========================================================================
+  // uploadAndTranscribe — agentSlug replaces pipelineId (TASK-861/991, W2-6)
+  //
+  // Mirrors StreamingSessionManager's own agentSlug/pipelineId precedence
+  // suite (`StreamingSessionManager.test.ts`): at most one selector ever
+  // rides the request, agentSlug wins when both are given, and the caller is
+  // warned — never silently — whenever a selector is dropped or deprecated.
+  // =========================================================================
+
+  describe('uploadAndTranscribe — agentSlug replaces pipelineId (TASK-991)', () => {
+    it('sends agentSlug and NO pipelineId key when the caller named an agent only', async () => {
+      const file = createMockAudioFile();
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
+
+      await service.uploadAndTranscribe(file, { agentSlug: 'clinic-asr' });
+
+      const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
+      expect(callBody.get('agentSlug')).toBe('clinic-asr');
+      expect(callBody.get('pipelineId')).toBeNull();
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    it('prefers agentSlug when BOTH are passed — pipelineId is dropped from the form data and a warning names the conflict', async () => {
+      const file = createMockAudioFile();
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
+
+      await service.uploadAndTranscribe(file, { agentSlug: 'clinic-asr', pipelineId: 'legacy-pipe' });
+
+      const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
+      expect(callBody.get('agentSlug')).toBe('clinic-asr');
+      expect(callBody.get('pipelineId')).toBeNull();
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/both/i), expect.objectContaining({ operation: 'resolveAgentSelection' }));
+    });
+
+    it('still sends pipelineId alone (deprecated path) and logs a deprecation warning', async () => {
+      const file = createMockAudioFile();
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
+
+      await service.uploadAndTranscribe(file, { pipelineId: 'legacy-pipe' });
+
+      const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
+      expect(callBody.get('pipelineId')).toBe('legacy-pipe');
+      expect(callBody.get('agentSlug')).toBeNull();
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringMatching(/deprecat/i),
+        expect.objectContaining({ operation: 'resolveAgentSelection' }),
+      );
+    });
+
+    it('sends NEITHER when the caller named nothing — the gateway resolves the tenant default agent', async () => {
+      const file = createMockAudioFile();
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
+
+      await service.uploadAndTranscribe(file, {});
+
+      const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
+      expect(callBody.get('pipelineId')).toBeNull();
+      expect(callBody.get('agentSlug')).toBeNull();
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // uploadAndTranscribeWithProgress — same agentSlug/pipelineId precedence
+  // (the two upload methods share `resolveAgentSelection`; this proves the
+  // second call site is actually wired to it, not just `uploadAndTranscribe`)
+  // =========================================================================
+
+  describe('uploadAndTranscribeWithProgress — agentSlug replaces pipelineId (TASK-991)', () => {
+    it('sends agentSlug and NO pipelineId key when the caller named an agent only', async () => {
+      const file = createMockAudioFile();
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
+
+      await service.uploadAndTranscribeWithProgress(file, { agentSlug: 'clinic-asr' });
+
+      const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
+      expect(callBody.get('agentSlug')).toBe('clinic-asr');
+      expect(callBody.get('pipelineId')).toBeNull();
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    it('prefers agentSlug when BOTH are passed — pipelineId is dropped from the form data and a warning names the conflict', async () => {
+      const file = createMockAudioFile();
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
+
+      await service.uploadAndTranscribeWithProgress(file, { agentSlug: 'clinic-asr', pipelineId: 'legacy-pipe' });
+
+      const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
+      expect(callBody.get('agentSlug')).toBe('clinic-asr');
+      expect(callBody.get('pipelineId')).toBeNull();
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/both/i), expect.objectContaining({ operation: 'resolveAgentSelection' }));
+    });
+  });
+
+  // =========================================================================
   // buildJobStreamUrl
   // =========================================================================
 

@@ -98,21 +98,24 @@ export interface UseAudioCaptureProps {
   /**
    * Ceiling (ms) on the streaming-STT stop-drain awaited by `stopRecording()`
    * Forwarded verbatim to `audio.start(...)`; omit for
-   * the SDK default (1500 ms). Non-positive values are ignored. The mic is
-   * released synchronously on stop regardless — this only bounds how long the
-   * returned promise waits for the server's last transcript.
+   * the SDK default (45s as of TASK-991). Non-positive values are ignored. The
+   * mic is released synchronously on stop regardless — this only bounds how
+   * long the returned promise waits for the server's last transcript.
    */
   drainTimeoutMs?: number;
   /**
    * Quiet window (ms) that ends the streaming-STT stop-drain early once the
    * backend reports `finalizing`. Forwarded verbatim to
-   * `audio.start(...)`; omit for the SDK default (250 ms).
+   * `audio.start(...)`; omit for the SDK default (`0`, i.e. disabled, since
+   * TASK-991 — the drain waits for the server's terminal status instead).
    *
    * **`0` disables the early resolve** and is PRESERVED — only negative values
-   * are ignored. Set it to `0` (with a generous `drainTimeoutMs`) when the tail
-   * final matters more than teardown latency: on a slow ASR pipeline the last
-   * transcript can trail `finalizing` by seconds, and the default quiet window
-   * closes the socket long before it arrives.
+   * are ignored. Pass a POSITIVE value only when teardown latency matters more
+   * than the tail final and this deployment's finalize is known to be quick:
+   * on a slow ASR pipeline the last transcript can trail `finalizing` by
+   * seconds (measured 3-6s against this gateway's whisper.cpp finalize), and
+   * a short quiet window closes the socket long before it arrives — which is
+   * exactly why it is no longer the default.
    */
   quietWindowMs?: number;
   /** Retained for source-compat only — NEVER invoked (v2 owns PCM transport). */
