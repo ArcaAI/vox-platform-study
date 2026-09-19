@@ -75,7 +75,10 @@ export const MEDIA_ID_NOTE =
   'the `file` part plus an `agentSlug` field — and it is the only route on this gateway that accepts audio bytes. ' +
   'POST /agents/{slug}/transcriptions takes the `mediaId` of media that ALREADY exists (a consultation recording); ' +
   'sending a file to it is a 400 `mediaId is required`, and a mediaId this tenant does not own is a 404, exactly ' +
-  'like an unknown one.';
+  'like an unknown one. There is no PUBLIC media-upload route on this gateway: the only route that stores media is ' +
+  '`POST /internal/stt/media`, and it is the STT worker’s (scope `internal:stt:worker`), not a tenant integration’s — ' +
+  'so today a `mediaId` can only come from a consultation recording. If you are holding a file, the multipart route ' +
+  'above is the whole answer.';
 
 export interface BatchStep {
   title: string;
@@ -102,8 +105,12 @@ export const BATCH_STT_STEPS: readonly BatchStep[] = Object.freeze([
     detail:
       `GET /api/v1${BATCH_STT_ROUTES.jobStream} (SSE). The first frame is always a \`status\` snapshot; then \`progress\`, ` +
       '`chunk` per finished audio segment, and one `transcript` with the full result. The stream closes on ' +
-      `${BATCH_JOB_TERMINAL_STATUSES.join(' / ')}. A browser EventSource cannot set headers: mint a single-use ticket at ` +
-      'POST /api/v1/auth/stream-ticket with scope `transcription_job:<id>` and pass it as `?ticket=`.',
+      `${BATCH_JOB_TERMINAL_STATUSES.join(' / ')}. Any client that can set a header reads it with its own credential — ` +
+      '`X-API-Key`, `X-Service-Account-Token` or a bearer JWT. The single-use ticket lane exists only for a browser ' +
+      '`EventSource`, which cannot set headers: `POST /api/v1/auth/stream-ticket` with scope `transcription_job:<id>`, ' +
+      'passed as `?ticket=`. That route is JWT-ONLY — the whole auth controller is `@ForbidApiKey()` and it reads the ' +
+      'signed-in user off the request context — so an API key is a 403 there and a service-account token a 401. A ' +
+      'machine credential does not need it: send the header.',
   },
   {
     title: 'Read the transcript',
@@ -111,7 +118,12 @@ export const BATCH_STT_STEPS: readonly BatchStep[] = Object.freeze([
       `GET /api/v1${BATCH_STT_ROUTES.jobById} answers the job: \`status\`, \`progress\`, \`mediaId\`, and — once COMPLETED — ` +
       '`resultText` (the transcript itself) with `resultMetadata` beside it; `errorCode` and `errorMessage` on a failure. ' +
       'Polling is therefore a complete alternative to the stream, and the way to fetch the result after any reconnect. ' +
-      `POST /api/v1${BATCH_STT_ROUTES.cancel} stops one; it is creator-scoped, so only the caller who started it may.`,
+      `POST /api/v1${BATCH_STT_ROUTES.cancel} stops one; it is creator-scoped, so only the caller who started it may. ` +
+      'Creator-scoped means a caller with a USER identity: cancel, retry, and the owner-scoped browsing routes ' +
+      '(`GET …/transcription-jobs`, `…/stats`, `…/status/{status}`, `…/consultation/{id}`) resolve the creator from the ' +
+      'request user, which a JWT and an API key both carry (a key is bound to its human) and a service-account token ' +
+      'does not — it answers 400 “User context is required”. The two reads above, `GET …/{jobId}` and its `/stream`, ' +
+      'are not owner-scoped and work for every credential class.',
   },
 ]);
 
@@ -150,8 +162,9 @@ export const BATCH_JOB_SSE_FRAMES: readonly BatchJobSseFrame[] = Object.freeze([
   {
     type: 'chunk',
     example:
-      '{ "type": "chunk", "data": { "jobId": "01a0…", "chunkIndex": 3, "text": "chest pain since this morning", "startTime": 12.4, "endTime": 14.9, "isFinal": true, "speakerLabel": "SPEAKER_00", "wordTimestamps": [ { "word": "chest", "start": 12.4, "end": 12.7, "confidence": 0.98 } ] } }',
-    note: 'One finished audio segment. Times are seconds from the start of the recording. Useful for showing a transcript as it fills; the authoritative text is the `transcript` frame below.',
+      '{ "type": "chunk", "data": { "jobId": "01a0…", "chunkIndex": 3, "text": "chest pain since this morning", "startTime": 12.4, "endTime": 14.9, "isFinal": true, "speakerId": "Speaker 1", "speakerConfidence": 0.82, "wordTimestamps": [ { "word": "chest", "start": 12.4, "end": 12.7, "confidence": 0.98 } ] } }',
+    note:
+      'One finished audio segment. Times are seconds from the start of the recording. Useful for showing a transcript as it fills; the authoritative text is the `transcript` frame below. When diarization is on, the segment carries its own `speakerId` — the diarizer’s label (`Speaker 1`, `Speaker 2`, …), or an enrolled clinician’s name when a voice profile matched — plus `speakerConfidence`; the job-level summary is `resultMetadata.diarization` (`speakers_detected`, `speaker_ids`). The batch publisher sends the raw id only; `speakerLabel` — the display name the gateway derives from it — is the realtime socket’s field, so render `speakerId` here. With diarization off, neither field is present.',
   },
   {
     type: 'transcript',

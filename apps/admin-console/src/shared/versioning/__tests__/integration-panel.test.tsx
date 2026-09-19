@@ -984,3 +984,88 @@ describe('IntegrationPanel — batch and realtime are both complete', () => {
     expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
   });
 });
+
+/**
+ * TASK-991 wave 2, lane E — the console's OWN claims, checked against the gateway rather than
+ * against the last person who wrote them. Each case below pins a sentence a prior audit found
+ * false or incomplete; the full list and its evidence is in the ticket README.
+ */
+describe('IntegrationPanel — what the panel TELLS an integrator', () => {
+  /**
+   * `compiledConfig.requiredVariables` is stamped at publish (`agent.service.ts:2654`) and every
+   * call site was already passing `compiledConfig` — but neither passed `requiredVariables`, so
+   * the weaker "may bind variables" fallback rendered on every published agent.
+   */
+  it('reads the prompt variables out of compiledConfig when no prop names them', () => {
+    renderWithProviders(
+      <IntegrationPanel
+        kind="agent"
+        slug="clinic-summarizer"
+        task="TEXT_GENERATION"
+        inputSchema={AGENT_INPUT_SCHEMA}
+        compiledConfig={{ requiredVariables: ['language', 'visit_type'] }}
+      />,
+    );
+
+    expect(screen.getByText(/binds 2 variables/i)).toBeTruthy();
+    const node = codeOf('Node.js (@arcaai/vox-node) snippet');
+    for (const name of ['language', 'visit_type']) expect(node, name).toContain(name);
+  });
+
+  it('an explicit prop still wins over the publish artifact', () => {
+    renderWithProviders(
+      <IntegrationPanel
+        kind="agent"
+        slug="clinic-summarizer"
+        task="TEXT_GENERATION"
+        inputSchema={AGENT_INPUT_SCHEMA}
+        compiledConfig={{ requiredVariables: ['stale_name'] }}
+        requiredVariables={['language']}
+      />,
+    );
+    expect(codeOf('Node.js (@arcaai/vox-node) snippet')).not.toContain('stale_name');
+  });
+
+  it('a compiledConfig whose requiredVariables is not a list of names falls back honestly', () => {
+    renderWithProviders(
+      <IntegrationPanel
+        kind="agent"
+        slug="clinic-summarizer"
+        task="TEXT_GENERATION"
+        inputSchema={AGENT_INPUT_SCHEMA}
+        compiledConfig={{ requiredVariables: 'language' }}
+      />,
+    );
+    expect(screen.getByText(/may bind variables its/i)).toBeTruthy();
+  });
+
+  /** A 429 is the limiter, and its budget is per deployment — so the header, never a number. */
+  it('names the rate-limit header on the lane where a developer meets a 429', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    expect(screen.getAllByText(/RateLimit-Policy/).length).toBeGreaterThan(0);
+  });
+
+  /**
+   * `POST /agents/{slug}/transcriptions` requires a `mediaId` and carries no file interceptor
+   * (`agent.controller.ts:793`), so a lane that sends "recorded audio" to it is a 400.
+   */
+  it('sends a FILE to the multipart route, not to the agent transcriptions route', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+    expect(screen.getAllByText(/in — media that ALREADY exists/).length).toBeGreaterThan(0);
+    // The realtime note used to send recorded audio to the agent route as well.
+    selectJob('Realtime');
+    expect(screen.getAllByText(/which route depends on what you are holding/i).length).toBeGreaterThan(0);
+  });
+
+  /**
+   * The batch route has taken `agentSlug` since TASK-861
+   * (`dto/transcription-job.dto.ts:74-77`); the panel said it "still selects a pipeline id".
+   */
+  it('the browser-absence note no longer claims the batch route selects a pipeline id', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+    selectTab('Browser');
+    expect(screen.queryByText(/pipeline id/i)).toBeNull();
+    // Node · Browser · Manual · Postman — there is no lane called HTTP.
+    expect(screen.getAllByText(/The Node and Manual lanes reach it by slug/).length).toBeGreaterThan(0);
+  });
+});
