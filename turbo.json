@@ -522,6 +522,7 @@
         "QDRANT_PORT",
         "RATE_LIMIT_ENABLED",
         "RATE_LIMIT_MAX_REQUESTS",
+        "RATE_LIMIT_TRUSTED_PROXIES",
         "RATE_LIMIT_WINDOW_MS",
         "REDIS_HOST",
         "REDIS_PASS",

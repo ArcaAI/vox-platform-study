@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional, type ExecutionContext } from '@nestjs/common';
-import { ThrottlerGuard, type ThrottlerRequest } from '@nestjs/throttler';
+import { ThrottlerGuard, type ThrottlerLimitDetail, type ThrottlerRequest } from '@nestjs/throttler';
 import * as jwt from 'jsonwebtoken';
+import { resolveClientIp, trustedProxiesFromEnv } from './client-ip';
 import {
   IApiKeyService,
   IEntitlementsService,
@@ -34,6 +35,22 @@ export interface RequestRateLimitResolution {
   limitValue: number;
   windowMs: number;
   level: RateLimitLevel;
+  /**
+   * Requests left in the CURRENT window, as the storage backend counted them.
+   * Absent when the counters could not be observed (see
+   * `recordObservedCounters`), which the interceptor reads as "say nothing"
+   * rather than "say the quota".
+   */
+  remaining?: number;
+  /** Seconds until the current window resets. Same absence rule as `remaining`. */
+  resetSeconds?: number;
+}
+
+/** A response header the library wrote back as a number, or `null`. */
+function readCounterHeader(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  const parsed = Number(Array.isArray(value) ? value[0] : value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /**
@@ -233,7 +250,9 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
       // includes the handler identity, so each route keeps its own per-IP
       // bucket exactly as before. Substituting our own key here would collapse
       // every route into one shared counter.
-      return super.handleRequest({ ...requestProps, limit: resolution.effective.limitValue, ttl: resolution.effective.windowMs });
+      const allowed = await super.handleRequest({ ...requestProps, limit: resolution.effective.limitValue, ttl: resolution.effective.windowMs });
+      this.recordObservedCounters(context, request);
+      return allowed;
     }
 
     // OD-3: a limit that resolved from the tenant's own identity is counted PER
@@ -242,13 +261,103 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
     // — that is what "500 requests per minute for tenant A" means.
     const bucketScope = resolution.level === 'tenant-route' ? `t:${tenantId}:r:${routeKey ?? '-'}` : `t:${tenantId}`;
 
-    return super.handleRequest({
+    const allowed = await super.handleRequest({
       ...requestProps,
       limit: resolution.effective.limitValue,
       ttl: resolution.effective.windowMs,
       getTracker: async () => `tenant:${tenantId}`,
       generateKey: (_ctx, tracker, throttlerName) => `${throttlerName}:${bucketScope}:${tracker}`,
     });
+    this.recordObservedCounters(context, request);
+    return allowed;
+  }
+
+  /**
+   * The bucket key's IP component.
+   *
+   * The base class returns `req.ip`, which with `trust proxy` off is the socket
+   * peer — behind this platform's ingress that is ONE address for the entire
+   * internet (TASK-993 D-1). `resolveClientIp` promotes `CF-Connecting-IP` to
+   * the tracker, but ONLY when the socket peer is a declared ingress; see
+   * `client-ip.ts` for why that header and not `X-Forwarded-For`, and why the
+   * trust is expressed here rather than as Express `trust proxy`.
+   *
+   * With no declared ingress (`RATE_LIMIT_TRUSTED_PROXIES` unset — the default,
+   * and what every test and local dev run sees) this is `super.getTracker`
+   * verbatim.
+   *
+   * Tenant-scoped buckets are unaffected: they pass their own `getTracker` in
+   * `requestProps` and never reach this method.
+   */
+  protected async getTracker(req: Record<string, unknown>): Promise<string> {
+    const resolved = resolveClientIp(req, trustedProxiesFromEnv());
+    return resolved ?? super.getTracker(req);
+  }
+
+  /**
+   * Guarantee a plain `Retry-After` on every 429 (TASK-993 D-4).
+   *
+   * The library stamps `Retry-After-<tier>` for a non-default throttler and
+   * never an unsuffixed one, so a `heavy`-tier 429 (agent invoke, workflow
+   * runs, agent bench) answered only `Retry-After-heavy`. Every SDK reads
+   * `retry-after` — `@arcaai/vox-node` included
+   * (`packages/vox-node/src/core/errors.ts`) — so the backoff hint was lost
+   * exactly where the waits are longest.
+   *
+   * The suffixed header is already written by the time this runs and is left
+   * alone: something may depend on it, and removing it is not this fix.
+   */
+  protected async throwThrottlingException(context: ExecutionContext, detail: ThrottlerLimitDetail): Promise<void> {
+    const response = context.switchToHttp().getResponse<
+      | {
+          header?: (name: string, value: string) => void;
+          getHeader?: (name: string) => unknown;
+        }
+      | undefined
+    >();
+
+    // `timeToBlockExpire` is SECONDS in both storage backends (the in-memory
+    // service and the Redis Lua both divide by 1000 before returning).
+    const seconds = Number(detail.timeToBlockExpire);
+    if (response?.header && response.getHeader?.('Retry-After') === undefined && Number.isFinite(seconds)) {
+      try {
+        response.header('Retry-After', String(Math.max(1, Math.ceil(seconds))));
+      } catch {
+        // A stream/upgrade response may refuse a late header write. The 429
+        // itself still has to be thrown.
+      }
+    }
+
+    return super.throwThrottlingException(context, detail);
+  }
+
+  /**
+   * Carry the REAL counters from the throttler to `RateLimitHeadersInterceptor`
+   * (TASK-993 D-3).
+   *
+   * The interceptor used to render `r=<quota>;t=<window>` — both static — so
+   * `RateLimit: "default";r=30;t=60` sat next to `X-RateLimit-Remaining: 29`
+   * and an integrator reading the modern header saw full headroom forever.
+   *
+   * `handleRequest` computes `totalHits`/`timeToExpire` in a local scope and
+   * returns only a boolean, so they are read back off the headers the base
+   * class has just written. That is deliberate rather than merely convenient:
+   * sourcing both fields from the SAME numbers makes the two headers unable to
+   * disagree again, which is the entire defect.
+   */
+  private recordObservedCounters(context: ExecutionContext, request: Record<string, unknown> | undefined): void {
+    const stashed = request?.[RATE_LIMIT_RESOLUTION_KEY] as RequestRateLimitResolution | undefined;
+    if (!stashed) return;
+
+    const response = context.switchToHttp().getResponse<{ getHeader?: (name: string) => unknown } | undefined>();
+    if (!response?.getHeader) return;
+
+    // Only the `default` tier stashes a resolution, and its header suffix is
+    // empty — hence the bare prefix.
+    const remaining = readCounterHeader(response.getHeader(`${this.headerPrefix}-Remaining`));
+    const resetSeconds = readCounterHeader(response.getHeader(`${this.headerPrefix}-Reset`));
+    if (remaining !== null) stashed.remaining = remaining;
+    if (resetSeconds !== null) stashed.resetSeconds = resetSeconds;
   }
 
   /**
