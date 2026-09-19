@@ -704,8 +704,8 @@ describe('MyDnaStyleScreen', () => {
     renderWithProviders(<MyDnaStyleScreen />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Add sample' }));
-    fireEvent.change(screen.getByLabelText('Writing sample'), { target: { value: 'A case note about a follow-up visit.' } });
-    fireEvent.change(screen.getByLabelText('Written at'), { target: { value: '2026-08-01T09:00' } });
+    fireEvent.change(screen.getByLabelText(/Writing sample/), { target: { value: 'A case note about a follow-up visit.' } });
+    fireEvent.change(screen.getByLabelText(/Written at/), { target: { value: '2026-08-01T09:00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Queue ingest' }));
 
     await waitFor(() => {
@@ -718,7 +718,11 @@ describe('MyDnaStyleScreen', () => {
       expect(typeof body.items[0].writtenAt).toBe('string');
     });
 
-    expect(await screen.findByText(/accepted 1 sample spanning/i)).toBeDefined();
+    // The summary interleaves <span> and <time> nodes, so the sentence exists only as the
+    // paragraph's combined textContent — a plain string/regex matcher never sees it whole.
+    expect(
+      await screen.findByText((_content, el) => el?.tagName === 'P' && /accepted 1 sample spanning/i.test(el.textContent ?? '')),
+    ).toBeDefined();
     // The form is cleared and the job handle is shown for the poll-driven progress strip below it.
     expect(screen.getByText('ing-1')).toBeDefined();
     expect(await screen.findByText(/^processing/i)).toBeDefined();
@@ -748,8 +752,8 @@ describe('MyDnaStyleScreen', () => {
     expect(generate.disabled).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Add sample' }));
-    fireEvent.change(screen.getByLabelText('Writing sample'), { target: { value: 'A note authored by another clinician.' } });
-    fireEvent.change(screen.getByLabelText('Written at'), { target: { value: '2026-08-01T09:00' } });
+    fireEvent.change(screen.getByLabelText(/Writing sample/), { target: { value: 'A note authored by another clinician.' } });
+    fireEvent.change(screen.getByLabelText(/Written at/), { target: { value: '2026-08-01T09:00' } });
 
     // Blocked with no clinician named — the same designed gate as the rest of the screen.
     expect(screen.getByText('Requires acting as a doctor, or naming a clinician above')).toBeDefined();

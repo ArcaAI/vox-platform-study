@@ -387,7 +387,9 @@ describe('DnaWritingStylesScreen', () => {
     renderWithProviders(<DnaWritingStylesScreen />, { searchParams: '?selected=doc-1' });
 
     const dialog = await screen.findByRole('dialog');
-    const trigger = within(dialog).getByRole('button', { name: 'Erase profile' }) as HTMLButtonElement;
+    // The drawer mounts before its report query resolves, and the footer (with this button)
+    // only renders once the payload arrives — so this has to be awaited, not read synchronously.
+    const trigger = (await within(dialog).findByRole('button', { name: 'Erase profile' })) as HTMLButtonElement;
     fireEvent.click(trigger);
 
     // Confirmation gate: the dialog is up and NOTHING has been requested yet.
@@ -426,7 +428,8 @@ describe('DnaWritingStylesScreen', () => {
     renderWithProviders(<DnaWritingStylesScreen />, { searchParams: '?selected=doc-1' });
 
     const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Erase profile' }));
+    // Awaited for the same reason as the test above: the footer renders with the payload.
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Erase profile' }));
     const confirmDialog = await screen.findByRole('alertdialog');
     fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Erase profile' }));
 

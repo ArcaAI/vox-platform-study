@@ -96,6 +96,22 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/**
+ * The SPEECH_TO_TEXT schema renders a field name up to THREE times: once on the flat
+ * `decoding` block and again inside the `decoding.partial` / `decoding.final` pass
+ * overrides (`ASR_DECODE_PASS_PROPERTY`). That is correct — each pass narrows the flat
+ * block — and each sits in its own fieldset, so a screen reader gets the context from the
+ * legend. A bare `getByLabelText('Beam Size')` does not: it matches all three and throws.
+ * Field ids are `${prefix}-${path.join('-')}` (parameters-form.tsx), so the flat field is
+ * addressable by an unambiguous id suffix — `-decoding-beamSize` does not match
+ * `-decoding-partial-beamSize`.
+ */
+function flatDecodingField(container: HTMLElement, key: string): HTMLElement {
+  const el = container.querySelector(`[id$="-decoding-${key}"]`);
+  if (!el) throw new Error(`no flat decoding field for ${key}`);
+  return el as HTMLElement;
+}
+
 describe('ParametersForm', () => {
   it('TEXT_TO_SPEECH: renders voice/language/speed/format/sampleRate/ssml from the contract schema', () => {
     render(<ParametersForm task="TEXT_TO_SPEECH" value={{}} onChange={() => undefined} />);
@@ -119,10 +135,10 @@ describe('ParametersForm', () => {
 
   it('SPEECH_TO_TEXT: nests the ASR spec blocks as fieldsets and writes deep paths', () => {
     const onChange = vi.fn();
-    render(<ParametersForm task="SPEECH_TO_TEXT" value={{}} onChange={onChange} />);
+    const { container } = render(<ParametersForm task="SPEECH_TO_TEXT" value={{}} onChange={onChange} />);
     expect(screen.getByRole('group', { name: 'Audio Front End' })).toBeTruthy();
     expect(screen.getByRole('group', { name: 'Decoding' })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Beam Size'), { target: { value: '5' } });
+    fireEvent.change(flatDecodingField(container, 'beamSize'), { target: { value: '5' } });
     expect(onChange).toHaveBeenLastCalledWith({ decoding: { beamSize: 5 } });
   });
 
@@ -530,11 +546,11 @@ describe('SPEECH_TO_TEXT effective-value hint (TASK-934)', () => {
 
   it('drops the inherit hint once the agent sets an explicit value for that field', async () => {
     const onChange = vi.fn();
-    render(<Host task="SPEECH_TO_TEXT" onChange={onChange} modelId="m-asr" />);
+    const { container } = render(<Host task="SPEECH_TO_TEXT" onChange={onChange} modelId="m-asr" />);
     await waitFor(() => expect(screen.getByText(/^Model profile:/)).toBeTruthy());
     expect(screen.getByText(/inherits 0\.4 from the model profile/)).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('No Speech Threshold'), { target: { value: '0.7' } });
+    fireEvent.change(flatDecodingField(container, 'noSpeechThreshold'), { target: { value: '0.7' } });
     expect(screen.queryByText(/inherits 0\.4 from the model profile/)).toBeNull();
   });
 });
