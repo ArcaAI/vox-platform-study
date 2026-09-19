@@ -25,6 +25,8 @@ import { buildCorsOptions, isOriginAllowed } from './cors.config';
 import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from './global-prefix.config';
 import { flushOtel } from './instrumentation';
 import { ETagInterceptor } from './interceptors';
+import { httpResponseMetricsMiddleware } from './observability/http-response-metrics';
+import { installPrismaPoolMetrics } from './observability/prisma-pool-metrics';
 import { GracefulShutdownService, startServiceReleaseRegistration } from './services';
 // Swagger config lives in `swagger.config.ts` so the security-scheme list
 // (bearer + api-key) is unit-testable.
@@ -68,6 +70,20 @@ async function bootstrap() {
   // process exits before any port is bound.
   const env = apiEnv();
 
+  // Publish the Prisma/pg pool saturation series (TASK-993 OD-3: "fix the
+  // pool AND add a saturation trigger"). The gateway HPA cannot fire on CPU —
+  // under pool exhaustion requests queue while the event loop idles — and
+  // until now there was no pool metric anywhere to drive it with instead.
+  //
+  // PLACEMENT IS LOAD-BEARING, on both sides:
+  //   - AFTER `loadEnv()`, because the metric prefix is derived from
+  //     `OTEL_SERVICE_NAME` (`hope_api_` in the cluster) and the env file is
+  //     what supplies it locally.
+  //   - BEFORE `NestFactory.create()`, because the DI warmup (secrets,
+  //     settings registry) issues the process's FIRST queries; an observer
+  //     registered after that would have already missed them.
+  installPrismaPoolMetrics();
+
   // Disable colors in NestJS built-in logger
   // eslint-disable-next-line turbo/no-undeclared-env-vars -- this WRITES the standard NO_COLOR convention var to steer a third-party logger; it is not an external config input, so it does not belong in turbo.json#globalEnv
   process.env.NO_COLOR = '1';
@@ -100,6 +116,24 @@ async function bootstrap() {
   // Register crash handlers so uncaught exceptions/rejections are logged and flushed
   const { registerCrashHandlers } = await import('./crash-handlers');
   registerCrashHandlers(loggingService);
+
+  // Count EVERY response, including the ones no handler ever saw.
+  //
+  // `MetricsInterceptor` writes `<prefix>http_requests_total`, and Nest runs
+  // guards BEFORE interceptors — so a 429 from `TieredThrottlerGuard`, a 401
+  // from `UnifiedAuthGuard` or a 403 from `AuthorizationGuard` never reaches
+  // `next.handle()` and is never counted. TASK-993 lane G measured the gap on
+  // a real run: 96 client requests, 43 counted by the gateway. The metric an
+  // HPA or an error-rate alert reads goes QUIET exactly when the platform
+  // starts refusing traffic, and no interceptor can fix that — the blindness
+  // is where interceptors sit, not how this one is written.
+  //
+  // This is the FIRST `app.use`, deliberately: Express middleware runs ahead
+  // of the router, so it also observes a response short-circuited by the
+  // session, CORS or security-header layers below. See
+  // `observability/http-response-metrics.ts` for which of the two request
+  // metrics is authoritative and how to read their difference.
+  app.use(httpResponseMetricsMiddleware());
 
   // Use native WebSocket adapter for WebSocket support
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
