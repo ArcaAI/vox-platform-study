@@ -16,6 +16,7 @@ import {
   MediaRepository,
   ResourceType,
   SysEventType,
+  TranscriptionJobEntity,
   TranscriptionJobRepository,
   TranscriptSegmentFactory,
   TranscriptSegmentRepository,
@@ -27,6 +28,8 @@ import { BaseService, encryptPhiFields, isSttAggregateTranscript, STT_AGGREGATE_
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
+import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
+import { STT_BATCH_MAX_RECLAIMS_KEY, STT_GATEWAY_DEFAULTS } from '../../settings-registry/descriptors/stt-gateway.descriptors';
 import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../consultation/events';
 import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey, type UsageTrigger } from '../../usageLedger';
 import { TranscriptionJobResponse } from '../job/dto';
@@ -78,6 +81,10 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     // NOT the identically-named, unwired class under `services/baseServices`.
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
+    // TASK-992 — optional + trailing (the arity-preserving convention above) so
+    // existing positional unit fixtures keep working. Supplies the reclaim
+    // bound `stt.batch.maxReclaims`; absent, the code default applies.
+    @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.TranscriptionJob);
   }
@@ -451,7 +458,32 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   }
 
   /**
-   * Start processing a job
+   * TASK-992 — CLAIM a job for a worker. Despite the route name (`/start`),
+   * this is not only a QUEUED → PROCESSING transition.
+   *
+   * The STT worker calls this at the top of the actor on EVERY delivery, and
+   * Dramatiq delivers the same message more than once in two ordinary
+   * situations the old QUEUED-only rule could not express:
+   *
+   *  1. The worker process DIED mid-flight and the broker requeued its
+   *     message. The row is still PROCESSING under the dead worker's id.
+   *  2. The worker marked the job FAILED and re-raised for the broker to
+   *     retry (`transcribe_file`). The row is FAILED and the retry is the
+   *     intended recovery.
+   *
+   * Both were refused, and because the refusal arrived as a generic
+   * `500 DOMAIN.BUSINESS` the worker classified it as "already finished" and
+   * ACKed. Job `01a0b94c-…` sat in PROCESSING at 75% with `retryCount` 0 and
+   * nothing in the platform able to end it.
+   *
+   * | current status                | outcome                          |
+   * |-------------------------------|----------------------------------|
+   * | QUEUED                        | start                            |
+   * | PROCESSING, same worker       | idempotent — no write             |
+   * | PROCESSING, other worker      | reclaim (bounded by reclaimCount) |
+   * | FAILED, retries left          | re-attempt (spends retryCount)    |
+   * | either budget spent           | mark DEAD, then refuse (terminal) |
+   * | COMPLETED / CANCELLED / DEAD  | refuse (terminal)                 |
    */
   async startJob(jobId: string, dto: InternalStartJobRequest): Promise<TranscriptionJobResponse> {
     const job = await this.jobRepository.findById(jobId);
@@ -459,16 +491,87 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       throw new NotFoundException(`Job ${jobId} not found`);
     }
 
-    job.startProcessing(dto.workerId);
+    // The worker that already holds this job re-sent its claim (a retried HTTP
+    // call, not a redelivery). Answering the current row is the only correct
+    // response: reclaiming would reset the LIVE attempt's progress, and
+    // refusing would abort work that is going fine.
+    if (job.isProcessing && job.workerId === dto.workerId) {
+      return TranscriptionJobDtoMapper.toResponse(job);
+    }
+
+    const previousWorkerId = job.workerId ?? undefined;
+    let reclaimed = false;
+
+    if (job.isQueued) {
+      job.startProcessing(dto.workerId);
+    } else if (job.isProcessing) {
+      const maxReclaims = this.resolveMaxReclaims();
+      if (job.reclaimCount >= maxReclaims) {
+        await this.retireExhaustedClaim(jobId, job, previousWorkerId);
+      }
+      // Refuses if `retireExhaustedClaim` just moved the row to DEAD — which is
+      // the point: the refusal is then honestly terminal and the worker ACKs
+      // instead of spinning. The entity is the only place a refusal is worded.
+      job.reclaimProcessing(dto.workerId, maxReclaims);
+      reclaimed = true;
+    } else if (job.isFailed) {
+      if (job.retryCount >= job.maxRetries) {
+        await this.retireExhaustedClaim(jobId, job, previousWorkerId);
+      }
+      job.reattemptAfterFailure(dto.workerId);
+    } else {
+      // COMPLETED / CANCELLED / DEAD — nothing to claim, and nothing to write.
+      job.startProcessing(dto.workerId);
+    }
+
     const updated = await this.jobRepository.update(jobId, job);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: jobId,
       responsibleEntityId: job.createdBy || undefined,
-      data: { status: 'PROCESSING', workerId: dto.workerId },
+      data: {
+        status: 'PROCESSING',
+        workerId: dto.workerId,
+        // Only the CURRENT worker survives on the row, so the one we took the
+        // job from exists nowhere else — without this the audit trail cannot
+        // answer "which worker died".
+        ...(reclaimed ? { reclaimedFrom: previousWorkerId, reclaimCount: job.reclaimCount } : {}),
+      },
     });
 
     return TranscriptionJobDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * TASK-992 — a job whose claim budget is spent is retired to DEAD, and the
+   * write LANDS before the caller's refusal is thrown.
+   *
+   * There is no transaction around `startJob`, so throwing first would leave
+   * the row in exactly the stuck state this ticket exists to remove — a job
+   * nobody will reclaim again and nothing will ever fail.
+   */
+  private async retireExhaustedClaim(jobId: string, job: TranscriptionJobEntity, previousWorkerId?: string): Promise<void> {
+    job.markAsDead();
+    await this.jobRepository.update(jobId, job);
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: jobId,
+      responsibleEntityId: job.createdBy || undefined,
+      data: { status: 'DEAD', workerId: previousWorkerId, reason: 'CLAIM_BUDGET_EXHAUSTED' },
+    });
+  }
+
+  /**
+   * TASK-992 — the reclaim bound (`stt.batch.maxReclaims`, global-kv).
+   *
+   * `open-to-default`: an absent row degrades to the code default. A reclaim
+   * refused because a `GlobalSetting` was missing would re-create the stranded
+   * job this whole path exists to clear.
+   */
+  private resolveMaxReclaims(): number {
+    const fallback = STT_GATEWAY_DEFAULTS[STT_BATCH_MAX_RECLAIMS_KEY];
+    if (!this.appSettings) return fallback;
+    const value = this.appSettings.getValueWithDefault<number>(STT_BATCH_MAX_RECLAIMS_KEY, fallback);
+    return Number.isFinite(value) && value >= 0 ? value : fallback;
   }
 
   /**

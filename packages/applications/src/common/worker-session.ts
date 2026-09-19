@@ -38,6 +38,10 @@ export type WorkerSessionKind =
   // stale sweep-eligible consultations to CLOSED_INCOMPLETE. One context PER
   // ROW — the sweep query itself spans every tenant.
   | 'session-timeout-sweep'
+  // TASK-992 — stranded-STT-batch-job reaper tick: fails a PROCESSING job
+  // whose worker died and whose message was never redelivered. One context
+  // PER ROW — the eligibility query itself spans every tenant.
+  | 'stt-job-reaper'
   // Admin-triggered AiModel weight download: fetch from
   // HuggingFace/s3://, verify, publish into hope-models, write back the row.
   | 'ai-model-download'
