@@ -27,6 +27,7 @@ import {
   IEntitlementsService,
   IRateLimitSettingsService,
   IServiceAccountService,
+  RATE_LIMIT_PRINCIPAL_DEFAULTS,
   RateLimitSettingsService,
   SecretsService,
   TenantSettingsService,
@@ -235,6 +236,11 @@ describe('TieredThrottlerGuard (DB-backed live overrides)', () => {
     // historical precedence chain (decorator > plan > tier) intact.
     isEnabledForTenant: () => stub.enabled,
     getTierForTenant: () => ({ ...stub.tier, limitSource: 'system', ttlSource: 'system' }),
+    // TASK-993 OD-2: the code baseline, so this suite states its per-principal
+    // posture rather than inheriting one. Nothing here engages the lane — its
+    // fixtures sign `{ tenantId }` with no `id` claim, so no principal is
+    // provable; the lane has its own suite.
+    getPrincipalPolicy: () => ({ enabled: true, ...RATE_LIMIT_PRINCIPAL_DEFAULTS }),
   };
 
   const hit = (path: string) => request(app.getHttpServer()).get(path);
@@ -376,6 +382,7 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
     // `system` and the PLAN tier keeps winning, exactly as this suite asserts.
     isEnabledForTenant: () => true,
     getTierForTenant: (name) => ({ ...tierOf(name), limitSource: 'system', ttlSource: 'system' }),
+    getPrincipalPolicy: () => ({ enabled: true, ...RATE_LIMIT_PRINCIPAL_DEFAULTS }),
   };
 
   const entitlements = {
@@ -446,7 +453,7 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
    * ENTERPRISE tenant could not be granted more than a hardcoded decorator value
    * without a code change and a redeploy. The decorator is now rank 5's SEED,
    * so the plan (rank 3) wins.
-*/
+   */
   it('(e) precedence: the plan tier beats a @Throttle decorator — /q7/decorated 429s on the 3rd call (plan strict = 2, decorator = 5)', async () => {
     expect((await hit('/q7/decorated', 'tenant-decorated')).status).toBe(200);
     expect((await hit('/q7/decorated', 'tenant-decorated')).status).toBe(200);
@@ -701,7 +708,6 @@ describe('TieredThrottlerGuard — credential-class parity ', () => {
   });
 });
 
-
 /**
  * the machine plane is no longer ungoverned.
  *
@@ -740,6 +746,7 @@ describe('TieredThrottlerGuard (machine credentials — O-4)', () => {
     getRouteOverride: () => undefined,
     isEnabledForTenant: () => true,
     getTierForTenant: () => ({ limit: 1000, ttl: 60000, limitSource: 'system', ttlSource: 'system' }),
+    getPrincipalPolicy: () => ({ enabled: true, ...RATE_LIMIT_PRINCIPAL_DEFAULTS }),
   };
 
   // Both machine credentials resolve a tenant WITHOUT a database read: the

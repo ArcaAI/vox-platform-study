@@ -30,6 +30,17 @@ import { RATE_LIMIT_RESOLUTION_KEY, type RequestRateLimitResolution } from './ti
  * counters now arrive on the stash; when they are absent the `RateLimit` field
  * is OMITTED rather than filled with the quota — saying nothing is honest,
  * repeating the quota is the bug.
+ *
+ * ## Which of the TWO limits these describe (TASK-993 OD-2)
+ *
+ * Since two-level bucketing there are two live quotas per request — the
+ * caller's own and its tenant's aggregate — and the guard stashes whichever is
+ * BINDING (`boundBy`), so `limitValue`/`remaining` here always describe the
+ * lane that will refuse this caller first. Rendering the more generous one
+ * would re-create D-3 at a new address: a client pacing off a number it can
+ * never reach gets 429'd while its headers say it has headroom. Which lane it
+ * was is deliberately NOT advertised, for the same reason the tenant/plan/rule
+ * is not.
  */
 @Injectable()
 export class RateLimitHeadersInterceptor implements NestInterceptor {

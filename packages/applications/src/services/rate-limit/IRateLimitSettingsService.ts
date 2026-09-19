@@ -26,6 +26,17 @@ export interface RateLimitRouteOverride {
 }
 
 /**
+ * The per-principal bucket's resolved policy (TASK-993 OD-2).
+ *
+ * `enabled === false` removes the second level entirely and restores the
+ * single tenant-wide counter — the operator escape hatch for a lane that, by
+ * design, can refuse a request the previous build allowed.
+ */
+export interface RateLimitPrincipalPolicy extends RateLimitTierValue {
+  enabled: boolean;
+}
+
+/**
  * Read-only accessor over the rate-limit `GlobalSetting` rows,
  * resolved through the in-memory `AppSettingsService` cache (45s auto-refresh +
  * instant `refreshCache()`). A thin, typed analog of
@@ -74,6 +85,22 @@ export interface IRateLimitSettingsService {
    * set none of the route's keys.
    */
   getRouteOverride(routeId: string): RateLimitRouteOverride | undefined;
+
+  /**
+   * The PER-PRINCIPAL lane (TASK-993 OD-2) — the second level of the two-level
+   * bucketing model, read on every tenant-scoped request.
+   *
+   * Platform-wide by construction, exactly like the tier baselines and for the
+   * same reason: the number is a property of how a HUMAN drives the console
+   * (measured), not of what a tenant bought, so it does not vary by tenant or
+   * by plan. A tenant that wants less throughput per caller already has
+   * `rateLimit.maxRequests`, which tightens its whole aggregate.
+   *
+   * Never throws: an unreadable row degrades to the code baseline
+   * (`failMode: 'open-to-default'`) — a bookkeeping failure must not refuse a
+   * clinical request.
+   */
+  getPrincipalPolicy(): RateLimitPrincipalPolicy;
 }
 
 export const IRateLimitSettingsService = Symbol('IRateLimitSettingsService');
