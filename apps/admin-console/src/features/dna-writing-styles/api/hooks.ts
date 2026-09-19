@@ -11,6 +11,7 @@ import {
   getDoctorReport,
   listDnaReports,
   listDnaVersions,
+  resetDoctorDnaProfile,
   updateDnaReport,
 } from './client';
 import { dnaKeys } from './keys';
@@ -45,6 +46,18 @@ export function useUpdateDnaReport() {
 export function useGenerateDnaReport() {
   return useMutation({
     mutationFn: ({ doctorId, body }: { doctorId: string; body?: GenerateDnaReportRequest }) => generateDnaReport(doctorId, body),
+  });
+}
+
+/**
+ * Erases a doctor's whole DNA profile (admin). Root-level invalidation: the erasure empties
+ * that doctor's report (404 on the next read), the list AND the dashboard roll-up.
+ */
+export function useResetDoctorDnaProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (doctorId: string) => resetDoctorDnaProfile(doctorId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: dnaKeys.root }),
   });
 }
 

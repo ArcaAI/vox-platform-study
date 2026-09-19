@@ -374,4 +374,65 @@ describe('DnaWritingStylesScreen', () => {
     expect(source.closed).toBe(true);
     await waitFor(() => expect(listCallCount()).toBeGreaterThan(listCallsBefore));
   });
+
+  // ─── admin erase (F-9 — offboarding / compliance, INV-240's admin half) ───
+
+  it('gates the doctor-profile erase behind a confirmation, then closes the drawer on success', async () => {
+    const calls = stubDna((call) => {
+      if (call.method === 'DELETE' && pathnameOf(call) === '/api/hope/admin/dna-writing-styles/doctor/doc-1') {
+        return Response.json({ doctorId: 'doc-1', deletedReports: 2, deletedVersions: 5 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<DnaWritingStylesScreen />, { searchParams: '?selected=doc-1' });
+
+    const dialog = await screen.findByRole('dialog');
+    const trigger = within(dialog).getByRole('button', { name: 'Erase profile' }) as HTMLButtonElement;
+    fireEvent.click(trigger);
+
+    // Confirmation gate: the dialog is up and NOTHING has been requested yet.
+    const confirmDialog = await screen.findByRole('alertdialog');
+    expect(within(confirmDialog).getByText(/cannot be undone/i)).toBeDefined();
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+
+    // Cancelling still fires nothing, and the drawer stays open.
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+    expect(screen.getByRole('dialog')).toBeDefined();
+
+    // Confirming is what performs the erasure.
+    fireEvent.click(trigger);
+    const confirmAgain = await screen.findByRole('alertdialog');
+    fireEvent.click(within(confirmAgain).getByRole('button', { name: 'Erase profile' }));
+
+    await waitFor(() => {
+      const erase = calls.find((call) => call.method === 'DELETE');
+      expect(erase?.url).toBe('/api/hope/admin/dna-writing-styles/doctor/doc-1');
+      expect(erase?.body).toBeUndefined();
+    });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Erased 2 reports and 5 versions'));
+    // Erasing closes the drawer — the report it showed is now gone.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('toasts the failure and keeps the drawer open when the erase errors', async () => {
+    stubDna((call) => {
+      if (call.method === 'DELETE' && pathnameOf(call) === '/api/hope/admin/dna-writing-styles/doctor/doc-1') {
+        return Response.json({ message: 'Erasure failed', statusCode: 500 }, { status: 500 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<DnaWritingStylesScreen />, { searchParams: '?selected=doc-1' });
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Erase profile' }));
+    const confirmDialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Erase profile' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erasure failed'));
+    expect(toast.success).not.toHaveBeenCalled();
+    // Stays open so the admin can see the failure and retry.
+    expect(screen.getByRole('dialog')).toBeDefined();
+  });
 });

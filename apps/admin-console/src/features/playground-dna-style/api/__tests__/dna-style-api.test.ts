@@ -13,9 +13,11 @@ import {
   eraseMyReport,
   eraseMyStyle,
   generateMyStyle,
+  getDnaIngestJobStatus,
   getDnaJobStatus,
   getDnaSettings,
   getMyStyle,
+  ingestDnaWritingSamples,
   listMyReports,
   listMyVersions,
   setDefaultReport,
@@ -67,9 +69,14 @@ describe('playgroundDnaKeys', () => {
       playgroundDnaKeys.versions('x'),
       playgroundDnaKeys.settings(),
       playgroundDnaKeys.job('x'),
+      playgroundDnaKeys.ingestJob('x'),
     ]) {
       expect(key[0]).toBe('playground-dna-style');
     }
+  });
+
+  it('keeps the ingest job key distinct from the generate job key for the same id', () => {
+    expect(playgroundDnaKeys.ingestJob('x')).not.toEqual(playgroundDnaKeys.job('x'));
   });
 });
 
@@ -191,5 +198,46 @@ describe('playground dna style client', () => {
       '/api/hope/dna-writing-styles/jobs/job%231',
     ]);
     expect(dnaJobStreamPath('job#1')).toBe('dna-writing-styles/jobs/job%231/stream');
+  });
+
+  // F-6 — the ingest surface (TASK-974 §4.1): a SEPARATE route family and no admin/ prefix,
+  // same as every other call in this suite.
+  it('submits a batch of writing samples to POST /ingest', async () => {
+    const calls = installFetchMock(() =>
+      Response.json({
+        jobId: 'ingest-job-1',
+        status: 'PENDING',
+        clinicianUserId: 'doc-1',
+        acceptedItems: 2,
+        window: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+      }),
+    );
+    const job = await ingestDnaWritingSamples({
+      items: [
+        { text: 'Sample one.', writtenAt: '2026-08-01T00:00:00.000Z', kind: 'CASE_NOTE' },
+        { text: 'Sample two.', writtenAt: '2026-09-01T00:00:00.000Z' },
+      ],
+    });
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/dna-writing-styles/ingest']);
+    expect(calls[0].body).toEqual({
+      items: [
+        { text: 'Sample one.', writtenAt: '2026-08-01T00:00:00.000Z', kind: 'CASE_NOTE' },
+        { text: 'Sample two.', writtenAt: '2026-09-01T00:00:00.000Z' },
+      ],
+    });
+    expect(job).toEqual({
+      jobId: 'ingest-job-1',
+      status: 'PENDING',
+      clinicianUserId: 'doc-1',
+      acceptedItems: 2,
+      window: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+    });
+  });
+
+  it('reads an ingest job status from the /ingest/jobs/:jobId sub-path (no SSE twin)', async () => {
+    const calls = installFetchMock(() => Response.json({ jobId: 'ingest-job-1', status: 'processing', progress: 10 }));
+    const status = await getDnaIngestJobStatus('ingest-job-1');
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/dna-writing-styles/ingest/jobs/ingest-job-1']);
+    expect(status.status).toBe('processing');
   });
 });

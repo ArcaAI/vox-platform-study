@@ -7,7 +7,16 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { generateDnaReport, getDnaDashboard, getDnaJobStatus, getDoctorReport, listDnaReports, listDnaVersions, updateDnaReport } from '../client';
+import {
+  generateDnaReport,
+  getDnaDashboard,
+  getDnaJobStatus,
+  getDoctorReport,
+  listDnaReports,
+  listDnaVersions,
+  resetDoctorDnaProfile,
+  updateDnaReport,
+} from '../client';
 import { dnaKeys } from '../keys';
 
 interface RecordedCall {
@@ -123,5 +132,18 @@ describe('dna writing styles client', () => {
       '/api/hope/admin/dna-writing-styles/rep%201/versions',
       '/api/hope/admin/dna-writing-styles/jobs/job%231',
     ]);
+  });
+
+  // F-9 — the admin half of INV-240's "deletable by the clinician" requirement.
+  it('erases a doctor\'s whole DNA profile through DELETE doctor/:doctorId (no body, id escaped)', async () => {
+    const calls = installFetchMock(() => Response.json({ doctorId: 'doc-1', deletedReports: 2, deletedVersions: 5 }));
+    const result = await resetDoctorDnaProfile('doc-1');
+    await resetDoctorDnaProfile('doc/1');
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+      'DELETE /api/hope/admin/dna-writing-styles/doctor/doc-1',
+      'DELETE /api/hope/admin/dna-writing-styles/doctor/doc%2F1',
+    ]);
+    expect(calls[0].body).toBeUndefined();
+    expect(result).toEqual({ doctorId: 'doc-1', deletedReports: 2, deletedVersions: 5 });
   });
 });

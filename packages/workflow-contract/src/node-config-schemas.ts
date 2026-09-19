@@ -959,9 +959,13 @@ const DNA_PROPERTY = Object.freeze({
   properties: Object.freeze({
     enabled: Object.freeze({
       type: 'boolean',
-      summary: "Apply the clinician's DNA writing style when this agent generates.",
+      summary: "Apply the clinician's DNA writing style AND turn on their redaction rules when this agent generates.",
       description:
-        "TRUE declares this node as the DNA writing-style pass (TASK-891 OD-5). The clinician's own opt-out still vetoes it; ABSENT means the graph declares no DNA pass.",
+        "TRUE declares this node as BOTH the DNA writing-style pass and this tenant's DNA-redaction gate — ONE flag, " +
+        'both effects, deliberately (TASK-891 OD-5, TASK-991 OD-2): the generated text is written in the ' +
+        "clinician's learned style, AND — if the clinician has authored redaction rules — those rules are applied " +
+        "to it, rewriting or removing matched spans. The clinician's own opt-out still vetoes both; ABSENT means " +
+        'the graph declares neither pass.',
     }),
   }),
 });

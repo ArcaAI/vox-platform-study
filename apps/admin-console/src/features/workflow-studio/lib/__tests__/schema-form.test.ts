@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 
-import { toFieldDescriptors, type FieldDescriptor } from '../schema-form';
+import { humanizeKey, toFieldDescriptors, type FieldDescriptor } from '../schema-form';
 import summarizeSchema from './fixtures/summarize.schema.json';
 import discriminatedSchema from './fixtures/discriminated.schema.json';
 import unsupportedSchema from './fixtures/unsupported.schema.json';
@@ -40,6 +40,11 @@ describe('toFieldDescriptors — compile', () => {
     expect(descriptors[0]?.label).toBe('Prompt Template Id');
   });
 
+  it('F-10: humanizes the `dna` group label as the acronym `DNA`, not `Dna`', () => {
+    const descriptors = toFieldDescriptors({ type: 'object', properties: { dna: { type: 'object', properties: { enabled: { type: 'boolean' } } } } });
+    expect(descriptors[0]?.label).toBe('DNA');
+  });
+
   it('compiles a discriminated oneOf into a `discriminated` descriptor whose branches are keyed by the discriminator value', () => {
     const descriptors = toFieldDescriptors(discriminatedSchema);
     const retryPolicy = descriptors.find((d) => d.path === 'retryPolicy');
@@ -49,6 +54,19 @@ describe('toFieldDescriptors — compile', () => {
     expect(retryPolicy.branches.map((b) => b.value)).toEqual(['NONE', 'FIXED']);
     const fixed = retryPolicy.branches.find((b) => b.value === 'FIXED');
     expect(fixed?.fields.map((f) => f.path)).toContain('retryPolicy.attempts');
+  });
+});
+
+describe('humanizeKey — acronyms (F-10)', () => {
+  it('renders the `dna` key as the acronym `DNA`, case-insensitively', () => {
+    expect(humanizeKey('dna')).toBe('DNA');
+    expect(humanizeKey('DNA')).toBe('DNA');
+    expect(humanizeKey('Dna')).toBe('DNA');
+  });
+
+  it('leaves every other word on the capitalize-first-letter rule (no over-broad matching)', () => {
+    expect(humanizeKey('promptTemplateId')).toBe('Prompt Template Id');
+    expect(humanizeKey('onError')).toBe('On Error');
   });
 });
 

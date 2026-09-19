@@ -97,6 +97,17 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Per-word overrides for `humanizeKey`'s capitalize-first-letter rule, for the rare key that
+ * IS an acronym rather than a plain word (`dna` -> `Dna` is wrong; it must read `DNA`). Checked
+ * case-insensitively against each split word. Keep this to acronyms actually authored as a
+ * schema/registry key today (F-10) — it is not a general style dictionary, and
+ * `promptTemplateId` -> `Prompt Template Id` (no `ID`) stays the documented, pinned behavior.
+ */
+const ACRONYM_WORDS: Readonly<Record<string, string>> = Object.freeze({
+  dna: 'DNA',
+});
+
 /** `promptTemplateId` -> `Prompt Template Id`. Used when the schema carries no `title`, and
  *  re-exported for the palette rail to derive a display label from a bare registry
  *  `type` string — the delivered registry has no `label` field (registry.contract.md). */
@@ -106,7 +117,9 @@ export function humanizeKey(key: string): string {
     .replace(/[_-]+/g, ' ')
     .trim()
     .split(/\s+/);
-  return words.map((word) => (word.length === 0 ? word : word[0].toUpperCase() + word.slice(1))).join(' ');
+  return words
+    .map((word) => (word.length === 0 ? word : (ACRONYM_WORDS[word.toLowerCase()] ?? word[0].toUpperCase() + word.slice(1))))
+    .join(' ');
 }
 
 function labelFor(key: string, schema: Record<string, unknown>): string {
