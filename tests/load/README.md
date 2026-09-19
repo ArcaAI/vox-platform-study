@@ -3,12 +3,12 @@
 TASK-993 asks the platform to serve **10 tenants × 100 concurrent users** plus machine
 integrations. Every capacity number in that ticket's §2.9 is scaled from a **load model that
 nobody had measured**: originally 10 requests/min per active console user, revised under OD-1 to
-~30–50 because "a screen fires 10–15 TanStack queries". OD-1's answer was *"3× headroom, then
-load-test to confirm"*.
+~30–50 because "a screen fires 10–15 TanStack queries". OD-1's answer was _"3× headroom, then
+load-test to confirm"_.
 
 This directory is the confirmation step. It does two things:
 
-1. **`pnpm load:session`** — drives the real admin console in a real browser and *measures* what
+1. **`pnpm load:session`** — drives the real admin console in a real browser and _measures_ what
    one session costs. That number is the input to everything else.
 2. **`pnpm load:run`** — drives N tenants × M users (plus API keys and service accounts) against
    the gateway and reports **which ceiling bound first**, not just that something failed.
@@ -18,14 +18,15 @@ This directory is the confirmation step. It does two things:
 ## The measured number
 
 Recorded 2026-09-19 against the dev stack (gateway `:8868`, console `:5176`), logged in as
-`super_admin`, walking 11 platform-admin screens and then sitting idle for 71 s:
+`super_admin`, walking 11 platform-admin screens — 10 resolved to a real `<Link>` click and 1 to a
+document load — and then sitting idle for 71 s:
 
-| | measured |
-|---|---|
-| **active console user** | **26 gateway req/min** (mixed walk) — **44 req/min** when every navigation is a full document load |
-| **idle, parked session** | **8.5 gateway req/min**, from `refetchInterval` polls alone |
-| **per client-side navigation** | **1.6** gateway requests |
-| **per document load** | **8.0** gateway requests |
+|                                | measured                                                                                           |
+| ------------------------------ | -------------------------------------------------------------------------------------------------- |
+| **active console user**        | **26 gateway req/min** (mixed walk) — **44 req/min** when every navigation is a full document load |
+| **idle, parked session**       | **8.5 gateway req/min**, from `refetchInterval` polls alone                                        |
+| **per client-side navigation** | **1.6** gateway requests                                                                           |
+| **per document load**          | **8.0** gateway requests                                                                           |
 
 Three things follow, and each changes a number in TASK-993:
 
@@ -68,21 +69,21 @@ Both write to `results/` (gitignored — it holds plaintext fixture credentials)
 
 ### Knobs
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `LOAD_BASE_URL` | `http://localhost:8868/api/v1` | Gateway. **Never point this at the k3s cluster.** |
-| `LOAD_TENANTS` / `LOAD_USERS` | `10` / `100` | The population. Capped by what the fixture actually contains. |
-| `LOAD_API_KEYS` / `LOAD_SERVICE_ACCOUNTS` | `2` / `1` | Machine principals per tenant. They share the tenant's bucket. |
-| `LOAD_DURATION` / `LOAD_RAMP` | `120` / `30` s | Timed window, and the ramp that spreads users into it. |
-| `LOAD_THINK_MS` / `LOAD_THINK_SIGMA` | `4000` / `0.6` | Log-normal think time — **median**, not mean. |
-| `LOAD_ARRIVAL` | `closed` | `closed` fixes concurrency; `open` fixes arrival rate and lets lag accumulate. |
-| `LOAD_SESSIONS` | `reuse` | `reuse` = one JWT per tenant; `distinct` = one login per user (13 s apart — `auth/login` is 5/min). |
-| `LOAD_WORKERS` | `min(8, cpus-1)` | Worker threads, so the client is not the bottleneck. |
-| `LOAD_CALIBRATE` | `1` | Probe which routes each credential can reach, and drop the rest. |
-| `LOAD_COOLDOWN_S` | `65` | Wait after the probes so the limiter windows they spent roll over. |
-| `LOAD_SCRAPE_METRICS` | `1` | Bracket the run with `GET /metrics`. |
-| `LOAD_PG_CONNECT_TIMEOUT_MS` | `5000` | The gateway's pg `connectionTimeoutMillis`; drives the pool-timeout heuristic. |
-| `LOAD_PROBE_ROUTE_A/B` | `users/me/settings` / `agents` | Two routes on different handlers, for the lane probe. |
+| Variable                                  | Default                        | Meaning                                                                                             |
+| ----------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `LOAD_BASE_URL`                           | `http://localhost:8868/api/v1` | Gateway. **Never point this at the k3s cluster.**                                                   |
+| `LOAD_TENANTS` / `LOAD_USERS`             | `10` / `100`                   | The population. Capped by what the fixture actually contains.                                       |
+| `LOAD_API_KEYS` / `LOAD_SERVICE_ACCOUNTS` | `2` / `1`                      | Machine principals per tenant. They share the tenant's bucket.                                      |
+| `LOAD_DURATION` / `LOAD_RAMP`             | `120` / `30` s                 | Timed window, and the ramp that spreads users into it.                                              |
+| `LOAD_THINK_MS` / `LOAD_THINK_SIGMA`      | `4000` / `0.6`                 | Log-normal think time — **median**, not mean.                                                       |
+| `LOAD_ARRIVAL`                            | `closed`                       | `closed` fixes concurrency; `open` fixes arrival rate and lets lag accumulate.                      |
+| `LOAD_SESSIONS`                           | `reuse`                        | `reuse` = one JWT per tenant; `distinct` = one login per user (13 s apart — `auth/login` is 5/min). |
+| `LOAD_WORKERS`                            | `min(8, cpus-1)`               | Worker threads, so the client is not the bottleneck.                                                |
+| `LOAD_CALIBRATE`                          | `1`                            | Probe which routes each credential can reach, and drop the rest.                                    |
+| `LOAD_COOLDOWN_S`                         | `65`                           | Wait after the probes so the limiter windows they spent roll over.                                  |
+| `LOAD_SCRAPE_METRICS`                     | `1`                            | Bracket the run with `GET /metrics`.                                                                |
+| `LOAD_PG_CONNECT_TIMEOUT_MS`              | `5000`                         | The gateway's pg `connectionTimeoutMillis`; drives the pool-timeout heuristic.                      |
+| `LOAD_PROBE_ROUTE_A/B`                    | `users/me/settings` / `agents` | Two routes on different handlers, for the lane probe.                                               |
 
 Session recorder: `LOAD_CONSOLE_URL`, `LOAD_USERNAME`, `LOAD_PASSWORD`, `LOAD_TENANT_KEY`,
 `LOAD_SCREENS`, `LOAD_SETTLE_MS`, `LOAD_IDLE_MS`, `LOAD_HEADED`.
@@ -94,7 +95,7 @@ Session recorder: `LOAD_CONSOLE_URL`, `LOAD_USERNAME`, `LOAD_PASSWORD`, `LOAD_TE
 **No new dependency was warranted, so none was added.**
 
 - **Playwright** (already a repo dependency, browsers already installed) drives step 1. The thing
-  being measured *is* the console's own behaviour — its query de-duplication, its `staleTime`, its
+  being measured _is_ the console's own behaviour — its query de-duplication, its `staleTime`, its
   `refetchInterval` polls. A hand-written route list would measure the list.
 - **Plain Node 24 + global `fetch` + `worker_threads`** drives step 2, with zero new packages.
   Node's `fetch` is undici underneath, with keep-alive on and no per-origin connection cap, so a
@@ -117,20 +118,20 @@ The pure logic (attribution, percentiles, think time, the mix) is unit-tested an
 "It failed" is useless. §2.9 lists five ceilings that all present as a failed request, and the
 only useful output is which one bound. Full detail in `src/attribution.ts`.
 
-| Cause | How it is detected |
-|---|---|
-| `throttle_ip` | 429 with a **suffixed** `Retry-After-<tier>` ⇒ definitive: `TieredThrottlerGuard` never tenant-keys a non-default tier. Or a default-tier 429 whose tenant the probe found IP-keyed. |
-| `throttle_tenant` | Default-tier 429 whose tenant the probe found tenant-keyed. |
-| `throttle_unknown` | Default-tier 429 with no lane established. **Never** folded into either lane. |
-| `entitlement_quota` | Body `code: DOMAIN.QUOTA_EXCEEDED`, sub-attributed by `metadata.capability`. Checked **before** the status, because `mapQuotaCapabilityToHttp` answers **429** for every rolling-meter and concurrency cap — a quota block and a rate limit are the same status. |
-| `downstream_unreachable` | 503 + `GATEWAY.DOWNSTREAM_UNAVAILABLE`: the gateway never reached the Python peer. The message names the capability. |
-| `downstream_5xx` | 502 + `GATEWAY.DOWNSTREAM_UNAVAILABLE`: the peer answered 5xx. **An `apps/stt` `CapacityGuard` 503 lands here**, because `downstreamStatusFor` maps an upstream 5xx to 502. |
-| `peer_capacity_503` | A bare 503, only on the direct-peer lane that bypasses the gateway. |
-| `gateway_timeout` | 504. |
-| `db_pool_timeout_suspected` | A 500 whose latency falls in 0.9–1.6 × the pg `connectionTimeoutMillis`. **A heuristic, labelled as one** — see below. |
-| `server_error` | Any other 5xx. |
-| `auth` / `client_error` | 401/403 and other 4xx. Counted **apart** from platform capacity: these are harness or fixture faults, and folding them in would move the reported breaking point. |
-| `transport` | `fetch` threw — including a timeout, which is recorded rather than discarded. |
+| Cause                       | How it is detected                                                                                                                                                                                                                                               |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `throttle_ip`               | 429 with a **suffixed** `Retry-After-<tier>` ⇒ definitive: `TieredThrottlerGuard` never tenant-keys a non-default tier. Or a default-tier 429 whose tenant the probe found IP-keyed.                                                                             |
+| `throttle_tenant`           | Default-tier 429 whose tenant the probe found tenant-keyed.                                                                                                                                                                                                      |
+| `throttle_unknown`          | Default-tier 429 with no lane established. **Never** folded into either lane.                                                                                                                                                                                    |
+| `entitlement_quota`         | Body `code: DOMAIN.QUOTA_EXCEEDED`, sub-attributed by `metadata.capability`. Checked **before** the status, because `mapQuotaCapabilityToHttp` answers **429** for every rolling-meter and concurrency cap — a quota block and a rate limit are the same status. |
+| `downstream_unreachable`    | 503 + `GATEWAY.DOWNSTREAM_UNAVAILABLE`: the gateway never reached the Python peer. The message names the capability.                                                                                                                                             |
+| `downstream_5xx`            | 502 + `GATEWAY.DOWNSTREAM_UNAVAILABLE`: the peer answered 5xx. **An `apps/stt` `CapacityGuard` 503 lands here**, because `downstreamStatusFor` maps an upstream 5xx to 502.                                                                                      |
+| `peer_capacity_503`         | A bare 503, only on the direct-peer lane that bypasses the gateway.                                                                                                                                                                                              |
+| `gateway_timeout`           | 504.                                                                                                                                                                                                                                                             |
+| `db_pool_timeout_suspected` | A 500 whose latency falls in 0.9–1.6 × the pg `connectionTimeoutMillis`. **A heuristic, labelled as one** — see below.                                                                                                                                           |
+| `server_error`              | Any other 5xx.                                                                                                                                                                                                                                                   |
+| `auth` / `client_error`     | 401/403 and other 4xx. Counted **apart** from platform capacity: these are harness or fixture faults, and folding them in would move the reported breaking point.                                                                                                |
+| `transport`                 | `fetch` threw — including a timeout, which is recorded rather than discarded.                                                                                                                                                                                    |
 
 Two supporting mechanisms:
 
@@ -173,15 +174,15 @@ Read this section before quoting a number from it.
 
 **A laptop is not the cluster.**
 
-- One machine runs the load generator *and* the gateway *and* Postgres *and* Redis *and* six
+- One machine runs the load generator _and_ the gateway _and_ Postgres _and_ Redis _and_ six
   Python services. At the 10×100 target they compete for the same cores, so latency here includes
   contention the cluster would not have — and the client's own scheduling jitter lands in the p99.
-  Numbers from a laptop run bound the platform's *behaviour* (which ceiling binds, in what order,
-  at what offered rate), never its *throughput*.
+  Numbers from a laptop run bound the platform's _behaviour_ (which ceiling binds, in what order,
+  at what offered rate), never its _throughput_.
 - **Every virtual user shares one source IP.** That is fine for the tenant lane and actively
   useful for reproducing D-1, but it cannot reproduce the cluster's shape, where
   `cloudflared → Traefik → pod` makes every real user share the Traefik pod's IP anyway. What it
-  *cannot* show is what per-client-IP bucketing would do once D-1 is fixed.
+  _cannot_ show is what per-client-IP bucketing would do once D-1 is fixed.
 - **Local Redis evicts (`allkeys-lru`, 64 MB); the cluster refuses writes (`noeviction`, 512 MB).**
   §2.13 calls this a deliberate divergence. A memory-pressure failure of the throttler counters,
   the socket registry or a BullMQ queue exists in production and **cannot be reproduced here at
@@ -197,8 +198,8 @@ Read this section before quoting a number from it.
   Prisma/pg pool metric on `/metrics` — no pool depth, no acquire wait, no timeout counter — so a
   pool timeout arrives as a plain `500 Internal server error`, distinguishable only by clustering
   at the 5 s `connectionTimeoutMillis`. The harness reports it as **suspected** and carries the
-  `correlationId`s so an operator can settle each one in the gateway log. *This is the same gap
-  that blocks §2.10: the signal the HPA should scale on is not exported.*
+  `correlationId`s so an operator can settle each one in the gateway log. _This is the same gap
+  that blocks §2.10: the signal the HPA should scale on is not exported._
 - **The gateway's own HTTP metric is blind to refusals.** Nest runs guards before interceptors, so
   every 429/401/403 the throttler or the auth guard produces never reaches the metrics interceptor
   and is absent from `api_gateway_http_requests_total`. Measured on a smoke run: the client counted
@@ -210,7 +211,7 @@ Read this section before quoting a number from it.
   `distinct` then.
 - **SSE and WebSocket load is not generated.** Only the requests that open and re-open those
   streams are counted. §2.12's reconnect storm (341 reconnects against 33 sessions) is therefore
-  *not* reproduced, and it is the failure mode most likely to interact with the rate limiter.
+  _not_ reproduced, and it is the failure mode most likely to interact with the rate limiter.
 - **No audio, no inference.** The STT stream ceiling (20 on the dev GPU), the harness LLM
   serialisation (`HARNESS_LLM_MAX_CONCURRENCY=1`) and the text per-provider semaphores are not
   driven. A run can report "no ceiling reached" while those are untouched.
