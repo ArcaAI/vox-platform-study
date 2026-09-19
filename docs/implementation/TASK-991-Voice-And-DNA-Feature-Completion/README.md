@@ -236,3 +236,81 @@ contract change it fails every job with a `ResolvedAsrSpec` validation error unt
 | 2026-09-19 | Ticket opened. Audit recorded; OD-1 and OD-2 taken; six lanes defined. |
 | 2026-09-19 | Lanes A-H merged, gates run, end-to-end verified against a live gateway and the admin console. Status -> Review. |
 | 2026-09-19 | Lanes A-D merged to `dev-2.2` and green. OD-3/OD-4 taken mid-flight (embedding models and the embeddings endpoint are platform-fixed); lanes G and H added. |
+| 2026-09-19 | **Wave 2 closed.** All five wave-2 lanes (W2-A gateway owner-resolution, W2-B STT batch segments + orphaned jobs, W2-C browser SDK drain + `agentSlug`, W2-D provisioning cap + rollback, W2-E integration docs) merged to `dev-2.2` and gated. Four orchestrator fixes on top of the lanes — see §Wave 2 gate below. |
+
+## Wave 2 — gate results
+
+Every wave-2 lane is merged to `dev-2.2`; the gates below ran on the merged tree, not in the
+worktrees, per the standing rule that no gating test runs until the merges are complete.
+
+| Surface | Result |
+|---|---|
+| root unit (`pnpm test:unit`) | **27,466 passed**, 4 skipped, 9 todo — 1,768 files, 0 failed |
+| `@arcaai/applications` | **14,541 passed**, 10 skipped, 0 failed |
+| `@arcaai/vox` | **3,807 passed** |
+| `@arcaai/vox-node` | **587 passed** |
+| `@arcaai/admin-console` | **3,657 passed** |
+| `apps/stt` unit + integration | **3,828 passed**, 51 skipped |
+| `pnpm lint` | 0 errors |
+| `openapi:check` / `portal:check` / `gen:admin:check` | no drift |
+
+Three failures were investigated and are NOT regressions:
+
+- `test_task799_env_surface::test_minio_credentials_default_to_empty` — `.env.dev` carries
+  `MINIO_ACCESS_KEY`, `hope_env` puts it in `os.environ`, and `Settings(_env_file=None)` does not
+  stop an `os.environ` read. Under `CI=true` (no env file, per the TASK-558 contract) all 8 pass.
+  This is follow-up 2 above, observed from the other direction.
+- `settings-registry-screen.test.tsx` — fails only under full-suite parallelism and only
+  sometimes; 109/109 in isolation. Last touched by TASK-969.
+- `membership-bounded-sync.integration.test.ts` — needs a live test DB on 5433, which is held by
+  another stack on this host. Last touched by TASK-889.
+
+### Orchestrator fixes on top of the lanes
+
+Four defects the lanes could not see, because their hard rules forbade them from running anything:
+
+| Fix | What was wrong |
+|---|---|
+| `FileTranscriptionService.test.ts` | W2-C's two new `uploadAndTranscribeWithProgress` cases mocked `fetch`, but that method posts through `apiClient.uploadFormData` — XHR, because progress needs upload events — so a real `XMLHttpRequest` flew and jsdom failed them. The implementation was correct on both call sites. |
+| `tenant.service.test.ts` | W2-D restored the default `$transaction` shape in its own `beforeEach`, so the LAST purge test left a bag of `deleteMany` spies installed for the next sibling describe. Moved to `afterEach`, with a void block body — `mockImplementation` returns the mock, and a function returned from a Vitest hook is registered as a teardown. |
+| `gateway-scopes.ts` | W2-E wrote its service-account note field-agnostically because it could not see what W2-A would name the parameter. W2-A landed `clinicianUserId`; the note now names it. |
+| prettier | W2-A's `TranscribeCaller` union failed `apps/api` lint, where prettier is a hard error; the two SDK event unions had the same shape as warnings. |
+
+### Live re-verification (the three things lane B asked for)
+
+A fresh batch job on `test-dia` as doctor-1, submitted through the gateway, on a restarted STT
+worker running post-merge code (the running worker predated the merge by 36 minutes and was
+masking the fix — and a worker restart also surfaced an orphaned prometheus exporter still
+holding `:9191`, which is what makes a "worker won't start" look like an import error):
+
+| Lane B's ask | Result |
+|---|---|
+| `transcript_segments[].speaker == "Dr Manoj Johnson (doctor-1)"` | both segments, exactly that — the enrolled profile matched |
+| `t1Ms <= 11744` | **11720** (was 30000, whisper.cpp's padded context window) |
+| `resultMetadata.segments` no longer `[]` | 2 segments, each carrying `speaker_id` + `speaker_confidence` 0.8926 |
+
+Accuracy on the same clip, same agent, before and after the wave-2 merge — one run each side, so
+this is indicative rather than measured:
+
+| | WER | CER | word acc. | hyp words (ref 27) |
+|---|---|---|---|---|
+| pre-fix | 0.5556 | 0.4663 | 44.44% | 17 |
+| post-fix | **0.2593** | **0.1742** | **74.07%** | 28 |
+
+The English opening (`"Hello everyone, I am Dr. Manoj Johnson, lifestyle physician…"`) is back in
+the final transcript. It was always recognised in the partials and lost at finalization — which is
+consistent with W2-2's root cause, since segments that all measured 0.0-0.0 hit the
+`seg_end <= seg_start` guard and were dropped, taking their text with them.
+
+### Integration panel, verified in the running console
+
+The publish-time integration panel was read live on `test-dia` in the VOX tenant. Confirmed
+rendering: the corrected STT teardown order (`await finalize()` -> `close()` ->
+`await waitForClosed()`, with the reason `closeStreamSession()` answers 404 afterwards), the `gap`
+subscription, "a file and a `mediaId` are two different routes" with the no-public-media-upload
+note, the `RateLimit-Policy` note above the first request of every lane, and
+`speakerId: "Speaker 1"` on the transcript frame.
+
+One lane-E deviation from the brief was checked and is correct: the brief said `speakerId: "1"`,
+but `speaker_tracker.py:87` assigns `f"Speaker {n}"` as the **id** and `speaker-label.ts:40-46`
+passes it through verbatim. The panel is right and the brief was wrong.
