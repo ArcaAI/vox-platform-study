@@ -157,6 +157,30 @@ class TestBuildObservabilityConfig:
         assert config.tracing_enabled is True
         assert config.otlp_endpoint == "http://collector:4317"
 
+    def test_otel_service_name_env_wins_over_the_settings_default(self, monkeypatch) -> None:
+        """The deployment renames the resource with the generic OTEL_SERVICE_NAME.
+
+        `hope-v2-dev` sets `OTEL_SERVICE_NAME=hope-tts` on the Deployment, yet
+        the live pod reported `service.name=tts` in both its logs and its
+        traces, while every other service reported `hope-*`. Cause: the
+        `settings.otel_service_name or config.service_name` idiom cannot tell
+        an UNSET field from a defaulted one, and the default is the non-empty
+        `"tts"` — so it clobbered what `from_env` had already resolved. The
+        drift broke Grafana's trace->logs link, which keys on Loki's
+        `service_name` label (`hope-tts`).
+        """
+        monkeypatch.setenv("OTEL_SERVICE_NAME", "hope-tts")
+        config = build_observability_config(_config_settings())
+        assert config.service_name == "hope-tts"
+
+    def test_explicit_tts_setting_still_wins_over_the_generic_env(
+        self, monkeypatch
+    ) -> None:
+        """The narrowing above must not become "the TTS name is ignored"."""
+        monkeypatch.setenv("OTEL_SERVICE_NAME", "hope-tts")
+        config = build_observability_config(_config_settings(otel_service_name="tts-canary"))
+        assert config.service_name == "tts-canary"
+
     def test_carries_over_service_identity_and_environment(self) -> None:
         config = build_observability_config(
             _config_settings(

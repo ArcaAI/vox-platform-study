@@ -683,3 +683,86 @@ def test_configure_observability_call_is_not_gated_by_a_bare_enabled_flag() -> N
         "made NLP's three correctly-set OTel variables produce zero telemetry:\n"
         + "\n".join(violations)
     )
+
+
+_GENERIC_NAME_ALIAS_RE = re.compile(
+    r"AliasChoices\([^)]*[\"']OTEL_SERVICE_NAME[\"']", re.DOTALL
+)
+
+
+def _settings_field_aliases_generic_otel_service_name(svc: str) -> bool:
+    """True when the service's settings field reads bare ``OTEL_SERVICE_NAME`` itself."""
+    return any(
+        _GENERIC_NAME_ALIAS_RE.search(path.read_text(encoding="utf-8"))
+        for path in _iter_service_py_files(svc)
+    )
+
+
+def _service_name_overrides(svc: str) -> list[tuple[Path, int, str]]:
+    """Every ``service_name=`` keyword a service passes to a config constructor.
+
+    Returns the ones whose value comes from the service's OWN settings object
+    without a ``model_fields_set`` guard — i.e. the ones that can shadow the
+    generic ``OTEL_SERVICE_NAME`` ``ObservabilityConfig.from_env`` already
+    resolved. A literal, a `base.service_name`, or a conditional that consults
+    `model_fields_set` are all fine.
+    """
+    out: list[tuple[Path, int, str]] = []
+    for path in _iter_service_py_files(svc):
+        for node in ast.walk(_parse(path)):
+            if not isinstance(node, ast.Call):
+                continue
+            for kw in node.keywords:
+                if kw.arg != "service_name":
+                    continue
+                source = ast.unparse(kw.value)
+                if "model_fields_set" in source:
+                    continue
+                if re.search(r"\bsettings\b", source):
+                    out.append((path, node.lineno, source))
+    return out
+
+
+@pytest.mark.parametrize("svc", SERVICES)
+def test_generic_otel_service_name_is_not_shadowed_by_a_settings_default(svc: str) -> None:
+    """The deployment names the telemetry resource; a settings DEFAULT must not win.
+
+    py-obs states the contract plainly: ``OTEL_SERVICE_NAME`` "overrides the
+    ``service_name`` argument ... because that is the name deployments set per
+    Deployment" (`packages/py-obs/src/hope_obs/config.py`). Two services broke
+    it in opposite ways and the whole suite above stayed green, because every
+    other assertion here is about SHAPE — imports, call graphs, Dockerfiles —
+    and none of them resolves a name:
+
+    * harness passed ``settings.otel_service_name`` unconditionally, so the
+      generic variable was never read;
+    * tts used ``settings.otel_service_name or config.service_name``, and
+      ``or`` cannot distinguish an unset field from one holding its non-empty
+      default ``"tts"`` — so it clobbered the ``OTEL_SERVICE_NAME=hope-tts``
+      its own Deployment sets.
+
+    Measured in `hope-v2-dev` on 2026-09-19: harness, harness-worker and tts
+    reported a bare ``service.name`` in Loki AND Tempo while the other five
+    reported ``hope-*``. Grafana's trace->logs link keys on Loki's
+    ``service_name`` label, so a span from those three could never find its
+    own logs.
+
+    A service may still let an EXPLICITLY set ``<SVC>_OTEL_SERVICE_NAME`` win —
+    that is what the ``model_fields_set`` guard expresses, and this test
+    accepts it.
+    """
+    if _settings_field_aliases_generic_otel_service_name(svc):
+        # STT's route: the settings field itself declares
+        # `AliasChoices("STT_OTEL_SERVICE_NAME", "OTEL_SERVICE_NAME")`, so
+        # `settings.otel_service_name` IS the deployment's name and passing it
+        # on is correct. Two sanctioned routes, one outcome.
+        return
+
+    violations = [f"{_rel(p)}:{line}: service_name={src}" for p, line, src in
+                  _service_name_overrides(svc)]
+
+    assert violations == [], (
+        f"{svc}: `service_name` is taken from the service's own settings without a "
+        "`model_fields_set` guard, so a settings DEFAULT silently overrides the "
+        "`OTEL_SERVICE_NAME` the Deployment sets:\n" + "\n".join(violations)
+    )
