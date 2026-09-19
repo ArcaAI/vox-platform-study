@@ -1,0 +1,41 @@
+{
+    // Standalone: the repo-root `tests/` tree is not a workspace package, so no
+    // package `typecheck` task reaches it. `pnpm load:typecheck` points here.
+    //
+    // `moduleResolution: bundler` rather than the repo's NodeNext default, so
+    // relative imports stay extensionless — matching the sibling `tests/*`
+    // trees, and matching how tsx and vitest both resolve them.
+    "$schema": "https://json.schemastore.org/tsconfig",
+    "compilerOptions": {
+        "target": "ES2023",
+        "lib": ["ES2023", "DOM"],
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "types": ["node"],
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noUncheckedIndexedAccess": true,
+        "esModuleInterop": true,
+        "resolveJsonModule": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "noEmit": true,
+        "ignoreDeprecations": "6.0",
+        // `fixture/seed-load-fixture.ts` reaches into `packages/database/src/**`
+        // by relative path (the repo-root `tests/` tree is not a workspace
+        // package, so the bare `@arcaai/database` specifier does not resolve
+        // here). Typechecking it therefore pulls in that package's own
+        // workspace imports, which need the same mapping its package tsconfig
+        // gets from node_modules. `paths` without `baseUrl` resolves relative to
+        // this file — `baseUrl` itself is deprecated in TS 6.
+        "paths": {
+            "@arcaai/types": ["../../packages/types/src/index.ts"],
+            "@arcaai/types/*": ["../../packages/types/src/*"],
+            "@arcaai/utils": ["../../packages/utils/src/index.ts"],
+            "@arcaai/logger": ["../../packages/logger/src/index.ts"],
+            "@arcaai/exceptions": ["../../packages/exceptions/src/index.ts"]
+        }
+    },
+    "include": ["src/**/*.ts", "session/**/*.ts", "fixture/**/*.ts", "__tests__/**/*.ts"]
+}

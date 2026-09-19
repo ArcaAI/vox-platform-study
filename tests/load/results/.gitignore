@@ -1,0 +1,10 @@
+# Run output. Gitignored because `fixture.json` holds PLAINTEXT credentials for
+# the load-fixture tenants, and a run's JSON carries correlation ids and the
+# route mix of whatever environment it was pointed at.
+#
+# The MEASURED session profile is the exception: it is the evidence for the
+# TASK-993 OD-1 number, it contains no credential, and it is what `load:run`
+# consumes as its route mix — so it is committed.
+*
+!.gitignore
+!session-profile.json
