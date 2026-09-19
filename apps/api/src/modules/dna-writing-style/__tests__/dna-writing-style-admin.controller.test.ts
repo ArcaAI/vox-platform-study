@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DnaWritingStyleAdminController } from '../dna-writing-style-admin.controller';
+import { DnaWritingStyleController } from '../dna-writing-style.controller';
 import { NotFoundException } from '@nestjs/common';
 import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decorator';
 
@@ -463,10 +464,22 @@ describe('DnaWritingStyleAdminController', () => {
   // authenticate the SSE route: JwtAuthGuard rejects tickets on routes without
   // @StreamScope, so the console's `dna_job:<jobId>` tickets 401'd before this
   // declaration existed (the console shipped a labeled polling fallback).
-  describe('GET /admin/dna-writing-styles/jobs/:jobId/stream (SSE)', () => {
-    it('declares @StreamScope({ namespace: "dna_job", param: "jobId" }) for ticket auth', () => {
-      const meta = Reflect.getMetadata(STREAM_SCOPE_METADATA, DnaWritingStyleAdminController.prototype.streamJobStatus);
-      expect(meta).toEqual({ namespace: 'dna_job', param: 'jobId' });
+  //
+  // TASK-991 — the self-plane twin (`DnaWritingStyleController`) carried the SAME gap: no
+  // `@StreamScope` at all, so ITS `dna_job:<jobId>` tickets 401'd too (the class comment on that
+  // controller admitted as much). Both routes are asserted TOGETHER, in one test, rather than as
+  // two isolated ones — the point of a parity test is that these twins can never drift apart
+  // again without failing here first.
+  describe('GET .../dna-writing-styles/jobs/:jobId/stream (SSE) — @StreamScope parity', () => {
+    it('the admin AND self-plane controllers both declare @StreamScope({ namespace: "dna_job", param: "jobId" })', () => {
+      const expected = { namespace: 'dna_job', param: 'jobId' };
+      const adminMeta = Reflect.getMetadata(STREAM_SCOPE_METADATA, DnaWritingStyleAdminController.prototype.streamJobStatus);
+      const selfMeta = Reflect.getMetadata(STREAM_SCOPE_METADATA, DnaWritingStyleController.prototype.streamJobStatus);
+      expect(adminMeta).toEqual(expected);
+      expect(selfMeta).toEqual(expected);
+      // Not just "both equal the same literal" — assert they equal EACH OTHER, so a future edit
+      // to either literal alone (instead of both) still fails this test.
+      expect(selfMeta).toEqual(adminMeta);
     });
   });
 });

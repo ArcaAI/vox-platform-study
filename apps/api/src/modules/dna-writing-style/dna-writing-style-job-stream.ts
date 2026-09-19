@@ -121,6 +121,56 @@ function assertDnaJobAccess(payload: DnaJobOwnerFields | undefined | null, jobId
   }
 }
 
+/**
+ * TASK-991 defect 2 — `job.failedReason` is BullMQ's own `Error.message` from whatever the
+ * `DnaWritingStyleProcessor` last threw. Most of its guarded early-exits raise a fixed, static,
+ * user-meaningful string; its OUTER catch-all
+ * (`packages/applications/src/services/dna-writing-style/dna-writing-style.processor.ts:538`,
+ * `throw error`) rethrows the ORIGINAL error unchanged whenever something else escaped —
+ * including a raw Prisma/axios error whose `.message` can carry a container path, the tenant id,
+ * the doctor id and the full column list of the failing query. `redactTopology` alone does not
+ * catch this (it strips file paths only, leaving ids and column names intact), so this is
+ * ALLOW-LIST based and FAILS CLOSED: only a known-safe reason passes through unchanged, anything
+ * else — including an internal error we didn't anticipate — collapses to the generic message.
+ *
+ * Keep this set in sync BY HAND with the static `throw new Error(...)` sites in that processor
+ * (verified against it 2026-09-19):
+ *   - :238        'DNA writing style is disabled for this doctor (opt-out or tenant flag off)'
+ *   - :266        'No text samples available for DNA analysis'
+ *   - :301        'No approved text samples available for DNA analysis'
+ *   - :320        'PHI redactor is not available; refusing to send an unredacted DNA corpus to TEXT'
+ *   - :384-387    'No DNA analysis instruction could be resolved: this tenant has authored no
+ *                  DNA_ANALYSIS prompt template and the platform analyst agent carries no
+ *                  compiled prompt.'
+ *   - :401/:404   'DNA analysis output schema could not be resolved; refusing to generate an
+ *                  unconstrained writing-style profile'
+ *   - :422/434/454 'DNA analysis returned an unparseable or non-conforming response'
+ *
+ * Deliberately NOT allow-listed: `DNA_ANALYST_AGENT_UNAVAILABLE` (:896-899) and
+ * `DNA_INGEST_WRITTEN_AT_INVALID` (:950-953) — both INTERPOLATE a value (an agent slug; an
+ * ingested item's index and raw `writtenAt` string) rather than being a fixed string, so an
+ * exact-match allow-list can't safely admit them; they fall through to the generic message.
+ */
+const KNOWN_DNA_JOB_FAILURE_REASONS: ReadonlySet<string> = new Set([
+  'DNA writing style is disabled for this doctor (opt-out or tenant flag off)',
+  'No text samples available for DNA analysis',
+  'No approved text samples available for DNA analysis',
+  'PHI redactor is not available; refusing to send an unredacted DNA corpus to TEXT',
+  'No DNA analysis instruction could be resolved: this tenant has authored no DNA_ANALYSIS prompt template and the platform analyst agent carries no compiled prompt.',
+  'DNA analysis output schema could not be resolved; refusing to generate an unconstrained writing-style profile',
+  'DNA analysis returned an unparseable or non-conforming response',
+]);
+
+const GENERIC_DNA_JOB_FAILURE_MESSAGE = 'Generation failed';
+
+/** Allow-list gate for a DNA job's `error` field — see the block comment above. Fails closed. */
+export function safeJobError(failedReason: string | undefined): string {
+  if (failedReason && KNOWN_DNA_JOB_FAILURE_REASONS.has(failedReason)) {
+    return failedReason;
+  }
+  return GENERIC_DNA_JOB_FAILURE_MESSAGE;
+}
+
 export async function getDnaJobStatus(dnaQueue: Queue, jobId: string, access: DnaJobAccess): Promise<DnaJobStatusResponseDto> {
   const job = await dnaQueue.getJob(jobId);
   if (!job) {
@@ -137,7 +187,10 @@ export async function getDnaJobStatus(dnaQueue: Queue, jobId: string, access: Dn
     status,
     progress: toProgress(job.progress, status),
     result: status === 'completed' ? job.returnvalue : undefined,
-    error: status === 'failed' ? job.failedReason : undefined,
+    // ALLOW-LIST, not `redactTopology` — see `safeJobError` above. This is the POLL route's
+    // return value, so it must be safe on its own; the SSE emission below applies the same gate
+    // independently rather than trusting that this one ran.
+    error: status === 'failed' ? safeJobError(job.failedReason) : undefined,
   };
 }
 
@@ -165,12 +218,16 @@ export function streamDnaJobStatus(dnaQueue: Queue, jobId: string, access: DnaJo
         if (status.status === 'failed') {
           subscriber.next({
             type: 'error',
-            // `status.error` is the BullMQ `failedReason`. The DNA
-            // processor calls apps/text, so an unwrapped axios rejection lands
-            // here verbatim — host:port included — and is relayed to the
-            // browser. Redacted on the way out; the processor's own log keeps
-            // the full reason.
-            data: JSON.stringify({ jobId: status.jobId, error: redactTopology(status.error ?? 'Generation failed') }),
+            // `status.error` already went through `safeJobError` inside
+            // `getDnaJobStatus` above, so it is allow-list-safe by the time it
+            // reaches here. `redactTopology` stays in the chain as a first
+            // pass (defense in depth — the processor calls apps/text, so an
+            // unwrapped axios rejection can carry host:port), but
+            // `safeJobError` is what actually DECIDES the final string, so
+            // this emission can never disagree with the poll route about
+            // what is safe to ship to the browser. The processor's own log
+            // keeps the full reason.
+            data: JSON.stringify({ jobId: status.jobId, error: safeJobError(redactTopology(status.error ?? 'Generation failed')) }),
           } as MessageEvent);
           subscriber.complete();
         }
