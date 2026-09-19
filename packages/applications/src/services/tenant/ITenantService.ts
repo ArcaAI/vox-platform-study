@@ -19,6 +19,16 @@ export interface ITenantService extends IBaseService {
   // deletes
   deleteById(id: EntityId): Promise<TenantEntity>;
 
+  /**
+   * W2-8 — compensating rollback for `TenantOnboardingService`: HARD-deletes
+   * a tenant that failed provisioning before an admin was ever attached,
+   * plus every row `create()` wrote for it (reference-set clone, ASR
+   * pipeline catalog, department catalog). NOT a general-purpose delete —
+   * `deleteById` (soft delete) remains the only path for a real, live
+   * tenant.
+   */
+  purgeFailedProvisioning(tenantId: EntityId): Promise<void>;
+
   // Lifecycle. Dedicated non-OCC operator transitions.
   // `suspend`/`archive` are blocked on the system tenant (DEF-ADM-002).
   suspend(id: EntityId): Promise<TenantEntity>;

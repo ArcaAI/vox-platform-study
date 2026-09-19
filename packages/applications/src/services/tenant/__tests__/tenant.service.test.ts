@@ -398,6 +398,11 @@ describe('TenantService', () => {
     // create()'s post-provision broadcast can read `saved.id` /
     // `saved.createdAt`. Individual tests override this as needed.
     mockDepartmentRepository.create.mockImplementation(async (entity: any) => entity);
+    // Default: no departments exist yet (W2-7's cap check reads this before
+    // each golden-department clone attempt). `0` is always under every seeded
+    // plan's `maxDepartments`, so this is a no-op for every existing test;
+    // the W2-7 describe block below overrides it with a stateful counter.
+    mockDepartmentRepository.count.mockResolvedValue(0);
 
     // Default: empty SYSTEM catalog so the model-clone
     // provisioning step is a no-op for the existing create tests. The clone
@@ -882,6 +887,108 @@ describe('TenantService', () => {
         const result = await service.create({ key: 'NEW', name: 'New' });
 
         expect(result.id).toBe('new-tenant-id');
+      });
+    });
+
+    // W2-7 — golden-department cloning must never seed a tenant over its own
+    // plan's `maxDepartments` ceiling. Live bug: the STARTER seeded default
+    // (8, `PLAN_ENTITLEMENT_DEFAULTS.STARTER.maxDepartments`) was sized to the
+    // 8-row golden catalog alone and didn't account for the bare `GEN`
+    // department `provisionDefaultDepartment` ALWAYS creates first (the
+    // golden catalog carries no `GEN` code to reuse against) — a fresh
+    // STARTER tenant landed at 9/8 and could not add a department without an
+    // admin manually raising its entitlement.
+    describe('create — provisionTenantDepartmentCatalog respects the plan maxDepartments cap (W2-7)', () => {
+      /** Stateful department-repository double: tracks how many rows actually exist, like a real table would. */
+      const wireStatefulDepartmentRepository = () => {
+        let count = 0;
+        mockDepartmentRepository.count.mockImplementation(async () => count);
+        mockDepartmentRepository.findByCode.mockResolvedValue(null);
+        mockDepartmentRepository.create.mockImplementation(async (entity: any) => {
+          count += 1;
+          return { ...entity, id: `tenant-dept-${count}` };
+        });
+        return () => count;
+      };
+
+      const goldenDept = (code: string) => ({
+        id: `sys-dept-${code}`,
+        code,
+        name: code,
+        description: null,
+        defaultSummaryTemplate: 'SOAP',
+        promptConfig: null,
+      });
+
+      it('stops cloning at the resolved cap, leaving the tenant within its own plan limit', async () => {
+        // `createMockTenantEntity` carries no `.plan` field, so the resolved
+        // entity's plan is set EXPLICITLY here rather than relying on
+        // `effectivePlan`'s "absent → STARTER" fallback — the cap this test
+        // asserts must be caused by the plan on the row, not a coincidence.
+        const newTenant = { ...createMockTenantEntity({ id: 'new-tenant-id' }), plan: TenantPlan.STARTER };
+        mockTenantRepository.create.mockResolvedValue(newTenant);
+        const getCount = wireStatefulDepartmentRepository();
+        // 8 golden departments, none coded GEN — mirrors the real SYSTEM
+        // catalog (`DEFAULT_DEPARTMENTS` in seed/04-department.ts). Plus the
+        // bare GEN `provisionDefaultDepartment` always creates first, that's
+        // 9 total candidates against STARTER's seeded `maxDepartments: 8`.
+        mockBaseClient.department.findMany.mockResolvedValue(
+          ['OPD', 'IPD', 'ER', 'PERI', 'RAD', 'LAB', 'BEH', 'PEDS'].map(goldenDept),
+        );
+
+        await service.create({ key: 'NEW', name: 'New' });
+
+        // 1 bare GEN + 7 of the 8 golden departments = 8, the STARTER cap —
+        // never 9.
+        expect(getCount()).toBe(8);
+        const createdCodes = mockDepartmentRepository.create.mock.calls.map((c) => c[0].code);
+        expect(createdCodes).toEqual(['GEN', 'OPD', 'IPD', 'ER', 'PERI', 'RAD', 'LAB', 'BEH']);
+        expect(createdCodes).not.toContain('PEDS');
+      });
+
+      it("reads the DB-tunable PlanEntitlement override for the cap, not just the seeded default (must not disagree with DepartmentService's own enforcement)", async () => {
+        const mockPlanEntitlementRepository = { findByPlan: vi.fn().mockResolvedValue({ maxDepartments: 2 }) };
+        const mockTenantEntitlementRepository = { findByTenant: vi.fn().mockResolvedValue(null) };
+        const cappedService = new TenantService(
+          mockTenantRepository as any,
+          mockGlobalSettingRepository as any,
+          mockDepartmentRepository as any,
+          mockPromptTemplateRepository as any,
+          mockAsrPipelineRepository as any,
+          mockDatabaseService as any,
+          mockTenantBucketService as any,
+          mockEventEmitter as any,
+          mockClsService as any,
+          mockAiModelRepository as any,
+          mockAsrPipelineVersionRepository as any,
+          mockReferenceSetService as any,
+          mockBillingService as any,
+          mockPlanEntitlementRepository as any,
+          mockTenantEntitlementRepository as any,
+        );
+        const newTenant = { ...createMockTenantEntity({ id: 'new-tenant-id' }), plan: TenantPlan.STARTER };
+        mockTenantRepository.create.mockResolvedValue(newTenant);
+        const getCount = wireStatefulDepartmentRepository();
+        mockBaseClient.department.findMany.mockResolvedValue(['OPD', 'IPD', 'ER'].map(goldenDept));
+
+        await cappedService.create({ key: 'NEW', name: 'New' });
+
+        // An admin lowered STARTER's DB row to 2 for this test: bare GEN (1)
+        // + only 1 of the 3 golden departments fits.
+        expect(mockPlanEntitlementRepository.findByPlan).toHaveBeenCalledWith(TenantPlan.STARTER);
+        expect(getCount()).toBe(2);
+      });
+
+      it('clones every golden department when nowhere near the cap (unchanged behaviour)', async () => {
+        const newTenant = { ...createMockTenantEntity({ id: 'new-tenant-id' }), plan: TenantPlan.STARTER };
+        mockTenantRepository.create.mockResolvedValue(newTenant);
+        const getCount = wireStatefulDepartmentRepository();
+        mockBaseClient.department.findMany.mockResolvedValue(['OPD', 'IPD'].map(goldenDept));
+
+        await service.create({ key: 'NEW', name: 'New' });
+
+        // 1 bare GEN + 2 golden = 3, comfortably under STARTER's cap of 8.
+        expect(getCount()).toBe(3);
       });
     });
 
@@ -1585,6 +1692,142 @@ describe('TenantService', () => {
       mockTenantRepository.softDelete.mockRejectedValue(new Error('Delete failed'));
 
       await expect(service.deleteById('tenant-123')).rejects.toThrow('Delete failed');
+    });
+  });
+
+  // W2-8 — the compensating rollback for a provisioning attempt that never
+  // got an admin. Unlike `deleteById` (soft delete, for a real live tenant),
+  // this HARD-deletes the tenant and sweeps everything `create()` wrote for
+  // it, so an identical retry (same `key`) can succeed and nothing is left
+  // orphaned (rule 02: `tenantId` carries no FK, so nothing cascades).
+  describe('purgeFailedProvisioning (W2-8)', () => {
+    /** A tx double that records call order and scopes every delete to the given tenant id. */
+    const buildTxSpy = () => {
+      const callOrder: string[] = [];
+      const deleteManySpy = (model: string) =>
+        vi.fn().mockImplementation(async () => {
+          callOrder.push(model);
+          return { count: 0 };
+        });
+      const tx = {
+        documentTemplateVersion: { deleteMany: deleteManySpy('documentTemplateVersion') },
+        documentTemplate: { deleteMany: deleteManySpy('documentTemplate') },
+        promptVersion: { deleteMany: deleteManySpy('promptVersion') },
+        promptTemplate: { deleteMany: deleteManySpy('promptTemplate') },
+        consultationContextSchemaVersion: { deleteMany: deleteManySpy('consultationContextSchemaVersion') },
+        consultationContextSchema: { deleteMany: deleteManySpy('consultationContextSchema') },
+        agentAssignment: { deleteMany: deleteManySpy('agentAssignment') },
+        agent: { deleteMany: deleteManySpy('agent') },
+        workflowAssignment: { deleteMany: deleteManySpy('workflowAssignment') },
+        workflowDefinition: { deleteMany: deleteManySpy('workflowDefinition') },
+        asrPipelineVersion: { deleteMany: deleteManySpy('asrPipelineVersion') },
+        asrPipeline: { deleteMany: deleteManySpy('asrPipeline') },
+        department: { deleteMany: deleteManySpy('department') },
+        tenant: {
+          delete: vi.fn().mockImplementation(async () => {
+            callOrder.push('tenant');
+            return { id: 'doomed-tenant-id' };
+          }),
+        },
+      };
+      return { tx, callOrder };
+    };
+
+    beforeEach(() => {
+      // Same convention as `updateTenantConfigs — atomicity via $transaction`
+      // above: restore the default "invoke callback with mockTxClient" shape
+      // before every test, so the custom tx doubles below never leak into a
+      // sibling describe block.
+      (mockBaseClient.$transaction as any).mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) =>
+        callback(mockTxClient),
+      );
+    });
+
+    it('hard-deletes the tenant row (never softDelete) so the key is released for an identical retry', async () => {
+      const existing = createMockTenantEntity({ id: 'doomed-tenant-id', key: 'ACME' });
+      mockTenantRepository.findById.mockResolvedValue(existing);
+      const { tx } = buildTxSpy();
+      (mockBaseClient.$transaction as any).mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(tx));
+
+      await service.purgeFailedProvisioning('doomed-tenant-id');
+
+      expect(tx.tenant.delete).toHaveBeenCalledWith({ where: { id: 'doomed-tenant-id' } });
+      expect(mockTenantRepository.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('sweeps every reference-set/department/pipeline clone in one transaction, children before parents, tenant row last', async () => {
+      const existing = createMockTenantEntity({ id: 'doomed-tenant-id' });
+      mockTenantRepository.findById.mockResolvedValue(existing);
+      const { tx, callOrder } = buildTxSpy();
+      (mockBaseClient.$transaction as any).mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(tx));
+
+      await service.purgeFailedProvisioning('doomed-tenant-id');
+
+      // Versions before their parent; the two department-referencing kinds
+      // before `department`; the tenant row absolutely last.
+      expect(callOrder.indexOf('documentTemplateVersion')).toBeLessThan(callOrder.indexOf('documentTemplate'));
+      expect(callOrder.indexOf('promptVersion')).toBeLessThan(callOrder.indexOf('promptTemplate'));
+      expect(callOrder.indexOf('consultationContextSchemaVersion')).toBeLessThan(callOrder.indexOf('consultationContextSchema'));
+      expect(callOrder.indexOf('promptTemplate')).toBeLessThan(callOrder.indexOf('department'));
+      expect(callOrder.indexOf('consultationContextSchema')).toBeLessThan(callOrder.indexOf('department'));
+      expect(callOrder.indexOf('asrPipelineVersion')).toBeLessThan(callOrder.indexOf('asrPipeline'));
+      expect(callOrder[callOrder.length - 1]).toBe('tenant');
+      // Every kind actually swept — the reference-set clone (agents + a
+      // workflow) the bug report named, plus the department and ASR
+      // pipeline catalogs `TenantService.create` also writes.
+      expect(callOrder).toEqual(
+        expect.arrayContaining([
+          'agent',
+          'agentAssignment',
+          'workflowDefinition',
+          'workflowAssignment',
+          'promptTemplate',
+          'consultationContextSchema',
+          'documentTemplate',
+          'department',
+          'asrPipeline',
+          'asrPipelineVersion',
+        ]),
+      );
+    });
+
+    it('scopes every delete to exactly the doomed tenant id', async () => {
+      const existing = createMockTenantEntity({ id: 'doomed-tenant-id' });
+      mockTenantRepository.findById.mockResolvedValue(existing);
+      const { tx } = buildTxSpy();
+      (mockBaseClient.$transaction as any).mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(tx));
+
+      await service.purgeFailedProvisioning('doomed-tenant-id');
+
+      expect(tx.agent.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
+      expect(tx.workflowDefinition.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
+      expect(tx.department.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
+    });
+
+    it('refuses to purge the reserved system tenant', async () => {
+      const systemTenant = createMockTenantEntity({ id: '00000000-0000-0000-0000-000000000000', key: 'SYSTEM' });
+      mockTenantRepository.findById.mockResolvedValue(systemTenant);
+
+      await expect(service.purgeFailedProvisioning('00000000-0000-0000-0000-000000000000')).rejects.toThrow(
+        'The system tenant cannot be purged.',
+      );
+    });
+
+    it('emits a ResourceDeleted sys-event naming why the tenant was purged', async () => {
+      const existing = createMockTenantEntity({ id: 'doomed-tenant-id' });
+      mockTenantRepository.findById.mockResolvedValue(existing);
+      const { tx } = buildTxSpy();
+      (mockBaseClient.$transaction as any).mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(tx));
+
+      await service.purgeFailedProvisioning('doomed-tenant-id');
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        SysEventType.ResourceDeleted,
+        expect.objectContaining({
+          resourceId: 'doomed-tenant-id',
+          data: expect.objectContaining({ purgeReason: expect.stringContaining('admin was attached') }),
+        }),
+      );
     });
   });
 

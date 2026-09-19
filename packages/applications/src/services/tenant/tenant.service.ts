@@ -21,6 +21,8 @@ import {
   AsrPipelineVersionFactory,
   AiModelRepository,
   TenantPlan,
+  PlanEntitlementRepository,
+  TenantEntitlementRepository,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
 import { ITenantService } from './ITenantService';
@@ -35,6 +37,11 @@ import { scrubLockedForAudit } from './scrubbing';
 import { generateUniqueTenantKey } from './tenantKey';
 import { ITenantReferenceSetService } from './reference-set/ITenantReferenceSetService';
 import { IBillingService } from '../billing/IBillingService';
+// W2-7 — the pure resolver behind `EntitlementsService.resolveForTenant`. Importing the
+// leaf file (never the `../entitlements` barrel) is deliberate: the barrel also re-exports
+// `entitlements.service.module.ts`, which imports `TenantServiceModule` — going through it
+// would close a module-level import cycle. This file is plain TS (no DB, no NestJS).
+import { effectivePlan, resolveEntitlements } from '../entitlements/resolve-entitlements';
 
 /**
  * Reserved system tenant that owns the platform-wide AI model catalog (the
@@ -100,6 +107,19 @@ export class TenantService extends BaseService implements ITenantService {
      * than failing a plan write that has already committed.
      */
     @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
+    /**
+     * W2-7 — resolves the tenant's REAL `maxDepartments` ceiling (seeded
+     * default ← DB `PlanEntitlement` row ← per-tenant `TenantEntitlement`
+     * override) so golden-department cloning can never seed a tenant over
+     * its own plan's cap. `@Optional()` + trailing, the same house
+     * convention as `referenceSet`/`billing` above — both come from
+     * `CoreDatabaseModule` (already imported by `TenantServiceModule`), so
+     * production DI always supplies them; the positional unit fixtures do
+     * not, and `resolveMaxDepartmentsCap` degrades to the SEEDED default
+     * (never silently "unlimited") when either is absent.
+     */
+    @Optional() private readonly planEntitlementRepository?: PlanEntitlementRepository,
+    @Optional() private readonly tenantEntitlementRepository?: TenantEntitlementRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Tenant);
   }
@@ -189,7 +209,7 @@ export class TenantService extends BaseService implements ITenantService {
     }
 
     try {
-      await this.provisionTenantDepartmentCatalog(tenant.id);
+      await this.provisionTenantDepartmentCatalog(tenant.id, tenant.plan);
     } catch (error) {
       this.logger.warn({
         message: 'Failed to provision the golden department catalog for new tenant',
@@ -370,7 +390,7 @@ export class TenantService extends BaseService implements ITenantService {
    *  - EMPTY golden set → safe no-op (logged): the bare `GEN` remains the
    *    tenant's only department, which is the prior fallback behaviour.
    */
-  private async provisionTenantDepartmentCatalog(newTenantId: string): Promise<void> {
+  private async provisionTenantDepartmentCatalog(newTenantId: string, plan: TenantPlan | null | undefined): Promise<void> {
     const client = this.databaseService.baseClient;
 
     // Read through the unscoped client (SYSTEM-owned, and not SYSTEM-shared reads).
@@ -387,8 +407,38 @@ export class TenantService extends BaseService implements ITenantService {
       return;
     }
 
+    // W2-7 — a freshly provisioned tenant must never START its life over its
+    // own plan's `maxDepartments` ceiling (the STARTER seeded default of 8 was
+    // sized to the golden catalog alone and did not account for the bare `GEN`
+    // department `provisionDefaultDepartment` already created above — the
+    // catalog's own SYSTEM rows carry no `GEN` code to reuse, so the two
+    // together landed a STARTER tenant at 9/8 on day one). `null` = unlimited,
+    // so every golden department is still cloned unchanged for a plan with no
+    // ceiling. A real number caps this loop at EXACTLY the value
+    // `DepartmentService.create`'s own `assertQuantityQuota` enforces — both
+    // read the same `resolveEntitlements` merge, so they cannot disagree.
+    const maxDepartments = await this.resolveMaxDepartmentsCap(newTenantId, plan);
+
     for (const goldenDept of goldenDepartments) {
       if (!goldenDept.code) continue;
+
+      if (maxDepartments !== null) {
+        // Re-queried every iteration (never tracked locally): a same-code
+        // reuse doesn't grow the tenant's count, and a failed clone below
+        // must not be counted as if it had — only the live total decides
+        // whether there is still room for one more.
+        const currentCount = await this.departmentRepository.count({ where: { tenantId: newTenantId } });
+        if (currentCount >= maxDepartments) {
+          this.logger.warn({
+            message: 'Stopped cloning golden departments at the tenant plan maxDepartments ceiling',
+            newTenantId,
+            maxDepartments,
+            currentCount,
+          });
+          break;
+        }
+      }
+
       try {
         await this.resolveOrCreateTenantDepartment(newTenantId, goldenDept);
       } catch (error) {
@@ -400,6 +450,28 @@ export class TenantService extends BaseService implements ITenantService {
         });
       }
     }
+  }
+
+  /**
+   * W2-7 — resolve the tenant's plan `maxDepartments` ceiling using the exact
+   * merge `EntitlementsService.resolveForTenant` performs: seeded default
+   * (`PLAN_ENTITLEMENT_DEFAULTS`) ← DB `PlanEntitlement` row ← per-tenant
+   * `TenantEntitlement` override. `resolveEntitlements` is pure and built for
+   * exactly this — several callers supplying it the same DB rows — so
+   * provisioning here and the enforcement path in `DepartmentService.create`
+   * can never resolve two different numbers for the same tenant.
+   *
+   * The two repositories are `@Optional()` (see the constructor); when either
+   * is unwired this still resolves the SEEDED default for the plan (`planRow`/
+   * `override` fall back to `null`, which `resolveEntitlements` treats as "no
+   * admin-tuned row yet") — never "unlimited". Returns `null` only for a
+   * genuinely unlimited plan.
+   */
+  private async resolveMaxDepartmentsCap(tenantId: EntityId, plan: TenantPlan | null | undefined): Promise<number | null> {
+    const effective = effectivePlan(tenantId, plan);
+    const planRow = effective && this.planEntitlementRepository ? await this.planEntitlementRepository.findByPlan(effective) : null;
+    const override = this.tenantEntitlementRepository ? await this.tenantEntitlementRepository.findByTenant(tenantId) : null;
+    return resolveEntitlements(effective, planRow, override).limits.maxDepartments;
   }
 
   /**
@@ -779,6 +851,72 @@ export class TenantService extends BaseService implements ITenantService {
       data: tenant.toObject() as object,
     });
     return tenant;
+  }
+
+  /**
+   * W2-8 — compensating cleanup for a provisioning attempt that never got an
+   * admin (`TenantOnboardingService.rollbackTenant`). Unlike `deleteById`,
+   * this is NOT a general-purpose deletion path and must never be exposed as
+   * one: it exists only for a tenant `TenantService.create` just wrote, that
+   * failed before an admin was ever attached (the "never adminless"
+   * guardrail its docstring names), and so never had a chance to accumulate
+   * real usage — no consultation/session could reference any of the rows
+   * below, because nobody could ever log in.
+   *
+   * A tenant in that state was never truly alive, so this HARD-deletes it —
+   * a soft delete leaves `Tenant.key`'s unique constraint held, which is
+   * exactly what blocked the identical retry (409
+   * `PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION`) — and removes every row
+   * `create()` wrote for it: the reference-set clone (agents, prompt
+   * templates, workflow definitions, context schemas, document templates —
+   * plus their versions/assignments), the ASR pipeline catalog clone, and
+   * the department catalog clone. None of this cascades at the DB level on
+   * `tenantId` (rule 02: no FK on that column — by design), so each table is
+   * swept explicitly, in an order that respects the REAL FKs that DO exist
+   * between them: a version before its parent, and the two kinds that hold
+   * an optional FK to `Department` (`PromptTemplate`,
+   * `ConsultationContextSchema`) before `department` itself.
+   * `AgentModelFallback` is the one child left unswept on purpose — its FK to
+   * `Agent` is `onDelete: Cascade`, so deleting the `Agent` row already takes
+   * it. The two WORM change logs (`AgentAssignmentChange`,
+   * `WorkflowAssignmentChange`) are left alone too: the DB itself revokes
+   * UPDATE/DELETE on them for the app role.
+   *
+   * All-or-nothing via one interactive transaction — a failure partway must
+   * not leave the sweep half-done (see `.claude/rules/04-application-services.md`
+   * §Transactions).
+   */
+  async purgeFailedProvisioning(tenantId: EntityId): Promise<void> {
+    const existing = await this.tenantRepository.findById(tenantId);
+    this.assertNotSystemTenant(existing, 'purged');
+
+    await this.databaseService.baseClient.$transaction(async (tx) => {
+      // Reference-set clone content — versions before their parent.
+      await tx.documentTemplateVersion.deleteMany({ where: { tenantId } });
+      await tx.documentTemplate.deleteMany({ where: { tenantId } });
+      await tx.promptVersion.deleteMany({ where: { tenantId } });
+      await tx.promptTemplate.deleteMany({ where: { tenantId } });
+      await tx.consultationContextSchemaVersion.deleteMany({ where: { tenantId } });
+      await tx.consultationContextSchema.deleteMany({ where: { tenantId } });
+      await tx.agentAssignment.deleteMany({ where: { tenantId } });
+      await tx.agent.deleteMany({ where: { tenantId } });
+      await tx.workflowAssignment.deleteMany({ where: { tenantId } });
+      await tx.workflowDefinition.deleteMany({ where: { tenantId } });
+      // ASR pipeline catalog clone.
+      await tx.asrPipelineVersion.deleteMany({ where: { tenantId } });
+      await tx.asrPipeline.deleteMany({ where: { tenantId } });
+      // Department catalog clone — last of the content, now that nothing
+      // left standing still holds an FK into it.
+      await tx.department.deleteMany({ where: { tenantId } });
+      // The tenant row itself, released so an identical retry (same `key`)
+      // can succeed — a soft delete would leave the unique constraint held.
+      await tx.tenant.delete({ where: { id: tenantId } });
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+      resourceId: tenantId,
+      data: { ...(existing.toObject() as object), purgeReason: 'Provisioning failed before an admin was attached; compensating purge (W2-8)' },
+    });
   }
 
   /**
