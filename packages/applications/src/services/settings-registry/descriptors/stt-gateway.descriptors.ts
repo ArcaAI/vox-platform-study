@@ -70,6 +70,15 @@ export const STT_WS_PING_INTERVAL_MS_KEY = 'sttStreaming.wsPingIntervalMs';
 /** TASK-985 (M-47) — consecutive unanswered pings before the socket is terminated. */
 export const STT_WS_PING_MISSES_KEY = 'sttStreaming.wsPingMissesBeforeTerminate';
 
+/** TASK-992 — how many times a batch job may be reclaimed from a dead worker before it is marked DEAD. */
+export const STT_BATCH_MAX_RECLAIMS_KEY = 'stt.batch.maxReclaims';
+
+/** TASK-992 — how long a PROCESSING batch job may go without a write before the reaper fails it (minutes). */
+export const STT_BATCH_STALE_PROCESSING_MINUTES_KEY = 'stt.batch.staleProcessingMinutes';
+
+/** TASK-992 — the reaper's scan cadence. */
+export const STT_BATCH_REAPER_CRON_KEY = 'stt.batch.reaper.cron';
+
 /**
  * Code defaults for the gateway-side STT budgets — the single source of truth shared by
  * the descriptor below and `StreamingSessionService`, so the two can never disagree
@@ -86,6 +95,15 @@ export const STT_GATEWAY_DEFAULTS = {
   [STT_RESUME_MAX_REPLAY_AGE_MS_KEY]: 10_000,
   [STT_WS_PING_INTERVAL_MS_KEY]: 20_000,
   [STT_WS_PING_MISSES_KEY]: 2,
+  // TASK-992. Mirrors the shape of the per-row `maxRetries` default so the two
+  // budgets read alike, but they are deliberately SEPARATE budgets (OD-2).
+  [STT_BATCH_MAX_RECLAIMS_KEY]: 3,
+  // TASK-992. 2x the actor's own `time_limit` (`transcription_timeout_seconds`,
+  // 600 s), so the reaper can never fire while an attempt could legitimately
+  // still be running — Dramatiq kills the thread at 600 s, so past 20 minutes
+  // with no write there is nothing left alive to interrupt.
+  [STT_BATCH_STALE_PROCESSING_MINUTES_KEY]: 20,
+  [STT_BATCH_REAPER_CRON_KEY]: '*/5 * * * *',
 } as const;
 
 export const STT_GATEWAY_SETTINGS: SettingDescriptor[] = [
@@ -250,5 +268,68 @@ export const STT_GATEWAY_SETTINGS: SettingDescriptor[] = [
       "socket, so 2 is the floor worth running; 1 is a valid setting only if you are deliberately trading a client's " +
       'reconnect for a GPU slot.',
     default: STT_GATEWAY_DEFAULTS[STT_WS_PING_MISSES_KEY],
+  },
+  // ── TASK-992 — batch-job crash recovery ────────────────────────────────────
+  // All three are PLATFORM-owned (`globalOnly`): they govern the platform's own
+  // Dramatiq workers and its own maintenance tick, not a clinical preference a
+  // tenant holds an opinion about. All three are TUNING knobs, so an absent row
+  // degrades to the code default rather than to an outage — a reaper that
+  // refuses to run because a `GlobalSetting` is missing would re-create exactly
+  // the stranded-job condition it exists to clear.
+  {
+    key: STT_BATCH_MAX_RECLAIMS_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'STT batch job max reclaims',
+    description:
+      'How many times a batch transcription job may be taken over by a NEW worker after the previous one died ' +
+      'mid-flight. Counted on the job row as `reclaimCount`, separately from `retryCount`: a crashed worker and a ' +
+      'transcription that genuinely failed are different events, and sharing one budget would let an OOM spend the ' +
+      'allowance a bad audio file needs. Past this bound the job is marked DEAD rather than reclaimed again, which ' +
+      'is what stops a worker that crashes on one specific recording from reclaiming it forever. 0 disables ' +
+      'reclaim entirely and restores the pre-TASK-992 behaviour, where such a job stranded in PROCESSING.',
+    default: STT_GATEWAY_DEFAULTS[STT_BATCH_MAX_RECLAIMS_KEY],
+  },
+  {
+    key: STT_BATCH_STALE_PROCESSING_MINUTES_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'STT batch stale-PROCESSING window (minutes)',
+    description:
+      'How long a batch job may sit in PROCESSING with no write to its row before the reaper fails it as ' +
+      'WORKER_LOST. The signal is `updatedAt`, which the worker refreshes on every progress callback, so a job ' +
+      'that is still making progress is never eligible however long it runs. Keep this ABOVE the worker actor ' +
+      "time limit (`transcription_timeout_seconds`, 600 s): Dramatiq kills the attempt's thread at that point, so " +
+      'anything older has nothing left alive to interrupt. Set it too low and the reaper fails jobs out from under ' +
+      'workers that are mid-diarization, a phase that emits no progress at all.',
+    default: STT_GATEWAY_DEFAULTS[STT_BATCH_STALE_PROCESSING_MINUTES_KEY],
+  },
+  {
+    key: STT_BATCH_REAPER_CRON_KEY,
+    tier: 'global-kv',
+    dataType: 'string',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'STT batch job reaper cron',
+    description:
+      'Cron expression for the stranded-batch-job sweep. Cadence only — how LATE a stranded job is noticed is this ' +
+      'plus the stale window above; it does not change which jobs are eligible.',
+    default: STT_GATEWAY_DEFAULTS[STT_BATCH_REAPER_CRON_KEY],
   },
 ];

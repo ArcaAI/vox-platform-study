@@ -10,7 +10,7 @@
  * - Tests focus on service logic, not repository implementation
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TenantService } from '../tenant.service';
 import { SysEventType, ResourceStatusType, ResourceType, TenantFactory, TenantPlan } from '@arcaai/domains';
 
@@ -1733,15 +1733,19 @@ describe('TenantService', () => {
       return { tx, callOrder };
     };
 
-    beforeEach(() => {
-      // Same convention as `updateTenantConfigs — atomicity via $transaction`
-      // above: restore the default "invoke callback with mockTxClient" shape
-      // before every test, so the custom tx doubles below never leak into a
-      // sibling describe block.
-      (mockBaseClient.$transaction as any).mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) =>
-        callback(mockTxClient),
-      );
-    });
+    // Restore the default "invoke callback with mockTxClient" shape around
+    // every test in this block. `afterEach` is the load-bearing half: each
+    // test below installs its own tx double, and without a teardown the LAST
+    // one stays installed for whichever sibling describe runs next — which is
+    // how the OCC suite came to see a bag of deleteMany spies where it
+    // asserts the `{ __tx: true }` sentinel is propagated.
+    // Block body, NOT a concise arrow: `mockImplementation` returns the mock,
+    // and a function returned from a Vitest hook is registered as a teardown.
+    const restoreDefaultTx = (): void => {
+      (mockBaseClient.$transaction as any).mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient));
+    };
+    beforeEach(restoreDefaultTx);
+    afterEach(restoreDefaultTx);
 
     it('hard-deletes the tenant row (never softDelete) so the key is released for an identical retry', async () => {
       const existing = createMockTenantEntity({ id: 'doomed-tenant-id', key: 'ACME' });

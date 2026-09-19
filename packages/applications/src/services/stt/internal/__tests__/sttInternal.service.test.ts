@@ -11,6 +11,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { InvalidStateTransitionException } from '@arcaai/exceptions';
 import { SttInternalService } from '../sttInternal.service';
 
 // Enum constants
@@ -58,12 +59,19 @@ function createBehavioralJobEntity(
     version?: number;
     /** TASK-861 — set by the AGENT transcriptions route only; absent on the consultation lane. */
     agentVersionId?: string | null;
+    /** TASK-992 — crash-reclaim bookkeeping, separate from the retry budget. */
+    reclaimCount?: number;
+    retryCount?: number;
+    maxRetries?: number;
   } = {},
 ) {
   // Internal mutable state
   let _status = overrides.status ?? TranscriptionJobStatus.QUEUED;
   let _progress = overrides.progress ?? 0;
   let _workerId = overrides.workerId ?? null;
+  let _reclaimCount = overrides.reclaimCount ?? 0;
+  let _retryCount = overrides.retryCount ?? 0;
+  const _maxRetries = overrides.maxRetries ?? 3;
   let _startedAt: Date | null = null;
   let _completedAt: Date | null = null;
   let _resultText: string | null = null;
@@ -93,6 +101,15 @@ function createBehavioralJobEntity(
     },
     get workerId() {
       return _workerId;
+    },
+    get reclaimCount() {
+      return _reclaimCount;
+    },
+    get retryCount() {
+      return _retryCount;
+    },
+    get maxRetries() {
+      return _maxRetries;
     },
     get startedAt() {
       return _startedAt;
@@ -142,6 +159,12 @@ function createBehavioralJobEntity(
     get isFailed() {
       return _status === TranscriptionJobStatus.FAILED;
     },
+    get isCancelled() {
+      return _status === TranscriptionJobStatus.CANCELLED;
+    },
+    get isDead() {
+      return _status === TranscriptionJobStatus.DEAD;
+    },
     get isTerminal() {
       return (
         _status === TranscriptionJobStatus.COMPLETED ||
@@ -151,10 +174,23 @@ function createBehavioralJobEntity(
       );
     },
 
+    // TASK-992 — the double must refuse the way the ENTITY refuses, or the
+    // service tests would pass against an error shape production never
+    // produces. Mirrors `TranscriptionJobEntity.refuseTransition`.
+    refuse(attempted: string, verb: string): never {
+      throw new InvalidStateTransitionException(`Cannot ${verb} job in ${_status} status`, {
+        entity: 'TranscriptionJob',
+        entityId: entity.id,
+        currentStatus: _status,
+        attempted,
+        terminal: entity.isCompleted || entity.isCancelled || entity.isDead,
+      });
+    },
+
     // BEHAVIORAL methods
     startProcessing(workerId: string) {
       if (_status !== TranscriptionJobStatus.QUEUED) {
-        throw new Error(`Cannot start job in ${_status} status`);
+        entity.refuse('startProcessing', 'start');
       }
       _status = TranscriptionJobStatus.PROCESSING;
       _workerId = workerId;
@@ -162,6 +198,55 @@ function createBehavioralJobEntity(
       _progress = 0;
       _changes.status = _status;
       _changes.workerId = _workerId;
+    },
+
+    // TASK-992 — mirrors TranscriptionJobEntity.reclaimProcessing. The entity's
+    // own suite is the authority on these rules; this double exists so the
+    // SERVICE tests can assert WHICH transition the service chooses.
+    reclaimProcessing(workerId: string, maxReclaims: number) {
+      if (_status !== TranscriptionJobStatus.PROCESSING) {
+        entity.refuse('reclaimProcessing', 'reclaim');
+      }
+      if (_workerId === workerId) {
+        entity.refuse('reclaimProcessing', 'reclaim');
+      }
+      if (_reclaimCount >= maxReclaims) {
+        entity.refuse('reclaimProcessing', 'reclaim');
+      }
+      _reclaimCount += 1;
+      _workerId = workerId;
+      _startedAt = new Date();
+      _progress = 0;
+      _changes.reclaimCount = _reclaimCount;
+      _changes.workerId = _workerId;
+      _changes.progress = _progress;
+    },
+
+    // TASK-992 — mirrors TranscriptionJobEntity.reattemptAfterFailure.
+    reattemptAfterFailure(workerId: string) {
+      if (_status !== TranscriptionJobStatus.FAILED) {
+        entity.refuse('reattemptAfterFailure', 'restart');
+      }
+      if (_retryCount >= _maxRetries) {
+        entity.refuse('reattemptAfterFailure', 'restart');
+      }
+      _retryCount += 1;
+      _status = TranscriptionJobStatus.PROCESSING;
+      _workerId = workerId;
+      _startedAt = new Date();
+      _progress = 0;
+      _completedAt = null;
+      _errorMessage = null;
+      _errorCode = null;
+      _changes.status = _status;
+      _changes.retryCount = _retryCount;
+      _changes.workerId = _workerId;
+    },
+
+    markAsDead() {
+      _status = TranscriptionJobStatus.DEAD;
+      _completedAt = new Date();
+      _changes.status = _status;
     },
 
     updateProgress(progress: number) {
@@ -174,7 +259,7 @@ function createBehavioralJobEntity(
 
     complete(resultText: string, metadata?: any) {
       if (_status !== TranscriptionJobStatus.PROCESSING) {
-        throw new Error(`Cannot complete job in ${_status} status`);
+        entity.refuse('complete', 'complete');
       }
       _status = TranscriptionJobStatus.COMPLETED;
       _completedAt = new Date();
@@ -187,7 +272,7 @@ function createBehavioralJobEntity(
 
     fail(errorMessage: string, errorCode?: string) {
       if (entity.isTerminal) {
-        throw new Error(`Cannot fail job in ${_status} status`);
+        entity.refuse('fail', 'fail');
       }
       _status = TranscriptionJobStatus.FAILED;
       _completedAt = new Date();
@@ -561,14 +646,148 @@ describe('SttInternalService', () => {
       await expect(service.startJob('non-existent', { workerId: 'worker-001' })).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw when job is not in QUEUED state', async () => {
+    /**
+     * TASK-992 — `/start` is a CLAIM, not a start.
+     *
+     * This block used to contain a single test asserting that any non-QUEUED
+     * status throws. That assertion PINNED THE BUG: a worker that died
+     * mid-flight had its job redelivered by the broker, the new worker's
+     * `/start` was refused, and the row sat in PROCESSING forever with
+     * `retryCount` at 0 and nothing able to fail it. The refusal is now
+     * reserved for statuses that genuinely admit nothing further.
+     */
+    it('reclaims a PROCESSING job for a NEW worker after the previous one died (AC-2)', async () => {
       const job = createBehavioralJobEntity({
         id: 'job-123',
         status: TranscriptionJobStatus.PROCESSING,
+        workerId: 'host-a-59400',
+        progress: 75,
+      });
+      mockJobRepository.findById.mockResolvedValue(job);
+      mockJobRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+
+      await service.startJob('job-123', { workerId: 'host-b-62315' });
+
+      expect(job.status).toBe(TranscriptionJobStatus.PROCESSING);
+      expect(job.workerId).toBe('host-b-62315');
+      expect(job.reclaimCount).toBe(1);
+      expect(job.retryCount).toBe(0);
+      expect(mockJobRepository.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('names the worker it took the job FROM on the sys-event, since the row only keeps the current one', async () => {
+      const job = createBehavioralJobEntity({
+        id: 'job-123',
+        status: TranscriptionJobStatus.PROCESSING,
+        workerId: 'host-a-59400',
+      });
+      mockJobRepository.findById.mockResolvedValue(job);
+      mockJobRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+
+      await service.startJob('job-123', { workerId: 'host-b-62315' });
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        SysEventType.ResourceUpdated,
+        expect.objectContaining({
+          resourceId: 'job-123',
+          data: expect.objectContaining({ reclaimedFrom: 'host-a-59400', workerId: 'host-b-62315' }),
+        }),
+      );
+    });
+
+    it('is idempotent for the worker that already holds the job — no write, no event (AC-3)', async () => {
+      const job = createBehavioralJobEntity({
+        id: 'job-123',
+        status: TranscriptionJobStatus.PROCESSING,
+        workerId: 'host-a-59400',
+        progress: 75,
       });
       mockJobRepository.findById.mockResolvedValue(job);
 
-      await expect(service.startJob('job-123', { workerId: 'worker-001' })).rejects.toThrow();
+      await service.startJob('job-123', { workerId: 'host-a-59400' });
+
+      // The 75% is the LIVE worker's own progress. Resetting it because the
+      // worker retried one HTTP call would throw away real work.
+      expect(job.progress).toBe(75);
+      expect(job.reclaimCount).toBe(0);
+      expect(mockJobRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('re-attempts a FAILED job so the broker retry can actually run (AC-5)', async () => {
+      const job = createBehavioralJobEntity({
+        id: 'job-123',
+        status: TranscriptionJobStatus.FAILED,
+        workerId: 'host-a-59400',
+      });
+      mockJobRepository.findById.mockResolvedValue(job);
+      mockJobRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+
+      await service.startJob('job-123', { workerId: 'host-b-62315' });
+
+      expect(job.status).toBe(TranscriptionJobStatus.PROCESSING);
+      expect(job.retryCount).toBe(1);
+      expect(job.errorMessage).toBeNull();
+    });
+
+    it('marks the job DEAD and PERSISTS that before refusing, once the reclaim budget is spent (AC-4)', async () => {
+      const job = createBehavioralJobEntity({
+        id: 'job-123',
+        status: TranscriptionJobStatus.PROCESSING,
+        workerId: 'host-a-59400',
+        reclaimCount: 3,
+      });
+      mockJobRepository.findById.mockResolvedValue(job);
+      mockJobRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+
+      await expect(service.startJob('job-123', { workerId: 'host-b-62315' })).rejects.toThrow(InvalidStateTransitionException);
+
+      // Throwing without persisting would leave the row in the exact stuck
+      // state this ticket exists to remove — there is no transaction here to
+      // roll the write back, so the write must land BEFORE the throw.
+      expect(job.status).toBe(TranscriptionJobStatus.DEAD);
+      expect(mockJobRepository.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('marks the job DEAD once the retry budget is spent on the FAILED leg', async () => {
+      const job = createBehavioralJobEntity({
+        id: 'job-123',
+        status: TranscriptionJobStatus.FAILED,
+        retryCount: 3,
+        maxRetries: 3,
+      });
+      mockJobRepository.findById.mockResolvedValue(job);
+      mockJobRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+
+      await expect(service.startJob('job-123', { workerId: 'host-b-62315' })).rejects.toThrow(InvalidStateTransitionException);
+
+      expect(job.status).toBe(TranscriptionJobStatus.DEAD);
+    });
+
+    it.each([[TranscriptionJobStatus.COMPLETED], [TranscriptionJobStatus.CANCELLED], [TranscriptionJobStatus.DEAD]])(
+      'refuses a %s job as genuinely terminal, and writes nothing',
+      async (status) => {
+        const job = createBehavioralJobEntity({ id: 'job-123', status });
+        mockJobRepository.findById.mockResolvedValue(job);
+
+        await expect(service.startJob('job-123', { workerId: 'host-b-62315' })).rejects.toThrow(InvalidStateTransitionException);
+
+        expect(mockJobRepository.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('tells the caller the refusal is terminal, so the worker ACKs instead of retrying forever', async () => {
+      const job = createBehavioralJobEntity({ id: 'job-123', status: TranscriptionJobStatus.COMPLETED });
+      mockJobRepository.findById.mockResolvedValue(job);
+
+      const error = await service.startJob('job-123', { workerId: 'host-b-62315' }).catch((e) => e);
+
+      expect(error).toBeInstanceOf(InvalidStateTransitionException);
+      expect(error.metadata).toMatchObject({
+        entity: 'TranscriptionJob',
+        entityId: 'job-123',
+        currentStatus: TranscriptionJobStatus.COMPLETED,
+        terminal: true,
+      });
     });
   });
 
