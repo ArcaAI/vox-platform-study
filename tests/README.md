@@ -31,7 +31,7 @@ pnpm test:e2e        # terminal 2
 
 | Command | What it runs |
 |---|---|
-| `pnpm test:unit` (watch: `test:unit:watch`, UI: `test:unit:ui`, coverage: `test:unit:cov`) | `vitest.config.ts` — all `**/*.test.ts` / `**/*.spec.ts` across packages and apps, excluding `integration/`, `e2e/`, the PgBouncer validation rig (`pnpm pgbv:test` runs it separately), `*.postgres.test.ts`, and (by owner directive) `packages/ui`, `apps/compat-playground`, `apps/quick-compat-app` — run those only via their own `pnpm --filter <pkg> test` when the change is inside them. No infra needed |
+| `pnpm test:unit` (watch: `test:unit:watch`, UI: `test:unit:ui`, coverage: `test:unit:cov`) | `vitest.config.ts` — all `**/*.test.ts` / `**/*.spec.ts` across packages and apps, excluding `integration/`, `e2e/`, the PgBouncer validation rig (`pnpm pgbv:test` runs it separately), `*.postgres.test.ts`, and (by owner directive) `packages/ui` — run it only via its own `pnpm --filter <pkg> test` when the change is inside it. No infra needed |
 | `pnpm test:integration` | `vitest.integration.config.ts` — `**/integration/**/*.test.ts`, sequential (single fork), against the live test DB. Requires test infra up |
 | `pnpm test:e2e` (UI: `test:e2e:ui`, debug: `test:e2e:debug`) | `playwright.config.ts` — `apps/api/tests/e2e/**/*.spec.ts` against a RUNNING test API (`API_URL`, default `http://localhost:8968/api/v1`). Start it first: `pnpm test:up:api`. `pnpm test:e2e:all` runs the turbo `test:e2e` task across packages instead |
 | `npx playwright test -c tests/e2e/sdk/playwright.config.ts` | `tests/e2e/sdk/*.e2e.spec.ts` against a running API (`API_URL`, default `http://localhost:8968`). No root pnpm alias |

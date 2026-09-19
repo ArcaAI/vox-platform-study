@@ -25,7 +25,7 @@ Prettier config.
 | `flat/library.js` | `packages/agentic-sdk-v2`, `applications`, `domains`, `exceptions`, `logger`, `med-ner`, `noise-filter`, `pipeline`, `room`, `stt`, `ui`, `vad`, `vox-node`, `vox-codegen`, `vox-node-codegen`, `workflow-contract`, `async-contract`, `json-schema-subset` |
 | `flat/nestjs.js` | `apps/api` |
 | `flat/next.js` | `apps/admin-console` |
-| `flat/react-library.js` | `apps/compat-playground` |
+| `flat/react-library.js` | (no current consumer) |
 
 ### Architectural guard rules in `flat/core.js`
 

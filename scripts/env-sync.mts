@@ -89,8 +89,6 @@
  * manifest.
  *
  * ─── DELIBERATELY *NOT* SCHEMA-VALIDATED (declared boundary, not an oversight) ─
- *   • `apps/example` — a Vite demo whose vars are `import.meta.env.VITE_*`,
- *     not process env.
  *   • `.env.test`, per-app `.env.prod` — environment TEMPLATES with
  *     deliberately environment-specific values (`.env.test` runs the DEV+100
  *     port scheme of commit d84f538e), not declarations. Neither is loaded

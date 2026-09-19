@@ -8,12 +8,9 @@
  *   - infrastructure/docker/python-base/Dockerfile — shared BASE image only,
  *     no CMD/ENTRYPOINT, never runs as a process. Every consumer of it bakes
  *     its own build-info.json in its own final stage.
- *   - apps/example/Dockerfile — not built by any job in .gitlab/ci/build.yml
- *     (a standalone raw-WebSocket demo); not part of the build-info schema's
- *     `service` enum.
- *   - apps/compat-playground/Dockerfile — CI jobs hidden. The
+ *   - apps/example and apps/compat-playground were REMOVED from the tree. The
  *     schema enum keeps `compat-playground` so already-shipped images still
- *     validate; CI no longer builds a new one.
+ *     validate; nothing builds a new one.
  *   - apps/stt/docker/Dockerfile.apple — Apple-silicon local dev variant, not
  *     built by CI.
  */

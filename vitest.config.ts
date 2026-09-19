@@ -3,9 +3,8 @@ import path from 'path';
 
 // Excluded from EVERY aggregate suite (unit / integration / e2e) by owner
 // directive — see `.claude/rules/01-development-workflow.md` §Test Scope
-// Exclusions. `apps/quick-compat-app` is not even a workspace member
-// (pnpm-workspace.yaml negates it), so its suites must never be discovered here.
-const SKIPPED_WORKSPACE_DIRS = ['packages/ui/**', 'apps/compat-playground/**', 'apps/quick-compat-app/**'];
+// Exclusions.
+const SKIPPED_WORKSPACE_DIRS = ['packages/ui/**'];
 
 const SHARED_EXCLUDE = [
   '**/node_modules/**',
@@ -27,9 +26,8 @@ const SHARED_EXCLUDE = [
   '**/pgbouncer-validation/**',
   '**/*.postgres.test.ts',
   // Owner directive (2026-08-19, `01-development-workflow.md` §Test Scope
-  // Exclusions): these three workspaces are OUT of every aggregate suite. Run
-  // them only via their own `pnpm --filter <pkg> test` when the change is
-  // inside them.
+  // Exclusions): this workspace is OUT of every aggregate suite. Run it
+  // only via its own `pnpm --filter <pkg> test` when the change is inside it.
   ...SKIPPED_WORKSPACE_DIRS,
 ];
 
@@ -44,12 +42,11 @@ const SHARED_EXCLUDE = [
 //     run by `ui:test:ct` — not vitest).
 //   - packages/agentic-sdk-v2 (vox) runs `*.test.{ts,tsx}` under jsdom (its real
 //     environment); they used to run here in node as an accident of the glob.
-//   - apps/compat-playground names its suites `*.test.tsx` (happy-dom).
 //   - apps/admin-console uses a NESTED-projects config (server node + client
 //     happy-dom) + `@vitejs/plugin-react` that isn't resolvable from the repo root.
-// `packages/ui` and `apps/compat-playground` are additionally in
-// SKIPPED_WORKSPACE_DIRS above (never run by an aggregate suite at all).
-const BROWSER_PACKAGE_DIRS = ['packages/ui/**', 'packages/agentic-sdk-v2/**', 'apps/compat-playground/**', 'apps/admin-console/**'];
+// `packages/ui` is additionally in SKIPPED_WORKSPACE_DIRS above (never run by
+// an aggregate suite at all).
+const BROWSER_PACKAGE_DIRS = ['packages/ui/**', 'packages/agentic-sdk-v2/**', 'apps/admin-console/**'];
 
 export default defineConfig({
   // Vitest 4.1.10 → Vite 8/Oxc: keep NestJS legacy decorators, skip metadata

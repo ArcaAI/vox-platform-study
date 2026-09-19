@@ -32,7 +32,6 @@
 # so it keeps the validate stage, which still references the fragment above.
 # `scan-gitleaks` references NEITHER — a secret scan runs on every branch.
 # All live Trivy jobs reference this one: the image scans plus `scan-source`.
-# `.scan-compat-playground` is hidden and is not in this set.
 # Branches are listed explicitly, not matched by `/^dev-2\./`, so each new
 # release line opting out stays a deliberate edit rather than an inherited
 # default.
@@ -125,40 +124,6 @@
     - if: $PIPELINE_TYPE == "feature"
       changes:
         - apps/admin-console/**/*
-        - packages/ui/**/*
-
-# Only referenced by the hidden jobs. Keep the template so re-enable
-# is undotting those jobs rather than reconstructing path filters.
-.rules-compat-playground:
-  rules:
-    - !reference [.rules-always, rules]
-    - !reference [.rules-cicd-always, rules]
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        paths:
-          - apps/compat-playground/**/*
-          - packages/ui/**/*
-          - packages/room/**/*
-          - packages/stt/**/*
-          - packages/vad/**/*
-          - packages/noise-filter/**/*
-          - packages/agentic-sdk-v2/**/*
-          - packages/med-ner/**/*
-        compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "dev"
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
-      changes:
-        - apps/compat-playground/**/*
-        - packages/ui/**/*
-        - packages/room/**/*
-        - packages/stt/**/*
-        - packages/vad/**/*
-        - packages/noise-filter/**/*
-        - packages/agentic-sdk-v2/**/*
-        - packages/med-ner/**/*
-    - if: $PIPELINE_TYPE == "feature"
-      changes:
-        - apps/compat-playground/**/*
         - packages/ui/**/*
 
 # ── STT (Speech-to-Text) ─────────────────────────────────────────────────

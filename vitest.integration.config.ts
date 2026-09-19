@@ -21,7 +21,7 @@ export default defineConfig({
     // The three trailing dirs are the owner-directed test-scope exclusions
     // (`.claude/rules/01-development-workflow.md` §Test Scope Exclusions) —
     // out of every aggregate suite, run only via their own package script.
-    exclude: ['**/node_modules/**', '**/dist/**', '.claude/**', 'packages/ui/**', 'apps/compat-playground/**', 'apps/quick-compat-app/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', '.claude/**', 'packages/ui/**'],
     setupFiles: ['./tests/setup/integration.setup.ts'],
     // Run integration tests sequentially to avoid database conflicts
     pool: 'forks',

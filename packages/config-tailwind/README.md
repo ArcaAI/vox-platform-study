@@ -33,8 +33,8 @@ export default sharedConfig;
   shared config.
 - No app or package references it in a `tailwind.config.*` — Tailwind v4 consumers configure via
   CSS instead: `packages/ui` builds its stylesheet with the Tailwind CLI from
-  `src/styles/globals.css`; `apps/compat-playground` uses `@tailwindcss/vite` with
-  `@import 'tailwindcss'` and `@source "../../../packages/ui/src"` in `src/index.css`.
+  `src/styles/globals.css`, and `apps/admin-console` imports it plus a
+  `@source "../../../packages/ui/src"` scan in its `globals.css`.
 
 ### When to use
 

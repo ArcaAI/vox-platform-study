@@ -155,7 +155,6 @@ variables:
   # packages/noise-filter/assets/rnnoise.wasm, shipped via package.json
   # "files") re-enable the smudge with GIT_LFS_SKIP_SMUDGE: "0":
   #   test-sdk, publish-sdk, build-admin-console.
-  # (build-compat-playground used to be on this list.)
   # Without it they would get a ~130-byte pointer stub — test-sdk's
   # wasmAsset.test.ts asserts size > 10_000, and the build jobs would
   # SILENTLY ship a broken wasm.

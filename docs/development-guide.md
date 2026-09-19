@@ -199,9 +199,6 @@ Support commands:
 | TTS (`apps/tts`)                             | 8865                    | FastAPI — multi-provider text-to-speech, en+ml                              |
 | Harness (`apps/harness`)                     | 8866                    | FastAPI + separate Temporal worker process                                  |
 | Admin console (`apps/admin-console`)         | 5176 (dev)              | Next.js 16 App Router — operator UI                                         |
-| example (`apps/example`)                     | 5173 (dev)              | minimal raw-WebSocket live-transcription demo                               |
-| compat-playground (`apps/compat-playground`) | 5177 (dev, local only) | **Deprecated.** CI disabled; `pnpm compat:dev` still works. |
-| quick-compat-app (`apps/quick-compat-app`)   | 5180 (dev)              | registry-installed SDK smoke app (outside the pnpm workspace)               |
 | PostgreSQL 18                                | 5432                    | `hope-postgres` (TimescaleDB image, pgvector available)                     |
 | Redis 8                                      | 6379                    | BullMQ DB 0, cache DB 1, STT streams DB 2, Text streams DB 3, Dramatiq DB 5 |
 | MinIO                                        | 9000 API / 9001 console | buckets: `recordings`, `generated-audio`, `documents`, `backups`            |
@@ -317,7 +314,7 @@ pnpm test:e2e        # terminal 2
 pnpm infra:test:down
 ```
 
-**Test scope exclusion (standing owner directive).** Do not run the unit suites of `apps/compat-playground`, `apps/quick-compat-app`, or `packages/ui` as part of a normal change, and do not treat their failures as a gate. Run them only when your change is inside one of those directories, and then run just that package's suite. When a repo-wide aggregate surfaces failures from those three and your change is elsewhere, report them as out of scope.
+**Test scope exclusion (standing owner directive).** Do not run the unit suite of `packages/ui` as part of a normal change, and do not treat its failures as a gate. Run it only when your change is inside that directory, and then run just that package's suite. When a repo-wide aggregate surfaces failures from it and your change is elsewhere, report them as out of scope.
 
 **TDD expectation.** Test-first is the house workflow: write a failing test, confirm it fails for the right reason, write minimal code to pass, refactor. Unit tests live next to the code (`src/**/__tests__/` or a sibling `*.test.ts`); e2e uses `.spec.ts`. Behavior over implementation; paste actual test output before claiming done.
 
