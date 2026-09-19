@@ -115,6 +115,27 @@ const TOPOLOGY: SettingDescriptor[] = [
     'Prometheus query endpoint for the platform-metrics service (`prometheus-query.service.ts`).',
     'http://localhost:9090',
   ),
+  // The one INBOUND entry in this group: which hop in front of the gateway may
+  // assert a caller's address. It is `env` tier for the same reason every line
+  // above is — it describes the deployment's network shape, changes only when
+  // that shape changes, and is read before any database or CLS context exists
+  // (`TieredThrottlerGuard` is the FIRST global guard, on every request
+  // including `/health`). It is also a privilege boundary that must not become
+  // runtime-writable from the admin console: whoever can widen it can hand an
+  // attacker rate-limit evasion. Deliberately NOT `global-kv`.
+  envKnob(
+    'rateLimit.trustedProxies',
+    'string[]',
+    'Topology',
+    'Trusted ingress proxies (CIDR list)',
+    'Comma-separated CIDR blocks / addresses of the reverse proxies allowed to assert the real client address via `CF-Connecting-IP`. ' +
+      'Read by `apps/api/src/modules/throttle/client-ip.ts`; the rate limiter counts a request against that address ONLY when the socket ' +
+      'peer falls inside this list, otherwise against the socket peer itself. EMPTY (the default) means trust nothing, which is the ' +
+      'historical per-socket-peer behaviour. In the k3s deployment this is the pod CIDR that Traefik runs in; note the real client ' +
+      'address arrives in `CF-Connecting-IP` (stamped by the Cloudflare edge), NOT in `X-Forwarded-For`, whose last hop is cloudflared. ' +
+      'Express `trust proxy` stays OFF — it would trust the wrong header, from any caller.',
+    '',
+  ),
 ];
 
 /**
