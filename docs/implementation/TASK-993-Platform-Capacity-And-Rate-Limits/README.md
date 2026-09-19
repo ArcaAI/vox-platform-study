@@ -333,6 +333,31 @@ reach an existing database):
  STARTER    |   5 |   5 |  250
 ```
 
+### Lane K — the memory gate and the real HPA metric (deployment branch `task-993-capacity-for-10000-users`) — NOT merged to `main` by request
+
+Wired the adapter rule to `hope_api_prisma_pool_wait_seconds_sum` and pointed the (still dormant,
+still unreferenced — verified renders zero resources) saturation HPA at it.
+
+**Added rule 10 to `check-capacity.py`: memory-limit oversubscription, ceiling 2.0× vs CPU's 3.0×**
+— CPU over-limit is paid in throttling, memory over-limit in an OOM-kill; neither degrades.
+
+| overlay | mem limits @ ceilings | allocatable | ratio | |
+|---|---|---|---|---|
+| aws-prod | 156.1 GiB | 230.8 GiB (8 nodes) | 0.68× | pass |
+| aws-dev | 81.9 GiB | 86.5 GiB (3 nodes) | 0.95× | pass |
+| **dev** | **145.4 GiB** | **59.8 GiB (1 node)** | **2.43×** | **FAIL** |
+| staging / standalone / prod | | | 2.38× / 2.43× / 2.65× | FAIL |
+
+**The `capacity` CI job is now RED on dev, and that is the deliverable** — it refused to slacken
+the threshold and wrote "DO NOT GREEN THIS BY PASSING `--max-memory-ratio`". Contributors:
+`hope-stt` 24.2 GiB, `hope-lmstudio` 20.2 GiB, `hope-stt-worker` 16.2 GiB. Red-then-green proven on
+three overlays so the gate is known to be able to fail.
+
+It also found rule 9 (CPU) carries the same k3s blind spot — it skips un-pinned GPU pods because
+"the GPU plane is pinned to its own node groups", true on EKS and false on a single node. Counting
+them, dev's CPU burst is **2.11×**, not the 1.51× CI reports. Still inside 3.0×, so it deliberately
+left rule 9 alone rather than move a number CI already asserts.
+
 ## 5c. Live verification on a running gateway (2026-09-19)
 
 A dedicated gateway was run on :8878 from the merged build (the shared dev stack's own gateway was
