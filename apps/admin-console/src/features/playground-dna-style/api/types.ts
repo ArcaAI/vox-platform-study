@@ -136,3 +136,88 @@ export interface DnaJobStatus {
   /** Present once failed. */
   error?: string;
 }
+
+/**
+ * TASK-974 §4.1 — the DNA writing-sample INGEST surface (frame 53, F-6). Reader beware: this is
+ * a SEPARATE route family from `generate` above — `generate` gathers from the caller's
+ * ContextItems or an ad-hoc sample bag, while `ingest` submits a TIME-ORDERED corpus the platform
+ * has not seen and queues the hidden `dna-writing-style-analyst` agent over it
+ * (`IngestDnaWritingSamplesRequest` / `DnaIngestJobResponse` — `packages/applications/src/services/
+ * dna-writing-style/dto/`). No SSE on this route (README §4.1) — `useDnaIngestJobProgress` polls.
+ */
+
+/** DnaWritingSampleDto.kind — explainability only; never gates how the sample is treated. */
+export const DNA_WRITING_SAMPLE_KINDS = ['CASE_NOTE', 'WORK_NOTE', 'OTHER'] as const;
+export type DnaWritingSampleKind = (typeof DNA_WRITING_SAMPLE_KINDS)[number];
+
+/**
+ * Per-batch bounds mirrored from `IngestDnaWritingSamplesRequest`/`DNA_INGEST_LIMITS`
+ * (`packages/applications/src/services/dna-writing-style/dto/ingest-dna-writing-samples.request.ts`)
+ * — enforced client-side before submit so a rejected batch is never a surprise after typing.
+ */
+export const DNA_INGEST_LIMITS = {
+  maxItems: 200,
+  maxItemChars: 20_000,
+  /** Σ over every sample's `text`; a cross-field bound the server enforces, mirrored here for the same reason. */
+  maxTotalChars: 400_000,
+} as const;
+
+/** DnaWritingSampleDto — one item of an ingest batch. */
+export interface DnaWritingSample {
+  /** 1..20000 chars. */
+  text: string;
+  /** ISO-8601 date-time — the time-series key samples are ordered (and truncated) by. */
+  writtenAt: string;
+  /** Server default `'OTHER'` when omitted. */
+  kind?: DnaWritingSampleKind;
+  /** ≤ 200 chars, caller's own record locator — explainability only, never persisted on the report. */
+  sourceRef?: string;
+}
+
+/** IngestDnaWritingSamplesRequest — POST /ingest body. */
+export interface IngestDnaWritingSamplesRequest {
+  /**
+   * REQUIRED for a machine caller — never sent by this console. A human caller omits it to
+   * ingest their OWN samples; naming another clinician needs SUPER_ADMIN or TENANT_ADMIN and is
+   * reachable only through the Advanced (raw JSON) editor, not the structured form.
+   */
+  clinicianUserId?: string;
+  /** 1..200 items, in any order — the server sorts them by `writtenAt`. */
+  items: DnaWritingSample[];
+}
+
+/** The accepted batch's time span — echoed so the caller can see what the server understood. */
+export interface DnaIngestWindow {
+  /** ISO-8601 `writtenAt` of the OLDEST accepted sample. */
+  from: string;
+  /** ISO-8601 `writtenAt` of the NEWEST accepted sample. */
+  to: string;
+}
+
+/** DnaIngestJobResponse — the 202 body of `POST dna-writing-styles/ingest`. */
+export interface DnaIngestJobResponse {
+  /** Poll `GET ingest/jobs/{jobId}` with it. */
+  jobId: string;
+  /** Always `PENDING` on acceptance; the job has been enqueued, not run. */
+  status: 'PENDING';
+  /** The clinician the profile will belong to — RESOLVED, so a caller who omitted it sees whom the server chose. */
+  clinicianUserId: string;
+  acceptedItems: number;
+  window: DnaIngestWindow;
+}
+
+/**
+ * DnaJobStatusResponseDto mirror — `GET dna-writing-styles/ingest/jobs/:jobId`. Same shape as
+ * `DnaJobStatus` above; kept as its own type because this route has no SSE twin and `progress`
+ * is not always reported (unlike the streamed `generate` job).
+ */
+export interface DnaIngestJobStatus {
+  jobId: string;
+  status: DnaJobState;
+  /** 0..100, when reported. */
+  progress?: number;
+  /** Present once completed. */
+  result?: unknown;
+  /** Present once failed. */
+  error?: string;
+}

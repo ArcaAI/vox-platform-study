@@ -8,10 +8,12 @@ import {
   eraseMyReport,
   eraseMyStyle,
   generateMyStyle,
+  getDnaIngestJobStatus,
   getDnaJobStatus,
   getDnaSettings,
   getMyRedactionRules,
   getMyStyle,
+  ingestDnaWritingSamples,
   listMyReports,
   listMyVersions,
   setDefaultReport,
@@ -19,7 +21,14 @@ import {
   updateMyReport,
 } from './client';
 import { playgroundDnaKeys } from './keys';
-import type { DnaJobStatus, GenerateDnaStyleRequest, UpdateDnaSettingsRequest, UpdateMyReportRequest } from './types';
+import type {
+  DnaIngestJobStatus,
+  DnaJobStatus,
+  GenerateDnaStyleRequest,
+  IngestDnaWritingSamplesRequest,
+  UpdateDnaSettingsRequest,
+  UpdateMyReportRequest,
+} from './types';
 
 /** The caller's latest report, WithEtag for the OCC PATCH. 404 = none yet. */
 export function useMyStyle() {
@@ -89,6 +98,18 @@ export function useEraseMyReport() {
 export function useGenerateMyStyle() {
   return useMutation({
     mutationFn: (body: GenerateDnaStyleRequest = {}) => generateMyStyle(body),
+  });
+}
+
+/**
+ * TASK-974 §4.1 (F-6) — submits a time-ordered batch of writing samples. 202 means QUEUED, not
+ * analyzed: the caller tracks completion with `useDnaIngestJobProgress`, which — unlike
+ * `useDnaJobProgress` above — has no SSE transport to fall back FROM, because this route has
+ * none at all.
+ */
+export function useIngestDnaWritingSamples() {
+  return useMutation({
+    mutationFn: (body: IngestDnaWritingSamplesRequest) => ingestDnaWritingSamples(body),
   });
 }
 
@@ -272,4 +293,58 @@ export function useDnaJobProgress(jobId: string | null, { onTerminal }: UseDnaJo
   }, [jobId, job, closeStream, queryClient]);
 
   return { job, isTerminal, streamStatus: jobId ? streamStatus : 'idle' };
+}
+
+export interface UseDnaIngestJobProgressOptions {
+  /** Fired exactly once per job when it reaches completed/failed. */
+  onTerminal?: (job: DnaIngestJobStatus) => void;
+}
+
+export interface UseDnaIngestJobProgressResult {
+  job: DnaIngestJobStatus | null;
+  isTerminal: boolean;
+  isPending: boolean;
+}
+
+/**
+ * Progress tracker for a DNA INGEST job (`POST dna-writing-styles/ingest`). There is no SSE on
+ * this route (README §4.1, and the `useDnaWritingStyle` SDK hook this mirrors) — a 2s poll is
+ * the ONLY transport, not the error fallback `useDnaJobProgress` above falls back to.
+ *
+ * On completion every feature query (my-style, mine, versions, settings) is invalidated so the
+ * regenerated report lands, exactly like the `generate` job's progress hook; the caller's
+ * `onTerminal` handles user feedback.
+ */
+export function useDnaIngestJobProgress(jobId: string | null, { onTerminal }: UseDnaIngestJobProgressOptions = {}): UseDnaIngestJobProgressResult {
+  const queryClient = useQueryClient();
+
+  const onTerminalRef = useRef(onTerminal);
+  useEffect(() => {
+    onTerminalRef.current = onTerminal;
+  }, [onTerminal]);
+
+  const poll = useQuery({
+    queryKey: playgroundDnaKeys.ingestJob(jobId ?? 'idle'),
+    queryFn: () => getDnaIngestJobStatus(jobId as string),
+    enabled: !!jobId,
+    refetchInterval: (query) => (isTerminalDnaJobState(query.state.data?.status) ? false : JOB_POLL_MS),
+  });
+
+  const job = jobId ? (poll.data ?? null) : null;
+  const isTerminal = isTerminalDnaJobState(job?.status);
+
+  // Once-per-job terminal side effect, mirroring `useDnaJobProgress`'s.
+  const notifiedJobRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!jobId || !job || !isTerminal) return;
+    if (notifiedJobRef.current === jobId) return;
+    notifiedJobRef.current = jobId;
+    if (job.status === 'completed') {
+      // Root-level: the new report changes my-style, mine AND versions.
+      void queryClient.invalidateQueries({ queryKey: playgroundDnaKeys.root });
+    }
+    onTerminalRef.current?.(job);
+  }, [jobId, job, isTerminal, queryClient]);
+
+  return { job, isTerminal, isPending: poll.isPending && !!jobId };
 }
