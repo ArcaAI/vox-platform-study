@@ -2122,8 +2122,73 @@
         },
         "type": "object"
       },
+      "AsrProfileDecodingPassRequest": {
+        "properties": {
+          "audioCtx": {
+            "description": "whisper.cpp `audio_ctx`. `0` = the full trained 1500.",
+            "maximum": 1500,
+            "minimum": 0,
+            "type": "number"
+          },
+          "beamSize": {
+            "description": "Beam width.",
+            "maximum": 10,
+            "minimum": 1,
+            "type": "number"
+          },
+          "entropyThreshold": {
+            "description": "whisper.cpp `entropy_thold`. NOT `compressionRatioThreshold` under another name.",
+            "maximum": 10,
+            "minimum": 0,
+            "type": "number"
+          },
+          "logprobThreshold": {
+            "description": "Average token log-probability floor below which a decode is treated as failed.",
+            "maximum": 0,
+            "minimum": -10,
+            "type": "number"
+          },
+          "maxTokens": {
+            "description": "whisper.cpp `max_tokens`. `0` = no limit.",
+            "maximum": 224,
+            "minimum": 0,
+            "type": "number"
+          },
+          "noSpeechThreshold": {
+            "description": "Above this no-speech probability a decoded segment is discarded.",
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "singleSegment": {
+            "description": "whisper.cpp `single_segment`.",
+            "type": "boolean"
+          },
+          "suppressBlank": {
+            "description": "whisper.cpp `suppress_blank`.",
+            "type": "boolean"
+          },
+          "suppressNonSpeechTokens": {
+            "description": "whisper.cpp `suppress_nst`.",
+            "type": "boolean"
+          },
+          "temperature": {
+            "description": "Sampling temperature.",
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
       "AsrProfileDecodingRequest": {
         "properties": {
+          "audioCtx": {
+            "description": "whisper.cpp `audio_ctx`: encoder context frames. `0` = the full trained 1500, which is what upstream’s streaming example ships; truncating below the trained context is a documented cause of endless repetition.",
+            "maximum": 1500,
+            "minimum": 0,
+            "type": "number"
+          },
           "beamSize": {
             "description": "Beam width.",
             "maximum": 10,
@@ -2140,6 +2205,20 @@
             "description": "Feed the previous window's tokens to the decoder as context.",
             "type": "boolean"
           },
+          "entropyThreshold": {
+            "description": "whisper.cpp `entropy_thold`: token-distribution entropy BELOW which a decode is treated as degenerate. NOT the same quantity as `compressionRatioThreshold` (opposite direction, different scale).",
+            "maximum": 10,
+            "minimum": 0,
+            "type": "number"
+          },
+          "final": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AsrProfileDecodingPassRequest"
+              }
+            ],
+            "description": "Decode overrides for the FINAL (committing) pass."
+          },
           "hotwords": {
             "description": "Terms biased into the decode (max 64, each non-empty).",
             "items": {
@@ -2147,10 +2226,20 @@
             },
             "type": "array"
           },
+          "hotwordsInPrompt": {
+            "description": "May this model’s engine append `hotwords` to its decoder prompt? whisper.cpp has no hotword API, so the prompt is the only bias channel — and on the seeded ml-en fine-tune that append measured 2 % Latin output against 100 % without it. Leave unset for the engine default (OFF on whisper.cpp). The terms still reach the lexicon correction stage either way.",
+            "type": "boolean"
+          },
           "logprobThreshold": {
             "description": "Average token log-probability floor below which a decode is retried.",
             "maximum": 0,
             "minimum": -10,
+            "type": "number"
+          },
+          "maxTokens": {
+            "description": "whisper.cpp `max_tokens`: bound a runaway repetition loop at the decoder. `0` = no limit.",
+            "maximum": 224,
+            "minimum": 0,
             "type": "number"
           },
           "noRepeatNgramSize": {
@@ -2165,11 +2254,31 @@
             "minimum": 0,
             "type": "number"
           },
+          "partial": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AsrProfileDecodingPassRequest"
+              }
+            ],
+            "description": "Decode overrides for the PARTIAL pass (the in-flight re-decode)."
+          },
           "prevTextContextWords": {
             "description": "How many words of already-committed text ride as decoder context on the next window.",
             "maximum": 200,
             "minimum": 0,
             "type": "number"
+          },
+          "singleSegment": {
+            "description": "whisper.cpp `single_segment`: force one segment out of one decode.",
+            "type": "boolean"
+          },
+          "suppressBlank": {
+            "description": "whisper.cpp `suppress_blank`. Engine default true.",
+            "type": "boolean"
+          },
+          "suppressNonSpeechTokens": {
+            "description": "whisper.cpp `suppress_nst`: drop `[music]`/`(laughter)`-class emissions. Engine default false.",
+            "type": "boolean"
           },
           "temperature": {
             "description": "Sampling temperature.",
@@ -21562,6 +21671,12 @@
         "properties": {
           "agentSlug": {
             "description": "ASR Agent slug. Omit to use the assigned agent (department → tenant → platform default).",
+            "type": "string"
+          },
+          "clinicianUserId": {
+            "description": "The clinician this transcription belongs to. REQUIRED for a service-account caller — a machine is never itself the clinician. An API key may name only the human it is bound to (a tenant or super administrator may name any clinician of their tenant); a human omits it to transcribe as themselves.",
+            "format": "uuid",
+            "minLength": 1,
             "type": "string"
           },
           "consultationId": {
@@ -54330,10 +54445,13 @@
             "description": "Batch job created and queued"
           },
           "400": {
-            "description": "Missing/unsupported file, file too large, or a recording over the duration ceiling."
+            "description": "Missing/unsupported file, file too large, a recording over the duration ceiling, a machine caller that named no clinician (`TRANSCRIBE_CLINICIAN_REQUIRED`), or a caller that may not name the clinician it did (`TRANSCRIBE_CLINICIAN_NOT_ALLOWED`)."
+          },
+          "404": {
+            "description": "The named clinician is not a member of this tenant (also returned for a clinician of another tenant)."
           },
           "429": {
-            "description": "The caller already holds the maximum number of in-flight batch jobs."
+            "description": "The owner already holds the maximum number of in-flight batch jobs."
           }
         },
         "security": [

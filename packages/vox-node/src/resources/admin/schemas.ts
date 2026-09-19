@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 456 component schemas the generated surface transitively
+ * Only the 457 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -502,23 +502,64 @@ export interface ApprovePromptTemplateRequest {
   reason?: string;
 }
 
+export interface AsrProfileDecodingPassRequest {
+  /** whisper.cpp `audio_ctx`. `0` = the full trained 1500. */
+  audioCtx?: number;
+  /** Beam width. */
+  beamSize?: number;
+  /** whisper.cpp `entropy_thold`. NOT `compressionRatioThreshold` under another name. */
+  entropyThreshold?: number;
+  /** Average token log-probability floor below which a decode is treated as failed. */
+  logprobThreshold?: number;
+  /** whisper.cpp `max_tokens`. `0` = no limit. */
+  maxTokens?: number;
+  /** Above this no-speech probability a decoded segment is discarded. */
+  noSpeechThreshold?: number;
+  /** whisper.cpp `single_segment`. */
+  singleSegment?: boolean;
+  /** whisper.cpp `suppress_blank`. */
+  suppressBlank?: boolean;
+  /** whisper.cpp `suppress_nst`. */
+  suppressNonSpeechTokens?: boolean;
+  /** Sampling temperature. */
+  temperature?: number;
+}
+
 export interface AsrProfileDecodingRequest {
+  /** whisper.cpp `audio_ctx`: encoder context frames. `0` = the full trained 1500, which is what upstream’s streaming example ships; truncating below the trained context is a documented cause of endless repetition. */
+  audioCtx?: number;
   /** Beam width. */
   beamSize?: number;
   /** Gzip compression ratio above which a decode is treated as looping and retried at a higher temperature. */
   compressionRatioThreshold?: number;
   /** Feed the previous window's tokens to the decoder as context. */
   conditionOnPrevTokens?: boolean;
+  /** whisper.cpp `entropy_thold`: token-distribution entropy BELOW which a decode is treated as degenerate. NOT the same quantity as `compressionRatioThreshold` (opposite direction, different scale). */
+  entropyThreshold?: number;
+  /** Decode overrides for the FINAL (committing) pass. */
+  final?: AsrProfileDecodingPassRequest;
   /** Terms biased into the decode (max 64, each non-empty). */
   hotwords?: string[];
+  /** May this model’s engine append `hotwords` to its decoder prompt? whisper.cpp has no hotword API, so the prompt is the only bias channel — and on the seeded ml-en fine-tune that append measured 2 % Latin output against 100 % without it. Leave unset for the engine default (OFF on whisper.cpp). The terms still reach the lexicon correction stage either way. */
+  hotwordsInPrompt?: boolean;
   /** Average token log-probability floor below which a decode is retried. */
   logprobThreshold?: number;
+  /** whisper.cpp `max_tokens`: bound a runaway repetition loop at the decoder. `0` = no limit. */
+  maxTokens?: number;
   /** Block repeats of an n-gram this long within one decode (0 disables). */
   noRepeatNgramSize?: number;
   /** Above this no-speech probability a decoded segment is discarded. */
   noSpeechThreshold?: number;
+  /** Decode overrides for the PARTIAL pass (the in-flight re-decode). */
+  partial?: AsrProfileDecodingPassRequest;
   /** How many words of already-committed text ride as decoder context on the next window. */
   prevTextContextWords?: number;
+  /** whisper.cpp `single_segment`: force one segment out of one decode. */
+  singleSegment?: boolean;
+  /** whisper.cpp `suppress_blank`. Engine default true. */
+  suppressBlank?: boolean;
+  /** whisper.cpp `suppress_nst`: drop `[music]`/`(laughter)`-class emissions. Engine default false. */
+  suppressNonSpeechTokens?: boolean;
   /** Sampling temperature. */
   temperature?: number;
 }
