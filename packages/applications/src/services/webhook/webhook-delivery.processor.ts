@@ -19,6 +19,7 @@ import { createWorkerSession } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { WebhookService } from './webhook.service';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
 
 /**
  * The delivery side of the `Webhook` subscription model — the missing half
@@ -152,7 +153,10 @@ function webhookDeliveryIdempotencyKey(webhookId: string, sourceEnvelopeId: stri
 // Stage 1 — the matcher
 // ─────────────────────────────────────────────────────────────────────────
 
-@Processor(JobQueue.SysEvent)
+// TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
+// ran at bullmq's default of 1 because no `@Processor` passed options; the
+// number, and the Prisma-pool budget it fits inside, live in one table.
+@Processor(JobQueue.SysEvent, { concurrency: QUEUE_CONCURRENCY[JobQueue.SysEvent] })
 export class WebhookDeliveryProcessor extends WorkerHost {
   private readonly logger = new Logger(WebhookDeliveryProcessor.name);
 
@@ -236,7 +240,10 @@ export class WebhookDeliveryProcessor extends WorkerHost {
 // Stage 2 — the sender
 // ─────────────────────────────────────────────────────────────────────────
 
-@Processor(JobQueue.WebhookDelivery)
+// TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
+// ran at bullmq's default of 1 because no `@Processor` passed options; the
+// number, and the Prisma-pool budget it fits inside, live in one table.
+@Processor(JobQueue.WebhookDelivery, { concurrency: QUEUE_CONCURRENCY[JobQueue.WebhookDelivery] })
 export class WebhookDeliveryDispatchProcessor extends WorkerHost {
   private readonly logger = new Logger(WebhookDeliveryDispatchProcessor.name);
 

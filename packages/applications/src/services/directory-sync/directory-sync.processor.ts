@@ -13,6 +13,7 @@ import { IDirectoryProvider } from './IDirectoryProvider';
 import { MsGraphDirectoryProvider } from './ms-graph-directory.provider';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { directoryAvailabilityKey, isDirectorySyncEnabled } from './directory-availability';
+import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
 
 export interface SyncTenantDirectoryUsersJobPayload {
   jobId?: string;
@@ -42,7 +43,10 @@ export interface SyncTenantDirectoryUsersResult {
  * a HOPE user gets created". A per-user failure (seat quota, provisioning
  * error) is caught and recorded — the batch continues rather than aborting.
  */
-@Processor(JobQueue.SyncTenantDirectoryUsers)
+// TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
+// ran at bullmq's default of 1 because no `@Processor` passed options; the
+// number, and the Prisma-pool budget it fits inside, live in one table.
+@Processor(JobQueue.SyncTenantDirectoryUsers, { concurrency: QUEUE_CONCURRENCY[JobQueue.SyncTenantDirectoryUsers] })
 export class DirectorySyncProcessor extends WorkerHost {
   private readonly logger = new Logger(DirectorySyncProcessor.name);
 

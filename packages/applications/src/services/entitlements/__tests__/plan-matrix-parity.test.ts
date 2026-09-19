@@ -64,6 +64,12 @@ const MATRIX_FIELDS = [
   'featureAgenticLoop',
   'modelTier',
   'rateLimitTier',
+  // TASK-993 OD-1 — an ABSOLUTE per-plan tenant-aggregate ceiling. It was
+  // optional-and-unset on both sides until this ticket, so it was invisible to
+  // the "neither copy carries a field the other lacks" check below; now that
+  // every plan sets it, a value set on one side only is a silent
+  // 10-vs-18,000-req/min divergence for any tenant whose plan row is missing.
+  'rateLimitPerMinute',
 ] as const satisfies readonly (keyof PlanEntitlementValues)[];
 
 /**
@@ -108,6 +114,18 @@ describe('plan matrix parity — seed 15-entitlements.ts vs entitlements.constan
     for (const [plan, row] of Object.entries(PLAN_ENTITLEMENT_DEFAULTS)) {
       const extra = Object.keys(row).filter((key) => !fields.has(key));
       expect(extra, `constant row ${plan} carries unchecked field(s) — add them to MATRIX_FIELDS and to the seed`).toEqual([]);
+    }
+  });
+
+  // TASK-993 OD-1 — the absolute ceiling is the field this ticket added to both
+  // copies. Explicit, for the same reason the credential flag below is: the
+  // loop above would still pass if BOTH copies were left unset.
+  it('every plan carries an absolute rateLimitPerMinute in BOTH copies (TASK-993 OD-1)', () => {
+    for (const row of PLAN_ENTITLEMENTS) {
+      expect(row.rateLimitPerMinute, `seed ${row.plan}`).toBeGreaterThan(0);
+    }
+    for (const [plan, row] of Object.entries(PLAN_ENTITLEMENT_DEFAULTS)) {
+      expect(row.rateLimitPerMinute, `constant ${plan}`).toBeGreaterThan(0);
     }
   });
 
