@@ -32,9 +32,9 @@
  *     direct-PG bypass.
  */
 
-import { PrismaPg } from '@prisma/adapter-pg';
 import type { PoolConfig as PgPoolConfig } from 'pg';
 import { PrismaClient } from './generated/core-prisma-client/client.js';
+import { createObservedPgAdapter } from './pool-observability.js';
 
 /** Shape returned by Vault's database/creds/<role>. */
 export interface DbCredential {
@@ -163,7 +163,10 @@ export class VaultPrismaClient {
   private async acquire(): Promise<void> {
     const cred = await this.secrets.requestDbCredential(this.role);
     const base = resolveBaseConfig(this.opts);
-    const adapter = new PrismaPg({
+    // `vault` rather than `extended`/`platform-admin`: this is a THIRD pool a
+    // gateway can hold, it is rebuilt on every lease rotation, and rolling it
+    // into either of the others would make a rotation look like a leak.
+    const adapter = createObservedPgAdapter('vault', {
       ...base,
       user: cred.username,
       password: cred.password,
