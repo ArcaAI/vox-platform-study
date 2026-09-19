@@ -200,8 +200,13 @@ async function main(): Promise<void> {
       });
 
       // Without this, membership checks fail closed for every non-exempt user.
-      const existingMembership = await client.userDepartment.findFirst({ where: { userId, departmentId } });
-      if (!existingMembership) await client.userDepartment.create({ data: { userId, departmentId, tenantId, isPrimary: true } });
+      // Upserted on the declared compound key rather than findFirst+create, so
+      // a re-run is idempotent even if two operators race.
+      await client.userDepartment.upsert({
+        where: { UserDepartment_tenant_user_department_unique: { tenantId, userId, departmentId } },
+        create: { userId, departmentId, tenantId, isPrimary: true },
+        update: {},
+      });
 
       users.push({ username });
     }
