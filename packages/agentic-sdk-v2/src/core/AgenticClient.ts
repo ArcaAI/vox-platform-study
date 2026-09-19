@@ -777,6 +777,19 @@ export class AgenticClient {
   }
 
   /**
+   * PUT request that sends an `If-Match` header carrying a strong validator.
+   *
+   * Mirrors `patchWithIfMatch` for routes whose OCC-guarded write is a PUT
+   * rather than a PATCH — e.g. the DNA per-doctor settings toggle
+   * (`useDnaReport.setSettings`), which answers `version: 0` before any row
+   * exists: `"0"` is still a real create-intent validator there, never an
+   * omitted header.
+   */
+  async putWithIfMatch<T>(endpoint: string, body: unknown, ifMatch: string, options?: { signal?: AbortSignal }): Promise<T> {
+    return this.request<T>('PUT', endpoint, body, { headers: { 'If-Match': ifMatch } }, options?.signal);
+  }
+
+  /**
    * PUT request
    */
   async put<T>(endpoint: string, body?: unknown, options?: { signal?: AbortSignal }): Promise<T> {
