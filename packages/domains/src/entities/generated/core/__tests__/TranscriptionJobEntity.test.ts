@@ -345,6 +345,40 @@ describe('TranscriptionJobEntity', () => {
     });
   });
 
+  // TASK-992 FU-1 — the dispatch envelope: what a retry needs in order to publish
+  // a Dramatiq message rather than only flip a status.
+  describe('recordDispatch', () => {
+    it('stores the envelope handed to the broker', () => {
+      const entity = createTestEntity();
+
+      entity.recordDispatch({ audioUri: 's3://hope-audio/2026/09/jobs/job-test-id/raw/a.wav', audioBucketName: 'hope-audio', language: 'en' });
+
+      expect(entity.dispatchEnvelope).toEqual({
+        audioUri: 's3://hope-audio/2026/09/jobs/job-test-id/raw/a.wav',
+        audioBucketName: 'hope-audio',
+        language: 'en',
+      });
+    });
+
+    it('tracks the change so the repository persists it', () => {
+      const entity = createTestEntity();
+
+      entity.recordDispatch({ audioUri: 's3://hope-audio/k' });
+
+      expect(entity.hasChanges).toBe(true);
+      expect(Object.keys(entity.changes)).toContain('dispatchEnvelope');
+    });
+
+    it('survives a retry — incrementRetry must not clear it', () => {
+      const entity = createTestEntity({ status: TranscriptionJobStatus.FAILED, retryCount: 0, maxRetries: 3 });
+      entity.recordDispatch({ audioUri: 's3://hope-audio/k' });
+
+      expect(entity.incrementRetry()).toBe(true);
+
+      expect(entity.dispatchEnvelope).toEqual({ audioUri: 's3://hope-audio/k' });
+    });
+  });
+
   describe('markAsDead', () => {
     it('should mark job as DEAD', () => {
       const entity = createTestEntity({ status: TranscriptionJobStatus.FAILED });

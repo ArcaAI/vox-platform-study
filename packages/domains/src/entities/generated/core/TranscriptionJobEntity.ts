@@ -18,6 +18,16 @@ export interface ITranscriptionJobEntity extends IBaseTenantEntity {
   agentVersionId?: string | null;
   /** TASK-861 — the `ResolvedAsrSpec` snapshot the gateway handed to the worker (never a credential). */
   resolvedSpec?: JsonValue | null;
+  /**
+   * TASK-992 FU-1 — the snapshot of what was PUBLISHED to the broker for this
+   * job, so a retry can re-publish instead of only flipping a status.
+   *
+   * Written at dispatch (`TranscriptionRealtimeService.dispatchDramatiqJob`),
+   * never at create: the `audioUri` it carries contains this job's own id.
+   * Never a credential — only the storage BUCKET NAME is kept; the
+   * `StorageDescriptor` is re-resolved live on every dispatch.
+   */
+  dispatchEnvelope?: JsonValue | null;
   status: Enums.TranscriptionJobStatus;
   progress: number;
   queuedAt: Date;
@@ -56,6 +66,7 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
   private _pipelineId?: ITranscriptionJobEntity['pipelineId'];
   private _agentVersionId?: ITranscriptionJobEntity['agentVersionId'];
   private _resolvedSpec?: ITranscriptionJobEntity['resolvedSpec'];
+  private _dispatchEnvelope?: ITranscriptionJobEntity['dispatchEnvelope'];
   private _status: ITranscriptionJobEntity['status'];
   private _progress: ITranscriptionJobEntity['progress'];
   private _queuedAt: ITranscriptionJobEntity['queuedAt'];
@@ -83,6 +94,7 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this._pipelineId = init.pipelineId;
     this._agentVersionId = init.agentVersionId;
     this._resolvedSpec = init.resolvedSpec;
+    this._dispatchEnvelope = init.dispatchEnvelope;
     this._status = init.status;
     this._progress = init.progress;
     this._queuedAt = init.queuedAt;
@@ -160,6 +172,14 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
 
   set resolvedSpec(value: ITranscriptionJobEntity['resolvedSpec']) {
     this.setProperty('resolvedSpec', value);
+  }
+
+  get dispatchEnvelope(): ITranscriptionJobEntity['dispatchEnvelope'] {
+    return this._dispatchEnvelope;
+  }
+
+  set dispatchEnvelope(value: ITranscriptionJobEntity['dispatchEnvelope']) {
+    this.setProperty('dispatchEnvelope', value);
   }
 
   get status(): ITranscriptionJobEntity['status'] {
@@ -588,6 +608,18 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     }
     this.setProperty('status', Enums.TranscriptionJobStatus.CANCELLED);
     this.setProperty('completedAt', new Date());
+  }
+
+  /**
+   * TASK-992 FU-1 — record what was published to the broker for this job.
+   *
+   * Deliberately unguarded by status: this is a statement of fact about a
+   * message that has already been enqueued, not a lifecycle transition. Every
+   * dispatch overwrites it, so the row always describes the LATEST attempt —
+   * which is exactly what the next retry has to reproduce.
+   */
+  public recordDispatch(envelope: JsonValue): void {
+    this.setProperty('dispatchEnvelope', envelope);
   }
 
   /**

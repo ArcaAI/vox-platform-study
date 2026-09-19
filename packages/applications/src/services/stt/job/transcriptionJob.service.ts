@@ -17,6 +17,7 @@ import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { ITranscriptionJobService } from './ITranscriptionJobService';
 import {
+  BatchDispatchEnvelope,
   CreateBatchJobRequest,
   CreateJobRequest,
   CreateStreamingJobRequest,
@@ -517,6 +518,47 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     if (!job || job.createdBy !== ownerId) {
       throw new NotFoundException(`Job ${id} not found`);
     }
+  }
+
+  /**
+   * TASK-992 FU-1 — record what was published to the broker for this job.
+   *
+   * No sys-event: this is bookkeeping about a message, not a state change a
+   * reader of the row cares about, and an audit entry per dispatch would bury
+   * the lifecycle events that matter. Same reasoning as {@link setContextItem}.
+   */
+  async recordDispatchEnvelope(id: string, envelope: BatchDispatchEnvelope): Promise<void> {
+    const job = await this.jobRepository.findById(id);
+    if (!job) {
+      throw new NotFoundException(`Job ${id} not found`);
+    }
+
+    job.recordDispatch(envelope as unknown as JsonValue);
+    await this.jobRepository.update(id, job);
+  }
+
+  /**
+   * TASK-992 FU-1 — everything the retry path needs to re-publish this job,
+   * creator-scoped exactly like {@link retryJobForOwner}.
+   *
+   * `envelope` is `null` for any row dispatched before FU-1 shipped, which the
+   * caller must treat as a refusal: those jobs carry no `audioUri` anywhere, so
+   * flipping them to QUEUED would recreate the very defect this closes.
+   */
+  async getDispatchContextForOwner(
+    ownerId: string,
+    id: string,
+  ): Promise<{ envelope: BatchDispatchEnvelope | null; resolvedSpec: JsonValue | null; tenantId: string }> {
+    const job = await this.jobRepository.findById(id);
+    if (!job || job.createdBy !== ownerId) {
+      throw new NotFoundException(`Job ${id} not found`);
+    }
+
+    return {
+      envelope: (job.dispatchEnvelope as unknown as BatchDispatchEnvelope | null | undefined) ?? null,
+      resolvedSpec: job.resolvedSpec ?? null,
+      tenantId: job.tenantId,
+    };
   }
 
   /**

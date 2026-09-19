@@ -1,4 +1,5 @@
 import {
+  BatchDispatchEnvelope,
   CreateJobRequest,
   CreateBatchJobRequest,
   CreateStreamingJobRequest,
@@ -122,4 +123,19 @@ export interface ITranscriptionJobService {
    * EU-01 — creator-scoped retry (mirrors {@link cancelJobForOwner}).
    */
   retryJobForOwner(ownerId: string, id: string): Promise<TranscriptionJobResponse>;
+
+  /**
+   * TASK-992 FU-1 — record what was published to the broker for this job, so a
+   * later retry can re-publish it rather than only flipping a status.
+   */
+  recordDispatchEnvelope(id: string, envelope: BatchDispatchEnvelope): Promise<void>;
+
+  /**
+   * TASK-992 FU-1 — the creator-scoped read behind {@link retryJobForOwner}'s
+   * dispatch. `envelope` is `null` for rows dispatched before FU-1 shipped.
+   */
+  getDispatchContextForOwner(
+    ownerId: string,
+    id: string,
+  ): Promise<{ envelope: BatchDispatchEnvelope | null; resolvedSpec: unknown; tenantId: string }>;
 }

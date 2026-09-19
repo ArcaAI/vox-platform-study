@@ -21777,6 +21777,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "reclaimCount": {
+            "description": "TASK-992 — how many times this job has been RECLAIMED from a worker that died mid-flight. Counted separately from `retryCount`, which counts genuine transcription failures: a crashed worker must not spend the budget a bad audio file needs. Bounded by `stt.batch.maxReclaims`; past it the job is marked DEAD.",
+            "type": "number"
+          },
           "resolvedSpec": {
             "description": "TASK-861 — the ResolvedAsrSpec snapshot the job ran on (never a credential)",
             "nullable": true,
@@ -21833,6 +21837,7 @@
           "queuedAt",
           "retryCount",
           "maxRetries",
+          "reclaimCount",
           "tenantId",
           "createdAt",
           "updatedAt"
@@ -61858,7 +61863,7 @@
     },
     "/api/v1/audio/transcription-jobs/{id}/retry": {
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:transcription:write`).\n\n**API key scopes** — `stt:transcription:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Re-publishes the job to the `stt_batch` worker queue and returns it at `QUEUED`. A retry is only possible while `retryCount < maxRetries`, and only for a job this caller created.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:transcription:write`).\n\n**API key scopes** — `stt:transcription:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TranscriptionJobController_retry",
         "parameters": [
           {
@@ -61881,6 +61886,18 @@
               }
             },
             "description": ""
+          },
+          "400": {
+            "description": "The job has exhausted its retry budget; it is marked DEAD."
+          },
+          "404": {
+            "description": "Unknown job, or a job created by another user."
+          },
+          "409": {
+            "description": "`RETRY_ENVELOPE_MISSING` — the job carries no record of what was dispatched for it, which is the case for every job created before this capability shipped. Submit the audio again as a new job."
+          },
+          "503": {
+            "description": "`RETRY_STORAGE_UNRESOLVED` — the job's tenant storage backend cannot be resolved right now."
           }
         },
         "security": [

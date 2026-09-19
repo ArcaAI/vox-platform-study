@@ -63,6 +63,17 @@ export interface ITranscriptionRealtimeService {
     /** Tenant fallback pipeline the worker re-runs on if the primary ASR fails. */
     fallbackPipelineId?: string;
   }): Promise<void>;
+
+  /**
+   * TASK-992 FU-1 — retry a failed batch job by RE-PUBLISHING its Dramatiq
+   * message, not merely flipping the row back to `QUEUED`.
+   *
+   * Creator-scoped: an unknown id and a same-tenant peer's job both 404.
+   * Refuses (409 `RETRY_ENVELOPE_MISSING`) for a row dispatched before the
+   * envelope existed — those jobs cannot be made runnable, and answering 200
+   * would recreate the defect this closes.
+   */
+  retryAndDispatch(jobId: string, options: { ownerId: string }): Promise<unknown>;
 }
 
 export const ITranscriptionRealtimeService = Symbol('ITranscriptionRealtimeService');
