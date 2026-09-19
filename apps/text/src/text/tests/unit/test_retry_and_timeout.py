@@ -440,7 +440,11 @@ def _internal_server_error(message: str) -> InternalServerError:
 class TestProviderInvalidRequest:
     """A deterministic provider 4xx is classified `invalid_request`, is never
     retried (regardless of what the caller's `retry_on` asks for), and answers
-    422 with a `code` — never the generic 502."""
+    422 with a `code` — never the generic 502.
+
+    "Deterministic" excludes 429 and 408 since TASK-993 D-5: those are 4xx by
+    status only and are retried. See `TestVendorRateLimitClassification` below.
+    """
 
     @pytest.mark.asyncio
     async def test_provider_4xx_is_not_retried_and_returns_422(self, _app_factory):
@@ -542,3 +546,398 @@ class TestProviderInvalidRequest:
         assert resp.status_code == 200
         assert resp.json()["content"] == "Recovered!"
         assert mock_provider.generate.call_count == 2
+
+
+# ── Vendor 429 / 408 (TASK-993 D-5) ──────────────────────────────────
+#
+# The 4xx→`invalid_request` sweep above was written for a MALFORMED body: a
+# rejection the provider has already decided, which no retry can change. It
+# swept in 429 and 408 with it, and those are the opposite kind of 4xx — the
+# provider answered promptly, correctly, and (for a 429) with a deadline it is
+# asking us to honour. The observable damage was fourfold:
+#
+#   * the retry loop refused them, so `retry_after_from` — a parser written for
+#     exactly this case — was unreachable dead code;
+#   * the caller got 422, which `@arcaai/vox-node` treats as non-retryable, so
+#     the whole chain gave up on a transient condition;
+#   * no `Retry-After` reached the caller, so nothing could pace against it; and
+#   * `cb.record_failure()` ran, so five throttles in a row converted a
+#     seconds-long vendor pause into a 30-second platform outage.
+
+
+def _status_error(status_code: int, *, message: str = "boom", headers: dict | None = None):
+    """A provider SDK error carrying ``status_code`` the way the adapters raise it.
+
+    Shaped like the `openai`/`anthropic` `APIStatusError` family (`.status_code`
+    direct), which is what `provider_status_code_from` duck-types on.
+    """
+    from openai import APIStatusError
+
+    body = {"error": {"message": message, "type": "rate_limit_error"}}
+    return APIStatusError(
+        message,
+        response=MagicMock(status_code=status_code, headers=headers or {}, json=lambda: body),
+        body=body,
+    )
+
+
+class TestVendorRateLimitClassification:
+    """`retry_handler`'s verdicts, at the unit level."""
+
+    def test_a_vendor_429_is_not_a_deterministic_invalid_request(self):
+        from text.services.retry_handler import (
+            is_provider_invalid_request,
+            is_provider_rate_limited,
+        )
+
+        exc = _status_error(429)
+        assert is_provider_invalid_request(exc) is False
+        assert is_provider_rate_limited(exc) is True
+
+    def test_a_vendor_408_is_not_a_deterministic_invalid_request(self):
+        """A request timeout is the provider saying "that attempt took too
+        long", not "this request is wrong" — transient, but NOT a rate limit,
+        so it does not get the 429 response mapping."""
+        from text.services.retry_handler import (
+            is_provider_invalid_request,
+            is_provider_rate_limited,
+        )
+
+        exc = _status_error(408)
+        assert is_provider_invalid_request(exc) is False
+        assert is_provider_rate_limited(exc) is False
+
+    def test_a_vendor_400_is_still_a_deterministic_invalid_request(self):
+        """The TASK-946 D5 behaviour the carve-out must not regress."""
+        from text.services.retry_handler import (
+            is_provider_invalid_request,
+            is_provider_rate_limited,
+        )
+
+        exc = _status_error(400)
+        assert is_provider_invalid_request(exc) is True
+        assert is_provider_rate_limited(exc) is False
+
+    def test_a_vendor_500_is_neither(self):
+        from text.services.retry_handler import (
+            is_provider_invalid_request,
+            is_provider_rate_limited,
+        )
+
+        exc = _status_error(500)
+        assert is_provider_invalid_request(exc) is False
+        assert is_provider_rate_limited(exc) is False
+
+    def test_should_retry_admits_a_rate_limit_whatever_retry_on_says(self):
+        """The exact mirror of the `invalid_request` refusal, and for the mirror
+        reason: a 429 is the one error the provider has explicitly asked us to
+        retry, and not backing off is what amplifies the incident. `max_retries`
+        remains the caller's real knob."""
+        from text.services.retry_handler import RATE_LIMITED_ERROR_TYPE, should_retry
+
+        assert should_retry(RATE_LIMITED_ERROR_TYPE, [], attempt=0, max_retries=3) is True
+
+    def test_should_retry_still_caps_a_rate_limit_at_the_attempt_ceiling(self):
+        from text.services.retry_handler import RATE_LIMITED_ERROR_TYPE, should_retry
+
+        assert should_retry(RATE_LIMITED_ERROR_TYPE, [], attempt=3, max_retries=3) is False
+        assert should_retry(RATE_LIMITED_ERROR_TYPE, [], attempt=0, max_retries=0) is False
+
+    def test_the_rate_limited_code_is_the_one_the_429_body_already_carries(self):
+        """One vocabulary for the two surfaces: the blocking 429's `error_code`
+        and the streaming terminal frame's `code` must be the same token, or a
+        client has to learn two names for one condition."""
+        from text.core.exceptions import RateLimitError
+        from text.services.retry_handler import RATE_LIMITED_CODE
+
+        assert RateLimitError().error_code == RATE_LIMITED_CODE
+
+
+class TestVendorRateLimitThroughTheEndpoint:
+    @pytest.mark.asyncio
+    async def test_a_vendor_429_is_retried_and_then_surfaces_429_not_422(self, _app_factory):
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(
+            side_effect=_status_error(429, message="slow down", headers={"retry-after": "2"})
+        )
+        app = _app_factory(mock_provider)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "lm-studio",
+                "retry_config": {"max_retries": 2, "retry_on": ["provider_error"]},
+            },
+            patch_sleep=True,
+        )
+        assert resp.status_code == 429
+        assert resp.json()["error_code"] == "RATE_LIMITED"
+        assert resp.headers["retry-after"] == "3"  # int(2.0) + 1, per `_get_headers`
+        # 1 initial + 2 retries: the budget was spent on a condition that CAN change.
+        assert mock_provider.generate.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_a_vendor_429_backs_off_for_the_wait_the_vendor_asked_for(self, _app_factory):
+        """`retry_after_from` was written for this case and was unreachable."""
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(
+            side_effect=_status_error(429, headers={"retry-after": "2"})
+        )
+        app = _app_factory(mock_provider)
+        transport = ASGITransport(app=app)
+        with patch(_BACKOFF_PATCH, new_callable=AsyncMock) as slept:
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                await client.post(
+                    "/api/v1/generate",
+                    json={
+                        "prompt": "Hello",
+                        "provider": "lm-studio",
+                        "model": "test-model",
+                        "retry_config": {"max_retries": 1, "retry_on": ["provider_error"]},
+                    },
+                )
+        waits = [call.args[0] for call in slept.await_args_list]
+        assert len(waits) == 1
+        # The vendor's 2s, jittered by at most 10% — never the computed 1s the
+        # exponential would have produced for attempt 0.
+        assert 2.0 <= waits[0] <= 2.2
+
+    @pytest.mark.asyncio
+    async def test_a_vendor_429_that_clears_returns_200(self, _app_factory):
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(
+            side_effect=[
+                _status_error(429, headers={"retry-after": "1"}),
+                ("Recovered!", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}),
+            ]
+        )
+        app = _app_factory(mock_provider)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "lm-studio",
+                "retry_config": {"max_retries": 2, "retry_on": ["provider_error"]},
+            },
+            patch_sleep=True,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["content"] == "Recovered!"
+        assert mock_provider.generate.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_a_vendor_429_without_a_retry_after_header_still_carries_one(self, _app_factory):
+        """A 429 a client cannot pace against is a 429 that invites the same
+        storm back. When the vendor names no deadline this error type supplies
+        its own, exactly as `CircuitOpenError` and `ConcurrencyLimitError` do."""
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(side_effect=_status_error(429))
+        app = _app_factory(mock_provider)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "lm-studio",
+                "retry_config": {"max_retries": 0, "retry_on": []},
+            },
+        )
+        assert resp.status_code == 429
+        assert int(resp.headers["retry-after"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_a_vendor_400_still_surfaces_422_with_its_code(self, _app_factory):
+        """The carve-out is for 429/408 ONLY — a malformed body keeps its
+        unconditional refusal and its 422."""
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(side_effect=_bad_request_error("bad body"))
+        app = _app_factory(mock_provider)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "lm-studio",
+                "retry_config": {"max_retries": 3, "retry_on": ["provider_error"]},
+            },
+            patch_sleep=True,
+        )
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["code"] == "PROVIDER_INVALID_REQUEST"
+        assert mock_provider.generate.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_a_vendor_408_is_retried_and_surfaces_502(self, _app_factory):
+        """408 is transient, so it is retried — but it is NOT a rate limit, so
+        it answers the generic provider-failure 502 rather than a 429 nobody
+        rate-limited."""
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(side_effect=_status_error(408, message="too slow"))
+        app = _app_factory(mock_provider)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "lm-studio",
+                "retry_config": {"max_retries": 2, "retry_on": ["provider_error"]},
+            },
+            patch_sleep=True,
+        )
+        assert resp.status_code == 502
+        assert mock_provider.generate.call_count == 3
+
+
+class TestVendorRateLimitAndTheCircuitBreaker:
+    """A throttle is not evidence of ill health.
+
+    `CircuitBreaker.record_failure(is_rate_limit=...)` and
+    `LaneBudget.count_rate_limits` already existed; no call site ever set the
+    flag, so the knob was unreachable and every vendor 429 counted.
+    """
+
+    @staticmethod
+    def _wire(app, **breaker_kwargs):
+        from text.core.runtime_defaults import USER_LANE_FLOOR
+        from text.services.circuit_breaker import CircuitBreaker
+
+        kwargs = {
+            "failure_threshold": USER_LANE_FLOOR.failure_threshold,
+            "count_rate_limits": USER_LANE_FLOOR.count_rate_limits,
+            **breaker_kwargs,
+        }
+        cb = CircuitBreaker(**kwargs)
+        app.state.circuit_breakers = {"lm-studio": cb}
+        return cb
+
+    @pytest.mark.asyncio
+    async def test_a_vendor_429_does_not_trip_the_breaker(self, _app_factory):
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(side_effect=_status_error(429))
+        app = _app_factory(mock_provider)
+        cb = self._wire(app)
+        for _ in range(6):  # well past the default failure_threshold of 5
+            resp = await _post_generate(
+                app,
+                {
+                    "prompt": "Hello",
+                    "provider": "lm-studio",
+                    "retry_config": {"max_retries": 0, "retry_on": []},
+                },
+            )
+            assert resp.status_code == 429
+        assert cb.failure_count == 0
+        assert cb.allow_request() is True
+
+    @pytest.mark.asyncio
+    async def test_a_vendor_500_still_trips_the_breaker(self, _app_factory):
+        """The contrast that keeps the carve-out honest: a real provider failure
+        is still counted."""
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(side_effect=_internal_server_error("down"))
+        app = _app_factory(mock_provider)
+        cb = self._wire(app, failure_threshold=2)
+        for _ in range(2):
+            await _post_generate(
+                app,
+                {
+                    "prompt": "Hello",
+                    "provider": "lm-studio",
+                    "retry_config": {"max_retries": 0, "retry_on": []},
+                },
+            )
+        assert cb.failure_count == 2
+        assert cb.allow_request() is False
+
+    @pytest.mark.asyncio
+    async def test_an_operator_can_opt_back_in_through_the_control_plane(self, _app_factory):
+        """Sustained 429s DO mean the lane is unusable, and an operator who wants
+        the breaker to say so sets `countRateLimits` on the runtime profile. The
+        policy stays in the control plane; only the default moved."""
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(side_effect=_status_error(429))
+        app = _app_factory(mock_provider)
+        cb = self._wire(app, failure_threshold=2, count_rate_limits=True)
+        for _ in range(2):
+            await _post_generate(
+                app,
+                {
+                    "prompt": "Hello",
+                    "provider": "lm-studio",
+                    "retry_config": {"max_retries": 0, "retry_on": []},
+                },
+            )
+        assert cb.failure_count == 2
+        assert cb.allow_request() is False
+
+
+class TestVendorRateLimitOnTheStreamingPath:
+    """The streaming producer shares the breaker dict with `/generate`, so a
+    carve-out applied to only one of them is a carve-out that does not hold.
+    """
+
+    @staticmethod
+    def _streaming_task_manager():
+        tm = AsyncMock()
+        tm.append_chunk = AsyncMock()
+        tm.append_batch = AsyncMock()
+        tm.update_task = AsyncMock()
+        return tm
+
+    @staticmethod
+    def _rate_limited_provider():
+        async def stream(_request):
+            raise _status_error(429, message="slow down", headers={"retry-after": "2"})
+            yield  # pragma: no cover — makes this an async generator
+
+        provider = AsyncMock()
+        provider.generate_stream = stream
+        return provider
+
+    @pytest.mark.asyncio
+    async def test_the_terminal_frame_carries_the_rate_limited_code(self):
+        from text.core.runtime_defaults import USER_LANE_FLOOR
+        from text.models.requests import GenerateRequest
+        from text.routing.streaming import _run_streaming_generation
+        from text.services.circuit_breaker import CircuitBreaker
+
+        tm = self._streaming_task_manager()
+        cb = CircuitBreaker(
+            failure_threshold=USER_LANE_FLOOR.failure_threshold,
+            count_rate_limits=USER_LANE_FLOOR.count_rate_limits,
+        )
+        await _run_streaming_generation(
+            tm,
+            self._rate_limited_provider(),
+            "task-429",
+            GenerateRequest(prompt="p", provider="lm-studio", model="m", stream=True),
+            provider_name="lm-studio",
+            model="m",
+            tenant_id="t",
+            circuit_breakers={"lm-studio": cb},
+        )
+        chunks = [call.args[1] for call in tm.append_chunk.await_args_list]
+        assert [c.type for c in chunks] == ["error"]
+        assert (chunks[0].data or {})["code"] == "RATE_LIMITED"
+
+    @pytest.mark.asyncio
+    async def test_a_vendor_429_does_not_trip_the_breaker_on_the_streaming_path(self):
+        from text.core.runtime_defaults import USER_LANE_FLOOR
+        from text.models.requests import GenerateRequest
+        from text.routing.streaming import _run_streaming_generation
+        from text.services.circuit_breaker import CircuitBreaker
+
+        cb = CircuitBreaker(
+            failure_threshold=USER_LANE_FLOOR.failure_threshold,
+            count_rate_limits=USER_LANE_FLOOR.count_rate_limits,
+        )
+        for index in range(6):
+            await _run_streaming_generation(
+                self._streaming_task_manager(),
+                self._rate_limited_provider(),
+                f"task-429-{index}",
+                GenerateRequest(prompt="p", provider="lm-studio", model="m", stream=True),
+                provider_name="lm-studio",
+                model="m",
+                tenant_id="t",
+                circuit_breakers={"lm-studio": cb},
+            )
+        assert cb.failure_count == 0
+        assert cb.allow_request() is True
