@@ -34,6 +34,7 @@ def test_seed_wrapper_forwards_the_session_profiles_and_the_model_slug():
 
     mgr = MagicMock(spec=SessionManager)
     mgr._session_voice_profiles = {"sess-1": PROFILES}
+    mgr._session_voice_profile_seeded = {}  # TASK-991 sibling map
     tracker = MagicMock()
 
     with patch("stt.diarization.preseed.seed_voice_profiles") as mock_seed:
@@ -52,6 +53,7 @@ def test_seed_wrapper_passes_none_for_a_session_that_was_pushed_nothing():
 
     mgr = MagicMock(spec=SessionManager)
     mgr._session_voice_profiles = {}
+    mgr._session_voice_profile_seeded = {}  # TASK-991 sibling map
 
     with patch("stt.diarization.preseed.seed_voice_profiles") as mock_seed:
         SessionManager._seed_voice_profiles(
@@ -93,6 +95,7 @@ def _manager_for_assembly() -> MagicMock:
     mgr._switch_controllers = {}
     mgr._provider_overrides = {}
     mgr._session_voice_profiles = {}
+    mgr._session_voice_profile_seeded = {}  # TASK-991 sibling map
     mgr._fallback_pipeline_ids = {}
     # TASK-985 L-SESSION — instance attrs created in `__init__`, so a
     # `MagicMock(spec=SessionManager)` (which specs off the CLASS) does not

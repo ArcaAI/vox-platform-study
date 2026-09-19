@@ -400,6 +400,7 @@ class TestSessionManagerDenoiserWiring:
         mgr._switch_controllers = {}
         mgr._provider_overrides = {}
         mgr._session_voice_profiles = {}
+        mgr._session_voice_profile_seeded = {}  # TASK-991 sibling map
         mgr._fallback_pipeline_ids = {}
         # TASK-985 L-SESSION — instance attrs created in `__init__`, so a
         # `MagicMock(spec=SessionManager)` (which specs off the CLASS) does not
