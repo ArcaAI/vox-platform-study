@@ -58,3 +58,19 @@ def test_the_gate_also_checks_which_kernels_were_compiled_in() -> None:
         "the build gate must inspect the embedded SASS images — an sm_89-only "
         "extension links perfectly on an sm_86 card and then decodes on the CPU."
     )
+
+
+def test_the_source_build_refreshes_uvs_cached_wheel() -> None:
+    """uv keys its built-wheel cache on the source, not on CMAKE_ARGS.
+
+    Without `--refresh-package`, widening `CUDA_ARCHITECTURES` re-runs the RUN
+    layer and uv still returns the wheel a previous pipeline compiled for the
+    OLD architecture list — which is how the first `86-real;...` build shipped an
+    sm_89-only extension. `--reinstall-package` reinstalls FROM the cache and
+    does not help.
+    """
+    dockerfile = _dockerfile_text()
+    install_start = dockerfile.index("CMAKE_ARGS=\"-DGGML_CUDA=ON")
+    install = dockerfile[install_start : dockerfile.index("# Build-time gate")]
+
+    assert "--refresh-package pywhispercpp" in install
