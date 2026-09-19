@@ -63,11 +63,13 @@ const IDLE_MS = Number(process.env.LOAD_IDLE_MS ?? 70_000);
  * `shared/navigation/nav-config.ts`. Override with a comma-separated
  * `LOAD_SCREENS`.
  */
-// Clustered BY NAV DOMAIN on purpose. The sidebar only renders the active
-// domain's entries, so a walk that jumps between domains can only ever measure
-// document loads. Grouping means the first screen of each domain is a document
-// load and its siblings are client-side clicks — which is both what a real
-// admin does and the only way to get both halves of the range.
+// Clustered BY NAV DOMAIN, which is how an admin actually moves.
+//
+// MEASURED 2026-09-19: the console renders enough of the rail that 10 of these
+// 11 navigations resolved to a real `<Link>` click and only the first was a
+// document load. So the walk yields ~10 soft samples and 1 hard one, which is
+// the right shape — the soft number is the one a steady-state population
+// produces, and the hard one is the upper bound a reload pays.
 const DEFAULT_WALK = [
   '/dashboard',
   '/monitoring',
