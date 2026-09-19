@@ -69,10 +69,12 @@
 // what it enforces per request per tenant.
 
 import {
+  RATE_LIMIT_LOCKOUT_ENABLED_DEFAULT,
   RATE_LIMIT_PRINCIPAL_DEFAULTS,
   RATE_LIMIT_PRINCIPAL_ENABLED_DEFAULT,
   RATE_LIMIT_TIER_DEFAULTS,
   RATE_LIMIT_TIERS,
+  rateLimitLockoutEnabledKey,
   rateLimitPrincipalEnabledKey,
   rateLimitPrincipalLimitKey,
   rateLimitPrincipalTtlKey,
@@ -326,5 +328,37 @@ export const RATE_LIMIT_PRINCIPAL_SETTINGS: SettingDescriptor[] = [
     description:
       'Window length in milliseconds for the per-principal bucket. Left at the tier window (60,000 ms) on purpose: a window changed without changing the count it bounds reads to an admin as a limit change nobody asked for.',
     default: RATE_LIMIT_PRINCIPAL_DEFAULTS.ttl,
+  },
+];
+
+/**
+ * The BREACH LOCKOUT posture (TASK-993 D-2) — one key, because there are only
+ * two behaviours the two storage backends can be made to agree on.
+ *
+ * `maxScope: 'system'` / `globalOnly: true` for the same reason the tier and
+ * per-principal keys above are: it is a platform safety posture, not a plan
+ * feature. A tenant that wants to be refused sooner already has
+ * `rateLimit.maxRequests`; nothing here changes how much a tenant may send,
+ * only what one request over the line COSTS.
+ *
+ * The derivation of the value, and the measurements behind "a duration cannot
+ * be configured here", live next to the default in
+ * `rate-limit.constants.ts#RATE_LIMIT_LOCKOUT_ENABLED_DEFAULT`.
+ */
+export const RATE_LIMIT_LOCKOUT_SETTINGS: SettingDescriptor[] = [
+  {
+    key: rateLimitLockoutEnabledKey(),
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Platform Operations',
+    label: 'Rate limit — lock a breaching caller out for a full window',
+    description:
+      'ON: exceeding a limit refuses every later request from that bucket for a FULL window measured from the breach (the pre-TASK-993 behaviour — one request over the line cost a clinician a whole minute). OFF (the default): the refusal lasts only until the current window rolls, and `Retry-After` reports that real remaining time instead of a flat 60. It does not change how many requests are allowed, only what overshooting costs; brute-force arithmetic is ~unchanged either way (5 attempts per minute on `auth/login` in both).',
+    default: RATE_LIMIT_LOCKOUT_ENABLED_DEFAULT,
   },
 ];

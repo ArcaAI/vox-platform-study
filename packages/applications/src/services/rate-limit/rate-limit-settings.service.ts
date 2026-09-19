@@ -4,12 +4,14 @@ import { TenantSettingsService } from '../settings-registry/tenant-settings.serv
 import { IRateLimitSettingsService, RateLimitPrincipalPolicy, RateLimitRouteOverride, TenantRateLimitTierValue } from './IRateLimitSettingsService';
 import {
   RATE_LIMIT_GLOBAL_ENABLED_DEFAULT,
+  RATE_LIMIT_LOCKOUT_ENABLED_DEFAULT,
   RATE_LIMIT_PRINCIPAL_DEFAULTS,
   RATE_LIMIT_PRINCIPAL_ENABLED_DEFAULT,
   RATE_LIMIT_TIER_DEFAULTS,
   RateLimitTierName,
   RateLimitTierValue,
   rateLimitEnabledKey,
+  rateLimitLockoutEnabledKey,
   rateLimitPrincipalEnabledKey,
   rateLimitPrincipalLimitKey,
   rateLimitPrincipalTtlKey,
@@ -106,6 +108,12 @@ export class RateLimitSettingsService implements IRateLimitSettingsService {
     return usable
       ? { enabled: enabled !== false, limit, ttl }
       : { enabled: enabled !== false, limit: RATE_LIMIT_PRINCIPAL_DEFAULTS.limit, ttl: RATE_LIMIT_PRINCIPAL_DEFAULTS.ttl };
+  }
+
+  isLockoutEnabled(): boolean {
+    // Same O(1) cache read as every other accessor here, and the same
+    // absent-row contract: no row means the code default, which is OFF.
+    return this.appSettings.getValueWithDefault<boolean>(rateLimitLockoutEnabledKey(), RATE_LIMIT_LOCKOUT_ENABLED_DEFAULT) === true;
   }
 
   getRouteOverride(routeId: string): RateLimitRouteOverride | undefined {

@@ -225,12 +225,13 @@ async function bootstrap() {
   //      so it would believe any direct caller — handing anyone a private
   //      rate-limit bucket on request.
   //
-  // The client address is instead resolved narrowly, only for the rate
-  // limiter's bucket key, and only when the socket peer is a declared ingress:
-  // `apps/api/src/modules/throttle/client-ip.ts` + `RATE_LIMIT_TRUSTED_PROXIES`.
-  // Anything else that wants a client IP (audit trails in `UnifiedAuthGuard`
-  // and the service-account token controller) still reads `X-Forwarded-For`
-  // directly and is out of that scope.
+  // The client address is instead resolved narrowly, and only when the socket
+  // peer is a declared ingress: `packages/applications/src/common/client-ip.ts`
+  // + `RATE_LIMIT_TRUSTED_PROXIES`. EVERY reader now goes through it — the rate
+  // limiter's bucket key, and the audited address in `UnifiedAuthGuard` and the
+  // service-account token controller, both of which read `X-Forwarded-For`
+  // directly until TASK-993 lane J and therefore attributed every audit row to
+  // the cloudflared pod.
 
   // Renders RFC 7232 strong `ETag` headers from `body.version` — after the
   // line above, the ONLY ETag this API emits. Also serves the matching

@@ -1,4 +1,4 @@
-import { IServiceAccountService, ServiceAccountTokenRequest, ServiceAccountTokenResponse } from '@arcaai/applications';
+import { IServiceAccountService, resolveAttributedClientIp, ServiceAccountTokenRequest, ServiceAccountTokenResponse } from '@arcaai/applications';
 import { Body, Controller, HttpCode, Inject, Post, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -24,6 +24,9 @@ import { UseGuards } from '@nestjs/common';
  * (unknown client and bad secret return the identical 401), so an attacker's
  * only remaining signal is volume.
  *
+ * The address recorded against the exchange is resolved by the platform's one
+ * client-address rule (`resolveAttributedClientIp`), not from `X-Forwarded-For`.
+ *
  * The response carries an OPAQUE token — never a JWT. There is no claim set to
  * get wrong, and revocation is a Redis delete rather than a blocklist. Never
  * put the token, or the secret, in a URL.
@@ -47,19 +50,13 @@ export class ServiceAccountTokenController {
   @ApiResponse({ status: 401, description: 'Invalid client credentials (deliberately non-enumerable).' })
   @ApiResponse({ status: 403, description: 'Working tenant is outside this account allow-list.' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded.' })
-  async exchange(
-    @Body() request: ServiceAccountTokenRequest,
-    @Req() req: { ip?: string; headers?: Record<string, unknown> },
-  ): Promise<ServiceAccountTokenResponse> {
-    return this.serviceAccounts.exchangeToken(request, readClientIp(req));
+  async exchange(@Body() request: ServiceAccountTokenRequest, @Req() req: Record<string, unknown>): Promise<ServiceAccountTokenResponse> {
+    // The audited address. NOT `X-Forwarded-For`, which this route read until
+    // TASK-993 lane J: on this ingress its last hop is the cloudflared pod, and
+    // off that ingress it is whatever the caller typed — so the audit row for a
+    // credential exchange was either wrong or attacker-chosen. One shared rule
+    // (`@arcaai/applications` `common/client-ip.ts`): believe `CF-Connecting-IP`
+    // only from a declared ingress, else the socket peer.
+    return this.serviceAccounts.exchangeToken(request, resolveAttributedClientIp(req) ?? 'unknown');
   }
-}
-
-function readClientIp(request: { ip?: string; headers?: Record<string, unknown> } | undefined): string {
-  const forwarded = request?.headers?.['x-forwarded-for'];
-  if (forwarded) {
-    const value = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-    if (typeof value === 'string') return value.split(',')[0]!.trim();
-  }
-  return request?.ip ?? 'unknown';
 }

@@ -68,6 +68,12 @@ const PLATFORM_WIDE_KEYS = [
   'RATE_LIMIT_TIER_HEAVY_TTL',
   'RATE_LIMIT_TIER_RELAXED_LIMIT',
   'RATE_LIMIT_TIER_RELAXED_TTL',
+  // TASK-993: level two of the two-level bucketing model (OD-2) and the
+  // breach posture (D-2). Same platform-tenant-only block as the tiers above.
+  'RATE_LIMIT_PRINCIPAL_ENABLED',
+  'RATE_LIMIT_PRINCIPAL_LIMIT',
+  'RATE_LIMIT_PRINCIPAL_TTL',
+  'RATE_LIMIT_LOCKOUT_ENABLED',
   'ENTITLEMENTS_ENABLED',
   // The metering reconcile-sweep kill-switch joins the
   // same platform-tenant-only block, seeded alongside ENTITLEMENTS_ENABLED.

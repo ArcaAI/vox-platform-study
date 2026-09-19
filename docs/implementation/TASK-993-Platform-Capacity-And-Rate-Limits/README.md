@@ -516,6 +516,70 @@ Gates: all six overlays render; kubeconform 0 invalid; config-refs, envfrom-cove
 image-hygiene, gitleaks, promtool all RC=0. The lifted rules were proven to fail before they passed,
 and caught an orphaned PDB in the lane's own change.
 
+### Lane J — D-2, the two stray IP readers, and the missing seed rows (`task-993-j-followups`)
+
+**D-2 is fixed, and the fix is NOT a smaller `blockDuration` — no such value exists.** Measured
+against the real in-memory service and the real Redis Lua, on the running dev Redis:
+
+| `blockDuration` | `ThrottlerStorageService` | `ThrottlerStorageRedisService` |
+|---|---|---|
+| `0` | the breaching request is **allowed** and the counter resets — no limit at all | `ERR invalid expire time in 'set' command` (`SET blockKey 1 PX 0`) — a 500 where a 429 belongs |
+| `1 ms` | refuses, and keeps refusing | hands out a **fresh window** (`PTTL` rounds to 0, the Lua's reset branch fires) |
+| `< ttl` | block expiry **resets the counter to a full fresh allowance** | block expiry leaves it over the limit → **re-blocked to the window boundary** |
+| `= ttl` | identical | identical |
+
+The one self-consistent value is `ttl`, which IS the defect — so the block key had to stop
+existing, which neither backend can be told. `WindowOnlyThrottlerStorage`
+(`apps/api/src/modules/throttle/window-only-storage.ts`) wraps whichever backend is configured,
+asks it to count with a limit it can never reach (so each block branch is unreachable — no block
+key is written in Redis, `isBlocked` is never set in memory) and derives the refusal from the
+counter. Both backends are then doing the one thing they already agree on. **Verified identical
+live**: same hits, same verdict, same `Retry-After` across five requests, both recovering at the
+window boundary, and no `:blocked` key created. That parity suite is committed and re-runnable:
+`THROTTLE_STORAGE_PARITY_REDIS_URL=redis://localhost:6379 npx vitest run …/window-only-storage.task993.test.ts`.
+
+`Retry-After` is now the real seconds to the window boundary instead of a flat 60.
+
+**The policy value is `rate-limit.lockout.enabled`** — `global-kv`, `maxScope: 'system'`,
+`globalOnly`, `failMode: 'open-to-default'`, default **OFF**; lane F's `rate-limit.principal.*`
+are the local precedent, and no env var was added. A BOOLEAN rather than a duration because the
+table above leaves exactly two behaviours the backends can agree on. OFF is the safe default:
+a lockout barely changes brute-force arithmetic (≈5 `auth/login` attempts per minute either way)
+while costing an honest caller who overshoots by one a whole clinical minute. Every lane goes
+through one `handleLane` helper, so the tenant aggregate and the per-principal bucket can never
+disagree about the posture.
+
+**Item 2 — two audit readers were still on `X-Forwarded-For`.** `UnifiedAuthGuard:1084` and
+`ServiceAccountTokenController:59` both feed audit records, so every audited action named the
+cloudflared pod (and, off that ingress, an address the caller chose for itself). Lane A's
+primitive moved DOWN to `packages/applications/src/common/client-ip.ts` — the lowest package all
+three readers already depend on, and the only one `UnifiedAuthGuard` (which lives inside it) can
+import at all; `packages/utils` was rejected because `apps/api` does not depend on it and its
+barrel drags the model-download/transformers modules into the authentication path.
+`apps/api/src/modules/throttle/client-ip.ts` is now a re-export, so lane A's tests are untouched
+and still pass 18/18. A second entry point, `resolveAttributedClientIp`, adds the audit contract
+the throttler does not want: it always answers an address, preferring the SOCKET peer over
+`req.ip` (which becomes header-derived the moment anyone enables `trust proxy`). Three tests that
+pinned the old `X-Forwarded-For` behaviour were rewritten to pin the new one.
+
+**Item 3 — `rate-limit.principal.{enabled,limit,ttl}` are seeded** (plus
+`rate-limit.lockout.enabled`), matching the nine existing rows' shape, with four new
+`SEED_GLOBAL_SETTING_IDS` in the same `…0300` block. **Written, not run** — the orchestrator owns
+every DB surface. A new `rate-limit-seed-parity.task993.test.ts` holds the hand-mirrored seed and
+the descriptor registry together (same shape as `platform-knob-seed-parity.test.ts`), including
+that each seeded value equals the descriptor default, so a seeded database cannot behave
+differently from a fresh one.
+
+Gates: `@arcaai/applications build` EXIT=0, `@arcaai/api build` EXIT=0, `@arcaai/api lint`
+**0 errors** (65 pre-existing `require-description` warnings, none in lane J files),
+`@arcaai/database test` **1863 passed / 95 files, EXIT=0**, and the combined throttle +
+rate-limit + service-account + authorization suites **272 passed / 23 files, EXIT=0** with the
+live-Redis parity test included. Every new suite RED-probed.
+
+Out of scope, found: `pnpm --filter @arcaai/api typecheck` is **already red on `715bfe795`** with
+4 errors, all in lane C/H test files (`gateway-http-agent.test.ts` ×2, `main-metrics-wiring.test.ts`,
+`prisma-pool-metrics.test.ts`) and none in a file lane J touched.
+
 ---
 
 ## 8. Change History
