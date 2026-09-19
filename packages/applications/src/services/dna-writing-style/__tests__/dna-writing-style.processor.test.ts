@@ -17,8 +17,13 @@ const createMockJobService = () => ({
   notifyFailed: vi.fn(),
 });
 
+// The corpus read is a DEDICATED repository method, not a generic `findAll`
+// with a filter object: `ContextItem` has no `doctorId` column, and the type +
+// row-budget bounds only mean anything when the DATABASE applies them. The
+// mock is named after the real method so a call site that drifts back to
+// `findAll` fails loudly instead of silently querying nothing.
 const createMockContextItemRepository = () => ({
-  findAll: vi.fn(),
+  findFinalSummariesByDoctor: vi.fn(),
 });
 
 // Approval check via ContextItemVersion (changeReason='approved').
@@ -349,7 +354,7 @@ describe('DnaWritingStyleProcessor', () => {
     });
 
     it('should succeed gathering from ContextItems when no textSamples provided', async () => {
-      mockContextItemRepo.findAll.mockResolvedValue([
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([
         { id: 'ci-1', content: 'Doctor summary text 1', text: null, type: 'RAW_SUMMARY' },
         { id: 'ci-2', content: null, text: 'Doctor summary text 2', type: 'MODIFIED_SUMMARY' },
       ]);
@@ -366,7 +371,7 @@ describe('DnaWritingStyleProcessor', () => {
 
       const result = await processor.process(createMockJob({}) as never);
 
-      expect(mockContextItemRepo.findAll).toHaveBeenCalled();
+      expect(mockContextItemRepo.findFinalSummariesByDoctor).toHaveBeenCalled();
       const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
       expect(requestBody.prompt).toContain('Doctor summary text 1');
       expect(result.styleText).toBe('From context');
@@ -435,7 +440,7 @@ describe('DnaWritingStyleProcessor', () => {
     });
 
     it('should still process when ContextItems exist but all have empty content', async () => {
-      mockContextItemRepo.findAll.mockResolvedValue([
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([
         { id: 'ci-empty-1', content: '', text: null, type: 'RAW_SUMMARY' },
         { id: 'ci-empty-2', content: null, text: '', type: 'MODIFIED_SUMMARY' },
       ]);
@@ -744,7 +749,7 @@ describe('DnaWritingStyleProcessor', () => {
   // ─── Context Limits (AppSettings) ─────────────────────────────
 
   describe('Context Limits from AppSettings', () => {
-    it('should pass max-samples as limit to contextItemRepository.findAll', async () => {
+    it('should pass max-samples as the limit to contextItemRepository.findFinalSummariesByDoctor', async () => {
       const limitedSettings = createMockAppSettingsService({ 'dna-regen.max-samples': 10 });
       const limitedProcessor = new DnaWritingStyleProcessor(
         mockJobService as never,
@@ -767,7 +772,7 @@ describe('DnaWritingStyleProcessor', () => {
         createPassThroughPhiRedactor() as never, // phiRedactor (REQUIRED)
       );
 
-      mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-1', content: 'text-1', text: null, type: 'RAW_SUMMARY' }]);
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([{ id: 'ci-1', content: 'text-1', text: null, type: 'RAW_SUMMARY' }]);
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
       mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"OK"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
@@ -781,7 +786,7 @@ describe('DnaWritingStyleProcessor', () => {
 
       await limitedProcessor.process(createMockJob({}) as never);
 
-      expect(mockContextItemRepo.findAll).toHaveBeenCalledWith(expect.objectContaining({ limit: 10 }));
+      expect(mockContextItemRepo.findFinalSummariesByDoctor).toHaveBeenCalledWith('doctor-1', 10);
     });
 
     it('should truncate joined samples when exceeding max-context-chars', async () => {
@@ -867,7 +872,7 @@ describe('DnaWritingStyleProcessor', () => {
         createPassThroughPhiRedactor() as never, // phiRedactor (REQUIRED)
       );
 
-      mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-x', content: 'text', text: null, type: 'RAW_SUMMARY' }]);
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([{ id: 'ci-x', content: 'text', text: null, type: 'RAW_SUMMARY' }]);
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
       mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"OK"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
@@ -881,7 +886,7 @@ describe('DnaWritingStyleProcessor', () => {
 
       await defaultProcessor.process(createMockJob({}) as never);
 
-      expect(mockContextItemRepo.findAll).toHaveBeenCalledWith(expect.objectContaining({ limit: 50 }));
+      expect(mockContextItemRepo.findFinalSummariesByDoctor).toHaveBeenCalledWith('doctor-1', 50);
     });
   });
 
@@ -907,7 +912,7 @@ describe('DnaWritingStyleProcessor', () => {
     });
 
     it('should throw when no text samples and no ContextItems found', async () => {
-      mockContextItemRepo.findAll.mockResolvedValue([]);
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([]);
 
       await expect(processor.process(createMockJob({}) as never)).rejects.toThrow('No text samples available for DNA analysis');
 
@@ -915,7 +920,7 @@ describe('DnaWritingStyleProcessor', () => {
     });
 
     it('should notify failed with correct jobId from payload', async () => {
-      mockContextItemRepo.findAll.mockResolvedValue([]);
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([]);
 
       try {
         await processor.process(createMockJob({ jobId: 'specific-job-42' }) as never);
@@ -974,7 +979,7 @@ describe('DnaWritingStyleProcessor', () => {
         return contextItemId === 'ci-approved' ? [{ id: 'v-1', contextItemId, changeReason: 'approved', versionNumber: 1 }] : [];
       });
 
-      mockContextItemRepo.findAll.mockResolvedValue([
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([
         { id: 'ci-approved', content: 'Approved summary body', type: 'RAW_SUMMARY' },
         { id: 'ci-pending', content: 'Pending summary body', type: 'RAW_SUMMARY' },
         { id: 'ci-modified-pending', content: 'Modified but not approved', type: 'MODIFIED_SUMMARY' },
@@ -1006,7 +1011,7 @@ describe('DnaWritingStyleProcessor', () => {
         return contextItemId === 'ci-a' || contextItemId === 'ci-c' ? [{ id: 'v', contextItemId, changeReason: 'approved', versionNumber: 1 }] : [];
       });
 
-      mockContextItemRepo.findAll.mockResolvedValue([
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([
         { id: 'ci-a', content: 'A', type: 'RAW_SUMMARY' },
         { id: 'ci-b', content: 'B', type: 'RAW_SUMMARY' },
         { id: 'ci-c', content: 'C', type: 'MODIFIED_SUMMARY' },
@@ -1038,7 +1043,7 @@ describe('DnaWritingStyleProcessor', () => {
         changeReason === 'approved' ? [{ id: 'v', contextItemId: _contextItemId, changeReason: 'approved', versionNumber: 1 }] : [],
       );
 
-      mockContextItemRepo.findAll.mockResolvedValue([
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([
         { id: 'ci-final', content: 'Final summary', type: 'RAW_SUMMARY' },
         { id: 'ci-pre', content: 'Pre summary', type: 'PRE_SUMMARY' },
         { id: 'ci-tx', content: 'Transcript', type: 'TRANSCRIPT' },
@@ -1064,7 +1069,7 @@ describe('DnaWritingStyleProcessor', () => {
 
     it('fails the job when no approved summaries exist (no textSamples override)', async () => {
       mockContextItemVersionRepo.getVersionsByChangeReason.mockResolvedValue([]);
-      mockContextItemRepo.findAll.mockResolvedValue([
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([
         { id: 'ci-1', content: 'Unapproved', type: 'RAW_SUMMARY' },
         { id: 'ci-2', content: 'Unapproved 2', type: 'MODIFIED_SUMMARY' },
       ]);
@@ -1091,6 +1096,36 @@ describe('DnaWritingStyleProcessor', () => {
 
       const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
       expect(requestBody.prompt).toContain('Explicit text sample bypassing approval');
+    });
+  });
+
+  // ─── Corpus query arguments ──────────────────────────────────
+  //
+  // These assertions exist because their absence is what let the automatic corpus
+  // ship broken: the read used to be `findAll({ filters: { doctorId } })`, and
+  // `ContextItem` has no `doctorId` column (the doctor lives on the parent
+  // `Consultation`), so every automatic generation threw
+  // `PrismaClientValidationError: Unknown argument 'doctorId'` at runtime while a
+  // `toHaveBeenCalled()`-only test stayed green. Assert the ARGUMENTS, not the fact
+  // of the call.
+  describe('corpus query arguments', () => {
+    it("asks the repository for the JOB's doctor and the configured sample cap, positionally", async () => {
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([{ id: 'ci-1', content: 'Approved body', type: 'RAW_SUMMARY' }]);
+      mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
+      mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
+      mockDnaReportRepo.create.mockResolvedValue({ id: 'r', createdAt: new Date(), updatedAt: new Date() });
+      mockDnaVersionRepo.create.mockResolvedValue({});
+      mockDnaUsageRepo.create.mockResolvedValue({});
+
+      await processor.process(createMockJob({ doctorId: 'doctor-77' }) as never);
+
+      // A filter-object call shape (the shipped defect) fails this line.
+      expect(mockContextItemRepo.findFinalSummariesByDoctor).toHaveBeenCalledTimes(1);
+      expect(mockContextItemRepo.findFinalSummariesByDoctor).toHaveBeenCalledWith('doctor-77', 50);
+      const [doctorArg, limitArg] = mockContextItemRepo.findFinalSummariesByDoctor.mock.calls[0];
+      expect(typeof doctorArg).toBe('string');
+      expect(typeof limitArg).toBe('number');
     });
   });
 
@@ -1138,7 +1173,7 @@ describe('DnaWritingStyleProcessor', () => {
           return [{ id: 'd', contextItemId: id, changeReason: 'ai_draft_v1', versionNumber: 1, content: 'AI DRAFT BODY' }];
         return [];
       });
-      mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-1', content: 'DOCTOR APPROVED BODY', type: 'RAW_SUMMARY' }]);
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([{ id: 'ci-1', content: 'DOCTOR APPROVED BODY', type: 'RAW_SUMMARY' }]);
       primeStorageMocks();
 
       await processor.process(createMockJob({}) as never);
@@ -1152,7 +1187,7 @@ describe('DnaWritingStyleProcessor', () => {
 
     it('falls back to final-only (no AI DRAFT block) for a legacy consult with no v1 snapshot', async () => {
       // default mock: approved → present, ai_draft_v1 → [] (legacy)
-      mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-1', content: 'DOCTOR APPROVED BODY', type: 'RAW_SUMMARY' }]);
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([{ id: 'ci-1', content: 'DOCTOR APPROVED BODY', type: 'RAW_SUMMARY' }]);
       primeStorageMocks();
 
       await processor.process(createMockJob({}) as never);
@@ -1169,7 +1204,7 @@ describe('DnaWritingStyleProcessor', () => {
           return [{ id: 'd', contextItemId: id, changeReason: 'ai_draft_v1', versionNumber: 1, content: 'AI DRAFT BODY' }];
         return [];
       });
-      mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-1', content: 'DOCTOR APPROVED BODY', type: 'RAW_SUMMARY' }]);
+      mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([{ id: 'ci-1', content: 'DOCTOR APPROVED BODY', type: 'RAW_SUMMARY' }]);
       primeStorageMocks();
 
       await processor.process(createMockJob({}) as never);
@@ -1192,7 +1227,7 @@ describe('DnaWritingStyleProcessor', () => {
       );
       expect(mockJobService.notifyFailed).toHaveBeenCalledWith('job-1', expect.stringContaining('disabled'));
       // gated out BEFORE the corpus is even fetched
-      expect(mockContextItemRepo.findAll).not.toHaveBeenCalled();
+      expect(mockContextItemRepo.findFinalSummariesByDoctor).not.toHaveBeenCalled();
     });
 
     // (Task 1 RED test 2 / PHI containment): the opt-out gate now

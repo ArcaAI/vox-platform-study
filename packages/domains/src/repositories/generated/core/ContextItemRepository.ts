@@ -130,6 +130,40 @@ export class ContextItemRepository extends Repository<ContextItemEntity, Context
   }
 
   /**
+   * Final summaries (RAW or MODIFIED) written under a DOCTOR, newest first.
+   *
+   * `ContextItem` carries no `doctorId` — the doctor lives on the parent consultation
+   * (`Consultation.doctorId`), so the selection rides the relation rather than a scalar
+   * column, which is also why it cannot be expressed through the generic `findAll`
+   * props (`DbFilters<T>` is keyed on scalars only).
+   *
+   * The TYPE constraint belongs IN the query for the same reason `take` does: a caller
+   * that fetched the newest `limit` items and filtered to summaries afterwards would
+   * spend its whole budget on transcripts, case notes and audio rows and come back with
+   * nothing. Both bounds have to be applied by the database or neither is real.
+   *
+   * Consumer: the DNA writing-style corpus (`dna-writing-style.processor.ts`), which then
+   * keeps only the items carrying an `approved` version.
+   */
+  async findFinalSummariesByDoctor(doctorId: string, limit: number): Promise<ContextItemEntity[]> {
+    const models = await this.db.findMany({
+      where: {
+        Consultation: { doctorId },
+        type: { in: [ContextItemType.RAW_SUMMARY, ContextItemType.MODIFIED_SUMMARY] },
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    // `this.db` is the protected delegate (decrypt-on-read wrapped), and the base class's
+    // `_mapper` is PRIVATE — so map through the same singleton the constructor handed it,
+    // as `AiPriceBookRepository.findByBookVersion` does. No `any` casts in this method.
+    const mapper = ContextItemEntityMapper.getInstance();
+    return models.map((model: ContextItem) => mapper.toDomainEntity(model));
+  }
+
+  /**
    * Find pre-summaries for a consultation
    */
   async findPreSummaries(consultationId: string): Promise<ContextItemEntity[]> {

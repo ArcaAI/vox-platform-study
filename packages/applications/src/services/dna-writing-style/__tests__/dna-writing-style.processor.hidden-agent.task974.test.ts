@@ -173,7 +173,7 @@ function build(options: BuildOptions = {}) {
     {
       getValueWithDefault: vi.fn(<T>(key: string, fallback: T): T => (key === 'dna-regen.max-context-chars' ? (maxContextChars as T) : fallback)),
     } as never,
-    { findAll: vi.fn() } as never,
+    { findFinalSummariesByDoctor: vi.fn() } as never,
     { getVersionsByChangeReason: vi.fn().mockResolvedValue([]) } as never,
     { findLatestForDoctor: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'report-1' }), update: vi.fn() } as never,
     { create: vi.fn().mockResolvedValue({ id: 'version-1' }) } as never,
