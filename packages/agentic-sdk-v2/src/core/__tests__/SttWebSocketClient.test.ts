@@ -699,6 +699,13 @@ describe('SttWebSocketClient', () => {
   // =========================================================================
 
   describe('stopAndDrain (F-31)', () => {
+    // The quiet-window early-resolve is OPT-IN since TASK-991 (default `0` —
+    // see `SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS`). Tests that
+    // exercise the MECHANISM (rather than the default) opt in explicitly with
+    // this value, matching the old default so the "resolve one tick after N ms
+    // of silence" arithmetic below still reads naturally.
+    const OPT_IN_QUIET_WINDOW_MS = 250;
+
     it('sends the stop control frame and keeps the socket open to deliver a tail final before closing', async () => {
       const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
@@ -853,11 +860,13 @@ describe('SttWebSocketClient', () => {
 
     // =======================================================================
     // The drain is user-visible Stop latency, so its
-    // ceiling is configuration (default lowered to 1500ms) and a `finalizing`
-    // status may end it early on a quiet window instead of the full ceiling.
+    // ceiling is configuration (default RAISED to 45s, TASK-991) and an
+    // explicitly-configured `finalizing` quiet window may end it early instead
+    // of the full ceiling. The quiet window is OFF by default (TASK-991) — see
+    // the "late final" block below for the regression this replaced.
     // =======================================================================
 
-    it('defaults the drain ceiling to 1500ms, not the old 5000ms', async () => {
+    it('defaults the drain ceiling to 45s, not the old 1500ms', async () => {
       vi.useFakeTimers();
       const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
@@ -865,13 +874,69 @@ describe('SttWebSocketClient', () => {
 
       const drainPromise = client.stopAndDrain(); // no explicit ceiling
 
-      await vi.advanceTimersByTimeAsync(1499);
+      await vi.advanceTimersByTimeAsync(44_999);
       expect(client.isConnected()).toBe(true);
 
       await vi.advanceTimersByTimeAsync(1);
       await drainPromise;
       expect(client.isConnected()).toBe(false);
-      expect(SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS).toBe(1500);
+      expect(SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS).toBe(45_000);
+      vi.useRealTimers();
+    });
+
+    // =======================================================================
+    // TASK-991 (W2-5) — the default drain used to silence the final.
+    //
+    // Measured live against a real gateway: whisper.cpp's finalize reports
+    // `finalizing` and then takes 3-6s to emit the tail final. The OLD
+    // defaults (1500ms ceiling, 250ms quiet window) read that gap as silence
+    // and closed the socket on every call before the final — or even the
+    // terminal status — ever arrived, so an ordinary `stopAndDrain()` caller
+    // got partials only. The fix is the DEFAULTS: the quiet window is now `0`
+    // (disabled) so nothing but a terminal status or the (now generous)
+    // ceiling can end the drain.
+    // =======================================================================
+
+    it('DEFAULT_DRAIN_QUIET_WINDOW_MS is 0 — disabled out of the box', () => {
+      expect(SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS).toBe(0);
+    });
+
+    it('on DEFAULTS, "finalizing" alone no longer ends the drain — it waits for the late final and the terminal status', async () => {
+      vi.useFakeTimers();
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      const onTranscript = vi.fn();
+      client.onTranscript(onTranscript);
+
+      // No explicit drain args — this is what an ordinary consumer calls.
+      const drainPromise = client.stopAndDrain();
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'status', status: 'finalizing', message: 'wrapping up' }));
+
+      // Far past the OLD 250ms quiet window default — under the old defaults
+      // this would already have closed the socket and dropped the final.
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(client.isConnected()).toBe(true);
+      expect(onTranscript).not.toHaveBeenCalled();
+
+      // The tail final arrives late (measured 3-6s after `finalizing` on the
+      // real gateway) — it must still reach the normal transcript callback.
+      const tailFinal: WsTranscriptResult = {
+        type: 'transcript',
+        text: 'the tail final, arriving late',
+        startTime: 1.0,
+        endTime: 4.5,
+        isFinal: true,
+      };
+      lastMockWs!.simulateMessage(JSON.stringify(tailFinal));
+      expect(onTranscript).toHaveBeenCalledWith(tailFinal);
+      expect(client.isConnected()).toBe(true); // still draining — no terminal status yet
+
+      // Only the server's terminal status ends it.
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'status', status: 'closed', message: 'done' }));
+      await drainPromise;
+      expect(client.isConnected()).toBe(false);
       vi.useRealTimers();
     });
 
@@ -906,17 +971,19 @@ describe('SttWebSocketClient', () => {
       vi.useRealTimers();
     });
 
-    it('resolves early on a "finalizing" status once the quiet window elapses', async () => {
+    it('resolves early on a "finalizing" status once an OPTED-IN quiet window elapses', async () => {
       vi.useFakeTimers();
       const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
-      const drainPromise = client.stopAndDrain(5000);
+      // Quiet window is opt-in (default `0`, TASK-991) — pass it explicitly
+      // per-call to exercise the mechanism itself.
+      const drainPromise = client.stopAndDrain(5000, OPT_IN_QUIET_WINDOW_MS);
       lastMockWs!.simulateMessage(JSON.stringify({ type: 'status', status: 'finalizing', message: 'wrapping up' }));
 
       // Still open inside the quiet window — a tail final may yet arrive.
-      await vi.advanceTimersByTimeAsync(SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS - 1);
+      await vi.advanceTimersByTimeAsync(OPT_IN_QUIET_WINDOW_MS - 1);
       expect(client.isConnected()).toBe(true);
 
       await vi.advanceTimersByTimeAsync(1);
@@ -925,7 +992,7 @@ describe('SttWebSocketClient', () => {
       vi.useRealTimers();
     });
 
-    it('restarts the quiet window on every transcript so a streaming tail is never cut off', async () => {
+    it('restarts an OPTED-IN quiet window on every transcript so a streaming tail is never cut off', async () => {
       vi.useFakeTimers();
       const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
@@ -934,12 +1001,12 @@ describe('SttWebSocketClient', () => {
       const onTranscript = vi.fn();
       client.onTranscript(onTranscript);
 
-      const drainPromise = client.stopAndDrain(5000);
+      const drainPromise = client.stopAndDrain(5000, OPT_IN_QUIET_WINDOW_MS);
       lastMockWs!.simulateMessage(JSON.stringify({ type: 'status', status: 'finalizing', message: 'wrapping up' }));
 
       // Three tail finals, each arriving just before the window would expire.
       for (let i = 0; i < 3; i++) {
-        await vi.advanceTimersByTimeAsync(SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS - 10);
+        await vi.advanceTimersByTimeAsync(OPT_IN_QUIET_WINDOW_MS - 10);
         expect(client.isConnected()).toBe(true);
         lastMockWs!.simulateMessage(
           JSON.stringify({ type: 'transcript', text: `tail ${i}`, startTime: i, endTime: i + 1, isFinal: true } satisfies WsTranscriptResult),
@@ -948,26 +1015,26 @@ describe('SttWebSocketClient', () => {
       expect(onTranscript).toHaveBeenCalledTimes(3);
 
       // Silence at last — the drain closes.
-      await vi.advanceTimersByTimeAsync(SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS);
+      await vi.advanceTimersByTimeAsync(OPT_IN_QUIET_WINDOW_MS);
       await drainPromise;
       expect(client.isConnected()).toBe(false);
       vi.useRealTimers();
     });
 
-    it('does not open the quiet window on transcripts alone (no "finalizing" seen)', async () => {
+    it('does not open an OPTED-IN quiet window on transcripts alone (no "finalizing" seen)', async () => {
       vi.useFakeTimers();
       const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
-      const drainPromise = client.stopAndDrain(5000);
+      const drainPromise = client.stopAndDrain(5000, OPT_IN_QUIET_WINDOW_MS);
       lastMockWs!.simulateMessage(
         JSON.stringify({ type: 'transcript', text: 'still talking', startTime: 0, endTime: 1, isFinal: true } satisfies WsTranscriptResult),
       );
 
       // A lull far longer than the quiet window must NOT end the drain — the
       // server never said it was finalizing.
-      await vi.advanceTimersByTimeAsync(SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS * 4);
+      await vi.advanceTimersByTimeAsync(OPT_IN_QUIET_WINDOW_MS * 4);
       expect(client.isConnected()).toBe(true);
 
       await vi.advanceTimersByTimeAsync(5000);
@@ -976,7 +1043,7 @@ describe('SttWebSocketClient', () => {
       vi.useRealTimers();
     });
 
-    it('disables the early resolve when the quiet window is configured to 0', async () => {
+    it('disables the early resolve when the quiet window is configured to 0 (this is also the default since TASK-991)', async () => {
       vi.useFakeTimers();
       const configured = new SttWebSocketClient(mockLogger, undefined, false, undefined, { quietWindowMs: 0 });
       const p = configured.connect('wss://example.com/ws?tenantId=test-tenant');
@@ -1009,9 +1076,12 @@ describe('SttWebSocketClient', () => {
       await p;
       const socketBeforeDrain = lastMockWs;
 
-      const drainPromise = reconnectClient.stopAndDrain(5000);
+      // Quiet window is opt-in (default `0`, TASK-991) — pass it explicitly
+      // per-call so this drain actually ends on the quiet window rather than
+      // the 5000ms ceiling.
+      const drainPromise = reconnectClient.stopAndDrain(5000, OPT_IN_QUIET_WINDOW_MS);
       lastMockWs!.simulateMessage(JSON.stringify({ type: 'status', status: 'finalizing', message: 'wrapping up' }));
-      await vi.advanceTimersByTimeAsync(SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS);
+      await vi.advanceTimersByTimeAsync(OPT_IN_QUIET_WINDOW_MS);
       await drainPromise;
 
       await vi.advanceTimersByTimeAsync(10_000);

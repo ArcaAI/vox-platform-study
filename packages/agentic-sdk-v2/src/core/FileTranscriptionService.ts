@@ -30,10 +30,23 @@ type BatchTranscribeResponse = {
  */
 export interface FileTranscribeOptions {
   /**
-   * Pipeline UUID or slug. OPTIONAL since: omit it to transcribe on
-   * the tenant's default pipeline — the gateway resolves tenant-default →
-   * configured STT fallback and 409s when the tenant has neither, so it never
-   * guesses. Passing one explicitly is unchanged.
+   * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
+   * transcribe this file (TASK-861/991). Optional: absent → the gateway
+   * resolves the tenant's assigned agent (department → tenant → SYSTEM
+   * cascade), same as `POST …/transcribe` without one. Wins over the
+   * deprecated {@link FileTranscribeOptions.pipelineId} when both are set —
+   * see `resolveAgentSelection` below, which mirrors
+   * `StreamingSessionManager.normalizeSelection` (TASK-865): never both.
+   */
+  agentSlug?: string;
+  /**
+   * Pipeline UUID or slug.
+   * @deprecated TASK-861 — removed in R4 (`AsrPipeline` retires under
+   * TASK-861). Name the ASR Agent with {@link FileTranscribeOptions.agentSlug},
+   * or send neither and let the tenant assignment cascade decide — the
+   * gateway resolves tenant-default → configured STT fallback and 409s when
+   * the tenant has neither, so it never guesses. When both are set the SDK
+   * sends ONLY `agentSlug` and warns (never silently).
    */
   pipelineId?: string;
   /** Optional consultation to link the job to */
@@ -47,6 +60,9 @@ export interface FileTranscribeOptions {
   /** Enable speaker diarization (overrides pipeline default) */
   diarization?: boolean;
 }
+
+/** The two mutually-exclusive ASR selectors — see `FileTranscriptionService.resolveAgentSelection`. */
+type AgentSelection = Pick<FileTranscribeOptions, 'agentSlug' | 'pipelineId'>;
 
 /**
  * Service for uploading audio files for transcription.
@@ -68,6 +84,8 @@ export class FileTranscriptionService {
    * Returns the job response with the job ID for SSE subscription.
    */
   async uploadAndTranscribe(file: File, options: FileTranscribeOptions & { signal?: AbortSignal }): Promise<TranscriptionJobResponse> {
+    const selection = this.resolveAgentSelection(options);
+
     this.logger?.debug('Uploading file for transcription', {
       operation: 'uploadAndTranscribe',
       component: 'FileTranscriptionService',
@@ -75,18 +93,23 @@ export class FileTranscriptionService {
         fileName: file.name,
         fileSize: file.size,
         fileType: file.type,
-        pipelineId: options.pipelineId,
+        agentSlug: selection.agentSlug,
+        pipelineId: selection.pipelineId,
         consultationId: options.consultationId,
       },
     });
 
     const formData = new FormData();
     formData.append('file', file);
-    // Appended only when supplied: the gateway validates `pipelineId`
-    // as a slug/UUID, so sending an empty field would 400 the very request that
-    // means "use the tenant default".
-    if (options.pipelineId) {
-      formData.append('pipelineId', options.pipelineId);
+    // Appended only when supplied: the gateway validates each as a
+    // slug/UUID, so sending an empty field would 400 the very request that
+    // means "use the tenant default". At most one of the two rides the
+    // request — see `resolveAgentSelection`.
+    if (selection.agentSlug) {
+      formData.append('agentSlug', selection.agentSlug);
+    }
+    if (selection.pipelineId) {
+      formData.append('pipelineId', selection.pipelineId);
     }
 
     if (options.consultationId) {
@@ -109,7 +132,7 @@ export class FileTranscriptionService {
       signal: options.signal,
     });
 
-    const job = this.normalizeJobResponse(response, options.pipelineId);
+    const job = this.normalizeJobResponse(response, selection.pipelineId);
     this.activeJobId = job.id;
 
     this.logger?.info('File uploaded for transcription', {
@@ -139,6 +162,8 @@ export class FileTranscriptionService {
       timeout?: number;
     },
   ): Promise<TranscriptionJobResponse> {
+    const selection = this.resolveAgentSelection(options);
+
     this.logger?.debug('Uploading file for transcription (with progress)', {
       operation: 'uploadAndTranscribeWithProgress',
       component: 'FileTranscriptionService',
@@ -146,18 +171,23 @@ export class FileTranscriptionService {
         fileName: file.name,
         fileSize: file.size,
         fileType: file.type,
-        pipelineId: options.pipelineId,
+        agentSlug: selection.agentSlug,
+        pipelineId: selection.pipelineId,
         consultationId: options.consultationId,
       },
     });
 
     const formData = new FormData();
     formData.append('file', file);
-    // Appended only when supplied: the gateway validates `pipelineId`
-    // as a slug/UUID, so sending an empty field would 400 the very request that
-    // means "use the tenant default".
-    if (options.pipelineId) {
-      formData.append('pipelineId', options.pipelineId);
+    // Appended only when supplied: the gateway validates each as a
+    // slug/UUID, so sending an empty field would 400 the very request that
+    // means "use the tenant default". At most one of the two rides the
+    // request — see `resolveAgentSelection`.
+    if (selection.agentSlug) {
+      formData.append('agentSlug', selection.agentSlug);
+    }
+    if (selection.pipelineId) {
+      formData.append('pipelineId', selection.pipelineId);
     }
 
     if (options.consultationId) {
@@ -185,7 +215,7 @@ export class FileTranscriptionService {
       timeout: options.timeout ?? 0,
     });
 
-    const job = this.normalizeJobResponse(response, options.pipelineId);
+    const job = this.normalizeJobResponse(response, selection.pipelineId);
     this.activeJobId = job.id;
 
     this.logger?.info('File uploaded for transcription (with progress)', {
@@ -220,6 +250,42 @@ export class FileTranscriptionService {
     const qs = query.toString();
     const endpoint = qs ? `${STT_ENDPOINTS.LIST_JOBS}?${qs}` : STT_ENDPOINTS.LIST_JOBS;
     return this.apiClient.get<PaginatedResponse<TranscriptionJobResponse>>(endpoint);
+  }
+
+  /**
+   * Single chokepoint for WHICH ASR Agent (or deprecated pipeline) transcribes
+   * this upload (TASK-991), mirroring `StreamingSessionManager.normalizeSelection`
+   * (TASK-865). The multipart body carries AT MOST ONE of the two selectors:
+   *   - both      → `agentSlug` only, and a warning naming the conflict;
+   *   - pipeline  → sent as-is, with a deprecation warning;
+   *   - neither   → nothing; the gateway resolves the tenant's assigned agent.
+   * Never both silently: the gateway's own deprecated-path check
+   * (`transcription-job.controller.ts#useLegacyPipelinePath`) takes the
+   * pipeline path whenever `pipelineId` is present at all, so sending both
+   * would make which selector is actually honoured a property of a field the
+   * caller may not even know is checked first.
+   */
+  private resolveAgentSelection(options: AgentSelection): AgentSelection {
+    const { agentSlug, pipelineId } = options;
+    if (agentSlug) {
+      if (pipelineId) {
+        this.logger?.warn('uploadAndTranscribe received both agentSlug and pipelineId — agentSlug wins, pipelineId dropped', {
+          operation: 'resolveAgentSelection',
+          component: 'FileTranscriptionService',
+          attributes: { agentSlug, droppedPipelineId: pipelineId, deprecation: 'TASK-861' },
+        });
+      }
+      return { agentSlug };
+    }
+    if (pipelineId) {
+      this.logger?.warn('pipelineId is deprecated (TASK-861, removed in R4) — name the ASR Agent with agentSlug, or send neither', {
+        operation: 'resolveAgentSelection',
+        component: 'FileTranscriptionService',
+        attributes: { pipelineId, deprecation: 'TASK-861' },
+      });
+      return { pipelineId };
+    }
+    return {};
   }
 
   private normalizeJobResponse(response: TranscriptionJobResponse | BatchTranscribeResponse, pipelineId?: string): TranscriptionJobResponse {

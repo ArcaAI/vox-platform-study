@@ -150,10 +150,14 @@ export interface WsDrainOptions {
   timeoutMs?: number;
   /**
    * Quiet window in ms (default
-   * {@link SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS}). Once the server
-   * reports `finalizing`, the drain resolves after this much silence — every
+   * {@link SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS} — `0`, i.e.
+   * DISABLED, since TASK-991). Once the server reports `finalizing`, a
+   * POSITIVE value resolves the drain after this much silence — every
    * transcript received restarts the window, so the tail is never cut short.
-   * Set to `0` to disable the early resolve and wait for a terminal status only.
+   * `0` (the default) disables the early resolve entirely and waits for a
+   * terminal status only — pass a positive value to opt back into the
+   * silence heuristic (e.g. because the deployment's finalize is fast enough
+   * that a snappier teardown is worth the small risk of cutting the tail).
    */
   quietWindowMs?: number;
 }
@@ -201,16 +205,43 @@ export class SttWebSocketClient {
    */
   static readonly DEFAULT_BUFFERED_AMOUNT_HIGH_WATERMARK = 128 * 1024;
   /**
-   * Default stop-drain ceiling. Lowered from 5000ms: the
-   * server now publishes its terminal `closed` status as soon as the last
-   * transcript is on the stream, BEFORE the blob uploads and durable transcript
-   * persistence it used to sit behind, so the old ceiling only ever measured
-   * how slow the blob store was. This is the fallback for a server that never
-   * answers at all — not the expected path.
+   * Default stop-drain ceiling — the fallback for a server that never
+   * answers at all, not the expected path (the drain normally ends on the
+   * terminal `closed`/`cancelled` status, arriving long before this fires).
+   *
+   * RAISED from 1500ms (TASK-991). That value was reasoned from the terminal
+   * status alone: it publishes as soon as the last transcript is on the
+   * stream, ahead of the blob upload it used to sit behind. True, but it
+   * assumed the quiet window below would never need to cover for it — and
+   * once that assumption broke (see {@link DEFAULT_DRAIN_QUIET_WINDOW_MS}),
+   * 1500ms was also too short to reach the terminal status on a slow
+   * finalize. Measured live against this gateway's whisper.cpp finalize path:
+   * the tail final lands 3-6s AFTER the server reports `finalizing`, so the
+   * old ceiling closed the socket on every call before either the final or
+   * the terminal status arrived — reproduced twice; `stopAndDrain(45_000, 0)`
+   * was the fix. 45s is sized off the same order of magnitude as the 60s
+   * ceiling `PluginManager.destroyInFlight` already assumes a slow drain can
+   * need (measured 60.9s in the field) — a generous ceiling for a server that
+   * hangs completely, not a tight bound on the happy path.
    */
-  static readonly DEFAULT_DRAIN_TIMEOUT_MS = 1500;
-  /** Default silence, in ms, after `finalizing` that ends the drain early. */
-  static readonly DEFAULT_DRAIN_QUIET_WINDOW_MS = 250;
+  static readonly DEFAULT_DRAIN_TIMEOUT_MS = 45_000;
+  /**
+   * Default silence, in ms, after `finalizing` that ends the drain early —
+   * DISABLED by default (`0`, TASK-991; was 250ms).
+   *
+   * This heuristic resolves as soon as the wire goes quiet, which is exactly
+   * what happens while the server is still finalizing: no further partials
+   * arrive until the tail final itself does, so silence is not evidence of
+   * completion. Measured live against this gateway's whisper.cpp finalize
+   * path — the tail final trails `finalizing` by 3-6s — 250ms read that gap
+   * as "done" on every call and closed the socket before the final (or the
+   * terminal status) ever arrived; a consumer calling `stopAndDrain()` on
+   * defaults got partials only, no final. The honest default is to wait for
+   * the server's OWN terminal frame rather than guess from silence — a caller
+   * that wants the old fast-teardown-at-the-cost-of-the-tail behaviour can
+   * still opt back in with an explicit positive `quietWindowMs`.
+   */
+  static readonly DEFAULT_DRAIN_QUIET_WINDOW_MS = 0;
 
   private ws: WebSocket | null = null;
   private logger?: ISDKLogger;
@@ -659,7 +690,9 @@ export class SttWebSocketClient {
    * 1. the server's terminal `status` (`closed` or `cancelled`);
    * 2.: a `finalizing` status followed by `quietWindowMs` with no
    *    further transcript (each transcript restarts the window, so a tail
-   *    still streaming is never cut off);
+   *    still streaming is never cut off) — OFF by default (TASK-991: see
+   *    {@link SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS}), so out of
+   *    the box only #1 and #3 apply;
    * 3. `drainTimeoutMs` (default {@link SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS}).
    *
    * Only then does it close.

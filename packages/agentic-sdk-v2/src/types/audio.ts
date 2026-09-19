@@ -492,7 +492,8 @@ export interface AudioStartOptions {
    * drain, so this does not delay the mic going off or `isCapturing` going
    * false — it bounds how long the returned promise may wait for the server's
    * last transcript before giving up. Omit for the client default
-   * (`SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS`, 1500 ms). The drain normally
+   * (`SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS`, 45s as of TASK-991 — a
+   * generous ceiling for a server that never answers). The drain normally
    * ends far sooner, when the backend publishes its terminal `closed` status.
    *
    * Non-positive values are IGNORED (the default applies), matching the
@@ -503,19 +504,24 @@ export interface AudioStartOptions {
   drainTimeoutMs?: number;
   /**
    * Quiet window, in ms, that ends the streaming-STT stop-drain EARLY
-   * Once the backend reports `finalizing`, the drain resolves after
-   * this much silence; every transcript received restarts the window.
+   * Once the backend reports `finalizing`, a POSITIVE value resolves the
+   * drain after this much silence; every transcript received restarts the
+   * window.
    *
-   * **`0` disables the early resolve**, so the drain waits for the server's
-   * terminal `closed`/`cancelled` status (or {@link AudioStartOptions.drainTimeoutMs}).
-   * That is the setting to use when the tail final matters more than a fast
-   * teardown — on a slow pipeline the tail can arrive seconds after
-   * `finalizing`, long past the 250 ms default, and the socket would otherwise
-   * already be closed.
+   * **`0` (the default, since TASK-991) disables the early resolve**, so the
+   * drain waits for the server's terminal `closed`/`cancelled` status (or
+   * {@link AudioStartOptions.drainTimeoutMs}). That is the honest default
+   * because the heuristic this replaces guessed completion from wire
+   * silence — exactly what a still-finalizing server also looks like: on a
+   * slow pipeline the tail can trail `finalizing` by several seconds (this
+   * gateway's whisper.cpp finalize measured 3-6s), and the old 250 ms default
+   * closed the socket long before it arrived, every time. Set it to a
+   * positive value to opt back into the fast-teardown-at-the-cost-of-the-tail
+   * behaviour on a deployment where finalize is known to be quick.
    *
    * Unlike `drainTimeoutMs`, **`0` is a meaningful value and is preserved**;
    * only NEGATIVE values are ignored. Omit for the client default
-   * (`SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS`, 250 ms). Backend
+   * (`SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS`, `0`). Backend
    * (streaming) STT only.
    */
   quietWindowMs?: number;

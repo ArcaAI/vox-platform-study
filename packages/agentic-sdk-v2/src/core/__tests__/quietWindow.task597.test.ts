@@ -148,17 +148,33 @@ describe('SttWebSocketClient.stopAndDrain — per-call quietWindowMs', () => {
     expect(settled).toBe(true);
   });
 
-  it('POSITIVE CONTROL — the default quiet window DOES end the drain on finalizing', async () => {
+  it('the DEFAULT quiet window no longer ends the drain on finalizing (TASK-991) — it is opt-in now', async () => {
+    // This test used to be the POSITIVE CONTROL proving the default (was
+    // 250ms) ends the drain on `finalizing`. TASK-991 flipped that default to
+    // `0` (disabled) precisely because it was reading server-side silence
+    // WHILE STILL FINALIZING as "done" — measured live against a real gateway,
+    // whisper.cpp's tail final trails `finalizing` by 3-6s, so the old default
+    // silenced it on every call. This is now the control for the OPPOSITE
+    // claim: doing nothing (no per-call override) must NOT end the drain
+    // early — only an explicit `quietWindowMs` (see the tests above/below) or
+    // the server's own terminal status may.
     const { client, socket } = await connected();
 
-    const drain = client.stopAndDrain(60_000);
+    const drain = client.stopAndDrain(60_000); // no explicit quietWindowMs — client default
     let settled = false;
     void drain.then(() => {
       settled = true;
     });
 
     socket.emit({ type: 'status', status: 'finalizing' });
-    await vi.advanceTimersByTimeAsync(SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS + 10);
+    // Far past the OLD 250ms default — proves the early-resolve heuristic no
+    // longer fires on its own.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(settled).toBe(false);
+
+    // The terminal status is still honoured.
+    socket.emit({ type: 'status', status: 'closed' });
+    await vi.advanceTimersByTimeAsync(0);
     await drain;
     expect(settled).toBe(true);
   });
