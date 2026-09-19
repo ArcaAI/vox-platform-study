@@ -333,6 +333,49 @@ reach an existing database):
  STARTER    |   5 |   5 |  250
 ```
 
+## 5c. Live verification on a running gateway (2026-09-19)
+
+A dedicated gateway was run on :8878 from the merged build (the shared dev stack's own gateway was
+already down, with two competing `rimraf dist && nest start` processes under a 2-day-old supervisor
+from another session — left untouched).
+
+| Claim | Live result |
+|---|---|
+| **D-3 fixed** | `X-RateLimit-Remaining: 28` **and** `RateLimit: "default";r=28;t=55` — they agree and both count down. Session opened with a static `r=30;t=60` beside `Remaining: 29`. |
+| **D-1 fixed** | trust OFF ⇒ 3 client IPs share one counter (26/25/24). trust ON ⇒ each gets its own (29/29/29), and a repeat from one IP decrements only its own. |
+| **D-1's practical payoff** | `POST /auth/login` is now **5/min per client**, not 5/min platform-wide: three distinct `CF-Connecting-IP`s each logged in HTTP 200. |
+| **Lane F per-principal buckets** | same tenant, two users: A 149→148→147, **B starts fresh at 149**, A continues 146. Independent buckets confirmed. |
+| **Lane H pool metrics** | exposed and correct: `pool_max{role="extended"} 15` (PRISMA_PG_MAX took effect) and **two roles** (`extended`, `platform-admin`) — the two-pool finding, in telemetry. |
+
+### The calibration result overturns the HPA premise
+
+10 tenants × 40 users, 55 s, ~195 req/s sustained. Pool samples every 8 s throughout:
+
+```
+t=20s  in_use=0  waiting=0  wait_sum=0.16586
+t=68s  in_use=0  waiting=0  wait_sum=0.16617
+```
+
+**The pool never queued.** `waiting` stayed 0; `wait_seconds_sum` accrued 0.00031 s in 48 s — a rate
+of ~6.5e-6, five orders of magnitude below the proposed `500m` threshold. Meanwhile the harness
+recorded **89.9 % of traffic refused by the rate limiter**.
+
+⇒ **The rate limiter sheds load long before the pool feels anything, so a pool-wait HPA trigger
+cannot fire during normal rate-limited operation.** `500m` is defensible as a LAST-RESORT
+saturation alarm, but it is NOT a routine scaling signal. Routine scaling under a rate-limited
+workload needs a different input (offered rate, or the 429 rate itself). This does not invalidate
+lane H's metric — a pool-wait trigger is exactly right for the unthrottled internal traffic
+(workers, SSE fan-out, harness activities) that has no limiter in front of it — but it does mean
+nobody should expect it to drive day-to-day autoscaling.
+
+### A defect this created in the harness
+
+The harness attributed every refusal to `throttle_tenant` and probed the lane as `per_tenant
+(enforced limit 150/window)`. It is actually the **per-principal** lane. Its discriminator is
+"one bucket across routes ⇒ tenant-keyed", which was sound before lane F — but lane F's principal
+bucket is ALSO tenant-wide across routes, so a probe using ONE credential per tenant can no longer
+tell them apart. `tests/load/src/lane-probe.ts` needs a second principal to discriminate.
+
 ## 6. Open / Not Yet Measured
 
 - The 10 req/min/user load model is an **assumption**. A load test against a seeded 10×100
