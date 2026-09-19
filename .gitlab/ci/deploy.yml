@@ -39,6 +39,15 @@
 #                       § "FALLBACK / ROLLOUT SAFETY" and the per-environment
 #                       role split.
 #
+# Freshness:
+#   Every promote-* job refuses to pin a commit that is not the one the
+#   deployment repo already records, or a descendant of it — see
+#   .gitlab/ci/promote.sh §FRESHNESS GUARD. A refusal is a RED job with a
+#   banner, never a silent skip, because a deploy that did not happen must not
+#   look like one that did. Deliberate rollbacks re-run with the pipeline
+#   variable PROMOTE_ALLOW_STALE=true, which is recorded in the resulting
+#   deployment-repo commit.
+#
 # ══════════════════════════════════════════════════════════════════════════════
 
 .promote-base:
@@ -50,6 +59,14 @@
   variables:
     VAULT_SECRETS: !reference [.vault-secret-sets, deploy]
     DEPLOY_REPO_URL: "https://git.taphuynh.dev/arca/hope-v2-deployment.git"
+    # promote.sh's freshness guard asks whether the commit the deployment repo
+    # is currently promoted FROM is an ancestor of this one. That is a question
+    # about real history, and GitLab's default shallow clone (20 commits) cannot
+    # always answer it — a stamp older than the window, or a commit on another
+    # dev-* branch, would simply be absent and the guard would refuse a
+    # promotion that is in fact fine. 174 MiB over the LAN clone_url; the
+    # correctness of a PHI deploy gate is worth the seconds.
+    GIT_DEPTH: "0"
   before_script:
     - apk add --no-cache git curl bash
     - !reference [.vault-oidc, before_script]
@@ -101,6 +118,13 @@
 
 promote-dev:
   extends: .promote-base
+  # Only one promotion into dev at a time, across every pipeline and every
+  # branch. This does NOT stop an older pipeline promoting later — a lock
+  # orders writers, it does not order their payloads — so it is the cheap half
+  # of the fix; promote.sh's freshness guard is the half that makes the
+  # serialised order SAFE. Together: the guard can never read a stamp that a
+  # sibling promotion is mid-way through rewriting.
+  resource_group: promote-dev
   variables:
     DEPLOY_ENV: "dev"
     OVERLAY_PATH: "deployment/k8s/overlays/dev"
@@ -115,6 +139,13 @@ promote-dev:
 
 promote-staging:
   extends: .promote-base
+  # Only one promotion into staging at a time, across every pipeline and every
+  # branch. This does NOT stop an older pipeline promoting later — a lock
+  # orders writers, it does not order their payloads — so it is the cheap half
+  # of the fix; promote.sh's freshness guard is the half that makes the
+  # serialised order SAFE. Together: the guard can never read a stamp that a
+  # sibling promotion is mid-way through rewriting.
+  resource_group: promote-staging
   variables:
     DEPLOY_ENV: "staging"
     OVERLAY_PATH: "deployment/k8s/overlays/staging"
@@ -128,6 +159,13 @@ promote-staging:
 
 promote-prod:
   extends: .promote-base
+  # Only one promotion into prod at a time, across every pipeline and every
+  # branch. This does NOT stop an older pipeline promoting later — a lock
+  # orders writers, it does not order their payloads — so it is the cheap half
+  # of the fix; promote.sh's freshness guard is the half that makes the
+  # serialised order SAFE. Together: the guard can never read a stamp that a
+  # sibling promotion is mid-way through rewriting.
+  resource_group: promote-prod
   variables:
     DEPLOY_ENV: "prod"
     OVERLAY_PATH: "deployment/k8s/overlays/prod"
