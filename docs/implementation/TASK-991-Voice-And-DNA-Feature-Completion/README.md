@@ -37,6 +37,18 @@ Readiness must hold across: gateway admin + end-user APIs, `@arcaai/vox` and
 - **OD-2 — DNA gating.** ONE `dna.enabled` flag continues to govern both writing-style
   application and redaction. The label and description must say so plainly.
 
+- **OD-3 — embedding models are PLATFORM-FIXED (2026-09-19).** The speaker-embedding model
+  (voice feature extraction) and the text-embedding model (text feature extraction) are fixed for
+  every tenant. No tenant may change either. They remain CONFIG, not literals: a platform admin
+  owns them at the SYSTEM tier, so this is reversible by editing a value rather than a release.
+  Rationale beyond policy: changing a speaker-embedding model silently invalidates every enrolled
+  voice profile, and changing a text-embedding model silently invalidates every vector already in
+  Qdrant — both are different vector spaces, non-comparable, with no error at write time.
+- **OD-4 — the embeddings ENDPOINT is fixed with the model.** A tenant may not point embeddings at
+  its own account. Fixing the model while allowing a BYO endpoint would send a platform-chosen model
+  id to an account that has never heard of it — failing per-tenant at retrieval time, after ingest
+  has already written vectors.
+
 ## Current State Evaluation
 
 Audited 2026-09-19 against `dev-2.2` @ `acc0e9e62`, with 26,450 passing tests across
@@ -72,6 +84,8 @@ Parallel lanes, one writer per file, each in its own worktree off `dev-2.2`.
 | D | F-11 / OD-1 — tenant-wide enrollment unblock | `packages/applications/.../user/voiceProfile/**` |
 | E | F-7, F-8 — export the enrollment-status hook; reconcile `DnaUpdateInput`; add the DNA report/settings/redaction hooks | `packages/agentic-sdk-v2/src/**` |
 | F | F-6, F-9, F-10 / OD-2 — ingest UI, admin redaction+erase, "DNA" label and honest copy | `apps/admin-console/src/**`, `packages/workflow-contract/src/node-config-schemas.ts` |
+| G | OD-3 voice half — `embeddingModelSlug` becomes platform-managed and tenant-read-only | `packages/workflow-contract/src/agent-schemas.ts`, agent update path, `features/agents/components/parameters-form.tsx` |
+| H | OD-3/OD-4 text half — embeddings resolve from the platform tier only; tenant-tier writes refused | `apps/harness/src/harness/core/provider_credentials.py`, `services/ai-provider-connection/**` |
 
 ### Process (owner directive, 2026-09-19)
 
@@ -89,3 +103,4 @@ _Pending._
 | Date | Change |
 |---|---|
 | 2026-09-19 | Ticket opened. Audit recorded; OD-1 and OD-2 taken; six lanes defined. |
+| 2026-09-19 | Lanes A-D merged to `dev-2.2` and green. OD-3/OD-4 taken mid-flight (embedding models and the embeddings endpoint are platform-fixed); lanes G and H added. |
