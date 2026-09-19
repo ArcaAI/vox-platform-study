@@ -7,11 +7,40 @@ import httpx
 import structlog
 
 from stt.core.config.settings import get_settings
-from stt.core.exceptions import APIGatewayError, JobTerminalError
+from stt.core.exceptions import APIGatewayError, JobError, JobTerminalError
 from stt.core.loop_local import get_loop_local
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
+
+#: Statuses a job can never leave — it already has an outcome the client can see.
+#: Mirrors ``TranscriptionJobEntity.isTerminal`` (completed | failed | cancelled | dead)
+#: and the ``TranscriptionJobStatus`` Prisma enum. PROCESSING is deliberately NOT here:
+#: it is a CLAIM, and a claim whose worker died is exactly the case this set exists to
+#: tell apart from a finished job.
+TERMINAL_JOB_STATUSES = frozenset({"COMPLETED", "FAILED", "CANCELLED", "DEAD"})
+
+#: The one non-terminal status a start can legitimately be refused in — the row already
+#: carries a claim (``TranscriptionJobEntity.startProcessing`` refuses anything but
+#: QUEUED). A job still QUEUED that refuses a start was refused for some other reason,
+#: so it stays a retryable transport error rather than being ended.
+ORPHANED_CLAIM_STATUS = "PROCESSING"
+
+
+class JobNotResumableError(JobError):
+    """A job refused the worker's claim while it was NOT in a terminal state.
+
+    In practice: the row is PROCESSING because a previous worker claimed it and then
+    died, so no process is advancing it and no outcome will ever be written. The
+    caller must give the job an honest ending rather than drop the delivery — see
+    ``transcribe_file`` — because a client polling a PROCESSING job that nothing owns
+    waits out its entire timeout.
+
+    Lives here rather than in ``stt.core.exceptions`` only because this ticket's
+    file boundary stopped at this module; it belongs beside ``JobTerminalError``.
+    """
+
+    error_code = "JOB_NOT_RESUMABLE"
 
 
 class APIGatewayClient:
@@ -131,9 +160,24 @@ class APIGatewayClient:
 
         ``tenant_id`` addresses the job's OWNING tenant (see ``_tenant_headers``).
 
-        Raises ``JobTerminalError`` if the job is already in a
-        terminal state (COMPLETED/FAILED/CANCELLED/DEAD) so callers can
-        skip processing instead of retrying.
+        A refusal is classified by the job's ACTUAL status, read back from the
+        gateway. It used to be classified by substring-matching the prose of the
+        thrown message (``"Cannot start job in"``), which is wrong twice over: the
+        wording is not a contract, and — worse — the match could not see WHICH
+        status refused, so a PROCESSING job (a claim left behind by a worker that
+        died) was reported as terminal, silently acked, and wedged in PROCESSING
+        forever while its client waited out the full timeout.
+
+        Raises:
+            JobTerminalError: the job already finished (COMPLETED/FAILED/CANCELLED/DEAD)
+                — the delivery is a duplicate and the caller can drop it.
+            JobNotResumableError: the job is PROCESSING — the only non-terminal status
+                ``startProcessing`` refuses — so a previous claim is still on the row
+                and no worker is behind it.
+            APIGatewayError: anything else, unchanged and retryable. A job still QUEUED
+                was refused for some OTHER reason (auth, validation, a transient 500),
+                and a retry is the right answer; so is a refusal this cannot classify
+                because the status read failed too.
         """
         try:
             return await self._request(
@@ -143,26 +187,42 @@ class APIGatewayClient:
                 headers=self._tenant_headers(tenant_id),
             )
         except APIGatewayError as e:
-            status_code = (e.details or {}).get("status_code")
-            if status_code == 500 and self._is_terminal_state_error(e):
+            status = await self._observed_job_status(job_id, tenant_id)
+            if status is None:
+                raise
+            details = {**(e.details or {}), "status": status}
+            if status in TERMINAL_JOB_STATUSES:
                 raise JobTerminalError(
                     f"Job {job_id} is already in a terminal state",
-                    details=e.details,
+                    details=details,
+                ) from e
+            if status == ORPHANED_CLAIM_STATUS:
+                raise JobNotResumableError(
+                    f"Job {job_id} refused the worker claim in {status} status",
+                    details=details,
                 ) from e
             raise
 
-    @staticmethod
-    def _is_terminal_state_error(error: APIGatewayError) -> bool:
-        """Check if an API error indicates the job is already terminal."""
-        cause = error.__cause__
-        if isinstance(cause, httpx.HTTPStatusError):
-            try:
-                body = cause.response.json()
-                msg = body.get("message", "")
-                return "Cannot start job in" in msg or "Cannot fail job in" in msg
-            except Exception:
-                pass
-        return False
+    async def _observed_job_status(self, job_id: str, tenant_id: str | None) -> str | None:
+        """The job's status as the gateway reports it, or ``None`` if unreadable.
+
+        The status enum is the contract a refusal should be judged on; an exception
+        message is not. ``None`` means "could not tell", which must never be read as
+        "not terminal" — the caller re-raises the original transport error so the
+        delivery is retried rather than resolved on a guess.
+        """
+        try:
+            status = await self.get_job_status(job_id, tenant_id=tenant_id)
+        except Exception:
+            logger.warning(
+                "stt.job_status_unreadable_after_refused_start",
+                job_id=job_id,
+                exc_info=True,
+            )
+            return None
+        # `get_job_status` substitutes "UNKNOWN" for a response carrying no status;
+        # that is an absence, not a state, and must not decide the job's fate.
+        return status if status and status != "UNKNOWN" else None
 
     async def update_job_progress(
         self,
