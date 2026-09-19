@@ -346,6 +346,66 @@ The `mark_rate_limited` bonus was declined, correctly: `RateLimitTracker` is key
 **process-wide**, not per tenant, so feeding an observed 429 into it would throttle every tenant on
 that provider — including tenants on a different BYO key. Follow-up, with a tenant-scoped key.
 
+### Lane F — two-level bucketing + the gateway relay (`task-993-f-bucketing`) — MERGED
+
+**OD-2 delivered.** A per-principal bucket now sits UNDER the tenant aggregate; both apply and
+either can refuse. The principal is decided by the same act of proof that already decides the
+tenant (`resolveTrustedTenantId` → `resolveTrustedCaller`): JWT → `u:<payload.id>` (**`id`, not
+`sub`** — `createJwt` signs a `UserSession`; pinned by a test), API key → `k:<sha256 fingerprint>`,
+service account → `s:<…>`. Unprovable ⇒ no second bucket, today's IP lane. Fingerprints, not
+credentials, because the key reaches Redis and the 429 diagnostics.
+
+**150 req/min**, from `max(26.0 active, 44.1 worst-case walk) × 3 = 132.3`, rounded to 50. It
+deliberately diverges from lane D's formula: D's floor is an aggregate pathological case, while
+44.1 is a rate ONE measured user produced, so capping there would refuse a doctor doing a
+legitimate document-load walk. On ENTERPRISE one caller can take 2.3 % of the tenant budget; on
+STARTER at most 60 % — never 100 %, which is the property the lane exists to create.
+
+Tier: `global-kv` (`rate-limit.principal.{enabled,limit,ttl}`), **not** the plan — a doctor's
+browser is not hungrier because the tenant upgraded, and rule 00 says entitlements bound, they
+never supply. **Beside the cascade, not in it**: `resolveRateLimit` is first-match-wins, so a sixth
+rank would either replace the tenant ceiling (recreating F-1) or never fire. Per-principal is
+checked FIRST — checking the aggregate first lets a runaway burn shared budget on requests it is
+about to be refused for. Headers advertise **the binding lane** (fewest remaining), because
+advertising the more generous one is D-3 at a new address.
+
+Task 2: the gateway now relays the vendor's `Retry-After` (429 only, re-rendered as an integer,
+floored at 1, capped at 3600 s so a vendor answering `86400` cannot park a console for a day) and
+adds `RATE_LIMITED`, `PROVIDER_INVALID_REQUEST`, `CONTEXT_WINDOW_EXCEEDED` to
+`RELAYABLE_ERROR_PHRASES`. **The PHI posture is intact** — the allow-list carries a CODE and the
+gateway substitutes its own phrase; no upstream body or string is ever echoed, proven by a test
+that plants a name and a DOB in `detail` and asserts their absence.
+
+Both suites RED-probed: disabling the principal lane fails 7 of 11; removing the relay fails 7 of 11.
+
+### Lane H — the saturation signal (`task-993-h-metrics`) — MERGED
+
+**OD-3's missing half.** Exports `hope_api_prisma_pool_{waiting,in_use,idle,max}`,
+`..._wait_seconds` (histogram) and `..._acquire_timeouts_total{reason}`, where `reason` splits
+`pool_exhausted` (*add capacity*) from `connect_timeout` (*Postgres is unreachable*) — same expiry,
+opposite levers. Plus `hope_api_http_responses_total`, hooked as the FIRST `app.use` in `main.ts`
+on `res.on('close')`: ahead of the router, so it sees what the guards refuse. `finish` would have
+been wrong — it never fires for an abandoned connection, the case that dominates under load.
+
+**There are THREE pools, not two.** Beyond `extended` and `platform-admin`, `VaultPrismaClient.swap()`
+builds a whole new adapter on every credential rotation (`vault-client.ts:169`). The lane wrapped the
+`PrismaPg` FACTORY rather than the pool, so a rotated or reconnected pool cannot go unobserved.
+
+Seam: `packages/database/src/pool-observability.ts` carries no metrics library (seeds and CLI import
+that package). Depth is a level ⇒ PULLED at scrape; an acquire is an event ⇒ PUSHED via observer.
+
+**Live-verified against real dev Postgres**, 8 concurrent acquires against `PRISMA_PG_MAX=5`:
+`pool_waiting 3`, `acquire_timeouts_total{reason="pool_exhausted"} 3`. Before this, those three were
+opaque 500s with CPU at idle — which is precisely why the CPU-based HPA could never fire.
+
+**The HPA should use `rate(hope_api_prisma_pool_wait_seconds_sum[2m])`, target `500m`** — by Little's
+law that is the mean number of requests concurrently blocked on the pool: dimensionless, additive
+across pods, and it moves BEFORE saturation. The `_waiting` gauge is only non-zero once the pool is
+already full: a good alert, a late trigger. The `500m` is reasoned, not measured — calibrate it with
+lane G's harness.
+
+Nine mutations each proven to turn the suite red, including reproducing the interceptor's blindness.
+
 ### Lane G — load harness (branch `task-993-g-loadtest`, `760822893`) — COMPLETE
 
 **The load model is now MEASURED, and it corrects §1 twice.** `pnpm load:session` drives real
@@ -437,6 +497,7 @@ and caught an orphaned PDB in the lane's own change.
 
 | Date | Change |
 |---|---|
+| 2026-09-19 | Lanes F and H complete and MERGED; all eight lanes now on `dev-2.2`. Full serial build green at load 6.9 (the earlier green was unreliable — it passed only on another session's uncommitted files). `.env.dev` and local compose `max_connections` reconciled to the new pool size. |
 | 2026-09-19 | Lane C complete. §2.8's keep-alive claim CORRECTED (§2.14): Node ≥19 defaults `globalAgent.keepAlive` to true and the gateway ships Node 24, so sockets were already reused; the real gap was `maxSockets: Infinity` + a shared singleton. |
 | 2026-09-19 | Lane G complete: load model MEASURED (26 active / 8.5 idle req/min; ~230 req/s at 30/70 mix) and fed to lane D mid-flight. F-1 confirmed empirically. Repo-wide `pnpm lint` found red on `dev-2.2` since `f7307362f` and fixed centrally (`d96b7c37d`). Lane H queued: export the pool + refusal metrics OD-3 depends on. |
 | 2026-09-19 | Lanes B and E complete and orchestrator-verified. New chain gap found: the gateway DROPS `Retry-After` and swaps the body (`text-proxy.controller.ts:479-521`, `RELAYABLE_ERROR_PHRASES:191`) — folded into lane F. |
