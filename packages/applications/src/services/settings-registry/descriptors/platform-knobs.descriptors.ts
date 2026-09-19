@@ -68,7 +68,15 @@
 // They are not duplicates: one builds the throttler at boot, the other decides
 // what it enforces per request per tenant.
 
-import { RATE_LIMIT_TIER_DEFAULTS, RATE_LIMIT_TIERS } from '../../rate-limit/rate-limit.constants';
+import {
+  RATE_LIMIT_PRINCIPAL_DEFAULTS,
+  RATE_LIMIT_PRINCIPAL_ENABLED_DEFAULT,
+  RATE_LIMIT_TIER_DEFAULTS,
+  RATE_LIMIT_TIERS,
+  rateLimitPrincipalEnabledKey,
+  rateLimitPrincipalLimitKey,
+  rateLimitPrincipalTtlKey,
+} from '../../rate-limit/rate-limit.constants';
 import { SettingDescriptor } from '../registry.types';
 
 /**
@@ -252,3 +260,71 @@ export const RATE_LIMIT_TIER_SETTINGS: SettingDescriptor[] = RATE_LIMIT_TIERS.fl
     default: RATE_LIMIT_TIER_DEFAULTS[tier].ttl,
   },
 ]);
+
+/**
+ * The PER-PRINCIPAL lane (TASK-993 OD-2) — level two of the two-level
+ * bucketing model. `RateLimitSettingsService.getPrincipalPolicy` resolves
+ * these three keys from `GlobalSetting` on every tenant-scoped request,
+ * falling back to `RATE_LIMIT_PRINCIPAL_DEFAULTS`.
+ *
+ * `maxScope: 'system'` / `globalOnly: true`, for the same reason the tier keys
+ * above are: the number is a PLATFORM SAFETY PROPERTY, not a plan feature. It
+ * is derived from how a measured HUMAN drives the console (26.0 req/min
+ * active, 44.1 worst case), which does not vary by plan — a doctor's browser
+ * is not hungrier on ENTERPRISE. The knob a TENANT already owns is
+ * `rateLimit.maxRequests`, which tightens its whole aggregate; nothing here
+ * can loosen that, because both levels apply and the stricter one binds.
+ *
+ * (A per-tenant lane over this key would be defensible — a tenant with one
+ * heavy integration might want to raise it for that caller. It is deliberately
+ * NOT shipped: it needs a clamp direction and an owner decision, and the
+ * narrower `RateLimitRule` surface is the better home for a per-caller
+ * exception. Recorded as a TASK-993 follow-up rather than guessed at.)
+ */
+export const RATE_LIMIT_PRINCIPAL_SETTINGS: SettingDescriptor[] = [
+  {
+    key: rateLimitPrincipalEnabledKey(),
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Platform Operations',
+    label: 'Rate limit — per-principal bucket enabled',
+    description:
+      "Whether each caller (user, API key or service account) is additionally counted in its OWN bucket underneath its tenant-wide ceiling. OFF restores the single tenant-wide counter, in which one runaway caller can consume its tenant's entire budget. The platform `rate-limit.enabled` master switch still outranks this.",
+    default: RATE_LIMIT_PRINCIPAL_ENABLED_DEFAULT,
+  },
+  {
+    key: rateLimitPrincipalLimitKey(),
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Platform Operations',
+    label: 'Rate limit — per-principal request limit',
+    description:
+      'Requests one CALLER may make per window, inside its tenant. Sized from the measured worst case for a single console user (44.1 req/min, every step a full document load) with the approved 3x headroom, rounded up to 150. A value of 0 or below is ignored in favour of the code baseline — it would refuse every request.',
+    default: RATE_LIMIT_PRINCIPAL_DEFAULTS.limit,
+  },
+  {
+    key: rateLimitPrincipalTtlKey(),
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Platform Operations',
+    label: 'Rate limit — per-principal window (ms)',
+    description:
+      'Window length in milliseconds for the per-principal bucket. Left at the tier window (60,000 ms) on purpose: a window changed without changing the count it bounds reads to an admin as a limit change nobody asked for.',
+    default: RATE_LIMIT_PRINCIPAL_DEFAULTS.ttl,
+  },
+];

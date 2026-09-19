@@ -23,7 +23,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { Throttle } from '@nestjs/throttler';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { IRateLimitSettingsService } from '@arcaai/applications';
+import { IRateLimitSettingsService, RATE_LIMIT_PRINCIPAL_DEFAULTS } from '@arcaai/applications';
 import { ThrottleConfigModule } from '../throttle.module';
 import { TieredThrottlerGuard } from '../tiered-throttler.guard';
 import { RateLimitHeadersInterceptor } from '../rate-limit-headers.interceptor';
@@ -44,6 +44,7 @@ const platformSettings: IRateLimitSettingsService = {
   getRouteOverride: () => undefined,
   isEnabledForTenant: () => true,
   getTierForTenant: () => ({ limit: 1000, ttl: 60000, limitSource: 'system', ttlSource: 'system' }),
+  getPrincipalPolicy: () => ({ enabled: true, ...RATE_LIMIT_PRINCIPAL_DEFAULTS }),
 };
 
 @Controller('cip')
