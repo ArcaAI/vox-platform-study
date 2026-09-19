@@ -10,7 +10,7 @@
  */
 import type { GeneratedWorkflowBlob } from './28-workflow-library.generated';
 
-export const REGISTRY_CHECKSUM: string = "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc";
+export const REGISTRY_CHECKSUM: string = "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b";
 
 export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "ARCAAI:arcaai-gen-consultation": {
@@ -20,7 +20,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -32,7 +32,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -770,7 +770,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "d4a224f97eb8be8a4eec4283fb8a8934746d0797ab06aa85d6c0d046b5f2445e"
+      "checksum": "1d041a8e15c9662c947b3f5b9b7be091d93a6440977c7396c0605c363f8e82fa"
     }
   },
   "ARCAAI:arcaai-surg-consultation": {
@@ -780,7 +780,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -792,7 +792,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -1530,7 +1530,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "7004ba146e22147b2ed652b771e9e3e3bb824a702c4eacef92f654c493e3e39f"
+      "checksum": "8b37b2f53e5f7e5208b75bd611155362a89fb1e289e101e0274bd148715c45be"
     }
   },
   "ARCAAI:arcaai-rheum-consultation": {
@@ -1540,7 +1540,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -1552,7 +1552,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -2290,7 +2290,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "2e56b08a65f649f180c97e839b2eab0af9974cfbca336b2182760635ca37cf9c"
+      "checksum": "5e205426cdf5d5f7fcbd8b5fb34a0f2b425f1ce0d5e754056cb5cd0e86be5058"
     }
   },
   "ARCAAI:arcaai-neur-consultation": {
@@ -2300,7 +2300,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -2312,7 +2312,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -3050,7 +3050,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "392a36ac30ac2c094a21ce364ea51feb0c22a00e1200b9f1d1ff788dafff0acc"
+      "checksum": "ef1bc6042503110b6037b3e973ec77ac7be76cdea3f826bd51ae58613d7a2c36"
     }
   },
   "ARCAAI:arcaai-orth-consultation": {
@@ -3060,7 +3060,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -3072,7 +3072,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -3810,7 +3810,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "c266ad68530b21ab36f347b7dd9c9561b9fa8fd5f94c4379ffa73b4341829bff"
+      "checksum": "b6234805fc486e9d983966283faa4a2b5841863d34931843647e9115e49463f7"
     }
   },
   "ARCAAI:arcaai-heme-consultation": {
@@ -3820,7 +3820,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -3832,7 +3832,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -4570,7 +4570,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "44f6d57b1913455373eaf774c798ce654ef303134fc4556f6b50f4a800794d5e"
+      "checksum": "570aedccc8492447bad101862c3bf95ea4d1871b77bd0038f792da4d61a993eb"
     }
   },
   "ARCAAI:arcaai-bren-consultation": {
@@ -4580,7 +4580,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -4592,7 +4592,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -5330,7 +5330,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "a87c2a5539637fd180da4029731f3a029eb266f958cdc5c50daf6bc2d253a592"
+      "checksum": "e5dc7ffa5fd8ffc9fb88724b5e3d802ed0ca4feb832da7e59602ac24e93c072b"
     }
   },
   "ARCAAI:arcaai-derm-consultation": {
@@ -5340,7 +5340,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -5352,7 +5352,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -6090,7 +6090,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "6076ba14df3e7e4cc61187cc87d7daa241115ade13d75fe47f8df2c0a4efae0b"
+      "checksum": "c58275264e783f0090cf6faa90f10b91e083c2950a250448fdf9c99e61fdd510"
     }
   },
   "ARCAAI:arcaai-diet-consultation": {
@@ -6100,7 +6100,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -6112,7 +6112,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -6850,7 +6850,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "f9fa6613573b430edd63111867b3801775fd6b9f1b82e72889a7536f6dd776c9"
+      "checksum": "d64c87489630484daf712ed1df33f5766c7305f9a1b05afc5f771db5368aaaa6"
     }
   },
   "ARCAAI:arcaai-neph-consultation": {
@@ -6860,7 +6860,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -6872,7 +6872,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -7610,7 +7610,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "0126f2a02bf7cacbcbd0a47016a5e69c07b3c3de48aa35aa22e6dc54c7a17c80"
+      "checksum": "733e3817c1c0b46cfc25f8fad0b2dbcd17fa97f7bb4a1425610e4816f168eacf"
     }
   },
   "ARCAAI:arcaai-sonc-consultation": {
@@ -7620,7 +7620,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -7632,7 +7632,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "e5a5e4844ae5bf48cf002182735b8208065f0bba93250b0ce917e5c700c5b9fc",
+      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -8370,7 +8370,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "a4742f4f00bb5673e845b90f2af44388ed3005b70d08e4a225e097e4731439fa"
+      "checksum": "036e13c5bfa6f8f6847a7f48106e61145da0fc35ae095ef27cc7e07333f43d7e"
     }
   }
 };
