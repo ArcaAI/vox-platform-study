@@ -64,7 +64,20 @@ def build_observability_config(settings: Settings) -> ObservabilityConfig:
     base = ObservabilityConfig.from_env("harness", service_version=_SERVICE_VERSION)
     config = replace(
         base,
-        service_name=settings.otel_service_name,
+        # Only an EXPLICIT `HARNESS_OTEL_SERVICE_NAME` overrides the name the
+        # deployment chose. This used to be unconditional, so the generic
+        # `OTEL_SERVICE_NAME` that `from_env` resolves — the variable every
+        # other service honours, and the one a Deployment sets — could never
+        # win against the non-empty `"harness"` default. In the dev cluster
+        # harness and harness-worker were the only workloads reporting a bare
+        # `service.name` in logs and traces while the fleet reported `hope-*`,
+        # which breaks Grafana's trace->logs link: it keys on Loki's
+        # `service_name` label, `hope-harness`.
+        service_name=(
+            settings.otel_service_name
+            if "otel_service_name" in settings.model_fields_set
+            else base.service_name
+        ),
         service_namespace=settings.otel_service_namespace,
         deployment_environment=settings.otel_deployment_environment,
         # `or base.otlp_endpoint`, never `or None` (TASK-987 F-22). R-2 makes the

@@ -82,10 +82,25 @@ def build_observability_config(settings: Settings) -> ObservabilityConfig:
     # TTS setting wins over whatever `from_env` resolved only when it is
     # actually set (non-empty) — an unset `TTS_` field must never blank out a
     # value `from_env` found on the generic `OTEL_*` names.
+    #
+    # `service_name` is the exception, and it must stay one: its default is the
+    # non-empty `"tts"`, so `or` cannot tell "the operator chose tts" from "no
+    # one said anything". It always won, and it silently discarded the
+    # `OTEL_SERVICE_NAME=hope-tts` the dev Deployment sets — the live pod
+    # reported `service.name=tts` in logs AND traces while the rest of the
+    # fleet reported `hope-*`, which is what broke Grafana's trace->logs link
+    # (it keys on Loki's `service_name` label, `hope-tts`). `model_fields_set`
+    # is the same distinction this function already draws for `otel_enabled`
+    # below: only an EXPLICITLY set `TTS_OTEL_SERVICE_NAME` overrides the
+    # generic name the deployment chose.
     config = replace(
         config,
         otlp_endpoint=settings.otel_exporter_endpoint or config.otlp_endpoint,
-        service_name=settings.otel_service_name or config.service_name,
+        service_name=(
+            settings.otel_service_name
+            if "otel_service_name" in settings.model_fields_set
+            else config.service_name
+        ),
         service_namespace=settings.otel_service_namespace or config.service_namespace,
         deployment_environment=(
             settings.otel_deployment_environment or config.deployment_environment

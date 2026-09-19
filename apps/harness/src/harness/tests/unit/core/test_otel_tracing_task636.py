@@ -93,6 +93,34 @@ class TestBuildObservabilityConfig:
         assert config.tracing_enabled is True
         assert config.otlp_endpoint == "http://localhost:4317"
 
+    def test_otel_service_name_env_renames_the_resource(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``OTEL_SERVICE_NAME`` is the name the DEPLOYMENT chooses (py-obs contract).
+
+        Harness passed ``settings.otel_service_name`` unconditionally, so the
+        generic variable every other service honours was never read. In the
+        dev cluster harness reported ``service.name=harness`` in both logs and
+        traces while the fleet reported ``hope-*`` — which breaks Grafana's
+        trace->logs link, keyed on Loki's ``service_name`` label
+        (``hope-harness``).
+        """
+        monkeypatch.setenv("OTEL_SERVICE_NAME", "hope-harness")
+
+        config = build_observability_config(Settings())
+
+        assert config.service_name == "hope-harness"
+
+    def test_explicit_harness_setting_still_wins_over_the_generic_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An operator who names harness explicitly keeps that name."""
+        monkeypatch.setenv("OTEL_SERVICE_NAME", "hope-harness")
+
+        config = build_observability_config(Settings(otel_service_name="harness-canary"))
+
+        assert config.service_name == "harness-canary"
+
     def test_deprecated_flag_false_vetoes_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A live manifest that sets HARNESS_OTEL_ENABLED=false to keep tracing off
         despite an endpoint on a shared config map must keep working for one release.
