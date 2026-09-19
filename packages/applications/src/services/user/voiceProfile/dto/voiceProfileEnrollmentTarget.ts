@@ -7,7 +7,15 @@
  * model, so a stale profile is invisible rather than wrong.
  */
 export interface VoiceProfileEnrollmentTarget {
-  /** The resolved agent's lineage slug (the assigned one when the caller named none). */
+  /**
+   * The lineage slug of the agent this enrollment will actually land in.
+   *
+   * The assigned agent when the caller named none — or, since TASK-991 (OD-1), the first
+   * published speech-to-text agent of the tenant that HAS diarization enabled when the assigned
+   * one does not. It is therefore not always the agent a session will run, which is why the
+   * console shows it: the profile is keyed by `modelId`, and a user needs to know which agent's
+   * space they enrolled into. A caller who named an agent explicitly always gets that one back.
+   */
   agentSlug: string;
   /** `AiModel.slug` of the agent's speaker-embedding model. */
   modelId: string;

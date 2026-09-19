@@ -1,5 +1,5 @@
 import { InternalServerErrorException } from '@arcaai/exceptions';
-import { ResourceStatusType, SysEventType } from '@arcaai/domains';
+import { AgentTask, ResourceStatusType, SysEventType } from '@arcaai/domains';
 import { BadRequestException, ConflictException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -71,15 +71,29 @@ const AGENT_SLUG = 'platform-transcription';
 const EMBEDDING_SLUG = 'wespeaker-voxceleb-resnet34';
 const EMBEDDING_SOURCE_URI = 'pyannote/wespeaker-voxceleb-resnet34-LM';
 
+/**
+ * TASK-991 (OD-1) — a SECOND published speech-to-text agent of the same tenant, bound to a
+ * different embedding space and with diarization actually switched on. It is what the
+ * tenant-wide unblock finds when the assigned agent has the stage off.
+ */
+const SIBLING_SLUG = 'clinic-transcription-diarized';
+const SIBLING_EMBEDDING_SLUG = 'pyannote-embedding-3';
+const SIBLING_EMBEDDING_SOURCE_URI = 'pyannote/embedding-3.0';
+
 const mockAsrResolver = {
   resolve: vi.fn(),
 };
 
-function asrSpec(overrides: { embedding?: unknown; enabled?: boolean; matchThreshold?: number | null } = {}) {
+/** TASK-991 — the tenant's own published SPEECH_TO_TEXT agents (`AgentRepository`). */
+const mockAgentRepository = {
+  findPublishedActiveVisible: vi.fn(),
+};
+
+function asrSpec(overrides: { slug?: string; embedding?: unknown; enabled?: boolean; matchThreshold?: number | null } = {}) {
   const embedding = 'embedding' in overrides ? overrides.embedding : { slug: EMBEDDING_SLUG, sourceUri: EMBEDDING_SOURCE_URI };
   return {
     spec: {
-      agent: { slug: AGENT_SLUG },
+      agent: { slug: overrides.slug ?? AGENT_SLUG },
       models: { embedding },
       audioFrontEnd: {
         diarization: {
@@ -90,6 +104,14 @@ function asrSpec(overrides: { embedding?: unknown; enabled?: boolean; matchThres
       },
     },
   };
+}
+
+function siblingSpec() {
+  return asrSpec({
+    slug: SIBLING_SLUG,
+    embedding: { slug: SIBLING_EMBEDDING_SLUG, sourceUri: SIBLING_EMBEDDING_SOURCE_URI },
+    matchThreshold: 0.7,
+  });
 }
 
 // Helper to create mock voice profile entity
@@ -126,6 +148,7 @@ function buildService(): VoiceProfileService {
     mockConfigService as any,
     undefined,
     mockAsrResolver as any,
+    mockAgentRepository as any,
   );
 }
 
@@ -144,6 +167,8 @@ describe('VoiceProfileService', () => {
       return null;
     });
     mockAsrResolver.resolve.mockResolvedValue(asrSpec());
+    // Default: the assigned agent is the tenant's ONLY one, so a refusal stays a refusal.
+    mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([]);
     service = buildService();
   });
 
@@ -353,6 +378,10 @@ describe('VoiceProfileService', () => {
        * embedding model (the seeded `realtime-transcription` agent does), and it refuses before
        * a single sample reaches apps/stt: nothing is embedded or stored for a stage nothing uses.
        * This reverses TASK-887's "enrol ahead of enabling".
+       *
+       * TASK-991 (OD-1) narrowed WHEN that refusal fires, never what it is: the refusal now
+       * needs the whole tenant to have nothing that diarizes, which is what the empty agent
+       * list in these two cases means.
        */
       it('refuses with 409 ASR_AGENT_DIARIZATION_DISABLED BEFORE any audio leaves the gateway when diarization is off', async () => {
         mockAsrResolver.resolve.mockResolvedValue(asrSpec({ embedding: undefined, enabled: false }));
@@ -407,6 +436,32 @@ describe('VoiceProfileService', () => {
         expect(message).not.toContain('sortformer');
         expect(mockHttpService.post).not.toHaveBeenCalled();
         expect(mockVoiceProfileRepository.createWithEmbedding).not.toHaveBeenCalled();
+      });
+
+      /**
+       * TASK-991 (owner decision OD-1, 2026-09-19) — enrollment unblocks TENANT-WIDE. `enroll`
+       * itself is unchanged: it still asks `enrollmentTarget` before a single sample leaves the
+       * gateway, so the samples travel with whichever agent's embedding model that answered.
+       */
+      it('sends the samples with the DIARIZING sibling’s model when the assigned agent has the stage off', async () => {
+        const { of } = await import('rxjs');
+        mockAsrResolver.resolve.mockImplementation(async (input: { agentSlug: string | null }) =>
+          input.agentSlug === SIBLING_SLUG ? siblingSpec() : asrSpec({ enabled: false }),
+        );
+        mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([{ slug: AGENT_SLUG }, { slug: SIBLING_SLUG }]);
+        mockHttpService.post.mockReturnValue(
+          of({ data: { embedding: Array(192).fill(0.1), model_id: SIBLING_EMBEDDING_SOURCE_URI, model_slug: SIBLING_EMBEDDING_SLUG } }),
+        );
+        mockVoiceProfileRepository.createWithEmbedding.mockImplementation(async (entity: any) => entity);
+
+        const created: any = await service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] });
+
+        const form = mockHttpService.post.mock.calls[0][1] as FormData;
+        expect(form.get('model_slug')).toBe(SIBLING_EMBEDDING_SLUG);
+        expect(form.get('model_source_uri')).toBe(SIBLING_EMBEDDING_SOURCE_URI);
+        expect(form.get('min_similarity')).toBe('0.7');
+        // The profile is keyed by the MODEL, which is what a session compares against.
+        expect(created.modelId).toBe(SIBLING_EMBEDDING_SLUG);
       });
 
       it('lets the resolver’s own 404 through — a foreign agent is not this user’s to enrol for', async () => {
@@ -596,19 +651,92 @@ describe('VoiceProfileService', () => {
       });
       // No slug given ⇒ the ASSIGNED agent, which is what a session with no explicit agent runs.
       expect(mockAsrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null });
+      // TASK-991 — the tenant-wide scan is a FALLBACK, never a first read: an agent that already
+      // diarizes is answered from the one resolution a session performs and nothing more.
+      expect(mockAgentRepository.findPublishedActiveVisible).not.toHaveBeenCalled();
     });
 
     it('reports a null threshold when the agent declared none', async () => {
       await expect(service.enrollmentTarget()).resolves.toMatchObject({ matchThreshold: null });
     });
 
-    it('refuses the target with 409 ASR_AGENT_DIARIZATION_DISABLED while the agent’s diarization is off', async () => {
-      mockAsrResolver.resolve.mockResolvedValue(asrSpec({ enabled: false, matchThreshold: 0.55 }));
+    /**
+     * TASK-991 (owner decision OD-1, 2026-09-19) — enrollment unblocks TENANT-WIDE: if ANY
+     * published speech-to-text agent of the caller's tenant diarizes, enrollment succeeds
+     * against THAT agent's embedding space. The seeded agents ship diarization off, so reading
+     * the switch off the assigned agent alone refused most tenants an enrollment they could
+     * perfectly well use.
+     *
+     * The SESSION is untouched — it still runs the assigned or explicitly named agent. Profiles
+     * are keyed by `modelId`, so what the fallback decides is which embedding space the samples
+     * land in, never which agent transcribes.
+     */
+    it('falls back to a published sibling that diarizes, and reports ITS agent and model', async () => {
+      mockAsrResolver.resolve.mockImplementation(async (input: { agentSlug: string | null }) =>
+        input.agentSlug === SIBLING_SLUG ? siblingSpec() : asrSpec({ enabled: false, matchThreshold: 0.55 }),
+      );
+      mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([{ slug: AGENT_SLUG }, { slug: SIBLING_SLUG }]);
 
-      await expect(service.enrollmentTarget()).rejects.toMatchObject({
-        constructor: ConflictException,
-        response: { code: 'ASR_AGENT_DIARIZATION_DISABLED' },
+      await expect(service.enrollmentTarget()).resolves.toEqual({
+        agentSlug: SIBLING_SLUG,
+        modelId: SIBLING_EMBEDDING_SLUG,
+        modelSourceUri: SIBLING_EMBEDDING_SOURCE_URI,
+        diarizationEnabled: true,
+        matchThreshold: 0.7,
       });
+      // The caller's OWN tenant, the SPEECH_TO_TEXT task, and the same published/active read the
+      // business plane's agent list uses — so the agent offered is one the console shows.
+      expect(mockAgentRepository.findPublishedActiveVisible).toHaveBeenCalledWith('tenant-1', AgentTask.SPEECH_TO_TEXT);
+      // Resolved through the SAME path a session takes, so the spec (and the embedding model it
+      // names) is built identically.
+      expect(mockAsrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: SIBLING_SLUG, departmentId: null });
+      // The already-refused preferred agent is not resolved a second time.
+      expect(mockAsrResolver.resolve).not.toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: AGENT_SLUG, departmentId: null });
+    });
+
+    it('skips a candidate that will not resolve at all and keeps looking', async () => {
+      mockAsrResolver.resolve.mockImplementation(async (input: { agentSlug: string | null }) => {
+        if (input.agentSlug === 'half-configured-agent') {
+          throw new ConflictException({ code: 'ASR_AGENT_NO_PRIMARY_MODEL', message: 'resolves no primary model' });
+        }
+        return input.agentSlug === SIBLING_SLUG ? siblingSpec() : asrSpec({ enabled: false });
+      });
+      mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([{ slug: 'half-configured-agent' }, { slug: SIBLING_SLUG }]);
+
+      // One broken agent must not re-block a tenant that also has a working one.
+      await expect(service.enrollmentTarget()).resolves.toMatchObject({ agentSlug: SIBLING_SLUG, modelId: SIBLING_EMBEDDING_SLUG });
+    });
+
+    it('never substitutes an agent the caller named explicitly — that stays a 409', async () => {
+      mockAsrResolver.resolve.mockResolvedValue(asrSpec({ enabled: false, matchThreshold: 0.55 }));
+      mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([{ slug: SIBLING_SLUG }]);
+
+      const thrown = await service.enrollmentTarget(AGENT_SLUG).catch((error: unknown) => error);
+
+      expect(thrown).toBeInstanceOf(ConflictException);
+      expect((thrown as ConflictException).getResponse()).toEqual({
+        code: 'ASR_AGENT_DIARIZATION_DISABLED',
+        message: expect.stringContaining(`Agent '${AGENT_SLUG}'`),
+      });
+      // Enrolling them elsewhere would store an embedding the agent they NAMED never compares
+      // against — so the tenant is not even scanned.
+      expect(mockAgentRepository.findPublishedActiveVisible).not.toHaveBeenCalled();
+    });
+
+    it('refuses with a TENANT-WIDE 409 ASR_AGENT_DIARIZATION_DISABLED when no agent diarizes', async () => {
+      mockAsrResolver.resolve.mockResolvedValue(asrSpec({ enabled: false, matchThreshold: 0.55 }));
+      mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([{ slug: AGENT_SLUG }]);
+
+      const thrown = await service.enrollmentTarget().catch((error: unknown) => error);
+
+      expect(thrown).toBeInstanceOf(ConflictException);
+      const body = (thrown as ConflictException).getResponse() as { code: string; message: string };
+      // The CODE is what clients match on and is deliberately unchanged.
+      expect(body.code).toBe('ASR_AGENT_DIARIZATION_DISABLED');
+      expect(body.message).toContain('No published speech-to-text agent in this tenant');
+      // The admin is still told exactly which knob to set.
+      expect(body.message).toContain('audioFrontEnd.diarization.enabled');
+      expect(body.message).not.toContain('embeddingModelSlug');
     });
   });
 

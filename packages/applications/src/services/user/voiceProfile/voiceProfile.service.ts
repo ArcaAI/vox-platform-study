@@ -1,5 +1,15 @@
-import { EntityId, ResourceType, SysEventType, UserVoiceProfileEntity, UserVoiceProfileFactory, UserVoiceProfileRepository } from '@arcaai/domains';
+import {
+  AgentRepository,
+  AgentTask,
+  EntityId,
+  ResourceType,
+  SysEventType,
+  UserVoiceProfileEntity,
+  UserVoiceProfileFactory,
+  UserVoiceProfileRepository,
+} from '@arcaai/domains';
 import { InternalServerErrorException } from '@arcaai/exceptions';
+import type { ResolvedAsrSpec } from '@arcaai/types';
 import { HttpService } from '@nestjs/axios';
 import {
   BadRequestException,
@@ -17,6 +27,7 @@ import { ClsService } from 'nestjs-cls';
 import { firstValueFrom } from 'rxjs';
 import { BaseService, SERVICE_TOKEN_HEADER, TENANTLESS, TENANT_ID_HEADER, resolveInternalAccessToken, tenantHeaderValue } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { isPlatformHiddenAgentSlug } from '../../agent/platform-hidden-agents';
 import { IConfigService } from '../../baseServices/_meta/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { AsrAgentResolverService } from '../../stt/agent-resolver';
@@ -53,6 +64,11 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // TASK-887 — the one resolution that decides which embedding model an enrollment lands in.
     @Optional() private readonly asrResolver?: AsrAgentResolverService,
+    // TASK-991 (OD-1) — the tenant's OWN published speech-to-text agents, read ONLY when the
+    // preferred agent does not diarize. Optional + trailing so existing positional
+    // constructions keep compiling; without it the tenant-wide unblock simply finds nothing
+    // and the 409 stands, which is the pre-OD-1 answer, never a wrong one.
+    @Optional() private readonly agentRepository?: AgentRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.UserVoiceProfile);
     this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
@@ -124,6 +140,21 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
    * ahead of enabling". The refusal is on the SWITCH, not on the absent model: since TASK-977
    * D-4 a disabled stage ships no model at all, so "no model" would otherwise send the admin to
    * set an `embeddingModelSlug` the agent may already declare.
+   *
+   * TASK-991 (owner decision OD-1, 2026-09-19) — that refusal is now TENANT-WIDE, not
+   * per-agent: if ANY published speech-to-text agent of the caller's tenant diarizes,
+   * enrollment succeeds against THAT agent's embedding space. The seeded agents ship
+   * diarization off, so reading the switch off the assigned agent alone refused most tenants
+   * an enrollment the tenant was perfectly able to use.
+   *
+   * The session is unaffected — it still runs the assigned or explicitly named agent, because a
+   * profile is keyed by `modelId` and not by the agent that produced it. Two agents bound to
+   * the same embedding model share their profiles; one bound to a different model simply does
+   * not see them, exactly as before.
+   *
+   * An EXPLICIT `agentSlug` is never substituted. The caller named the agent they expect to be
+   * matched by, so quietly enrolling them somewhere else would store an embedding that agent
+   * can never compare against — the precise failure this whole method exists to prevent.
    */
   async enrollmentTarget(agentSlug?: string): Promise<VoiceProfileEnrollmentTarget> {
     const tenantId = this.tenantId;
@@ -133,19 +164,38 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     if (!this.asrResolver) {
       throw new ServiceUnavailableException('ASR agent resolution is not configured on this gateway');
     }
-    const { spec } = await this.asrResolver.resolve({ tenantId, agentSlug: agentSlug ?? null, departmentId: null });
-    const diarization = spec.audioFrontEnd.diarization;
-    if (!diarization.enabled) {
-      // The same 409 body the ASR resolver gives its own refusals (`{ code, message }`), so a
-      // client reads one convention for every agent-shaped conflict on this path.
-      throw new ConflictException({
-        code: 'ASR_AGENT_DIARIZATION_DISABLED',
-        message:
-          `Agent '${spec.agent.slug}' has speaker diarization switched off (\`audioFrontEnd.diarization.enabled\` is false), ` +
-          `so voice embedding is off for it and no voice profile can be enrolled. ` +
-          `Enable \`audioFrontEnd.diarization.enabled\` on the agent first.`,
-      });
+    const named = agentSlug ?? null;
+    const { spec: preferred } = await this.asrResolver.resolve({ tenantId, agentSlug: named, departmentId: null });
+
+    // The same 409 body the ASR resolver gives its own refusals (`{ code, message }`), so a
+    // client reads one convention for every agent-shaped conflict on this path. The CODE is
+    // what clients match on and is unchanged; only the message distinguishes "the agent you
+    // named" from "nothing in this tenant".
+    let spec: ResolvedAsrSpec = preferred;
+    if (!preferred.audioFrontEnd.diarization.enabled) {
+      if (named) {
+        throw new ConflictException({
+          code: 'ASR_AGENT_DIARIZATION_DISABLED',
+          message:
+            `Agent '${preferred.agent.slug}' has speaker diarization switched off (\`audioFrontEnd.diarization.enabled\` is false), ` +
+            `so voice embedding is off for it and no voice profile can be enrolled. ` +
+            `Enable \`audioFrontEnd.diarization.enabled\` on the agent first.`,
+        });
+      }
+      const sibling = await this.firstDiarizingSpec(tenantId, preferred.agent.slug);
+      if (!sibling) {
+        throw new ConflictException({
+          code: 'ASR_AGENT_DIARIZATION_DISABLED',
+          message:
+            `No published speech-to-text agent in this tenant has speaker diarization enabled ` +
+            `(\`audioFrontEnd.diarization.enabled\` is false on '${preferred.agent.slug}' and on every other one), ` +
+            `so voice embedding is off and no voice profile can be enrolled. ` +
+            `Enable \`audioFrontEnd.diarization.enabled\` on an agent first.`,
+        });
+      }
+      spec = sibling;
     }
+
     const embedding = spec.models.embedding;
     if (!embedding) {
       // Unreachable through `buildResolvedAsrSpec`, which refuses an enabled stage with no
@@ -167,6 +217,43 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       diarizationEnabled: spec.audioFrontEnd.diarization.enabled,
       matchThreshold: spec.audioFrontEnd.diarization.matchThreshold ?? null,
     };
+  }
+
+  /**
+   * TASK-991 (OD-1) — the first published, active speech-to-text agent of THIS tenant whose
+   * resolved spec diarizes, or `null` when the tenant has none.
+   *
+   * Every candidate goes back through `AsrAgentResolverService` instead of having its switch
+   * read off the row: the spec a session runs is BUILT (compiled config + fallback chain +
+   * credentials), and only the built spec names the embedding model an enrollment must land in.
+   *
+   * `findPublishedActiveVisible` is the SAME read the business plane's agent list uses
+   * (`AgentService.listPublished`) — the caller's tenant only, one row per slug, ordered by
+   * slug — so the agent a user is enrolled against is deterministic and is one the console
+   * already shows them. Platform hidden agents are skipped for the same reason that list skips
+   * them: they are never a tenant's to choose.
+   *
+   * A candidate that will not resolve at all (no primary model, a vetoed credential) is SKIPPED,
+   * not fatal: one broken agent must not re-block a tenant that also has a working one.
+   */
+  private async firstDiarizingSpec(tenantId: string, preferredSlug: string): Promise<ResolvedAsrSpec | null> {
+    if (!this.asrResolver || !this.agentRepository) return null;
+    const candidates = await this.agentRepository.findPublishedActiveVisible(tenantId, AgentTask.SPEECH_TO_TEXT);
+    for (const candidate of candidates) {
+      if (candidate.slug === preferredSlug || isPlatformHiddenAgentSlug(candidate.slug)) continue;
+      try {
+        const { spec } = await this.asrResolver.resolve({ tenantId, agentSlug: candidate.slug, departmentId: null });
+        if (spec.audioFrontEnd.diarization.enabled) return spec;
+      } catch (error: unknown) {
+        this.logger.warn({
+          message: 'Speech-to-text agent skipped while looking for one that diarizes',
+          tenantId,
+          agentSlug: candidate.slug,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return null;
   }
 
   async listForRuntime(userId: string, tenantId: string, modelId: string): Promise<RuntimeVoiceProfile[]> {
