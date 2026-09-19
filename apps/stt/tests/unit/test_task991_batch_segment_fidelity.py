@@ -324,7 +324,7 @@ class TestTranscribeWiresBothThrough:
             model_slug="whisper-test",
             model=MagicMock(),
             processor=MagicMock(),
-            format=AiModelFormat.GGUF,
+            format=AiModelFormat.WHISPER_CPP,  # the engine that serves a GGUF artifact
             memory_mb=80,
             device="cpu",
         )
