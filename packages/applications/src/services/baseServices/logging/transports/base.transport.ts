@@ -109,19 +109,31 @@ export abstract class BaseTransport implements ILogTransport {
    * Create a structured log object from a LogEntry
    */
   protected toStructuredLog(entry: LogEntry): Record<string, unknown> {
+    // Key names are a CONTRACT with three readers, not a style choice:
+    //   - Loki 3.x derives `detected_level` from a top-level `level`;
+    //   - Grafana's Loki->Tempo derived field matches the literal
+    //     `"traceId":"<hex>"` (deployment repo, observability-config.yaml), so
+    //     a snake_case rename here silently unlinks every log line from its
+    //     trace;
+    //   - the six Python services emit `level` / `timestamp` / `service` /
+    //     `traceId` / `spanId` through `packages/py-obs`, and one fleet that
+    //     needs two spellings per field is one nobody can query.
+    // `msg` / `time` / `trace_id` / `span_id` / `request_id` / `user_id` /
+    // `tenant_id` were the previous spellings; nothing consumed them, because
+    // this JSON path had never been selected in a deployed environment.
     const log: Record<string, unknown> = {
       level: entry.level,
-      msg: entry.message,
-      time: entry.timestamp,
-      timestamp: entry.timestampMs,
+      message: entry.message,
+      timestamp: entry.timestamp,
+      timestampMs: entry.timestampMs,
     };
 
     if (entry.context) log.context = entry.context;
-    if (entry.traceId) log.trace_id = entry.traceId;
-    if (entry.spanId) log.span_id = entry.spanId;
-    if (entry.requestId) log.request_id = entry.requestId;
-    if (entry.userId) log.user_id = entry.userId;
-    if (entry.tenantId) log.tenant_id = entry.tenantId;
+    if (entry.traceId) log.traceId = entry.traceId;
+    if (entry.spanId) log.spanId = entry.spanId;
+    if (entry.requestId) log.requestId = entry.requestId;
+    if (entry.userId) log.userId = entry.userId;
+    if (entry.tenantId) log.tenantId = entry.tenantId;
     if (entry.serviceName) log.service = entry.serviceName;
     if (entry.serviceVersion) log.version = entry.serviceVersion;
     if (entry.environment) log.env = entry.environment;

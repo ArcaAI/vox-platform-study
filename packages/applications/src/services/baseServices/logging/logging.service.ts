@@ -33,7 +33,7 @@ import {
   OTelTransport,
   OTelLogBridgeTransport,
 } from './transports';
-import { getEnvBoolean, getEnvString, getEnvNumber, isDevelopment } from './env.utils';
+import { getEnvBoolean, getEnvString, getEnvNumber, isHumanReadableStdout } from './env.utils';
 import { redactEntry } from './redactor';
 
 /**
@@ -92,9 +92,17 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
       name: 'console',
       enabled: getEnvBoolean('LOG_CONSOLE_ENABLED', true),
       level: this.level,
-      colorize: getEnvBoolean('LOG_CONSOLE_COLORIZE', isDevelopment()),
-      prettyPrint: getEnvBoolean('LOG_CONSOLE_PRETTY', isDevelopment()),
-      json: getEnvBoolean('LOG_CONSOLE_JSON', !isDevelopment()),
+      // "Is this development?" is the wrong question; "is a human watching
+      // this stream?" is the right one. The dev CLUSTER runs
+      // NODE_ENV=development, so the old default shipped ANSI-coloured
+      // pretty text to Loki: 4,821 of 4,846 gateway lines came back
+      // `detected_level=unknown` on 2026-09-19, and the handful Loki did
+      // label were labelled WRONG (it matched the word "error" inside the
+      // payload of WARN lines). A container has no TTY; a developer's
+      // terminal does. An explicit LOG_CONSOLE_* still wins over both.
+      colorize: getEnvBoolean('LOG_CONSOLE_COLORIZE', isHumanReadableStdout()),
+      prettyPrint: getEnvBoolean('LOG_CONSOLE_PRETTY', isHumanReadableStdout()),
+      json: getEnvBoolean('LOG_CONSOLE_JSON', !isHumanReadableStdout()),
     };
     if (consoleConfig.enabled) {
       this.transports.push(new ConsoleTransport(consoleConfig));
@@ -219,15 +227,24 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
   /**
    * Create a log entry from parameters
    */
-  private createLogEntry(level: LogLevel, message: string, meta?: LogMeta | Error | string, context?: string): LogEntry {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- NestJS hands `Logger.log()` whatever the call site passed; narrowing here would refuse the structured objects this function exists to split
+  private createLogEntry(level: LogLevel, message: any, meta?: LogMeta | Error | string, context?: string): LogEntry {
     const now = new Date();
     const resolvedContext = typeof meta === 'string' ? meta : context || this.context;
-    const resolvedMeta = this.resolveMeta(meta);
+    // A NestJS `Logger.log({ message, ...fields })` call arrives here with the
+    // WHOLE object as `message`, and used to be JSON.stringify-ed into the
+    // message string — so `traceId`, `requestId`, `sessionId`, `reason` and
+    // every other field the gateway logs ended up as JSON inside a string,
+    // invisible to `| json` and to the promotion below. Splitting it here
+    // covers every level at once, because Nest's `warn`/`error`/`debug` land
+    // on the public methods directly rather than on a bridge.
+    const { text, fields } = this.splitStructuredMessage(message);
+    const resolvedMeta = { ...fields, ...this.resolveMeta(meta) };
 
     return {
       level,
       levelNumber: LOG_LEVEL_VALUES[level],
-      message: this.formatMessage(message),
+      message: text,
       timestamp: now.toISOString(),
       timestampMs: now.getTime(),
       context: resolvedContext,
@@ -270,6 +287,30 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
     }
 
     return Object.keys(extra).length > 0 ? extra : undefined;
+  }
+
+  /**
+   * Split a structured `{ message, ...fields }` payload into its human string
+   * and its fields.
+   *
+   * Only an object carrying a STRING `message` is split — an object without
+   * one has no human sentence to promote, so it keeps the previous
+   * stringify-it-all behaviour rather than inventing a message.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the input is an unnarrowed NestJS logger argument; the function's whole job is to decide what shape it is
+  private splitStructuredMessage(message: any): { text: string; fields: LogMeta } {
+    if (
+      message !== null &&
+      typeof message === 'object' &&
+      !Array.isArray(message) &&
+      !(message instanceof Error) &&
+      typeof (message as { message?: unknown }).message === 'string'
+    ) {
+      const { message: text, ...fields } = message as { message: string } & Record<string, unknown>;
+      return { text, fields: fields as LogMeta };
+    }
+
+    return { text: this.formatMessage(message), fields: {} };
   }
 
   /**
@@ -409,7 +450,10 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   log(message: any, contextOrParams?: string | any[]): void {
     const context = typeof contextOrParams === 'string' ? contextOrParams : undefined;
-    this.info(this.formatMessage(message), context);
+    // NOT `this.formatMessage(message)`: `createLogEntry` splits a structured
+    // payload into its message and its fields, and pre-stringifying here would
+    // hand it a string that can no longer be split.
+    this.info(message, context);
   }
 
   /**

@@ -353,9 +353,9 @@ describe('LokiTransport', () => {
       const stream = body.streams[0];
       const logLine = JSON.parse(stream.values[0][1]);
 
-      expect(logLine.trace_id).toBe('trace-123');
-      expect(logLine.span_id).toBe('span-456');
-      expect(logLine.request_id).toBe('req-789');
+      expect(logLine.traceId).toBe('trace-123');
+      expect(logLine.spanId).toBe('span-456');
+      expect(logLine.requestId).toBe('req-789');
     });
 
     it('should include error details in log line', async () => {
