@@ -987,7 +987,9 @@ export function AgentLineageDrawer({
                   /* TASK-971 lane B — the example body in every lane comes from the agent's own
                      declared input, not a placeholder. FU-1: `inputSchema` is only half of it —
                      `compiledConfig` carries the instruction's `trigger.*` bindings, which the
-                     schema never declares and the invocation still requires. */
+                     schema never declares and the invocation still requires. TASK-991 wave 2: it
+                     also carries `requiredVariables` (stamped at publish), which is where the
+                     panel now reads the prompt placeholders from — so no separate prop is needed. */
                   inputSchema={agent.inputSchema}
                   compiledConfig={agent.compiledConfig}
                 />

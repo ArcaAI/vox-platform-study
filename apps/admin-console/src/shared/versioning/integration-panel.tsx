@@ -115,7 +115,7 @@ import {
   agentSseCurlSnippet,
   agentSseFetchSnippet,
 } from '@/shared/docs/sse-frame-protocol';
-import { API_KEY_MINT_NOTE, scopeNote, type GatewayRouteKey } from '@/shared/docs/gateway-scopes';
+import { API_KEY_MINT_NOTE, RATE_LIMIT_NOTE, scopeNote, serviceAccountNotes, type GatewayRouteKey } from '@/shared/docs/gateway-scopes';
 import {
   SOCKET_LANE_RATIONALE,
   SOCKET_RUNTIME_FLOOR,
@@ -181,7 +181,8 @@ const AGENT_ENDPOINTS: Record<IntegrationAgentTask, EndpointDescriptor> = {
   SPEECH_TO_TEXT: {
     method: 'POST',
     path: '/agents/{slug}/transcriptions',
-    note: 'Batch: recorded audio in, an sseUrl for progress out. Live audio uses the realtime session above.',
+    note:
+      'Batch: a `mediaId` in — media that ALREADY exists — and an sseUrl for progress out. A FILE goes to the multipart route POST /audio/transcription-jobs/transcribe instead; there is no public media-upload route, so today a mediaId comes from a consultation recording. Live audio uses the realtime session above.',
     realtime: {
       session: '/audio/transcription-jobs/stream/session',
       socket: '/ws/stt/stream?sessionId={sessionId}&ticket={ticket}',
@@ -368,10 +369,23 @@ function JobViews({
  * a scope family, which reads as a broken example rather than a missing scope.
  */
 function ScopeNote({ routes }: { routes: readonly GatewayRouteKey[] }) {
+  // TASK-991 wave 2 — the two things a correctly-scoped request still meets and no lane stated:
+  // the rate limiter (a 429 whose budget is per deployment, so the header is the only honest
+  // answer), and the routes whose declared service-account scope overstates what the handler
+  // will serve. Both live in `gateway-scopes.ts` beside the scopes they qualify.
+  const machineNotes = serviceAccountNotes(routes);
   return (
-    <p className="text-muted-foreground text-xs">
-      <span className="text-foreground font-medium">{scopeNote(routes)}</span> {API_KEY_MINT_NOTE}
-    </p>
+    <div className="text-muted-foreground flex flex-col gap-1 text-xs">
+      <p>
+        <span className="text-foreground font-medium">{scopeNote(routes)}</span> {API_KEY_MINT_NOTE}
+      </p>
+      {machineNotes.map((note) => (
+        <p key={note}>
+          <span className="text-foreground font-medium">Service accounts:</span> {note}
+        </p>
+      ))}
+      <p>{RATE_LIMIT_NOTE}</p>
+    </div>
   );
 }
 
@@ -466,9 +480,10 @@ function SttSocketNote() {
     <Callout title="Here the socket IS the transport">
       <p>
         A live session has no SSE lane to fall back to — <code className="font-mono">/ws/stt/stream</code> is how realtime audio is carried, so the choice the
-        workflow lane offers does not arise. Recorded audio goes to{' '}
-        <code className="font-mono">{'POST /agents/{slug}/transcriptions'}</code> instead, which answers an <code className="font-mono">sseUrl</code> for
-        progress.
+        workflow lane offers does not arise. Recorded audio goes to the batch plane instead, and which route depends on what you are holding: a FILE goes to{' '}
+        <code className="font-mono">POST /audio/transcription-jobs/transcribe</code> (multipart — the only route on this gateway that accepts audio bytes), a{' '}
+        <code className="font-mono">mediaId</code> to <code className="font-mono">{'POST /agents/{slug}/transcriptions'}</code>. Either answers an{' '}
+        <code className="font-mono">sseUrl</code> for progress.
       </p>
       <p>{SOCKET_RUNTIME_FLOOR}</p>
     </Callout>
@@ -607,8 +622,29 @@ export interface AgentIntegrationProps {
    * `GET /agents/{slug}` reports them. `inputSchema` never declares them, and the gateway names
    * only ONE per refused call — so an example built without them costs a developer a 400 per
    * placeholder. Absent (an older gateway) falls back to a sentence saying so.
+   *
+   * TASK-991 wave 2 — OPTIONAL because the panel can also find them itself. Neither call site
+   * passed this, so the weaker fallback rendered on every published agent even though the value
+   * was already in hand: the gateway stamps `requiredVariables` INTO `compiledConfig` at publish
+   * (`agent.service.ts:2654`), and `compiledConfig` was being passed. {@link requiredVariablesOf}
+   * reads it there when this prop is absent. An explicit prop still wins, so a caller that
+   * fetches the projected summary field keeps working unchanged.
    */
   requiredVariables?: readonly string[] | null;
+}
+
+/**
+ * The prompt placeholders as the PUBLISHED artifact carries them.
+ *
+ * `compiledConfig` is `Record<string, unknown>` on the wire — a frozen publish artifact, not a
+ * typed DTO — so this narrows rather than casts: anything that is not an array of non-empty
+ * strings yields `null` and the panel prints the honest fallback instead of an empty promise.
+ */
+function requiredVariablesOf(compiledConfig?: Record<string, unknown> | null): readonly string[] | null {
+  const declared: unknown = compiledConfig?.requiredVariables;
+  if (!Array.isArray(declared)) return null;
+  const names = (declared as readonly unknown[]).filter((name): name is string => typeof name === 'string' && name.length > 0);
+  return names.length > 0 ? names : null;
 }
 
 /**
@@ -639,12 +675,13 @@ function BrowserAbsence({ task }: { task: IntegrationAgentTask }) {
               <code className="font-mono">{'audio.start({ agentSlug })'}</code> streams the microphone to the gateway, which resolves the agent there.
             </p>
             <p>
-              A recorded file goes to <code className="font-mono">audio/transcription-jobs/transcribe</code>, which still selects a pipeline id rather than an
-              agent slug.
+              A recorded file goes to <code className="font-mono">audio/transcription-jobs/transcribe</code> — the multipart route — which takes the same{' '}
+              <code className="font-mono">agentSlug</code> selector, as does the browser SDK&apos;s file-transcription call. That is a batch job, not an
+              invocation, so it still has no <code className="font-mono">invoke()</code> by slug.
             </p>
           </>
         )}
-        <p>There is no browser call that names this agent, so this panel writes none. The Node and HTTP lanes reach it by slug from a server.</p>
+        <p>There is no browser call that names this agent, so this panel writes none. The Node and Manual lanes reach it by slug from a server.</p>
       </AlertDescription>
     </Alert>
   );
@@ -778,6 +815,9 @@ function PromptVariablesNote({ requiredVariables }: { requiredVariables?: readon
 
 function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSchema, compiledConfig, requiredVariables }: AgentIntegrationProps) {
   const endpoint = AGENT_ENDPOINTS[task];
+  // An explicit prop wins; otherwise read the names off the publish artifact we were already
+  // handed (TASK-991 wave 2 — see `AgentIntegrationProps.requiredVariables`).
+  const promptVariables = requiredVariables ?? requiredVariablesOf(compiledConfig);
   const path = `${endpoint.method} ${endpoint.path.replace('{slug}', slug)}`;
   const snippetTask = snippetTaskOf(task);
   // `inputSchema` governs the INVOCATIONS body. `/speech` and `/transcriptions` take a fixed
@@ -797,10 +837,10 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
   // call — so a developer filling them in by trial and error meets a 400 per placeholder. When
   // `GET /agents/{slug}` carries `requiredVariables`, every name is filled in here at once.
   const exampleBody =
-    requiredVariables && requiredVariables.length > 0
+    promptVariables && promptVariables.length > 0
       ? {
           ...(withContext ?? FLAT_MINIMUM_BODY),
-          variables: Object.fromEntries(requiredVariables.map((name) => [name, '…'])),
+          variables: Object.fromEntries(promptVariables.map((name) => [name, '…'])),
         }
       : withContext;
   // NER shares the route but is one-shot: `?mode=stream` on it is a 400 `MODE_UNSUPPORTED`.
@@ -880,7 +920,7 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
           The <code className="font-mono">{'{ "input": … }'}</code> envelope belongs to the workflow plane; sending it here is a 400 on every call.
         </p>
       </Callout>
-      {invocable ? <PromptVariablesNote requiredVariables={requiredVariables} /> : null}
+      {invocable ? <PromptVariablesNote requiredVariables={promptVariables} /> : null}
       {isStt ? <BatchEntryNote /> : null}
 
       <LaneTabs
