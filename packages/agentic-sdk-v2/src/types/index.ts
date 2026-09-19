@@ -244,6 +244,7 @@ export type {
 export type {
   DnaErasureResult,
   DnaGenerateInput,
+  DnaGenerateJobResponse,
   DnaJobResult,
   DnaJobStatus,
   DnaReport,
@@ -258,6 +259,12 @@ export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, 
 
 // DNA writing-sample ingest types (TASK-974, business plane)
 export type { DnaWritingSampleKind, DnaWritingSample, DnaWritingSamplesIngestInput, DnaIngestJobResponse, DnaIngestJobStatus } from './dna';
+
+// DNA redaction rules (`GET dna-writing-styles/my-style/redaction-rules`; written via DnaUpdateInput.redactionRules)
+export type { DnaRedactionRuleType, DnaRedactionMatchKind, DnaRedactionRule, DnaRedactionRuleSet } from './dna';
+
+// DNA self-service settings (`GET`/`PUT dna-writing-styles/settings`)
+export type { DnaSettings, DnaSettingsUpdateInput } from './dna';
 
 // Prompt Template types
 export type {
