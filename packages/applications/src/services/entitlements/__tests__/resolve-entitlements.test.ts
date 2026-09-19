@@ -2,11 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { TenantPlan } from '@arcaai/domains';
 import { effectivePlan, resolveEntitlements, UNGATED_ENTITLEMENTS } from '../resolve-entitlements';
 import {
+  blendedReqPerMinutePerUser,
   DEFAULT_TENANT_PLAN,
   ENTITLEMENTS_GLOBAL_TENANT_ID,
   ENTITLEMENTS_TENANT_ID,
   GIB,
   PLAN_ENTITLEMENT_DEFAULTS,
+  PLAN_RATE_LIMIT_SIZING,
 } from '../entitlements.constants';
 
 describe('resolveEntitlements', () => {
@@ -58,7 +60,11 @@ describe('resolveEntitlements', () => {
       });
       expect(r.modelTier).toBe('base');
       expect(r.rateLimitTier).toBe('strict');
-      expect(r.rateLimitPerMinute).toBeNull();
+      // TASK-993 OD-1 — every plan now carries an ABSOLUTE ceiling; this used
+      // to be null, which made the `strict` tier's 10/min the whole tenant's
+      // budget. Derived from the matrix rather than restated, for the same
+      // reason the structural caps above are.
+      expect(r.rateLimitPerMinute).toBe(d.rateLimitPerMinute);
       expect(r.limits.maxAsrPipelines).toBe(d.maxAsrPipelines);
     });
 
@@ -71,16 +77,86 @@ describe('resolveEntitlements', () => {
       expect(trial.rateLimitTier).toBe(pro.rateLimitTier);
     });
 
-    it('ENTERPRISE is anchored at ~100 seats with negotiated (unlimited) usage', () => {
+    it('ENTERPRISE carries 50% headroom over the 100-concurrent-user target, with negotiated (unlimited) usage', () => {
       const r = resolveEntitlements(TenantPlan.ENTERPRISE);
-      expect(r.limits.maxUsers).toBe(100);
-      expect(r.limits.maxConcurrentSessions).toBe(100);
+      // TASK-993 OD-4: the target is 100 CONCURRENT users per tenant, so a cap
+      // of exactly 100 fails it — the 101st seat and an overlapping reconnect
+      // are both refused. 150 is the target + 50%.
+      expect(r.limits.maxUsers).toBe(150);
+      expect(r.limits.maxConcurrentSessions).toBe(150);
       expect(r.limits.storageQuotaBytes).toBe(1_000 * GIB);
       // ENTERPRISE usage is negotiated — unlimited by default.
       expect(r.limits.monthlyConsultations).toBeNull();
       expect(r.features.agenticLoop).toBe(true);
       expect(r.modelTier).toBe('full_custom');
       expect(r.rateLimitTier).toBe('relaxed');
+    });
+  });
+
+  /*
+   * TASK-993 OD-1 — every plan now carries an ABSOLUTE `rateLimitPerMinute`
+   * instead of inheriting its named tier's baseline (STARTER 10 / PRO 100 /
+   * ENTERPRISE 300 per minute, for the WHOLE tenant across all routes and all
+   * users). The tier name is unchanged on purpose: it still selects which named
+   * throttler a request rides, and `RATE_LIMIT_TIER_DEFAULTS` is shared with
+   * the rank-5 per-IP lane, so re-pointing it would move limits far outside the
+   * plan matrix.
+   */
+  describe('per-plan absolute rate limit (TASK-993 OD-1)', () => {
+    it('blends the MEASURED active and idle rates the way the ticket reports', () => {
+      // 0.3 x 26.0 + 0.7 x 8.5. The whole platform model rests on this number:
+      // 1,000 users x 13.75 = 13,750 req/min = ~229 req/s.
+      expect(blendedReqPerMinutePerUser()).toBeCloseTo(13.75, 5);
+    });
+
+    it.each([
+      [TenantPlan.STARTER, 5, 250],
+      [TenantPlan.TRIAL, 25, 1_150],
+      [TenantPlan.PRO, 25, 1_150],
+      [TenantPlan.ENTERPRISE, 150, 6_650],
+    ])('%s resolves an absolute tenant-aggregate ceiling of %i seats → %i req/min', (plan, seats, perMinute) => {
+      const r = resolveEntitlements(plan);
+      expect(r.limits.maxUsers).toBe(seats);
+      expect(r.rateLimitPerMinute).toBe(perMinute);
+    });
+
+    /*
+     * The shipped number must clear BOTH worst cases, whichever happens to
+     * bind. Asserting the bounds rather than re-running the formula is the
+     * point: a re-measurement that flips which branch wins must not be able to
+     * ship a ceiling below either one.
+     */
+    it.each([
+      [TenantPlan.STARTER, 5],
+      [TenantPlan.TRIAL, 25],
+      [TenantPlan.PRO, 25],
+      [TenantPlan.ENTERPRISE, 150],
+    ])('%s clears both the blended-model and the all-active worst-case bound', (plan, seats) => {
+      const shipped = resolveEntitlements(plan).rateLimitPerMinute!;
+      // model: realistic 30/70 mix, tripled (the owner's ratified headroom).
+      expect(shipped).toBeGreaterThanOrEqual(seats * blendedReqPerMinutePerUser() * PLAN_RATE_LIMIT_SIZING.HEADROOM);
+      // floor: every seat on the worst measured walk at once, no headroom.
+      expect(shipped).toBeGreaterThanOrEqual(seats * PLAN_RATE_LIMIT_SIZING.MEASURED_WORST_CASE_REQ_PER_MINUTE);
+      // legible in an admin UI.
+      expect(shipped % 50).toBe(0);
+    });
+
+    it('is a real increase on every plan — the old tier baselines were 10 / 100 / 300 per minute', () => {
+      const OLD_TIER_BASELINE = { STARTER: 10, TRIAL: 100, PRO: 100, ENTERPRISE: 300 } as const;
+      for (const [plan, previous] of Object.entries(OLD_TIER_BASELINE)) {
+        expect(resolveEntitlements(plan as TenantPlan).rateLimitPerMinute).toBeGreaterThan(previous);
+      }
+    });
+
+    it('leaves the window to the named tier — an absolute count without a window is the supported shape', () => {
+      for (const plan of [TenantPlan.STARTER, TenantPlan.TRIAL, TenantPlan.PRO, TenantPlan.ENTERPRISE]) {
+        expect(resolveEntitlements(plan).rateLimitWindowMs).toBeNull();
+      }
+    });
+
+    it('a per-tenant override still wins over the plan absolute', () => {
+      const r = resolveEntitlements(TenantPlan.ENTERPRISE, null, { rateLimitPerMinute: 999 });
+      expect(r.rateLimitPerMinute).toBe(999);
     });
   });
 
@@ -135,7 +211,8 @@ describe('resolveEntitlements', () => {
 
     it('a null override inherits the plan concurrency default (does not zero it out)', () => {
       const r = resolveEntitlements(TenantPlan.ENTERPRISE, null, { maxConcurrentSessions: null });
-      expect(r.limits.maxConcurrentSessions).toBe(100);
+      // TASK-993 OD-4 raised the ENTERPRISE anchor from 100 to 150.
+      expect(r.limits.maxConcurrentSessions).toBe(PLAN_ENTITLEMENT_DEFAULTS.ENTERPRISE.maxConcurrentSessions);
     });
 
     it('a null-plan (ungated) tenant has unlimited concurrency', () => {

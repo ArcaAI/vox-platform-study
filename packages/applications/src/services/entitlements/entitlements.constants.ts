@@ -239,14 +239,114 @@ export interface PlanEntitlementValues {
   modelTier: ModelTier;
   rateLimitTier: string;
   /**
-   * an ABSOLUTE per-plan rate limit. Optional and unset across the
-   * seeded matrix on purpose: every seeded plan still expresses its limit
-   * INDIRECTLY, by naming a `rateLimitTier`. These exist so a super admin can
-   * price a plan's throughput directly without minting a new named tier.
+   * The plan's ABSOLUTE rate limit — **a tenant-wide AGGREGATE CEILING, not a
+   * per-user budget** (TASK-993 OD-1/OD-2).
+   *
+   * Set on every plan since TASK-993. It used to be unset everywhere, so each
+   * plan expressed its limit INDIRECTLY through its `rateLimitTier` baseline —
+   * STARTER 10, TRIAL/PRO 100, ENTERPRISE 300 requests per minute. Those
+   * numbers are the whole tenant's budget across every route and every user
+   * (`tiered-throttler.guard.ts` keys a plan-resolved limit `t:<tenantId>`
+   * with NO route component, deliberately), so ENTERPRISE allowed 100 doctors
+   * 3 requests per minute EACH — less than one console screen, which fires
+   * 10-15 TanStack queries on mount.
+   *
+   * {@link PLAN_RATE_LIMIT_SIZING} derives each value. Read that before
+   * changing one.
+   *
+   * **Why an absolute count rather than a new named tier or a re-pointed one.**
+   * `RATE_LIMIT_TIER_DEFAULTS` is shared with the rank-5 per-IP/decorator lane
+   * and with `KNOWN_THROTTLED_ROUTES`, so raising `relaxed` from 300 to 18,000
+   * would also raise every unauthenticated bucket that names it — a blast
+   * radius far outside the plan matrix. Minting a fifth tier would add a
+   * `RateLimitTierName` union member, a `getThrottlers()` entry and two seeded
+   * `GlobalSetting` rows, coupling plan PRICING to a gateway-wide enum. The
+   * column exists for exactly this case (`entitlement.prisma`: "price a plan's
+   * throughput directly, without minting a new named tier for every plan"), the
+   * resolver already plumbs it, and no migration is needed. The plan's
+   * `rateLimitTier` is therefore UNCHANGED: it still selects which named
+   * throttler the request rides.
    */
-  rateLimitPerMinute?: number | null;
+  rateLimitPerMinute: number;
+  /**
+   * The window paired with {@link rateLimitPerMinute}. Left unset on every plan
+   * — the named tier's 60,000 ms window is already the intended one, and a
+   * window set without changing the count it bounds reads to an admin as a
+   * limit change nobody asked for (`resolvePlanRateLimit` reads it only
+   * alongside an absolute count, for the same reason).
+   */
   rateLimitWindowMs?: number | null;
 }
+
+/**
+ * How every {@link PlanEntitlementValues.rateLimitPerMinute} below is derived
+ * (TASK-993 OD-1). Exported so the number and its justification cannot drift
+ * apart, and asserted against the matrix in
+ * `__tests__/resolve-entitlements.test.ts`.
+ *
+ * **Every rate here is MEASURED, not modelled.** Playwright drove the real
+ * admin console against a running gateway and counted gateway requests. The
+ * ticket's first pass sized from an assumed 40 req/min/user, reasoned from
+ * "one screen fires 10-15 TanStack queries" — that figure counts React hook
+ * CALL SITES, and after de-duplication by query key and `staleTime: 30_000` a
+ * client-side navigation costs 1.6 gateway requests, not 10-15. The estimate
+ * was ~3x high in aggregate and, more importantly, missed the term that
+ * dominates: an IDLE parked session still polls.
+ */
+export const PLAN_RATE_LIMIT_SIZING = {
+  /** Measured: a clinically active console user, driving the real console. */
+  MEASURED_ACTIVE_REQ_PER_MINUTE: 26.0,
+  /**
+   * Measured: a session parked on a screen, nobody touching anything —
+   * `refetchInterval` polls alone. 1,000 such sessions offer ~142 req/s on
+   * their own, which is why they cannot be left out of the model.
+   */
+  MEASURED_IDLE_REQ_PER_MINUTE: 8.5,
+  /**
+   * Measured worst case: a walk that never uses client-side navigation, so
+   * every step is a full document load (8.0 gateway requests each).
+   */
+  MEASURED_WORST_CASE_REQ_PER_MINUTE: 44.1,
+  /** Share of a tenant's seats active at once; the rest are parked. */
+  ACTIVE_FRACTION: 0.3,
+  /** Multiplier over the load model (owner decision: 3x, then load-test). */
+  HEADROOM: 3,
+} as const;
+
+/**
+ * The blended per-user rate a 30% active / 70% parked tenant offers:
+ * `0.3 x 26.0 + 0.7 x 8.5 = 13.75 req/min`. Across 1,000 users that is
+ * 13,750 req/min = ~229 req/s platform-wide, and ~1,375 req/min for a
+ * 100-seat tenant before headroom.
+ */
+export const blendedReqPerMinutePerUser = (): number =>
+  PLAN_RATE_LIMIT_SIZING.ACTIVE_FRACTION * PLAN_RATE_LIMIT_SIZING.MEASURED_ACTIVE_REQ_PER_MINUTE +
+  (1 - PLAN_RATE_LIMIT_SIZING.ACTIVE_FRACTION) * PLAN_RATE_LIMIT_SIZING.MEASURED_IDLE_REQ_PER_MINUTE;
+
+/**
+ * A plan's tenant-aggregate ceiling — the LARGER of two independent worst
+ * cases, rounded up to the nearest 50 so the number is legible in an admin UI.
+ * Rounding is always upward, so the shipped value can never sit below either
+ * bound.
+ *
+ *   model : maxUsers x 13.75 blended x 3 headroom
+ *   floor : maxUsers x 44.1  — EVERY seat on the worst measured walk at once,
+ *           with no headroom at all
+ *
+ * The floor currently binds, by 7% (44.1 vs 13.75 x 3 = 41.25). That the two
+ * framings land within 7% of each other is the useful result: a realistic mix
+ * with triple headroom and a pathological all-active document-load storm want
+ * the same ceiling. The `max` is kept rather than collapsed to the floor
+ * because which branch binds is an empirical fact that a re-measurement can
+ * flip — and because the floor is what makes the number safe on a 5-seat
+ * plan, where "30% of seats are active" is a law-of-large-numbers assumption
+ * that simply does not hold.
+ */
+const planRateLimitPerMinute = (maxUsers: number): number => {
+  const fromModel = maxUsers * blendedReqPerMinutePerUser() * PLAN_RATE_LIMIT_SIZING.HEADROOM;
+  const fromWorstCase = maxUsers * PLAN_RATE_LIMIT_SIZING.MEASURED_WORST_CASE_REQ_PER_MINUTE;
+  return Math.ceil(Math.max(fromModel, fromWorstCase) / 50) * 50;
+};
 
 /** PRO baseline — reused verbatim for TRIAL (Q4: trial = 1-week PRO experience). */
 const PRO_VALUES: PlanEntitlementValues = {
@@ -278,6 +378,9 @@ const PRO_VALUES: PlanEntitlementValues = {
   featureAgenticLoop: true,
   modelTier: 'full',
   rateLimitTier: 'default',
+  // 25 seats -> 1,150/min. Replaces the `default` tier's 100/min, which gave
+  // 25 doctors 4 requests per minute each.
+  rateLimitPerMinute: planRateLimitPerMinute(25),
 };
 
 export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues> = {
@@ -319,12 +422,28 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     featurePaletteStt: true,
     featureAgenticLoop: false,
     modelTier: 'base',
+    // The tier NAME is unchanged — it still selects the named throttler — but
+    // the plan's own ceiling below now supplies the count.
     rateLimitTier: 'strict',
+    // 5 seats -> 250/min. Replaces the `strict` tier's 10/min, i.e. 2 requests
+    // per minute per seat — a single measured document load is 8.0 requests, so
+    // the old ceiling could not open one screen.
+    rateLimitPerMinute: planRateLimitPerMinute(5),
   },
   TRIAL: { ...PRO_VALUES },
   PRO: { ...PRO_VALUES },
   ENTERPRISE: {
-    maxUsers: 100,
+    // TASK-993 OD-4 — 150, not 100. The platform target is 100 CONCURRENT
+    // users per tenant, and a seat cap sitting exactly ON the target fails it:
+    // the 101st user is refused. Seats and concurrency are also not the same
+    // population — a tenant fielding 100 concurrent doctors provisions
+    // part-timers, locums, admins and service users beyond them.
+    //
+    // 50% headroom rather than the 3x applied to the rate limits below: a seat
+    // count is a priced COMMERCIAL dimension, and tripling it to 300 would give
+    // away 200 unpriced seats. The rate limit is a runaway guard, which is why
+    // it gets the larger multiplier.
+    maxUsers: 150,
     maxDepartments: 40,
     maxPromptTemplates: 300,
     maxAsrPipelines: 20,
@@ -332,8 +451,11 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     maxWorkflowDefinitions: 20,
     maxAiProviderConnections: null,
     storageQuotaBytes: 1_000 * GIB,
-    // ENTERPRISE ≈ 100 concurrent doctors.
-    maxConcurrentSessions: 100,
+    // Tracks `maxUsers` (the existing convention: concurrency is anchored to
+    // the seat cap). 150 also absorbs the reconnect storm recorded in the
+    // ticket §2.12 — 341 reconnects against 33 sessions on 2026-09-18 — where a
+    // dropped stream transiently double-counts a session that is still open.
+    maxConcurrentSessions: 150,
     // RATIFIED 2026-08-08: ENTERPRISE is NEGOTIATED — usage
     // unlimited by default; structural caps stay finite on purpose.
     monthlyConsultations: null,
@@ -350,5 +472,12 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     featureAgenticLoop: true,
     modelTier: 'full_custom',
     rateLimitTier: 'relaxed',
+    // 150 seats -> 6,650/min. Replaces the `relaxed` tier's 300/min — 3
+    // requests per minute per doctor, shared with every machine integration on
+    // the tenant, and below the 8.5/min an IDLE parked session already spends.
+    // At the literal 100-user target the model alone gives 4,125/min; this plan
+    // lands higher because its seat cap is 150 (OD-4) and the all-active
+    // worst-case floor binds above the model.
+    rateLimitPerMinute: planRateLimitPerMinute(150),
   },
 };

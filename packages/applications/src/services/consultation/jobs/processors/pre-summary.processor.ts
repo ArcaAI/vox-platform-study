@@ -28,6 +28,7 @@ import {
 import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition } from '../../visit-type/visit-type.service';
 import { readRecordedVisitType } from '../../consultation/open-markers';
+import { QUEUE_CONCURRENCY } from '../../../baseServices/redis/queue-concurrency';
 
 // boundary (owner decision,: KEPT,
 // un-gated, as an explicitly non-signable helper generator — never had a
@@ -37,7 +38,10 @@ import { readRecordedVisitType } from '../../consultation/open-markers';
 // reach `SummaryService.approveSummary` — confirmed by
 // `jobs/processors/__tests__/kept-generators-signability.task732.test.ts`.
 // Becomes the "pre-summary" half of a future standalone v1-compat feature.
-@Processor(JobQueue.GeneratePreSummary)
+// TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
+// ran at bullmq's default of 1 because no `@Processor` passed options; the
+// number, and the Prisma-pool budget it fits inside, live in one table.
+@Processor(JobQueue.GeneratePreSummary, { concurrency: QUEUE_CONCURRENCY[JobQueue.GeneratePreSummary] })
 export class PreSummaryProcessor extends WorkerHost {
   private readonly logger = new Logger(PreSummaryProcessor.name);
   private readonly textServiceUrl: string;

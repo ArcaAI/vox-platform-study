@@ -17,6 +17,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IUsageLedgerService, UsageIdempotencyKey } from '../usageLedger';
+import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
 
 /**
  * The harness knowledge-ingest path dense-embeds through the SELF-HOSTED
@@ -62,7 +63,10 @@ export interface IngestKnowledgeDocumentResult {
  * ingested (`ingestedAt` + `chunkCount`). A harness 503 propagates so BullMQ
  * retries the job.
  */
-@Processor(JobQueue.IngestKnowledgeDocument)
+// TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
+// ran at bullmq's default of 1 because no `@Processor` passed options; the
+// number, and the Prisma-pool budget it fits inside, live in one table.
+@Processor(JobQueue.IngestKnowledgeDocument, { concurrency: QUEUE_CONCURRENCY[JobQueue.IngestKnowledgeDocument] })
 export class IngestKnowledgeDocumentProcessor extends WorkerHost {
   private readonly logger = new Logger(IngestKnowledgeDocumentProcessor.name);
 
