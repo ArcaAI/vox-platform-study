@@ -7,6 +7,7 @@ import {
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
+import { gatewayKeepAliveAgents } from '../../common';
 import { TextCompatController } from './text-compat.controller';
 import { TextCompatTemplateService } from './text-compat-template.service';
 
@@ -20,9 +21,12 @@ import { TextCompatTemplateService } from './text-compat-template.service';
  */
 @Module({
   imports: [
+    // TASK-993 lane C — keepAlive pooling shared with `streaming.module.ts` (both
+    // call TEXT_URL); see `common/gateway-http-agent.ts` for the sizing rationale.
     HttpModule.register({
       timeout: 120_000,
       maxRedirects: 3,
+      ...gatewayKeepAliveAgents,
     }),
     HarnessPolicyServiceModule,
     // Real tenant Department → governed instruction-template resolution.
