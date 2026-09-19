@@ -63,7 +63,19 @@ class TestTheFloors:
         for floor in (USER_LANE_FLOOR, JUDGE_LANE_FLOOR):
             assert floor.half_open_max_calls is None
             assert floor.reset_timeout_s is None
-            assert floor.count_rate_limits is True
+
+    def test_a_vendor_rate_limit_does_not_count_toward_the_breaker_by_default(self):
+        """TASK-993 D-5. This used to assert `True` alongside the nullables above,
+        as another "preserve pre-wiring behaviour" value — and it was, because
+        nothing ever passed `record_failure(is_rate_limit=True)`, so the setting
+        was unobservable. The request path classifies a vendor 429 now, so the
+        default is a real choice: a throttle is evidence about our rate, not the
+        provider's health, and a 30s blanket open is worse than the seconds the
+        vendor asked for. An operator restores the old behaviour with
+        `countRateLimits` on the runtime profile."""
+        for floor in (USER_LANE_FLOOR, JUDGE_LANE_FLOOR):
+            assert floor.count_rate_limits is False
+        assert USER_LANE_FLOOR.merged({"count_rate_limits": True}).count_rate_limits is True
 
 
 class TestMergingOverTheFloor:
