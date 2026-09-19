@@ -62,7 +62,9 @@ export function AgentPublishDialog({ open, onOpenChange, onConfirm, confirming, 
               isActive={published.isActive}
               inputSchema={published.inputSchema}
               /* TASK-971 FU-1 — the instruction's `trigger.*` bindings, which `inputSchema` never
-                 declares and the invocation still requires. */
+                 declares and the invocation still requires. TASK-991 wave 2: it also carries the
+                 publish-stamped `requiredVariables`, which is where the panel reads the prompt
+                 placeholders from — so this one prop covers both. */
               compiledConfig={published.compiledConfig}
             />
           </div>
