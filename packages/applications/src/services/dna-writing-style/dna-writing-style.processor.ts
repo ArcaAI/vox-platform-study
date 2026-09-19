@@ -254,12 +254,12 @@ export class DnaWritingStyleProcessor extends WorkerHost {
           sourceContextItemIds = sourceIds;
         }
       } else {
-        const contextItems = await this.contextItemRepository.findAll({
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          filters: { doctorId } as any,
-          sort: [{ createdAt: 'desc' }],
-          limit: maxSamples,
-        });
+        // The doctor lives on the parent consultation, NOT on the context item, and the
+        // type bound has to ride the same query as the row budget — a top-`maxSamples`
+        // slice of everything the doctor ever produced is transcripts and audio, so
+        // filtering to summaries afterwards would leave an empty corpus. Both bounds are
+        // the repository's (`findFinalSummariesByDoctor`); this call is now type-checked.
+        const contextItems = await this.contextItemRepository.findFinalSummariesByDoctor(doctorId, maxSamples);
 
         if (!contextItems || contextItems.length === 0) {
           this.jobService.notifyFailed(job.data.jobId, 'No text samples available');
@@ -267,7 +267,8 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         }
 
         // Corpus filter:
-        //   1. Only RAW_SUMMARY or MODIFIED_SUMMARY (final summaries).
+        //   1. Only RAW_SUMMARY or MODIFIED_SUMMARY (final summaries) — now enforced by
+        //      the query above; kept here as a cheap restatement of the rule.
         //   2. Only items with at least one ContextItemVersion whose
         //      changeReason is 'approved' (see SummaryService.approveSummary).
         // This prevents the DNA writing-style model from learning from
