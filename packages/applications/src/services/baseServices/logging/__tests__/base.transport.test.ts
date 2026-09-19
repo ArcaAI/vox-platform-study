@@ -243,9 +243,9 @@ describe('BaseTransport', () => {
 
       expect(log).toMatchObject({
         level: 'info',
-        msg: 'Test message',
-        time: '2024-01-15T10:30:00.000Z',
-        timestamp: 1705315800000,
+        message: 'Test message',
+        timestamp: '2024-01-15T10:30:00.000Z',
+        timestampMs: 1705315800000,
       });
     });
 
@@ -271,8 +271,8 @@ describe('BaseTransport', () => {
 
       const log = transport.testToStructuredLog(entry);
 
-      expect(log.trace_id).toBe('abc123');
-      expect(log.span_id).toBe('def456');
+      expect(log.traceId).toBe('abc123');
+      expect(log.spanId).toBe('def456');
     });
 
     it('should include request and user context', () => {
@@ -286,9 +286,9 @@ describe('BaseTransport', () => {
 
       const log = transport.testToStructuredLog(entry);
 
-      expect(log.request_id).toBe('req-123');
-      expect(log.user_id).toBe('user-456');
-      expect(log.tenant_id).toBe('tenant-789');
+      expect(log.requestId).toBe('req-123');
+      expect(log.userId).toBe('user-456');
+      expect(log.tenantId).toBe('tenant-789');
     });
 
     it('should include service info', () => {
@@ -350,7 +350,7 @@ describe('BaseTransport', () => {
       const log = transport.testToStructuredLog(entry);
 
       // Should not have any extra keys from empty meta
-      const expectedKeys = ['level', 'msg', 'time', 'timestamp'];
+      const expectedKeys = ['level', 'message', 'timestamp', 'timestampMs'];
       expect(Object.keys(log).sort()).toEqual(expectedKeys.sort());
     });
   });

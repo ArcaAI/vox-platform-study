@@ -133,13 +133,13 @@ describe('ConsoleTransport', () => {
 
       const output = JSON.parse((stdoutWriteSpy.mock.calls[0][0] as string).trim());
       expect(output.level).toBe('info');
-      expect(output.msg).toBe('Test message');
+      expect(output.message).toBe('Test message');
       expect(output.context).toBe('TestService');
-      expect(output.trace_id).toBe('trace-123');
-      expect(output.span_id).toBe('span-456');
-      expect(output.request_id).toBe('req-789');
-      expect(output.user_id).toBe('user-001');
-      expect(output.tenant_id).toBe('tenant-002');
+      expect(output.traceId).toBe('trace-123');
+      expect(output.spanId).toBe('span-456');
+      expect(output.requestId).toBe('req-789');
+      expect(output.userId).toBe('user-001');
+      expect(output.tenantId).toBe('tenant-002');
       expect(output.service).toBe('api');
       expect(output.version).toBe('1.0.0');
       expect(output.env).toBe('test');

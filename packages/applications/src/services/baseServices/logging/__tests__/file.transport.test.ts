@@ -183,10 +183,10 @@ describe('FileTransport', () => {
 
       const writtenData = mockWriteStream.write.mock.calls[0][0];
       const parsed = JSON.parse(writtenData.trim());
-      expect(parsed.msg).toBe('Test');
+      expect(parsed.message).toBe('Test');
       expect(parsed.context).toBe('TestService');
-      expect(parsed.trace_id).toBe('trace-123');
-      expect(parsed.request_id).toBe('req-456');
+      expect(parsed.traceId).toBe('trace-123');
+      expect(parsed.requestId).toBe('req-456');
     });
 
     it('should write error logs to both combined and error streams', async () => {

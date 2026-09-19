@@ -254,19 +254,24 @@ export class LokiTransport extends BaseTransport {
    * This includes high-cardinality data as structured metadata
    */
   private formatLogLine(entry: LogEntry): string {
+    // Same key contract as `BaseTransport.toStructuredLog` — see the note
+    // there. A line pushed straight to Loki must be queryable by the same
+    // `| json` pipeline as the stdout line Alloy ships, or the dashboards
+    // work for one transport and silently not the other.
     const log: Record<string, unknown> = {
-      msg: entry.message,
-      ts: entry.timestamp,
+      level: entry.level,
+      message: entry.message,
+      timestamp: entry.timestamp,
     };
 
     // Add trace context (high cardinality - goes in log line)
-    if (entry.traceId) log.trace_id = entry.traceId;
-    if (entry.spanId) log.span_id = entry.spanId;
-    if (entry.requestId) log.request_id = entry.requestId;
+    if (entry.traceId) log.traceId = entry.traceId;
+    if (entry.spanId) log.spanId = entry.spanId;
+    if (entry.requestId) log.requestId = entry.requestId;
 
     // Add user context (high cardinality)
-    if (entry.userId) log.user_id = entry.userId;
-    if (entry.tenantId) log.tenant_id = entry.tenantId;
+    if (entry.userId) log.userId = entry.userId;
+    if (entry.tenantId) log.tenantId = entry.tenantId;
 
     // Add host info
     if (entry.hostname) log.hostname = entry.hostname;
