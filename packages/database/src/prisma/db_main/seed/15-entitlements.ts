@@ -214,7 +214,32 @@ interface PlanEntitlementSeed {
   featureAgenticLoop: boolean;
   modelTier: string;
   rateLimitTier: string;
+  // TASK-993 OD-1 — the plan's ABSOLUTE rate limit: a tenant-wide AGGREGATE
+  // CEILING, not a per-user budget. Before this ticket every plan left it NULL
+  // and expressed its limit indirectly through `rateLimitTier`, whose baseline
+  // is the whole tenant's budget across all routes and all users — so
+  // ENTERPRISE allowed 100 doctors 3 requests per minute each. Derived as
+  // `maxUsers x 40 req/min/user x 3 headroom`; the derivation, and why an
+  // absolute count beats a new or re-pointed named tier, live on
+  // `PLAN_RATE_LIMIT_SIZING` in `entitlements.constants.ts`. Kept in sync with
+  // that file's `PLAN_ENTITLEMENT_DEFAULTS` by `plan-matrix-parity.test.ts`.
+  rateLimitPerMinute: number;
 }
+
+/**
+ * The TASK-993 OD-1 sizing formula, duplicated from `PLAN_RATE_LIMIT_SIZING` in
+ * `entitlements.constants.ts` for the same reason the matrix itself is
+ * duplicated: the database package must not depend on `@arcaai/applications`.
+ * `plan-matrix-parity.test.ts` pins the two together, value for value.
+ *
+ * Both inputs are MEASURED against the real admin console, not modelled:
+ *   model : maxUsers x (0.3 x 26.0 active + 0.7 x 8.5 idle) x 3 headroom
+ *   floor : maxUsers x 44.1 — every seat on the worst measured walk, no headroom
+ * The larger wins, rounded up to the nearest 50. Read the constants file for
+ * why both bounds exist and which one currently binds.
+ */
+const planRateLimitPerMinute = (maxUsers: number): number =>
+  Math.ceil(Math.max(maxUsers * (0.3 * 26.0 + 0.7 * 8.5) * 3, maxUsers * 44.1) / 50) * 50;
 
 // TRIAL is a 1-week PRO-entitled window (Q4), so it shares PRO's values.
 const PRO_VALUES = {
@@ -243,6 +268,9 @@ const PRO_VALUES = {
   featureAgenticLoop: true,
   modelTier: 'full',
   rateLimitTier: 'default',
+  // 25 seats -> 1,150/min. Replaces the `default` tier's 100/min for the
+  // WHOLE tenant.
+  rateLimitPerMinute: planRateLimitPerMinute(25),
 };
 
 /**
@@ -305,14 +333,23 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     featurePaletteStt: true,
     featureAgenticLoop: false,
     modelTier: 'base',
+    // The tier NAME is unchanged — it still selects the named throttler — but
+    // the plan's own ceiling below now supplies the count.
     rateLimitTier: 'strict',
+    // 5 seats -> 250/min. Replaces the `strict` tier's 10/min, i.e. 2 requests
+    // per minute per seat — a single measured document load is 8.0 requests.
+    rateLimitPerMinute: planRateLimitPerMinute(5),
   },
   { id: SEED_PLAN_ENTITLEMENT_IDS.TRIAL, plan: TenantPlan.TRIAL, ...PRO_VALUES },
   { id: SEED_PLAN_ENTITLEMENT_IDS.PRO, plan: TenantPlan.PRO, ...PRO_VALUES },
   {
     id: SEED_PLAN_ENTITLEMENT_IDS.ENTERPRISE,
     plan: TenantPlan.ENTERPRISE,
-    maxUsers: 100,
+    // TASK-993 OD-4 — 150, not 100. The platform target is 100 CONCURRENT
+    // users per tenant, so a seat cap sitting exactly ON it refuses the 101st.
+    // 50% headroom rather than the 3x used for the rate limit below: a seat
+    // count is a priced commercial dimension, a rate limit is a runaway guard.
+    maxUsers: 150,
     maxDepartments: 40,
     maxPromptTemplates: 300,
     maxAsrPipelines: 20,
@@ -320,7 +357,10 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     maxWorkflowDefinitions: 20,
     maxAiProviderConnections: null,
     storageQuotaBytes: BigInt(1_000 * GIB),
-    maxConcurrentSessions: 100,
+    // Tracks `maxUsers`. 150 also absorbs the reconnect storm recorded in
+    // TASK-993 §2.12 (341 reconnects against 33 sessions), where a dropped
+    // stream transiently double-counts a session that is still open.
+    maxConcurrentSessions: 150,
     // RATIFIED 2026-08-08: ENTERPRISE is NEGOTIATED — usage is
     // unlimited by default; a signed contract sets tenant-scoped overrides.
     // Structural caps (seats/departments/storage) stay finite on purpose.
@@ -339,6 +379,10 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     featureAgenticLoop: true,
     modelTier: 'full_custom',
     rateLimitTier: 'relaxed',
+    // 150 seats -> 6,650/min. Replaces the `relaxed` tier's 300/min — 3
+    // requests per minute per doctor, below the 8.5/min a measured IDLE parked
+    // session already spends, and shared with every machine integration.
+    rateLimitPerMinute: planRateLimitPerMinute(150),
   },
 ];
 

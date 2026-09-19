@@ -96,14 +96,20 @@ export const BOOTSTRAP_ENV_SETTINGS: SettingDescriptor[] = [
     ),
     sampleValue: 'postgresql://postgres:postgres@localhost:5432/hope',
   },
+  // TASK-993 lane D: 5 → 15. The old value predates the BullMQ workers that now
+  // share this pool with the request handlers inside the same gateway process,
+  // and it is the value that applies IN THE CLUSTER, because the deployment repo
+  // sets this variable nowhere. Sizing, and both connection budgets, are in the
+  // description below and derived in
+  // `packages/applications/src/services/baseServices/redis/queue-concurrency.ts`.
   envFloor(
     'prisma.pgMax',
     'number',
     'Bootstrap',
     'Prisma pool size',
-    'Driver-adapter connection-pool size. The Prisma v6 `connection_limit` URL parameter is ignored. Budget rule: `pods × PRISMA_PG_MAX ≤ 0.7 × PG max_connections`. A non-positive-integer value is a hard error, not a silent fallback.',
+    'Driver-adapter connection-pool size, PER PrismaClient. The Prisma v6 `connection_limit` URL parameter is ignored. A non-positive-integer value is a hard error, not a silent fallback. Budget rule: `pods × 2 × PRISMA_PG_MAX ≤ 0.7 × PG max_connections` — the ×2 is not a typo, because in env mode `getExtendedPrismaClient()` and `getPlatformAdminPrismaClient_Unscoped()` each build their own pg pool of this size. Demand per gateway pod at the MEASURED 10-tenant × 100-user load (229 req/s platform-wide, from a 30/70 active/parked mix at 26.0 and 8.5 req/min): 8 slots reserved for in-flight HTTP (76 req/s/pod × 6 ms DB time × 3 spike = 1.4, reserved high because a document load is 8.0 correlated requests and a handler that cannot get a connection in 5 s fails) plus 18 DB-bound BullMQ worker slots at a 0.35 duty cycle = 6.3, total 14.3. At 15 the cluster footprint is 2 × 15 × 3 api pods = 90 against a 140 budget (max_connections 200), and a single local gateway is 30 against a 70 budget (max_connections 100).',
     'open-to-default',
-    5,
+    15,
   ),
 
   // ── Reaching Redis ────────────────────────────────────────────────────────

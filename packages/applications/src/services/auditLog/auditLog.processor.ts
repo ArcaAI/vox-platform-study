@@ -7,8 +7,12 @@ import { ClsService } from 'nestjs-cls';
 import { createWorkerSession } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { AuditLogEncryptionService } from './auditLog-encryption.service';
+import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
 
-@Processor(JobQueue.AuditLog)
+// TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
+// ran at bullmq's default of 1 because no `@Processor` passed options; the
+// number, and the Prisma-pool budget it fits inside, live in one table.
+@Processor(JobQueue.AuditLog, { concurrency: QUEUE_CONCURRENCY[JobQueue.AuditLog] })
 export class AuditLogProcessor extends WorkerHost {
   private readonly logger = new Logger(AuditLogProcessor.name);
 
