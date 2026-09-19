@@ -6,4 +6,5 @@ export const playgroundDnaKeys = {
   versions: (reportId: string) => [...playgroundDnaKeys.root, 'versions', reportId] as const,
   settings: () => [...playgroundDnaKeys.root, 'settings'] as const,
   job: (jobId: string) => [...playgroundDnaKeys.root, 'job', jobId] as const,
+  ingestJob: (jobId: string) => [...playgroundDnaKeys.root, 'ingest-job', jobId] as const,
 };

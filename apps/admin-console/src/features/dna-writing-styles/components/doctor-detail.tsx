@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { IconDna } from '@tabler/icons-react';
+import { IconDna, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -11,6 +11,7 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { CopyButton } from '@/shared/copy-button';
 import { NameWithId } from '@/shared/data/name-with-id';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
@@ -19,11 +20,23 @@ import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
-import { useDnaVersions, useDoctorReport, useUpdateDnaReport } from '../api';
-import type { DnaReport } from '../api';
+import { useDnaVersions, useDoctorReport, useResetDoctorDnaProfile, useUpdateDnaReport } from '../api';
+import type { DnaErasureResult, DnaReport } from '../api';
 
 function isOccError(error: unknown): boolean {
   return error instanceof GatewayError && (error.isVersionConflict || error.isMissingPrecondition);
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/** Idempotent route: zero counts mean there was nothing stored, still a success (mirrors the playground feature's own copy — features never import each other, rule 13). */
+function erasureSummary(result: DnaErasureResult): string {
+  if (result.deletedReports === 0 && result.deletedVersions === 0) {
+    return 'Nothing to erase — no stored DNA profile';
+  }
+  return `Erased ${plural(result.deletedReports, 'report')} and ${plural(result.deletedVersions, 'version')}`;
 }
 
 /** GET :reportId/versions — the DnaVersion history, newest first (frame 33). */
@@ -187,12 +200,34 @@ export function DoctorDetailDrawer({
   const open = doctorId !== null;
   const report = useDoctorReport(doctorId ?? '');
   const [editing, setEditing] = useState(false);
+  const [confirmingErase, setConfirmingErase] = useState(false);
+  const eraseProfile = useResetDoctorDnaProfile();
 
   const payload = report.data?.data ?? null;
   // ETag preferred; the DTO's OCC `version` field backs it up (rule 05: the
   // ETagInterceptor mirrors `_version`, so both carry the same token).
   const etag = report.data?.etag ?? (payload ? `"${payload.version}"` : null);
   const isNotFound = report.error instanceof GatewayError && report.error.isNotFound;
+
+  /**
+   * DELETE admin/dna-writing-styles/doctor/:doctorId — soft-deletes every report the doctor
+   * owns. The drawer closes on success: the erased doctor's report is gone, so staying open
+   * would just race the invalidated query into the 404 empty state underneath the user.
+   */
+  function handleErase() {
+    if (!doctorId) return;
+    eraseProfile.mutate(doctorId, {
+      onSuccess: (result) => {
+        setConfirmingErase(false);
+        toast.success(erasureSummary(result));
+        onOpenChange(false);
+      },
+      onError: (error) => {
+        setConfirmingErase(false);
+        toast.error(error instanceof GatewayError ? error.message : "Could not erase the doctor's DNA profile.");
+      },
+    });
+  }
 
   let body: ReactNode = null;
   if (!open) {
@@ -260,23 +295,50 @@ export function DoctorDetailDrawer({
   }
 
   return (
-    <DetailDrawer
-      open={open}
-      onOpenChange={onOpenChange}
-      size="lg"
-      title={payload ? (payload.doctorUsername ?? payload.doctorId) : 'Doctor detail'}
-      badges={payload ? <ResourceStatusBadge status={payload.resourceStatus} /> : null}
-      meta={payload ? <DoctorMeta report={payload} /> : null}
-      footer={
-        payload ? (
-          <Button variant="outline" size="sm" onClick={onGenerate}>
-            <IconDna aria-hidden />
-            Generate report
-          </Button>
-        ) : null
-      }
-    >
-      {body}
-    </DetailDrawer>
+    <>
+      <DetailDrawer
+        open={open}
+        onOpenChange={onOpenChange}
+        size="lg"
+        title={payload ? (payload.doctorUsername ?? payload.doctorId) : 'Doctor detail'}
+        badges={payload ? <ResourceStatusBadge status={payload.resourceStatus} /> : null}
+        meta={payload ? <DoctorMeta report={payload} /> : null}
+        footer={
+          payload ? (
+            <div className="flex w-full items-center justify-between gap-2">
+              <Button variant="destructive" size="sm" onClick={() => setConfirmingErase(true)} disabled={eraseProfile.isPending}>
+                {eraseProfile.isPending ? <Spinner /> : <IconTrash aria-hidden />}
+                Erase profile
+              </Button>
+              <Button variant="outline" size="sm" onClick={onGenerate}>
+                <IconDna aria-hidden />
+                Generate report
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {body}
+      </DetailDrawer>
+
+      <ConfirmDialog
+        open={confirmingErase}
+        onOpenChange={(nextOpen) => {
+          if (!eraseProfile.isPending) setConfirmingErase(nextOpen);
+        }}
+        title="Erase this doctor's DNA profile"
+        description={
+          <>
+            This permanently erases <span className="text-foreground font-medium">every report and version</span> this doctor's writing-style
+            profile holds — not only the one shown here. It cannot be undone. Use this for offboarding or a compliance request — the doctor's own
+            opt-out toggle is unaffected, so if DNA learning is still enabled for them, a fresh profile will be built from future notes.
+          </>
+        }
+        confirmLabel="Erase profile"
+        destructive
+        isPending={eraseProfile.isPending}
+        onConfirm={handleErase}
+      />
+    </>
   );
 }

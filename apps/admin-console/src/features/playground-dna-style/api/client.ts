@@ -10,12 +10,15 @@ import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, ver
 import type { WithEtag } from '@/shared/api';
 import type {
   DnaErasureResult,
+  DnaIngestJobResponse,
+  DnaIngestJobStatus,
   DnaJob,
   DnaJobStatus,
   DnaReport,
   DnaSettings,
   DnaVersion,
   GenerateDnaStyleRequest,
+  IngestDnaWritingSamplesRequest,
   RedactionRuleSet,
   UpdateDnaSettingsRequest,
   UpdateMyReportRequest,
@@ -125,4 +128,21 @@ export function getDnaJobStatus(jobId: string): Promise<DnaJobStatus> {
 /** Gateway-relative SSE path for a job — pair with scope `dna_job:<jobId>`. */
 export function dnaJobStreamPath(jobId: string): string {
   return `${BASE}/jobs/${encodeURIComponent(jobId)}/stream`;
+}
+
+/**
+ * TASK-974 §4.1 (F-6) — submits a time-ordered batch of writing samples for analysis. 202:
+ * the job is queued, not run. The caller (self) is derived from CLS unless `clinicianUserId`
+ * names another clinician of the tenant (SUPER_ADMIN/TENANT_ADMIN only, gateway-enforced).
+ */
+export function ingestDnaWritingSamples(body: IngestDnaWritingSamplesRequest): Promise<DnaIngestJobResponse> {
+  return postJson(`${BASE}/ingest`, body);
+}
+
+/**
+ * No SSE on this route (unlike `getDnaJobStatus` above) — polling is the only track mechanism,
+ * per the `useDnaWritingStyle` SDK hook this mirrors (README §4.1).
+ */
+export function getDnaIngestJobStatus(jobId: string): Promise<DnaIngestJobStatus> {
+  return getJson(`${BASE}/ingest/jobs/${encodeURIComponent(jobId)}`);
 }

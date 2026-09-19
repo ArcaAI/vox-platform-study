@@ -53,7 +53,7 @@ describe('TASK-949 L2 — task-correct editable surface', () => {
     const { container } = renderNode(agentNode('gen-summary'), [LLM_AGENT]);
     expect(container.textContent).toContain('Carry Forward');
     expect(container.textContent).toContain('Temperature');
-    expect(container.textContent).toContain('Dna');
+    expect(container.textContent).toContain('DNA');
     expect(container.textContent).toContain('Document Template Slug');
   });
 
@@ -61,7 +61,7 @@ describe('TASK-949 L2 — task-correct editable surface', () => {
     const { container } = renderNode(agentNode('realtime-transcription'), [ASR_AGENT]);
     expect(container.textContent).not.toContain('Carry Forward');
     expect(container.textContent).not.toContain('Temperature');
-    expect(container.textContent).not.toContain('Dna');
+    expect(container.textContent).not.toContain('DNA');
     expect(container.textContent).not.toContain('Document Template Slug');
   });
 
