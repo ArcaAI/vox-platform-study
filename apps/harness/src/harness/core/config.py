@@ -199,15 +199,25 @@ class RetrievalConfig(BaseSettings):
     # (`provider_credentials.apply_vector_credential`) so ingest, retrieval and
     # delete can never disagree about which collection a tenant's vectors are in.
     collection: str = "knowledge_chunks"
-    # ── The embeddings endpoint: platform floor, tenant override ────
+    # ── The embeddings endpoint: PLATFORM-FIXED, no tenant override ────
     #
-    # Same two-tier shape as `qdrant_url` / `qdrant_api_key` above, and for the
-    # same reasons. These three fields DESCRIBE THE ENDPOINT THE PLATFORM RUNS —
-    # one self-hosted OpenAI-compatible server (LM Studio), whose address is an
-    # `env`-tier transport value by rule 09 §Configuration Tiers. A TENANT that
-    # brings its own embeddings account overrides all three from its OWN
-    # `AiProviderConnection(service='embeddings', provider='openai')` row, which
-    # is the tenant-first rule satisfied, not bypassed.
+    # NOT the two-tier shape of `qdrant_url` / `qdrant_api_key` above. TASK-991
+    # OD-4 (owner decision, 2026-09-19) fixes the embeddings ENDPOINT together
+    # with the model: a tenant may NOT point embeddings at its own account.
+    # These fields DESCRIBE THE ENDPOINT THE PLATFORM RUNS — one self-hosted
+    # OpenAI-compatible server — whose address is an `env`-tier transport value
+    # by rule 09 §Configuration Tiers, and the only row that may override it is
+    # the SYSTEM `AiProviderConnection(service='embeddings',
+    # provider='tei-embed')` one a platform admin writes.
+    #
+    # That IS a deliberate, owner-approved narrowing of the tenant-first rule
+    # (`00-project-context.md` admits exactly this kind of documented
+    # exception) — not a violation to be "fixed" back. The reason is in
+    # `provider_credentials.EMBEDDINGS_PLATFORM_PROVIDER`: the model and the
+    # stored vectors are one coupled artifact, and a platform model id sent to a
+    # tenant's own account fails at RETRIEVAL time, long after ingest wrote the
+    # vectors. The gateway refuses the tenant-tier `embeddings` write, so the
+    # override this comment used to describe can no longer even be stored.
     #
     # `embeddings_model` and `embeddings_dim` are ONE coupled description: the dim
     # MUST match the loaded model AND the Qdrant collection. They nevertheless
@@ -225,9 +235,12 @@ class RetrievalConfig(BaseSettings):
     # §"No hardcoded configuration" is explicit that a model id is CONFIG and is
     # not an env var, and rule 00 names "a `pydantic-settings` field with a real
     # default" as the exact shape of the violation. Its home is
-    # `AiProviderConnection.extraJson.model` — the TENANT's on its own
-    # `embeddings:openai` row, the PLATFORM's on the SYSTEM
-    # `embeddings:tei-embed` row the seed writes (`BAAI/bge-m3`).
+    # `AiProviderConnection.extraJson.model`, and since TASK-991 OD-3 that is
+    # ONE row for every tenant: the SYSTEM `embeddings:tei-embed` row the seed
+    # writes (`BAAI/bge-m3`). A tenant `embeddings:openai` row is no longer read
+    # — and no longer writable — so it cannot select a different model here.
+    # OD-3 is CONFIG staying config, not a value moving into code: the platform
+    # admin still chooses it, on the SYSTEM row.
     #
     # The env path is CLOSED STRUCTURALLY (dead `validation_alias`;
     # `populate_by_name` is OFF for this class), like the two credentials below,

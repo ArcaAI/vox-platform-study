@@ -11,6 +11,14 @@ derive different values:
 | D-1b | `vector:qdrant` -> `extraJson.collection` written, never read | the tenant's collection PREFIX reaches the Qdrant store |
 | D-1c | the whole `embeddings` connection written, never read (`resolveTenantCloudOverrides` is called for `llm`/`stt`/`tts` only) | endpoint + key + model reach the embeddings client |
 
+TASK-991 OD-3 / OD-4 later narrowed WHOSE embeddings row may be read: the
+endpoint and the model are PLATFORM-FIXED, so the two-lane chain this file once
+pinned is one lane (the SYSTEM `embeddings:tei-embed` row). That contract, and
+the behaviour of a pre-existing tenant row under it, live in
+`test_task991_embeddings_platform_lock.py`. What remains here is everything D-1b
+/ D-1c wired that the narrowing did not touch: the `extras` wire shape, the
+fold, the client, and fail-closed on both planes.
+
 The properties under test are the ones that make it safe rather than merely wired:
 
 * the platform floor is untouched when no tier has an opinion (`ABSENT`), and
@@ -37,7 +45,6 @@ from pydantic import SecretStr
 import harness.api.endpoints.knowledge as knowledge
 from harness.core.config import RetrievalConfig, Settings
 from harness.core.provider_credentials import (
-    EMBEDDINGS_CONNECTION_PROVIDER,
     EMBEDDINGS_PLATFORM_PROVIDER,
     VECTOR_COLLECTION_EXTRA,
     VECTOR_CONNECTION_PROVIDER,
@@ -49,7 +56,6 @@ from harness.core.provider_credentials import (
     apply_vector_credential,
     prefixed_collection,
     require_embeddings_model,
-    resolve_embeddings_credential,
 )
 from harness.services.api_client import ApiClient
 from harness.services.embeddings_client import EmbeddingsClient
@@ -274,24 +280,27 @@ class TestEmbeddingsEnvPathStaysClosed:
 
 
 class TestEmbeddingsConnectionFold:
-    def test_a_tenant_row_wins_on_endpoint_model_and_key(self):
+    """The fold itself. Since TASK-991 OD-3/OD-4 the credential reaching it is
+    always the SYSTEM `embeddings:tei-embed` row (`resolve_embeddings_credential`
+    consults no other tier), so these are statements about the PLATFORM row."""
+
+    def test_a_resolved_row_supplies_endpoint_model_and_key(self):
         folded = apply_embeddings_credential(
             Settings().retrieval,
             _resolved(
-                api_key=SecretStr("sk-tenant-embeddings"),
-                base_url="https://api.tenant.example/v1",
+                api_key=SecretStr("sk-platform-embeddings"),
+                base_url="https://embeddings.platform.example/v1",
                 model="text-embedding-3-large",
             ),
         )
-        assert folded.embeddings_base_url == "https://api.tenant.example/v1"
+        assert folded.embeddings_base_url == "https://embeddings.platform.example/v1"
         assert folded.embeddings_model == "text-embedding-3-large"
         assert folded.embeddings_api_key is not None
-        assert folded.embeddings_api_key.get_secret_value() == "sk-tenant-embeddings"
+        assert folded.embeddings_api_key.get_secret_value() == "sk-platform-embeddings"
 
-    def test_a_partial_row_keeps_the_platform_floor_for_what_it_omits(self):
-        """A tenant that supplies only a key still embeds on the platform's
-        endpoint with the platform's model — the row expresses an opinion per
-        FIELD, not all-or-nothing."""
+    def test_a_partial_row_keeps_the_config_floor_for_what_it_omits(self):
+        """A row that supplies only a key still embeds on the endpoint below it —
+        the row expresses an opinion per FIELD, not all-or-nothing."""
         floor = Settings().retrieval
         folded = apply_embeddings_credential(floor, _resolved(api_key=SecretStr("sk-only")))
         assert folded.embeddings_base_url == floor.embeddings_base_url
@@ -444,12 +453,12 @@ class TestAnUnresolvedSelectionFailsClosed:
 
 
 class TestTheEmbeddingsProviderIsTheWireProtocol:
-    def test_the_connection_provider_is_the_openai_compatible_slot(self):
-        """`EmbeddingsClient` speaks ONE wire shape, so the row it resolves names
-        the PROTOCOL, not a vendor — the same reasoning that maps four judge
-        transports onto the single `openai-compat` row. A self-hosted endpoint is
-        reached on that row by its `baseUrl`, exactly as `llm:lm-studio` is."""
-        assert EMBEDDINGS_CONNECTION_PROVIDER == "openai"
+    def test_the_connection_providers_are_the_expected_slots(self):
+        """`EmbeddingsClient` speaks ONE wire shape — the OpenAI `{model, input}`
+        POST — and since TASK-991 OD-3/OD-4 exactly ONE row may serve it: the
+        platform's own self-hosted server, reached on that row by its `baseUrl`
+        exactly as `llm:lm-studio` is."""
+        assert EMBEDDINGS_PLATFORM_PROVIDER == "tei-embed"
         assert VECTOR_CONNECTION_PROVIDER == "qdrant"
 
 
@@ -503,113 +512,17 @@ def _platform_row() -> ProviderCredential:
     )
 
 
-def _entitlement_denied() -> ProviderCredential:
-    """What `embeddings:openai` answers for a tenant that owns no row.
+class TestTheDenialCauseWireContract:
+    """`denial` is the gateway's MACHINE-READABLE cause beside the prose
+    `reason`, and parsing it fail-closed is still this file's business.
 
-    Not a hypothetical: `featurePlatformDefaultCredential` is granted on NO plan,
-    and the gate is evaluated before any row is consulted, so EVERY tenant with no
-    embeddings connection of its own lands here.
+    The five lane tests that used to live here pinned the TWO-LANE embeddings
+    chain (tenant `embeddings:openai`, then the platform's own server). TASK-991
+    OD-3 / OD-4 collapsed that to one platform lane by owner decision, so the
+    lane contract — including what a pre-existing tenant row now does — is pinned
+    in `test_task991_embeddings_platform_lock.py` instead. What survives is the
+    parsing, which every service's resolve shares.
     """
-    return ProviderCredential(
-        outcome=CredentialOutcome.DENIED,
-        denial=DenialCause.PLATFORM_ENTITLEMENT,
-        reason="the platform-default credential entitlement is not granted for this tenant",
-    )
-
-
-def _tenant_veto() -> ProviderCredential:
-    return ProviderCredential(
-        outcome=CredentialOutcome.DENIED,
-        denial=DenialCause.TENANT_VETO,
-        reason="tenant veto: 'openai' is disabled for service 'embeddings'",
-    )
-
-
-class TestTheTwoLaneEmbeddingsChain:
-    """`resolve_embeddings_credential` — tenant BYO, then the platform's own
-    server, widening only where widening is legitimate."""
-
-    @staticmethod
-    async def _run(answers: dict[str, ProviderCredential], seen: list[str] | None = None):
-        async def resolve(service: str, provider: str) -> ProviderCredential:
-            assert service == "embeddings"
-            if seen is not None:
-                seen.append(provider)
-            return answers[provider]
-
-        return await resolve_embeddings_credential(resolve)
-
-    @pytest.mark.asyncio
-    async def test_a_tenant_row_wins_and_the_platform_is_never_consulted(self):
-        seen: list[str] = []
-        tenant = _resolved(api_key=SecretStr("sk-tenant"), model="text-embedding-3-large")
-        out = await self._run({EMBEDDINGS_CONNECTION_PROVIDER: tenant}, seen)
-        assert out is tenant
-        assert seen == [EMBEDDINGS_CONNECTION_PROVIDER]
-
-    @pytest.mark.asyncio
-    async def test_no_opinion_widens_to_the_platform_row(self):
-        seen: list[str] = []
-        platform = _platform_row()
-        out = await self._run(
-            {
-                EMBEDDINGS_CONNECTION_PROVIDER: ProviderCredential(
-                    outcome=CredentialOutcome.ABSENT
-                ),
-                EMBEDDINGS_PLATFORM_PROVIDER: platform,
-            },
-            seen,
-        )
-        assert out is platform
-        assert seen == [EMBEDDINGS_CONNECTION_PROVIDER, EMBEDDINGS_PLATFORM_PROVIDER]
-
-    @pytest.mark.asyncio
-    async def test_the_entitlement_denial_widens_to_the_platform_row(self):
-        """THE REGRESSION. Every tenant with no embeddings row gets this denial,
-        and treating it as fatal is what made retrieval return empty context for
-        everyone. The gate governs platform SPEND on a VENDOR account; the
-        platform's own self-hosted server is not that."""
-        seen: list[str] = []
-        platform = _platform_row()
-        out = await self._run(
-            {
-                EMBEDDINGS_CONNECTION_PROVIDER: _entitlement_denied(),
-                EMBEDDINGS_PLATFORM_PROVIDER: platform,
-            },
-            seen,
-        )
-        assert out is platform
-        assert out.outcome is CredentialOutcome.RESOLVED
-        assert seen == [EMBEDDINGS_CONNECTION_PROVIDER, EMBEDDINGS_PLATFORM_PROVIDER]
-
-    @pytest.mark.asyncio
-    async def test_a_tenant_VETO_is_never_widened_past(self):
-        """The other direction of the same bug. `CONNECTION_ENABLED_SEMANTICS`:
-        a disabled row blocks the pair in BOTH tiers and "the call fails rather
-        than falling through to another provider"."""
-        seen: list[str] = []
-        veto = _tenant_veto()
-        out = await self._run({EMBEDDINGS_CONNECTION_PROVIDER: veto}, seen)
-        assert out is veto
-        assert out.usable is False
-        # The platform row was never even asked for.
-        assert seen == [EMBEDDINGS_CONNECTION_PROVIDER]
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "unusable",
-        [
-            ProviderCredential(outcome=CredentialOutcome.UNAVAILABLE, reason="gateway down"),
-            # An older gateway that sends no `denial` at all: unclassifiable, so
-            # fail closed. Never read absence as permission to widen.
-            ProviderCredential(outcome=CredentialOutcome.DENIED, reason="unlabelled"),
-        ],
-    )
-    async def test_a_fault_or_an_unclassified_denial_fails_closed(self, unusable):
-        seen: list[str] = []
-        out = await self._run({EMBEDDINGS_CONNECTION_PROVIDER: unusable}, seen)
-        assert out is unusable
-        assert seen == [EMBEDDINGS_CONNECTION_PROVIDER]
 
     def test_an_unrecognised_denial_cause_parses_to_none_rather_than_a_guess(self):
         parsed = ProviderCredential.from_payload(
@@ -628,27 +541,33 @@ class TestTheTwoLaneEmbeddingsChain:
 
 
 class TestRetrievalNoLongerDegradesForATenantWithNoRow:
-    """The activity-level statement of the same regression, and of its guard."""
+    """The activity-level statement of the D-1c regression, and of its guard.
+
+    The regression: retrieval returned EMPTY CONTEXT for every tenant, because
+    the platform default was carried on the cloud `embeddings:openai` pair and
+    the R6 entitlement gate denied it to everyone. TASK-991 OD-3/OD-4 made the
+    property structural rather than merely fixed — the lane now resolves a
+    self-host provider the gate never touches, and consults nothing else — so
+    `_answers` ASSERTS that no other provider is ever asked for.
+    """
 
     @staticmethod
-    def _answers(monkeypatch, byo: ProviderCredential, platform: ProviderCredential | None):
+    def _answers(monkeypatch, platform: ProviderCredential):
         async def _by_provider(_settings, service, provider, _tenant_id):
             if service != "embeddings":
                 return ProviderCredential(outcome=CredentialOutcome.ABSENT)
-            if provider == EMBEDDINGS_CONNECTION_PROVIDER:
-                return byo
-            assert provider == EMBEDDINGS_PLATFORM_PROVIDER
-            assert platform is not None, "the platform row must not be consulted here"
+            assert provider == EMBEDDINGS_PLATFORM_PROVIDER, (
+                f"the embeddings lane asked for {provider!r}; "
+                "TASK-991 OD-3/OD-4 permits the platform row and nothing else"
+            )
             return platform
 
         monkeypatch.setattr(activities, "_resolve_provider_credential", _by_provider)
         monkeypatch.setattr(activities, "_consent_client", lambda _s: _AllowConsentClient())
 
     @pytest.mark.asyncio
-    async def test_an_unentitled_tenant_with_no_row_retrieves_on_the_platform_server(
-        self, monkeypatch
-    ):
-        self._answers(monkeypatch, _entitlement_denied(), _platform_row())
+    async def test_a_tenant_with_no_row_retrieves_on_the_platform_server(self, monkeypatch):
+        self._answers(monkeypatch, _platform_row())
         seen: dict[str, Any] = {}
 
         def _capture(settings, vector_credential=None, embeddings_credential=None):
@@ -670,7 +589,7 @@ class TestRetrievalNoLongerDegradesForATenantWithNoRow:
     ):
         """No stubbed retriever: the platform row alone must satisfy
         `require_embeddings_model`, which is the whole point of seeding it."""
-        self._answers(monkeypatch, _entitlement_denied(), _platform_row())
+        self._answers(monkeypatch, _platform_row())
 
         built: dict[str, Any] = {}
         real_factory = activities._hybrid_retriever
@@ -687,23 +606,6 @@ class TestRetrievalNoLongerDegradesForATenantWithNoRow:
 
         assert out.degraded is False
         assert built == {"model": "BAAI/bge-m3", "base_url": "http://localhost:8871/v1"}
-
-    @pytest.mark.asyncio
-    async def test_a_tenant_VETO_still_degrades_and_never_reaches_the_platform_row(
-        self, monkeypatch
-    ):
-        # `platform=None` makes the stub ASSERT if the chain widens past the veto.
-        self._answers(monkeypatch, _tenant_veto(), None)
-
-        def _must_not_build(*_a, **_k):
-            raise AssertionError("the retriever must never be built past a tenant veto")
-
-        monkeypatch.setattr(activities, "_hybrid_retriever", _must_not_build)
-
-        out = await activities.retrieve_context(_retrieve_input())
-
-        assert out.degraded is True
-        assert out.chunks == []
 
 
 class TestTheEmbeddingsModelFailsClosed:
