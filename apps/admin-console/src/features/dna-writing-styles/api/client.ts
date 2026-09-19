@@ -4,10 +4,11 @@
  * mount. List pagination is ONE-based on this controller (see types.ts).
  */
 
-import { getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
   DnaDashboard,
+  DnaErasureResult,
   DnaJob,
   DnaJobStatus,
   DnaReport,
@@ -43,6 +44,16 @@ export async function updateDnaReport(reportId: string, patch: UpdateDnaReportRe
 /** Queues a generation job; progress is tracked via jobs/:jobId (+ stream). */
 export function generateDnaReport(doctorId: string, body: GenerateDnaReportRequest = {}): Promise<DnaJob> {
   return postJson(`${BASE}/generate/${encodeURIComponent(doctorId)}`, body);
+}
+
+/**
+ * Erases a doctor's ENTIRE learned DNA writing-style profile (every owned report + its
+ * versions) — the admin half of INV-240's "deletable by the clinician" requirement, for
+ * offboarding or a compliance request without impersonating the doctor. Soft delete only;
+ * idempotent (a doctor with no profile answers zero counts, not a 404).
+ */
+export function resetDoctorDnaProfile(doctorId: string): Promise<DnaErasureResult> {
+  return deleteJson(`${BASE}/doctor/${encodeURIComponent(doctorId)}`);
 }
 
 export function listDnaVersions(reportId: string): Promise<DnaVersion[]> {

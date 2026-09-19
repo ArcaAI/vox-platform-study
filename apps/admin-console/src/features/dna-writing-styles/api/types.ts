@@ -94,6 +94,17 @@ export interface GenerateDnaReportRequest {
   sourceIds?: string[];
 }
 
+/**
+ * DnaErasureResponse — the body of `DELETE admin/dna-writing-styles/doctor/:doctorId`
+ * (`resetDoctorProfile`). Soft-deletes every report the doctor owns; idempotent — a doctor
+ * with no profile gets zero counts, not a 404.
+ */
+export interface DnaErasureResult {
+  doctorId: string;
+  deletedReports: number;
+  deletedVersions: number;
+}
+
 /** UpdateDnaReportRequest (admin PATCH — If-Match required, 412 on drift). */
 export interface UpdateDnaReportRequest {
   reportData?: Record<string, unknown>;

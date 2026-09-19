@@ -665,4 +665,105 @@ describe('MyDnaStyleScreen', () => {
     });
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('DNA settings updated'));
   });
+
+  // ─── ingest (F-6 — TASK-974 §4.1, the spec's actual entry point) ──────────
+
+  it('blocks Queue ingest until the sample text and written-at date are filled, and fires no POST', async () => {
+    const calls = stubDna();
+    renderWithProviders(<MyDnaStyleScreen />);
+
+    await screen.findByRole('heading', { name: 'Ingest writing samples' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add sample' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Queue ingest' }));
+
+    expect(await screen.findByText('Fix the highlighted issues before queuing.')).toBeDefined();
+    expect(screen.getByText(/add the writing sample text/i)).toBeDefined();
+    expect(screen.getByText(/set when this was written/i)).toBeDefined();
+    expect(calls.some((call) => call.method === 'POST' && pathnameOf(call) === '/api/hope/dna-writing-styles/ingest')).toBe(false);
+  });
+
+  it('ingests one writing sample: fills the row, POSTs /ingest, and shows the accepted-batch summary', async () => {
+    const calls = stubDna((call) => {
+      if (call.method === 'POST' && pathnameOf(call) === '/api/hope/dna-writing-styles/ingest') {
+        return Response.json(
+          {
+            jobId: 'ing-1',
+            status: 'PENDING',
+            clinicianUserId: 'doc-1',
+            acceptedItems: 1,
+            window: { from: '2026-08-01T09:00:00.000Z', to: '2026-08-01T09:00:00.000Z' },
+          },
+          { status: 202 },
+        );
+      }
+      if (call.method === 'GET' && pathnameOf(call) === '/api/hope/dna-writing-styles/ingest/jobs/ing-1') {
+        return Response.json({ jobId: 'ing-1', status: 'processing', progress: 10 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<MyDnaStyleScreen />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add sample' }));
+    fireEvent.change(screen.getByLabelText('Writing sample'), { target: { value: 'A case note about a follow-up visit.' } });
+    fireEvent.change(screen.getByLabelText('Written at'), { target: { value: '2026-08-01T09:00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Queue ingest' }));
+
+    await waitFor(() => {
+      const post = calls.find((call) => call.method === 'POST' && pathnameOf(call) === '/api/hope/dna-writing-styles/ingest');
+      expect(post).toBeDefined();
+      const body = post?.body as { items: Array<Record<string, unknown>>; clinicianUserId?: string };
+      expect(body.clinicianUserId).toBeUndefined();
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]).toMatchObject({ text: 'A case note about a follow-up visit.', kind: 'OTHER' });
+      expect(typeof body.items[0].writtenAt).toBe('string');
+    });
+
+    expect(await screen.findByText(/accepted 1 sample spanning/i)).toBeDefined();
+    // The form is cleared and the job handle is shown for the poll-driven progress strip below it.
+    expect(screen.getByText('ing-1')).toBeDefined();
+    expect(await screen.findByText(/^processing/i)).toBeDefined();
+    expect(await screen.findByRole('progressbar')).toBeDefined();
+  });
+
+  it('names a clinician to submit while gated (admin not acting as a doctor)', async () => {
+    const calls = stubDna((call) => {
+      if (pathnameOf(call) === '/api/auth/session') {
+        return Response.json(session({ impersonatingUserId: null, impersonatingUsername: null }));
+      }
+      if (call.method === 'POST' && pathnameOf(call) === '/api/hope/dna-writing-styles/ingest') {
+        return Response.json(
+          { jobId: 'ing-2', status: 'PENDING', clinicianUserId: 'doc-2', acceptedItems: 1, window: { from: '2026-08-01T09:00:00.000Z', to: '2026-08-01T09:00:00.000Z' } },
+          { status: 202 },
+        );
+      }
+      if (call.method === 'GET' && pathnameOf(call) === '/api/hope/dna-writing-styles/ingest/jobs/ing-2') {
+        return Response.json({ jobId: 'ing-2', status: 'queued', progress: 0 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<MyDnaStyleScreen />);
+
+    // Gated: Generate is disabled, same designed 403 state as everywhere else on this screen.
+    const generate = (await screen.findByRole('button', { name: 'Generate my style' })) as HTMLButtonElement;
+    expect(generate.disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add sample' }));
+    fireEvent.change(screen.getByLabelText('Writing sample'), { target: { value: 'A note authored by another clinician.' } });
+    fireEvent.change(screen.getByLabelText('Written at'), { target: { value: '2026-08-01T09:00' } });
+
+    // Blocked with no clinician named — the same designed gate as the rest of the screen.
+    expect(screen.getByText('Requires acting as a doctor, or naming a clinician above')).toBeDefined();
+    const submit = screen.getByRole('button', { name: 'Queue ingest' }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+
+    // Naming a clinician is the documented way the gateway still allows this call.
+    fireEvent.change(screen.getByLabelText('Clinician user ID (optional)'), { target: { value: 'doc-2' } });
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    fireEvent.click(submit);
+
+    await waitFor(() => {
+      const post = calls.find((call) => call.method === 'POST' && pathnameOf(call) === '/api/hope/dna-writing-styles/ingest');
+      expect((post?.body as { clinicianUserId?: string })?.clinicianUserId).toBe('doc-2');
+    });
+  });
 });
