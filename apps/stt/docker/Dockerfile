@@ -326,10 +326,20 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # whole assignment is double-quoted: `;` is only a command separator while a
 # command is being PARSED, never in the result of a parameter expansion, so the
 # list reaches setup.py as a single token.
+#
+# `--refresh-package` is REQUIRED, not belt-and-braces. uv keys its built-wheel
+# cache on the SOURCE (git url + resolved commit + interpreter tag) and not on the
+# build environment, so CMAKE_ARGS is invisible to it: changing the architecture
+# list re-runs this RUN layer (the command string changed) and then uv hands back
+# the wheel it compiled in an earlier pipeline. `--reinstall-package` only forces a
+# reinstall FROM the cache; only `--refresh-package` invalidates it. That is exactly
+# how the first `86-real;89-real;89-virtual` build produced an sm_89-only extension
+# and tripped the cuobjdump gate below with a correct-looking CMAKE_ARGS.
 ARG CUDA_ARCHITECTURES
 RUN --mount=type=cache,target=/root/.cache/uv \
     CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES} -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON" \
     uv pip install --python /opt/venv/bin/python \
+        --refresh-package pywhispercpp \
         --reinstall-package pywhispercpp \
         "pywhispercpp @ git+https://github.com/absadiki/pywhispercpp@v1.5.0"
 
