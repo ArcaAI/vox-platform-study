@@ -148,7 +148,7 @@ describe('installPrismaPoolMetrics', () => {
     await pool.connect();
 
     const histogram = await register.getSingleMetric(`${gatewayMetricPrefix()}${PRISMA_POOL_METRICS.waitSeconds}`)!.get();
-    const bucket = (le: number) => histogram.values.find((v) => v.metricName?.endsWith('_bucket') && v.labels.le === le)?.value;
+    const bucket = (le: number) => histogram.values.find((v) => (v as { metricName?: string }).metricName?.endsWith('_bucket') && v.labels.le === le)?.value;
     // 60 ms: above the 25 ms edge, at or below the 100 ms one.
     expect(bucket(0.025)).toBe(0);
     expect(bucket(0.1)).toBe(1);
