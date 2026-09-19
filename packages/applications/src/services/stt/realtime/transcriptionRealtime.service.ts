@@ -1,9 +1,11 @@
-import { Inject, Injectable, Logger, MessageEvent, Optional } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, MessageEvent, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { Observable, finalize, map, takeWhile } from 'rxjs';
 import type { ResolvedAsrSpec } from '@arcaai/types';
 import { uuidv7 } from 'uuidv7';
 import { IRedisCacheService } from '../../baseServices/redis/redis-cache.service';
 import { StorageDescriptor } from '../../baseServices/storage/providers/IBlobStorageProvider';
+import { IBlobStorageService } from '../../baseServices/storage/IBlobStorageService';
+import type { BatchDispatchEnvelope, TranscriptionJobResponse } from '../job/dto';
 import { TranscriptionJobService } from '../job/transcriptionJob.service';
 import { TranscriptionEvent, TranscriptionEventType } from './dto';
 import { ITranscriptionRealtimeService } from './ITranscriptionRealtimeService';
@@ -39,6 +41,13 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     // generic `Speaker N` labels. Resolved HERE rather than in each of the four callers so
     // every batch dispatch pushes the same thing.
     @Optional() @Inject(IVoiceProfileService) private readonly voiceProfileService?: IVoiceProfileService,
+    // TASK-992 FU-1 — re-resolves the per-tenant `StorageDescriptor` on a retry.
+    // The descriptor carries credentials, so it is never snapshotted on the row;
+    // resolving it fresh is also what makes a rotation between attempts a
+    // non-event. Optional + trailing so positional test construction keeps
+    // compiling; absent, a retry that NEEDED one refuses rather than dispatching
+    // a job that would look in the wrong backend.
+    @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: Pick<IBlobStorageService, 'resolveDescriptor'>,
   ) {}
 
   /**
@@ -428,5 +437,122 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
       });
       throw error;
     }
+
+    // TASK-992 FU-1 — snapshot what was just published, so `retryAndDispatch`
+    // can re-publish it. This is the ONE place a batch message is produced, so
+    // the snapshot cannot drift from the message it describes.
+    //
+    // AFTER the enqueue, and deliberately non-fatal: dispatch has never needed
+    // the database, and making a transient write failure fail a job that is
+    // already queued would be a worse bug than the one this closes. The cost of
+    // losing the write is a job that cannot be retried later — which the retry
+    // path refuses explicitly rather than papering over.
+    try {
+      await this.transcriptionJobService.recordDispatchEnvelope(params.jobId, {
+        audioUri: params.audioUri,
+        pipelineId: params.pipelineId,
+        ...(params.consultationId ? { consultationId: params.consultationId } : {}),
+        ...(params.mediaId ? { mediaId: params.mediaId } : {}),
+        ...(params.language ? { language: params.language } : {}),
+        ...(params.userId ? { userId: params.userId } : {}),
+        ...(params.audioBucketName ? { audioBucketName: params.audioBucketName } : {}),
+        ...(params.fallbackPipelineId ? { fallbackPipelineId: params.fallbackPipelineId } : {}),
+        hadStorageDescriptor: Boolean(params.storage),
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Dispatched, but failed to record the retry envelope — this job will refuse a later retry',
+        jobId: params.jobId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * TASK-992 FU-1 — retry a failed batch job by actually RE-PUBLISHING it.
+   *
+   * `TranscriptionJobService.retryJob` only flips the row back to `QUEUED`. The
+   * batch plane is driven entirely by the `stt_batch` Dramatiq queue, so a row
+   * with no message behind it is never claimed by anybody: the caller sees a
+   * 200 and a job that sits at QUEUED forever, which from the outside is
+   * indistinguishable from a backed-up queue. This closes that.
+   *
+   * It lives HERE, beside {@link dispatchDramatiqJob}, rather than in the job
+   * service, for the reason the two could otherwise drift: one method builds
+   * the message, the other rebuilds it, and a kwarg added to one would be
+   * silently missing from the other. (It also cannot live in the job service —
+   * the realtime service already depends on it, so the edge only goes one way.)
+   *
+   * Order matters. Everything fallible that does NOT touch the row happens
+   * first — envelope read, storage re-resolution — so a refusal leaves the job
+   * exactly as it was, still FAILED and still retryable once the cause is
+   * fixed. Only then is the status flipped and the message published; if the
+   * publish then fails, the job is failed back with `RETRY_DISPATCH_ERROR`
+   * rather than left QUEUED with nothing behind it, which is the same
+   * compensation the create path performs.
+   */
+  async retryAndDispatch(jobId: string, options: { ownerId: string }): Promise<TranscriptionJobResponse> {
+    // 1. Creator-scoped read. Throws 404 for an unknown id AND for a
+    //    same-tenant peer's job — no existence leak, same posture as
+    //    `retryJobForOwner`, which runs the identical assertion in step 3.
+    const context = await this.transcriptionJobService.getDispatchContextForOwner(options.ownerId, jobId);
+
+    // 2. A row dispatched before FU-1 shipped has no envelope, and its
+    //    `audioUri` exists nowhere else — the upload path derives it from a
+    //    request filename that is long gone. Refusing is the only honest
+    //    answer: flipping it to QUEUED would recreate the exact defect.
+    const envelope: BatchDispatchEnvelope | null = context.envelope;
+    if (!envelope?.audioUri) {
+      throw new ConflictException({
+        code: 'RETRY_ENVELOPE_MISSING',
+        message:
+          `Job ${jobId} cannot be retried: it carries no record of what was dispatched for it. ` +
+          `Jobs created before this capability shipped are affected; submit the audio again as a new job.`,
+      });
+    }
+
+    // 3. Re-resolve the storage descriptor LIVE. It is never snapshotted (it
+    //    carries credentials), and resolving it fresh is also what lets a
+    //    credential rotate between attempts. If one was in play and we cannot
+    //    produce it now, refuse — dispatching without it sends the worker to
+    //    its env-default backend, where the object is not.
+    let storage: StorageDescriptor | null = null;
+    if (envelope.hadStorageDescriptor) {
+      storage = envelope.audioBucketName && this.blobStorage ? await this.blobStorage.resolveDescriptor(envelope.audioBucketName) : null;
+      if (!storage) {
+        throw new ServiceUnavailableException({
+          code: 'RETRY_STORAGE_UNRESOLVED',
+          message: `Job ${jobId} was dispatched against a tenant-specific storage backend that cannot be resolved right now.`,
+        });
+      }
+    }
+
+    // 4. Flip the row (creator-scoped again, inside), then publish.
+    const retried = await this.transcriptionJobService.retryJobForOwner(options.ownerId, jobId);
+
+    try {
+      await this.dispatchDramatiqJob({
+        jobId,
+        tenantId: context.tenantId,
+        pipelineId: envelope.pipelineId,
+        audioUri: envelope.audioUri,
+        consultationId: envelope.consultationId,
+        mediaId: envelope.mediaId,
+        language: envelope.language,
+        userId: envelope.userId,
+        audioBucketName: envelope.audioBucketName,
+        storage,
+        ...(envelope.fallbackPipelineId ? { fallbackPipelineId: envelope.fallbackPipelineId } : {}),
+        // The spec snapshot stays on the ROW (TASK-861) — it is the
+        // authoritative, reproducible copy, so the envelope never duplicates it.
+        ...(context.resolvedSpec ? { resolvedSpec: context.resolvedSpec as unknown as ResolvedAsrSpec } : {}),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.transcriptionJobService.failJob(jobId, `Retry dispatch failed: ${message}`, 'RETRY_DISPATCH_ERROR').catch(() => undefined);
+      throw error;
+    }
+
+    return retried;
   }
 }

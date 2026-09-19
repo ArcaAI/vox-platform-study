@@ -127,9 +127,14 @@ export const FACTORY_OMITTED_SCALARS_BY_MODEL: Readonly<Record<string, ReadonlyS
   // A byte quota derived from the tenant's plan/entitlement and reconciled by a
   // dedicated quota operation — never a bucket-creation input (system-managed).
   TenantBucket: new Set<string>(['quotaBytes']),
-  // Populated after the job completes (the ContextItem it produced) — see the
-  // schema comment "Created ContextItem (after completion)".
-  TranscriptionJob: new Set<string>(['contextItemId']),
+  // `contextItemId` is populated after the job completes (the ContextItem it
+  // produced) — see the schema comment "Created ContextItem (after completion)".
+  //
+  // `dispatchEnvelope` (TASK-992 FU-1) is written at DISPATCH, by
+  // `TranscriptionRealtimeService.dispatchDramatiqJob`, and cannot be a creation
+  // input even in principle: the `audioUri` it carries contains the job's own id,
+  // so it does not exist until after the row is inserted.
+  TranscriptionJob: new Set<string>(['contextItemId', 'dispatchEnvelope']),
   // Stamped by the password-change / reset flow (never at user creation).
   User: new Set<string>(['passwordChangedAt']),
 };

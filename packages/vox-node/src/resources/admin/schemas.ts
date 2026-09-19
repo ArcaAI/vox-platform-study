@@ -5903,6 +5903,8 @@ export interface TranscriptionJobResponse {
   progress: number;
   /** Queued at timestamp */
   queuedAt: string;
+  /** TASK-992 — how many times this job has been RECLAIMED from a worker that died mid-flight. Counted separately from `retryCount`, which counts genuine transcription failures: a crashed worker must not spend the budget a bad audio file needs. Bounded by `stt.batch.maxReclaims`; past it the job is marked DEAD. */
+  reclaimCount: number;
   /** TASK-861 — the ResolvedAsrSpec snapshot the job ran on (never a credential) */
   resolvedSpec?: Record<string, unknown> | null;
   /** Result metadata */

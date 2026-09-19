@@ -1466,11 +1466,33 @@ export class TranscriptionJobController {
 
   @Post(':id/retry')
   @TenantOwnedResource({ modelName: 'TranscriptionJob', paramName: 'id' })
-  @ApiOperation({ summary: 'Retry a failed transcription job' })
+  @ApiOperation({
+    summary: 'Retry a failed transcription job',
+    description:
+      'Re-publishes the job to the `stt_batch` worker queue and returns it at `QUEUED`. ' +
+      'A retry is only possible while `retryCount < maxRetries`, and only for a job this caller created.',
+  })
   @ApiParam({ name: 'id', description: 'Transcription job ID' })
+  @ApiResponse({ status: 400, description: 'The job has exhausted its retry budget; it is marked DEAD.' })
+  @ApiResponse({ status: 404, description: 'Unknown job, or a job created by another user.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`RETRY_ENVELOPE_MISSING` — the job carries no record of what was dispatched for it, which is the case for ' +
+      'every job created before this capability shipped. Submit the audio again as a new job.',
+  })
+  @ApiResponse({ status: 503, description: "`RETRY_STORAGE_UNRESOLVED` — the job's tenant storage backend cannot be resolved right now." })
   async retry(@Param('id') id: string) {
-    // EU-01 — creator-scoped (mirrors cancel).
-    return this.jobService.retryJobForOwner(this.getUserId(), id);
+    // EU-01 — creator-scoped (mirrors cancel); the assertion runs inside.
+    //
+    // TASK-992 FU-1 — this goes through the REALTIME service, not
+    // `jobService.retryJobForOwner`, because that call only flips the row back
+    // to QUEUED. The batch plane is driven entirely by the `stt_batch` Dramatiq
+    // queue, so a row with no message behind it is never claimed: the caller
+    // got a 200 and a job that sat at QUEUED forever, indistinguishable from a
+    // backed-up queue. The realtime service owns message construction, so the
+    // retry rebuilds the message in the one place that also builds the original.
+    return this.realtimeService.retryAndDispatch(id, { ownerId: this.getUserId() });
   }
 
   @Get()

@@ -484,7 +484,7 @@ asserted by any test, but a `pnpm db:seed` restores them:
 
 | # | Item |
 |---|---|
-| FU-1 | `retryJob` flips a row back to `QUEUED` but nothing re-publishes a Dramatiq message, so an admin "retry" produces a job no worker will ever pick up. Pre-existing; out of scope. |
+| ~~FU-1~~ | ~~`retryJob` flips a row back to `QUEUED` but nothing re-publishes a Dramatiq message, so an admin "retry" produces a job no worker will ever pick up.~~ **DONE — see §6.** |
 | FU-2 | The platform-wide `BusinessException` → 500 mapping. Only the `TranscriptionJob` state machine moved to the new exception; a general sweep is its own ticket. |
 | FU-3 | `/internal/stt/*` is `@ApiExcludeController`, so the documented 409 never reaches `openapi.json`. Pre-existing for the whole internal plane. |
 
@@ -498,3 +498,163 @@ asserted by any test, but a `pnpm db:seed` restores them:
 | 2026-09-19 | Implemented across all six layers, TDD with RED observed per layer (the reaper suite additionally mutation-checked, since its tests and code were written together). All gates green; three pre-existing failures triaged in §4.4. |
 | 2026-09-19 | **Superseded the TASK-991 W2-4 fix** (`efbeaee81`) on owner decision — see §4.3. TASK-991's README and `docs/operations/deprecation-register.md` both updated. |
 | 2026-09-19 | Live-proved the whole claim state machine over HTTP, and the reaper on the original incident row. `reclaimCount` added to the response DTO after the live run showed it was not observable. |
+| 2026-09-19 | **FU-1 closed** (§6): a retry now re-publishes the job's Dramatiq message instead of only flipping its status. New `TranscriptionJob.dispatchEnvelope` column + migration, `retryAndDispatch` on the realtime service, retry route rewired, 409/503 refusals for rows that cannot be made runnable. Regenerating the API artifacts also swept in `reclaimCount`, which the earlier TASK-992 commit had left undone — see §6.6. |
+
+---
+
+## 6. FU-1 — a retry that actually re-publishes
+
+### 6.1 The defect, confirmed
+
+`TranscriptionJobService.retryJob` called `job.incrementRetry()` (status → `QUEUED`, `startedAt` /
+`completedAt` / `workerId` cleared, progress reset), persisted, and broadcast `ResourceUpdated`.
+Nothing published a Dramatiq message.
+
+The batch plane is driven **entirely** by the `stt_batch` queue, and `transcribe_file` is enqueued in
+exactly ONE place — `TranscriptionRealtimeService.dispatchDramatiqJob` — reached from three gateway
+call sites (the upload route, `harness-internal`'s `stt/batch-jobs`, and `agent.controller`'s
+`transcribe`). None of them is on the retry path. A row merely flipped back to `QUEUED` therefore has
+no message behind it and no worker ever claims it: the caller gets a 200 and a job that sits at
+`QUEUED` forever, which from the outside is indistinguishable from a backed-up queue.
+
+TASK-992's own `/start`-as-a-claim work does not help here. That fixed recovery on the DELIVERY path —
+a redelivered message reclaiming a dead worker's job, or re-attempting a `FAILED` one. FU-1's problem
+is that **no delivery ever happens**.
+
+### 6.2 The row did not carry enough to rebuild the message
+
+| Dispatch argument | On the row before this change? |
+|---|---|
+| `jobId`, `tenantId`, `consultationId`, `mediaId` | yes |
+| `pipelineId` (runtime key) | yes — `resolvedSpec.runtimeKey`, else the deprecated `pipelineId` |
+| `resolvedSpec` | yes (TASK-861 snapshot) |
+| **`audioUri`** | **no — and not derivable** |
+| `audioBucketName`, `language` | no |
+| `userId` (dispatch owner) | no — `createdBy` holds the system-user default for a machine caller (the TASK-991 W2-1 known gap) while dispatch uses the RESOLVED clinician |
+| `storage` | no — and it must never be persisted: `StorageDescriptor` carries `secret_access_key` / `account_key` / `connection_string` |
+
+`audioUri` is the one that decides the design. The upload route builds it from the request filename
+plus the job's own id (`transcription-job.controller.ts`), so it is gone the moment the request ends,
+and that path's `mediaId` is a bare `uuidv7()` with no media row behind it. It is reconstructable from
+nothing. **Something had to be persisted**, and at DISPATCH rather than at create — the URI contains
+the job id, so it does not exist when the row is inserted.
+
+`_metadata` was considered as a migration-free home and rejected: `IBaseEntity` declares `metaData`
+but `BaseEntity` has no backing field or accessor, so it costs the same hand-authoring while putting
+load-bearing operational state in an untyped grab-bag.
+
+### 6.3 What was built
+
+| Layer | Change |
+|---|---|
+| `packages/database` | `TranscriptionJob.dispatchEnvelope Json? @db.JsonB`, sibling to `resolvedSpec`. Migration `20260919140318_task_992_transcription_job_dispatch_envelope` (one additive nullable column). |
+| `packages/domains` | `TranscriptionJobEntity`: field, accessors and `recordDispatch(envelope)`. Deliberately unguarded by status — it states a fact about a message already enqueued, not a lifecycle transition. `incrementRetry` does not clear it (pinned by a test). |
+| `packages/applications` | `BatchDispatchEnvelope` DTO; `TranscriptionJobService.recordDispatchEnvelope` / `.getDispatchContextForOwner`; `dispatchDramatiqJob` snapshots what it published; new `TranscriptionRealtimeService.retryAndDispatch`. |
+| `apps/api` | `POST audio/transcription-jobs/:id/retry` routes through `retryAndDispatch`, and documents its 409/503. |
+| `packages/tools` | `FACTORY_OMITTED_SCALARS_BY_MODEL.TranscriptionJob` gains `dispatchEnvelope`. `gen:factory:check` caught the omission and demanded it be recorded — the column cannot be a creation input even in principle, since the `audioUri` it carries contains the job's own id. The ENTITY does surface it, so `gen:entity:check` passed untouched. |
+
+**Where the re-enqueue lives, and why.** In the realtime service, beside `dispatchDramatiqJob` — the
+one place a batch message is constructed. Putting it anywhere else means one method builds the message
+and another rebuilds it, so a kwarg added to the first is silently missing from the second. It also
+cannot live in the job service: the realtime service already depends on that, so the edge only goes
+one way.
+
+**What the envelope deliberately omits.** `resolvedSpec` stays on the row — it is already the
+authoritative TASK-861 snapshot, and a second multi-KB copy would only give the two a way to disagree.
+`storage` is never stored, because the descriptor carries credentials; only `hadStorageDescriptor` and
+the bucket NAME are kept, and the descriptor is re-resolved live on every dispatch — which is also
+what makes a credential rotation between attempts a non-event.
+
+**Ordering, and the two refusals.** Everything fallible that does not touch the row runs first
+(envelope read, storage re-resolution), so a refusal leaves the job exactly as it was — still `FAILED`,
+still retryable once the cause is fixed. Only then is the status flipped and the message published; if
+the publish fails, the job is failed back with `RETRY_DISPATCH_ERROR` rather than left `QUEUED` with
+nothing behind it, the same compensation the create path already performs.
+
+- **409 `RETRY_ENVELOPE_MISSING`** — a row dispatched before this shipped. Its `audioUri` exists
+  nowhere, so answering 200 would recreate the exact defect. (Owner decision, this ticket.)
+- **503 `RETRY_STORAGE_UNRESOLVED`** — a per-tenant backend was in play and cannot be resolved now.
+  Dispatching without the descriptor sends the worker to its env-default backend, where the object is
+  not.
+
+The snapshot write is **after** the enqueue and **non-fatal**. Dispatch has never needed the database,
+and turning a transient write failure into a failed-but-already-queued job would be a worse bug than
+the one this closes. The cost of losing that write is a job that cannot be retried later — which §6.2's
+refusal states plainly rather than papering over.
+
+### 6.4 A known, bounded duplicate-delivery window
+
+`canRetry` is `FAILED` only, but a row is also briefly `FAILED` between a worker failing it and the
+broker redelivering its message. An operator retrying inside that window produces two deliveries. The
+outcome is bounded and still one transcript: the redelivered message's `/start` finds a `QUEUED` row and
+starts it, and the new message's `/start` then arrives from a different worker and is a RECLAIM, capped
+by `stt.batch.maxReclaims` (TASK-992 OD-2). Deduplication was not built — it would need a broker-side
+message registry per job, which is a larger design than the window justifies.
+
+### 6.5 Evidence
+
+TDD, RED observed per layer:
+
+| Layer | RED |
+|---|---|
+| domain | 3 failures, `entity.recordDispatch is not a function` |
+| applications | 8 of 9 failing, `service.retryAndDispatch is not a function` |
+| api | `mockRealtimeService.retryAndDispatch` never called — the route still went to the bare status flip |
+
+```
+pnpm test:unit        Test Files 1787 passed | 2 skipped   Tests 27673 passed | 4 skipped | 9 todo   exit 0
+pnpm lint             exit 0 — 40 successful, 40 total
+pnpm api:build        12 successful, 12 total
+api:openapi:check / api:portal:check / vox-node gen:admin:check   no drift
+migration replay      full ledger onto a fresh DB; dispatchEnvelope | jsonb | nullable
+drift check           prisma migrate diff --from-config-datasource → "This is an empty migration."
+boot smoke            Nest application successfully started; GET /api/v1/health → 200; POST :id/retry → 401 unauthenticated (mounted + gated)
+```
+
+`membership-bounded-sync.integration.test.ts` fails under `pnpm --filter @arcaai/applications test`
+for the pre-existing reason already triaged in §4.4 (it needs the live test DB, whose port is held by
+unrelated containers). It is excluded from `pnpm test:unit`, is in a package this change does not
+touch, and fails with `DATABASE_URL environment variable is not set`.
+
+**Live proof — over real HTTP, against the dev database and the dev Redis** (gateway on :8869 so as
+not to disturb the shared stack; two throwaway `FAILED` rows, both deleted afterwards):
+
+```
+queue depth BEFORE: 0
+── retry a row WITH an envelope ──
+  POST …/0fa10000-…-00000000000a/retry   HTTP 201   status=QUEUED  retryCount=1
+queue depth AFTER:  1
+
+the message that landed on dramatiq:stt_batch
+  actor_name  transcribe_file
+  args        ["0fa10000-…-00000000000a", "50000000-…", "agent-v-1",
+               "s3://hope-audio/2026/09/jobs/0fa10000-…/raw/visit.wav",
+               null, "media-fu1", "en", null, "hope-audio", "70000000-…-000000000010"]
+  kwargs      {"resolved_spec": {…}}        ← read from the ROW, not the envelope
+
+── retry a row with NO envelope (the pre-FU-1 shape) ──
+  POST …/0fa10000-…-00000000000b/retry   HTTP 409   code=RETRY_ENVELOPE_MISSING
+  row afterwards: status=FAILED  retryCount=0      ← untouched, exactly as §6.3 requires
+
+── the write half, proven by the same run ──
+  the retry's own dispatch re-wrote the envelope on row A:
+  {"userId":"70000000-…-000000000010","mediaId":"media-fu1",
+   "audioUri":"s3://hope-audio/2026/09/jobs/0fa10000-…/raw/visit.wav","language":"en",
+   "pipelineId":"agent-v-1","audioBucketName":"hope-audio","hadStorageDescriptor":false}
+```
+
+Between `LLEN` returning 1 and the read of the queue list, a live STT worker had already `BRPOP`'d the
+message — which is the point of the whole change, observed directly.
+
+### 6.6 Side-finding — the earlier TASK-992 commit left the API artifacts unregenerated
+
+Regenerating the five artifacts for this change swept in a diff that is NOT from FU-1:
+`reclaimCount`, the column added by TASK-992 itself, was absent from `openapi.json` on `715bfe795`
+(`git show HEAD:apps/api/openapi.json | grep -c reclaimCount` → `0`) and therefore also from
+`openapi.admin.json`, `openapi.business.json` and `packages/vox-node/src/resources/admin/schemas.ts`.
+
+`route-manifest.json` was current, so the authz gates were fine, but `api:openapi:check`,
+`api:portal:check` and `generate-vox-node-admin-check` would all have been RED on `dev-2.2`. The
+generators emit whole files, so the correction cannot be separated from this change; it is included
+here deliberately rather than left for CI to surface.
+

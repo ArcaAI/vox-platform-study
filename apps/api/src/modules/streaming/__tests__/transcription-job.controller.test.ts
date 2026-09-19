@@ -33,6 +33,7 @@ const createMockRealtimeService = () => ({
   createAndStream: vi.fn(),
   subscribeToJob: vi.fn(),
   dispatchDramatiqJob: vi.fn(),
+  retryAndDispatch: vi.fn(),
 });
 
 const createMockSessionService = () => ({
@@ -589,13 +590,17 @@ describe('TranscriptionJobController', () => {
   });
 
   describe('POST /:id/retry', () => {
-    it('should retry a failed job via the creator-scoped service method', async () => {
+    // TASK-992 FU-1 — the route must go through the RE-DISPATCH path, not the bare
+    // status flip. Calling `retryJobForOwner` directly answers 200 with a QUEUED job
+    // that has no Dramatiq message behind it, so no worker ever claims it.
+    it('should retry a failed job by re-publishing it, creator-scoped', async () => {
       const retried = { id: 'job-1', status: 'QUEUED' };
-      mockJobService.retryJobForOwner.mockResolvedValue(retried);
+      mockRealtimeService.retryAndDispatch.mockResolvedValue(retried);
 
       const result = await controller.retry('job-1');
 
-      expect(mockJobService.retryJobForOwner).toHaveBeenCalledWith('user-1', 'job-1');
+      expect(mockRealtimeService.retryAndDispatch).toHaveBeenCalledWith('job-1', { ownerId: 'user-1' });
+      expect(mockJobService.retryJobForOwner).not.toHaveBeenCalled();
       expect(mockJobService.retryJob).not.toHaveBeenCalled();
       expect(result).toEqual(retried);
     });

@@ -166,6 +166,25 @@ model TranscriptionJob {
   // credential (provider overrides travel separately).
   resolvedSpec Json? @db.JsonB
 
+  // TASK-992 FU-1 — everything needed to RE-PUBLISH this job's Dramatiq message,
+  // snapshotted by `TranscriptionRealtimeService.dispatchDramatiqJob` at the moment
+  // it enqueues. Without it a retry is only a status flip: the row goes back to
+  // QUEUED with no message behind it and no worker ever claims it.
+  //
+  // `audioUri` is the reason this column has to exist at all — the upload path
+  // derives it from the request filename plus this job's own id, so it is gone the
+  // instant the request ends, and that path's `mediaId` is a bare uuid with no
+  // media row behind it. It is NOT reconstructable from anything else here.
+  //
+  // Written at DISPATCH, not at create: the URI contains the job id, so it does
+  // not exist yet when the row is inserted.
+  //
+  // NEVER a credential. The `storage` kwarg the worker also receives is a
+  // `StorageDescriptor` carrying `secret_access_key` / `account_key` /
+  // `connection_string`; only its BUCKET NAME is kept here and the descriptor is
+  // re-resolved live on retry.
+  dispatchEnvelope Json? @db.JsonB
+
   // Job status
   status   TranscriptionJobStatus @default(QUEUED)
   progress Int                    @default(0) // 0-100
