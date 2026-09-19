@@ -17,6 +17,7 @@ import {
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
   UsageLedgerServiceModule,
+  UserRoleAssignmentServiceModule,
   VisitTypeServiceModule,
   WorkflowExposureServiceModule,
 } from '@arcaai/applications';
@@ -97,6 +98,12 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
     // `getEffectiveStyleText` accessor instead of reading the (ciphertext-only,
     // ungated) repository row directly.
     DnaWritingStyleServiceModule,
+    // TASK-991 W2-1 — supplies `IUserRoleAssignmentService` to `TranscriptionJobController`, which
+    // needs two TENANT-SCOPED identity reads to let a machine credential transcribe for a named
+    // clinician: is that clinician a member of this tenant (404 if not), and does the human an API
+    // key is bound to administer it. Without this import the controller injects `undefined` and the
+    // machine path answers 503 rather than accepting an unverified clinician.
+    UserRoleAssignmentServiceModule,
     // TASK-864 — `WorkflowWsGateway` (the `socket` publish protocol) re-checks run ownership and
     // takes its snapshot through `IWorkflowExposureService.getRunStatus`, the SSE route's own
     // pre-stream check.

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, Min, MinLength } from 'class-validator';
 
 export const AUDIO_BUCKET = 'hope-audio';
 
@@ -99,6 +99,33 @@ export class TranscribeFileRequest {
   @IsString()
   @IsOptional()
   language?: string;
+
+  /**
+   * The clinician this recording belongs to.
+   *
+   * REQUIRED for a SERVICE ACCOUNT: a machine identity binds to a working TENANT rather than to a
+   * person, so it has no clinician of its own and the platform will not invent one. An API KEY may
+   * name only the human it is bound to unless that human administers this tenant; a human caller
+   * omits it (they ARE the clinician) unless they administer the tenant. Full rule: the AUTH-NOTE
+   * on `POST audio/transcription-jobs/transcribe`.
+   *
+   * Spelled exactly as `POST dna-writing-styles/ingest` and `POST consultations` spell it, so the
+   * platform has ONE name for "the clinician a machine is acting for" rather than three.
+   *
+   * `@IsString` + `@MinLength(1)`, never `@IsUUID()`: the seeded clinician ids (`70000000-…`) are
+   * deterministic and NOT version-compliant UUIDs, so a UUID validator rejects real users.
+   */
+  @ApiPropertyOptional({
+    description:
+      'The clinician this transcription belongs to. REQUIRED for a service-account caller — a machine is never itself the ' +
+      'clinician. An API key may name only the human it is bound to (a tenant or super administrator may name any clinician ' +
+      'of their tenant); a human omits it to transcribe as themselves.',
+    format: 'uuid',
+  })
+  @IsString()
+  @IsOptional()
+  @MinLength(1)
+  clinicianUserId?: string;
 }
 
 export class CreateStreamSessionRequest {
