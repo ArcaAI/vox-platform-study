@@ -206,6 +206,89 @@ cancelled); the durable fix is either enabling auto-cancel for redundant pipelin
 pins. Note `verify-dev` does NOT catch this: it polls for its OWN sha, so the overtaken pipeline
 fails its check while the cluster sits on the wrong build.
 
+**D-12 RESOLVED 2026-09-19 — a fail-closed freshness guard in `promote.sh`, plus `resource_group`.**
+
+Re-audited the promotion path before building anything, and two things in D-12's own wording
+need correcting:
+
+- **"GitLab did not auto-cancel the superseded ones despite `default: interruptible: true`"** is
+  not what the job records show. Pipeline 1247's `promote-dev` (job 19971) is `canceled` with
+  `started_at: null` — GitLab *did* cancel it, as part of cancelling the pipeline. So a promote
+  that has **not started** is stopped on a same-ref push. The window that survives is the one
+  `interruptible: false` deliberately creates: a promote that has **already started** can never be
+  auto-cancelled, and that job ran 62 s on pipeline #914. Narrow, not zero.
+- **The same-ref race is therefore the *least* reachable of the three paths**, not the main one.
+  The two that are wide open have nothing to do with concurrency:
+  1. **Job retry, unbounded in time.** `promote-dev` on any past pipeline can be retried from the
+     UI or the API and will re-pin that pipeline's digests over whatever is current. Nothing
+     checked the age of the commit — and the script's own failure message said "re-running this
+     job is safe", which invited exactly that.
+  2. **Cross-branch.** Every `dev-*` branch resolves to `PIPELINE_TYPE == "dev"` and every one of
+     them writes `overlays/dev`. `workflow:auto_cancel` is per-ref, so `dev-2.1` and `dev-2.2`
+     never cancel each other. Dormant today (dev-2.1's last pipeline was 2026-08-15); live the
+     moment a `dev-2.3` cutover overlaps.
+
+And the sharpest finding, which D-12 did not name: **the push-retry loop was the mechanism that
+converted a lost race into a successful overwrite.** On a rejected push it did
+`git reset --hard FETCH_HEAD` onto the winner's tip and replayed its own older pins. The code
+comment read "the edits are declarative, so replaying converges" — it converges, on the older
+value.
+
+Worth recording that the race has **not yet fired**: all 69 `promote(*)` commits in
+`hope-v2-deployment` are in strictly increasing pipeline-IID order, and all 69 are `promote(dev)`.
+This is a latent defect being closed before it bites, not a post-mortem.
+
+**What was built.** Four options were on the table; the choice is a combination of two of them,
+because neither is sufficient alone:
+
+| Option | Verdict |
+|---|---|
+| `resource_group` on the promote jobs | **Taken, as the cheap half.** It orders *writers*; it does not order their *payloads*, so an older run promoting later is still an older promotion. Its real value is that the guard can never read a stamp a sibling is mid-way through rewriting. |
+| Compare-and-set against what the deployment repo pins | **Taken, as the real fix** — but keyed on the SOURCE COMMIT, not on the digests (digests say nothing about age) and not on pipeline IID (which is shared across branches and says nothing about code lineage). |
+| Refuse when `CI_COMMIT_SHA` is not an ancestor of the branch tip | **Rejected as the primary.** It catches a rewound branch but not the retry case, where the old commit *is* still an ancestor of the tip. It is subsumed: an ancestry check against the *stamp* catches both. |
+| `interruptible` + auto-cancel of redundant pipelines | **Already in place** (`workflow: auto_cancel: on_new_commit: interruptible`) and already doing its job, per the correction above. Widening it would mean making `promote` interruptible, i.e. killing a job mid-push — strictly worse. |
+
+`deployment/k8s/promotion-state/<env>.state` records the source commit each environment was
+promoted from, written in the **same commit as the digest pins** so the two cannot disagree.
+Before pinning, `promote.sh` reads it and allows the promotion only when its own commit **is** that
+commit or a **descendant** of it. Strictly older, unrelated lineage, a commit the source repo no
+longer contains, and a corrupt stamp are all **refusals with a non-zero exit** — a red job with a
+banner naming what is pinned, what was refused, the blast radius, and the override. A deploy that
+did not happen must not look like one that did; an `exit 0` with a warning would have reproduced
+the founding defect of this whole ticket.
+
+Three ordering details that carry the weight:
+
+- **The guard runs before the registry re-tag**, so an ordinary refusal touches nothing at all.
+  On the push-retry path it necessarily runs *after*, and the banner says so rather than claiming
+  "nothing changed" — for `dev`/`staging` the moved tag is `<env>-<sha8>`, sha-specific and
+  unreferenced; for `prod` it is the release tag and wants a look.
+- **The guard is re-run after every `reset --hard`** in the retry loop. That is the specific line
+  that turns the replay from "convergent" into "safe".
+- **`GIT_DEPTH: 0`** on `.promote-base`: ancestry is a question about real history, and a 20-commit
+  shallow clone cannot answer it for a stamp older than the window or a commit on another branch.
+
+**Rollback stays possible** — `PROMOTE_ALLOW_STALE=true` as a pipeline variable. It is logged at
+the top of the job, written into the stamp as `staleOverride: yes`, and marked `[STALE OVERRIDE]`
+in the deployment-repo commit subject, so a deliberate rollback stays distinguishable from an
+accident forever after.
+
+**What it does NOT cover**, stated so nobody assumes otherwise:
+- It orders by source-commit ancestry. Two commits on unrelated branches are **incomparable**, so
+  it refuses rather than guessing. A genuine branch switch (`dev-2.3` cut from somewhere other
+  than `dev-2.2`'s tip) needs the override once. A `dev-2.3` branched *from* `dev-2.2` is a
+  descendant and passes untouched.
+- It cannot see a **hand-edited overlay**. A hand edit leaves the stamp naming a commit the pins no
+  longer reflect, and the next promotion fast-forwards over it. The guard orders *promotions*.
+- It says nothing about whether Argo **applied** the result. That is `verify-dev`'s job, and the
+  two are complementary: this guard stops the wrong thing being written, `verify-dev` reports
+  whether the right thing arrived.
+- `promote-staging` / `promote-prod` get the identical guard, but neither has ever run (69
+  `promote(dev)` commits, zero others), so both will bootstrap their own stamp on first use.
+
+**Proven, not assumed.** Nine cases against a harness with a real git topology, then four against
+the real `hope-v2` history and the real seeded stamp — see §Evidence.
+
 ## Implementation Plan — lanes
 
 One writer per worktree; the orchestrator owns merges, pushes and cluster verification.
@@ -273,6 +356,37 @@ answers **401 without a token** (it was not exempted); PostSync smoke test 9/9.
 - admin-console: build 13/13, typecheck 13/13, 374 files / 3624 tests passed, post-merge.
 - Python post-merge: harness 2661 passed, tts 479 passed, stt heartbeat 21/21, stt lint + typecheck clean.
 - `verify-dev`: match logic proven against the live endpoint; GitLab CI lint valid, no warnings.
+- **Promotion freshness guard (D-12 / O-4)**, all run with stubbed `docker` + `kustomize` and a
+  real git topology; the refusing cases were checked for side effects, not just exit codes:
+
+  | # | Case | Expected | Result |
+  |---|---|---|---|
+  | 1 | no stamp yet | bootstrap, write stamp | exit 0, stamp written |
+  | 2 | fast-forward A→C | promote | exit 0 |
+  | 3 | identical re-promotion | **true no-op, no push** | exit 0, origin tip unchanged |
+  | 4 | **retry an older pipeline (A over C)** | refuse | **exit 1**, 0 images re-tagged, tip + stamp unchanged |
+  | 5 | unrelated lineage (orphan branch) | refuse | exit 1 |
+  | 6 | stamp names a commit the checkout lacks | refuse | exit 1 |
+  | 7 | corrupt stamp (`sourceCommit: not-a-sha`) | refuse | exit 1 |
+  | 8 | `PROMOTE_ALLOW_STALE=true` on case 4 | promote, marked | exit 0, `[STALE OVERRIDE]` subject, `staleOverride: yes` |
+  | 9 | **lost push race** — promote B, C lands first | refuse on the re-check | **exit 1**; final origin stamp is C, not B |
+
+  Then against the **real** `hope-v2` history and the real seeded stamp
+  (`db2a1fc0a`, pipeline #921): retrying #920's commit refuses with *"1 commit(s) behind"*,
+  #914's with *"68 commit(s) behind"*, and `origin/main` with *"unrelated lineages"*.
+
+  Two harness defects were found and fixed before the results were believed, both of the
+  "check that cannot fail" shape this ticket keeps meeting: a `pre-receive` hook whose
+  `git update-ref` silently did not move `main` (so case 9 "passed" while testing nothing —
+  caught by `HEAD is now at 4736c73`, the *old* tip, in the trace), and a runner script with a
+  hardcoded `CI_PROJECT_DIR` that pointed the first integration run at the *fake* source repo
+  (every verdict came back "commit not in this checkout", which looked like a pass because it
+  was a refusal).
+- GitLab CI lint on the changed `deploy.yml` job set: `valid: true`, 0 errors, 0 warnings;
+  `resource_group` and `GIT_DEPTH` accepted on all three promote jobs.
+- Deployment repo: gitleaks clean on the new directory; `patch-hygiene`'s grep unaffected (the
+  file is outside `overlays/`); no `kustomization.yaml` references it and every overlay pulls only
+  `../../base` plus named components, so no render can see it.
 
 ### Known-failing, NOT caused by this ticket
 
@@ -335,8 +449,11 @@ the mutation used to prove it was asserted to have applied.
   settable from configuration.
 - **O-2** — all 13 HPAs are inert: `metrics-server` is deployed and Healthy but serves nothing
   (`"metric-storage-ready" err="no metrics to serve"`). A cluster-addon fix outside both repos.
-- **O-4 (D-12)** — `promote-dev` can be overtaken by an older concurrent pipeline and pin the
-  cluster to an older image behind a green pipeline. `verify-dev` does not catch it.
+- ~~**O-4 (D-12)**~~ — **CLOSED 2026-09-19.** `promote-dev` could pin the cluster to an older
+  image behind a green pipeline. Fixed by a fail-closed freshness guard in `.gitlab/ci/promote.sh`
+  plus `resource_group` on the promote jobs; see D-12's resolution above. The re-audit corrected
+  two claims in the original finding and found the two genuinely wide-open paths (job retry and
+  cross-`dev-*`-branch) were not the concurrency one.
 - **O-3** — nlp's startup probe is waived in the new gate pending pass 2; the repoint needs the new
   image.
 
@@ -360,6 +477,7 @@ Check `/tmp` is writable in that pod (an `emptyDir` if `readOnlyRootFilesystem` 
 | 2026-09-19 | PY-HEALTH merged (3bc7686f1): build-info version + `/health/startup` + exempt entries on all six services; TTS Kokoro residency; new `tests/contracts/test_health_contract_parity.py` + a CI job. Gate 67 passed; PROVEN to bite — reverting three services to pre-fix sources fails it on exactly the right assertions. |
 | 2026-09-19 | `dev-2.2` PUSHED (61 commits, both tickets). D-11 records a partitioning flaw: a hand-edited `globalEnv` contradicted a stale generator. D-12 records a new owner item O-4 — `promote-dev` has no guard against being overtaken by a concurrent pipeline. |
 | 2026-09-19 | D-8..D-10 recorded: new finding F18 (nlp build identity env-settable, owner item O-1), the `/health/startup` 503 reachability limit, and two errors in my own lane briefs. |
+| 2026-09-19 | **O-4 / D-12 closed.** Fail-closed freshness guard in `.gitlab/ci/promote.sh` + `resource_group` + `GIT_DEPTH: 0` on the promote jobs; new `deployment/k8s/promotion-state/<env>.state` in hope-v2-deployment (seeded for dev from `892f352`). Re-audit corrected two claims in D-12 and identified job retry + cross-`dev-*`-branch as the wide-open paths. 9 harness cases + 4 against real history; CI lint valid. |
 | 2026-09-19 | F15 closed: `verify-dev` added to `.gitlab/ci/deploy.yml` — polls the dev gateway until it reports THIS pipeline's sha8, closing the CI→cluster loop with no new credential. GitLab CI lint: valid, no warnings. `promote-dev`'s dev environment gained a `url`. |
 | 2026-09-19 | D-6 recorded: F12 WITHDRAWN — the PDBs are correct; the finding's premise was incomplete. D-7 records a lane-routing error and its containment. |
 | 2026-09-18 | Decisions D-1..D-5 recorded. F9 re-specified (contract, not status codes); F16 downgraded to a note; preStop drain + D-3 auth added to the DEPLOY lane. |
