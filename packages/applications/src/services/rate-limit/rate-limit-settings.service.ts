@@ -1,13 +1,18 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
-import { IRateLimitSettingsService, RateLimitRouteOverride, TenantRateLimitTierValue } from './IRateLimitSettingsService';
+import { IRateLimitSettingsService, RateLimitPrincipalPolicy, RateLimitRouteOverride, TenantRateLimitTierValue } from './IRateLimitSettingsService';
 import {
   RATE_LIMIT_GLOBAL_ENABLED_DEFAULT,
+  RATE_LIMIT_PRINCIPAL_DEFAULTS,
+  RATE_LIMIT_PRINCIPAL_ENABLED_DEFAULT,
   RATE_LIMIT_TIER_DEFAULTS,
   RateLimitTierName,
   RateLimitTierValue,
   rateLimitEnabledKey,
+  rateLimitPrincipalEnabledKey,
+  rateLimitPrincipalLimitKey,
+  rateLimitPrincipalTtlKey,
   rateLimitRouteEnabledKey,
   rateLimitRouteLimitKey,
   rateLimitRouteTtlKey,
@@ -82,6 +87,25 @@ export class RateLimitSettingsService implements IRateLimitSettingsService {
       limitSource: limit.source,
       ttlSource: ttl.source,
     };
+  }
+
+  getPrincipalPolicy(): RateLimitPrincipalPolicy {
+    // `getValueWithDefault` is the same O(1) cache read every other accessor
+    // here uses, and it already answers the code baseline when the row is
+    // absent — so a platform that has never seeded these keys gets the derived
+    // number rather than an unbounded second lane.
+    const limit = this.appSettings.getValueWithDefault<number>(rateLimitPrincipalLimitKey(), RATE_LIMIT_PRINCIPAL_DEFAULTS.limit);
+    const ttl = this.appSettings.getValueWithDefault<number>(rateLimitPrincipalTtlKey(), RATE_LIMIT_PRINCIPAL_DEFAULTS.ttl);
+    const enabled = this.appSettings.getValueWithDefault<boolean>(rateLimitPrincipalEnabledKey(), RATE_LIMIT_PRINCIPAL_ENABLED_DEFAULT);
+
+    // A row written as 0, negative or non-finite would either refuse every
+    // request or make the lane meaningless. Neither is a limit an admin can
+    // have meant, so fall back rather than enforce it.
+    const usable = Number.isFinite(limit) && limit > 0 && Number.isFinite(ttl) && ttl > 0;
+
+    return usable
+      ? { enabled: enabled !== false, limit, ttl }
+      : { enabled: enabled !== false, limit: RATE_LIMIT_PRINCIPAL_DEFAULTS.limit, ttl: RATE_LIMIT_PRINCIPAL_DEFAULTS.ttl };
   }
 
   getRouteOverride(routeId: string): RateLimitRouteOverride | undefined {
