@@ -24,6 +24,8 @@ def _clean_runtime():
 @pytest.fixture
 def mock_session_manager():
     mgr = AsyncMock()
+    # TASK-991 — synchronous accessor; the AsyncMock default yields a coroutine pydantic rejects.
+    mgr.get_voice_profile_seeded = MagicMock(return_value=False)
     guard = MagicMock()
     guard.max_streams = 10
     guard.active_count = 1

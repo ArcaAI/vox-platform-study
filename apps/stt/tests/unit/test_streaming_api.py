@@ -54,6 +54,10 @@ def mock_session_manager():
     # `StreamingSessionTeardownResponse(**coroutine)` and raises. Tests that
     # exercise the stash set their own return value.
     mgr.claim_teardown_summary = MagicMock(return_value=None)
+    # TASK-991 — same reason again: `get_voice_profile_seeded` is SYNCHRONOUS and returns
+    # `bool`. Left to the AsyncMock default the session-create route hands a coroutine to
+    # `StreamingSessionResponse.voice_profile_seeded`, which pydantic rejects.
+    mgr.get_voice_profile_seeded = MagicMock(return_value=False)
     return mgr
 
 
