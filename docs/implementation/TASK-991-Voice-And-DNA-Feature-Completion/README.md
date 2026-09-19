@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress |
+| Status | Review |
 | Type | bugfix + feature |
 | Branch | `dev-2.2` |
 | Opened | 2026-09-19 |
@@ -96,11 +96,111 @@ worktrees and branches. **E2E is run by the orchestrator alone.**
 
 ## Implementation Summary
 
-_Pending._
+Eight lanes, each in its own worktree, merged into `dev-2.2` by the orchestrator. Per the owner's
+process directive the lane agents ran no gates; every gate below was run after merge.
+
+| Lane | What shipped |
+|---|---|
+| A | `ContextItemRepository.findFinalSummariesByDoctor(doctorId, limit)` joins through `Consultation.doctorId` and constrains `type` IN (RAW_SUMMARY, MODIFIED_SUMMARY) **in the query**, so the row budget is not spent on transcripts. The `as any` is gone, so the call is type-checked. |
+| B | `@StreamScope` on the self-plane `jobs/:jobId/stream`, asserted **jointly** with the admin twin so they cannot drift again. Both transports now answer through an allow-list `safeJobError()`. |
+| C | `seed_voice_profiles`' result is retained per session, echoed as `voice_profile_seeded`, mapped through the gateway DTO, read without a cast. `AiModelAvailability` added to the STT e2e conftest. |
+| D | `enrollmentTarget` falls back to any published, active, diarizing SPEECH_TO_TEXT agent of the tenant (OD-1). An explicit `agentSlug` is never substituted. |
+| E | `useVoiceEnrollmentStatus`/`createVoiceEnrollmentChecker` exported; `useDnaReport` covers the doctor self-service plane; `DnaUpdateInput` reconciled with the gateway DTO. |
+| F | The DNA **ingest** UI (the spec's entry point), admin erase on the tenant-admin grid, "DNA" label fix, and DNA copy that states both effects (OD-2). |
+| G | `embeddingModelSlug` is platform-managed: `readOnly` in the schema, refused on the tenant write path with 403 `AGENT_PARAMETER_PLATFORM_MANAGED`, read-only in the console (OD-3). |
+| H | Embeddings resolve from the platform tier only — endpoint, key and model — and a tenant-tier `embeddings` upsert is refused. `require_embeddings_model` stays fail-closed (OD-3/OD-4). |
+
+### Orchestrator fix-ups after merge
+
+Lane agents could not compile or run anything, so these surfaced at the gate:
+
+- Three packages are consumed as **built output**, so each needed a rebuild before its dependents
+  saw the change: `@arcaai/domains` (lane A), `@arcaai/workflow-contract` (lanes F/G),
+  `@arcaai/applications` (lane C — caught only by the real `nest build`, not by any unit test).
+- Lane B allow-listed the `notifyFailed` strings my brief named; `job.failedReason` is BullMQ's
+  `Error.message`, i.e. the **thrown** strings. Lane B caught this itself and used the right ones.
+- Lane F's `Queue ingest` button was `disabled={!canSubmit}`, so its click never landed and the
+  validation messages it guards were unreachable — a button disabled with no way to learn why
+  (rule 11 §5). It now disables only for an in-flight request and the doctor-context gate.
+- Stale contract tests updated rather than relaxed: the admin job-status test asserted the old
+  verbatim `failedReason` pass-through; the TASK-958 integration-plane multiplicity example moved
+  off `embeddings` to `vector/qdrant` (the only other plane a tenant can still write).
+- STT doubles taught about the new seeded map — `get_voice_profile_seeded` is synchronous, so on
+  the `AsyncMock` route fixtures it must be an explicit `MagicMock`, the convention that fixture
+  already documents twice.
+- **Fixed two failures that pre-dated this ticket**: `SPEECH_TO_TEXT` renders "Beam Size" three
+  times (flat, `decoding.partial`, `decoding.final`) — correct, and each in its own fieldset — so
+  the flat field is now addressed by an unambiguous id suffix instead of a label lookup matching
+  all three.
+- Ran `pnpm env:sync`, already drifting before this ticket: `STT_CUDA_ARCHITECTURES` arrived with
+  `9e745fba1` (TASK-985) declared in the STT Dockerfile but never added to `turbo.json#globalEnv`.
+
+### Verification
+
+Gates (all after merge):
+
+| Surface | Result |
+|---|---|
+| root (`applications`, `domains`, `database`, `api`) | 27,400 passed / 1 failed* |
+| `apps/admin-console` | **3,642 passed, 0 failed** (375 files) |
+| `@arcaai/vox` | **3,799 passed, 0 failed** (252 files) |
+| `apps/harness` | **2,669 passed, 0 failed** |
+| `apps/stt` | 4,066 passed / 26 failed† / 26 errors† |
+
+\* `harness-tts-internal.controller.test.ts` — passes in isolation (120/120); pre-existing
+cross-file mock pollution. This ticket touches no file in `apps/api/src/modules/speech`.
+
+† Lane C's conftest fix took STT errors from **206 → 26**, so ~180 e2e tests now execute for the
+first time in a long while. 24 of them fail on a contract TASK-861 retired (`pipeline_id` /
+`STT_DATABASE_ENABLED=false`) plus a health-message assertion; one is the known `MINIO_ACCESS_KEY`
+test-order leak from `e2e/conftest.py:146`. These are **newly exposed, not newly broken** —
+see Follow-ups.
+
+End-to-end, driven by the orchestrator against a live gateway (`:8968`) and the admin console:
+
+| # | Check | Result |
+|---|---|---|
+| 1 | `POST generate {}` — the branch broken since 2026-03-27 | `"No approved text samples available for DNA analysis"` — a clean domain message; the query executes |
+| 2 | LLM-unreachable failure | `"Generation failed"`; leak audit found **0** occurrences of a path, `doctorId`, `tenantId`, `findMany` or the axios status text |
+| 3 | `POST ingest` with markdown | 202, 2 items accepted, window computed |
+| 4 | `GET enrollment-target`, no diarizing agent | 409, message proves it **scanned the tenant** |
+| 5 | Same, with a diarizing sibling | 200 → the sibling's slug + embedding model (OD-1) |
+| 5b | Explicit slug on a non-diarizing agent | still 409 — never substituted |
+| 6a | `PATCH` agent, unrelated change, same embedding slug | 200 — ordinary edits unaffected |
+| 6b | `PATCH` agent, changing the embedding slug | 403 `AGENT_PARAMETER_PLATFORM_MANAGED` |
+| 7 | Tenant `PUT admin/providers/embeddings/openai` | 403 platform-managed |
+| 7b | Control: same shape on `llm` | 200 — the gate is scoped |
+| 8 | **Admin console**, `/playground/dna-writing-style` | Ingest pane renders; a real sample submitted → "Accepted 1 sample spanning Sep 1, 2026"; job polled to terminal showing **"Generation failed"** — the safe message, in the very UI where the leak originally surfaced |
+
+The test API booting at all is also the boot smoke for lane D's new `AgentRepository` injection:
+deny-by-default route audit and DI graph both passed.
+
+## Follow-ups (not in this ticket)
+
+1. **~24 STT e2e tests assert a retired contract.** Now that they run, they expect the
+   `pipeline_id` path TASK-861 disabled (`404` where the service correctly answers `503
+   PIPELINE_SELECTION_DISABLED`), and a health `database` component with no `message`. They need
+   rewriting for the current posture.
+2. **`e2e/conftest.py:146` leaks `MINIO_ACCESS_KEY` into `os.environ`** with no teardown, and
+   `e2e` sorts before `unit`, so `test_task799_env_surface` fails on a value the code does not set.
+3. **Several `_enums` member lists in that conftest are narrower than the models declare**
+   (`AiModelSource` missing `S3`, `ModelCategory` mismatched, `ModelTaskType` missing most values).
+   Only bites when a test writes a missing value.
+4. **`eslint-comments/require-description` is a warning.** It already flags the exact line this
+   ticket's worst defect hid behind; only 2 of 13 `filters: … as any` sites are justified.
+   Promoting it to error for `packages/*` would make the class of defect unshippable.
+5. **Admin visibility of a doctor's redaction rules** — no gateway route exposes them to an admin.
+6. **`voiceProfileSeeded` on the BATCH path** still discards the preseed result; only streaming
+   was threaded.
+7. **Tenants holding an existing `embeddings` connection row** are now ignored by the harness and
+   can only delete it. If any live tenant has one, its Qdrant vectors were written with that
+   model and will not match queries embedded with the platform's — that tenant needs a re-ingest.
+
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-19 | Ticket opened. Audit recorded; OD-1 and OD-2 taken; six lanes defined. |
+| 2026-09-19 | Lanes A-H merged, gates run, end-to-end verified against a live gateway and the admin console. Status -> Review. |
 | 2026-09-19 | Lanes A-D merged to `dev-2.2` and green. OD-3/OD-4 taken mid-flight (embedding models and the embeddings endpoint are platform-fixed); lanes G and H added. |
