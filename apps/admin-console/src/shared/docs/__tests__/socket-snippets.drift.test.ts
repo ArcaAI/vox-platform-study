@@ -65,7 +65,7 @@ const SOCKET_METHODS = methodsOf(RealtimeSttSocket);
  * typecheck`, not by the `it` blocks below — `.on()` performs no runtime validation of its event
  * name argument, so a renamed union member would otherwise pass every test in this file silently.
  */
-const KNOWN_STT_EVENT_NAMES: readonly RealtimeSttEventName[] = ['transcript', 'status', 'error', 'resumed', 'close'];
+const KNOWN_STT_EVENT_NAMES: readonly RealtimeSttEventName[] = ['transcript', 'status', 'error', 'resumed', 'gap', 'close'];
 
 /** Same reasoning as {@link KNOWN_STT_EVENT_NAMES}: `transport` is a plain string field. */
 const _workflowStreamRunTransportOption: StreamRunOptions = { transport: 'socket' };
@@ -131,6 +131,28 @@ describe('the STT socket snippet calls only methods RealtimeSttSocket actually h
     expect(SOCKET_METHODS).not.toContain('send');
   });
 
+  /**
+   * TASK-991 wave 2 — `finalize()` resolves only on the terminal status frame
+   * (`realtime-stt-socket.ts:339`), so an UN-awaited call loses the tail final; it does not send
+   * `{type:'close'}` either, and the gateway clears the sessionId binding at finalize
+   * (`stt-ws.gateway.ts:1857`), which is why a `closeStreamSession()` afterwards answers 404. The
+   * snippet used to print exactly that sequence. This pins the SDK's own documented one.
+   */
+  it('tears the session down the way the SDK documents: await finalize, close, await waitForClosed', () => {
+    const code = sttRealtimeVoxNodeSnippet('asr');
+    expect(code).toMatch(/await socket\.finalize\(\)/);
+    expect(code).toMatch(/socket\.close\(\)/);
+    expect(code).toMatch(/await socket\.waitForClosed\(\)/);
+    // An un-awaited finalize is the defect; it must never come back.
+    expect(code).not.toMatch(/^\s*socket\.finalize\(\)/m);
+    // closeStreamSession is a real method, but not on this path.
+    expect(code).not.toMatch(/hope\.stt\.closeStreamSession\(/);
+  });
+
+  it('subscribes to `gap` — a hole the Manual lane calls text that is gone for good', () => {
+    expect(sttRealtimeVoxNodeSnippet('asr')).toMatch(/socket\.on\('gap'/);
+  });
+
   it('every socket.on(...) event name is one this file has pinned against the real event union', () => {
     const code = sttRealtimeVoxNodeSnippet('asr');
     const events = [...code.matchAll(/socket\.on\('([a-z]+)'/g)].map((match) => match[1]);
@@ -168,5 +190,19 @@ describe('the websocat fallback mints the ticket before opening the url it retur
     expect(code).toMatch(/websocat/);
     // curl cannot speak WebSocket — this snippet must never claim it can.
     expect(code).not.toMatch(/curl[^\n]*ws(?:s)?:\/\//);
+  });
+
+  /**
+   * TASK-991 wave 2 — `issueRunStreamTicket` answers a RELATIVE url that already carries the
+   * ticket (`workflows.controller.ts:398-399`), and `workflow-ws.gateway.ts:82-88` reads `ticket`
+   * straight off the query string. The snippet used to append a second `?ticket=` to a url with
+   * no scheme or host, which is two ways of failing the handshake at once.
+   */
+  it('resolves the relative url against the origin and does NOT re-append the ticket', () => {
+    const code = workflowSocketCurlSnippet('discharge-summary');
+    expect(code).not.toMatch(/websocat[^\n]*\?ticket=/);
+    expect(code).toMatch(/jq -r \.url/);
+    // The url is relative, so the snippet has to supply a ws(s) origin of its own.
+    expect(code).toMatch(/websocat "\$WS_ORIGIN\$URL"/);
   });
 });

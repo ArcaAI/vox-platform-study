@@ -74,8 +74,8 @@ export const STT_SOCKET_FRAMES: readonly SttSocketFrame[] = Object.freeze([
     direction: 'server → client',
     type: 'transcript',
     example:
-      '{ "type": "transcript", "text": "chest pain since this morning", "isFinal": false, "startTime": 12.4, "endTime": 14.9, "seq": 7, "utteranceIndex": 3, "language": "en", "speakerLabel": "SPEAKER_00", "wordTimestamps": [ { "word": "chest", "start": 12.4, "end": 12.7, "confidence": 0.98 } ] }',
-    note: 'Partials arrive with `isFinal: false` and are replaced; a final has `isFinal: true` and is the text to keep. Times are seconds from the session start; `seq` is what you replay from on a resume.',
+      '{ "type": "transcript", "text": "chest pain since this morning", "isFinal": false, "startTime": 12.4, "endTime": 14.9, "seq": 7, "utteranceIndex": 3, "language": "en", "speakerId": "Speaker 1", "speakerLabel": "Speaker 1", "speakerConfidence": 0.82, "wordTimestamps": [ { "word": "chest", "start": 12.4, "end": 12.7, "confidence": 0.98 } ] }',
+    note: 'Partials arrive with `isFinal: false` and are replaced; a final has `isFinal: true` and is the text to keep. Times are seconds from the session start; `seq` is what you replay from on a resume. `speakerLabel` is derived ONCE by the gateway from `speakerId` and rides the wire — render it, do not re-derive it: an anonymous diarizer id (`Speaker 1`, `Speaker 2`, …) passes through verbatim, the no-confident-match sentinel becomes `Unknown speaker`, and a real clinician name appears only for an enrolled voice profile matched above the agent’s diarization threshold. Both fields are absent when diarization is off.',
   },
   {
     direction: 'server → client',
@@ -145,6 +145,12 @@ export function sttSessionCurlSnippet(agentSlug: string, baseUrl: string = FALLB
     `#     "ticket": "…", "ticketExpiresAt": 1789636030000, "sessionEpochMs": 1789636000000,`,
     `#     "agentSlug": ${JSON.stringify(agentSlug)}, "agentVersionId": "…",`,
     `#     "maxConcurrent": 5, "currentActive": 1, "voiceProfileSeeded": false }`,
+    `#`,
+    `# \`voiceProfileSeeded\` says whether any ENROLLED voice profile was pushed to the engine for`,
+    `# this session. Profiles are seeded from the session's OWNER, so a machine-driven session that`,
+    `# names no clinician seeds nothing and every speaker comes back as a generic "Speaker N". Even`,
+    `# when it does seed, a real name is attached only above the agent's diarization matchThreshold;`,
+    `# below it the segment stays anonymous rather than being labelled with someone's name on a guess.`,
     ``,
     `# 2. Connect. curl cannot speak WebSocket, so this step needs a separate tool — websocat`,
     `#    (\`brew install websocat\` / \`cargo install websocat\`); it is not installed by default anywhere.`,

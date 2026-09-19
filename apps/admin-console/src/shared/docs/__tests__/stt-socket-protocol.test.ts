@@ -80,6 +80,35 @@ describe('stt-socket-protocol — the live corrections', () => {
     expect(sttRawWebSocketSnippet('asr', 'https://api.example.com')).toContain('finalizing');
   });
 
+  /**
+   * TASK-991 wave 2 — the transcript example printed `"speakerLabel": "SPEAKER_00"`, a shape this
+   * platform never emits. `deriveSpeakerLabel` (`packages/applications/src/services/stt/streaming/
+   * speaker-label.ts:40-46`) passes the raw diarizer id through verbatim and maps only the
+   * `unknown` sentinel, and the diarizer's ids are `Speaker N`
+   * (`apps/stt/src/stt/diarization/speaker_tracker.py:87`, numbering from 1).
+   */
+  it('the transcript frame names the speaker fields the gateway really writes', () => {
+    const transcript = STT_SOCKET_FRAMES.find((frame) => frame.type === 'transcript');
+    expect(transcript).toBeDefined();
+    const parsed = JSON.parse(transcript!.example) as { speakerId?: string; speakerLabel?: string };
+    expect(parsed.speakerId).toBe('Speaker 1');
+    expect(parsed.speakerLabel).toBe('Speaker 1');
+    expect(transcript!.example).not.toContain('SPEAKER_00');
+    expect(transcript!.note).toContain('Unknown speaker');
+  });
+
+  /**
+   * TASK-991 wave 2 — the response echo printed `voiceProfileSeeded` with nothing explaining it.
+   * Profiles resolve from the session OWNER (`streamingSession.service.ts:136-137`), and a name is
+   * attached only above the agent's `match_threshold` (`apps/stt/src/stt/pipeline/dto.py:693`).
+   */
+  it('explains what voiceProfileSeeded depends on, rather than printing a bare false', () => {
+    const code = sttSessionCurlSnippet('asr', 'https://api.example.com');
+    expect(code).toContain('voiceProfileSeeded');
+    expect(code).toMatch(/OWNER/);
+    expect(code).toMatch(/matchThreshold/);
+  });
+
   it('websocat is labelled as a tool to install, and the SDK-free JS sample is offered as the first path', () => {
     const code = sttSessionCurlSnippet('asr', 'https://api.example.com');
     expect(code).toMatch(/install websocat/);
