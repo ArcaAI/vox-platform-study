@@ -89,7 +89,13 @@ export function toSerializable(report: RunReport): Record<string, unknown> {
 
 export function render(report: RunReport): string {
   const { aggregate, config } = report;
-  const elapsedSeconds = Math.max(1, aggregate.timeline.filter((b) => b.requests > 0).length);
+  // Wall-clock SPAN from the first request to the last, not the count of
+  // seconds that happened to carry traffic. With think time most seconds are
+  // idle for any given user, so counting only non-empty buckets divides by too
+  // small a number and overstates throughput — on a 40 s smoke run it read 5.3
+  // req/s where the true figure was 4.0.
+  const active = aggregate.timeline.map((b, i) => (b.requests > 0 ? i : -1)).filter((i) => i >= 0);
+  const elapsedSeconds = active.length === 0 ? 1 : Math.max(1, active[active.length - 1]! - active[0]! + 1);
   const throughput = aggregate.total / elapsedSeconds;
   const latency = summarize(aggregate.latency);
   const schedule = summarize(aggregate.scheduleDelay);
