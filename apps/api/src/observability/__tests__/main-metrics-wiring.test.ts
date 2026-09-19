@@ -19,8 +19,7 @@
  * not what the file says.
  */
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -29,7 +28,7 @@ import { describe, expect, it } from 'vitest';
  * beside the calls, so an un-stripped search finds the explanation before the
  * statement and the assertion inverts.
  */
-const mainSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'main.ts'), 'utf8')
+const mainSource = readFileSync(join(__dirname, '..', '..', 'main.ts'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/^[ \t]*\/\/.*$/gm, '');
 

@@ -145,10 +145,10 @@ describe('gateway-http-agent', () => {
   it('sizes every agent from the documented, shared constants', () => {
     const agents = createGatewayKeepAliveAgents();
     try {
-      expect(agents.httpAgent.keepAlive).toBe(true);
+      expect((agents.httpAgent as unknown as { keepAlive: boolean }).keepAlive).toBe(true);
       expect(agents.httpAgent.maxSockets).toBe(GATEWAY_HTTP_AGENT_MAX_SOCKETS);
       expect(agents.httpAgent.maxFreeSockets).toBe(GATEWAY_HTTP_AGENT_MAX_FREE_SOCKETS);
-      expect(agents.httpsAgent.keepAlive).toBe(true);
+      expect((agents.httpsAgent as unknown as { keepAlive: boolean }).keepAlive).toBe(true);
       expect(agents.httpsAgent.maxSockets).toBe(GATEWAY_HTTP_AGENT_MAX_SOCKETS);
       expect(agents.httpsAgent.maxFreeSockets).toBe(GATEWAY_HTTP_AGENT_MAX_FREE_SOCKETS);
     } finally {
