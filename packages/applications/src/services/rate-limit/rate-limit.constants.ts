@@ -207,3 +207,65 @@ export const RATE_LIMIT_PRINCIPAL_ENABLED_DEFAULT = true;
 export const rateLimitPrincipalEnabledKey = (): string => `${RATE_LIMIT_NAMESPACE}.principal.enabled`;
 export const rateLimitPrincipalLimitKey = (): string => `${RATE_LIMIT_NAMESPACE}.principal.limit`;
 export const rateLimitPrincipalTtlKey = (): string => `${RATE_LIMIT_NAMESPACE}.principal.ttl`;
+
+// ---------------------------------------------------------------------------
+// The BREACH LOCKOUT (TASK-993 D-2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether exceeding a limit costs a FULL WINDOW of lockout measured from the
+ * breach, or only the remainder of the window the breach happened in.
+ *
+ * ## The defect (D-2)
+ *
+ * `@nestjs/throttler@6.5.0` resolves
+ * `blockDuration = routeOrClass || namedThrottler.blockDuration || ttl`
+ * (`throttler.guard.js:84`). Nothing configured one, so it was always `ttl` =
+ * 60 s, and a single request over the line locked the bucket out for a full
+ * minute from the moment of the breach — not a rolling window that recovers as
+ * hits age out. Lane F's per-principal bucket shrank the blast radius from
+ * "the whole tenant" to "one caller", but a clinician who bursts one request
+ * over the line mid-consultation still lost a minute.
+ *
+ * ## Why this is a BOOLEAN and not a duration
+ *
+ * Because no intermediate duration means the same thing in the two storage
+ * backends this platform runs (Redis in dev/prod, the library's in-memory
+ * store under test). Measured against both, TASK-993 lane J:
+ *
+ * | `blockDuration` | in-memory | Redis |
+ * |---|---|---|
+ * | `0` | the breaching request is **ALLOWED** and the counter resets — no limit at all | `ERR invalid expire time in 'set' command` — the Lua's `SET blockKey 1 PX 0` throws, so the request 500s |
+ * | `1 ms` | refuses, and keeps refusing | grants a **fresh window** (`PTTL` rounds to 0 and the Lua's reset branch fires) |
+ * | `< ttl` | block expires → counter **resets to a full fresh allowance** | block expires → counter is still over the limit → **re-blocked to the window boundary** |
+ * | `= ttl` | identical | identical |
+ *
+ * The only self-consistent value the library can be given is `ttl`, which IS
+ * the defect. So "no lockout" is not a duration at all — it is the absence of
+ * the block key, implemented above the storage in
+ * `apps/api/src/modules/throttle/window-only-storage.ts`, which makes each
+ * backend's block branch unreachable and derives refusal from the counter.
+ * That leaves exactly two behaviours to choose between, hence a boolean.
+ *
+ * ## Why the default is OFF
+ *
+ * A lockout barely changes the arithmetic it was presumably there for. On
+ * `auth/login` at 5/min, a lockout gives an attacker 5 attempts then 60 s;
+ * without it, 5 attempts then the remainder of the window — both are ~5
+ * attempts per minute. What the lockout DOES change is the cost to an honest
+ * caller who overshoots by one, which is a full minute of a clinical session.
+ * Platform-wide and admin-flippable, so an operator who wants the harsher
+ * posture back does not need a deploy.
+ */
+export const RATE_LIMIT_LOCKOUT_ENABLED_DEFAULT = false;
+
+export const rateLimitLockoutEnabledKey = (): string => `${RATE_LIMIT_NAMESPACE}.lockout.enabled`;
+
+/**
+ * The `blockDuration` that means "no lockout beyond this window".
+ *
+ * It is `0` because that is what a reader assumes `blockDuration: 0` means —
+ * the library simply cannot honour it (see the table above). Our storage
+ * wrapper intercepts it and never passes a non-positive expiry to a backend.
+ */
+export const RATE_LIMIT_NO_LOCKOUT_BLOCK_MS = 0;

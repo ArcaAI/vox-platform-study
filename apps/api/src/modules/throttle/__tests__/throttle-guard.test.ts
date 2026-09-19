@@ -241,6 +241,9 @@ describe('TieredThrottlerGuard (DB-backed live overrides)', () => {
     // fixtures sign `{ tenantId }` with no `id` claim, so no principal is
     // provable; the lane has its own suite.
     getPrincipalPolicy: () => ({ enabled: true, ...RATE_LIMIT_PRINCIPAL_DEFAULTS }),
+    // TASK-993 lane J added this accessor to the interface; the default (OFF)
+    // is what every test here assumed before it existed.
+    isLockoutEnabled: () => false,
   };
 
   const hit = (path: string) => request(app.getHttpServer()).get(path);
@@ -383,6 +386,9 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
     isEnabledForTenant: () => true,
     getTierForTenant: (name) => ({ ...tierOf(name), limitSource: 'system', ttlSource: 'system' }),
     getPrincipalPolicy: () => ({ enabled: true, ...RATE_LIMIT_PRINCIPAL_DEFAULTS }),
+    // TASK-993 lane J added this accessor to the interface; the default (OFF)
+    // is what every test here assumed before it existed.
+    isLockoutEnabled: () => false,
   };
 
   const entitlements = {
@@ -747,6 +753,9 @@ describe('TieredThrottlerGuard (machine credentials — O-4)', () => {
     isEnabledForTenant: () => true,
     getTierForTenant: () => ({ limit: 1000, ttl: 60000, limitSource: 'system', ttlSource: 'system' }),
     getPrincipalPolicy: () => ({ enabled: true, ...RATE_LIMIT_PRINCIPAL_DEFAULTS }),
+    // TASK-993 lane J added this accessor to the interface; the default (OFF)
+    // is what every test here assumed before it existed.
+    isLockoutEnabled: () => false,
   };
 
   // Both machine credentials resolve a tenant WITHOUT a database read: the

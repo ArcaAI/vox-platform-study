@@ -13,7 +13,12 @@ import { SYSTEM_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS } from './00-c
  * seeding one platform row per key keeps that lookup deterministic and avoids
  * tripping the boot-time duplicate-key invariant.
  *
- * Seeds the global kill-switch + the four tier baselines (limit/ttl). Per-route
+ * Seeds the global kill-switch, the four tier baselines (limit/ttl), the
+ * per-principal bucket (TASK-993 OD-2) and the breach posture (TASK-993 D-2).
+ * Every one of those has a code baseline, so an absent row changes nothing
+ * about how the gateway behaves — they are seeded so a platform admin sees a
+ * STORED value on the rate-limit screen instead of an empty field, which is
+ * exactly why the nine tier rows are seeded too. Per-route
  * overrides (`rate-limit.route.<id>.*`) are intentionally NOT seeded — their
  * absence means "fall back to the route's `@Throttle` decorator", so the
  * shipped behavior is unchanged until an admin opts a specific endpoint in.
@@ -124,6 +129,45 @@ export const RATE_LIMIT_SETTINGS: RateLimitSettingDef[] = [
     value: '60000',
     dataType: ValueType.Integer,
     description: 'Window length in milliseconds for the relaxed tier.',
+  },
+  // ── the per-principal bucket, level two of the two-level model (OD-2) ───
+  // Level one is the tenant aggregate above; this bounds how much of it ONE
+  // caller (user / API key / service account) may take, so a runaway browser
+  // tab or a looping integration cannot starve the other 99 doctors. Absent
+  // rows already resolve to these exact numbers in code — they are seeded so
+  // the admin screen shows a stored value, as the nine tier rows above do.
+  {
+    id: IDS.RATE_LIMIT_PRINCIPAL_ENABLED,
+    name: 'Rate Limit Principal Enabled',
+    key: 'rate-limit.principal.enabled',
+    value: 'true',
+    dataType: ValueType.Boolean,
+    description: 'Whether each caller is additionally counted in its own bucket underneath its tenant-wide ceiling. OFF restores the single tenant-wide counter.',
+  },
+  {
+    id: IDS.RATE_LIMIT_PRINCIPAL_LIMIT,
+    name: 'Rate Limit Principal Limit',
+    key: 'rate-limit.principal.limit',
+    value: '150',
+    dataType: ValueType.Integer,
+    description: 'Max requests ONE caller may make per window inside its tenant. Sized from the measured worst case for a single console user (44.1 req/min) with the approved 3x headroom.',
+  },
+  {
+    id: IDS.RATE_LIMIT_PRINCIPAL_TTL,
+    name: 'Rate Limit Principal Ttl',
+    key: 'rate-limit.principal.ttl',
+    value: '60000',
+    dataType: ValueType.Integer,
+    description: 'Window length in milliseconds for the per-principal bucket.',
+  },
+  // ── what a BREACH costs (D-2) ──────────────────────────────────────────
+  {
+    id: IDS.RATE_LIMIT_LOCKOUT_ENABLED,
+    name: 'Rate Limit Lockout Enabled',
+    key: 'rate-limit.lockout.enabled',
+    value: 'false',
+    dataType: ValueType.Boolean,
+    description: 'ON: exceeding a limit refuses the bucket for a FULL window measured from the breach. OFF (the default): the refusal lasts only until the current window rolls.',
   },
 ];
 
