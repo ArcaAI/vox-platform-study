@@ -9,7 +9,7 @@ from typing import Any
 
 import dramatiq
 
-from ...core.api_client.gateway import get_api_client
+from ...core.api_client.gateway import JobNotResumableError, get_api_client
 from ...core.config.settings import get_settings
 from ...core.effective_config import get_effective_config_client
 from ...core.exceptions import (
@@ -475,9 +475,24 @@ async def _transcribe_file_async(
         raise dramatiq.middleware.SkipMessage() from e
 
     except JobTerminalError:
-        # Job was already completed/failed by a previous attempt -- skip silently
+        # Job was already completed/failed by a previous attempt -- skip silently.
+        # Safe to drop: the job HAS an outcome and the client can see it.
         logger.warning(f"[{job_id}] Job already in terminal state, skipping duplicate delivery")
         return
+
+    except JobNotResumableError as e:
+        # The gateway refused the claim on a job that has NOT finished — a
+        # PROCESSING row whose worker died mid-job (a restart, an OOM kill). This
+        # took the branch above and was acked silently, so the row stayed
+        # PROCESSING forever and the client waited out its whole timeout against a
+        # job nothing owned. Nothing can resume it: the previous attempt's audio,
+        # models and partial results went with its process. So end it honestly —
+        # FAILED, with a code — and then drop the delivery, because a retry would
+        # only be refused again, now as terminal.
+        logger.error(f"[{job_id}] {e}; failing the orphaned job instead of dropping it")
+        await publisher.publish_error(job_id, e.error_code, str(e))
+        await _fail_job(api_client, publisher, job_id, str(e), e.error_code, tenant_id=tenant_id)
+        raise dramatiq.middleware.SkipMessage() from e
 
     except AudioProcessingError as e:
         # The file itself is unusable (undecodable, wrong format,
