@@ -16,6 +16,7 @@ import {
   IEntitlementsService,
   ITenantBucketService,
   ITenantSttConfigService,
+  IUserRoleAssignmentService,
   jsonSchemaValueProblems,
   PipelineService,
   StreamingSessionService,
@@ -48,6 +49,7 @@ import {
   PayloadTooLargeException,
   Post,
   Query,
+  Req,
   Res,
   ServiceUnavailableException,
   Sse,
@@ -73,6 +75,26 @@ import {
   TranscribeFileRequest,
 } from './dto';
 import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
+import type { RequestWithAuth } from '../../types/request-with-auth';
+
+/**
+ * TASK-991 W2-1 — the roles that may transcribe on ANOTHER clinician's behalf.
+ *
+ * Mirrors `DNA_INGEST_ADMIN_ROLES` (`dna-writing-style.service.ts`) deliberately: "who may act
+ * for whom" is ONE platform rule, and a second spelling of it would drift from the first.
+ */
+const TRANSCRIPTION_ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'];
+
+/**
+ * WHICH credential class is transcribing, plus the human an API key is bound to.
+ *
+ * The three classes answer "who owns this job?" differently, and no `action + subject` pair can
+ * express the difference — which is why the rule is imperative and carries an AUTH-NOTE.
+ */
+type TranscribeCaller =
+  | { credentialClass: 'service-account' }
+  | { credentialClass: 'api-key'; boundUserId: string | null }
+  | { credentialClass: 'jwt' };
 
 @ApiBearerAuth()
 @Authorize()
@@ -173,6 +195,12 @@ export class TranscriptionJobController {
     // compiling; when absent the agent path answers 503 (never a pipeline guess)
     // while the deprecated `pipelineId` path keeps working for the window.
     @Optional() private readonly asrResolver?: AsrAgentResolverService,
+    // TASK-991 W2-1 — the two tenant-scoped identity reads the machine-caller rule needs:
+    // `findActiveAssignmentForUserInTenant` (is the NAMED clinician a member of this tenant?) and
+    // `fetchAllByUserId` (does the human an API key is bound to administer it?). Optional +
+    // TRAILING so the positional unit-test construction in `__tests__/` keeps compiling; absent,
+    // the machine path fails CLOSED with a 503 rather than accepting an unverified clinician.
+    @Optional() @Inject(IUserRoleAssignmentService) private readonly roleAssignments?: IUserRoleAssignmentService,
   ) {}
 
   /**
@@ -208,15 +236,19 @@ export class TranscriptionJobController {
   }
 
   /**
-   * Refuse a new batch job when the caller already holds `maxActive` in flight.
+   * Refuse a new batch job when the OWNER already holds `maxActive` in flight.
    * QUEUED + PROCESSING are the only in-flight states — finished, failed and
    * cancelled jobs never consume a slot, however many of them there are.
    *
    * 429 (not 409): this is "too much at once, retry later", and it is what the
    * SDK's queue backs off on.
+   *
+   * TASK-991 W2-1 — `ownerId` is passed in rather than read from CLS, because the owner of a
+   * machine-submitted job is the NAMED clinician and CLS holds no user for a machine. The knob is
+   * `maxActiveJobsPerUser`, so the count must be that clinician's, not the credential's.
    */
-  private async assertBatchConcurrency(maxActive: number): Promise<void> {
-    const counts = await this.jobService.getStatusCountsForOwner(this.getUserId());
+  private async assertBatchConcurrency(maxActive: number, ownerId: string): Promise<void> {
+    const counts = await this.jobService.getStatusCountsForOwner(ownerId);
     const inFlight = (counts?.queued ?? 0) + (counts?.processing ?? 0);
     if (inFlight >= maxActive) {
       throw new HttpException(
@@ -291,6 +323,162 @@ export class TranscriptionJobController {
       throw new BadRequestException('A streaming session must have an owner. Ensure you are authenticated as a user or a service account.');
     }
     return ownerId;
+  }
+
+  /**
+   * TASK-991 W2-1 — WHICH credential is calling, read off the REQUEST with CLS as the machine
+   * fallback.
+   *
+   * CLS cannot tell an API key from a JWT: `UnifiedAuthGuard.handleApiKeyAuth` publishes
+   * `{ id, tenantId }` into CLS `user` with no roles and no key id (a shape
+   * `unified-auth.guard.apikey-principal-shape.test.ts` pins as load-bearing), so the request
+   * object is the only source that can — the same read `DnaWritingStyleIngestController.callerOf`
+   * makes, for the same reason.
+   *
+   * It CAN tell a MACHINE from a human, and that is the CLS fallback below: `req` is optional on
+   * the handler (the positional unit tests construct calls without one), and a missing request
+   * must never let a machine pass as a person. The fallback reads `user` FIRST — the guard never
+   * writes a machine onto `user`, so a CLS user means a human, which is the same precedence
+   * `resolveStreamOwnerId` applies. The worst a missing `req` can then do is demote an API key to
+   * the JWT branch, which is the NARROWER of the two rules.
+   */
+  private callerOf(req?: RequestWithAuth): TranscribeCaller {
+    if (req?.serviceAccount) return { credentialClass: 'service-account' };
+    if (req?.apiKey) return { credentialClass: 'api-key', boundUserId: req.apiKey.userId ?? null };
+    if (!this.cls.get('user') && this.cls.get('serviceAccount')) return { credentialClass: 'service-account' };
+    return { credentialClass: 'jwt' };
+  }
+
+  /**
+   * TASK-991 W2-1 — WHO owns the transcription job this request creates.
+   *
+   * The defect this replaces: the handler resolved its owner through `getUserId()`, which reads
+   * CLS `user` — a key `UnifiedAuthGuard` never populates for a machine — so every service-account
+   * call answered `400 "User context is required"` while `route-manifest.json` advertised the route
+   * to service accounts (`svc:stt:transcription:write`, `forbidServiceAccount: false`). The
+   * platform promised a route it then refused.
+   *
+   * The rule, which is the one `POST dna-writing-styles/ingest` already states (same field name, so
+   * an integrator learns "name the clinician" once):
+   *
+   *   · a SERVICE ACCOUNT must NAME the clinician (`clinicianUserId`, 400
+   *     `TRANSCRIBE_CLINICIAN_REQUIRED`) — it binds to a working TENANT, not to a person, and a
+   *     machine is never recorded as the clinician;
+   *   · an API KEY may name only the human it is BOUND to, unless that human administers THIS
+   *     tenant: scopes bind the credential, abilities bind the bound human, and a credential never
+   *     exceeds its human (rule 05);
+   *   · a HUMAN naming nobody — or naming themselves — is the owner, exactly as before; naming
+   *     someone else needs SUPER_ADMIN / TENANT_ADMIN (400 `TRANSCRIBE_CLINICIAN_NOT_ALLOWED`);
+   *   · any clinician NAMED by anyone must belong to the caller's tenant, and a foreign id is 404,
+   *     never 403 — the house posture, and a recording is PHI.
+   *
+   * WHY A THIRD HELPER, and not a reuse of one of the two above. This controller now carries
+   * `getUserId()` (strict: throws when there is no CLS user), `resolveStreamOwnerId()` (lenient:
+   * falls back to the service-account id) and this one, and that reads like drift until you ask
+   * what each one ANSWERS:
+   *
+   *   · `resolveStreamOwnerId` answers who owns a TRANSPORT. A machine owning its own socket is
+   *     correct and deliberate (TASK-933): the ticket, the binding and the WS handshake all
+   *     compare that one id, and a session owned by somebody who is not the connecting party
+   *     cannot be opened at all;
+   *   · `getUserId` answers whose jobs to SHOW on the owner-scoped reads (`GET /`, cancel, retry).
+   *     It stays strict on purpose — a machine has no jobs of its own, and widening it to the
+   *     service-account id would scope those reads to an id that never appears in `createdBy`;
+   *   · this one answers who the CLINICAL artifact belongs to, and that must be a human. Reusing
+   *     `resolveStreamOwnerId` here would have made the route succeed while still seeding no voice
+   *     profiles — a service account owns no enrolments, so every speaker would come back as a
+   *     generic `Speaker N`. A route that works and transcribes worse is the harder bug to find.
+   */
+  private async resolveTranscriptionOwner(tenantId: string, named: string | undefined, req?: RequestWithAuth): Promise<string> {
+    const caller = this.callerOf(req);
+
+    if (caller.credentialClass === 'service-account') {
+      if (!named) {
+        throw new BadRequestException({
+          code: 'TRANSCRIBE_CLINICIAN_REQUIRED',
+          message:
+            'A service account has no clinician of its own. Name the clinician this recording belongs to with `clinicianUserId`; ' +
+            'a machine is never recorded as the clinician.',
+        });
+      }
+      await this.assertClinicianOfTenant(named, tenantId);
+      return named;
+    }
+
+    // Both HUMAN classes keep today's behaviour when they name nobody — or name themselves. For an
+    // API key the CLS user IS the human it is bound to, so this branch is unchanged for it too.
+    const callerId = this.getUserId();
+    if (!named || named === callerId) return callerId;
+
+    if (!(await this.mayActForAnotherClinician(caller, tenantId))) {
+      throw new BadRequestException({
+        code: 'TRANSCRIBE_CLINICIAN_NOT_ALLOWED',
+        message:
+          caller.credentialClass === 'api-key'
+            ? 'This API key may transcribe only for the clinician it is bound to. A key bound to a tenant or super administrator may ' +
+              'name any clinician of its tenant; mint the key against that principal, or submit under the clinician`s own key.'
+            : 'Only a tenant or super administrator may transcribe on another clinician`s behalf. Omit `clinicianUserId` to transcribe ' +
+              'as yourself.',
+      });
+    }
+    await this.assertClinicianOfTenant(named, tenantId);
+    return named;
+  }
+
+  /**
+   * May this caller name a clinician who is not itself? Consulted ONLY when one was named, so the
+   * ordinary path costs no read.
+   *
+   * A JWT caller's roles are in the token, so the check is free. An API KEY's bound human has
+   * none in CLS (see `callerOf`), so their assignments are read — and the read is confined to
+   * THIS tenant, explicitly: a user who administers tenant B is nobody in tenant A, so the
+   * cross-tenant `findActiveRolesForUser` would have been a widening. Fails CLOSED on an
+   * unreadable role list and on an unbound key.
+   */
+  private async mayActForAnotherClinician(caller: TranscribeCaller, tenantId: string): Promise<boolean> {
+    if (caller.credentialClass === 'jwt') {
+      return (this.cls.get('user')?.roles ?? []).some((role) => TRANSCRIPTION_ADMIN_ROLES.includes(role));
+    }
+    const boundUserId = caller.credentialClass === 'api-key' ? caller.boundUserId : null;
+    const roleAssignments = this.roleAssignments;
+    if (!boundUserId || !roleAssignments) return false;
+
+    try {
+      const assignments = await roleAssignments.fetchAllByUserId({ userId: boundUserId, page: 0, limit: 100 });
+      return assignments.data.some(
+        (assignment) => assignment.tenantId === tenantId && (assignment.Roles ?? []).some((role) => TRANSCRIPTION_ADMIN_ROLES.includes(role.name)),
+      );
+    } catch (err) {
+      this.logger.warn({
+        message: 'Could not read the roles of the API-key principal; refusing the named clinician',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Is the NAMED clinician a member of the caller's tenant? 404 if not — never 403, and never a
+   * message that distinguishes "no such user" from "a user of another tenant". The user id space
+   * is not the caller's to probe.
+   *
+   * An ENABLED role assignment in this tenant IS tenant membership — the same "role half" that
+   * carries this meaning in `assertUserBelongsToTenant`, reached here through the service token
+   * because a controller holds no repositories. `findActiveAssignmentForUserInTenant` filters
+   * `tenantId` explicitly in its own WHERE, so the answer does not depend on the CLS-driven
+   * Prisma tenant-scope extension being active for this credential class.
+   *
+   * Fails CLOSED (503) when the service is not wired: accepting an unverified clinician would
+   * write another tenant's user onto a PHI recording.
+   */
+  private async assertClinicianOfTenant(clinicianUserId: string, tenantId: string): Promise<void> {
+    if (!this.roleAssignments) {
+      throw new ServiceUnavailableException('Clinician verification is not configured on this gateway');
+    }
+    const assignment = await this.roleAssignments.findActiveAssignmentForUserInTenant(clinicianUserId, tenantId);
+    if (!assignment) {
+      throw new NotFoundException(`User ${clinicianUserId} not found`);
+    }
   }
 
   /**
@@ -422,17 +610,40 @@ export class TranscriptionJobController {
   @ApiOperation({ summary: 'Upload audio file for batch transcription via worker' })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, description: 'Batch job created and queued', type: BatchTranscribeResponse })
-  @ApiResponse({ status: 400, description: 'Missing/unsupported file, file too large, or a recording over the duration ceiling.' })
-  @ApiResponse({ status: 429, description: 'The caller already holds the maximum number of in-flight batch jobs.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Missing/unsupported file, file too large, a recording over the duration ceiling, a machine caller that named no clinician ' +
+      '(`TRANSCRIBE_CLINICIAN_REQUIRED`), or a caller that may not name the clinician it did (`TRANSCRIBE_CLINICIAN_NOT_ALLOWED`).',
+  })
+  @ApiResponse({ status: 404, description: 'The named clinician is not a member of this tenant (also returned for a clinician of another tenant).' })
+  @ApiResponse({ status: 429, description: 'The owner already holds the maximum number of in-flight batch jobs.' })
   // The interceptor limit is a STATIC hard ceiling — a decorator cannot read a
   // per-tenant setting. The admin-configurable `stt.batch.maxFileSizeMb` is
   // enforced in the handler below; this only stops a multi-GB body from being
   // buffered before that check can run.
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_HARD_CEILING } }))
+  // AUTH-NOTE: the class-level `@Authorize()` + `stt:transcription:write` / `svc:stt:transcription:write`
+  // say a caller MAY transcribe. They cannot say WHOSE recording this is, and this route has to
+  // know: the job's owner is a CLINICIAN, and a machine credential is not one. The rule is
+  // therefore imperative, in `resolveTranscriptionOwner` above — a service account must NAME the
+  // clinician (400 `TRANSCRIBE_CLINICIAN_REQUIRED`), an API key may name only its bound human
+  // unless that human administers this tenant, a human keeps owning their own jobs, and any named
+  // clinician outside the tenant is 404 (404-over-403). It is the rule `POST
+  // dna-writing-styles/ingest` already states, under the same field name.
+  //
+  // Why the field EARNS its place rather than being ceremony: the owner is what seeds enrolled
+  // VOICE PROFILES. `TranscriptionRealtimeService.resolveVoiceProfiles` returns `[]` the moment
+  // `params.userId` is absent (`transcriptionRealtime.service.ts:330`), so a machine-submitted
+  // recording would run diarization with no enrolled speakers to match against — a silently worse
+  // transcript, not an error. Naming the clinician is what makes that path reachable at all for a
+  // machine caller. The job ROW's own `createdBy` is a separate stamp that this gateway cannot yet
+  // set for a machine — see the KNOWN GAP at the `createBatchJob` call below.
   async transcribeFile(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: TranscribeFileRequest,
     @Res({ passthrough: true }) res?: Response,
+    @Req() req?: RequestWithAuth,
   ): Promise<BatchTranscribeResponse> {
     // 1. Validate file
     if (!file?.buffer) {
@@ -476,9 +687,15 @@ export class TranscriptionJobController {
       );
     }
 
+    // TASK-991 W2-1 — WHO this job belongs to, resolved ONCE and used by the in-flight cap below
+    // and by the worker dispatch. It sits exactly where the old `getUserId()` call sat (inside
+    // `assertBatchConcurrency`), so the ordering of every existing refusal is unchanged: the pure
+    // in-process file checks above still run first and still cost no I/O.
+    const ownerId = await this.resolveTranscriptionOwner(tenantId, body.clinicianUserId, req);
+
     // In-flight cap — the server-side counterpart of the client's per-batch
     // limit. Without it "5 per batch" is bypassed by sending five batches.
-    await this.assertBatchConcurrency(limits.maxActiveJobsPerUser);
+    await this.assertBatchConcurrency(limits.maxActiveJobsPerUser, ownerId);
 
     // 1c. Resolve WHAT runs the job (TASK-861). The agent path — explicit
     //     `agentSlug`, else the tenant's assigned agent — yields a
@@ -503,6 +720,14 @@ export class TranscriptionJobController {
 
     // 2. Create batch job in DB (status: QUEUED) — keyed to the agent version +
     //    spec snapshot (never a credential), or to the deprecated pipeline row.
+    //
+    //    KNOWN GAP (TASK-991 W2-1, cross-package): the ROW's `createdBy` is stamped inside
+    //    `TranscriptionJobService.create` from `this.requestUserId` (CLS `user.id`), which is null
+    //    for a service account — `CreateBatchJobRequest` carries no owner field for the gateway to
+    //    pass, so the row falls back to the system-user default. The job therefore runs, streams
+    //    and reads back by id (that route is tenant-gated) for a machine caller, but it does not
+    //    yet appear in the NAMED clinician's owner-scoped list. Closing it means an owner field on
+    //    `CreateBatchJobRequest` honoured by that service, which lives in `packages/applications`.
     const job = await this.jobService.createBatchJob({
       ...(resolved
         ? { agentVersionId: resolved.spec.agent.versionId, resolvedSpec: resolved.spec as unknown as Record<string, unknown> }
@@ -564,7 +789,11 @@ export class TranscriptionJobController {
       //    path still sends `fallbackPipelineId` so a cloud-ASR/model failure
       //    re-runs on the tenant fallback instead of failing the job. Credentials
       //    never enter the queue message: the worker pulls them at execution.
-      const user = this.cls.get('user');
+      //
+      //    TASK-991 W2-1 — `userId` is the RESOLVED owner, not `cls.user?.id`. It is what
+      //    `TranscriptionRealtimeService.resolveVoiceProfiles` keys enrolled voice profiles on, so
+      //    a machine-submitted recording now diarizes against the named clinician's enrolments
+      //    instead of against nothing.
       await this.dispatchBatchJob({
         jobId: job.id,
         tenantId,
@@ -573,7 +802,7 @@ export class TranscriptionJobController {
         consultationId: body.consultationId,
         mediaId,
         language: body.language,
-        userId: user?.id,
+        userId: ownerId,
         audioBucketName: uploadBucket,
         storage,
         ...(resolved ? { resolvedSpec: resolved.spec } : {}),
