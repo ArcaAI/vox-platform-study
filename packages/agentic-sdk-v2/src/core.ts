@@ -54,6 +54,9 @@ export {
   useConsultationJob,
   // TASK-974: submit a clinician's writing samples to the hidden DNA analyst agent.
   useDnaWritingStyle,
+  // TASK-991: the doctor SELF-service surface over the report itself — read/edit,
+  // redaction rules (written via the report PATCH), the on/off toggle, and generation.
+  useDnaReport,
   // Schema discovery + the consultation-loop event stream
   useConsultationSchema,
   useConsultationWorkflow,
@@ -78,6 +81,10 @@ export {
   useStorage,
   useUserSettings,
   useVoiceEmbedding,
+  // Voice enrollment gate helper + the non-React checker factory it wraps —
+  // plain read/derive logic (no audio/ML), so /core is the right home.
+  useVoiceEnrollmentStatus,
+  createVoiceEnrollmentChecker,
 } from './hooks';
 
 export type {
@@ -102,6 +109,8 @@ export type {
   UseConsultationSchemaReturn,
   UseDnaWritingStyleReturn,
   PollIngestJobOptions,
+  UseDnaReportReturn,
+  PollDnaJobOptions,
   UseConsultationWorkflowReturn,
   UseSelectableConsultationWorkflowsReturn,
   // workflow invocation.
@@ -121,6 +130,9 @@ export type {
   EnrollFiles,
   EnrollOptions,
   VoiceEnrollmentTarget,
+  UseVoiceEnrollmentStatusOptions,
+  UseVoiceEnrollmentStatusReturn,
+  VoiceEnrollmentChecker,
   UserRole,
 } from './hooks';
 

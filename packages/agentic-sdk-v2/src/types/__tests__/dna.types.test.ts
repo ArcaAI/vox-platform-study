@@ -57,10 +57,10 @@ describe('DNA Writing Style types', () => {
 
     it('should accept all optional fields', () => {
       const report = makeDnaReport({
-        departmentId: 'dept-001',
+        version: 3,
         styleText: 'Formal clinical writing with standard abbreviations.',
       });
-      expect(report.departmentId).toBe('dept-001');
+      expect(report.version).toBe(3);
       expect(report.styleText).toBeDefined();
     });
 
@@ -144,9 +144,18 @@ describe('DNA Writing Style types', () => {
     it('should accept text samples', () => {
       const input: DnaGenerateInput = {
         textSamples: ['Sample text 1', 'Sample text 2'],
-        departmentId: 'dept-001',
+        sourceIds: ['ctx-1'],
       };
       expect(input.textSamples).toHaveLength(2);
+    });
+
+    it('should accept promptTemplateId and editedSummary', () => {
+      const input: DnaGenerateInput = {
+        promptTemplateId: 'tmpl-001',
+        editedSummary: 'Patient presents with mild cough.',
+      };
+      expect(input.promptTemplateId).toBe('tmpl-001');
+      expect(input.editedSummary).toBeDefined();
     });
   });
 
@@ -157,6 +166,16 @@ describe('DNA Writing Style types', () => {
         changeReason: 'Manual correction',
       };
       expect(input.styleText).toBe('Updated style');
+    });
+
+    it('should accept redactionRules, resourceStatus and expectedVersion', () => {
+      const input: DnaUpdateInput = {
+        redactionRules: { rules: [{ id: 'r-1', type: 'remove', match: 'literal', pattern: 'SSN' }] },
+        resourceStatus: 'DISABLED',
+        expectedVersion: 2,
+      };
+      expect(input.resourceStatus).toBe('DISABLED');
+      expect(input.expectedVersion).toBe(2);
     });
   });
 

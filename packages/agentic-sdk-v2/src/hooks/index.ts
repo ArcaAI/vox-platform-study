@@ -46,6 +46,9 @@ export { useConsultationJob, type UseConsultationJobReturn } from './useConsulta
 // DNA writing-style sample ingest hook (TASK-974, business plane)
 export { useDnaWritingStyle, type UseDnaWritingStyleReturn, type PollIngestJobOptions } from './useDnaWritingStyle';
 
+// DNA writing-style doctor SELF-service hook — report/redaction-rules/settings/generate
+export { useDnaReport, type UseDnaReportReturn, type PollDnaJobOptions } from './useDnaReport';
+
 // Consultation chain hook — full multi-hop parent/child tree
 export { useConsultationChain, type UseConsultationChainReturn } from './useConsultationChain';
 
