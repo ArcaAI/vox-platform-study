@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 140 |
+| Declared keys (distinct) | 141 |
 | … of which required (`failMode: closed`) | 26 |
 | … of which secret | 25 |
-| … tier `env` | 110 |
+| … tier `env` | 111 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 21 |
 | Python declared fields | 304 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 350 |
-| `turbo.json#globalEnv` entries | 499 |
+| `turbo.json#globalEnv` entries | 500 |
 
 ## Variables — the TypeScript platform surface
 
@@ -124,6 +124,7 @@ disagree with those declarations.
 | `PROMETHEUS_URL` | `env` | no | `http://localhost:9090` | `apps/api` | Prometheus query endpoint for the platform-metrics service (`prometheus-query.service.ts`). |
 | `RATE_LIMIT_ENABLED` | `global-kv` | no | `true` | `apps/api` | Whether throttling is enforced. A tenant may only move this towards the STRICT end (`tenant-clamp.ts`: true-is-stricter), so a tenant admin can switch throttling ON for itself but can never switch off a protection the platform has enabled. `RATE_LIMIT_ENABLED` remains the module-bootstrap baseline read by `RateLimitConfigService` (`!== "false"`), which only decides whether the throttler is WIRED at boot. |
 | `RATE_LIMIT_MAX_REQUESTS` | `global-kv` | no | `100` | `apps/api` | Requests per window for the always-on `default` throttler tier, resolved PER TENANT on the hot path by `TieredThrottlerGuard`. A tenant may only LOWER it, and never above its plan entitlement (the entitlement ceiling). `RATE_LIMIT_MAX_REQUESTS` remains the module-bootstrap baseline. |
+| `RATE_LIMIT_TRUSTED_PROXIES` | `env` | no | `` | `apps/api` | Comma-separated CIDR blocks / addresses of the reverse proxies allowed to assert the real client address via `CF-Connecting-IP`. Read by `apps/api/src/modules/throttle/client-ip.ts`; the rate limiter counts a request against that address ONLY when the socket peer falls inside this list, otherwise against the socket peer itself. EMPTY (the default) means trust nothing, which is the historical per-socket-peer behaviour. In the k3s deployment this is the pod CIDR that Traefik runs in; note the real client address arrives in `CF-Connecting-IP` (stamped by the Cloudflare edge), NOT in `X-Forwarded-For`, whose last hop is cloudflared. Express `trust proxy` stays OFF — it would trust the wrong header, from any caller. |
 | `RATE_LIMIT_WINDOW_MS` | `global-kv` | no | `60000` | `apps/api` | Window length for the always-on `default` throttler tier, resolved per tenant with `rateLimit.maxRequests`. A LONGER window over the same limit is a TIGHTER budget, so this is the one knob where a tenant may only raise the number (`tenant-clamp.ts`: higher-is-stricter) — otherwise a tenant could set a 1 ms window and make its limit meaningless. `RATE_LIMIT_WINDOW_MS` remains the module-bootstrap baseline. |
 | `REDIS_HOST` | `env` | no | `localhost` | `apps/api` | Redis host, used when `REDIS_URL` is unset. |
 | `REDIS_PASS` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Redis AUTH password. Resolved through SecretsService and layered over the env value by `ConfigService.applySecretOverrides`. |

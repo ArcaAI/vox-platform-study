@@ -179,6 +179,25 @@ async function bootstrap() {
   // generic on `NestFactory.create` so the bootstrap signature is untouched.)
   app.getHttpAdapter().getInstance().set('etag', false);
 
+  // `trust proxy` IS DELIBERATELY NOT SET, and setting it would be a
+  // regression, not the missing half of this line (TASK-993 D-1). Two reasons:
+  //
+  //   1. It would trust `X-Forwarded-For`, which on this ingress path carries
+  //      the WRONG address. `Cloudflare edge → cloudflared → Traefik → pod`:
+  //      Traefik's own TCP peer is the cloudflared pod, so whatever it appends
+  //      names cloudflared, not the browser. The real client address is stamped
+  //      into `CF-Connecting-IP` at the Cloudflare edge.
+  //   2. It is a global switch with no notion of WHICH hop asserted the header,
+  //      so it would believe any direct caller — handing anyone a private
+  //      rate-limit bucket on request.
+  //
+  // The client address is instead resolved narrowly, only for the rate
+  // limiter's bucket key, and only when the socket peer is a declared ingress:
+  // `apps/api/src/modules/throttle/client-ip.ts` + `RATE_LIMIT_TRUSTED_PROXIES`.
+  // Anything else that wants a client IP (audit trails in `UnifiedAuthGuard`
+  // and the service-account token controller) still reads `X-Forwarded-For`
+  // directly and is out of that scope.
+
   // Renders RFC 7232 strong `ETag` headers from `body.version` — after the
   // line above, the ONLY ETag this API emits. Also serves the matching
   // conditional GET (`If-None-Match` -> 304) and sets
