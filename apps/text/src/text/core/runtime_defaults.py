@@ -85,6 +85,19 @@ class LaneBudget:
     ``reset_timeout_s`` stay nullable: ``None`` preserves the breaker's
     unlimited-trial / undecayed behaviour, and a non-null literal here would
     silently start capping and decaying on every deployment.
+
+    ``count_rate_limits`` is False (TASK-993 D-5). Its previous ``True`` was a
+    COMPATIBILITY value, not a decision: nothing ever passed
+    ``record_failure(is_rate_limit=True)``, so the two settings were
+    indistinguishable and the choice was never made on the merits. Now that the
+    request path classifies a vendor 429, it is: a 429 is the provider
+    answering correctly and naming a deadline, which is evidence about OUR rate,
+    not its health — and the breaker's answer (30s blanket open, every tenant,
+    no upstream deadline) is strictly worse than honouring the seconds the
+    vendor asked for. Sustained 429s DO eventually mean the lane is unusable;
+    an operator who wants the breaker to say so sets ``countRateLimits`` on the
+    runtime profile, which `merged` applies over this floor. The policy stays in
+    the control plane — only the safe default moved.
     """
 
     max_concurrent: int
@@ -96,7 +109,7 @@ class LaneBudget:
     queue_max_wait_s: float
     half_open_max_calls: int | None = None
     reset_timeout_s: float | None = None
-    count_rate_limits: bool = True
+    count_rate_limits: bool = False
 
     def merged(self, served: dict[str, object]) -> LaneBudget:
         """Return this budget with any control-plane value applied over it.

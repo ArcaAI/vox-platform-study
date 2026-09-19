@@ -57,7 +57,10 @@ from text.services.output_gate import (
 )
 from text.services.retry_handler import (
     INVALID_REQUEST_ERROR_TYPE,
+    RATE_LIMITED_CODE,
+    RATE_LIMITED_ERROR_TYPE,
     is_provider_invalid_request,
+    is_provider_rate_limited,
     provider_error_code_from,
 )
 from text.services.shutdown_manager import ShutdownManager
@@ -526,9 +529,20 @@ async def run_generation_producer(
         # so a rejected-for-context-size stream reads the same as the
         # blocking `/generate` 422 instead of the opaque "internal error"
         # every other provider failure gets.
+        # D-5 (TASK-993): this producer shares the `circuit_breakers` dict with
+        # the blocking `/generate` route, so a vendor 429 counted here would
+        # open the very breaker that route just declined to open — and the
+        # clinical planes stream. Same three-way verdict, same `RATE_LIMITED`
+        # token on the frame as the blocking 429's `error_code`, so a client
+        # reads one vocabulary whichever way it asked for the generation.
+        is_rate_limited = is_provider_rate_limited(exc)
         is_invalid_request = is_provider_invalid_request(exc)
-        error_type = INVALID_REQUEST_ERROR_TYPE if is_invalid_request else "provider_error"
-        code = provider_error_code_from(exc) if is_invalid_request else None
+        if is_rate_limited:
+            error_type, code = RATE_LIMITED_ERROR_TYPE, RATE_LIMITED_CODE
+        elif is_invalid_request:
+            error_type, code = INVALID_REQUEST_ERROR_TYPE, provider_error_code_from(exc)
+        else:
+            error_type, code = "provider_error", None
         logger.error(
             "streaming_generation.failed",
             generation_id=generation_id,
@@ -543,10 +557,16 @@ async def run_generation_producer(
         # class: the provider bills for work whose only record we threw away.
         # The block carries the SAME id a clean completion would, so the
         # gateway's idempotency key converges instead of double-billing.
+        if is_rate_limited:
+            # A FIXED sentence, matching the blocking route's 429 body: the
+            # vendor's own text can quote the prompt.
+            error_message = "The upstream model provider is rate limiting this request."
+        elif is_invalid_request:
+            error_message = str(exc)
+        else:
+            error_message = "Generation failed due to an internal error."
         error_data: dict[str, Any] = {
-            "error": (
-                str(exc) if is_invalid_request else "Generation failed due to an internal error."
-            ),
+            "error": error_message,
             "usage": _usage_detail(interrupted=True, total_ms=latency_ms),
         }
         if code is not None:
@@ -566,7 +586,7 @@ async def run_generation_producer(
         ).inc()
         cb = (circuit_breakers or {}).get(resolved_provider)
         if cb:
-            cb.record_failure()
+            cb.record_failure(is_rate_limit=is_rate_limited)
             _update_cb_metric(resolved_provider, cb)
     finally:
         # ``emit_terminal`` normally drains the coalescer; this covers the paths
