@@ -209,7 +209,7 @@ function build(options: BuildOptions = {}) {
   const processor = new DnaWritingStyleProcessor(
     { notifyProgress: vi.fn(), notifyComplete: vi.fn(), notifyFailed: vi.fn() } as never,
     { getValueWithDefault: vi.fn(<T>(_key: string, fallback: T): T => fallback) } as never,
-    { findAll: vi.fn() } as never,
+    { findFinalSummariesByDoctor: vi.fn() } as never,
     { getVersionsByChangeReason: vi.fn().mockResolvedValue([]) } as never,
     dnaReportRepository as never,
     dnaVersionRepository as never,
