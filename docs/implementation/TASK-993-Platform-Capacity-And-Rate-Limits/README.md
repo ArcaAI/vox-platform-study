@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Review |
 | **Type** | infrastructure / bugfix |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-19 |
@@ -308,6 +308,31 @@ TDD per lane: failing test first, then minimal fix, then refactor. Each lane run
 
 ---
 
+## 5b. Verification evidence (2026-09-19, quiet machine)
+
+| Gate | Result |
+|---|---|
+| Serial build: domains → database → applications → api | **exit 0, 0 TS errors** (load avg 6.9) |
+| `apps/api` + `packages/applications` + `packages/database` | **1332 files / 21,132 tests passed, 0 failed** |
+| `apps/text` (lane B) | 1821 passed, 4 skipped, exit 0 |
+| deployment `kustomize build` ×6 overlays + capacity | **304/350, every capacity rule holds** |
+| D-1 inverted, live | two forwarded clients get INDEPENDENT counters; spoof from an untrusted peer refused |
+| Pool saturation, live vs real dev Postgres | `pool_waiting 3`, `acquire_timeouts_total{reason="pool_exhausted"} 3` at 8 concurrent vs pool 5 |
+
+⚠ **The earlier post-merge green was not trustworthy** and is recorded here as a lesson: it passed
+only because another session's uncommitted domain-layer work was in the shared tree. At load 157 the
+same suites produced 5–21 `Test timed out in 30000ms` failures with zero AssertionErrors; at load 6.9,
+zero. **Never accept or reject a gate taken under load.**
+
+Dev DB updated (the seed's plan-matrix upsert is `update: {}`, create-only, so new defaults never
+reach an existing database):
+
+```
+ ENTERPRISE | 150 | 150 | 6650
+ PRO/TRIAL  |  25 |  25 | 1150
+ STARTER    |   5 |   5 |  250
+```
+
 ## 6. Open / Not Yet Measured
 
 - The 10 req/min/user load model is an **assumption**. A load test against a seeded 10×100
@@ -497,6 +522,7 @@ and caught an orphaned PDB in the lane's own change.
 
 | Date | Change |
 |---|---|
+| 2026-09-19 | **All eight lanes merged.** Dev DB plan matrix updated by hand. Status → Review. Remaining items are owner decisions and one unaddressed defect (D-2), listed in §6. NOTHING PUSHED in either repo. |
 | 2026-09-19 | Lanes F and H complete and MERGED; all eight lanes now on `dev-2.2`. Full serial build green at load 6.9 (the earlier green was unreliable — it passed only on another session's uncommitted files). `.env.dev` and local compose `max_connections` reconciled to the new pool size. |
 | 2026-09-19 | Lane C complete. §2.8's keep-alive claim CORRECTED (§2.14): Node ≥19 defaults `globalAgent.keepAlive` to true and the gateway ships Node 24, so sockets were already reused; the real gap was `maxSockets: Infinity` + a shared singleton. |
 | 2026-09-19 | Lane G complete: load model MEASURED (26 active / 8.5 idle req/min; ~230 req/s at 30/70 mix) and fed to lane D mid-flight. F-1 confirmed empirically. Repo-wide `pnpm lint` found red on `dev-2.2` since `f7307362f` and fixed centrally (`d96b7c37d`). Lane H queued: export the pool + refusal metrics OD-3 depends on. |
