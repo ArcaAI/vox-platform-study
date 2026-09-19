@@ -69,7 +69,7 @@ describe('parseApiEnv — descriptor defaults and precedence', () => {
   it('applies the descriptor default when the var is absent', () => {
     const env = parseApiEnv({ ...MINIMAL });
     expect(env.PORT).toBe(8868);
-    expect(env.PRISMA_PG_MAX).toBe(5);
+    expect(env.PRISMA_PG_MAX).toBe(15);
     expect(env.REDIS_PORT).toBe(6379);
     expect(env.LOG_LEVEL).toBe('info');
     expect(env.VAULT_KV_MOUNT).toBe('secret');
