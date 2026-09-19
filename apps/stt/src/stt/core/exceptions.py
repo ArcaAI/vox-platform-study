@@ -241,9 +241,32 @@ class JobTimeoutError(JobError):
 
 
 class JobTerminalError(JobError):
-    """Job is already in a terminal state (COMPLETED/FAILED/CANCELLED/DEAD)."""
+    """The job can never be claimed again — COMPLETED, CANCELLED or DEAD.
+
+    The caller should ACK its message: no retry, however patient, will change
+    the answer.
+
+    Note the list no longer includes FAILED. Since TASK-992 the gateway
+    re-attempts a FAILED job while retries remain, which is what finally makes
+    ``transcribe_file``'s ``max_retries=3`` mean something; the LEGACY
+    substring branch in ``gateway.py`` still treats FAILED as terminal,
+    because an older gateway genuinely cannot restart one.
+    """
 
     error_code = "JOB_TERMINAL"
+
+
+class JobConflictError(JobError):
+    """The job cannot be claimed RIGHT NOW, but the refusal is not final.
+
+    Deliberately absent from ``NON_RETRYABLE_EXCEPTIONS`` below: the whole
+    point is that the broker retries with backoff. Conflating this with
+    ``JobTerminalError`` is the TASK-992 defect — a job whose worker died was
+    redelivered, refused because the row still said PROCESSING, classified
+    terminal, and ACKed into oblivion.
+    """
+
+    error_code = "JOB_CONFLICT"
 
 
 # =============================================================================

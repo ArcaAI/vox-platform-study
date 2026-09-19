@@ -32,7 +32,7 @@ import {
   Req,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ApiExcludeController, ApiOperation, ApiParam, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiExcludeController, ApiOperation, ApiParam, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { timingSafeEqual } from 'node:crypto';
 import { Authorize, RequiredScopes } from '../../decorators';
@@ -217,8 +217,25 @@ export class SttInternalController {
   }
 
   @Patch('jobs/:id/start')
-  @ApiOperation({ summary: 'Mark transcription job as PROCESSING' })
+  @ApiOperation({
+    summary: 'Claim a transcription job for a worker',
+    description:
+      'Despite the path, this is a CLAIM rather than a plain start (TASK-992). The STT worker calls it at the top ' +
+      'of the actor on EVERY delivery, and Dramatiq delivers the same message again whenever a worker dies ' +
+      'mid-flight or re-raises after failing the job. QUEUED starts; PROCESSING under a DIFFERENT worker is ' +
+      'reclaimed (bounded by `stt.batch.maxReclaims`); PROCESSING under the SAME worker is an idempotent no-op; ' +
+      'FAILED with retries left is re-attempted. A job past either budget is marked DEAD first, so the 409 below ' +
+      'is honestly terminal.',
+  })
   @ApiParam({ name: 'id', description: 'Transcription job ID' })
+  @ApiResponse({
+    status: 409,
+    description:
+      "The job's current status forbids the claim. The body carries `code: DOMAIN.INVALID_STATE_TRANSITION` and " +
+      '`metadata: { currentStatus, attempted, terminal }`. **`terminal` is the field to branch on**: `true` means ' +
+      'no claim will ever succeed and the caller should ACK its message; `false` means retry later. Never parse ' +
+      'the message text — doing exactly that is what orphaned jobs before TASK-992.',
+  })
   async startJob(
     @Req() request: RequestWithAuth,
     @Param('id') id: string,

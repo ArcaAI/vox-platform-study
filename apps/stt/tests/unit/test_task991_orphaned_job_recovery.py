@@ -1,4 +1,4 @@
-"""A job whose claim cannot be resumed must END, not disappear.
+"""A job whose worker died must RECOVER, not merely end.
 
 TASK-991 W2-4, measured live: a worker restart redelivered an in-flight message,
 the gateway refused the new claim with ``500 "Cannot start job in PROCESSING
@@ -7,60 +7,94 @@ TERMINAL. It was not — PROCESSING is a claim, not an outcome — so the worker
 the delivery and returned, the row stayed PROCESSING forever, and the caller waited
 out its entire timeout against a job that nothing owned.
 
-Two things are fixed and pinned here:
+.. note:: SUPERSEDED BY TASK-992, and this file was rewritten with it.
 
-* the refusal is classified by the job's STATUS, read back from the gateway, so the
-  wording of an exception message is no longer load-bearing;
-* a non-terminal refusal ends the job FAILED — an outcome the client can see —
-  instead of being dropped in silence.
+   W2-4 fixed the classification by reading the job's status back over a second
+   HTTP call, and ended a PROCESSING job **FAILED** on the reasoning that
+   "nothing can resume it: the previous attempt's audio, models and partial
+   results went with its process."
+
+   That reasoning was wrong. The audio lives in object storage and
+   ``transcribe_file`` re-downloads it from ``audio_uri`` on **every** delivery,
+   after the claim — so the redelivered worker has everything it needs and the
+   transcription was being thrown away. Seeing only a status, that design also
+   could not tell ANOTHER worker's claim from this worker's own, so a retried
+   ``/start`` could end a job that was running perfectly well.
+
+   Under TASK-992 the gateway RECLAIMS such a row for the new worker and answers
+   200, and classifies a genuine refusal structurally
+   (``DOMAIN.INVALID_STATE_TRANSITION`` + ``metadata.terminal``) in the refusal
+   body itself — no second request, and no terminal-status list maintained on
+   this side. ``JobNotResumableError`` is gone with it.
+
+Every scenario W2-4 pinned is still pinned here; the PROCESSING verdict is
+inverted, which is the point. The wire-level classification matrix lives in
+``test_gateway_job_claim_task992.py``.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-import dramatiq
+import httpx
 import pytest
 
 from stt.core.api_client.gateway import (
-    ORPHANED_CLAIM_STATUS,
+    STATE_TRANSITION_CODE,
     TERMINAL_JOB_STATUSES,
     APIGatewayClient,
-    JobNotResumableError,
 )
-from stt.core.exceptions import APIGatewayError, JobTerminalError
+from stt.core.exceptions import APIGatewayError, JobConflictError, JobTerminalError
 
 pytestmark = pytest.mark.unit
 
 TENANT = "50000000-0000-0000-0000-000000000001"
 JOB = "01a0b95a-0000-0000-0000-000000000000"
 
-# Deliberately NOT the wording the gateway happens to use today: the classification
-# must not depend on it. The real message was "Cannot start job in PROCESSING status".
-OPAQUE_REFUSAL = "API Gateway request failed: 500"
 
-
-def _client_refusing_start(status: str | None, status_readable: bool = True) -> APIGatewayClient:
-    """A client whose /start is refused and whose /status answers *status*."""
+def _client_refusing_start(status: str, *, terminal: bool, structured: bool = True) -> APIGatewayClient:
+    """A client whose /start is refused with the body a gateway would send."""
     client = APIGatewayClient(base_url="http://gateway.invalid/api/v1", api_key="k")
+
+    if structured:
+        body: dict[str, Any] = {
+            "statusCode": 409,
+            "code": STATE_TRANSITION_CODE,
+            "message": f"Cannot start job in {status} status",
+            "metadata": {
+                "entity": "TranscriptionJob",
+                "entityId": JOB,
+                "currentStatus": status,
+                "attempted": "startProcessing",
+                "terminal": terminal,
+            },
+        }
+        code = 409
+    else:
+        # The pre-TASK-992 body: prose and nothing else.
+        body = {"statusCode": 500, "code": "DOMAIN.BUSINESS", "message": f"Cannot start job in {status} status"}
+        code = 500
+
+    _encoded = json.dumps(body).encode()
 
     async def _request(
         method: str,
         path: str,
-        json: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,  # noqa: A002 — mirrors the real `_request` signature
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        if path.endswith("/start"):
-            raise APIGatewayError(
-                OPAQUE_REFUSAL,
-                details={"status_code": 500, "path": path},
+        if not path.endswith("/start"):
+            raise AssertionError(
+                f"unexpected call to {path} — TASK-992 classifies from the refusal body, "
+                "so a refused claim must cost exactly ONE request"
             )
-        if path.endswith("/status"):
-            if not status_readable:
-                raise APIGatewayError("API Gateway connection error: timed out")
-            return {} if status is None else {"status": status}
-        raise AssertionError(f"unexpected call to {path}")
+        request = httpx.Request("PATCH", f"http://gateway.invalid{path}")
+        response = httpx.Response(code, request=request, content=_encoded)
+        error = APIGatewayError(f"API Gateway request failed: {code}", details={"status_code": code, "path": path})
+        error.__cause__ = httpx.HTTPStatusError("boom", request=request, response=response)
+        raise error
 
     client._request = _request  # type: ignore[method-assign]
     return client
@@ -68,216 +102,148 @@ def _client_refusing_start(status: str | None, status_readable: bool = True) -> 
 
 class TestTerminalSetMatchesTheDomain:
     def test_processing_is_not_a_terminal_status(self) -> None:
-        """The whole defect in one assertion: a claim is not an outcome."""
-        assert ORPHANED_CLAIM_STATUS == "PROCESSING"
-        assert ORPHANED_CLAIM_STATUS not in TERMINAL_JOB_STATUSES
-        assert "QUEUED" not in TERMINAL_JOB_STATUSES
+        assert "PROCESSING" not in TERMINAL_JOB_STATUSES
 
     def test_mirrors_transcription_job_entity_is_terminal(self) -> None:
-        assert TERMINAL_JOB_STATUSES == {"COMPLETED", "FAILED", "CANCELLED", "DEAD"}
+        assert TERMINAL_JOB_STATUSES == frozenset({"COMPLETED", "FAILED", "CANCELLED", "DEAD"})
 
 
-class TestStartJobClassifiesByStatus:
+class TestStartJobClassifiesFromTheRefusalBody:
     @pytest.mark.asyncio
-    async def test_a_processing_job_is_reported_unresumable_not_terminal(self) -> None:
-        client = _client_refusing_start("PROCESSING")
-
-        with pytest.raises(JobNotResumableError) as excinfo:
-            await client.start_job(JOB, "worker-2", tenant_id=TENANT)
-
-        assert excinfo.value.details["status"] == "PROCESSING"
-        # A JobTerminalError here is what made the worker drop the delivery.
-        assert not isinstance(excinfo.value, JobTerminalError)
+    async def test_a_processing_job_is_a_conflict_not_terminal(self) -> None:
+        """The inverted verdict. Was `JobNotResumableError` → fail the job."""
+        client = _client_refusing_start("PROCESSING", terminal=False)
+        with pytest.raises(JobConflictError):
+            await client.start_job(JOB, "host-b-2", tenant_id=TENANT)
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("status", sorted(TERMINAL_JOB_STATUSES))
+    @pytest.mark.parametrize("status", sorted(TERMINAL_JOB_STATUSES - {"FAILED"}))
     async def test_a_finished_job_is_still_terminal(self, status: str) -> None:
-        """Duplicate deliveries of a finished job must keep being dropped."""
-        client = _client_refusing_start(status)
-
-        with pytest.raises(JobTerminalError) as excinfo:
-            await client.start_job(JOB, "worker-2", tenant_id=TENANT)
-
-        assert excinfo.value.details["status"] == status
+        client = _client_refusing_start(status, terminal=True)
+        with pytest.raises(JobTerminalError):
+            await client.start_job(JOB, "host-b-2", tenant_id=TENANT)
 
     @pytest.mark.asyncio
     async def test_the_verdict_does_not_read_the_error_message(self) -> None:
-        """Rewording the gateway's exception must not change what a worker does."""
-        client = _client_refusing_start("PROCESSING")
+        """A body whose prose disagrees with its metadata follows the METADATA."""
+        client = APIGatewayClient(base_url="http://gateway.invalid/api/v1", api_key="k")
 
-        with pytest.raises(JobNotResumableError):
-            await client.start_job(JOB, "worker-2", tenant_id=TENANT)
+        async def _request(*_a: Any, **_kw: Any) -> dict[str, Any]:
+            body = {
+                "statusCode": 409,
+                "code": STATE_TRANSITION_CODE,
+                # Prose says COMPLETED; metadata says it is not terminal.
+                "message": "Cannot start job in COMPLETED status",
+                "metadata": {"currentStatus": "PROCESSING", "terminal": False},
+            }
+            request = httpx.Request("PATCH", "http://gateway.invalid/x")
+            response = httpx.Response(409, request=request, content=json.dumps(body).encode())
+            error = APIGatewayError("refused", details={"status_code": 409})
+            error.__cause__ = httpx.HTTPStatusError("boom", request=request, response=response)
+            raise error
 
-        client = _client_refusing_start("COMPLETED")
+        client._request = _request  # type: ignore[method-assign]
+        with pytest.raises(JobConflictError):
+            await client.start_job(JOB, "host-b-2", tenant_id=TENANT)
+
+    @pytest.mark.asyncio
+    async def test_a_refusal_this_cannot_classify_stays_a_retryable_transport_error(self) -> None:
+        client = APIGatewayClient(base_url="http://gateway.invalid/api/v1", api_key="k")
+
+        async def _request(*_a: Any, **_kw: Any) -> dict[str, Any]:
+            body = {"statusCode": 401, "code": "UNAUTHORIZED", "message": "Invalid internal service key"}
+            request = httpx.Request("PATCH", "http://gateway.invalid/x")
+            response = httpx.Response(401, request=request, content=json.dumps(body).encode())
+            error = APIGatewayError("refused", details={"status_code": 401})
+            error.__cause__ = httpx.HTTPStatusError("boom", request=request, response=response)
+            raise error
+
+        client._request = _request  # type: ignore[method-assign]
+        with pytest.raises(APIGatewayError) as excinfo:
+            await client.start_job(JOB, "host-b-2", tenant_id=TENANT)
+        assert not isinstance(excinfo.value, (JobTerminalError, JobConflictError))
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_body_is_not_read_as_an_outcome(self) -> None:
+        """"Could not tell" must never resolve the job's fate — it retries."""
+        client = APIGatewayClient(base_url="http://gateway.invalid/api/v1", api_key="k")
+
+        async def _request(*_a: Any, **_kw: Any) -> dict[str, Any]:
+            request = httpx.Request("PATCH", "http://gateway.invalid/x")
+            response = httpx.Response(502, request=request, content=b"<html>bad gateway</html>")
+            error = APIGatewayError("refused", details={"status_code": 502})
+            error.__cause__ = httpx.HTTPStatusError("boom", request=request, response=response)
+            raise error
+
+        client._request = _request  # type: ignore[method-assign]
+        with pytest.raises(APIGatewayError) as excinfo:
+            await client.start_job(JOB, "host-b-2", tenant_id=TENANT)
+        assert not isinstance(excinfo.value, (JobTerminalError, JobConflictError))
+
+    @pytest.mark.asyncio
+    async def test_a_refused_claim_costs_exactly_one_request(self) -> None:
+        """W2-4 spent a second round trip reading the status back; this does not."""
+        calls: list[str] = []
+        client = APIGatewayClient(base_url="http://gateway.invalid/api/v1", api_key="k")
+
+        async def _request(method: str, path: str, *_a: Any, **_kw: Any) -> dict[str, Any]:
+            calls.append(path)
+            body = {"statusCode": 409, "code": STATE_TRANSITION_CODE, "metadata": {"currentStatus": "DEAD", "terminal": True}}
+            request = httpx.Request("PATCH", f"http://gateway.invalid{path}")
+            response = httpx.Response(409, request=request, content=json.dumps(body).encode())
+            error = APIGatewayError("refused", details={"status_code": 409})
+            error.__cause__ = httpx.HTTPStatusError("boom", request=request, response=response)
+            raise error
+
+        client._request = _request  # type: ignore[method-assign]
         with pytest.raises(JobTerminalError):
-            await client.start_job(JOB, "worker-2", tenant_id=TENANT)
-
-    @pytest.mark.asyncio
-    async def test_a_queued_job_is_left_retryable(self) -> None:
-        """A QUEUED job refused a start for some OTHER reason — never end it.
-
-        ``startProcessing`` only refuses a job that is not QUEUED, so a refusal on a
-        QUEUED row is auth, validation or a transient 500. Retrying is the answer;
-        failing the job would destroy work that had not started.
-        """
-        client = _client_refusing_start("QUEUED")
-
-        with pytest.raises(APIGatewayError) as excinfo:
-            await client.start_job(JOB, "worker-2", tenant_id=TENANT)
-
-        assert not isinstance(excinfo.value, (JobTerminalError, JobNotResumableError))
-
-    @pytest.mark.asyncio
-    async def test_an_unreadable_status_stays_a_retryable_transport_error(self) -> None:
-        """An unknown status must never be resolved as "not terminal"."""
-        client = _client_refusing_start(None, status_readable=False)
-
-        with pytest.raises(APIGatewayError) as excinfo:
-            await client.start_job(JOB, "worker-2", tenant_id=TENANT)
-
-        assert not isinstance(excinfo.value, (JobTerminalError, JobNotResumableError))
-
-    @pytest.mark.asyncio
-    async def test_a_status_less_response_is_not_a_state(self) -> None:
-        """`get_job_status` substitutes "UNKNOWN"; that is an absence, not a verdict."""
-        client = _client_refusing_start(None)
-
-        with pytest.raises(APIGatewayError) as excinfo:
-            await client.start_job(JOB, "worker-2", tenant_id=TENANT)
-
-        assert not isinstance(excinfo.value, (JobTerminalError, JobNotResumableError))
+            await client.start_job(JOB, "host-b-2", tenant_id=TENANT)
+        assert len(calls) == 1
 
     @pytest.mark.asyncio
     async def test_a_successful_start_is_untouched(self) -> None:
         client = APIGatewayClient(base_url="http://gateway.invalid/api/v1", api_key="k")
 
-        async def _request(method: str, path: str, **_kwargs: Any) -> dict[str, Any]:
-            assert path.endswith("/start")
-            return {"status": "PROCESSING", "workerId": "worker-2"}
+        async def _request(*_a: Any, **_kw: Any) -> dict[str, Any]:
+            return {"status": "PROCESSING", "workerId": "host-b-2"}
 
         client._request = _request  # type: ignore[method-assign]
-
-        assert await client.start_job(JOB, "worker-2", tenant_id=TENANT) == {
+        assert await client.start_job(JOB, "host-b-2", tenant_id=TENANT) == {
             "status": "PROCESSING",
-            "workerId": "worker-2",
+            "workerId": "host-b-2",
         }
 
-
-class TestWorkerEndsTheOrphanedJob:
     @pytest.mark.asyncio
-    async def test_an_unresumable_job_is_failed_rather_than_silently_acked(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        import importlib
+    async def test_the_reclaim_is_the_ordinary_outcome(self) -> None:
+        """What the live incident now produces: the redelivery just works.
 
-        mod = importlib.import_module("stt.transcription.workers.transcribe_file")
-        seen: dict[str, Any] = {}
+        The gateway reclaims the PROCESSING row for the new worker and answers
+        200, so the actor carries straight on to download the audio and
+        transcribe it. No refusal is raised at all.
+        """
+        client = APIGatewayClient(base_url="http://gateway.invalid/api/v1", api_key="k")
 
-        class FakeClient:
-            async def start_job(self, job_id: str, worker_id: str, **_kw: Any) -> dict[str, Any]:
-                raise JobNotResumableError(
-                    f"Job {job_id} refused the worker claim in PROCESSING status",
-                    details={"status": "PROCESSING"},
-                )
+        async def _request(method: str, path: str, json: dict[str, Any] | None = None, *_a: Any, **_kw: Any) -> dict[str, Any]:
+            assert json == {"workerId": "host-b-62315"}
+            return {"id": JOB, "status": "PROCESSING", "workerId": "host-b-62315", "reclaimCount": 1}
 
-            async def fail_job(self, **kwargs: Any) -> dict[str, Any]:
-                seen["error_code"] = kwargs.get("error_code")
-                seen["tenant_id"] = kwargs.get("tenant_id")
-                return {}
+        client._request = _request  # type: ignore[method-assign]
+        result = await client.start_job(JOB, "host-b-62315", tenant_id=TENANT)
+        assert result["workerId"] == "host-b-62315"
+        assert result["reclaimCount"] == 1
 
-            async def close(self) -> None:
-                return None
 
-        _install_stubs(monkeypatch, mod, FakeClient())
-
-        # SkipMessage: the delivery is dropped ON PURPOSE, and only after the job
-        # has been given an ending. A bare `return` (the old behaviour) drops it
-        # while the row is still PROCESSING.
-        with pytest.raises(dramatiq.middleware.SkipMessage):
-            await mod._transcribe_file_async(
-                job_id=JOB,
-                tenant_id=TENANT,
-                pipeline_id="p-1",
-                audio_uri="s3://bucket/consult.wav",
-            )
-
-        assert seen["error_code"] == "JOB_NOT_RESUMABLE"
-        assert seen["tenant_id"] == TENANT, "the /fail callback 404s without the owning tenant"
+class TestLegacyGatewayStillClassified:
+    """A gateway that predates TASK-992 — the rolling-deploy window."""
 
     @pytest.mark.asyncio
-    async def test_a_genuinely_finished_job_is_still_dropped_without_being_failed(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The duplicate-delivery path must not be collateral damage of the fix."""
-        import importlib
+    async def test_processing_is_still_not_terminal(self) -> None:
+        client = _client_refusing_start("PROCESSING", terminal=False, structured=False)
+        with pytest.raises(JobConflictError):
+            await client.start_job(JOB, "host-b-2", tenant_id=TENANT)
 
-        mod = importlib.import_module("stt.transcription.workers.transcribe_file")
-        failed: list[Any] = []
-
-        class FakeClient:
-            async def start_job(self, job_id: str, worker_id: str, **_kw: Any) -> dict[str, Any]:
-                raise JobTerminalError(
-                    f"Job {job_id} is already in a terminal state",
-                    details={"status": "COMPLETED"},
-                )
-
-            async def fail_job(self, **kwargs: Any) -> dict[str, Any]:
-                failed.append(kwargs)
-                return {}
-
-            async def close(self) -> None:
-                return None
-
-        _install_stubs(monkeypatch, mod, FakeClient())
-
-        await mod._transcribe_file_async(
-            job_id=JOB,
-            tenant_id=TENANT,
-            pipeline_id="p-1",
-            audio_uri="s3://bucket/consult.wav",
-        )
-
-        assert failed == [], "a COMPLETED job must not be overwritten as FAILED"
-
-
-def _install_stubs(monkeypatch: pytest.MonkeyPatch, mod: Any, api_client: Any) -> None:
-    """Stub the collaborators resolved before the job's first gateway call."""
-
-    class FakeResolver:
-        def set_tenant_storage(self, *a: Any, **k: Any) -> None: ...
-        def set_tenant_bucket(self, *a: Any, **k: Any) -> None: ...
-
-    class FakeBlobService:
-        _resolver = FakeResolver()
-
-        async def download_audio(self, uri: str, tenant_id: str | None = None) -> bytes:
-            raise AssertionError("the job never gets past /start in these tests")
-
-    class FakePipelineReader:
-        async def get_pipeline(self, pipeline_id: str) -> Any:
-            raise AssertionError("the job never gets past /start in these tests")
-
-    class FakeBatchService:
-        async def transcribe(self, **kwargs: Any) -> Any:
-            raise AssertionError("the job never gets past /start in these tests")
-
-    class FakePublisher:
-        async def connect(self) -> None: ...
-        async def publish_status(self, *a: Any, **k: Any) -> None: ...
-        async def publish_error(self, *a: Any, **k: Any) -> None: ...
-        async def close(self) -> None: ...
-
-    class FakeEffectiveConfigClient:
-        async def get_provider_overrides(self, tenant_id: str) -> dict[str, Any]:
-            return {}
-
-    async def _noop_refresh() -> None:
-        return None
-
-    monkeypatch.setattr(mod, "refresh_job_concurrency_limit", _noop_refresh)
-    monkeypatch.setattr(mod, "get_api_client", lambda: api_client)
-    monkeypatch.setattr(mod, "get_blob_service", lambda: FakeBlobService())
-    monkeypatch.setattr(mod, "get_pipeline_reader", lambda: FakePipelineReader())
-    monkeypatch.setattr(mod, "get_batch_service", lambda: FakeBatchService())
-    monkeypatch.setattr(mod, "TranscriptionEventPublisher", FakePublisher)
-    monkeypatch.setattr(mod, "get_effective_config_client", lambda: FakeEffectiveConfigClient())
+    @pytest.mark.asyncio
+    async def test_a_finished_job_is_still_terminal(self) -> None:
+        client = _client_refusing_start("COMPLETED", terminal=True, structured=False)
+        with pytest.raises(JobTerminalError):
+            await client.start_job(JOB, "host-b-2", tenant_id=TENANT)

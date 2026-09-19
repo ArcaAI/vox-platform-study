@@ -191,6 +191,15 @@ model TranscriptionJob {
   retryCount   Int     @default(0)
   maxRetries   Int     @default(3)
 
+  /// TASK-992 — crash-RECLAIMS, counted separately from `retryCount` (OD-2).
+  /// A worker that died mid-flight and a transcription that genuinely failed
+  /// are different events: sharing one budget means a worker OOM spends the
+  /// allowance a bad audio file needs. Bumped by
+  /// `TranscriptionJobEntity.reclaimProcessing`; the BOUND lives in
+  /// `stt.batch.maxReclaims` (global-kv), not in a sibling column — it is a
+  /// platform threshold, not a per-row property.
+  reclaimCount Int @default(0)
+
   // Worker info
   workerId String? // Which worker processed this
 
@@ -207,5 +216,8 @@ model TranscriptionJob {
   @@index([consultationId], name: "TranscriptionJob_consultationId_idx")
   @@index([createdAt], name: "TranscriptionJob_createdAt_idx")
   @@index([tenantId, status, createdAt], name: "TranscriptionJob_tenant_status_created_idx")
+  /// TASK-992 — the reaper's exact access path: cross-tenant
+  /// `status = PROCESSING AND updatedAt < :staleBefore`, ordered by `updatedAt`.
+  @@index([status, updatedAt], name: "TranscriptionJob_status_updated_idx")
   @@schema("core")
 }

@@ -4,18 +4,20 @@ import asyncio
 import json
 import logging
 import os
+import socket
 from collections.abc import Coroutine
 from typing import Any
 
 import dramatiq
 
-from ...core.api_client.gateway import JobNotResumableError, get_api_client
+from ...core.api_client.gateway import get_api_client
 from ...core.config.settings import get_settings
 from ...core.effective_config import get_effective_config_client
 from ...core.exceptions import (
     AudioProcessingError,
     CloudASRError,
     JobCancelledError,
+    JobConflictError,
     JobTerminalError,
     ModelError,
     NotFoundError,
@@ -172,7 +174,12 @@ async def _transcribe_file_async(
     elif audio_bucket_name and tenant_id:
         blob_service._resolver.set_tenant_bucket(tenant_id, "audio", audio_bucket_name)
 
-    worker_id = f"worker-{os.getpid()}"
+    # TASK-992 — the worker identity must be unique ACROSS HOSTS, because the
+    # gateway's reclaim rule is "a different worker holds this job". PIDs
+    # collide freely between pods, so a bare `worker-<pid>` could make a
+    # genuine reclaim look like the same worker re-sending its claim — which
+    # the gateway answers idempotently, leaving two workers on one job.
+    worker_id = f"{socket.gethostname()}-{os.getpid()}"
     logger.info(f"[{job_id}] Starting batch transcription (worker={worker_id})")
 
     # Cancellation check helper — polls API for job status
@@ -480,19 +487,24 @@ async def _transcribe_file_async(
         logger.warning(f"[{job_id}] Job already in terminal state, skipping duplicate delivery")
         return
 
-    except JobNotResumableError as e:
-        # The gateway refused the claim on a job that has NOT finished — a
-        # PROCESSING row whose worker died mid-job (a restart, an OOM kill). This
-        # took the branch above and was acked silently, so the row stayed
-        # PROCESSING forever and the client waited out its whole timeout against a
-        # job nothing owned. Nothing can resume it: the previous attempt's audio,
-        # models and partial results went with its process. So end it honestly —
-        # FAILED, with a code — and then drop the delivery, because a retry would
-        # only be refused again, now as terminal.
-        logger.error(f"[{job_id}] {e}; failing the orphaned job instead of dropping it")
-        await publisher.publish_error(job_id, e.error_code, str(e))
-        await _fail_job(api_client, publisher, job_id, str(e), e.error_code, tenant_id=tenant_id)
-        raise dramatiq.middleware.SkipMessage() from e
+    except JobConflictError as e:
+        # TASK-992 — the gateway refused the claim on a job that has NOT
+        # finished, and can say so structurally (`terminal: false`).
+        #
+        # Re-raise. Under the current gateway this is rare: a PROCESSING row
+        # left by a dead worker is RECLAIMED and this delivery goes on to
+        # transcribe the job, because the audio lives in object storage and is
+        # re-downloaded below. The branch exists for the refusals that remain
+        # genuinely not-yet — chiefly a NEW worker talking to a gateway that
+        # predates TASK-992 — and the broker's backoff is the right answer to
+        # those.
+        #
+        # Deliberately NOT `_fail_job` + SkipMessage, which is what TASK-991
+        # W2-4 did here: ending the job discards a transcription the platform
+        # is perfectly able to complete, and on a refusal this worker's OWN
+        # earlier claim caused, it would fail a job that is running fine.
+        logger.warning(f"[{job_id}] {e}; leaving the job alone and letting the broker retry")
+        raise
 
     except AudioProcessingError as e:
         # The file itself is unusable (undecodable, wrong format,

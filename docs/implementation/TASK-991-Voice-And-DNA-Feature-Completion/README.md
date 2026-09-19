@@ -194,11 +194,38 @@ partials and then DISCARDED by finalization, so the loss is in merge, not recogn
 | W2-1 | Service-account BATCH is refused `400 "User context is required"` — the handler reads a CLS user the guard never writes for a machine — yet `route-manifest.json` grants the route `svc:stt:transcription:write` with `forbidServiceAccount: false`. Manifest and runtime disagree. | `transcription-job.controller.ts` ~219, 263-268 |
 | W2-2 | Batch never attaches speaker labels to segments: diarization metadata carries `speaker_ids`, every `transcript_segments[].speaker` is `null`, and `resultMetadata.segments` is `[]` while `transcript_segments` is populated. Realtime attaches them correctly. | measured on jobs `01a0b95a…`, `01a0b95b…` |
 | W2-3 | Batch segment end-times are `t0 + 30000` always (`30000`, `35075` on an 11.72 s clip). Realtime is correct (0 → 11.744). | same jobs |
-| W2-4 | A job can wedge in PROCESSING forever: after a worker restart, redelivery gets `500 "Cannot start job in PROCESSING status"`, which `gateway.py` substring-matches, treats as terminal, ACKs and drops. | `gateway.py:154-165`, `transcribe_file.py:477-480` |
+| W2-4 | A job can wedge in PROCESSING forever: after a worker restart, redelivery gets `500 "Cannot start job in PROCESSING status"`, which `gateway.py` substring-matches, treats as terminal, ACKs and drops. **⚠️ The W2-4 FIX (`efbeaee81`) WAS SUPERSEDED BY TASK-992 on 2026-09-19 — see the note below this table.** | `gateway.py:154-165`, `transcribe_file.py:477-480` |
 | W2-5 | `SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS = 1500` (quiet window 250) but whisper.cpp emits the tail final 3-6 s after `finalizing`, so a consumer on defaults ends with partials and NO final. | reproduced twice |
 | W2-6 | `FileTranscribeOptions` has `pipelineId` (deprecated) but no `agentSlug`, so the browser SDK cannot target a named agent though the gateway route accepts one. | `FileTranscriptionService.ts:31-49` |
 | W2-7 | Provisioning a STARTER tenant creates 9 departments against a plan cap of 8 — the tenant is over quota at birth and cannot add one. | `maxDepartments (9/8)` on VOX |
 | W2-8 | A failed provision leaves debris that blocks retry: the tenant is soft-deleted but its unique `key` still collides, and its cloned agents/workflows are orphaned (`tenantId` carries no FK). | observed on the first VOX attempt |
+
+
+> ### ⚠️ W2-4's fix was superseded by TASK-992 (2026-09-19, owner decision)
+>
+> The W2-4 half of `efbeaee81` classified the refusal by reading the job's status
+> back over a SECOND HTTP call, and ended a PROCESSING job **FAILED** on the
+> reasoning that *"nothing can resume it: the previous attempt's audio, models and
+> partial results went with its process."*
+>
+> That reasoning did not hold. The audio lives in object storage and
+> `transcribe_file` re-downloads it from `audio_uri` on **every** delivery, right
+> after the claim — so the redelivered worker had everything it needed and a
+> perfectly recoverable transcription was being discarded. Seeing only a status,
+> that design also could not tell ANOTHER worker's claim from this worker's own,
+> so a retried `/start` could end a job that was running fine.
+>
+> TASK-992 replaces it: the gateway RECLAIMS the row for the new worker (bounded by
+> a new `reclaimCount` column) and classifies a genuine refusal structurally —
+> `409 DOMAIN.INVALID_STATE_TRANSITION` with `metadata.terminal` — in the refusal
+> body itself, so there is no second request and no terminal-status list kept on
+> the Python side. `JobNotResumableError` is gone; `JobConflictError` replaces it.
+> **W2-2 and W2-3 of the same commit are untouched and still stand.**
+>
+> Every scenario the W2-4 tests pinned is still pinned, in a rewritten
+> `apps/stt/tests/unit/test_task991_orphaned_job_recovery.py`; the PROCESSING
+> verdict is inverted, which is the point. See
+> `docs/implementation/TASK-992-Wedged-STT-Batch-Job-Recovery/README.md`.
 
 Not defects, recorded so they are not re-investigated: voice-profile labelling requires a HUMAN
 session (profiles seed from the session owner; a service account has no user and an API key is

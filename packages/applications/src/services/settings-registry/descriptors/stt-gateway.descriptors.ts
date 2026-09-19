@@ -95,13 +95,26 @@ export const STT_GATEWAY_DEFAULTS = {
   [STT_RESUME_MAX_REPLAY_AGE_MS_KEY]: 10_000,
   [STT_WS_PING_INTERVAL_MS_KEY]: 20_000,
   [STT_WS_PING_MISSES_KEY]: 2,
-  // TASK-992. Mirrors the shape of the per-row `maxRetries` default so the two
-  // budgets read alike, but they are deliberately SEPARATE budgets (OD-2).
+} as const;
+
+/**
+ * TASK-992 — code defaults for batch-job crash recovery.
+ *
+ * A SEPARATE map from {@link STT_GATEWAY_DEFAULTS} on purpose. That one is a
+ * map of numeric WS/session budgets, and `SttWsGateway.resolveBudget` indexes
+ * it generically (`keyof typeof`) while promising a `number` back — so putting
+ * the cron STRING in it widens that lookup to `number | string` and breaks the
+ * gateway's build. These are not transport budgets anyway; they belong to the
+ * batch recovery path and read better owning their own map.
+ */
+export const STT_BATCH_DEFAULTS = {
+  // Mirrors the shape of the per-row `maxRetries` default so the two read
+  // alike, but they are deliberately SEPARATE budgets (OD-2).
   [STT_BATCH_MAX_RECLAIMS_KEY]: 3,
-  // TASK-992. 2x the actor's own `time_limit` (`transcription_timeout_seconds`,
-  // 600 s), so the reaper can never fire while an attempt could legitimately
-  // still be running — Dramatiq kills the thread at 600 s, so past 20 minutes
-  // with no write there is nothing left alive to interrupt.
+  // 2x the actor's own `time_limit` (`transcription_timeout_seconds`, 600 s),
+  // so the reaper can never fire while an attempt could legitimately still be
+  // running — Dramatiq kills the thread at 600 s, so past 20 minutes with no
+  // write there is nothing left alive to interrupt.
   [STT_BATCH_STALE_PROCESSING_MINUTES_KEY]: 20,
   [STT_BATCH_REAPER_CRON_KEY]: '*/5 * * * *',
 } as const;
@@ -294,7 +307,7 @@ export const STT_GATEWAY_SETTINGS: SettingDescriptor[] = [
       'allowance a bad audio file needs. Past this bound the job is marked DEAD rather than reclaimed again, which ' +
       'is what stops a worker that crashes on one specific recording from reclaiming it forever. 0 disables ' +
       'reclaim entirely and restores the pre-TASK-992 behaviour, where such a job stranded in PROCESSING.',
-    default: STT_GATEWAY_DEFAULTS[STT_BATCH_MAX_RECLAIMS_KEY],
+    default: STT_BATCH_DEFAULTS[STT_BATCH_MAX_RECLAIMS_KEY],
   },
   {
     key: STT_BATCH_STALE_PROCESSING_MINUTES_KEY,
@@ -314,7 +327,7 @@ export const STT_GATEWAY_SETTINGS: SettingDescriptor[] = [
       "time limit (`transcription_timeout_seconds`, 600 s): Dramatiq kills the attempt's thread at that point, so " +
       'anything older has nothing left alive to interrupt. Set it too low and the reaper fails jobs out from under ' +
       'workers that are mid-diarization, a phase that emits no progress at all.',
-    default: STT_GATEWAY_DEFAULTS[STT_BATCH_STALE_PROCESSING_MINUTES_KEY],
+    default: STT_BATCH_DEFAULTS[STT_BATCH_STALE_PROCESSING_MINUTES_KEY],
   },
   {
     key: STT_BATCH_REAPER_CRON_KEY,
@@ -330,6 +343,6 @@ export const STT_GATEWAY_SETTINGS: SettingDescriptor[] = [
     description:
       'Cron expression for the stranded-batch-job sweep. Cadence only — how LATE a stranded job is noticed is this ' +
       'plus the stale window above; it does not change which jobs are eligible.',
-    default: STT_GATEWAY_DEFAULTS[STT_BATCH_REAPER_CRON_KEY],
+    default: STT_BATCH_DEFAULTS[STT_BATCH_REAPER_CRON_KEY],
   },
 ];

@@ -67,6 +67,10 @@ export class TranscriptionJobFactory {
       errorCode: null,
       retryCount: 0,
       maxRetries: props.maxRetries ?? 3,
+      // TASK-992 — crash-reclaims start at zero and are never seeded by the
+      // caller; the bound they are checked against is platform config
+      // (`stt.batch.maxReclaims`), not a per-job property.
+      reclaimCount: 0,
       workerId: null,
     });
   }

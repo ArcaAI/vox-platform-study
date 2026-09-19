@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { InvalidStateTransitionException } from '@arcaai/exceptions';
 import { TranscriptionJobEntity, ITranscriptionJobEntity } from '../TranscriptionJobEntity';
 import { TranscriptionJobStatus, TranscriptionJobType, ResourceStatusType } from '../../../../enums';
 
@@ -29,6 +30,7 @@ function createTestEntity(overrides: Partial<ITranscriptionJobEntity> = {}): Tra
     errorCode: null,
     retryCount: 0,
     maxRetries: 3,
+    reclaimCount: 0,
     workerId: null,
     createdBy: 'user-123',
     updatedBy: null,
@@ -531,5 +533,179 @@ describe('TranscriptionJobEntity — agent re-key (TASK-861)', () => {
     entity.resolvedSpec = resolvedSpec;
     expect(entity.hasChanges).toBe(true);
     expect(entity.changes).toMatchObject({ agentVersionId: 'agent-v-2', resolvedSpec });
+  });
+});
+
+/**
+ * TASK-992 — crash recovery on the batch path.
+ *
+ * The bug this pins: a worker that died mid-flight left its job in PROCESSING
+ * forever, because `startProcessing` refused ANY non-QUEUED status and the
+ * refusal was indistinguishable, to a cross-process caller, from "this job is
+ * finished". Two new transitions make the redelivery recoverable, and every
+ * refusal now names the status it refused and whether that status is terminal.
+ */
+describe('TranscriptionJobEntity — crash recovery (TASK-992)', () => {
+  const MAX_RECLAIMS = 3;
+
+  function processing(overrides: Partial<ITranscriptionJobEntity> = {}) {
+    return createTestEntity({
+      status: TranscriptionJobStatus.PROCESSING,
+      workerId: 'host-a-59400',
+      progress: 75,
+      startedAt: new Date('2026-09-19T03:54:07Z'),
+      ...overrides,
+    });
+  }
+
+  describe('reclaimProcessing', () => {
+    it('hands a PROCESSING job to a different worker and counts the reclaim', () => {
+      const entity = processing();
+
+      entity.reclaimProcessing('host-b-62315', MAX_RECLAIMS);
+
+      expect(entity.status).toBe(TranscriptionJobStatus.PROCESSING);
+      expect(entity.workerId).toBe('host-b-62315');
+      expect(entity.reclaimCount).toBe(1);
+      // The new attempt starts from scratch: the old worker's 75% belonged to
+      // work whose output died with it.
+      expect(entity.progress).toBe(0);
+      expect(entity.startedAt).not.toEqual(new Date('2026-09-19T03:54:07Z'));
+    });
+
+    it('does NOT spend the retry budget — a crash and a failed transcription are different events (OD-2)', () => {
+      const entity = processing();
+
+      entity.reclaimProcessing('host-b-62315', MAX_RECLAIMS);
+
+      expect(entity.reclaimCount).toBe(1);
+      expect(entity.retryCount).toBe(0);
+    });
+
+    it('refuses a reclaim by the worker that already holds it', () => {
+      const entity = processing({ workerId: 'host-a-59400' });
+
+      expect(() => entity.reclaimProcessing('host-a-59400', MAX_RECLAIMS)).toThrow(InvalidStateTransitionException);
+    });
+
+    it('refuses once the reclaim budget is spent, so a crash-loop terminates', () => {
+      const entity = processing({ reclaimCount: MAX_RECLAIMS });
+
+      expect(() => entity.reclaimProcessing('host-b-62315', MAX_RECLAIMS)).toThrow(InvalidStateTransitionException);
+      expect(entity.workerId).toBe('host-a-59400');
+      expect(entity.reclaimCount).toBe(MAX_RECLAIMS);
+    });
+
+    it('refuses on a job that is not PROCESSING at all', () => {
+      const entity = createTestEntity({ status: TranscriptionJobStatus.QUEUED });
+
+      expect(() => entity.reclaimProcessing('host-b-62315', MAX_RECLAIMS)).toThrow(InvalidStateTransitionException);
+    });
+
+    it('tracks every field it writes so repository.update persists them', () => {
+      const entity = processing();
+
+      entity.reclaimProcessing('host-b-62315', MAX_RECLAIMS);
+
+      expect(entity.changes).toMatchObject({ workerId: 'host-b-62315', reclaimCount: 1, progress: 0 });
+    });
+  });
+
+  describe('reattemptAfterFailure', () => {
+    function failed(overrides: Partial<ITranscriptionJobEntity> = {}) {
+      return createTestEntity({
+        status: TranscriptionJobStatus.FAILED,
+        workerId: 'host-a-59400',
+        completedAt: new Date('2026-09-19T03:55:00Z'),
+        errorMessage: 'CUDA out of memory',
+        errorCode: 'TRANSCRIPTION_ERROR',
+        progress: 40,
+        ...overrides,
+      });
+    }
+
+    it('puts a FAILED job back to PROCESSING so the broker retry can actually run (AC-5)', () => {
+      const entity = failed();
+
+      entity.reattemptAfterFailure('host-b-62315');
+
+      expect(entity.status).toBe(TranscriptionJobStatus.PROCESSING);
+      expect(entity.workerId).toBe('host-b-62315');
+      expect(entity.retryCount).toBe(1);
+      expect(entity.progress).toBe(0);
+    });
+
+    it('clears the previous attempt entirely — a stale error on a running job is a lie', () => {
+      const entity = failed();
+
+      entity.reattemptAfterFailure('host-b-62315');
+
+      expect(entity.completedAt).toBeNull();
+      expect(entity.errorMessage).toBeNull();
+      expect(entity.errorCode).toBeNull();
+    });
+
+    it('refuses once retries are exhausted', () => {
+      const entity = failed({ retryCount: 3, maxRetries: 3 });
+
+      expect(() => entity.reattemptAfterFailure('host-b-62315')).toThrow(InvalidStateTransitionException);
+      expect(entity.status).toBe(TranscriptionJobStatus.FAILED);
+    });
+
+    it('refuses on a job that is not FAILED', () => {
+      const entity = createTestEntity({ status: TranscriptionJobStatus.COMPLETED });
+
+      expect(() => entity.reattemptAfterFailure('host-b-62315')).toThrow(InvalidStateTransitionException);
+    });
+  });
+
+  describe('refusal shape — what the STT worker reads instead of the message text', () => {
+    it('names the current status and marks a PROCESSING refusal NON-terminal', () => {
+      const entity = processing();
+
+      try {
+        entity.startProcessing('host-b-62315');
+        expect.unreachable('startProcessing must refuse a PROCESSING job');
+      } catch (error) {
+        expect(error).toBeInstanceOf(InvalidStateTransitionException);
+        const metadata = (error as InvalidStateTransitionException).metadata as Record<string, unknown>;
+        expect(metadata).toMatchObject({
+          entity: 'TranscriptionJob',
+          entityId: 'job-test-id',
+          currentStatus: TranscriptionJobStatus.PROCESSING,
+          attempted: 'startProcessing',
+          terminal: false,
+        });
+      }
+    });
+
+    it.each([
+      [TranscriptionJobStatus.COMPLETED],
+      [TranscriptionJobStatus.CANCELLED],
+      [TranscriptionJobStatus.DEAD],
+    ])('marks a %s refusal terminal', (status) => {
+      const entity = createTestEntity({ status });
+
+      try {
+        entity.startProcessing('host-b-62315');
+        expect.unreachable(`startProcessing must refuse a ${status} job`);
+      } catch (error) {
+        expect((error as InvalidStateTransitionException).metadata).toMatchObject({ currentStatus: status, terminal: true });
+      }
+    });
+
+    it('marks a FAILED refusal NON-terminal — it is re-attemptable while retries remain', () => {
+      const entity = createTestEntity({ status: TranscriptionJobStatus.FAILED });
+
+      try {
+        entity.startProcessing('host-b-62315');
+        expect.unreachable('startProcessing must refuse a FAILED job');
+      } catch (error) {
+        expect((error as InvalidStateTransitionException).metadata).toMatchObject({
+          currentStatus: TranscriptionJobStatus.FAILED,
+          terminal: false,
+        });
+      }
+    });
   });
 });

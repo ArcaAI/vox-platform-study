@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SysEventType, TranscriptionJobStatus } from '@arcaai/domains';
 
-import { STT_BATCH_REAPER_CRON_KEY, STT_BATCH_STALE_PROCESSING_MINUTES_KEY, STT_GATEWAY_DEFAULTS } from '../../../../settings-registry/descriptors/stt-gateway.descriptors';
+import { STT_BATCH_DEFAULTS, STT_BATCH_REAPER_CRON_KEY, STT_BATCH_STALE_PROCESSING_MINUTES_KEY } from '../../../../settings-registry/descriptors/stt-gateway.descriptors';
 import { SttJobReaperService, STT_JOB_REAPER_ERROR_CODE } from '../stt-job-reaper.service';
 
 /**
@@ -88,8 +88,8 @@ describe('SttJobReaperService', () => {
   describe('configuration', () => {
     it('falls back to the code defaults when no GlobalSetting row exists', () => {
       expect(service.getConfig()).toEqual({
-        cron: STT_GATEWAY_DEFAULTS[STT_BATCH_REAPER_CRON_KEY],
-        staleProcessingMinutes: STT_GATEWAY_DEFAULTS[STT_BATCH_STALE_PROCESSING_MINUTES_KEY],
+        cron: STT_BATCH_DEFAULTS[STT_BATCH_REAPER_CRON_KEY],
+        staleProcessingMinutes: STT_BATCH_DEFAULTS[STT_BATCH_STALE_PROCESSING_MINUTES_KEY],
       });
     });
 
@@ -110,7 +110,7 @@ describe('SttJobReaperService', () => {
 
       expect(repository.findStaleProcessingJobs).toHaveBeenCalledTimes(1);
       const cutoff = repository.findStaleProcessingJobs.mock.calls[0][0] as Date;
-      const windowMs = STT_GATEWAY_DEFAULTS[STT_BATCH_STALE_PROCESSING_MINUTES_KEY] * 60_000;
+      const windowMs = STT_BATCH_DEFAULTS[STT_BATCH_STALE_PROCESSING_MINUTES_KEY] * 60_000;
       expect(cutoff.getTime()).toBeLessThanOrEqual(before - windowMs + 1_000);
       expect(cutoff.getTime()).toBeGreaterThan(before - windowMs - 60_000);
     });
