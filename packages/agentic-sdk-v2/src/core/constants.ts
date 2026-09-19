@@ -570,10 +570,24 @@ export const CONSULTATION_JOB_ENDPOINTS = {
  * (`svc:dna-writing-style:ingest`); NOT `/admin/*`, and deliberately a NEW
  * name — `DNA_STYLE_ENDPOINTS` stays absent per the TASK-890 gate tests. No
  * SSE on this surface (job status is polled via `INGEST_JOB`).
+ *
+ * The remaining keys are the doctor-SELF plane (`DnaWritingStyleController`,
+ * `@Controller('dna-writing-styles')`, JWT only — `@ForbidApiKey()`). All
+ * paths are gateway-relative with NO `/admin` prefix; the tenant-admin grid
+ * is a separate surface. The SSE job-stream route (`jobs/:jobId/stream`) is
+ * deliberately NOT here — its auth is being reworked in a separate lane, and
+ * `JOB` polling already covers job tracking.
  */
 export const DNA_WRITING_STYLE_ENDPOINTS = {
   INGEST: '/dna-writing-styles/ingest',
   INGEST_JOB: (jobId: string) => `/dna-writing-styles/ingest/jobs/${encodeURIComponent(jobId)}`,
+  MY_STYLE: '/dna-writing-styles/my-style',
+  MINE: '/dna-writing-styles/mine',
+  MY_STYLE_REDACTION_RULES: '/dna-writing-styles/my-style/redaction-rules',
+  UPDATE_REPORT: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}`,
+  SETTINGS: '/dna-writing-styles/settings',
+  GENERATE: '/dna-writing-styles/generate',
+  JOB: (jobId: string) => `/dna-writing-styles/jobs/${encodeURIComponent(jobId)}`,
 } as const;
 
 /**

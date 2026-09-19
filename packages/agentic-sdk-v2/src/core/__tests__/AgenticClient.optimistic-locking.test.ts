@@ -177,4 +177,32 @@ describe('AgenticClient — optimistic-locking helpers', () => {
       expect((err.context as Record<string, unknown>).currentVersion).toBeUndefined();
     });
   });
+
+  describe('putWithIfMatch<T>', () => {
+    // TASK-991 — the PUT-verb sibling of `patchWithIfMatch`, added for routes
+    // whose OCC-guarded write is a PUT (e.g. the DNA settings toggle, which
+    // sends a real `If-Match: "0"` before any row exists). It shares the same
+    // `request()` machinery, so 412/400 error-mapping is already covered
+    // above by `patchWithIfMatch<T>` and intentionally not duplicated here —
+    // only the PUT-specific header/method wiring is unique.
+    it('sends a PUT with the If-Match request header verbatim', async () => {
+      const updated = { doctorToggle: true, tenantEnabled: true, effective: true, version: 1 };
+      mockFetch.mockResolvedValueOnce(createMockResponse(updated));
+
+      const result = await client.putWithIfMatch<typeof updated>('/api/v1/dna-writing-styles/settings', { enabled: true }, '"0"');
+
+      expect(result).toEqual(updated);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.example.com/api/v1/dna-writing-styles/settings',
+        expect.objectContaining({
+          method: 'PUT',
+          headers: expect.objectContaining({
+            'If-Match': '"0"',
+            'Content-Type': 'application/json',
+          }),
+          body: JSON.stringify({ enabled: true }),
+        }),
+      );
+    });
+  });
 });

@@ -20,7 +20,6 @@ import type { DNAStyleData } from './summary';
 export interface DnaReport {
   id: string;
   doctorId: string;
-  departmentId?: string;
   reportData: DnaReportData;
   styleText?: string;
   isLatest: boolean;
@@ -77,8 +76,12 @@ export interface DnaStyleVersion {
  * Input for generating a new DNA writing style report.
  */
 export interface DnaGenerateInput {
+  /** Text samples for analysis (gathered from ContextItems when omitted). */
   textSamples?: string[];
-  departmentId?: string;
+  /** Prompt template ID for DNA generation. */
+  promptTemplateId?: string;
+  /** Edited summary text to use as input for DNA analysis. */
+  editedSummary?: string;
   /**
    * IDs of historical source items (e.g. prior report-version
    * snapshots or context items) the doctor selected to seed a fresh generation.
@@ -87,12 +90,111 @@ export interface DnaGenerateInput {
 }
 
 /**
- * Input for updating an existing DNA report.
+ * Input for updating an existing DNA report (`PATCH dna-writing-styles/:reportId`).
+ * Mirrors the gateway's `UpdateDnaReportRequest` — the ONLY write path for
+ * redaction rules (there is no dedicated rules endpoint).
  */
 export interface DnaUpdateInput {
   reportData?: Partial<DnaReportData>;
   styleText?: string;
+  /**
+   * The doctor's structured DNA redaction/rewrite rule set
+   * (`{ rules: [{ id, type, match, pattern, replacement?, note? }] }` — see
+   * {@link DnaRedactionRuleSet}). Encrypted at rest; validated for shape on
+   * write. Pass `{ rules: [] }` to clear. Typed loosely here (matching the
+   * gateway DTO) since the server re-validates the shape.
+   */
+  redactionRules?: Record<string, unknown>;
   changeReason?: string;
+  /** Resource status — only `ENABLED`/`DISABLED` are accepted on this route. */
+  resourceStatus?: 'ENABLED' | 'DISABLED';
+  /**
+   * Optimistic-concurrency token for the row's `_version`. This route is
+   * `@RequiresIfMatch()`: the `If-Match` header is REQUIRED and, when present,
+   * overrides this body field server-side — pass it via `ifMatchFor()` on the
+   * hook call, not by relying on this field alone.
+   */
+  expectedVersion?: number;
+}
+
+// =============================================================================
+// Redaction Rules (`GET dna-writing-styles/my-style/redaction-rules`)
+// =============================================================================
+
+/**
+ * Rule action: delete the match (`remove`) or replace it (`rewrite`).
+ * Mirrors the gateway's `RedactionRuleType`.
+ */
+export type DnaRedactionRuleType = 'remove' | 'rewrite';
+
+/** How `pattern` is interpreted. Mirrors the gateway's `RedactionMatchKind`. */
+export type DnaRedactionMatchKind = 'literal' | 'regex' | 'category';
+
+/** One DNA redaction/rewrite rule. Mirrors the gateway's `RedactionRule`. */
+export interface DnaRedactionRule {
+  id: string;
+  type: DnaRedactionRuleType;
+  match: DnaRedactionMatchKind;
+  pattern: string;
+  /**
+   * For `rewrite` rules: the literal replacement. May be omitted ONLY on a
+   * `match: 'category'` rule — that is the semantic rewrite the harness TEXT
+   * pass resolves; a `literal` or `regex` rewrite must carry one.
+   */
+  replacement?: string;
+  note?: string;
+}
+
+/**
+ * The persisted container shape returned by
+ * `GET dna-writing-styles/my-style/redaction-rules` — always well-formed
+ * (`{ rules: [] }` when the doctor has no rules, never a 404). Mirrors the
+ * gateway's `RedactionRuleSet`. Rules are WRITTEN via the report PATCH's
+ * `redactionRules` field ({@link DnaUpdateInput}), not through this endpoint.
+ */
+export interface DnaRedactionRuleSet {
+  rules: DnaRedactionRule[];
+}
+
+// =============================================================================
+// Self-Service Settings (`GET`/`PUT dna-writing-styles/settings`)
+// =============================================================================
+
+/**
+ * The per-doctor DNA writing-style on/off settings. Mirrors the gateway's
+ * `DnaSettingsResponse`.
+ *
+ * `effective = tenantEnabled && (doctorToggle ?? true)`. `version` is the
+ * DOCTOR-scope row's OCC token — `0` while no override row exists yet, which
+ * is also a valid `If-Match` precondition (the create-intent validator), not
+ * an absent one.
+ */
+export interface DnaSettings {
+  /** The doctor's explicit toggle (`null` = inherit / implicit opt-in). */
+  doctorToggle: boolean | null;
+  /** Whether the tenant (department/tenant/system cascade) permits DNA at all. */
+  tenantEnabled: boolean;
+  /** Final decision applied to generation + learning: tenant AND doctor. */
+  effective: boolean;
+  version: number;
+}
+
+/**
+ * `PUT dna-writing-styles/settings` body. Mirrors the gateway's
+ * `UpdateDnaSettingsRequest`.
+ *
+ * `expectedVersion` carries `@Min(1)` server-side, so it must be OMITTED
+ * (never sent as `0`) on the first write, while `If-Match` still carries the
+ * real `"0"` create-intent validator on every call — see the hook's
+ * `setSettings`.
+ */
+export interface DnaSettingsUpdateInput {
+  /** `true` = opt-in, `false` = explicit opt-out, `null` = clear the override. */
+  enabled: boolean | null;
+  /** Free-text reason recorded on the WORM change row. */
+  reason?: string;
+  /** Current DOCTOR-row version for OCC (from a prior GET); omit while it is `0`. */
+  expectedVersion?: number;
 }
 
 // =============================================================================
@@ -111,6 +213,18 @@ export interface DnaJobStatus {
   progress?: number;
   result?: DnaJobResult;
   error?: string;
+}
+
+/**
+ * `202`-shaped acceptance response of `POST dna-writing-styles/generate`.
+ * Mirrors the gateway's `DnaJobResponseDto` — deliberately looser than
+ * {@link DnaJobStatus} (whose `status` is a closed union): the acceptance
+ * response's `status` is typed as a plain string server-side too. Poll
+ * `GET dna-writing-styles/jobs/:jobId` ({@link DnaJobStatus}) for progress/result.
+ */
+export interface DnaGenerateJobResponse {
+  jobId: string;
+  status: string;
 }
 
 /**
