@@ -6,6 +6,8 @@ import { apiKeyPrincipal, serviceAccountPrincipal, userPrincipal, UNTRUSTED_CALL
 import {
   IApiKeyService,
   IEntitlementsService,
+  RATE_LIMIT_LOCKOUT_ENABLED_DEFAULT,
+  RATE_LIMIT_NO_LOCKOUT_BLOCK_MS,
   IRateLimitSettingsService,
   RateLimitRuleCache,
   IServiceAccountService,
@@ -117,6 +119,17 @@ function readCounterHeader(value: unknown): number | null {
  * not inside it: the cascade is first-match-wins, so a sixth rank would either
  * replace the aggregate (re-creating the bug) or never apply.
  *
+ * ## What a BREACH costs — TASK-993 D-2
+ *
+ * Nothing ever configured `blockDuration`, so the library resolved it to
+ * `ttl` and a single request over the line refused the bucket for a full
+ * 60 s measured FROM THE BREACH. Every lane now goes through `handleLane`,
+ * which asks for no lockout at all by default — the refusal lasts only until
+ * the window rolls — and restores the old behaviour when a platform admin
+ * sets `rate-limit.lockout.enabled`. The two storage backends can only be
+ * made to agree on those two postures; `window-only-storage.ts` has the
+ * measurements.
+ *
  * ## Why the tenant id is VERIFIED here
  *
  * The guard runs before `UnifiedAuthGuard`, so there is no CLS tenant yet and the
@@ -191,9 +204,16 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
 
     const settings = this.rateLimitSettings;
 
-    // No DB settings wired → preserve the exact static behaviour.
+    // What ONE request over the line costs (TASK-993 D-2). Resolved once per
+    // request and applied to every lane below, because a lockout the tenant
+    // bucket applies but the per-principal bucket does not would be two
+    // different platforms depending on which one refused you first.
+    const lockout = settings?.isLockoutEnabled() ?? RATE_LIMIT_LOCKOUT_ENABLED_DEFAULT;
+
+    // No DB settings wired → the static tier baselines, and the code-default
+    // breach posture (the D-2 fix is not conditional on a DB being reachable).
     if (!settings) {
-      return super.handleRequest(requestProps);
+      return this.handleLane(requestProps, lockout);
     }
 
     const caller = await this.resolveTrustedCaller(context);
@@ -210,11 +230,14 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
     // The opt-in tiers have no per-tenant, per-plan or per-route lane — they
     // exist to bound brute force platform-wide. Resolve them exactly as before.
     if (name !== 'default') {
-      return super.handleRequest({
-        ...requestProps,
-        limit: decoratorLimit ?? tierBaseline.limit,
-        ttl: decoratorTtl ?? tierBaseline.ttl,
-      });
+      return this.handleLane(
+        {
+          ...requestProps,
+          limit: decoratorLimit ?? tierBaseline.limit,
+          ttl: decoratorTtl ?? tierBaseline.ttl,
+        },
+        lockout,
+      );
     }
 
     // The LEGACY per-endpoint lane: `rate-limit.route.<slug>.*` GlobalSetting
@@ -287,7 +310,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
       // includes the handler identity, so each route keeps its own per-IP
       // bucket exactly as before. Substituting our own key here would collapse
       // every route into one shared counter.
-      const allowed = await super.handleRequest({ ...requestProps, limit: resolution.effective.limitValue, ttl: resolution.effective.windowMs });
+      const allowed = await this.handleLane({ ...requestProps, limit: resolution.effective.limitValue, ttl: resolution.effective.windowMs }, lockout);
       this.recordObservedCounters(context, request);
       return allowed;
     }
@@ -303,16 +326,19 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
     const principal = this.resolvePrincipalLane(caller, settings, resolution.effective);
     let principalCounters: ObservedCounters | null = null;
     if (principal) {
-      await super.handleRequest({
-        ...requestProps,
-        limit: principal.policy.limit,
-        ttl: principal.policy.ttl,
-        getTracker: async () => `principal:${principal.principalId}`,
-        // Tenant-wide across every route, matching what the number measures: a
-        // console user's 44.1 req/min worst case is a whole-session rate, not
-        // a per-endpoint one.
-        generateKey: (_ctx, tracker, throttlerName) => `${throttlerName}:p:${tenantId}:${tracker}`,
-      });
+      await this.handleLane(
+        {
+          ...requestProps,
+          limit: principal.policy.limit,
+          ttl: principal.policy.ttl,
+          getTracker: async () => `principal:${principal.principalId}`,
+          // Tenant-wide across every route, matching what the number measures: a
+          // console user's 44.1 req/min worst case is a whole-session rate, not
+          // a per-endpoint one.
+          generateKey: (_ctx, tracker, throttlerName) => `${throttlerName}:p:${tenantId}:${tracker}`,
+        },
+        lockout,
+      );
       principalCounters = this.readObservedCounters(context);
     }
 
@@ -326,16 +352,45 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
     // caller's budget; the caller's budget is the lane above.
     const bucketScope = resolution.level === 'tenant-route' ? `t:${tenantId}:r:${routeKey ?? '-'}` : `t:${tenantId}`;
 
-    const allowed = await super.handleRequest({
-      ...requestProps,
-      limit: resolution.effective.limitValue,
-      ttl: resolution.effective.windowMs,
-      getTracker: async () => `tenant:${tenantId}`,
-      generateKey: (_ctx, tracker, throttlerName) => `${throttlerName}:${bucketScope}:${tracker}`,
-    });
+    const allowed = await this.handleLane(
+      {
+        ...requestProps,
+        limit: resolution.effective.limitValue,
+        ttl: resolution.effective.windowMs,
+        getTracker: async () => `tenant:${tenantId}`,
+        generateKey: (_ctx, tracker, throttlerName) => `${throttlerName}:${bucketScope}:${tracker}`,
+      },
+      lockout,
+    );
 
     this.advertiseBindingLane(context, request, principalCounters, principal?.policy);
     return allowed;
+  }
+
+  /**
+   * One lane of the limiter, with the breach posture applied (TASK-993 D-2).
+   *
+   * Every `super.handleRequest` in this guard goes through here, so the
+   * `blockDuration` the storage sees is decided in exactly one place.
+   *
+   * `blockDuration` used to resolve to `ttl` for every lane — nothing ever set
+   * it — so ONE request over the line refused the bucket for a full 60 s
+   * measured from the breach, rather than for the remainder of the window it
+   * broke. Now:
+   *
+   *  - lockout OFF (the default): `0`, which `WindowOnlyThrottlerStorage`
+   *    turns into "refuse while the window's counter is over the limit", the
+   *    same on the Redis and in-memory backends. `Retry-After` becomes the
+   *    real time to the window boundary instead of a flat 60.
+   *  - lockout ON: `ttl`, which is byte-for-byte the behaviour that shipped
+   *    before, and the ONLY block duration the two backends agree on (see
+   *    `window-only-storage.ts` for the measurements behind that claim).
+   *
+   * `props.ttl` — not the tier baseline — because each lane carries its own
+   * window: the per-principal bucket's and the tenant aggregate's may differ.
+   */
+  private handleLane(props: ThrottlerRequest, lockout: boolean): Promise<boolean> {
+    return super.handleRequest({ ...props, blockDuration: lockout ? props.ttl : RATE_LIMIT_NO_LOCKOUT_BLOCK_MS });
   }
 
   /**

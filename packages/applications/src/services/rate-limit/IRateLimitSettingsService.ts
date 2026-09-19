@@ -101,6 +101,19 @@ export interface IRateLimitSettingsService {
    * clinical request.
    */
   getPrincipalPolicy(): RateLimitPrincipalPolicy;
+
+  /**
+   * Whether a breach costs a FULL WINDOW of lockout from the moment it
+   * happened (`true` — the pre-TASK-993 behaviour), or only the remainder of
+   * the window it happened in (`false`, the shipped default).
+   *
+   * Platform-wide for the same reason the tier baselines are: it is a
+   * PLATFORM SAFETY POSTURE, not something a tenant buys or tunes. Never
+   * throws — an unreadable row degrades to the code default
+   * (`failMode: 'open-to-default'`), and the code default is the more
+   * forgiving of the two, so a bookkeeping failure can never invent a lockout.
+   */
+  isLockoutEnabled(): boolean;
 }
 
 export const IRateLimitSettingsService = Symbol('IRateLimitSettingsService');

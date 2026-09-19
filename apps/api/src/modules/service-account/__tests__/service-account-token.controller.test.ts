@@ -6,8 +6,10 @@
  * staying guarded by `ServiceAccountTokenGuard` — never bare-public. These
  * specs cover the controller's own logic: delegating to
  * `IServiceAccountService.exchangeToken` with the request body and the
- * resolved client IP (X-Forwarded-For first hop, falling back to
- * `req.ip`/`'unknown'`), plus pinning the `@Public()` + guard combination so
+ * resolved client IP (the socket peer, or a `CF-Connecting-IP` asserted by a
+ * declared ingress, falling back to `'unknown'` — see
+ * `client-ip-attribution.task993.test.ts` for the trust rule itself), plus
+ * pinning the `@Public()` + guard combination so
  * this credential-exchange endpoint can never silently become either fully
  * open or unreachable.
  */
@@ -26,14 +28,18 @@ function makeController() {
 }
 
 describe('ServiceAccountTokenController — delegation', () => {
-  it('exchanges with the request body and the x-forwarded-for first hop', async () => {
+  // TASK-993 lane J: this asserted the OPPOSITE — that the audited address was
+  // the `X-Forwarded-For` first hop. On this ingress that names the cloudflared
+  // pod, and off it the caller picks its own audit trail, so the header is now
+  // ignored outright.
+  it('exchanges with the request body and IGNORES x-forwarded-for', async () => {
     const { controller, service } = makeController();
     const request = { body: {}, headers: { 'x-forwarded-for': '203.0.113.5, 10.0.0.1' }, ip: '10.0.0.1' };
     await controller.exchange({ clientId: 'c1', clientSecret: 's1' } as never, request as never);
-    expect(service.exchangeToken).toHaveBeenCalledWith({ clientId: 'c1', clientSecret: 's1' }, '203.0.113.5');
+    expect(service.exchangeToken).toHaveBeenCalledWith({ clientId: 'c1', clientSecret: 's1' }, '10.0.0.1');
   });
 
-  it('falls back to req.ip when there is no x-forwarded-for header', async () => {
+  it('falls back to req.ip when the request carries no socket', async () => {
     const { controller, service } = makeController();
     const request = { headers: {}, ip: '10.0.0.1' };
     await controller.exchange({ clientId: 'c1', clientSecret: 's1' } as never, request as never);

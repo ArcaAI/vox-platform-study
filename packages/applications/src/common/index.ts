@@ -10,6 +10,9 @@ export * from './applyChangesToEntity';
 export * from './assertExpectedVersion';
 export * from './authenticateJwt';
 export * from './base.service';
+// Which address a request is attributed to: the rate-limiter bucket key and
+// the audited client IP, resolved by ONE trust rule (TASK-993 D-1 + lane J).
+export * from './client-ip';
 export * from './cursorPagination';
 export * from './fetchResponse';
 export * from './getPhoneNumberType';

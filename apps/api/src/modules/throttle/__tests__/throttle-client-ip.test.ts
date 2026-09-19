@@ -45,6 +45,9 @@ const platformSettings: IRateLimitSettingsService = {
   isEnabledForTenant: () => true,
   getTierForTenant: () => ({ limit: 1000, ttl: 60000, limitSource: 'system', ttlSource: 'system' }),
   getPrincipalPolicy: () => ({ enabled: true, ...RATE_LIMIT_PRINCIPAL_DEFAULTS }),
+  // TASK-993 lane J added this accessor to the interface; the default (OFF)
+  // is what every test here assumed before it existed.
+  isLockoutEnabled: () => false,
 };
 
 @Controller('cip')

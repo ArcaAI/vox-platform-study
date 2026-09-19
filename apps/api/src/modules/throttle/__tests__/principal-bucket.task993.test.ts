@@ -98,6 +98,9 @@ const settings: IRateLimitSettingsService = {
   isEnabledForTenant: () => true,
   getTierForTenant: () => ({ limit: stub.tenantLimit, ttl: 60_000, limitSource: 'tenant', ttlSource: 'tenant' }),
   getPrincipalPolicy: () => stub.principal,
+  // TASK-993 lane J added this accessor to the interface; the default (OFF)
+  // is what every test here assumed before it existed.
+  isLockoutEnabled: () => false,
 };
 
 /** Both machine lanes resolve a tenant WITHOUT a database read. */
