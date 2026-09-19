@@ -6,6 +6,7 @@ import { Job, Queue } from 'bullmq';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { DrainReport, UsageOutboxDrainer } from './usage-outbox.drainer';
 import { DRAIN_DEFAULTS, DRAIN_ENABLED_KEY, DRAIN_INTERVAL_SECONDS_KEY, USAGE_OUTBOX_DRAIN_JOB, USAGE_OUTBOX_QUEUE } from './usage-ledger.constants';
+import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
 
 /**
  * The BullMQ half of the outbox drainer.
@@ -19,7 +20,10 @@ import { DRAIN_DEFAULTS, DRAIN_ENABLED_KEY, DRAIN_INTERVAL_SECONDS_KEY, USAGE_OU
  *
  * Consequently the job carries NO payload: each tick claims whatever is due.
  */
-@Processor(USAGE_OUTBOX_QUEUE)
+// TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
+// ran at bullmq's default of 1 because no `@Processor` passed options; the
+// number, and the Prisma-pool budget it fits inside, live in one table.
+@Processor(USAGE_OUTBOX_QUEUE, { concurrency: QUEUE_CONCURRENCY[USAGE_OUTBOX_QUEUE] })
 export class UsageOutboxProcessor extends WorkerHost {
   private readonly logger = new Logger(UsageOutboxProcessor.name);
 

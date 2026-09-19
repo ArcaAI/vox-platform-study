@@ -56,6 +56,7 @@ import { IComputeDeviceResolver, IUsageLedgerService, type ComputeAugmentedBatch
 import type { UsageEventBatchInput } from '../usageLedger/dto';
 import type { UsageOrigin } from '../usageLedger/usage-attributes';
 import { IActiveUserContext } from '../../interfaces';
+import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
 
 const CONTEXT_DEFAULTS = {
   maxSamples: 50,
@@ -81,7 +82,10 @@ function stripProvider(override: Record<string, unknown>): Record<string, unknow
   return entry;
 }
 
-@Processor(JobQueue.GenerateDnaReport)
+// TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
+// ran at bullmq's default of 1 because no `@Processor` passed options; the
+// number, and the Prisma-pool budget it fits inside, live in one table.
+@Processor(JobQueue.GenerateDnaReport, { concurrency: QUEUE_CONCURRENCY[JobQueue.GenerateDnaReport] })
 export class DnaWritingStyleProcessor extends WorkerHost {
   private readonly logger = new Logger(DnaWritingStyleProcessor.name);
   private readonly textServiceUrl: string;

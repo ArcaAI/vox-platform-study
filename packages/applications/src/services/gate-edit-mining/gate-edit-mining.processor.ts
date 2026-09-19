@@ -11,6 +11,7 @@ import { GateEditMiningJob, IGateEditMiningQueue } from './IGateEditMiningQueue'
 import { ConfigResolver } from '../config-resolver/config-resolver.service';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../consultation/visit-type/visit-type.service';
 import { readRecordedVisitType } from '../consultation/consultation/open-markers';
+import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
 
 /**
  * The enqueue half of the gate-edit learning loop.
@@ -108,7 +109,10 @@ export class GateEditMiningQueue implements IGateEditMiningQueue {
  * processor should let the queue retry a job it cannot attribute, rather than
  * silently dropping it.
  */
-@Processor(JobQueue.MineGateEditExemplar)
+// TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
+// ran at bullmq's default of 1 because no `@Processor` passed options; the
+// number, and the Prisma-pool budget it fits inside, live in one table.
+@Processor(JobQueue.MineGateEditExemplar, { concurrency: QUEUE_CONCURRENCY[JobQueue.MineGateEditExemplar] })
 export class GateEditMiningProcessor extends WorkerHost {
   private readonly logger = new Logger(GateEditMiningProcessor.name);
 

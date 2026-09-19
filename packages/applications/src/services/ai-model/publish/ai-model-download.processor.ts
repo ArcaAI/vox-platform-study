@@ -12,6 +12,7 @@ import { buildAiModelManifest } from './model-manifest.util';
 import { ModelSourceFetcherService } from './model-source-fetcher.service';
 import { HuggingFaceModelSourceClient } from './huggingface-model-source.client';
 import { buildSha256SumsContent, deriveModelVersion, deriveQuantTokenFromFilenames, normalizeQuantToken, sha256Hex } from './model-version.util';
+import { QUEUE_CONCURRENCY } from '../../baseServices/redis/queue-concurrency';
 
 // Re-exported for the existing importers (tests, the API module); the constant moved to `../constants`.
 export { HOPE_MODELS_BUCKET };
@@ -71,7 +72,10 @@ export interface DownloadAiModelResult {
  * only ever transitions DOWNLOADING -> DOWNLOADED or DOWNLOADING ->
  * DOWNLOAD_FAILED.
  */
-@Processor(JobQueue.DownloadAiModel)
+// TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
+// ran at bullmq's default of 1 because no `@Processor` passed options; the
+// number, and the Prisma-pool budget it fits inside, live in one table.
+@Processor(JobQueue.DownloadAiModel, { concurrency: QUEUE_CONCURRENCY[JobQueue.DownloadAiModel] })
 export class AiModelDownloadProcessor extends WorkerHost {
   private readonly logger = new Logger(AiModelDownloadProcessor.name);
 

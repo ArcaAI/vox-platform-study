@@ -250,7 +250,9 @@ describe('EntitlementsService', () => {
       expect(resolved.plan).toBe('ENTERPRISE');
       // Structural caps are finite on ENTERPRISE (RATIFIED 2026-08-08) —
       // an ungated-legacy resolution would have every one of these `null`.
-      expect(resolved.limits.maxUsers).toBe(100);
+      // TASK-993 OD-4 — 150, not 100: the platform target is 100 CONCURRENT
+      // users per tenant and a cap sitting exactly on it refuses the 101st.
+      expect(resolved.limits.maxUsers).toBe(150);
       expect(resolved.limits.maxDepartments).toBe(40);
       expect(resolved.limits.maxApiKeys).toBe(50);
       // Usage meters are unlimited on ENTERPRISE by design (negotiated), so
