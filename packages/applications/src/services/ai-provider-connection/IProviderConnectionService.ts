@@ -276,9 +276,17 @@ export interface IProviderConnectionService {
    * provider's DEFAULT; `dto.isDefault: true` on a sibling re-points the default
    * in one transaction.
    *
+   * TASK-991 OD-3 / OD-4 — `service: 'embeddings'` is PLATFORM-MANAGED. A
+   * TENANT-tier create or update is a 403 (the model and the endpoint are fixed
+   * for every tenant, because the model and the stored vectors are one coupled
+   * artifact); a SUPER_ADMIN writing the SYSTEM tier is unaffected, and so is
+   * DELETE, which must stay open so a pre-existing tenant row can be cleaned up.
+   *
    * @throws BadRequestException `CONNECTION_SLUG_INVALID` · `CONNECTION_PROVIDER_REQUIRED` ·
    *   `CONNECTION_MULTIPLICITY_UNSUPPORTED` · `PLATFORM_CONNECTION_PER_PROVIDER` ·
    *   `CONNECTION_DEFAULT_REQUIRED`
+   * @throws ForbiddenException the SYSTEM tier without SUPER_ADMIN, a
+   *   non-tenant-managed provider, or any TENANT-tier `embeddings` write
    * @throws ConflictException `CONNECTION_PROVIDER_IMMUTABLE`
    * @throws QuotaExceededException `maxAiProviderConnections`, on CREATE only
    */
