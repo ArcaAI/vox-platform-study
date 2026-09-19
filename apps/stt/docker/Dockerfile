@@ -327,19 +327,27 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # command is being PARSED, never in the result of a parameter expansion, so the
 # list reaches setup.py as a single token.
 #
-# `--refresh-package` is REQUIRED, not belt-and-braces. uv keys its built-wheel
-# cache on the SOURCE (git url + resolved commit + interpreter tag) and not on the
-# build environment, so CMAKE_ARGS is invisible to it: changing the architecture
-# list re-runs this RUN layer (the command string changed) and then uv hands back
-# the wheel it compiled in an earlier pipeline. `--reinstall-package` only forces a
-# reinstall FROM the cache; only `--refresh-package` invalidates it. That is exactly
-# how the first `86-real;89-real;89-virtual` build produced an sm_89-only extension
-# and tripped the cuobjdump gate below with a correct-looking CMAKE_ARGS.
+# NO uv CACHE ON THIS STEP, and that is the whole point of the two flags below.
+# uv keys a built wheel on the SOURCE (git url + resolved commit + interpreter tag);
+# the build ENVIRONMENT, and therefore CMAKE_ARGS, is not part of that key. So the
+# compile silently does not happen: uv hands back the wheel an earlier pipeline
+# built for a DIFFERENT architecture list and the image ships kernels nobody asked
+# for. Measured in job 20337 (2026-09-19): this step completed in 8.5s with
+# "Prepared 1 package in 13ms" — no compiler ran — and the extension it installed
+# carried sm_89 images only, exactly the value this list replaced.
+#
+# Neither `--reinstall-package` nor `--refresh-package` closes it: the first
+# reinstalls FROM the cache, and the second was measured (same job) still serving
+# the stale wheel. The cache mount is therefore dropped and `--no-cache` passed, so
+# the source build is the only way this line can succeed. The cost is a real
+# whisper.cpp compile whenever this layer runs; the DOCKER layer cache still skips
+# the whole step when nothing above it changed, which is where the reuse belongs —
+# a cache that cannot see CMAKE_ARGS must never be the thing deciding whether to
+# rebuild.
 ARG CUDA_ARCHITECTURES
-RUN --mount=type=cache,target=/root/.cache/uv \
-    CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES} -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON" \
+RUN CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES} -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON" \
     uv pip install --python /opt/venv/bin/python \
-        --refresh-package pywhispercpp \
+        --no-cache \
         --reinstall-package pywhispercpp \
         "pywhispercpp @ git+https://github.com/absadiki/pywhispercpp@v1.5.0"
 
