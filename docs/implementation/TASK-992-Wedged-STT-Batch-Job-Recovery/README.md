@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | In Progress |
 | **Type** | bugfix |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-19 |
