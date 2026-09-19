@@ -1,5 +1,6 @@
 """HTTP client for write operations through API Gateway."""
 
+import re
 from datetime import datetime
 from typing import Any, cast
 
@@ -7,7 +8,7 @@ import httpx
 import structlog
 
 from stt.core.config.settings import get_settings
-from stt.core.exceptions import APIGatewayError, JobError, JobTerminalError
+from stt.core.exceptions import APIGatewayError, JobConflictError, JobTerminalError
 from stt.core.loop_local import get_loop_local
 
 logger = structlog.get_logger(__name__)
@@ -20,27 +21,15 @@ settings = get_settings()
 #: tell apart from a finished job.
 TERMINAL_JOB_STATUSES = frozenset({"COMPLETED", "FAILED", "CANCELLED", "DEAD"})
 
-#: The one non-terminal status a start can legitimately be refused in — the row already
-#: carries a claim (``TranscriptionJobEntity.startProcessing`` refuses anything but
-#: QUEUED). A job still QUEUED that refuses a start was refused for some other reason,
-#: so it stays a retryable transport error rather than being ended.
-ORPHANED_CLAIM_STATUS = "PROCESSING"
+# TASK-992 — the DEPRECATED legacy-body parser (removed in R4). A gateway that
+# predates TASK-992 wrote the refused status into the message and nowhere else,
+# as a generic `500 DOMAIN.BUSINESS`. Kept only for the rolling-deploy window in
+# which a NEW worker talks to an OLD gateway; registered in
+# `docs/operations/deprecation-register.md`.
+_LEGACY_STATE_REFUSAL = re.compile(r"Cannot (?:start|fail|complete|cancel|reclaim|restart) job in (?P<status>[A-Z_]+) status")
 
-
-class JobNotResumableError(JobError):
-    """A job refused the worker's claim while it was NOT in a terminal state.
-
-    In practice: the row is PROCESSING because a previous worker claimed it and then
-    died, so no process is advancing it and no outcome will ever be written. The
-    caller must give the job an honest ending rather than drop the delivery — see
-    ``transcribe_file`` — because a client polling a PROCESSING job that nothing owns
-    waits out its entire timeout.
-
-    Lives here rather than in ``stt.core.exceptions`` only because this ticket's
-    file boundary stopped at this module; it belongs beside ``JobTerminalError``.
-    """
-
-    error_code = "JOB_NOT_RESUMABLE"
+#: The machine-readable code the TASK-992 gateway answers a refused claim with.
+STATE_TRANSITION_CODE = "DOMAIN.INVALID_STATE_TRANSITION"
 
 
 class APIGatewayClient:
@@ -160,24 +149,32 @@ class APIGatewayClient:
 
         ``tenant_id`` addresses the job's OWNING tenant (see ``_tenant_headers``).
 
-        A refusal is classified by the job's ACTUAL status, read back from the
-        gateway. It used to be classified by substring-matching the prose of the
-        thrown message (``"Cannot start job in"``), which is wrong twice over: the
-        wording is not a contract, and — worse — the match could not see WHICH
-        status refused, so a PROCESSING job (a claim left behind by a worker that
-        died) was reported as terminal, silently acked, and wedged in PROCESSING
-        forever while its client waited out the full timeout.
+        TASK-992 — this endpoint is a CLAIM, not merely a start. It is called at
+        the top of the actor on EVERY delivery, and the gateway decides what that
+        means for the row's current status: QUEUED starts, PROCESSING under a
+        DIFFERENT worker is RECLAIMED, PROCESSING under this same worker is an
+        idempotent no-op, and FAILED with retries left is re-attempted. So the
+        ordinary outcome of a redelivery is a 200 and a job that finishes — the
+        audio lives in object storage and is re-downloaded on every delivery
+        (step 3 below), so a crashed attempt loses nothing that matters.
 
-        Raises:
-            JobTerminalError: the job already finished (COMPLETED/FAILED/CANCELLED/DEAD)
-                — the delivery is a duplicate and the caller can drop it.
-            JobNotResumableError: the job is PROCESSING — the only non-terminal status
-                ``startProcessing`` refuses — so a previous claim is still on the row
-                and no worker is behind it.
-            APIGatewayError: anything else, unchanged and retryable. A job still QUEUED
-                was refused for some OTHER reason (auth, validation, a transient 500),
-                and a retry is the right answer; so is a refusal this cannot classify
-                because the status read failed too.
+        A refusal is classified from the RESPONSE BODY:
+
+        * ``JobTerminalError`` — no claim will ever succeed (COMPLETED /
+          CANCELLED / DEAD, or a claim budget the gateway has just spent, in
+          which case it has already moved the row to DEAD). ACK the delivery.
+        * ``JobConflictError`` — refused for now; the broker should retry.
+        * ``APIGatewayError`` — not a state-machine refusal at all (auth,
+          validation, a transient 5xx). Unchanged, and retryable.
+
+        .. note::
+           This SUPERSEDES the TASK-991 W2-4 design, which read the status back
+           with a second HTTP call and ended a PROCESSING job FAILED. That threw
+           away a recoverable transcription — its premise, that "the previous
+           attempt's audio went with its process", was not true — and, seeing
+           only a status, it could not tell another worker's claim from this
+           worker's own, so a retried ``/start`` could fail a job that was
+           running fine.
         """
         try:
             return await self._request(
@@ -187,42 +184,63 @@ class APIGatewayClient:
                 headers=self._tenant_headers(tenant_id),
             )
         except APIGatewayError as e:
-            status = await self._observed_job_status(job_id, tenant_id)
-            if status is None:
-                raise
-            details = {**(e.details or {}), "status": status}
-            if status in TERMINAL_JOB_STATUSES:
+            verdict = self._classify_state_conflict(e)
+            if verdict == "terminal":
                 raise JobTerminalError(
                     f"Job {job_id} is already in a terminal state",
-                    details=details,
+                    details=e.details,
                 ) from e
-            if status == ORPHANED_CLAIM_STATUS:
-                raise JobNotResumableError(
-                    f"Job {job_id} refused the worker claim in {status} status",
-                    details=details,
+            if verdict == "conflict":
+                raise JobConflictError(
+                    f"Job {job_id} cannot be claimed yet",
+                    details=e.details,
                 ) from e
             raise
 
-    async def _observed_job_status(self, job_id: str, tenant_id: str | None) -> str | None:
-        """The job's status as the gateway reports it, or ``None`` if unreadable.
+    @staticmethod
+    def _classify_state_conflict(error: APIGatewayError) -> str | None:
+        """Decide whether a refused claim is final or merely not-yet.
 
-        The status enum is the contract a refusal should be judged on; an exception
-        message is not. ``None`` means "could not tell", which must never be read as
-        "not terminal" — the caller re-raises the original transport error so the
-        delivery is retried rather than resolved on a guess.
+        Returns ``"terminal"``, ``"conflict"``, or ``None`` when this is not a
+        state-machine refusal at all.
+
+        The STRUCTURED branch is the real one, and it costs no extra request:
+        the gateway owns the state machine, so it answers ``metadata.terminal``
+        in the refusal itself. This side deliberately keeps NO opinion about
+        which statuses are final — a worker maintaining that list is one
+        release away from disagreeing with the server, which is the whole shape
+        of the defect being fixed.
+
+        .. deprecated:: TASK-992
+           The substring branch reads the pre-TASK-992 body, a generic
+           ``500 DOMAIN.BUSINESS`` whose only signal is English prose. Removed
+           in R4. It keeps FAILED TERMINAL, unlike the structured branch: an old
+           gateway genuinely cannot restart a failed job, so calling it retryable
+           would only spin the worker through its whole backoff. PROCESSING is
+           absent from that terminal set, and that omission IS the fix.
         """
-        try:
-            status = await self.get_job_status(job_id, tenant_id=tenant_id)
-        except Exception:
-            logger.warning(
-                "stt.job_status_unreadable_after_refused_start",
-                job_id=job_id,
-                exc_info=True,
-            )
+        cause = error.__cause__
+        if not isinstance(cause, httpx.HTTPStatusError):
             return None
-        # `get_job_status` substitutes "UNKNOWN" for a response carrying no status;
-        # that is an absence, not a state, and must not decide the job's fate.
-        return status if status and status != "UNKNOWN" else None
+        try:
+            body = cause.response.json()
+        except Exception:
+            return None
+        if not isinstance(body, dict):
+            return None
+
+        if body.get("code") == STATE_TRANSITION_CODE:
+            metadata = body.get("metadata")
+            terminal = bool(metadata.get("terminal")) if isinstance(metadata, dict) else False
+            return "terminal" if terminal else "conflict"
+
+        message = body.get("message")
+        if not isinstance(message, str):
+            return None
+        match = _LEGACY_STATE_REFUSAL.search(message)
+        if not match:
+            return None
+        return "terminal" if match.group("status") in TERMINAL_JOB_STATUSES else "conflict"
 
     async def update_job_progress(
         self,

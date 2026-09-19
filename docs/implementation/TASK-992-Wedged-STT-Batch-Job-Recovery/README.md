@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Review |
 | **Type** | bugfix |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-19 |
@@ -355,7 +355,138 @@ no redelivery and show the reaper closing it.
 
 ## 4. Implementation Summary
 
-_Pending — filled in after Phase 4._
+`PATCH /internal/stt/jobs/:id/start` is now a **claim**, not a start. The worker calls it on every
+delivery and the gateway decides what that means for the row it finds.
+
+| Current status | Outcome | HTTP |
+|---|---|---|
+| `QUEUED` | start (unchanged) | 200 |
+| `PROCESSING`, same `workerId` | idempotent — no write, no event | 200 |
+| `PROCESSING`, different `workerId`, budget left | **reclaim** (`reclaimCount++`) | 200 |
+| `FAILED`, retries left | **re-attempt** (`retryCount++`, error fields cleared) | 200 |
+| either budget spent | marked `DEAD` **and persisted**, then refused | 409 `terminal: true` |
+| `COMPLETED` / `CANCELLED` / `DEAD` | refused, nothing written | 409 `terminal: true` |
+
+### 4.1 Files changed
+
+| Layer | Change |
+|---|---|
+| `packages/database` | `TranscriptionJob.reclaimCount Int @default(0)` + `TranscriptionJob_status_updated_idx` (the reaper's access path). Migration `20260919120314_task_992_transcription_job_reclaim_count`, authored against a throwaway `hope_shadow`, drift-proved empty, then `db:push` to dev. |
+| `packages/exceptions` | New `InvalidStateTransitionException` / `DOMAIN.INVALID_STATE_TRANSITION`, metadata `{ entity, entityId, currentStatus, attempted, terminal }`. |
+| `packages/domains` | `TranscriptionJobEntity`: new `reclaimProcessing` / `reattemptAfterFailure`, one `refuseTransition` helper behind `startProcessing` / `complete` / `fail` / `cancel`, and the private `isClaimTerminal` (narrower than `isTerminal`, because a `FAILED` job with retries left is re-attemptable). `TranscriptionJobRepository.findStaleProcessingJobs`. Factory + model carry `reclaimCount`. |
+| `packages/applications` | `SttInternalService.startJob` rewritten as the table above, plus `retireExhaustedClaim`. New `SttJobReaperService` (+ module, barrel, `stt-job-reaper` worker-session kind). Three `global-kv` descriptors in a new `STT_BATCH_DEFAULTS` map. `reclaimCount` on the response DTO + mapper. |
+| `apps/api` | `ExceptionInterceptor` branch → **409**, placed before the generic `BaseException` branch. `@ApiOperation`/`@ApiResponse` on the claim route. `SttJobReaperServiceModule` registered. |
+| `apps/stt` | `_classify_state_conflict` replaces `_is_terminal_state_error`; new `JobConflictError`; worker identity is now `{hostname}-{pid}`; the refusal branch re-raises for the broker instead of ending the job. |
+
+### 4.2 Configuration added (all `global-kv`, `globalOnly`, `open-to-default`)
+
+| Key | Default | Why |
+|---|---|---|
+| `stt.batch.maxReclaims` | `3` | Bounds a crash-loop; past it the job is `DEAD`. |
+| `stt.batch.staleProcessingMinutes` | `20` | 2x the actor's `time_limit` (600 s), so the reaper can never fire while an attempt could still be running. |
+| `stt.batch.reaper.cron` | `*/5 * * * *` | Sweep cadence. |
+
+`STT_BATCH_DEFAULTS` is deliberately a SEPARATE map from `STT_GATEWAY_DEFAULTS`:
+`SttWsGateway.resolveBudget` indexes the latter generically (`keyof typeof`) while promising a
+`number`, so a cron string in it breaks the gateway's build.
+
+### 4.3 ⚠️ This SUPERSEDES the TASK-991 W2-4 fix (owner decision, 2026-09-19)
+
+Mid-implementation, commit `efbeaee81` (TASK-991 lane W2-B) landed a Python-only fix for the same
+defect: it read the status back over a second HTTP call and ended a `PROCESSING` job **FAILED**, on
+the reasoning that *"nothing can resume it: the previous attempt's audio, models and partial results
+went with its process."*
+
+That reasoning did not hold — the audio is in object storage and `transcribe_file` re-downloads it
+on every delivery, so a recoverable transcription was being discarded — and, seeing only a status,
+it could not tell another worker's claim from its own, so a retried `/start` could end a healthy
+job. The owner chose to supersede it. **W2-2 and W2-3 of that commit are untouched.** Every scenario
+its 14 tests pinned is still pinned in a rewritten
+`apps/stt/tests/unit/test_task991_orphaned_job_recovery.py`, with the `PROCESSING` verdict inverted.
+`JobNotResumableError` and `_observed_job_status` are gone; `JobConflictError` replaces the former.
+
+### 4.4 Evidence
+
+Gates (all run, 2026-09-19):
+
+```
+gen:model:check     no drift — 181 generated file(s) match
+gen:entity:check    no drift — 103 files; Schema coverage OK (101 artifacts, 105 models)
+gen:factory:check   no drift — 103 files; Schema coverage OK
+@arcaai/exceptions    Test Files 3 passed    Tests 11 passed
+@arcaai/domains       Test Files 173 passed  Tests 2031 passed | 2 skipped | 9 todo
+@arcaai/applications  Test Files 908 passed  Tests 14561 passed | 10 skipped
+pnpm test:unit        Test Files 1775 passed Tests 27569 passed | 4 skipped | 9 todo
+pnpm stt:test (unit)  3815 passed
+stt:lint              All checks passed!
+stt:typecheck         Success: no issues found in 140 source files
+pnpm lint             exit 0 — 40 successful, 40 total
+api:openapi:check / api:portal:check / vox-node gen:admin:check   no drift
+boot smoke            GET /api/v1/health -> 200; "STT stranded-job reaper scheduled" cron=*/5 * * * *
+```
+
+Three failures are PRE-EXISTING and out of scope; each is in a file this ticket does not touch
+(verified `git status` clean for both paths):
+
+| Failure | Cause |
+|---|---|
+| `test_task799_env_surface.py::test_minio_credentials_default_to_empty` | reads a real MinIO key from the dev env; `settings.py` untouched |
+| `env.schema.test.ts::PRISMA_PG_MAX` expects 5, gets 15 | host env overrides both env files (TASK-558 precedence); `apps/api/src/config/` untouched |
+| `membership-bounded-sync.integration.test.ts` | Prisma `$connect()` to the live test DB (port 5433 is held by unrelated containers) |
+
+**Live proof — the full claim state machine over real HTTP** (gateway on :8869 against the dev DB,
+so as not to disturb the shared stack on :8868):
+
+```
+── AC-5  FAILED + retries left -> re-attempt ──
+  PATCH /start  workerId=hostA-1001   HTTP 200  status=PROCESSING  worker=hostA-1001  retry=1 reclaim=0
+── AC-3  the SAME worker re-sends its claim ──
+  PATCH /start  workerId=hostA-1001   HTTP 200  status=PROCESSING  worker=hostA-1001  retry=1 reclaim=0
+── AC-2  a DIFFERENT worker claims it -> reclaim ──
+  PATCH /start  workerId=hostB-2002   HTTP 200  status=PROCESSING  worker=hostB-2002  retry=1 reclaim=1
+  PATCH /start  workerId=hostC-3003   HTTP 200  status=PROCESSING  worker=hostC-3003  retry=1 reclaim=2
+  PATCH /start  workerId=hostD-4004   HTTP 200  status=PROCESSING  worker=hostD-4004  retry=1 reclaim=3
+── AC-4  budget spent -> marked DEAD, then refused ──
+  PATCH /start  workerId=hostE-5005   HTTP 409  code=DOMAIN.INVALID_STATE_TRANSITION  currentStatus=DEAD terminal=True attempted=reclaimProcessing
+── AC-1  genuinely terminal now ──
+  PATCH /start  workerId=hostF-6006   HTTP 409  code=DOMAIN.INVALID_STATE_TRANSITION  currentStatus=DEAD terminal=True attempted=startProcessing
+── the ordinary path is unregressed ──
+  QUEUED -> start                     HTTP 200  status=PROCESSING  worker=hostQ-7777  retry=0 reclaim=0
+```
+
+**Live proof — the reaper, on the incident row itself (AC-6).** The reaper's first tick after its
+code reached `packages/applications/dist` found and ended both stranded rows:
+
+```
+01a0b94c-637e-78c0-a279-3a83cf8df46b  FAILED  WORKER_LOST
+  "Worker worker-59400 stopped reporting progress for more than 20 minutes;
+   the job was never redelivered."
+98000000-0000-0000-0000-000000000002  FAILED  WORKER_LOST
+  "Worker asr-worker-02 stopped reporting progress for more than 20 minutes;
+   the job was never redelivered."
+```
+
+The first is the exact job from the report. The second is the seeded lifecycle fixture — reaped as
+§3.7 predicted.
+
+### 4.5 Dev-database state left behind (deliberate, needs a reseed)
+
+The live proof mutated seed/test rows in the DEV database. None is production data and none is
+asserted by any test, but a `pnpm db:seed` restores them:
+
+| Row | Left as |
+|---|---|
+| `98000000-0000-0000-0000-000000000002` (seeded PROCESSING fixture) | `FAILED / WORKER_LOST` — reaped |
+| `98000000-0000-0000-0001-000000000002` (seeded QUEUED fixture) | `PROCESSING` under `hostQ-7777`; the reaper will fail it ~20 min later |
+| `01a0b949-…`, `01a0b94a-…`, `01a0b944-…` (already-FAILED jobs from the incident) | `DEAD`, driven through the claim walk |
+
+### 4.6 Follow-ups, deliberately NOT done here
+
+| # | Item |
+|---|---|
+| FU-1 | `retryJob` flips a row back to `QUEUED` but nothing re-publishes a Dramatiq message, so an admin "retry" produces a job no worker will ever pick up. Pre-existing; out of scope. |
+| FU-2 | The platform-wide `BusinessException` → 500 mapping. Only the `TranscriptionJob` state machine moved to the new exception; a general sweep is its own ticket. |
+| FU-3 | `/internal/stt/*` is `@ApiExcludeController`, so the documented 409 never reaches `openapi.json`. Pre-existing for the whole internal plane. |
 
 ---
 
@@ -363,4 +494,7 @@ _Pending — filled in after Phase 4._
 
 | Date | Change |
 |---|---|
-| 2026-09-19 | Ticket opened. Exploration complete; wedged row confirmed live in the dev DB; second defect found on the `FAILED` path (§2.2). Owner decisions OD-1…OD-3 taken. Plan written, awaiting approval. |
+| 2026-09-19 | Ticket opened. Exploration complete; wedged row confirmed live in the dev DB; second defect found on the `FAILED` path (§2.2). Owner decisions OD-1…OD-3 taken. Plan written, approved. |
+| 2026-09-19 | Implemented across all six layers, TDD with RED observed per layer (the reaper suite additionally mutation-checked, since its tests and code were written together). All gates green; three pre-existing failures triaged in §4.4. |
+| 2026-09-19 | **Superseded the TASK-991 W2-4 fix** (`efbeaee81`) on owner decision — see §4.3. TASK-991's README and `docs/operations/deprecation-register.md` both updated. |
+| 2026-09-19 | Live-proved the whole claim state machine over HTTP, and the reaper on the original incident row. `reclaimCount` added to the response DTO after the live run showed it was not observable. |

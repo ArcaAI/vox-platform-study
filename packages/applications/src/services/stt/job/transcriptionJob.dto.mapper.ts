@@ -25,6 +25,7 @@ export class TranscriptionJobDtoMapper {
       errorCode: entity.errorCode,
       retryCount: entity.retryCount,
       maxRetries: entity.maxRetries,
+      reclaimCount: entity.reclaimCount,
       workerId: entity.workerId,
       tenantId: entity.tenantId || '',
       createdAt: entity.createdAt,

@@ -17,6 +17,13 @@ export const UNAUTHORIZED = 'UNAUTHORIZED';
 
 /** Domain layer */
 export const BUSINESS = 'DOMAIN.BUSINESS';
+// TASK-992 — an aggregate's state machine refused a transition because of the
+// status the row is currently in. The API gateway maps this to 409 Conflict.
+// Distinct from BUSINESS on purpose: a machine caller (the STT worker) must be
+// able to recognise a state-machine refusal, and read `metadata.terminal`,
+// without substring-matching the message — which is how a recoverable
+// PROCESSING came to be classified as terminal and orphaned the job.
+export const INVALID_STATE_TRANSITION = 'DOMAIN.INVALID_STATE_TRANSITION';
 // A plan-entitlement quantity/meter limit was reached. The API gateway maps
 // this to 409 Conflict (create) / 429 (meter).
 export const QUOTA_EXCEEDED = 'DOMAIN.QUOTA_EXCEEDED';

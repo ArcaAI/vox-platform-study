@@ -70,6 +70,14 @@ export class TranscriptionJobResponse {
   @ApiProperty({ description: 'Maximum retries' })
   maxRetries: number;
 
+  @ApiProperty({
+    description:
+      'TASK-992 — how many times this job has been RECLAIMED from a worker that died mid-flight. Counted ' +
+      'separately from `retryCount`, which counts genuine transcription failures: a crashed worker must not ' +
+      'spend the budget a bad audio file needs. Bounded by `stt.batch.maxReclaims`; past it the job is marked DEAD.',
+  })
+  reclaimCount: number;
+
   @ApiPropertyOptional({ description: 'Worker ID' })
   workerId?: string | null;
 

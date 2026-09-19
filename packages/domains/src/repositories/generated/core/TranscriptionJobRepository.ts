@@ -132,6 +132,37 @@ export class TranscriptionJobRepository extends Repository<TranscriptionJobEntit
   }
 
   /**
+   * TASK-992 — the reaper's eligibility query: batch jobs stuck in PROCESSING
+   * with nothing writing to them.
+   *
+   * `updatedAt` is the staleness signal, not `startedAt`: the worker's progress
+   * callbacks land through `repository.update`, so `updatedAt` is the closest
+   * thing this row has to a heartbeat, while `startedAt` only says when the
+   * current attempt began. A job that is still emitting progress is therefore
+   * never eligible, however long it has been running.
+   *
+   * Deliberately CROSS-TENANT and unfiltered by tenant: this backs a
+   * platform-wide maintenance tick with no CLS context bound, so the
+   * tenant-scope Prisma extension passes through (the same shape
+   * {@link findProcessingJobs} already relies on). Each row's WRITE is
+   * re-bound to its own tenant by the caller.
+   *
+   * Backed by `TranscriptionJob_status_updated_idx`.
+   */
+  async findStaleProcessingJobs(staleBefore: Date, limit: number = 100): Promise<TranscriptionJobEntity[]> {
+    const models = await (this as any).db.findMany({
+      where: {
+        status: TranscriptionJobStatus.PROCESSING,
+        updatedAt: { lt: staleBefore },
+      },
+      orderBy: { updatedAt: 'asc' },
+      take: limit,
+    });
+
+    return models.map((model: TranscriptionJob) => (this as any)._mapper.toDomainEntity(model));
+  }
+
+  /**
    * Find failed jobs that can be retried
    */
   async findRetryableJobs(tenantId: string): Promise<TranscriptionJobEntity[]> {

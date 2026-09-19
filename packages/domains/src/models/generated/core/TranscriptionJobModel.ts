@@ -31,6 +31,7 @@ export class TranscriptionJob extends BaseTenantDataModel {
   public errorCode: string | null;
   public retryCount: number;
   public maxRetries: number;
+  public reclaimCount: number;
   public workerId: string | null;
   @VirtualDbProperty()
   public Pipeline: Models.AsrPipeline | undefined;
@@ -56,6 +57,7 @@ export class TranscriptionJob extends BaseTenantDataModel {
     this.errorCode = data.errorCode;
     this.retryCount = data.retryCount;
     this.maxRetries = data.maxRetries;
+    this.reclaimCount = data.reclaimCount;
     this.workerId = data.workerId;
     this.Pipeline = data.Pipeline;
   }

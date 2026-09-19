@@ -1,7 +1,7 @@
 /* eslint-disable unused-imports/no-unused-imports */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { BusinessException } from '@arcaai/exceptions';
+import { BusinessException, InvalidStateTransitionException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import * as Entities from '../../../entities';
 import * as Enums from '../../../enums';
@@ -35,6 +35,14 @@ export interface ITranscriptionJobEntity extends IBaseTenantEntity {
   errorCode?: string | null;
   retryCount: number;
   maxRetries: number;
+  /**
+   * TASK-992 — how many times this job has been RECLAIMED from a worker that
+   * died mid-flight. Deliberately separate from `retryCount` (OD-2): a crashed
+   * worker and a transcription that genuinely failed are different events, and
+   * sharing one budget means an OOM spends the allowance a bad audio file
+   * needs. The bound is `stt.batch.maxReclaims` (global-kv), passed in.
+   */
+  reclaimCount: number;
   workerId?: string | null;
   /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`. */
   Pipeline?: Entities.AsrPipelineEntity | null;
@@ -62,6 +70,7 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
   private _errorCode?: ITranscriptionJobEntity['errorCode'];
   private _retryCount: ITranscriptionJobEntity['retryCount'];
   private _maxRetries: ITranscriptionJobEntity['maxRetries'];
+  private _reclaimCount: ITranscriptionJobEntity['reclaimCount'];
   private _workerId?: ITranscriptionJobEntity['workerId'];
   private _Pipeline?: ITranscriptionJobEntity['Pipeline'];
 
@@ -88,6 +97,7 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this._errorCode = init.errorCode;
     this._retryCount = init.retryCount;
     this._maxRetries = init.maxRetries;
+    this._reclaimCount = init.reclaimCount;
     this._workerId = init.workerId;
     this._Pipeline = init.Pipeline;
   }
@@ -272,6 +282,14 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this.setProperty('maxRetries', value);
   }
 
+  get reclaimCount(): ITranscriptionJobEntity['reclaimCount'] {
+    return this._reclaimCount;
+  }
+
+  set reclaimCount(value: ITranscriptionJobEntity['reclaimCount']) {
+    this.setProperty('reclaimCount', value);
+  }
+
   get workerId(): ITranscriptionJobEntity['workerId'] {
     return this._workerId;
   }
@@ -383,16 +401,115 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
   }
 
   /**
+   * TASK-992 — is this job PAST every transition, for good?
+   *
+   * Narrower than {@link isTerminal} on purpose, and the difference is the
+   * whole point: `isTerminal` counts FAILED, but a FAILED job with retries
+   * left is re-attemptable ({@link reattemptAfterFailure}), so telling a
+   * worker it is finished would silently disable the broker's retry — which is
+   * exactly what used to happen. Only these three admit nothing further.
+   */
+  private get isClaimTerminal(): boolean {
+    return this.isCompleted || this.isCancelled || this.isDead;
+  }
+
+  /**
+   * TASK-992 — the ONE place a refused transition is turned into an error.
+   *
+   * Every refusal carries the status it refused and whether that status is
+   * final, so a caller in another process decides from `metadata`, never from
+   * the message. The message is kept byte-identical to the old
+   * `BusinessException` text so the deprecated substring branch in the STT
+   * client (`gateway.py`) keeps working through a rolling deploy.
+   */
+  private refuseTransition(attempted: string, verb: string): never {
+    throw new InvalidStateTransitionException(`Cannot ${verb} job in ${this._status} status`, {
+      entity: 'TranscriptionJob',
+      entityId: this.id,
+      currentStatus: this._status,
+      attempted,
+      terminal: this.isClaimTerminal,
+    });
+  }
+
+  /**
    * Start processing the job
    */
   public startProcessing(workerId: string): void {
     if (!this.isQueued) {
-      throw new BusinessException(`Cannot start job in ${this._status} status`);
+      this.refuseTransition('startProcessing', 'start');
     }
     this.setProperty('status', Enums.TranscriptionJobStatus.PROCESSING);
     this.setProperty('startedAt', new Date());
     this.setProperty('workerId', workerId);
     this.setProperty('progress', 0);
+  }
+
+  /**
+   * TASK-992 — take over a job whose worker died mid-flight.
+   *
+   * The broker redelivered the SAME message to a new worker, which is the
+   * recovery path working as designed; before this, the gateway refused the
+   * new worker's `/start` and the row sat in PROCESSING forever.
+   *
+   * The gate is worker IDENTITY, not wall clock. Dramatiq's Redis broker only
+   * requeues after declaring the prior consumer dead, and `time_limit` hard-
+   * bounds any attempt somehow still running — whereas a staleness window long
+   * enough to be safe against a live worker (the observed crash happened
+   * during diarization, which emits no progress for minutes) is longer than
+   * the redelivered worker's entire retry backoff. Wall clock belongs to the
+   * reaper, which handles the case where no redelivery ever arrives.
+   *
+   * `maxReclaims` is passed in rather than read from a sibling column: it is a
+   * platform threshold (`stt.batch.maxReclaims`, global-kv), not a property of
+   * this row. Past it, the caller marks the job DEAD — a crash-loop must
+   * terminate somewhere.
+   */
+  public reclaimProcessing(workerId: string, maxReclaims: number): void {
+    if (!this.isProcessing) {
+      this.refuseTransition('reclaimProcessing', 'reclaim');
+    }
+    if (this._workerId === workerId) {
+      this.refuseTransition('reclaimProcessing', 'reclaim');
+    }
+    if (this._reclaimCount >= maxReclaims) {
+      this.refuseTransition('reclaimProcessing', 'reclaim');
+    }
+    this.setProperty('reclaimCount', this._reclaimCount + 1);
+    this.setProperty('workerId', workerId);
+    this.setProperty('startedAt', new Date());
+    // The dead worker's progress measured work whose output died with it.
+    this.setProperty('progress', 0);
+  }
+
+  /**
+   * TASK-992 — re-run a job the worker already marked FAILED.
+   *
+   * `transcribe_file` fails the job and THEN re-raises for the broker to
+   * retry. The retry re-enters the actor and calls `/start`, so without this
+   * transition every retry was refused and ACKed: the actor's `max_retries=3`
+   * had never once produced a re-attempt.
+   *
+   * Unlike a reclaim, this DOES spend `retryCount` — the previous attempt was
+   * a genuine transcription failure, which is exactly what that budget counts.
+   */
+  public reattemptAfterFailure(workerId: string): void {
+    if (!this.isFailed) {
+      this.refuseTransition('reattemptAfterFailure', 'restart');
+    }
+    if (this._retryCount >= this._maxRetries) {
+      this.refuseTransition('reattemptAfterFailure', 'restart');
+    }
+    this.setProperty('retryCount', this._retryCount + 1);
+    this.setProperty('status', Enums.TranscriptionJobStatus.PROCESSING);
+    this.setProperty('startedAt', new Date());
+    this.setProperty('workerId', workerId);
+    this.setProperty('progress', 0);
+    // A running job carrying the previous attempt's error is a lie to every
+    // reader of the row — the console, the SDK poll, and the reaper alike.
+    this.setProperty('completedAt', null);
+    this.setProperty('errorMessage', null);
+    this.setProperty('errorCode', null);
   }
 
   /**
@@ -410,7 +527,7 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
    */
   public complete(resultText: string, resultMetadata?: JsonValue): void {
     if (!this.isProcessing) {
-      throw new BusinessException(`Cannot complete job in ${this._status} status`);
+      this.refuseTransition('complete', 'complete');
     }
     this.setProperty('status', Enums.TranscriptionJobStatus.COMPLETED);
     this.setProperty('completedAt', new Date());
@@ -426,7 +543,7 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
    */
   public fail(errorMessage: string, errorCode?: string): void {
     if (this.isTerminal) {
-      throw new BusinessException(`Cannot fail job in ${this._status} status`);
+      this.refuseTransition('fail', 'fail');
     }
     this.setProperty('status', Enums.TranscriptionJobStatus.FAILED);
     this.setProperty('completedAt', new Date());
@@ -467,7 +584,7 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
    */
   public cancel(): void {
     if (this.isTerminal) {
-      throw new BusinessException(`Cannot cancel job in ${this._status} status`);
+      this.refuseTransition('cancel', 'cancel');
     }
     this.setProperty('status', Enums.TranscriptionJobStatus.CANCELLED);
     this.setProperty('completedAt', new Date());

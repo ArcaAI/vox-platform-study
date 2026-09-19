@@ -9,9 +9,9 @@ import { BaseService, createWorkerSession } from '../../../../common';
 import { IActiveUserContext } from '../../../../interfaces';
 import { IAppSettingsService } from '../../../baseServices/_meta/appSettings/IAppSettingsService';
 import {
+  STT_BATCH_DEFAULTS,
   STT_BATCH_REAPER_CRON_KEY,
   STT_BATCH_STALE_PROCESSING_MINUTES_KEY,
-  STT_GATEWAY_DEFAULTS,
 } from '../../../settings-registry/descriptors/stt-gateway.descriptors';
 
 const JOB_NAME = 'stt-batch-job-reaper';
@@ -115,10 +115,10 @@ export class SttJobReaperService extends BaseService implements OnModuleInit, On
 
   getConfig(): SttJobReaperConfig {
     return {
-      cron: this.appSettingsService.getValueWithDefault<string>(STT_BATCH_REAPER_CRON_KEY, STT_GATEWAY_DEFAULTS[STT_BATCH_REAPER_CRON_KEY]),
+      cron: this.appSettingsService.getValueWithDefault<string>(STT_BATCH_REAPER_CRON_KEY, STT_BATCH_DEFAULTS[STT_BATCH_REAPER_CRON_KEY]),
       staleProcessingMinutes: this.appSettingsService.getValueWithDefault<number>(
         STT_BATCH_STALE_PROCESSING_MINUTES_KEY,
-        STT_GATEWAY_DEFAULTS[STT_BATCH_STALE_PROCESSING_MINUTES_KEY],
+        STT_BATCH_DEFAULTS[STT_BATCH_STALE_PROCESSING_MINUTES_KEY],
       ),
     };
   }

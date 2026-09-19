@@ -17,6 +17,7 @@ import {
   // a feature module.
   ConsentServiceModule,
   ConsultationTimeoutSweepServiceModule,
+  SttJobReaperServiceModule,
   // scheduled hard-delete of soft-deleted DNA
   // writing-style profiles past their retention window ("purge later").
   DnaProfileRetentionServiceModule,
@@ -391,6 +392,11 @@ const common = [
   // consultations to CLOSED_INCOMPLETE. On by default (no `enabled` gate —
   // see the service's own doc comment for why).
   ConsultationTimeoutSweepServiceModule,
+  // TASK-992 — scheduled stranded-STT-batch-job reaper: fails a PROCESSING
+  // transcription job whose worker died and whose Dramatiq message was never
+  // redelivered, so it can never be reclaimed. On by default (no `enabled`
+  // gate — see the service's own doc comment for why).
+  SttJobReaperServiceModule,
   // (owner ruling, 2026-08-20) — scheduled hard-delete of
   // DnaWritingStyleReport/…Version rows already soft-deleted by
   // resetMyDnaProfile/deleteReport, past their retention window. Opt-in

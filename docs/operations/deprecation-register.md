@@ -235,6 +235,32 @@ deprecated: translating a service's own `Settings` into the shared `Observabilit
 the service-specific part, and keeping it means the single `Settings` object an operator already
 knows to check stays the source of truth.
 
+## STT batch-job claim classification (TASK-992)
+
+The STT worker used to decide whether a refused `PATCH /internal/stt/jobs/:id/start` was final by
+substring-matching the prose of a generic `500 DOMAIN.BUSINESS` body. That could not see WHICH
+status refused, so a recoverable `PROCESSING` row — the broker correctly redelivering a message
+whose worker had died — was classified terminal, ACKed, and orphaned. The gateway now answers
+`409 DOMAIN.INVALID_STATE_TRANSITION` with `metadata.terminal`, and the worker reads the flag.
+
+| Item | Ticket | Marked in | Remove in | Replacement |
+|---|---|---|---|---|
+| The substring branch of `APIGatewayClient._classify_state_conflict` (`_LEGACY_STATE_REFUSAL`, matching `"Cannot … job in <STATUS> status"` on a `DOMAIN.BUSINESS` body) | TASK-992 | R3 | R4 | The structured branch: `code == DOMAIN.INVALID_STATE_TRANSITION` + `metadata.terminal` |
+
+**Why it survives one release at all.** The gateway and the worker deploy from the same pipeline but
+not in the same instant, so a rolling update has a window in which a NEW worker talks to an OLD
+gateway. Without the fallback, every refusal in that window is unclassifiable and retried until the
+broker gives up.
+
+**Read the branch before deleting it — it is deliberately not symmetric with the structured one.**
+It treats `FAILED` as TERMINAL, where the new gateway re-attempts a `FAILED` job while retries
+remain. That is correct for what it models: an old gateway genuinely cannot restart a failed job, so
+calling it retryable would spin the worker through its whole backoff for a claim that cannot
+succeed. `PROCESSING` is absent from its terminal set, and that omission is the fix.
+
+Removed alongside it in R4: nothing. `JobConflictError`, `TERMINAL_JOB_STATUSES` and
+`STATE_TRANSITION_CODE` are all part of the replacement and stay.
+
 ## Admin console routes and features
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |

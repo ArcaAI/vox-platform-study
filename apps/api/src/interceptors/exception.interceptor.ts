@@ -6,6 +6,7 @@ import {
   ConsentDeniedException,
   ConsentUnavailableException,
   DataNotFoundException,
+  InvalidStateTransitionException,
   OptimisticConcurrencyException,
   ProviderCredentialVetoedException,
   QuotaExceededException,
@@ -335,6 +336,35 @@ export class ExceptionInterceptor implements NestInterceptor {
             errorMessage: err.message,
           });
           return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.BAD_REQUEST, requestId), HttpStatus.BAD_REQUEST));
+        }
+
+        // TASK-992 — an aggregate's state machine refused a transition because
+        // of the status the row is in. RFC-correct mapping is `409 Conflict`:
+        // the request is well-formed and the caller authorised, but the
+        // resource's current state conflicts with it.
+        //
+        // This exists because the STT worker, in another process, has to
+        // decide between "retry this redelivery" and "ACK, it is finished".
+        // As a plain `BusinessException` the refusal arrived as a generic 500
+        // whose only distinguishing feature was English prose, so the worker
+        // substring-matched it, read a recoverable PROCESSING as terminal, and
+        // orphaned the job (`01a0b94c-…`, stuck at 75% with nothing able to
+        // end it). The body is `err.toJSON()`, carrying
+        // `code: 'DOMAIN.INVALID_STATE_TRANSITION'` and
+        // `metadata: { entity, entityId, currentStatus, attempted, terminal }`
+        // — `terminal` being the field the worker actually branches on.
+        //
+        // MUST run before the generic `BaseException` branch below, like the
+        // OCC / quota / consent branches: it extends BaseException, so the
+        // generic branch would otherwise claim it and answer 500 again.
+        if (err instanceof InvalidStateTransitionException) {
+          this.logger.debug({
+            message: 'Invalid state transition',
+            ...baseContext,
+            correlationId: err.correlationId,
+            metadata: err.metadata,
+          });
+          return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.CONFLICT, requestId), HttpStatus.CONFLICT));
         }
 
         if (err instanceof BaseException) {

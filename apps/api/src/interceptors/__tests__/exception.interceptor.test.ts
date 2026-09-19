@@ -16,6 +16,7 @@ import { Counter } from 'prom-client';
 import { ExceptionInterceptor } from '../exception.interceptor';
 import {
   ArgumentInvalidException,
+  InvalidStateTransitionException,
   ConsentDeniedException,
   ConsentUnavailableException,
   DataNotFoundException,
@@ -862,6 +863,87 @@ describe('ArgumentInvalidException -> 400', () => {
     });
     expect(caught).toBeInstanceOf(HttpException);
     expect((caught as HttpException).getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// TASK-992 — InvalidStateTransitionException -> 409 Conflict.
+//
+// The STT worker reads this body to decide whether to retry a redelivered
+// message or ACK it. Before this branch existed, an aggregate's state-machine
+// refusal arrived as a generic `500 DOMAIN.BUSINESS`, and the worker's only
+// option was to substring-match the message — which classified a recoverable
+// PROCESSING as "already finished" and orphaned the job.
+// ───────────────────────────────────────────────────────────────────────────
+describe('InvalidStateTransitionException -> 409', () => {
+  let interceptor: ExceptionInterceptor;
+
+  beforeEach(() => {
+    const cls: any = { getId: () => 'corr-992', get: () => undefined };
+    interceptor = new ExceptionInterceptor(cls);
+  });
+
+  function createMockContext(): ExecutionContext {
+    return {
+      switchToHttp: () => ({
+        getRequest: () => ({ method: 'PATCH', url: '/api/v1/internal/stt/jobs/job-1/start' }),
+        getResponse: () => ({}),
+      }),
+    } as unknown as ExecutionContext;
+  }
+
+  function createErrorHandler(err: unknown): CallHandler {
+    return { handle: () => throwError(() => err) };
+  }
+
+  function refusal(currentStatus: string, terminal: boolean) {
+    return new InvalidStateTransitionException(`Cannot start job in ${currentStatus} status`, {
+      entity: 'TranscriptionJob',
+      entityId: '01a0b94c-637e-78c0-a279-3a83cf8df46b',
+      currentStatus,
+      attempted: 'startProcessing',
+      terminal,
+    });
+  }
+
+  async function intercepted(err: unknown): Promise<HttpException> {
+    let caught: unknown;
+    await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(err))).catch((e) => {
+      caught = e;
+    });
+    return caught as HttpException;
+  }
+
+  it('maps a state-machine refusal to 409, not the generic 500', async () => {
+    const http = await intercepted(refusal('PROCESSING', false));
+
+    expect(http).toBeInstanceOf(HttpException);
+    expect(http.getStatus()).toBe(HttpStatus.CONFLICT);
+  });
+
+  it('carries the code and the transition metadata the worker branches on', async () => {
+    const http = await intercepted(refusal('PROCESSING', false));
+
+    const body = http.getResponse() as { code?: string; metadata?: Record<string, unknown>; correlationId?: string };
+    expect(body.code).toBe('DOMAIN.INVALID_STATE_TRANSITION');
+    expect(body.metadata).toMatchObject({ currentStatus: 'PROCESSING', terminal: false, entity: 'TranscriptionJob' });
+    expect(body.correlationId).toBe('corr-992');
+  });
+
+  it('passes `terminal: true` through unchanged for a genuinely finished job', async () => {
+    const http = await intercepted(refusal('COMPLETED', true));
+
+    expect(http.getStatus()).toBe(HttpStatus.CONFLICT);
+    expect((http.getResponse() as { metadata?: Record<string, unknown> }).metadata).toMatchObject({ terminal: true });
+  });
+
+  it('is NOT shadowed by the generic BaseException branch (the ordering this branch depends on)', async () => {
+    // The guard for the bug class: InvalidStateTransitionException extends
+    // BaseException, so a branch placed AFTER the generic one would compile,
+    // pass a type check, and still answer 500.
+    const http = await intercepted(refusal('PROCESSING', false));
+
+    expect(http.getStatus()).not.toBe(HttpStatus.INTERNAL_SERVER_ERROR);
   });
 });
 

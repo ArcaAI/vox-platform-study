@@ -29,7 +29,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
-import { STT_BATCH_MAX_RECLAIMS_KEY, STT_GATEWAY_DEFAULTS } from '../../settings-registry/descriptors/stt-gateway.descriptors';
+import { STT_BATCH_DEFAULTS, STT_BATCH_MAX_RECLAIMS_KEY } from '../../settings-registry/descriptors/stt-gateway.descriptors';
 import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../consultation/events';
 import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey, type UsageTrigger } from '../../usageLedger';
 import { TranscriptionJobResponse } from '../job/dto';
@@ -568,7 +568,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
    * job this whole path exists to clear.
    */
   private resolveMaxReclaims(): number {
-    const fallback = STT_GATEWAY_DEFAULTS[STT_BATCH_MAX_RECLAIMS_KEY];
+    const fallback = STT_BATCH_DEFAULTS[STT_BATCH_MAX_RECLAIMS_KEY];
     if (!this.appSettings) return fallback;
     const value = this.appSettings.getValueWithDefault<number>(STT_BATCH_MAX_RECLAIMS_KEY, fallback);
     return Number.isFinite(value) && value >= 0 ? value : fallback;

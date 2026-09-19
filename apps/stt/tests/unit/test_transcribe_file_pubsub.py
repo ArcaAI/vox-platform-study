@@ -16,6 +16,8 @@ Anti-pattern prevention:
 
 import asyncio
 import json
+import os
+import socket
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -278,7 +280,13 @@ class TestWorkerPubSubHappyPath:
         processing = pubsub_capture.status_events[0]
         assert processing["data"]["status"] == "PROCESSING"
         assert "workerId" in processing["data"]
-        assert processing["data"]["workerId"].startswith("worker-")
+        # TASK-992 — the identity is `{hostname}-{pid}`, not the former
+        # `worker-{pid}`. The prefix is not the contract; being unique ACROSS
+        # HOSTS is, because the gateway's reclaim rule is "a DIFFERENT worker
+        # holds this job" and PIDs collide freely between pods.
+        worker_id = processing["data"]["workerId"]
+        assert worker_id.startswith(f"{socket.gethostname()}-")
+        assert worker_id.endswith(f"-{os.getpid()}")
 
     @pytest.mark.asyncio
     async def test_all_events_published_to_correct_channel(self, pubsub_capture):
