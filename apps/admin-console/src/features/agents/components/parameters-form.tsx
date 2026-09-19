@@ -19,6 +19,17 @@ import { useTaskModelCatalogue } from './model-picker';
 import { reasoningSupportFor, type ReasoningProviderSupport } from '@/shared/reasoning/reasoning-support';
 
 /**
+ * TASK-991 (owner decision OD-3, 2026-09-19) — the one line of copy a PLATFORM-MANAGED parameter
+ * carries. Rendered from the contract's own `readOnly: true` annotation, never from a field name,
+ * so the next platform-managed property reads the same without touching this file.
+ *
+ * The gateway refuses a tenant's change to such a field (403 `AGENT_PARAMETER_PLATFORM_MANAGED`);
+ * disabling the control here is the courtesy half — it stops an admin composing an edit that was
+ * never going to be accepted, and it says who owns the value instead of leaving a dead field.
+ */
+const PLATFORM_MANAGED_NOTE = 'Managed by the platform: the same for every tenant, and not editable here.';
+
+/**
  * TASK-887 — a registry-model REFERENCE, picked rather than typed.
  *
  * The agent parameter schemas annotate such properties with `modelTaskType` (a schema
@@ -28,7 +39,8 @@ import { reasoningSupportFor, type ReasoningProviderSupport } from '@/shared/rea
  * validation error, it is a silently unmatchable set of profiles.
  *
  * Falls back to the plain text input while the catalogue is loading or if the row a saved
- * agent references is not in it — an unrecognised slug must stay editable, never be dropped.
+ * agent references is not in it — an unrecognised slug must stay VISIBLE and (unless the
+ * contract marks it `readOnly`, TASK-991) editable; it is never dropped.
  *
  * TASK-890 — reads `GET admin/ai-models/catalogue` (`read:AiModel`), not `admin/ai-models`
  * (`manage:all` since TASK-890 L1 — a tenant admin's read would 403).
@@ -50,6 +62,13 @@ function ModelSlugField({
 }) {
   const catalogue = useModelCatalogue({ taskType });
   const description = typeof schema.description === 'string' ? schema.description : undefined;
+  // TASK-991 (OD-3) — a PLATFORM-MANAGED reference: shown, never edited. `ScalarField` below
+  // reads the same annotation, so the free-text fallback (catalogue loading/failed, or a slug the
+  // tenant can no longer see) is locked too — an escape hatch that only opened while the
+  // catalogue was in flight would be the whole lock.
+  const readOnly = schema.readOnly === true;
+  const note = readOnly ? PLATFORM_MANAGED_NOTE : undefined;
+  const combinedDescription = [note, description].filter(Boolean).join(' — ');
   const options = catalogue.data?.models ?? [];
   const current = value === undefined ? '' : String(value);
   const knownSlug = current === '' || options.some((model) => model.slug === current);
@@ -62,7 +81,7 @@ function ModelSlugField({
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{labelOf(name)}</Label>
       <Select value={current} onValueChange={(next) => onChange(next === '' ? undefined : next)}>
-        <SelectTrigger id={id} aria-describedby={description ? `${id}-desc` : undefined}>
+        <SelectTrigger id={id} disabled={readOnly} aria-describedby={combinedDescription ? `${id}-desc` : undefined}>
           <SelectValue placeholder={options.length ? 'Default' : `No ${taskType} models available`} />
         </SelectTrigger>
         <SelectContent>
@@ -73,9 +92,9 @@ function ModelSlugField({
           ))}
         </SelectContent>
       </Select>
-      {description ? (
+      {combinedDescription ? (
         <p id={`${id}-desc`} className="text-muted-foreground text-xs">
-          {description}
+          {combinedDescription}
         </p>
       ) : null}
     </div>
@@ -107,7 +126,13 @@ function ScalarField({
   const type = schema.type as string | undefined;
   const description = typeof schema.description === 'string' ? schema.description : undefined;
   const enumValues = Array.isArray(schema.enum) ? (schema.enum as Array<string | number>) : undefined;
-  const combinedDescription = hint && value === undefined ? [description, hint].filter(Boolean).join(' — ') : description;
+  // TASK-991 (OD-3) — `readOnly: true` on the contract property means the PLATFORM owns the value
+  // (`@arcaai/workflow-contract`). The control still shows what is stored — a value you cannot see
+  // is worse than one you cannot change — it just cannot be edited, and says why in one line.
+  const readOnly = schema.readOnly === true;
+  const combinedDescription = [readOnly ? PLATFORM_MANAGED_NOTE : undefined, description, hint && value === undefined ? hint : undefined]
+    .filter(Boolean)
+    .join(' — ');
 
   if (enumValues) {
     // TASK-979 — mirror the boolean branch's TASK-977 fix: display the EFFECTIVE value (explicit
@@ -120,7 +145,7 @@ function ScalarField({
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={id}>{labelOf(name)}</Label>
         <Select value={effectiveValue === undefined ? '' : String(effectiveValue)} onValueChange={(next) => onChange(typeof enumValues[0] === 'number' ? Number(next) : next)}>
-          <SelectTrigger id={id} aria-describedby={combinedDescription ? `${id}-desc` : undefined}>
+          <SelectTrigger id={id} disabled={readOnly} aria-describedby={combinedDescription ? `${id}-desc` : undefined}>
             <SelectValue placeholder="Default" />
           </SelectTrigger>
           <SelectContent>
@@ -153,7 +178,7 @@ function ScalarField({
           <Label htmlFor={id}>{labelOf(name)}</Label>
           {combinedDescription ? <span className="text-muted-foreground text-xs">{combinedDescription}</span> : null}
         </div>
-        <Switch id={id} checked={effectiveValue} onCheckedChange={(checked) => onChange(checked)} />
+        <Switch id={id} checked={effectiveValue} disabled={readOnly} onCheckedChange={(checked) => onChange(checked)} />
       </div>
     );
   }
@@ -169,6 +194,7 @@ function ScalarField({
           min={typeof schema.minimum === 'number' ? schema.minimum : undefined}
           max={typeof schema.maximum === 'number' ? schema.maximum : undefined}
           step={type === 'integer' ? 1 : 'any'}
+          readOnly={readOnly}
           aria-describedby={combinedDescription ? `${id}-desc` : undefined}
           onChange={(event) => onChange(event.target.value === '' ? undefined : Number(event.target.value))}
         />
@@ -189,6 +215,7 @@ function ScalarField({
           id={id}
           value={list.join(', ')}
           placeholder="comma-separated"
+          readOnly={readOnly}
           aria-describedby={combinedDescription ? `${id}-desc` : undefined}
           onChange={(event) => {
             const items = event.target.value
@@ -213,6 +240,7 @@ function ScalarField({
         id={id}
         value={value === undefined ? '' : String(value)}
         maxLength={typeof schema.maxLength === 'number' ? schema.maxLength : undefined}
+        readOnly={readOnly}
         aria-describedby={combinedDescription ? `${id}-desc` : undefined}
         onChange={(event) => onChange(event.target.value === '' ? undefined : event.target.value)}
       />
