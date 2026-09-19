@@ -39,10 +39,24 @@ import { TenantProvisionResult } from './tenantOnboarding.dto.mapper';
  *
  * Atomicity (guardrail: never adminless): `TenantService.create` is not
  * itself transactional (its own provisioning steps are independently
- * best-effort). Rather than thread a `tx` through every collaborator's public
- * interface, admin provisioning failures trigger a compensating soft-delete
- * of the just-created tenant, then re-throw — a tenant is never left without
- * an admin, even though the DB writes aren't inside one SQL transaction.
+ * best-effort, and one of them — bucket provisioning — is external MinIO
+ * I/O that cannot join a SQL transaction at all). Admin creation itself
+ * (`IUserService.create` / `IUserRoleAssignmentService.create`) is a call
+ * into a sibling service that accepts no external `tx` either, so threading
+ * one through both public interfaces would be a cross-cutting change well
+ * beyond this orchestrator — see `.claude/rules/04-application-services.md`
+ * §Transactions for the house pattern this would otherwise use.
+ *
+ * W2-8: a plain soft-delete rollback left two kinds of debris a retry could
+ * not recover from — `Tenant.key`'s unique constraint stayed held by the
+ * soft-deleted row, and the reference-set clone (`create()`'s last step) was
+ * never undone, orphaning agents and a workflow definition nothing could
+ * reach again (`tenantId` carries no FK — rule 02 — so nothing cascaded).
+ * Admin provisioning failures now trigger a compensating PURGE
+ * (`TenantService.purgeFailedProvisioning`) — hard delete, not soft delete,
+ * in one transaction — of the just-created tenant AND everything `create()`
+ * wrote for it, then re-throw: a tenant is never left without an admin, and
+ * a failed attempt never blocks the identical retry.
  */
 @Injectable()
 export class TenantOnboardingService extends BaseService implements ITenantOnboardingService {
@@ -137,12 +151,17 @@ export class TenantOnboardingService extends BaseService implements ITenantOnboa
     return created.id;
   }
 
-  /** Compensating action — never leave a partially-provisioned tenant behind. */
+  /**
+   * Compensating action — never leave a partially-provisioned tenant behind.
+   * W2-8: hard-purges the tenant AND its reference-set/department/pipeline
+   * clones (`TenantService.purgeFailedProvisioning`) rather than soft-deleting
+   * — see the class docstring for why.
+   */
   private async rollbackTenant(tenantId: string, cause: unknown): Promise<void> {
     try {
-      await this.tenantService.deleteById(tenantId);
+      await this.tenantService.purgeFailedProvisioning(tenantId);
       this.logger.warn({
-        message: 'Rolled back (soft-deleted) a tenant after admin provisioning failed',
+        message: 'Rolled back (purged) a tenant after admin provisioning failed',
         tenantId,
         cause: cause instanceof Error ? cause.message : String(cause),
       });
