@@ -181,6 +181,7 @@ async def configured_app(postgres_container, redis_container, minio_container):
             "ResourceStatusType": ("'ENABLED','DISABLED','DELETED','PENDING','ARCHIVED'"),
             "AiModelSource": ("'HUGGINGFACE','GITHUB','MLFLOW','LOCAL'"),
             "AiModelFormat": ("'SAFETENSOR','ONNX','NEMO','PYTORCH'"),
+            "AiModelAvailability": ("'UNKNOWN','AVAILABLE','MISSING','PARTIAL','NOT_APPLICABLE'"),
             "AiModelDownloadStatus": (
                 "'NOT_DOWNLOADED','DOWNLOADING','DOWNLOADED','DOWNLOAD_FAILED'"
             ),

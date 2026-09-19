@@ -922,7 +922,7 @@ export class TranscriptionJobController {
 
     // Preseed contract — capture voiceProfileSeeded if the
     // streaming service surfaces it.
-    const voiceProfileSeeded = (result as unknown as { voiceProfileSeeded?: boolean }).voiceProfileSeeded ?? false;
+    const voiceProfileSeeded = result.voiceProfileSeeded ?? false;
 
     return {
       sessionId: result.sessionId,

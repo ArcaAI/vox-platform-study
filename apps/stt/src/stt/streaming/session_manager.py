@@ -422,6 +422,12 @@ class SessionManager:
         # session metadata, never logged. A recovered session therefore loses its labels
         # and diarizes generically rather than re-reading a vector from anywhere.
         self._session_voice_profiles: dict[str, list[dict[str, Any]]] = {}
+        # TASK-991 — whether `seed_voice_profiles()` actually registered at least one
+        # profile on this session's `SpeakerTracker` (its `seeded` count > 0), echoed to
+        # the gateway as `voiceProfileSeeded` on the session-create/status response. Only
+        # set when diarization is built for the session, so a session without it has no
+        # entry and `get_voice_profile_seeded` correctly defaults to `False`.
+        self._session_voice_profile_seeded: dict[str, bool] = {}
         # TASK-861 — per-session gateway-resolved spec bundle (the engine chains
         # + every model config, pre-mapped). When present for a session, NO
         # pipeline/model row is read from Postgres for it.
@@ -933,11 +939,17 @@ class SessionManager:
             # TASK-887 — seed the end-user's ENROLLED profiles for THIS agent's embedding
             # model. Pure and local: the gateway resolved and pushed them, so no row is
             # read here and a profile from another model is ignored rather than compared.
-            self._seed_voice_profiles(
+            # TASK-991 — retain the result so the session-create/status response can echo
+            # a truthful `voiceProfileSeeded` instead of the previous hardcoded `False`.
+            seed_result = self._seed_voice_profiles(
                 speaker_tracker,
                 session_id,
                 self._spec_embedding_slug(pipeline_config),
             )
+            # `seed_voice_profiles` types its contract as `dict[str, object]`, and
+            # `seeded` is always a non-negative count — `bool(...)` is "count > 0"
+            # without a numeric cast off `object`.
+            self._session_voice_profile_seeded[session_id] = bool(seed_result.get("seeded", 0))
 
         # Inference worker (per-utterance ASR)
         postprocessing_config = pipeline_config.postprocessing if pipeline_config else None
@@ -1748,6 +1760,13 @@ class SessionManager:
         """Retrieve the engine-switch controller for a session."""
         return self._switch_controllers.get(session_id)
 
+    def get_voice_profile_seeded(self, session_id: str) -> bool:
+        """Whether at least one gateway-pushed voice profile was registered on this
+        session's `SpeakerTracker`. `False` for a session with no diarization, or one
+        where every pushed profile was skipped (wrong embedding model, malformed vector,
+        tracker at capacity)."""
+        return self._session_voice_profile_seeded.get(session_id, False)
+
     async def request_switch(self, session_id: str, target: str = "fallback") -> None:
         """Request a manual mid-session engine switch.
 
@@ -2280,6 +2299,7 @@ class SessionManager:
         self._switch_controllers.pop(session_id, None)
         self._provider_overrides.pop(session_id, None)
         self._session_voice_profiles.pop(session_id, None)
+        self._session_voice_profile_seeded.pop(session_id, None)
         self._empty_decode_streaks.pop(session_id, None)
         self._pending_front_end_geometry.pop(session_id, None)
         self._fallback_pipeline_ids.pop(session_id, None)

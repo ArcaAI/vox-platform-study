@@ -211,6 +211,7 @@ async def create_streaming_session(
         current_active=guard.active_count,
         pipeline_id=active_pipeline_id,
         active_engine=active_engine,
+        voice_profile_seeded=mgr.get_voice_profile_seeded(session.session_id),
     )
 
 
@@ -271,6 +272,7 @@ async def get_streaming_session(session_id: str) -> StreamingSessionResponse:
         current_active=guard.active_count,
         pipeline_id=active_pipeline_id,
         active_engine=active_engine,
+        voice_profile_seeded=mgr.get_voice_profile_seeded(session.session_id),
     )
 
 
