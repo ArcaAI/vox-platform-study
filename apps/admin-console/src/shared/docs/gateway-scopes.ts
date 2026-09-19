@@ -94,8 +94,8 @@ export const GATEWAY_ROUTE_SCOPES = {
     what: 'Upload an audio FILE (multipart) and start the batch job in one request',
     serviceAccountNote:
       'A batch job has an OWNER (the in-flight ceiling is counted per user, and the job’s later owner-scoped reads ' +
-      'resolve against it). A service-account caller must therefore NAME the clinician it is acting for; an API key ' +
-      'is already bound to its human and names nobody.',
+      'resolve against it). A service-account caller must therefore name that clinician in `clinicianUserId`, and may ' +
+      'name any clinician of its working tenant; an API key is already bound to its human and names nobody.',
   },
   transcriptionJobGet: {
     method: 'GET',
