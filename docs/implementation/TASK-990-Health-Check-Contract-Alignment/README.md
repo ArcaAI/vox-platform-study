@@ -289,6 +289,29 @@ accident forever after.
 **Proven, not assumed.** Nine cases against a harness with a real git topology, then four against
 the real `hope-v2` history and the real seeded stamp — see §Evidence.
 
+**D-13 — seeding the stamp surfaced that `dev-2.2` was rewritten after the last two promotions.**
+Deployment commit `892f352` (`promote(dev): dev-db2a1fc0 from pipeline #921`) names source commit
+`db2a1fc0a`, and `14f7e2b1e` before it (#920). Neither is reachable from any remote branch any
+more: `origin/dev-2.2`'s tip is `364a29b6a`, a different sha with the **identical tree**
+(`65e6aa2b`) — a content-preserving rewrite, consistent with the known filter-branch behaviour of
+this checkout. `3f9145a98` (#914) is still on the branch.
+
+Two consequences:
+
+1. **The seed had to be corrected.** Seeding `db2a1fc0a` — the sha the last promotion actually
+   recorded — would have made the guard refuse the *next* promotion with "the recorded source
+   commit is not in this checkout", because a CI clone of `dev-2.2` does not contain it at any
+   depth. `dev.state` is seeded with `364a29b6a` instead, and says so. Verified afterwards against
+   the live lineage: the current `dev-2.2` tip promotes cleanly as a descendant.
+2. **The cluster is running images built from a commit no longer on the branch.** Harmless,
+   because the rewrite preserved content exactly, but `promote(dev)` commit messages older than
+   2026-09-19 link to source commits GitLab will 404 on. Not caused by this ticket; recorded
+   because the guard is the thing that made it visible.
+
+This is also the guard's fail-closed behaviour working as intended rather than a flaw in it: it
+cannot prove freshness across a lineage it can no longer see, so it stops. The recovery is
+documented in the deployment repo's `promotion-state/README.md` §Seeding.
+
 ## Implementation Plan — lanes
 
 One writer per worktree; the orchestrator owns merges, pushes and cluster verification.
@@ -477,6 +500,7 @@ Check `/tmp` is writable in that pod (an `emptyDir` if `readOnlyRootFilesystem` 
 | 2026-09-19 | PY-HEALTH merged (3bc7686f1): build-info version + `/health/startup` + exempt entries on all six services; TTS Kokoro residency; new `tests/contracts/test_health_contract_parity.py` + a CI job. Gate 67 passed; PROVEN to bite — reverting three services to pre-fix sources fails it on exactly the right assertions. |
 | 2026-09-19 | `dev-2.2` PUSHED (61 commits, both tickets). D-11 records a partitioning flaw: a hand-edited `globalEnv` contradicted a stale generator. D-12 records a new owner item O-4 — `promote-dev` has no guard against being overtaken by a concurrent pipeline. |
 | 2026-09-19 | D-8..D-10 recorded: new finding F18 (nlp build identity env-settable, owner item O-1), the `/health/startup` 503 reachability limit, and two errors in my own lane briefs. |
+| 2026-09-19 | D-13 recorded: seeding the promotion stamp surfaced that `dev-2.2` was rewritten after pipelines #920/#921 — both promoted source commits are orphaned from every remote branch (content-identical successors on the live branch). Seed corrected to `364a29b6a`; re-verified that the live tip promotes as a descendant. |
 | 2026-09-19 | **O-4 / D-12 closed.** Fail-closed freshness guard in `.gitlab/ci/promote.sh` + `resource_group` + `GIT_DEPTH: 0` on the promote jobs; new `deployment/k8s/promotion-state/<env>.state` in hope-v2-deployment (seeded for dev from `892f352`). Re-audit corrected two claims in D-12 and identified job retry + cross-`dev-*`-branch as the wide-open paths. 9 harness cases + 4 against real history; CI lint valid. |
 | 2026-09-19 | F15 closed: `verify-dev` added to `.gitlab/ci/deploy.yml` — polls the dev gateway until it reports THIS pipeline's sha8, closing the CI→cluster loop with no new credential. GitLab CI lint: valid, no warnings. `promote-dev`'s dev environment gained a `url`. |
 | 2026-09-19 | D-6 recorded: F12 WITHDRAWN — the PDBs are correct; the finding's premise was incomplete. D-7 records a lane-routing error and its containment. |
