@@ -322,6 +322,52 @@ The `mark_rate_limited` bonus was declined, correctly: `RateLimitTracker` is key
 **process-wide**, not per tenant, so feeding an observed 429 into it would throttle every tenant on
 that provider — including tenants on a different BYO key. Follow-up, with a tenant-scoped key.
 
+### Lane G — load harness (branch `task-993-g-loadtest`, `760822893`) — COMPLETE
+
+**The load model is now MEASURED, and it corrects §1 twice.** `pnpm load:session` drives real
+Chromium against the running console, walks 11 admin screens, then parks idle for 71 s, counting
+only requests that actually cost the gateway (`/api/hope/*`, `/api/auth/*`; the BFF answers
+`session`/`working-tenant` from the cookie).
+
+| | measured |
+|---|---|
+| active console user | **26.0 gateway req/min** (44.1 all-document-load) |
+| idle parked session | **8.5 gateway req/min** |
+| per client-side navigation | **1.6** |
+| per document load | **8.0** |
+
+1. The original 10 req/min understates an active user ~3×.
+2. **"10–15 TanStack queries per screen" is NOT 10–15 gateway requests** — that counts React hook
+   call sites. After de-dup by query key and `staleTime: 30_000` a navigation costs 1.6. The
+   OD-1 revision to 30–50 landed in the right band for the wrong reason.
+3. **Idle sessions were absent from the model and dominate.** 1,000 parked sessions offer
+   **~142 req/s** untouched. A 30 % active / 70 % idle mix over 1,000 users ⇒ **~230 req/s**
+   platform-wide (~1,375 req/min per 100-user tenant) BEFORE the approved 3× headroom.
+
+**F-1 is now empirically confirmed.** The harness probes each tenant's lane before timing:
+ArcaAI (ENTERPRISE) → 300/window, ONE bucket, **tenant-keyed**; Global (`plan = null`) →
+100/window, per-route, **IP-keyed**. That second result refines §2.4: `effectivePlan` resolves
+RESERVED tenants (SYSTEM, Global) to `null` = ungated; only a plan-less CUSTOMER tenant becomes
+STARTER.
+
+No new dependency (Playwright + Node `fetch`/`worker_threads`). Log-normal think time, open/closed
+arrival with coordinated-omission reporting, machine plane included. Failure attribution is pure and
+unit-tested against the real filter bodies — critically, it checks `DOMAIN.QUOTA_EXCEEDED` BEFORE
+the status, because `mapQuotaCapabilityToHttp` also answers 429. Calibration cut a smoke run from
+63/96 403s to 0 failures. Fixture written, **not run** (`LOAD_FIXTURE_CONFIRM=yes` required).
+Gates: `load:lint` EXIT=0 (canary-proven), `load:typecheck` EXIT=0, 56 tests passed.
+
+**Two findings that undercut the §2.10 saturation trigger:**
+1. **`api_gateway_http_requests_total` is blind to every refusal.** Nest runs guards BEFORE
+   interceptors, so 429/401/403 never reach the metrics interceptor — measured client 96 requests
+   vs gateway 43. The metric the HPA would scale on cannot see overload.
+2. **No Prisma/pg pool metric exists anywhere on `/metrics`** — no depth, no acquire wait, no
+   timeout counter. The signal OD-3 requires is not exported. ⇒ **new lane H.**
+
+Honest limits it states itself: no SSE/WS load, so §2.12's reconnect storm is NOT reproduced; pool
+timeouts are inferred from latency, never observed; one source IP; local Redis evicts where the
+cluster refuses writes; "no ceiling reached" never means "there is headroom".
+
 ### Lane E — cluster (repo `hope-v2-deployment`, branch `task-993-capacity`) — COMPLETE, verified
 
 **The connection budget was already 1.99× over, and nobody could see it.** The pool rule lived
@@ -367,6 +413,7 @@ and caught an orphaned PDB in the lane's own change.
 
 | Date | Change |
 |---|---|
+| 2026-09-19 | Lane G complete: load model MEASURED (26 active / 8.5 idle req/min; ~230 req/s at 30/70 mix) and fed to lane D mid-flight. F-1 confirmed empirically. Repo-wide `pnpm lint` found red on `dev-2.2` since `f7307362f` and fixed centrally (`d96b7c37d`). Lane H queued: export the pool + refusal metrics OD-3 depends on. |
 | 2026-09-19 | Lanes B and E complete and orchestrator-verified. New chain gap found: the gateway DROPS `Retry-After` and swaps the body (`text-proxy.controller.ts:479-521`, `RELAYABLE_ERROR_PHRASES:191`) — folded into lane F. |
 | 2026-09-19 | OD-1..OD-4 answered. Lanes A/B/C/D/E dispatched to worktrees; lane F (two-level bucketing) serialized behind A, which owns `modules/throttle/**`. §2.13 corrected — the Redis rule text is accurate; local and cluster differ by design. |
 | 2026-09-19 | Cluster survey added (§2.10–2.13): HPAs exist but cannot fire on the real bottleneck; client IP is `CF-Connecting-IP`; measured 341-reconnects-vs-33-sessions storm; Redis-persistence docs drift. |
