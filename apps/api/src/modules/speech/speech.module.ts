@@ -7,6 +7,7 @@ import {
 } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
+import { gatewayKeepAliveAgents } from '../../common';
 import { HarnessTtsInternalController } from './harness-tts-internal.controller';
 import { SpeechProxyController } from './speech-proxy.controller';
 import { TtsWsGateway } from './tts-ws.gateway';
@@ -21,9 +22,12 @@ import { TtsWsGateway } from './tts-ws.gateway';
 // to register the WS-duplex gateway.
 @Module({
   imports: [
+    // TASK-993 lane C — keepAlive pooling shared with `agent.module.ts` (both call
+    // TTS_URL); see `common/gateway-http-agent.ts` for the sizing rationale.
     HttpModule.register({
       timeout: 120000,
       maxRedirects: 3,
+      ...gatewayKeepAliveAgents,
     }),
     // TASK-879 — the ONE TEXT_TO_SPEECH resolution: the `AgentAssignment` cascade (or an explicit
     // `agentSlug`), the bound model with its mirror/artifacts/voices, the connection row that

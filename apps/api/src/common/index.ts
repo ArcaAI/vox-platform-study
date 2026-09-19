@@ -20,3 +20,11 @@ export {
 } from './stream-session-tenant-binding.service';
 export { redirect308, API_V1_PREFIX } from './redirect-shim';
 export { markPipelineIdDeprecated } from './pipeline-id-deprecation';
+export {
+  gatewayKeepAliveAgents,
+  createGatewayKeepAliveAgents,
+  GATEWAY_HTTP_AGENT_MAX_SOCKETS,
+  GATEWAY_HTTP_AGENT_MAX_FREE_SOCKETS,
+  GATEWAY_HTTP_AGENT_IDLE_SOCKET_TIMEOUT_MS,
+  type GatewayKeepAliveAgents,
+} from './gateway-http-agent';
