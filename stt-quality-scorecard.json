@@ -1,359 +1,1255 @@
 {
-  "harness": " Theme-F streaming quality scorecard — through the WS gateway",
+  "harness": "Theme-F streaming quality scorecard — through the WS gateway (N-run aggregate, BP-1 fingerprint-gated)",
   "thresholds_source": "streaming_thresholds.json",
+  "n_runs_per_clip": 5,
   "clips": [
     {
-      "quality": {
-        "medical_wer": 0.016393,
-        "keyterm_recall": 1.0,
-        "keyphrase_recall": 1.0,
-        "detail": {
-          "wer": {
-            "wer": 0.016393,
-            "substitutions": 0,
-            "deletions": 1,
-            "insertions": 0,
-            "reference_words": 61,
-            "hypothesis_words": 60
-          },
-          "keyterm": {
-            "recall": 1.0,
-            "total": 7,
-            "matched": 7,
-            "missing": []
-          },
-          "keyphrase": {
-            "recall": 1.0,
-            "total": 3,
-            "matched": 3,
-            "missing": []
-          }
-        }
-      },
-      "transport": {
-        "first_partial_ms": 2443.5,
-        "ttfw_ms": 2443.5,
-        "commit_latency_ms": {
-          "count": 1,
-          "mean": 6127.7,
-          "p50": 6127.7,
-          "p99": 6127.7,
-          "min": 6127.7,
-          "max": 6127.7
-        },
-        "committed_revision_rate": 0.0,
-        "partial_revision_rate": 0.7778,
-        "seq_gap_count": 0,
-        "audio_coverage_ratio": 0.997
-      },
       "clip": "cardiology_consult_01",
-      "session_id": "01a02ed6-680e-7c48-964b-99a609946579",
-      "closed_status_received": true,
-      "hypothesis_preview": "patient presents with shortness of breath on exertion and intermittent chest pain over the past two weeks. On examination the patient is in no acute distress. Heart rate is 88 and regular. Lungs are c",
-      "regression": {
-        "passed": true,
-        "checks": [
-          {
-            "metric": "medical_wer",
-            "observed": 0.016393,
-            "limit": 0.35,
-            "direction": "<= ceiling",
-            "passed": true
+      "gate_class": "stop_flush",
+      "n_runs": 5,
+      "runs": [
+        {
+          "quality": {
+            "medical_wer": 0.032787,
+            "keyterm_recall": 1.0,
+            "keyphrase_recall": 1.0,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.032787,
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "reference_words": 61,
+                "hypothesis_words": 60
+              },
+              "keyterm": {
+                "recall": 1.0,
+                "total": 7,
+                "matched": 7,
+                "missing": []
+              },
+              "keyphrase": {
+                "recall": 1.0,
+                "total": 3,
+                "matched": 3,
+                "missing": []
+              },
+              "term_restricted_wer": {
+                "wer": 0.0,
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "reference_words": 23,
+                "hypothesis_words": 23,
+                "term_vocabulary_size": 22
+              }
+            },
+            "term_restricted_wer": 0.0
           },
-          {
-            "metric": "medical_wer_vs_baseline",
-            "observed": 0.016393,
-            "limit": 0.11560000000000001,
-            "direction": "<= baseline+eps",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 3056.0,
+            "ttfw_ms": 3056.0,
+            "commit_latency_ms": {
+              "count": 1,
+              "mean": 3698.9,
+              "p50": 3698.9,
+              "p99": 3698.9,
+              "min": 3698.9,
+              "max": 3698.9
+            },
+            "committed_revision_rate": 0.0385,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.8462,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.997,
+            "session_create_ms": 63.4,
+            "inference_ms": {
+              "count": 27,
+              "mean": 675.8,
+              "p50": 554.1,
+              "p99": 2861.5,
+              "min": 521.4,
+              "max": 3608.3
+            },
+            "partial_cadence_ms": {
+              "count": 25,
+              "mean": 770.6,
+              "p50": 655.3,
+              "p99": 2044.6,
+              "min": 595.1,
+              "max": 2058.5
+            }
           },
-          {
-            "metric": "keyterm_recall",
-            "observed": 1.0,
-            "limit": 0.7,
-            "direction": ">= floor",
-            "passed": true
+          "run_index": 0,
+          "session_id": "01a0b971-d662-7b3b-b9c6-9b911a5dbf58",
+          "closed_status_received": true,
+          "hypothesis_preview": "patient presence with shortness of breath on exertion and intermittent chest pain over the past two weeks. on examination, the patient is in no acute distress. Heart rate is 88 and regular. lungs are "
+        },
+        {
+          "quality": {
+            "medical_wer": 0.377049,
+            "keyterm_recall": 0.285714,
+            "keyphrase_recall": 1.0,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.377049,
+                "substitutions": 1,
+                "deletions": 22,
+                "insertions": 0,
+                "reference_words": 61,
+                "hypothesis_words": 39
+              },
+              "keyterm": {
+                "recall": 0.285714,
+                "total": 7,
+                "matched": 2,
+                "missing": [
+                  "electrocardiogram",
+                  "troponin",
+                  "stable angina",
+                  "aspirin",
+                  "81 mg"
+                ]
+              },
+              "keyphrase": {
+                "recall": 1.0,
+                "total": 3,
+                "matched": 3,
+                "missing": []
+              },
+              "term_restricted_wer": {
+                "wer": 0.304348,
+                "substitutions": 0,
+                "deletions": 7,
+                "insertions": 0,
+                "reference_words": 23,
+                "hypothesis_words": 16,
+                "term_vocabulary_size": 22
+              }
+            },
+            "term_restricted_wer": 0.304348
           },
-          {
-            "metric": "keyphrase_recall",
-            "observed": 1.0,
-            "limit": 0.7,
-            "direction": ">= floor",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 1129.8,
+            "ttfw_ms": 1129.8,
+            "commit_latency_ms": {
+              "count": 3,
+              "mean": 1541.6,
+              "p50": 1065.4,
+              "p99": 2511.3,
+              "min": 1018.5,
+              "max": 2540.8
+            },
+            "committed_revision_rate": 0.037,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.8148,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 1.0,
+            "session_create_ms": 151.6,
+            "inference_ms": {
+              "count": 30,
+              "mean": 698.8,
+              "p50": 606.9,
+              "p99": 2103.0,
+              "min": 533.9,
+              "max": 2529.9
+            },
+            "partial_cadence_ms": {
+              "count": 24,
+              "mean": 735.5,
+              "p50": 726.8,
+              "p99": 934.1,
+              "min": 553.7,
+              "max": 936.8
+            }
           },
-          {
-            "metric": "committed_revision_rate",
-            "observed": 0.0,
-            "limit": 0.02,
-            "direction": "<= baseline+eps",
-            "passed": true
+          "run_index": 1,
+          "session_id": "01a0b972-3a6b-7283-8557-28d94c6b710b",
+          "closed_status_received": true,
+          "hypothesis_preview": "the patient presence with shortness of breath on exertion and intermittent chest pain over the past two weeks On examination, the patient is in no acute distress Heart rate. is 88 and regular. Lungs a"
+        },
+        {
+          "quality": {
+            "medical_wer": 0.032787,
+            "keyterm_recall": 1.0,
+            "keyphrase_recall": 1.0,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.032787,
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "reference_words": 61,
+                "hypothesis_words": 60
+              },
+              "keyterm": {
+                "recall": 1.0,
+                "total": 7,
+                "matched": 7,
+                "missing": []
+              },
+              "keyphrase": {
+                "recall": 1.0,
+                "total": 3,
+                "matched": 3,
+                "missing": []
+              },
+              "term_restricted_wer": {
+                "wer": 0.0,
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "reference_words": 23,
+                "hypothesis_words": 23,
+                "term_vocabulary_size": 22
+              }
+            },
+            "term_restricted_wer": 0.0
           },
-          {
-            "metric": "commit_latency_p50",
-            "observed": 6127.7,
-            "limit": 6926.679999999999,
-            "direction": "<= baseline*(1+eps)",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 2786.8,
+            "ttfw_ms": 2786.8,
+            "commit_latency_ms": {
+              "count": 1,
+              "mean": 3940.0,
+              "p50": 3940.0,
+              "p99": 3940.0,
+              "min": 3940.0,
+              "max": 3940.0
+            },
+            "committed_revision_rate": 0.0952,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.619,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.997,
+            "session_create_ms": 100.7,
+            "inference_ms": {
+              "count": 22,
+              "mean": 788.7,
+              "p50": 649.4,
+              "p99": 3195.8,
+              "min": 575.0,
+              "max": 3847.6
+            },
+            "partial_cadence_ms": {
+              "count": 20,
+              "mean": 979.3,
+              "p50": 888.9,
+              "p99": 1915.5,
+              "min": 639.1,
+              "max": 1984.3
+            }
           },
-          {
-            "metric": "commit_latency_p99",
-            "observed": 6127.7,
-            "limit": 8767.83,
-            "direction": "<= baseline*(1+eps)",
-            "passed": true
+          "run_index": 2,
+          "session_id": "01a0b972-9ab4-78cd-a380-efb4ea855f64",
+          "closed_status_received": true,
+          "hypothesis_preview": "patient presence with shortness of breath on exertion and intermittent chest pain over the past two weeks. on examination, the patient is in no acute distress. Heart rate is 88 and regular. lungs are "
+        },
+        {
+          "quality": {
+            "medical_wer": 0.032787,
+            "keyterm_recall": 1.0,
+            "keyphrase_recall": 1.0,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.032787,
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "reference_words": 61,
+                "hypothesis_words": 60
+              },
+              "keyterm": {
+                "recall": 1.0,
+                "total": 7,
+                "matched": 7,
+                "missing": []
+              },
+              "keyphrase": {
+                "recall": 1.0,
+                "total": 3,
+                "matched": 3,
+                "missing": []
+              },
+              "term_restricted_wer": {
+                "wer": 0.0,
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "reference_words": 23,
+                "hypothesis_words": 23,
+                "term_vocabulary_size": 22
+              }
+            },
+            "term_restricted_wer": 0.0
           },
-          {
-            "metric": "seq_gap_count",
-            "observed": 0,
-            "limit": 0,
-            "direction": "<= max",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 2858.2,
+            "ttfw_ms": 2858.2,
+            "commit_latency_ms": {
+              "count": 1,
+              "mean": 3586.3,
+              "p50": 3586.3,
+              "p99": 3586.3,
+              "min": 3586.3,
+              "max": 3586.3
+            },
+            "committed_revision_rate": 0.0,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.7778,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.997,
+            "session_create_ms": 92.6,
+            "inference_ms": {
+              "count": 19,
+              "mean": 833.9,
+              "p50": 682.6,
+              "p99": 3011.3,
+              "min": 641.7,
+              "max": 3493.2
+            },
+            "partial_cadence_ms": {
+              "count": 17,
+              "mean": 1114.3,
+              "p50": 990.6,
+              "p99": 2627.1,
+              "min": 757.9,
+              "max": 2761.9
+            }
           },
-          {
-            "metric": "audio_coverage_ratio",
-            "observed": 0.997,
-            "limit": 0.991,
-            "direction": ">= baseline-eps",
-            "passed": true
-          }
-        ]
-      }
+          "run_index": 3,
+          "session_id": "01a0b972-ffc7-72ce-8307-9540fa759e1f",
+          "closed_status_received": true,
+          "hypothesis_preview": "patient presence with shortness of breath on exertion and intermittent chest pain over the past two weeks. on examination, the patient is in no acute distress. Heart rate is 88 and regular. lungs are "
+        },
+        {
+          "quality": {
+            "medical_wer": 0.032787,
+            "keyterm_recall": 1.0,
+            "keyphrase_recall": 1.0,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.032787,
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "reference_words": 61,
+                "hypothesis_words": 60
+              },
+              "keyterm": {
+                "recall": 1.0,
+                "total": 7,
+                "matched": 7,
+                "missing": []
+              },
+              "keyphrase": {
+                "recall": 1.0,
+                "total": 3,
+                "matched": 3,
+                "missing": []
+              },
+              "term_restricted_wer": {
+                "wer": 0.0,
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "reference_words": 23,
+                "hypothesis_words": 23,
+                "term_vocabulary_size": 22
+              }
+            },
+            "term_restricted_wer": 0.0
+          },
+          "transport": {
+            "first_partial_ms": 3181.2,
+            "ttfw_ms": 3181.2,
+            "commit_latency_ms": {
+              "count": 1,
+              "mean": 3962.8,
+              "p50": 3962.8,
+              "p99": 3962.8,
+              "min": 3962.8,
+              "max": 3962.8
+            },
+            "committed_revision_rate": 0.0,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.8421,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.994,
+            "session_create_ms": 236.4,
+            "inference_ms": {
+              "count": 20,
+              "mean": 913.9,
+              "p50": 729.5,
+              "p99": 3344.1,
+              "min": 677.4,
+              "max": 3851.5
+            },
+            "partial_cadence_ms": {
+              "count": 18,
+              "mean": 1031.9,
+              "p50": 967.2,
+              "p99": 1992.0,
+              "min": 773.3,
+              "max": 2170.3
+            }
+          },
+          "run_index": 4,
+          "session_id": "01a0b973-637e-7943-832d-f8846cbfa797",
+          "closed_status_received": true,
+          "hypothesis_preview": "patient presence with shortness of breath on exertion and intermittent chest pain over the past two weeks. on examination, the patient is in no acute distress. Heart rate is 88 and regular. lungs are "
+        }
+      ],
+      "fingerprint_check": {
+        "comparable": false,
+        "reason": "fingerprint not captured for this run (no stt.streaming.fingerprint log event found for this session -- see STREAM_STT_LOG_PATH)",
+        "mismatched": []
+      },
+      "gated": false,
+      "skip_reason": "fingerprint not captured for this run (no stt.streaming.fingerprint log event found for this session -- see STREAM_STT_LOG_PATH)"
     },
     {
-      "quality": {
-        "medical_wer": 0.048387,
-        "keyterm_recall": 0.833333,
-        "keyphrase_recall": 1.0,
-        "detail": {
-          "wer": {
-            "wer": 0.048387,
-            "substitutions": 1,
-            "deletions": 2,
-            "insertions": 0,
-            "reference_words": 62,
-            "hypothesis_words": 60
-          },
-          "keyterm": {
-            "recall": 0.833333,
-            "total": 6,
-            "matched": 5,
-            "missing": [
-              "community acquired pneumonia"
-            ]
-          },
-          "keyphrase": {
-            "recall": 1.0,
-            "total": 4,
-            "matched": 4,
-            "missing": []
-          }
-        }
-      },
-      "transport": {
-        "first_partial_ms": 2362.9,
-        "ttfw_ms": 2362.9,
-        "commit_latency_ms": {
-          "count": 1,
-          "mean": 5440.6,
-          "p50": 5440.6,
-          "p99": 5440.6,
-          "min": 5440.6,
-          "max": 5440.6
-        },
-        "committed_revision_rate": 0.0,
-        "partial_revision_rate": 0.8182,
-        "seq_gap_count": 0,
-        "audio_coverage_ratio": 0.998
-      },
       "clip": "discharge_summary_01",
-      "session_id": "01a02ed6-d8b9-79e4-a649-d1831b060b87",
-      "closed_status_received": true,
-      "hypothesis_preview": "This is a discharge summary for a patient admitted with community-acquired pneumonia. The patient was treated with intravenous ceftriaxone and transitioned to oral amoxicillin. Oxygen saturation impro",
-      "regression": {
-        "passed": true,
-        "checks": [
-          {
-            "metric": "medical_wer",
-            "observed": 0.048387,
-            "limit": 0.35,
-            "direction": "<= ceiling",
-            "passed": true
+      "gate_class": "stop_flush",
+      "n_runs": 5,
+      "runs": [
+        {
+          "quality": {
+            "medical_wer": 0.16129,
+            "keyterm_recall": 1.0,
+            "keyphrase_recall": 0.5,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.16129,
+                "substitutions": 1,
+                "deletions": 9,
+                "insertions": 0,
+                "reference_words": 62,
+                "hypothesis_words": 53
+              },
+              "keyterm": {
+                "recall": 1.0,
+                "total": 6,
+                "matched": 6,
+                "missing": []
+              },
+              "keyphrase": {
+                "recall": 0.5,
+                "total": 4,
+                "matched": 2,
+                "missing": [
+                  "return precautions",
+                  "follow up with primary care"
+                ]
+              },
+              "term_restricted_wer": {
+                "wer": 0.24,
+                "substitutions": 0,
+                "deletions": 6,
+                "insertions": 0,
+                "reference_words": 25,
+                "hypothesis_words": 19,
+                "term_vocabulary_size": 22
+              }
+            },
+            "term_restricted_wer": 0.24
           },
-          {
-            "metric": "medical_wer_vs_baseline",
-            "observed": 0.048387,
-            "limit": 0.11560000000000001,
-            "direction": "<= baseline+eps",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 1627.7,
+            "ttfw_ms": 1627.7,
+            "commit_latency_ms": {
+              "count": 2,
+              "mean": 3727.6,
+              "p50": 3727.6,
+              "p99": 5289.7,
+              "min": 2133.6,
+              "max": 5321.6
+            },
+            "committed_revision_rate": 0.0,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.8235,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.998,
+            "session_create_ms": 174.8,
+            "inference_ms": {
+              "count": 19,
+              "mean": 1213.0,
+              "p50": 817.6,
+              "p99": 4656.4,
+              "min": 735.5,
+              "max": 5216.3
+            },
+            "partial_cadence_ms": {
+              "count": 15,
+              "mean": 1108.3,
+              "p50": 976.7,
+              "p99": 2053.6,
+              "min": 891.6,
+              "max": 2136.5
+            }
           },
-          {
-            "metric": "keyterm_recall",
-            "observed": 0.833333,
-            "limit": 0.7,
-            "direction": ">= floor",
-            "passed": true
+          "run_index": 0,
+          "session_id": "01a0b973-c92b-704d-8ddb-364d0217457e",
+          "closed_status_received": true,
+          "hypothesis_preview": "this is a discharge summary for a patient admitted with community-acquired pneumonia. , the patient was treated with intravenous ceftriaxone and transitioned to oral amoxicillin. oxygen saturation imp"
+        },
+        {
+          "quality": {
+            "medical_wer": 0.16129,
+            "keyterm_recall": 1.0,
+            "keyphrase_recall": 0.75,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.16129,
+                "substitutions": 1,
+                "deletions": 9,
+                "insertions": 0,
+                "reference_words": 62,
+                "hypothesis_words": 53
+              },
+              "keyterm": {
+                "recall": 1.0,
+                "total": 6,
+                "matched": 6,
+                "missing": []
+              },
+              "keyphrase": {
+                "recall": 0.75,
+                "total": 4,
+                "matched": 3,
+                "missing": [
+                  "follow up with primary care"
+                ]
+              },
+              "term_restricted_wer": {
+                "wer": 0.2,
+                "substitutions": 0,
+                "deletions": 5,
+                "insertions": 0,
+                "reference_words": 25,
+                "hypothesis_words": 20,
+                "term_vocabulary_size": 22
+              }
+            },
+            "term_restricted_wer": 0.2
           },
-          {
-            "metric": "keyphrase_recall",
-            "observed": 1.0,
-            "limit": 0.7,
-            "direction": ">= floor",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 2264.7,
+            "ttfw_ms": 2264.7,
+            "commit_latency_ms": {
+              "count": 2,
+              "mean": 3263.4,
+              "p50": 3263.4,
+              "p99": 4577.0,
+              "min": 1923.0,
+              "max": 4603.8
+            },
+            "committed_revision_rate": 0.0588,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.9412,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.987,
+            "session_create_ms": 263.3,
+            "inference_ms": {
+              "count": 19,
+              "mean": 1138.2,
+              "p50": 845.0,
+              "p99": 4009.8,
+              "min": 721.7,
+              "max": 4514.4
+            },
+            "partial_cadence_ms": {
+              "count": 15,
+              "mean": 1081.7,
+              "p50": 1044.8,
+              "p99": 1713.2,
+              "min": 763.9,
+              "max": 1786.6
+            }
           },
-          {
-            "metric": "committed_revision_rate",
-            "observed": 0.0,
-            "limit": 0.02,
-            "direction": "<= baseline+eps",
-            "passed": true
+          "run_index": 1,
+          "session_id": "01a0b974-338e-7e08-9d22-faedd38db01c",
+          "closed_status_received": true,
+          "hypothesis_preview": "this is a discharge summary for a patient admitted with community-acquired pneumonia. , the patient was treated with intravenous ceftriaxone and transitioned to oral amoxicillin. oxygen saturation imp"
+        },
+        {
+          "quality": {
+            "medical_wer": 0.16129,
+            "keyterm_recall": 1.0,
+            "keyphrase_recall": 0.5,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.16129,
+                "substitutions": 1,
+                "deletions": 9,
+                "insertions": 0,
+                "reference_words": 62,
+                "hypothesis_words": 53
+              },
+              "keyterm": {
+                "recall": 1.0,
+                "total": 6,
+                "matched": 6,
+                "missing": []
+              },
+              "keyphrase": {
+                "recall": 0.5,
+                "total": 4,
+                "matched": 2,
+                "missing": [
+                  "return precautions",
+                  "follow up with primary care"
+                ]
+              },
+              "term_restricted_wer": {
+                "wer": 0.24,
+                "substitutions": 0,
+                "deletions": 6,
+                "insertions": 0,
+                "reference_words": 25,
+                "hypothesis_words": 19,
+                "term_vocabulary_size": 22
+              }
+            },
+            "term_restricted_wer": 0.24
           },
-          {
-            "metric": "commit_latency_p50",
-            "observed": 5440.6,
-            "limit": 6926.679999999999,
-            "direction": "<= baseline*(1+eps)",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 1414.6,
+            "ttfw_ms": 1414.6,
+            "commit_latency_ms": {
+              "count": 2,
+              "mean": 3398.6,
+              "p50": 3398.6,
+              "p99": 4752.6,
+              "min": 2016.9,
+              "max": 4780.2
+            },
+            "committed_revision_rate": 0.0,
+            "committed_revision_rate_measurable": false,
+            "partial_revision_rate": 0.9444,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.998,
+            "session_create_ms": 237.9,
+            "inference_ms": {
+              "count": 20,
+              "mean": 1123.3,
+              "p50": 816.8,
+              "p99": 4187.9,
+              "min": 753.0,
+              "max": 4699.6
+            },
+            "partial_cadence_ms": {
+              "count": 16,
+              "mean": 1072.6,
+              "p50": 985.5,
+              "p99": 1752.0,
+              "min": 892.7,
+              "max": 1848.2
+            }
           },
-          {
-            "metric": "commit_latency_p99",
-            "observed": 5440.6,
-            "limit": 8767.83,
-            "direction": "<= baseline*(1+eps)",
-            "passed": true
+          "run_index": 2,
+          "session_id": "01a0b974-9ba7-7a72-976b-ae02cc366642",
+          "closed_status_received": true,
+          "hypothesis_preview": "this is a discharge summary for a patient admitted with community-acquired pneumonia. , the patient was treated with intravenous ceftriaxone and transitioned to oral amoxicillin. oxygen saturation imp"
+        },
+        {
+          "quality": {
+            "medical_wer": 0.16129,
+            "keyterm_recall": 1.0,
+            "keyphrase_recall": 0.75,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.16129,
+                "substitutions": 1,
+                "deletions": 8,
+                "insertions": 1,
+                "reference_words": 62,
+                "hypothesis_words": 55
+              },
+              "keyterm": {
+                "recall": 1.0,
+                "total": 6,
+                "matched": 6,
+                "missing": []
+              },
+              "keyphrase": {
+                "recall": 0.75,
+                "total": 4,
+                "matched": 3,
+                "missing": [
+                  "follow up with primary care"
+                ]
+              },
+              "term_restricted_wer": {
+                "wer": 0.2,
+                "substitutions": 0,
+                "deletions": 5,
+                "insertions": 0,
+                "reference_words": 25,
+                "hypothesis_words": 20,
+                "term_vocabulary_size": 22
+              }
+            },
+            "term_restricted_wer": 0.2
           },
-          {
-            "metric": "seq_gap_count",
-            "observed": 0,
-            "limit": 0,
-            "direction": "<= max",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 1452.8,
+            "ttfw_ms": 1452.8,
+            "commit_latency_ms": {
+              "count": 3,
+              "mean": 2845.2,
+              "p50": 2865.1,
+              "p99": 4191.2,
+              "min": 1452.1,
+              "max": 4218.3
+            },
+            "committed_revision_rate": 0.0,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.8889,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 1.0,
+            "session_create_ms": 126.1,
+            "inference_ms": {
+              "count": 21,
+              "mean": 1096.8,
+              "p50": 853.4,
+              "p99": 3683.5,
+              "min": 782.1,
+              "max": 4207.3
+            },
+            "partial_cadence_ms": {
+              "count": 16,
+              "mean": 1059.9,
+              "p50": 970.0,
+              "p99": 1963.1,
+              "min": 880.8,
+              "max": 2090.3
+            }
           },
-          {
-            "metric": "audio_coverage_ratio",
-            "observed": 0.998,
-            "limit": 0.991,
-            "direction": ">= baseline-eps",
-            "passed": true
-          }
-        ]
-      }
+          "run_index": 3,
+          "session_id": "01a0b975-037e-7ff6-9865-d52801fba3d4",
+          "closed_status_received": true,
+          "hypothesis_preview": "this is a discharge summary for a patient admitted with community-acquired pneumonia. The patient was treated with intravenous ceftriaxone and transitioned to oral amoxicillin. oxygen saturation impro"
+        },
+        {
+          "quality": {
+            "medical_wer": 0.16129,
+            "keyterm_recall": 1.0,
+            "keyphrase_recall": 0.5,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.16129,
+                "substitutions": 1,
+                "deletions": 9,
+                "insertions": 0,
+                "reference_words": 62,
+                "hypothesis_words": 53
+              },
+              "keyterm": {
+                "recall": 1.0,
+                "total": 6,
+                "matched": 6,
+                "missing": []
+              },
+              "keyphrase": {
+                "recall": 0.5,
+                "total": 4,
+                "matched": 2,
+                "missing": [
+                  "return precautions",
+                  "follow up with primary care"
+                ]
+              },
+              "term_restricted_wer": {
+                "wer": 0.24,
+                "substitutions": 0,
+                "deletions": 6,
+                "insertions": 0,
+                "reference_words": 25,
+                "hypothesis_words": 19,
+                "term_vocabulary_size": 22
+              }
+            },
+            "term_restricted_wer": 0.24
+          },
+          "transport": {
+            "first_partial_ms": 1486.1,
+            "ttfw_ms": 1486.1,
+            "commit_latency_ms": {
+              "count": 2,
+              "mean": 3804.2,
+              "p50": 3804.2,
+              "p99": 5392.6,
+              "min": 2183.3,
+              "max": 5425.0
+            },
+            "committed_revision_rate": 0.0,
+            "committed_revision_rate_measurable": false,
+            "partial_revision_rate": 0.9412,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.998,
+            "session_create_ms": 112.5,
+            "inference_ms": {
+              "count": 19,
+              "mean": 1288.9,
+              "p50": 868.0,
+              "p99": 4803.5,
+              "min": 749.7,
+              "max": 5332.7
+            },
+            "partial_cadence_ms": {
+              "count": 15,
+              "mean": 1147.4,
+              "p50": 994.3,
+              "p99": 2485.5,
+              "min": 890.6,
+              "max": 2621.8
+            }
+          },
+          "run_index": 4,
+          "session_id": "01a0b975-68df-754a-80e9-73c20565785f",
+          "closed_status_received": true,
+          "hypothesis_preview": "this is a discharge summary for a patient admitted with community-acquired pneumonia. , the patient was treated with intravenous ceftriaxone and transitioned to oral amoxicillin. oxygen saturation imp"
+        }
+      ],
+      "fingerprint_check": {
+        "comparable": false,
+        "reason": "fingerprint not captured for this run (no stt.streaming.fingerprint log event found for this session -- see STREAM_STT_LOG_PATH)",
+        "mismatched": []
+      },
+      "gated": false,
+      "skip_reason": "fingerprint not captured for this run (no stt.streaming.fingerprint log event found for this session -- see STREAM_STT_LOG_PATH)"
     },
     {
-      "quality": {
-        "medical_wer": 0.065574,
-        "keyterm_recall": 1.0,
-        "keyphrase_recall": 1.0,
-        "detail": {
-          "wer": {
-            "wer": 0.065574,
-            "substitutions": 1,
-            "deletions": 3,
-            "insertions": 0,
-            "reference_words": 61,
-            "hypothesis_words": 58
-          },
-          "keyterm": {
-            "recall": 1.0,
-            "total": 8,
-            "matched": 8,
-            "missing": []
-          },
-          "keyphrase": {
-            "recall": 1.0,
-            "total": 3,
-            "matched": 3,
-            "missing": []
-          }
-        }
-      },
-      "transport": {
-        "first_partial_ms": 2060.5,
-        "ttfw_ms": 2060.5,
-        "commit_latency_ms": {
-          "count": 2,
-          "mean": 6910.0,
-          "p50": 6910.0,
-          "p99": 7197.6,
-          "min": 6616.5,
-          "max": 7203.5
-        },
-        "committed_revision_rate": 0.0,
-        "partial_revision_rate": 0.7692,
-        "seq_gap_count": 0,
-        "audio_coverage_ratio": 0.997
-      },
       "clip": "medication_review_01",
-      "session_id": "01a02ed7-4f68-77bd-95d1-fe3719fd0729",
-      "closed_status_received": true,
-      "hypothesis_preview": "patient is a 62-year-old presenting for medication review. Current medications include metformin 500 mg twice daily for type 2 diabetes, lisinopril 10 mg once daily for hypertension, and atorvastatin ",
-      "regression": {
-        "passed": true,
-        "checks": [
-          {
-            "metric": "medical_wer",
-            "observed": 0.065574,
-            "limit": 0.35,
-            "direction": "<= ceiling",
-            "passed": true
+      "gate_class": "stop_flush",
+      "n_runs": 5,
+      "runs": [
+        {
+          "quality": {
+            "medical_wer": 0.131148,
+            "keyterm_recall": 0.875,
+            "keyphrase_recall": 1.0,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.131148,
+                "substitutions": 3,
+                "deletions": 4,
+                "insertions": 1,
+                "reference_words": 61,
+                "hypothesis_words": 58
+              },
+              "keyterm": {
+                "recall": 0.875,
+                "total": 8,
+                "matched": 7,
+                "missing": [
+                  "500 mg"
+                ]
+              },
+              "keyphrase": {
+                "recall": 1.0,
+                "total": 3,
+                "matched": 3,
+                "missing": []
+              },
+              "term_restricted_wer": {
+                "wer": 0.095238,
+                "substitutions": 0,
+                "deletions": 2,
+                "insertions": 0,
+                "reference_words": 21,
+                "hypothesis_words": 19,
+                "term_vocabulary_size": 19
+              }
+            },
+            "term_restricted_wer": 0.095238
           },
-          {
-            "metric": "medical_wer_vs_baseline",
-            "observed": 0.065574,
-            "limit": 0.11560000000000001,
-            "direction": "<= baseline+eps",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 2152.6,
+            "ttfw_ms": 2152.6,
+            "commit_latency_ms": {
+              "count": 1,
+              "mean": 6768.5,
+              "p50": 6768.5,
+              "p99": 6768.5,
+              "min": 6768.5,
+              "max": 6768.5
+            },
+            "committed_revision_rate": 0.0,
+            "committed_revision_rate_measurable": false,
+            "partial_revision_rate": 0.9091,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.998,
+            "session_create_ms": 318.2,
+            "inference_ms": {
+              "count": 23,
+              "mean": 1155.4,
+              "p50": 844.1,
+              "p99": 5541.7,
+              "min": 760.4,
+              "max": 6674.6
+            },
+            "partial_cadence_ms": {
+              "count": 21,
+              "mean": 1161.9,
+              "p50": 1022.7,
+              "p99": 2008.6,
+              "min": 828.7,
+              "max": 2023.6
+            }
           },
-          {
-            "metric": "keyterm_recall",
-            "observed": 1.0,
-            "limit": 0.7,
-            "direction": ">= floor",
-            "passed": true
+          "run_index": 0,
+          "session_id": "01a0b975-d15a-7c09-92e5-c38273e83368",
+          "closed_status_received": true,
+          "hypothesis_preview": "Patient is a 62-year-old presenting for medication review. to current medications include metformin 500mg twice daily for type 2 diabetes. , Lisinopril 10 milligrams once daily for hypertension. and A"
+        },
+        {
+          "quality": {
+            "medical_wer": 0.131148,
+            "keyterm_recall": 0.875,
+            "keyphrase_recall": 1.0,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.131148,
+                "substitutions": 3,
+                "deletions": 4,
+                "insertions": 1,
+                "reference_words": 61,
+                "hypothesis_words": 58
+              },
+              "keyterm": {
+                "recall": 0.875,
+                "total": 8,
+                "matched": 7,
+                "missing": [
+                  "500 mg"
+                ]
+              },
+              "keyphrase": {
+                "recall": 1.0,
+                "total": 3,
+                "matched": 3,
+                "missing": []
+              },
+              "term_restricted_wer": {
+                "wer": 0.095238,
+                "substitutions": 0,
+                "deletions": 2,
+                "insertions": 0,
+                "reference_words": 21,
+                "hypothesis_words": 19,
+                "term_vocabulary_size": 19
+              }
+            },
+            "term_restricted_wer": 0.095238
           },
-          {
-            "metric": "keyphrase_recall",
-            "observed": 1.0,
-            "limit": 0.7,
-            "direction": ">= floor",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 1620.0,
+            "ttfw_ms": 1620.0,
+            "commit_latency_ms": {
+              "count": 1,
+              "mean": 6058.2,
+              "p50": 6058.2,
+              "p99": 6058.2,
+              "min": 6058.2,
+              "max": 6058.2
+            },
+            "committed_revision_rate": 0.1364,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.8182,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.998,
+            "session_create_ms": 167.4,
+            "inference_ms": {
+              "count": 23,
+              "mean": 1172.4,
+              "p50": 827.7,
+              "p99": 5367.1,
+              "min": 763.8,
+              "max": 5968.8
+            },
+            "partial_cadence_ms": {
+              "count": 21,
+              "mean": 1150.7,
+              "p50": 1003.4,
+              "p99": 2940.6,
+              "min": 912.6,
+              "max": 3354.1
+            }
           },
-          {
-            "metric": "committed_revision_rate",
-            "observed": 0.0,
-            "limit": 0.02,
-            "direction": "<= baseline+eps",
-            "passed": true
+          "run_index": 1,
+          "session_id": "01a0b976-52c9-7777-a9c7-7e6a2d94a66c",
+          "closed_status_received": true,
+          "hypothesis_preview": "Patient is a 62-year-old presenting for medication review. to current medications include metformin 500mg twice daily for type 2 diabetes. , Lisinopril 10 milligrams once daily for hypertension. and A"
+        },
+        {
+          "quality": {
+            "medical_wer": 0.52459,
+            "keyterm_recall": 0.25,
+            "keyphrase_recall": 0.666667,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.52459,
+                "substitutions": 5,
+                "deletions": 27,
+                "insertions": 0,
+                "reference_words": 61,
+                "hypothesis_words": 34
+              },
+              "keyterm": {
+                "recall": 0.25,
+                "total": 8,
+                "matched": 2,
+                "missing": [
+                  "lisinopril",
+                  "atorvastatin",
+                  "hypertension",
+                  "500 mg",
+                  "10 mg",
+                  "20 mg"
+                ]
+              },
+              "keyphrase": {
+                "recall": 0.666667,
+                "total": 3,
+                "matched": 2,
+                "missing": [
+                  "no known drug allergies"
+                ]
+              },
+              "term_restricted_wer": {
+                "wer": 0.619048,
+                "substitutions": 0,
+                "deletions": 13,
+                "insertions": 0,
+                "reference_words": 21,
+                "hypothesis_words": 8,
+                "term_vocabulary_size": 19
+              }
+            },
+            "term_restricted_wer": 0.619048
           },
-          {
-            "metric": "commit_latency_p50",
-            "observed": 6910.0,
-            "limit": 6926.679999999999,
-            "direction": "<= baseline*(1+eps)",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 1732.5,
+            "ttfw_ms": 1732.5,
+            "commit_latency_ms": {
+              "count": 3,
+              "mean": 2304.2,
+              "p50": 2341.9,
+              "p99": 2550.6,
+              "min": 2015.9,
+              "max": 2554.9
+            },
+            "committed_revision_rate": 0.1667,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.8333,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 1.001,
+            "session_create_ms": 443.1,
+            "inference_ms": {
+              "count": 21,
+              "mean": 1069.7,
+              "p50": 829.7,
+              "p99": 2467.5,
+              "min": 778.1,
+              "max": 2502.2
+            },
+            "partial_cadence_ms": {
+              "count": 15,
+              "mean": 1117.6,
+              "p50": 1017.7,
+              "p99": 1943.4,
+              "min": 875.4,
+              "max": 2041.6
+            }
           },
-          {
-            "metric": "commit_latency_p99",
-            "observed": 7197.6,
-            "limit": 8767.83,
-            "direction": "<= baseline*(1+eps)",
-            "passed": true
+          "run_index": 2,
+          "session_id": "01a0b976-d0a5-70f5-a6f2-1aab6e669df7",
+          "closed_status_received": true,
+          "hypothesis_preview": "the patient is a 62-year-old presenting for medication review. current medications include Metformin 500mg twice daily for type 2 diabetes on 1/3. on the blood pressure, the hemoglobin A1c in 3 months"
+        },
+        {
+          "quality": {
+            "medical_wer": 0.131148,
+            "keyterm_recall": 0.875,
+            "keyphrase_recall": 1.0,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.131148,
+                "substitutions": 3,
+                "deletions": 4,
+                "insertions": 1,
+                "reference_words": 61,
+                "hypothesis_words": 58
+              },
+              "keyterm": {
+                "recall": 0.875,
+                "total": 8,
+                "matched": 7,
+                "missing": [
+                  "500 mg"
+                ]
+              },
+              "keyphrase": {
+                "recall": 1.0,
+                "total": 3,
+                "matched": 3,
+                "missing": []
+              },
+              "term_restricted_wer": {
+                "wer": 0.095238,
+                "substitutions": 0,
+                "deletions": 2,
+                "insertions": 0,
+                "reference_words": 21,
+                "hypothesis_words": 19,
+                "term_vocabulary_size": 19
+              }
+            },
+            "term_restricted_wer": 0.095238
           },
-          {
-            "metric": "seq_gap_count",
-            "observed": 0,
-            "limit": 0,
-            "direction": "<= max",
-            "passed": true
+          "transport": {
+            "first_partial_ms": 1600.9,
+            "ttfw_ms": 1600.9,
+            "commit_latency_ms": {
+              "count": 1,
+              "mean": 6100.9,
+              "p50": 6100.9,
+              "p99": 6100.9,
+              "min": 6100.9,
+              "max": 6100.9
+            },
+            "committed_revision_rate": 0.0476,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.8571,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.997,
+            "session_create_ms": 77.2,
+            "inference_ms": {
+              "count": 22,
+              "mean": 1228.5,
+              "p50": 866.9,
+              "p99": 5442.6,
+              "min": 781.3,
+              "max": 5919.1
+            },
+            "partial_cadence_ms": {
+              "count": 20,
+              "mean": 1209.9,
+              "p50": 1081.8,
+              "p99": 3408.9,
+              "min": 820.4,
+              "max": 3888.6
+            }
           },
-          {
-            "metric": "audio_coverage_ratio",
-            "observed": 0.997,
-            "limit": 0.991,
-            "direction": ">= baseline-eps",
-            "passed": true
-          }
-        ]
-      }
+          "run_index": 3,
+          "session_id": "01a0b977-41c7-74a3-9027-1c19dc9b2656",
+          "closed_status_received": true,
+          "hypothesis_preview": "Patient is a 62-year-old presenting for medication review. to current medications include metformin 500mg twice daily for type 2 diabetes. , Lisinopril 10 milligrams once daily for hypertension. and A"
+        },
+        {
+          "quality": {
+            "medical_wer": 0.131148,
+            "keyterm_recall": 0.875,
+            "keyphrase_recall": 1.0,
+            "primary_metric": "medical_wer",
+            "detail": {
+              "wer": {
+                "wer": 0.131148,
+                "substitutions": 3,
+                "deletions": 4,
+                "insertions": 1,
+                "reference_words": 61,
+                "hypothesis_words": 58
+              },
+              "keyterm": {
+                "recall": 0.875,
+                "total": 8,
+                "matched": 7,
+                "missing": [
+                  "500 mg"
+                ]
+              },
+              "keyphrase": {
+                "recall": 1.0,
+                "total": 3,
+                "matched": 3,
+                "missing": []
+              },
+              "term_restricted_wer": {
+                "wer": 0.095238,
+                "substitutions": 0,
+                "deletions": 2,
+                "insertions": 0,
+                "reference_words": 21,
+                "hypothesis_words": 19,
+                "term_vocabulary_size": 19
+              }
+            },
+            "term_restricted_wer": 0.095238
+          },
+          "transport": {
+            "first_partial_ms": 1831.2,
+            "ttfw_ms": 1831.2,
+            "commit_latency_ms": {
+              "count": 1,
+              "mean": 6013.1,
+              "p50": 6013.1,
+              "p99": 6013.1,
+              "min": 6013.1,
+              "max": 6013.1
+            },
+            "committed_revision_rate": 0.0476,
+            "committed_revision_rate_measurable": true,
+            "partial_revision_rate": 0.8571,
+            "seq_gap_count": 0,
+            "audio_coverage_ratio": 0.998,
+            "session_create_ms": 147.6,
+            "inference_ms": {
+              "count": 22,
+              "mean": 1103.8,
+              "p50": 846.5,
+              "p99": 4918.9,
+              "min": 786.4,
+              "max": 5880.9
+            },
+            "partial_cadence_ms": {
+              "count": 20,
+              "mean": 1198.4,
+              "p50": 1008.4,
+              "p99": 2025.7,
+              "min": 863.8,
+              "max": 2054.1
+            }
+          },
+          "run_index": 4,
+          "session_id": "01a0b977-befd-77a8-8b97-ea87442e4e9d",
+          "closed_status_received": true,
+          "hypothesis_preview": "Patient is a 62-year-old presenting for medication review. to current medications include metformin 500mg twice daily for type 2 diabetes. , Lisinopril 10 milligrams once daily for hypertension. and A"
+        }
+      ],
+      "fingerprint_check": {
+        "comparable": false,
+        "reason": "fingerprint not captured for this run (no stt.streaming.fingerprint log event found for this session -- see STREAM_STT_LOG_PATH)",
+        "mismatched": []
+      },
+      "gated": false,
+      "skip_reason": "fingerprint not captured for this run (no stt.streaming.fingerprint log event found for this session -- see STREAM_STT_LOG_PATH)"
     }
   ]
 }
