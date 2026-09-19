@@ -298,7 +298,68 @@ TDD per lane: failing test first, then minimal fix, then refactor. Each lane run
 
 ## 7. Implementation Summary
 
-_Pending._
+### Lane B — `apps/text` vendor 429 (branch `task-993-b-text-429`, `f2c54202a`) — COMPLETE, verified
+
+`_TRANSIENT_PROVIDER_STATUSES = {408, 429}` carved out of the invalid-request sweep
+(`retry_handler.py:142`); a new narrower `is_provider_rate_limited` (429 only, `:203`) keeps 408
+retryable *without* inheriting the 429 response mapping — a caller told "429, back off" when nobody
+throttled it pauses for no reason, so 408 surfaces 502. `should_retry` admits `RATE_LIMITED`
+structurally but still honours the attempt ceiling. The catch-all now raises `RateLimitError` into
+the existing 429 + `Retry-After` path, so `exception_handlers.py` needed no change.
+
+**Circuit breaker:** a vendor 429 no longer counts. The lane did NOT hardcode this — it revived
+`CircuitBreaker.record_failure(is_rate_limit=)` / `LaneBudget.count_rate_limits`, which already
+existed, were already wired to `AiRuntimeProfile.countRateLimits`, and had **no call site setting
+the flag**. Only the safe default moved (`runtime_defaults.py:112` → `False`); policy stays in the
+control plane. The streaming path (`routing/streaming.py:538`) got the same treatment, because it
+shares the `circuit_breakers` dict — a carve-out on one path only is not a carve-out.
+
+18 new tests, all watched fail first (RED: `15 failed, 19 passed`). Gates: `text:test`
+**1821 passed, 4 skipped, EXIT=0**; `text:lint` and `text:typecheck` clean; worktree guard exit 0.
+Independently re-run by the orchestrator: **15 passed**.
+
+The `mark_rate_limited` bonus was declined, correctly: `RateLimitTracker` is keyed per provider
+**process-wide**, not per tenant, so feeding an observed 429 into it would throttle every tenant on
+that provider — including tenants on a different BYO key. Follow-up, with a tenant-scoped key.
+
+### Lane E — cluster (repo `hope-v2-deployment`, branch `task-993-capacity`) — COMPLETE, verified
+
+**The connection budget was already 1.99× over, and nobody could see it.** The pool rule lived
+inside the EKS profile, so `--limits-only` skipped it on every k3s overlay. Orchestrator-verified by
+rendering `main` and running the lane's script against it:
+
+```
+PostgreSQL max_connections=200; pooled at HPA ceilings = 278 (budget 140):
+    hope-temporal   1 pods × 160 = 160      <- alone exceeds the whole budget
+```
+
+`hope-temporal`'s `SQL_MAX_CONNS` was unset (image default 20 × 4 services × 2 datastores).
+After: `max_connections` 200→500, Temporal 20→12, `PRISMA_PG_MAX` set explicitly to 10 in
+`overlays/dev/capacity.yaml:54`. Verified with CI's exact invocation: **264 / budget 350, RC=0**.
+Note the script models `2 × PRISMA_PG_MAX` per gateway pod (Prisma pool + the vault-client pool,
+`vault-client.ts:89-97`), which is why 10 renders as 20/pod.
+
+**The saturation HPA was staged, not shipped.** A custom metric is not servable today — no
+prometheus-adapter, no `custom.metrics.k8s.io` anywhere. Shipping an HPA against a metric nothing
+serves fails closed while looking configured. So: the adapter is written as `out-of-band/`, the
+saturation HPA is committed but deliberately unreferenced (orchestrator-verified: renders zero
+resources), and what IS servable shipped — floor 1→**2** (first real redundancy), ceiling 3→4,
+CPU 75→60 %.
+
+**Independent find: the gateway is scraped through its ClusterIP.** That balances per connection and
+Prometheus opens a new one per scrape, so at ≥2 replicas one series interleaves N monotonic counters
+and `rate()` reads every switch as a reset — `GatewayErrorRateHigh`, `GatewayLatencyHigh` and every
+Platform panel computing over a series that never existed, with the target still `up`. The base HPA
+already permits 3, so this was live-reachable. Now pod-discovery based.
+
+**~128s cadence: not root-caused, and deliberately not guessed.** This repo sets no timeout on any
+hop. `cloudflared` was never scraped at all despite exposing `--metrics 0.0.0.0:2000`, which is
+exactly why the cadence could not be attributed; that scrape now exists, so the next burst
+distinguishes a cut below the connector from one at the tunnel or edge.
+
+Gates: all six overlays render; kubeconform 0 invalid; config-refs, envfrom-coverage, patch-hygiene,
+image-hygiene, gitleaks, promtool all RC=0. The lifted rules were proven to fail before they passed,
+and caught an orphaned PDB in the lane's own change.
 
 ---
 
@@ -306,6 +367,7 @@ _Pending._
 
 | Date | Change |
 |---|---|
+| 2026-09-19 | Lanes B and E complete and orchestrator-verified. New chain gap found: the gateway DROPS `Retry-After` and swaps the body (`text-proxy.controller.ts:479-521`, `RELAYABLE_ERROR_PHRASES:191`) — folded into lane F. |
 | 2026-09-19 | OD-1..OD-4 answered. Lanes A/B/C/D/E dispatched to worktrees; lane F (two-level bucketing) serialized behind A, which owns `modules/throttle/**`. §2.13 corrected — the Redis rule text is accurate; local and cluster differ by design. |
 | 2026-09-19 | Cluster survey added (§2.10–2.13): HPAs exist but cannot fire on the real bottleneck; client IP is `CF-Connecting-IP`; measured 341-reconnects-vs-33-sessions storm; Redis-persistence docs drift. |
 | 2026-09-19 | Ticket opened. Discovery complete across gateway, runtime, Python/provider surfaces. Six defects/findings recorded (D-1…D-5, F-1) with live reproduction of D-1 and D-3. |
