@@ -63,6 +63,21 @@ export {
 } from './extensions/tenant-scope.js';
 export type { TenantContextProvider } from './extensions/tenant-scope.js';
 
+// Connection-pool saturation telemetry (TASK-993 OD-3). Deliberately
+// metrics-library-free: `packages/database` publishes FACTS, the gateway
+// (`apps/api/src/observability/prisma-pool-metrics.ts`) publishes SERIES.
+export {
+  addPgAcquireObserver,
+  classifyPgAcquireError,
+  getPgPoolStats,
+  PG_POOL_TIMEOUT_MESSAGES,
+  // @internal — the adapter seam calls this; exported so a consumer's tests can
+  // register a pool double without reaching into the package's internals.
+  registerPgPool,
+  resetPgPoolObservability,
+} from './pool-observability.js';
+export type { PgAcquireObservation, PgAcquireObserver, PgAcquireOutcome, PgPoolRole, PgPoolStats } from './pool-observability.js';
+
 // Vault-backed PrismaClient.
 export { getPrismaClientWithVault, VaultPrismaClient } from './vault-client.js';
 export type { DbCredential, VaultDbSecretsLike, VaultPrismaClientOpts } from './vault-client.js';
