@@ -175,8 +175,9 @@ describe('ParametersForm', () => {
     });
 
     it('falls back to a free-text field for a slug the catalogue does not contain', async () => {
-      // A saved agent referencing a row this tenant can no longer see must stay EDITABLE —
-      // silently dropping it would rewrite the agent on the next save.
+      // A saved agent referencing a row this tenant can no longer see must stay VISIBLE —
+      // silently dropping it would rewrite the agent on the next save. (TASK-991: visible, but
+      // no longer editable — see the platform-managed block below.)
       render(
         <ParametersForm
           task="SPEECH_TO_TEXT"
@@ -186,6 +187,67 @@ describe('ParametersForm', () => {
       );
 
       await waitFor(() => expect((screen.getByLabelText('Embedding Model Slug') as HTMLInputElement).value).toBe('a-model-that-vanished'));
+    });
+  });
+
+  /**
+   * TASK-991 (owner decision OD-3, 2026-09-19) — the speaker-embedding model is PLATFORM-MANAGED:
+   * fixed for every tenant, changed only by a platform administrator on the SYSTEM-tier agent.
+   * Every enrolled voice profile is a vector in ONE model's space, so a per-tenant swap raises no
+   * error at all — it just stops diarization ever recognising anyone again.
+   *
+   * The gateway is the enforcement (403 `AGENT_PARAMETER_PLATFORM_MANAGED` on the update path);
+   * these pin the console half, which reads the CONTRACT's own `readOnly: true` annotation rather
+   * than the field's name, so the next platform-managed property behaves the same untouched.
+   */
+  describe('SPEECH_TO_TEXT platform-managed embedding model (TASK-991)', () => {
+    it('renders the picker DISABLED and says who owns the value', async () => {
+      render(
+        <ParametersForm
+          task="SPEECH_TO_TEXT"
+          value={{ audioFrontEnd: { diarization: { embeddingModelSlug: 'ecapa-tdnn-voxceleb' } } }}
+          onChange={() => undefined}
+        />,
+      );
+
+      const trigger = await waitFor(() => {
+        const found = screen.getByLabelText('Embedding Model Slug');
+        expect(found.getAttribute('role')).toBe('combobox');
+        return found as HTMLButtonElement;
+      });
+      // Still SHOWS the stored row — a value you cannot see is worse than one you cannot change.
+      expect(trigger.textContent).toContain('ECAPA-TDNN');
+      expect(trigger.disabled).toBe(true);
+      // One short line of copy, wired to the control so it is announced, not just printed.
+      const described = trigger.getAttribute('aria-describedby');
+      expect(described).toBeTruthy();
+      expect(document.getElementById(described as string)?.textContent).toContain('Managed by the platform');
+    });
+
+    it('closes the free-text fallback too — an escape hatch open while the catalogue loads is no lock', async () => {
+      render(
+        <ParametersForm
+          task="SPEECH_TO_TEXT"
+          value={{ audioFrontEnd: { diarization: { embeddingModelSlug: 'a-model-that-vanished' } } }}
+          onChange={() => undefined}
+        />,
+      );
+
+      const input = await waitFor(() => {
+        const found = screen.getByLabelText('Embedding Model Slug') as HTMLInputElement;
+        expect(found.value).toBe('a-model-that-vanished');
+        return found;
+      });
+      expect(input.readOnly).toBe(true);
+      expect(input.getAttribute('aria-describedby')).toBeTruthy();
+      expect(screen.getByText(/Managed by the platform/)).toBeTruthy();
+    });
+
+    it('leaves every OTHER model picker editable — the lock follows the annotation, not the name', async () => {
+      render(<ParametersForm task="SPEECH_TO_TEXT" value={{ audioFrontEnd: { vad: { modelSlug: 'silero-vad' } } }} onChange={() => undefined} />);
+      const block = within(screen.getByRole('group', { name: 'Vad' }));
+      await waitFor(() => expect(block.getByLabelText('Model Slug').getAttribute('role')).toBe('combobox'));
+      expect((block.getByLabelText('Model Slug') as HTMLButtonElement).disabled).toBe(false);
     });
   });
 
