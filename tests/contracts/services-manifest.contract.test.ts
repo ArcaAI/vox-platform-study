@@ -66,13 +66,33 @@ const buildYml = read('.gitlab/ci/build.yml');
  */
 function buildJobBlocks(): Map<string, string> {
   const blocks = new Map<string, string>();
+  const anchors = new Map<string, string>();
   const headings = [...buildYml.matchAll(/^(\.?[a-z][a-z0-9-]*):$/gm)];
 
   headings.forEach((heading, index) => {
     const start = heading.index!;
     const end = index + 1 < headings.length ? headings[index + 1].index! : buildYml.length;
-    if (!heading[1].startsWith('.')) blocks.set(heading[1], buildYml.slice(start, end));
+    const text = buildYml.slice(start, end);
+    if (heading[1].startsWith('.')) anchors.set(heading[1], text);
+    else blocks.set(heading[1], text);
   });
+
+  // TASK-985 — follow `!reference [.anchor, rules]`. A job may keep its rules in a
+  // shared anchor (QW-6 gave the two STT builds a `.build-stt-rules` anchor so a
+  // `changes:` filter could be added once rather than copied), and a scan of the job
+  // text alone then sees NO tag clauses and reads that as "the tag rules were
+  // deleted". The assertions below are about what the job REACTS TO, which is the
+  // resolved rule list — so resolve it. One hop is enough: GitLab does not allow an
+  // anchor to `!reference` another anchor's rules recursively here, and a silent
+  // deeper miss would be the same bug again.
+  for (const [job, text] of blocks) {
+    let resolved = text;
+    for (const ref of text.matchAll(/!reference \[(\.[a-z0-9-]+), rules\]/g)) {
+      const anchor = anchors.get(ref[1]);
+      if (anchor) resolved += `\n${anchor}`;
+    }
+    blocks.set(job, resolved);
+  }
 
   return blocks;
 }
