@@ -140,6 +140,60 @@ def _resolve_chunking(config: Any) -> tuple[float, int, int]:
     return chunk_length_s, int(default.stride_length_sec[0]), int(default.stride_length_sec[1])
 
 
+def _segment_bounds(seg: dict[str, Any]) -> tuple[float, float]:
+    """``(start, end)`` seconds of a segment dict, in either spelling this file uses.
+
+    ``per_segment_results`` entries carry ``start_time``/``end_time``; the segments an
+    ASR engine returns carry ``start``/``end``. Both flow through the same speaker
+    projection, so reading the times has to accept both — assuming one spelling is
+    how the projection came to be a no-op on the engine segments.
+
+    A missing or non-numeric value reads as ``0.0``: the caller's ``end <= start``
+    guard then skips the segment, which is the honest outcome for a span that cannot
+    be located in time.
+    """
+
+    def _num(keys: tuple[str, str], default: float) -> float:
+        for key in keys:
+            value = seg.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return float(value)
+        return default
+
+    start = _num(("start_time", "start"), 0.0)
+    return start, _num(("end_time", "end"), start)
+
+
+def _clamp_segment_times(segments: list[dict[str, Any]], duration_s: float) -> None:
+    """Clip engine-reported segment times to the audio that produced them, in place.
+
+    Whisper-family engines PAD their input up to a fixed context window (30 s) and
+    then report the padded window's end as the segment's ``t1``. Batch shipped that
+    verbatim, so an 11.7 s clip came back as ``t1Ms = t0Ms + 30000`` on every row
+    — the second segment claiming to end at 35 s, past the end of the recording.
+
+    A timestamp beyond the buffer the engine was HANDED is padding, never speech,
+    whichever engine produced it, so the bound is applied once here rather than in
+    each adapter. Segments already inside the audio are left exactly as the engine
+    timed them: this clamps fabricated ends, it does not synthesise real ones.
+    """
+    if duration_s <= 0:
+        return
+    for seg in segments:
+        if not isinstance(seg, dict):
+            continue
+        # isinstance gates (not float()) so a None/absent/bogus value is left
+        # untouched rather than coerced into a fabricated timestamp of its own.
+        raw_start = seg.get("start")
+        start = 0.0
+        if isinstance(raw_start, (int, float)) and not isinstance(raw_start, bool):
+            start = min(max(float(raw_start), 0.0), duration_s)
+            seg["start"] = start
+        raw_end = seg.get("end")
+        if isinstance(raw_end, (int, float)) and not isinstance(raw_end, bool):
+            seg["end"] = min(max(float(raw_end), start), duration_s)
+
+
 # Cloud ASR engines whose loaders accept a per-tenant ``provider_overrides``
 # dict (BYOK). For these the batch ASR load bypasses the shared by-slug
 # cache when an override is present. Mirrors the streaming set in session_manager.
@@ -573,6 +627,14 @@ class BatchTranscriptionService:
 
             timing.inference_seconds = time.time() - inference_start
 
+            # No segment can end after the audio does. The per-segment path
+            # already bounded each VAD segment by the buffer it handed the engine;
+            # this is the same rule for the full-audio path, and it runs BEFORE
+            # diarization because `_attach_speaker_metadata_to_segments` scores
+            # speakers by temporal overlap — a padded 30 s span overlaps every
+            # speaker turn in the clip and picks the wrong one.
+            _clamp_segment_times(raw_result.segments, processed.duration_seconds)
+
             # Compute TTFW — actual time from pipeline start to first word
             if first_word_time:
                 timing.ttfw_seconds = first_word_time[0] - pipeline_start
@@ -975,13 +1037,21 @@ class BatchTranscriptionService:
         ``speaker_confidence``. This helper projects those annotations into
         ``per_segment_results`` by selecting the speaker with the largest time
         overlap for each segment interval.
+
+        Both sides are read through ``_segment_bounds`` because the two shapes this
+        is called with spell their times differently: ``per_segment_results`` uses
+        ``start_time``/``end_time``, ENGINE segments use ``start``/``end``. Reading
+        only the first spelling made two of the three call sites — both of the ones
+        that label ``raw_result.segments`` — silently do nothing: every segment
+        measured 0.0–0.0, hit the ``seg_end <= seg_start`` guard and was skipped, so
+        a diarization run that had correctly identified (and matched) its speakers
+        wrote none of them onto the transcript.
         """
         if not per_segment_results or not diarized_segments:
             return
 
         for per_seg in per_segment_results:
-            seg_start = float(per_seg.get("start_time", 0.0))
-            seg_end = float(per_seg.get("end_time", seg_start))
+            seg_start, seg_end = _segment_bounds(per_seg)
             if seg_end <= seg_start:
                 continue
 
@@ -994,8 +1064,7 @@ class BatchTranscriptionService:
                 if not isinstance(speaker_id, str) or not speaker_id:
                     continue
 
-                diarized_start = float(diarized.get("start", 0.0))
-                diarized_end = float(diarized.get("end", diarized_start))
+                diarized_start, diarized_end = _segment_bounds(diarized)
                 overlap = self._segment_overlap(
                     seg_start,
                     seg_end,
@@ -1725,7 +1794,13 @@ class BatchTranscriptionService:
                     detected_language = seg_result.language
                     detected_lang_prob = seg_result.language_probability
 
-                # Offset segment timestamps to global audio timeline
+                # Offset segment timestamps to global audio timeline.
+                # Clamp FIRST: the engine timed these against `segment_audio`, and a
+                # whisper-family engine reports its padded 30 s window as the end of
+                # the last segment. Offsetting that unclamped is what produced
+                # `t1 = t0 + 30 s` on every batch row (segment 2 of an 11.7 s clip
+                # claimed 5.075 → 35.075 s).
+                _clamp_segment_times(seg_result.segments, len(segment_audio) / sample_rate)
                 time_offset = seg.start_time
                 for s in seg_result.segments:
                     if isinstance(s, dict):
@@ -3186,8 +3261,47 @@ class BatchTranscriptionService:
             duration_seconds=duration_seconds,
             word_timestamps=word_timestamps,
             sentence_timestamps=sentence_timestamps,
+            segments=self._speaker_segments(raw),
             metadata={},
         )
+
+    @staticmethod
+    def _speaker_segments(raw: RawTranscription) -> list[AudioSegment]:
+        """Carry the diarizer's labels onto the result's segment list.
+
+        Diarization writes ``speaker_id``/``speaker_confidence`` onto the RAW engine
+        segments (``_attach_speaker_metadata_to_segments``), and nothing then copied
+        them onto the result — so ``TranscriptionResult.segments`` shipped EMPTY on
+        every batch job. ``build_transcript_segments()`` attributes a sentence to the
+        segment it overlaps most, so with nothing to join against every
+        ``transcript_segments[].speaker`` was null even when diarization had MATCHED
+        an enrolled voice profile and said so in ``metadata.diarization``. The same
+        omission emptied ``to_dict()["segments"]``, which other consumers read.
+
+        Sentences and these spans come from the same raw dicts, so the overlap join
+        is exact by construction rather than approximate.
+        """
+        segments: list[AudioSegment] = []
+        for seg in raw.segments:
+            if not isinstance(seg, dict):
+                continue
+            start = seg.get("start", 0.0)
+            end = seg.get("end", 0.0)
+            if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+                continue
+            speaker_id = seg.get("speaker_id")
+            confidence = seg.get("speaker_confidence")
+            segments.append(
+                AudioSegment(
+                    start_time=float(start),
+                    end_time=float(end),
+                    speaker_id=speaker_id if isinstance(speaker_id, str) and speaker_id else None,
+                    speaker_confidence=(
+                        float(confidence) if isinstance(confidence, (int, float)) else None
+                    ),
+                )
+            )
+        return segments
 
 
 # Singleton instance
