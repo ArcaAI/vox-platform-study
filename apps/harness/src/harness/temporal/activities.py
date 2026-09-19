@@ -1019,17 +1019,20 @@ def _hybrid_retriever(
     Factored out (like the other client factories) so ``retrieve_context`` builds it
     once and the tests can monkeypatch it with a fake.
 
-    BOTH backends resolve tenant → SYSTEM through the same per-activity gateway
-    pull, and both folds are the shared ones in
-    :mod:`harness.core.provider_credentials` so this site and the ingest endpoint
-    can never derive a different collection or a different embeddings model:
+    Both backends resolve through the same per-activity gateway pull, and both
+    folds are the shared ones in :mod:`harness.core.provider_credentials` so this
+    site and the ingest endpoint can never derive a different collection or a
+    different embeddings model. They do NOT share a precedence rule:
 
-    * ``vector:qdrant`` — the credential, the tenant's own cluster URL, and
-      (D-1b) its ``collection`` prefix;
-    * ``embeddings:{openai,tei-embed}`` — (D-1c) the endpoint, the key and the
-      MODEL, the last of which now has no code default at all: `require_embeddings_model`
-      raises `CredentialUnavailable` when no tier supplied one, and the caller
-      degrades rather than embedding a corpus with a model it invented.
+    * ``vector:qdrant`` — tenant → SYSTEM (the house cascade): the credential,
+      the tenant's own cluster URL, and (D-1b) its ``collection`` prefix;
+    * ``embeddings:tei-embed`` — the PLATFORM tier only. TASK-991 OD-3 / OD-4
+      fix the endpoint and the model for every tenant, so there is no tenant
+      lane to widen from; see `resolve_embeddings_credential` for why that
+      narrowing is deliberate. The MODEL still has no code default at all:
+      `require_embeddings_model` raises `CredentialUnavailable` when the SYSTEM
+      row supplied none, and the caller degrades rather than embedding a corpus
+      with a model it invented.
 
     ``None`` or outcome ``ABSENT`` keeps the platform floor and the
     unauthenticated path, which is what local dev Qdrant and the platform's own
@@ -1986,15 +1989,14 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
     qdrant_credential = await _resolve_provider_credential(
         settings, "vector", VECTOR_CONNECTION_PROVIDER, payload.tenant_id
     )
-    # D-1c — the embeddings endpoint/key/model resolve the SAME way, and fail
-    # closed the same way. A separate resolve from the Qdrant one because they are
-    # two different connections: the vector store and the embedding service are
-    # separate rows a tenant configures independently.
-    #
-    # It is a two-lane CHAIN rather than a single provider, because the platform
-    # tier has its OWN provider id (`embeddings:tei-embed`) that the entitlement
-    # gate does not touch — see `resolve_embeddings_credential`, which also owns
-    # the rule that a tenant VETO is never widened past.
+    # The embeddings endpoint/key/model fail closed the same way, but they do NOT
+    # resolve the same way. A separate resolve from the Qdrant one because they
+    # are two different connections — and because since TASK-991 OD-3 / OD-4 the
+    # embeddings one has no tenant tier at all: `resolve_embeddings_credential`
+    # reads the SYSTEM `embeddings:tei-embed` row and nothing else, so the model
+    # and the endpoint are the platform's for every tenant. That is an
+    # owner-approved narrowing of the tenant-first rule, documented there; the
+    # Qdrant resolve above is unchanged and still cascades tenant → SYSTEM.
     embeddings_credential = await resolve_embeddings_credential(
         lambda service, provider: _resolve_provider_credential(
             settings, service, provider, payload.tenant_id

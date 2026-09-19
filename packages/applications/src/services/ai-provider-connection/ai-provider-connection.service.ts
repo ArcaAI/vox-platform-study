@@ -468,6 +468,13 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // connection mints and the `connection_slug` on the wire. Shape first: a
     // malformed one has no valid interpretation to argue about.
     this.assertSlugShape(slug);
+    // TASK-991 OD-3/OD-4 — is this capability the caller's to configure AT ALL?
+    // Row-independent and provider-independent (it reads the URL's `service` and
+    // the tier, nothing else), so it may run before the row is resolved: there is
+    // no id space to probe and every slug in the tenant's own `embeddings`
+    // namespace answers identically. Running it here also means the tenant admin
+    // is told WHY rather than being sent round for a `provider` first.
+    this.assertEmbeddingsPlatformManaged(service, scopedTenantId);
 
     // C2 supplies `expectedVersion` as an explicit param; the pre-unification
     // convention carried it inside the DTO. Prefer the explicit param, fall back
@@ -2017,6 +2024,46 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       await this.connectionRepository.updateWithVersion(row.id, row, expectedVersion, lane);
       await this.connectionRepository.softDelete(row.id, updatedBy, lane);
     });
+  }
+
+  /**
+   * TASK-991 OD-3 / OD-4 (owner decision, 2026-09-19) — `embeddings` is
+   * PLATFORM-MANAGED. A TENANT-tier create or update is refused outright; only a
+   * SUPER_ADMIN writing the SYSTEM tier may configure it.
+   *
+   * This is a DELIBERATE, owner-approved narrowing of the tenant-first rule, of
+   * exactly the kind `00-project-context.md` admits as a documented exception —
+   * NOT a rule violation to be "fixed" back into a tenant → SYSTEM cascade. Two
+   * reasons, both silent-failure modes rather than preferences:
+   *
+   *  1. The embedding MODEL and the stored vectors are ONE coupled artifact.
+   *     Embed a corpus with one model and query it with another and the result
+   *     is silent nonsense, not an error.
+   *  2. The ENDPOINT is fixed WITH the model (OD-4) because a platform-chosen
+   *     model id sent to a tenant's own account that has never heard of it fails
+   *     per-tenant at RETRIEVAL time, long after ingest wrote the vectors.
+   *
+   * The harness is the reader and already obeys this:
+   * `resolve_embeddings_credential` consults the SYSTEM `embeddings:tei-embed`
+   * row and nothing else. Without this refusal a tenant admin could still SAVE
+   * an `embeddings` row and watch it do nothing — a silently inert setting,
+   * which is strictly worse than a 403 that says who owns the knob.
+   *
+   * Scope is deliberately narrow:
+   *
+   * - SYSTEM tier passes through untouched; `assertWriteAllowed` remains the
+   *   privilege gate that requires SUPER_ADMIN there.
+   * - Every other `service` is untouched.
+   * - DELETE is untouched ON PURPOSE. A tenant that already holds an
+   *   `embeddings` row from before this decision must be able to remove the now
+   *   inert row; refusing the cleanup would trap it forever.
+   */
+  private assertEmbeddingsPlatformManaged(service: ProviderService, targetTenantId: string): void {
+    if (service !== 'embeddings' || targetTenantId === SYSTEM_TENANT_ID) return;
+    throw new ForbiddenException(
+      "The 'embeddings' capability is platform-managed: its endpoint and its model are fixed for every tenant and are " +
+        'configured by a platform super administrator on the SYSTEM connection. Existing rows can still be deleted.',
+    );
   }
 
   private assertWriteAllowed(service: ProviderService, provider: string, targetTenantId: string): void {
