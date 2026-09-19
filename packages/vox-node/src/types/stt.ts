@@ -351,10 +351,4 @@ export interface SttGapMessage {
 }
 
 export type SttServerMessage =
-  | SttTranscriptResult
-  | SttStatusMessage
-  | SttErrorMessage
-  | SttResumedMessage
-  | SttResumeFailedMessage
-  | SttReadyMessage
-  | SttGapMessage;
+  SttTranscriptResult | SttStatusMessage | SttErrorMessage | SttResumedMessage | SttResumeFailedMessage | SttReadyMessage | SttGapMessage;

@@ -92,9 +92,7 @@ const TRANSCRIPTION_ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'];
  * express the difference — which is why the rule is imperative and carries an AUTH-NOTE.
  */
 type TranscribeCaller =
-  | { credentialClass: 'service-account' }
-  | { credentialClass: 'api-key'; boundUserId: string | null }
-  | { credentialClass: 'jwt' };
+  { credentialClass: 'service-account' } | { credentialClass: 'api-key'; boundUserId: string | null } | { credentialClass: 'jwt' };
 
 @ApiBearerAuth()
 @Authorize()

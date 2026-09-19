@@ -599,13 +599,7 @@ export interface WsGapMessage {
  * Union of all server-to-client WebSocket messages.
  */
 export type WsServerMessage =
-  | WsTranscriptResult
-  | WsStatusMessage
-  | WsErrorMessage
-  | WsResumedMessage
-  | WsResumeFailedMessage
-  | WsReadyMessage
-  | WsGapMessage;
+  WsTranscriptResult | WsStatusMessage | WsErrorMessage | WsResumedMessage | WsResumeFailedMessage | WsReadyMessage | WsGapMessage;
 
 // =============================================================================
 // Transcription Job Types
