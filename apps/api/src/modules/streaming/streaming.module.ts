@@ -23,7 +23,7 @@ import {
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
-import { TenantOwnedResourceModule } from '../../common';
+import { gatewayKeepAliveAgents, TenantOwnedResourceModule } from '../../common';
 import { AdminTranscriptionJobController } from './admin-transcription-job.controller';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
 import { TextProxyController } from './text-proxy.controller';
@@ -35,9 +35,12 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
 @Module({
   imports: [
     VisitTypeServiceModule,
+    // TASK-993 lane C — keepAlive pooling shared with `text-compat.module.ts` (both
+    // call TEXT_URL); see `common/gateway-http-agent.ts` for the sizing rationale.
     HttpModule.register({
       timeout: 120000,
       maxRedirects: 3,
+      ...gatewayKeepAliveAgents,
     }),
     TranscriptionJobServiceModule,
     TranscriptionRealtimeServiceModule,
