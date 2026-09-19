@@ -69,7 +69,7 @@ services:
             -c effective_cache_size=128MB
             -c work_mem=4MB
             -c maintenance_work_mem=32MB
-            -c max_connections=100
+            -c max_connections=200
             -c wal_level=minimal
             -c max_wal_senders=0
             -c log_min_duration_statement=500
