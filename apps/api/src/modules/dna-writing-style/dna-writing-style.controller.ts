@@ -45,6 +45,7 @@ import { Observable } from 'rxjs';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
 // OCC-enforced doctor self-edit PATCH route below (mirrors the admin controller).
 import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion, ForbidApiKey } from '../../decorators';
+import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { getDnaJobStatus, streamDnaJobStatus, type DnaJobAccess } from './dna-writing-style-job-stream';
 
 @ApiBearerAuth()
@@ -63,8 +64,9 @@ import { getDnaJobStatus, streamDnaJobStatus, type DnaJobAccess } from './dna-wr
 // credential a principal's private model on the strength of a bare
 // authenticated check. JWT only.
 //
-// If this is ever un-exempted, fix the SSE handler first: `jobs/:jobId/stream`
-// carries no `@StreamScope`, so a `?ticket=` request 401s.
+// `jobs/:jobId/stream` now carries `@StreamScope({ namespace: 'dna_job', param: 'jobId' })`
+// (TASK-991, mirroring the admin twin), so a `?ticket=` request authenticates instead of
+// 401ing — this is no longer a blocker if the class is ever un-exempted.
 @ForbidApiKey()
 export class DnaWritingStyleController {
   constructor(
@@ -393,6 +395,7 @@ export class DnaWritingStyleController {
   // AUTH-NOTE: as above — ownership is the gate, enforced per emission.
   @Get('jobs/:jobId/stream')
   @Sse()
+  @StreamScope({ namespace: 'dna_job', param: 'jobId' })
   @ApiOperation({ summary: 'Stream current user DNA generation job status via SSE' })
   @ApiParam({ name: 'jobId', description: 'BullMQ job ID', type: String })
   @ApiResponse({ status: 200, description: 'SSE job status stream' })
