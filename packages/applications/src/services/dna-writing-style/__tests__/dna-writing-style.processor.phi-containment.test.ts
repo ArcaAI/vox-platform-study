@@ -67,7 +67,7 @@ const createMockJobService = () => ({
   notifyFailed: vi.fn(),
 });
 
-const createMockContextItemRepository = () => ({ findAll: vi.fn() });
+const createMockContextItemRepository = () => ({ findFinalSummariesByDoctor: vi.fn() });
 const createMockContextItemVersionRepository = () => ({ getVersionsByChangeReason: vi.fn() });
 const createMockDnaReportRepository = () => ({ findLatestForDoctor: vi.fn(), create: vi.fn(), update: vi.fn() });
 const createMockDnaVersionRepository = () => ({ create: vi.fn() });
@@ -328,7 +328,7 @@ describe('DnaWritingStyleProcessor — PHI containment ', () => {
 
     // Automatic path (no textSamples).
     await expect(buildProcessor().process(createMockJob({}) as never)).rejects.toThrow(/disabled/i);
-    expect(mockContextItemRepo.findAll).not.toHaveBeenCalled();
+    expect(mockContextItemRepo.findFinalSummariesByDoctor).not.toHaveBeenCalled();
 
     // Explicit textSamples (admin/migration) path — must be gated identically.
     await expect(buildProcessor().process(createMockJob({ textSamples: ['Explicit sample'] }) as never)).rejects.toThrow(/disabled/i);
@@ -343,7 +343,7 @@ describe('DnaWritingStyleProcessor — PHI containment ', () => {
       if (changeReason !== 'approved') return [];
       return contextItemId === 'ci-approved' ? [{ id: 'v-1', contextItemId, changeReason: 'approved', versionNumber: 1 }] : [];
     });
-    mockContextItemRepo.findAll.mockResolvedValue([
+    mockContextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([
       { id: 'ci-approved', content: 'Approved summary body', type: 'RAW_SUMMARY' },
       { id: 'ci-pending', content: 'Pending summary body', type: 'RAW_SUMMARY' },
     ]);
