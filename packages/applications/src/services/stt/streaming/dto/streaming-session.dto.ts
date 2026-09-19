@@ -124,6 +124,12 @@ export interface StreamingSessionStatus {
    * the primary ASR failed to load. `undefined` against an older STT.
    */
   activeEngine?: 'primary' | 'fallback';
+  /**
+   * TASK-991 — whether at least one gateway-pushed voice profile (see
+   * `CreateStreamingSessionRequest.voiceProfiles`) was actually registered on this
+   * session's SpeakerTracker. `undefined` against an older STT that predates the echo.
+   */
+  voiceProfileSeeded?: boolean;
 }
 
 /**

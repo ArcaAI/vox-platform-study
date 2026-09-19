@@ -162,6 +162,16 @@ class StreamingSessionResponse(BaseModel):
         ...,
         description=("The engine currently live for this session: 'primary' or 'fallback'"),
     )
+    voice_profile_seeded: bool = Field(
+        default=False,
+        description=(
+            "TASK-991 — whether at least one gateway-pushed voice profile "
+            "(`CreateStreamingSessionRequest.voice_profiles`) was actually registered on "
+            "this session's SpeakerTracker. `False` for a session with no diarization, or "
+            "one where every pushed profile was skipped (wrong embedding model, malformed "
+            "vector, tracker at capacity)."
+        ),
+    )
 
 
 class StreamingUsageSegment(BaseModel):
