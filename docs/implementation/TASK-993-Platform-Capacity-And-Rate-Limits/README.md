@@ -136,7 +136,7 @@ not read as "provider is down"); 429 and 408 were swept in with it by accident.
 | text per-provider | user lane semaphore 4, queue 200, wait 60s; judge lane 2, no queue | `runtime_defaults.py:49,117,135` |
 | guardrail | admission gate 256, batch fan-out 16, queue 4 | `core/config.py:87-102,197` |
 | nlp | inference 4, peer calls 8 | `core/config.py:347,358` |
-| axios → Python | **no custom agent ⇒ `keepAlive: false`**, new TCP handshake per call | all 4 `HttpModule.register` sites |
+| axios → Python | no custom agent ⇒ falls back to Node's `globalAgent`. **CORRECTED — see §2.14: keep-alive is ON; the real gap is `maxSockets: Infinity` and a shared process-wide singleton.** | all 4 `HttpModule.register` sites |
 | harness → peers | **fresh `httpx.AsyncClient` per call**, no pooling | `activities.py:296,314,323,415,796` |
 | Redis (cluster) | `maxmemory 512mb`, policy **`noeviction`** (refuses writes under pressure) | `components/data-tier/redis.yaml:73-80` |
 | Redis (local) | `64mb`, `allkeys-lru` — **different posture, local will not reproduce** | `docker-compose.yml` |
@@ -228,6 +228,30 @@ there. The real hazard is the divergence itself: **local dev evicts (`allkeys-lr
 refuses writes (`noeviction`)**. The throttler counters, the socket registry and every BullMQ queue
 write to that instance, so a memory-pressure failure mode exists in production that local testing
 can never reproduce. Sizing that headroom is lane E's item 4.
+
+### 2.14 CORRECTION to §2.8 — gateway keep-alive was NOT off
+
+The original claim ("no custom agent ⇒ `keepAlive: false`, a new TCP handshake per call") is
+**wrong for the Node version this service ships**. `apps/api/Dockerfile:1` pins
+`ARG NODE_VERSION=24`, and Node has defaulted `http(s).globalAgent` to `keepAlive: true` since
+**Node 19** (nodejs/node#43522). Verified directly on Node v24.12.0:
+
+```
+keepAlive: true | maxSockets: Infinity | timeout: 5000
+bare new Agent keepAlive: false      <- true only for a hand-constructed Agent, which axios never makes
+```
+
+The lane caught it the honest way: its first control test asserted "no agent ⇒ N connections" and
+**measured 1**, so it rewrote the control to use an explicit `keepAlive: false` agent.
+
+The fix remains correct, for different reasons:
+- `globalAgent.maxSockets` is **`Infinity`** — no ceiling at all against any downstream peer.
+- `globalAgent` is a **process-wide singleton** shared with every other caller in the gateway that
+  does not pass its own agent, carrying a blunt `timeout: 5000`.
+
+Consequence for §2.9: gateway→Python calls were already reusing sockets, so connection churn is NOT
+one of the ceilings standing between the platform and the target. Do not credit this lane with a
+throughput win it did not deliver; credit it with a bound and an isolation boundary.
 
 ---
 
@@ -413,6 +437,7 @@ and caught an orphaned PDB in the lane's own change.
 
 | Date | Change |
 |---|---|
+| 2026-09-19 | Lane C complete. §2.8's keep-alive claim CORRECTED (§2.14): Node ≥19 defaults `globalAgent.keepAlive` to true and the gateway ships Node 24, so sockets were already reused; the real gap was `maxSockets: Infinity` + a shared singleton. |
 | 2026-09-19 | Lane G complete: load model MEASURED (26 active / 8.5 idle req/min; ~230 req/s at 30/70 mix) and fed to lane D mid-flight. F-1 confirmed empirically. Repo-wide `pnpm lint` found red on `dev-2.2` since `f7307362f` and fixed centrally (`d96b7c37d`). Lane H queued: export the pool + refusal metrics OD-3 depends on. |
 | 2026-09-19 | Lanes B and E complete and orchestrator-verified. New chain gap found: the gateway DROPS `Retry-After` and swaps the body (`text-proxy.controller.ts:479-521`, `RELAYABLE_ERROR_PHRASES:191`) — folded into lane F. |
 | 2026-09-19 | OD-1..OD-4 answered. Lanes A/B/C/D/E dispatched to worktrees; lane F (two-level bucketing) serialized behind A, which owns `modules/throttle/**`. §2.13 corrected — the Redis rule text is accurate; local and cluster differ by design. |
