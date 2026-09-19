@@ -1,16 +1,18 @@
 {
   "harness": " S1-EVAL streaming loss/latency (AC-5/6) — through the WS gateway",
-  "generated_at": "2026-08-23T13:36:38.258359+00:00",
+  "generated_at": "2026-09-19T11:33:54.184630+00:00",
   "target": {
     "api_url": "http://localhost:8868",
     "ws_origin": "ws://localhost:8868",
-    "pipeline_id": "81000000-0000-0000-0001-000000000402",
-    "session_id": "01a02ed5-b536-7be9-bcde-90f31b097f9d",
-    "warmed": true
+    "agent_slug": null,
+    "pipeline_id": null,
+    "session_id": "01a0b971-3aa2-7e37-b47b-ae7328180619",
+    "warmed": true,
+    "session_create_ms": 124.6
   },
   "fixture": {
     "source": "wav",
-    "path": "/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/.claude/worktrees/agent-ab38fb7f379110e26/apps/stt/tests/e2e/fixtures/20260205_52886591770282917_ml.wav",
+    "path": "/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/stt/tests/e2e/fixtures/20260205_52886591770282917_ml.wav",
     "duration_s": 30.0,
     "sample_rate": 16000,
     "frame_ms": 80.0,
@@ -22,42 +24,60 @@
     "closed_status_received": true
   },
   "metrics": {
-    "first_partial_ms": 2118.8,
-    "ttfw_ms": 2118.8,
+    "first_partial_ms": 4455.2,
+    "ttfw_ms": 4455.2,
     "commit_latency_ms": {
-      "count": 3,
-      "mean": 12187.5,
-      "p50": 14582.5,
-      "p99": 14990.6,
-      "min": 6981.0,
-      "max": 14998.9
+      "count": 2,
+      "mean": 2687.4,
+      "p50": 2687.4,
+      "p99": 3459.9,
+      "min": 1899.2,
+      "max": 3475.7
     },
+    "partial_cadence_ms": {
+      "count": 9,
+      "mean": 2391.1,
+      "p50": 1999.9,
+      "p99": 7015.1,
+      "min": 842.6,
+      "max": 7380.1
+    },
+    "inference_ms": {
+      "count": 13,
+      "mean": 943.2,
+      "p50": 689.2,
+      "p99": 3172.3,
+      "min": 527.4,
+      "max": 3358.6
+    },
+    "session_create_ms": 124.6,
     "partial_revision": {
-      "partials": 7,
-      "revisions": 5,
-      "rate": 0.7143
+      "partials": 11,
+      "revisions": 10,
+      "rate": 0.9091
     },
     "committed_revision": {
-      "partials": 7,
+      "partials": 11,
       "revisions": 0,
-      "rate": 0.0
+      "rate": 0.0,
+      "measurable": false
     },
     "loss": {
       "frames_sent": 375,
       "audio_seconds_sent": 30.0,
       "final_coverage_seconds_max": 29.86,
-      "final_coverage_seconds_sum": 29.57,
+      "final_coverage_seconds_sum": 29.86,
       "audio_coverage_ratio": 0.995,
       "seq": {
-        "max_seq": 10,
-        "distinct": 10,
+        "max_seq": 13,
+        "distinct": 13,
         "missing": [],
         "gap_count": 0
       }
     },
     "counts": {
-      "partials": 7,
-      "finals": 3,
+      "partials": 11,
+      "finals": 2,
       "errors": 0,
       "statuses": [
         "finalizing",
@@ -66,22 +86,16 @@
     },
     "per_final": [
       {
-        "seq": 5,
-        "end_time_s": 8.48,
-        "commit_latency_ms": 6981.0,
-        "text_preview": "வரும் இருக்கிறேன் கைங்க மாசம் நாலாத்தியதி யாயிருந்தல் லுராண்"
+        "seq": 4,
+        "end_time_s": 8.384,
+        "commit_latency_ms": 1899.2,
+        "text_preview": "കഴിഞ്ഞ മാസം നാലാം തീയതി ആയിരുന്നല്ലോ രണ്ട് കാൽമുട്ടിലും സർജറ"
       },
       {
-        "seq": 9,
-        "end_time_s": 26.432,
-        "commit_latency_ms": 14582.5,
-        "text_preview": "இன்ன நமுகுத் துண்ணல் எடுகாம் இப்போம் மொதததில் என்கனி உன்ட மே"
-      },
-      {
-        "seq": 10,
+        "seq": 13,
         "end_time_s": 29.856,
-        "commit_latency_ms": 14998.9,
-        "text_preview": "மடக்கொண்டு முட்ட, சந்தோஷ் பரங்கதுபோலே"
+        "commit_latency_ms": 3475.7,
+        "text_preview": "ത്സം മർജറി മുട്സം മുട്സിക്കും മുട്ടിക്കും മുട്ടിക്കും പോലെ"
       }
     ]
   },
@@ -97,7 +111,7 @@
   "baseline_contract_for_TASK_457": "This is the BASELINE only (no thresholds asserted).  (Redis consumer-groups migration) must show NO REGRESSION vs these numbers: commit_latency_ms P50/P99 not materially higher, partial_revision.rate not higher, loss.seq.gap_count and audio_coverage_ratio not worse, on the same fixture + pipeline + frame_ms.",
   "events": [
     {
-      "recv_ms": 1.5,
+      "recv_ms": 18.2,
       "kind": "other",
       "seq": null,
       "text_preview": "",
@@ -105,63 +119,95 @@
       "status": ""
     },
     {
-      "recv_ms": 2118.9,
+      "recv_ms": 4455.4,
       "kind": "transcript_partial",
       "seq": 1,
-      "text_preview": "Thank you.",
-      "end_time": 0.576,
+      "text_preview": "and വരൂ ഇരിക്കൂ",
+      "end_time": 3.712,
       "status": ""
     },
     {
-      "recv_ms": 3957.8,
+      "recv_ms": 5501.8,
       "kind": "transcript_partial",
       "seq": 2,
-      "text_preview": "Thank you.",
-      "end_time": 2.432,
+      "text_preview": "on എന്ന് പറഞ്ഞാൽ നിന്ന്",
+      "end_time": 4.736,
       "status": ""
     },
     {
-      "recv_ms": 6174.6,
+      "recv_ms": 6344.5,
       "kind": "transcript_partial",
       "seq": 3,
-      "text_preview": "Варю перекю каином.",
-      "end_time": 4.352,
+      "text_preview": "至ക്കും",
+      "end_time": 5.696,
       "status": ""
     },
     {
-      "recv_ms": 13767.5,
-      "kind": "transcript_partial",
-      "seq": 4,
-      "text_preview": "입는 암흑",
-      "end_time": 9.216,
-      "status": ""
-    },
-    {
-      "recv_ms": 15462.4,
+      "recv_ms": 10220.7,
       "kind": "transcript_final",
-      "seq": 5,
-      "text_preview": "வரும் இருக்கிறேன் கைங்க மாசம் நாலாத்தியதி யாயிருந்தல் லுராண்",
-      "end_time": 8.48,
+      "seq": 4,
+      "text_preview": "കഴിഞ്ഞ മാസം നാലാം തീയതി ആയിരുന്നല്ലോ രണ്ട് കാൽമുട്ടിലും സർജറ",
+      "end_time": 8.384,
       "status": ""
     },
     {
-      "recv_ms": 19312.6,
+      "recv_ms": 10776.0,
+      "kind": "transcript_partial",
+      "seq": 5,
+      "text_preview": "to",
+      "end_time": 9.056,
+      "status": ""
+    },
+    {
+      "recv_ms": 11655.1,
       "kind": "transcript_partial",
       "seq": 6,
-      "text_preview": "இன்று நமுற்கு துண்ணல் எடுகாம் இப்போம் மொதததில் என்னின் உன்ட ",
-      "end_time": 14.016,
+      "text_preview": "至今 നമുക്ക് വിളിക്കുന്നത്",
+      "end_time": 10.976,
       "status": ""
     },
     {
-      "recv_ms": 24006.7,
+      "recv_ms": 13655.0,
       "kind": "transcript_partial",
       "seq": 7,
-      "text_preview": "நாமஸ்காரம் டாக்டர் சரியருகி சேஷம் வாலி பத் தில் எற்றுன்டாய் ",
-      "end_time": 19.616,
+      "text_preview": "ൽ എന്ന് പറഞ്ഞാൽ നിന്ന് വേദനയുടെ ആവശ്യമാണ്",
+      "end_time": 12.896,
       "status": ""
     },
     {
-      "recv_ms": 29930.9,
+      "recv_ms": 16472.9,
+      "kind": "transcript_partial",
+      "seq": 8,
+      "text_preview": "യൽ അളവ് എത്രയുണ്ട്? നമസ്കാരം Dr",
+      "end_time": 15.776,
+      "status": ""
+    },
+    {
+      "recv_ms": 17971.5,
+      "kind": "transcript_partial",
+      "seq": 9,
+      "text_preview": "and ആണ്",
+      "end_time": 17.408,
+      "status": ""
+    },
+    {
+      "recv_ms": 20760.7,
+      "kind": "transcript_partial",
+      "seq": 10,
+      "text_preview": "ൽ പത്തിൽ എട്ടുണ്ടായിരുന്ന വേദന ഇപ്പോൾ ഒരു രാണ്ട് രായിൽ നിന്ന",
+      "end_time": 19.936,
+      "status": ""
+    },
+    {
+      "recv_ms": 28140.8,
+      "kind": "transcript_partial",
+      "seq": 11,
+      "text_preview": "ആയിട്ടും രണ്ടും നല്ലപോലെ മടക്കൊന്നുമുണ്ട്",
+      "end_time": 27.392,
+      "status": ""
+    },
+    {
+      "recv_ms": 29954.4,
       "kind": "status",
       "seq": null,
       "text_preview": "",
@@ -169,31 +215,23 @@
       "status": "finalizing"
     },
     {
-      "recv_ms": 34008.0,
+      "recv_ms": 30407.3,
       "kind": "transcript_partial",
-      "seq": 8,
-      "text_preview": "மாட்கு நான்",
-      "end_time": 26.976,
+      "seq": 12,
+      "text_preview": "andല്ലെങ്കിൽ നടക്കൊന്നുമുണ്ട് സന്തോഷം പറഞ്ഞതുപോലെ",
+      "end_time": 29.632,
       "status": ""
     },
     {
-      "recv_ms": 40984.4,
+      "recv_ms": 33317.9,
       "kind": "transcript_final",
-      "seq": 9,
-      "text_preview": "இன்ன நமுகுத் துண்ணல் எடுகாம் இப்போம் மொதததில் என்கனி உன்ட மே",
-      "end_time": 26.432,
-      "status": ""
-    },
-    {
-      "recv_ms": 44839.3,
-      "kind": "transcript_final",
-      "seq": 10,
-      "text_preview": "மடக்கொண்டு முட்ட, சந்தோஷ் பரங்கதுபோலே",
+      "seq": 13,
+      "text_preview": "ത്സം മർജറി മുട്സം മുട്സിക്കും മുട്ടിക്കും മുട്ടിക്കും പോലെ",
       "end_time": 29.856,
       "status": ""
     },
     {
-      "recv_ms": 44840.6,
+      "recv_ms": 33319.0,
       "kind": "status",
       "seq": null,
       "text_preview": "",
