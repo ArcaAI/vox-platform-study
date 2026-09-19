@@ -67,6 +67,9 @@ import {
 } from '@arcaai/workflow-contract';
 import { BaseService, DEFAULT_PAGE, DEFAULT_PAGE_SIZE, withFormattedPaginatedProps } from '../../common';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
+// TASK-991 OD-3 — which agent parameters the PLATFORM owns, derived from the contract's own
+// `readOnly` annotation so the schema, this guard and the console cannot disagree.
+import { platformManagedParameterChanges } from './platform-managed-parameters';
 import { agentRequiredVariables } from './agent-required-variables';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { PolicyEngine } from '../../authorization/policy.engine';
@@ -428,6 +431,10 @@ export class AgentService extends BaseService implements IAgentService {
     const entity = await this.loadOwned(id);
     this.assertMutable(entity);
     this.assertTagGrammar(dto.tags);
+    // TASK-991 OD-3 — after `loadOwned` (existence first, privilege second: a gate whose answer
+    // varies by ROW must never become an existence oracle) and before any field is applied, so a
+    // refused write leaves the entity exactly as it was loaded.
+    this.assertPlatformManagedParametersUnchanged(entity, dto);
 
     const model = await this.loadModelOrThrow(dto.modelId ?? entity.modelId, entity.tenantId);
     const currentFallbacks = await this.fallbackRepository.findByAgentId(entity.id);
@@ -1373,6 +1380,39 @@ export class AgentService extends BaseService implements IAgentService {
     }
 
     return { sourceSlug: source.slug, sourceVersionNumber: source.versionNumber, targets: results };
+  }
+
+  /**
+   * TASK-991 (owner decision OD-3, 2026-09-19) — the PLATFORM-MANAGED parameter lock.
+   *
+   * The speaker-embedding model is fixed for every tenant: a voice profile is an embedding in ONE
+   * model's vector space, so re-pointing an agent at another `SPEAKER_EMBEDDING` row raises no
+   * error anywhere — it just silently stops diarization recognising anyone the tenant enrolled.
+   * Which paths are locked is declared by the CONTRACT (`readOnly: true` on the property), not by
+   * a list here; see `platform-managed-parameters.ts`.
+   *
+   * REFUSED, never ignored. Dropping the value on the floor and saving the rest is how an admin
+   * concludes the field is broken and files a bug against the wrong thing; a 403 naming the path
+   * says who owns it and where it is changed.
+   *
+   * THE ONE EXEMPTION is a super administrator writing the SYSTEM-tier agent — the tier OD-3 puts
+   * the value in ("a PLATFORM admin owns it at the SYSTEM tier, so it is changed by editing a
+   * value, not by shipping a release"). Deliberately narrower than `isSuperAdmin` alone: a
+   * platform admin acting inside a CUSTOMER tenant is still editing that tenant's cloned agent,
+   * and one tenant's profiles break exactly the same way whoever typed the change.
+   */
+  private assertPlatformManagedParametersUnchanged(entity: AgentEntity, dto: UpdateAgentRequest): void {
+    if (dto.parameters === undefined) return;
+    if (entity.tenantId === SYSTEM_TENANT_ID && isSuperAdmin(this.requestUser)) return;
+    const paths = platformManagedParameterChanges(entity.task, dto.parameters, entity.parameters);
+    if (paths.length === 0) return;
+    throw new ForbiddenException({
+      message:
+        `This agent parameter is managed by the platform and is the same for every tenant: ${paths.join(', ')}. ` +
+        'A platform administrator changes it once, on the SYSTEM-tier agent; send the stored value back unchanged, or omit it.',
+      code: 'AGENT_PARAMETER_PLATFORM_MANAGED',
+      paths,
+    });
   }
 
   // ------------------------------------------------------------

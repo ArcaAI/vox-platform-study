@@ -2,6 +2,8 @@ export * from './dto';
 export * from './IAgentService';
 export * from './agent-findings';
 export * from './platform-hidden-agents';
+// TASK-991 OD-3 — the platform-managed parameter lock (the speaker-embedding space).
+export * from './platform-managed-parameters';
 // TASK-891 C1 (OD-4) — the per-agent reasoning posture: its shape, its write-time
 // validation and its mapping onto `GenerateRequest.extra`.
 export * from './agent-reasoning';

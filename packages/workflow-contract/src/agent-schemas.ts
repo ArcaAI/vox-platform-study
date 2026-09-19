@@ -465,8 +465,21 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
               // ignored by `jsonSchemaValueProblems`, and it is not a property NAME, so
               // `forbiddenSchemaKeyProblems` does not see it either.
               modelTaskType: 'SPEAKER_EMBEDDING',
+              // TASK-991 (owner decision OD-3, 2026-09-19) — PLATFORM-MANAGED. `readOnly` is the
+              // standard JSON Schema annotation for "the value is owned by the server, not by the
+              // author"; like `modelTaskType` above it is an ANNOTATION, so `jsonSchemaValueProblems`
+              // ignores it and a stored value still validates exactly as before.
+              //
+              // The property is KEPT, deliberately. Deleting it would be wrong twice over: this
+              // object is `additionalProperties: false`, so every agent already storing the key
+              // would fail validation on its next unrelated edit; and the runtime still resolves
+              // the value (`AgentResolverService`'s `embedding` model role, `buildResolvedAsrSpec`).
+              // What changes is WHO may write it — enforced on the write path by
+              // `platformManagedParameterChanges` (`@arcaai/applications`), and honoured by the
+              // console, which renders any `readOnly` model reference disabled.
+              readOnly: true,
               description:
-                'Registry slug of a `SPEAKER_EMBEDDING` model — the vector space this agent diarizes in AND the space its users enroll their voice profiles in. Required when diarization is enabled with the `embedding` backend.',
+                'Registry slug of a `SPEAKER_EMBEDDING` model — the vector space this agent diarizes in AND the space its users enroll their voice profiles in. Required when diarization is enabled with the `embedding` backend. PLATFORM-MANAGED: fixed for every tenant and changed only by a platform administrator on the SYSTEM-tier agent, because every enrolled voice profile is a vector in THIS model’s space — swapping it per tenant raises no error, it just stops diarization ever recognising anyone.',
             }),
             maxSpeakers: Object.freeze({ type: 'integer', minimum: 1, maximum: 16 }),
             matchThreshold: Object.freeze({
