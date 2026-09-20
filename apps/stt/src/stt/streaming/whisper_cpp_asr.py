@@ -477,6 +477,12 @@ _WIRE_TO_ENGINE_PARAM: dict[str, str] = {
     "logprobthreshold": "logprob_thold",
     "entropythreshold": "entropy_thold",
     "nospeechthreshold": "no_speech_thold",
+    # TASK-994 — the ENGINE spellings too: ``spec.py`` (``_TASK985_PASS_FIELDS``) emits the
+    # per-pass thresholds as ``logprob_thold`` / ``entropy_thold`` / ``no_speech_thold``, and
+    # until these aliases existed every per-pass threshold was dropped with a WARN.
+    "logprobthold": "logprob_thold",
+    "entropythold": "entropy_thold",
+    "nospeechthold": "no_speech_thold",
     "temperature": "temperature",
 }
 
@@ -740,13 +746,26 @@ class WhisperCppAsrAdapter:
         if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
             base["temperature"] = float(temperature)
 
+        # TASK-994 — the ROW-level decode block. ``spec.py`` folds
+        # ``AiModel._metadata.asr.decoding.{singleSegment, suppressBlank,
+        # suppressNonSpeechTokens, maxTokens, audioCtx}`` into
+        # ``InferenceConfig.decode_base`` (engine spelling); it applies to BOTH passes
+        # and sits between the flat fields and the per-pass blocks. Before this read
+        # existed, a row's recommendation was inert unless repeated inside
+        # ``partial`` / ``final``.
+        base_veto = False
+        raw_base = getattr(inference_config, "decode_base", None)
+        if isinstance(raw_base, dict) and raw_base:
+            resolved_base, base_veto = self._translate_decode_block(raw_base, "base")
+            base.update(resolved_base)
+
         self._decode_base = base
 
         # Per-pass blocks. `decode_partial` / `decode_final` carry
         # `AiModel._metadata.asr.decoding.{partial,final}` verbatim; absent (every
         # config predating them) leaves the flat block standing alone.
         by_pass: dict[str, dict[str, Any]] = {}
-        veto: set[str] = set()
+        veto: set[str] = {"partial", "final"} if base_veto else set()
         for pass_kind, attr in (("partial", "decode_partial"), ("final", "decode_final")):
             raw = getattr(inference_config, attr, None)
             if not isinstance(raw, dict) or not raw:

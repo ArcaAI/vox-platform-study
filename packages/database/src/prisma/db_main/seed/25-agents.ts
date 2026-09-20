@@ -303,13 +303,19 @@ export const ASR_PARAMETERS = {
   // this chain and to `agent` on the CTranslate2 fallback, which does honour it. The value stays
   // because it is the correct instruction for the fallback and because it is the live RED case
   // the honesty test pins.
-  decoding: { languageMode: 'ml-en', codeSwitching: true, wordTimestamps: true, beamSize: 5, temperature: 0 },
+  decoding: { languageMode: 'ml-en', prevTextContextWords: 0, codeSwitching: true, wordTimestamps: true, beamSize: 5, temperature: 0 },
   // TASK-966 — `cadence-fast` is the EXACT name `stt.punctuation.service` routes to its direct
   // transformers loader; the previous `cadence-punctuation` binding selected the legacy wrapper
   // path that cannot load under transformers 5.x, so the seeded agents ran unpunctuated.
   postProcessing: { punctuation: { enabled: true, modelSlug: 'cadence-fast' }, disfluency: true, stabilizer: true },
   // Lane F2: partialIntervalMs 500 -> 300, partialWindowSec added at 3 (was unset / model default 6).
-  streaming: { partialIntervalMs: 300, partialWindowSec: 3, endpointing: 'semantic', maxUtteranceSec: 60 },
+  // TASK-994 (2026-09-21): partialWindowSec 3 -> 7, partialIntervalMs 300 -> 500, measured live through
+  // the WS gateway on 37 code-switched clips — the 3 s / 300 ms tail fed the semantic endpointer the
+  // noisiest hypotheses (65 % garbage partials) and cost ~0.1 CER on the FINALS through the utterance
+  // cuts; 7 s and 15 s tied on finals, 7 s committing earlier and equalling the row's decode window.
+  // `decoding.prevTextContextWords: 0` (previous-final carry-over off): −0.117 CER on multi-final clips.
+  // The row's `partialWindowSec 6` stays the platform default for agents without an opinion.
+  streaming: { partialIntervalMs: 500, partialWindowSec: 7, endpointing: 'semantic', maxUtteranceSec: 60 },
   fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 3 },
 };
 /**
@@ -330,9 +336,16 @@ export const ASR_PARAMETERS = {
  * tier wins whole, they are never concatenated. Clearing it here is therefore how an
  * operator hands the prompt decision back to the row (TASK-985 ST-3).
  */
-export const ASR_INSTRUCTION = {
-  initialPrompt: 'Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.',
-};
+// TASK-994 (2026-09-21) — NO `initialPrompt` on the ml-en agent. Measured on two independent
+// code-switched recordings at the served 7 s window: the previous prompt ("Clinical consultation
+// between a clinician and a patient. English and Malayalam medical terminology.") raised mean CER
+// from 0.390 to 0.680 (37 clips, worse on 32) and from 0.363 to 0.623 (23 clips, worse on 18),
+// deleting about half of every span — the early-stop mechanism TASK-985 §2.7 isolated for the
+// bilingual priming prompt, which TASK-985 had measured as neutral on ENGLISH fixtures only. Live
+// through the WS gateway clearing it moved 0.696 → 0.481 (30/37 better). Any prior text in the
+// window (prompt, priming template, previous-final carry-over) hurts this fine-tune; see
+// `prevTextContextWords: 0` above and `task-994-asr-agent-prompt.test.ts`.
+export const ASR_INSTRUCTION = {};
 
 /**
  * The per-turn summarization hyper-parameters. `guards.enabled: true` is the AGENT level of the
