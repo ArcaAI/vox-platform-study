@@ -57,7 +57,13 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
   private readonly extraRedactFields: string[];
 
   constructor() {
-    this.serviceName = getEnvString('SERVICE_NAME', 'api') || 'api';
+    // `OTEL_SERVICE_NAME` is what the Deployment calls this workload
+    // (`hope-api`), and it is already what the trace resource and Loki's
+    // `service_name` label say. Falling back to it keeps one identity across
+    // all three signals; without it the gateway's log lines said
+    // `"service":"api"` while everything else about the same process said
+    // `hope-api`. An explicit SERVICE_NAME still wins.
+    this.serviceName = getEnvString('SERVICE_NAME') || getEnvString('OTEL_SERVICE_NAME') || 'api';
     this.serviceVersion = getEnvString('SERVICE_VERSION', '1.0.0') || '1.0.0';
     this.environment = getEnvString('NODE_ENV', 'development') || 'development';
     this.hostname = os.hostname();

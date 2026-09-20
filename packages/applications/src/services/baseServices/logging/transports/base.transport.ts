@@ -140,8 +140,20 @@ export abstract class BaseTransport implements ILogTransport {
     if (entry.hostname) log.hostname = entry.hostname;
     if (entry.pid) log.pid = entry.pid;
     if (entry.error) log.error = this.formatError(entry.error);
+    // The line's own identity WINS over a payload field of the same name.
+    // Observed in `hope-v2-dev` within minutes of the flat-JSON rollout:
+    // `logger.log({ message: 'Health check completed', service: 'Guardrail' })`
+    // — the service being PROBED — overwrote the emitter's `service`, so 120
+    // gateway lines in 10 minutes claimed to come from "Guardrail", "Medical
+    // NLP", "Speech to Text"... A caller cannot be allowed to rewrite who
+    // emitted a line, what level it was, or which trace it belongs to.
+    // The payload's value is not dropped either: it is kept under
+    // `payload_<key>`, because a silently missing field is the other half of
+    // the same bug.
     if (entry.meta && Object.keys(entry.meta).length > 0) {
-      Object.assign(log, entry.meta);
+      for (const [key, value] of Object.entries(entry.meta)) {
+        log[key in log ? `payload_${key}` : key] = value;
+      }
     }
 
     return log;
