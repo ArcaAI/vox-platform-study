@@ -366,6 +366,7 @@
         "HOPE_API_TOKEN",
         "HOPE_REVIEW_NODE_ID",
         "HOPE_SECRETS_DIR",
+        "HOPE_STT_APP_DIR",
         "HOPE_SVC_CLIENT_ID",
         "HOPE_SVC_CLIENT_SECRET",
         "HOPE_WEBHOOK_SECRET",
