@@ -207,3 +207,41 @@ describe('Loki line contract', () => {
     });
   });
 });
+
+describe('identity of the emitting service', () => {
+  const saved = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...saved };
+  });
+
+  it('a payload field cannot overwrite who emitted the line', () => {
+    // Seen in `hope-v2-dev` minutes after the flat-JSON rollout:
+    // `logger.log({ message: 'Health check completed', service: 'Guardrail' })`
+    // names the service being PROBED, and it overwrote the emitter's own
+    // `service` — 120 gateway lines in 10 minutes claimed to come from a
+    // downstream service.
+    process.env.LOG_CONSOLE_JSON = 'true';
+    process.env.SERVICE_NAME = 'hope-api';
+    const service = new LoggingService();
+
+    const raw = captureStdout(() =>
+      service.log({ message: 'Health check completed', service: 'Guardrail', status: 'up' }),
+    );
+
+    const line = JSON.parse(raw);
+    expect(line.service).toBe('hope-api');
+    expect(line.payload_service).toBe('Guardrail');
+    expect(line.status).toBe('up');
+  });
+
+  it('falls back to the name the deployment gave the workload', () => {
+    delete process.env.SERVICE_NAME;
+    process.env.OTEL_SERVICE_NAME = 'hope-api';
+    process.env.LOG_CONSOLE_JSON = 'true';
+
+    const raw = captureStdout(() => new LoggingService().info('up'));
+
+    expect(JSON.parse(raw).service).toBe('hope-api');
+  });
+});
