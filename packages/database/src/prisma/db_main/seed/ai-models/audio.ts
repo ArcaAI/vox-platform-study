@@ -188,7 +188,16 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // value is absent rather than merely unused. And the decoder window is 224 TOKENS
     // (`n_text_ctx / 2`), not 1000 characters: the character cap on the admin field is a sanity
     // check only, and in Malayalam it bounds nothing.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    // TASK-994 (2026-09-21) — `decoding.audioCtx: 768` is the MEASURED whisper.cpp encoder
+    // context for THIS code-switch fine-tune: on two independent ml-en recordings (37 + 23 clips),
+    // both quantisations and 6/7/10 s windows a reduced context cut CER by 0.05–0.10 (7 s:
+    // 0.390 → 0.343 f16, 0.405 → 0.345 q8_0; second recording 0.363 → 0.260) and per-span decode
+    // time by ~34 %; live through the WS gateway 768 and 1024 tied on CER (0.368 vs 0.374) and 768
+    // committed 18 % earlier, so 768 is the realtime value. Only multiples of 256 are safe on the
+    // Metal flash-attention build (640 collapsed the decode); `maxTokens` stays uncapped — a 32–64
+    // cap deletes most of a Malayalam span. The en-medical rows below are unmeasured and keep the
+    // engine default. Ticket README §6.3b / §6.6.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { audioCtx: 768, hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -271,7 +280,16 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // value is absent rather than merely unused. And the decoder window is 224 TOKENS
     // (`n_text_ctx / 2`), not 1000 characters: the character cap on the admin field is a sanity
     // check only, and in Malayalam it bounds nothing.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    // TASK-994 (2026-09-21) — `decoding.audioCtx: 768` is the MEASURED whisper.cpp encoder
+    // context for THIS code-switch fine-tune: on two independent ml-en recordings (37 + 23 clips),
+    // both quantisations and 6/7/10 s windows a reduced context cut CER by 0.05–0.10 (7 s:
+    // 0.390 → 0.343 f16, 0.405 → 0.345 q8_0; second recording 0.363 → 0.260) and per-span decode
+    // time by ~34 %; live through the WS gateway 768 and 1024 tied on CER (0.368 vs 0.374) and 768
+    // committed 18 % earlier, so 768 is the realtime value. Only multiples of 256 are safe on the
+    // Metal flash-attention build (640 collapsed the decode); `maxTokens` stays uncapped — a 32–64
+    // cap deletes most of a Malayalam span. The en-medical rows below are unmeasured and keep the
+    // engine default. Ticket README §6.3b / §6.6.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { audioCtx: 768, hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
