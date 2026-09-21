@@ -345,3 +345,40 @@ export function assembleLoadRequest(env) {
     },
   };
 }
+
+/**
+ * Choose the daemon's EXACT model key for a possibly-bare `requested` name.
+ *
+ * Pure, so the rule that cost a production outage is pinned by a test rather
+ * than by a comment. `load.mjs` does the fetch; this decides.
+ *
+ * `entries` is the `models` array of `GET /api/v1/models`.
+ *
+ * Returns one of:
+ *   { key }                — a unique loadable match
+ *   { ambiguous: [keys] }  — several; the caller must refuse, never guess
+ *   { none: [keys] }       — no match; `keys` is what WAS on offer, for the error
+ */
+export function selectModelKey(entries, requested) {
+  const llms = (Array.isArray(entries) ? entries : []).filter((entry) => entry?.type === 'llm');
+
+  // An operator who spelled the quantization has said exactly what they mean.
+  const exact = llms.find((entry) => entry?.key === requested);
+  if (exact) return { key: exact.key };
+
+  // Otherwise `requested` is a prefix over `<key>@<quantization>`. The `@?`
+  // entry is the CLIP mmproj projector: it is typed `llm` and carries the same
+  // prefix, but loading it serves ~986 MB of projector weights as a chat model.
+  const candidates = llms
+    .filter(
+      (entry) =>
+        typeof entry?.key === 'string' &&
+        entry.key.startsWith(`${requested}@`) &&
+        !entry.key.endsWith('@?'),
+    )
+    .map((entry) => entry.key);
+
+  if (candidates.length === 1) return { key: candidates[0] };
+  if (candidates.length > 1) return { ambiguous: candidates };
+  return { none: llms.map((entry) => entry.key) };
+}
