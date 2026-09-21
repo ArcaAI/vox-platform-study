@@ -284,6 +284,47 @@ attention (§2.7) or from time-slicing contention. The matrix below is what
 settles it, and no default should be changed on the strength of the reasoning
 alone — that mistake already cost one outage today.
 
+#### RESULT — Phase 1 live, matrix run 2026-09-21
+
+Phase 1 deployed (`hope-v2` pipeline #1286, image `b8e375a1`) and verified from
+the pod log BEFORE inferring anything from readiness:
+
+```
+lms-loader: resolved 'gemma-4-e2b-it-qat' to 'gemma-4-e2b-it-qat@q4_0'
+lms-loader: loaded gemma-4-e2b-it-qat@q4_0 as "gemma-4-e2b-it-qat"
+lms-loader: verified — all 3 requested kvConfig field(s) are in force
+```
+
+Then `LMS_FLASH_ATTENTION=true` + `LMS_GPU_SPLIT_STRATEGY=priorityOrder` /
+`LMS_GPU_PRIORITY=0` / `LMS_GPU_DISABLED=1` (`hope-v2-deployment@4e7c93a`).
+Effective args became `--flash-attn auto --main-gpu 0 --tensor-split 1`.
+
+| Cell | flashAttn | split | decode, 200 tok | tok/s | VRAM |
+|---|---|---|---|---|---|
+| **A** control | off | evenly | 12,852–13,017 ms | **15.5** | 7,482 MiB over 2 cards |
+| **B** | **on** | evenly | 3,019–3,188 ms | **66** | 5,034 MiB over 2 cards |
+| **C** | on | **GPU 0 only** | 2,744–2,896 ms | **72** | **2,044 MiB on GPU 0** |
+
+Prefill at C: **6,616 tokens in ~1,540 ms ≈ 4,300 tok/s**.
+
+**The decomposition, isolated at last.** Flash attention is worth **4.26×**
+(15.5 → 66); the GPU pin adds a further **~9%** (66 → 72). So §2.9's hypothesis
+was directionally right but the *magnitude* was wrong — the cross-device hop was
+never the dominant cost, flash attention was. Had the pin shipped alone it would
+have looked like a rounding error and the real win would have been missed.
+
+**End to end, against the original 6h-window baseline:**
+
+| | before | after | |
+|---|---|---|---|
+| decode | 6.42 tok/s | **~72 tok/s** | **11.2×** |
+| prefill | ~400 tok/s | **~4,300 tok/s** | **~10.8×** |
+| VRAM | 13,904 MiB over 2 cards | **2,078 MiB on 1 card** | **−85%** |
+| GPU 1 | 8,908 MiB held | **4 MiB — 15,946 free** | released |
+
+Cell D (KV quantization) was **not run**: the owner directed KV stay
+unquantized (f16), and at 2,078 MiB there is no residency pressure to relieve.
+
 #### The measurement matrix, to run once Phase 1 is live
 
 | # | flashAttention | gpuSplit | KV cache | measures |
