@@ -67,6 +67,25 @@ class AsrEngine:
     ) -> Any:
         raise NotImplementedError
 
+    def make_streaming_session(
+        self,
+        manager: Any,
+        loaded_model: Any,
+        inference_config: Any,
+        *,
+        task: str = "transcribe",
+    ) -> Any:
+        """Return a ``DuplexAsrSession`` for an engine that streams natively,
+        or ``None`` to use the per-utterance ``make_streaming_callable`` path.
+
+        TASK-998. Returning a session changes the session manager's contract
+        with this engine: HOPE stops segmenting (owner decision OD-2 — no local
+        VAD for a duplex engine) and stops firing its own partial decodes,
+        because the vendor supplies both. The default ``None`` is why every
+        local engine is unaffected by this ticket.
+        """
+        return None
+
 
 class SafetensorEngine(AsrEngine):
     """transformers path (SAFETENSOR/PYTORCH/CTRANSLATE2), incl. multimodal-LM routing."""
