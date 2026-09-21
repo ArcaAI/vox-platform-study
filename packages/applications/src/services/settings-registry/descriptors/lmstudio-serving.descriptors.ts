@@ -32,10 +32,24 @@
 // kvConfig, an ERROR, which propagates unchanged — `failMode` governs an ABSENT
 // VALUE only. See `registry.types.ts` `SettingFailMode`.)
 //
-// DEFAULTS ARE TODAY'S MEASURED BEHAVIOUR, not the target state. `flashAttention`
-// ships `false` and both cache types ship `f16` because that is what
-// `llama-server` is running with on the live pod (measured 2026-09-21,
-// ticket §2.1) — registering these keys must change ZERO serving behaviour.
+// DEFAULTS ARE TODAY'S MEASURED BEHAVIOUR, not the target state. Both cache
+// types ship `f16` because that is what `llama-server` runs with on the live
+// pod (measured 2026-09-21, ticket §2.1) — registering them changes ZERO
+// serving behaviour.
+//
+// `flashAttention` is the ONE deliberate exception, and it ships `true`.
+// `llama-server`'s own default is `auto`; LM Studio was overriding it to `off`
+// because its SDK schema declares the field default `false`. Measured on the
+// live pod at identical ctx 65536 / parallel 4 (ticket §2.7): decode 200 tokens
+// 12,852ms -> 3,019ms (15.5 -> 66 tok/s, 4.3x), prefill ~4,300 tok/s, and VRAM
+// 7,482 -> 5,034 MiB. It is not a speed/memory trade — flash attention removes
+// the O(n^2) attention compute buffer, so it wins on both axes, which is why
+// shipping `false` to "change nothing" would instead be shipping a 4.3x
+// regression the moment Phase 1 makes the field authoritative.
+//
+// A model whose architecture cannot do flash attention overrides this to
+// `false` in its own `_metadata.serving`; that is what the per-model profile
+// is for.
 // Turning flash attention on and quantizing the KV cache is the point of the
 // ticket, but it is a MEASURED change a platform admin makes after Phase 0's
 // baseline, not a default that arrives with a descriptor file.
@@ -59,7 +73,7 @@ const CATEGORY = 'Service Runtime';
 export const LM_STUDIO_SERVING_DEFAULTS = {
   'lmStudio.serving.contextLength': 65536,
   'lmStudio.serving.parallel': 4,
-  'lmStudio.serving.flashAttention': false,
+  'lmStudio.serving.flashAttention': true,
   'lmStudio.serving.kvCacheQuantK': 'f16',
   'lmStudio.serving.kvCacheQuantV': 'f16',
   'lmStudio.serving.gpuSplitStrategy': 'evenly',
