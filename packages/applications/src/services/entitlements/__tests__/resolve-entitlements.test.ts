@@ -25,6 +25,10 @@ describe('resolveEntitlements', () => {
         platformDefaultCredential: false,
         paletteStt: true,
         agenticLoop: true,
+        // TASK-998 OD-4 — ungated means ungated: a null-plan tenant may hold its
+        // own per-provider capacity allocation, like every other non-credential
+        // capability here.
+        providerQuotaAllocation: true,
       });
       expect(r.modelTier).toBe('full_custom');
     });
@@ -57,6 +61,10 @@ describe('resolveEntitlements', () => {
         paletteStt: true,
         // the loop is the differentiating plan feature; STARTER is out.
         agenticLoop: false,
+        // TASK-998 OD-4 — "Pro plan and above"; STARTER is out. Note this bounds
+        // only the WRITE: a STARTER tenant still RESOLVES the platform default
+        // capacity, it just cannot be given an allocation of its own.
+        providerQuotaAllocation: false,
       });
       expect(r.modelTier).toBe('base');
       expect(r.rateLimitTier).toBe('strict');

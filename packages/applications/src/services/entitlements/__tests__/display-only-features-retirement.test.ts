@@ -20,7 +20,7 @@ import { PLAN_ENTITLEMENT_DEFAULTS } from '../entitlements.constants';
 
 const RETIRED_CAPABILITIES = ['dnaReports', 'voiceEnrollment', 'monitoringAccess'];
 const RETIRED_COLUMNS = ['featureDnaReports', 'featureVoiceEnrollment', 'featureMonitoringAccess'];
-const SURVIVING_CAPABILITIES = ['platformDefaultCredential', 'paletteStt', 'agenticLoop'];
+const SURVIVING_CAPABILITIES = ['platformDefaultCredential', 'paletteStt', 'agenticLoop', 'providerQuotaAllocation'];
 
 describe('TASK-883 — display-only entitlement features', () => {
   it('resolves no retired capability for a real plan', () => {
