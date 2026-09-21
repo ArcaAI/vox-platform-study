@@ -66,10 +66,9 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/config-ts/package.json ./packages/config-ts/
-# Same workspace-graph reason as the builder stage. No `dist` is carried over:
-# the only reference to @arcaai/types in this package is `import type`, which tsc
-# erases, so nothing in dist/ resolves it at runtime — the manifest alone keeps
-# the prod install's workspace link honest.
+# Same workspace-graph reason as the builder stage. The manifest keeps the prod
+# install's workspace link honest; its `dist` is copied further down, because
+# this package imports @arcaai/types for a VALUE and not only as a type.
 COPY packages/types/package.json ./packages/types/
 COPY packages/database/package.json ./packages/database/
 
@@ -78,6 +77,17 @@ RUN npm install -g pnpm && \
     npm cache clean --force
 
 COPY --from=builder /app/packages/database/dist ./packages/database/dist
+# @arcaai/types is NOT type-only here. `src/prisma/db_main/seed/02-apikey.ts`
+# imports the `API_KEY_SCOPE_PRESETS` const, so tsc EMITS that import and the
+# seed resolves it at runtime — through the symlink pnpm creates at
+# packages/database/node_modules/@arcaai/types -> ../../../types. Ship the
+# manifest alone and that symlink resolves to a directory with no dist/, so the
+# seed dies at import with ERR_MODULE_NOT_FOUND. `hope-db-migrate` runs
+# RUN_SEED=none and never imports the seed, so nothing notices until a seeding
+# run — and `hope-reset` seeds only AFTER it has dropped the schema, which is
+# how hope-v2-dev ended up with 107 correct tables and zero rows.
+# Guarded by packages/database/src/__tests__/dockerfile-workspace-deps.test.ts.
+COPY --from=builder /app/packages/types/dist ./packages/types/dist
 COPY --from=builder /app/packages/database/src/prisma ./packages/database/src/prisma
 COPY --from=builder /app/prisma.config.ts ./
 # migrate.sh runs prisma from /app, so the root prisma.config.ts loads at

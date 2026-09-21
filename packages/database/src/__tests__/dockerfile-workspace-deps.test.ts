@@ -19,6 +19,21 @@
  * sources `tsc` compiles must have both its manifest (before the install) and
  * its sources (before the build) in the builder stage.
  *
+ * It then fell behind a SECOND time, in the RUNTIME stage, and the three
+ * assertions above could not see it. That stage deliberately copies only
+ * `packages/types/package.json`, on the reasoning that this package referenced
+ * `@arcaai/types` with `import type` alone, which tsc erases. A later VALUE
+ * import (`API_KEY_SCOPE_PRESETS` in `src/prisma/db_main/seed/02-apikey.ts`)
+ * silently invalidated that premise: the manifest links, the symlink resolves,
+ * and the directory it points at has no `dist/`. Nothing caught it because
+ * `hope-db-migrate` runs `RUN_SEED=none` and never imports the seed — it
+ * surfaced only when `hope-reset` seeded a live cluster, AFTER dropping the
+ * schema, leaving `hope-v2-dev` with 107 correct tables and zero rows.
+ *
+ * So the fourth assertion below is about the runtime stage: a workspace package
+ * imported for a VALUE must have its `dist` carried over, not just its
+ * manifest.
+ *
  * If it fails: add the named COPY lines. Do not delete the assertion.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -42,6 +57,35 @@ function compiledSources(dir: string, acc: string[] = []): string[] {
     }
   }
   return acc;
+}
+
+/**
+ * Of those, the ones imported for a VALUE — the subset that must still resolve
+ * at RUNTIME, because tsc emits the import rather than erasing it.
+ *
+ * `import type { X } from '@arcaai/y'` and `import { type X } from '@arcaai/y'`
+ * are both erased; a default, namespace, or bare-specifier import is not.
+ */
+function valueImportedWorkspaceDirs(): string[] {
+  const names = new Set<string>();
+  for (const file of compiledSources(path.join(PACKAGE_ROOT, 'src'))) {
+    const source = readFileSync(file, 'utf8');
+    for (const match of source.matchAll(/import\s+(type\s+)?([\s\S]*?)\s+from\s+['"]@arcaai\/([^'"/]+)/g)) {
+      const [, typeOnly, clause, pkg] = match;
+      if (typeOnly) continue;
+      const named = clause.trim().match(/^\{([\s\S]*)\}$/);
+      if (named) {
+        const specifiers = named[1]
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+        // `import {}` erases too, and an all-`type` clause emits nothing.
+        if (specifiers.length === 0 || specifiers.every((entry) => /^type\s/.test(entry))) continue;
+      }
+      names.add(`packages/${pkg}`);
+    }
+  }
+  return [...names].sort();
 }
 
 /** `@arcaai/<pkg>` specifiers imported by those sources, as `packages/<pkg>` dirs. */
@@ -87,6 +131,23 @@ describe('packages/database Dockerfile workspace deps', () => {
       missing,
       `packages/database/Dockerfile is missing ${missing.length} workspace source COPY line(s). Add: ` +
         missing.map((dir) => `COPY ${dir}/ ./${dir}/`).join(' '),
+    ).toEqual([]);
+  });
+
+  it('carries the built dist of every VALUE-imported workspace package into the runtime stage', () => {
+    const valueImported = valueImportedWorkspaceDirs();
+    // Guards the guard: an all-`import type` refactor would make this vacuous.
+    expect(valueImported.length).toBeGreaterThan(0);
+
+    const missing = valueImported.filter(
+      (dir) => !new RegExp(`^COPY\\s+--from=builder\\s+/app/${dir}/dist\\s`, 'm').test(dockerfile),
+    );
+    expect(
+      missing,
+      `packages/database/Dockerfile's RUNTIME stage is missing ${missing.length} workspace dist COPY line(s). ` +
+        `The manifest alone links the symlink but leaves it pointing at a directory with no dist/, so the seed ` +
+        `dies at import with ERR_MODULE_NOT_FOUND — after hope-reset has already dropped the schema. Add: ` +
+        missing.map((dir) => `COPY --from=builder /app/${dir}/dist ./${dir}/dist`).join(' '),
     ).toEqual([]);
   });
 });
