@@ -6586,6 +6586,7 @@ dependencies = [
     { name = "structlog", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail') or (extra == 'extra-7-harness-eval' and extra == 'extra-7-harness-eval-ragas') or (extra == 'extra-7-harness-eval-ragas' and extra == 'project-4-text')" },
     { name = "uuid7", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail') or (extra == 'extra-7-harness-eval' and extra == 'extra-7-harness-eval-ragas') or (extra == 'extra-7-harness-eval-ragas' and extra == 'project-4-text')" },
     { name = "uvicorn", extra = ["standard"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail') or (extra == 'extra-7-harness-eval' and extra == 'extra-7-harness-eval-ragas') or (extra == 'extra-7-harness-eval-ragas' and extra == 'project-4-text')" },
+    { name = "websockets", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail') or (extra == 'extra-7-harness-eval' and extra == 'extra-7-harness-eval-ragas') or (extra == 'extra-7-harness-eval-ragas' and extra == 'project-4-text')" },
 ]
 
 [package.optional-dependencies]
@@ -6740,6 +6741,7 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.12.20260815" },
     { name = "uuid7", specifier = ">=0.1.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.3" },
+    { name = "websockets", specifier = ">=16.1.1" },
 ]
 provides-extras = ["ml", "nemo", "ml-gpu", "dev", "test"]
 
