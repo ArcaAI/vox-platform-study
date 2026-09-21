@@ -7,6 +7,21 @@ import { ContextItem } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { ResourceStatusType, ContextItemType, ContextItemSource } from '../../../enums';
 
+/**
+ * TASK-999 — PHI-safe length rollup for one `(consultation, type)` pair.
+ *
+ * `count` is every ENABLED item of that type. `measuredCount` is the subset
+ * carrying a non-NULL `contentWordCount`. `wordCount`/`charCount` sum the
+ * measured subset only, and are NULL when `measuredCount` is 0 — "unknown" and
+ * "zero" are different answers for a telemetry pane.
+ */
+export interface ContextItemContentCounts {
+  count: number;
+  measuredCount: number;
+  wordCount: number | null;
+  charCount: number | null;
+}
+
 @Injectable()
 export class ContextItemRepository extends Repository<ContextItemEntity, ContextItem> {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
@@ -40,6 +55,55 @@ export class ContextItemRepository extends Repository<ContextItemEntity, Context
   }
 
   /**
+   * TASK-999 — how many context items of one TYPE a consultation carries, and
+   * the totals of the write-time length counters, WITHOUT reading a single row.
+   *
+   * ## Why this is not `findCaseNotes(...).length`
+   *
+   * The plaintext `content` column was DROPPED; the body survives only as
+   * Vault-Transit ciphertext, and the base `db` getter wraps the delegate with
+   * decrypt-on-read (`phi-read-decrypt.ts`). So ANY row-returning finder here
+   * pulls every case-note body through a Vault batch decrypt — which is exactly
+   * what an admin telemetry read must not do to produce a number (TASK-999
+   * D-3(a): counters are written at write time so the read never decrypts).
+   *
+   * `count`/`aggregate` return non-row shapes and are deliberately absent from
+   * `DECRYPT_METHODS`, so they pass through the proxy untouched. This method
+   * therefore reads counters and nothing else — no ciphertext leaves Postgres.
+   *
+   * ## Why `measuredCount` is separate from `count`
+   *
+   * `contentWordCount` is NULL on every row written before TASK-999 and on any
+   * writer that has not adopted the counters. NULL means NEVER MEASURED; 0
+   * means a genuinely empty body. Summing over the measured subset while
+   * reporting both totals lets a caller say "12 notes, 9 measured" instead of
+   * implying the other three were empty. `wordCount`/`charCount` are NULL —
+   * never 0 — when nothing was measured at all.
+   */
+  async aggregateContentCounts(consultationId: string, type: ContextItemType): Promise<ContextItemContentCounts> {
+    const where = { consultationId, type, resourceStatus: ResourceStatusType.ENABLED };
+
+    const [count, measured] = await Promise.all([
+      this.db.count({ where }),
+      this.db.aggregate({
+        where: { ...where, contentWordCount: { not: null } },
+        _count: { _all: true },
+        _sum: { contentWordCount: true, contentCharCount: true },
+      }),
+    ]);
+
+    const measuredCount = measured?._count?._all ?? 0;
+    return {
+      count,
+      measuredCount,
+      // `_sum` is null when nothing matched; keep NULL rather than coercing to
+      // 0, which would read as "measured, and it was empty".
+      wordCount: measuredCount > 0 ? (measured?._sum?.contentWordCount ?? null) : null,
+      charCount: measuredCount > 0 ? (measured?._sum?.contentCharCount ?? null) : null,
+    };
+  }
+
+  /**
    * Find transcripts for a consultation
    */
   async findTranscripts(consultationId: string): Promise<ContextItemEntity[]> {
@@ -51,6 +115,43 @@ export class ContextItemRepository extends Repository<ContextItemEntity, Context
    */
   async findCaseNotes(consultationId: string): Promise<ContextItemEntity[]> {
     return this.findByConsultation(consultationId, { type: ContextItemType.CASE_NOTE });
+  }
+
+  /**
+   * TASK-999 — the id of the NEWEST ENABLED item of each requested type, and
+   * nothing else.
+   *
+   * Exists so a caller that only needs to JOIN onward (the telemetry pane looks
+   * up `SummaryMeta` by `contextItemId`) never materialises a body. The
+   * projected `select` omits `encryptedContent`, and the decrypt-on-read walker
+   * skips any registered ciphertext column that is not present in the row — so
+   * this read is decrypt-free even though `findMany` is otherwise a decrypting
+   * method. `findLatestPreSummary` / `findLatestRawSummary` /
+   * `findLatestModifiedSummary` all return whole rows and are the right call
+   * when the body IS wanted; they are the wrong call when only the id is.
+   *
+   * One query for every type asked for. A type with no item is absent from the
+   * returned map (not null-valued), so `Object.hasOwn` and a plain lookup agree.
+   */
+  async findLatestIdsByTypes(consultationId: string, types: ContextItemType[]): Promise<Partial<Record<ContextItemType, string>>> {
+    if (types.length === 0) return {};
+
+    const rows = await this.db.findMany({
+      where: {
+        consultationId,
+        type: { in: types },
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      select: { id: true, type: true, createdAt: true },
+      orderBy: [{ createdAt: 'desc' }],
+    });
+
+    const latest: Partial<Record<ContextItemType, string>> = {};
+    for (const row of rows as Array<{ id: string; type: ContextItemType }>) {
+      // Rows arrive newest-first, so the FIRST sighting of a type is its latest.
+      if (latest[row.type] === undefined) latest[row.type] = row.id;
+    }
+    return latest;
   }
 
   /**

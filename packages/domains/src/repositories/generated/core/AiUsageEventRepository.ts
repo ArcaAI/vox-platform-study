@@ -108,6 +108,33 @@ export class AiUsageEventRepository extends Repository<AiUsageEventEntity, AiUsa
   }
 
   /**
+   * Every unit row attributed to ONE consultation, ordered by occurrence.
+   *
+   * Reads the composite index `AiUsageEvent_tenant_consultation_occurredAt_idx`.
+   * Without it the only usable index for this question is
+   * `(tenantId, occurredAt)`, which answers "one consultation" by scanning the
+   * tenant's whole retention window — that is why the index exists.
+   *
+   * Pinned to `(tenantId, consultationId)` for the same reason as
+   * `findByIdempotencyKey`: the tenant filter is stated here as well as injected
+   * by the tenant-scope `$extends`, so a caller that reaches this repository
+   * outside a request context still cannot read across the boundary.
+   *
+   * Returns EVERY unit row, not a per-operation rollup: one provider call is
+   * several rows sharing a `requestId` (input tokens, output tokens, the
+   * CPU/GPU-second row that carries the only duration this table records), and
+   * reassembling them is the caller's job.
+   */
+  async findByConsultation(tenantId: string, consultationId: string): Promise<AiUsageEventEntity[]> {
+    const models = await this.db.findMany({
+      where: { tenantId, consultationId },
+      orderBy: [{ occurredAt: 'asc' }],
+    });
+    const mapper = AiUsageEventEntityMapper.getInstance();
+    return models.map((model: AiUsageEvent) => mapper.toDomainEntity(model));
+  }
+
+  /**
    * Every event of a tenant whose `occurredAt` falls in [from, to), ordered.
    *
    * Half-open on purpose so consecutive periods neither overlap nor drop an

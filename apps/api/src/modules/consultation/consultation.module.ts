@@ -37,10 +37,13 @@ import {
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
   EffectiveSettingsModule,
+  // TASK-999 Lane B — the read-only per-consultation AI telemetry projection.
+  ConsultationTelemetryServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
 import { AdminConsultationController } from './admin-consultation.controller';
+import { ConsultationTelemetryController } from './consultation-telemetry.controller';
 import { ConsultationJobController } from './consultation-job.controller';
 import { HarnessInternalController } from './harness-internal.controller';
 import { ConsentInternalController } from './consent-internal.controller';
@@ -97,8 +100,21 @@ import { ConsentInternalController } from './consent-internal.controller';
     // controller used to query directly. NestJS dedupes the module instance
     // with the AppModule / AuthModule imports.
     EffectiveSettingsModule,
+    // TASK-999 Lane B — supplies `IConsultationTelemetryService` to
+    // `ConsultationTelemetryController`.
+    ConsultationTelemetryServiceModule,
   ],
-  controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController, ConsentInternalController],
+  controllers: [
+    ConsultationController,
+    AdminConsultationController,
+    // Registered after the admin controller, though order does not decide the
+    // match here: `:id/telemetry` carries an extra path segment, so Nest can
+    // never route it to `admin/consultations/:id`.
+    ConsultationTelemetryController,
+    ConsultationJobController,
+    HarnessInternalController,
+    ConsentInternalController,
+  ],
   // dedicated Redis subscriber connection for the
   // `:id/trajectory/stream` SSE relay (mirrors the harness-progress module's
   // own RedisSubscriberService provider; IConfigService is @Global).
