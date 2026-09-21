@@ -21,12 +21,16 @@ import {
 import { UsageIdempotencyKey, validateIdempotencyKey } from '../idempotency-keys';
 
 describe('operation vocabulary', () => {
-  it('freezes exactly the fifteen operations the emitters may use', () => {
+  it('freezes exactly the sixteen operations the emitters may use', () => {
     expect([...USAGE_OPERATIONS].sort()).toEqual(
       [
         'transcribe.stream',
         'transcribe.batch',
         'generate',
+        // TASK-999 (D-2(c)) — the LIVE lane's generations, split out of
+        // `generate` so a partial summary is separable from a final one in the
+        // ledger rather than only in the nightly-pruned trajectory table.
+        'generate.live',
         'generate.stream',
         'presummarize',
         'guardrail.validate',

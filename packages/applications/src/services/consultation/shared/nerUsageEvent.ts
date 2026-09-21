@@ -2,7 +2,34 @@ import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 import { appendComputeAndByteUnits } from '../../usageLedger/compute-units';
 import { UsageEventBatchInput } from '../../usageLedger/dto';
 import { UsageIdempotencyKey } from '../../usageLedger/idempotency-keys';
-import type { ComputeDevice, UsageTrigger } from '../../usageLedger/usage-attributes';
+import { COMPUTE_DEVICES, type ComputeDevice, type UsageTrigger } from '../../usageLedger/usage-attributes';
+
+/**
+ * TASK-999 (D-2(c)) — `inference_ms` off an NLP response body, or `null`.
+ *
+ * Lives beside the builder that consumes it because it is a reader of the SAME wire contract:
+ * `apps/nlp` reports its own `inference_ms` on every inference response, and every body that
+ * carries it is typed `Record<string, unknown>` (proxied verbatim, or spread off an axios
+ * response), so this is a shape check rather than trust in a schema the caller does not own.
+ *
+ * `apps/api/src/modules/ai-inference/ai-inference.controller.ts` holds a private copy predating
+ * this one; the two agree exactly and should converge here when that file is next opened.
+ */
+export function nerInferenceMs(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+/**
+ * TASK-999 (D-2(c)) — the device, from the CLOSED vocabulary only.
+ *
+ * A near-miss spelling records NO compute row; it must never be coerced into the more expensive
+ * unit (`GPU_SECOND` is priced roughly fifty times `CPU_SECOND`). Same provenance note as
+ * {@link nerInferenceMs}.
+ */
+export function nerDevice(value: unknown): ComputeDevice | null {
+  return typeof value === 'string' && (COMPUTE_DEVICES as readonly string[]).includes(value) ? (value as ComputeDevice) : null;
+}
 
 export interface NerUsageEventParams {
   tenantId: string;
@@ -43,6 +70,19 @@ export interface NerUsageEventParams {
    * "measured, and it was free".
    */
   inferenceMs?: number | null;
+  /**
+   * TASK-999 (D-2(c)) — the CALLER's wall clock around the NLP hop, in milliseconds.
+   *
+   * The fallback reading, used only when `apps/nlp` reported no `inference_ms` of its own:
+   * `appendComputeAndByteUnits` prefers the engine's time and falls back to this, so a call
+   * timed by both is metered on the engine's number and a call timed by neither still records
+   * NO compute row (an unmeasured call must never bill as zero seconds).
+   *
+   * This is the ledger's answer to "how long did NER take". `NamedEntity.processingTimeMs` is
+   * NOT: it is stamped identically on EVERY entity one call produced, so a `SUM` over it
+   * multiplies one call's duration by its entity count. Nothing reads it for duration any more.
+   */
+  totalMs?: number | null;
   /**
    * TASK-959 §3.1 — the device the checkpoint was resolved onto, which DECIDES the unit
    * (`cuda`/`mps` → `GPU_SECOND`, `cpu` → `CPU_SECOND`). Unlike the LLM engines, `apps/nlp`
@@ -124,5 +164,12 @@ export function buildNerUsageEvent(params: NerUsageEventParams): UsageEventBatch
     ],
   };
 
-  return appendComputeAndByteUnits(batch, { device: params.device, totalMs: params.inferenceMs }).batch;
+  // TASK-999 (D-2(c)) — `inference_ms` is the ENGINE's own reading and now rides `engineMs`,
+  // which is where the appender's documented precedence (engine, then client wall clock) puts
+  // it. Behaviour is unchanged for the two callers that pass only `inferenceMs`: the appender
+  // picked the same number when it arrived as `totalMs`. What is new is that a caller may now
+  // ALSO pass its own wall clock, so a duration lands on the row even when `apps/nlp` reported
+  // none — which is the whole gap: the clinical `extractEntities` hop passed no timing at all,
+  // so its `ner.extract` rows carried characters and no seconds.
+  return appendComputeAndByteUnits(batch, { device: params.device, engineMs: params.inferenceMs, totalMs: params.totalMs }).batch;
 }

@@ -87,7 +87,8 @@ import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
-import { buildNerUsageEvent } from '../shared/nerUsageEvent';
+import { buildNerUsageEvent, nerDevice, nerInferenceMs } from '../shared/nerUsageEvent';
+import { stampContentCounters } from '../shared/contentCounters';
 import { collectCitedSegmentIds } from '../lib/transcript-segments';
 import { generateJsonWithRepair, looksLikeJsonObject, parsesAsJsonObject, type JsonRepairCall } from '../shared/bounded-json-repair';
 import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
@@ -543,6 +544,10 @@ export class SummaryService extends BaseService implements ISummaryService {
 
     // Create pre-summary context item
     const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, textResponse.summary, request.dnaStyleId, userId ?? 'system');
+    // TASK-999 (D-3(a)) — measured from the plaintext, before the encrypt below is the last
+    // moment anything can. The factory's positional form carries no counters, so they are
+    // stamped on the entity.
+    stampContentCounters(contextItem, textResponse.summary);
 
     // Encrypt the generated pre-summary text into
     // `encryptedContent` before persistence — the plaintext `content` column was
@@ -804,6 +809,8 @@ export class SummaryService extends BaseService implements ISummaryService {
 
     // Create summary context item
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, textResponse.summary, effectiveDnaStyleId, userId ?? 'system');
+    // TASK-999 (D-3(a)) — measured from the plaintext, before the encrypt below.
+    stampContentCounters(contextItem, textResponse.summary);
     // Pin the AI draft to v1 so the immutable
     // `ai_draft_v1` snapshot below IS version 1 and the doctor's first edit
     // becomes v2 (no `@@unique([contextItemId, versionNumber])` collision).
@@ -1820,7 +1827,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     // before the call, so a refused tenant's content never leaves the process.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyNlpTextUnits');
 
+    // TASK-999 (D-2(c)) — time the hop. `apps/nlp` reports its own `inference_ms` and that is
+    // preferred; this wall clock is the fallback, so a duration reaches the `ner.extract` ledger
+    // row even against an NLP build that reports none. Measured around the CALL only — the
+    // redaction and the persistence loop below are this service's own time, not NER's.
+    const nlpStartedAt = Date.now();
     const nerResponse = await this.callNlpService(redactedContent);
+    const nlpWallClockMs = Date.now() - nlpStartedAt;
     const entities = nerResponse.entities ?? [];
 
     let savedCount = 0;
@@ -1868,6 +1881,18 @@ export class SummaryService extends BaseService implements ISummaryService {
             consultationId: contextItem.consultationId,
             charCount: [...contextItem.content].length,
             model: nerResponse.modelUsed,
+            // TASK-999 (D-2(c)) — the per-call DURATION, recorded ONCE, here.
+            //
+            // It becomes a single CPU_SECOND/GPU_SECOND row on this `ner.extract` event
+            // (`appendComputeAndByteUnits`), which is the ledger's existing timing mechanism —
+            // not a second duration column. `NamedEntity.processingTimeMs` stays for
+            // back-compat and is no longer the duration source: it is stamped identically on
+            // every entity of one call, so summing it multiplies one duration by the entity
+            // count. This path never set it at all, which is why the clinical NER hop had no
+            // summable duration anywhere.
+            inferenceMs: nerInferenceMs(nerResponse.inference_ms),
+            totalMs: nlpWallClockMs,
+            device: nerDevice(nerResponse.device),
             // TASK-957 F-8 — this hop is reached from exactly one place: a
             // consultation's context item. The agent NER route and the
             // playground bench declare their own.
@@ -2318,6 +2343,14 @@ export class SummaryService extends BaseService implements ISummaryService {
      * post rather than leaving this unknown.
      */
     modelUsed: string;
+    /**
+     * TASK-999 (D-2(c)) — the two metering fields `apps/nlp` reports about ITSELF, already
+     * present on the wire and already spread into this return value; they were simply not
+     * DECLARED, so no caller could reach them. Typed `unknown` deliberately: the body is an
+     * unvalidated axios payload, and `nerInferenceMs`/`nerDevice` are the shape checks.
+     */
+    inference_ms?: unknown;
+    device?: unknown;
   }> {
     try {
       // Inject the SYSTEM `nlp.ner` routing election's model

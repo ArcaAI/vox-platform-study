@@ -29,6 +29,7 @@ import {
   ContextItemType,
   DnaWritingStyleReportRepository,
   DocumentSectionRepository,
+  NamedEntityRepository,
   PromptTemplateRepository,
   WorkflowDefinitionRepository,
 } from '@arcaai/domains';
@@ -81,6 +82,8 @@ import type { UsageEventBatchInput } from '../../usageLedger/dto';
 import { withUsageAttributes } from '../../usageLedger/usage-attributes';
 import type { ComputeDevice, UsageAttributes } from '../../usageLedger/usage-attributes';
 import { buildLlmUsageBatches, parseTextUsageDetail, resolveDeployment, toLedgerProvider, type TextUsageDetail } from '../summary/text-usage';
+import { persistLiveNamedEntities } from '../shared/liveNamedEntity';
+import { stampContentCounters } from '../shared/contentCounters';
 import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
@@ -682,6 +685,15 @@ interface LiveSession {
   trajectorySessionId: string;
   /** Monotonic trajectory-step sequence within this LIVE_DOC session. */
   trajectorySeq: number;
+  /**
+   * TASK-999 (D-2(c)) — the identities of the NER entities this session has already PERSISTED.
+   *
+   * Every flush republishes the previous flushes' entities, so without this the same mention is
+   * written once per tick. The key is the entity's frozen TRANSCRIPT anchor plus its class and
+   * text, never its note offsets (which move whenever the note is rewritten) — the rule and the
+   * reasoning live in `shared/liveNamedEntity.ts`, which owns it.
+   */
+  persistedEntityKeys: Set<string>;
   /**
    * The session's FROZEN agent identity.
    *
@@ -1313,6 +1325,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // platform's own engines by default, so without the device every one of those calls was
     // billed for its tokens and nothing else. Optional + trailing like the ledger above it.
     @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
+    // TASK-999 (D-2(c)) — the live lane extracted entities on every flush, published them and
+    // then threw them away, so a consultation documented entirely through this lane had an
+    // entity count of zero forever. Optional + trailing like every dependency above it: absent
+    // ⇒ the flush behaves exactly as it did before, entities are published and not persisted.
+    @Optional() @Inject(NamedEntityRepository) private readonly namedEntityRepository?: NamedEntityRepository,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1501,6 +1518,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       startedAt,
       trajectorySessionId: params.sessionId ?? `${params.consultationId}:${startedAt}`,
       trajectorySeq: 0,
+      persistedEntityKeys: new Set<string>(),
     };
     this.sessions.set(params.consultationId, session);
 
@@ -2446,6 +2464,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // out the live row if periodic snapshots already created one this session.
       if ((opts?.persistSnapshot || session.snapshotId) && finalPayload?.runningSummary?.trim()) {
         await this.persistDurableSnapshot(session, finalPayload, { force: true });
+        // TASK-999 (D-2(c)) — and the entities that are still unwritten. Periodic snapshots are
+        // THROTTLED, so a short consultation can reach `stop` having never had a snapshot row
+        // to hang entities off; this is the tick that always has one. Already-written mentions
+        // are skipped by the session's own key set, so this is a catch-up, not a re-write.
+        await this.persistFlushEntities(session, finalPayload);
       }
 
       // TASK-932 R-16a — HAND OFF to the durable lane, before the session is torn down and
@@ -3351,6 +3374,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.lastPayload = payload;
     await this.safePublish(consultationId, payload);
     await this.persistDurableSnapshot(session, payload, { force: false });
+    // TASK-999 (D-2(c)) — persist what this flush detected, under the snapshot row the line
+    // above just wrote. AFTER it, because that is what mints `session.snapshotId`; on a tick the
+    // snapshot throttle skipped there is no row yet, and the entities simply wait — they are
+    // republished on every subsequent flush and land at the first tick that has one.
+    await this.persistFlushEntities(session, payload);
     // the per-SECTION plane, ADDITIVE to the whole-document
     // payload above so every existing consumer is untouched. Only in graph mode:
     // the legacy engine's contract is "one document, global offsets", and
@@ -4807,6 +4835,62 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /**
+   * TASK-999 (D-2(c)) — persist this flush's NER entities.
+   *
+   * Before this ticket the live lane extracted entities from the raw transcript, published them
+   * and recorded a `nlp.classify-tokens` trajectory step — and wrote none of them. The step is
+   * pruned nightly, so a consultation documented entirely through this lane ended with an entity
+   * count of zero and no way to recover one.
+   *
+   * THE DEDUPE RULE, and the reason there is one, are stated in full in
+   * `shared/liveNamedEntity.ts`. In one line: every mention is written ONCE, identified by its
+   * frozen transcript anchor plus class and text (never by its note offsets, which move on every
+   * rewrite), under the session's own PRE_SUMMARY snapshot row — the one document no other
+   * extraction path writes `NamedEntity` rows for.
+   *
+   * BEST-EFFORT, like every other durable write on this path: the clinician's note is already
+   * published, and a repository outage must cost an entity row, never a flush. Keys are recorded
+   * only once the insert succeeds, so a failed write is retried by the next flush.
+   */
+  private async persistFlushEntities(session: LiveSession, payload: LiveSummaryEventDto): Promise<void> {
+    const repository = this.namedEntityRepository;
+    const contextItemId = session.snapshotId;
+    const entities = payload.entities ?? [];
+    if (!repository || !contextItemId || entities.length === 0) return;
+
+    try {
+      const result = await persistLiveNamedEntities({
+        entities,
+        tenantId: session.tenantId,
+        contextItemId,
+        seen: session.persistedEntityKeys,
+        createMany: (rows) => repository.createMany(rows),
+        // The same PHI posture every other durable write on this path uses: soft in dev/test,
+        // fail-CLOSED under `SECRETS_PROVIDER=vault` (the plaintext `text` column was dropped,
+        // so an unencrypted row would persist an entity with no span at all).
+        encrypt: (row) =>
+          encryptPhiFields(this.secretsService, 'NamedEntity', () => repository.encryptFieldsIntoEntity(row, this.secretsService!), this.logger),
+      });
+      if (result.persisted > 0) {
+        // PHI-safe: counts only, never a span and never a class.
+        this.logger.log({
+          message: 'Live NER entities persisted',
+          consultationId: session.consultationId,
+          contextItemId,
+          persisted: result.persisted,
+          skipped: result.skipped,
+        });
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: 'Live NER entities were not persisted (the note was still published)',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   private async persistDurableSnapshot(session: LiveSession, payload: LiveSummaryEventDto, opts: { force: boolean }): Promise<void> {
     if (!this.contextItemRepository) return;
     //  — WHICH document this snapshot is. `ContextItemType.PRE_SUMMARY`
@@ -4861,6 +4945,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         const existing = await this.findLiveSnapshotRow(session.consultationId);
         if (existing) {
           existing.content = content;
+          // TASK-999 (D-3(a)) — the snapshot's body is REWRITTEN on every durable tick, so its
+          // counters are restamped with it. A counter left behind would be a confident number
+          // for a note that has since grown, and nothing can check it without a PHI decrypt.
+          stampContentCounters(existing, content);
           existing.metaData = metaData;
           if (documentKey) existing.documentKey = documentKey;
           await this.encryptSnapshotContent(existing);
@@ -4880,6 +4968,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
             undefined,
             session.userId ?? 'system',
           );
+          stampContentCounters(entity, content);
           entity.metaData = metaData;
           if (documentKey) entity.documentKey = documentKey;
           await this.encryptSnapshotContent(entity);
@@ -4890,6 +4979,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         }
       } else {
         session.snapshotEntity.content = content;
+        stampContentCounters(session.snapshotEntity, content);
         session.snapshotEntity.metaData = metaData;
         if (documentKey) session.snapshotEntity.documentKey = documentKey;
         await this.encryptSnapshotContent(session.snapshotEntity);
@@ -5760,19 +5850,34 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-890 §3.13 — record ONE `generate` row for a completed TEXT call on this lane.
+   * TASK-890 §3.13 — record ONE `generate.live` row for a completed TEXT call on this lane.
    *
    * `trigger: 'CONSULTATION'` is the dimension that separates this lane's spend from a prompt
    * bench's or a workflow run's. Best-effort by contract: the model already ran and the
    * clinician is waiting for the note, so a ledger outage is logged and swallowed — "not
    * metered" is recoverable from the provider's own usage API, a failed flush is not. TEXT
    * reporting no `usage_detail` records NOTHING rather than a row saying nothing happened.
+   *
+   * TASK-999 (D-2(c)) — the operation is `generate.live`, not `generate`.
+   *
+   * Every caller of this method is on the LIVE lane: the running-note flush and its bounded
+   * JSON repair (`postTextGenerate`), the grammar pass and the important-findings pass. The
+   * FINAL summary is emitted from `summary.service.ts` and keeps `generate` — that string is
+   * not touched here. Before the split both wrote `generate` with no `sessionId`, so a
+   * partial summary and a final one were indistinguishable in the ledger and the telemetry
+   * pane could only read live-flush stats from `AgentTrajectoryStep`, which is pruned nightly.
+   *
+   * `sessionId` is read SYNCHRONOUSLY, before the fire-and-forget chain below: the session is
+   * alive at the moment TEXT answers, and may be torn down before the swallowed chain runs.
+   * It is the session's `trajectorySessionId` — the SAME id every `AgentTrajectoryStep` of
+   * this session carries — so a ledger row and a trajectory step for one flush join on it.
    */
   private recordLlmUsage(tenantId: string, data: unknown, consultationId?: string | null, guardrail?: { enabled: boolean }): void {
     if (!this.usageLedger) return;
     const usage = parseTextUsageDetail((data as { usage_detail?: unknown } | null)?.usage_detail);
     if (!usage) return;
     const ledger = this.usageLedger;
+    const sessionId = consultationId ? (this.sessions.get(consultationId)?.trajectorySessionId ?? null) : null;
     // TASK-890 §3.14 record (a) — a `core.agent` node stamps the DISPOSITION beside the trigger,
     // so "this consultation ran without its guard" is a query, not an inference from graph JSON.
     // The disposition read is async (it consults the PLATFORM kill switch, which outranks the
@@ -5787,12 +5892,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       const pair = buildLlmUsageBatches({
         usage,
         tenantId,
-        operation: 'generate',
+        operation: 'generate.live',
         consultationId: consultationId ?? null,
         device: await this.llmDevice(tenantId, usage),
       });
       const disposition = guardrail && this.textRequestEnrichment ? await this.textRequestEnrichment.guardrailDisposition(guardrail) : undefined;
-      for (const input of usageBatches(pair, { trigger: 'CONSULTATION', ...(disposition ? { guardrail: disposition } : {}) })) {
+      for (const input of usageBatches(pair, { trigger: 'CONSULTATION', ...(disposition ? { guardrail: disposition } : {}) }, sessionId)) {
         await ledger.recordUsage(input);
       }
     };
@@ -6940,8 +7045,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
  * the platform CPU leg of a BYOK call is the same product activity, screened the same way, as
  * the tokens beside it. A non-BYOK pair flattens to the one batch it always was.
  */
-function usageBatches(pair: ComputeAugmentedBatch | null, attributes: UsageAttributes): UsageEventBatchInput[] {
+function usageBatches(pair: ComputeAugmentedBatch | null, attributes: UsageAttributes, sessionId?: string | null): UsageEventBatchInput[] {
   if (!pair) return [];
   const halves = pair.platformBatch ? [pair.batch, pair.platformBatch] : [pair.batch];
-  return halves.map((batch) => withUsageAttributes(batch, attributes) ?? batch);
+  return halves.map((batch) => {
+    const withAttributes = withUsageAttributes(batch, attributes) ?? batch;
+    // TASK-999 (D-2(c)) — WHICH live session spent this. `buildLlmUsageBatches`
+    // knows nothing about it (it belongs to the session, not to the provider
+    // call), so it is stamped on `common` afterwards — the shape
+    // `DnaWritingStyleProcessor.stampJob` already uses for its job id. Omitted
+    // rather than nulled when there is no session, so a row from a path that
+    // has none stays byte-identical to what it always emitted.
+    if (!sessionId) return withAttributes;
+    return { ...withAttributes, common: { ...withAttributes.common, sessionId } };
+  });
 }
