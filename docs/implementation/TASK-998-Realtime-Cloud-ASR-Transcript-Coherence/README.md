@@ -213,9 +213,52 @@ consulted. No such concept exists in `ResolvedAsrSpec` today; a new
 to `tests/contracts/resolved-asr-spec.fixture.json`. Mark dropped segments in the transcript rather
 than closing the gap silently.
 
-## 5. Owner Decisions Required
+## 5. Owner Decisions (answered 2026-09-21)
 
-Tabled separately for the OD round; nothing is implemented until these are answered.
+| # | Decision | Outcome |
+|---|---|---|
+| **OD-1** | Transport | **(a) WebSocket now** — and for **ALL cloud ASR providers**, not Sarvam alone. |
+| **OD-2** | Local VAD for cloud engines | **(a) Disabled entirely.** No HOPE VAD or endpointer on a duplex engine; the vendor endpoints server-side. Signal conditioning (resample / normalise / denoise) still runs — it is not segmentation. |
+| **OD-3** | Where assembly lives | **(b) Per-consumer.** The wire stays one message per utterance; the UI and the summarizer each assemble for their own purpose. NOT centralised in `apps/stt`. The orchestrator recommended (a); the owner chose (b). |
+| **OD-4** | Vendor quota | Platform admin sets **per-minute volume by enabled provider**, globally OR for a specific tenant, for tenants on **Pro plan and above**. See the scope note below. |
+| **OD-5** | Catalogue text | **(a) Correct it now**, for all cloud providers. |
+| **OD-6** | TASK-985 prior art | **(b) Do not consult it** — it covers the local whisper / built-in engine, not the cloud plane. (It is also denied by workspace permissions.) The §2.6 gap is therefore accepted deliberately, not an oversight. |
+| **OD-7** | Ticket number | **TASK-998** confirmed. |
+
+### OD-4 scope note — the requirement is implemented in two dimensions
+
+"Per-minute volume" is the correct control for the REST architecture this ticket is
+replacing; it does not bind on the one being built. A live consultation under duplex is **one
+persistent WebSocket for the whole session**, not N requests per minute, and the vendor's
+streaming ceiling is a different quantity: Sarvam documents **20/100/100 concurrent
+connections** by account tier against **60/100/4000 requests per minute** for sync REST
+(https://docs.sarvam.ai/api-reference-docs/getting-started/pricing).
+
+Per-minute volume still genuinely binds, because **batch transcription stays on REST** and is
+untouched by this ticket. So both dimensions ship on one plane, one counter infrastructure and
+one admin surface:
+
+| Dimension | Binds on | Enforced at |
+|---|---|---|
+| `requestsPerMinute` | batch / REST transcription | batch job creation |
+| `maxConcurrentStreams` | live duplex sessions | streaming session open |
+
+Both are per enabled provider (`CLOUD_BYO_PROVIDERS.stt`), resolve **tenant → SYSTEM** on
+absence, and are written only by a platform admin. "Pro and above" is an eligibility BOUND on
+whether a tenant may hold its own allocation — a sub-Pro tenant falls back to the platform
+default, never to zero. Enforcement lives in `packages/applications`; `apps/stt` gains no
+database read (`06-python-services.md` — the STT service is spec-driven, no DB on the agent path).
+
+### Standing constraints carried into implementation
+
+- The Sarvam **account tier is Pro or above** (owner, OD-4), so the sync-REST ceiling is ≥100
+  req/min. It is shared across every concurrent consultation, which is the starvation this
+  quota plane exists to prevent.
+- OpenAI's seeded wire id `gpt-4o-transcribe` is on the vendor's not-recommended list
+  (superseded by `gpt-live-transcribe` for streaming and `gpt-transcribe` for completed audio).
+  The pre-existing open decision on that id is **deliberately left unresolved** by this ticket.
+- Azure's production path is the Speech SDK's threaded callbacks, not a socket. Its WS-native
+  Voice Live API is public preview with no SLA and is **rejected for a PHI platform**.
 
 ## 6. Implementation Summary
 
