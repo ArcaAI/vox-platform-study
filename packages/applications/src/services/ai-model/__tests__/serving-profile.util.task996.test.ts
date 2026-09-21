@@ -79,7 +79,11 @@ describe('platformServingProfileFrom — the registry values as a profile', () =
     expect(shippedPlatformProfile()).toEqual({
       contextLength: 65536,
       parallel: 4,
-      flashAttention: false,
+      // `true`, not `false`: measured 2026-09-21 (ticket §2.7) at identical
+      // ctx/parallel, flash attention decoded 4.3x faster (15.5 -> 66 tok/s)
+      // AND used 33% less VRAM (7,482 -> 5,034 MiB). `llama-server` itself
+      // defaults to `auto`; only LM Studio's SDK schema pins it off.
+      flashAttention: true,
       kvCacheQuant: { k: 'f16', v: 'f16' },
       gpuSplit: { strategy: 'evenly' },
     });

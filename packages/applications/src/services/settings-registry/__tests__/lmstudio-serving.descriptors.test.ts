@@ -68,7 +68,10 @@ describe('LM Studio serving descriptors', () => {
     // Flash attention off + an unquantized KV cache is exactly what the live
     // `llama-server` cmdline shows. Turning them on is a MEASURED change an
     // admin makes, not a default that arrives with a descriptor file.
-    expect(LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.flashAttention']).toBe(false);
+    // Measured 2026-09-21 (ticket §2.7): flash attention is 4.3x faster to
+    // decode AND uses 33% less VRAM at identical ctx/parallel. `false` would
+    // ship a regression the moment Phase 1 makes this field authoritative.
+    expect(LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.flashAttention']).toBe(true);
     expect(LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.kvCacheQuantK']).toBe('f16');
     expect(LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.kvCacheQuantV']).toBe('f16');
   });
