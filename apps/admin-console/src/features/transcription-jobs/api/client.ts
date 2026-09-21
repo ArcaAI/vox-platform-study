@@ -6,13 +6,17 @@
  */
 
 import { getJson } from '@/shared/api';
-import type { PaginatedTranscriptionJobs, TranscriptionJob, TranscriptionJobStats, TranscriptionJobStatus } from './types';
+import type { PaginatedTranscriptionJobs, TranscriptionJob, TranscriptionJobStats, TranscriptionJobStatus, TranscriptionJobType } from './types';
 
 const ADMIN_BASE = 'admin/audio/transcription-jobs';
 const JOB_BASE = 'audio/transcription-jobs';
 
-/** NOTE: custom envelope { data, total, page, limit, totalPages }; page is 1-based. */
-export function listTranscriptionJobs(params?: { page?: number; limit?: number }): Promise<PaginatedTranscriptionJobs> {
+/**
+ * NOTE: custom envelope { data, total, page, limit, totalPages }; page is 1-based.
+ * TASK-999 C-2 — `jobType` narrows to `BATCH`/`STREAMING`; omitted (undefined)
+ * yields both kinds, so the `getJson` query builder drops it from the string.
+ */
+export function listTranscriptionJobs(params?: { page?: number; limit?: number; jobType?: TranscriptionJobType }): Promise<PaginatedTranscriptionJobs> {
   return getJson(ADMIN_BASE, params);
 }
 

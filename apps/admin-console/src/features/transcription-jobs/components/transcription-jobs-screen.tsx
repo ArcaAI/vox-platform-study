@@ -19,13 +19,19 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { transcriptionJobKeys, useTranscriptionJobStats, useTranscriptionJobs, useTranscriptionJobsByStatus } from '../api';
-import type { TranscriptionJob, TranscriptionJobStats, TranscriptionJobStatus } from '../api';
+import type { TranscriptionJob, TranscriptionJobStats, TranscriptionJobStatus, TranscriptionJobType } from '../api';
+import { JOB_TYPE_LABELS, JobKindBadge, TranscriptionJobDetailDrawer } from './job-detail-drawer';
 import { JOB_STATUS_META, TranscriptionJobStatusBadge } from './job-status-badge';
 import { JobStreamCard } from './job-stream-panel';
 
 const JOB_STATUSES = ['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'DEAD'] as const;
 
 const STATUS_OPTIONS: FilterOption[] = JOB_STATUSES.map((status) => ({ value: status, label: JOB_STATUS_META[status].label }));
+
+/** TASK-999 — Batch vs realtime (agent-handled) transcription sessions. */
+const JOB_TYPES = Object.keys(JOB_TYPE_LABELS) as TranscriptionJobType[];
+
+const JOB_TYPE_OPTIONS: FilterOption[] = JOB_TYPES.map((jobType) => ({ value: jobType, label: JOB_TYPE_LABELS[jobType] }));
 
 /** Embedded grid (design-spec D2): fixed viewport beside the live-stream panel. */
 const JOBS_GRID_HEIGHT = 480;
@@ -77,22 +83,34 @@ function TranscriptionJobsBody() {
   // route) stays local state.
   const query = useAdminGridParams();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Separate from `selectedId`: closing the drawer must never disturb the
+  // embedded live-stream panel, which stays keyed on `selectedId` alone.
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const search = query.queryState.globalSearch?.trim().toLowerCase() ?? '';
   const statusValue = selectValue(query.queryState, 'status');
   const status = (JOB_STATUSES as readonly string[]).includes(statusValue) ? (statusValue as TranscriptionJobStatus) : null;
+  const jobTypeValue = selectValue(query.queryState, 'jobType');
+  const jobType = (JOB_TYPES as readonly string[]).includes(jobTypeValue) ? (jobTypeValue as TranscriptionJobType) : undefined;
   const page = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.page : 0;
   const limit = query.queryState.pagination.limit;
 
   const statsQuery = useTranscriptionJobStats();
   // The gateway list is 1-based; the URL keeps the 0-based house convention.
-  const listQuery = useTranscriptionJobs({ page: page + 1, limit }, status === null);
+  // `jobType` (TASK-999 C-2) travels straight through as a query param; `All`
+  // (jobType === undefined) sends none, so the server returns both kinds.
+  const listQuery = useTranscriptionJobs({ page: page + 1, limit, jobType }, status === null);
   const statusQuery = useTranscriptionJobsByStatus(status);
 
   const activeQuery = status !== null ? statusQuery : listQuery;
   const { rows: listRows, total: listTotal } = normalizeList<TranscriptionJob>(listQuery.data);
   const loaded: TranscriptionJob[] = status !== null ? (statusQuery.data ?? []) : listRows;
-  const filtered = search ? loaded.filter((job) => job.id.toLowerCase().includes(search)) : loaded;
+  // GET status/:status carries no jobType param, so a Kind filter narrows its
+  // already-loaded rows client-side — same shape as the id-search narrowing
+  // below. In list mode jobType already went to the server above, so this is
+  // a no-op there.
+  const kindFiltered = status !== null && jobType ? loaded.filter((job) => job.jobType === jobType) : loaded;
+  const filtered = search ? kindFiltered.filter((job) => job.id.toLowerCase().includes(search)) : kindFiltered;
 
   // RC-2: `GET /admin/audio/transcription-jobs` (list mode, no status filter)
   // takes only page/limit — no `search` param — so id search here can only
@@ -106,13 +124,14 @@ function TranscriptionJobsBody() {
   const searchScopedToLoadedPage = status === null && Boolean(search);
   const total = status !== null || searchScopedToLoadedPage ? filtered.length : (listTotal ?? 0);
   const rows = status !== null ? filtered.slice(page * limit, page * limit + limit) : filtered;
-  const hasFilters = Boolean(search || status);
+  const hasFilters = Boolean(search || status || jobType);
 
   const stats = statsQuery.data;
   const statsLoading = statsQuery.isPending || (statsQuery.isError && statsQuery.isFetching);
 
   function applyFailedFilter() {
     setSelectedId(null);
+    setDetailOpen(false);
     query.setQueryState({ ...query.queryState, filters: [{ id: 'status', operator: 'eq', value: 'FAILED', variant: 'select' }] });
   }
 
@@ -140,6 +159,15 @@ function TranscriptionJobsBody() {
             {row.original.id}
           </span>
         ),
+      },
+      {
+        accessorKey: 'jobType',
+        header: 'Kind',
+        enableSorting: false,
+        enableHiding: false,
+        size: 100,
+        meta: { label: 'Kind', variant: 'select', options: JOB_TYPE_OPTIONS },
+        cell: ({ row }) => <JobKindBadge jobType={row.original.jobType} />,
       },
       {
         accessorKey: 'status',
@@ -260,7 +288,10 @@ function TranscriptionJobsBody() {
             facetedFilters: true,
             sorting: false,
           }}
-          onRowClick={(row) => setSelectedId(row.id)}
+          onRowClick={(row) => {
+            setSelectedId(row.id);
+            setDetailOpen(true);
+          }}
           isLoading={activeQuery.isLoading}
           isBusy={activeQuery.isFetching && !activeQuery.isLoading}
           error={rows.length > 0 ? null : (activeQuery.error ?? null)}
@@ -270,6 +301,7 @@ function TranscriptionJobsBody() {
         />
         <JobStreamCard jobId={selectedId} />
       </div>
+      <TranscriptionJobDetailDrawer jobId={selectedId} open={detailOpen} onOpenChange={setDetailOpen} />
     </ScreenTemplate>
   );
 }

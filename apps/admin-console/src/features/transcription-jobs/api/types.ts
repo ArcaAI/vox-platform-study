@@ -6,6 +6,21 @@ export type TranscriptionJobType = 'BATCH' | 'STREAMING';
 export const TERMINAL_JOB_STATUSES: readonly TranscriptionJobStatus[] = ['COMPLETED', 'FAILED', 'CANCELLED', 'DEAD'];
 
 /**
+ * TASK-999 C-2 — the fallback-chain entry that actually served the job,
+ * written at completion/teardown. `chainIndex` points into
+ * `resolvedSpec.fallback.chain`; `-1` means the serving engine could not be
+ * matched to a chain entry (render an explanation, never guess).
+ */
+export interface ServedBy {
+  chainIndex: number;
+  source: 'primary' | 'fallback';
+  agentSlug: string | null;
+  modelSlug: string | null;
+  provider: string | null;
+  engine: string | null;
+}
+
+/**
  * GET /admin/audio/transcription-jobs rows (TranscriptionJobResponse).
  * Timestamps are ISO strings on the wire.
  */
@@ -38,6 +53,15 @@ export interface TranscriptionJob {
   createdAt: string;
   updatedAt: string;
   createdBy?: string | null;
+  /** TASK-999 C-2 — realtime sessions persisted as `jobType = STREAMING` rows; `null` for a BATCH job. */
+  streamSessionId?: string | null;
+  /** TASK-999 C-2 — the fallback-chain entry that served; `null` when not recorded. */
+  servedBy?: ServedBy | null;
+  /** TASK-999 C-2 — `null` = never measured; `0` is a real empty transcript. */
+  resultWordCount?: number | null;
+  resultCharCount?: number | null;
+  /** TASK-999 C-2 — `completedAt - startedAt`; `null` while the job is still running. */
+  durationMs?: number | null;
 }
 
 /**
