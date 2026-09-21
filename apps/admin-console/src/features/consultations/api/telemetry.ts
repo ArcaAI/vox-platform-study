@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getJson } from '@/shared/api';
 
 export type TelemetrySource =
+  | 'consultation'
   | 'summary-meta'
   | 'usage-ledger'
   | 'agent-trajectory'

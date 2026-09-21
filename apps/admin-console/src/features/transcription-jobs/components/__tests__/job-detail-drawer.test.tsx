@@ -60,8 +60,9 @@ function resolvedSpecFixture() {
       autoSwitch: true,
       switchAfterConsecutiveFailures: 2,
       spec: null,
+      // `chain` holds FALLBACKS ONLY — the primary is the spec itself
+      // (packages/types/src/asr-spec.ts:591). It is never an element here.
       chain: [
-        { runtimeKey: 'rk-0', agent: { slug: 'asr-primary-agent' }, models: { asr: { slug: 'whisper-large-v3', provider: 'azure' } } },
         { runtimeKey: 'rk-1', agent: { slug: 'asr-fallback-agent' }, models: { asr: { slug: 'whisper-medium', provider: 'ollama' } } },
       ],
     },
@@ -94,7 +95,7 @@ describe('TranscriptionJobDetailDrawer', () => {
   });
 
   it('marks only the servedBy.chainIndex entry as served', async () => {
-    const servedBy: ServedBy = { chainIndex: 1, source: 'fallback', agentSlug: 'asr-fallback-agent', modelSlug: 'whisper-medium', provider: 'ollama', engine: 'whisper-medium' };
+    const servedBy: ServedBy = { chainIndex: 0, source: 'fallback', agentSlug: 'asr-fallback-agent', modelSlug: 'whisper-medium', provider: 'ollama', engine: 'whisper-medium' };
     const fixture = job({ resolvedSpec: resolvedSpecFixture(), servedBy });
     stubJobFetch(fixture);
     renderWithProviders(<TranscriptionJobDetailDrawer jobId={fixture.id} open onOpenChange={() => {}} />);
@@ -107,6 +108,21 @@ describe('TranscriptionJobDetailDrawer', () => {
     const primaryRow = screen.getByText('azure · whisper-large-v3').closest('li');
     expect(fallbackRow?.textContent).toContain('Served');
     expect(primaryRow?.textContent).not.toContain('Served');
+  });
+
+  // RED before the fix: a primary-served job carries chainIndex -1 by construction
+  // (the primary is not an element of `fallback.chain`), so the drawer branched on the
+  // index alone and told the user the engine "could not be matched" — on the common case.
+  it('marks the primary when it served, and shows no unmatched note', async () => {
+    const servedBy: ServedBy = { chainIndex: -1, source: 'primary', agentSlug: 'asr-primary-agent', modelSlug: 'whisper-large-v3', provider: 'azure', engine: 'azure' };
+    const fixture = job({ resolvedSpec: resolvedSpecFixture(), servedBy });
+    stubJobFetch(fixture);
+    renderWithProviders(<TranscriptionJobDetailDrawer jobId={fixture.id} open onOpenChange={() => {}} />);
+
+    const primaryRow = (await screen.findByText('azure · whisper-large-v3')).closest('li');
+    expect(primaryRow?.textContent).toContain('Served');
+    expect(screen.getAllByText('Served')).toHaveLength(1);
+    expect(screen.queryByText(/could not be matched/i)).toBeNull();
   });
 
   it('marks nothing and shows the not-recorded note when servedBy is null', async () => {

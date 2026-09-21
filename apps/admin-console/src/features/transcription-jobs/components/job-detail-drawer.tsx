@@ -90,20 +90,35 @@ function WhoRanItSection({ job, spec }: { job: TranscriptionJob; spec: ResolvedA
 }
 
 /**
- * Renders `resolvedSpec.fallback.chain` in order and marks whichever entry
- * `servedBy.chainIndex` names.
- *  - `servedBy` null/absent — nothing is marked; the chain is shown plainly
- *    with a "not recorded" note (never guess which one ran).
- *  - `servedBy.chainIndex === -1` — the serving engine could not be matched to a
- *    chain entry; say so, mark nothing.
+ * Renders the engines this job could have run on, in order, and marks the one
+ * that actually served.
+ *
+ * `ResolvedAsrSpec` extends `AsrSpecCore`: the PRIMARY *is* the spec and is NOT
+ * an element of `fallback.chain`, so it has no index there. That is why
+ * `servedBy.chainIndex` is `-1` for a primary-served job as well as for an
+ * unidentifiable one — branch on `source` FIRST, `chainIndex` second:
+ *  - `source: 'primary'`                  — the primary served (the common case).
+ *  - `source: 'fallback'`, index >= 0     — `fallback.chain[index]` served.
+ *  - `source: 'fallback'`, index === -1   — a fallback served but could not be
+ *                                           identified; mark nothing and say so.
+ *  - `servedBy` null/absent               — never guess; mark nothing.
  */
 function FallbackChainSection({ servedBy, spec }: { servedBy: ServedBy | null | undefined; spec: ResolvedAsrSpec | null }) {
-  const chain = spec?.fallback.chain ?? [];
-  if (chain.length === 0) {
-    return <p className="text-muted-foreground text-xs">No fallback chain recorded.</p>;
+  if (spec === null) {
+    return <p className="text-muted-foreground text-xs">No resolved ASR spec recorded.</p>;
   }
+  const chain = spec.fallback?.chain ?? [];
   const served = servedBy ?? null;
-  const unmatched = served !== null && served.chainIndex === -1;
+  // Only a FALLBACK with no index is unidentifiable. A primary carries -1 by construction.
+  const unmatched = served !== null && served.source === 'fallback' && served.chainIndex === -1;
+  const entries: { core: AsrSpecCore; isPrimary: boolean; served: boolean }[] = [
+    { core: spec, isPrimary: true, served: served !== null && served.source === 'primary' },
+    ...chain.map((core: AsrSpecCore, index: number) => ({
+      core,
+      isPrimary: false,
+      served: served !== null && served.source === 'fallback' && served.chainIndex === index,
+    })),
+  ];
   return (
     <div className="flex flex-col gap-2">
       {served === null ? (
@@ -111,30 +126,33 @@ function FallbackChainSection({ servedBy, spec }: { servedBy: ServedBy | null | 
       ) : null}
       {unmatched ? (
         <p className="text-muted-foreground text-xs">
-          The serving engine could not be matched to a chain entry &mdash; no entry below is marked as served.
+          A fallback engine served, but it could not be matched to a chain entry &mdash; no entry below is marked as served.
         </p>
       ) : null}
+      {chain.length === 0 ? <p className="text-muted-foreground text-xs">No fallback configured &mdash; primary only.</p> : null}
       <ol className="flex flex-col gap-1">
-        {chain.map((entry: AsrSpecCore, index) => {
-          const isServedEntry = served !== null && served.chainIndex === index;
-          return (
-            <li
-              key={index}
-              className={cx(
-                'flex items-center gap-2 rounded-md border px-2 py-1 font-mono text-xs',
-                isServedEntry && 'border-primary bg-primary/5',
-              )}
-            >
-              <span className="text-muted-foreground">{index + 1}.</span>
-              <span className="min-w-0 flex-1 truncate">{engineLabel(entry.models.asr.provider, entry.models.asr.slug)}</span>
-              {isServedEntry ? (
-                <Badge variant="default" className="shrink-0">
-                  Served
-                </Badge>
-              ) : null}
-            </li>
-          );
-        })}
+        {entries.map((entry, index) => (
+          <li
+            key={index}
+            className={cx(
+              'flex items-center gap-2 rounded-md border px-2 py-1 font-mono text-xs',
+              entry.served && 'border-primary bg-primary/5',
+            )}
+          >
+            <span className="text-muted-foreground">{index + 1}.</span>
+            <span className="min-w-0 flex-1 truncate">{engineLabel(entry.core.models.asr.provider, entry.core.models.asr.slug)}</span>
+            {entry.isPrimary ? (
+              <Badge variant="outline" className="shrink-0">
+                Primary
+              </Badge>
+            ) : null}
+            {entry.served ? (
+              <Badge variant="default" className="shrink-0">
+                Served
+              </Badge>
+            ) : null}
+          </li>
+        ))}
       </ol>
     </div>
   );
