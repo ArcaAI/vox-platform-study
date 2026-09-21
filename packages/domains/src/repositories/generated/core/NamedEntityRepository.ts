@@ -147,6 +147,35 @@ export class NamedEntityRepository extends Repository<NamedEntityEntity, NamedEn
   }
 
   /**
+   * TASK-999 — entity counts per class across a WHOLE consultation, without
+   * reading a single entity row.
+   *
+   * The consultation-wide sibling of {@link countByClass}, and deliberately a
+   * `groupBy` rather than `findByConsultation(...).reduce(...)`: `text`,
+   * `normalizedText` and `metadata` are Vault-Transit ciphertext, and the base
+   * `db` getter decrypts every returned row (`phi-read-decrypt.ts`). Grouping a
+   * consultation's entities by label through that finder would pull hundreds of
+   * PHI strings through Vault to compute a histogram of `className` — which is
+   * not encrypted and never needed decrypting. `groupBy` is absent from
+   * `DECRYPT_METHODS`, so it passes through the proxy untouched.
+   *
+   * Returns `{}` for a consultation with no entities — an empty histogram, not
+   * an error.
+   */
+  async countByClassForConsultation(consultationId: string): Promise<Record<string, number>> {
+    const result = await (this as any).db.groupBy({
+      by: ['className'],
+      where: { ContextItem: { consultationId } },
+      _count: { className: true },
+    });
+
+    return result.reduce((acc: Record<string, number>, item: any) => {
+      acc[item.className] = item._count.className;
+      return acc;
+    }, {});
+  }
+
+  /**
    * Find entities by AI model
    */
   async findByAiModel(aiModelId: string, limit: number = 100): Promise<NamedEntityEntity[]> {

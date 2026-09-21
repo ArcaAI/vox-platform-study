@@ -8,6 +8,9 @@ export * from './events';
 // Single seam every note-generation entry point routes through.
 export * from './note-generation';
 export * from './timeline';
+// TASK-999 Lane B — the read-only per-consultation AI telemetry projection
+// behind `GET admin/consultations/:id/telemetry`.
+export * from './telemetry';
 export * from './prompt';
 // the VISIT-TYPE vocabulary — the platform's two visit types, one shared
 // definition instead of a derived literal in nine places (TASK-882: no longer a

@@ -744,8 +744,17 @@ function parseInstant(value?: string): number | undefined {
   return Number.isNaN(ms) ? undefined : ms;
 }
 
-/** Parsed AD-1 GenerationStats, incl. the token counts B4 surfaced. */
-interface ParsedGenerationStats {
+/**
+ * Parsed AD-1 GenerationStats, incl. the token counts B4 surfaced.
+ *
+ * EXPORTED (TASK-999 Lane B) so the consultation-telemetry service reads
+ * `AgentTrajectoryStep.stats` through the SAME parser the generation metrics
+ * use. A second reader would be a second opinion about which of the four wire
+ * spellings (`prompt_tokens` / `promptTokens` / `input_tokens` / `inputTokens`,
+ * flat or nested under `usage`) counts — and the two would drift apart the
+ * first time an engine changed its shape.
+ */
+export interface ParsedGenerationStats {
   ttftMs?: number;
   tokensPerSecond?: number;
   stopReason?: string;
@@ -838,7 +847,7 @@ function rollupGenerationStats(statsList: unknown[], pricing?: ModelPriceBook): 
   };
 }
 
-function parseGenerationStats(raw: unknown): ParsedGenerationStats | null {
+export function parseGenerationStats(raw: unknown): ParsedGenerationStats | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
   const ttftMs = pickNumber(obj, 'ttft_ms', 'ttftMs');
