@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import type { AsyncCollection } from '@/lib/shared';
 
 import type { AudioController, LiveTranscriptSegment } from './types';
+import { DEFAULT_PARAGRAPH_GAP_SECONDS, groupTranscriptSegments, type TranscriptParagraph } from './paragraph-grouping';
 
 export interface UseLiveTranscriptParams {
   segments: LiveTranscriptSegment[];
@@ -20,6 +21,8 @@ export interface UseLiveTranscriptParams {
   autoScroll?: boolean;
   collection?: AsyncCollection<LiveTranscriptSegment>;
   estimateSegmentHeight?: number;
+  /** Seconds of silence that starts a new paragraph even for the same speaker. See `paragraph-grouping.ts`. */
+  paragraphGapSeconds?: number;
 }
 
 export interface ActiveWord {
@@ -29,6 +32,8 @@ export interface ActiveWord {
 
 export interface UseLiveTranscriptResult {
   segments: LiveTranscriptSegment[];
+  /** `segments` grouped into flowing paragraphs — what `LiveTranscript` actually renders/virtualizes. */
+  paragraphs: TranscriptParagraph[];
   scrollRef: React.RefObject<HTMLDivElement | null>;
   virtualizer: Virtualizer<HTMLDivElement, Element>;
   isPinnedToBottom: boolean;
@@ -59,6 +64,7 @@ export function useLiveTranscript(params: UseLiveTranscriptParams): UseLiveTrans
     autoScroll = true,
     collection,
     estimateSegmentHeight = 64,
+    paragraphGapSeconds = DEFAULT_PARAGRAPH_GAP_SECONDS,
   } = params;
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -86,12 +92,24 @@ export function useLiveTranscript(params: UseLiveTranscriptParams): UseLiveTrans
     }));
   }, [segments, overrides]);
 
+  // Adjacent same-speaker segments within `paragraphGapSeconds` render as one
+  // flowing paragraph instead of one bubble per utterance (see
+  // paragraph-grouping.ts). Grouping is disabled while `editable`: editing
+  // is keyed to ONE segment's id (`onEditSegment(id, text)`), and there is no
+  // unambiguous target once N utterances are shown as one block — so an
+  // editable transcript keeps today's one-block-per-segment behavior, and
+  // every paragraph here has exactly one member.
+  const paragraphs = React.useMemo<TranscriptParagraph[]>(
+    () => groupTranscriptSegments(displaySegments, { gapSeconds: paragraphGapSeconds, enabled: !editable }),
+    [displaySegments, paragraphGapSeconds, editable],
+  );
+
   const virtualizer = useVirtualizer({
-    count: displaySegments.length,
+    count: paragraphs.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimateSegmentHeight,
     overscan: 8,
-    getItemKey: (index) => displaySegments[index]?.id ?? index,
+    getItemKey: (index) => paragraphs[index]?.id ?? index,
   });
 
   const canEdit = React.useCallback((seg: LiveTranscriptSegment) => editable && (editingPolicy === 'all' || seg.isFinal), [editable, editingPolicy]);
@@ -182,6 +200,7 @@ export function useLiveTranscript(params: UseLiveTranscriptParams): UseLiveTrans
 
   return {
     segments: displaySegments,
+    paragraphs,
     scrollRef,
     virtualizer,
     isPinnedToBottom,

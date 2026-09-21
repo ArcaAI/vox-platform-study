@@ -1,11 +1,15 @@
 export { LiveTranscript } from './live-transcript';
 export { TranscriptSegment } from './transcript-segment';
+export { TranscriptParagraphView } from './transcript-paragraph';
 export { TranscriptWord } from './transcript-word';
 export { JumpToLive } from './jump-to-live';
 export { ListeningPulse } from './listening-pulse';
 export { useLiveTranscript } from './use-live-transcript';
+export { groupTranscriptSegments, joinTranscriptFragments, DEFAULT_PARAGRAPH_GAP_SECONDS } from './paragraph-grouping';
 export type { default as SegmentEditor, SegmentEditorProps } from './segment-editor';
 export type { TranscriptWordData, TranscriptWordProps } from './transcript-word';
 export type { UseLiveTranscriptParams, UseLiveTranscriptResult, ActiveWord } from './use-live-transcript';
 export type { TranscriptSegmentProps } from './transcript-segment';
+export type { TranscriptParagraphProps } from './transcript-paragraph';
+export type { TranscriptParagraph, GroupTranscriptSegmentsOptions } from './paragraph-grouping';
 export type { LiveTranscriptSegment, LiveTranscriptWord, LiveTranscriptProps, SpeakerConfig, AudioController } from './types';

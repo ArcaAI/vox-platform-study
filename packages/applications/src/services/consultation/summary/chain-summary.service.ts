@@ -17,6 +17,7 @@ import {
   ConsultationEntity,
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
+import { assembleTranscriptFragments, readSpeakerId } from './transcript-assembly.util';
 import { buildTextGeneratePayload, mapTextGenerateResponse } from './text-generate';
 import { buildLlmUsageBatches, parseTextUsageDetail, resolveDeployment, toLedgerProvider, type TextUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
@@ -355,19 +356,27 @@ export class ChainSummaryService extends BaseService {
           });
         }
       } else {
-        // Fall back to transcripts if no summary exists
+        // Fall back to transcripts if no summary exists. Each TRANSCRIPT
+        // ContextItem is one STT utterance (useArcaAudio.ts posts one per
+        // finalized utterance) — pushing one section per item used to repeat
+        // the "--- Section N ---" header (composeTextInput, below) once per
+        // utterance and hand the model a wall of one-sentence "paragraphs".
+        // Assemble adjacent utterances into real paragraphs first (TASK-998,
+        // see transcript-assembly.util.ts) so a consultation with 200
+        // utterances becomes a handful of sections instead of 200.
         const transcripts = await this.contextItemRepository.findTranscripts(consultation.id);
-        for (const transcript of transcripts) {
-          if (transcript.content?.trim()) {
-            sections.push({
-              consultationId: consultation.id,
-              department: departmentName,
-              doctor: doctorName,
-              type: 'transcript',
-              content: transcript.content,
-              createdAt: transcript.createdAt?.toISOString(),
-            });
-          }
+        const paragraphs = assembleTranscriptFragments(
+          transcripts.map((t) => ({ content: t.content, createdAt: t.createdAt, speakerId: readSpeakerId(t) })),
+        );
+        for (const paragraph of paragraphs) {
+          sections.push({
+            consultationId: consultation.id,
+            department: departmentName,
+            doctor: doctorName,
+            type: 'transcript',
+            content: paragraph.content,
+            createdAt: paragraph.createdAt?.toISOString(),
+          });
         }
       }
 

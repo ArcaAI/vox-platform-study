@@ -19,7 +19,10 @@ import type { LiveTranscriptSegment, SpeakerConfig } from './types';
 // TS2322 (CJS interop wraps the module namespace as `default`) — still required.
 const LazySegmentEditor = React.lazy(() => import('./segment-editor.js') as unknown as Promise<{ default: React.ComponentType<SegmentEditorProps> }>);
 
-const SPEAKER_TONE: Record<NonNullable<SpeakerConfig['colorRole']>, string> = {
+// Exported for reuse by `transcript-paragraph.tsx` (the grouped-paragraph
+// render path, TASK-998) — the tone map and clock formatter are otherwise
+// identical for a paragraph's lead segment and a standalone one.
+export const SPEAKER_TONE: Record<NonNullable<SpeakerConfig['colorRole']>, string> = {
   primary: 'text-foreground',
   ai: 'text-foreground',
   // Speaker names are TEXT, so each role uses its text step: --warning as bare
@@ -30,7 +33,7 @@ const SPEAKER_TONE: Record<NonNullable<SpeakerConfig['colorRole']>, string> = {
   info: 'text-info',
 };
 
-function formatClock(seconds?: number): string | null {
+export function formatClock(seconds?: number): string | null {
   if (seconds == null || Number.isNaN(seconds)) return null;
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);

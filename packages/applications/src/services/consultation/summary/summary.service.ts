@@ -43,6 +43,7 @@ import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto'
 import { HarnessAuditService } from '../../harness-audit';
 import { ConfigResolver } from '../../config-resolver';
 import { diffContent } from './content-diff.util';
+import { assembleTranscriptText, readSpeakerId } from './transcript-assembly.util';
 import { assertAttributedClinicianInTenant, resolveAttributedClinician, tenantRoleReaderFor, type ClinicalCaller } from './clinician-attribution';
 import { readSummaryLanguage } from '../consultation/summary-language';
 import { ISummaryService } from './ISummaryService';
@@ -718,20 +719,25 @@ export class SummaryService extends BaseService implements ISummaryService {
     const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
     await this.assertContextItemsInTenant(tenantId, request.contextItemIds);
 
-    // Get transcriptions if not provided
+    // Get transcriptions if not provided. Adjacent same-speaker fragments are
+    // assembled into real paragraphs (TASK-998) instead of a bare
+    // `.map(item => item.content).join('\n\n')`, which used to hand the LLM
+    // one utterance-level fragment per "paragraph". Items stay in the
+    // caller's own `contextItemIds` order either way (unchanged from before);
+    // `assembleTranscriptFragments` treats a negative `createdAt` gap as "no
+    // reliable signal" and keeps such a run together rather than guess at a
+    // boundary. `findTranscripts` below is always chronological
+    // (`createdAt: 'asc'`), so that path never hits the out-of-order case.
     let content = request.transcription;
     if (!content && request.contextItemIds?.length) {
       const requestedIds = new Set(request.contextItemIds);
       const contextItems = await Promise.all(request.contextItemIds.map((id) => this.contextItemRepository.findById(id)));
-      content = contextItems
-        .filter((item): item is NonNullable<typeof item> => !!item)
-        .filter((item) => requestedIds.has(item.id))
-        .map((item) => item.content)
-        .join('\n\n');
+      const orderedItems = contextItems.filter((item): item is NonNullable<typeof item> => !!item).filter((item) => requestedIds.has(item.id));
+      content = assembleTranscriptText(orderedItems.map((item) => ({ content: item.content, createdAt: item.createdAt, speakerId: readSpeakerId(item) })));
     }
     if (!content) {
       const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
-      content = transcripts.map((c) => c.content).join('\n\n');
+      content = assembleTranscriptText(transcripts.map((c) => ({ content: c.content, createdAt: c.createdAt, speakerId: readSpeakerId(c) })));
     }
 
     if (!content?.trim()) {

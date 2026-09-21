@@ -68,6 +68,8 @@ export interface LiveTranscriptProps extends BaseSurfaceProps, AsyncStateProps {
   // slots / render props
   renderSegment?: (seg: LiveTranscriptSegment, ctx: { isEditing: boolean }) => React.ReactNode;
   estimateSegmentHeight?: number;
+  /** Seconds of silence that starts a new paragraph even for the same speaker. Default: see `paragraph-grouping.ts`. */
+  paragraphGapSeconds?: number;
   height?: number | string;
   'aria-label'?: string;
 }
