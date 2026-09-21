@@ -14,6 +14,9 @@ import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource'
 import type {
   CreateModelRequest,
   DiscoveryResponse,
+  LmStudioRuntimeResponse,
+  LoadLmStudioModelRequest,
+  LoadLmStudioModelResponse,
   ModelCatalogueResponse,
   ModelDownloadStatusResponse,
   ModelInventoryReport,
@@ -23,6 +26,7 @@ import type {
   RegisterDiscoveredModelRequest,
   SetPlatformDefaultRequest,
   TriggerModelDownloadResponse,
+  UnloadLmStudioModelResponse,
   UpdateModelRequest,
 } from './schemas';
 
@@ -37,8 +41,8 @@ import type {
  * it and nothing else here. Those methods name their own accepted scopes in a 403;
  * the scope above is the one that reaches EVERY route.
  *
- * Backed by controllers AiModelAdminController, AiModelCatalogueController, AiModelDiscoveryController
- * (15 routes). Several controllers sharing one scope share one
+ * Backed by controllers AiModelAdminController, AiModelCatalogueController, AiModelDiscoveryController, InferenceEnginesController
+ * (18 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -339,6 +343,55 @@ export class AdminAiModelResource extends AdminResource {
     return this.request<ModelResponse>({
       method: 'GET',
       path: `admin/ai-models/slug/${encodePathSegment(String(slug))}`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Evict one loaded instance (ADVISORY — JIT reloads it)
+   *
+   * Unloads the named instance and returns its VRAM to the shared cards. `jitReloadPossible` is ALWAYS `true`, and it is a warning rather than a capability: JIT loading cannot be disabled on this build — there is no CLI flag, no REST field and no settings key for it — so the next inference request reloads the model, on the `lmStudio.jit.*` defaults rather than on the profile it was unloaded from. Use it to free memory now, never to keep a model gone.
+   *
+   * `POST /api/v1/admin/inference-engines/lm-studio/models/{identifier}/unload` — `InferenceEnginesController.unload`.
+   */
+  unload(identifier: string, options: AdminRequestOptions = {}): Promise<UnloadLmStudioModelResponse> {
+    return this.request<UnloadLmStudioModelResponse>({
+      method: 'POST',
+      path: `admin/inference-engines/lm-studio/models/${encodePathSegment(String(identifier))}/unload`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Resolve a serving profile for one model and load it
+   *
+   * Resolves the profile request -> model row -> platform default (widening only on absence), refuses an incoherent combination with 400, and refuses an over-budget load with 409 unless `force: true`. ⚠️ THE LOAD ITSELF CANNOT BE DISPATCHED ON THIS ENGINE BUILD and the route answers **501 `ENGINE_LOAD_UNSUPPORTED`** after the checks: LM Studio`s REST load endpoint fails for every payload on this deployment and carries no field for KV-cache quantization or GPU placement, and the one working loader speaks the SDK kvConfig websocket over loopback inside the pod at boot. The 501 body carries the same `applied` / `sources` / `estimateBytes` the 202 would, so a console can show the precheck before arming its button, and names the remedy (write the profile, restart the workload). Nothing is dispatched to the broken endpoint — doing so is what left the engine with no model loaded when it was measured.
+   *
+   * `POST /api/v1/admin/inference-engines/lm-studio/models/{modelKey}/load` — `InferenceEnginesController.load`.
+   */
+  load(modelKey: string, body: LoadLmStudioModelRequest, options: AdminRequestOptions = {}): Promise<LoadLmStudioModelResponse> {
+    return this.request<LoadLmStudioModelResponse>({
+      method: 'POST',
+      path: `admin/inference-engines/lm-studio/models/${encodePathSegment(String(modelKey))}/load`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Read what the LM Studio engine is currently serving, and on what VRAM
+   *
+   * Engine reachability, every visible GPU with its used/free/total framebuffer, every loaded instance with the configuration the engine ACTUALLY applied (read back from the instance, not from a stored profile), and the `lmStudio.serving.*` platform default a model with no `_metadata.serving` block inherits. Two honesty notes the response repeats: per-device VRAM comes from DCGM and is aggregated `max by (gpu)` because the exporter`s `pod` label is an arbitrary pick among the pods sharing a time-sliced card; and `kvCacheEstimateBytes` is DERIVED from `contextLength x parallel`, never measured — nothing in CUDA, NVML or DCGM reports per-model memory.
+   *
+   * `GET /api/v1/admin/inference-engines/lm-studio/runtime` — `InferenceEnginesController.runtime`.
+   */
+  runtime(options: AdminRequestOptions = {}): Promise<LmStudioRuntimeResponse> {
+    return this.request<LmStudioRuntimeResponse>({
+      method: 'GET',
+      path: 'admin/inference-engines/lm-studio/runtime',
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

@@ -289,6 +289,13 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     plane: 'admin',
     description: 'Harness policy, evaluation, assurance, and live configuration.',
   },
+  {
+    name: 'admin-inference-engines',
+    displayName: 'Inference Engines',
+    plane: 'admin',
+    description:
+      'Platform control over the shared GPU serving engine: what is loaded, on which card, on how much VRAM — and the super-admin load/unload surface. Distinct from AI Services, which stays read-only.',
+  },
   { name: 'admin-knowledge', displayName: 'Knowledge Base', plane: 'admin', description: 'Knowledge documents and their retrieval indexes.' },
   { name: 'admin-mcp-servers', displayName: 'Tools & MCP', plane: 'admin', description: 'Registered MCP servers and the tools they expose.' },
   {
