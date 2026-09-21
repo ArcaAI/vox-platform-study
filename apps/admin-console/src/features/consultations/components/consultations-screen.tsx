@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { IconBuilding, IconFilterOff, IconRefresh, IconStethoscope } from '@tabler/icons-react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
-import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
+import { VirtualizedDataGrid, type ColumnDef, type DataQueryState, type SortRule } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
@@ -14,7 +14,7 @@ import { useAdminGridParams } from '@/shared/data/admin-data-grid';
 import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
-import { formatNumber } from '@/shared/format';
+import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
@@ -54,6 +54,9 @@ const TYPE_OPTIONS: FilterOption[] = [
 
 /** Embedded grid (design-spec D2): fixed viewport beside the aggregate card. */
 const CONSULTATIONS_GRID_HEIGHT = 480;
+
+/** Server-side default: latest-updated first — matches the gateway's own default (TASK-999). */
+const CONSULTATIONS_DEFAULT_SORT: SortRule[] = [{ id: 'updatedAt', desc: true }];
 
 /** Scalar value of a single-value faceted filter from the grid query-state. */
 function scalarFilterValue(state: DataQueryState, id: string): string {
@@ -131,7 +134,7 @@ function ConsultationsScreenBody() {
   // Discrete filters (patient/doctor/department ids, status) + the client-only
   // type filter live in the URL via the standard grid codec; the selected row
   // (a detail sheet, not a route) stays local state.
-  const query = useAdminGridParams();
+  const query = useAdminGridParams({ defaultSort: CONSULTATIONS_DEFAULT_SORT });
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const patientId = scalarFilterValue(query.queryState, 'patientId');
@@ -141,14 +144,17 @@ function ConsultationsScreenBody() {
   const typeValue = scalarFilterValue(query.queryState, 'type');
   const status = (CONSULTATION_STATUSES as readonly string[]).includes(statusValue) ? (statusValue as ConsultationStatus) : undefined;
   const type = (VISIT_TYPES as readonly string[]).includes(typeValue) ? (typeValue as ConsultationVisitType) : undefined;
-  const page = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.page : 0;
-  const limit = query.queryState.pagination.limit;
 
-  // The endpoint is 1-based (0 coerces to 1 server-side); the URL/pagination
-  // state stays 0-based like every other console list.
+  // page/limit/sort come from the shared grid-state pipeline (useAdminGridParams
+  // -> toListParams), which already applies the 0-based-state -> 1-based-request
+  // conversion this endpoint expects (see grid-url-state.ts `toListParams`). The
+  // remaining filters (patientId/doctorId/departmentId/status) stay hand-built:
+  // this endpoint takes plain top-level params, not the generic bracket-grammar
+  // `filters` string `toListParams` would otherwise produce.
   const listParams: ListConsultationsParams = {
-    page: page + 1,
-    limit,
+    page: query.listParams.page,
+    limit: query.listParams.limit,
+    ...(query.listParams.sort ? { sort: query.listParams.sort } : {}),
     ...(patientId ? { patientId } : {}),
     ...(doctorId ? { doctorId } : {}),
     ...(departmentId ? { departmentId } : {}),
@@ -158,7 +164,7 @@ function ConsultationsScreenBody() {
 
   const { rows: pageRows, total } = normalizeList<Consultation>(list.data);
   // RC-2: `GET /admin/consultations` (see `admin-consultation.controller.ts#list`)
-  // whitelists only page/limit/patientId/doctorId/departmentId/status — visit
+  // whitelists only page/limit/patientId/doctorId/departmentId/status/sort — visit
   // type is DERIVED (`visitTypeOf`) and has no server param, so the New/Revisit
   // facet can only narrow the ONE page already loaded, never the server total.
   // Surfaced in the empty state below, and `count` tracks what is ACTUALLY
@@ -229,11 +235,28 @@ function ConsultationsScreenBody() {
       {
         accessorKey: 'status',
         header: 'Status',
-        enableSorting: false,
+        // Gateway allow-list (`CONSULTATION_SORTABLE_FIELDS`) covers `status` —
+        // unlike Consult/Patient/Doctor/Department/Type above, which have no
+        // server-side sort support and stay `enableSorting: false`.
+        enableSorting: true,
         enableHiding: false,
         size: 140,
         meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
         cell: ({ row }) => <ConsultationStatusBadge status={row.original.status} />,
+      },
+      {
+        accessorKey: 'updatedAt',
+        header: 'Updated',
+        enableSorting: true,
+        enableHiding: false,
+        size: 120,
+        minSize: 100,
+        meta: { label: 'Updated' },
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-xs whitespace-nowrap" title={formatDateTime(row.original.updatedAt)}>
+            {formatRelativeTime(row.original.updatedAt)}
+          </span>
+        ),
       },
     ],
     [],
@@ -284,7 +307,7 @@ function ConsultationsScreenBody() {
               data={rows}
               getRowId={(row) => row.id}
               height={CONSULTATIONS_GRID_HEIGHT}
-              manual={{ filtering: true, pagination: true }}
+              manual={{ filtering: true, pagination: true, sorting: true }}
               rowCount={count}
               queryState={query.queryState}
               onQueryStateChange={query.setQueryState}
@@ -297,7 +320,7 @@ function ConsultationsScreenBody() {
                 rowSelection: false,
                 globalSearch: false,
                 facetedFilters: true,
-                sorting: false,
+                sorting: true,
               }}
               onRowClick={(row) => setSelectedId(row.id)}
               isLoading={list.isLoading}

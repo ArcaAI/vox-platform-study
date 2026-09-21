@@ -35,6 +35,8 @@ import {
   ConsultationAggregateResponse,
   ConsultationWorkflowResponse,
   PaginatedConsultationResponse,
+  ConsultationSort,
+  DEFAULT_CONSULTATION_SORT,
 } from './dto';
 import { ConsultationDtoMapper } from './consultation.dto.mapper';
 import {
@@ -1653,6 +1655,8 @@ export class ConsultationService extends BaseService implements IConsultationSer
     doctorId?: string;
     departmentId?: string;
     status?: ConsultationStatus;
+    /** Pre-validated by the controller (`parseConsultationSort`); absent → `DEFAULT_CONSULTATION_SORT`. */
+    sort?: ConsultationSort;
   }): Promise<PaginatedConsultationResponse> {
     const tenantId = this.tenantId;
     // (TD3 / DEF-1) — a SUPER_ADMIN with NO tenant scope reads
@@ -1666,7 +1670,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new BadRequestException('Tenant ID is required');
     }
 
-    const { page, pageSize, patientId, doctorId, departmentId, status } = params;
+    const { page, pageSize, patientId, doctorId, departmentId, status, sort } = params;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filters: any = {};
@@ -1678,10 +1682,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // the admin live console uses ?status=RECORDING to find in-progress recordings.
     if (status) filters.status = status;
 
+    // `sort` arrives pre-validated (`parseConsultationSort`, allow-listed against
+    // CONSULTATION_SORTABLE_FIELDS) or absent — default: latest-updated first.
+    const effectiveSort = sort ?? DEFAULT_CONSULTATION_SORT;
+
     const [consultations, count] = await Promise.all([
       this.consultationRepository.findPaginatedWithRelations({
         filters,
-        sort: [{ appointmentDate: 'desc' }],
+        sort: [{ [effectiveSort.field]: effectiveSort.direction }],
         page,
         limit: pageSize,
       }),

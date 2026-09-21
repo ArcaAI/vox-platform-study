@@ -946,7 +946,10 @@ describe('ConsultationService', () => {
         expect.objectContaining({
           page: 2,
           limit: 5,
-          sort: [{ appointmentDate: 'desc' }],
+          // TASK-999: the default sort changed from appointmentDate to
+          // updatedAt (descending) when `sort` is absent — see
+          // dto/consultation-sort.ts `DEFAULT_CONSULTATION_SORT`.
+          sort: [{ updatedAt: 'desc' }],
           filters: { tenantId: 'tenant-1', patientId: 'patient-9', doctorId: 'doctor-7', departmentId: 'dept-3' },
         }),
       );

@@ -121,6 +121,12 @@ export interface ListConsultationsParams {
   doctorId?: string;
   departmentId?: string;
   status?: ConsultationStatus;
+  /**
+   * "field:asc|desc" (see `serializeSort` in `grid-url-state.ts`). The
+   * gateway allow-list is `updatedAt | createdAt | appointmentDate | status`
+   * (`CONSULTATION_SORTABLE_FIELDS`) — anything else is a 400.
+   */
+  sort?: string;
   /** Keeps the params assignable to QueryParams. */
   [key: string]: string | number | boolean | undefined | null;
 }
