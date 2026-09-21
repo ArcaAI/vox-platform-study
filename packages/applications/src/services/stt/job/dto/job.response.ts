@@ -3,6 +3,34 @@ import { TranscriptionJobStatus, TranscriptionJobType } from '@arcaai/domains';
 import { JsonValue } from '@arcaai/domains';
 import { PipelineResponse } from '../../pipeline/dto';
 
+/**
+ * TASK-999 §3.1 C-2 — which entry of `resolvedSpec.fallback.chain` actually
+ * served. Documentation shape for the persisted `TranscriptionJob.servedBy`
+ * JSON; the authority on its semantics is `ServedBy` in `../../served-by.ts`.
+ */
+export class ServedByResponse {
+  @ApiProperty({
+    description:
+      'Index into `resolvedSpec.fallback.chain`. `-1` means the served entry is not a member of that array — read `source` for why: `primary` (the resolved spec itself served) or `fallback` (a fallback served but could not be identified).',
+  })
+  chainIndex: number;
+
+  @ApiProperty({ description: 'Whether the primary spec or a fallback entry served', enum: ['primary', 'fallback'] })
+  source: 'primary' | 'fallback';
+
+  @ApiPropertyOptional({ description: 'Agent slug of the entry that served', nullable: true })
+  agentSlug: string | null;
+
+  @ApiPropertyOptional({ description: 'ASR model slug of the entry that served', nullable: true })
+  modelSlug: string | null;
+
+  @ApiPropertyOptional({ description: 'AiModel.provider of the entry that served; null for a self-hosted engine', nullable: true })
+  provider: string | null;
+
+  @ApiPropertyOptional({ description: 'Usage-ledger engine id reported by the worker/runtime', nullable: true })
+  engine: string | null;
+}
+
 export class TranscriptionJobResponse {
   @ApiProperty({ description: 'Job ID' })
   id: string;
@@ -27,6 +55,37 @@ export class TranscriptionJobResponse {
 
   @ApiPropertyOptional({ description: 'TASK-861 — the ResolvedAsrSpec snapshot the job ran on (never a credential)', nullable: true })
   resolvedSpec?: JsonValue | null;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-999 — the STT session (`stt:session:{id}`) this row mirrors. Set on `STREAMING` rows only; `null` for every `BATCH` row.',
+    nullable: true,
+  })
+  streamSessionId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-999 — which entry of `resolvedSpec.fallback.chain` ACTUALLY served. `null` = not recorded (every pre-TASK-999 row, and any job that never reached a worker).',
+    type: () => ServedByResponse,
+    nullable: true,
+  })
+  servedBy?: ServedByResponse | null;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-999 — words in the produced transcript, measured ONCE by the writer at completion (the stored text is ciphertext). `null` = never measured; `0` is a real empty transcript.',
+    nullable: true,
+  })
+  resultWordCount?: number | null;
+
+  @ApiPropertyOptional({ description: 'TASK-999 — characters in the produced transcript. `null` = never measured.', nullable: true })
+  resultCharCount?: number | null;
+
+  @ApiPropertyOptional({
+    description: 'TASK-999 — `completedAt - startedAt` in milliseconds; `null` while the job is still running or never started.',
+    nullable: true,
+  })
+  durationMs?: number | null;
 
   @ApiPropertyOptional({ description: 'Consultation ID' })
   consultationId?: string | null;

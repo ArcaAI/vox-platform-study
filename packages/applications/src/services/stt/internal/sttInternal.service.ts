@@ -12,6 +12,7 @@ import {
   ContextItemType,
   CorePrisma,
   CoreUnitOfWorkService,
+  JsonValue,
   MediaFactory,
   MediaRepository,
   ResourceType,
@@ -34,6 +35,9 @@ import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../co
 import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey, type UsageTrigger } from '../../usageLedger';
 import { TranscriptionJobResponse } from '../job/dto';
 import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
+// TASK-999 — which chain entry served, and the ONE definition of transcript size.
+import { resolveServedBy, type ServedBy } from '../served-by';
+import { countTranscriptWords, measureTranscript } from '../transcript-size';
 import { ISttInternalService } from './ISttInternalService';
 import { computeSegmentOffsets, type TranscriptSegmentInputShape } from '../../consultation/lib/transcript-segments';
 import {
@@ -368,7 +372,9 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       timestamp: new Date().toISOString(),
       contextItemId: savedContextItem.id,
       jobId: dto.jobId,
-      wordCount: dto.transcriptText ? dto.transcriptText.split(/\s+/).filter(Boolean).length : undefined,
+      // TASK-999 — the same counter that now writes `TranscriptionJob.resultWordCount`,
+      // extracted so the number on the event and the number on the row cannot drift.
+      wordCount: dto.transcriptText ? countTranscriptWords(dto.transcriptText) : undefined,
       transcriptionSource: dto.transcriptionSource ?? 'batch',
     } satisfies TranscriptionCreatedPayload);
 
@@ -450,7 +456,8 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       tenantId: dto.tenantId || '',
       timestamp: new Date().toISOString(),
       contextItemId: savedContextItem.id,
-      wordCount: dto.transcriptText ? dto.transcriptText.split(/\s+/).filter(Boolean).length : undefined,
+      // TASK-999 — one shared counter (see the batch sibling above).
+      wordCount: dto.transcriptText ? countTranscriptWords(dto.transcriptText) : undefined,
       transcriptionSource: dto.transcriptionSource ?? 'streaming',
     } satisfies TranscriptionCreatedPayload);
 
@@ -615,6 +622,24 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     const expectedVersion = job.version;
     job.complete(dto.resultText, dto.resultMetadata);
 
+    // TASK-999 (D-3(a)) — measure the transcript HERE, while the plaintext is
+    // still in hand. Two lines below it becomes Vault-Transit ciphertext, and an
+    // admin read must never be the thing that decrypts PHI to produce a number.
+    const size = measureTranscript(dto.resultText);
+    if (size) {
+      job.resultWordCount = size.wordCount;
+      job.resultCharCount = size.charCount;
+    }
+
+    // TASK-999 (D-6(a)) — which entry of the job's own `resolvedSpec` chain
+    // actually served, derived from the engine the worker reported. `null` when
+    // the worker sent no engine (an older worker) or the engine matches nothing —
+    // never guessed, because this is the field a cost review reads.
+    const servedBy = resolveServedBy(job.resolvedSpec ?? null, dto.engine);
+    if (servedBy) {
+      job.servedBy = servedBy as unknown as JsonValue;
+    }
+
     // Encrypt resultText/resultMetadata into the ciphertext
     // columns before the completing persist (dual-write; plaintext kept for soak).
     await this.encryptBestEffort('TranscriptionJob', () => this.jobRepository.encryptFieldsIntoEntity(job, this.secretsService!));
@@ -627,7 +652,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     if (canEmitUsage) {
       updated = await this.unitOfWorkService!.runInTransaction(async (tx) => {
         const saved = await this.jobRepository.updateWithVersion(jobId, job, expectedVersion, tx);
-        await this.emitBatchUsage(jobId, job, dto, tx);
+        await this.emitBatchUsage(jobId, job, dto, tx, servedBy);
         return saved;
       });
     } else {
@@ -668,6 +693,9 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     },
     dto: InternalCompleteJobRequest,
     tx: CorePrisma.TransactionClient,
+    // TASK-999 — the chain entry the caller just resolved. Passed in rather than
+    // re-derived so the row and the ledger can never disagree about what served.
+    servedBy: ServedBy | null,
   ): Promise<void> {
     try {
       const costBasis = dto.deployment === 'BYOK' ? AiCostBasis.BYOK_NOTIONAL : undefined;
@@ -679,7 +707,11 @@ export class SttInternalService extends BaseService implements ISttInternalServi
         capability: AiCapability.STT,
         operation: 'transcribe.batch' as const,
         provider: dto.engine!,
-        model: null,
+        // TASK-999 — the ASR model that actually produced this transcript. It was
+        // a hardcoded `null`, so no STT spend could be attributed to a model on a
+        // cost surface. Still `null` — never guessed — when the reported engine
+        // matches no entry of this job's own resolved chain.
+        model: servedBy?.modelSlug ?? null,
         deployment: AiDeploymentKind[dto.deployment ?? 'SELF_HOSTED'],
         ...(costBasis ? { costBasis } : {}),
         // TASK-958 D-7 — WHICH account of that engine. Carried from the worker's

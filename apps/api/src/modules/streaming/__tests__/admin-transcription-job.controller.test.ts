@@ -23,10 +23,26 @@ describe('AdminTranscriptionJobController', () => {
       const paginated = { data: [], total: 0, page: 2, limit: 5, totalPages: 0 };
       mockJobService.list.mockResolvedValue(paginated);
 
-      const result = await controller.list(2, 5);
+      // TASK-999 — the query moved onto a validated DTO so `jobType` could be
+      // declared; `forbidNonWhitelisted` rejects an undeclared query field, so it
+      // could not stay a loose `@Query('name')` param.
+      const result = await controller.list({ page: 2, limit: 5 } as never);
 
-      expect(mockJobService.list).toHaveBeenCalledWith(2, 5);
+      expect(mockJobService.list).toHaveBeenCalledWith(2, 5, undefined);
       expect(result).toEqual(paginated);
+    });
+
+    it('passes the jobType filter straight through, and BOTH kinds when it is absent', async () => {
+      // TASK-999 (D-5(a)) — the list now carries batch jobs AND the realtime
+      // sessions that became `jobType = STREAMING` rows. Absent must mean both:
+      // defaulting to BATCH would hide every new row from existing readers.
+      mockJobService.list.mockResolvedValue({ data: [], total: 0, page: 1, limit: 20, totalPages: 0 });
+
+      await controller.list({ jobType: 'STREAMING' } as never);
+      expect(mockJobService.list).toHaveBeenCalledWith(1, 20, 'STREAMING');
+
+      await controller.list({} as never);
+      expect(mockJobService.list).toHaveBeenLastCalledWith(1, 20, undefined);
     });
   });
 
