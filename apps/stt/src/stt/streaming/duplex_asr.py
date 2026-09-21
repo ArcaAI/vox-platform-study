@@ -171,12 +171,35 @@ class DuplexAsrSession(Protocol):
         ...
 
     def events(self) -> AsyncIterator[DuplexEvent]:
-        """Vendor events in arrival order. Exactly one ``DuplexSessionClosed``
-        is yielded last."""
+        """Vendor events in arrival order.
+
+        Exactly one ``DuplexSessionClosed`` is yielded last — on every path,
+        including failure. On a FATAL failure the generator then RAISES the
+        stored ``CloudASR*`` exception, so a consumer gets both the orderly
+        terminal event and the typed failure that ``EngineSwitchController``
+        classifies on.
+
+        The two are not alternatives, and the ordering is load-bearing: a
+        consumer that treated exhaustion as the only end signal would swallow
+        the failure and silently stop transcribing, while one that waited for a
+        ``DuplexError(is_fatal=True)`` event would miss a failure that surfaces
+        only as the raise. **Wrap the ``async for`` in a ``try/except`` for the
+        three ``CloudASR*`` types.**
+
+        A NON-fatal problem — a transparent reconnect, say — is a
+        ``DuplexError(is_fatal=False)`` on the stream and must not raise. It is
+        a visible gap marker, not an engine failure, and must not count toward
+        the engine-switch threshold; otherwise a couple of ordinary network
+        blips flip a healthy session onto its fallback engine.
+        """
         ...
 
     async def close(self) -> None:
-        """Flush, close the transport, release resources."""
+        """Flush, close the transport, release resources.
+
+        NEVER raises — it must always be safe in a ``finally``. A teardown that
+        can throw turns one vendor failure into two, and loses the first.
+        """
         ...
 
     @property
