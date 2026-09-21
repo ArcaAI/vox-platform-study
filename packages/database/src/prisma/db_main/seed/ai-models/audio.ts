@@ -453,7 +453,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Azure Speech STT',
     slug: 'azure-speech-stt',
-    description: 'Azure Cognitive Services Speech-to-Text (cloud). Credentials via the tenant → SYSTEM `stt`/`azure` provider connection. `ml-IN` supported.',
+    description: 'Azure Cognitive Services Speech-to-Text (cloud). Credentials via the tenant → SYSTEM `stt`/`azure-speech` provider connection. `ml-IN` supported.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.BASE_MODEL,
@@ -516,7 +516,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     name: 'Sarvam Saaras v4 (STT)',
     slug: 'sarvam-saaras-v4',
     description:
-      'Sarvam AI speech-to-text (saaras:v4, code-switch capable, 10+ Indic languages + English; WebSocket streaming). Cloud; per-tenant BYOK via the `stt`/`sarvam` provider connection.',
+      'Sarvam AI speech-to-text (saaras:v4, code-switch capable, 10+ Indic languages + English). Cloud; per-tenant BYOK via the `stt`/`sarvam` provider connection. Single-shot REST (multipart POST /speech-to-text) today — native duplex streaming is not wired yet (TASK-998).',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.BASE_MODEL,
@@ -534,7 +534,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: null,
     memorySizeMb: 0,
     computeType: 'cloud',
-    tags: ['cloud', 'sarvam', 'byok', 'multilingual', 'streaming'],
+    tags: ['cloud', 'sarvam', 'byok', 'multilingual'],
   },
   {
     // OD-2 (open): OpenAI lists `gpt-transcribe` (default) and
