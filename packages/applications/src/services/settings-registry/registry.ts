@@ -21,6 +21,7 @@ import { GUARDRAIL_JUDGE_SETTINGS } from './descriptors/guardrail-judge.descript
 import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
 import { HARNESS_JUDGE_SETTINGS } from './descriptors/harness-judge.descriptors';
+import { LM_STUDIO_SERVING_SETTINGS } from './descriptors/lmstudio-serving.descriptors';
 import { TEXT_REASONING_SETTINGS } from './descriptors/text-reasoning.descriptors';
 import { MCP_EGRESS_SETTINGS } from './descriptors/mcp-egress.descriptors';
 import { METERING_COMPUTE_SETTINGS } from './descriptors/metering-compute.descriptors';
@@ -252,6 +253,18 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // purpose: a sibling lane appending its own block conflicts here trivially
   // rather than by re-indenting the whole array.
   ...TRAINING_CAPTURE_SETTINGS,
+
+  // ── LM Studio serving control ────────────────────────────────────────────
+  // TASK-996 Phase 2b (owner decision D-7) — the PLATFORM tier of the serving
+  // profile: the context window and decode slots a model is LOADED with, flash
+  // attention, KV-cache quantization, the default GPU split strategy, and the
+  // two JIT defaults (D-4) that govern the models NOT in `LMS_LOAD` — today the
+  // guardrail LLM. All of it is `LMS_*` env on the Deployment right now, so
+  // every change is a manifest edit plus a pod restart; registering these is
+  // what makes them reachable without one. The PER-MODEL half lives on
+  // `AiModel._metadata.serving`, because "this model on that GPU" is a
+  // statement about a model and no flat key can express it.
+  ...LM_STUDIO_SERVING_SETTINGS,
 ]);
 
 // TASK-969 WS-1 — the one CROSS-descriptor invariant, run once the whole catalog

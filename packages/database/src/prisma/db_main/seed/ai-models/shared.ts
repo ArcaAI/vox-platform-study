@@ -1,5 +1,5 @@
 import type { ResourceStatusType } from '../../../../generated/core-prisma-client/client.js';
-import type { AiModelAsrProfile } from '@arcaai/types';
+import type { AiModelAsrProfile, AiModelServingProfile } from '@arcaai/types';
 
 /**
  * Shared enum mirrors + row shape for the AI-model seed catalog.
@@ -507,6 +507,29 @@ export interface AiModelSeed {
      * prevent.
      */
     contextLength?: number;
+    /**
+     * TASK-996 (owner decision D-7) — the LOAD-TIME serving profile: the context
+     * window and decode slots the engine is loaded with, flash attention,
+     * KV-cache quantization, and which GPU(s) this model may use.
+     *
+     * The other half of the `contextLength` pair above, and the reason they are
+     * two fields: `contextLength` is what callers are TOLD they may use,
+     * `serving.contextLength` is what the engine is LOADED with. The invariant
+     * is one-directional — declaring more than is served turns a pre-dispatch
+     * budget check into an `exceed_context_size_error` from the engine. Seeded
+     * rows are held to it by `lm-studio-serving-lockstep.task996.test.ts`.
+     *
+     * This is `AiModelServingProfile` from `@arcaai/types` BY REFERENCE, never a
+     * copy — the same rule, and for the same reason, as `asr` above: the
+     * hand-maintained duplicate of that type drifted twice. Widen the type in
+     * `@arcaai/types`, not here.
+     *
+     * A row that declares NOTHING here inherits the platform default from the
+     * settings registry (`lmStudio.serving.*`), resolved by
+     * `resolveServingProfile` — configuration cascades and widens only on
+     * absence. Nothing here is ever cloned into a tenant.
+     */
+    serving?: AiModelServingProfile;
   };
   /** Only set when a row must seed in a non-default status (indic-f5). */
   resourceStatus?: ResourceStatusType;
