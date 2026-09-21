@@ -4582,6 +4582,75 @@
       "apiExcluded": false
     },
     {
+      "controller": "InferenceEnginesController",
+      "handler": "unload",
+      "method": "POST",
+      "path": "/api/v1/admin/inference-engines/lm-studio/models/{identifier}/unload",
+      "routePath": "/admin/inference-engines/lm-studio/models/:identifier/unload",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "InferenceEnginesController",
+      "handler": "load",
+      "method": "POST",
+      "path": "/api/v1/admin/inference-engines/lm-studio/models/{modelKey}/load",
+      "routePath": "/admin/inference-engines/lm-studio/models/:modelKey/load",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "InferenceEnginesController",
+      "handler": "runtime",
+      "method": "GET",
+      "path": "/api/v1/admin/inference-engines/lm-studio/runtime",
+      "routePath": "/admin/inference-engines/lm-studio/runtime",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "KnowledgeController",
       "handler": "list",
       "method": "GET",

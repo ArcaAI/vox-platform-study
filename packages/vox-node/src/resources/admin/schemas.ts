@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 457 component schemas the generated surface transitively
+ * Only the 464 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -3271,6 +3271,69 @@ export interface LiveDocSessionsListResponse {
   total: number;
 }
 
+export interface LmStudioDeviceResponse {
+  /** `DCGM_FI_DEV_FB_FREE`, MiB. The load precheck budgets against the LARGEST of these, not their sum. */
+  freeMib: number;
+  /** Device index, i.e. the DCGM `gpu` label. This is the index `gpuSplit.disabledGpus` / `.priority` name. */
+  index: number;
+  /** The card, from the DCGM `modelName` label. */
+  name: string;
+  /** Physical framebuffer, MiB — used + free + reserved, because DCGM publishes no total. */
+  totalMib: number;
+  /** `DCGM_FI_DEV_FB_USED`, MiB. Per DEVICE and shared by every time-sliced workload on it, never per pod. */
+  usedMib: number;
+}
+
+export interface LmStudioEngineStatusResponse {
+  /** Whether the engine answered `GET /api/v1/models` for this read. `false` is a result, not an error. */
+  reachable: boolean;
+  /** The engine build, when it can be read. LM Studio exposes NO version over HTTP — `/api/v1/version` and every sibling path 404 (measured) — so this is absent on this build and only `lms version` inside the pod can answer. Reported as optional rather than invented. */
+  version?: string;
+}
+
+export interface LmStudioLoadedModelResponse {
+  /** What the engine is ACTUALLY running with, read back from the instance rather than from any stored profile. Carries only the fields the HTTP API reports — context window, decode slots and flash attention; KV-cache element types and GPU placement are visible only over the SDK websocket, so they are absent here rather than guessed. */
+  effective: Record<string, unknown>;
+  /** The instance handle — what `POST .../models/{identifier}/unload` takes. */
+  identifier: string;
+  /** ESTIMATE, never a measurement. Derived from `contextLength x parallel` (LM Studio gives every decode slot the FULL window) and scaled by the KV element types. Nothing in CUDA, NVML or DCGM reports per-model memory, so this is arithmetic, not observation. */
+  kvCacheEstimateBytes: number;
+  /** The model key the engine answers to on the wire (`AiModel.wireModelId`). */
+  modelKey: string;
+  /** Residency state. This build exposes no busy/idle distinction over HTTP — `GET /api/v1/models` reports only that an instance exists — so a loaded instance always reads `IDLE`. `ACTIVE` is reserved for an engine that reports in-flight work. */
+  status: 'IDLE' | 'ACTIVE';
+  /** MEASURED: the GGUF's own size on disk, as the engine reports it. */
+  weightsBytes: number;
+}
+
+export interface LmStudioRuntimeResponse {
+  /** Every visible GPU, device index ascending. Empty when Prometheus has no DCGM data. */
+  devices: LmStudioDeviceResponse[];
+  engine: LmStudioEngineStatusResponse;
+  /** Every currently loaded instance. */
+  loaded: LmStudioLoadedModelResponse[];
+  /** The `lmStudio.serving.*` platform fallback — what a model whose `_metadata.serving` declares nothing inherits. Platform tier only: these keys are `globalOnly`, because they decide how much VRAM one process takes on cards shared with the STT and guardrail workloads. */
+  platformDefault: Record<string, unknown>;
+}
+
+export interface LoadLmStudioModelRequest {
+  /** Proceed despite the live VRAM budget. Bypasses the 409 `VRAM_BUDGET_EXCEEDED` gate AND ONLY that gate — never the super-admin 403, never the 404 for an unknown model, never a 400 on an incoherent profile. The cards are time-sliced and give no memory isolation, so an over-budget load can take the STT and guardrail workloads down with it. */
+  force?: boolean;
+  /** Serving-profile overrides for THIS load, layered over the model row and then the platform default. Same vocabulary as `AiModel._metadata.serving`: `contextLength`, `parallel`, `flashAttention`, `kvCacheQuant.{k,v}`, `gpuSplit.{strategy,disabledGpus,priority,customRatio}`. Omit to load on the resolved model/platform profile. Any field the vocabulary does not accept is a 400, not a silent drop. */
+  profile?: Record<string, unknown>;
+}
+
+export interface LoadLmStudioModelResponse {
+  /** The resolved serving profile the engine was asked for: this request over the model row over the platform default. */
+  applied: Record<string, unknown>;
+  /** Expected resident VRAM: the MEASURED weights plus the DERIVED KV cache (`contextLength x parallel`, scaled by the KV element types). An estimate, and the number the 409 budget gate compares against the largest single card. */
+  estimateBytes: number;
+  /** The loaded instance handle — what a later unload takes. */
+  identifier: string;
+  /** Dotted field path -> the tier that supplied it (`request` | `model` | `platform`). A field NO tier declared is absent, which means the engine`s own default applies. */
+  sources: Record<string, unknown>;
+}
+
 export interface McpServerListResponse {
   items: McpServerResponse[];
   /** Total number of servers returned */
@@ -5961,6 +6024,13 @@ export interface TriggerModelDownloadResponse {
   jobId: string;
   /** Always DOWNLOADING on a successful trigger. */
   status: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
+}
+
+export interface UnloadLmStudioModelResponse {
+  /** ALWAYS `true`, and it is a warning rather than a capability. JIT loading cannot be disabled on this build — there is no CLI flag, no REST field and no settings key for it — so the next inference request reloads the model, on the JIT defaults (`lmStudio.jit.*`) rather than on the profile it was unloaded from. An unload is therefore ADVISORY: it returns VRAM now, it does not keep the model gone. */
+  jitReloadPossible: boolean;
+  /** Whether the engine accepted the unload. */
+  unloaded: boolean;
 }
 
 export interface UnregisteredBucketPrefix {
