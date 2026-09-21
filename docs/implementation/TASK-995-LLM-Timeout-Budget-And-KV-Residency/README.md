@@ -148,19 +148,46 @@ first.
 
 ## Verification Criteria
 
-- [ ] `test_task995_llm_timeout_budget.py` RED before, GREEN after
-- [ ] Harness suite green (`pnpm harness:test`), incl. `test_replay_compat`
-- [ ] `pnpm harness:lint`, `harness:typecheck`
-- [ ] `packages/database` builds; seed typechecks
-- [ ] `kustomize build deployment/k8s/overlays/dev` renders both values
-- [ ] Post-deploy: a live consultation returns a summary; `lms ps` shows context 65536
+- [x] `test_task995_llm_timeout_budget.py` RED before (4 failed), GREEN after (4 passed)
+- [x] Temporal suite green — `1341 passed in 72.86s`
+- [x] Replay compatibility green — `33 passed, 2642 deselected` (`-k replay`)
+- [x] `pnpm harness:lint` — `All checks passed!`
+- [x] `pnpm harness:typecheck` — `Success: no issues found in 155 source files`
+- [x] `pnpm --filter @arcaai/database typecheck` — clean
+- [x] `kubectl kustomize deployment/k8s/overlays/dev` — renders `LMS_CONTEXT: "65536"` and
+      `HARNESS_LLM_REQUEST_TIMEOUT_S: "300"`; `grep -c 131072` = 0
+- [ ] **Post-deploy, NOT YET DONE**: a live consultation returns a summary; `lms ps` shows
+      context 65536; `generation.audit` latency after the context drop
 
 ## Implementation Summary
 
-_In progress — see Change History._
+All six changes implemented and committed; every local gate green.
 
-Code changes complete; gates running. Runtime verification (a live consultation producing a
-summary) requires the deployment change to reach the cluster via Argo and is **not yet done**.
+| Repo | Commit |
+|---|---|
+| `arca/hope-v2` | `4567ab098` |
+| `arca/hope-v2-deployment` | `f7abcc3` |
+
+**Neither is pushed.** Pushing the deployment commit *is* the deploy — Argo auto-syncs
+`overlays/dev`. Two consequences the owner should confirm first:
+
+1. **`hope-lmstudio` rolls retire-then-replace** (`maxSurge: 0`, because the pod holds 4 of
+   the node's 6 time-sliced GPU units and a surge would deadlock). So there is a real
+   service gap while the pod restarts and reloads the model — `progressDeadlineSeconds` is
+   1560 for exactly this reason. Any consultation in flight during the roll loses its LLM.
+2. **The seed constant only takes effect where the seed is re-run.** The gemma `AiModel`
+   row's `_metadata.contextLength` is existing data in the cluster DB; a deploy does not
+   refresh seed data. Until it is re-seeded the DB still declares 131072 against a
+   65536-loaded engine — which is the over-claiming direction, i.e. the one that yields
+   `exceed_context_size_error`. **This must be resolved as part of the rollout**, not after.
+
+### Residual risk
+
+The timeout fix makes the system stop discarding good work, but it does not make generation
+fast — it admits a 5-minute wait. The context halving should reduce KV pressure, but the
+effect on latency is unmeasured. If generations still approach 300s after this lands, the
+next levers are `LMS_PARALLEL` (10 → 4, same env-var reachability) and then the deferred Q4
+KV ticket.
 
 ## Change History
 
