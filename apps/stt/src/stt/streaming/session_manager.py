@@ -34,11 +34,12 @@ import structlog
 from stt.core.api_client.gateway import APIGatewayClient
 from stt.core.config.settings import get_settings
 from stt.core.exceptions import (
+    CloudASRTranscriptionError,
     ModelError,
     ModelNotCacheServedError,
     SessionManagerDrainingError,
 )
-from stt.core.metering import normalize_device
+from stt.core.metering import BYTE_SOURCE_WIRE, normalize_device
 from stt.core.metrics import (
     streaming_inference_queue_dropped,
     streaming_session_ended,
@@ -52,6 +53,14 @@ from stt.streaming.capacity_guard import CapacityGuard
 from stt.streaming.commit_policy import LocalAgreementPolicy, normalize_for_comparison
 from stt.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser
 from stt.streaming.denoiser import StreamingDenoiser
+from stt.streaming.duplex_asr import (
+    DuplexAsrSession,
+    DuplexEndpointing,
+    DuplexError,
+    DuplexSessionClosed,
+    DuplexSpeechActivity,
+    DuplexTranscript,
+)
 from stt.streaming.engine_switch import SWITCHABLE_ASR_ERRORS, EngineSwitchController
 from stt.streaming.execution_profile import ExecutionProfile
 from stt.streaming.inference import StreamingInferenceWorker
@@ -68,6 +77,7 @@ from stt.streaming.redis_streams import (
 from stt.streaming.schemas import (
     AudioFrame,
     ControlAction,
+    SegmentResult,
     SessionControl,
     SessionMetadata,
     SessionStatus,
@@ -141,6 +151,16 @@ _TEARDOWN_STASH_MAX_ENTRIES = 256
 # full drain budget. Five seconds is that margin, not a guess at how long a
 # decode takes.
 _TAIL_WAIT_GRACE_S = 5.0
+
+# TASK-998 — how long teardown waits for a duplex engine's event stream to
+# deliver its closing finals after ``close()``.
+#
+# A separate bound from the inference drain on purpose: what is being waited for
+# is one vendor round trip on a socket that has already been told the stream
+# ended, not a GPU backlog. Five seconds is generous for that and still bounded,
+# which matters because the wait holds a capacity slot and a model pin — the
+# same trade ``_await_tail_flush`` makes, for the same reason.
+_DUPLEX_DRAIN_TIMEOUT_S = 5.0
 
 StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
 
@@ -263,6 +283,21 @@ def _spec_bundles_of(manager: Any) -> dict[str, ResolvedSpecBundle]:
     """
     bundles = getattr(manager, "_session_specs", None)
     return bundles if isinstance(bundles, dict) else {}
+
+
+def _duplex_sessions_of(manager: Any) -> dict[str, Any]:
+    """The per-session duplex engines of ``manager`` (TASK-998), read defensively.
+
+    Same posture and same reason as ``_spec_bundles_of``: pre-existing unit tests
+    build ``MagicMock(spec=SessionManager)`` fixtures and bind real methods onto
+    them, and ``spec=`` exposes only what is on the CLASS — an instance dict
+    created in ``__init__`` is not, so a direct read raises ``AttributeError``
+    inside the very code those tests drive. A module function, because a method
+    would itself be mocked away. Anything that is not a real dict reads as "this
+    manager has no duplex sessions", which is the correct answer for a double.
+    """
+    sessions = getattr(manager, "_duplex_sessions", None)
+    return sessions if isinstance(sessions, dict) else {}
 
 
 def _spec_asr_slug(pipeline_config: Any) -> str | None:
@@ -467,6 +502,27 @@ class SessionManager:
         self._inference_workers: dict[str, StreamingInferenceWorker] = {}
         self._inference_queues: dict[str, asyncio.Queue[AudioUtterance | None]] = {}
         self._inference_tasks: dict[str, asyncio.Task[None]] = {}
+        # TASK-998 — per-session DUPLEX state. Present only for a session whose
+        # engine returned a `DuplexAsrSession`; every local engine leaves all
+        # five dicts empty, which is what makes the duplex path additive.
+        #
+        # `_duplex_sessions` holds the live vendor session, `_duplex_tasks` the
+        # task consuming its `events()`. The three scalars are the accounting a
+        # vendor stream cannot get from the preprocessor, because there are no
+        # utterances to read it off: the audio clock used as the timing fallback
+        # when the vendor reports no span (the contract forbids inventing 0.0),
+        # the start of the utterance currently in flight, and the ordinal that
+        # advances on each FINAL.
+        self._duplex_sessions: dict[str, DuplexAsrSession] = {}
+        self._duplex_tasks: dict[str, asyncio.Task[None]] = {}
+        self._duplex_audio_seconds: dict[str, float] = {}
+        self._duplex_span_starts: dict[str, float] = {}
+        self._duplex_utterance_indices: dict[str, int] = {}
+        # Strong references to the re-arm tasks `_apply` fires when a switch
+        # leaves a duplex engine — without them the loop may GC one mid-flight,
+        # leaving the session on a callable with no segmenter feeding it. Same
+        # reason, same shape as `_stash_pushback_tasks`.
+        self._duplex_rearm_tasks: set[asyncio.Task[None]] = set()
         self._partial_tasks: dict[str, asyncio.Task[None]] = {}
         self._final_published_gates: dict[str, asyncio.Event] = {}
         # Per-session LocalAgreement-2 commit policies
@@ -784,13 +840,53 @@ class SessionManager:
         user-selected start-on-fallback and create-time-load-failure paths, not
         the requested primary. The inference worker stamps it onto every result
         it produces.
+
+        TASK-998 — the ASR load moved AHEAD of the front end, because whether
+        this session gets a HOPE VAD at all is now an answer only the loaded
+        ENGINE can give (``AsrEngine.make_streaming_session``). Nothing else
+        changed order-wise: the front end never depended on anything the ASR load
+        produces, and the ASR load never read the preprocessor. The one visible
+        consequence is a strict improvement — an ASR load that raises no longer
+        leaves a Silero session warmed for a session that will not exist.
         """
         publisher = ResultPublisher(redis=self._redis, session_id=session_id)
 
-        # VAD + preprocessor (YAML wins, profile silence default)
-        vad_service = await self._load_vad_service(pipeline_config, session_id)
-        vad_enabled = bool(pipeline_config and pipeline_config.preprocessing.vad.enabled)
-        vad_kwargs = self._build_preprocessor_vad_kwargs(pipeline_config)
+        # TASK-998 — a RE-assembly must not inherit the previous attempt's vendor
+        # socket. `create_session` retries this whole method on the fallback when
+        # the primary assembly raises, and the primary may have got as far as
+        # OPENING a duplex session before the step that failed; the probe below
+        # would then overwrite the registration and leak an open socket with no
+        # owner. No-op on a first assembly and on every local engine.
+        await self._close_duplex_session(session_id, reason="reassemble")
+
+        # ASR (+ the duplex probe, whose answer decides the front end below).
+        asr_pipeline, initial_prompt = await self._load_asr_pipeline(
+            pipeline_config,
+            session_id,
+            tenant_id=tenant_id,
+            provider_overrides=provider_overrides,
+            probe_duplex=True,
+        )
+        duplex = _duplex_sessions_of(self).get(session_id)
+
+        # VAD + preprocessor (YAML wins, profile silence default).
+        #
+        # TASK-998 / OD-2 — a duplex engine gets NEITHER. No Silero session is
+        # loaded and no semantic endpointer is constructed: the vendor endpoints
+        # server-side, and two endpointers in series is the defect this ticket
+        # removes. `_build_preprocessor_vad_kwargs` is skipped whole rather than
+        # filtered, because every kwarg it returns — the thresholds, the partial
+        # cadence, the force-emit windows, the endpointer itself — is
+        # segmentation, and passing inert tuning would leave the session
+        # LOOKING configured for a segmenter it does not run.
+        if duplex is not None:
+            vad_service = None
+            vad_enabled = False
+            vad_kwargs: dict[str, Any] = {"passthrough": True}
+        else:
+            vad_service = await self._load_vad_service(pipeline_config, session_id)
+            vad_enabled = bool(pipeline_config and pipeline_config.preprocessing.vad.enabled)
+            vad_kwargs = self._build_preprocessor_vad_kwargs(pipeline_config)
 
         target_sr = (
             pipeline_config.preprocessing.target_sample_rate
@@ -852,14 +948,33 @@ class SessionManager:
             **vad_kwargs,
         )
 
-        # ASR + diarization
-        asr_pipeline, initial_prompt = await self._load_asr_pipeline(
-            pipeline_config,
-            session_id,
-            tenant_id=tenant_id,
-            provider_overrides=provider_overrides,
-        )
+        # TASK-998 — connect the vendor now that the front end that feeds it
+        # exists. Deliberately inside the assembly: `open()` raises
+        # `CloudASRAuthError` on a rejected credential, and failing HERE is what
+        # routes a bad BYO key into `create_session`'s existing
+        # open-on-the-fallback path instead of stranding a half-built session.
+        if duplex is not None:
+            try:
+                await duplex.open()
+            except Exception:
+                # The registration must not outlive the failed assembly, or the
+                # next thing to read `_duplex_sessions` gets a session nobody
+                # opened. Best-effort close, then let the original error travel.
+                _duplex_sessions_of(self).pop(session_id, None)
+                try:
+                    await duplex.close()
+                except Exception as close_exc:  # noqa: BLE001 — never mask the open error
+                    logger.warning(
+                        "stt.stream.duplex_close_after_open_failed",
+                        session_id=session_id,
+                        error=str(close_exc),
+                    )
+                raise
+            self._duplex_audio_seconds[session_id] = 0.0
+            self._duplex_span_starts[session_id] = 0.0
+            self._duplex_utterance_indices[session_id] = 0
 
+        # Diarization
         diarization_config = pipeline_config.diarization if pipeline_config else None
         effective_diarization = (
             bool(getattr(diarization_config, "enabled", False)) if diarization_config else False
@@ -1648,7 +1763,9 @@ class SessionManager:
             metadata.diarization = runtime.effective_diarization
             await session.force_persist()
 
-            self._register_inference_runtime(session, inference_worker)
+            # `publisher` explicitly: `self._publishers` is not populated until
+            # a few lines below, and a duplex session's consumer starts here.
+            self._register_inference_runtime(session, inference_worker, publisher=publisher)
 
             self._sessions[session_id] = session
             # Sync the active-streaming-sessions gauge + total counter.
@@ -1989,6 +2106,27 @@ class SessionManager:
             # that then raises and never takes over (selection is fail-closed).
             self._advance_usage_segments(session_id)
 
+            # TASK-998 — a switch AWAY from a duplex engine installs a
+            # per-utterance callable on a session whose front end produces no
+            # utterances, so the swap is only half done until the local
+            # segmenter is back. Here rather than at the failure site because
+            # this body is the one thing every switch path runs: auto-outage,
+            # the manual control frame, the manual HTTP route and switch-back.
+            #
+            # The UNREGISTRATION is synchronous, inside the swap, exactly like
+            # the callable reassignment above — `_on_frame` reads
+            # `_duplex_sessions` per frame, so this is what stops it feeding a
+            # socket that is leaving. The shutdown and re-arm are async, so they
+            # go to a task with a strong reference held until it completes.
+            outgoing_duplex = _duplex_sessions_of(self).pop(session_id, None)
+            if outgoing_duplex is not None:
+                rearm = asyncio.create_task(
+                    self._rearm_local_front_end(session_id, outgoing_duplex),
+                    name=f"duplex-rearm-{session_id}",
+                )
+                self._duplex_rearm_tasks.add(rearm)
+                rearm.add_done_callback(self._duplex_rearm_tasks.discard)
+
         async def _publish(
             from_pipeline: str,
             to_pipeline: str,
@@ -2284,6 +2422,25 @@ class SessionManager:
                 session_id=session_id,
                 error=str(exc),
             )
+
+        # TASK-998 — the duplex engine's own stop. Normally already done by
+        # `_run_tail_flush` and therefore a no-op; this is the path that covers
+        # the ones that never reach a finalizer — a create-time ROLLBACK, a
+        # CANCEL, `force_end_all_sessions` on shutdown — where a vendor socket
+        # would otherwise be left open with a task still reading it. Reached
+        # while the preprocessor is still registered, so the closing tail is
+        # still pushed.
+        try:
+            await self._close_duplex_session(session_id, reason="remove_session")
+        except Exception as exc:  # noqa: BLE001 — removal must always complete
+            logger.error(
+                "Failed to close duplex ASR session during session removal",
+                session_id=session_id,
+                error=str(exc),
+            )
+        self._duplex_audio_seconds.pop(session_id, None)
+        self._duplex_span_starts.pop(session_id, None)
+        self._duplex_utterance_indices.pop(session_id, None)
 
         self._publishers.pop(session_id, None)
         self._preprocessors.pop(session_id, None)
@@ -2716,10 +2873,22 @@ class SessionManager:
         session_id: str,
         tenant_id: str | None = None,
         provider_overrides: dict[str, Any] | None = None,
+        *,
+        probe_duplex: bool = False,
     ) -> tuple[StreamingAsrCallable | None, str | None]:
         """Load ASR model and create a callable pipeline for streaming inference.
 
         Returns a tuple of (callable, resolved_initial_prompt).
+
+        ``probe_duplex`` (TASK-998) additionally asks the loaded engine for a
+        ``DuplexAsrSession`` and, if it returns one, registers it under
+        ``session_id``. OPT-IN rather than automatic because only session
+        ASSEMBLY can act on the answer: the assembly builds the front end that
+        feeds it and starts the task that consumes it, while the ENGINE-SWITCH
+        builders call this method too and have nowhere to put a second live
+        vendor socket. A switch onto a duplex-capable engine therefore lands on
+        that engine's per-utterance callable — correct, and the same thing a
+        cloud fallback did before this ticket.
         The callable is ``(samples: np.ndarray, sample_rate: int) -> dict[str, Any]``
         that runs inference on a single utterance.
 
@@ -2864,12 +3033,17 @@ class SessionManager:
         )
         self._pending_want_word_timestamps = bool(getattr(timestamps_cfg, "word_timestamps", False))
 
-        # Create the callable ASR pipeline
+        # Create the callable ASR pipeline. Built even for a duplex engine: it
+        # is what a later engine switch installs on the worker, and it is the
+        # declared fallback when the vendor adapter is unavailable.
         asr_pipeline = self._make_asr_callable(
             asr_model,
             inference_config,
             initial_prompt=initial_prompt,
         )
+
+        if probe_duplex:
+            self._probe_duplex_session(session_id, asr_model, inference_config, pipeline_config)
 
         logger.info(
             "ASR pipeline loaded for streaming session",
@@ -2955,6 +3129,108 @@ class SessionManager:
             return None
 
         return self._make_asr_callable(asr_model, inference_config, task="translate")
+
+    def _duplex_endpointing(self, pipeline_config: Any) -> DuplexEndpointing:
+        """Normalise the agent's endpointing intent for a duplex vendor (TASK-998).
+
+        Under OD-2 no HOPE endpointer runs on this session, but the agent's
+        segmentation TUNING is still a statement of what the tenant wants, so it
+        is forwarded to the party that now owns the decision. Each adapter maps
+        what its vendor exposes and drops the rest — loudly, once per session —
+        because emulating a missing knob locally would put back the second
+        endpointer this ticket removes.
+
+        Read from ``preprocessing.vad`` regardless of ``vad.enabled``, on the
+        same reasoning ``_build_preprocessor_vad_kwargs`` already applies: the
+        flag gates the local MODEL, while the four numbers describe the
+        clinician's speech and hold whoever segments it.
+
+        ``silence_duration_ms`` takes ``VadConfig.min_silence_duration_ms`` and
+        never ``EndpointConfig.min_endpoint_silence_ms``, even under
+        ``mode="semantic"``. The contract's field is "trailing silence that ends
+        a turn", which is exactly the first; the second is the floor below which
+        HOPE's own semantic cut is *not allowed*, a rule about a cutter that is
+        not running here.
+        """
+        preprocessing = getattr(pipeline_config, "preprocessing", None)
+        vad_cfg = getattr(preprocessing, "vad", None)
+        semantic = self._resolve_endpoint_config(pipeline_config) is not None
+        return DuplexEndpointing(
+            # The agent asked for content-driven turn detection; the vendors
+            # that offer one (OpenAI `semantic_vad`) should use it, and the
+            # others fall back to their own server VAD by dropping the knob.
+            mode="semantic" if semantic else "server_vad",
+            threshold=getattr(vad_cfg, "threshold", None),
+            silence_duration_ms=getattr(vad_cfg, "min_silence_duration_ms", None),
+            min_speech_duration_ms=getattr(vad_cfg, "min_speech_duration_ms", None),
+            # HOPE's pre-speech ring is the same idea as OpenAI's prefix padding:
+            # audio retained BEFORE the detected onset. `VadConfig.padding_ms` is
+            # the batch path's segment padding and is deliberately not used.
+            prefix_padding_ms=getattr(vad_cfg, "pre_speech_context_ms", None),
+        )
+
+    def _probe_duplex_session(
+        self,
+        session_id: str,
+        asr_model: Any,
+        inference_config: Any,
+        pipeline_config: Any,
+    ) -> None:
+        """Ask the loaded engine for a duplex session; register it if it gives one.
+
+        TASK-998. Construction only — ``open()`` happens in
+        ``_assemble_session_runtime``, so a rejected credential fails the
+        assembly and reaches ``create_session``'s existing fallback path instead
+        of stranding an unopened socket on the manager.
+
+        The endpointing request rides on ``inference_config`` because that is the
+        object the engine adapter already receives; it is a plain dataclass, so
+        the attribute is a normal assignment and the adapters read it with
+        ``getattr(..., "duplex_endpointing", None)``.
+        """
+        from stt.processors.asr_engines import resolve_asr_engine
+
+        try:
+            engine = resolve_asr_engine(asr_model.format)
+        except LookupError:
+            # An unmapped format cannot be duplex; `_make_asr_callable` above
+            # already raised for it if it mattered.
+            return
+
+        inference_config.duplex_endpointing = self._duplex_endpointing(pipeline_config)
+        session = engine.make_streaming_session(
+            self,
+            asr_model,
+            inference_config,
+            task="transcribe",
+        )
+        if session is None:
+            return
+
+        # A duplex session must name its provider: the contract makes it the
+        # metering and error-label key, so a session without one cannot be
+        # billed or attributed. Checking it here also keeps a duck-typed double
+        # from being adopted as a live vendor socket — a `MagicMock` answers
+        # every attribute and satisfies the runtime-checkable Protocol, so
+        # `isinstance` alone would promote one.
+        provider = getattr(session, "provider", None)
+        if not isinstance(provider, str) or not provider:
+            logger.error(
+                "stt.stream.duplex_session_rejected",
+                session_id=session_id,
+                reason="engine returned a session with no provider label",
+                model_format=getattr(asr_model.format, "value", asr_model.format),
+            )
+            return
+
+        _duplex_sessions_of(self)[session_id] = session
+        logger.info(
+            "stt.stream.duplex_engine_selected",
+            session_id=session_id,
+            provider=provider,
+            model_format=getattr(asr_model.format, "value", asr_model.format),
+            endpointing=inference_config.duplex_endpointing.mode,
+        )
 
     def _make_asr_callable(
         self,
@@ -3501,8 +3777,26 @@ class SessionManager:
         self,
         session: StreamSession,
         inference_worker: StreamingInferenceWorker,
+        *,
+        publisher: ResultPublisher | None = None,
     ) -> None:
-        """Create and register queue/task for per-session ASR inference."""
+        """Create and register queue/task for per-session ASR inference.
+
+        TASK-998 — a DUPLEX session gets neither. Nothing produces utterances for
+        it (the preprocessor runs in passthrough), so an inference loop would be
+        a task parked forever on an empty queue, and a queue that exists is a
+        queue the teardown path waits on. It gets the vendor event consumer
+        instead. ``publisher`` is passed explicitly because at session create this
+        runs BEFORE ``self._publishers`` is populated.
+        """
+        if session.session_id in _duplex_sessions_of(self):
+            self._start_duplex_consumer(
+                session,
+                publisher or self._publishers.get(session.session_id),
+                inference_worker,
+            )
+            return
+
         inference_queue: asyncio.Queue[AudioUtterance | None] = asyncio.Queue(
             maxsize=self._inference_queue_maxsize
         )
@@ -3603,6 +3897,460 @@ class SessionManager:
                     queue.task_done()
 
         return asyncio.create_task(_loop(), name=f"inference-{session.session_id}")
+
+    # ------------------------------------------------------------------
+    # Duplex (native-streaming) engines — TASK-998
+    # ------------------------------------------------------------------
+
+    async def _push_duplex_audio(
+        self,
+        session_id: str,
+        duplex: DuplexAsrSession,
+        preprocessor: StreamingPreprocessor,
+        *,
+        route_failures: bool = True,
+    ) -> None:
+        """Hand the preprocessor's conditioned frames to the vendor.
+
+        Also advances the session's AUDIO clock, which is the fallback span for
+        an event the vendor timestamps as ``None``. An audio clock and not a wall
+        clock on purpose: a server-side relay (a telephony bridge, a recording
+        replay) may push faster than realtime, and wall-clock spans would then
+        describe the transfer rather than the consultation.
+
+        A push failure is routed through the same classifier as a decode failure
+        — a socket that will not accept audio is an engine outage, and the
+        session's fallback exists for exactly that. ``route_failures=False`` for
+        the TAIL push during teardown or a switch: the session is ending either
+        way, and firing a failover from inside ``remove_session`` would swap the
+        engine of a session that no longer exists.
+        """
+        frames = preprocessor.drain_conditioned_frames()
+        if frames is None or len(frames) == 0:
+            return
+        sample_rate = preprocessor.target_sample_rate
+        try:
+            await duplex.push_audio(frames, sample_rate)
+        except SWITCHABLE_ASR_ERRORS as exc:
+            if route_failures:
+                await self._handle_duplex_failure(session_id, exc)
+            else:
+                logger.warning(
+                    "stt.stream.duplex_tail_push_failed",
+                    session_id=session_id,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+            return
+        except Exception as exc:  # noqa: BLE001 — audio ingestion must not die here
+            logger.error(
+                "stt.stream.duplex_push_failed",
+                session_id=session_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return
+        if sample_rate > 0:
+            self._duplex_audio_seconds[session_id] = self._duplex_audio_seconds.get(
+                session_id, 0.0
+            ) + (len(frames) / sample_rate)
+
+    def _start_duplex_consumer(
+        self,
+        session: StreamSession,
+        publisher: ResultPublisher | None,
+        inference_worker: StreamingInferenceWorker | None,
+    ) -> None:
+        """Spawn the task that drains one duplex engine's ``events()``.
+
+        The duplex counterpart of ``_start_inference_loop``: it is where results
+        become ``SegmentResult``s and reach the publisher, so everything
+        downstream of Redis — the gateway relay, the SDK, the durable transcript
+        — is unchanged and cannot tell which engine shape produced them.
+        """
+        session_id = session.session_id
+        duplex = _duplex_sessions_of(self).get(session_id)
+        if duplex is None:
+            return
+        self._duplex_tasks[session_id] = asyncio.create_task(
+            self._duplex_event_loop(session, duplex, publisher, inference_worker),
+            name=f"duplex-{session_id}",
+        )
+
+    async def _duplex_event_loop(
+        self,
+        session: StreamSession,
+        duplex: DuplexAsrSession,
+        publisher: ResultPublisher | None,
+        inference_worker: StreamingInferenceWorker | None,
+    ) -> None:
+        """Consume vendor events until the stream ends.
+
+        Two ways a fatal failure reaches this loop, and BOTH are handled because
+        a provider may use either (verified against the Sarvam adapter): a
+        ``DuplexError(is_fatal=True)`` on the stream, and a raised
+        ``CloudASR*``. Sarvam does both in sequence — it yields its terminal
+        ``DuplexSessionClosed`` and THEN raises the stored exception — which is
+        why the terminal event does not end this loop. Returning on it would
+        close the generator and swallow the raise, turning an outage into a
+        clean-looking end of session with no failover.
+
+        The loop therefore ends only on exhaustion (``StopAsyncIteration``) or on
+        an exception, and ``_routed`` makes the double signal idempotent: one
+        real failure must count ONCE against the switch threshold, or a
+        threshold of two trips on a single outage.
+        """
+        session_id = session.session_id
+        routed = False
+        try:
+            async for event in duplex.events():
+                if isinstance(event, DuplexTranscript):
+                    await self._publish_duplex_transcript(
+                        session, event, publisher, inference_worker
+                    )
+                elif isinstance(event, DuplexSpeechActivity):
+                    # Advisory only (contract): the vendor already segmented, so
+                    # this drives nothing. Kept at DEBUG as the one signal that
+                    # says whether the vendor's VAD is firing at all when a
+                    # session produces no transcripts.
+                    logger.debug(
+                        "stt.stream.duplex_speech_activity",
+                        session_id=session_id,
+                        started=event.started,
+                        at_time=event.at_time,
+                    )
+                elif isinstance(event, DuplexError):
+                    logger.warning(
+                        "stt.stream.duplex_error",
+                        session_id=session_id,
+                        code=event.code,
+                        message=event.message,
+                        is_fatal=event.is_fatal,
+                    )
+                    # A NON-fatal error is the adapter telling us it papered over
+                    # something — a transparent reconnect, and with it a gap in
+                    # the audio the vendor heard. It is telemetry and a gap
+                    # marker, NEVER failure evidence: counting ordinary network
+                    # blips toward the threshold would flip a healthy session
+                    # onto its fallback engine.
+                    if event.is_fatal and not routed:
+                        routed = True
+                        # The taxonomy is the contract's, not ours: a fatal
+                        # duplex error is classified exactly like the REST path's
+                        # transcription failure so `EngineSwitchController` sees
+                        # the class it already knows.
+                        await self._handle_duplex_failure(
+                            session_id,
+                            CloudASRTranscriptionError(
+                                f"{getattr(duplex, 'provider', 'duplex')} fatal stream error "
+                                f"({event.code}): {event.message}"
+                            ),
+                        )
+                elif isinstance(event, DuplexSessionClosed):
+                    # Terminal, but NOT this loop's exit: see the docstring.
+                    logger.info(
+                        "stt.stream.duplex_session_closed",
+                        session_id=session_id,
+                        reason=event.reason,
+                        audio_duration_s=event.audio_duration_s,
+                    )
+        except asyncio.CancelledError:
+            raise
+        except SWITCHABLE_ASR_ERRORS as exc:
+            if not routed:
+                await self._handle_duplex_failure(session_id, exc)
+            else:
+                logger.debug(
+                    "stt.stream.duplex_raise_after_fatal_event",
+                    session_id=session_id,
+                    error=str(exc),
+                )
+        except Exception as exc:  # noqa: BLE001 — a dead consumer must be visible
+            logger.error(
+                "stt.stream.duplex_consumer_failed",
+                session_id=session_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+
+    async def _publish_duplex_transcript(
+        self,
+        session: StreamSession,
+        event: DuplexTranscript,
+        publisher: ResultPublisher | None,
+        inference_worker: StreamingInferenceWorker | None,
+    ) -> None:
+        """Publish one vendor transcript through the ordinary result path.
+
+        ``is_final`` is the VENDOR's finality, straight onto
+        ``SegmentResult.is_final``. ``utterance_index`` advances on each final,
+        so a partial carries the ordinal of the utterance still in flight —
+        the same numbering the preprocessor produces on the local path.
+
+        Timings: the vendor's own where it gave them, otherwise the span from
+        the end of the last final to the audio clock now. Never 0.0 — the
+        contract is explicit that invented zeros collide with real timings at
+        the start of a session.
+        """
+        session_id = session.session_id
+        index = self._duplex_utterance_indices.get(session_id, 0)
+        span_start = self._duplex_span_starts.get(session_id, 0.0)
+        clock = self._duplex_audio_seconds.get(session_id, 0.0)
+
+        result = SegmentResult(
+            text=event.text,
+            language=event.language,
+            start_time=event.start_time if event.start_time is not None else span_start,
+            end_time=event.end_time if event.end_time is not None else clock,
+            is_final=event.is_final,
+            word_timestamps=list(event.word_timestamps),
+            utterance_index=index,
+            # Provenance comes from the worker even though the worker decoded
+            # nothing: it is the object that owns the "which pipeline is live"
+            # stamp, and an engine switch rewrites it there.
+            pipeline_id=getattr(inference_worker, "_active_pipeline_id", None),
+        )
+
+        # TASK-959 metering — a duplex vendor reports bytes per session, so a
+        # per-event count is optional. Fold in whatever arrives so the usage
+        # segments still bill the network leg; a `None` count folds to nothing
+        # rather than to a false zero.
+        #
+        # Wrapped, and deliberately: this is the ONE thing between a vendor
+        # transcript and the publisher that is not about the transcript. A
+        # missing counter must cost a ledger entry, never a clinical utterance.
+        if inference_worker is not None and (
+            event.request_bytes is not None or event.response_bytes is not None
+        ):
+            try:
+                inference_worker._accumulate_network_bytes(
+                    {
+                        "byte_source": BYTE_SOURCE_WIRE,
+                        "request_bytes": event.request_bytes or 0,
+                        "response_bytes": event.response_bytes or 0,
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001 — metering never drops a transcript
+                logger.warning(
+                    "stt.stream.duplex_metering_failed",
+                    session_id=session_id,
+                    error=str(exc),
+                )
+
+        if publisher is not None:
+            # `publish` drops empty text on its own, which is what keeps a
+            # vendor's keepalive/empty interim off the result stream.
+            await publisher.publish(result)
+
+        if not event.is_final:
+            return
+
+        session.add_result(result)
+        session.utterance_count = index + 1
+        self._check_final_handover(session_id, result.text)
+        self._duplex_utterance_indices[session_id] = index + 1
+        # The next utterance starts where this one ended, so a vendor that
+        # timestamps nothing still produces non-overlapping spans.
+        self._duplex_span_starts[session_id] = result.end_time
+
+    async def _handle_duplex_failure(self, session_id: str, exc: BaseException) -> None:
+        """Route a fatal duplex failure into the engine-switch controller.
+
+        Same call the inference loop makes for a decode failure, so the
+        classification, the threshold, the tenant's auto-switch governance and
+        the ``provider_switched`` event are all the existing ones.
+
+        What is NOT the same is the aftermath. A switch installs a per-utterance
+        CALLABLE on the worker, and this session's front end is in passthrough —
+        it emits no utterances at all, so the fallback would decode nothing and
+        the session would look alive while transcribing silence. Re-arming the
+        local path is therefore part of the switch here, not a follow-up:
+        segmentation goes back on and the inference queue + loop are created.
+
+        The re-armed front end has NO Silero (none was loaded for a duplex
+        session) and no semantic endpointer, so it segments on the energy
+        fallback — the documented degraded path a failed Silero load already
+        lands on, and the right trade against losing the rest of the
+        consultation.
+        """
+        controller = self._switch_controllers.get(session_id)
+        if controller is None:
+            logger.error(
+                "stt.stream.duplex_failed_no_controller",
+                session_id=session_id,
+                error=str(exc),
+            )
+            return
+        if controller.switched:
+            # One outage reaches this method from more than one place — a failed
+            # `push_audio` and the consumer's own raise are the same event seen
+            # twice. Saying "no fallback" again would read as a second outage.
+            logger.debug(
+                "stt.stream.duplex_failure_after_switch",
+                session_id=session_id,
+                error=str(exc),
+            )
+            return
+        try:
+            switched = await controller.record_failure(
+                exc, utterance_index=self._duplex_utterance_indices.get(session_id)
+            )
+        except Exception as switch_exc:  # noqa: BLE001 — a failed switch is not a crash
+            logger.error(
+                "stt.stream.duplex_switch_attempt_failed",
+                session_id=session_id,
+                error=str(switch_exc),
+            )
+            return
+        if not switched:
+            # Nothing to switch to, and the vendor stream is over. UNREGISTER so
+            # the frame handler stops pushing at a dead socket — otherwise every
+            # remaining frame of the consultation raises and logs, which buries
+            # the one line that matters under thousands that do not. The audio
+            # itself keeps recording; only captions stop, and the client is told
+            # so rather than left watching a transcript that silently froze.
+            _duplex_sessions_of(self).pop(session_id, None)
+            logger.error(
+                "stt.stream.duplex_failed_no_fallback",
+                session_id=session_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            publisher = self._publishers.get(session_id)
+            if publisher is not None:
+                try:
+                    await publisher.publish_error(
+                        "Speech recognition provider stream failed and no fallback engine "
+                        "is configured for this session"
+                    )
+                except Exception as pub_exc:  # noqa: BLE001 — never mask the outage
+                    logger.warning(
+                        "stt.stream.duplex_error_publish_failed",
+                        session_id=session_id,
+                        error=str(pub_exc),
+                    )
+        # A successful switch re-arms the local front end, but this method does
+        # NOT do it: `_apply` — the swap body the controller calls — owns that,
+        # so every switch path (auto here, manual control frame, manual HTTP,
+        # switch-back-to-primary) gets it from one place.
+
+    async def _rearm_local_front_end(
+        self, session_id: str, duplex: DuplexAsrSession | None = None
+    ) -> None:
+        """Put a session back on the segmenting path after leaving a duplex engine.
+
+        TASK-998. Three moves, and all three are needed or the session is half
+        switched: close the vendor stream, take the preprocessor out of
+        passthrough, and create the inference queue + loop the callable path
+        consumes (a duplex session never had one — see
+        ``_register_inference_runtime``).
+
+        NOT reached when the fallback is ITSELF a duplex engine: the switch
+        builders do not probe for one (see ``_load_asr_pipeline``), so such a
+        fallback runs on its own per-utterance REST callable. That is the
+        pre-TASK-998 behaviour for a cloud engine — correct, if not the new
+        design — and hot-swapping one live vendor socket for another is a
+        separate change.
+
+        ``duplex`` is passed by ``_apply``, which unregisters it SYNCHRONOUSLY
+        inside the swap so the frame handler stops feeding a socket that is on
+        its way out before this coroutine is scheduled.
+        """
+        if duplex is not None:
+            await self._finish_duplex_session(session_id, duplex, reason="engine_switch")
+        else:
+            await self._close_duplex_session(session_id, reason="engine_switch")
+
+        preprocessor = self._preprocessors.get(session_id)
+        if preprocessor is not None and getattr(preprocessor, "passthrough", False):
+            preprocessor.set_passthrough(False)
+
+        session = self._sessions.get(session_id)
+        worker = self._inference_workers.get(session_id)
+        if session is None or worker is None:
+            logger.warning(
+                "stt.stream.duplex_rearm_incomplete",
+                session_id=session_id,
+                reason="session or worker already gone",
+            )
+            return
+        if session_id in self._inference_queues:
+            return
+        self._register_inference_runtime(
+            session, worker, publisher=self._publishers.get(session_id)
+        )
+        logger.info("stt.stream.duplex_rearmed_local_front_end", session_id=session_id)
+
+    async def _close_duplex_session(self, session_id: str, *, reason: str) -> None:
+        """Unregister a session's duplex engine and shut it down. Idempotent."""
+        duplex = _duplex_sessions_of(self).pop(session_id, None)
+        if duplex is None:
+            return
+        await self._finish_duplex_session(session_id, duplex, reason=reason)
+
+    async def _finish_duplex_session(
+        self, session_id: str, duplex: DuplexAsrSession, *, reason: str
+    ) -> None:
+        """Flush, close and drain one already-unregistered duplex engine.
+
+        Order is load-bearing: the conditioned TAIL goes out first, then the
+        end-of-utterance signal (which is what makes a vendor under
+        ``mode='manual'`` emit its last final at all), then the close, then a
+        BOUNDED wait for the consumer to publish whatever the vendor sends on the
+        way out. Skipping the wait loses the closing final of the consultation —
+        the M-04 failure in a different costume.
+
+        ``push_audio`` and ``signal_utterance_end`` re-raise a stored fatal
+        error, so both sit inside the first ``try``: teardown must always reach
+        ``close()``, which by contract never raises.
+        """
+        try:
+            preprocessor = self._preprocessors.get(session_id)
+            if preprocessor is not None:
+                await self._push_duplex_audio(
+                    session_id, duplex, preprocessor, route_failures=False
+                )
+            await duplex.signal_utterance_end()
+        except Exception as exc:  # noqa: BLE001 — teardown must always reach close()
+            logger.warning(
+                "stt.stream.duplex_flush_failed",
+                session_id=session_id,
+                reason=reason,
+                error=str(exc),
+            )
+        try:
+            await duplex.close()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "stt.stream.duplex_close_failed",
+                session_id=session_id,
+                reason=reason,
+                error=str(exc),
+            )
+
+        task = self._duplex_tasks.pop(session_id, None)
+        if task is not None and not task.done():
+            try:
+                # `wait_for` cancels the task on timeout, which is the intended
+                # give-up: a consumer still blocked on a closed socket is not
+                # going to produce anything a longer wait would catch.
+                await asyncio.wait_for(task, timeout=_DUPLEX_DRAIN_TIMEOUT_S)
+            except TimeoutError:
+                logger.error(
+                    "stt.stream.duplex_drain_timeout",
+                    session_id=session_id,
+                    reason=reason,
+                    timeout_s=_DUPLEX_DRAIN_TIMEOUT_S,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "stt.stream.duplex_consumer_raised_on_drain",
+                    session_id=session_id,
+                    reason=reason,
+                    error=str(exc),
+                )
 
     def _adopt_pending_front_end_geometry(
         self, session_id: str, preprocessor: StreamingPreprocessor | None
@@ -4014,6 +4762,9 @@ class SessionManager:
         inference_queue = self._inference_queues.get(session.session_id)
         inference_worker = self._inference_workers.get(session.session_id)
         publisher = self._publishers.get(session.session_id)
+        # TASK-998 — read per FRAME, not captured here: a mid-session failover
+        # off a duplex engine drops the entry, and a handler holding a stale
+        # reference would keep feeding a socket that is already closed.
 
         async def _on_frame(frame: AudioFrame) -> None:
             if session.status != SessionStatus.ACTIVE:
@@ -4049,6 +4800,15 @@ class SessionManager:
                     if session.processed_sample_rate is None:
                         session.processed_sample_rate = preprocessor.target_sample_rate
 
+                # TASK-998 / OD-2 — a duplex engine takes the conditioned frames
+                # directly and endpoints them itself. The routing loop below
+                # needs no branch: a passthrough preprocessor returns no
+                # utterances by construction, so it is inert here and every
+                # local path stays exactly as it was.
+                duplex = _duplex_sessions_of(self).get(session.session_id)
+                if duplex is not None:
+                    await self._push_duplex_audio(session.session_id, duplex, preprocessor)
+
                 # Route utterances: finals to queue, partials to fire-and-forget
                 for utt in utterances:
                     if utt.is_final:
@@ -4062,7 +4822,19 @@ class SessionManager:
                         gate = self._final_published_gates.get(session.session_id)
                         if gate is not None:
                             gate.clear()
-                        if inference_queue is not None:
+                        # TASK-998 — the captured queue is authoritative and is
+                        # what every local session uses (it exists before this
+                        # handler is built, so the `or` never evaluates its right
+                        # side and the hot path is unchanged). The live lookup
+                        # engages in exactly one case: a session that OPENED on a
+                        # duplex engine had no queue to capture, and the failover
+                        # that re-armed the local front end created one after
+                        # this closure was already bound. Without it the
+                        # re-armed session would drop every utterance silently.
+                        queue = inference_queue or self._inference_queues.get(
+                            session.session_id
+                        )
+                        if queue is not None:
                             # F-08: bounded wait, not a blocking put. This runs on the
                             # single ingestion dispatch loop — a full queue must never
                             # block it (that would stop XACK'ing stt:audio and let its
@@ -4071,7 +4843,7 @@ class SessionManager:
                             # untouched and keeps draining independently.
                             try:
                                 await asyncio.wait_for(
-                                    inference_queue.put(utt),
+                                    queue.put(utt),
                                     timeout=_STEADY_STATE_ENQUEUE_TIMEOUT_S,
                                 )
                             except TimeoutError:
@@ -4413,6 +5185,12 @@ class SessionManager:
             try:
                 await self._flush_final_utterance(session=session, preprocessor=preprocessor)
                 await self._drain_inference_queue(session_id)
+                # TASK-998 — the duplex equivalent of the two lines above, and
+                # it belongs INSIDE the claim for the same reason they do: the
+                # tail push + end-of-utterance signal + drain must happen once,
+                # and every other trigger must be able to wait for it. A local
+                # session has no entry and this is a no-op.
+                await self._close_duplex_session(session_id, reason="finalize")
             finally:
                 tail_done.set()
         else:
@@ -5581,7 +6359,9 @@ class SessionManager:
                     # warm VAD state. Deferred — VAD starts cold but
                     # stabilizes within 1-2 s of new audio.
 
-                    self._register_inference_runtime(session, inference_worker)
+                    self._register_inference_runtime(
+                        session, inference_worker, publisher=publisher
+                    )
 
                     # Wire up consumers — the audio consumer
                     # group persists its own cursor in Redis, so on recovery the

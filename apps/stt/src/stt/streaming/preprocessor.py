@@ -214,6 +214,17 @@ class StreamingPreprocessor:
         Minimum speech duration before confirming onset.
     min_silence_duration_ms:
         Minimum silence duration to confirm speech offset.
+    passthrough:
+        TASK-998 / owner decision OD-2 — CONDITION-ONLY mode for a duplex
+        (natively-streaming) ASR engine. Resample, normalise and denoise still
+        run; VAD, endpointing, utterance buffering and partial emission do not,
+        and :meth:`feed` returns an empty list by construction. Conditioned
+        frames leave through :meth:`drain_conditioned_frames` instead, and the
+        caller pushes them at the vendor, which owns the endpointer.
+
+        The segmenting path below is untouched by this flag — every local engine
+        still runs it, and it is the heavily-tuned one (TASK-994/TASK-985). This
+        is an ADDED path, not a replacement.
     """
 
     def __init__(
@@ -237,6 +248,7 @@ class StreamingPreprocessor:
         partial_interval_s: float = _PARTIAL_INTERVAL_S,
         endpointer: Any | None = None,
         energy_veto_enabled: bool = False,
+        passthrough: bool = False,
     ) -> None:
         self.session_id = session_id
         self.sample_rate = sample_rate
@@ -288,6 +300,11 @@ class StreamingPreprocessor:
         # how `speechPadMs` became inert (D2-N1). If MR-2 adopts it, it needs an
         # `audioFrontEnd.vad.*` field and a mapping, not a literal here.
         self._energy_veto_enabled = energy_veto_enabled
+        # TASK-998 (OD-2) — condition-only mode for a duplex engine. Mutable
+        # through `set_passthrough` so a mid-session failover OFF a duplex engine
+        # can re-arm segmentation rather than leaving the session with a front
+        # end that emits nothing for the fallback decoder to chew on.
+        self._passthrough = passthrough
         vad_frame_size = _FRAME_SIZE_16K if self._target_sr >= 16000 else _FRAME_SIZE_8K
         if sample_rate != self._target_sr:
             self._frame_size = int(vad_frame_size * (sample_rate / self._target_sr))
@@ -365,6 +382,12 @@ class StreamingPreprocessor:
         self._reset_prob_ring()
 
         self._processed_samples: list[np.ndarray] = []
+        # TASK-998 — conditioned frames awaiting the duplex engine. A SECOND
+        # buffer rather than a reuse of `_processed_samples`: that one is drained
+        # by the session recorder (as int16 PCM, for the snapshot / dual-capture
+        # upload) and the two consumers must not steal frames from each other.
+        # Empty and untouched outside passthrough mode.
+        self._conditioned_out: list[np.ndarray] = []
 
         # TASK-985 (M-39) — per-session cut-reason and endpoint-decision
         # histograms. They answer §2.5 class 2 ("54 % of finals are <= 3 words")
@@ -388,6 +411,7 @@ class StreamingPreprocessor:
         self._state = _PreprocessorState()
         self._reset_prob_ring()
         self._processed_samples.clear()
+        self._conditioned_out.clear()
         self._peak_tracker = 0.0001
         self._normalizer_gain = 1.0
         self._cut_reasons.clear()
@@ -445,6 +469,37 @@ class StreamingPreprocessor:
         return self._normalizer_gain
 
     @property
+    def passthrough(self) -> bool:
+        """Condition-only mode: no VAD, no endpointing, no utterances (TASK-998)."""
+        return self._passthrough
+
+    def set_passthrough(self, enabled: bool) -> None:
+        """Turn condition-only mode on or off mid-session.
+
+        The ONE caller that matters is an engine failover AWAY from a duplex
+        engine: the fallback decodes per utterance, and a front end still in
+        passthrough would hand it nothing at all — a session that looks alive and
+        transcribes silence. Turning it off re-arms the segmenter on whatever VAD
+        this preprocessor holds, which for a session that opened on a duplex
+        engine is ``None`` — i.e. the documented energy fallback, the same
+        degraded-but-working path a failed Silero load already lands on.
+
+        The conditioned-out buffer is dropped on the way out: those frames were
+        addressed to a vendor socket that is closing, and replaying them into the
+        segmenter would decode audio the outgoing engine had already consumed.
+        """
+        if enabled == self._passthrough:
+            return
+        self._passthrough = enabled
+        self._conditioned_out.clear()
+        logger.info(
+            "stt.streaming.passthrough_changed",
+            session_id=self.session_id,
+            passthrough=enabled,
+            segmenter="vendor" if enabled else ("silero" if self._vad_service else "energy"),
+        )
+
+    @property
     def effective_segmentation(self) -> dict[str, Any]:
         """The numbers this preprocessor is ACTUALLY running on.
 
@@ -459,6 +514,19 @@ class StreamingPreprocessor:
         a session whose Silero load failed runs on the energy fallback however
         the agent is configured. Bounded keys, no PHI — safe to log verbatim.
         """
+        if self._passthrough:
+            # TASK-998 (OD-2) — every number below describes a segmenter that is
+            # not running. Reporting them would be the M-13 failure in reverse:
+            # a log line asserting a configuration the session never applied.
+            return {
+                "segmenter": "vendor",
+                "endpointing": "vendor",
+                "passthrough": True,
+                "normalize": self._normalize,
+                # `vad_only` denoise has no consumer without a VAD, so it is
+                # skipped in this mode — say which way it went.
+                "denoise": self._denoiser is not None and self._denoise_scope == "full",
+            }
         endpointer = self._endpointer
         endpointer_enabled = endpointer is not None and bool(getattr(endpointer, "enabled", False))
         endpoint_config = getattr(endpointer, "config", None)
@@ -506,6 +574,20 @@ class StreamingPreprocessor:
         samples = np.concatenate(self._processed_samples)
         self._processed_samples.clear()
         return (samples * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
+
+    def drain_conditioned_frames(self) -> np.ndarray | None:
+        """Drain the conditioned float32 frames a duplex engine is waiting for.
+
+        TASK-998. Float32 at ``target_sample_rate`` — the same domain
+        ``AudioUtterance.samples`` carries, because it is the same audio, minus
+        the segmentation. ``None`` when there is nothing buffered, which is
+        always the case outside passthrough mode.
+        """
+        if not self._conditioned_out:
+            return None
+        frames = np.concatenate(self._conditioned_out)
+        self._conditioned_out.clear()
+        return cast(np.ndarray, frames)
 
     def _normalize_frame(self, frame: np.ndarray) -> np.ndarray:
         """Bounded-window peak normalization (causal).
@@ -571,8 +653,18 @@ class StreamingPreprocessor:
         Returns
         -------
         list[AudioUtterance]
-            Zero or more complete utterances detected in this chunk.
+            Zero or more complete utterances detected in this chunk. ALWAYS
+            empty in passthrough mode — a duplex engine's vendor owns the
+            endpointer, so there is no utterance for HOPE to have detected.
         """
+        if self._passthrough:
+            # TASK-998 (OD-2). Deliberately an early return rather than a flag
+            # threaded through the state machine below: "no VAD" has to be
+            # unmissable at the top of the method, and the segmenting body stays
+            # byte-identical for every local engine.
+            self._feed_conditioned(pcm_data)
+            return []
+
         state = self._state
         utterances: list[AudioUtterance] = []
 
@@ -784,12 +876,93 @@ class StreamingPreprocessor:
 
         return utterances
 
+    def _condition_for_vendor(self, frame_f32: np.ndarray) -> np.ndarray:
+        """Signal conditioning only — the passthrough path's stage 1+2.
+
+        Used ONLY by the two passthrough entry points below; ``feed``'s
+        segmenting body keeps its own inline copy deliberately, so this helper
+        can never change the tuned path by accident.
+
+        Denoise runs only under ``scope="full"``. Under the default
+        ``"vad_only"`` the denoised signal exists to gate a VAD decision and the
+        emitted audio stays raw — with no VAD there is no decision to gate, so
+        applying it to the vendor feed would silently reverse a scope the tenant
+        chose. ``effective_segmentation`` reports which way it went.
+        """
+        if self._normalize:
+            frame_f32 = self._normalize_frame(frame_f32)
+        frame_f32 = self._resample_frame(frame_f32)
+        if self._denoiser is not None and self._denoise_scope == "full":
+            frame_f32 = self._denoiser.process(frame_f32)
+        return frame_f32
+
+    def _feed_conditioned(self, pcm_data: bytes) -> None:
+        """Condition ``pcm_data`` and queue it for the duplex engine (TASK-998).
+
+        Framed at exactly the segmenting path's ``_frame_size`` even though no
+        VAD consumes the frames: the peak normalizer's window is measured in
+        FRAMES and the denoisers expect their own fixed hop, so a different
+        framing here would silently retune both.
+
+        Every conditioned frame also lands in ``_processed_samples``. In the
+        segmenting path only SPEECH frames (plus pre-speech context) go there —
+        that selection is a VAD product, and without a VAD there is no honest way
+        to make it, so the processed recording becomes the whole conditioned
+        stream rather than a guess at which parts were speech.
+        """
+        state = self._state
+        state.pcm_remainder.extend(pcm_data)
+        bytes_per_frame = self._frame_size * 2
+
+        while len(state.pcm_remainder) >= bytes_per_frame:
+            frame_bytes = bytes(state.pcm_remainder[:bytes_per_frame])
+            del state.pcm_remainder[:bytes_per_frame]
+
+            frame_int16 = np.frombuffer(frame_bytes, dtype=np.int16)
+            frame_f32 = self._condition_for_vendor(frame_int16.astype(np.float32) / 32768.0)
+
+            state.total_samples_fed += len(frame_f32)
+            self._conditioned_out.append(frame_f32)
+            self._processed_samples.append(frame_f32.copy())
+
+    def _flush_conditioned(self) -> None:
+        """Condition the sub-frame tail at end-of-stream (TASK-998).
+
+        Zero-padded to a whole frame exactly as the segmenting ``flush`` pads
+        its own remainder. The padding is at most one frame of silence at the
+        very end of the stream, which is the cheapest of the available wrongs:
+        dropping it instead loses the last <32 ms of the closing word, and the
+        vendor is about to be told the stream ended anyway.
+        """
+        state = self._state
+        if not state.pcm_remainder:
+            return
+        remainder_bytes = bytes(state.pcm_remainder)
+        state.pcm_remainder.clear()
+        padded = remainder_bytes + b"\x00" * (self._frame_size * 2 - len(remainder_bytes))
+        frame_int16 = np.frombuffer(padded[: self._frame_size * 2], dtype=np.int16)
+        frame_f32 = self._condition_for_vendor(frame_int16.astype(np.float32) / 32768.0)
+        state.total_samples_fed += len(frame_f32)
+        self._conditioned_out.append(frame_f32)
+        self._processed_samples.append(frame_f32.copy())
+
     async def flush(self) -> AudioUtterance | None:
         """Flush any remaining audio as a final utterance.
 
         Called when the session is being finalized (stop signal or timeout).
         Returns the remaining audio as an utterance, or None if empty.
+
+        TASK-998 — in passthrough mode there is no utterance buffer to close, so
+        this conditions the sub-frame tail into ``drain_conditioned_frames`` and
+        returns ``None``. The CALLER is then responsible for pushing that tail and
+        signalling end-of-utterance to the vendor before closing the session; a
+        tail dropped here is the closing words of the consultation.
         """
+        if self._passthrough:
+            self._flush_conditioned()
+            self._log_session_summary()
+            return None
+
         state = self._state
 
         # Process any remaining PCM bytes (may be less than a full frame)
