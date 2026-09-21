@@ -18,8 +18,11 @@ import { useEngineArtifacts, useEngineConnection, useEngineDiscovery, useRefresh
 import { MODEL_ARTIFACT_BUCKET } from '../api/client';
 import type { DiscoveryEntry, DiscoveryEntryStatus, DiscoveryLoadState, DiscoveryProbe, InferenceEngineProvider } from '../api/types';
 import { ENGINE_DESCRIPTORS, type EngineDescriptor } from './engine-meta';
+import { ServingControlTab } from './serving-control-tab';
 
 const TAB_VALUES = ['server', 'models', 'artifacts'] as const;
+/** Only engines that declare `servingControl` may land on this tab (see `engine-meta.ts`). */
+const SERVING_TAB = 'serving';
 
 /** Never colour alone (rule 11 §10): every tag carries its own words. */
 const STATUS_META: Record<DiscoveryEntryStatus, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
@@ -153,10 +156,19 @@ export interface EngineScreenProps {
  * The self-hosted inference-engine screen — one component, one route per engine
  * (see `engine-meta.ts` for why).
  *
- * READ-ONLY, and that is a decision rather than a stage of completion: the
- * console reports engine state and never mutates the workload. What is
- * deliberately absent is named on the Server tab, in the place an operator would
- * have looked for the button.
+ * READ-ONLY with exactly ONE exception, and both halves are decisions rather
+ * than stages of completion:
+ *
+ *  - Every tab here reports engine state and never mutates the workload. What
+ *    is deliberately absent is named on the Server tab, in the place an
+ *    operator would have looked for the button.
+ *  - The Serving Control tab (`ServingControlTab`, LM Studio only — owner
+ *    decision D-1, TASK-996) is the one surface that DOES mutate it: load,
+ *    unload, and the load-time serving profile. It exists because those are
+ *    live per-model decisions on an engine that holds several models at once,
+ *    and because the alternative was a manifest edit plus a pod restart for a
+ *    context length. Nothing else gained a write, and no other engine gets the
+ *    tab — the others serve the model they were started with.
  *
  * The unreachable path is the PRIMARY path. Both engines run at zero replicas
  * today, so it gets the page-level banner with the probe error verbatim, an
@@ -167,7 +179,8 @@ export interface EngineScreenProps {
 export function EngineScreen({ provider }: EngineScreenProps) {
   const descriptor = ENGINE_DESCRIPTORS[provider];
   const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('server'));
-  const tab = (TAB_VALUES as readonly string[]).includes(tabParam) ? tabParam : 'server';
+  const allowedTabs: readonly string[] = descriptor.servingControl ? [...TAB_VALUES, SERVING_TAB] : TAB_VALUES;
+  const tab = allowedTabs.includes(tabParam) ? tabParam : 'server';
 
   const discovery = useEngineDiscovery(provider);
   const connection = useEngineConnection(provider);
@@ -214,6 +227,7 @@ export function EngineScreen({ provider }: EngineScreenProps) {
             <TabsTrigger value="server">Server</TabsTrigger>
             <TabsTrigger value="models">Models on server{reachable ? ` (${entries.length})` : ''}</TabsTrigger>
             <TabsTrigger value="artifacts">Artifacts in MinIO</TabsTrigger>
+            {descriptor.servingControl ? <TabsTrigger value={SERVING_TAB}>Serving control</TabsTrigger> : null}
           </TabsList>
         }
         footer={
@@ -329,6 +343,16 @@ export function EngineScreen({ provider }: EngineScreenProps) {
                 </ul>
               )}
             </TabsContent>
+
+            {/* Mounted only while selected (Radix unmounts an inactive panel),
+                so the runtime read — and with it the live VRAM figures the load
+                decisions are made against — is never fetched on a tab nobody is
+                looking at. */}
+            {descriptor.servingControl ? (
+              <TabsContent value={SERVING_TAB}>
+                <ServingControlTab catalogueModelKeys={entries.map((entry) => entry.modelName)} />
+              </TabsContent>
+            ) : null}
           </>
         )}
       </ScreenTemplate>
