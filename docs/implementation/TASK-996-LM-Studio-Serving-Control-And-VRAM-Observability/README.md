@@ -251,6 +251,69 @@ REST load path is unusable for this deployment's `hope/`-published symlinked GGU
 load or reload a model is wrong — which removes the last alternative to Phase 1's SDK
 transport.
 
+### 2.9 GPU serving layout — measured 2026-09-21, and it is worse than §2.1 implied
+
+`nvidia-smi --query-compute-apps` on the live pod, with BOTH LM Studio models resident:
+
+| Process | GPU0 | GPU1 | total |
+|---|---|---|---|
+| `llama-server` PID 549 — `gemma-4-e2b-it-qat@q4_0` | 2,668 MiB | 4,814 MiB | 7,482 MiB |
+| `llama-server` PID 2649 — `granite-guardian-4.1-8b` | 3,618 MiB | 3,078 MiB | 6,696 MiB |
+| **free** | 9,654 MiB | 8,048 MiB | |
+
+**Both models are layer-split across both cards.** §2.1 described this for gemma
+alone; the guardrail model does it too. So every token of *both* models pays a
+cross-device hop, and the two models contend for the SMs of *both* GPUs instead
+of owning one each.
+
+Each fits comfortably on a single 16 GiB card:
+
+| Model | weights | KV at its own ctx x parallel | total | fits |
+|---|---|---|---|---|
+| gemma-4-e2b-it-qat | 3.35 GB | 65536 x 4 | ~7.5 GB | ✅ either card |
+| granite-guardian-4.1-8b | 5.12 GB | 8192 x 4 | ~6.7 GB | ✅ either card |
+
+The target layout is therefore **one model per card** — gemma pinned to GPU0,
+guardian to GPU1 — which removes the interconnect traffic AND the mutual SM
+contention in one change. It is reachable only through `gpuSplitConfig`
+(§2.4), i.e. only after Phase 1.
+
+**This is a hypothesis with a mechanism, not a measurement.** The interconnect
+cost of `--split-mode layer` on this board is not yet isolated from flash
+attention (§2.7) or from time-slicing contention. The matrix below is what
+settles it, and no default should be changed on the strength of the reasoning
+alone — that mistake already cost one outage today.
+
+#### The measurement matrix, to run once Phase 1 is live
+
+| # | flashAttention | gpuSplit | KV cache | measures |
+|---|---|---|---|---|
+| A | off | evenly (today) | f16 | the control — reproduces 15.5 tok/s |
+| B | **on** | evenly | f16 | flash attention alone (expect ~66 tok/s, §2.7) |
+| C | on | **disabledGpus:[1]** | f16 | the cross-GPU split cost, isolated |
+| D | on | disabledGpus:[1] | **q8_0** | KV quantization on top |
+
+Each cell: decode = 200 tokens at `temperature: 0`; prefill = a ~6k-token prompt
+that is UNIQUE per run (LM Studio caches prompts — a repeated prompt measured
+176 ms against a true 1,400 ms and would silently flatter every result).
+
+#### Structural limits that no config reaches
+
+- **Time-slicing, not MPS.** `base/gpu-time-slicing.yaml` sets `replicas: 3`,
+  6 slices, 6/6 allocated. Time-slicing CONTEXT-SWITCHES the GPU between
+  processes and gives no memory isolation; MPS runs kernels from several
+  processes concurrently and generally suits multi-process inference better.
+  Changing it is a GPU-operator change on a `system-node-critical` DaemonSet —
+  an owner decision, and out of scope here.
+- **70 W cards.** `power.limit` is 70.00 W on both RTX 2000 Ada. These are
+  power-constrained by design; at idle they sit at 210 MHz against a 3,105 MHz
+  max. No serving config raises that ceiling.
+- **Speculative decoding is available and unexplored.** `lms load` exposes
+  `--speculative-draft-mtp` / `--speculative-draft-simple` /
+  `--speculative-draft-model`. For a 4.6B target a suitable draft model can pay
+  for itself, but it needs a compatible small model in the bucket and its own
+  measurement. Not attempted.
+
 ### Phase 1 — SDK loader (unblocks R-3 and R-6)
 
 - Add `@lmstudio/sdk@1.5.0` as a real dependency of `infrastructure/docker/lmstudio/`.
