@@ -72,6 +72,10 @@ model Consultation {
   @@index([tenantId, patientId, appointmentDate], name: "Consultation_tenant_patient_date_idx")
   // Tenant-leading lifecycle filter (e.g. review queues).
   @@index([tenantId, status], name: "Consultation_tenant_status_idx")
+  /// TASK-999 — the admin list's DEFAULT ordering is now `updatedAt desc`
+  /// (the owner sorts by "latest"). Without this the sort is a full scan of the
+  /// tenant's consultations plus a sort, on every page.
+  @@index([tenantId, updatedAt], name: "Consultation_tenant_updated_idx")
   @@schema("core")
 }
 
