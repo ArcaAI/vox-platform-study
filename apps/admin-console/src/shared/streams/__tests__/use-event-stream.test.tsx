@@ -158,6 +158,45 @@ describe('useEventStream', () => {
     expect(result.current.status).toBe('open');
   });
 
+  it('TASK-999: an open-then-error cycle with no delivered event exhausts the retry budget instead of looping forever', async () => {
+    // BEFORE the fix: `attempt` reset to 0 inside `source.onopen`, and this exact cycle — every
+    // reconnect opens successfully and then errors before delivering anything — opened
+    // successfully every time. `attempt` could therefore never accumulate past 0, `attempt <
+    // maxRetries` stayed true forever, and the hook retried without end instead of ever
+    // reaching `error`. This is the shared-hook half of the TASK-999 infinite-reconnect bug.
+    vi.useFakeTimers();
+    stubTicketMint();
+    const { result } = renderHook(() => useEventStream({ ...OPTIONS, maxRetries: 2 }));
+
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() => FakeEventSource.instances[0].open());
+    act(() => FakeEventSource.instances[0].fail());
+    expect(result.current.status).toBe('connecting');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    act(() => FakeEventSource.instances[1].open());
+    act(() => FakeEventSource.instances[1].fail());
+    expect(result.current.status).toBe('connecting');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(3));
+    act(() => FakeEventSource.instances[2].open());
+    act(() => FakeEventSource.instances[2].fail());
+
+    // Budget exhausted (maxRetries: 2, three connections total) — lands on `error`, and no
+    // fourth connection is ever scheduled even given plenty more time.
+    await vi.waitFor(() => expect(result.current.status).toBe('error'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(FakeEventSource.instances).toHaveLength(3);
+  });
+
   it('close() is terminal and unmount tears the connection down', async () => {
     stubTicketMint();
     const first = renderHook(() => useEventStream(OPTIONS));

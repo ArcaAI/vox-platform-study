@@ -134,11 +134,19 @@ export function useEventStream({ path, scope, eventNames = [], onEvent, maxRetri
       sourceRef.current = source;
 
       source.onopen = () => {
-        attempt = 0;
         setError(null);
         setStatus('open');
       };
       const forward = (type: string) => (event: MessageEvent) => {
+        // TASK-999 — the retry budget resets HERE, on a DELIVERED event, not in `onopen`. A
+        // server that completes the response right after a terminal frame (e.g. reconnecting to
+        // a job that already finished) produces an open -> one frame -> error cycle that opens
+        // successfully every time; resetting `attempt` on bare `onopen` let that cycle zero the
+        // budget before it could ever reach `maxRetries`, which was the infinite-reconnect bug.
+        // An open-then-immediately-closed connection must count against the budget; a
+        // connection that has actually delivered something is the one this budget exists to
+        // forgive. Do not move this back to `onopen`.
+        attempt = 0;
         onEventRef.current?.(type, typeof event.data === 'string' ? event.data : JSON.stringify(event.data));
       };
       source.onmessage = forward('message');

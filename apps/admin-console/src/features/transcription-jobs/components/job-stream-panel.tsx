@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { IconPlugConnected } from '@tabler/icons-react';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
@@ -10,8 +10,8 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { formatDateTime, formatPercent } from '@/shared/format';
 import { ErrorState } from '@/shared/state/error-state';
 import { useEventStream, type StreamStatus } from '@/shared/streams';
-import { transcriptionJobStreamPath, useTranscriptionJob } from '../api';
-import type { TranscriptionJob } from '../api';
+import { TERMINAL_JOB_STATUSES, transcriptionJobStreamPath, useTranscriptionJob } from '../api';
+import type { TranscriptionJob, TranscriptionJobStatus } from '../api';
 import { TranscriptionJobStatusBadge } from './job-status-badge';
 
 /** Append-only event log cap (frame 35: "last received events"). */
@@ -28,6 +28,26 @@ const STREAM_STATUS_META: Record<StreamStatus, { label: string; role: StatusColo
 interface StreamEventLine {
   type: string;
   data: string;
+}
+
+/**
+ * TASK-999 — pulls a terminal job status out of an SSE frame, tolerating the one shape this
+ * route actually sends: `TranscriptionRealtimeService` always wraps the payload as
+ * `{ type, data: { jobId, status, ... } }`, whether it arrives on a NAMED `status` event (a live
+ * job forwarded from Redis) or on the DEFAULT `message` event (the reconnect-to-an-already-
+ * terminal-job branch, `transcriptionRealtime.service.ts:158-173`, which is exactly the frame
+ * the console was looping on). A bare `{ status }` is accepted too, defensively, since nothing
+ * here should assume the wrapper can never change shape upstream.
+ */
+function extractTerminalStatus(raw: string): TranscriptionJobStatus | null {
+  let parsed: { status?: unknown; data?: { status?: unknown } };
+  try {
+    parsed = JSON.parse(raw) as { status?: unknown; data?: { status?: unknown } };
+  } catch {
+    return null;
+  }
+  const status = parsed.data && typeof parsed.data === 'object' ? parsed.data.status : parsed.status;
+  return typeof status === 'string' && (TERMINAL_JOB_STATUSES as readonly string[]).includes(status) ? (status as TranscriptionJobStatus) : null;
 }
 
 function JobDetail({ job }: { job: TranscriptionJob }) {
@@ -81,15 +101,48 @@ function JobDetail({ job }: { job: TranscriptionJob }) {
  */
 export function JobStreamPanel({ jobId }: { jobId: string }) {
   const [events, setEvents] = useState<StreamEventLine[]>([]);
+  const [terminalStatus, setTerminalStatus] = useState<TranscriptionJobStatus | null>(null);
+  // null = not yet known (withhold the subscription); false = confirmed still running (the
+  // stream may open); true = confirmed already terminal — this mount never subscribes at all,
+  // it just renders the REST detail below. Decided ONCE, from `jobQuery` (see the render-time
+  // update below), never re-armed for the same mount (a fresh `jobId` always gets a fresh
+  // mount — `JobStreamCard` remounts `JobStreamPanel` with `key={jobId}`).
+  const [mountKnownTerminal, setMountKnownTerminal] = useState<boolean | null>(null);
 
   const stream = useEventStream({
     path: transcriptionJobStreamPath(jobId),
     scope: `transcription_job:${jobId}`,
     eventNames: ['status', 'progress', 'chunk', 'transcript', 'error'],
-    onEvent: (type, data) => setEvents((current) => [...current.slice(-(MAX_EVENTS - 1)), { type, data }]),
+    onEvent: (type, data) => {
+      setEvents((current) => [...current.slice(-(MAX_EVENTS - 1)), { type, data }]);
+      const status = extractTerminalStatus(data);
+      if (status) setTerminalStatus(status);
+    },
+    // TASK-999 — never open a subscription the gateway is just going to complete immediately
+    // (`TranscriptionRealtimeService.subscribeToJob`'s "already finished" branch): that is the
+    // exact frame the reconnect loop was chasing.
+    enabled: mountKnownTerminal === false,
   });
 
   const jobQuery = useTranscriptionJob(jobId, stream.status === 'error');
+
+  // Render-time derived state (React's documented "resetting state when a prop changes" idiom,
+  // used identically by `useDnaJobProgress`/`usePreSummaryStream` elsewhere in this console) —
+  // NOT an effect, so a still-running job's stream can open on the very render its status
+  // resolves rather than one tick late. A failed initial read (`isError`) still unblocks the
+  // stream: an unreadable status is not evidence the job is terminal.
+  if (mountKnownTerminal === null && (jobQuery.data || jobQuery.isError)) {
+    setMountKnownTerminal(jobQuery.data ? TERMINAL_JOB_STATUSES.includes(jobQuery.data.status) : false);
+  }
+
+  // TASK-999 — a terminal `status` frame stops the stream eagerly, the house pattern
+  // (`use-task-stream.ts`): single-use tickets, no zombie subscription left open once the
+  // gateway has already ended the response.
+  const terminal = !!terminalStatus;
+  const closeStream = stream.close;
+  useEffect(() => {
+    if (terminal) closeStream();
+  }, [terminal, closeStream]);
 
   const streamMeta = STREAM_STATUS_META[stream.status];
 
