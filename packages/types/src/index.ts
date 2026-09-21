@@ -26,6 +26,11 @@ export * from './asr-spec.js';
 // TASK-934 — the per-model ASR decode profile (`AiModel._metadata.asr`) the spec builder folds in.
 export * from './asr-model-profile.js';
 
+// TASK-996 — the per-model LM Studio serving profile (`AiModel._metadata.serving`): the context
+// window and decode slots the engine is LOADED with, flash attention, KV-cache quantization, and
+// per-model GPU assignment.
+export * from './lmstudio-serving-profile.js';
+
 // TASK-879 — the gateway-resolved TTS runtime contract (gateway → apps/tts), replacing the TenantTtsConfig fold.
 export * from './tts-spec.js';
 

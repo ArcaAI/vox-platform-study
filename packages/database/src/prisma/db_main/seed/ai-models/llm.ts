@@ -71,28 +71,45 @@ const LM_STUDIO_GENERATION_PARAMS: GenerationParamName[] = [...TEXT_PLANE_GENERA
  * Residency, which is the constraint that actually binds: LM Studio gives each of its
  * `LMS_PARALLEL` slots the FULL context rather than dividing it (measured — a single request
  * was served the whole configured window), so KV-cache memory scales with
- * `context x parallel`, not with context alone.
+ * `context x parallel`, not with context alone. At the 2026-09-18 settings (131072 x 10)
+ * that was more than one RTX 2000 Ada holds: `lms ps` reported 3.35 GB of weights while
+ * `nvidia-smi` reported the same PID holding 4,996 MiB on GPU0 and 8,908 MiB on GPU1 —
+ * 13.9 GiB, ~10.5 GiB of it f16 KV cache, for prompts measured at ~6k tokens.
  *
  * ── TASK-995, owner directive 2026-09-21: 131072 -> 65536 ────────────────────────────────
  * KV-cache quantization to Q4 was investigated first and is NOT reachable on this build.
  * Verified against the running pod (LM Studio 0.0.23-1, llama.cpp 2.31.2): `lms load` has no
- * KV-quant flag, and `POST /api/v1/models/load` accepts only
- * `model, context_length, flash_attention, offload_kv_cache_to_gpu, eval_batch_size,
- * num_experts, parallel` — every spelling of the quant key is rejected `unrecognized_keys`.
- * The daemon bundle does carry `llm.load.llama.{k,v}CacheQuantizationType`, so it is
- * reachable only via the lmstudio SDK's kvConfig stack, which would mean replacing
- * `lms load` in the image entrypoint. Tracked separately.
+ * KV-quant flag, and the daemon bundle carries `llm.load.llama.{k,v}CacheQuantizationType`
+ * only behind the lmstudio SDK's kvConfig stack — which is why TASK-996 Phase 1 replaces
+ * `lms load` in the image entrypoint.
  *
- * Halving the context is the reachable half of the same lever and needs no rebuild: measured
- * on dev, the serving pod held 13.9 GiB across two 16 GiB cards while its weights are only
- * 8.5 GiB, so ~5.4 GiB was KV cache + compute buffers at `131072 x 10`.
+ * ⚠️ The REST route is not an alternative, and the earlier note here that it "accepts
+ * `model, context_length, flash_attention, …`" overstated it. Measured 2026-09-21,
+ * `POST /api/v1/models/load` FAILS TO LOAD this model under every payload tried —
+ * including a control carrying no new keys at all. It accepts the schema and then returns
+ * `model_load_failed`. `lms load` is the only working load path today.
+ *
+ * TASK-995 / TASK-996 Phase 0 therefore lowered the pair to 65536 x 4 in
+ * `base/lmstudio.yaml` (deployed as `hope-v2-deployment@c44fe16`), and this constant
+ * follows it down. Measured after that deploy: 7,482 MiB, down from 13,904.
  *
  * 65536 stays far above the real workload — live consultation prompts measured 12,168-12,233
  * tokens — so this is not a budget squeeze; it restores the headroom the equality case had
- * removed. This number and `LMS_CONTEXT` must still move together, in this direction first:
- * LOWER the served window before lowering this, never the reverse.
+ * removed. It is the SERVED number, so both halves of the lockstep below derive from it and
+ * cannot drift apart. The deploy must not lag behind a RAISE of this value; a LOWER is safe
+ * in either order, because the safe direction of the invariant is to under-claim.
  */
 const LM_STUDIO_CONTEXT_LENGTH = 65536;
+
+/**
+ * Decode slots the preloaded row is SERVED with — `LMS_PARALLEL` -> `lms load --parallel`,
+ * lowered 10 -> 4 alongside the context window above.
+ *
+ * Declared here, beside the context window, because the two are ONE residency decision: each
+ * slot gets the full window, so VRAM scales with their product and reading either number
+ * alone tells you nothing about whether the model fits the card.
+ */
+const LM_STUDIO_PARALLEL = 4;
 
 /**
  * text-generation catalogue (TASK-860 — the owner's catalogue, exactly): the
@@ -227,6 +244,20 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
       // The PRELOADED model (`LMS_LOAD`), so `LMS_CONTEXT` -> `lms load --context-length`
       // guarantees the window this declares. Keep the two equal.
       contextLength: LM_STUDIO_CONTEXT_LENGTH,
+      // TASK-996 (D-7) — the load-time profile, the governed home for what were
+      // `LMS_CONTEXT` / `LMS_PARALLEL` env vars on the Deployment. Both members come
+      // from the SAME constants as the declaration above, so the lockstep holds
+      // structurally rather than by anyone remembering to update two numbers.
+      //
+      // `flashAttention`, `kvCacheQuant` and `gpuSplit` are deliberately ABSENT: this
+      // row inherits them from the platform default (`lmStudio.serving.*`), which ships
+      // today's measured engine behaviour. Pinning this model to one card, or turning
+      // flash attention on, is a MEASURED change made after Phase 0's baseline — not a
+      // value invented in a seed file.
+      serving: {
+        contextLength: LM_STUDIO_CONTEXT_LENGTH,
+        parallel: LM_STUDIO_PARALLEL,
+      },
     },
   },
   {
