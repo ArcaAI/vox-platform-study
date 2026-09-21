@@ -108,6 +108,7 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { PlatformMetricsModule } from './modules/platform-metrics/platform-metrics.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { AiModelModule } from './modules/ai-model/ai-model.module';
+import { InferenceEnginesModule } from './modules/inference-engines/inference-engines.module';
 import { PromptManagementModule } from './modules/prompt-management/prompt-management.module';
 import { PrismaStudioModule, shouldEnablePrismaStudio } from './modules/pstudio/pstudio.module';
 import { PrismaStudioStatusModule } from './modules/pstudio/pstudio-status.module';
@@ -446,6 +447,13 @@ const featureModules: any[] = [
   RateLimitAdminModule,
   AiServiceAdminModule,
   AiInferenceModule,
+  // /admin/inference-engines/lm-studio — platform control over the shared GPU
+  // serving engine: runtime + per-device VRAM read, and the super-admin
+  // load/unload surface. Separate from the READ-ONLY /admin/ai-services plane
+  // on purpose (owner decision D-1): a write here can evict the text,
+  // guardrail and STT workloads from time-sliced cards that give no memory
+  // isolation.
+  InferenceEnginesModule,
   // /admin/ai-task-defaults (per-tenant default model per AI task key).
   // /admin/nlp-task-instructions (tenant-writable nlp.topic/nlp.intent
   // instruction content — separate subject from AiRoutingPolicy).

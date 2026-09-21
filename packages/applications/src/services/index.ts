@@ -173,3 +173,6 @@ export * from './workflow-exposure';
 // Workbench sandbox runs — start/status/cancel a sandbox run of ANY
 // (DRAFT or published) WorkflowDefinition version, session-JWT only, always sandbox:true.
 export * from './workflow-sandbox-run';
+// TASK-996 Phase 3 — the LM Studio serving-control plane: runtime + VRAM read,
+// and the super-admin load/unload surface over the shared GPU serving engine.
+export * from './inference-engine';
