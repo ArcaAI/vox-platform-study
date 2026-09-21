@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { IconPlayerPlayFilled, IconPlayerStopFilled } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -79,13 +79,20 @@ export function SandboxRunPanel({
   const streamPath = definitionId && runId ? `admin/workflow-definitions/${definitionId}/sandbox-runs/${runId}/stream` : null;
   const streamScope = runId ? `workflow_run:${runId}` : null;
 
+  // onEvent needs stream.close, created before the handle exists — bridge with a ref (same
+  // pattern as use-task-stream.ts / the playground-consultation snapshot folds — close is
+  // identity-stable).
+  const closeRef = useRef<(() => void) | null>(null);
+
   const stream = useEventStream({
     path: streamPath,
     scope: streamScope,
     eventNames: ['workflow.sandbox_run.progress', 'workflow.sandbox_run.completed'],
     // The gateway's own stream is a poll-BRIDGE (no push producer exists on the interpreter
     // yet) that resyncs from the CURRENT status on every reconnect — never a replaying log — so
-    // auto-reconnect here is safe, unlike `use-task-stream.ts`'s documented replay hazard.
+    // auto-reconnect here is safe, unlike `use-task-stream.ts`'s documented replay hazard. It
+    // still ends the HTTP response on a terminal status, though (`res.end()`), so a caller that
+    // never closes still pays for a mint-and-reconnect cycle it does not need — closed below.
     onEvent: (_type, data) => {
       try {
         const envelope = JSON.parse(data) as SandboxRunEventEnvelope;
@@ -98,13 +105,19 @@ export function SandboxRunPanel({
           startedAt: next.startedAt,
           endedAt: next.endedAt,
         });
-        if (isTerminal(next.status) && toastedTerminalRef.current !== next.status) {
-          toastedTerminalRef.current = next.status;
-          if (next.status === 'COMPLETED') {
-            toast.success('Sandbox run completed.');
-          } else {
-            toast.error(`Sandbox run ${next.status.toLowerCase()}.`);
+        if (isTerminal(next.status)) {
+          if (toastedTerminalRef.current !== next.status) {
+            toastedTerminalRef.current = next.status;
+            if (next.status === 'COMPLETED') {
+              toast.success('Sandbox run completed.');
+            } else {
+              toast.error(`Sandbox run ${next.status.toLowerCase()}.`);
+            }
           }
+          // The gateway ends its HTTP response right after this frame — close eagerly so
+          // EventSource's `onerror` (a clean close it cannot tell apart from a drop) doesn't
+          // mint a fresh ticket and reconnect forever.
+          closeRef.current?.();
         }
       } catch {
         // Malformed frame — ignore this tick, the next poll snapshot will correct it.
@@ -112,6 +125,9 @@ export function SandboxRunPanel({
     },
     enabled: !!streamPath && !!streamScope,
   });
+  useEffect(() => {
+    closeRef.current = stream.close;
+  }, [stream.close]);
 
   const effectiveBlockedReason = blockedReason ?? (!definitionId ? 'Save this workflow to run it in the sandbox.' : null);
 

@@ -89,6 +89,8 @@ export interface RunLiveEventsState {
    */
   liveOutputByNodeId: Map<string, string>;
   reopen: () => void;
+  /** Terminal stop (the caller saw `WORKFLOW_RUN_COMPLETED`). No further retries until reopen(). */
+  close: () => void;
 }
 
 function parseEnvelope(data: string): WorkflowRunEventEnvelope<WorkflowNodeEventPayload | WorkflowTokenDeltaPayload> | null {
@@ -137,6 +139,11 @@ export function useRunLiveEvents(options: {
   const path = runId && slug ? workflowRunStreamPath(slug, runId) : null;
   const scope = runId ? workflowRunStreamScope(runId) : null;
 
+  // onEvent needs stream.close, created before the handle exists — bridge with a ref (same
+  // pattern as use-task-stream.ts / the playground-consultation snapshot folds — close is
+  // identity-stable).
+  const closeRef = useRef<(() => void) | null>(null);
+
   const onEvent = useCallback((type: string, data: string) => {
     const envelope = parseEnvelope(data);
     if (!envelope) return;
@@ -178,6 +185,11 @@ export function useRunLiveEvents(options: {
     }
 
     if (RESNAPSHOT_ON.has(type)) onResnapshotRef.current?.();
+
+    // The gateway ends its HTTP response (`res.end()`) right after this frame — the interpreter
+    // has no more to say about a terminal run. Close eagerly so EventSource's `onerror` (a clean
+    // close it cannot tell apart from a drop) doesn't mint a fresh ticket and reconnect forever.
+    if (type === WORKFLOW_RUN_COMPLETED) closeRef.current?.();
   }, []);
 
   const stream = useEventStream({
@@ -187,6 +199,9 @@ export function useRunLiveEvents(options: {
     onEvent,
     enabled,
   });
+  useEffect(() => {
+    closeRef.current = stream.close;
+  }, [stream.close]);
 
-  return { status: stream.status, events, nodeStatusById, liveOutputByNodeId, reopen: stream.reopen };
+  return { status: stream.status, events, nodeStatusById, liveOutputByNodeId, reopen: stream.reopen, close: stream.close };
 }

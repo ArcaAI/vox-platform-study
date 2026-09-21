@@ -176,6 +176,53 @@ describe('SandboxRunPanel', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Sandbox run failed.'));
   });
 
+  // RED before the fix: onEvent never called stream.close() on a terminal status, so the
+  // gateway's own res.end() (workflow-sandbox-stream.service.ts:47) was read by EventSource as
+  // a drop and retried forever.
+  it('closes the stream on the terminal workflow.sandbox_run.completed frame — schedules no reconnect', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    stubBaseFetch();
+    renderWithProviders(<SandboxRunPanel definitionId="def-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /run in sandbox/i }));
+    const source = await openedStream();
+    act(() =>
+      source.emit(
+        'workflow.sandbox_run.completed',
+        JSON.stringify({
+          type: 'workflow.sandbox_run.completed',
+          payload: { runId: 'run-1', workflowDefinitionId: 'def-1', status: 'COMPLETED', stages: [], startedAt: null, endedAt: null },
+        }),
+      ),
+    );
+
+    await waitFor(() => expect(source.closed).toBe(true));
+    // No reconnect was ever scheduled — a second EventSource would appear if it had been.
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  // RED before the fix would have passed vacuously; this proves the NEW close() call is gated
+  // on a terminal status and does not fire for an ordinary progress frame.
+  it('does not close the stream on a non-terminal workflow.sandbox_run.progress frame', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    stubBaseFetch();
+    renderWithProviders(<SandboxRunPanel definitionId="def-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /run in sandbox/i }));
+    const source = await openedStream();
+    act(() =>
+      source.emit(
+        'workflow.sandbox_run.progress',
+        JSON.stringify({
+          type: 'workflow.sandbox_run.progress',
+          payload: { runId: 'run-1', workflowDefinitionId: 'def-1', status: 'RUNNING', stages: [], startedAt: null, endedAt: null },
+        }),
+      ),
+    );
+
+    expect(source.closed).toBe(false);
+  });
+
   it('0 axe violations on the idle panel', async () => {
     stubBaseFetch();
     const { container } = renderWithProviders(<SandboxRunPanel definitionId="def-1" />);
