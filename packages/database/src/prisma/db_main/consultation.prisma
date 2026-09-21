@@ -106,6 +106,15 @@ model ContextItem {
   encryptedContent  Bytes?
   contentKeyVersion Int?
 
+  /// TASK-999 — plaintext SIZE of `encryptedContent`, measured once at write
+  /// time. The ciphertext cannot be measured without a Vault decrypt, and the
+  /// consultation telemetry pane needs case-note and transcript volume on an
+  /// ADMIN read: decrypting every item per view would push PHI through a
+  /// reporting path just to produce a number. Counted by the writer instead.
+  /// NULL = never measured (every pre-TASK-999 row); 0 is a real empty body.
+  contentWordCount Int?
+  contentCharCount Int?
+
   // Attachment media reference (reference ID, same soft-reference pattern as
   // dnaWritingStyleId). Set for ATTACHMENT-type items pointing to an uploaded
   // file in object storage; resolved to bucket+key via the Media record.

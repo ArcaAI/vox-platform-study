@@ -18,6 +18,14 @@ export interface ITranscriptionJobEntity extends IBaseTenantEntity {
   agentVersionId?: string | null;
   /** TASK-861 — the `ResolvedAsrSpec` snapshot the gateway handed to the worker (never a credential). */
   resolvedSpec?: JsonValue | null;
+  /** TASK-999 — the STT session (`stt:session:{id}`) this row mirrors; NULL for every BATCH row. */
+  streamSessionId?: string | null;
+  /** TASK-999 — which entry of `resolvedSpec.fallback.chain` ACTUALLY served: `{ chainIndex, source, agentSlug, modelSlug, provider, engine }`. NULL = not recorded. */
+  servedBy?: JsonValue | null;
+  /** TASK-999 — word count of the produced transcript, measured once at completion. NULL = never measured; 0 is a real empty transcript. */
+  resultWordCount?: number | null;
+  /** TASK-999 — character count of the produced transcript, measured once at completion. */
+  resultCharCount?: number | null;
   /**
    * TASK-992 FU-1 — the snapshot of what was PUBLISHED to the broker for this
    * job, so a retry can re-publish instead of only flipping a status.
@@ -66,6 +74,10 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
   private _pipelineId?: ITranscriptionJobEntity['pipelineId'];
   private _agentVersionId?: ITranscriptionJobEntity['agentVersionId'];
   private _resolvedSpec?: ITranscriptionJobEntity['resolvedSpec'];
+  private _streamSessionId?: ITranscriptionJobEntity['streamSessionId'];
+  private _servedBy?: ITranscriptionJobEntity['servedBy'];
+  private _resultWordCount?: ITranscriptionJobEntity['resultWordCount'];
+  private _resultCharCount?: ITranscriptionJobEntity['resultCharCount'];
   private _dispatchEnvelope?: ITranscriptionJobEntity['dispatchEnvelope'];
   private _status: ITranscriptionJobEntity['status'];
   private _progress: ITranscriptionJobEntity['progress'];
@@ -94,6 +106,10 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this._pipelineId = init.pipelineId;
     this._agentVersionId = init.agentVersionId;
     this._resolvedSpec = init.resolvedSpec;
+    this._streamSessionId = init.streamSessionId;
+    this._servedBy = init.servedBy;
+    this._resultWordCount = init.resultWordCount;
+    this._resultCharCount = init.resultCharCount;
     this._dispatchEnvelope = init.dispatchEnvelope;
     this._status = init.status;
     this._progress = init.progress;
@@ -172,6 +188,38 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
 
   set resolvedSpec(value: ITranscriptionJobEntity['resolvedSpec']) {
     this.setProperty('resolvedSpec', value);
+  }
+
+  get streamSessionId(): ITranscriptionJobEntity['streamSessionId'] {
+    return this._streamSessionId;
+  }
+
+  set streamSessionId(value: ITranscriptionJobEntity['streamSessionId']) {
+    this.setProperty('streamSessionId', value);
+  }
+
+  get servedBy(): ITranscriptionJobEntity['servedBy'] {
+    return this._servedBy;
+  }
+
+  set servedBy(value: ITranscriptionJobEntity['servedBy']) {
+    this.setProperty('servedBy', value);
+  }
+
+  get resultWordCount(): ITranscriptionJobEntity['resultWordCount'] {
+    return this._resultWordCount;
+  }
+
+  set resultWordCount(value: ITranscriptionJobEntity['resultWordCount']) {
+    this.setProperty('resultWordCount', value);
+  }
+
+  get resultCharCount(): ITranscriptionJobEntity['resultCharCount'] {
+    return this._resultCharCount;
+  }
+
+  set resultCharCount(value: ITranscriptionJobEntity['resultCharCount']) {
+    this.setProperty('resultCharCount', value);
   }
 
   get dispatchEnvelope(): ITranscriptionJobEntity['dispatchEnvelope'] {

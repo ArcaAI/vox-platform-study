@@ -19,6 +19,10 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   // only as a transient field repopulated by repository decrypt-on-read.
   encryptedContent?: Buffer | null;
   contentKeyVersion?: number | null;
+  /** TASK-999 — plaintext word count of `content`, measured once at write time. NULL = never measured; 0 is a real empty body. */
+  contentWordCount?: number | null;
+  /** TASK-999 — plaintext character count of `content`, measured once at write time. NULL = never measured; 0 is a real empty body. */
+  contentCharCount?: number | null;
   mediaId?: string | null;
   dnaWritingStyleId?: string | null;
   // Tenant-facing context-kind discriminator layered above `type`.
@@ -51,6 +55,8 @@ export class ContextItemEntity extends BaseTenantEntity {
   private _content?: IContextItemEntity['content'];
   private _encryptedContent?: IContextItemEntity['encryptedContent'];
   private _contentKeyVersion?: IContextItemEntity['contentKeyVersion'];
+  private _contentWordCount?: IContextItemEntity['contentWordCount'];
+  private _contentCharCount?: IContextItemEntity['contentCharCount'];
   private _mediaId?: IContextItemEntity['mediaId'];
   private _dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
   private _kindKey?: IContextItemEntity['kindKey'];
@@ -77,6 +83,8 @@ export class ContextItemEntity extends BaseTenantEntity {
     this._content = init.content;
     this._encryptedContent = init.encryptedContent;
     this._contentKeyVersion = init.contentKeyVersion;
+    this._contentWordCount = init.contentWordCount;
+    this._contentCharCount = init.contentCharCount;
     this._mediaId = init.mediaId;
     this._dnaWritingStyleId = init.dnaWritingStyleId;
     this._kindKey = init.kindKey;
@@ -154,6 +162,22 @@ export class ContextItemEntity extends BaseTenantEntity {
 
   set contentKeyVersion(value: IContextItemEntity['contentKeyVersion']) {
     this.setProperty('contentKeyVersion', value);
+  }
+
+  get contentWordCount(): IContextItemEntity['contentWordCount'] {
+    return this._contentWordCount;
+  }
+
+  set contentWordCount(value: IContextItemEntity['contentWordCount']) {
+    this.setProperty('contentWordCount', value);
+  }
+
+  get contentCharCount(): IContextItemEntity['contentCharCount'] {
+    return this._contentCharCount;
+  }
+
+  set contentCharCount(value: IContextItemEntity['contentCharCount']) {
+    this.setProperty('contentCharCount', value);
   }
 
   get mediaId(): IContextItemEntity['mediaId'] {

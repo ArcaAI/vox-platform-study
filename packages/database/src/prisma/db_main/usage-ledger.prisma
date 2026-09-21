@@ -137,6 +137,11 @@ model AiUsageEvent {
   // TASK-958 — "what did connection #2 cost me": per-connection cost surfaces
   // on the consumption screen.
   @@index([connectionId], name: "AiUsageEvent_connectionId_idx")
+
+  /// TASK-999 — the consultation telemetry pane's exact access path: every
+  /// ledger row for ONE consultation, newest first. `tenant_occurredAt` cannot
+  /// serve it without scanning the tenant's whole window.
+  @@index([tenantId, consultationId, occurredAt], name: "AiUsageEvent_tenant_consultation_occurredAt_idx")
   @@schema("core")
 }
 

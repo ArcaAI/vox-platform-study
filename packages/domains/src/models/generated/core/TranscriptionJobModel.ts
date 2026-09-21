@@ -15,6 +15,8 @@ export class TranscriptionJob extends BaseTenantDataModel {
   public pipelineId: string | null;
   public agentVersionId: string | null;
   public resolvedSpec: JsonValue | null;
+  public streamSessionId: string | null;
+  public servedBy: JsonValue | null;
   public dispatchEnvelope: JsonValue | null;
   public status: Enums.TranscriptionJobStatus;
   public progress: number;
@@ -28,6 +30,8 @@ export class TranscriptionJob extends BaseTenantDataModel {
   public encryptedResultText: Uint8Array | null;
   public encryptedResultMetadata: Uint8Array | null;
   public keyVersion: number | null;
+  public resultWordCount: number | null;
+  public resultCharCount: number | null;
   public errorMessage: string | null;
   public errorCode: string | null;
   public retryCount: number;
@@ -46,6 +50,8 @@ export class TranscriptionJob extends BaseTenantDataModel {
     this.pipelineId = data.pipelineId;
     this.agentVersionId = data.agentVersionId;
     this.resolvedSpec = data.resolvedSpec;
+    this.streamSessionId = data.streamSessionId;
+    this.servedBy = data.servedBy;
     this.dispatchEnvelope = data.dispatchEnvelope;
     this.status = data.status;
     this.progress = data.progress;
@@ -55,6 +61,8 @@ export class TranscriptionJob extends BaseTenantDataModel {
     this.encryptedResultText = data.encryptedResultText;
     this.encryptedResultMetadata = data.encryptedResultMetadata;
     this.keyVersion = data.keyVersion;
+    this.resultWordCount = data.resultWordCount;
+    this.resultCharCount = data.resultCharCount;
     this.errorMessage = data.errorMessage;
     this.errorCode = data.errorCode;
     this.retryCount = data.retryCount;

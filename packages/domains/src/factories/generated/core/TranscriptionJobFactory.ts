@@ -15,6 +15,13 @@ export interface CreateTranscriptionJobProps extends BaseEntityFactoryCreateProp
   /** TASK-861 — the ASR Agent version that will run the job (with its `resolvedSpec` snapshot). */
   agentVersionId?: ITranscriptionJobEntity['agentVersionId'];
   resolvedSpec?: ITranscriptionJobEntity['resolvedSpec'];
+  /** TASK-999 — the STT session this row mirrors (`jobType = STREAMING` only). */
+  streamSessionId?: ITranscriptionJobEntity['streamSessionId'];
+  /** TASK-999 — set at COMPLETION, not at create: which fallback-chain entry actually served. */
+  servedBy?: ITranscriptionJobEntity['servedBy'];
+  /** TASK-999 — set at COMPLETION, not at create: size of the produced transcript. */
+  resultWordCount?: ITranscriptionJobEntity['resultWordCount'];
+  resultCharCount?: ITranscriptionJobEntity['resultCharCount'];
   consultationId?: ITranscriptionJobEntity['consultationId'];
   mediaId?: ITranscriptionJobEntity['mediaId'];
   maxRetries?: ITranscriptionJobEntity['maxRetries'];
@@ -54,6 +61,10 @@ export class TranscriptionJobFactory {
       pipelineId: props.pipelineId ?? null,
       agentVersionId: props.agentVersionId ?? null,
       resolvedSpec: props.resolvedSpec ?? null,
+      streamSessionId: props.streamSessionId ?? null,
+      servedBy: props.servedBy ?? null,
+      resultWordCount: props.resultWordCount ?? null,
+      resultCharCount: props.resultCharCount ?? null,
       consultationId: props.consultationId ?? null,
       mediaId: props.mediaId ?? null,
       status: Enums.TranscriptionJobStatus.QUEUED,

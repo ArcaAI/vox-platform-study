@@ -166,6 +166,21 @@ model TranscriptionJob {
   // credential (provider overrides travel separately).
   resolvedSpec Json? @db.JsonB
 
+  /// TASK-999 — the STT session this row mirrors, for `jobType = STREAMING`
+  /// rows. A realtime session's own state lives in Redis (`stt:session:{id}`,
+  /// 24h TTL); this column is the durable handle that lets a live session and
+  /// its row be reconciled while Redis still holds it, and that keeps the row
+  /// meaningful after Redis has forgotten. NULL for every BATCH row.
+  streamSessionId String?
+
+  /// TASK-999 — which entry of `resolvedSpec.fallback.chain` ACTUALLY served.
+  /// The chain is a snapshot of what COULD run; nothing recorded what did, and
+  /// the engine name alone cannot disambiguate a primary from a fallback that
+  /// shares its provider. Shape: `{ chainIndex, source: 'primary' | 'fallback',
+  /// agentSlug, modelSlug, provider, engine }`. NULL = not recorded (every
+  /// pre-TASK-999 row, and any job that never reached a worker).
+  servedBy Json? @db.JsonB
+
   // TASK-992 FU-1 — everything needed to RE-PUBLISH this job's Dramatiq message,
   // snapshotted by `TranscriptionRealtimeService.dispatchDramatiqJob` at the moment
   // it enqueues. Without it a retry is only a status flip: the row goes back to
@@ -204,6 +219,13 @@ model TranscriptionJob {
   encryptedResultMetadata Bytes?
   keyVersion              Int?
 
+  /// TASK-999 — size of the produced transcript, measured ONCE by the writer at
+  /// completion. `encryptedResultText` cannot be measured without a Vault
+  /// decrypt, so an admin read must not be the thing that counts it. NULL =
+  /// never measured; 0 is a real empty transcript, not a missing one.
+  resultWordCount Int?
+  resultCharCount Int?
+
   // Error handling
   errorMessage String?
   errorCode    String?
@@ -238,5 +260,10 @@ model TranscriptionJob {
   /// TASK-992 — the reaper's exact access path: cross-tenant
   /// `status = PROCESSING AND updatedAt < :staleBefore`, ordered by `updatedAt`.
   @@index([status, updatedAt], name: "TranscriptionJob_status_updated_idx")
+  /// TASK-999 — the admin list's access path once realtime sessions are rows
+  /// too: one tenant, filtered by kind, newest first.
+  @@index([tenantId, jobType, createdAt], name: "TranscriptionJob_tenant_jobType_created_idx")
+  /// TASK-999 — reconciling a live STT session with its row.
+  @@index([streamSessionId], name: "TranscriptionJob_streamSessionId_idx")
   @@schema("core")
 }

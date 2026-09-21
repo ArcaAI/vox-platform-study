@@ -13,6 +13,9 @@ export interface CreateContextItemProps extends BaseEntityFactoryCreateProps {
   source?: IContextItemEntity['source'];
   currentVersionNumber?: IContextItemEntity['currentVersionNumber'];
   content?: IContextItemEntity['content'];
+  /** TASK-999 — plaintext size of `content`, measured by the WRITER. Omitted = never measured (NULL), which is what every pre-TASK-999 caller produces. */
+  contentWordCount?: IContextItemEntity['contentWordCount'];
+  contentCharCount?: IContextItemEntity['contentCharCount'];
   mediaId?: IContextItemEntity['mediaId'];
   dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
   // Optional; omitted by every pre-existing caller, which is the
@@ -53,6 +56,8 @@ export class ContextItemFactory {
       source: props.source ?? Enums.ContextItemSource.USER,
       currentVersionNumber: props.currentVersionNumber ?? 1,
       content: props.content ?? null,
+      contentWordCount: props.contentWordCount ?? null,
+      contentCharCount: props.contentCharCount ?? null,
       mediaId: props.mediaId ?? null,
       dnaWritingStyleId: props.dnaWritingStyleId ?? null,
       kindKey: props.kindKey ?? null,

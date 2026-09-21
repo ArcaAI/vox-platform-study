@@ -18,6 +18,8 @@ export class ContextItem extends BaseTenantDataModel {
   // writing/reading the now-nonexistent column.
   public encryptedContent: Uint8Array | null;
   public contentKeyVersion: number | null;
+  public contentWordCount: number | null;
+  public contentCharCount: number | null;
   public mediaId: string | null;
   public dnaWritingStyleId: string | null;
   public kindKey: string | null;
@@ -51,6 +53,8 @@ export class ContextItem extends BaseTenantDataModel {
     this.currentVersionNumber = data.currentVersionNumber ?? 1;
     this.encryptedContent = data.encryptedContent;
     this.contentKeyVersion = data.contentKeyVersion;
+    this.contentWordCount = data.contentWordCount;
+    this.contentCharCount = data.contentCharCount;
     this.mediaId = data.mediaId;
     this.dnaWritingStyleId = data.dnaWritingStyleId;
     this.kindKey = data.kindKey;
