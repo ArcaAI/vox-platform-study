@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending — plan awaiting owner decisions (see §5) |
+| **Status** | Review — implemented and gated; NOT yet verified against a live vendor (see §7) |
 | **Type** | bugfix + feature (transport change) |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-21 |
