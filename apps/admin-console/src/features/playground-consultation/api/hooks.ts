@@ -416,9 +416,23 @@ export function useDocumentSectionsStream(consultationId: string | null, enabled
     setDocumentOrder([]);
   }
 
+  // handleEvent needs stream.close, created before the handle exists — bridge with a ref
+  // (same pattern as useSnapshotStream/DNA hooks — close is identity-stable).
+  const closeRef = useRef<(() => void) | null>(null);
+
   const handleEvent = useCallback((_type: string, data: string) => {
-    const patch = parseJson<SectionPatch>(data);
-    if (!patch || patch.event !== 'section.patch') return; // the legacy full-snapshot payload — not ours
+    const parsed = parseJson<SectionPatch & { closed?: boolean }>(data);
+    if (!parsed) return;
+    // The legacy whole-document snapshot's TERMINAL frame (`closed: true`, published when
+    // recording stops) rides this SAME undiscriminated channel — never a section patch itself.
+    // Detected for LIFECYCLE only: it must never fold into the rendered document state, only
+    // stop the stream so the gateway's clean res.end() isn't read as a drop and retried forever.
+    if (parsed.closed === true) {
+      closeRef.current?.();
+      return;
+    }
+    if (parsed.event !== 'section.patch') return; // the legacy full-snapshot payload — not ours
+    const patch = parsed;
     const key = `${patch.documentKey}::${patch.sectionKey}`;
     setSections((current) => {
       const existing = current[key];
@@ -456,6 +470,9 @@ export function useDocumentSectionsStream(consultationId: string | null, enabled
     onEvent: handleEvent,
     enabled: enabled && !!consultationId,
   });
+  useEffect(() => {
+    closeRef.current = stream.close;
+  }, [stream.close]);
 
   // R4 — hydrate from the DURABLE view, which is what the gateway points to for exactly this:
   // "the section.patch SSE lane only emits while a flush is running, so a client that reloads
@@ -680,7 +697,21 @@ export function usePreSummaryStream(consultationId: string | null, enabled = tru
     setPreSummary(null);
   }
 
+  // handleEvent needs stream.close, created before the handle exists — bridge with a ref
+  // (same pattern as useSnapshotStream/DNA hooks — close is identity-stable).
+  const closeRef = useRef<(() => void) | null>(null);
+
   const handleEvent = useCallback((_type: string, data: string) => {
+    // The legacy whole-document snapshot's TERMINAL frame (`closed: true`, published when
+    // recording stops) rides this SAME undiscriminated channel — `foldPreSummaryEvent` already
+    // ignores it for rendering (no `event: 'presummary'`), but nothing stopped the stream on it,
+    // so the gateway's clean res.end() was read as a drop and retried forever. Close eagerly,
+    // for lifecycle only — never fold it into the rendered pre-summary.
+    const parsed = parseJson<{ closed?: boolean }>(data);
+    if (parsed?.closed === true) {
+      closeRef.current?.();
+      return;
+    }
     setPreSummary((current) => foldPreSummaryEvent(current, data));
   }, []);
 
@@ -694,6 +725,9 @@ export function usePreSummaryStream(consultationId: string | null, enabled = tru
     onEvent: handleEvent,
     enabled: enabled && !!consultationId,
   });
+  useEffect(() => {
+    closeRef.current = stream.close;
+  }, [stream.close]);
 
   // REST catch-up: recovers a `ready` pre-summary whose terminal SSE event was published before
   // this stream subscribed (lost outright — no replay). Fires once per consultation; reconciled

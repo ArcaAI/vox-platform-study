@@ -568,6 +568,44 @@ describe('useDocumentSectionsStream (DD-3 / DD-3 — N documents)', () => {
     expect(result.current.documents[0].sections[0].content).toBe('Rewritten entirely.');
     expect(result.current.documents[0].sections[0].appended).toBeUndefined();
   });
+
+  // RED before the fix: the hook never called stream.close() on the legacy `closed: true`
+  // frame, so the gateway's clean res.end() was read by EventSource as a drop and retried.
+  it('closes the stream on the terminal `closed: true` frame — schedules no reconnect', async () => {
+    stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+
+    act(() => sendSectionPatch(source, 'soap_note', 'assessment'));
+    expect(result.current.documents).toHaveLength(1);
+
+    // The terminal marker rides the SAME undiscriminated `message` channel as the legacy
+    // whole-document snapshot — no `event` field, just `closed: true`.
+    act(() => source.message({ consultationId: 'c-1', runningSummary: 'x', sections: [], entities: [], updatedAt: 't9', closed: true }));
+
+    expect(source.closed).toBe(true);
+    // No reconnect was ever scheduled — a second EventSource would appear if it had been.
+    expect(FakeEventSource.instances).toHaveLength(1);
+    // The terminal frame carries no section.patch and must never leak into rendered documents.
+    expect(result.current.documents).toHaveLength(1);
+    expect(result.current.documents[0].sections[0].sectionKey).toBe('assessment');
+  });
+
+  // RED before the fix: same handler, proving a NON-terminal frame (closed absent/false) must
+  // not trip the new close() call and end a still-live stream.
+  it('does not close the stream on a non-terminal legacy snapshot frame (no `closed` flag)', async () => {
+    stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+
+    act(() => source.message({ consultationId: 'c-1', runningSummary: 'x', sections: [], entities: [], updatedAt: 't1', closed: false }));
+    expect(source.closed).toBe(false);
+    expect(result.current.documents).toEqual([]);
+  });
 });
 
 /**
@@ -811,6 +849,43 @@ describe('usePreSummaryStream', () => {
       content: '- Diabetes (recorded 11-Aug-2026)',
       agentSlug: 'case-notes-pre-summary',
     });
+  });
+
+  // RED before the fix: the hook never called stream.close() on the legacy `closed: true`
+  // frame, so the gateway's clean res.end() was read by EventSource as a drop and retried.
+  it('closes the stream on the terminal `closed: true` frame — schedules no reconnect', async () => {
+    stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => usePreSummaryStream('c-1', true), { wrapper: Wrapper });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+
+    act(() => source.emit('presummary', { event: 'presummary', status: 'ready', content: 'x', updatedAt: 't1' }));
+    await waitFor(() => expect(result.current.preSummary?.status).toBe('ready'));
+
+    // The terminal marker rides the SAME undiscriminated `message` channel as the legacy
+    // whole-document snapshot — no `event` field, just `closed: true`.
+    act(() => source.message({ consultationId: 'c-1', runningSummary: 'x', sections: [], entities: [], updatedAt: 't9', closed: true }));
+
+    expect(source.closed).toBe(true);
+    // No reconnect was ever scheduled — a second EventSource would appear if it had been.
+    expect(FakeEventSource.instances).toHaveLength(1);
+    // The terminal frame carries no `presummary` event and must never leak into rendered state.
+    expect(result.current.preSummary).toMatchObject({ status: 'ready', content: 'x' });
+  });
+
+  // RED before the fix: same handler, proving a NON-terminal frame (closed absent) must not
+  // trip the new close() call and end a still-live stream.
+  it('does not close the stream on a non-terminal legacy snapshot frame (no `closed` flag)', async () => {
+    stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => usePreSummaryStream('c-1', true), { wrapper: Wrapper });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+
+    act(() => source.message({ consultationId: 'c-1', runningSummary: 'x', sections: [], entities: [], updatedAt: 't1' }));
+    expect(source.closed).toBe(false);
+    expect(result.current.preSummary).toBeNull();
   });
 });
 
