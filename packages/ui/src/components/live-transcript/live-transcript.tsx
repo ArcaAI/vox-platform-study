@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { JumpToLive } from './jump-to-live';
 import { ListeningPulse } from './listening-pulse';
 import { TranscriptSegment } from './transcript-segment';
+import { TranscriptParagraphView } from './transcript-paragraph';
 import { useLiveTranscript } from './use-live-transcript';
 import type { LiveTranscriptProps } from './types';
 
@@ -37,6 +38,7 @@ export function LiveTranscript(props: LiveTranscriptProps) {
     loadingState,
     density = 'comfortable',
     estimateSegmentHeight = 64,
+    paragraphGapSeconds,
     height = 480,
     className,
   } = props;
@@ -53,6 +55,7 @@ export function LiveTranscript(props: LiveTranscriptProps) {
     autoScroll,
     collection,
     estimateSegmentHeight,
+    paragraphGapSeconds,
   });
 
   const showError = error ?? collection?.error ?? null;
@@ -118,8 +121,9 @@ export function LiveTranscript(props: LiveTranscriptProps) {
             <>
               <div style={{ height: ctrl.virtualizer.getTotalSize(), position: 'relative' }}>
                 {virtualItems.map((virtualItem) => {
-                  const segment = ctrl.segments[virtualItem.index];
-                  if (!segment) return null;
+                  const paragraph = ctrl.paragraphs[virtualItem.index];
+                  if (!paragraph) return null;
+                  const lead = paragraph.segments[0];
                   return (
                     <div
                       key={virtualItem.key}
@@ -128,24 +132,38 @@ export function LiveTranscript(props: LiveTranscriptProps) {
                       style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualItem.start}px)` }}
                       className={cn(density === 'compact' ? 'px-3' : 'px-4')}
                     >
-                      <TranscriptSegment
-                        segment={segment}
-                        isEditing={ctrl.editingId === segment.id}
-                        isSaving={ctrl.savingId === segment.id}
-                        canEdit={ctrl.canEdit(segment)}
-                        showWords={showWords}
-                        showTimestamps={showTimestamps}
-                        showSpeakers={showSpeakers}
-                        showConfidence={showConfidence}
-                        hasAudio={hasAudio}
-                        activeWordIndex={ctrl.activeWord?.segmentId === segment.id ? ctrl.activeWord.index : null}
-                        speakers={speakers}
-                        renderSegment={renderSegment}
-                        onBeginEdit={() => ctrl.beginEdit(segment.id)}
-                        onSaveEdit={(text) => ctrl.saveEdit(segment.id, text)}
-                        onCancelEdit={ctrl.cancelEdit}
-                        onWordSelect={(wordIndex) => ctrl.seekToWord(segment, wordIndex)}
-                      />
+                      {paragraph.segments.length > 1 ? (
+                        <TranscriptParagraphView
+                          paragraph={paragraph}
+                          showWords={showWords}
+                          showTimestamps={showTimestamps}
+                          showSpeakers={showSpeakers}
+                          showConfidence={showConfidence}
+                          hasAudio={hasAudio}
+                          activeWord={ctrl.activeWord}
+                          speakers={speakers}
+                          onWordSelect={(member, wordIndex) => ctrl.seekToWord(member, wordIndex)}
+                        />
+                      ) : (
+                        <TranscriptSegment
+                          segment={lead}
+                          isEditing={ctrl.editingId === lead.id}
+                          isSaving={ctrl.savingId === lead.id}
+                          canEdit={ctrl.canEdit(lead)}
+                          showWords={showWords}
+                          showTimestamps={showTimestamps}
+                          showSpeakers={showSpeakers}
+                          showConfidence={showConfidence}
+                          hasAudio={hasAudio}
+                          activeWordIndex={ctrl.activeWord?.segmentId === lead.id ? ctrl.activeWord.index : null}
+                          speakers={speakers}
+                          renderSegment={renderSegment}
+                          onBeginEdit={() => ctrl.beginEdit(lead.id)}
+                          onSaveEdit={(text) => ctrl.saveEdit(lead.id, text)}
+                          onCancelEdit={ctrl.cancelEdit}
+                          onWordSelect={(wordIndex) => ctrl.seekToWord(lead, wordIndex)}
+                        />
+                      )}
                     </div>
                   );
                 })}

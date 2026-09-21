@@ -445,6 +445,11 @@ describe('ChainSummaryService', () => {
     it('should include multiple transcripts when no summary exists', async () => {
       const consultation = createConsultation() as any;
 
+      // All three share `createContextItem`'s default `createdAt` — exactly
+      // the shape of adjacent same-speaker STT utterances a live session
+      // posts. TASK-998 assembles a run like this into ONE paragraph/section
+      // instead of one "--- Section N ---" per utterance; no content is lost,
+      // it is joined (see transcript-assembly.util.ts).
       mocks.contextItemRepo.findSummaries.mockResolvedValue([]);
       mocks.contextItemRepo.findTranscripts.mockResolvedValue([
         createContextItem({ id: 't1', content: 'Transcript 1.' }),
@@ -456,8 +461,28 @@ describe('ChainSummaryService', () => {
 
       const sections = await mocks.service.gatherSections([consultation]);
 
-      expect(sections).toHaveLength(3);
-      expect(sections.every((s) => s.type === 'transcript')).toBe(true);
+      expect(sections).toHaveLength(1);
+      expect(sections[0].type).toBe('transcript');
+      expect(sections[0].content).toBe('Transcript 1. Transcript 2. Transcript 3.');
+    });
+
+    it('should keep transcripts from a real conversational gap as separate sections', async () => {
+      const consultation = createConsultation() as any;
+
+      mocks.contextItemRepo.findSummaries.mockResolvedValue([]);
+      mocks.contextItemRepo.findTranscripts.mockResolvedValue([
+        createContextItem({ id: 't1', content: 'Opening remarks.', createdAt: new Date('2026-02-17T09:00:00Z') }),
+        // 5 minutes later — well past the default assembly gap threshold.
+        createContextItem({ id: 't2', content: 'Follow-up after a long pause.', createdAt: new Date('2026-02-17T09:05:00Z') }),
+      ]);
+      mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+      mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+      const sections = await mocks.service.gatherSections([consultation]);
+
+      expect(sections).toHaveLength(2);
+      expect(sections[0].content).toBe('Opening remarks.');
+      expect(sections[1].content).toBe('Follow-up after a long pause.');
     });
 
     it('should only use latest summary even when multiple exist', async () => {

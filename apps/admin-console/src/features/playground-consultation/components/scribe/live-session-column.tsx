@@ -310,6 +310,11 @@ export function LiveSessionColumn({
         ) : reviewTranscriptText && !isCapturing ? (
           <TranscriptReview text={reviewTranscriptText} highlight={reviewHighlight} />
         ) : (
+          // `LiveTranscript` groups adjacent same-speaker utterances into
+          // flowing paragraphs by default (TASK-998) — no prop needed here
+          // for that; override `paragraphGapSeconds` only if this session's
+          // ASR vendor produces meaningfully different inter-utterance gaps
+          // than the component's generic default.
           <LiveTranscript
             segments={transcriptSegments}
             interim={interim || undefined}
