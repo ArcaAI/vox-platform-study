@@ -20,6 +20,7 @@ import {
   CACHE_QUANTIZATION_TYPES,
   GPU_SPLIT_STRATEGIES,
   assembleLoadRequest,
+  selectModelKey,
 } from './kvconfig.mjs';
 
 /** Every field in the assembled request, as a plain {key: value} map. */
@@ -322,4 +323,67 @@ test('field order is deterministic, so a failed load logs a stable, diffable req
   const once = assembleLoadRequest(env).kvConfig.fields.map((f) => f.key);
   const again = assembleLoadRequest(env).kvConfig.fields.map((f) => f.key);
   assert.deepEqual(once, again);
+});
+
+// ---------------------------------------------------------------------------
+// selectModelKey — pinned against the LIVE `/api/v1/models` payload captured
+// from hope-lmstudio on 2026-09-21. These are the exact entries whose shape
+// CrashLoopBackOffed the first Phase 1 image; the fixture is trimmed to the
+// fields the selector reads, and nothing else.
+// ---------------------------------------------------------------------------
+const LIVE_MODELS = [
+  { type: 'embedding', key: 'text-embedding-nomic-embed-text-v1.5' },
+  { type: 'embedding', key: 'text-embedding-embeddinggemma-300m-qat' },
+  { type: 'llm', key: 'granite-guardian-4.1-8b' },
+  { type: 'llm', key: 'gemma-4-e4b-it-qat@?', architecture: 'clip' },
+  { type: 'llm', key: 'gemma-4-e4b-it-qat@q4_0', architecture: 'gemma4' },
+  { type: 'llm', key: 'gemma-4-e2b-it-qat@?', architecture: 'clip' },
+  { type: 'llm', key: 'gemma-4-e2b-it-qat@q4_0', architecture: 'gemma4' },
+];
+
+test('selectModelKey: the bare LMS_LOAD resolves past the @? projector', () => {
+  // THE REGRESSION. `gemma-4-e2b-it-qat` is not a key at all — it is the loaded
+  // instance id — and two `llm` entries carry it as a prefix.
+  assert.deepEqual(selectModelKey(LIVE_MODELS, 'gemma-4-e2b-it-qat'), {
+    key: 'gemma-4-e2b-it-qat@q4_0',
+  });
+});
+
+test('selectModelKey: an exact key is taken verbatim', () => {
+  assert.deepEqual(selectModelKey(LIVE_MODELS, 'gemma-4-e2b-it-qat@q4_0'), {
+    key: 'gemma-4-e2b-it-qat@q4_0',
+  });
+});
+
+test('selectModelKey: a key with no quantization suffix still resolves', () => {
+  assert.deepEqual(selectModelKey(LIVE_MODELS, 'granite-guardian-4.1-8b'), {
+    key: 'granite-guardian-4.1-8b',
+  });
+});
+
+test('selectModelKey: embeddings are never loadable as an LLM', () => {
+  const choice = selectModelKey(LIVE_MODELS, 'text-embedding-embeddinggemma-300m-qat');
+  assert.equal(choice.key, undefined);
+  assert.ok(Array.isArray(choice.none));
+});
+
+test('selectModelKey: two quantizations REFUSE rather than guess', () => {
+  const twoQuants = [
+    { type: 'llm', key: 'gemma-4-e2b-it-qat@?' },
+    { type: 'llm', key: 'gemma-4-e2b-it-qat@q4_0' },
+    { type: 'llm', key: 'gemma-4-e2b-it-qat@q8_0' },
+  ];
+  assert.deepEqual(selectModelKey(twoQuants, 'gemma-4-e2b-it-qat'), {
+    ambiguous: ['gemma-4-e2b-it-qat@q4_0', 'gemma-4-e2b-it-qat@q8_0'],
+  });
+});
+
+test('selectModelKey: a projector-only prefix is no match, never the projector', () => {
+  const projectorOnly = [{ type: 'llm', key: 'some-model@?' }];
+  assert.deepEqual(selectModelKey(projectorOnly, 'some-model'), { none: ['some-model@?'] });
+});
+
+test('selectModelKey: an empty/absent index is a no-match, not a crash', () => {
+  assert.deepEqual(selectModelKey([], 'x'), { none: [] });
+  assert.deepEqual(selectModelKey(undefined, 'x'), { none: [] });
 });

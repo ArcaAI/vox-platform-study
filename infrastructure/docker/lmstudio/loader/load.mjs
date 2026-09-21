@@ -60,7 +60,7 @@ import { writeSync } from 'node:fs';
 
 import { LMStudioClient } from '@lmstudio/sdk';
 
-import { KvConfigError, assembleLoadRequest } from './kvconfig.mjs';
+import { KvConfigError, assembleLoadRequest, selectModelKey } from './kvconfig.mjs';
 
 const EX_CONFIG = 78; // EX_CONFIG, so a misconfiguration is distinguishable from a crash
 
@@ -89,7 +89,8 @@ const stable = (value) => {
 };
 
 /**
- * Wait until the daemon's model INDEX carries `modelKey`, then return.
+ * Resolve `LMS_LOAD` to the daemon's EXACT model key, waiting for the index if
+ * it is not populated yet.
  *
  * WHY THIS EXISTS — measured in production on 2026-09-21. The first Phase 1
  * image CrashLoopBackOffed, exit 78:
@@ -97,22 +98,32 @@ const stable = (value) => {
  *     Cannot find a model with path "gemma-4-e2b-it-qat"
  *     You don't have any LLMs downloaded.
  *
- * The GGUFs were present the whole time: the `link-models` initContainer had
- * already symlinked them under the `hope/` publisher segment and exited 0. What
- * was missing was the daemon's INDEX of them. The HTTP server answers
- * `/lmstudio-greeting` — which is what the entrypoint gates on — before it has
- * finished scanning the models directory, so the loader raced it and lost.
+ * That message is misleading twice over. The models were mounted and indexed
+ * the whole time — `lms ls` reports 7 models / 15.96 GB, and the readinessProbe
+ * greps the same key out of `/api/v1/models` on every healthy pod. Nothing was
+ * wrong with the s3fs mount or the `link-models` symlinks.
  *
- * `lms load` never hit this because the CLI resolves a model through the
- * daemon's own resolver, which rescans on a miss; the raw `loadModel` channel
- * does not. Waiting here is therefore the fix, not passing a different path:
- * the key is correct, it is simply not indexed yet.
+ * The real cause is that `gemma-4-e2b-it-qat` IS NOT A MODEL KEY. The daemon
+ * carries TWO entries under that prefix, both typed `llm`:
  *
- * Bounded, and the timeout is a `die`, not a warning — a pod that cannot see
- * its own model must not serve (the A-6 posture). Polls the same REST endpoint
- * the readinessProbe greps, so there is one source of truth for "is it there".
+ *     gemma-4-e2b-it-qat@?        CLIP,   986 MB   <- the mmproj projector
+ *     gemma-4-e2b-it-qat@q4_0     gemma4, 3.35 GB  <- the model we want
+ *
+ * and the bare string is the loaded INSTANCE's `id` (what `--identifier` sets),
+ * not a key. `lms load` succeeded because the CLI does prefix matching and, per
+ * its own `-y` help, loads "the first matching model". The raw `loadModel`
+ * channel does no such resolution — it wants the exact key, gets a miss, and
+ * reports it as though nothing were downloaded.
+ *
+ * So the fix is to resolve, not to wait. The retry loop is kept because a fresh
+ * pod can legitimately be mid-scan, but the thing being waited FOR is now a
+ * unique resolution rather than a substring hit.
+ *
+ * Ambiguity is a `die`, never a "pick the first". Silently choosing between a
+ * projector and a model is how you serve 986 MB of CLIP weights as a chat model
+ * and spend an afternoon wondering why the answers are nonsense.
  */
-async function waitForModelIndex(port, modelKey, timeoutMs = 180_000) {
+async function resolveModelKey(port, requested, timeoutMs = 180_000) {
   const deadline = Date.now() + timeoutMs;
   let attempt = 0;
   let lastSeen = '<no response>';
@@ -123,38 +134,48 @@ async function waitForModelIndex(port, modelKey, timeoutMs = 180_000) {
       const response = await fetch(`http://127.0.0.1:${port}/api/v1/models`);
       if (response.ok) {
         const body = await response.json();
-        const entries = Array.isArray(body?.data) ? body.data : [];
-        // Match the bare key OR a `<publisher>/<key>` path, because the index
-        // may surface either spelling depending on how the model was published.
-        const hit = entries.some(
-          (entry) =>
-            entry?.id === modelKey ||
-            entry?.key === modelKey ||
-            String(entry?.id ?? '').endsWith(`/${modelKey}`) ||
-            String(entry?.key ?? '').endsWith(`/${modelKey}`),
-        );
-        if (hit) {
-          log(`model index carries '${modelKey}' after ${attempt} check(s)`);
-          return;
+        // `/api/v1/models` answers `{ models: [...] }`. The OpenAI-compatible
+        // `/v1/models` on the same daemon answers `{ data: [...] }`, and reading
+        // the wrong one yields an empty list that looks exactly like "not indexed
+        // yet" — which is a 180s wait ending in a wrong diagnosis. Accept both.
+        const entries = Array.isArray(body?.models)
+          ? body.models
+          : Array.isArray(body?.data)
+            ? body.data
+            : [];
+        const llms = entries.filter((entry) => entry?.type === 'llm');
+
+        const choice = selectModelKey(entries, requested);
+        if (choice.key) {
+          log(`resolved '${requested}' to '${choice.key}'`);
+          return choice.key;
         }
-        lastSeen = `${entries.length} model(s), none matching`;
+        if (choice.ambiguous) {
+          die(
+            `'${requested}' is AMBIGUOUS — ${choice.ambiguous.length} loadable models match: ` +
+              `${choice.ambiguous.join(', ')}. Set LMS_LOAD to one exact key. ` +
+              `Refusing to guess between quantizations.`,
+          );
+        }
+        lastSeen =
+          llms.length === 0
+            ? 'index carries no LLMs yet'
+            : `no match among ${llms.map((entry) => entry.key).join(', ')}`;
       } else {
         lastSeen = `HTTP ${response.status}`;
       }
     } catch (error) {
       lastSeen = `unreachable (${error?.message ?? error})`;
     }
-    // Log sparsely: every 10th attempt, so a slow index is visible in the pod
-    // log without burying it — the s3fs lesson from the same day.
-    if (attempt % 10 === 0) log(`  still waiting for the model index — ${lastSeen}`);
+    if (attempt % 10 === 0) log(`  still resolving '${requested}' — ${lastSeen}`);
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
 
   die(
-    `'${modelKey}' never appeared in the daemon's model index within ` +
-      `${Math.round(timeoutMs / 1000)}s (last: ${lastSeen}). The GGUF symlinks are ` +
-      `built by the link-models initContainer; if it exited 0 the files are there ` +
-      `and the daemon did not index them.`,
+    `could not resolve '${requested}' to a loadable model key within ` +
+      `${Math.round(timeoutMs / 1000)}s (last: ${lastSeen}). Note the bare name may be ` +
+      `an INSTANCE identifier rather than a model key — check \`lms ls\` for the exact ` +
+      `'<key>@<quantization>' spelling.`,
   );
 }
 
@@ -176,9 +197,11 @@ async function main() {
   // at best.
   const client = new LMStudioClient({ baseUrl: `ws://127.0.0.1:${port}` });
 
-  // The index must carry the key BEFORE the load channel is opened — see
-  // waitForModelIndex for the CrashLoopBackOff this prevents.
-  await waitForModelIndex(port, request.modelKey);
+  // The channel needs the EXACT key; LMS_LOAD is typically the bare, ambiguous
+  // name. See resolveModelKey for the CrashLoopBackOff this prevents. The
+  // IDENTIFIER is unaffected — the platform addresses the instance by the bare
+  // name on the OpenAI wire (TASK-858), and that stays request.identifier.
+  request = { ...request, modelKey: await resolveModelKey(port, request.modelKey) };
 
   log(`preloading ${request.modelKey}`);
   for (const { key, value } of request.kvConfig.fields) {
