@@ -280,12 +280,42 @@ export type AsrSpecDecodingSource = 'agent' | 'model' | `unsupported:${string}`;
  * `noRepeatNgramSize` is deliberately ABSENT from this list — CT2 supports it and the
  * adapter simply does not forward it yet, which is a wiring fix, not a gap.
  *
+ * TASK-998 — the four cloud REST engines are each a single-shot multipart call per
+ * utterance/file, with no decoder to condition and no per-pass context. Keyed by
+ * `AiModel.libraryName` exactly as seeded (`azure-speech`, `azure-foundry`, `sarvam`,
+ * `openai` — NOT the Python engine-registry names `azure_speech` / `azure_foundry`,
+ * which are a different vocabulary; see `cloud-asr-provider-identity.contract.test.ts`
+ * for the incident that mixing these up already caused once):
+ * - `initialPrompt` / `prevTextContextWords` — none of the four call sites accepts or
+ *   forwards a prompt. `AzureSpeechEngine`, `AzureFoundryEngine`, `SarvamEngine` and
+ *   `OpenAIEngine.run_batch` (`apps/stt/src/stt/processors/asr_engines.py`) all declare
+ *   `prompt` / `initial_prompt` keyword parameters but never pass them on to
+ *   `service._run_{azure_speech,azure_foundry,sarvam,openai}_inference`; the REST helpers
+ *   themselves (`sarvam_recognize_utterance` / `openai_recognize_utterance` in
+ *   `apps/stt/src/stt/streaming/{sarvam,openai}_asr.py`) don't even declare the
+ *   parameter. With no prompt reaching the vendor, carrying previous-segment text
+ *   forward has nothing to append it to either.
+ * - `audioCtx`, `singleSegment`, `maxTokens` — whisper.cpp decoder-construction knobs;
+ *   none of the four engines runs whisper.cpp, so none has a field for them.
+ * - `wordTimestamps` — **Sarvam and OpenAI only.** `sarvam_recognize_utterance` /
+ *   `openai_recognize_utterance` hardcode `"word_timestamps": []` on every response —
+ *   neither vendor call requests word-level timing. Azure Speech and Azure Foundry
+ *   (MAI-Transcribe) are DELIBERATELY ABSENT from this key: `_azure_transcribe_sync`
+ *   (`apps/stt/src/stt/transcription/batch_service.py`) calls
+ *   `speech_config.request_word_level_timestamps()` and fills real per-word entries from
+ *   the NBest payload, and `_run_azure_foundry_inference` builds real entries from the
+ *   response's `phrases[].words[]` — both genuinely honour it.
+ *
  * An engine not named here gets no stamps: "not established" is today's answer and is more
  * honest than a guess. Adding one is a source read, not a hunch.
  */
 export const UNSUPPORTED_DECODE_KNOBS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   'whisper.cpp': Object.freeze(['beamSize', 'compressionRatioThreshold', 'noRepeatNgramSize', 'conditionOnPrevTokens']),
   'faster-whisper': Object.freeze(['entropyThreshold', 'singleSegment', 'suppressBlank', 'suppressNonSpeechTokens', 'maxTokens', 'audioCtx']),
+  'azure-speech': Object.freeze(['initialPrompt', 'prevTextContextWords', 'audioCtx', 'singleSegment', 'maxTokens']),
+  'azure-foundry': Object.freeze(['initialPrompt', 'prevTextContextWords', 'audioCtx', 'singleSegment', 'maxTokens']),
+  sarvam: Object.freeze(['initialPrompt', 'prevTextContextWords', 'wordTimestamps', 'audioCtx', 'singleSegment', 'maxTokens']),
+  openai: Object.freeze(['initialPrompt', 'prevTextContextWords', 'wordTimestamps', 'audioCtx', 'singleSegment', 'maxTokens']),
 });
 
 /**
