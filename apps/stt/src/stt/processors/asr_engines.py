@@ -16,9 +16,53 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
+
 from stt.pipeline.dto import AiModelFormat
 
 from .registry import get_registry
+
+logger = structlog.get_logger(__name__)
+
+# TASK-998 — each cloud engine's duplex adapter, as ``(module, factory)``. Kept
+# as a table of STRINGS and imported only inside ``make_streaming_session``, for
+# the reason the module docstring gives: an adapter pulls a websocket client and
+# a vendor SDK, and this module is on the import path of the BATCH service too.
+_DUPLEX_ADAPTERS: dict[str, tuple[str, str]] = {
+    "sarvam": ("stt.streaming.sarvam_realtime_asr", "make_sarvam_duplex_session"),
+    "openai": ("stt.streaming.openai_realtime_asr", "make_openai_duplex_session"),
+    "azure-speech": ("stt.streaming.azure_continuous_asr", "make_azure_duplex_session"),
+}
+
+
+def _resolve_duplex_factory(provider: str) -> Any | None:
+    """The duplex session factory for ``provider``, or ``None`` when unavailable.
+
+    An absent module (or a module missing its factory) is a PACKAGING fault, not
+    a runtime condition — but failing a clinical session over one is worse than
+    running the per-utterance REST path this ticket supersedes, which is still
+    present and still correct. So the miss degrades, loudly and by name, and the
+    engine falls back to ``make_streaming_callable``.
+
+    Anything the factory ITSELF raises propagates: a rejected credential or an
+    unusable endpoint is a SELECTION failure, and selection is fail-closed
+    (``09-infrastructure-devops.md`` §Configuration Tiers).
+    """
+    module_name, attr = _DUPLEX_ADAPTERS[provider]
+    try:
+        from importlib import import_module
+
+        return getattr(import_module(module_name), attr)
+    except (ImportError, AttributeError) as exc:
+        logger.warning(
+            "stt.asr.duplex_adapter_unavailable",
+            provider=provider,
+            module=module_name,
+            factory=attr,
+            error=str(exc),
+        )
+        return None
+
 
 ASR_FORMAT_TO_NAME: dict[AiModelFormat, str] = {
     AiModelFormat.SAFETENSOR: "safetensor",
@@ -292,10 +336,31 @@ class AzureSpeechEngine(AsrEngine):
     ) -> Any:
         return manager._make_azure_callable(loaded_model, inference_config)
 
+    def make_streaming_session(
+        self,
+        manager: Any,
+        loaded_model: Any,
+        inference_config: Any,
+        *,
+        task: str = "transcribe",
+    ) -> Any:
+        """Azure Speech ``ContinuousRecognition`` — the vendor owns the endpointer.
+
+        TASK-998 / OD-1. ``loaded_model.model`` is the Azure ``SpeechConfig``
+        rather than a ``CloudRestConfig``, which is exactly why the factory takes
+        the LOADED MODEL and not a config type: the three adapters share a
+        signature, not a payload.
+        """
+        factory = _resolve_duplex_factory("azure-speech")
+        if factory is None:
+            return None
+        return factory(loaded_model, inference_config, task=task)
+
 
 class SarvamEngine(AsrEngine):
-    """Sarvam AI speech-to-text (cloud REST). Per-utterance streaming + whole-
-    audio batch via the same async recognize helper."""
+    """Sarvam AI speech-to-text. Batch (and the superseded per-utterance
+    streaming path) over cloud REST; live streaming over the vendor's duplex
+    socket — see ``make_streaming_session``."""
 
     async def run_batch(
         self,
@@ -326,10 +391,31 @@ class SarvamEngine(AsrEngine):
     ) -> Any:
         return manager._make_sarvam_callable(loaded_model, inference_config)
 
+    def make_streaming_session(
+        self,
+        manager: Any,
+        loaded_model: Any,
+        inference_config: Any,
+        *,
+        task: str = "transcribe",
+    ) -> Any:
+        """Sarvam's native streaming socket — the vendor owns the endpointer.
+
+        TASK-998 / OD-1. ``loaded_model.model`` is the ``CloudRestConfig`` the
+        loader validated; the adapter reuses its key and base URL for the socket
+        handshake, so a tenant's BYO credential reaches the duplex path by the
+        same route it reaches the REST one.
+        """
+        factory = _resolve_duplex_factory("sarvam")
+        if factory is None:
+            return None
+        return factory(loaded_model, inference_config, task=task)
+
 
 class OpenAIEngine(AsrEngine):
-    """OpenAI speech-to-text (cloud REST). Per-utterance streaming (REST in v1)
-    + whole-audio batch via the same async recognize helper."""
+    """OpenAI speech-to-text. Batch (and the superseded per-utterance streaming
+    path) over cloud REST; live streaming over the Realtime transcription
+    socket — see ``make_streaming_session``."""
 
     async def run_batch(
         self,
@@ -359,6 +445,25 @@ class OpenAIEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_openai_callable(loaded_model, inference_config)
+
+    def make_streaming_session(
+        self,
+        manager: Any,
+        loaded_model: Any,
+        inference_config: Any,
+        *,
+        task: str = "transcribe",
+    ) -> Any:
+        """OpenAI's Realtime transcription socket — the vendor owns the endpointer.
+
+        TASK-998 / OD-1. ``loaded_model.model`` is the ``CloudRestConfig`` the
+        loader validated, so the socket authenticates with the same BYO key the
+        REST path uses.
+        """
+        factory = _resolve_duplex_factory("openai")
+        if factory is None:
+            return None
+        return factory(loaded_model, inference_config, task=task)
 
 
 def resolve_asr_engine(model_format: Any) -> AsrEngine:
@@ -487,3 +592,10 @@ class AzureFoundryEngine(AsrEngine):
             "preview service; realtime requires the Voice Live API — "
             "separate ticket)."
         )
+
+    # TASK-998 — deliberately NOT overriding ``make_streaming_session``. Foundry
+    # shares Azure's NAME, not its realtime transport: MAI-Transcribe is
+    # batch-only (D4) and its capability spec declares ``streaming=False``, so
+    # handing it the Azure Speech ``ContinuousRecognition`` adapter would open a
+    # socket against a service that has none. The inherited ``None`` keeps this
+    # engine on the callable path, where its own guard above still refuses.
