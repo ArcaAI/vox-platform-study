@@ -312,6 +312,37 @@ New routes under the existing admin plane:
 - Regenerate all five artifacts (`api:build`, `route-manifest`, `openapi`, `portal`,
   `vox-node gen:admin`) — `gen:admin` is not optional.
 
+#### Phase 3 RESULT — shipped 2026-09-21, and one deliverable came back NEGATIVE
+
+`/admin/inference-engines/lm-studio/*`, super-admin only (`LmStudioServingService`,
+`InferenceEnginesController`). Two of the three routes do what the plan said. The third
+cannot, and the reason is a measurement rather than a shortfall:
+
+| Route | Verdict |
+|---|---|
+| `GET .../runtime` | **Works.** Engine reachability, per-device VRAM from DCGM, every loaded instance with the config the ENGINE applied, and the `lmStudio.serving.*` platform default |
+| `POST .../models/:identifier/unload` | **Works.** `POST /api/v1/models/unload {instance_id}` is reachable over HTTP and answers `404 model_not_found` for an instance that is not loaded — both verified against the live pod. Still ADVISORY: JIT reloads on the next request, on the JIT defaults |
+| `POST .../models/:modelKey/load` | **Cannot dispatch. 501 `ENGINE_LOAD_UNSUPPORTED`** after the full gate chain |
+
+**A remote reload is NOT achievable on this build.** Three paths, all closed to the gateway:
+
+1. `POST /api/v1/models/load` — the route exists (`{}` answers `400 missing_required_parameter: model`, so it is not a 404), but §2.8 measured it failing `model_load_failed` for every payload including the control. It also carries no field for KV-cache quantization or GPU placement, so even a working version could not deliver R-3 or R-6. **The service never calls it** — calling it is what left the engine with no model loaded during the §2.8 measurement.
+2. `lms load` — CLI, inside the pod.
+3. The `@lmstudio/sdk` kvConfig websocket — the one thing that works, and `loader/load.mjs` dials it on **loopback** at pod boot (`ws://127.0.0.1:1234`). Reaching it from the gateway would mean adding `@lmstudio/sdk` as an `apps/api` runtime dependency and exposing the daemon's load channel across the cluster; that is an owner decision, not a Phase 3 detail.
+
+So `load` runs privilege → existence → profile coherence → live VRAM budget and then refuses
+honestly. The 501 body carries the same `applied` / `sources` / `estimateBytes` the 202 would,
+which is what Phase 5's "show the precheck before the button is armed" actually reads, plus a
+`remedy` naming the working path (write the profile, restart the workload).
+
+Other facts worth recording, all measured on `hope-lmstudio-7b69c877d8-7549p`:
+
+- **No version endpoint.** `/api/v1/version` and every sibling 404; only `lms version` in-pod answers. `engine.version` is therefore optional and absent rather than invented.
+- **No busy/idle over HTTP.** `lms ps` shows `IDLE`/`ACTIVE`; `GET /api/v1/models` reports only that an instance exists. A loaded instance always reads `IDLE`.
+- **No `DCGM_FI_DEV_FB_TOTAL`** on this exporter, so the ceiling is reconstructed as used + free + reserved (1,445 + 14,504 + 430 = 16,379 MiB, i.e. the card).
+- **The 409 budgets against the BEST SINGLE CARD**, matching the dashboard's own "best single-card headroom" panel. `force: true` bypasses that gate and nothing else.
+- **`kvCacheEstimateBytes` is arithmetic, not observation.** One calibrated constant (7.25 KiB per KV slot at f16, from used-minus-weights over `context × parallel` on the live pod), scaled by the K/V element types. Stated as an estimate in the DTO, the Swagger text and the code.
+
 ### Phase 4 — VRAM observability (R-5)
 
 - **Per-process exporter.** Smallest correct option: a node-level textfile collector
@@ -359,3 +390,4 @@ _Not started — awaiting D-1 … D-7._
 | 2026-09-21 | Ticket opened from a 6h text-generation performance review. Plan written; measured the LM Studio reachability wall (§2.3), confirmed per-model GPU assignment via `gpuSplitConfig` (§2.4), and established that per-thread VRAM is impossible (§2.6). |
 | 2026-09-21 | **Flash attention measured: 4.3× decode (15.5 → 66 tok/s), ~4,300 tok/s prefill, −33% VRAM** (§2.7). `llama-server` defaults to `auto`; LM Studio was overriding it to `off`. Also established that `POST /api/v1/models/load` cannot load this model under ANY payload, control included (§2.8) — `lms load` is the only working path, so Phase 1's SDK transport has no alternative. During this measurement the REST attempts left LM Studio with no model loaded; restored via CLI. |
 | 2026-09-21 | Owner accepted D-1 … D-7 as recommended. **Phase 0 executed** (deployment revision `c44fe16`): VRAM 13,904 → 7,482 MiB (−46%), s3fs logging ~11,200 → 0 lines/min. The cross-GPU split PERSISTED with ~12 GiB free on each card, confirming it is `gpuSplitConfig.strategy: "evenly"` and not VRAM pressure — D-3 is now evidence-backed, not merely recommended. Phases 1, 2 and 4 running in parallel lanes. |
+| 2026-09-21 | **Phase 3 shipped** — `/admin/inference-engines/lm-studio/*`, super-admin only. `runtime` and `unload` work against the live engine (`POST /api/v1/models/unload {instance_id}` verified reachable, 404 `model_not_found` for an unloaded instance). `load` came back NEGATIVE: no gateway-reachable loader exists on this build, so it runs the full gate chain (403 → 404 → 400 → 409) and then refuses 501 `ENGINE_LOAD_UNSUPPORTED` rather than calling the endpoint §2.8 measured as broken. Also measured: no version endpoint, no busy/idle over HTTP, no `DCGM_FI_DEV_FB_TOTAL`. |
