@@ -16,9 +16,10 @@ decision and is not open for re-litigation here.
 
 | File | What |
 |---|---|
-| `Dockerfile` | Single-stage. Pinned + SHA-512-verified `llmster` bundle on a CUDA runtime base (`nvidia/cuda:12.8.1-runtime-ubuntu24.04`); a build-time gate asserts both a CPU and a CUDA engine are baked into the image |
+| `Dockerfile` | Single-stage. Pinned + SHA-512-verified `llmster` bundle on a CUDA runtime base (`nvidia/cuda:12.8.1-runtime-ubuntu24.04`), plus a pinned + SHA-256-verified Node runtime for the A-6 loader; build-time gates assert both a CPU and a CUDA engine are baked in, and that the loader's own unit tests pass inside the image |
 | `entrypoint.sh` | The boot contract: seven ordered assertions (A-0, A-1, A-2, A-3, A-5, A-6, A-7 — there is no A-4), each fail-closed with exit 78 |
-| `.dockerignore` | Context is these two files and nothing else |
+| `loader/` | The A-6 preloader. `kvconfig.mjs` (pure: env -> kvConfig) + `kvconfig.test.mjs`, `load.mjs` (websocket I/O + read-back), and a lockfile-pinned `@lmstudio/sdk`. Replaces `lms load`, which cannot reach flash attention, KV-cache quantization or GPU placement |
+| `.dockerignore` | Deny-all allow-list: only `Dockerfile`, `entrypoint.sh` and `loader/` (minus any local `node_modules`) reach the build context |
 
 ## How it works
 
@@ -54,6 +55,41 @@ selects the accelerated engine, then asserts a GPU is physically present via `lm
 --json` (`vramCapacity: 0` / `noDevicesFound` mean no GPU), failing closed unless
 `HOPE_ACCEL_ENFORCE=strict` is deliberately relaxed.
 
+### A-6 loads over the SDK websocket, not `lms load`
+
+`lms load` and `POST /api/v1/models/load` between them cannot set three things the platform
+needs (all measured — TASK-996 §2.3):
+
+| kvConfig key | Why it matters |
+|---|---|
+| `llm.load.llama.flashAttention` | llama.cpp ran with `--flash-attn off`; it is the largest single latency lever, and V-cache quantization is impossible without it |
+| `llm.load.llama.{k,v}CacheQuantizationType` | f16 KV across `context x parallel` slots accounted for ~10.5 GiB of the 13.9 GiB resident |
+| `load.gpuSplitConfig` | The only per-model device selection there is. `nvidia.com/gpu: 4` on the Deployment is capacity bookkeeping, not a pin — placement is entirely LM Studio's decision |
+
+The daemon supports all three; only the transport was missing. So A-6 runs `loader/load.mjs`,
+which speaks the kvConfig websocket through `@lmstudio/sdk`. The `LMS_*` environment variables
+are unchanged and remain the **bootstrap floor** — what the pod loads with before the database is
+reachable. `--parallel` became `llm.load.numParallelSessions`, the same field the CLI itself
+writes.
+
+Three properties are worth knowing before changing this:
+
+- **An unknown kvConfig key is IGNORED, not rejected.** That is the opposite of the REST API,
+  which at least answered `unrecognized_keys`. So the loader reads the applied configuration back
+  (`getLoadConfig`) and refuses to serve when a key it sent did not land, or landed with a
+  different value. `HOPE_KVCONFIG_ENFORCE=warn` downgrades that to a warning, mirroring
+  `HOPE_ACCEL_ENFORCE`.
+- **The SDK's typed `LLMLoadModelConfig` is not enough.** Version 1.5.0 has no `parallel` field
+  at all, and its `gpu` -> `gpuSplitConfig` converter can only ever emit a single-element
+  `priority` (it tests `gpuSetting.mainGpu ?`, so GPU 0 drops out) and an empty `customRatio`.
+  The loader therefore hand-assembles the field list; the key names come from running the SDK's
+  own converter and from the shipping `lms` binary, not from documentation.
+- **The SDK is a lockfile-pinned dependency, deliberately.** A copy already exists in the image
+  at `~/.lmstudio/extensions/plugins/*/node_modules/@lmstudio/sdk`, but it is incidental to two
+  bundled plugins, may vanish on an upgrade, and is not even the same artifact — it calls itself
+  1.5.0 while declaring a `gpuSplitConfig.strategy` union npm's 1.5.0 does not have. Same reason
+  the image installs its own Node instead of using `~/.lmstudio/.internal/utils/node`.
+
 ### Measured facts about the vendor CLI (`llmster` 0.0.23-1)
 
 Observed by running the vendor's own binary in a container. Several correct claims a prior
@@ -88,6 +124,10 @@ production bundle behaves the same way.
 - **`lms import` without `-L`/`-c`/`-l` crashes in a container** rather than silently failing —
   one of those flags is mandatory, and `-L` (hard link) requires staging and the models directory
   to share a filesystem.
+- **Do not put `lms load` back in A-6.** It cannot set flash attention, KV-cache quantization or
+  GPU placement, and neither can the REST load endpoint — see A-6 loads over the SDK websocket.
+- **Do not import `@lmstudio/sdk` from a bundled plugin's `node_modules`**, and do not run the
+  loader on `~/.lmstudio/.internal/utils/node`. Both are internals of a proprietary bundle.
 - **A directory name for an embedding model must not already carry the `text-embedding-` prefix**
   — LM Studio prepends it itself, so a pre-prefixed directory doubles it.
 - Deployment manifests for this image, and the fuller investigation ticket, are tracked outside
