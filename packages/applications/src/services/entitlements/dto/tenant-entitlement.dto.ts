@@ -1,5 +1,22 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+
+/**
+ * TASK-998 OD-4 — the shared Swagger prose for `sttProviderQuotas`, declared
+ * once so the plan (platform default) and tenant (allocation) halves cannot
+ * describe the same field two different ways.
+ */
+const PROVIDER_QUOTA_DESCRIPTION =
+  "Per-provider cloud-ASR capacity, keyed by provider id " +
+  "(`azure-speech` | `azure-foundry` | `sarvam` | `openai` — exactly `CLOUD_BYO_PROVIDERS.stt`). " +
+  "Each entry may carry `requestsPerMinute` (the vendor's sync-REST cap, enforced when a BATCH " +
+  "transcription job is created) and/or `maxConcurrentStreams` (the vendor's concurrent-WebSocket " +
+  "cap, enforced when a streaming session is opened). An absent provider, an absent dimension or a " +
+  "null value means NO OPINION at this tier; unresolved at both tiers = unlimited (not enforced).";
+
+/** Example payload rendered in the OpenAPI document. */
+const PROVIDER_QUOTA_EXAMPLE = { sarvam: { requestsPerMinute: 100, maxConcurrentStreams: 20 } };
+
 
 /**
  * A per-tenant entitlement override as returned to admins.
@@ -76,6 +93,13 @@ export class TenantEntitlementResponse {
     nullable: true,
   })
   monthlySpendLimitMicros?: number | null;
+
+  @ApiPropertyOptional({
+    description: "TASK-998 OD-4 — this tenant's OWN per-provider cloud-ASR capacity allocation. " + PROVIDER_QUOTA_DESCRIPTION + ' null = inherit the platform default for every provider.',
+    nullable: true,
+    example: PROVIDER_QUOTA_EXAMPLE,
+  })
+  sttProviderQuotas?: Record<string, { requestsPerMinute: number | null; maxConcurrentStreams: number | null }> | null;
 
   @ApiPropertyOptional({
     description:
@@ -238,6 +262,20 @@ export class UpsertTenantEntitlementRequest {
   @IsInt()
   @Min(0)
   monthlySpendLimitMicros?: number | null;
+
+  @ApiPropertyOptional({
+    description:
+      "TASK-998 OD-4 — set this tenant's OWN per-provider cloud-ASR capacity allocation. " +
+      PROVIDER_QUOTA_DESCRIPTION +
+      ' Resolution is per DIMENSION, so an entry that sets only maxConcurrentStreams keeps inheriting the platform requestsPerMinute. ' +
+      'Send null (or {}) to clear the allocation back to the platform default. Requires a plan carrying featureProviderQuotaAllocation ' +
+      '("Pro and above") — otherwise 403; an unknown provider id or a non-integer dimension is a 400. Clearing is always allowed.',
+    nullable: true,
+    example: PROVIDER_QUOTA_EXAMPLE,
+  })
+  @IsOptional()
+  @IsObject()
+  sttProviderQuotas?: Record<string, { requestsPerMinute?: number | null; maxConcurrentStreams?: number | null }> | null;
 
   @ApiPropertyOptional({
     description:

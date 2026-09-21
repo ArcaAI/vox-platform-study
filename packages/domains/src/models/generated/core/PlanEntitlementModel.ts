@@ -27,9 +27,11 @@ export class PlanEntitlement extends BaseDataModel {
   public monthlyTtsCharacters: bigint | null;
   public monthlyNlpTextUnits: bigint | null;
   public monthlyEmbeddingTokens: bigint | null;
+  public sttProviderQuotas: JsonValue | null;
   public featurePlatformDefaultCredential: boolean;
   public featurePaletteStt: boolean;
   public featureAgenticLoop: boolean;
+  public featureProviderQuotaAllocation: boolean;
   public modelTier: string;
   public rateLimitTier: string;
   public rateLimitPerMinute: number | null;
@@ -59,9 +61,11 @@ export class PlanEntitlement extends BaseDataModel {
     this.monthlyTtsCharacters = data.monthlyTtsCharacters;
     this.monthlyNlpTextUnits = data.monthlyNlpTextUnits;
     this.monthlyEmbeddingTokens = data.monthlyEmbeddingTokens;
+    this.sttProviderQuotas = data.sttProviderQuotas;
     this.featurePlatformDefaultCredential = data.featurePlatformDefaultCredential;
     this.featurePaletteStt = data.featurePaletteStt;
     this.featureAgenticLoop = data.featureAgenticLoop;
+    this.featureProviderQuotaAllocation = data.featureProviderQuotaAllocation;
     this.modelTier = data.modelTier;
     this.rateLimitTier = data.rateLimitTier;
     this.rateLimitPerMinute = data.rateLimitPerMinute;

@@ -25,6 +25,7 @@ export interface CreateTenantEntitlementProps extends BaseEntityFactoryCreatePro
   monthlyTtsCharacters?: ITenantEntitlementEntity['monthlyTtsCharacters'];
   monthlyNlpTextUnits?: ITenantEntitlementEntity['monthlyNlpTextUnits'];
   monthlyEmbeddingTokens?: ITenantEntitlementEntity['monthlyEmbeddingTokens'];
+  sttProviderQuotas?: ITenantEntitlementEntity['sttProviderQuotas'];
   monthlySpendLimitMicros?: ITenantEntitlementEntity['monthlySpendLimitMicros'];
   featurePlatformDefaultCredential?: ITenantEntitlementEntity['featurePlatformDefaultCredential'];
   featurePaletteStt?: ITenantEntitlementEntity['featurePaletteStt'];
@@ -71,6 +72,9 @@ export class TenantEntitlementFactory {
       monthlyTtsCharacters: props.monthlyTtsCharacters ?? null,
       monthlyNlpTextUnits: props.monthlyNlpTextUnits ?? null,
       monthlyEmbeddingTokens: props.monthlyEmbeddingTokens ?? null,
+      // TASK-998 OD-4 — `null` = inherit the plan's platform default for every
+      // provider and every dimension.
+      sttProviderQuotas: props.sttProviderQuotas ?? null,
       monthlySpendLimitMicros: props.monthlySpendLimitMicros ?? null,
       // `null` = inherit the plan (which is itself `false`), NOT deny —
       // the tri-state's three states are all load-bearing here.

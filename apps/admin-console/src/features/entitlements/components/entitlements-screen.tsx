@@ -24,7 +24,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useEnforcementEnabled, usePlanEntitlements, useRunTrialExpiry, useSetEnforcementEnabled } from '../api/hooks';
 import type { PlanEntitlement } from '../api/types';
 import { PlanEditDialog } from './plan-edit-dialog';
-import { PLAN_LABELS, planSummary } from './plan-meta';
+import { PLAN_LABELS, planSummary, providerQuotaSummary } from './plan-meta';
 import { TenantOverridePanel } from './tenant-override-panel';
 
 /** Platform-wide enforcement kill-switch — disabling requires a confirm. */
@@ -108,6 +108,19 @@ function PlansTab() {
       cell: ({ row }) => <span className="text-muted-foreground">{planSummary(row.original)}</span>,
       size: 320,
       minSize: 220,
+    },
+    {
+      // TASK-998 OD-4 — the PLATFORM DEFAULT cloud-ASR capacity this plan hands
+      // every tenant without an allocation of its own. Rendered on the list
+      // because it is a vendor-account bound: an operator needs to see it
+      // without opening four dialogs to compare the plans.
+      id: 'providerQuotas',
+      header: 'Cloud ASR capacity',
+      enableSorting: false,
+      meta: { label: 'Cloud ASR capacity' },
+      cell: ({ row }) => <span className="text-muted-foreground text-xs">{providerQuotaSummary(row.original.sttProviderQuotas)}</span>,
+      size: 260,
+      minSize: 180,
     },
     {
       accessorKey: 'modelTier',

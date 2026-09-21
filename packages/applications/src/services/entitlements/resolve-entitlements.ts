@@ -22,6 +22,7 @@ import {
   PlanEntitlementValues,
   RESERVED_UNGATED_TENANT_IDS,
 } from './entitlements.constants';
+import { ProviderQuotaMap, resolveProviderQuotas } from './provider-quotas';
 
 /** Resolved, fully-merged limits for a tenant. `null` = unlimited/ungated. */
 export interface ResolvedLimits {
@@ -105,6 +106,19 @@ export interface ResolvedFeatures {
    * neighbours: `false` on STARTER, `true` on TRIAL/PRO/ENTERPRISE.
    */
   agenticLoop: boolean;
+  /**
+   * TASK-998 OD-4 — may this tenant HOLD its own per-provider cloud-ASR capacity
+   * allocation ("Pro plan and above")?
+   *
+   * Its gate is the WRITE path: `EntitlementsService.upsertTenantEntitlement`
+   * refuses a `sttProviderQuotas` value (403) for a tenant whose plan does not
+   * carry it. It is deliberately NOT consulted when capacity is RESOLVED — an
+   * eligibility flag read at enforcement time would turn a plan downgrade into a
+   * hard zero on the clinical path, where the correct behaviour is to fall back
+   * to the platform default. That asymmetry is the whole point of "entitlements
+   * bound, they never supply".
+   */
+  providerQuotaAllocation: boolean;
 }
 
 export interface ResolvedEntitlements {
@@ -114,6 +128,13 @@ export interface ResolvedEntitlements {
   gated: boolean;
   limits: ResolvedLimits;
   features: ResolvedFeatures;
+  /**
+   * TASK-998 OD-4 — per-provider cloud-ASR capacity, already merged
+   * tenant-allocation-over-platform-default per dimension. Keyed by the provider
+   * ids of `CLOUD_BYO_PROVIDERS.stt`; a provider absent from the map is
+   * unlimited. Empty for an ungated (null-plan) tenant.
+   */
+  providerQuotas: ProviderQuotaMap;
   modelTier: ModelTier;
   rateLimitTier: string;
   /** Per-tenant absolute rate override (Q7); `null` = use the tier. */
@@ -148,7 +169,11 @@ export interface PlanEntitlementInput {
   monthlyTtsCharacters?: number | bigint | null;
   monthlyNlpTextUnits?: number | bigint | null;
   monthlyEmbeddingTokens?: number | bigint | null;
+  /** TASK-998 OD-4 — the raw `sttProviderQuotas` JSONB column (platform default tier). */
+  sttProviderQuotas?: unknown;
   featurePlatformDefaultCredential?: boolean;
+  /** TASK-998 OD-4 — may this plan's tenants hold their own allocation? */
+  featureProviderQuotaAllocation?: boolean;
   /**
    * No DB column yet — see `ResolvedFeatures.paletteStt`'s doc comment. Always
    *  `undefined` on a real Prisma row today; kept optional so a future column is a pure addition.
@@ -189,6 +214,8 @@ export interface TenantEntitlementOverrideInput {
   monthlyTtsCharacters?: number | bigint | null;
   monthlyNlpTextUnits?: number | bigint | null;
   monthlyEmbeddingTokens?: number | bigint | null;
+  /** TASK-998 OD-4 — the raw `sttProviderQuotas` JSONB column (tenant allocation tier). */
+  sttProviderQuotas?: unknown;
   featurePlatformDefaultCredential?: boolean | null;
   /** No DB column yet — see `PlanEntitlementInput.featurePaletteStt`. */
   featurePaletteStt?: boolean | null;
@@ -251,7 +278,17 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
     platformDefaultCredential: false,
     paletteStt: true,
     agenticLoop: true,
+    /*
+     * On the permissive side of the asymmetry above, like `agenticLoop` and
+     * unlike `platformDefaultCredential`. This flag does not decide platform
+     * SPEND — it decides whether a super admin may record a capacity number
+     * against a tenant — and the tenants that resolve here are the reserved
+     * platform ones, which no request runs as anyway.
+     */
+    providerQuotaAllocation: true,
   },
+  /* No capacity bound for an ungated tenant — unlimited on every provider. */
+  providerQuotas: {},
   modelTier: 'full_custom',
   rateLimitTier: 'relaxed',
   rateLimitPerMinute: null,
@@ -328,6 +365,7 @@ export function resolveEntitlements(
     monthlyNlpTextUnits: pick(toNum(planRow?.monthlyNlpTextUnits), seeded.monthlyNlpTextUnits),
     monthlyEmbeddingTokens: pick(toNum(planRow?.monthlyEmbeddingTokens), seeded.monthlyEmbeddingTokens),
     featurePlatformDefaultCredential: pick(planRow?.featurePlatformDefaultCredential, seeded.featurePlatformDefaultCredential),
+    featureProviderQuotaAllocation: pick(planRow?.featureProviderQuotaAllocation, seeded.featureProviderQuotaAllocation),
     featurePaletteStt: pick(planRow?.featurePaletteStt, seeded.featurePaletteStt),
     featureAgenticLoop: pick(planRow?.featureAgenticLoop, seeded.featureAgenticLoop),
     modelTier: pick(planRow?.modelTier, seeded.modelTier) as ModelTier,
@@ -364,7 +402,18 @@ export function resolveEntitlements(
       platformDefaultCredential: pick(override?.featurePlatformDefaultCredential, base.featurePlatformDefaultCredential),
       paletteStt: pick(override?.featurePaletteStt, base.featurePaletteStt),
       agenticLoop: pick(override?.featureAgenticLoop, base.featureAgenticLoop),
+      /*
+       * Plan-only, by design: there is no `TenantEntitlement` tri-state for it.
+       * A per-tenant override of an eligibility bound is vacuous — the only
+       * caller the bound applies to is the super admin who would flip it — so it
+       * would document a deal while enforcing nothing.
+       */
+      providerQuotaAllocation: base.featureProviderQuotaAllocation,
     },
+    // Tenant allocation over platform default, per DIMENSION (see
+    // `provider-quotas.ts`). The plan row is consulted even when the tenant has
+    // an override ROW, because the override is per provider+dimension.
+    providerQuotas: resolveProviderQuotas(override?.sttProviderQuotas, planRow?.sttProviderQuotas),
     modelTier: pick(override?.modelTier, base.modelTier) as ModelTier,
     rateLimitTier: pick(override?.rateLimitTier, base.rateLimitTier),
     // a per-tenant absolute override still wins, but the PLAN may now

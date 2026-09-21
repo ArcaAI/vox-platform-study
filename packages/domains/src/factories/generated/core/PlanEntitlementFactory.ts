@@ -27,9 +27,11 @@ export interface CreatePlanEntitlementProps extends BaseEntityFactoryCreateProps
   monthlyTtsCharacters?: IPlanEntitlementEntity['monthlyTtsCharacters'];
   monthlyNlpTextUnits?: IPlanEntitlementEntity['monthlyNlpTextUnits'];
   monthlyEmbeddingTokens?: IPlanEntitlementEntity['monthlyEmbeddingTokens'];
+  sttProviderQuotas?: IPlanEntitlementEntity['sttProviderQuotas'];
   featurePlatformDefaultCredential?: IPlanEntitlementEntity['featurePlatformDefaultCredential'];
   featurePaletteStt?: IPlanEntitlementEntity['featurePaletteStt'];
   featureAgenticLoop?: IPlanEntitlementEntity['featureAgenticLoop'];
+  featureProviderQuotaAllocation?: IPlanEntitlementEntity['featureProviderQuotaAllocation'];
   modelTier?: IPlanEntitlementEntity['modelTier'];
   rateLimitTier?: IPlanEntitlementEntity['rateLimitTier'];
   rateLimitPerMinute?: IPlanEntitlementEntity['rateLimitPerMinute'];
@@ -71,6 +73,9 @@ export class PlanEntitlementFactory {
       monthlyTtsCharacters: props.monthlyTtsCharacters ?? null,
       monthlyNlpTextUnits: props.monthlyNlpTextUnits ?? null,
       monthlyEmbeddingTokens: props.monthlyEmbeddingTokens ?? null,
+      // TASK-998 OD-4 — `null` = this plan states no platform default for any
+      // provider, which resolves to unlimited (no enforcement).
+      sttProviderQuotas: props.sttProviderQuotas ?? null,
       // Fail-CLOSED default — a plan never grants the platform-default
       // credential unless someone says so explicitly.
       featurePlatformDefaultCredential: props.featurePlatformDefaultCredential ?? false,
@@ -78,6 +83,10 @@ export class PlanEntitlementFactory {
       // capability, mirrors the Prisma column's own @default(true).
       featurePaletteStt: props.featurePaletteStt ?? true,
       featureAgenticLoop: props.featureAgenticLoop ?? true,
+      // TASK-998 OD-4 — fail-CLOSED, like `featurePlatformDefaultCredential`: a
+      // plan does not let its tenants hold their own vendor-capacity allocation
+      // unless someone said so. Seeded true on PRO/ENTERPRISE only.
+      featureProviderQuotaAllocation: props.featureProviderQuotaAllocation ?? false,
       modelTier: props.modelTier ?? 'full',
       rateLimitTier: props.rateLimitTier ?? 'default',
       rateLimitPerMinute: props.rateLimitPerMinute ?? null,

@@ -86,9 +86,46 @@ export const LIMIT_FIELDS: LimitField[] = [
 ];
 
 /**
+ * TASK-998 OD-4 — the per-provider cloud-ASR capacity field.
+ *
+ * Deliberately OUTSIDE {@link LIMIT_FIELDS}: every entry there is a scalar the
+ * plan form renders as a numeric input and sends as `number | null`, while this
+ * is a `{ provider: { requestsPerMinute, maxConcurrentStreams } }` map. It gets
+ * its own JSON section in the plan dialog and rides the tenant panel's existing
+ * override document.
+ *
+ * The provider list is NOT restated here. It lives in `CLOUD_BYO_PROVIDERS.stt`
+ * on the gateway, which validates every key on write (unknown id ⇒ 400) — a copy
+ * in the console would go stale the moment a provider is added and would then
+ * refuse a number the platform can actually use.
+ */
+export const PROVIDER_QUOTA_FIELD = {
+  label: 'Cloud ASR capacity (per provider)',
+  help:
+    'Per-provider vendor capacity, as JSON keyed by provider id. `requestsPerMinute` bounds BATCH transcription (the vendor\u2019s sync-REST cap); ' +
+    '`maxConcurrentStreams` bounds LIVE sessions (its concurrent-WebSocket cap). Omit a provider or a dimension to state no opinion \u2014 ' +
+    'unresolved at both the plan and tenant tiers means unlimited.',
+} as const;
+
+/** One-line render of a plan's platform-default capacity, for the plans table. */
+export function providerQuotaSummary(quotas: PlanEntitlement['sttProviderQuotas']): string {
+  const entries = Object.entries(quotas ?? {});
+  if (entries.length === 0) return 'No cloud ASR capacity limit';
+  return entries
+    .map(([provider, quota]) => {
+      const rpm = quota?.requestsPerMinute == null ? '\u2014' : formatNumber(quota.requestsPerMinute);
+      const streams = quota?.maxConcurrentStreams == null ? '\u2014' : formatNumber(quota.maxConcurrentStreams);
+      return `${provider} ${rpm}/min \u00b7 ${streams} streams`;
+    })
+    .join(' \u00b7 ');
+}
+
+/**
  * The form's sections, derived from `LIMIT_FIELDS` rather than listed again —
  * a new limit is classified once, on the field, and cannot go missing from the
- * form or appear in two places.
+ * form or appear in two places. The cloud-ASR capacity map is NOT one of them —
+ * see {@link PROVIDER_QUOTA_FIELD}; the plan dialog renders it as its own JSON
+ * section.
  */
 export const LIMIT_GROUPS: { id: LimitGroupId; title: string; fields: LimitField[] }[] = [
   { id: 'quantity', title: 'Quantity ceilings', fields: LIMIT_FIELDS.filter((field) => field.group === 'quantity') },

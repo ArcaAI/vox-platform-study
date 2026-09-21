@@ -32,6 +32,10 @@ const FEATURE_LABELS: Record<string, string> = {
   platformDefaultCredential: 'Platform-default credential',
   paletteStt: 'STT palette',
   agenticLoop: 'Agentic loop',
+  // TASK-998 OD-4 — the "Pro plan and above" bound on holding a per-provider
+  // cloud-ASR capacity allocation. Off does NOT mean "no capacity": the tenant
+  // resolves the platform default instead.
+  providerQuotaAllocation: 'Own cloud ASR capacity allocation',
 };
 
 /** The PUT-able subset of the override row (id/tenantId/version stay out). */
@@ -57,6 +61,11 @@ const OVERRIDE_KEYS = [
   'modelTier',
   'rateLimitTier',
   'rateLimitPerMinute',
+  // TASK-998 OD-4 — the per-provider cloud-ASR capacity allocation. It rides
+  // the same override document as everything else here (it is already JSON, so
+  // the editor needs no new control); the gateway refuses a non-null value on a
+  // plan below Pro with a 403, which surfaces on the Save toast.
+  'sttProviderQuotas',
 ] as const;
 
 function toEditableJson(override: TenantEntitlement | null): string {
