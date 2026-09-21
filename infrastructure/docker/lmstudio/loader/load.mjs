@@ -88,6 +88,76 @@ const stable = (value) => {
   return JSON.stringify(value);
 };
 
+/**
+ * Wait until the daemon's model INDEX carries `modelKey`, then return.
+ *
+ * WHY THIS EXISTS — measured in production on 2026-09-21. The first Phase 1
+ * image CrashLoopBackOffed, exit 78:
+ *
+ *     Cannot find a model with path "gemma-4-e2b-it-qat"
+ *     You don't have any LLMs downloaded.
+ *
+ * The GGUFs were present the whole time: the `link-models` initContainer had
+ * already symlinked them under the `hope/` publisher segment and exited 0. What
+ * was missing was the daemon's INDEX of them. The HTTP server answers
+ * `/lmstudio-greeting` — which is what the entrypoint gates on — before it has
+ * finished scanning the models directory, so the loader raced it and lost.
+ *
+ * `lms load` never hit this because the CLI resolves a model through the
+ * daemon's own resolver, which rescans on a miss; the raw `loadModel` channel
+ * does not. Waiting here is therefore the fix, not passing a different path:
+ * the key is correct, it is simply not indexed yet.
+ *
+ * Bounded, and the timeout is a `die`, not a warning — a pod that cannot see
+ * its own model must not serve (the A-6 posture). Polls the same REST endpoint
+ * the readinessProbe greps, so there is one source of truth for "is it there".
+ */
+async function waitForModelIndex(port, modelKey, timeoutMs = 180_000) {
+  const deadline = Date.now() + timeoutMs;
+  let attempt = 0;
+  let lastSeen = '<no response>';
+
+  while (Date.now() < deadline) {
+    attempt += 1;
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/v1/models`);
+      if (response.ok) {
+        const body = await response.json();
+        const entries = Array.isArray(body?.data) ? body.data : [];
+        // Match the bare key OR a `<publisher>/<key>` path, because the index
+        // may surface either spelling depending on how the model was published.
+        const hit = entries.some(
+          (entry) =>
+            entry?.id === modelKey ||
+            entry?.key === modelKey ||
+            String(entry?.id ?? '').endsWith(`/${modelKey}`) ||
+            String(entry?.key ?? '').endsWith(`/${modelKey}`),
+        );
+        if (hit) {
+          log(`model index carries '${modelKey}' after ${attempt} check(s)`);
+          return;
+        }
+        lastSeen = `${entries.length} model(s), none matching`;
+      } else {
+        lastSeen = `HTTP ${response.status}`;
+      }
+    } catch (error) {
+      lastSeen = `unreachable (${error?.message ?? error})`;
+    }
+    // Log sparsely: every 10th attempt, so a slow index is visible in the pod
+    // log without burying it — the s3fs lesson from the same day.
+    if (attempt % 10 === 0) log(`  still waiting for the model index — ${lastSeen}`);
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+
+  die(
+    `'${modelKey}' never appeared in the daemon's model index within ` +
+      `${Math.round(timeoutMs / 1000)}s (last: ${lastSeen}). The GGUF symlinks are ` +
+      `built by the link-models initContainer; if it exited 0 the files are there ` +
+      `and the daemon did not index them.`,
+  );
+}
+
 async function main() {
   let request;
   try {
@@ -105,6 +175,10 @@ async function main() {
   // to dial — connecting to 0.0.0.0 is a different thing and works by accident
   // at best.
   const client = new LMStudioClient({ baseUrl: `ws://127.0.0.1:${port}` });
+
+  // The index must carry the key BEFORE the load channel is opened — see
+  // waitForModelIndex for the CrashLoopBackOff this prevents.
+  await waitForModelIndex(port, request.modelKey);
 
   log(`preloading ${request.modelKey}`);
   for (const { key, value } of request.kvConfig.fields) {
