@@ -8,6 +8,11 @@ import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IProviderCapacityService } from '../../provider-capacity/IProviderCapacityService';
 import { asrProviderFromSpec } from '../asr-provider';
+// TASK-999 (D-5(a)/D-6(a)) — realtime sessions become `TranscriptionJob` rows, and
+// the row is what carries `resolvedSpec` at teardown.
+import { resolveServedBy } from '../served-by';
+import { TranscriptionJobService } from '../job/transcriptionJob.service';
+import type { CompletedStreamSessionJob } from '../job/ITranscriptionJobService';
 import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey, type UsageTrigger } from '../../usageLedger';
 import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
 import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
@@ -94,6 +99,14 @@ export class StreamingSessionService implements IStreamingSessionService {
     // account tier), not its per-minute request cap. Optional + trailing like the
     // six above; absent ⇒ unbounded, exactly as before.
     @Optional() @Inject(IProviderCapacityService) private readonly providerCapacity?: IProviderCapacityService,
+    // TASK-999 (D-5(a)) — a realtime session is now a `TranscriptionJob` row
+    // (`jobType = STREAMING`), written at open and closed at teardown, so the
+    // admin job list can show both kinds and a session survives the 24 h Redis
+    // TTL that used to be its only trace. Optional + trailing like the seven
+    // above; absent ⇒ no row is written, exactly as before. EVERY call through
+    // it is wrapped: a bookkeeping row must never be able to fail a
+    // consultation (see `recordStreamJobOpen` / `closeStreamJob`).
+    @Optional() @Inject(TranscriptionJobService) private readonly transcriptionJobService?: TranscriptionJobService,
   ) {
     this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
     this.logger.log({
@@ -136,6 +149,77 @@ export class StreamingSessionService implements IStreamingSessionService {
   private sessionCreateTimeoutMs(): number {
     const fallback = STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY];
     return this.appSettingsService?.getValueWithDefault<number>(STT_SESSION_CREATE_TIMEOUT_MS_KEY, fallback) ?? fallback;
+  }
+
+  /**
+   * TASK-999 (D-5(a)) — write the `TranscriptionJob` row that mirrors this session.
+   *
+   * SWALLOWS EVERYTHING. Session creation is the clinical path: the clinician is
+   * waiting, the socket is about to carry audio, and this row is bookkeeping for
+   * an admin screen. A DB hiccup, an unwired service or a CLS-less caller must
+   * cost a log line and nothing else — never a failed consultation. The
+   * consequence is explicit and accepted: a session whose row was not written is
+   * simply absent from the job list, which is what happened to EVERY realtime
+   * session before this ticket.
+   *
+   * Called after the STT `POST` has succeeded, so a session that never opened
+   * (503 at capacity, transport error) leaves no row behind.
+   */
+  private async recordStreamJobOpen(dto: CreateStreamingSessionRequest): Promise<void> {
+    if (!this.transcriptionJobService) return;
+    try {
+      await this.transcriptionJobService.createForStreamSession({
+        tenantId: dto.tenantId,
+        streamSessionId: dto.sessionId,
+        consultationId: dto.consultationId,
+        pipelineId: dto.pipelineId ?? null,
+        // The agent VERSION the session opened on, read off the spec the gateway
+        // already resolved — the same value a BATCH row carries, so both kinds of
+        // row answer "which agent ran this" the same way.
+        agentVersionId: dto.resolvedSpec?.agent?.versionId ?? null,
+        resolvedSpec: dto.resolvedSpec ?? null,
+        userId: dto.userId ?? null,
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'stt.stream.job_row_open_failed — the session is live but has no TranscriptionJob row; it will be absent from the job list',
+        sessionId: dto.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * TASK-999 — close that row at teardown and hand back what it recorded.
+   *
+   * Swallows for the same reason {@link recordStreamJobOpen} does, and for one
+   * more: three of the four teardown callers treat a throw as retryable, so a
+   * failure here would re-run a teardown that had already succeeded.
+   *
+   * The return value is not just bookkeeping — the row is the ONLY place the
+   * gateway can still read this session's `resolvedSpec` at teardown, and that is
+   * what lets {@link emitStreamingUsage} stamp a real ASR model onto the usage
+   * rows instead of the `null` it used to write.
+   */
+  private async closeStreamJob(summary: StreamingSessionTeardownSummary): Promise<CompletedStreamSessionJob | null> {
+    if (!this.transcriptionJobService) return null;
+    try {
+      // The engine the session ENDED on: segments arrive in first-appearance
+      // order, so the last billable one is the engine that was serving when the
+      // session closed. Falls back to the summary's own scalar, which apps/stt
+      // documents as the last-loaded engine — the same fact by another route.
+      const segments = StreamingSessionService.usageSegments(summary);
+      const engine = segments.length > 0 ? segments[segments.length - 1].engine : summary.engine;
+
+      return await this.transcriptionJobService.completeStreamSessionJob(summary.session_id, { engine });
+    } catch (error) {
+      this.logger.warn({
+        message: 'stt.stream.job_row_close_failed — the session was torn down but its TranscriptionJob row was not closed',
+        sessionId: summary.session_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   private async resolveVoiceProfiles(dto: CreateStreamingSessionRequest): Promise<RuntimeVoiceProfile[]> {
@@ -296,6 +380,12 @@ export class StreamingSessionService implements IStreamingSessionService {
         sessionId: dto.sessionId,
         status: data.status,
       });
+
+      // TASK-999 — the session exists on STT; give it its durable row. Awaited so
+      // the row is in place before the caller can start streaming (and before a
+      // fast teardown could look for it), but it cannot throw: see
+      // `recordStreamJobOpen`.
+      await this.recordStreamJobOpen(dto);
 
       return {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -485,7 +575,11 @@ export class StreamingSessionService implements IStreamingSessionService {
     }
 
     if (summary) {
-      await this.emitStreamingUsage(summary, interrupted);
+      // TASK-999 — close the row FIRST: it hands back this session's own
+      // `resolvedSpec`, which is the only thing that can turn a per-segment
+      // engine name into the ASR model the usage row has always stamped `null`.
+      const closed = await this.closeStreamJob(summary);
+      await this.emitStreamingUsage(summary, interrupted, closed?.resolvedSpec ?? null);
       return;
     }
 
@@ -552,7 +646,7 @@ export class StreamingSessionService implements IStreamingSessionService {
    * ordinal is the engine's first-appearance position in a session, never a
    * counter minted at emission time.
    */
-  private async emitStreamingUsage(summary: StreamingSessionTeardownSummary, interrupted: boolean): Promise<void> {
+  private async emitStreamingUsage(summary: StreamingSessionTeardownSummary, interrupted: boolean, resolvedSpec: unknown = null): Promise<void> {
     if (!this.usageLedgerService) {
       return;
     }
@@ -583,7 +677,12 @@ export class StreamingSessionService implements IStreamingSessionService {
           capability: AiCapability.STT,
           operation: 'transcribe.stream' as const,
           provider: segment.engine,
-          model: null,
+          // TASK-999 — the ASR model that actually served THIS segment, resolved
+          // from the session's own `resolvedSpec` (carried on its job row). It was
+          // a hardcoded `null`, which made every streaming row unattributable to a
+          // model on a cost surface. Still `null` — never guessed — when there is
+          // no row, no spec, or an engine that matches no chain entry.
+          model: resolveServedBy(resolvedSpec, segment.engine)?.modelSlug ?? null,
           deployment: AiDeploymentKind[segment.deployment as keyof typeof AiDeploymentKind],
           ...(costBasis ? { costBasis } : {}),
           // TASK-958 D-7 — PER SEGMENT, not per session: a session that failed over
@@ -669,6 +768,12 @@ export class StreamingSessionService implements IStreamingSessionService {
    * teardown is a no-op, never a double bill.
    */
   async recordStreamingUsageFromSummary(summary: StreamingSessionTeardownSummary, interrupted: boolean): Promise<void> {
-    await this.emitStreamingUsage(summary, interrupted);
+    // TASK-999 — same two steps as `removeSession`'s summary branch. Idempotent
+    // on both halves: `completeStreamSessionJob` writes nothing to a row another
+    // teardown already closed (and still returns its `resolvedSpec`), and the
+    // ledger key is unchanged, so a push-back racing a late DELETE is a no-op
+    // rather than a second row or a second bill.
+    const closed = await this.closeStreamJob(summary);
+    await this.emitStreamingUsage(summary, interrupted, closed?.resolvedSpec ?? null);
   }
 }

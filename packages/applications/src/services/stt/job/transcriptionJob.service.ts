@@ -17,7 +17,14 @@ import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IProviderCapacityService } from '../../provider-capacity/IProviderCapacityService';
 import { asrProviderFromSpec } from '../asr-provider';
-import { ITranscriptionJobService } from './ITranscriptionJobService';
+// TASK-999 (D-6(a)) — which entry of `resolvedSpec.fallback.chain` actually served.
+import { resolveServedBy, type ServedBy } from '../served-by';
+import {
+  CompletedStreamSessionJob,
+  CompleteStreamSessionJobInput,
+  CreateStreamSessionJobInput,
+  ITranscriptionJobService,
+} from './ITranscriptionJobService';
 import {
   BatchDispatchEnvelope,
   CreateBatchJobRequest,
@@ -153,6 +160,112 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
+   * TASK-999 (D-5(a)) — write the row that mirrors a realtime STT session.
+   *
+   * Deliberately NOT {@link createStreamingJob}, which routes through
+   * {@link create} and so reads its tenant from CLS, runs the batch entitlement
+   * and vendor-rate guards, and starts the row QUEUED. None of that fits here:
+   * the streaming plane has already taken its OWN allowance and concurrency
+   * checks at session open (`StreamingSessionService.createSession`), it is
+   * reached from paths that carry the tenant on a DTO rather than in CLS, and a
+   * live session is PROCESSING from the instant it opens — there is no queue and
+   * no worker to claim it.
+   *
+   * `workerId` is the STT session id: the process holding this job IS that
+   * session, and naming it is what lets an operator reading a stranded row find
+   * the session it belongs to.
+   */
+  async createForStreamSession(input: CreateStreamSessionJobInput): Promise<TranscriptionJobResponse> {
+    const job = TranscriptionJobFactory.CreateTranscriptionJob({
+      tenantId: input.tenantId,
+      jobType: TranscriptionJobType.STREAMING,
+      streamSessionId: input.streamSessionId,
+      pipelineId: input.pipelineId ?? null,
+      agentVersionId: input.agentVersionId ?? null,
+      resolvedSpec: (input.resolvedSpec as JsonValue | undefined) ?? null,
+      consultationId: input.consultationId,
+      createdBy: input.userId ?? undefined,
+    });
+
+    // The factory hardcodes QUEUED (the batch broker's entry state). Set the
+    // live state on the entity BEFORE the insert so the row is written once,
+    // rather than inserting a lie and immediately updating it away.
+    job.status = TranscriptionJobStatus.PROCESSING;
+    job.startedAt = new Date();
+    job.workerId = input.streamSessionId;
+
+    const saved = await this.jobRepository.create(job);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: { jobType: TranscriptionJobType.STREAMING, streamSessionId: input.streamSessionId },
+    });
+
+    return TranscriptionJobDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * TASK-999 — close the row a realtime session opened, at teardown.
+   *
+   * Looked up by `streamSessionId` (`TranscriptionJob_streamSessionId_idx`) so
+   * the teardown paths that hold only a session id — the SIGTERM sweep, the
+   * Redis removal-retry drain, the compat gateway, the STT reaper push-back —
+   * can all reach it without carrying a job id they never had.
+   *
+   * Returns `null` when there is no row (a session opened before this shipped,
+   * or one whose row write failed — session creation never fails on it) and when
+   * the row is ALREADY closed. That second case is what keeps teardown
+   * idempotent: `removeSession` and the reaper push-back can both arrive for one
+   * session, and the first one to land owns the completion.
+   *
+   * `servedBy` is derived HERE rather than by the caller because the row is what
+   * carries `resolvedSpec` — the gateway does not hold the spec at teardown — and
+   * it is returned so the caller can stamp the same model onto its usage rows.
+   */
+  async completeStreamSessionJob(streamSessionId: string, input: CompleteStreamSessionJobInput): Promise<CompletedStreamSessionJob | null> {
+    const [job] = await this.jobRepository.findAll({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      filters: { streamSessionId } as any,
+      limit: 1,
+      sort: [{ createdAt: 'desc' }],
+    });
+    if (!job) return null;
+
+    const resolvedSpec = job.resolvedSpec ?? null;
+    if (job.completedAt) {
+      // Already closed by whichever teardown path got here first. Hand back what
+      // the row records so the caller can still stamp its usage rows, but write
+      // nothing — a second completion would only move `updatedAt`.
+      return { jobId: job.id, resolvedSpec, servedBy: (job.servedBy as unknown as ServedBy | null) ?? null, alreadyCompleted: true };
+    }
+
+    const servedBy = resolveServedBy(resolvedSpec, input.engine);
+
+    // Set directly rather than through `entity.complete()`: that transition is
+    // the BATCH worker's (it demands a `resultText`, which the gateway does not
+    // hold at teardown — a realtime transcript is written as its own
+    // `ContextItem`, never onto this row). Same shape `updateStatus` already
+    // uses for a non-batch status change.
+    job.status = TranscriptionJobStatus.COMPLETED;
+    job.completedAt = new Date();
+    job.progress = 100;
+    if (servedBy) job.servedBy = servedBy as unknown as JsonValue;
+    // NULL means never measured; only write a number when one was actually taken.
+    if (input.resultWordCount != null) job.resultWordCount = input.resultWordCount;
+    if (input.resultCharCount != null) job.resultCharCount = input.resultCharCount;
+
+    await this.jobRepository.update(job.id, job);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: job.id,
+      data: { status: TranscriptionJobStatus.COMPLETED, streamSessionId },
+    });
+
+    return { jobId: job.id, resolvedSpec, servedBy, alreadyCompleted: false };
+  }
+
+  /**
    * Get job by ID
    */
   async getById(id: string): Promise<TranscriptionJobResponse | null> {
@@ -224,17 +337,24 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
-   * Get paginated list of jobs
+   * Get paginated list of jobs.
+   *
+   * TASK-999 — `jobType` narrows to ONE kind. Absent means BOTH: realtime
+   * sessions only became rows in this ticket, so a caller that expresses no
+   * opinion must keep seeing everything its tenant has. Backed by
+   * `TranscriptionJob_tenant_jobType_created_idx`.
    */
-  async list(page: number = 1, limit: number = 20): Promise<PaginatedTranscriptionJobResponse> {
+  async list(page: number = 1, limit: number = 20, jobType?: TranscriptionJobType): Promise<PaginatedTranscriptionJobResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
 
+    const filters = { tenantId, ...(jobType ? { jobType } : {}) };
+
     const jobs = await this.jobRepository.findAll({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      filters: { tenantId } as any,
+      filters: filters as any,
       page,
       limit,
       sort: [{ createdAt: 'desc' }],
@@ -242,7 +362,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
 
     const total = await this.jobRepository.count({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      filters: { tenantId } as any,
+      filters: filters as any,
     });
 
     return {

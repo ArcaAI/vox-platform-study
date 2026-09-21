@@ -1,4 +1,11 @@
-import { ResourceType, SysEventType, TranscriptionJobEntity, TranscriptionJobRepository, TranscriptionJobStatus } from '@arcaai/domains';
+import {
+  ResourceType,
+  SysEventType,
+  TranscriptionJobEntity,
+  TranscriptionJobRepository,
+  TranscriptionJobStatus,
+  TranscriptionJobType,
+} from '@arcaai/domains';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { SchedulerRegistry } from '@nestjs/schedule';
@@ -161,7 +168,21 @@ export class SttJobReaperService extends BaseService implements OnModuleInit, On
     }
 
     const cutoff = new Date(Date.now() - staleProcessingMinutes * MS_PER_MINUTE);
-    const eligible = await this.jobRepository.findStaleProcessingJobs(cutoff);
+    // TASK-999 — BATCH ONLY, and this filter is load-bearing.
+    //
+    // Realtime sessions became `TranscriptionJob` rows in TASK-999, and a live
+    // one sits in PROCESSING for the whole consultation with nothing writing to
+    // it — its row is touched exactly twice, at session open and at teardown. So
+    // `updatedAt`, the heartbeat this sweep is built on, does not exist for a
+    // streaming row, and the default 20-minute window would FAIL the row of every
+    // consultation that runs longer than twenty minutes, mid-session.
+    //
+    // Filtered here rather than in the query because `findStaleProcessingJobs` is
+    // the domain repository's, shared with TASK-992's own callers. The cost is
+    // that stranded STREAMING rows still occupy the sweep's page; closing THOSE
+    // (a session whose gateway died before teardown) needs a reaper that knows
+    // about Redis session state, which is not this one.
+    const eligible = (await this.jobRepository.findStaleProcessingJobs(cutoff)).filter((job) => job.jobType === TranscriptionJobType.BATCH);
 
     let reaped = 0;
     let failed = 0;

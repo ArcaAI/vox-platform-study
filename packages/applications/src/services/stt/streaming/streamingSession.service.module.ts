@@ -5,6 +5,7 @@ import { EntitlementsServiceModule } from '../../entitlements/entitlements.servi
 import { ProviderCapacityServiceModule } from '../../provider-capacity/provider-capacity.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { VoiceProfileServiceModule } from '../../user/voiceProfile/voiceProfile.service.module';
+import { TranscriptionJobServiceModule } from '../job/transcriptionJob.service.module';
 import { StreamingSessionService } from './streamingSession.service';
 import { StreamingAudioBridgeService } from './streamingAudioBridge.service';
 
@@ -43,6 +44,11 @@ import { StreamingAudioBridgeService } from './streamingAudioBridge.service';
     // TASK-887 — `IVoiceProfileService.listForRuntime` supplies the enrolled profiles the
     // session pushes to apps/stt so diarization can label a matched speaker.
     VoiceProfileServiceModule,
+    // TASK-999 (D-5(a)) — `TranscriptionJobService` writes the `jobType = STREAMING`
+    // row at session open and closes it at teardown, so a realtime session appears
+    // in the admin job list and outlives the 24 h Redis TTL that used to be its
+    // only trace.
+    TranscriptionJobServiceModule,
   ],
   providers: [StreamingSessionService, StreamingAudioBridgeService],
   exports: [StreamingSessionService, StreamingAudioBridgeService],
