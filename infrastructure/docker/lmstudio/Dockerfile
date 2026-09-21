@@ -60,9 +60,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # libatomic1 + libgomp1: the upstream installer checks for both.
 # tini: PID-1 signal handling and zombie reaping.
+# xz-utils: the Node tarball further down is .tar.xz; the CUDA base has no xz.
 # coreutils is present in the base; `timeout` is used by the entrypoint's waits.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl libatomic1 libgomp1 tini \
+      ca-certificates curl libatomic1 libgomp1 tini xz-utils \
  && rm -rf /var/lib/apt/lists/*
 
 # Fixed-UID non-root with a REAL home.
@@ -187,12 +188,84 @@ ENV LMS_PORT=1234 \
     LMS_SERVER_HOST=0.0.0.0 \
     HOPE_EXPECT_ACCEL=${HOPE_BUILD_ACCEL} \
     HOPE_MODELS_DIR=/data/models \
-    HOPE_STAGING_DIR=/data/staging
+    HOPE_STAGING_DIR=/data/staging \
+    HOPE_LOADER_DIR=/opt/hope/lmstudio-loader
 
 VOLUME ["/data"]
 EXPOSE 1234
 
 COPY --chown=llmster:llmster entrypoint.sh /usr/local/bin/entrypoint.sh
+
+# ── A-6 PRELOADER ────────────────────────────────────────────────────────────
+# `lms load` cannot set flash attention, KV-cache quantization or GPU placement,
+# and neither can POST /api/v1/models/load. Only the kvConfig websocket can, so
+# A-6 runs this Node loader instead of the CLI (entrypoint.sh A-6, loader/).
+#
+# The SDK is installed here as a first-class, lockfile-pinned dependency.
+# It must NOT be imported from
+# ~/.lmstudio/extensions/plugins/*/node_modules/@lmstudio/sdk, where a copy
+# already exists: that copy is incidental to two bundled plugins and may move
+# or vanish on any LM Studio upgrade. It is also NOT the same artifact — the
+# vendored build calls itself 1.5.0 but declares a `gpuSplitConfig.strategy`
+# union npm's 1.5.0 does not have, so "the version in the image" is not a
+# version we can pin to.
+#
+# Node is pinned and checksummed for the same reason the llmster bundle is:
+# `apt-get install nodejs` floats with the Ubuntu archive, and a build that
+# silently changes its own runtime is a build we cannot reproduce. It travels
+# as ARGs so the arm64 developer image can pass its own pair, exactly like
+# LLMSTER_ARTIFACT.
+#
+# It is deliberately NOT the Node the llmster bundle happens to ship at
+# ~/.lmstudio/.internal/utils/node: that path is an undocumented internal of a
+# proprietary bundle and may move or vanish on any upgrade — the same objection
+# that stops us importing @lmstudio/sdk out of a bundled plugin's node_modules.
+# npm is needed at build time regardless, and the bundle does not ship one.
+#
+# It sits HERE, below the bundle download, and not up beside apt: changing an
+# ARG invalidates every layer after it, so declaring NODE_* at the top would
+# make a Node bump re-download the ~1.5 GB llmster bundle. Same reasoning as
+# the build-identity args at the foot of this file.
+USER root
+ARG NODE_VERSION=24.21.0
+ARG NODE_ARTIFACT=node-v24.21.0-linux-x64.tar.xz
+# VERIFIED 2026-09-21 against https://nodejs.org/dist/v24.21.0/SHASUMS256.txt
+ARG NODE_SHA256=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+# Unpacked into /usr/local so `node` and `npm` land on the PATH declared above.
+# --strip-components=1 flattens node-vX-linux-x64/{bin,lib,…} onto /usr/local.
+RUN set -eu; cd /tmp; \
+    curl -fsSL --retry 3 --retry-delay 5 -o node.tar.xz \
+      "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARTIFACT}"; \
+    echo "${NODE_SHA256}  node.tar.xz" | sha256sum -c -; \
+    tar -xJf node.tar.xz -C /usr/local --strip-components=1 \
+      --exclude CHANGELOG.md --exclude LICENSE --exclude README.md; \
+    rm -f /tmp/node.tar.xz; \
+    node --version; npm --version
+
+# Manifests first, sources second: `npm ci` then re-runs only when a dependency
+# actually changes, not on every edit to the loader.
+RUN mkdir -p ${HOPE_LOADER_DIR} && chown 10001:10001 ${HOPE_LOADER_DIR}
+USER llmster
+COPY --chown=llmster:llmster loader/package.json loader/package-lock.json ${HOPE_LOADER_DIR}/
+RUN cd ${HOPE_LOADER_DIR} \
+ && npm ci --omit=dev --no-audit --no-fund \
+ && npm cache clean --force
+COPY --chown=llmster:llmster loader/kvconfig.mjs loader/load.mjs loader/kvconfig.test.mjs ${HOPE_LOADER_DIR}/
+
+# Assert the loader actually works IN THE IMAGE, the same way the stage above
+# asserts the engines are baked in rather than trusting the bundle name. Both
+# halves are provable on a GPU-less CI runner: the unit tests are pure (no
+# daemon, no websocket), and resolving the SDK proves `npm ci` produced a tree
+# this Node can import. A broken loader would otherwise surface as a pod that
+# passes every build gate and then refuses to serve on first boot.
+RUN set -eu; cd ${HOPE_LOADER_DIR}; \
+    node --test kvconfig.test.mjs; \
+    node -e "import('@lmstudio/sdk').then(m => { \
+      if (typeof m.LMStudioClient !== 'function') { \
+        console.error('FATAL: @lmstudio/sdk resolved but exports no LMStudioClient'); process.exit(1); \
+      } \
+      console.log('OK: loader unit tests pass and @lmstudio/sdk resolves'); \
+    })"
 
 # ── bake build identity, LAST layer ──────────────────────────────────────────
 # These args change on every commit, so they sit below every COPY/RUN and never
