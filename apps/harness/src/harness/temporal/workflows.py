@@ -169,6 +169,31 @@ _ACTIVITY_TIMEOUT = timedelta(seconds=150)
 # local judge call is ~10-20s). Give this one activity a generous start-to-close so
 # the governed (burst-safe) pass completes instead of timing out into reduced assurance.
 _INFERENTIAL_TIMEOUT = timedelta(seconds=900)
+# TASK-995 — `generate` gets its OWN start-to-close, and the number is a NESTING
+# constraint rather than a free choice. The budget is three layers deep:
+#
+#     HARNESS_LLM_REQUEST_TIMEOUT_S  <  _GENERATE_TIMEOUT  <  hope-text's own ceiling
+#              (300s, owner 2026-09-21)      (330s)                    (300s x 3 attempts)
+#
+# The inner bound MUST fire first. `LlmCallTimeout` is terminal by design
+# (`retry_on_timeout=False` — a re-issued prompt doubles load on a box that is
+# already the bottleneck), whereas letting Temporal hit start_to_close yields
+# `ActivityTaskTimedOut`, which `_GENERATE_RETRY` retries. Measured on dev
+# 2026-09-21: at 120s inner / 150s shared budget, every generation past 03:28
+# completed in hope-text (70.9s -> 102.9s -> 195.7s -> 179.3s under GPU
+# contention) and was DISCARDED because the harness had already given up.
+#
+# 30s of headroom, matching the ratio the old 120/150 pair used: enough to cover
+# governor queue wait + the trajectory post before the inner timeout trips.
+#
+# Deliberately NOT a raise of `_ACTIVITY_TIMEOUT` — that constant governs ~15
+# other activities, and loosening all of them is a different decision with a
+# different blast radius. Same reasoning that gave the inferential pass its own.
+#
+# REPLAY SAFETY: a start_to_close is an activity OPTION, not a command in the
+# recorded sequence — identical to `_INFERENTIAL_HEARTBEAT_TIMEOUT` above, so
+# this needs NO `workflow.patched()` gate and no drain (test_replay_compat.py).
+_GENERATE_TIMEOUT = timedelta(seconds=330)
 # The activity heartbeats (~every 15s) for the whole pass, so a
 # dead worker / hung attempt is detected within this window instead of waiting out the
 # full 900s start_to_close. start_to_close is KEPT at 900s (a healthy pass is ~344s).
@@ -866,7 +891,7 @@ class HarnessDocWorkflow:
                     segment_citations=list(assembled.segment_citations),
                     trajectory=self._traj(inp, is_regen=regens_used > 0),
                 ),
-                start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                start_to_close_timeout=_GENERATE_TIMEOUT,
                 retry_policy=_GENERATE_RETRY,
             )
 

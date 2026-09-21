@@ -64,18 +64,35 @@ const LM_STUDIO_GENERATION_PARAMS: GenerationParamName[] = [...TEXT_PLANE_GENERA
  * the bug, because a pre-dispatch check would pass and the engine would still answer
  * `exceed_context_size_error`.
  *
- * 131072 IS the maximum the engine reports for this model, so the invariant now holds only at
- * equality and there is no slack left to absorb a mistake. That is why it is declared on the
- * PRELOADED row alone — see the E2B/E4B note at the rows themselves.
+ * 131072 WAS the maximum the engine reports for this model, and declaring it left the
+ * invariant holding only at equality with no slack to absorb a mistake. That is why it is
+ * declared on the PRELOADED row alone — see the E2B/E4B note at the rows themselves.
  *
  * Residency, which is the constraint that actually binds: LM Studio gives each of its
  * `LMS_PARALLEL` slots the FULL context rather than dividing it (measured — a single request
  * was served the whole configured window), so KV-cache memory scales with
- * `context x parallel`. At the 2026-09-18 settings (131072 x 10) that is more than one
- * RTX 2000 Ada holds; KV-cache quantization would fix it and is not reachable headless in
- * LM Studio 0.0.23-1. See the ticket README.
+ * `context x parallel`, not with context alone.
+ *
+ * ── TASK-995, owner directive 2026-09-21: 131072 -> 65536 ────────────────────────────────
+ * KV-cache quantization to Q4 was investigated first and is NOT reachable on this build.
+ * Verified against the running pod (LM Studio 0.0.23-1, llama.cpp 2.31.2): `lms load` has no
+ * KV-quant flag, and `POST /api/v1/models/load` accepts only
+ * `model, context_length, flash_attention, offload_kv_cache_to_gpu, eval_batch_size,
+ * num_experts, parallel` — every spelling of the quant key is rejected `unrecognized_keys`.
+ * The daemon bundle does carry `llm.load.llama.{k,v}CacheQuantizationType`, so it is
+ * reachable only via the lmstudio SDK's kvConfig stack, which would mean replacing
+ * `lms load` in the image entrypoint. Tracked separately.
+ *
+ * Halving the context is the reachable half of the same lever and needs no rebuild: measured
+ * on dev, the serving pod held 13.9 GiB across two 16 GiB cards while its weights are only
+ * 8.5 GiB, so ~5.4 GiB was KV cache + compute buffers at `131072 x 10`.
+ *
+ * 65536 stays far above the real workload — live consultation prompts measured 12,168-12,233
+ * tokens — so this is not a budget squeeze; it restores the headroom the equality case had
+ * removed. This number and `LMS_CONTEXT` must still move together, in this direction first:
+ * LOWER the served window before lowering this, never the reverse.
  */
-const LM_STUDIO_CONTEXT_LENGTH = 131072;
+const LM_STUDIO_CONTEXT_LENGTH = 65536;
 
 /**
  * text-generation catalogue (TASK-860 — the owner's catalogue, exactly): the

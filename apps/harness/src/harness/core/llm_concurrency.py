@@ -60,7 +60,19 @@ class LlmGovernorConfig:
     # Temporal retries. A timed-out call is classified transient (see :func:`is_retryable`)
     # and retried within ``max_attempts`` before the caller's fail-safe degrade takes over.
     # ``<= 0`` disables the bound. Mirrors ``Settings.llm_request_timeout_s``.
-    request_timeout_s: float = 120.0
+    #
+    # TASK-995 — 300s (owner directive 2026-09-21), was 120s. The old bound was
+    # SHORTER than the work it was bounding: measured on dev 2026-09-21, real
+    # generations against a contended LM Studio took 70.9s -> 102.9s -> 195.7s
+    # -> 179.3s for ~12k-token prompts, so every one past 03:28 completed in
+    # hope-text and was thrown away here as `TextResponseLost`.
+    #
+    # This value is NESTED and cannot be raised alone: it must stay strictly
+    # below `workflows._GENERATE_TIMEOUT` (330s), or Temporal cancels the
+    # activity first and `_GENERATE_RETRY` re-runs it — turning one terminal
+    # failure into two full generations on the box that was already the
+    # bottleneck. `test_task995_llm_timeout_budget.py` pins that ordering.
+    request_timeout_s: float = 300.0
 
 
 def _env_int(name: str, default: int) -> int:
@@ -92,7 +104,7 @@ def get_llm_governor_config() -> LlmGovernorConfig:
         backoff_base_s=max(0.0, _env_float("HARNESS_LLM_BACKOFF_BASE_S", 0.5)),
         backoff_max_s=max(0.0, _env_float("HARNESS_LLM_BACKOFF_MAX_S", 20.0)),
         jitter_s=max(0.0, _env_float("HARNESS_LLM_BACKOFF_JITTER_S", 0.25)),
-        request_timeout_s=_env_float("HARNESS_LLM_REQUEST_TIMEOUT_S", 120.0),
+        request_timeout_s=_env_float("HARNESS_LLM_REQUEST_TIMEOUT_S", 300.0),
     )
 
 
