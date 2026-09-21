@@ -21,7 +21,7 @@ disagree with those declarations.
 | … tier `vault-kv` | 21 |
 | Python declared fields | 304 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 350 |
-| `turbo.json#globalEnv` entries | 501 |
+| `turbo.json#globalEnv` entries | 507 |
 
 ## Variables — the TypeScript platform surface
 
