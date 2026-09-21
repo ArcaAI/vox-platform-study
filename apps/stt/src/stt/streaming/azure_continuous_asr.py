@@ -113,10 +113,20 @@ def _classify_cancellation(details: Any) -> Exception:
     reason = str(getattr(details, "reason", ""))
     haystack = error_details.lower()
 
-    if "401" in error_details or "403" in error_details or "unauthorized" in haystack or "forbidden" in haystack:
+    if (
+        "401" in error_details
+        or "403" in error_details
+        or "unauthorized" in haystack
+        or "forbidden" in haystack
+    ):
         _count("auth")
         return CloudASRAuthError(f"{PROVIDER} auth error: {error_details}")
-    if "429" in error_details or "throttl" in haystack or "quota" in haystack or "rate limit" in haystack:
+    if (
+        "429" in error_details
+        or "throttl" in haystack
+        or "quota" in haystack
+        or "rate limit" in haystack
+    ):
         _count("quota")
         return CloudASRQuotaError(f"{PROVIDER} quota error: {error_details}")
     _count("transcription")
@@ -311,7 +321,12 @@ def _apply_endpointing(speech_config: Any, endpointing: DuplexEndpointing) -> No
                 )
             },
         )
-        for name in ("threshold", "silence_duration_ms", "min_speech_duration_ms", "prefix_padding_ms"):
+        for name in (
+            "threshold",
+            "silence_duration_ms",
+            "min_speech_duration_ms",
+            "prefix_padding_ms",
+        ):
             if getattr(endpointing, name) is not None:
                 dropped.append(f"{name} (Semantic strategy has no tunables)")
     else:
@@ -520,7 +535,13 @@ class _AzureDuplexSession:
                 await asyncio.to_thread(recognizer.stop_continuous_recognition_async().get)
             # Detach the handlers so a late SDK callback cannot reach a session
             # whose loop may already be gone.
-            for signal in ("recognizing", "recognized", "session_started", "session_stopped", "canceled"):
+            for signal in (
+                "recognizing",
+                "recognized",
+                "session_started",
+                "session_stopped",
+                "canceled",
+            ):
                 with contextlib.suppress(Exception):
                     getattr(recognizer, signal).disconnect_all()
 

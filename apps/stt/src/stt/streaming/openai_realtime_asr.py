@@ -219,7 +219,13 @@ def _classify(code: str, message: str) -> Exception:
     haystack = f"{code} {message}".lower()
     if any(
         token in haystack
-        for token in ("invalid_api_key", "unauthorized", "authentication", "permission", "forbidden")
+        for token in (
+            "invalid_api_key",
+            "unauthorized",
+            "authentication",
+            "permission",
+            "forbidden",
+        )
     ):
         _count("auth")
         return CloudASRAuthError(f"{PROVIDER} auth error ({code}): {message}")
@@ -245,7 +251,9 @@ def _raise_for_handshake_status(status_code: int, detail: str) -> None:
         _count("quota")
         raise CloudASRQuotaError(f"{PROVIDER} quota error (HTTP {status_code}): {detail}")
     _count("transcription")
-    raise CloudASRTranscriptionError(f"{PROVIDER} transcription error (HTTP {status_code}): {detail}")
+    raise CloudASRTranscriptionError(
+        f"{PROVIDER} transcription error (HTTP {status_code}): {detail}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +455,7 @@ async def _open_socket(config: CloudRestConfig) -> Any:
             f"realtime handshake rejected (strategy={_CONNECTION_STRATEGY})",
         )
         raise  # unreachable; _raise_for_handshake_status always raises
-    except asyncio.TimeoutError:
+    except TimeoutError:
         _count("transcription")
         raise CloudASRTranscriptionError(
             f"{PROVIDER} transport error: realtime handshake timed out after {_OPEN_TIMEOUT_S}s"
@@ -558,7 +566,13 @@ def _resolve_endpointing(inference_config: Any) -> DuplexEndpointing:
         if isinstance(value, dict):
             known = {
                 key: value[key]
-                for key in ("mode", "threshold", "silence_duration_ms", "min_speech_duration_ms", "prefix_padding_ms")
+                for key in (
+                    "mode",
+                    "threshold",
+                    "silence_duration_ms",
+                    "min_speech_duration_ms",
+                    "prefix_padding_ms",
+                )
                 if key in value
             }
             with contextlib.suppress(Exception):
@@ -664,9 +678,7 @@ class _OpenAiDuplexSession:
             ),
         }
         await self._send(payload)
-        self._reader = asyncio.create_task(
-            self._read_loop(), name="openai-realtime-reader"
-        )
+        self._reader = asyncio.create_task(self._read_loop(), name="openai-realtime-reader")
 
     async def push_audio(self, samples: np.ndarray, sample_rate: int) -> None:
         if not self._opened or self._closing:
@@ -863,11 +875,15 @@ class _OpenAiDuplexSession:
             return
 
         if event_type == "input_audio_buffer.speech_started":
-            self._offer(DuplexSpeechActivity(started=True, at_time=_ms_to_s(payload.get("audio_start_ms"))))
+            self._offer(
+                DuplexSpeechActivity(started=True, at_time=_ms_to_s(payload.get("audio_start_ms")))
+            )
             return
 
         if event_type == "input_audio_buffer.speech_stopped":
-            self._offer(DuplexSpeechActivity(started=False, at_time=_ms_to_s(payload.get("audio_end_ms"))))
+            self._offer(
+                DuplexSpeechActivity(started=False, at_time=_ms_to_s(payload.get("audio_end_ms")))
+            )
             return
 
         if event_type == "error":
