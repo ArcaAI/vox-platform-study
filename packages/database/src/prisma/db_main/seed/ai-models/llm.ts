@@ -198,6 +198,18 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // nobody chose (`GuardrailPolicy.require_number`).
     metaData: {
       hubArtifact: 'mradermacher/granite-guardian-4.1-8b-GGUF',
+      // ── gpuSplit: PINNED TO GPU 1 (owner directive 2026-09-21) ──────────────
+      // The other half of the one-model-per-card layout documented on the gemma
+      // row above. This model is JIT-loaded rather than preloaded (no LMS_LOAD),
+      // and came up split 3,618 MiB / 3,078 MiB across both cards; at ~6.7 GB
+      // resident (5.12 GB weights, ctx 8192 x parallel 4) it fits GPU 1 alone.
+      //
+      // Only `gpuSplit` is declared. Context and parallel stay on the JIT
+      // defaults (`lmStudio.jit.*`) because nothing preloads this model, so a
+      // contextLength here would describe a load that never happens.
+      serving: {
+        gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
+      },
       policy: {
         judgeTemperature: 0.05,
         judgeMaxTokens: 300,
@@ -249,14 +261,32 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
       // from the SAME constants as the declaration above, so the lockstep holds
       // structurally rather than by anyone remembering to update two numbers.
       //
-      // `flashAttention`, `kvCacheQuant` and `gpuSplit` are deliberately ABSENT: this
-      // row inherits them from the platform default (`lmStudio.serving.*`), which ships
-      // today's measured engine behaviour. Pinning this model to one card, or turning
-      // flash attention on, is a MEASURED change made after Phase 0's baseline — not a
-      // value invented in a seed file.
+      // `flashAttention` and `kvCacheQuant` are deliberately ABSENT: this row
+      // inherits them from the platform default (`lmStudio.serving.*`).
+      //
+      // ── gpuSplit: PINNED TO GPU 0 (owner directive 2026-09-21) ────────────────
+      // Measured on the live pod, BOTH resident models were layer-split across
+      // BOTH cards (§2.9): gemma held 2,668 MiB on GPU0 + 4,814 MiB on GPU1, and
+      // granite-guardian 3,618 + 3,078. Nobody chose that — `gpuSplitConfig`
+      // defaults to `evenly`, so llama.cpp spreads a model that fits one card.
+      // The cost is a cross-device hop per token AND two models contending for
+      // the SMs of both GPUs instead of owning one each.
+      //
+      // gemma is ~7.5 GB resident at 65536 x 4 against a 16,380 MiB card, so it
+      // fits GPU0 with ~8.8 GB to spare for the STT models that share it.
+      //
+      // ⚠️ THIS IS HALF A LAYOUT ON ITS OWN. granite-guardian is pinned to GPU 1
+      // in the same commit; leaving it on `evenly` would spread it back onto
+      // GPU 0 and re-create exactly the contention this removes. The two rows
+      // are one decision — change them together or not at all.
+      //
+      // The CARDS ARE IDENTICAL (both RTX 2000 Ada, 16,380 MiB). GPU 0 is not
+      // "the bigger card"; it is simply the one this model owns. What buys the
+      // performance is DEDICATION, not capacity.
       serving: {
         contextLength: LM_STUDIO_CONTEXT_LENGTH,
         parallel: LM_STUDIO_PARALLEL,
+        gpuSplit: { strategy: 'priorityOrder', priority: [0], disabledGpus: [1] },
       },
     },
   },
