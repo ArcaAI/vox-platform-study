@@ -11,6 +11,7 @@ import { useConsultation, visitTypeOf } from '../api';
 import type { Consultation } from '../api';
 import { ConsultationStatusBadge } from './consultation-status-badge';
 import { ConsultationWorkflowMeta } from './consultation-workflow-meta';
+import { ConsultationTelemetrySection } from './telemetry/consultation-telemetry-section';
 
 const EM_DASH = '\u2014';
 
@@ -142,6 +143,7 @@ function DetailBody({ id }: { id: string }) {
         ) : null}
       </dl>
       <RelationsSummary consultation={consultation} />
+      <ConsultationTelemetrySection consultationId={id} />
       <p className="text-muted-foreground border-t pt-3 text-xs">Read-only {'\u2014'} no mutations; a plain DOCTOR never passes this guard.</p>
     </div>
   );
