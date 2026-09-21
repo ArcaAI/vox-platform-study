@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — owner said go 2026-09-22. Step 0 (schema + migration + domain surface + frozen contracts) landed as `c1e879dde`; seven lanes running in parallel worktrees. |
+| **Status** | Review — all eight lanes merged to `dev-2.2` and gated green (§6). **Runtime browser proof still outstanding** (needs an authenticated console session); the e2e authz sweep is blocked by an environment conflict, not by this change. |
 | **Type** | feature + bugfix |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-22 |
@@ -319,11 +319,13 @@ job list showing both kinds. Runtime verification is mandatory — compiling is 
 Choosing (c) opens three things the recommendation of (b) deliberately avoided. None is a blocker;
 each is named here so it is a decision and not a surprise.
 
-1. **The usage-ledger operation vocabulary is closed and priced.** Adding a value (e.g.
-   `generate.live`) means `packages/applications/src/services/usageLedger/vocabulary.ts`, the price
-   book and the hourly/daily rollups all have to accept it. An unpriced operation bills at zero
-   silently, so the price-book row lands in the SAME change, and existing `generate` rows written
-   before the split stay ambiguous — history is not retro-classified.
+1. **The usage-ledger operation vocabulary is closed.** ~~and priced~~ — **CORRECTED 2026-09-22**:
+   `AiPriceBook` has **no `operation` column** (it resolves on plane/capability/provider/model/unit),
+   so a new value needs **no price-book row** and moves no rate. The real coupling is
+   `metering.service.ts:379`, which excludes with `operation: { notIn: … }` — an EXCLUSION list, so a
+   new value keeps counting toward billable `LLM_TOKENS` by default, which is the behaviour we want.
+   Lane G pinned that with `metering/__tests__/live-generate-billable.task999.test.ts`. Existing
+   `generate` rows written before the split stay ambiguous — history is not retro-classified.
 2. **NER duration has no clean home.** `NamedEntity.processingTimeMs` is stamped per entity and
    double-counts on a `SUM`. Plan: record the measured per-call duration once on the `ner.extract`
    ledger row (the same way other paths carry timing) and stop relying on the per-entity field,
@@ -355,9 +357,82 @@ each is named here so it is a decision and not a surprise.
 
 ## 6. Implementation Summary
 
-_Not started — awaiting §4._
+Eight lanes, all merged to `dev-2.2`. Lanes ran in isolated worktrees and — per the owner's
+directive — ran **no** gates; every figure below was produced by the orchestrator in the primary
+checkout after merge.
 
-## 7. Change History
+### 6.1 What landed
+
+| Lane | Merged | Substance |
+|---|---|---|
+| Step 0 | `c1e879dde`, `da47166a1` | 6 columns, 4 indexes, 2 migrations; entity + factory surfacing; frozen contracts C-1/C-2 |
+| A | `c62997d98` | `sort` allow-list (`updatedAt`/`createdAt`/`appointmentDate`/`status`, bad value ⇒ 400 before the repository); console rewired to the shared grid URL state; `Updated` column; default `updatedAt desc` |
+| D | `0837d6593` | Terminal-close in the job stream panel; the shared hook's retry budget now resets only on a DELIVERED event |
+| B | `a13da7273` | `GET admin/consultations/:id/telemetry` — 8 blocks, each `available:true/false` with `NOT_RECORDED`/`NO_ACTIVITY`/`PRUNED` |
+| E | `18c6e0bd0` | Realtime sessions persisted as `jobType=STREAMING` rows; `servedBy`; word/char counts; real model on STT usage rows; `jobType` list filter |
+| G | `844bf864c` | `generate.live` (16th operation) + `sessionId` on live flushes; NER duration on the `ner.extract` ledger row; live-doc NER entities persisted with a dedupe rule; `ContextItem` counters at write time |
+| C | `3ca3e618a` | The telemetry pane — 8 blocks, skeletons, and an explicit reason instead of a fabricated zero |
+| F | (merged) | Kind column + filter; `DetailDrawer` with timing, agent/model/provider, fallback chain, output size |
+| H | `78b241b8d` | Four more streams that never closed on their terminal frame |
+
+### 6.2 Defects found that were NOT in the original scope
+
+1. **The stale-job reaper would have failed live consultations.** Streaming rows are written twice,
+   so they have no heartbeat; the cross-tenant `PROCESSING AND updatedAt < cutoff` sweep would have
+   FAILED the row of every consultation longer than `staleProcessingMinutes` (default 20), mid-session.
+   Caught by lane E; the filter is stated as "not STREAMING" and the case is now pinned by a test.
+2. **The transcription detail would have mislabelled every primary-served job.** `ResolvedAsrSpec`
+   *is* the primary and is never an element of `fallback.chain`, so `chainIndex: -1` means two
+   different things. Branching on the index alone rendered "could not be matched" on the common case
+   and never showed the primary at all. A test fixture that duplicated the primary as `chain[0]` —
+   a shape the gateway cannot produce — had hidden it.
+3. **Four more SSE consumers never closed on their terminal frame** (live-summary document sections
+   and pre-summary, workflow-run live events, the sandbox run panel), each a reconnect storm of the
+   same class as the reported bug.
+4. **`Consultation.updatedAt` had no index** and became the default sort.
+
+### 6.3 Gate evidence (orchestrator, primary checkout, 2026-09-22)
+
+```
+builds        domains / applications / api           OK (turbo 12/12)
+applications  14807 passed | 10 skipped              1 file fails: see 6.4
+api            4856 passed |  5 skipped
+admin-console  3718 passed
+typecheck     domains, applications, api, admin-console   PASS
+lint          domains, applications, api, admin-console   PASS
+artifacts     route-manifest (759 routes) · openapi (530 paths) · portal · vox-node admin (52 files)
+drift gates   api:openapi:check · api:portal:check · vox-node gen:admin:check   PASS
+generators    gen:model:check · gen:entity:check · gen:factory:check            PASS
+```
+
+`GET /api/v1/admin/consultations/{id}/telemetry` appears in the regenerated manifest as
+`manage:Consultation`, `apiKeyForbidden: true`, `svc:admin:consultation-admin:manage`.
+
+### 6.4 Not verified, and why — read before calling this done
+
+- **`membership-bounded-sync.integration.test.ts` fails at the hook.** Environmental and
+  pre-existing: `alaas-postgres` occupies port **5433**, so HOPE's test Postgres is not running and
+  the suite authenticates against an unrelated database. Both of its tests are SKIPPED; no TASK-999
+  code is involved.
+- **The e2e authorization matrix (`task-776-route-authz-matrix.spec.ts`) has NOT been run** — same
+  port conflict. `05-nestjs-api.md` makes it a definition-of-done item for a new route, so it is
+  owed before this ticket closes.
+- **No runtime browser proof yet.** It needs an authenticated console session, and the orchestrator
+  does not enter credentials into a login form. The API (8868) and console (5176) are up and the
+  browser pane is parked on the sign-in screen.
+
+## 7. Follow-ups (not in this ticket)
+
+- A session whose gateway dies before teardown strands a `PROCESSING` STREAMING row forever; closing
+  those needs a reaper that can read Redis session state (lane E).
+- `ContextItem` counters are not stamped by five writers outside lane G's boundary, incl. the
+  TRANSCRIPT writes in `sttInternal.service.ts` (which already compute a word count and discard it).
+- The telemetry endpoint's `TranscriptionJob` read still decrypts `encryptedResultText` through Vault
+  as a side effect; a projected finder omitting the two `encrypted*` columns would close it (lane B).
+- `useRunLiveEvents` and the sandbox panel still depend on a REST refetch to flip `enabled`; lane H
+  made them close eagerly, but the belt-and-braces gating remains.
+
+## 8. Change History
 
 | Date | Change |
 |---|---|
@@ -366,4 +441,6 @@ _Not started — awaiting §4._
 | 2026-09-22 | Owner said go, and asked for maximum parallelism with NO gates run by lanes — the orchestrator gates at the end of each wave and dispatches fix agents. |
 | 2026-09-22 | **Correction to §4.2.1**: `AiPriceBook` has no `operation` column (it keys on capability/provider/model/unit), so a new operation value needs NO price-book row. The real coupling is `metering.service.ts:379`, which excludes with `operation: { notIn: ... }` — a new value therefore keeps counting toward billable LLM_TOKENS by default, which is the wanted behaviour. Lane G pins it with a test. |
 | 2026-09-22 | Step 0 landed (`c1e879dde`): 4 columns + 2 counters + 3 indexes, migration `20260921192153_task_999_consultation_and_job_telemetry` authored on a throwaway shadow DB with the ledger replayed (`migrate diff` reports an empty migration), dev DB pushed, shadow dropped. `gen:model:check` / `gen:entity:check` / `gen:factory:check` all green. Wire contracts C-1 and C-2 frozen in §3.1. |
+| 2026-09-22 | Lane H added (4 more SSE consumers with the same defect, found by lane D's audit). All 8 lanes merged; wave-2 gate run: 6 failures out of 14,816 fixed by the orchestrator (reaper kind filter + its missing STREAMING test, frozen-list count 15→16, telemetry fixture that asserted encryption while passing no secrets service). Five artifacts regenerated, all drift gates green. |
+| 2026-09-22 | Cross-lane contract drift reconciled: `servedBy.chainIndex` is -1 for the PRIMARY too, so the drawer must branch on `source` first; `TelemetrySource` widened with `'consultation'`. |
 | 2026-09-22 | Seven lanes dispatched in parallel worktrees: A (sort), D (SSE fix), B (telemetry endpoint), E (streaming job rows), G (gap closures), C (telemetry pane), F (job list + detail). Boundaries are file-disjoint by construction — C writes a NEW `api/telemetry.ts` so it cannot collide with A, and F is barred from D's stream-panel files. |
