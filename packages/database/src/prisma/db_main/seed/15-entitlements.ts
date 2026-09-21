@@ -211,6 +211,7 @@ interface PlanEntitlementSeed {
   // Does this plan include the harness AGENTIC LOOP ? `false` on
   // STARTER (premium capability), `true` on TRIAL/PRO/ENTERPRISE. Kept in sync by
   // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
+  featureAgenticLoop: boolean;
   // TASK-998 OD-4 — may a tenant on this plan hold its OWN per-provider cloud-ASR
   // capacity allocation (`TenantEntitlement.sttProviderQuotas`)? The "Pro plan and
   // above" half of the owner decision: `false` on STARTER, `true` on
