@@ -182,7 +182,11 @@ export class SttJobReaperService extends BaseService implements OnModuleInit, On
     // that stranded STREAMING rows still occupy the sweep's page; closing THOSE
     // (a session whose gateway died before teardown) needs a reaper that knows
     // about Redis session state, which is not this one.
-    const eligible = (await this.jobRepository.findStaleProcessingJobs(cutoff)).filter((job) => job.jobType === TranscriptionJobType.BATCH);
+    // Stated as "not STREAMING" rather than "is BATCH": the invariant this protects is
+    // that a LIVE session's row is never failed mid-consultation. An allow-list would also
+    // silently stop reaping any future kind, and a reaper that quietly stops reaping is a
+    // pile of stranded rows nobody sees.
+    const eligible = (await this.jobRepository.findStaleProcessingJobs(cutoff)).filter((job) => job.jobType !== TranscriptionJobType.STREAMING);
 
     let reaped = 0;
     let failed = 0;

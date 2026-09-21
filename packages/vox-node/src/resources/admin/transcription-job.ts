@@ -31,9 +31,13 @@ export class AdminTranscriptionJobResource extends AdminResource {
   /**
    * List ALL transcription jobs in the tenant (paginated)
    *
+   * Tenant-wide list of transcription jobs. Since TASK-999 this includes realtime sessions (`jobType = STREAMING`) alongside batch jobs; pass `jobType` to restrict to one kind, omit it for both.
+   *
    * `GET /api/v1/admin/audio/transcription-jobs` — `AdminTranscriptionJobController.list`.
    */
-  list(options: AdminRequestOptions & { query?: { limit?: number; page?: number } } = {}): Promise<PaginatedTranscriptionJobResponse> {
+  list(
+    options: AdminRequestOptions & { query?: { jobType?: 'BATCH' | 'STREAMING'; limit?: number; page?: number } } = {},
+  ): Promise<PaginatedTranscriptionJobResponse> {
     return this.request<PaginatedTranscriptionJobResponse>({
       method: 'GET',
       path: 'admin/audio/transcription-jobs',

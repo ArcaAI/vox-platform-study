@@ -11,7 +11,7 @@
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions } from './admin-resource';
-import type { ConsultationAggregateResponse, ConsultationResponse, PaginatedResponse } from './schemas';
+import type { ConsultationAggregateResponse, ConsultationResponse, ConsultationTelemetryResponse, PaginatedResponse } from './schemas';
 
 /**
  * `hope.admin.consultationAdmin` — the `svc:admin:consultation-admin:manage` administration area.
@@ -20,8 +20,8 @@ import type { ConsultationAggregateResponse, ConsultationResponse, PaginatedResp
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controller AdminConsultationController
- * (3 routes). Several controllers sharing one scope share one
+ * Backed by controllers AdminConsultationController, ConsultationTelemetryController
+ * (4 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -41,6 +41,7 @@ export class AdminConsultationAdminResource extends AdminResource {
         limit?: number;
         page?: number;
         patientId?: string;
+        sort?: string;
         status?:
           | 'OPEN'
           | 'RECORDING'
@@ -75,6 +76,22 @@ export class AdminConsultationAdminResource extends AdminResource {
     return this.request<ConsultationResponse>({
       method: 'GET',
       path: `admin/consultations/${encodePathSegment(String(id))}`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Per-consultation AI telemetry
+   *
+   * Session span, case-note counts, transcription, pre/partial/final summary, NER and guardrail activity for one consultation. Every block is independently resolved and says WHY it is empty — `NOT_RECORDED` (the platform does not capture it), `NO_ACTIVITY` (captured, none here) or `PRUNED` (retention removed it) — so the pane never renders a fabricated zero. Read-only; nothing is cached.
+   *
+   * `GET /api/v1/admin/consultations/{id}/telemetry` — `ConsultationTelemetryController.getTelemetry`.
+   */
+  getTelemetry(id: string, options: AdminRequestOptions = {}): Promise<ConsultationTelemetryResponse> {
+    return this.request<ConsultationTelemetryResponse>({
+      method: 'GET',
+      path: `admin/consultations/${encodePathSegment(String(id))}/telemetry`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

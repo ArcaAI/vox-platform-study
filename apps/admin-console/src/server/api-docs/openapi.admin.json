@@ -4859,6 +4859,94 @@
         ],
         "type": "object"
       },
+      "ConsultationTelemetryResponse": {
+        "properties": {
+          "caseNotes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryBlock"
+              }
+            ],
+            "description": "Case-note count + write-time length counters. Source `context-item`."
+          },
+          "consultationId": {
+            "type": "string"
+          },
+          "finalSummary": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryBlock"
+              }
+            ],
+            "description": "The final summary. Source `summary-meta`."
+          },
+          "generatedAt": {
+            "description": "When this payload was computed (ISO-8601). Nothing here is cached.",
+            "type": "string"
+          },
+          "guardrail": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryBlock"
+              }
+            ],
+            "description": "Guardrail validation calls. Source `usage-ledger`."
+          },
+          "ner": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryBlock"
+              }
+            ],
+            "description": "Entities + extraction calls. Source `named-entity`."
+          },
+          "partialSummary": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryBlock"
+              }
+            ],
+            "description": "Live-document flush calls. Source `agent-trajectory` (nightly-pruned)."
+          },
+          "preSummary": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryBlock"
+              }
+            ],
+            "description": "The pre-summary pass. Source `summary-meta`."
+          },
+          "session": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryBlock"
+              }
+            ],
+            "description": "Session span. Source `consultation` — see TELEMETRY_SOURCES."
+          },
+          "transcription": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryBlock"
+              }
+            ],
+            "description": "Transcription duration/length/model. Source `transcription-job` or `audio-recording`."
+          }
+        },
+        "required": [
+          "consultationId",
+          "generatedAt",
+          "session",
+          "caseNotes",
+          "transcription",
+          "preSummary",
+          "partialSummary",
+          "finalSummary",
+          "ner",
+          "guardrail"
+        ],
+        "type": "object"
+      },
       "ConsultationTimelineResponse": {
         "properties": {
           "consultationId": {
@@ -15101,6 +15189,10 @@
             "description": "May this plan's tenants consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when they hold no key of their own? ENFORCED — it decides platform SPEND. false on every plan — the grant is issued per tenant via the tenant-entitlement override.",
             "type": "boolean"
           },
+          "featureProviderQuotaAllocation": {
+            "description": "TASK-998 OD-4 — may a tenant on this plan hold its OWN per-provider cloud-ASR capacity allocation (\"Pro plan and above\")? A BOUND on the write path only: a plan without it resolves the PLATFORM DEFAULT, never zero. false on STARTER, true on TRIAL/PRO/ENTERPRISE.",
+            "type": "boolean"
+          },
           "id": {
             "description": "Row ID",
             "type": "string"
@@ -15223,6 +15315,17 @@
             "nullable": true,
             "type": "number"
           },
+          "sttProviderQuotas": {
+            "description": "TASK-998 OD-4 — the PLATFORM DEFAULT for this plan. Per-provider cloud-ASR capacity, keyed by provider id (`azure-speech` | `azure-foundry` | `sarvam` | `openai` — exactly `CLOUD_BYO_PROVIDERS.stt`). Each entry may carry `requestsPerMinute` (the vendor's sync-REST cap, enforced when a BATCH transcription job is created) and/or `maxConcurrentStreams` (the vendor's concurrent-WebSocket cap, enforced when a streaming session is opened). An absent provider, an absent dimension or a null value means NO OPINION at this tier; unresolved at both tiers = unlimited (not enforced). null = this plan states no default for any provider.",
+            "example": {
+              "sarvam": {
+                "maxConcurrentStreams": 20,
+                "requestsPerMinute": 100
+              }
+            },
+            "nullable": true,
+            "type": "object"
+          },
           "version": {
             "description": "OCC version token",
             "type": "number"
@@ -15231,6 +15334,7 @@
         "required": [
           "id",
           "plan",
+          "featureProviderQuotaAllocation",
           "featurePlatformDefaultCredential",
           "modelTier",
           "rateLimitTier",
@@ -19058,6 +19162,47 @@
         ],
         "type": "object"
       },
+      "ServedByResponse": {
+        "properties": {
+          "agentSlug": {
+            "description": "Agent slug of the entry that served",
+            "nullable": true,
+            "type": "string"
+          },
+          "chainIndex": {
+            "description": "Index into `resolvedSpec.fallback.chain`. `-1` means the served entry is not a member of that array — read `source` for why: `primary` (the resolved spec itself served) or `fallback` (a fallback served but could not be identified).",
+            "type": "number"
+          },
+          "engine": {
+            "description": "Usage-ledger engine id reported by the worker/runtime",
+            "nullable": true,
+            "type": "string"
+          },
+          "modelSlug": {
+            "description": "ASR model slug of the entry that served",
+            "nullable": true,
+            "type": "string"
+          },
+          "provider": {
+            "description": "AiModel.provider of the entry that served; null for a self-hosted engine",
+            "nullable": true,
+            "type": "string"
+          },
+          "source": {
+            "description": "Whether the primary spec or a fallback entry served",
+            "enum": [
+              "primary",
+              "fallback"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "chainIndex",
+          "source"
+        ],
+        "type": "object"
+      },
       "ServiceAccountResponse": {
         "properties": {
           "allowedIps": {
@@ -20705,6 +20850,47 @@
         ],
         "type": "object"
       },
+      "TelemetryBlock": {
+        "properties": {
+          "available": {
+            "description": "True when `data` is present. False when `reason` explains its absence.",
+            "type": "boolean"
+          },
+          "data": {
+            "description": "Present iff `available` is true.",
+            "type": "object"
+          },
+          "reason": {
+            "description": "Present iff `available` is false.",
+            "enum": [
+              "NOT_RECORDED",
+              "NO_ACTIVITY",
+              "PRUNED"
+            ],
+            "type": "string"
+          },
+          "source": {
+            "description": "Which table answered. Null only on an unavailable block whose source could not be attributed.",
+            "enum": [
+              "summary-meta",
+              "usage-ledger",
+              "agent-trajectory",
+              "named-entity",
+              "audio-recording",
+              "context-item",
+              "transcription-job",
+              "consultation"
+            ],
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "source"
+        ],
+        "type": "object"
+      },
       "TenantAllowedOriginResponse": {
         "properties": {
           "createdAt": {
@@ -21027,6 +21213,17 @@
             "description": "Override storage quota bytes; null = inherit",
             "nullable": true,
             "type": "number"
+          },
+          "sttProviderQuotas": {
+            "description": "TASK-998 OD-4 — this tenant's OWN per-provider cloud-ASR capacity allocation. Per-provider cloud-ASR capacity, keyed by provider id (`azure-speech` | `azure-foundry` | `sarvam` | `openai` — exactly `CLOUD_BYO_PROVIDERS.stt`). Each entry may carry `requestsPerMinute` (the vendor's sync-REST cap, enforced when a BATCH transcription job is created) and/or `maxConcurrentStreams` (the vendor's concurrent-WebSocket cap, enforced when a streaming session is opened). An absent provider, an absent dimension or a null value means NO OPINION at this tier; unresolved at both tiers = unlimited (not enforced). null = inherit the platform default for every provider.",
+            "example": {
+              "sarvam": {
+                "maxConcurrentStreams": 20,
+                "requestsPerMinute": 100
+              }
+            },
+            "nullable": true,
+            "type": "object"
           },
           "tenantId": {
             "description": "Tenant ID",
@@ -21891,6 +22088,11 @@
             "description": "Created by user ID",
             "type": "string"
           },
+          "durationMs": {
+            "description": "TASK-999 — `completedAt - startedAt` in milliseconds; `null` while the job is still running or never started.",
+            "nullable": true,
+            "type": "number"
+          },
           "errorCode": {
             "description": "Error code",
             "type": "string"
@@ -21952,6 +22154,11 @@
             "nullable": true,
             "type": "object"
           },
+          "resultCharCount": {
+            "description": "TASK-999 — characters in the produced transcript. `null` = never measured.",
+            "nullable": true,
+            "type": "number"
+          },
           "resultMetadata": {
             "description": "Result metadata",
             "type": "object"
@@ -21960,9 +22167,24 @@
             "description": "Transcription result text",
             "type": "string"
           },
+          "resultWordCount": {
+            "description": "TASK-999 — words in the produced transcript, measured ONCE by the writer at completion (the stored text is ciphertext). `null` = never measured; `0` is a real empty transcript.",
+            "nullable": true,
+            "type": "number"
+          },
           "retryCount": {
             "description": "Retry count",
             "type": "number"
+          },
+          "servedBy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServedByResponse"
+              }
+            ],
+            "description": "TASK-999 — which entry of `resolvedSpec.fallback.chain` ACTUALLY served. `null` = not recorded (every pre-TASK-999 row, and any job that never reached a worker).",
+            "nullable": true,
+            "type": "object"
           },
           "startedAt": {
             "description": "Started at timestamp",
@@ -21979,6 +22201,11 @@
               "CANCELLED",
               "DEAD"
             ],
+            "type": "string"
+          },
+          "streamSessionId": {
+            "description": "TASK-999 — the STT session (`stt:session:{id}`) this row mirrors. Set on `STREAMING` rows only; `null` for every `BATCH` row.",
+            "nullable": true,
             "type": "string"
           },
           "tenantId": {
@@ -23443,6 +23670,10 @@
             "description": "Grant this plan's tenants the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential. Platform SPEND, not a display flag — a plan-level grant funds cloud calls for every tenant on the tier. Prefer the per-tenant override.",
             "type": "boolean"
           },
+          "featureProviderQuotaAllocation": {
+            "description": "TASK-998 OD-4 — may a tenant on this plan hold its OWN per-provider cloud-ASR capacity allocation (\"Pro plan and above\")? Checked on the tenant-override WRITE only; it never changes what a tenant RESOLVES, so turning it off returns those tenants to the platform default rather than to zero.",
+            "type": "boolean"
+          },
           "maxAiProviderConnections": {
             "description": "Max AI provider connections a tenant on this plan may hold (per tenant, all services); null = unlimited",
             "nullable": true,
@@ -23552,6 +23783,17 @@
             "description": "Storage quota in bytes; null = unlimited",
             "nullable": true,
             "type": "number"
+          },
+          "sttProviderQuotas": {
+            "description": "TASK-998 OD-4 — set the PLATFORM DEFAULT cloud-ASR capacity for this plan. Per-provider cloud-ASR capacity, keyed by provider id (`azure-speech` | `azure-foundry` | `sarvam` | `openai` — exactly `CLOUD_BYO_PROVIDERS.stt`). Each entry may carry `requestsPerMinute` (the vendor's sync-REST cap, enforced when a BATCH transcription job is created) and/or `maxConcurrentStreams` (the vendor's concurrent-WebSocket cap, enforced when a streaming session is opened). An absent provider, an absent dimension or a null value means NO OPINION at this tier; unresolved at both tiers = unlimited (not enforced). Send null to clear every platform default (back to unlimited). An unknown provider id or a non-integer dimension is a 400.",
+            "example": {
+              "sarvam": {
+                "maxConcurrentStreams": 20,
+                "requestsPerMinute": 100
+              }
+            },
+            "nullable": true,
+            "type": "object"
           }
         },
         "required": [
@@ -24690,6 +24932,17 @@
             "description": "Override storage quota bytes; null = inherit",
             "nullable": true,
             "type": "number"
+          },
+          "sttProviderQuotas": {
+            "description": "TASK-998 OD-4 — set this tenant's OWN per-provider cloud-ASR capacity allocation. Per-provider cloud-ASR capacity, keyed by provider id (`azure-speech` | `azure-foundry` | `sarvam` | `openai` — exactly `CLOUD_BYO_PROVIDERS.stt`). Each entry may carry `requestsPerMinute` (the vendor's sync-REST cap, enforced when a BATCH transcription job is created) and/or `maxConcurrentStreams` (the vendor's concurrent-WebSocket cap, enforced when a streaming session is opened). An absent provider, an absent dimension or a null value means NO OPINION at this tier; unresolved at both tiers = unlimited (not enforced). Resolution is per DIMENSION, so an entry that sets only maxConcurrentStreams keeps inheriting the platform requestsPerMinute. Send null (or {}) to clear the allocation back to the platform default. Requires a plan carrying featureProviderQuotaAllocation (\"Pro and above\") — otherwise 403; an unknown provider id or a non-integer dimension is a 400. Clearing is always allowed.",
+            "example": {
+              "sarvam": {
+                "maxConcurrentStreams": 20,
+                "requestsPerMinute": 100
+              }
+            },
+            "nullable": true,
+            "type": "object"
           }
         },
         "type": "object"
@@ -33428,23 +33681,43 @@
     },
     "/api/v1/admin/audio/transcription-jobs": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:transcription-job:read`).\n\n**Abilities** — `read:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Tenant-wide list of transcription jobs. Since TASK-999 this includes realtime sessions (`jobType = STREAMING`) alongside batch jobs; pass `jobType` to restrict to one kind, omit it for both.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:transcription-job:read`).\n\n**Abilities** — `read:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AdminTranscriptionJobController_list",
         "parameters": [
           {
+            "description": "Page number (1-based)",
             "in": "query",
             "name": "page",
             "required": false,
             "schema": {
+              "default": 1,
+              "minimum": 1,
               "type": "number"
             }
           },
           {
+            "description": "Rows per page",
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
               "type": "number"
+            }
+          },
+          {
+            "description": "TASK-999 — restrict to one kind of job. Omit for BOTH kinds (batch jobs and realtime sessions).",
+            "in": "query",
+            "name": "jobType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "BATCH",
+                "STREAMING"
+              ],
+              "type": "string"
             }
           }
         ],
@@ -36482,6 +36755,16 @@
         "operationId": "AdminConsultationController_list",
         "parameters": [
           {
+            "description": "Sort order, \"field:asc\" or \"field:desc\". Allowed fields: updatedAt, createdAt, appointmentDate, status. Defaults to updatedAt:desc.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "example": "updatedAt:desc",
+              "type": "string"
+            }
+          },
+          {
             "description": "Filter by lifecycle status (e.g. RECORDING for in-progress live sessions).",
             "in": "query",
             "name": "status",
@@ -36715,6 +36998,67 @@
           }
         ],
         "summary": "Retrieving a single ConsultationResponse by id",
+        "tags": [
+          "admin-consultations"
+        ],
+        "x-hope-abilities": [
+          "manage:Consultation"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:consultation-admin:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/consultations/{id}/telemetry": {
+      "get": {
+        "description": "Session span, case-note counts, transcription, pre/partial/final summary, NER and guardrail activity for one consultation. Every block is independently resolved and says WHY it is empty — `NOT_RECORDED` (the platform does not capture it), `NO_ACTIVITY` (captured, none here) or `PRUNED` (retention removed it) — so the pane never renders a fabricated zero. Read-only; nothing is cached.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:consultation-admin:manage`).\n\n**Abilities** — `manage:Consultation`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ConsultationTelemetryController_getTelemetry",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsultationTelemetryResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Caller lacks `manage:Consultation`, or presented an API key."
+          },
+          "404": {
+            "description": "Consultation not found, or not owned by the caller tenant (404-over-403)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Per-consultation AI telemetry",
         "tags": [
           "admin-consultations"
         ],

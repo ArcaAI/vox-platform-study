@@ -66,7 +66,14 @@ function buildService() {
     findById: vi.fn(),
     update: vi.fn(async (_id: string, e: unknown) => e),
     updateWithVersion: vi.fn(async (_id: string, e: unknown) => e),
-    encryptFieldsIntoEntity: vi.fn(async () => undefined),
+    // Records what the entity carried AT the moment of encryption, so the test can
+    // assert the counts were taken from the plaintext rather than after the fact.
+    countsAtEncryptTime: { word: undefined as number | null | undefined, char: undefined as number | null | undefined },
+    encryptFieldsIntoEntity: vi.fn(async (entity: { resultWordCount?: number | null; resultCharCount?: number | null }) => {
+      jobRepository.countsAtEncryptTime.word = entity.resultWordCount;
+      jobRepository.countsAtEncryptTime.char = entity.resultCharCount;
+      return undefined;
+    }),
   };
   const eventEmitter = { emit: vi.fn() };
   const clsService = { get: vi.fn((k: string) => (k === 'tenantId' ? 'tenant-1' : k === 'user' ? { id: 'user-1' } : null)) };
@@ -82,7 +89,7 @@ function buildService() {
     {} as never,
     eventEmitter as never,
     clsService as never,
-    undefined,
+    { encrypt: vi.fn(async (v: unknown) => v) } as never,
     undefined,
     undefined,
     unitOfWork as never,
@@ -114,8 +121,12 @@ describe('TASK-999 — batch completion telemetry', () => {
 
     expect(job.resultWordCount).toBe(6);
     expect(job.resultCharCount).toBe('the patient reports intermittent chest pain'.length);
-    // Measured BEFORE the ciphertext write, not after.
+    // Measured BEFORE the ciphertext write, not after: once the text is ciphertext
+    // nothing downstream can count it without a Vault decrypt, which is the whole
+    // reason these columns exist.
     expect(jobRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
+    expect(jobRepository.countsAtEncryptTime.word).toBe(6);
+    expect(jobRepository.countsAtEncryptTime.char).toBe('the patient reports intermittent chest pain'.length);
   });
 
   it('records 0 for a genuinely empty transcript — 0 and "never measured" are different facts', async () => {

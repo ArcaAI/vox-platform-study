@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SysEventType, TranscriptionJobStatus } from '@arcaai/domains';
+import { TranscriptionJobType, SysEventType, TranscriptionJobStatus } from '@arcaai/domains';
 
 import { STT_BATCH_DEFAULTS, STT_BATCH_REAPER_CRON_KEY, STT_BATCH_STALE_PROCESSING_MINUTES_KEY } from '../../../../settings-registry/descriptors/stt-gateway.descriptors';
 import { SttJobReaperService, STT_JOB_REAPER_ERROR_CODE } from '../stt-job-reaper.service';
@@ -14,12 +14,13 @@ import { SttJobReaperService, STT_JOB_REAPER_ERROR_CODE } from '../stt-job-reape
  * such a job.
  */
 
-function makeJob(overrides: Partial<{ id: string; tenantId: string; status: string; workerId: string | null; createdBy: string | null }> = {}) {
+function makeJob(overrides: Partial<{ id: string; tenantId: string; status: string; workerId: string | null; createdBy: string | null; jobType: TranscriptionJobType }> = {}) {
   let _status = overrides.status ?? TranscriptionJobStatus.PROCESSING;
   const _changes: Record<string, unknown> = {};
   const entity = {
     id: overrides.id ?? 'job-1',
     tenantId: overrides.tenantId ?? 'tenant-1',
+    jobType: overrides.jobType ?? TranscriptionJobType.BATCH,
     createdBy: 'createdBy' in overrides ? overrides.createdBy : 'user-1',
     workerId: 'workerId' in overrides ? overrides.workerId : 'host-a-59400',
     version: 1,
@@ -113,6 +114,21 @@ describe('SttJobReaperService', () => {
       const windowMs = STT_BATCH_DEFAULTS[STT_BATCH_STALE_PROCESSING_MINUTES_KEY] * 60_000;
       expect(cutoff.getTime()).toBeLessThanOrEqual(before - windowMs + 1_000);
       expect(cutoff.getTime()).toBeGreaterThan(before - windowMs - 60_000);
+    });
+
+    // RED before TASK-999: STREAMING rows are written exactly twice (open, teardown), so
+    // they have no heartbeat. The sweep's `PROCESSING AND updatedAt < cutoff` would have
+    // FAILED the job row of every consultation lasting longer than staleProcessingMinutes,
+    // mid-session. Protecting live sessions is the entire reason this filter exists.
+    it('never reaps a STREAMING row — a live consultation has no heartbeat', async () => {
+      const live = makeJob({ id: 'job-live', jobType: TranscriptionJobType.STREAMING });
+      repository.findStaleProcessingJobs.mockResolvedValue([live]);
+
+      const result = await service.sweepOnce();
+
+      expect(live.status).toBe(TranscriptionJobStatus.PROCESSING);
+      expect(result.reaped).toBe(0);
+      expect(repository.update).not.toHaveBeenCalled();
     });
 
     it('fails a stranded job with a cause an operator can act on', async () => {

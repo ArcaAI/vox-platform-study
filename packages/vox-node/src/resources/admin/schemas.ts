@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 464 component schemas the generated surface transitively
+ * Only the 467 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -1239,6 +1239,28 @@ export interface ConsultationResponse {
   updatedAt: string;
   /** Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`"<version>"`) required by the state-machine transition routes (POST :id/prime|close|reopen — ). `ETagInterceptor` also mirrors this value onto the response `ETag` header. */
   version?: number;
+}
+
+export interface ConsultationTelemetryResponse {
+  /** Case-note count + write-time length counters. Source `context-item`. */
+  caseNotes: TelemetryBlock;
+  consultationId: string;
+  /** The final summary. Source `summary-meta`. */
+  finalSummary: TelemetryBlock;
+  /** When this payload was computed (ISO-8601). Nothing here is cached. */
+  generatedAt: string;
+  /** Guardrail validation calls. Source `usage-ledger`. */
+  guardrail: TelemetryBlock;
+  /** Entities + extraction calls. Source `named-entity`. */
+  ner: TelemetryBlock;
+  /** Live-document flush calls. Source `agent-trajectory` (nightly-pruned). */
+  partialSummary: TelemetryBlock;
+  /** The pre-summary pass. Source `summary-meta`. */
+  preSummary: TelemetryBlock;
+  /** Session span. Source `consultation` — see TELEMETRY_SOURCES. */
+  session: TelemetryBlock;
+  /** Transcription duration/length/model. Source `transcription-job` or `audio-recording`. */
+  transcription: TelemetryBlock;
 }
 
 export interface ConsumptionConsultations {
@@ -4130,6 +4152,8 @@ export interface PipelineVersionResponse {
 export interface PlanEntitlementResponse {
   /** May this plan's tenants consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when they hold no key of their own? ENFORCED — it decides platform SPEND. false on every plan — the grant is issued per tenant via the tenant-entitlement override. */
   featurePlatformDefaultCredential: boolean;
+  /** TASK-998 OD-4 — may a tenant on this plan hold its OWN per-provider cloud-ASR capacity allocation ("Pro plan and above")? A BOUND on the write path only: a plan without it resolves the PLATFORM DEFAULT, never zero. false on STARTER, true on TRIAL/PRO/ENTERPRISE. */
+  featureProviderQuotaAllocation: boolean;
   /** Row ID */
   id: string;
   /** Max AI provider connections a tenant on this plan may hold (per tenant, all services); null = unlimited */
@@ -4178,6 +4202,8 @@ export interface PlanEntitlementResponse {
   rateLimitWindowMs?: number | null;
   /** Storage quota in bytes; null = unlimited */
   storageQuotaBytes?: number | null;
+  /** TASK-998 OD-4 — the PLATFORM DEFAULT for this plan. Per-provider cloud-ASR capacity, keyed by provider id (`azure-speech` | `azure-foundry` | `sarvam` | `openai` — exactly `CLOUD_BYO_PROVIDERS.stt`). Each entry may carry `requestsPerMinute` (the vendor's sync-REST cap, enforced when a BATCH transcription job is created) and/or `maxConcurrentStreams` (the vendor's concurrent-WebSocket cap, enforced when a streaming session is opened). An absent provider, an absent dimension or a null value means NO OPINION at this tier; unresolved at both tiers = unlimited (not enforced). null = this plan states no default for any provider. */
+  sttProviderQuotas?: Record<string, unknown> | null;
   /** OCC version token */
   version: number;
 }
@@ -5253,6 +5279,21 @@ export interface SensorThresholdsResponse {
   numericDoseThreshold: number;
 }
 
+export interface ServedByResponse {
+  /** Agent slug of the entry that served */
+  agentSlug?: string | null;
+  /** Index into `resolvedSpec.fallback.chain`. `-1` means the served entry is not a member of that array — read `source` for why: `primary` (the resolved spec itself served) or `fallback` (a fallback served but could not be identified). */
+  chainIndex: number;
+  /** Usage-ledger engine id reported by the worker/runtime */
+  engine?: string | null;
+  /** ASR model slug of the entry that served */
+  modelSlug?: string | null;
+  /** AiModel.provider of the entry that served; null for a self-hosted engine */
+  provider?: string | null;
+  /** Whether the primary spec or a fallback entry served */
+  source: 'primary' | 'fallback';
+}
+
 export interface ServiceReleaseResponse {
   /** ISO-8601 */
   buildAt: string;
@@ -5543,6 +5584,26 @@ export interface SyncWorkflowDefinitionRequest {
   versionNumber?: number;
 }
 
+export interface TelemetryBlock {
+  /** True when `data` is present. False when `reason` explains its absence. */
+  available: boolean;
+  /** Present iff `available` is true. */
+  data?: Record<string, unknown>;
+  /** Present iff `available` is false. */
+  reason?: 'NOT_RECORDED' | 'NO_ACTIVITY' | 'PRUNED';
+  /** Which table answered. Null only on an unavailable block whose source could not be attributed. */
+  source:
+    | 'summary-meta'
+    | 'usage-ledger'
+    | 'agent-trajectory'
+    | 'named-entity'
+    | 'audio-recording'
+    | 'context-item'
+    | 'transcription-job'
+    | 'consultation'
+    | null;
+}
+
 export interface TenantAllowedOriginResponse {
   /** Creation timestamp */
   createdAt: string;
@@ -5675,6 +5736,8 @@ export interface TenantEntitlementResponse {
   rateLimitTier?: string | null;
   /** Override storage quota bytes; null = inherit */
   storageQuotaBytes?: number | null;
+  /** TASK-998 OD-4 — this tenant's OWN per-provider cloud-ASR capacity allocation. Per-provider cloud-ASR capacity, keyed by provider id (`azure-speech` | `azure-foundry` | `sarvam` | `openai` — exactly `CLOUD_BYO_PROVIDERS.stt`). Each entry may carry `requestsPerMinute` (the vendor's sync-REST cap, enforced when a BATCH transcription job is created) and/or `maxConcurrentStreams` (the vendor's concurrent-WebSocket cap, enforced when a streaming session is opened). An absent provider, an absent dimension or a null value means NO OPINION at this tier; unresolved at both tiers = unlimited (not enforced). null = inherit the platform default for every provider. */
+  sttProviderQuotas?: Record<string, unknown> | null;
   /** Tenant ID */
   tenantId: string;
   /** OCC version token */
@@ -5946,6 +6009,8 @@ export interface TranscriptionJobResponse {
   createdAt: string;
   /** Created by user ID */
   createdBy?: string;
+  /** TASK-999 — `completedAt - startedAt` in milliseconds; `null` while the job is still running or never started. */
+  durationMs?: number | null;
   /** Error code */
   errorCode?: string;
   /** Error message */
@@ -5970,16 +6035,24 @@ export interface TranscriptionJobResponse {
   reclaimCount: number;
   /** TASK-861 — the ResolvedAsrSpec snapshot the job ran on (never a credential) */
   resolvedSpec?: Record<string, unknown> | null;
+  /** TASK-999 — characters in the produced transcript. `null` = never measured. */
+  resultCharCount?: number | null;
   /** Result metadata */
   resultMetadata?: Record<string, unknown>;
   /** Transcription result text */
   resultText?: string;
+  /** TASK-999 — words in the produced transcript, measured ONCE by the writer at completion (the stored text is ciphertext). `null` = never measured; `0` is a real empty transcript. */
+  resultWordCount?: number | null;
   /** Retry count */
   retryCount: number;
+  /** TASK-999 — which entry of `resolvedSpec.fallback.chain` ACTUALLY served. `null` = not recorded (every pre-TASK-999 row, and any job that never reached a worker). */
+  servedBy?: ServedByResponse;
   /** Started at timestamp */
   startedAt?: string;
   /** Job status */
   status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'DEAD';
+  /** TASK-999 — the STT session (`stt:session:{id}`) this row mirrors. Set on `STREAMING` rows only; `null` for every `BATCH` row. */
+  streamSessionId?: string | null;
   /** Tenant ID */
   tenantId: string;
   /** Updated at timestamp */
@@ -6502,6 +6575,8 @@ export interface UpdatePlanEntitlementRequest {
   featureAgenticLoop?: boolean;
   /** Grant this plan's tenants the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential. Platform SPEND, not a display flag — a plan-level grant funds cloud calls for every tenant on the tier. Prefer the per-tenant override. */
   featurePlatformDefaultCredential?: boolean;
+  /** TASK-998 OD-4 — may a tenant on this plan hold its OWN per-provider cloud-ASR capacity allocation ("Pro plan and above")? Checked on the tenant-override WRITE only; it never changes what a tenant RESOLVES, so turning it off returns those tenants to the platform default rather than to zero. */
+  featureProviderQuotaAllocation?: boolean;
   /** Max AI provider connections a tenant on this plan may hold (per tenant, all services); null = unlimited */
   maxAiProviderConnections?: number | null;
   /** Max API keys; null = unlimited */
@@ -6546,6 +6621,8 @@ export interface UpdatePlanEntitlementRequest {
   rateLimitWindowMs?: number | null;
   /** Storage quota in bytes; null = unlimited */
   storageQuotaBytes?: number | null;
+  /** TASK-998 OD-4 — set the PLATFORM DEFAULT cloud-ASR capacity for this plan. Per-provider cloud-ASR capacity, keyed by provider id (`azure-speech` | `azure-foundry` | `sarvam` | `openai` — exactly `CLOUD_BYO_PROVIDERS.stt`). Each entry may carry `requestsPerMinute` (the vendor's sync-REST cap, enforced when a BATCH transcription job is created) and/or `maxConcurrentStreams` (the vendor's concurrent-WebSocket cap, enforced when a streaming session is opened). An absent provider, an absent dimension or a null value means NO OPINION at this tier; unresolved at both tiers = unlimited (not enforced). Send null to clear every platform default (back to unlimited). An unknown provider id or a non-integer dimension is a 400. */
+  sttProviderQuotas?: Record<string, unknown> | null;
 }
 
 export interface UpdatePolicyDto {
@@ -6933,6 +7010,8 @@ export interface UpsertTenantEntitlementRequest {
   rateLimitTier?: string | null;
   /** Override storage quota bytes; null = inherit */
   storageQuotaBytes?: number | null;
+  /** TASK-998 OD-4 — set this tenant's OWN per-provider cloud-ASR capacity allocation. Per-provider cloud-ASR capacity, keyed by provider id (`azure-speech` | `azure-foundry` | `sarvam` | `openai` — exactly `CLOUD_BYO_PROVIDERS.stt`). Each entry may carry `requestsPerMinute` (the vendor's sync-REST cap, enforced when a BATCH transcription job is created) and/or `maxConcurrentStreams` (the vendor's concurrent-WebSocket cap, enforced when a streaming session is opened). An absent provider, an absent dimension or a null value means NO OPINION at this tier; unresolved at both tiers = unlimited (not enforced). Resolution is per DIMENSION, so an entry that sets only maxConcurrentStreams keeps inheriting the platform requestsPerMinute. Send null (or {}) to clear the allocation back to the platform default. Requires a plan carrying featureProviderQuotaAllocation ("Pro and above") — otherwise 403; an unknown provider id or a non-integer dimension is a 400. Clearing is always allowed. */
+  sttProviderQuotas?: Record<string, unknown> | null;
 }
 
 export interface UpsertTenantFrontendConfigRequest {

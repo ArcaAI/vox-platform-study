@@ -2884,6 +2884,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "ConsultationTelemetryController",
+      "handler": "getTelemetry",
+      "method": "GET",
+      "path": "/api/v1/admin/consultations/{id}/telemetry",
+      "routePath": "/admin/consultations/:id/telemetry",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AdminConsultationController",
       "handler": "aggregate",
       "method": "GET",

@@ -31,9 +31,11 @@ describe('the two DNA operations join the closed list', () => {
     expect(isUsageOperation('dna.ingest ')).toBe(false);
   });
 
-  it('keeps the list closed — fifteen operations, no more', () => {
+  it('keeps the list closed — sixteen operations, no more', () => {
     expect(new Set(USAGE_OPERATIONS).size).toBe(USAGE_OPERATIONS.length);
-    expect(USAGE_OPERATIONS).toHaveLength(15);
+    // TASK-999 added `generate.live` so a live/partial summary flush is
+    // distinguishable from the final summary in the ledger (both wrote `generate`).
+    expect(USAGE_OPERATIONS).toHaveLength(16);
   });
 });
 
