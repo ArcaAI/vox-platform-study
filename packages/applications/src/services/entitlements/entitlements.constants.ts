@@ -236,6 +236,28 @@ export interface PlanEntitlementValues {
    * customer sees the capability that sells the platform.
    */
   featureAgenticLoop: boolean;
+  /**
+   * TASK-998 OD-4 — may a tenant on this plan hold its OWN per-provider
+   * cloud-ASR capacity allocation (`TenantEntitlement.sttProviderQuotas`)?
+   *
+   * The owner decision reads *"platform admin will set minute volume by enabled
+   * provider globally OR specific by tenant that has Pro plan and above"*, so
+   * this is the "Pro and above" half — `false` on STARTER/TRIAL, `true` on
+   * PRO/ENTERPRISE.
+   *
+   * ENFORCED, at the WRITE path only (`EntitlementsService.upsertTenantEntitlement`
+   * → 403). It is NOT consulted when capacity is resolved: a plan that loses the
+   * bound returns its tenant to the PLATFORM DEFAULT, never to zero. That is what
+   * makes it a bound rather than a supplier — see
+   * `09-infrastructure-devops.md` §"Entitlements bound, they never supply".
+   *
+   * The platform default NUMBERS live in `PlanEntitlement.sttProviderQuotas`,
+   * which is deliberately absent from this constant matrix: it is a JSONB map
+   * keyed by provider, seeded NULL on every plan (unlimited / no enforcement)
+   * until a platform admin sets the vendor account's real capacity, so there is
+   * no in-code default for the resolver to fall back to.
+   */
+  featureProviderQuotaAllocation: boolean;
   modelTier: ModelTier;
   rateLimitTier: string;
   /**
@@ -376,6 +398,9 @@ const PRO_VALUES: PlanEntitlementValues = {
   featurePlatformDefaultCredential: false,
   featurePaletteStt: true,
   featureAgenticLoop: true,
+  // TASK-998 OD-4 — "Pro plan and above": PRO (and TRIAL, which mirrors it) may
+  // hold its own per-provider cloud-ASR capacity allocation.
+  featureProviderQuotaAllocation: true,
   modelTier: 'full',
   rateLimitTier: 'default',
   // 25 seats -> 1,150/min. Replaces the `default` tier's 100/min, which gave
@@ -421,6 +446,10 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
     featureAgenticLoop: false,
+    // TASK-998 OD-4 — below Pro: STARTER resolves the PLATFORM DEFAULT capacity
+    // and cannot be given an allocation of its own. Note what this does NOT do —
+    // it does not give STARTER zero capacity; the default still applies.
+    featureProviderQuotaAllocation: false,
     modelTier: 'base',
     // The tier NAME is unchanged — it still selects the named throttler — but
     // the plan's own ceiling below now supplies the count.
@@ -470,6 +499,8 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
     featureAgenticLoop: true,
+    // TASK-998 OD-4 — above Pro.
+    featureProviderQuotaAllocation: true,
     modelTier: 'full_custom',
     rateLimitTier: 'relaxed',
     // 150 seats -> 6,650/min. Replaces the `relaxed` tier's 300/min — 3

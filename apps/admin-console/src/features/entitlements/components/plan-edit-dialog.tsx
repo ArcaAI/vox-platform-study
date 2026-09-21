@@ -8,6 +8,7 @@ import { FieldLegend, FieldSet } from '@arcaai/ui/components/shadcn/field';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
+import { CodeEditor } from '@arcaai/ui';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
 import type { TenantPlan } from '@/features/tenants/api/types';
@@ -15,7 +16,7 @@ import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { usePlanEntitlement, useUpdatePlanEntitlement } from '../api/hooks';
 import type { PlanEntitlement, UpdatePlanEntitlementRequest } from '../api/types';
-import { LIMIT_FIELDS, LIMIT_GROUPS, PLAN_LABELS } from './plan-meta';
+import { LIMIT_FIELDS, LIMIT_GROUPS, PLAN_LABELS, PROVIDER_QUOTA_FIELD } from './plan-meta';
 import { cx } from '@/shared/cx';
 import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
@@ -28,6 +29,12 @@ interface PlanFormValues {
   limits: Record<string, string>;
   modelTier: string;
   rateLimitTier: string;
+  /**
+   * TASK-998 OD-4 — the platform-default cloud-ASR capacity map, held as the
+   * JSON text the editor shows rather than as a parsed object: the operator's
+   * in-progress (and briefly invalid) document must survive a re-render.
+   */
+  providerQuotas: string;
 }
 
 function toFormValues(entitlement: PlanEntitlement): PlanFormValues {
@@ -36,7 +43,15 @@ function toFormValues(entitlement: PlanEntitlement): PlanFormValues {
     const value = entitlement[field.key];
     limits[field.key] = value === null || value === undefined ? '' : String(value);
   }
-  return { limits, modelTier: entitlement.modelTier, rateLimitTier: entitlement.rateLimitTier };
+  return {
+    limits,
+    modelTier: entitlement.modelTier,
+    rateLimitTier: entitlement.rateLimitTier,
+    // An absent platform default renders as `{}`, not as the string "null":
+    // "this plan bounds nothing" is the same thing an empty map says, and it is
+    // the document an operator would start editing.
+    providerQuotas: JSON.stringify(entitlement.sttProviderQuotas ?? {}, null, 2),
+  };
 }
 
 function isOccError(error: unknown): boolean {
@@ -89,6 +104,28 @@ function PlanEditForm({
       }
       body[field.key] = parsed;
     }
+    // TASK-998 OD-4 — the capacity map. Parsed here only to catch malformed
+    // JSON before the round trip; the gateway is the authority on which
+    // provider ids and dimensions are legal (it validates against
+    // `CLOUD_BYO_PROVIDERS.stt` and answers 400), so the console does not
+    // duplicate that list.
+    const rawQuotas = values.providerQuotas.trim();
+    if (rawQuotas === '' || rawQuotas === '{}') {
+      body.sttProviderQuotas = null;
+    } else {
+      let parsedQuotas: unknown;
+      try {
+        parsedQuotas = JSON.parse(rawQuotas);
+      } catch {
+        setFieldError(`${PROVIDER_QUOTA_FIELD.label} is not valid JSON.`);
+        return;
+      }
+      if (!parsedQuotas || typeof parsedQuotas !== 'object' || Array.isArray(parsedQuotas)) {
+        setFieldError(`${PROVIDER_QUOTA_FIELD.label} must be a JSON object keyed by provider id.`);
+        return;
+      }
+      body.sttProviderQuotas = parsedQuotas as PlanEntitlement['sttProviderQuotas'];
+    }
     update.mutate(
       { plan, body },
       {
@@ -133,6 +170,22 @@ function PlanEditForm({
             </div>
           </FieldSet>
         ))}
+        <FieldSet className="gap-0">
+          <FieldLegend variant="label">Cloud ASR capacity</FieldLegend>
+          <div className="flex flex-col gap-2">
+            <p className="text-muted-foreground text-xs">{PROVIDER_QUOTA_FIELD.help}</p>
+            <CodeEditor
+              aria-label={PROVIDER_QUOTA_FIELD.label}
+              language="json"
+              value={values.providerQuotas}
+              onChange={(next) => {
+                setValues((current) => ({ ...current, providerQuotas: next }));
+                setFieldError(null);
+              }}
+              className="min-h-40"
+            />
+          </div>
+        </FieldSet>
         <FieldSet className="gap-0">
           <FieldLegend variant="label">Tiers</FieldLegend>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

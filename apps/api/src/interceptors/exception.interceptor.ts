@@ -512,6 +512,13 @@ const QUOTA_RATE_CAPABILITIES = new Set([
   'monthlyTtsCharacters',
   'monthlyNlpTextUnits',
   'monthlyEmbeddingTokens',
+  // TASK-998 OD-4 — the OUTBOUND cloud-ASR vendor-capacity dimensions
+  // (`IProviderCapacityService`). Retry-later, exactly like the concurrency cap
+  // above and unlike a quantity conflict: the vendor's per-minute window rolls
+  // over, and a live stream ends. 409 would tell a caller to change something
+  // that is already correct.
+  'sttProviderRequestsPerMinute',
+  'sttProviderMaxConcurrentStreams',
 ]);
 
 function mapQuotaCapabilityToHttp(capability: string | undefined): HttpStatus {

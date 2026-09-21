@@ -141,6 +141,39 @@ model PlanEntitlement {
   monthlyNlpTextUnits      BigInt?
   monthlyEmbeddingTokens   BigInt?
 
+  // TASK-998 OD-4 — the PLATFORM DEFAULT per-provider cloud-ASR capacity, per
+  // plan. This table is the entitlements plane's SYSTEM tier (no `tenantId`,
+  // super-admin writes only, inherited by every tenant with no opinion), so a
+  // value here is what a tenant without its own allocation resolves.
+  //
+  // Shape — a map keyed by the provider id, exactly the ids in
+  // `CLOUD_BYO_PROVIDERS.stt`
+  // (`packages/applications/src/services/ai-provider-connection/constants.ts`):
+  //
+  //   { "sarvam": { "requestsPerMinute": 100, "maxConcurrentStreams": 20 } }
+  //
+  // A JSONB MAP rather than one column per provider on purpose. The provider
+  // list lives in CODE and moves (this ticket adds a Sarvam duplex lane), so a
+  // column set would be a SECOND hardcoded list — one that needs a migration in
+  // two tables, four domain files, two DTOs and the console every time a
+  // provider is added, and that drifts silently when someone forgets. The write
+  // path validates every key against `CLOUD_BYO_PROVIDERS.stt` instead, so the
+  // one list stays authoritative.
+  //
+  // Absent provider key, absent dimension, or `null` = NO OPINION at this tier.
+  // Resolution is per DIMENSION, not per provider entry, so a tenant can
+  // allocate concurrency without restating the rate. Unresolved at both tiers =
+  // unlimited (no enforcement), which is what every plan seeds as: the control
+  // exists so the platform CAN bound its vendor account, not because a bound is
+  // priced today.
+  //
+  // Two dimensions because the vendor enforces two different things: a sync-REST
+  // requests-per-minute cap (which still binds — BATCH transcription stays on
+  // REST) and a concurrent-WebSocket cap (which is what binds for LIVE
+  // transcription, now that a consultation is ONE persistent socket rather than
+  // N requests).
+  sttProviderQuotas Json? @db.JsonB
+
   // feature toggles
   //
   // Every flag here is ENFORCING. TASK-883 removed the three that were not
@@ -173,6 +206,24 @@ model PlanEntitlement {
   // a premium capability), `true` on TRIAL/PRO/ENTERPRISE. Composed with the
   // `consultation.loop.emergencyStop` kill-switch, which can only SUBTRACT.
   featureAgenticLoop Boolean @default(true)
+
+  // TASK-998 OD-4 — may a tenant on this plan hold its OWN per-provider cloud-ASR
+  // capacity allocation? This is the "Pro plan and above" half of the owner
+  // decision, and it is a BOUND, never a source: it gates the WRITE path
+  // (`upsertTenantEntitlement` with `sttProviderQuotas`), and is deliberately NOT
+  // read at resolution time. A tenant that loses the bound keeps resolving the
+  // platform default — it never falls to zero, which is the failure mode an
+  // eligibility flag consulted at read time would produce.
+  //
+  // `false` on STARTER/TRIAL, `true` on PRO/ENTERPRISE (seed 15-entitlements.ts).
+  //
+  // There is deliberately NO `TenantEntitlement` tri-state override of this one,
+  // unlike its three neighbours. A per-tenant override of an eligibility bound is
+  // vacuous — the same super admin who would flip it is the only caller the bound
+  // applies to — so it would document a deal while enforcing nothing. Granting a
+  // sub-Pro tenant its own allocation is a plan change, or a change to that plan's
+  // flag here.
+  featureProviderQuotaAllocation Boolean @default(false)
 
   // model access tier (clone-subset, Q8) + rate-limit tier (Q7)
   modelTier     String @default("full")
@@ -253,6 +304,18 @@ model TenantEntitlement {
   monthlyTtsCharacters     BigInt?
   monthlyNlpTextUnits      BigInt?
   monthlyEmbeddingTokens   BigInt?
+
+  // TASK-998 OD-4 — this tenant's OWN per-provider cloud-ASR capacity
+  // allocation. Same map shape as `PlanEntitlement.sttProviderQuotas`; see the
+  // commentary there for why it is a JSONB map and what the two dimensions mean.
+  //
+  // Resolution is per DIMENSION and widens only on ABSENCE: this row's value for
+  // (provider, dimension) wins, otherwise the plan row's, otherwise unlimited.
+  // A tenant may only HOLD one while its plan carries
+  // `featureProviderQuotaAllocation` — the bound is checked on WRITE, never on
+  // read, so a downgrade returns the tenant to the platform default rather than
+  // to zero.
+  sttProviderQuotas Json? @db.JsonB
 
   // Optional TENANT-SET monthly spend ceiling in integer micros (D12). Distinct
   // from an allowance: allowances are what the PLAN includes, this is what the

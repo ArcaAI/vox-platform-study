@@ -7,6 +7,7 @@ import {
   AiProviderConnectionRepository,
   ApiKeyRepository,
   EntityId,
+  JsonValue,
   PlanEntitlementEntity,
   PlanEntitlementRepository,
   ResourceType,
@@ -28,10 +29,16 @@ import { IGlobalSettingService } from '../globalSetting/IGlobalSettingService';
 import { ITenantService } from '../tenant/ITenantService';
 import { IMeteringService, MeterUsage } from '../metering/IMeteringService';
 import { ISocketRegistryService } from '../platform-metrics/socket-registry.service';
+// TASK-998 OD-4 — the ONE list of tenant-BYO-eligible cloud STT providers.
+// Imported from the module file, not the package barrel: `constants.ts` is a
+// leaf (its only import is `@arcaai/domains`), so there is no cycle with
+// `AiProviderConnectionService`, which itself injects this service.
+import { CLOUD_BYO_PROVIDERS } from '../ai-provider-connection/constants';
 import { EntitlementFeatureKey, IEntitlementsService, StorageSoftWarn, TenantRateLimitPolicy } from './IEntitlementsService';
 import { ResolvedEntitlements, effectivePlan, resolveEntitlements } from './resolve-entitlements';
 import { buildCapabilityRow, computeTrialInfo } from './capability';
 import { EntitlementLimitKey, MeterCapabilityKey, wouldExceedLimit } from './enforcement';
+import { ProviderQuotaMap, parseProviderQuotaMap, validateProviderQuotaMap } from './provider-quotas';
 import { ENTITLEMENTS_QUOTA_BLOCKED_EVENT, ENTITLEMENTS_STORAGE_WARN_EVENT } from './entitlements.constants';
 import {
   ENTITLEMENTS_GLOBAL_ENABLED_DEFAULT,
@@ -74,6 +81,38 @@ const RATE_LIMIT_POLICY_TTL_MS = 30_000;
 /** `bigint | null | undefined` DB column → `number | null` response field (same conversion `storageQuotaBytes` already uses). */
 function toAllowanceNumber(value: bigint | null | undefined): number | null {
   return value === null || value === undefined ? null : Number(value);
+}
+
+/**
+ * TASK-998 OD-4 — the raw `sttProviderQuotas` JSONB column → the response field.
+ *
+ * NORMALISED through the same reader the resolver uses, deliberately: the admin
+ * console must render what enforcement will actually see, not what happens to
+ * be stored. A hand-edited row carrying a junk dimension reads as `null` in
+ * both places rather than as a cap in one and a number in the other.
+ *
+ * `null` when the row states nothing, so "no opinion at this tier" stays
+ * distinguishable from "an explicit empty map".
+ */
+function toProviderQuotaResponse(value: unknown): ProviderQuotaMap | null {
+  if (value === null || value === undefined) return null;
+  return parseProviderQuotaMap(value);
+}
+
+/**
+ * TASK-998 OD-4 — the accepted DTO map → the `Json?` column's own type.
+ *
+ * `JsonValue`'s object arm is a mapped type over `JsonValue`, and an interface
+ * whose members are `number | null | undefined` is not structurally assignable
+ * to it even though every possible VALUE is valid JSON. The request shape is
+ * already validated by `validateProviderQuotaMap` before this runs, so the one
+ * cast here is the narrow, named place that fact is asserted — rather than an
+ * `as never` at each of the four assignment sites, which TypeScript would
+ * reject anyway.
+ */
+function toProviderQuotaColumn(value: unknown): JsonValue | null {
+  if (value === null || value === undefined) return null;
+  return value as JsonValue;
 }
 
 /**
@@ -583,6 +622,15 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyBigIntField(request.monthlyTtsCharacters, (v) => (row.monthlyTtsCharacters = v));
     this.applyBigIntField(request.monthlyNlpTextUnits, (v) => (row.monthlyNlpTextUnits = v));
     this.applyBigIntField(request.monthlyEmbeddingTokens, (v) => (row.monthlyEmbeddingTokens = v));
+    // TASK-998 OD-4 — the PLATFORM DEFAULT per-provider cloud-ASR capacity.
+    // `null` is meaningful (clear every platform default → unlimited), so the
+    // guard is `!== undefined`. Shape is validated against the ONE provider
+    // list before anything is assigned.
+    if (request.sttProviderQuotas !== undefined) {
+      this.assertValidProviderQuotas(request.sttProviderQuotas);
+      row.sttProviderQuotas = toProviderQuotaColumn(request.sttProviderQuotas);
+    }
+    if (request.featureProviderQuotaAllocation !== undefined) row.featureProviderQuotaAllocation = request.featureProviderQuotaAllocation;
     if (request.featurePlatformDefaultCredential !== undefined) row.featurePlatformDefaultCredential = request.featurePlatformDefaultCredential;
     if (request.modelTier !== undefined) row.modelTier = request.modelTier;
     if (request.rateLimitTier !== undefined) row.rateLimitTier = request.rateLimitTier;
@@ -612,6 +660,12 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
 
   async upsertTenantEntitlement(tenantId: EntityId, request: UpsertTenantEntitlementRequest): Promise<TenantEntitlementResponse> {
     this.assertOverridableTenant(tenantId);
+    // TASK-998 OD-4 — "specific by tenant that has Pro plan and above". Shape
+    // first (400), then the plan eligibility bound (403). Both run before any
+    // row is read or written, and neither varies by ROW, so there is no
+    // existence oracle to protect (`05-nestjs-api.md`: the ordering rule is for
+    // gates whose answer varies by row).
+    await this.assertMayHoldProviderQuotas(tenantId, request.sttProviderQuotas);
 
     const existing = await this.tenantEntitlementRepository.findByTenant(tenantId);
 
@@ -666,6 +720,8 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       // "unlimited", which is the direction that costs money.
       monthlySpendLimitMicros:
         request.monthlySpendLimitMicros === null || request.monthlySpendLimitMicros === undefined ? null : BigInt(request.monthlySpendLimitMicros),
+      // TASK-998 OD-4 — the tenant's own per-provider capacity allocation.
+      sttProviderQuotas: toProviderQuotaColumn(request.sttProviderQuotas),
       featurePlatformDefaultCredential: request.featurePlatformDefaultCredential ?? null,
       modelTier: request.modelTier ?? null,
       rateLimitTier: request.rateLimitTier ?? null,
@@ -708,6 +764,8 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     existing.monthlyNlpTextUnits = null;
     existing.monthlyEmbeddingTokens = null;
     existing.monthlySpendLimitMicros = null;
+    // TASK-998 OD-4 — back to the platform default per provider, not to zero.
+    existing.sttProviderQuotas = null;
     existing.featurePlatformDefaultCredential = null;
     existing.modelTier = null;
     existing.rateLimitTier = null;
@@ -780,6 +838,10 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyBigIntField(request.monthlyNlpTextUnits, (v) => (entity.monthlyNlpTextUnits = v));
     this.applyBigIntField(request.monthlyEmbeddingTokens, (v) => (entity.monthlyEmbeddingTokens = v));
     this.applyBigIntField(request.monthlySpendLimitMicros, (v) => (entity.monthlySpendLimitMicros = v));
+    // TASK-998 OD-4 — `null` clears the allocation back to the platform
+    // default, so the guard is `!== undefined`. Already validated + bounded by
+    // `assertMayHoldProviderQuotas` at the top of `upsertTenantEntitlement`.
+    if (request.sttProviderQuotas !== undefined) entity.sttProviderQuotas = toProviderQuotaColumn(request.sttProviderQuotas);
     if (request.featurePlatformDefaultCredential !== undefined) entity.featurePlatformDefaultCredential = request.featurePlatformDefaultCredential;
     if (request.modelTier !== undefined) entity.modelTier = request.modelTier;
     if (request.rateLimitTier !== undefined) entity.rateLimitTier = request.rateLimitTier;
@@ -829,6 +891,8 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       monthlyTtsCharacters: toAllowanceNumber(row.monthlyTtsCharacters),
       monthlyNlpTextUnits: toAllowanceNumber(row.monthlyNlpTextUnits),
       monthlyEmbeddingTokens: toAllowanceNumber(row.monthlyEmbeddingTokens),
+      sttProviderQuotas: toProviderQuotaResponse(row.sttProviderQuotas),
+      featureProviderQuotaAllocation: row.featureProviderQuotaAllocation,
       featurePlatformDefaultCredential: row.featurePlatformDefaultCredential,
       modelTier: row.modelTier,
       rateLimitTier: row.rateLimitTier,
@@ -861,12 +925,68 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       monthlyNlpTextUnits: toAllowanceNumber(row.monthlyNlpTextUnits),
       monthlyEmbeddingTokens: toAllowanceNumber(row.monthlyEmbeddingTokens),
       monthlySpendLimitMicros: toAllowanceNumber(row.monthlySpendLimitMicros),
+      sttProviderQuotas: toProviderQuotaResponse(row.sttProviderQuotas),
       featurePlatformDefaultCredential: row.featurePlatformDefaultCredential ?? null,
       modelTier: row.modelTier ?? null,
       rateLimitTier: row.rateLimitTier ?? null,
       rateLimitPerMinute: row.rateLimitPerMinute ?? null,
       version: row.version,
     };
+  }
+
+  /**
+   * TASK-998 OD-4 — reject a malformed `sttProviderQuotas` payload (400).
+   *
+   * The provider allow-list is `CLOUD_BYO_PROVIDERS.stt` — READ, never copied:
+   * a second list here would go stale the moment a provider is added, and a
+   * stale allow-list silently refuses a capacity number for a provider that is
+   * live.
+   */
+  private assertValidProviderQuotas(raw: unknown): void {
+    const problems = validateProviderQuotaMap(raw, CLOUD_BYO_PROVIDERS.stt);
+    if (problems.length > 0) {
+      throw new BadRequestException(problems.join(' '));
+    }
+  }
+
+  /**
+   * TASK-998 OD-4 — the "Pro plan and above" ELIGIBILITY BOUND.
+   *
+   * > "platform admin will set minute volume by enabled provider globally OR
+   * >  specific by tenant that has Pro plan and above"
+   *
+   * It BOUNDS and never SUPPLIES, and the two halves of that are:
+   *
+   *   1. it is checked HERE, on the write, and nowhere else. A tenant whose plan
+   *      does not carry `featureProviderQuotaAllocation` simply has no allocation
+   *      of its own and resolves the PLATFORM DEFAULT, exactly like a Pro tenant
+   *      that never set one. It does NOT resolve to zero.
+   *   2. `resolveProviderQuotas` never reads it. A downgrade from PRO to STARTER
+   *      therefore returns the tenant to the platform default rather than
+   *      stranding it at a number it may no longer hold — which is what an
+   *      eligibility flag consulted at enforcement time would do, on the path
+   *      that starts a consultation recording.
+   *
+   * 403, not 404: this is a privilege/eligibility boundary on a tenant the
+   * caller can already see (the whole controller is super-admin-only), not the
+   * cross-tenant 404-over-403 posture.
+   *
+   * CLEARING is always allowed. `null` removes the allocation and hands the
+   * tenant back to the platform default, so a plan downgrade can be tidied up
+   * on a tenant that is no longer eligible to hold one.
+   */
+  private async assertMayHoldProviderQuotas(tenantId: EntityId, raw: unknown): Promise<void> {
+    if (raw === undefined || raw === null) return;
+    this.assertValidProviderQuotas(raw);
+    if (Object.keys(raw as Record<string, unknown>).length === 0) return; // an empty map clears too
+
+    const resolved = await this.resolveForTenant(tenantId);
+    if (resolved.features.providerQuotaAllocation) return;
+
+    throw new ForbiddenException(
+      `Plan '${resolved.plan ?? 'none'}' does not include per-tenant cloud-ASR capacity allocation (Pro and above). ` +
+        'This tenant resolves the platform default instead — set it on the plan matrix, or move the tenant to a plan that carries the entitlement.',
+    );
   }
 
   /**

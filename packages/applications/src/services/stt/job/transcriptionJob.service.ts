@@ -15,6 +15,8 @@ import { BaseService, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
+import { IProviderCapacityService } from '../../provider-capacity/IProviderCapacityService';
+import { asrProviderFromSpec } from '../asr-provider';
 import { ITranscriptionJobService } from './ITranscriptionJobService';
 import {
   BatchDispatchEnvelope,
@@ -42,6 +44,12 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     // `monthlyTranscriptionMinutes` meter on submit (kill-switch-gated, → 429
     // once the tenant has consumed its rolling-monthly minutes).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-998 OD-4 — the OUTBOUND vendor-capacity guard. A BATCH job reaches the
+    // cloud ASR provider over sync REST, so it is the `requestsPerMinute`
+    // dimension that binds here (the concurrent-socket dimension is enforced at
+    // streaming-session open instead). Optional + trailing like the five above;
+    // absent ⇒ unbounded, exactly as before.
+    @Optional() @Inject(IProviderCapacityService) private readonly providerCapacity?: IProviderCapacityService,
   ) {
     super(eventEmitter, clsService, ResourceType.TranscriptionJob);
   }
@@ -92,6 +100,14 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     // has consumed its rolling-monthly transcription-minutes allowance.
     // Kill-switch-gated; → 429 when at/over the cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyTranscriptionMinutes');
+
+    // TASK-998 OD-4 — the tenant's share of the VENDOR's per-minute REST cap for
+    // the provider this job will actually run on. Distinct from the meter above:
+    // that one bounds what the tenant BOUGHT over a month, this one bounds what
+    // the vendor account will ACCEPT in the next sixty seconds. Checked before
+    // the row is written so a refused job leaves nothing behind, and kill-switch
+    // gated inside; → 429 over cap, fail-OPEN if Redis cannot answer.
+    await this.providerCapacity?.assertRequestRate(tenantId, asrProviderFromSpec(dto.resolvedSpec));
 
     const job = TranscriptionJobFactory.CreateTranscriptionJob({
       tenantId,

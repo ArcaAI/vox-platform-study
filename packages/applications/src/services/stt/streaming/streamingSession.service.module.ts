@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '../../baseServices/_meta/config';
 import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
+import { ProviderCapacityServiceModule } from '../../provider-capacity/provider-capacity.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { VoiceProfileServiceModule } from '../../user/voiceProfile/voiceProfile.service.module';
 import { StreamingSessionService } from './streamingSession.service';
@@ -35,6 +36,10 @@ import { StreamingAudioBridgeService } from './streamingAudioBridge.service';
     ConfigModule,
     UsageLedgerServiceModule,
     EntitlementsServiceModule,
+    // TASK-998 OD-4 — `IProviderCapacityService` for the per-provider
+    // concurrent-stream allocation taken at session OPEN and given back at
+    // teardown. The vendor's socket cap, not the tenant's monthly allowance.
+    ProviderCapacityServiceModule,
     // TASK-887 — `IVoiceProfileService.listForRuntime` supplies the enrolled profiles the
     // session pushes to apps/stt so diarization can label a matched speaker.
     VoiceProfileServiceModule,

@@ -62,6 +62,11 @@ const MATRIX_FIELDS = [
   'featurePlatformDefaultCredential',
   'featurePaletteStt',
   'featureAgenticLoop',
+  // TASK-998 OD-4 — the "Pro plan and above" eligibility bound for a per-tenant
+  // cloud-ASR capacity allocation. A `true` on one side and a `false` on the
+  // other silently grants or refuses a platform-admin write, so it belongs here
+  // for the same reason `featurePlatformDefaultCredential` does.
+  'featureProviderQuotaAllocation',
   'modelTier',
   'rateLimitTier',
   // TASK-993 OD-1 — an ABSOLUTE per-plan tenant-aggregate ceiling. It was

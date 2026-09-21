@@ -26,6 +26,7 @@ export class TenantEntitlement extends BaseTenantDataModel {
   public monthlyTtsCharacters: bigint | null;
   public monthlyNlpTextUnits: bigint | null;
   public monthlyEmbeddingTokens: bigint | null;
+  public sttProviderQuotas: JsonValue | null;
   public monthlySpendLimitMicros: bigint | null;
   public featurePlatformDefaultCredential: boolean | null;
   public featurePaletteStt: boolean | null;
@@ -58,6 +59,7 @@ export class TenantEntitlement extends BaseTenantDataModel {
     this.monthlyTtsCharacters = data.monthlyTtsCharacters;
     this.monthlyNlpTextUnits = data.monthlyNlpTextUnits;
     this.monthlyEmbeddingTokens = data.monthlyEmbeddingTokens;
+    this.sttProviderQuotas = data.sttProviderQuotas;
     this.monthlySpendLimitMicros = data.monthlySpendLimitMicros;
     this.featurePlatformDefaultCredential = data.featurePlatformDefaultCredential;
     this.featurePaletteStt = data.featurePaletteStt;

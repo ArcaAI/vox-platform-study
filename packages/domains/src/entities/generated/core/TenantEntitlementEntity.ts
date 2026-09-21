@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 
 export interface ITenantEntitlementEntity extends IBaseTenantEntity {
@@ -31,6 +32,10 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   monthlyTtsCharacters?: bigint | null;
   monthlyNlpTextUnits?: bigint | null;
   monthlyEmbeddingTokens?: bigint | null;
+  // TASK-998 OD-4 — this tenant's OWN per-provider cloud-ASR capacity allocation:
+  // `{ "<provider>": { requestsPerMinute, maxConcurrentStreams } }`. Absent key /
+  // absent dimension / null = inherit the plan default for THAT dimension.
+  sttProviderQuotas?: JsonValue | null;
   monthlySpendLimitMicros?: bigint | null;
   featurePlatformDefaultCredential?: boolean | null;
   featurePaletteStt?: boolean | null;
@@ -61,6 +66,7 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
   private _monthlyTtsCharacters?: ITenantEntitlementEntity['monthlyTtsCharacters'];
   private _monthlyNlpTextUnits?: ITenantEntitlementEntity['monthlyNlpTextUnits'];
   private _monthlyEmbeddingTokens?: ITenantEntitlementEntity['monthlyEmbeddingTokens'];
+  private _sttProviderQuotas?: ITenantEntitlementEntity['sttProviderQuotas'];
   private _monthlySpendLimitMicros?: ITenantEntitlementEntity['monthlySpendLimitMicros'];
   private _featurePlatformDefaultCredential?: ITenantEntitlementEntity['featurePlatformDefaultCredential'];
   private _featurePaletteStt?: ITenantEntitlementEntity['featurePaletteStt'];
@@ -90,6 +96,7 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
     this._monthlyTtsCharacters = init.monthlyTtsCharacters;
     this._monthlyNlpTextUnits = init.monthlyNlpTextUnits;
     this._monthlyEmbeddingTokens = init.monthlyEmbeddingTokens;
+    this._sttProviderQuotas = init.sttProviderQuotas;
     this._monthlySpendLimitMicros = init.monthlySpendLimitMicros;
     this._featurePlatformDefaultCredential = init.featurePlatformDefaultCredential;
     this._featurePaletteStt = init.featurePaletteStt;
@@ -242,6 +249,14 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
 
   set monthlyEmbeddingTokens(value: ITenantEntitlementEntity['monthlyEmbeddingTokens']) {
     this.setProperty('monthlyEmbeddingTokens', value);
+  }
+
+  get sttProviderQuotas(): ITenantEntitlementEntity['sttProviderQuotas'] {
+    return this._sttProviderQuotas;
+  }
+
+  set sttProviderQuotas(value: ITenantEntitlementEntity['sttProviderQuotas']) {
+    this.setProperty('sttProviderQuotas', value);
   }
 
   get monthlySpendLimitMicros(): ITenantEntitlementEntity['monthlySpendLimitMicros'] {

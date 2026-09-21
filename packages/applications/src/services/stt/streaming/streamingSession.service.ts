@@ -6,6 +6,8 @@ import { IAppSettingsService } from '../../baseServices/_meta/appSettings';
 import { IConfigService } from '../../baseServices/_meta/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
+import { IProviderCapacityService } from '../../provider-capacity/IProviderCapacityService';
+import { asrProviderFromSpec } from '../asr-provider';
 import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey, type UsageTrigger } from '../../usageLedger';
 import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
 import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
@@ -86,6 +88,12 @@ export class StreamingSessionService implements IStreamingSessionService {
     // Optional + trailing like the five above; absent ⇒ the descriptor's own default,
     // which is what an unwritten `GlobalSetting` row resolves to anyway.
     @Optional() @Inject(IAppSettingsService) private readonly appSettingsService?: IAppSettingsService,
+    // TASK-998 OD-4 — the OUTBOUND vendor-capacity guard. A live consultation is
+    // now ONE persistent socket rather than N requests, so the dimension that
+    // binds here is the vendor's CONCURRENT-stream cap (Sarvam 20/100/100 by
+    // account tier), not its per-minute request cap. Optional + trailing like the
+    // six above; absent ⇒ unbounded, exactly as before.
+    @Optional() @Inject(IProviderCapacityService) private readonly providerCapacity?: IProviderCapacityService,
   ) {
     this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
     this.logger.log({
@@ -215,6 +223,15 @@ export class StreamingSessionService implements IStreamingSessionService {
     // on the DTO rather than in CLS). Kill-switch-gated inside; → 429 over cap.
     await this.entitlements?.assertMeterQuota(dto.tenantId, 'monthlySttSessionSeconds');
 
+    // TASK-998 OD-4 — the tenant's share of the VENDOR's concurrent-socket cap
+    // for the provider this session will run on. Checked at OPEN for the same
+    // reason the allowance above is: refusing here costs nothing, while
+    // discovering it at the vendor costs a failed consultation. Idempotent per
+    // `sessionId`, so a resume is never refused by its own slot. Kill-switch
+    // gated inside; → 429 over cap, fail-OPEN if Redis cannot answer.
+    const asrProvider = asrProviderFromSpec(dto.resolvedSpec);
+    await this.providerCapacity?.acquireStreamSlot({ tenantId: dto.tenantId, provider: asrProvider, sessionId: dto.sessionId });
+
     const voiceProfiles = await this.resolveVoiceProfiles(dto);
     try {
       const { data } = await firstValueFrom(
@@ -307,6 +324,14 @@ export class StreamingSessionService implements IStreamingSessionService {
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
+      // TASK-998 OD-4 — the slot was taken BEFORE this POST, and neither exit
+      // below produces a session anyone will tear down, so give it straight
+      // back. Without this the TTL would eventually reclaim it, but a run of
+      // failed opens (an STT pod restart, a capacity 503 storm) would meanwhile
+      // eat the tenant's whole concurrent-stream allocation with sessions that
+      // never existed.
+      await this.providerCapacity?.releaseStreamSlot(dto.sessionId);
+
       // 503 = at capacity → return null (not an error)
       if (error?.response?.status === 503) {
         this.logger.warn({
@@ -334,6 +359,12 @@ export class StreamingSessionService implements IStreamingSessionService {
    * paths whose envelope genuinely carries no tenant.
    */
   async getSessionStatus(sessionId: string, tenantId?: string | null): Promise<StreamingSessionStatus | null> {
+    // TASK-998 OD-4 — opportunistic slot refresh. Not the intended steady-state
+    // heartbeat (that is the WS gateway's own ~20 s tick, a follow-up owned by
+    // the lane that owns `SttWsGateway`); it simply means a session anyone is
+    // still polling cannot age out of the concurrency set under it. Never
+    // throws, and never gates the read.
+    void this.providerCapacity?.heartbeatStreamSlot(sessionId);
     try {
       const { data } = await firstValueFrom(
         this.httpService.get<StreamingSessionStatus>(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}`, {
@@ -407,6 +438,16 @@ export class StreamingSessionService implements IStreamingSessionService {
    * charge.
    */
   async removeSession(sessionId: string, interrupted = false, tenantId?: string | null): Promise<void> {
+    // TASK-998 OD-4 — give the vendor-capacity slot back. FIRST, because the STT
+    // teardown below can throw (and the four callers of this method treat that
+    // as retryable): holding a socket slot for a session that is provably over
+    // would shrink the tenant's live capacity by one until the TTL swept it.
+    // Releases by `sessionId` alone — the provider and tenant come from the
+    // reverse index the limiter wrote at acquire, because most teardown paths
+    // (the SIGTERM sweep, the Redis removal-retry drain, the compat gateway)
+    // never saw the resolved ASR spec. Best-effort by contract; it cannot throw.
+    await this.providerCapacity?.releaseStreamSlot(sessionId);
+
     let summary: StreamingSessionTeardownSummary | undefined;
     let teardownStatus = 'unknown';
     try {

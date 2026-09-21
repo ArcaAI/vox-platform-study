@@ -8,6 +8,7 @@ export * from './entitlements.constants';
 export * from './resolve-entitlements';
 export * from './capability';
 export * from './enforcement';
+export * from './provider-quotas';
 export * from './model-access';
 export * from './rate-limit-plan';
 export * from './dto';

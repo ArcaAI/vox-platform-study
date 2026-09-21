@@ -211,7 +211,21 @@ interface PlanEntitlementSeed {
   // Does this plan include the harness AGENTIC LOOP ? `false` on
   // STARTER (premium capability), `true` on TRIAL/PRO/ENTERPRISE. Kept in sync by
   // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
-  featureAgenticLoop: boolean;
+  // TASK-998 OD-4 — may a tenant on this plan hold its OWN per-provider cloud-ASR
+  // capacity allocation (`TenantEntitlement.sttProviderQuotas`)? The "Pro plan and
+  // above" half of the owner decision: `false` on STARTER, `true` on
+  // TRIAL/PRO/ENTERPRISE. Enforced on the WRITE path only, so a plan without it
+  // resolves the PLATFORM DEFAULT, never zero. Kept in sync with
+  // `entitlements.constants.ts`'s `PLAN_ENTITLEMENT_DEFAULTS` by
+  // `plan-matrix-parity.test.ts`.
+  //
+  // The platform default NUMBERS live in `PlanEntitlement.sttProviderQuotas`
+  // (JSONB, keyed by the provider ids of `CLOUD_BYO_PROVIDERS.stt`) and are
+  // deliberately NOT seeded: NULL = unlimited / no enforcement until a platform
+  // admin records the vendor account's real capacity through
+  // `PATCH /admin/entitlements/plans/:plan`. Seeding a guess here would either
+  // throttle a tenant for no reason or claim a capacity the account does not have.
+  featureProviderQuotaAllocation: boolean;
   modelTier: string;
   rateLimitTier: string;
   // TASK-993 OD-1 — the plan's ABSOLUTE rate limit: a tenant-wide AGGREGATE
@@ -266,6 +280,7 @@ const PRO_VALUES = {
   featurePlatformDefaultCredential: false,
   featurePaletteStt: true,
   featureAgenticLoop: true,
+  featureProviderQuotaAllocation: true,
   modelTier: 'full',
   rateLimitTier: 'default',
   // 25 seats -> 1,150/min. Replaces the `default` tier's 100/min for the
@@ -332,6 +347,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
     featureAgenticLoop: false,
+    featureProviderQuotaAllocation: false,
     modelTier: 'base',
     // The tier NAME is unchanged — it still selects the named throttler — but
     // the plan's own ceiling below now supplies the count.
@@ -377,6 +393,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
     featureAgenticLoop: true,
+    featureProviderQuotaAllocation: true,
     modelTier: 'full_custom',
     rateLimitTier: 'relaxed',
     // 150 seats -> 6,650/min. Replaces the `relaxed` tier's 300/min — 3

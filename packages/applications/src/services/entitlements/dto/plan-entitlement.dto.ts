@@ -1,6 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { TenantPlan } from '@arcaai/domains';
+
+/**
+ * TASK-998 OD-4 — the shared Swagger prose for `sttProviderQuotas`, declared
+ * once so the plan (platform default) and tenant (allocation) halves cannot
+ * describe the same field two different ways.
+ */
+const PROVIDER_QUOTA_DESCRIPTION =
+  "Per-provider cloud-ASR capacity, keyed by provider id " +
+  "(`azure-speech` | `azure-foundry` | `sarvam` | `openai` — exactly `CLOUD_BYO_PROVIDERS.stt`). " +
+  "Each entry may carry `requestsPerMinute` (the vendor's sync-REST cap, enforced when a BATCH " +
+  "transcription job is created) and/or `maxConcurrentStreams` (the vendor's concurrent-WebSocket " +
+  "cap, enforced when a streaming session is opened). An absent provider, an absent dimension or a " +
+  "null value means NO OPINION at this tier; unresolved at both tiers = unlimited (not enforced).";
+
+/** Example payload rendered in the OpenAPI document. */
+const PROVIDER_QUOTA_EXAMPLE = { sarvam: { requestsPerMinute: 100, maxConcurrentStreams: 20 } };
+
 
 /**
  * A per-plan default-matrix row as returned to super-admins.
@@ -74,6 +91,19 @@ export class PlanEntitlementResponse {
 
   @ApiPropertyOptional({ description: 'Monthly embedding tokens allowance (D11); null = unlimited', nullable: true })
   monthlyEmbeddingTokens?: number | null;
+
+  @ApiPropertyOptional({
+    description: 'TASK-998 OD-4 — the PLATFORM DEFAULT for this plan. ' + PROVIDER_QUOTA_DESCRIPTION + ' null = this plan states no default for any provider.',
+    nullable: true,
+    example: PROVIDER_QUOTA_EXAMPLE,
+  })
+  sttProviderQuotas?: Record<string, { requestsPerMinute: number | null; maxConcurrentStreams: number | null }> | null;
+
+  @ApiProperty({
+    description:
+      'TASK-998 OD-4 — may a tenant on this plan hold its OWN per-provider cloud-ASR capacity allocation ("Pro plan and above")? A BOUND on the write path only: a plan without it resolves the PLATFORM DEFAULT, never zero. false on STARTER, true on TRIAL/PRO/ENTERPRISE.',
+  })
+  featureProviderQuotaAllocation: boolean;
 
   @ApiProperty({
     description:
@@ -220,6 +250,26 @@ export class UpdatePlanEntitlementRequest {
   @IsInt()
   @Min(0)
   monthlyEmbeddingTokens?: number | null;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-998 OD-4 — set the PLATFORM DEFAULT cloud-ASR capacity for this plan. ' +
+      PROVIDER_QUOTA_DESCRIPTION +
+      ' Send null to clear every platform default (back to unlimited). An unknown provider id or a non-integer dimension is a 400.',
+    nullable: true,
+    example: PROVIDER_QUOTA_EXAMPLE,
+  })
+  @IsOptional()
+  @IsObject()
+  sttProviderQuotas?: Record<string, { requestsPerMinute?: number | null; maxConcurrentStreams?: number | null }> | null;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-998 OD-4 — may a tenant on this plan hold its OWN per-provider cloud-ASR capacity allocation ("Pro plan and above")? Checked on the tenant-override WRITE only; it never changes what a tenant RESOLVES, so turning it off returns those tenants to the platform default rather than to zero.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  featureProviderQuotaAllocation?: boolean;
 
   @ApiPropertyOptional({
     description:

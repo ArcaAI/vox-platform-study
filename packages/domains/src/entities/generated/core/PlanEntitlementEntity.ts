@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseEntity, IBaseEntity } from '../../../common';
+import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 
 export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
@@ -32,9 +33,17 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   monthlyTtsCharacters?: bigint | null;
   monthlyNlpTextUnits?: bigint | null;
   monthlyEmbeddingTokens?: bigint | null;
+  // TASK-998 OD-4 — the PLATFORM DEFAULT per-provider cloud-ASR capacity for this
+  // plan: `{ "<provider>": { requestsPerMinute, maxConcurrentStreams } }`, keyed by
+  // the ids in `CLOUD_BYO_PROVIDERS.stt`. Absent key / absent dimension / null =
+  // no opinion at this tier.
+  sttProviderQuotas?: JsonValue | null;
   featurePlatformDefaultCredential: boolean;
   featurePaletteStt: boolean;
   featureAgenticLoop: boolean;
+  // TASK-998 OD-4 — may a tenant on this plan hold its OWN `sttProviderQuotas`
+  // allocation? A BOUND on the write path only; never read at resolution time.
+  featureProviderQuotaAllocation: boolean;
   modelTier: string;
   rateLimitTier: string;
   // rank 3 — an ABSOLUTE per-plan limit. Null keeps the indirect
@@ -63,9 +72,11 @@ export class PlanEntitlementEntity extends BaseEntity {
   private _monthlyTtsCharacters?: IPlanEntitlementEntity['monthlyTtsCharacters'];
   private _monthlyNlpTextUnits?: IPlanEntitlementEntity['monthlyNlpTextUnits'];
   private _monthlyEmbeddingTokens?: IPlanEntitlementEntity['monthlyEmbeddingTokens'];
+  private _sttProviderQuotas?: IPlanEntitlementEntity['sttProviderQuotas'];
   private _featurePlatformDefaultCredential: IPlanEntitlementEntity['featurePlatformDefaultCredential'];
   private _featurePaletteStt: IPlanEntitlementEntity['featurePaletteStt'];
   private _featureAgenticLoop: IPlanEntitlementEntity['featureAgenticLoop'];
+  private _featureProviderQuotaAllocation: IPlanEntitlementEntity['featureProviderQuotaAllocation'];
   private _modelTier: IPlanEntitlementEntity['modelTier'];
   private _rateLimitTier: IPlanEntitlementEntity['rateLimitTier'];
   private _rateLimitPerMinute?: IPlanEntitlementEntity['rateLimitPerMinute'];
@@ -92,9 +103,11 @@ export class PlanEntitlementEntity extends BaseEntity {
     this._monthlyTtsCharacters = init.monthlyTtsCharacters;
     this._monthlyNlpTextUnits = init.monthlyNlpTextUnits;
     this._monthlyEmbeddingTokens = init.monthlyEmbeddingTokens;
+    this._sttProviderQuotas = init.sttProviderQuotas;
     this._featurePlatformDefaultCredential = init.featurePlatformDefaultCredential;
     this._featurePaletteStt = init.featurePaletteStt;
     this._featureAgenticLoop = init.featureAgenticLoop;
+    this._featureProviderQuotaAllocation = init.featureProviderQuotaAllocation;
     this._modelTier = init.modelTier;
     this._rateLimitTier = init.rateLimitTier;
     this._rateLimitPerMinute = init.rateLimitPerMinute;
@@ -253,6 +266,14 @@ export class PlanEntitlementEntity extends BaseEntity {
     this.setProperty('monthlyEmbeddingTokens', value);
   }
 
+  get sttProviderQuotas(): IPlanEntitlementEntity['sttProviderQuotas'] {
+    return this._sttProviderQuotas;
+  }
+
+  set sttProviderQuotas(value: IPlanEntitlementEntity['sttProviderQuotas']) {
+    this.setProperty('sttProviderQuotas', value);
+  }
+
   get featurePlatformDefaultCredential(): IPlanEntitlementEntity['featurePlatformDefaultCredential'] {
     return this._featurePlatformDefaultCredential;
   }
@@ -275,6 +296,14 @@ export class PlanEntitlementEntity extends BaseEntity {
 
   set featureAgenticLoop(value: IPlanEntitlementEntity['featureAgenticLoop']) {
     this.setProperty('featureAgenticLoop', value);
+  }
+
+  get featureProviderQuotaAllocation(): IPlanEntitlementEntity['featureProviderQuotaAllocation'] {
+    return this._featureProviderQuotaAllocation;
+  }
+
+  set featureProviderQuotaAllocation(value: IPlanEntitlementEntity['featureProviderQuotaAllocation']) {
+    this.setProperty('featureProviderQuotaAllocation', value);
   }
 
   get modelTier(): IPlanEntitlementEntity['modelTier'] {
