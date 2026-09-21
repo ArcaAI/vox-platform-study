@@ -6,7 +6,7 @@
 | **Type** | `feature` (spans infrastructure, database, services, API, console) |
 | **Branch** | `dev-2.2` |
 | **Raised** | 2026-09-21, from a 6h text-generation performance review |
-| **Depends on** | TASK-995 (context 131072 → 65536) — **committed in `hope-v2-deployment`, NOT yet pushed** |
+| **Depends on** | TASK-995 (context 131072 → 65536) — **deployed 2026-09-21** as `hope-v2-deployment@c44fe16` |
 
 ---
 
