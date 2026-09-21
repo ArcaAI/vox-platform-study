@@ -45,6 +45,19 @@ export interface EngineDescriptor {
   /** MinIO prefix under the models bucket. */
   artifactPrefix: string;
   /**
+   * Whether this engine gets the Serving Control tab (TASK-996, owner decision
+   * D-1) — the ONE surface in `/ai-services/*` that mutates the workload.
+   *
+   * A property of the ENGINE, not a feature flag. LM Studio holds several
+   * models at once and loads them at runtime, so "which model, on which card,
+   * with which context" is a live decision an admin can make. vLLM, llama.cpp
+   * and Ollama have no such decision to offer: the first two serve the model
+   * they were STARTED with (a change is a re-deploy) and Ollama pulls and
+   * evicts on its own. Giving them the tab would be a control with nothing
+   * behind it.
+   */
+  servingControl?: boolean;
+  /**
    * Capabilities this screen deliberately does NOT offer, with the reason.
    * Rendered verbatim on the Server tab: an operator who cannot find a button
    * is owed the reason it is absent, in the place they looked for it.
@@ -76,6 +89,7 @@ export const ENGINE_DESCRIPTORS: Record<InferenceEngineProvider, EngineDescripto
       'The LM Studio deployment currently runs at zero replicas, so an unreachable probe is the expected result rather ' +
       'than a fault. Scale it up through Argo CD to bring this screen to life.',
     artifactPrefix: 'lm-studio/',
+    servingControl: true,
     omissions: [
       LIFECYCLE_OMISSION,
       {
@@ -88,11 +102,12 @@ export const ENGINE_DESCRIPTORS: Record<InferenceEngineProvider, EngineDescripto
           'lifecycle controls above and was not opened for the same reason.',
       },
       {
-        title: 'Models are loaded and unloaded on the engine, not from here',
+        title: 'Load and unload live on the Serving Control tab — everything else here is read-only',
         detail:
-          'This screen reads which models the engine reports and how the registry governs them. It does not load, unload, ' +
-          'download or delete weights: those need either an engine-mutating call this read plane does not make, or a CLI ' +
-          'exec the gateway deliberately cannot perform.',
+          'Loading a model, unloading it and changing its load-time profile (context, parallel slots, flash attention, GPU ' +
+          'split) are the ONLY mutations this console makes to an engine, and they are confined to that one tab behind a ' +
+          'super-admin gate. Downloading or deleting weights is still not offered: that is a storage operation, and it ' +
+          'belongs to the storage browser rather than to an engine screen.',
       },
     ],
   },
