@@ -53,6 +53,9 @@ MODELS_DIR="${HOPE_MODELS_DIR:-/data/models}"
 STAGING_DIR="${HOPE_STAGING_DIR:-/data/staging}"
 EXPECT_ACCEL="${HOPE_EXPECT_ACCEL:-cuda}"
 IMPORT_MAP="${HOPE_IMPORT_MAP:-/manifest/imports.tsv}"
+# A-6 no longer shells out to `lms load`; it runs the Node loader baked in at
+# this path by the Dockerfile. See A-6 for why.
+LOADER_DIR="${HOPE_LOADER_DIR:-/opt/hope/lmstudio-loader}"
 EX_CONFIG=78
 
 log()  { printf '%s entrypoint: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
@@ -399,21 +402,46 @@ log "HTTP server is live on ${BIND}:${PORT}"
 # and `loaded_instances` is EMPTY for a model that is merely on disk. That
 # field is the real readiness signal, and the k8s readinessProbe execs a grep
 # for it. See deployment-llmster/lmstudio.yaml.
+#
+# ── WHY THIS IS A NODE LOADER AND NOT `lms load` ────────────────────────────
+#
+# It used to be:
+#     lms load "${LMS_LOAD}" -y --gpu … --context-length … --parallel … --ttl …
+#
+# That command cannot set three things the platform needs, and neither can
+# `POST /api/v1/models/load`, which answers `unrecognized_keys` for every one
+# of them (all measured — TASK-996 §2.3):
+#
+#     llm.load.llama.flashAttention              — the biggest latency lever
+#     llm.load.llama.{k,v}CacheQuantizationType  — ~10.5 GiB of f16 KV today
+#     load.gpuSplitConfig                        — which card a model lands on
+#
+# The daemon supports all three. They are reachable ONLY as kvConfig fields
+# over the websocket the `@lmstudio/sdk` speaks, so the CLI call is replaced by
+# a loader that speaks it. Every knob `lms load` could set is still set — the
+# env var names are unchanged, and `--parallel` became the same kvConfig field
+# the CLI itself writes (`llm.load.numParallelSessions`).
+#
+# These LMS_* variables remain the BOOTSTRAP FLOOR — what the pod loads with
+# before the database is reachable. Steady-state serving configuration becomes
+# governed in a later phase; env governs cold start.
+#
+# The `die` below is deliberately kept even though the loader already exits 78
+# with a more specific message: the posture — a pod that cannot load what it
+# was asked to load must not serve — is stated in one place, here, and reads
+# the same as it did before the transport changed. The loader ALSO reads the
+# applied configuration back and refuses when a kvConfig key was silently
+# dropped, which `lms load` could not do because an unknown kvConfig key is
+# ignored rather than rejected.
 if [ -n "${LMS_LOAD:-}" ]; then
-  log "preloading ${LMS_LOAD}"
-  # --gpu / --ttl / --parallel / --identifier are CLI-ONLY. REST
-  # POST /api/v1/models/load accepts only model, context_length,
-  # eval_batch_size, flash_attention, num_experts, offload_kv_cache_to_gpu
-  # `parallel` is readable over HTTP but not writable. `--parallel` is
-  # the headless Max Concurrent Predictions knob: source-verified, absent from
-  # the published docs, default 4, llama.cpp runtime only.
-  # shellcheck disable=SC2086
-  lms load "${LMS_LOAD}" -y \
-    --gpu "${LMS_GPU:-max}" \
-    ${LMS_CONTEXT:+--context-length "${LMS_CONTEXT}"} \
-    ${LMS_PARALLEL:+--parallel "${LMS_PARALLEL}"} \
-    ${LMS_TTL:+--ttl "${LMS_TTL}"} \
-    ${LMS_IDENTIFIER:+--identifier "${LMS_IDENTIFIER}"} \
+  # Assert the two halves exist before use, in the spirit of the rest of this
+  # file: a missing loader must say so, not surface as "node: not found".
+  command -v node >/dev/null 2>&1 || die \
+    "node is not on PATH — the image did not install the loader runtime."
+  [ -f "${LOADER_DIR}/load.mjs" ] || die \
+    "${LOADER_DIR}/load.mjs is absent — the image did not bake in the SDK loader."
+
+  node "${LOADER_DIR}/load.mjs" \
     || die "preload of '${LMS_LOAD}' failed — refusing to serve a pod that would answer \
 with an empty loaded_instances[] forever."
   log "loaded instances:"; lms ps 2>&1 | sed 's/^/    /' >&2 || true

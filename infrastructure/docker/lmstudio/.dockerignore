@@ -5,6 +5,18 @@
 # that way and, more importantly, guarantees that nothing which could carry a
 # secret or a model blob is ever sent to the daemon — this image is pushed to a
 # registry and embeds a proprietary binary, so context hygiene is not cosmetic.
+#
+# This is a DENY-ALL allow-list: anything added to this directory is invisible
+# to the build until it is named below. `loader/` is un-excluded as a directory
+# rather than file by file, because a re-inclusion whose parent is still
+# excluded is not reliably honoured.
 *
 !Dockerfile
 !entrypoint.sh
+!loader
+# ...but never a local node_modules. The image installs the loader's
+# dependencies itself with `npm ci` against the committed lockfile; a tree
+# built on a developer's machine would carry the wrong platform binaries and
+# silently shadow it. (Ordering matters: last match wins, so this must follow
+# the `!loader` above.)
+loader/node_modules
