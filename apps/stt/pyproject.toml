@@ -39,6 +39,10 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     # --- HTTP client (API Gateway communication) ---
     "httpx>=0.28.1",
+    # --- WebSocket client (duplex cloud ASR: OpenAI Realtime, Sarvam realtime) ---
+    # Present transitively via uvicorn[standard], but these modules import it
+    # DIRECTLY, and a direct import must be a declared dependency.
+    "websockets>=16.1.1",
     # --- Task queue ---
     # NOTE: dramatiq 2.2.0 supports redis>=4.0,<9.0 — keep the redis cap in
     # lock-step with dramatiq's declared upper bound when bumping either.
