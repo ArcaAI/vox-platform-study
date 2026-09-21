@@ -208,6 +208,49 @@ Still unchanged and still costing latency: `--flash-attn off` and
 generation traffic, so there is no post-change tok/s sample yet. Baseline to beat:
 **6.42 tok/s** across 26 completed generations, 94.6 s average latency, 15.0 s TTFT.
 
+### 2.7 Flash attention — measured 2026-09-21, and it is the single biggest lever
+
+`llama-server`'s own default for `--flash-attn` is **`auto`**. LM Studio was passing
+**`off` explicitly**, overriding that autodetect. Root cause is twofold: the SDK schema
+declares `.field("flashAttention", "boolean", {}, false)` — default **false** — and a
+PERSISTED per-model load config was pinning it.
+
+Measured on the live pod, direct to LM Studio (no gateway, no guardrail, no judge),
+identical model, `--ctx-size 65536`, `--parallel 4`:
+
+| | `--flash-attn off` | `--flash-attn auto` | Δ |
+|---|---|---|---|
+| Decode, 200 tokens | 12,852 / 13,017 ms | **3,019 / 3,021 / 3,188 ms** | **4.3× faster** |
+| Decode rate | ~15.5 tok/s | **~66 tok/s** | |
+| Prefill, 6,016 tokens | — | **~1,400 ms (~4,300 tok/s)** | vs ~400 tok/s via the gateway baseline |
+| VRAM (both cards) | 7,482 MiB | **5,034 MiB** | **−33%** |
+
+Flash attention also *reduces* VRAM, by removing the O(n²) attention compute buffer — so
+it is not a speed/memory trade, it is strictly better on both axes.
+
+⚠️ **The live pod currently runs `--flash-attn auto` as UNDECLARED DRIFT.** It reverted to
+`auto` after the REST load attempts below cleared the persisted per-model config. A pod
+restart may silently return it to `off` and the 4.3× would vanish with no manifest change
+to explain it. Making this deterministic is exactly what Phase 1 is for — it is now the
+highest-value item in this ticket, ahead of KV quantization.
+
+### 2.8 `POST /api/v1/models/load` cannot load this model at all
+
+TASK-995 established which KEYS that endpoint accepts. Measured 2026-09-21, the endpoint
+nonetheless **fails to load `gemma-4-e2b-it-qat` under every payload tried**:
+
+| Payload | Result |
+|---|---|
+| `{model, context_length, parallel, flash_attention}` | `model_load_failed` |
+| `{model, context_length, flash_attention}` | `model_load_failed` |
+| `{model, context_length}` — control, no new keys | `model_load_failed` |
+
+The control failing is decisive: this is **not** about flash attention or `parallel`. The
+REST load path is unusable for this deployment's `hope/`-published symlinked GGUFs, and
+`lms load` (CLI) is the only working load path today. Any design that assumed REST could
+load or reload a model is wrong — which removes the last alternative to Phase 1's SDK
+transport.
+
 ### Phase 1 — SDK loader (unblocks R-3 and R-6)
 
 - Add `@lmstudio/sdk@1.5.0` as a real dependency of `infrastructure/docker/lmstudio/`.
@@ -314,4 +357,5 @@ _Not started — awaiting D-1 … D-7._
 | Date | Change |
 |---|---|
 | 2026-09-21 | Ticket opened from a 6h text-generation performance review. Plan written; measured the LM Studio reachability wall (§2.3), confirmed per-model GPU assignment via `gpuSplitConfig` (§2.4), and established that per-thread VRAM is impossible (§2.6). |
+| 2026-09-21 | **Flash attention measured: 4.3× decode (15.5 → 66 tok/s), ~4,300 tok/s prefill, −33% VRAM** (§2.7). `llama-server` defaults to `auto`; LM Studio was overriding it to `off`. Also established that `POST /api/v1/models/load` cannot load this model under ANY payload, control included (§2.8) — `lms load` is the only working path, so Phase 1's SDK transport has no alternative. During this measurement the REST attempts left LM Studio with no model loaded; restored via CLI. |
 | 2026-09-21 | Owner accepted D-1 … D-7 as recommended. **Phase 0 executed** (deployment revision `c44fe16`): VRAM 13,904 → 7,482 MiB (−46%), s3fs logging ~11,200 → 0 lines/min. The cross-GPU split PERSISTED with ~12 GiB free on each card, confirming it is `gpuSplitConfig.strategy: "evenly"` and not VRAM pressure — D-3 is now evidence-backed, not merely recommended. Phases 1, 2 and 4 running in parallel lanes. |
