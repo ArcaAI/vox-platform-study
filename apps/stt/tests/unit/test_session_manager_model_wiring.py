@@ -727,7 +727,14 @@ class TestCreateSessionModelWiring:
 
     @pytest.mark.asyncio
     async def test_create_session_calls_asr_loader_with_pipeline_config(self):
-        """Verify _load_asr_pipeline receives pipeline_config and session_id only."""
+        """Verify _load_asr_pipeline receives pipeline_config and session_id.
+
+        TASK-998 added ``probe_duplex``: ``create_session`` asks the loaded
+        engine whether it streams natively, so the spy must accept it. Captured
+        and asserted rather than merely tolerated — a session that stopped
+        probing would silently fall back to the per-utterance REST path, which
+        is exactly the regression this ticket removes.
+        """
         mgr = _make_manager()
 
         # Use a spy to capture args while still returning a value
@@ -735,10 +742,15 @@ class TestCreateSessionModelWiring:
         original_load = AsyncMock(return_value=(None, None))
 
         async def spy_load_asr(
-            pipeline_config, session_id, tenant_id=None, provider_overrides=None
+            pipeline_config,
+            session_id,
+            tenant_id=None,
+            provider_overrides=None,
+            probe_duplex=False,
         ):
             captured_args["pipeline_config"] = pipeline_config
             captured_args["session_id"] = session_id
+            captured_args["probe_duplex"] = probe_duplex
             return await original_load(pipeline_config, session_id)
 
         mgr._load_pipeline_config = AsyncMock(return_value=_make_pipeline_config())
@@ -762,6 +774,11 @@ class TestCreateSessionModelWiring:
         # Verify the ASR loader received pipeline config and session_id
         assert captured_args["pipeline_config"] is not None
         assert captured_args["session_id"] == "s-4"
+        # ...and that create_session asked the engine whether it streams natively.
+        # Without the probe a cloud session silently runs the per-utterance REST
+        # path, which looks healthy and produces the chunked transcript TASK-998
+        # exists to fix — so this is asserted, not merely accepted.
+        assert captured_args["probe_duplex"] is True
 
     @pytest.mark.asyncio
     async def test_create_session_stores_session_and_components(self):
