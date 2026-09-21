@@ -10,6 +10,7 @@ import {
   OriginRegistryServiceModule,
   PipelineServiceModule,
   PlatformMetricsServiceModule,
+  ProviderCapacityServiceModule,
   StreamingSessionServiceModule,
   TenantBucketServiceModule,
   TenantServiceModule,
@@ -46,6 +47,15 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
     TranscriptionJobServiceModule,
     TranscriptionRealtimeServiceModule,
     StreamingSessionServiceModule,
+    // TASK-998 OD-4 — supplies `IProviderCapacityService` to `SttWsGateway`, whose
+    // heartbeat re-scores this instance's live per-provider capacity slots.
+    // StreamingSessionServiceModule already imports it, but exports only its own
+    // two services — and Nest's module encapsulation means each module that
+    // INJECTS a token must import it itself (the same trap the UsageLedger note
+    // below records). The gateway injects it `@Optional()`, so without this line
+    // the token would resolve to `undefined` and the heartbeat would silently
+    // never run, leaving crashed sessions holding a vendor slot for the full TTL.
+    ProviderCapacityServiceModule,
     TenantServiceModule,
     TenantBucketServiceModule,
     PipelineServiceModule,

@@ -1,6 +1,7 @@
 import {
   IAppSettingsService,
   IOriginRegistry,
+  IProviderCapacityService,
   ISocketRegistryService,
   MAX_STREAM_METADATA_BYTES,
   STT_EGRESS_HIGH_WATERMARK_BYTES_KEY,
@@ -500,6 +501,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     @Optional()
     @Inject(IAppSettingsService)
     private readonly appSettings?: IAppSettingsService,
+    // TASK-998 OD-4 — re-scores this instance's live per-provider capacity slots on
+    // each heartbeat tick. Optional and TRAILING for the same reason as the two
+    // above: every existing positional construction keeps compiling, and a stack
+    // that does not wire the capacity module simply does not heartbeat.
+    @Optional()
+    @Inject(IProviderCapacityService)
+    private readonly providerCapacity?: IProviderCapacityService,
   ) {}
 
   /**
@@ -561,11 +569,41 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     const timer = setTimeout(() => {
       this.publishSocketCount();
       this.sweepSocketLiveness();
+      this.refreshProviderCapacitySlots();
       this.scheduleHeartbeat();
     }, intervalMs);
     // Don't keep the event loop alive for the heartbeat alone.
     (timer as unknown as { unref?: () => void }).unref?.();
     this.socketHeartbeat = timer;
+  }
+
+  /**
+   * TASK-998 OD-4 — re-score this instance's live per-provider capacity slots.
+   *
+   * A slot is a member of a Redis sorted set scored with its last-seen time, and every
+   * `acquireStreamSlot` first sweeps members older than the slot TTL. That is what makes a
+   * crashed replica's slot reclaim itself: nothing has to notice the death, and there is no
+   * counter for anyone to forget to decrement — an increment/decrement pair leaks one slot per
+   * crash, permanently, which on a twenty-socket vendor cap is an outage after twenty crashes.
+   *
+   * Without this tick the sweep still works, but only after the full TTL, so a crash costs the
+   * tenant a vendor slot for hours. Re-scoring here collapses that to one heartbeat interval
+   * for every session this instance actually still holds.
+   *
+   * Best-effort by construction: a heartbeat failure must never disturb a live consultation, so
+   * the whole thing is fire-and-forget and a rejection is swallowed at debug. The cost of a
+   * missed tick is a slot reclaimed late, never a transcript lost.
+   */
+  private refreshProviderCapacitySlots(): void {
+    if (!this.providerCapacity) return;
+    for (const session of this.sessions.values()) {
+      // A finalizing session is already releasing; re-scoring it would extend a slot
+      // its own teardown is about to drop.
+      if (session.finalizing) continue;
+      void this.providerCapacity.heartbeatStreamSlot(session.sessionId).catch((error: unknown) => {
+        this.logger.debug({ err: error, sessionId: session.sessionId }, 'provider capacity heartbeat failed');
+      });
+    }
   }
 
   /**
