@@ -34,6 +34,7 @@ import { IBlobStorageService, deriveThumbnailKey } from '../../baseServices/stor
 import { IUsageLedgerService } from '../../usageLedger';
 import { IConsultationContextSchemaService, type ValidatedContextPayload } from '../../consultation-context-schema';
 import { buildLlmUsageInputFromTokenCounts } from '../summary/text-usage';
+import { contentCounters, stampContentCounters } from '../shared/contentCounters';
 import { IContextService } from './IContextService';
 import { ContextDtoMapper, ResolvedMediaUrl } from './context.dto.mapper';
 import { ConsultationPipelineEvent, ContextAddedPayload, ContextRemovedPayload } from '../events';
@@ -356,6 +357,12 @@ export class ContextService extends BaseService implements IContextService {
       type: request.type,
       source: request.source ?? ContextItemSource.USER,
       content: effectiveContent,
+      // TASK-999 (D-3(a)) — measured HERE, from the plaintext this method already holds, because
+      // `encryptContent` a few lines down is the last moment anything can. This is the single
+      // chokepoint for every text write on the business plane: CASE_NOTE, TRANSCRIPT, WORKNOTE,
+      // PRE_SUMMARY, STRUCTURED and ATTACHMENT all reach the factory through here. A media item
+      // with no body counts nothing and the columns stay NULL — "never measured", not zero.
+      ...(contentCounters(effectiveContent) ?? {}),
       mediaId: request.mediaId,
       dnaWritingStyleId: request.dnaWritingStyleId,
       kindKey: validatedKind?.kindKey,
@@ -501,6 +508,10 @@ export class ContextService extends BaseService implements IContextService {
     // Apply changes to the entity first
     if (newContent !== undefined) {
       contextItem.content = newContent;
+      // TASK-999 (D-3(a)) — the counters move with the body. Leaving them behind on an edit is
+      // worse than never having measured: the telemetry pane would render a confident figure for
+      // text that is no longer there, and nothing downstream can check it without a PHI decrypt.
+      stampContentCounters(contextItem, newContent);
     }
     if (request.dnaWritingStyleId !== undefined) {
       contextItem.dnaWritingStyleId = request.dnaWritingStyleId;
@@ -713,6 +724,9 @@ export class ContextService extends BaseService implements IContextService {
 
     // Create summary context item
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, request.content, request.dnaWritingStyleId, userId ?? 'system');
+    // TASK-999 (D-3(a)) — `CreateRawSummary` takes positional arguments and cannot carry the
+    // counters, so they are stamped on the entity instead, before the encrypt below.
+    stampContentCounters(contextItem, request.content);
 
     // Encrypt summary `content` before persist (dual-write).
     await this.encryptContent(contextItem);

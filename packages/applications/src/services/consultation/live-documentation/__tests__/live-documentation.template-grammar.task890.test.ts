@@ -242,14 +242,17 @@ describe('the realtime core.agent lane renders the agent instruction through the
 });
 
 describe('the realtime lane meters every generation (§3.13)', () => {
-  it('prechecks the LLM meter before the call and records one `generate` row with trigger CONSULTATION', async () => {
+  it('prechecks the LLM meter before the call and records one `generate.live` row with trigger CONSULTATION', async () => {
     const { service, post } = buildService(withPrompt('PROMPT'));
     const { usageBatches, quotaChecks } = await runOneFlush(service, post);
 
     expect(quotaChecks).toEqual([[TENANT, 'monthlyLlmTokens']]);
     expect(usageBatches).toHaveLength(1);
     const batch = usageBatches[0]!;
-    expect(batch.common.operation).toBe('generate');
+    // TASK-999 (D-2(c)) — the LIVE lane's own operation. It used to be `generate`, the same
+    // string the FINAL summary writes, which is exactly why a partial summary could not be told
+    // from a final one in the ledger. The final summary still writes `generate`.
+    expect(batch.common.operation).toBe('generate.live');
     expect(batch.common.tenantId).toBe(TENANT);
     expect(batch.common.consultationId).toBe(CID);
     expect((batch.common.attributesJson as Record<string, unknown>).trigger).toBe('CONSULTATION');

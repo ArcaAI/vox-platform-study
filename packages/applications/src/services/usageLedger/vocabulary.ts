@@ -10,8 +10,8 @@
  *
  * The two halves are governed DIFFERENTLY, and the asymmetry is deliberate:
  *
- *   - **Operations are CLOSED.** Fifteen values, listed below. `recordUsage`
- *     rejects anything else. Adding a sixteenth is a one-line change here plus
+ *   - **Operations are CLOSED.** Sixteen values, listed below. `recordUsage`
+ *     rejects anything else. Adding a seventeenth is a one-line change here plus
  *     a contract-doc line — cheap, reviewed, and visible to every lane.
  *
  *   - **Providers are OPEN but SHAPED.** A tenant admin can create an
@@ -23,7 +23,7 @@
  */
 
 /**
- * The fifteen operations. One per (capability, call shape) that an emitter can
+ * The sixteen operations. One per (capability, call shape) that an emitter can
  * produce.
  *
  * | operation            | emitted by                                   |
@@ -31,6 +31,7 @@
  * | `transcribe.stream` | — live STT socket teardown |
  * | `transcribe.batch` | — batch transcription job completion |
  * | `generate` | — non-streaming TEXT generation |
+ * | `generate.live` | — a LIVE-lane TEXT generation (flush / grammar / findings) |
  * | `generate.stream` | — streaming TEXT generation (incl. abort)|
  * | `presummarize` | — pre-summary pass |
  * | `guardrail.validate` | — guardrail LLM calls (metered, never quota-blocked, never invoiced) |
@@ -56,6 +57,28 @@ export const USAGE_OPERATIONS = [
   'transcribe.stream',
   'transcribe.batch',
   'generate',
+  // TASK-999 (D-2(c)) — the LIVE consultation lane's own generations: the
+  // running-note flush and its bounded JSON repair, the grammar pass, the
+  // important-findings pass. They used to write `generate`, the SAME string the
+  // FINAL summary writes, with no `sessionId` — so the ledger could not tell a
+  // partial from a final, and the only place live-summary telemetry existed was
+  // `AgentTrajectoryStep`, which is pruned nightly.
+  //
+  // Split for the reason `nlp.classify` was split from `ner.extract`: they are
+  // different product activities at different cadences (one per flush, several
+  // per minute, against one per consultation), and "spend by activity" cannot
+  // separate them afterwards. History is NOT retro-classified — rows written
+  // before this value existed stay `generate` and stay ambiguous.
+  //
+  // It is BILLABLE, exactly as `generate` is. `metering.service.ts` excludes
+  // COGS-only operations from `LLM_TOKENS` by an explicit
+  // `NON_BILLABLE_LLM_OPERATIONS` list (guardrail + harness); this value is
+  // deliberately absent from it, so a live flush's tokens keep counting toward
+  // the tenant's meter and nothing about the invoice changes. `AiPriceBook` has
+  // no `operation` column at all — it resolves on
+  // (plane, capability, provider, model, unit) — so no price-book row is needed
+  // and no rate moves.
+  'generate.live',
   'generate.stream',
   'presummarize',
   'guardrail.validate',
