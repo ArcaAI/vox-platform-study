@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending — plan written, owner answered the decisions round 2026-09-22 (§4.1). **Awaiting the explicit "go"**. No code written. |
+| **Status** | In Progress — owner said go 2026-09-22. Step 0 (schema + migration + domain surface + frozen contracts) landed as `c1e879dde`; seven lanes running in parallel worktrees. |
 | **Type** | feature + bugfix |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-22 |
@@ -151,9 +151,87 @@ chain index or pointer exists), and `durationMs` (an entity getter at
 Six lanes. Dependencies: **B → C**, **E → F**; A, D independent. Lane D is a self-contained bug fix
 that can land first and alone.
 
-Per the owner's standing directive, lanes run only their own RED→GREEN test file; the full gate
-sweep (`lint`/`typecheck`/`test`/`build` for affected packages) runs **once** after everything is
-merged to `dev-2.2`.
+Per the owner's directive of 2026-09-22, **no lane runs any gate** — not lint, not typecheck, not
+build, not even its own test file. Lanes write code and tests and commit. The orchestrator merges,
+runs the full gate sweep **at the end of each wave**, and dispatches fix agents for what it finds.
+Lanes also never run `pnpm install` (a nested-worktree install rewires the PRIMARY checkout's
+symlinks — TASK-982), any DB/infra command, or any merge.
+
+### 3.1 Frozen wire contracts (authored by the orchestrator BEFORE the lanes start)
+
+The console mirrors gateway wire shapes as its own interfaces rather than importing
+`@arcaai/applications`, so server and console lanes can build in parallel only if the shape is fixed
+first. These two are frozen; a lane that needs a change requests it from the orchestrator rather
+than diverging.
+
+**C-1 — `GET /admin/consultations/:id/telemetry`**
+
+```ts
+type TelemetrySource =
+  | 'summary-meta' | 'usage-ledger' | 'agent-trajectory'
+  | 'named-entity' | 'audio-recording' | 'context-item' | 'transcription-job';
+
+// Why a block is empty is the whole point: the pane must never render a
+// fabricated zero. NOT_RECORDED = the platform never captures it. NO_ACTIVITY =
+// captured, but this consultation has none. PRUNED = it existed and retention
+// removed it (AgentTrajectoryStep is pruned nightly).
+type TelemetryUnavailable = 'NOT_RECORDED' | 'NO_ACTIVITY' | 'PRUNED';
+
+type Block<T> =
+  | { available: true;  source: TelemetrySource; data: T }
+  | { available: false; source: TelemetrySource | null; reason: TelemetryUnavailable };
+
+interface LlmStats {      // one call
+  inputTokens: number | null; outputTokens: number | null;
+  model: string | null; provider: string | null; durationMs: number | null;
+}
+interface LlmAggregate {  // many calls
+  callCount: number;
+  inputTokens: number | null; outputTokens: number | null;
+  models: string[];                       // every distinct model seen, may be []
+  provider: string | null;
+  avgDurationMs: number | null; totalDurationMs: number | null;
+}
+
+interface ConsultationTelemetryResponse {
+  consultationId: string;
+  generatedAt: string;                    // ISO-8601
+  session:        Block<{ startedAt: string; lastActivityAt: string; durationMs: number }>;
+  caseNotes:      Block<{ count: number; measuredCount: number; wordCount: number | null; charCount: number | null }>;
+  transcription:  Block<{ jobCount: number; durationMs: number | null; wordCount: number | null;
+                          charCount: number | null; model: string | null; provider: string | null }>;
+  preSummary:     Block<LlmStats>;
+  partialSummary: Block<LlmAggregate>;
+  finalSummary:   Block<LlmStats>;
+  ner:            Block<{ entityCount: number; byLabel: Record<string, number>;
+                          callCount: number; totalDurationMs: number | null }>;
+  guardrail:      Block<LlmAggregate>;
+}
+```
+
+`measuredCount` on `caseNotes` exists because `contentWordCount` is NULL on every pre-TASK-999 row:
+the pane must be able to say "12 notes, 9 measured" rather than imply the other three are empty.
+
+**C-2 — `TranscriptionJobResponse` additions and the list filter**
+
+```ts
+interface ServedBy {
+  chainIndex: number;                      // index into resolvedSpec.fallback.chain
+  source: 'primary' | 'fallback';
+  agentSlug: string | null; modelSlug: string | null;
+  provider: string | null; engine: string | null;
+}
+
+// added to the existing TranscriptionJobResponse
+jobType: 'BATCH' | 'STREAMING';            // already on the model; now meaningful for both kinds
+streamSessionId: string | null;
+servedBy: ServedBy | null;
+resultWordCount: number | null;
+resultCharCount: number | null;
+durationMs: number | null;                 // completedAt - startedAt; null while running
+```
+
+List query gains `jobType?: 'BATCH' | 'STREAMING'` (absent = both kinds).
 
 ### Lane A — consultations list: `Updated` column + sort (small)
 1. RED: gateway test — `GET /admin/consultations?sort=updatedAt:desc` orders by `updatedAt`; an
@@ -285,3 +363,7 @@ _Not started — awaiting §4._
 |---|---|
 | 2026-09-22 | Ticket opened; four read-only exploration lanes completed; plan + decisions drafted. No code. |
 | 2026-09-22 | Owner answered D-2(c), D-5(a), D-7(a), D-8(b); D-1/D-3/D-6 left at recommendation, D-4 superseded by D-2(c). Added Lane G, §4.2 sub-decisions, revised scope. Awaiting go. |
+| 2026-09-22 | Owner said go, and asked for maximum parallelism with NO gates run by lanes — the orchestrator gates at the end of each wave and dispatches fix agents. |
+| 2026-09-22 | **Correction to §4.2.1**: `AiPriceBook` has no `operation` column (it keys on capability/provider/model/unit), so a new operation value needs NO price-book row. The real coupling is `metering.service.ts:379`, which excludes with `operation: { notIn: ... }` — a new value therefore keeps counting toward billable LLM_TOKENS by default, which is the wanted behaviour. Lane G pins it with a test. |
+| 2026-09-22 | Step 0 landed (`c1e879dde`): 4 columns + 2 counters + 3 indexes, migration `20260921192153_task_999_consultation_and_job_telemetry` authored on a throwaway shadow DB with the ledger replayed (`migrate diff` reports an empty migration), dev DB pushed, shadow dropped. `gen:model:check` / `gen:entity:check` / `gen:factory:check` all green. Wire contracts C-1 and C-2 frozen in §3.1. |
+| 2026-09-22 | Seven lanes dispatched in parallel worktrees: A (sort), D (SSE fix), B (telemetry endpoint), E (streaming job rows), G (gap closures), C (telemetry pane), F (job list + detail). Boundaries are file-disjoint by construction — C writes a NEW `api/telemetry.ts` so it cannot collide with A, and F is barred from D's stream-panel files. |
