@@ -7,6 +7,7 @@ import {
   ConsultationAggregateResponse,
   ConsultationWorkflowResponse,
   PaginatedConsultationResponse,
+  ConsultationSort,
 } from './dto';
 import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch/dto';
 
@@ -103,6 +104,8 @@ export abstract class IConsultationService {
     doctorId?: string;
     departmentId?: string;
     status?: ConsultationStatus;
+    /** Pre-validated by the controller (`parseConsultationSort`); absent → `DEFAULT_CONSULTATION_SORT`. */
+    sort?: ConsultationSort;
   }): Promise<PaginatedConsultationResponse>;
 
   /**

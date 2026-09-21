@@ -5,6 +5,8 @@ import {
   PaginatedConsultationResponse,
   PaginatedQuery,
   HttpMethod,
+  CONSULTATION_SORTABLE_FIELDS,
+  parseConsultationSort,
 } from '@arcaai/applications';
 import { ConsultationStatus } from '@arcaai/domains';
 import { BadRequestException, Controller, Param, Inject, Query, NotFoundException } from '@nestjs/common';
@@ -58,8 +60,15 @@ export class AdminConsultationController {
     enum: ConsultationStatus,
     description: 'Filter by lifecycle status (e.g. RECORDING for in-progress live sessions).',
   })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    type: String,
+    example: 'updatedAt:desc',
+    description: `Sort order, "field:asc" or "field:desc". Allowed fields: ${CONSULTATION_SORTABLE_FIELDS.join(', ')}. Defaults to updatedAt:desc.`,
+  })
   async list(
-    @Query() query: PaginatedQuery & { patientId?: string; doctorId?: string; departmentId?: string; status?: string },
+    @Query() query: PaginatedQuery & { patientId?: string; doctorId?: string; departmentId?: string; status?: string; sort?: string },
   ): Promise<PaginatedConsultationResponse> {
     return this.consultationService.listConsultationsForTenant({
       page: Number(query.page) || 1,
@@ -68,6 +77,7 @@ export class AdminConsultationController {
       doctorId: query.doctorId,
       departmentId: query.departmentId,
       status: this.parseStatus(query.status),
+      sort: parseConsultationSort(query.sort),
     });
   }
 
