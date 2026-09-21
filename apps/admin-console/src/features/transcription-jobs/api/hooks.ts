@@ -3,7 +3,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getTranscriptionJob, getTranscriptionJobStats, listTranscriptionJobs, listTranscriptionJobsByStatus } from './client';
 import { transcriptionJobKeys } from './keys';
-import { TERMINAL_JOB_STATUSES, type TranscriptionJobStatus } from './types';
+import { TERMINAL_JOB_STATUSES, type TranscriptionJobStatus, type TranscriptionJobType } from './types';
 
 /** Frame 35 header contract: the whole surface auto-refreshes every 30 s. */
 const REFRESH_MS = 30_000;
@@ -12,7 +12,7 @@ const REFRESH_MS = 30_000;
 const SELECTED_JOB_POLL_MS = 5_000;
 
 /** `enabled: false` while a status filter swaps the list for GET status/:status. */
-export function useTranscriptionJobs(params?: { page?: number; limit?: number }, enabled = true) {
+export function useTranscriptionJobs(params?: { page?: number; limit?: number; jobType?: TranscriptionJobType }, enabled = true) {
   return useQuery({
     queryKey: transcriptionJobKeys.list(params),
     queryFn: () => listTranscriptionJobs(params),
