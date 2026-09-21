@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — plan written, **awaiting owner decisions D-1 … D-7** |
+| **Status** | `In Progress` — D-1 … D-7 accepted; Phase 0 complete, Phases 1/2/4 in flight |
 | **Type** | `feature` (spans infrastructure, database, services, API, console) |
 | **Branch** | `dev-2.2` |
 | **Raised** | 2026-09-21, from a 6h text-generation performance review |
@@ -179,6 +179,35 @@ Phases 1–5 start only after D-1 … D-7 are answered.
 > `evenly` across both cards even once the model fits on one. If it does, that is *itself*
 > the evidence that D-3 is mandatory rather than merely desirable.
 
+#### Phase 0 RESULT — executed 2026-09-21, revision `c44fe16`
+
+Deployed `LMS_CONTEXT` 131072 → 65536 and `LMS_PARALLEL` 10 → 4. Pod
+`hope-lmstudio-86bdb6ff75-vvgjc` → `hope-lmstudio-7b69c877d8-7549p`.
+
+| Measure | Before | After | Δ |
+|---|---|---|---|
+| `lms ps` CONTEXT / PARALLEL | 131072 / 10 | **65536 / 4** | applied |
+| VRAM, GPU0 | 4,996 MiB | **2,668 MiB** | −47% |
+| VRAM, GPU1 | 8,908 MiB | **4,814 MiB** | −46% |
+| **VRAM total** | **13,904 MiB** | **7,482 MiB** | **−46%** |
+| s3fs log rate | ~11,200 lines/min | **0 lines/min** | eliminated |
+
+**The model is STILL SPLIT ACROSS BOTH GPUS.** GPU0 now has 13.7 GiB free and GPU1
+11.5 GiB free — the whole 7.48 GiB working set would fit on *either* card with room to
+spare, and llama.cpp split it anyway.
+
+**This is the decisive evidence for D-3.** The split is not a consequence of VRAM
+pressure; it is `gpuSplitConfig.strategy` defaulting to `"evenly"`. No amount of context
+or parallel reduction will fix it, because capacity was never the binding constraint.
+Only the SDK loader (Phase 1) can reach that field.
+
+Still unchanged and still costing latency: `--flash-attn off` and
+`--cache-type-k f16 --cache-type-v f16`. Both are Phase 1 deliverables.
+
+**Throughput re-measurement is DEFERRED** — the window since the rollout carried no
+generation traffic, so there is no post-change tok/s sample yet. Baseline to beat:
+**6.42 tok/s** across 26 completed generations, 94.6 s average latency, 15.0 s TTFT.
+
 ### Phase 1 — SDK loader (unblocks R-3 and R-6)
 
 - Add `@lmstudio/sdk@1.5.0` as a real dependency of `infrastructure/docker/lmstudio/`.
@@ -284,4 +313,5 @@ _Not started — awaiting D-1 … D-7._
 
 | Date | Change |
 |---|---|
-| 2026-09-21 | Ticket opened from a 6h text-generation performance review. Plan written; measured the LM Studio reachability wall (§2.3), confirmed per-model GPU assignment via `gpuSplitConfig` (§2.4), and established that per-thread VRAM is impossible (§2.6). Awaiting owner decisions. |
+| 2026-09-21 | Ticket opened from a 6h text-generation performance review. Plan written; measured the LM Studio reachability wall (§2.3), confirmed per-model GPU assignment via `gpuSplitConfig` (§2.4), and established that per-thread VRAM is impossible (§2.6). |
+| 2026-09-21 | Owner accepted D-1 … D-7 as recommended. **Phase 0 executed** (deployment revision `c44fe16`): VRAM 13,904 → 7,482 MiB (−46%), s3fs logging ~11,200 → 0 lines/min. The cross-GPU split PERSISTED with ~12 GiB free on each card, confirming it is `gpuSplitConfig.strategy: "evenly"` and not VRAM pressure — D-3 is now evidence-backed, not merely recommended. Phases 1, 2 and 4 running in parallel lanes. |
