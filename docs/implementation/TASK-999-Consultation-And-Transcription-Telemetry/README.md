@@ -417,9 +417,46 @@ generators    gen:model:check · gen:entity:check · gen:factory:check          
 - **The e2e authorization matrix (`task-776-route-authz-matrix.spec.ts`) has NOT been run** — same
   port conflict. `05-nestjs-api.md` makes it a definition-of-done item for a new route, so it is
   owed before this ticket closes.
-- **No runtime browser proof yet.** It needs an authenticated console session, and the orchestrator
-  does not enter credentials into a login form. The API (8868) and console (5176) are up and the
-  browser pane is parked on the sign-in screen.
+### 6.5 Runtime proof (browser, 2026-09-22, tenant ArcaAI, both themes)
+
+Captured against the running stack (api 8868, console 5176) on the seeded ArcaAI tenant.
+
+**The reported bug — `/audio/transcription-jobs`, seeded job `98000000-0000-0000-0001-000000000001`:**
+clicking the COMPLETED row produced **zero** console output — no `[message]`, no `[error]`, no
+reconnect. A console filter for `status` returned "No console logs". The network log shows **no
+stream-ticket mint and no SSE connection at all**, and the panel reports `STREAM: Idle` /
+"No stream events received yet." That is the "already terminal at mount never subscribes" path; the
+loop that previously ran until the 1 h JWT expiry is gone.
+
+**`/audio/transcription-jobs` list + detail:** the `Kind` column renders `Realtime` and `Batch`
+(the seeded queued row is a STREAMING row). The detail drawer shows Timing (started / completed /
+`95,000 ms`), Who ran it, Fallback chain, Output size and Identity. On this pre-TASK-999 seeded row
+`servedBy` and `resolvedSpec` are absent, and it renders `—` for each unmeasured value plus an
+explicit "No resolved ASR spec recorded." — **not** a fabricated `0`, which is the invariant.
+
+**`/consultations` sort:** the screen issues
+`GET /api/hope/admin/consultations?page=1&limit=25&sort=updatedAt%3Adesc` → 200, and the grid's live
+region announces "Sorted by Updated, descending." `?sort=updatedAt:asc` round-trips through the URL
+and the two seeded rows come back in the opposite order (`…119Z` before `…153Z`). The allow-list is
+enforced at the gateway, probed through the authenticated BFF:
+
+```
+updatedAt:desc     200
+createdAt:asc      200
+patientId:asc      400  Invalid sort field "patientId". Expected one of: updatedAt, createdAt, appointmentDate, status.
+updatedAt:sideways 400  Invalid sort "updatedAt:sideways". Expected "field:asc" or "field:desc".
+```
+
+**Consultation telemetry pane:** `GET admin/consultations/:id/telemetry` → 200. `session` is
+available (`source: consultation`, duration rendered "171m 34s") and `transcription` is available
+(`jobCount: 1`, every other field `null` → rendered `—`). The other six blocks report
+`NO_ACTIVITY` and render "no activity for this consultation". All eight blocks render in both dark
+and light themes.
+
+**Limit of this proof:** the seed carries no AI activity, so the pre-summary / partial / final /
+guardrail / NER blocks were only observed in their `NO_ACTIVITY` state. A populated token / model /
+duration rendering has NOT been seen end to end and needs a consultation actually driven through the
+AI pipeline.
 
 ## 7. Follow-ups (not in this ticket)
 
