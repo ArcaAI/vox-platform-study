@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { tap, finalize } from 'rxjs/operators';
 import { uuidv7 } from 'uuidv7';
 import { trace } from '@opentelemetry/api';
 import { resolveActiveTenant } from './resolve-active-tenant';
@@ -104,24 +104,52 @@ export class ContextInterceptor implements NestInterceptor {
     // Capture start time for performance logging
     const start = Date.now();
 
+    // TASK-1001 S-8 — `next.handle()` is NOT always a single-emission
+    // Observable. For an ordinary JSON route it emits exactly one value then
+    // completes, but for an `@Sse()` route (e.g. the live-summary stream) it
+    // emits ONE value per frame — every section patch, presummary event and
+    // heartbeat — over the entire life of a long-lived connection. `tap`'s
+    // `next` callback runs once PER EMITTED VALUE, so logging "Request
+    // completed" there fired once per SSE frame instead of once per
+    // connection: a single 152s stream produced dozens of log lines with a
+    // growing `durationMs` (observed: 2ms, 10804ms, 15003ms, … 166737ms for
+    // ONE connection), which multiplied 4 real connections into an apparent
+    // 58 in Loki's request-count aggregations.
+    //
+    // `finalize()` instead runs EXACTLY ONCE when the observable terminates,
+    // for any reason — natural completion (the ordinary-response case, and
+    // the SSE case once its own `closed: true` frame ends the stream), an
+    // error, or the subscription simply being torn down (an SSE client
+    // disconnecting before the stream's own terminal event ever arrives).
+    // That makes it the correct place for a once-per-request completion log
+    // regardless of response shape. The `hasErrored` guard stops it from
+    // double-logging a request that failed: that outcome already gets its
+    // own "Request failed" line from the `tap.error` callback below, and
+    // `finalize` always runs after (or instead of) that callback since it
+    // fires on every termination path, error included.
+    let hasErrored = false;
+
+    const logRequestCompleted = () => {
+      if (hasErrored) return;
+      const durationMs = Date.now() - start;
+      this.logger.log({
+        message: 'Request completed',
+        requestId: request.requestId,
+        traceId,
+        spanId,
+        method: request.method,
+        path: request.url,
+        durationMs,
+        clientIp,
+        tenantId: this.tryClsGet('tenantId'),
+        statusCode: httpContext.getResponse()?.statusCode,
+      });
+    };
+
     return next.handle().pipe(
       tap({
-        next: () => {
-          const durationMs = Date.now() - start;
-          this.logger.log({
-            message: 'Request completed',
-            requestId: request.requestId,
-            traceId,
-            spanId,
-            method: request.method,
-            path: request.url,
-            durationMs,
-            clientIp,
-            tenantId: this.tryClsGet('tenantId'),
-            statusCode: httpContext.getResponse()?.statusCode,
-          });
-        },
         error: (err) => {
+          hasErrored = true;
           const durationMs = Date.now() - start;
           this.logger.error({
             message: 'Request failed',
@@ -140,6 +168,7 @@ export class ContextInterceptor implements NestInterceptor {
           throw err; // rethrow the error to ensure it is propagated
         },
       }),
+      finalize(logRequestCompleted),
     );
   }
 }

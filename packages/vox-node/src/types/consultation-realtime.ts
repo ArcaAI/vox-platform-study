@@ -422,7 +422,22 @@ export interface SectionPatchEvent {
   revision: number;
   /** `empty` renders as a SKELETON, not an error. `confirmed` is clinician-touched and never overwritten. */
   state: 'empty' | 'provisional' | 'confirmed' | 'locked';
+  /**
+   * The section body. **Always the whole current state of this section, never a
+   * delta** — a patch that replaces content and a patch that appends to it both
+   * carry the FULL body here. `annotations` offsets index this string in its
+   * entirety.
+   */
   content: string;
+  /**
+   * The part of `content` this patch ADDED, present only when the underlying
+   * flush appended rather than replaced. `content` is always the whole body, so
+   * a consumer may ignore this field entirely and behave exactly as before; a
+   * renderer that wants to mark what just arrived uses it to avoid re-animating
+   * text the clinician has already read. Absent on a replace, and absent on a
+   * degrade patch.
+   */
+  appended?: string;
   annotations?: SectionAnnotation[];
   provenance?: SectionProvenance[];
   documentTemplateVersionId?: string | null;
