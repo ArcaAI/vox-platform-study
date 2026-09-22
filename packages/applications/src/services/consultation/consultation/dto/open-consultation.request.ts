@@ -102,15 +102,24 @@ export class OpenConsultationRequest {
    *
    * Honoured on `open` and on `revisit`. A re-open of an ALREADY-OPEN consultation keeps the
    * language it was opened with, exactly as it keeps its governing workflow.
+   *
+   * TASK-1001 OD-4: a code-switch mode such as `ml-en` — the value of the STT session's
+   * `languageMode`, meaning "the microphone hears Malayalam and English mixed" — is REJECTED
+   * here with a 400, not silently accepted and misread as "write the note in Malayalam". It is
+   * shaped exactly like the legitimate region tag `en-IN`, so `SUMMARY_LANGUAGE_PATTERN` itself
+   * carries the discriminator (see its docstring).
    */
   @ApiPropertyOptional({
     description:
-      'BCP-47 language tag the generated notes should be written in (`en`, `ml`, `en-IN`). Independent of the STT language mode: absent means undeclared, and the agent decides.',
+      'BCP-47 language tag the generated notes should be written in (`en`, `ml`, `en-IN`). Independent of the STT language mode: absent means undeclared, and the agent decides. A code-switch mode such as `ml-en` is rejected — that describes what the microphone hears (`languageMode`), never what the note is written in.',
     example: 'ml',
   })
   @IsOptional()
   @IsString()
-  @Matches(SUMMARY_LANGUAGE_PATTERN, { message: 'language must be a BCP-47 tag such as `en`, `ml` or `en-IN`' })
+  @Matches(SUMMARY_LANGUAGE_PATTERN, {
+    message:
+      'language must be the note output-language tag (e.g. `en`, `ml`, `en-IN`), not an STT decoding mode such as `ml-en` or `en-ml`: `language` sets what the note is written in and is independent of `languageMode`, the STT code-switch setting',
+  })
   language?: string;
 
   /**

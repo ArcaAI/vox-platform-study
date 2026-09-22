@@ -37,6 +37,10 @@
  * the two things that actually arrive by accident — a display name ("English") and a sentence.
  * It is not a registry check: refusing a valid-but-unlisted tag would be a worse failure than
  * passing one through to a model that reads it as prose.
+ *
+ * TASK-1001 OD-4 added a third rejection: an STT CODE-SWITCH mode (`ml-en`) is shaped exactly
+ * like a legitimate region tag (`en-IN`), so shape alone cannot discriminate them — see
+ * {@link SUMMARY_LANGUAGE_PATTERN}'s own docstring for the rule.
  */
 
 import type { JsonObject } from '@arcaai/domains';
@@ -47,25 +51,41 @@ export const SUMMARY_LANGUAGE_METADATA_KEY = 'summaryLanguage';
 /**
  * BCP-47-ish: a 2-3 letter primary subtag, then up to three `-`-separated alphanumeric subtags.
  * Exported so the request DTO and the tests state ONE grammar.
+ *
+ * TASK-1001 OD-4 — shape alone cannot tell a REGION subtag from an STT CODE-SWITCH marker: `ml-en`
+ * (`ASR_PARAMETERS.decoding.languageMode`) is shaped exactly like the legitimate `en-IN`. The
+ * discriminator is content, not shape: a two-letter SECOND subtag that is ITSELF one of the
+ * platform's known language PRIMARY subtags (`en`/`ml`/`hi`/`ta`/`kn`/`te` — the same short list
+ * {@link summaryLanguageName} already speaks; none of them happens to double as an ISO-3166
+ * region code) is not a region and is refused. The rule fires only on a two-letter second
+ * subtag, so a script/region combination (`zh-Hant-HK`) is untouched.
  */
-export const SUMMARY_LANGUAGE_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/;
+export const SUMMARY_LANGUAGE_PATTERN = /^[A-Za-z]{2,3}(?!-(?:en|ml|hi|ta|kn|te)(?:-|$))(-[A-Za-z0-9]{2,8}){0,3}$/i;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
- * The consultation's declared summary language, or `null`.
- *
- * A malformed or blank value reads as ABSENT rather than raising: the fail-safe direction is "the
- * agent's own body decides the language", never "this consultation cannot be documented".
+ * Shared shape+grammar check: a non-blank string matching {@link SUMMARY_LANGUAGE_PATTERN}
+ * (which, since TASK-1001 OD-4, also excludes STT code-switch markers), or `null`.
  */
-export function readSummaryLanguage(metadata: unknown): string | null {
-  if (!isPlainObject(metadata)) return null;
-  const value = metadata[SUMMARY_LANGUAGE_METADATA_KEY];
+function parseLanguageTag(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 && SUMMARY_LANGUAGE_PATTERN.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * The consultation's declared summary language, or `null`.
+ *
+ * A malformed, blank, or code-switch-shaped value reads as ABSENT rather than raising: the
+ * fail-safe direction is "the agent's own body decides the language", never "this consultation
+ * cannot be documented".
+ */
+export function readSummaryLanguage(metadata: unknown): string | null {
+  if (!isPlainObject(metadata)) return null;
+  return parseLanguageTag(metadata[SUMMARY_LANGUAGE_METADATA_KEY]);
 }
 
 /**
@@ -91,4 +111,33 @@ export function summaryLanguageName(tag: string | null | undefined): string | nu
   const primary = tag.split('-')[0]!.toLowerCase();
   const names: Record<string, string> = { en: 'English', ml: 'Malayalam', hi: 'Hindi', ta: 'Tamil', kn: 'Kannada', te: 'Telugu' };
   return names[primary] ?? tag;
+}
+
+/**
+ * The ONE summary-language resolver (TASK-1001 OD-2). It replaces the two resolvers that used to
+ * disagree on the absent case: {@link summaryLanguageName} already returned `null` when
+ * undeclared, but `resolveV1LanguageName` in `../prompt/pre-summary-variables.ts` silently
+ * returned `'English'` — that silent default was the bug (§A2 of the TASK-1001 ticket). Every
+ * caller that needs "what language should this note be written in" should go through this
+ * function now.
+ *
+ * Resolution order — configured-first, exactly like `AiProviderConnection`'s "absent = no
+ * opinion" cascade:
+ *   1. `configuredLanguage` — an explicitly configured agent-level language, when the caller
+ *      passes one. Wins even when the consultation declares a different language.
+ *   2. the consultation's own declared {@link SUMMARY_LANGUAGE_METADATA_KEY}, via
+ *      {@link readSummaryLanguage}.
+ *   3. `null` — no output language was declared by either source. The agent's own prompt body
+ *      decides (see the module docstring). **Never** coerced to `'English'`.
+ *
+ * A malformed or code-switch-shaped `configuredLanguage` is treated as "no opinion" and falls
+ * through to the consultation's own declaration — the same fail-safe posture
+ * {@link readSummaryLanguage} already takes on the stored value.
+ */
+export function resolveSummaryLanguage(
+  configuredLanguage: string | null | undefined,
+  consultationMetadata: unknown,
+): string | null {
+  const tag = parseLanguageTag(configuredLanguage) ?? readSummaryLanguage(consultationMetadata);
+  return summaryLanguageName(tag);
 }
