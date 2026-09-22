@@ -348,6 +348,21 @@ export const ASR_PARAMETERS = {
 export const ASR_INSTRUCTION = {};
 
 /**
+ * TASK-1000 — the output-budget floor every seeded summarization agent starts from, and the
+ * per-section allowance above it. Mirrored by `OUTPUT_TOKENS_ABSOLUTE_FLOOR` /
+ * `OUTPUT_TOKENS_PER_SECTION` in `@arcaai/applications`, which enforces the same rule at runtime;
+ * `packages/database` cannot import that package, so the parity is pinned by a test instead.
+ */
+export const SUMMARIZATION_ABSOLUTE_FLOOR_TOKENS = 8192;
+export const SUMMARIZATION_TOKENS_PER_SECTION = 512;
+
+/** The budget a note shape of `sectionCount` sections is seeded with. */
+export const summarizationMaxTokens = (sectionCount: number): number =>
+  Number.isFinite(sectionCount) && sectionCount > 0
+    ? Math.max(SUMMARIZATION_ABSOLUTE_FLOOR_TOKENS, Math.ceil(sectionCount) * SUMMARIZATION_TOKENS_PER_SECTION)
+    : SUMMARIZATION_ABSOLUTE_FLOOR_TOKENS;
+
+/**
  * The per-turn summarization hyper-parameters. `guards.enabled: true` is the AGENT level of the
  * `node > workflow > agent > true` guardrail precedence (§3.14) — stated, not inherited, because
  * "guardrail enabled with GLiNER2 on the summarization agent" is an owner commitment (D-2).
@@ -365,10 +380,38 @@ export const ASR_INSTRUCTION = {};
  * `typeof === 'number'`, so 0 travels rather than being swallowed as falsy.
  */
 export const SUMMARIZATION_PARAMETERS = {
-  generation: { temperature: 0, maxTokens: 2048, reasoning: { enabled: false } },
+  generation: { temperature: 0, maxTokens: SUMMARIZATION_ABSOLUTE_FLOOR_TOKENS, reasoning: { enabled: false } },
   responseFormat: 'text',
   guards: { enabled: true },
 };
+
+/**
+ * TASK-1000 — the same parameters, sized for a note shape with `sectionCount` sections.
+ *
+ * ## Why one constant could not serve 22 agents
+ *
+ * Every `arcaai-*-summary-*` agent shared {@link SUMMARIZATION_PARAMETERS} and therefore a single
+ * `maxTokens: 2048`, across templates running from 5 sections (diet revisit) to 23 (surgical
+ * oncology intake). On 2026-09-22 a 14-section note outgrew that budget partway through a real
+ * consultation: the engine reported `stop_reason: "length"`, the turn JSON was cut mid-string,
+ * and the degrade path wrote the fragment into the note's first section. A budget that is a
+ * property of the TEMPLATE cannot be a constant shared by every template.
+ *
+ * ## Why the runtime ALSO enforces this
+ *
+ * This function fixes tenants provisioned from here on. It cannot fix the 22 rows already in a
+ * running database: `seedAgentSpecs` is create-only, the reference-set resync is `missing-only`,
+ * and a published agent's `parameters` are immutable (a DB trigger raises `restrict_violation`).
+ * The authoritative guard is therefore the runtime clamp in
+ * `@arcaai/applications` → `live-documentation/output-budget.ts`, which bounds every live
+ * generation into `[templateFloor, platformCeiling]` whatever the row says. The two agree by
+ * construction — same floor, same per-section allowance — and this one exists so the value an
+ * admin READS on the agent matches the value the flush actually runs under.
+ */
+export const summarizationParameters = (sectionCount: number): typeof SUMMARIZATION_PARAMETERS => ({
+  ...SUMMARIZATION_PARAMETERS,
+  generation: { ...SUMMARIZATION_PARAMETERS.generation, maxTokens: summarizationMaxTokens(sectionCount) },
+});
 
 /** `NEW_VISIT_NOTE_SHAPE` / `REVISIT_NOTE_SHAPE` headings, as the text constant the prompt reads. */
 export const headingList = (shape: { sections: ReadonlyArray<{ title: string }> }): string =>
@@ -449,7 +492,15 @@ export function preSummaryPromptVariables(): Record<string, { path: string }> {
  * {@link SUMMARIZATION_PARAMETERS} — it applies to every seeded LLM agent, not to a tier.
  */
 export const PRE_SUMMARY_PARAMETERS = {
-  generation: { temperature: 0, maxTokens: 3072, reasoning: { enabled: false } },
+  // TASK-1000 (OD-9) — 3072 -> 12288, and INDEPENDENT of the per-turn budget.
+  //
+  // The two budgets were coupled by a test asserting `PRE_SUMMARY > SUMMARIZATION`. They answer
+  // different questions — this one reproduces a whole prior record under five headings from the
+  // case-note corpus, the other extends one note by one turn — and they read different templates,
+  // so a relational invariant would block either from being tuned on its own evidence. The
+  // invariant is now two absolute floors. 12288 keeps the warm start's historical ratio to the
+  // per-turn floor (3072 : 2048 = 1.5 ⇒ 8192 × 1.5) rather than inventing a new relationship.
+  generation: { temperature: 0, maxTokens: 12288, reasoning: { enabled: false } },
   responseFormat: 'text',
   guards: { enabled: true },
 };
@@ -860,9 +911,7 @@ export interface SeedAgentsClient {
     }): Promise<Array<{ id: string; slug: string; taskType: string; provider: string | null; wireModelId: string | null }>>;
   };
   promptTemplate: {
-    findUnique(args: {
-      where: { id: string };
-    }): Promise<{
+    findUnique(args: { where: { id: string } }): Promise<{
       id: string;
       status: string | null;
       content: string | null;

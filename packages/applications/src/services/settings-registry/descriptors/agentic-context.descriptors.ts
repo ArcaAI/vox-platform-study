@@ -26,17 +26,39 @@ export type AgenticTranscriptMode = 'whole' | 'windowed';
  */
 export const AGENTIC_CONTEXT_DEFAULTS = {
   // Soft per-flush transcript-delta cap (chars). Was `MAX_DELTA_CHARS = 12000`.
-  'liveDelta.maxChars': 12000,
+  //
+  // TASK-1000 — 12000 -> 24000 (owner directive, 2026-09-22). Measured on the five dev
+  // consultations of 2026-09-22, `truncatedDeltaCount` was 0 on every one of 45 flushes, so this
+  // cap was never reached and raising it changes nothing on its own. It is here as the COMPANION
+  // to the three cadence changes below: those make flushes less frequent, which makes each
+  // backlog larger, and 12000 would then start clipping. Sequenced after the output-budget
+  // floor deliberately — a wider delta means a longer prompt and a longer turn document, which
+  // is the pressure that truncated the note in the first place.
+  'liveDelta.maxChars': 24000,
   // Final-segment count that triggers an incremental flush.
-  'liveFlush.segmentThreshold': 3,
+  //
+  // TASK-1000 — 3 -> 6. This is the ONLY lever on the active-speech path: `scheduleFlush`'s
+  // `idleMs` debounce is CLEARED and bypassed whenever this threshold is met, so during
+  // continuous dictation the threshold, not the debounce, decides the cadence. Raising `idleMs`
+  // without raising this would have changed only what happens after speech stops.
+  'liveFlush.segmentThreshold': 6,
   // Idle debounce (ms) before a flush when the segment threshold is not met.
-  'liveFlush.idleMs': 5000,
+  // TASK-1000 — 5000 -> 10000 (owner directive, 2026-09-22).
+  'liveFlush.idleMs': 10000,
   // TASK-939 R7 — minimum ms between TEXT calls for ONE session: the floor that bounds how often a
   // partial summarization can run, and therefore the cadence a clinician experiences. It was read
   // once from `LIVE_DOC_MIN_INTERVAL_MS` in the service CONSTRUCTOR, which is exactly the freeze
   // this module's own header calls out as what made the control plane decorative — the one cadence
   // knob an operator would most want to turn was the one that needed a redeploy.
-  'liveFlush.minIntervalMs': 4000,
+  //
+  // TASK-1000 — 4000 -> 8000 (owner directive), AND the gate it feeds was changed from
+  // start-to-start to end-to-start. Measured on dev 2026-09-22: `lastFlushAt` was stamped at
+  // flush START, before the TEXT call, so with a 4 s floor and a 6-35 s generation the window
+  // had always reopened by the time the generation returned — the observed minimum idle between
+  // generations was 0.1 s and the live model was busy 45-82% of every recording session. As a
+  // start-to-start floor this knob could not throttle anything slower than itself, which is the
+  // opposite of what its description below promises.
+  'liveFlush.minIntervalMs': 8000,
   // NOTE: `claimCheck.minBytes` was removed — the live lane never
   // consumed it; the real claim-check threshold is the harness-side
   // HARNESS_CLAIM_CHECK_MIN_BYTES env setting.

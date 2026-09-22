@@ -112,6 +112,7 @@ import { HarnessLiveAssistService } from '../harness/harness-live-assist.service
 import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from './realtime/parse-findings';
 import { verifyCorrectionProposals } from './realtime/verify-corrections';
 import { buildRunningSummary, buildStructuredSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
+import { repairOutputBudget, resolveOutputBudget } from './output-budget';
 // TASK-943 — the SAME builder the summary path uses, so the two surfaces cannot drift on what an
 // absent clinical variable means.
 import { buildPreSummaryVariables } from '../prompt/pre-summary-variables';
@@ -202,7 +203,7 @@ import { readWorkflowSelectionMarker } from '../consultation/workflow-selection'
 import { consultationSelectionViolation } from '../workflow-dispatch/consultation-selection-policy';
 import { CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY, CONSULTATION_GATE_DEFAULTS } from '../consultation-gates.constants';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
-import { generateJsonWithRepair, looksLikeJsonObject } from '../shared/bounded-json-repair';
+import { generateJsonWithRepair, looksLikeJsonObject, TruncatedGenerationError } from '../shared/bounded-json-repair';
 import type { LiveSummarySectionDto } from './dto';
 import {
   AGENTIC_CONTEXT_DEFAULTS,
@@ -424,6 +425,17 @@ export const LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX = buildStableUserPrefix(PLATFORM
 export const LIVE_DOCUMENT_SYSTEM_PROMPT =
   'You are a clinical documentation assistant generating an in-progress, structured clinical running note. ' +
   'Be concise and faithful to the transcript; never fabricate findings.';
+
+/**
+ * TASK-1000 OD-5 — bounds on the recovery shrink applied to the per-flush delta cap.
+ *
+ * `MAX_SHRINK` of 8 is where halving stops: past that the delta is small enough that a model
+ * still unable to answer is not going to be rescued by a smaller one, and the flush should keep
+ * failing visibly rather than degrade into sending a sentence at a time. `MIN_CHARS` is the hard
+ * floor beneath the division, so the cap can never reach zero and stall the cursor.
+ */
+const LIVE_DELTA_MAX_SHRINK = 8;
+const LIVE_DELTA_MIN_CHARS = 1500;
 
 /**
  * Safety cap on the transcript delta sent per flush (sliding-window fallback):
@@ -672,6 +684,19 @@ interface LiveSession {
   staleDropCount: number;
   /** How many flushes truncated an oversized delta and carried the overflow forward (C5-04). */
   truncatedDeltaCount: number;
+  /**
+   * TASK-1000 OD-5 — the divisor currently applied to `liveDeltaMaxChars`.
+   *
+   * 1 in the normal case. Doubled (to a bounded maximum) each time a flush fails because the
+   * model could not fit its answer in the output budget, and reset to 1 by the next flush that
+   * succeeds. Without it a truncated flush is an infinite degrade loop: the cursor correctly does
+   * NOT advance, so the next flush re-sends the same delta plus whatever arrived meanwhile — a
+   * strictly larger input to a generation that already could not finish.
+   *
+   * Shrinking the INPUT is the lever that actually converges, because the turn document the model
+   * has to emit is proportional to how much new material the delta carries.
+   */
+  deltaShrinkFactor: number;
   /** Epoch ms when the watcher session started — surfaced in the admin stats snapshot. */
   startedAt: number;
   /**
@@ -1113,6 +1138,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private realtimeBudgets: RealtimeBudgets;
   /**
+   * TASK-1000 — `(declaredMaxTokens, sectionCount)` pairs already reported as raised to the
+   * template floor. Process-lifetime, unbounded only in the number of DISTINCT mis-sized
+   * agent/template pairings a deployment has, which is at most the size of its agent catalogue.
+   */
+  private readonly budgetFloorReported = new Set<string>();
+  /**
    * The env OVERRIDES for the four budgets that kept one, or undefined where the
    * deployment does not pin them. Captured, never treated as the effective value:
    * the authority is the `consultation.realtime.*` descriptor resolved per flush.
@@ -1515,6 +1546,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       flushCount: 0,
       staleDropCount: 0,
       truncatedDeltaCount: 0,
+      deltaShrinkFactor: 1,
       startedAt,
       trajectorySessionId: params.sessionId ?? `${params.consultationId}:${startedAt}`,
       trajectorySeq: 0,
@@ -2668,6 +2700,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       return await this.runFlush(consultationId, opts);
     } finally {
       session.inFlight = false;
+      // TASK-1000 — the min-interval floor is stamped HERE, on completion, which is what makes
+      // it an END-to-start floor (see the long note at the gate in `runFlush`). In the `finally`
+      // so every exit stamps: a thrown generation, a stale drop and a published note all cost the
+      // model the same time, and only one of them used to reset the window.
+      //
+      // BEFORE `scheduleThrottledFlush` below, which reads `lastFlushAt` to compute its delay —
+      // stamping after it would schedule the coalesced re-run against the previous window and
+      // fire it immediately, reinstating exactly the back-to-back cadence this fixes.
+      session.lastFlushAt = Date.now();
       if (session.coalescedFlush) {
         session.coalescedFlush = false;
         // Only for a session that still exists: a `stop()` racing the completion must
@@ -2753,7 +2794,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       return session.lastPayload ?? null;
     }
 
-    session.lastFlushAt = Date.now();
+    // TASK-1000 — `lastFlushAt` is stamped when this flush ENDS (see the `finally` at the bottom
+    // of this method), not here.
+    //
+    // It used to be stamped here, at the START, which made `minIntervalMs` a start-to-start
+    // floor: a 4 s window against a 6-35 s generation had always reopened by the time the
+    // generation returned, so the next flush ran immediately. Measured on dev 2026-09-22 the
+    // minimum idle between generations was 0.1 s and the live model was busy for 45-82% of every
+    // recording session. A floor smaller than the work it gates cannot throttle that work, and
+    // the descriptor promises it can ("raising it makes the note update less often and costs
+    // less"). Stamping on completion makes the knob mean what it says at any generation speed.
+    //
+    // The in-flight flush is still protected from a concurrent one by the single-flight gate
+    // above, not by this stamp — so moving it cannot admit a second parallel generation.
     session.pendingSegments = 0;
 
     //  — a memo scoped to THIS flush. Not to the session: a guard
@@ -2850,6 +2903,21 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let deltaLen = 0;
     let deltaTruncated = false;
     let elidedParts = 0;
+    // TASK-1000 OD-5 — the cap this flush actually applies, shrunk while the session is
+    // recovering from a generation that could not fit its answer in the output budget.
+    //
+    // In the ordinary case (`deltaShrinkFactor === 1`) the configured cap is used VERBATIM. The
+    // `LIVE_DELTA_MIN_CHARS` floor bounds the DIVISION only, and is itself capped by the
+    // configured value: a deployment (or a test) that deliberately sets a small cap must get the
+    // cap it asked for, not this floor. Getting that wrong would silently widen every configured
+    // window to 1500 characters.
+    const effectiveDeltaMaxChars =
+      session.deltaShrinkFactor === 1
+        ? agenticContext.liveDeltaMaxChars
+        : Math.max(
+            Math.min(agenticContext.liveDeltaMaxChars, LIVE_DELTA_MIN_CHARS),
+            Math.floor(agenticContext.liveDeltaMaxChars / session.deltaShrinkFactor),
+          );
 
     if (windowed) {
       // Windowed mode: take the most RECENT segments that fit.
@@ -2867,7 +2935,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       for (let i = flushUpTo - 1; i >= session.flushedTranscriptCount; i--) {
         const part = session.transcriptParts[i];
         const separator = deltaSegments.length > 0 ? 1 : 0;
-        if (deltaSegments.length > 0 && deltaLen + separator + part.length > agenticContext.liveDeltaMaxChars) {
+        if (deltaSegments.length > 0 && deltaLen + separator + part.length > effectiveDeltaMaxChars) {
           deltaTruncated = true;
           break;
         }
@@ -2884,7 +2952,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // The `deltaSegments.length > 0` guard always admits the FIRST segment so the
         // cursor can always advance (no stall). Consequently the cap is a
         // SOFT per-flush bound — a single segment larger than the cap is still sent whole.
-        if (deltaSegments.length > 0 && deltaLen + separator + part.length > agenticContext.liveDeltaMaxChars) {
+        if (deltaSegments.length > 0 && deltaLen + separator + part.length > effectiveDeltaMaxChars) {
           deltaTruncated = true;
           break; // stop at the head boundary — the rest carries forward
         }
@@ -3092,13 +3160,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // a retry could never yield JSON and is skipped. The corrective instruction
         // is appended (not prepended) to keep the prefix-cache-stable lead-in intact.
         const outcome = await generateJsonWithRepair<AppliedTurn, LiveSoapCall>({
-          generate: async (corrective) => {
+          generate: async (retry) => {
             const startedAt = Date.now();
             const { text, stats, structured } = await this.callText(
               promptText,
               session.tenantId,
               signal,
-              corrective,
+              retry?.corrective,
               agent,
               // The turn schema, swapped in by DERIVING a compiled view rather than by threading a
               // new parameter: `responseFormat` is the only field the call path reads, and
@@ -3108,6 +3176,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               undefined,
               session.consultationId,
               runContext.trigger as Readonly<Record<string, unknown>>,
+              retry !== undefined,
             );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
           },
@@ -3115,16 +3184,27 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
             const turn = parseTurnJson(text, template.compiled);
             return turn ? applyTurn(priorSections, turn, template.compiled) : null;
           },
-          parseTolerant: (text) => {
+          parseTolerant: (call) => {
             // DEGRADE. Try the whole-document JSON first, then prose — both are "the model answered
             // with the document", which is the old behaviour, so both become replaces and the flush
             // records that it took this path. The churn metric is what makes a tenant stuck here
             // visible instead of silently fine.
-            const asJson = parseDocumentJson(text, template.compiled);
-            const parsed = asJson && asJson.length > 0 ? asJson : parseDocumentSections(text, template.compiled);
+            const asJson = parseDocumentJson(call.text, template.compiled);
+            const parsed = asJson && asJson.length > 0 ? asJson : parseDocumentSections(call.text, template.compiled);
             turnDegraded = true;
             return wholeDocumentAsTurn(parsed, template.compiled);
           },
+          // TASK-1000 — a cut-off STRUCTURED generation never reaches `parseTolerant`; it raises,
+          // and the catch below turns it into a failed flush that keeps the prior note. The
+          // retry's raised budget is applied inside `callText`, the only place that can resolve
+          // the base budget it doubles.
+          //
+          // `call.structured` is part of the condition deliberately. A provider that ignores
+          // `response_format` (Ollama, by design) answers in prose, and a truncated PROSE note is
+          // still readable text the section parser can partition — degraded, but not the failure
+          // this ticket is about. The defect is a JSON DOCUMENT cut mid-token, which parses as
+          // nothing and degrades into a fragment wearing a section's name.
+          isTruncated: (call) => call.structured && call.stats?.stop_reason === 'length',
           // Retry only a genuine malformed-JSON attempt: structured output was
           // requested AND the text opens a JSON object. Clean prose (no leading
           // `{`) is served by the tolerant regex parser with no wasted regen.
@@ -3165,6 +3245,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       } catch (error) {
         if (isStale()) return this.dropStale(session);
         textFailed = true;
+        // TASK-1000 OD-5 — an output truncation shrinks the NEXT delta. The cursor has correctly
+        // not advanced, so without this the retry re-sends the same material plus more.
+        if (error instanceof TruncatedGenerationError) this.shrinkDelta(session);
         // TASK-946 D6 — classified HERE, where the error is in hand; the message stays in the
         // server log and only the code reaches the clinician's feed.
         legacyDegradeReason = degradeCode(error, LIVE_DEGRADE_FALLBACK);
@@ -3371,6 +3454,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // the payload becomes the session's last-good. Content and cursor now move together or not at
     // all, so a superseded generation can no longer strand the transcript it consumed.
     if (cursorAdvanceTo !== null) session.flushedTranscriptCount = cursorAdvanceTo;
+    // TASK-1000 OD-5 — a flush that CONSUMED transcript is the signal that the shrink worked, so
+    // the window reopens to full width for the next one. Keyed on the cursor having advanced
+    // rather than on `!textFailed`: a flush that failed for an unrelated reason (a provider
+    // outage) must not widen the window back while the truncation that shrank it is unresolved.
+    if (cursorAdvanceTo !== null && session.deltaShrinkFactor !== 1) {
+      this.logger.log({
+        message: 'Live summary recovered after an output truncation — restoring the full transcript delta window',
+        consultationId,
+        previousDeltaShrinkFactor: session.deltaShrinkFactor,
+      });
+      session.deltaShrinkFactor = 1;
+    }
     session.lastPayload = payload;
     await this.safePublish(consultationId, payload);
     await this.persistDurableSnapshot(session, payload, { force: false });
@@ -3626,38 +3721,46 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
           ...ctx.template.compiled,
           responseFormat: buildTurnResponseFormat(ctx.template.compiled),
         };
-        const outcome = await generateJsonWithRepair<AppliedTurn, LiveSoapCall>({
-          generate: async (corrective) => {
-            const startedAt = Date.now();
-            const { text, stats, structured } = await this.callText(
-              promptText,
-              session.tenantId,
-              signal,
-              corrective,
-              ctx.agent,
-              turnCompiled,
-              textAgent,
-              session.consultationId,
-              ctx.runContext.trigger as Readonly<Record<string, unknown>>,
-            );
-            return { text, stats, structured, latencyMs: Date.now() - startedAt };
-          },
-          parseStrict: (text) => {
-            const turn = parseTurnJson(text, ctx.template.compiled);
-            return turn ? applyTurn(ctx.priorSections, turn, ctx.template.compiled) : null;
-          },
-          parseTolerant: (text) => {
-            // DEGRADE to the pre-ticket whole-document behaviour — see `wholeDocumentAsTurn`.
-            const asJson = parseDocumentJson(text, ctx.template.compiled);
-            const parsed = asJson && asJson.length > 0 ? asJson : parseDocumentSections(text, ctx.template.compiled);
-            turnDegraded = true;
-            return wholeDocumentAsTurn(parsed, ctx.template.compiled);
-          },
-          // TASK-939 — see the legacy branch: a well-formed whole-document response is usable via
-          // the degrade path, so it must not trigger a second model call.
-          shouldRepair: (first) =>
-            first.structured && looksLikeJsonObject(first.text) && parseDocumentJson(first.text, ctx.template.compiled) === null,
-        });
+        const outcome = await this.withDeltaShrinkOnTruncation(session, () =>
+          generateJsonWithRepair<AppliedTurn, LiveSoapCall>({
+            generate: async (retry) => {
+              const startedAt = Date.now();
+              const { text, stats, structured } = await this.callText(
+                promptText,
+                session.tenantId,
+                signal,
+                retry?.corrective,
+                ctx.agent,
+                turnCompiled,
+                textAgent,
+                session.consultationId,
+                ctx.runContext.trigger as Readonly<Record<string, unknown>>,
+                retry !== undefined,
+              );
+              return { text, stats, structured, latencyMs: Date.now() - startedAt };
+            },
+            parseStrict: (text) => {
+              const turn = parseTurnJson(text, ctx.template.compiled);
+              return turn ? applyTurn(ctx.priorSections, turn, ctx.template.compiled) : null;
+            },
+            parseTolerant: (call) => {
+              // DEGRADE to the pre-ticket whole-document behaviour — see `wholeDocumentAsTurn`.
+              const asJson = parseDocumentJson(call.text, ctx.template.compiled);
+              const parsed = asJson && asJson.length > 0 ? asJson : parseDocumentSections(call.text, ctx.template.compiled);
+              turnDegraded = true;
+              return wholeDocumentAsTurn(parsed, ctx.template.compiled);
+            },
+            // TASK-939 — see the legacy branch: a well-formed whole-document response is usable via
+            // the degrade path, so it must not trigger a second model call.
+            shouldRepair: (first) =>
+              first.structured && looksLikeJsonObject(first.text) && parseDocumentJson(first.text, ctx.template.compiled) === null,
+            // TASK-1000 — THIS is the path the reported consultation took (the graph executor is
+            // enabled on dev). A cut-off STRUCTURED generation raises rather than degrading, so the
+            // node fails and the prior note stands instead of section 0 being replaced by the
+            // fragment. See the legacy branch for why `structured` is part of the condition.
+            isTruncated: (call) => call.structured && call.stats?.stop_reason === 'length',
+          }),
+        );
 
         const [firstCall, repairCall] = outcome.calls;
         textLatencyMs = firstCall.latencyMs;
@@ -3891,6 +3994,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // prompt shows the clinician's text instead of the machine's superseded version.
     const reconciled = new Map<number, string>();
 
+    // TASK-1000 — this gate STAYS `sections.length === 0`, and the reason is worth recording.
+    //
+    // The plan for this ticket called for relaxing it so a degrade reason publishes whenever one
+    // exists. That would have been a worse bug than the one being fixed: `publishSectionDegrade`
+    // emits `state: 'empty', content: ''` for EVERY section, which is correct only when there is
+    // no note to show. A truncated flush now keeps the PRIOR note, so firing it here would blank
+    // a standing note on the clinician's screen to report that an update failed.
+    //
+    // The failure still reaches the clinician, on the channel that can carry it without
+    // destroying content: the whole-document payload's `flushFailed` + `degradeReason`
+    // (`output_truncated`), published below by the caller.
     if (ctx.sections.length === 0) {
       await this.publishSectionDegrade(session, ctx.template, ctx.degradeReason);
       return reconciled;
@@ -5625,6 +5739,72 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return { spec, overrides: nodeOverrides(input.config), guardrail: { enabled: guardrail.enabled } };
   }
 
+  /**
+   * TASK-1000 — the clamped output budget for one live generation, plus the one log line that
+   * makes a stale stored value visible instead of silently corrected.
+   *
+   * De-duplicated per `(declared, sections)` pair for the process lifetime: the condition is a
+   * property of the agent row and its template, not of the flush, so one line per distinct
+   * mis-sized pairing says everything a second thousand would. Without it the clamp would be an
+   * invisible override of what a tenant admin reads on the agent — which is exactly the kind of
+   * quiet disagreement between the console and the runtime that this ticket is about.
+   */
+  private liveOutputBudget(generation: { maxTokens?: unknown }, compiled: CompiledDocumentTemplate, isRepairAttempt = false): number {
+    const declared = numberOrUndefined(generation.maxTokens);
+    const sections = compiled.checklist.length;
+    const ceiling = this.realtimeBudgets.textMaxTokens;
+    const base = resolveOutputBudget(declared, sections, ceiling);
+    const budget = isRepairAttempt ? repairOutputBudget(base, ceiling) : base;
+    if (declared !== undefined && base > declared) {
+      const seen = `${declared}:${sections}`;
+      if (!this.budgetFloorReported.has(seen)) {
+        this.budgetFloorReported.add(seen);
+        this.logger.warn({
+          message: 'Live-summary output budget raised to the template floor — the agent declares less than its note shape needs',
+          declaredMaxTokens: declared,
+          sectionCount: sections,
+          effectiveMaxTokens: base,
+        });
+      }
+    }
+    return budget;
+  }
+
+  /**
+   * TASK-1000 OD-5 — shrink the next flush's delta window after an output truncation.
+   *
+   * Doubling the divisor rather than subtracting a fixed amount: the overrun is unknown (the
+   * engine reports only that it stopped, not by how much it was short), so the retry sequence
+   * converges in log steps instead of creeping down one flush at a time while the clinician
+   * watches a stale note.
+   */
+  private shrinkDelta(session: LiveSession): void {
+    const next = Math.min(session.deltaShrinkFactor * 2, LIVE_DELTA_MAX_SHRINK);
+    if (next === session.deltaShrinkFactor) return;
+    session.deltaShrinkFactor = next;
+    this.logger.warn({
+      message: 'Live summary output truncated — shrinking the next transcript delta window',
+      consultationId: session.consultationId,
+      deltaShrinkFactor: next,
+    });
+  }
+
+  /**
+   * Run the graph lane's generation, shrinking the delta if it truncates.
+   *
+   * The graph path needs this seam because the executor CATCHES a thrown capability and turns it
+   * into a degraded node outcome, so the error never reaches the flush's own `catch`. Shrinking
+   * at the closure boundary is what keeps the two engines' recovery behaviour identical.
+   */
+  private async withDeltaShrinkOnTruncation<T>(session: LiveSession, run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      if (error instanceof TruncatedGenerationError) this.shrinkDelta(session);
+      throw error;
+    }
+  }
+
   private async callText(
     promptText: string,
     tenantId: string,
@@ -5644,6 +5824,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-943 — the run's `trigger` root, so an agent's `{ path: 'trigger.context.*' }` bindings
     // resolve instead of degrading the node. Trailing + optional, same reason as above.
     trigger?: Readonly<Record<string, unknown>> | null,
+    // TASK-1000 — true on the ONE corrective retry, which then generates under the DOUBLED
+    // budget. A boolean rather than a number because only this method can resolve the base
+    // budget (it owns `generation` and the compiled template); a call site that passed an
+    // absolute value would have to duplicate that resolution and could drift from it.
+    // Trailing + optional, so every existing caller keeps its arity and its budget.
+    isRepairAttempt?: boolean,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     if (textAgent) {
       // The candidates this call may run, in order: the primary, then — only when the tenant's
@@ -5664,6 +5850,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
             consultationId,
             textAgent.guardrail,
             trigger,
+            isRepairAttempt,
           );
         } catch (error) {
           lastError = error;
@@ -5773,6 +5960,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // resolve. Trailing + optional so every positional fixture keeps its arity; ABSENT ⇒ the
     // pre-943 behaviour (no trigger root), which is correct for a caller that genuinely has none.
     trigger?: Readonly<Record<string, unknown>> | null,
+    // TASK-1000 — true on the ONE corrective retry; see `callText`'s own parameter.
+    isRepairAttempt?: boolean,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     const includeResponseFormat = candidate.provider.toLowerCase() !== 'ollama';
     const generation = { ...asRecord(candidate.parameters.generation), ...overrides.generation };
@@ -5808,7 +5997,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       provider: candidate.provider,
       model: candidate.model,
       temperature: numberOrUndefined(generation.temperature),
-      max_tokens: numberOrUndefined(generation.maxTokens) ?? this.realtimeBudgets.textMaxTokens,
+      // TASK-1000 — a CLAMP, not a `??`.
+      //
+      // This read used to be `agent.maxTokens ?? this.realtimeBudgets.textMaxTokens`, which made
+      // a field documented as a "ceiling" behave as a default that any agent could replace. Every
+      // `arcaai-*-summary-*` agent declares 2048, so the platform's 8192 never applied and a
+      // 14-section note was generated under a budget it could not fit. The budget is now bounded
+      // by the template the flush is actually filling — see `output-budget.ts`.
+      max_tokens: this.liveOutputBudget(generation, compiled, isRepairAttempt === true),
       top_p: numberOrUndefined(generation.topP),
       stream: false as const,
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,

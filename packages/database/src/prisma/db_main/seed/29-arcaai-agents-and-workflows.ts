@@ -46,7 +46,7 @@ import { ARCAAI_CONSULTATION_SCRIBE_DEFINITION } from './07g-arcaai-two-schemas'
 import {
   PRE_SUMMARY_AGENT_SLUG,
   PRE_SUMMARY_PARAMETERS,
-  SUMMARIZATION_PARAMETERS,
+  summarizationParameters,
   arcaaiAgentId,
   preSummaryPromptVariables,
   seedAgentSpecs,
@@ -54,7 +54,11 @@ import {
   type SeedAgentsClient,
 } from './25-agents';
 import { cloneId } from './26-tenant-reference-set';
-import { arcaaiDocumentTemplateSlug, seedArcaaiDepartmentDocumentTemplates } from './27-document-template-library';
+import {
+  ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES,
+  arcaaiDocumentTemplateSlug,
+  seedArcaaiDepartmentDocumentTemplates,
+} from './27-document-template-library';
 import {
   CORE_PALETTE_KEY,
   buildConsultationGraph,
@@ -153,6 +157,20 @@ export const ARCAAI_PRE_SUMMARY_AGENT_SPEC: SeedAgentSpec = {
   provenance: null,
 };
 
+/**
+ * TASK-1000 — how many sections this department/visit's note shape declares.
+ *
+ * Read off the document-template library rather than re-derived, because that module already
+ * parses each department's approved clinical prompt for its heading block — the shape and the
+ * budget that has to fill it then come from one place by construction. A slug with no entry
+ * falls back to 0, which `summarizationParameters` resolves to the absolute floor: an
+ * unresolvable shape is a reason to be generous, never a reason to truncate.
+ */
+const ARCAAI_SECTION_COUNTS = new Map(ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES.map((item) => [item.slug, item.shape.sections.length]));
+
+const arcaaiSectionCount = (slugPart: string, visit: VisitType): number =>
+  ARCAAI_SECTION_COUNTS.get(arcaaiDocumentTemplateSlug(slugPart, visit)) ?? 0;
+
 export const ARCAAI_DEPARTMENT_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_TABLE.flatMap((row) =>
   VISIT_TYPES.map((visit, visitIndex): SeedAgentSpec => ({
     id: arcaaiAgentId((row.ordinal - 1) * VISIT_TYPES.length + visitIndex + 1),
@@ -166,7 +184,10 @@ export const ARCAAI_DEPARTMENT_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_
     // The agent's pin outranks the template's `approvedVersionNumber` in the resolver, so it must
     // be the template's OWN approved version (v4 for Breast & Endocrine, v3 elsewhere).
     instruction: { promptTemplateId: row.templates[visit], promptVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION },
-    parameters: SUMMARIZATION_PARAMETERS,
+    // TASK-1000 — sized for THIS department/visit's note shape, not a constant shared by all 22.
+    // The section count comes from the same table the document templates are seeded from, so the
+    // budget and the shape it has to fill can never disagree.
+    parameters: summarizationParameters(arcaaiSectionCount(row.slugPart, visit)),
     outputSchema: null,
     status: 'PUBLISHED',
     isActive: true,
@@ -211,7 +232,8 @@ export const ARCAAI_WORKFLOW_TARGETS: WorkflowSeedTarget[] = ARCAAI_DEPARTMENT_T
 }));
 
 /** LAZY — see `workflowLibraryDefinitions`. */
-export const arcaaiWorkflowDefinitions = () => ARCAAI_WORKFLOW_TARGETS.map((target) => definitionRow(target, generatedFor(ARCAAI_GENERATED, target.key), REGISTRY_CHECKSUM));
+export const arcaaiWorkflowDefinitions = () =>
+  ARCAAI_WORKFLOW_TARGETS.map((target) => definitionRow(target, generatedFor(ARCAAI_GENERATED, target.key), REGISTRY_CHECKSUM));
 
 // =============================================================================
 // Assignments — DEPARTMENT scope × 11, TENANT default → the General Medicine workflow
@@ -263,7 +285,10 @@ export function arcaaiWorkflowAssignments(departmentIdByCode: ReadonlyMap<string
     assignmentVersion: 1,
     beforeSlug: null as string | null,
     afterSlug: row.workflowDefinitionSlug,
-    reason: row.scope === 'TENANT' ? 'Seeded day-1 ArcaAI tenant default consultation workflow (TASK-930 §8.5).' : `Seeded day-1 ArcaAI department consultation workflow (TASK-930 §8.5).`,
+    reason:
+      row.scope === 'TENANT'
+        ? 'Seeded day-1 ArcaAI tenant default consultation workflow (TASK-930 §8.5).'
+        : `Seeded day-1 ArcaAI department consultation workflow (TASK-930 §8.5).`,
   }));
   return { rows, changes };
 }
@@ -273,7 +298,12 @@ export function arcaaiWorkflowAssignments(departmentIdByCode: ReadonlyMap<string
 // =============================================================================
 
 export interface SeedArcaaiClient extends SeedAgentsClient, SeedWorkflowsClient {
-  department: { findMany(args: { where: { tenantId: string; code: { in: string[] } }; select: { id: true; code: true } }): Promise<Array<{ id: string; code: string }>> };
+  department: {
+    findMany(args: {
+      where: { tenantId: string; code: { in: string[] } };
+      select: { id: true; code: true };
+    }): Promise<Array<{ id: string; code: string }>>;
+  };
 }
 
 /** The 22 ArcaAI department note shapes this phase writes, so a caller can count them without a DB. */

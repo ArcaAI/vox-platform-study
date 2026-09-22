@@ -40,6 +40,10 @@
  * call time, from the same `sectionKeys` and `checklist`.
  */
 import type { CompiledDocumentTemplate, CompiledResponseFormat } from '../../../document-template/document-template-compiler';
+// TASK-1000 OD-7 — the ONE sentinel both planes must agree about. Imported rather than
+// re-declared so the write guard below and `buildStructuredSummary`'s render guard can never
+// drift apart; `document-shape-parser` imports only types, so this closes no cycle.
+import { RUNNING_SUMMARY_TITLE } from '../document-shape-parser';
 import type { LiveSummarySectionDto } from '../dto';
 
 /** One section's contribution to a turn. Every field is optional — a quiet section says nothing. */
@@ -255,6 +259,19 @@ export function wholeDocumentAsTurn(parsed: readonly LiveSummarySectionDto[], co
   for (const [idx, section] of parsed.entries()) {
     const content = section.content ?? '';
     if (content.trim().length === 0) continue;
+    // TASK-1000 OD-7 — the parser's fallback is NOT a section, so it never becomes a write.
+    //
+    // `parseDocumentSections` answers `[{ title: RUNNING_SUMMARY_TITLE, content: <all of it> }]`
+    // when fewer than two headings matched: a note whose partition is UNKNOWN. Keying that
+    // POSITIONALLY onto `sectionKeys[0]` labels an arbitrary blob as the template's first
+    // clinical section — which is how a truncated JSON turn document became one consultation's
+    // `patient_demographics`. It still passes through on `sections` below, so the running-summary
+    // view keeps rendering it for the provider this degrade path exists for (one that ignores
+    // `response_format` and answers in prose); it simply never overwrites a clinical section.
+    //
+    // `buildStructuredSummary` makes the same guard for the same sentinel, and for the same
+    // reason — this is that rule applied to the WRITE plane rather than the render plane.
+    if (section.title.trim() === RUNNING_SUMMARY_TITLE) continue;
     const sectionKey = compiled.sectionKeys[idx] ?? section.title.toLowerCase().replace(/[^a-z0-9_]+/g, '_');
     writes.push({ sectionKey, title: section.title, idx, mode: 'replace', content });
   }

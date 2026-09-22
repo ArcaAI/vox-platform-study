@@ -12,8 +12,13 @@
  *
  * ## What is pinned here
  *
- *  1. the descriptor exists, is `global-kv` / `open-to-default`, and defaults to 60000;
- *  2. an unconfigured deployment sends 60000 on the wire — not 20000;
+ *  1. the descriptor exists, is `global-kv` / `open-to-default`, and defaults to 300000;
+ *  2. an unconfigured deployment sends 300000 on the wire — not 20000;
+ *
+ * TASK-1000 (OD-4) — the default moved 60000 -> 300000. It is raised WITH the output budget it
+ * has to admit: the realtime ceiling now allows 16,384 tokens on the corrective retry, which at
+ * the 57-70 tok/s measured on this model is ~287 s. A 60 s budget would have converted the
+ * truncation TASK-1000 fixes into a timeout — the same flush lost, reported differently.
  *  3. a STORED registry value wins over the env override (the registry is the control
  *     plane; a budget that needs a redeploy to move is the defect being fixed);
  *  4. with no stored value the env override still applies.
@@ -112,18 +117,18 @@ async function generateTimeoutOf(opts: Parameters<typeof buildService>[0]): Prom
 }
 
 describe('TASK-891 B1 — consultation.realtime.textTimeoutMs', () => {
-  it('is registered as a governed global-kv tuning knob defaulting to 60000', () => {
+  it('is registered as a governed global-kv tuning knob defaulting to 300000', () => {
     const descriptor = HOPE_SETTINGS_REGISTRY.getOrThrow(CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY);
 
     expect(descriptor.tier).toBe('global-kv');
     expect(descriptor.failMode).toBe('open-to-default');
     expect(descriptor.dataType).toBe('number');
-    expect(descriptor.default).toBe(60000);
-    expect(CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY]).toBe(60000);
+    expect(descriptor.default).toBe(300000);
+    expect(CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY]).toBe(300000);
   });
 
-  it('an unconfigured deployment budgets 60000ms, not the old hard-coded 20000ms', async () => {
-    expect(await generateTimeoutOf({})).toBe(60000);
+  it('an unconfigured deployment budgets 300000ms, not the old hard-coded 20000ms', async () => {
+    expect(await generateTimeoutOf({})).toBe(300000);
   });
 
   it('a stored registry value wins over the env override', async () => {

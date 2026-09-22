@@ -37,11 +37,22 @@ export const LIVE_DEGRADE_FALLBACK = 'generation_failed';
 export const PRE_SUMMARY_DEGRADE_FALLBACK = 'pre_summary_failed';
 
 /** The four shared codes, plus both terminal fallbacks — the whole vocabulary, in one place. */
+/**
+ * TASK-1000 — the model stopped at its OUTPUT cap, so the response is a partial document.
+ *
+ * Deliberately NOT `context_overflow`, which is the opposite end of the same window: that one
+ * says the PROMPT did not fit and the remedy is to send less; this one says the ANSWER did not
+ * fit and the remedy is to raise the budget. Folding them would tell an operator to shrink the
+ * input of a call whose input was never the problem.
+ */
+export const LIVE_DEGRADE_OUTPUT_TRUNCATED = 'output_truncated';
+
 export const LIVE_DEGRADE_CODES = Object.freeze([
   'no_case_notes',
   'context_overflow',
   'text_unavailable',
   'timeout',
+  LIVE_DEGRADE_OUTPUT_TRUNCATED,
   LIVE_DEGRADE_FALLBACK,
   PRE_SUMMARY_DEGRADE_FALLBACK,
 ] as const);
@@ -127,6 +138,11 @@ export function degradeCode(error: unknown, fallback: string): string {
   const status = httpStatus(error);
   const haystack = `${codes} ${message} ${upstreamMessage(error)}`;
 
+  // TASK-1000 — `TruncatedGenerationError` declares `code = 'output_truncated'`, which
+  // `upstreamCode` already surfaces, so this classifies structurally with no import and no
+  // coupling to the module that raises it. First, so no wording regex can claim it: a truncated
+  // note's own text may say anything at all.
+  if (codes.split(/\s+/).includes(LIVE_DEGRADE_OUTPUT_TRUNCATED)) return LIVE_DEGRADE_OUTPUT_TRUNCATED;
   if (/CONTEXT_WINDOW_EXCEEDED/i.test(codes)) return 'context_overflow';
   if (NO_CASE_NOTES.test(message)) return 'no_case_notes';
   if (CONTEXT_OVERFLOW.test(haystack)) return 'context_overflow';

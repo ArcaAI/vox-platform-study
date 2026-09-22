@@ -2088,10 +2088,16 @@ export class SummaryService extends BaseService implements ISummaryService {
     const structuredRequested = textPayload.response_format !== undefined;
 
     const outcome = await generateJsonWithRepair<string, TextRepairCall>({
-      generate: async (corrective) => {
+      generate: async (retry) => {
         const response = await this.httpService.axiosRef.post(
           `${this.textServiceUrl}/api/v1/generate`,
-          { ...textPayload, prompt: corrective ? `${basePrompt}${corrective}` : basePrompt },
+          {
+            ...textPayload,
+            prompt: retry ? `${basePrompt}${retry.corrective}` : basePrompt,
+            // TASK-1000 — the retry generates under the RAISED budget when one was resolved.
+            // Re-asking at the budget that just ran out reproduces the truncation exactly.
+            ...(retry?.maxTokens !== undefined ? { max_tokens: retry.maxTokens } : {}),
+          },
           { headers: textHeaders },
         );
         const mapped = mapTextGenerateResponse(response.data);
@@ -2109,11 +2115,23 @@ export class SummaryService extends BaseService implements ISummaryService {
       // through unchanged. Storage semantics stay byte-identical to the
       // pre-repair behaviour in every case except the malformed-JSON one.
       parseStrict: (text) => (parsesAsJsonObject(text) ? text : null),
-      parseTolerant: (text) => text,
+      parseTolerant: (call) => call.text,
       // Retry only a genuine malformed-JSON attempt: structured output was
       // requested AND the text opens a JSON object. Prose (no leading `{`) is
       // the contract on an unstructured request — retrying could never help.
       shouldRepair: (first) => structuredRequested && looksLikeJsonObject(first.text),
+      // TASK-1000 OD-8 — the finalize plane has the SAME truncation exposure as the live flush
+      // and a worse consequence: `parseTolerant` returns the text verbatim, so a cut-off
+      // generation was persisted as the whole clinical note rather than being confined to one
+      // section. Raising here routes it into this method's existing failure handling instead.
+      // `stopReason` was already recorded onto `SummaryMeta` — it is now also acted on.
+      // Scoped to a STRUCTURED request for the reason the live flush documents: a truncated
+      // prose note is readable text a clinician can finish, while a truncated JSON document is a
+      // fragment that would be persisted as the note's entire body.
+      isTruncated: (call) => structuredRequested && call.stats?.stop_reason === 'length',
+      // Double whatever budget this payload carries; `undefined` when it carries none, which
+      // leaves the text service's own default in place exactly as before.
+      repairMaxTokens: typeof textPayload.max_tokens === 'number' && textPayload.max_tokens > 0 ? textPayload.max_tokens * 2 : undefined,
     });
 
     const finalCall = outcome.calls[outcome.calls.length - 1];

@@ -25,6 +25,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { compileDocumentTemplate } from '../../../../document-template/document-template-compiler';
+import { RUNNING_SUMMARY_TITLE } from '../../document-shape-parser';
 import { applyTurn, buildTurnResponseFormat, parseTurnJson, wholeDocumentAsTurn } from '../turn-contract';
 
 const compiled = compileDocumentTemplate({
@@ -78,7 +79,12 @@ describe('TASK-939 — buildTurnResponseFormat', () => {
 describe('TASK-939 — parseTurnJson', () => {
   it('parses additions and ignores sections the turn left null', () => {
     const turn = parseTurnJson(
-      JSON.stringify({ subjective: { addition: 'Now reports fever.', revision: null, contradiction: null }, objective: null, assessment: null, plan: null }),
+      JSON.stringify({
+        subjective: { addition: 'Now reports fever.', revision: null, contradiction: null },
+        objective: null,
+        assessment: null,
+        plan: null,
+      }),
       compiled,
     );
 
@@ -203,14 +209,40 @@ describe('TASK-939 — applyTurn', () => {
 });
 
 describe('TASK-939 — wholeDocumentAsTurn (the degrade path)', () => {
-  it('passes the parsed list through VERBATIM, including the prose parser’s single-section fallback', () => {
-    const fallback = [{ title: 'Running Summary', content: 'Everything the model said, unparsed.' }];
+  /**
+   * TASK-1000 OD-7 — AMENDED. This case previously asserted that the prose parser's
+   * single-section fallback is written onto `sectionKeys[0]`, and that expectation was the
+   * defect: the sentinel is a note whose partition is UNKNOWN, not a note with one section
+   * called "Running Summary", so keying it positionally labels an arbitrary blob as the
+   * template's FIRST clinical section. On the reported consultation that made 5,324 characters
+   * of truncated JSON the patient's demographics.
+   *
+   * It still passes through on `sections` — that is what keeps the running-summary view
+   * populated for a provider that ignores `response_format` and answers in prose (Ollama, by
+   * design). It just never becomes a section WRITE. Same guard `buildStructuredSummary`
+   * already makes for the same sentinel.
+   */
+  it('passes the single-section fallback through on `sections` but writes NO section', () => {
+    const fallback = [{ title: RUNNING_SUMMARY_TITLE, content: 'Everything the model said, unparsed.' }];
 
     const { sections, writes } = wholeDocumentAsTurn(fallback, compiled);
 
-    // Re-keying onto `sectionKeys` here would discard the fallback and publish an empty note.
     expect(sections).toEqual(fallback);
-    expect(writes).toEqual([{ sectionKey: 'subjective', title: 'Running Summary', idx: 0, mode: 'replace', content: 'Everything the model said, unparsed.' }]);
+    expect(writes).toEqual([]);
+  });
+
+  it('does not write the sentinel even when the template has been reordered', () => {
+    // The guard is on the TITLE, not on the index — a blob is never a clinical section.
+    const { writes } = wholeDocumentAsTurn([{ title: RUNNING_SUMMARY_TITLE, content: '{"subjective": "cut off mid-str' }], compiled);
+
+    expect(writes).toEqual([]);
+  });
+
+  it('still writes a REAL section that happens to sit at index 0', () => {
+    // Regression guard: the sentinel check must not swallow a genuinely parsed first section.
+    const { writes } = wholeDocumentAsTurn([{ title: 'Subjective', content: 'Cough for three days.' }], compiled);
+
+    expect(writes).toEqual([{ sectionKey: 'subjective', title: 'Subjective', idx: 0, mode: 'replace', content: 'Cough for three days.' }]);
   });
 
   it('reproduces the pre-ticket behaviour: every populated section is a REPLACE', () => {
@@ -265,7 +297,12 @@ describe('TASK-939 — a WHOLE-DOCUMENT output is not an empty turn', () => {
   });
 
   it('accepts a mix of nulls and turn objects', () => {
-    const raw = JSON.stringify({ subjective: { addition: 'Fever.', revision: null, contradiction: null }, objective: null, assessment: null, plan: null });
+    const raw = JSON.stringify({
+      subjective: { addition: 'Fever.', revision: null, contradiction: null },
+      objective: null,
+      assessment: null,
+      plan: null,
+    });
 
     expect(parseTurnJson(raw, compiled)?.subjective?.addition).toBe('Fever.');
   });

@@ -84,6 +84,55 @@ export interface JsonRepairCall {
   text: string;
 }
 
+/**
+ * What the ONE corrective retry is given (TASK-1000).
+ *
+ * It used to be a bare corrective string. The retry now also carries a `maxTokens`, because the
+ * failure this helper most often meets on a long note is not malformed JSON — it is a generation
+ * the engine CUT OFF at its output cap. Re-asking with the same budget and a longer prompt (the
+ * corrective text is appended) reproduces the truncation exactly, which is what the live flush
+ * was observed doing four times in a row on one consultation.
+ */
+export interface JsonRepairRetry {
+  corrective: string;
+  /** Output budget for the retry. `undefined` leaves the caller's own default in place. */
+  maxTokens?: number;
+}
+
+/**
+ * A generation the engine stopped at its output cap.
+ *
+ * FATAL by construction, and that is the whole point. A truncated structured response parses as
+ * nothing and "tolerantly" parses as a half-document that is indistinguishable, downstream, from
+ * a note the model genuinely finished — on the reported consultation that half-document was
+ * written into a clinical section as if it were its content. Raising it as an error routes it
+ * into the caller's existing degrade path instead, where a failed flush keeps the prior note.
+ *
+ * Carries the calls made so the caller can still record an accurate trajectory for the attempt.
+ */
+export class TruncatedGenerationError extends Error {
+  /**
+   * Stable code, in BOTH places a consumer reads one.
+   *
+   * `message` is the bare code and nothing else, deliberately. The realtime executor stringifies
+   * a thrown node error to `error.message` and hands that to `degradeCode`, which passes a bare
+   * `^[a-z][a-z0-9_]*$` through unchanged — that is the codebase's existing idiom for "this is
+   * already a code, do not classify it". A descriptive sentence here would be classified by
+   * regex instead and land on the clinician's feed as the generic fallback. The detail a server
+   * log wants lives on `attempts`/`calls`, which is where a structured logger can reach it
+   * without it ever reaching a feed.
+   */
+  readonly code = 'output_truncated';
+
+  constructor(
+    readonly calls: readonly JsonRepairCall[],
+    readonly attempts: number,
+  ) {
+    super('output_truncated');
+    this.name = 'TruncatedGenerationError';
+  }
+}
+
 export interface JsonRepairOutcome<T, C extends JsonRepairCall> {
   /**
    * The parsed value: a strict parse of the original (or, on repair, the retry)
@@ -112,14 +161,26 @@ export interface JsonRepairOutcome<T, C extends JsonRepairCall> {
  * — transport errors propagate so the caller can apply its own degrade path.
  */
 export async function generateJsonWithRepair<T, C extends JsonRepairCall>(params: {
-  generate: (corrective: string | undefined) => Promise<C>;
+  generate: (retry: JsonRepairRetry | undefined) => Promise<C>;
   parseStrict: (text: string) => T | null;
-  parseTolerant: (text: string) => T;
+  /**
+   * The degrade parse. Receives the CALL, not just its text, so it can see the engine's own
+   * stats — the tolerant path is where a caller decides what a non-strict response means.
+   */
+  parseTolerant: (call: C) => T;
   shouldRepair: (firstCall: C) => boolean;
   corrective?: string;
+  /** Output budget for the one corrective retry. Omit to leave the caller's default. */
+  repairMaxTokens?: number;
+  /**
+   * True when the engine stopped this call at its output cap. Optional: a caller that cannot
+   * tell (no stats) keeps the pre-TASK-1000 contract exactly, tolerant parse and all.
+   */
+  isTruncated?: (call: C) => boolean;
 }): Promise<JsonRepairOutcome<T, C>> {
   const corrective = params.corrective ?? CORRECTIVE_RETRY_INSTRUCTION;
   const calls: C[] = [];
+  const truncated = (call: C): boolean => params.isTruncated?.(call) === true;
 
   const first = await params.generate(undefined);
   calls.push(first);
@@ -129,15 +190,22 @@ export async function generateJsonWithRepair<T, C extends JsonRepairCall>(params
   }
 
   if (!params.shouldRepair(first)) {
-    return { value: params.parseTolerant(first.text), repaired: false, calls };
+    // A truncated response is never degraded, even when it is not eligible for repair: there is
+    // no reading of half a document that is safe to show a clinician as the note.
+    if (truncated(first)) throw new TruncatedGenerationError(calls, 1);
+    return { value: params.parseTolerant(first), repaired: false, calls };
   }
 
-  const second = await params.generate(corrective);
+  const second = await params.generate({ corrective, maxTokens: params.repairMaxTokens });
   calls.push(second);
   const secondParsed = params.parseStrict(second.text);
-  return {
-    value: secondParsed ?? params.parseTolerant(second.text),
-    repaired: true,
-    calls,
-  };
+  if (secondParsed !== null) {
+    return { value: secondParsed, repaired: true, calls };
+  }
+
+  // The retry ran on a RAISED budget (above). Still truncated means the document does not fit
+  // any budget this path can offer, so the flush fails and the prior note stands.
+  if (truncated(second)) throw new TruncatedGenerationError(calls, 2);
+
+  return { value: params.parseTolerant(second), repaired: true, calls };
 }

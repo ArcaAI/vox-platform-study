@@ -219,7 +219,14 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     expect(body.system_prompt).toBe('Write the note for Ward 3 in a terse tone.');
     // Hyper-parameters: the agent's, with the node's `overrides.generation` layered on top.
     expect(body.temperature).toBe(0.4);
-    expect(body.max_tokens).toBe(900);
+    // TASK-1000 — the agent declares 900, and the runtime CLAMPS it up to the template floor.
+    // That is the fix, not a fixture drift: a budget below what the note shape structurally needs
+    // is what truncated a real consultation's note into the first section. `max_tokens` is now
+    // bounded into `[templateFloor, platformCeiling]` whatever the agent row says — see
+    // `live-documentation/output-budget.ts`. Hyper-parameters the budget rule does not govern
+    // (temperature, top_p) still pass through exactly as authored, which is what the two
+    // assertions around this one prove.
+    expect(body.max_tokens).toBe(8192);
     expect(body.top_p).toBe(0.8);
     // The legacy per-flush tenant resolve did NOT run — the agent selected.
     expect(harnessPolicyService.resolveTextSelection).not.toHaveBeenCalled();

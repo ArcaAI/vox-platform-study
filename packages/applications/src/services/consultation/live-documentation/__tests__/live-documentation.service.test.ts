@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
 import { Subject, finalize } from 'rxjs';
+import { AGENTIC_CONTEXT_DEFAULTS } from '../../../settings-registry/descriptors/agentic-context.descriptors';
 import { LiveDocumentationService } from '../live-documentation.service';
 
 const CID = 'consultation-001';
@@ -216,21 +217,25 @@ describe('LiveDocumentationService', () => {
   });
 
   describe('debounce', () => {
-    it('flushes once the segment threshold (3 finals) is reached', () => {
+    // TASK-1000 — the threshold moved 3 -> 6 and the debounce 5s -> 10s, so these read their
+    // expectations off the descriptor defaults instead of repeating the numbers. The CONTRACT
+    // (threshold bypasses the debounce; a lone trailing segment waits it out) is what is under
+    // test here, and it must not need editing every time the cadence is retuned.
+    it('flushes once the segment threshold is reached, without waiting for the debounce', () => {
+      const threshold = AGENTIC_CONTEXT_DEFAULTS['liveFlush.segmentThreshold'];
       const { service } = buildDeps();
       const flushSpy = vi.spyOn(service, 'flush').mockResolvedValue(null);
 
       service.start({ consultationId: CID, tenantId: TENANT });
-      service.ingestSegment(CID, { text: 'one', isFinal: true, segmentId: 's1' });
-      service.ingestSegment(CID, { text: 'two', isFinal: true, segmentId: 's2' });
+      for (let i = 1; i < threshold; i++) service.ingestSegment(CID, { text: `seg ${i}`, isFinal: true, segmentId: `s${i}` });
       expect(flushSpy).not.toHaveBeenCalled();
 
-      service.ingestSegment(CID, { text: 'three', isFinal: true, segmentId: 's3' });
+      service.ingestSegment(CID, { text: 'the one that trips it', isFinal: true, segmentId: `s${threshold}` });
       expect(flushSpy).toHaveBeenCalledTimes(1);
       expect(flushSpy).toHaveBeenCalledWith(CID);
     });
 
-    it('flushes a trailing segment after the idle debounce window (5s)', () => {
+    it('flushes a trailing segment after the idle debounce window', () => {
       vi.useFakeTimers();
       const { service } = buildDeps();
       const flushSpy = vi.spyOn(service, 'flush').mockResolvedValue(null);
@@ -239,7 +244,10 @@ describe('LiveDocumentationService', () => {
       service.ingestSegment(CID, { text: 'only one', isFinal: true, segmentId: 's1' });
       expect(flushSpy).not.toHaveBeenCalled();
 
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(AGENTIC_CONTEXT_DEFAULTS['liveFlush.idleMs'] - 1);
+      expect(flushSpy).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
       expect(flushSpy).toHaveBeenCalledTimes(1);
     });
 
@@ -1054,10 +1062,20 @@ describe('LiveDocumentationService', () => {
     }
 
     /** Push the head marker + enough filler to drive the joined delta past MAX_DELTA_CHARS (12000). */
+    /**
+     * Ingest a backlog comfortably LARGER than the configured delta cap.
+     *
+     * The segment count is derived rather than fixed (it was 320, sized for a 12,000-char cap).
+     * TASK-1000 doubled that cap to 24,000 and the fixture silently stopped overflowing — the
+     * carry-forward tests then passed while exercising nothing. Deriving it means the fixture
+     * follows the knob it exists to overflow.
+     */
     function ingestOversizedBacklog(service: LiveDocumentationService) {
+      const filler = (i: number) => `filler segment number ${i} describing ongoing symptoms in detail`;
+      const segments = Math.ceil((AGENTIC_CONTEXT_DEFAULTS['liveDelta.maxChars'] * 1.5) / filler(0).length);
       service.ingestSegment(CID, { text: HEAD_MARKER, isFinal: true, segmentId: 'head' });
-      for (let i = 0; i < 320; i++) {
-        service.ingestSegment(CID, { text: `filler segment number ${i} describing ongoing symptoms in detail`, isFinal: true, segmentId: `f${i}` });
+      for (let i = 0; i < segments; i++) {
+        service.ingestSegment(CID, { text: filler(i), isFinal: true, segmentId: `f${i}` });
       }
     }
 

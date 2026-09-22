@@ -95,7 +95,10 @@ describe('LiveDocumentationService — governed realtime budgets (TASK-940)', ()
     expect(CONSULTATION_REALTIME_DEFAULTS['consultation.realtime.heartbeatMs']).toBe(15000);
     expect(CONSULTATION_REALTIME_DEFAULTS['consultation.realtime.durableSnapshotMs']).toBe(30000);
     expect(CONSULTATION_REALTIME_DEFAULTS['consultation.realtime.statsTtlSec']).toBe(300);
-    expect(CONSULTATION_REALTIME_DEFAULTS['consultation.realtime.textMaxTokens']).toBe(8192);
+    // TASK-1000 — 8192 -> 16384. It must stay above the largest template floor the clamp can
+    // produce (23 sections x 512 = 11,776) and above the doubled retry budget, or
+    // `resolveOutputBudget`'s clamp would contradict itself.
+    expect(CONSULTATION_REALTIME_DEFAULTS['consultation.realtime.textMaxTokens']).toBe(16384);
     expect(CONSULTATION_REALTIME_DEFAULTS['consultation.realtime.groundedness.timeoutMs']).toBe(5000);
     expect(CONSULTATION_REALTIME_DEFAULTS['consultation.realtime.groundedness.maxRetries']).toBe(1);
     expect(CONSULTATION_REALTIME_DEFAULTS['consultation.realtime.groundedness.retryBackoffMs']).toBe(200);

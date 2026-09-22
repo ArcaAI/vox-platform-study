@@ -126,10 +126,20 @@ describe('TASK-932 D-9 — the `case-notes-pre-summary` warm-start agent', () =>
     }
   });
 
-  it('the warm start keeps reasoning OFF and guards ON, and asks for more completion than a per-turn note', () => {
+  /**
+   * TASK-1000 (OD-9) — AMENDED from a RELATIONAL invariant to an absolute one.
+   *
+   * This asserted `PRE_SUMMARY.maxTokens > 2048`, i.e. "more completion than a per-turn note",
+   * which coupled two budgets that answer different questions against different templates. The
+   * coupling meant raising the per-turn floor to fix a truncated clinical note would have failed
+   * a test about the warm start, and tuning either one on its own evidence was blocked by the
+   * other. Each now carries its own floor.
+   */
+  it('the warm start keeps reasoning OFF and guards ON, and carries its own absolute completion floor', () => {
     expect(PRE_SUMMARY_PARAMETERS.generation.reasoning).toEqual({ enabled: false });
     expect(PRE_SUMMARY_PARAMETERS.guards).toEqual({ enabled: true });
-    expect(PRE_SUMMARY_PARAMETERS.generation.maxTokens).toBeGreaterThan(2048);
+    // A whole prior record under five headings. Independent of the per-turn budget by design.
+    expect(PRE_SUMMARY_PARAMETERS.generation.maxTokens).toBeGreaterThanOrEqual(12288);
   });
 
   it('is assigned at TENANT scope under `phase:pre-summary` in both authoring tenants', () => {

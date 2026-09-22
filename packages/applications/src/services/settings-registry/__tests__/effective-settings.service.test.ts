@@ -106,7 +106,8 @@ describe('EffectiveSettingsService', () => {
       await expect(svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX)).resolves.toEqual({
         key: 'agentic.context.liveDelta.maxChars',
         tier: 'global-kv',
-        value: 12000,
+        // TASK-1000 — the descriptor default moved 12000 -> 24000 with the cadence change.
+        value: 24000,
         sourceScope: 'code-default',
       });
     });
@@ -115,7 +116,7 @@ describe('EffectiveSettingsService', () => {
       const svc = serviceWith();
       const res = await svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX);
       expect(res.sourceScope).toBe('code-default');
-      expect(res.value).toBe(12000);
+      expect(res.value).toBe(24000);
     });
 
     it('now resolves entitlements.enabled (a global-kv key) instead of throwing', async () => {
@@ -160,7 +161,6 @@ describe('EffectiveSettingsService', () => {
         sourceScope: 'code-default',
       });
     });
-
 
     // The `closed` half of this contract is pinned on the db-config lane in
     // `effective-settings.db-config.test.ts` (an unresolved value raises; a

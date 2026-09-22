@@ -94,14 +94,36 @@ export const CONSULTATION_REALTIME_GROUNDEDNESS_RETRY_BACKOFF_MS_KEY = 'consulta
  * of truth shared by the descriptors below and the live-documentation consumer.
  */
 export const CONSULTATION_REALTIME_DEFAULTS = {
-  [CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY]: 60000,
+  // TASK-1000 (OD-4) — 60000 -> 300000, raised WITH the output budget it has to admit.
+  //
+  // The two numbers are one decision. The realtime ceiling below now allows 16,384 output tokens
+  // on the corrective retry, and the live path was measured at 57-70 tok/s on
+  // `gemma-4-e2b-it-qat` (dev, 2026-09-22: 29,205-45,110 ms for 2,048 predicted). 16,384 at the
+  // slow end is ~287 s, so a 60 s budget would have converted every truncation this ticket fixes
+  // into a timeout — the same flush lost, reported differently. 300000 also matches the
+  // per-call LLM bound TASK-995 established for the harness plane on owner directive.
+  //
+  // A generous budget is affordable here for the reason the 60000 comment gives: the
+  // single-flight gate means at most ONE generation per session is ever in flight, so a slow
+  // model degrades cadence rather than piling up calls. It is a CEILING, not a target — the
+  // measured flushes take 6-35 s.
+  [CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY]: 300000,
   // TASK-940 — byte-identical to the constructor literals these replace. A
   // migration that also re-tunes a live clinical loop is two changes wearing one
   // commit, and only one of them would be under test.
   [CONSULTATION_REALTIME_HEARTBEAT_MS_KEY]: 15000,
   [CONSULTATION_REALTIME_DURABLE_SNAPSHOT_MS_KEY]: 30000,
   [CONSULTATION_REALTIME_STATS_TTL_SEC_KEY]: 300,
-  [CONSULTATION_REALTIME_TEXT_MAX_TOKENS_KEY]: 8192,
+  // TASK-1000 — 8192 -> 16384, and it is now a REAL ceiling.
+  //
+  // This value was documented as a "`max_tokens` ceiling on every realtime TEXT generation" but
+  // applied as `agent.maxTokens ?? ceiling`, so any agent value REPLACED it — which is how 22
+  // agents declaring 2048 silently ran under a quarter of the platform budget. `callText` now
+  // clamps into `[templateFloor, thisCeiling]` (see `live-documentation/output-budget.ts`).
+  //
+  // It rises because it must stay above the largest floor that rule can produce (23 sections x
+  // 512 = 11,776) AND above the doubled retry budget, or the clamp would contradict itself.
+  [CONSULTATION_REALTIME_TEXT_MAX_TOKENS_KEY]: 16384,
   [CONSULTATION_REALTIME_GROUNDEDNESS_TIMEOUT_MS_KEY]: 5000,
   [CONSULTATION_REALTIME_GROUNDEDNESS_MAX_RETRIES_KEY]: 1,
   [CONSULTATION_REALTIME_GROUNDEDNESS_RETRY_BACKOFF_MS_KEY]: 200,
