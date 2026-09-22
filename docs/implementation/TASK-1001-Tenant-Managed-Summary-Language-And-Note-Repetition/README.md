@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending — awaiting owner decision round |
+| **Status** | Review — implemented and merged to `dev-2.2`, gate green; OD-10 open |
 | **Type** | bugfix + feature |
 | **Branch** | `dev-2.2` |
 | **Repos** | `arca/hope-v2` (primary) · `ALaaSv3.0` (secondary, latent defects) |
@@ -224,8 +224,10 @@ cause.
 | **OD-4** | Reject a code-switch tag at `/consultations/open`? | (a) 400; (b) accept and normalise; (c) accept as today | **(a)** — plus the caller-side fix in ALaaS |
 | **OD-5** | Dedup strength | (a) exact-normalised sentence dedup; (b) add similarity/paraphrase dropping; (c) similarity flagging only | **(a) now, (c) later — settled by evidence.** Every observed duplicate is an exact-sentence repeat modulo whitespace, punctuation or ordering. **No paraphrase dropping is needed to fix this report**, and similarity dropping risks silently losing clinical content |
 | **OD-6** | Promote repetition pressure to a degrade code + metric? | (a) yes; (b) log only | **(a)** — 11 of 13 flushes carried refusals and nothing surfaced it |
-| **OD-7** | Model tier for the summary agents | (a) keep 2B; (b) evaluate larger | **(b) evaluate** — the amplifier behind both halves. Bounded by GPU budget (6/6 allocatable) |
+| **OD-7** | Model tier for the summary agents | (a) keep 2B; (b) evaluate larger | **ANSWERED 2026-09-22: (a) keep `gemma-4-e2b-it-qat`.** Consequence: the sentence dedup is the ONLY structural defence against repetition |
 | **OD-8** | Ship the English-only policy as a SYSTEM reference-set default? | (a) yes; (b) tenant opt-in only | **(a)**, noting content is cloned — existing tenants need an edit or a reference-set sync |
+| **OD-10** | **NEW — Phase 6 is a no-op as specified.** `frequencyPenalty` / `presencePenalty` exist in `AGENT_PARAMETER_SCHEMAS` but **never reach a provider**: `resolve_request_defaults` (`apps/text/src/text/core/defaults.py`) returns exactly `{temperature, max_tokens, top_p}`, `grep` for the penalties across `apps/text/src` returns zero hits, the LM Studio adapter's only `extra_body` passthrough is a retention `ttl`, and `TEXT_PLANE_GENERATION_PARAMS` declares the honest set with a publish gate behind it | (a) accept dedup-only; (b) plumb the penalties through `apps/text` (`GenerateRequest`, `defaults.py`, the adapters, `AiRuntimeProfile` columns, the contract's param list) | **(a) accept dedup-only.** Every observed duplicate was an exact repeat, and Phase 4 covers all three shapes. Open (b) as its own scoped ticket only if repetition survives — do not bundle a Python/Prisma/contract change here on speculation |
+| **OD-11** | ~~Does the frozen v1-compat surface keep its `'English'` default?~~ | — | **RESOLVED during integration: yes.** §A2 first called it drift; that was wrong. The compat PRE-SUMMARY template renders `{language_name}` into a live instruction and is pinned by byte-identical golden fixtures, so `null` there would emit *"Write ALL bullet content in ."* The default stays; the shared grammar now rejects `ml-en` first, so it lands on v1's unknown→English rule. The native path keeps absent ⇒ `null`. Two surfaces, two contracts |
 | **OD-9** | Do the ALaaS defects (S-1…S-5) ship in this ticket or a sibling? | (a) sibling ticket in `ALaaSv3.0`, this ticket owns HOPE; (b) one ticket across both repos | **(a)** — different repo, different release train. S-1 is confirmed-occurred and should be expedited |
 
 ---
@@ -297,12 +299,15 @@ file boundaries and may run in parallel.
   `output_truncated`, plus a counter for refusals and dropped sentences.
 - Files: `degrade-codes.ts`, `live-documentation.service.ts`.
 
-### Phase 6 — decoding pressure (OD-7, configuration only)
+### Phase 6 — decoding pressure — **BLOCKED, see OD-10**
 
-- Set `generation.frequencyPenalty` (and `presencePenalty` if evaluation supports it) on the
-  summary agents. Both knobs already exist — **no code change, no deploy**; a console edit plus a
-  per-tenant republish. Record chosen values and before/after evidence here.
-- Separately evaluate a larger `TEXT_GENERATION` model against the cluster's GPU budget.
+**Not implemented, and not implementable as written.** The penalties are declared in the agent
+schema but are inert on this platform's TEXT plane (evidence in OD-10). Earlier drafts of this
+ticket twice described Phase 6 as "pure configuration, no code, no deploy" — that was wrong.
+
+With OD-7 answered (E2B stays), there is no decode-time mitigation at all, so **Phase 4's sentence
+dedup carries the entire load**. That is what it was designed for: every duplicate observed in the
+decrypted note was an exact repeat modulo whitespace, punctuation or ordering.
 
 ### Phase 7 — HOPE-side contract and observability (S-6, S-7, S-8, S-9)
 
@@ -359,7 +364,62 @@ a one-line close removes the leak.
 
 ## Implementation Summary
 
-*(to be completed)*
+Built in four parallel lanes, each in its own worktree with a disjoint file boundary; merged to
+`dev-2.2` and gated once, by the orchestrator, after every lane landed.
+
+| Lane | Branch | Commit | What shipped |
+|---|---|---|---|
+| L2 | `task-1001-dedup` | `a7414f37d` | Sentence-level append dedup in `turn-contract.ts`; `TurnRefusalReason` gains `addition-already-present`; `AppliedTurn.droppedSentenceCount` |
+| L1 | `task-1001-lang-resolve` | `b359fdbab` | Code-switch rejection inside `SUMMARY_LANGUAGE_PATTERN`; `resolveSummaryLanguage` |
+| L3 | `task-1001-policy-fragment` | `6f20bcfbf` | Language step retired from `operatingFrame`; shared *Output language policy* template + unconditional fragment on all 22 department agents; `repetition_pressure` degrade code |
+| L4 | `task-1001-contract-docs` | `4d65dd52b` | `appended` added to the published SDK type; corrected live-summary route description; `ContextInterceptor` completion log moved to `finalize()` |
+| — | integration | `640762e55` | v1 parity restored (OD-11), seed guards taught the composite form, harness + type fixes, API artifacts regenerated |
+
+### What the lanes found that the plan had wrong
+
+1. **`resolvePrompt` in `25-agents.ts` handled only the single-template and inline forms.** A
+   `fragments` instruction fell through to `resolvedPrompt: null`, which would have published all
+   22 department agents **with no prompt at all**, silently falling back to a generic system
+   prompt. Caught and fixed inside L3; flagged by it as the lane's highest-risk change.
+2. **A one-word sentence must never be dropped.** Splitting on "terminator + whitespace" makes
+   `Inj.` / `Tab.` / `Dr.` standalone tokens. Since `Inj.` appears in almost any plan that already
+   names an injection, a *new* drug order would have had its route silently deleted. L2 added a
+   two-word eligibility rule — it can only ever keep content — and pinned it.
+3. **The ticket named the wrong seed file.** `29-…generated.ts` holds only workflow-engine blobs
+   (`grep -c promptTemplateId` → 0); the agent specs are in the hand-authored sibling.
+4. **Phase 6 is inert** (OD-10) and **OD-11 reversed** — both recorded above.
+
+### Gate — one pass, after everything landed
+
+| Suite | Result |
+|---|---|
+| `@arcaai/applications` | 14878 passed, 10 skipped |
+| `@arcaai/database` | 1907 passed |
+| `@arcaai/api` | 4861 passed, 5 skipped |
+| `@arcaai/workflow-contract` | 974 passed |
+| `@arcaai/vox-node` | 587 passed |
+| typecheck | clean (applications, workflow-contract, database, api) |
+| lint | 0 errors; no new warnings in any changed file |
+| `api:openapi:check` / `api:portal:check` / `gen:admin:check` | no drift |
+
+**RED verified**, since no lane ran tests: with `turn-contract.ts` restored to the pre-fix
+commit, all **12** of the new dedup tests fail; restored, all 12 pass.
+
+**One pre-existing failure, out of scope.** `agentPromotion/.../membership-bounded-sync.integration.test.ts`
+throws in `afterAll` with *"Authentication failed… credentials for `test` are not valid"* — its two
+tests are skipped and nothing in this ticket touches `agentPromotion`, Prisma credentials or tenant
+context.
+
+### Not done
+
+- **Phase 6** — blocked on OD-10.
+- **Phase 7 partial** — S-9 (the late-join gap) left out; it is a design question, not a defect fix.
+- **Phase 8 / ALaaS (S-1…S-5)** — untouched, pending OD-9. **S-1 is confirmed to have occurred**
+  and is close to a one-line fix; it should be expedited.
+- **OD-8 half done** — the policy is ArcaAI-tenant content; the SYSTEM reference-set agents would
+  need their own SYSTEM-tenant policy row.
+- **No cluster verification yet** — the fix is merged, not deployed. The scenario must be re-run
+  across **resumed recording sessions**, which is the trigger.
 
 ---
 
@@ -368,4 +428,5 @@ a one-line close removes the leak.
 | Date | Change |
 |---|---|
 | 2026-09-22 | Ticket opened. Both defects root-caused against `hope-v2-dev`. Design drafted; OD-1…OD-8 pending. |
+| 2026-09-22 | Implemented in four parallel worktree lanes, merged to `dev-2.2`, gated once (`640762e55`). OD-7 answered (keep E2B). OD-10 opened: the decode-time penalties are inert on this platform, so the dedup is the only defence. OD-11 resolved against the ticket's own §A2. Worktrees and branches destroyed after the merge and the green gate. |
 | 2026-09-22 | Four parallel read-only investigation lanes (HOPE stream contract · ALaaS consumer · cluster log forensics · stored-data truth). **Part B confirmed by decryption**: the duplication is in HOPE's stored note, in three exact-repeat shapes, none a paraphrase — which settles OD-5 toward exact-normalised sentence dedup. Nine secondary findings (S-1…S-9) recorded, including one confirmed-occurred ALaaS double-subscription and an observability bug that inflated the apparent stream-open count from 4 to 58. OD-9 added. |
