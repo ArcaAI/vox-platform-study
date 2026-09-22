@@ -6,6 +6,19 @@ import { TranscriptionJobEntity } from '../../../entities';
 import { TranscriptionJob } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { TranscriptionJobStatus, TranscriptionJobType } from '../../../enums';
+import { JsonValue } from '../../../interfaces';
+
+/**
+ * TASK-999 — the transcript-size and served-engine facts the consultation
+ * telemetry pane reads, and nothing else. Deliberately NOT an entity: see
+ * `findTelemetryByConsultation`.
+ */
+export interface TranscriptionJobTelemetryRow {
+  id: string;
+  servedBy: JsonValue | null;
+  resultWordCount: number | null;
+  resultCharCount: number | null;
+}
 
 @Injectable()
 export class TranscriptionJobRepository extends Repository<TranscriptionJobEntity, TranscriptionJob> {
@@ -27,6 +40,39 @@ export class TranscriptionJobRepository extends Repository<TranscriptionJobEntit
       },
       sort: [{ createdAt: 'desc' }],
     });
+  }
+
+  /**
+   * TASK-999 — `servedBy` + the transcript size counters for a consultation's
+   * jobs, with NO ciphertext column selected.
+   *
+   * ## Why this is not `findByConsultation(...)`
+   *
+   * `encryptedResultText` / `encryptedResultMetadata` are the system of record
+   * for the transcript, and the base `db` getter wraps the delegate with
+   * decrypt-on-read (`phi-read-decrypt.ts`). So the entity finder pulls every
+   * transcript body for the consultation through a Vault batch decrypt — as a
+   * SIDE EFFECT of reading three scalars for an admin telemetry pane. That is
+   * the same leak the case-note counters exist to avoid (D-3(a)): a reporting
+   * read must never be the thing that decrypts PHI.
+   *
+   * `findMany` IS a decrypting method, but the walker skips any registered
+   * ciphertext column that is not present in the row
+   * (`phi-read-decrypt.ts` — `if (!(key in row)) continue`), so a projected
+   * `select` that omits them collects zero decrypt jobs and never reaches
+   * Vault. Keep the `select` free of `encrypted*` or this silently becomes a
+   * decrypting read again.
+   *
+   * Newest-first, matching `findByConsultation`. `findByConsultation` remains
+   * the right call when the transcript itself is actually wanted.
+   */
+  async findTelemetryByConsultation(consultationId: string): Promise<TranscriptionJobTelemetryRow[]> {
+    const rows = await this.db.findMany({
+      where: { consultationId },
+      select: { id: true, servedBy: true, resultWordCount: true, resultCharCount: true },
+      orderBy: [{ createdAt: 'desc' }],
+    });
+    return rows as TranscriptionJobTelemetryRow[];
   }
 
   /**

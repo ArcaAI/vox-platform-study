@@ -19,8 +19,8 @@ import {
   SummaryMetaEntity,
   SummaryMetaRepository,
   SysEventType,
-  TranscriptionJobEntity,
   TranscriptionJobRepository,
+  TranscriptionJobTelemetryRow,
 } from '@arcaai/domains';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { BaseService, assertEqualTenants } from '../../../common';
@@ -123,7 +123,7 @@ export class ConsultationTelemetryService extends BaseService implements IConsul
       this.aiUsageEventRepository.findByConsultation(tenantId, consultationId),
       this.agentTrajectoryStepRepository.findByConsultation(tenantId, consultationId),
       this.namedEntityRepository.countByClassForConsultation(consultationId),
-      this.transcriptionJobRepository.findByConsultation(consultationId),
+      this.transcriptionJobRepository.findTelemetryByConsultation(consultationId),
     ]);
 
     // MODIFIED_SUMMARY wins over RAW_SUMMARY when both exist: the modified item
@@ -236,7 +236,7 @@ export class ConsultationTelemetryService extends BaseService implements IConsul
    * Model/provider prefer the job's `servedBy` (which chain entry ACTUALLY ran)
    * over the ledger, whose STT rows stamp `model: null` by construction.
    */
-  private buildTranscription(jobs: TranscriptionJobEntity[], ledger: AiUsageEventEntity[]): TelemetryBlock<TranscriptionTelemetry> {
+  private buildTranscription(jobs: TranscriptionJobTelemetryRow[], ledger: AiUsageEventEntity[]): TelemetryBlock<TranscriptionTelemetry> {
     const transcribeRows = ledger.filter((row) => TRANSCRIBE_OPERATIONS.has(row.operation));
 
     if (jobs.length === 0 && transcribeRows.length === 0) {
@@ -494,7 +494,7 @@ function sumReported(values: Array<number | null>): number | null {
 }
 
 /** The `servedBy` JSON of a job, shape-checked, or null. */
-function readServedBy(job: TranscriptionJobEntity): { modelSlug: string | null; provider: string | null } | null {
+function readServedBy(job: TranscriptionJobTelemetryRow): { modelSlug: string | null; provider: string | null } | null {
   const raw = job.servedBy;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const entry = raw as Record<string, unknown>;

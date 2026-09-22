@@ -28,7 +28,7 @@ const mockSummaryMetaRepository = { findByContextItem: vi.fn() };
 const mockAiUsageEventRepository = { findByConsultation: vi.fn() };
 const mockAgentTrajectoryStepRepository = { findByConsultation: vi.fn() };
 const mockNamedEntityRepository = { countByClassForConsultation: vi.fn() };
-const mockTranscriptionJobRepository = { findByConsultation: vi.fn() };
+const mockTranscriptionJobRepository = { findTelemetryByConsultation: vi.fn(), findByConsultation: vi.fn() };
 const mockAppSettingsService = { getValueWithDefault: vi.fn() };
 
 /** One usage-ledger unit row. Several sharing a `requestId` are ONE call. */
@@ -75,7 +75,7 @@ const resetToEmpty = () => {
   mockAiUsageEventRepository.findByConsultation.mockResolvedValue([]);
   mockAgentTrajectoryStepRepository.findByConsultation.mockResolvedValue([]);
   mockNamedEntityRepository.countByClassForConsultation.mockResolvedValue({});
-  mockTranscriptionJobRepository.findByConsultation.mockResolvedValue([]);
+  mockTranscriptionJobRepository.findTelemetryByConsultation.mockResolvedValue([]);
   mockAppSettingsService.getValueWithDefault.mockImplementation((_key: string, fallback: unknown) => fallback);
 };
 
@@ -112,7 +112,7 @@ describe('ConsultationTelemetryService', () => {
         trajectoryStep({ durationMs: 400 }),
         trajectoryStep({ name: 'flush.repair', durationMs: 600, stats: { prompt_tokens: 50, completion_tokens: 10, model: 'gemma3' } }),
       ]);
-      mockTranscriptionJobRepository.findByConsultation.mockResolvedValue([
+      mockTranscriptionJobRepository.findTelemetryByConsultation.mockResolvedValue([
         { resultWordCount: 820, resultCharCount: 4900, servedBy: { modelSlug: 'whisper-ml-en', provider: 'whisper-cpp', chainIndex: 0, source: 'primary' } },
       ]);
       mockAiUsageEventRepository.findByConsultation.mockResolvedValue([
@@ -259,6 +259,17 @@ describe('ConsultationTelemetryService', () => {
       const result = await service.getTelemetry(CONSULTATION);
 
       expect(result.caseNotes.data).toEqual({ count: 4, measuredCount: 0, wordCount: null, charCount: null });
+    });
+
+    // RED before the fix: the transcription block read `findByConsultation`, whose rows
+    // carry `encryptedResultText`/`encryptedResultMetadata` — so the base `db` decrypt-on-read
+    // wrapper pulled every transcript body for the consultation through a Vault batch decrypt
+    // as a SIDE EFFECT of reading three scalars for an admin pane.
+    it('never reads transcription-job rows, so no transcript is decrypted to produce a count', async () => {
+      await service.getTelemetry(CONSULTATION);
+
+      expect(mockTranscriptionJobRepository.findTelemetryByConsultation).toHaveBeenCalledWith(CONSULTATION);
+      expect(mockTranscriptionJobRepository.findByConsultation).not.toHaveBeenCalled();
     });
 
     // RED: the obvious implementation (`findCaseNotes().length`) pulls every
