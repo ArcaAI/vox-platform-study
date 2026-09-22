@@ -798,8 +798,28 @@ export interface SeedModelRef {
   wireModelId: string | null;
 }
 
+/**
+ * TASK-947 — one fragment of a COMPOSITE artifact. Field-for-field `ResolvedPromptFragment` of
+ * `@arcaai/workflow-contract`; `when` is `null` (never absent) for an unconditional fragment,
+ * because `staticProjection` and the realtime selector both read it that way.
+ */
+export interface SeedResolvedPromptFragment {
+  key: string;
+  source: 'template' | 'inline';
+  promptTemplateId?: string;
+  promptVersionNumber?: number;
+  content: string;
+  when: string | null;
+}
+
 export type SeedResolvedPrompt =
-  { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string } | { source: 'inline'; content: string } | null;
+  | { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string }
+  | { source: 'inline'; content: string }
+  | { source: 'composite'; content: string; join: string; fragments: SeedResolvedPromptFragment[] }
+  | null;
+
+/** `PROMPT_COMPOSITION_JOIN` of @arcaai/workflow-contract, verbatim (this package takes no contract dependency). */
+const PROMPT_COMPOSITION_JOIN = '\n\n';
 
 /** `canonicalJson` of @arcaai/workflow-contract, verbatim (sorted keys, `undefined` dropped, no whitespace). */
 export function canonicalJson(value: unknown): string {
@@ -931,30 +951,121 @@ export interface SeedAgentsClient {
   };
 }
 
+/**
+ * ONE template binding, resolved: APPROVED status, and the body of the version it pins (or of the
+ * template's own approved/current version when it pins none).
+ *
+ * Extracted from `resolvePrompt` unchanged so the single-body form and each fragment of a
+ * composite resolve by the SAME rule — which is the property `AgentService.resolveTemplateBinding`
+ * exists to provide on the publish path this mirrors.
+ */
+async function resolveTemplateBinding(
+  client: SeedAgentsClient,
+  templateId: string,
+  pinned: number | null,
+): Promise<{ ok: true; promptVersionNumber: number; content: string } | { ok: false; reason: string }> {
+  const template = await client.promptTemplate.findUnique({ where: { id: templateId } });
+  if (!template) return { ok: false, reason: `prompt template ${templateId} is not seeded` };
+  if (template.status !== 'APPROVED') return { ok: false, reason: `prompt template ${templateId} is ${template.status ?? 'DRAFT'}, not APPROVED` };
+  const versionNumber = pinned ?? template.approvedVersionNumber ?? template.currentVersionNumber ?? 1;
+  const version = await client.promptVersion.findFirst({ where: { promptTemplateId: templateId, versionNumber } });
+  return { ok: true, promptVersionNumber: versionNumber, content: version?.content ?? template.content ?? '' };
+}
+
+/**
+ * TASK-1001 — the COMPOSITE form (`instruction.fragments[]`), compiled exactly as
+ * `AgentService.resolveCompositePrompt` compiles it at publish:
+ * `{ source: 'composite', content: <static projection>, join, fragments }`, fragments in AUTHORED
+ * order, the static projection being the UNCONDITIONAL fragments joined.
+ *
+ * This branch exists because without it a composite spec fell through `resolvePrompt`'s
+ * `typeof templateId !== 'string'` guard to `resolvedPrompt: null` — which is not a seed failure
+ * but something worse: a PUBLISHED agent whose compiled artifact carries no prompt at all, so the
+ * live lane falls back to the platform system prompt and the department's clinical instruction is
+ * silently gone. Fail CLOSED instead, like every other unresolvable binding here.
+ */
+async function resolveCompositePrompt(
+  client: SeedAgentsClient,
+  fragments: unknown[],
+): Promise<{ ok: true; resolvedPrompt: SeedResolvedPrompt } | { ok: false; reason: string }> {
+  const compiled: SeedResolvedPromptFragment[] = [];
+
+  for (const [index, raw] of fragments.entries()) {
+    if (typeof raw !== 'object' || raw === null) return { ok: false, reason: `instruction.fragments[${index}] is not an object` };
+    const fragment = raw as Record<string, unknown>;
+    const key = typeof fragment.key === 'string' ? fragment.key : '';
+    if (!key) return { ok: false, reason: `instruction.fragments[${index}] has no key` };
+    const when = typeof fragment.when === 'string' ? fragment.when : null;
+
+    const promptTemplateId = typeof fragment.promptTemplateId === 'string' ? fragment.promptTemplateId : null;
+    const systemPrompt = typeof fragment.systemPrompt === 'string' ? fragment.systemPrompt : null;
+
+    if (promptTemplateId === null) {
+      if (systemPrompt === null) {
+        return { ok: false, reason: `instruction.fragments[${index}] (${key}) binds neither promptTemplateId nor systemPrompt` };
+      }
+      compiled.push({ key, source: 'inline', content: systemPrompt, when });
+      continue;
+    }
+
+    const outcome = await resolveTemplateBinding(
+      client,
+      promptTemplateId,
+      typeof fragment.promptVersionNumber === 'number' ? fragment.promptVersionNumber : null,
+    );
+    if (!outcome.ok) return { ok: false, reason: `instruction.fragments[${index}] (${key}): ${outcome.reason}` };
+    compiled.push({
+      key,
+      source: 'template',
+      promptTemplateId,
+      promptVersionNumber: outcome.promptVersionNumber,
+      content: outcome.content,
+      when,
+    });
+  }
+
+  return {
+    ok: true,
+    resolvedPrompt: {
+      source: 'composite',
+      // `staticProjection` — the UNCONDITIONAL fragments only (OD-3), so a reader that predates
+      // fragments still serves the base prompt rather than nothing.
+      content: compiled
+        .filter((fragment) => fragment.when === null)
+        .map((fragment) => fragment.content)
+        .join(PROMPT_COMPOSITION_JOIN),
+      join: PROMPT_COMPOSITION_JOIN,
+      fragments: compiled,
+    },
+  };
+}
+
 async function resolvePrompt(
   client: SeedAgentsClient,
   spec: SeedAgentSpec,
 ): Promise<{ ok: true; resolvedPrompt: SeedResolvedPrompt } | { ok: false; reason: string }> {
   if (spec.task !== 'TEXT_GENERATION' || !spec.instruction) return { ok: true, resolvedPrompt: null };
+  // Composite FIRST, exactly as `AgentService.resolvePrompt` dispatches: the three forms are
+  // mutually exclusive (`agentConfigProblems` enforces it), and reading `systemPrompt` off a
+  // composite would silently serve one fragment's body as the whole prompt.
+  if (Array.isArray(spec.instruction.fragments)) return resolveCompositePrompt(client, spec.instruction.fragments);
   const systemPrompt = spec.instruction.systemPrompt;
   if (typeof systemPrompt === 'string') return { ok: true, resolvedPrompt: { source: 'inline', content: systemPrompt } };
   const templateId = spec.instruction.promptTemplateId;
   if (typeof templateId !== 'string') return { ok: true, resolvedPrompt: null };
-  const template = await client.promptTemplate.findUnique({ where: { id: templateId } });
-  if (!template) return { ok: false, reason: `prompt template ${templateId} is not seeded` };
-  if (template.status !== 'APPROVED') return { ok: false, reason: `prompt template ${templateId} is ${template.status ?? 'DRAFT'}, not APPROVED` };
-  const versionNumber =
-    typeof spec.instruction.promptVersionNumber === 'number'
-      ? spec.instruction.promptVersionNumber
-      : (template.approvedVersionNumber ?? template.currentVersionNumber ?? 1);
-  const version = await client.promptVersion.findFirst({ where: { promptTemplateId: templateId, versionNumber } });
+  const outcome = await resolveTemplateBinding(
+    client,
+    templateId,
+    typeof spec.instruction.promptVersionNumber === 'number' ? spec.instruction.promptVersionNumber : null,
+  );
+  if (!outcome.ok) return { ok: false, reason: outcome.reason };
   return {
     ok: true,
     resolvedPrompt: {
       source: 'template',
       promptTemplateId: templateId,
-      promptVersionNumber: versionNumber,
-      content: version?.content ?? template.content ?? '',
+      promptVersionNumber: outcome.promptVersionNumber,
+      content: outcome.content,
     },
   };
 }

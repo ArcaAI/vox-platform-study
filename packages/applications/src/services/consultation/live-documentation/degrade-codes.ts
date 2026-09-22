@@ -47,12 +47,31 @@ export const PRE_SUMMARY_DEGRADE_FALLBACK = 'pre_summary_failed';
  */
 export const LIVE_DEGRADE_OUTPUT_TRUNCATED = 'output_truncated';
 
+/**
+ * TASK-1001 (OD-6) — the model is RE-SAYING what the note already records, and the turn contract
+ * is absorbing it.
+ *
+ * Unlike every other code here, this one is not a failure. The flush SUCCEEDED and the note is
+ * publishable; what it reports is that the generation spent this turn restating itself and only
+ * the append guard kept the repeats out of the clinician's note. That is worth a code precisely
+ * because it is invisible otherwise: in the reported incident 11 of 13 flushes carried refusals,
+ * peaking at 4 in one flush, and no field on any surface said so — the note simply came back with
+ * the same clinical statements six times over, and the first anyone knew of it was a tester
+ * reading it.
+ *
+ * Deliberately NOT `LIVE_DEGRADE_FALLBACK`: a reader that treats every code as "there is no note"
+ * would hide a note that exists. It is published beside `turnDegraded`, the surface's existing
+ * quality-of-a-successful-flush signal, and never as the whole-document payload's `degradeReason`.
+ */
+export const LIVE_DEGRADE_REPETITION_PRESSURE = 'repetition_pressure';
+
 export const LIVE_DEGRADE_CODES = Object.freeze([
   'no_case_notes',
   'context_overflow',
   'text_unavailable',
   'timeout',
   LIVE_DEGRADE_OUTPUT_TRUNCATED,
+  LIVE_DEGRADE_REPETITION_PRESSURE,
   LIVE_DEGRADE_FALLBACK,
   PRE_SUMMARY_DEGRADE_FALLBACK,
 ] as const);
@@ -152,4 +171,48 @@ export function degradeCode(error: unknown, fallback: string): string {
   // specific than anything this function could say about them.
   if (BARE_CODE.test(message.trim())) return message.trim();
   return fallback;
+}
+
+/**
+ * TASK-1001 (OD-6) — how much repetition in ONE flush is worth reporting.
+ *
+ * ## Why 3, and why a SUM
+ *
+ * The turn contract refuses or drops a contribution for ordinary reasons all the time: a model
+ * re-stating one section it wrote a minute ago is the normal background of an additive contract,
+ * and a threshold of "any" would have fired on 11 of the reported incident's 13 flushes. A signal
+ * that fires on 85% of flushes is not a signal — it is the `AxiosError` problem again, one
+ * surface saying something on every flush and therefore saying nothing.
+ *
+ * Three is the first count that cannot be one ordinary restatement:
+ *  - the incident's WORST flush carried 4 refusals, so it fires there, which is the case an
+ *    operator needed to see;
+ *  - under Phase 4's sentence-level dedup each of the observed shapes — the `S1 + S2` superset
+ *    restatement, the whitespace variant, the re-ordering — drops SEVERAL already-stored
+ *    sentences in a single addition, so the repetitive flushes reach 3 on dropped sentences
+ *    alone, well before a refusal count would have;
+ *  - a flush with one refusal and one dropped sentence stays quiet, which is what makes the
+ *    fired ones legible.
+ *
+ * The two counts are SUMMED rather than thresholded separately because they are two measurements
+ * of one behaviour at two granularities — a whole refused revision and a dropped sentence inside
+ * an accepted addition are the same model doing the same thing — and a per-count threshold would
+ * miss the flush that does a little of each.
+ *
+ * It is a per-FLUSH threshold, not a rolling window: a session-wide counter answers "was this
+ * consultation repetitive", which is a question about the past, while this one has to be
+ * answerable on the flush it describes, beside that flush's own stats.
+ */
+export const LIVE_REPETITION_PRESSURE_THRESHOLD = 3;
+
+/**
+ * Classify one flush's repetition counts.
+ *
+ * Returns {@link LIVE_DEGRADE_REPETITION_PRESSURE} when the flush is repetitive enough to report,
+ * and `undefined` otherwise — `undefined` rather than a boolean so a caller spreads the result
+ * straight into the telemetry it is already building, exactly as `degradeCode`'s output is used.
+ */
+export function repetitionPressureCode(counts: { refusedRewrites: number; droppedSentences: number }): string | undefined {
+  const total = Math.max(0, counts.refusedRewrites) + Math.max(0, counts.droppedSentences);
+  return total >= LIVE_REPETITION_PRESSURE_THRESHOLD ? LIVE_DEGRADE_REPETITION_PRESSURE : undefined;
 }

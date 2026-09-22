@@ -40,7 +40,7 @@ import {
   SYSTEM_USER_ID,
 } from './00-constants';
 import { ARCAAI_ALL_CLINICAL_DEPARTMENTS } from './04-department';
-import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATE_IDS } from './07b-arcaai-clinical-templates';
+import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATE_IDS, arcaaiOutputLanguagePolicyFragment } from './07b-arcaai-clinical-templates';
 import { noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
 import { ARCAAI_CONSULTATION_SCRIBE_DEFINITION } from './07g-arcaai-two-schemas';
 import {
@@ -181,9 +181,44 @@ export const ARCAAI_DEPARTMENT_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_
     task: 'TEXT_GENERATION',
     modelSlug: 'lms-gemma-4-e2b-it-qat',
     fallbackModelSlugs: [],
-    // The agent's pin outranks the template's `approvedVersionNumber` in the resolver, so it must
-    // be the template's OWN approved version (v4 for Breast & Endocrine, v3 elsewhere).
-    instruction: { promptTemplateId: row.templates[visit], promptVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION },
+    /**
+     * TASK-1001 (OD-1 / OD-3) — COMPOSITE: the department's clinical body, then the tenant's
+     * output-language policy.
+     *
+     * The policy used to be generated in code (`operatingFrame()` derived it from the
+     * consultation's declared `summaryLanguage` and appended it after the rendered instruction),
+     * which is why a tenant admin had no way to say "write the note in English" and the
+     * hematology note came back in Malayalam. It is now CONTENT, and TASK-947's fragments are
+     * the mechanism that was built for exactly this and had no seeded user.
+     *
+     * Two properties are deliberate and both are tested:
+     *  - the policy fragment is a POINTER to ONE shared row
+     *    (`ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID`), not 22 inlined copies, so the admin edits
+     *    one template;
+     *  - it carries NO `promptVersionNumber`. A pin would freeze all 22 agents on today's body
+     *    and forfeit that single-point edit. The clinical fragment KEEPS its pin — the agent's
+     *    pin outranking the template's `approvedVersionNumber` is what makes
+     *    `ARCAAI_CLINICAL_APPROVED_VERSION` a one-constant corpus rollback, and this ticket does
+     *    not change that.
+     *
+     * ORDER matters: the policy is LAST, because the nearest instruction to the generation point
+     * is the one a model honours most reliably, and the whole job of this fragment is to win.
+     *
+     * NOT SEEDED, deliberately: the conditional translate-to-X sibling. It would carry a `when`
+     * such as `has(context.language) && context.language != 'en'`, but this lane builds its
+     * render scope as `{ trigger: { context }, vars, nodes }` and the `context` ALIAS is the
+     * unwrapped view ONLY when the agent binds a single-kind context schema — these agents bind
+     * none, so the correct path is probably `trigger.context.language` and possibly neither.
+     * A `when` that cannot evaluate is EXCLUDED silently (TASK-947 OD-5), so a wrong guess here
+     * ships a translation rule that never fires and says nothing. Verify the path in the draft
+     * test panel (ticket practice #10) before seeding one.
+     */
+    instruction: {
+      fragments: [
+        { key: 'clinical_note', promptTemplateId: row.templates[visit], promptVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION },
+        arcaaiOutputLanguagePolicyFragment(),
+      ],
+    },
     // TASK-1000 — sized for THIS department/visit's note shape, not a constant shared by all 22.
     // The section count comes from the same table the document templates are seeded from, so the
     // budget and the shape it has to fill can never disagree.

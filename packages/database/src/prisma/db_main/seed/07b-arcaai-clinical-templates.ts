@@ -50,7 +50,8 @@
  * (v3) — all generated, byte-exact. This module owns only the structure/wiring.
  *
  * ID blocks (documented in 00-constants.ts): ArcaAI tenant templates use the
- * `71000000-…-0001-…` group, slots 010-032; their versions mirror in
+ * `71000000-…-0001-…` group, slots 010-032 for the clinical corpus and 033 for
+ * the TASK-1001 output-language policy; their versions mirror in
  * `72000000-…-0001-…` via the deterministic `72${id.slice(2)}` convention.
  */
 import type { CorePrismaClient } from '../../../client';
@@ -653,6 +654,109 @@ export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_SEEDED_VERSIONS.flatMap(
   })),
 );
 
+// =============================================================================
+// TASK-1001 (OD-1 / OD-3) — the OUTPUT LANGUAGE POLICY, as tenant-editable content
+// =============================================================================
+
+/**
+ * The note's output language was GENERATED IN CODE — `operatingFrame()` in
+ * `live-documentation.service.ts` derived it from the consultation's declared `summaryLanguage`
+ * and appended it after the rendered instruction. Code beats configuration, so a tenant admin had
+ * no lever at all: a consultation opened with the STT code-switch tag `ml-en` collapsed to
+ * "Malayalam" and the hematology note came back code-switched, exactly as instructed.
+ *
+ * This row is the lever. It is ONE shared template that every ArcaAI summary agent references as
+ * an unconditional `instruction.fragments[]` POINTER (TASK-947) — never inlined into 22 agents —
+ * so changing the output language for the whole tenant is one edit of one row in the console.
+ *
+ * ## Why it is not in `ARCAAI_CLINICAL_TEMPLATE_IDS` / `ARCAAI_CLINICAL_TEMPLATES`
+ *
+ * That map and those arrays are the CLINICAL CORPUS: 22 department × visit-type bodies plus the
+ * pre-summary, each carrying v1/v2/v3 snapshots, each referenced by a `Department` prompt-id
+ * column, and all of it pinned by `arcaai-clinical-version-policy.test.ts` (versions are exactly
+ * 1–3 and cover every template) and `template-selection-matrix.test.ts` (no dangling id, in both
+ * directions). This is a POLICY row with one version and no department axis; folding it into the
+ * corpus would either force a false v1/v2/v3 history or make it look like a 23rd clinical body.
+ *
+ * ## The two clauses, and why the second is load-bearing (finding S-4)
+ *
+ * The first states the output language. The second — "Keep the section keys and headings exactly
+ * as given, in English" — is the ONLY thing standing between this note and duplicated sections in
+ * the client: ALaaS merges a live section onto a held one by exact `documentKey::sectionKey`, or
+ * by title SLUG when one identity is generic (`reducer/document.js`). A translated or reworded
+ * heading is a different section to that reducer, it inserts a twin, and `orderSections` dedupes
+ * on key only — so nothing ever removes it. The clause travelled with the generated line it
+ * replaces; it must travel with this one, and
+ * `live-documentation.operating-frame.task1001.test.ts` pins that it does.
+ */
+export const ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID = '71000000-0000-0000-0001-000000000033';
+
+/** The fragment key every summary agent references this row under. `^[a-z0-9_]{2,48}$` (TASK-947). */
+export const ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY = 'output_language_policy';
+
+/**
+ * The policy body.
+ *
+ * English is the TENANT'S stated opinion here, not a platform default — "absent is not English"
+ * still holds in code (TASK-891 OD-1, applied to the output axis): with no fragment and no
+ * configuration, nothing instructs a language at all. A tenant that wants Malayalam notes edits
+ * THIS body; it does not re-declare a consultation's STT language mode and hope.
+ *
+ * Deliberately says nothing about who administers it (that is the row's `description`) and names
+ * no diagnostic code system (INV-065/066, `icd10-prompt-containment.test.ts`).
+ */
+export const ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT = `OUTPUT LANGUAGE POLICY
+
+Write every section value in English, whatever language was spoken. A transcript that is in Malayalam, or that switches between Malayalam and English, is understood first and then written up in English; drug names, doses, numbers, units, dates, values and proper names are reproduced exactly, never translated.
+
+Keep the section keys and headings exactly as given, in English. Do not translate, reword or re-order them.`;
+
+/** The PromptTemplate row — APPROVED and pinned at its only version, like every other seeded row. */
+export const ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE = {
+  id: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+  tenantId: ARCAAI_TENANT_ID,
+  name: 'Output language policy',
+  description:
+    'The language every ArcaAI summary agent writes its note in, and the rule that section keys and headings stay English. Referenced as an unconditional prompt fragment by all 22 department summary agents — edit THIS row to change the output language for the whole tenant.',
+  content: ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT,
+  category: 'SUMMARY' as PromptTemplateCategory,
+  status: 'APPROVED' as PromptTemplateStatus,
+  scope: 'TENANT_DEFAULT' as PromptTemplateScope,
+  variables: null as Prisma.InputJsonValue | null,
+  currentVersionNumber: 1,
+  approvedVersionNumber: 1,
+  departmentId: null as string | null,
+  // NOT tagged `pre-summary`: `findTenantPreSummaryTemplateId` matches a TENANT_DEFAULT row by
+  // that tag alone, and a second match would make which pre-summary serves an ordering accident.
+  tags: ['arcaai', 'policy', 'output-language'],
+};
+
+/** Its single PromptVersion snapshot — the row the resolver actually serves (F-01/F-02). */
+export const ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION = {
+  id: versionId(ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, 1),
+  tenantId: ARCAAI_TENANT_ID,
+  promptTemplateId: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+  versionNumber: 1,
+  content: ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT,
+  changeReason: 'Initial version — the output-language policy retired out of `operatingFrame()` into tenant-editable content (TASK-1001).',
+  changedBy: SYSTEM_USER_ID,
+};
+
+/**
+ * The fragment an agent attaches to reference this row.
+ *
+ * NO `promptVersionNumber`: pinning one would freeze the agents at today's body and forfeit the
+ * single-point edit this row exists to provide — the resolver then serves the template's own
+ * `approvedVersionNumber`, which is what an admin moves when they approve a new version.
+ *
+ * NO `when`: this is the UNCONDITIONAL policy. A conditional translate-to-X sibling is
+ * deliberately NOT seeded — see the note in `29-arcaai-agents-and-workflows.ts`.
+ */
+export const arcaaiOutputLanguagePolicyFragment = () => ({
+  key: ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
+  promptTemplateId: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+});
+
 /**
  * Seed the ArcaAI clinical prompt library. Runs in Phase 3 AFTER
  * seedPromptTemplate (shares the PromptTemplate / PromptVersion tables) and
@@ -707,4 +811,20 @@ export const seedArcaaiClinicalTemplates = async (client: CorePrismaClient) => {
     });
   }
   console.log(`Seeded ${ARCAAI_CLINICAL_VERSIONS.length} ArcaAI clinical prompt versions`);
+
+  // TASK-1001 — the output-language policy, written beside the corpus but NOT part of it (see the
+  // block comment above the constant). One template, one version, no department axis.
+  const { variables: policyVariables, ...policyRest } = ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE;
+  const policyData = { ...policyRest, ...(policyVariables != null ? { variables: policyVariables } : {}) };
+  await client.promptTemplate.upsert({
+    where: { id: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID },
+    update: policyData,
+    create: policyData,
+  });
+  await client.promptVersion.upsert({
+    where: { id: ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION.id },
+    update: ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION,
+    create: ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION,
+  });
+  console.log('Seeded the ArcaAI output-language policy template (1 template, 1 version)');
 };
