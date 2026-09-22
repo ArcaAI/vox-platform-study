@@ -296,7 +296,7 @@ describe('ABSENT is not English — nothing invents a default (TASK-891 OD-1 on 
 
 describe('the policy arrives through the FRAGMENT path instead', () => {
   it('carries the S-4 headings clause into the rendered instruction (REGRESSION PIN)', async () => {
-    const { systemPrompt, everything } = await flushOnce(compositeWithPolicy(ENGLISH_POLICY), { summaryLanguage: 'ml-en' });
+    const { systemPrompt, everything } = await flushOnce(withArtifact(compositeWithPolicy(ENGLISH_POLICY)), { summaryLanguage: 'ml-en' });
 
     // If this fails, ALaaS twins every section it cannot match by title slug and nothing removes
     // the duplicates. See the module comment.
@@ -305,7 +305,7 @@ describe('the policy arrives through the FRAGMENT path instead', () => {
   });
 
   it('states the tenant`s output language, and the department body is still there beside it', async () => {
-    const { systemPrompt } = await flushOnce(compositeWithPolicy(ENGLISH_POLICY), { summaryLanguage: 'ml-en' });
+    const { systemPrompt } = await flushOnce(withArtifact(compositeWithPolicy(ENGLISH_POLICY)), { summaryLanguage: 'ml-en' });
 
     expect(systemPrompt).toContain('Write every section value in English');
     // The policy must be ADDED to the clinical instruction, never instead of it: the composite
@@ -316,7 +316,7 @@ describe('the policy arrives through the FRAGMENT path instead', () => {
   });
 
   it('a tenant that wants Malayalam notes gets them from ONE edited row — a consultation declaring `ml` included', async () => {
-    const { systemPrompt, everything } = await flushOnce(compositeWithPolicy(MALAYALAM_POLICY), { summaryLanguage: 'ml' });
+    const { systemPrompt, everything } = await flushOnce(withArtifact(compositeWithPolicy(MALAYALAM_POLICY)), { summaryLanguage: 'ml' });
 
     expect(systemPrompt).toContain('Write every section value in Malayalam');
     // …and even then the keys and headings stay English. The two clauses are independent: the
@@ -329,7 +329,7 @@ describe('the policy arrives through the FRAGMENT path instead', () => {
   it('the policy does not depend on the consultation`s declaration — an undeclared consultation still gets it', async () => {
     // This is the flip side of "absent is not English": absent means the PLATFORM has no opinion,
     // not that the TENANT's configured one stops applying.
-    const { systemPrompt } = await flushOnce(compositeWithPolicy(ENGLISH_POLICY), {});
+    const { systemPrompt } = await flushOnce(withArtifact(compositeWithPolicy(ENGLISH_POLICY)), {});
 
     expect(systemPrompt).toContain('Write every section value in English');
     expect(systemPrompt).toContain(HEADINGS_CLAUSE);

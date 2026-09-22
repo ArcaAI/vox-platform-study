@@ -28,15 +28,14 @@
  * version-pinned APPROVED snapshot identity used for audit/diff AND push PHI
  * (DOB, vitals) into anything that logs a resolved prompt.
  *
- * TASK-1001 OD-2: {@link resolveV1LanguageName} used to be its OWN resolver, disagreeing with
- * `summaryLanguageName` (`../consultation/summary-language.ts`) on the absent case — it silently
- * defaulted every unmapped or undeclared tag to `'English'`. It is now a thin wrapper over the
- * ONE shared resolver, {@link resolveSummaryLanguage}; see that function's docstring for the
- * resolution order. Absent, blank, or a rejected code-switch tag (`ml-en`) now returns `null`,
- * never a silently invented `'English'`.
+ * TASK-1001 OD-4: {@link resolveV1LanguageName} now runs the incoming tag through the ONE shared
+ * grammar (`parseLanguageTag`) before v1's base-subtag lookup, so an STT code-switch marker
+ * (`ml-en`) can no longer be reduced to `ml` and read as "write Malayalam". v1's `'English'`
+ * default for an absent or unmapped tag is DELIBERATELY KEPT — see that function's docstring for
+ * why it is parity rather than drift, and why this surface differs from the native one.
  */
 
-import { resolveSummaryLanguage } from '../consultation/summary-language';
+import { parseLanguageTag } from '../consultation/summary-language';
 
 /**
  * The nine variables a v1 pre-summary body may reference, in v1's declaration
@@ -57,17 +56,34 @@ export const PRE_SUMMARY_TEMPLATE_VARIABLES = [
 
 export type PreSummaryVariableName = (typeof PRE_SUMMARY_TEMPLATE_VARIABLES)[number];
 
+/** v1's `LANGUAGE_MAP` (`previous_visit_service.py`), reproduced verbatim. */
+const V1_LANGUAGE_NAMES: Record<string, string> = { en: 'English', ml: 'Malayalam' };
+
 /**
- * v1's language-name lookup (`previous_visit_service.py`'s `LANGUAGE_MAP`), now a thin wrapper
- * over the ONE shared resolver ({@link resolveSummaryLanguage}, TASK-1001 OD-2). It used to be a
- * standalone `Record<string, string>` lookup that defaulted every unmapped OR absent tag to
- * `'English'` — that silent default was the bug this ticket removes (§A2: it disagreed with
- * `summaryLanguageName`, which already returned `null` for absent). There is no consultation
- * metadata on this path, so only `configuredLanguage` (the raw v1 language code) is passed;
- * `null` propagates instead of being coerced.
+ * v1's language-name lookup, on the FROZEN v1-compat pre-summary surface.
+ *
+ * TASK-1001 makes exactly ONE change here, and deliberately not the one §A2 of the ticket first
+ * proposed. The `'English'` default is NOT drift — it is v1 parity, and it is load-bearing:
+ * unlike the compat SUMMARY prompt (whose output language became an unconditional
+ * `SUMMARY_OUTPUT_LANGUAGE` directive on 2026-08-10), the compat PRE-SUMMARY template still
+ * renders `{language_name}` into a live instruction — *"Write ALL bullet content in
+ * {language_name}"*. Resolving an absent language to `null`/`''` there would emit "Write ALL
+ * bullet content in ." and would break the byte-identical golden fixtures that pin v1 parity.
+ *
+ * So: absent or unmapped still resolves to `'English'`, exactly as v1 did. What changes is that
+ * an STT CODE-SWITCH marker can no longer reach the base-subtag lookup — {@link parseLanguageTag}
+ * (via {@link SUMMARY_LANGUAGE_PATTERN}, TASK-1001 OD-4) rejects `ml-en` first, so it lands on
+ * v1's unknown→English rule instead of being reduced to `ml` and read as "write Malayalam". That
+ * reduction is the defect this ticket was opened for, verified live on 2026-08-10 on this very
+ * surface and again on 2026-09-22 on the native live-summary lane.
+ *
+ * The NATIVE path keeps the opposite posture — absent means undeclared, never English. That is
+ * {@link resolveSummaryLanguage}, and the two are different contracts, not a disagreement.
  */
-export function resolveV1LanguageName(language?: string | null): string | null {
-  return resolveSummaryLanguage(language, null);
+export function resolveV1LanguageName(language?: string | null): string {
+  const tag = parseLanguageTag(language);
+  if (tag === null) return 'English';
+  return V1_LANGUAGE_NAMES[tag.toLowerCase().split('-')[0]!] ?? 'English';
 }
 
 /**
@@ -99,11 +115,9 @@ function orDefault(value: string | null | undefined, fallback: string): string {
  * A surface that has no equivalent for a field simply omits it and inherits v1's
  * default — never a newly invented one.
  *
- * `language_name` is the one exception to "verbatim": TASK-1001 OD-2 removed
- * {@link resolveV1LanguageName}'s silent `'English'` default, so an undeclared language now
- * resolves to `null` there; this is the ONE place that folds it to `''` (like
- * `formatted_test_results`/`formatted_previous_visits` above) so the record stays
- * `Record<PreSummaryVariableName, string>` — never a re-invented `'English'`.
+ * `language_name` included: {@link resolveV1LanguageName} keeps v1's `'English'` default, so this
+ * record stays all-string and the byte-identical golden fixtures for this frozen surface still
+ * hold. Only the code-switch case changed (`ml-en` no longer becomes Malayalam).
  */
 export function buildPreSummaryVariables(sources: PreSummaryVariableSources): Record<PreSummaryVariableName, string> {
   return {
@@ -115,7 +129,7 @@ export function buildPreSummaryVariables(sources: PreSummaryVariableSources): Re
     safe_vitals: orDefault(sources.vitals, 'Not available'),
     formatted_test_results: orDefault(sources.testResults, ''),
     formatted_previous_visits: orDefault(sources.previousVisits, ''),
-    language_name: resolveV1LanguageName(sources.language) ?? '',
+    language_name: resolveV1LanguageName(sources.language),
   };
 }
 

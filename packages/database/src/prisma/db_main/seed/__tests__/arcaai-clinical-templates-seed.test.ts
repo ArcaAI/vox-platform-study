@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SEED_CUSTOMER_TENANT_IDS } from '../00-constants';
 import {
   ARCAAI_CLINICAL_TEMPLATES,
+  ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
   seedArcaaiClinicalTemplates,
 } from '../07b-arcaai-clinical-templates';
 
@@ -44,8 +45,21 @@ describe('ArcaAI clinical template department references', () => {
     });
 
     const createdTemplates = promptTemplateUpsert.mock.calls.map(([args]) => args.create);
-    expect(createdTemplates).toHaveLength(ARCAAI_CLINICAL_TEMPLATES.length);
+    // TASK-1001 — the clinical corpus PLUS the one shared output-language policy row. The policy
+    // is deliberately NOT a member of `ARCAAI_CLINICAL_TEMPLATES`: that set is pinned at 22+1
+    // rows each carrying v1/v2/v3, and the policy is a single row with a single version. It is
+    // seeded here because it is ArcaAI tenant content that the department agents point at.
+    expect(createdTemplates).toHaveLength(ARCAAI_CLINICAL_TEMPLATES.length + 1);
     expect(createdTemplates.slice(0, 2).every((template) => template.departmentId === departmentIds.SURG)).toBe(true);
-    expect(createdTemplates.at(-1)?.departmentId).toBeNull();
+
+    const policy = createdTemplates.find((template) => template.id === ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID);
+    expect(policy, 'the shared output-language policy row is not seeded').toBeDefined();
+    // Tenant-wide, not per-department: one row every department agent points at, so a tenant
+    // changes its note language by editing ONE row rather than 22.
+    expect(policy!.departmentId).toBeNull();
+
+    // The pre-summary row is department-less too, and remains so.
+    const preSummary = createdTemplates.filter((template) => template.departmentId === null);
+    expect(preSummary.length, 'exactly two department-less rows: the pre-summary and the policy').toBe(2);
   });
 });

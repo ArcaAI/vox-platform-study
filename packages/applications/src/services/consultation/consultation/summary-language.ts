@@ -70,7 +70,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * Shared shape+grammar check: a non-blank string matching {@link SUMMARY_LANGUAGE_PATTERN}
  * (which, since TASK-1001 OD-4, also excludes STT code-switch markers), or `null`.
  */
-function parseLanguageTag(value: unknown): string | null {
+export function parseLanguageTag(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 && SUMMARY_LANGUAGE_PATTERN.test(trimmed) ? trimmed : null;
@@ -114,12 +114,16 @@ export function summaryLanguageName(tag: string | null | undefined): string | nu
 }
 
 /**
- * The ONE summary-language resolver (TASK-1001 OD-2). It replaces the two resolvers that used to
- * disagree on the absent case: {@link summaryLanguageName} already returned `null` when
- * undeclared, but `resolveV1LanguageName` in `../prompt/pre-summary-variables.ts` silently
- * returned `'English'` — that silent default was the bug (§A2 of the TASK-1001 ticket). Every
- * caller that needs "what language should this note be written in" should go through this
- * function now.
+ * The summary-language resolver for the NATIVE consultation path (TASK-1001 OD-2). Every caller
+ * that needs "what language should this note be written in" goes through this function.
+ *
+ * It does NOT subsume `resolveV1LanguageName` in `../prompt/pre-summary-variables.ts`, and that
+ * is deliberate — §A2 of the ticket first called that function's `'English'` default drift, and
+ * that reading was wrong. The frozen v1-compat PRE-SUMMARY template renders `{language_name}`
+ * into a live instruction and has byte-identical golden fixtures, so an absent language must
+ * still resolve to a NAME there; resolving it to `null` would emit "Write ALL bullet content
+ * in ." Two surfaces, two contracts. What they now share is the grammar below, which is what
+ * actually fixes the reported defect: neither can be handed a code-switch tag any more.
  *
  * Resolution order — configured-first, exactly like `AiProviderConnection`'s "absent = no
  * opinion" cascade:
@@ -134,10 +138,7 @@ export function summaryLanguageName(tag: string | null | undefined): string | nu
  * through to the consultation's own declaration — the same fail-safe posture
  * {@link readSummaryLanguage} already takes on the stored value.
  */
-export function resolveSummaryLanguage(
-  configuredLanguage: string | null | undefined,
-  consultationMetadata: unknown,
-): string | null {
+export function resolveSummaryLanguage(configuredLanguage: string | null | undefined, consultationMetadata: unknown): string | null {
   const tag = parseLanguageTag(configuredLanguage) ?? readSummaryLanguage(consultationMetadata);
   return summaryLanguageName(tag);
 }

@@ -18,7 +18,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../00-constants';
-import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATES, ARCAAI_CLINICAL_VERSIONS } from '../07b-arcaai-clinical-templates';
+import {
+  ARCAAI_CLINICAL_APPROVED_VERSION,
+  ARCAAI_CLINICAL_TEMPLATES,
+  ARCAAI_CLINICAL_VERSIONS,
+  ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT,
+  ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
+  ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+} from '../07b-arcaai-clinical-templates';
 import { NOTE_CONTEXT_SCHEMA_DEFINITION } from '../07e-consultation-note-context-schema';
 import { GLOBAL_AGENT_SPECS, PLATFORM_AGENT_SPECS } from '../25-agents';
 import {
@@ -58,6 +65,50 @@ const CONTRACT_DIST = path.resolve(HERE, '../../../../../../workflow-contract/di
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const contract: any = await import(/* @vite-ignore */ CONTRACT_DIST);
 const liveRegistryChecksum: string = contract.registryChecksum();
+
+/**
+ * TASK-1001 — an agent's template bindings, whichever instruction form it uses.
+ *
+ * Form 1 is a single `promptTemplateId`; form 3 is `fragments[]`, which the 22 department agents
+ * moved to so the shared output-language policy could ride beside the department body as a
+ * POINTER. These helpers exist so the guards below assert the same INTENT across both forms
+ * rather than silently passing on an agent whose binding they can no longer see.
+ */
+interface PromptFragment {
+  readonly key: string;
+  readonly promptTemplateId?: string;
+  readonly promptVersionNumber?: number;
+  readonly when?: string | null;
+}
+
+function fragmentsOf(spec: { instruction: unknown }): PromptFragment[] {
+  const fragments = (spec.instruction as { fragments?: PromptFragment[] }).fragments;
+  return Array.isArray(fragments) ? fragments : [];
+}
+
+/** Every template id the agent binds, across both forms. */
+function templateIdsOf(spec: { instruction: unknown }): string[] {
+  const single = (spec.instruction as { promptTemplateId?: string }).promptTemplateId;
+  const fromFragments = fragmentsOf(spec)
+    .map((fragment) => fragment.promptTemplateId)
+    .filter((id): id is string => typeof id === 'string');
+  return typeof single === 'string' ? [single, ...fromFragments] : fromFragments;
+}
+
+/**
+ * The CLINICAL binding — the department body, which is the one that must live in the corpus and
+ * pin the approved version. The policy fragment is deliberately neither; it has its own guard.
+ */
+function clinicalBindingOf(spec: { instruction: unknown }): { promptTemplateId: string; promptVersionNumber: number | undefined } | undefined {
+  const instruction = spec.instruction as { promptTemplateId?: string; promptVersionNumber?: number };
+  if (typeof instruction.promptTemplateId === 'string') {
+    return { promptTemplateId: instruction.promptTemplateId, promptVersionNumber: instruction.promptVersionNumber };
+  }
+  const clinical = fragmentsOf(spec).find(
+    (fragment) => fragment.key !== ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY && typeof fragment.promptTemplateId === 'string',
+  );
+  return clinical ? { promptTemplateId: clinical.promptTemplateId!, promptVersionNumber: clinical.promptVersionNumber } : undefined;
+}
 
 describe('TASK-930 §8.6 — the generated blobs are real engine output', () => {
   it('both generated modules carry the LIVE registry checksum (regenerate, never hand-patch)', () => {
@@ -199,14 +250,40 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
     const templateById = new Map(ARCAAI_CLINICAL_TEMPLATES.map((template) => [template.id, template]));
     const versionKeys = new Set(ARCAAI_CLINICAL_VERSIONS.map((version) => `${version.promptTemplateId}@${version.versionNumber}`));
     for (const spec of ARCAAI_AGENT_SPECS) {
-      const instruction = spec.instruction as { promptTemplateId?: string; promptVersionNumber?: number };
-      expect(typeof instruction.promptTemplateId).toBe('string');
-      const template = templateById.get(instruction.promptTemplateId!);
-      expect(template, `no ArcaAI template ${String(instruction.promptTemplateId)} for ${spec.slug}`).toBeDefined();
+      // TASK-1001 — an agent may bind its template in EITHER instruction form: the single
+      // `promptTemplateId` (the pre-summary agent) or `fragments[]` (the 22 department agents,
+      // which gained the shared output-language policy as a second, unconditional fragment).
+      const clinical = clinicalBindingOf(spec);
+      expect(clinical, `${spec.slug} binds no ArcaAI clinical template in either instruction form`).toBeDefined();
+      const template = templateById.get(clinical!.promptTemplateId);
+      expect(template, `no ArcaAI template ${clinical!.promptTemplateId} for ${spec.slug}`).toBeDefined();
       // Every agent — the pre-summary and all 22 per-turn ones — pins the ONE corpus default.
-      expect(instruction.promptVersionNumber, spec.slug).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
-      expect(template!.approvedVersionNumber).toBe(instruction.promptVersionNumber);
-      expect(versionKeys.has(`${instruction.promptTemplateId}@${instruction.promptVersionNumber}`)).toBe(true);
+      expect(clinical!.promptVersionNumber, spec.slug).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
+      expect(template!.approvedVersionNumber).toBe(clinical!.promptVersionNumber);
+      expect(versionKeys.has(`${clinical!.promptTemplateId}@${clinical!.promptVersionNumber}`)).toBe(true);
+    }
+  });
+
+  /**
+   * TASK-1001 — the policy fragment's own contract, which is deliberately the OPPOSITE of the
+   * clinical binding above on both counts.
+   *
+   * It is NOT in the clinical corpus: `ARCAAI_CLINICAL_TEMPLATES` / `_VERSIONS` are pinned at
+   * 22+1 rows carrying v1/v2/v3 on every row, and the policy is one row with one version.
+   * And it pins NO version, on purpose — a pin would freeze it and forfeit the single-point
+   * editing that is the whole reason the policy is a POINTER rather than inlined into 22 agents.
+   */
+  it('the output-language policy rides as an unconditional, UNPINNED fragment on every department agent', () => {
+    const departmentAgents = ARCAAI_AGENT_SPECS.filter((spec) => fragmentsOf(spec).length > 0);
+    expect(departmentAgents.length, 'no agent carries the composite instruction form').toBeGreaterThan(0);
+    for (const spec of departmentAgents) {
+      const policy = fragmentsOf(spec).find((fragment) => fragment.key === ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
+      expect(policy, `${spec.slug} lost the output-language policy fragment`).toBeDefined();
+      expect(policy!.promptTemplateId).toBe(ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID);
+      expect(policy!.promptVersionNumber, `${spec.slug} PINS the policy — that forfeits single-point editing`).toBeUndefined();
+      expect(policy!.when ?? null, `${spec.slug} made the policy conditional`).toBeNull();
+      // Last, so it is the instruction nearest the generation point.
+      expect(fragmentsOf(spec).at(-1)!.key).toBe(ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
     }
   });
 
@@ -222,10 +299,17 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
       .kinds;
     const contextFields = new Set(Object.keys(kinds.find((kind) => kind.key === 'context')!.fields.properties));
     const contentById = new Map(ARCAAI_CLINICAL_TEMPLATES.map((template) => [template.id, String(template.content)]));
+    // TASK-1001 — the policy row lives outside the clinical corpus, but a `{{context.*}}` grown
+    // in it must still be caught, so it joins the content index rather than being skipped.
+    contentById.set(ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT);
     for (const spec of ARCAAI_AGENT_SPECS) {
-      const instruction = spec.instruction as { promptTemplateId: string; variables?: Record<string, { value: string } | { path: string }> };
+      const instruction = spec.instruction as { variables?: Record<string, { value: string } | { path: string }> };
+      // Every template this agent binds, in EITHER instruction form: `variables` is declared once
+      // on the instruction and must cover what ALL of its fragments read.
       const used = new Set(
-        [...contentById.get(instruction.promptTemplateId)!.matchAll(/\{\{\s*context\.([a-zA-Z0-9_]+)\s*\}\}/g)].map((match) => match[1]!),
+        templateIdsOf(spec).flatMap((id) =>
+          [...(contentById.get(id) ?? '').matchAll(/\{\{\s*context\.([a-zA-Z0-9_]+)\s*\}\}/g)].map((match) => match[1]!),
+        ),
       );
       const bound = instruction.variables ?? {};
       for (const name of used) {

@@ -99,15 +99,29 @@ describe('resolveSummaryLanguage — one resolver, one absent-posture (OD-2)', (
   });
 });
 
-describe("resolveV1LanguageName — the old silent 'English' default is gone (OD-2)", () => {
-  it('returns null, not English, when no language is declared', () => {
-    expect(resolveV1LanguageName(undefined)).toBeNull();
-    expect(resolveV1LanguageName(null)).toBeNull();
-    expect(resolveV1LanguageName('   ')).toBeNull();
+/**
+ * TASK-1001 — the FROZEN v1-compat surface keeps v1's `'English'` default, and that is a
+ * deliberate reversal of this ticket's first draft (§A2 called the default "drift").
+ *
+ * It is parity, and it is load-bearing. Unlike the compat SUMMARY prompt — whose output language
+ * became an unconditional `SUMMARY_OUTPUT_LANGUAGE` directive on 2026-08-10 — the compat
+ * PRE-SUMMARY template still renders `{language_name}` into a live instruction ("Write ALL bullet
+ * content in {language_name}"), and byte-identical golden fixtures pin it. Resolving an absent
+ * language to null there would emit "Write ALL bullet content in ." — a degenerate prompt, which
+ * is worse than the default it replaced.
+ *
+ * The NATIVE path keeps the opposite posture (`resolveSummaryLanguage`: absent means undeclared,
+ * never English). Two surfaces, two contracts — not a disagreement to collapse.
+ */
+describe('resolveV1LanguageName — v1 parity kept, code-switch defused (OD-4)', () => {
+  it("keeps v1's English default when no language is declared", () => {
+    expect(resolveV1LanguageName(undefined)).toBe('English');
+    expect(resolveV1LanguageName(null)).toBe('English');
+    expect(resolveV1LanguageName('   ')).toBe('English');
   });
 
-  it('no longer coerces an unmapped tag to English', () => {
-    expect(resolveV1LanguageName('fr')).toBe('fr');
+  it("keeps v1's unknown -> English rule for a valid but unmapped tag", () => {
+    expect(resolveV1LanguageName('fr')).toBe('English');
   });
 
   it('still maps known tags to their display name', () => {
@@ -115,7 +129,9 @@ describe("resolveV1LanguageName — the old silent 'English' default is gone (OD
     expect(resolveV1LanguageName('ml-IN')).toBe('Malayalam');
   });
 
-  it('rejects a code-switch tag rather than resolving it to a language', () => {
-    expect(resolveV1LanguageName('ml-en')).toBeNull();
+  /** THE defect: `ml-en` was reduced to `ml` and the prompt then said "write Malayalam". */
+  it('refuses a code-switch tag instead of reducing it to Malayalam', () => {
+    expect(resolveV1LanguageName('ml-en')).toBe('English');
+    expect(resolveV1LanguageName('en-ml')).toBe('English');
   });
 });

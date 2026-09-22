@@ -44,6 +44,20 @@ describe('resolveV1LanguageName', () => {
     expect(resolveV1LanguageName(null)).toBe('English');
     expect(resolveV1LanguageName('   ')).toBe('English');
   });
+
+  /**
+   * TASK-1001 OD-4 — the ONE behaviour change on this frozen surface.
+   *
+   * `ml-en` is the STT code-switch mode (`ASR_PARAMETERS.decoding.languageMode`), not an output
+   * language. v1's base-subtag lookup reduced it to `ml` and the prompt then said "write
+   * Malayalam" — verified live on this surface on 2026-08-10, and again on the native
+   * live-summary lane on 2026-09-22. The shared grammar now rejects it before the lookup, so it
+   * lands on v1's own unknown -> English rule. Everything else above is unchanged v1 parity.
+   */
+  it('refuses an STT code-switch marker instead of reducing it to Malayalam', () => {
+    expect(resolveV1LanguageName('ml-en')).toBe('English');
+    expect(resolveV1LanguageName('en-ml')).toBe('English');
+  });
 });
 
 describe('buildPreSummaryVariables', () => {

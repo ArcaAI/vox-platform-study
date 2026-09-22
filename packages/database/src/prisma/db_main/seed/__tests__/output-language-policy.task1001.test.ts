@@ -137,7 +137,7 @@ describe('the 22 department summary agents', () => {
   });
 
   it('keep the department body AND its corpus pin — a composite replaces `promptTemplateId`, so a slip loses the clinical instruction entirely', () => {
-    const clinicalIds = new Set(Object.values(ARCAAI_CLINICAL_TEMPLATE_IDS));
+    const clinicalIds = new Set<string>(Object.values(ARCAAI_CLINICAL_TEMPLATE_IDS));
 
     for (const spec of ARCAAI_DEPARTMENT_AGENT_SPECS) {
       const clinical = fragmentsOf(spec)[0]!;
