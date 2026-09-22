@@ -464,8 +464,6 @@ AI pipeline.
   those needs a reaper that can read Redis session state (lane E).
 - `ContextItem` counters are not stamped by five writers outside lane G's boundary, incl. the
   TRANSCRIPT writes in `sttInternal.service.ts` (which already compute a word count and discard it).
-- The telemetry endpoint's `TranscriptionJob` read still decrypts `encryptedResultText` through Vault
-  as a side effect; a projected finder omitting the two `encrypted*` columns would close it (lane B).
 - `useRunLiveEvents` and the sandbox panel still depend on a REST refetch to flip `enabled`; lane H
   made them close eagerly, but the belt-and-braces gating remains.
 
@@ -478,6 +476,7 @@ AI pipeline.
 | 2026-09-22 | Owner said go, and asked for maximum parallelism with NO gates run by lanes — the orchestrator gates at the end of each wave and dispatches fix agents. |
 | 2026-09-22 | **Correction to §4.2.1**: `AiPriceBook` has no `operation` column (it keys on capability/provider/model/unit), so a new operation value needs NO price-book row. The real coupling is `metering.service.ts:379`, which excludes with `operation: { notIn: ... }` — a new value therefore keeps counting toward billable LLM_TOKENS by default, which is the wanted behaviour. Lane G pins it with a test. |
 | 2026-09-22 | Step 0 landed (`c1e879dde`): 4 columns + 2 counters + 3 indexes, migration `20260921192153_task_999_consultation_and_job_telemetry` authored on a throwaway shadow DB with the ledger replayed (`migrate diff` reports an empty migration), dev DB pushed, shadow dropped. `gen:model:check` / `gen:entity:check` / `gen:factory:check` all green. Wire contracts C-1 and C-2 frozen in §3.1. |
+| 2026-09-22 | **Follow-up closed**: the telemetry endpoint no longer decrypts transcripts. `TranscriptionJobRepository.findTelemetryByConsultation` projects `servedBy`/`resultWordCount`/`resultCharCount`; the decrypt walker skips ciphertext columns absent from the row, so the read never reaches Vault. Pinned against `PHI_MODEL_CIPHERTEXT.transcriptionJob` rather than hardcoded names. Gates re-run: domains 2037, applications 14809, api build + typecheck + lint, all 5 drift/generator checks green; endpoint returns identical telemetry live. |
 | 2026-09-22 | Lane H added (4 more SSE consumers with the same defect, found by lane D's audit). All 8 lanes merged; wave-2 gate run: 6 failures out of 14,816 fixed by the orchestrator (reaper kind filter + its missing STREAMING test, frozen-list count 15→16, telemetry fixture that asserted encryption while passing no secrets service). Five artifacts regenerated, all drift gates green. |
 | 2026-09-22 | Cross-lane contract drift reconciled: `servedBy.chainIndex` is -1 for the PRIMARY too, so the drawer must branch on `source` first; `TelemetrySource` widened with `'consultation'`. |
 | 2026-09-22 | Seven lanes dispatched in parallel worktrees: A (sort), D (SSE fix), B (telemetry endpoint), E (streaming job rows), G (gap closures), C (telemetry pane), F (job list + detail). Boundaries are file-disjoint by construction — C writes a NEW `api/telemetry.ts` so it cannot collide with A, and F is barred from D's stream-panel files. |
