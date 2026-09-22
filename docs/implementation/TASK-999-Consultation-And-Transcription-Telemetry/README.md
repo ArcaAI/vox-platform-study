@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — all eight lanes merged to `dev-2.2` and gated green (§6). **Runtime browser proof still outstanding** (needs an authenticated console session); the e2e authz sweep is blocked by an environment conflict, not by this change. |
+| **Status** | Review — merged to `dev-2.2`, all gates green, runtime proof captured (§6.5), e2e green (§6.6), and **deployed + migrated on the dev cluster** (§6.7). Awaiting owner sign-off. |
 | **Type** | feature + bugfix |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-22 |
@@ -480,6 +480,48 @@ routes does return 401 without credentials — only the inventory was stale.
 TASK-999 itself added no `@Public() /internal/*` route: the manifest at `e396f45a9` (its parent)
 already listed 35, and a before/after diff shows this ticket added and removed none.
 
+### 6.7 Cluster verification (dev, 2026-09-22)
+
+Verified read-only through GitLab, Argo CD and Rancher. **The cluster migration needed no manual
+run — it had already executed as part of the Argo sync**, which is the designed path:
+
+| Link in the chain | Evidence |
+|---|---|
+| GitLab pipeline | `#1300`, ref `dev-2.2`, sha `70250ee1e`, **success** |
+| Promotion (digest-pinned) | `arca/hope-v2-deployment@40e929d6` — *"promote(dev): dev-70250ee1 from pipeline #946"*, naming source commit `70250ee1e` and pipeline 1300 |
+| Argo CD | `hope-v2-dev` **Synced / Healthy** at revision `40e929d67d` — exactly that promotion commit |
+| Migration Job | `hope-db-migrate` created `04:13:54Z`, complete `04:14:24Z`, `succeeded: 1` |
+| API rollout | `hope-api-7589b7bcd9-68mdb` started `04:16:45Z` — **after** the migration — on `api@sha256:2c212cbd…`, Ready, 0 restarts |
+| Workloads | 33 of 33 healthy (`hope-vllm` deliberately ScaledToZero) |
+
+Migration Job log, verbatim:
+
+```
+52 migrations found in prisma/migrations
+Applying migration `20260921192153_task_999_consultation_and_job_telemetry`
+Applying migration `20260921193609_task_999_consultation_updated_at_index`
+All migrations have been successfully applied.
+```
+
+Confirmed against the cluster database rather than taken from the log alone — all six columns, all
+four indexes, and both ledger rows `finished_at`-stamped:
+
+```
+ContextItem.contentCharCount / contentWordCount
+TranscriptionJob.resultCharCount / resultWordCount / servedBy / streamSessionId
+AiUsageEvent_tenant_consultation_occurredAt_idx · Consultation_tenant_updated_idx
+TranscriptionJob_streamSessionId_idx · TranscriptionJob_tenant_jobType_created_idx
+20260921193609_task_999_consultation_updated_at_index | t
+20260921192153_task_999_consultation_and_job_telemetry | t
+```
+
+(A `psql` sweep for the column names also matches `AiModel.servedBy`, which is a pre-existing
+column on an unrelated table that happens to share the name — not part of this ticket.)
+
+**Unrelated drift noticed while looking:** `hope-dbimg-debug` and `hope-dbimg-debug2` are bare pods
+in `hope-v2-dev` with no manifest behind them. Argo still reports Synced because it does not track
+them. They look like leftover hand-run debug pods; left in place (not this ticket's call).
+
 ## 7. Follow-ups (not in this ticket)
 
 - A session whose gateway dies before teardown strands a `PROCESSING` STREAMING row forever; closing
@@ -498,6 +540,7 @@ already listed 35, and a before/after diff shows this ticket added and removed n
 | 2026-09-22 | Owner said go, and asked for maximum parallelism with NO gates run by lanes — the orchestrator gates at the end of each wave and dispatches fix agents. |
 | 2026-09-22 | **Correction to §4.2.1**: `AiPriceBook` has no `operation` column (it keys on capability/provider/model/unit), so a new operation value needs NO price-book row. The real coupling is `metering.service.ts:379`, which excludes with `operation: { notIn: ... }` — a new value therefore keeps counting toward billable LLM_TOKENS by default, which is the wanted behaviour. Lane G pins it with a test. |
 | 2026-09-22 | Step 0 landed (`c1e879dde`): 4 columns + 2 counters + 3 indexes, migration `20260921192153_task_999_consultation_and_job_telemetry` authored on a throwaway shadow DB with the ledger replayed (`migrate diff` reports an empty migration), dev DB pushed, shadow dropped. `gen:model:check` / `gen:entity:check` / `gen:factory:check` all green. Wire contracts C-1 and C-2 frozen in §3.1. |
+| 2026-09-22 | Cluster verified end to end (pipeline #1300 → promotion `40e929d6` → Argo Synced/Healthy → migrate Job succeeded → API rolled). The migration required NO manual run: Argo had already applied both TASK-999 migrations. Confirmed against the cluster DB (6 columns, 4 indexes, 2 ledger rows). |
 | 2026-09-22 | E2E run after stopping `alaas-postgres`: authz matrix 7/7, cross-tenant 139 passed, plus a new `consultation-telemetry-cross-tenant` spec (4 passed). Found and fixed a PRE-EXISTING red: A5b's internal-route inventory has been stale since TASK-932. Worktrees for all 8 lanes removed after verifying each was merged with 0 commits ahead of `dev-2.2`. |
 | 2026-09-22 | **Follow-up closed**: the telemetry endpoint no longer decrypts transcripts. `TranscriptionJobRepository.findTelemetryByConsultation` projects `servedBy`/`resultWordCount`/`resultCharCount`; the decrypt walker skips ciphertext columns absent from the row, so the read never reaches Vault. Pinned against `PHI_MODEL_CIPHERTEXT.transcriptionJob` rather than hardcoded names. Gates re-run: domains 2037, applications 14809, api build + typecheck + lint, all 5 drift/generator checks green; endpoint returns identical telemetry live. |
 | 2026-09-22 | Lane H added (4 more SSE consumers with the same defect, found by lane D's audit). All 8 lanes merged; wave-2 gate run: 6 failures out of 14,816 fixed by the orchestrator (reaper kind filter + its missing STREAMING test, frozen-list count 15→16, telemetry fixture that asserted encryption while passing no secrets service). Five artifacts regenerated, all drift gates green. |
