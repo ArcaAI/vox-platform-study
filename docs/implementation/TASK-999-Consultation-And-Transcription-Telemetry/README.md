@@ -411,12 +411,11 @@ generators    gen:model:check · gen:entity:check · gen:factory:check          
 ### 6.4 Not verified, and why — read before calling this done
 
 - **`membership-bounded-sync.integration.test.ts` fails at the hook.** Environmental and
-  pre-existing: `alaas-postgres` occupies port **5433**, so HOPE's test Postgres is not running and
-  the suite authenticates against an unrelated database. Both of its tests are SKIPPED; no TASK-999
-  code is involved.
-- **The e2e authorization matrix (`task-776-route-authz-matrix.spec.ts`) has NOT been run** — same
-  port conflict. `05-nestjs-api.md` makes it a definition-of-done item for a new route, so it is
-  owed before this ticket closes.
+  pre-existing: `alaas-postgres` held port **5433**, so HOPE's test Postgres never started and the
+  suite authenticated against an unrelated database. Both of its tests are SKIPPED; no TASK-999
+  code is involved. The container was stopped on 2026-09-22 to run the e2e suites (§6.6); it is
+  still stopped, and HOPE's test infra now holds 5433.
+- ~~The e2e authorization matrix has NOT been run~~ — **RUN AND GREEN 2026-09-22**, see §6.6.
 ### 6.5 Runtime proof (browser, 2026-09-22, tenant ArcaAI, both themes)
 
 Captured against the running stack (api 8868, console 5176) on the seeded ArcaAI tenant.
@@ -458,6 +457,29 @@ guardrail / NER blocks were only observed in their `NO_ACTIVITY` state. A popula
 duration rendering has NOT been seen end to end and needs a consultation actually driven through the
 AI pipeline.
 
+### 6.6 E2E evidence (2026-09-22, test API 8968 + seeded test DB)
+
+`alaas-postgres` was stopped to free 5433, `pnpm infra:test:up` brought all nine test services up
+healthy, the schema was pushed with a plain **non-destructive** `db push` (the DB was empty — 0
+tables — so `--force-reset` was neither needed nor run), and the seed was applied with
+`RUN_SEED=all` (which `pnpm test:db:seed` does NOT set — it silently skips seeding without it).
+
+```
+task-776-route-authz-matrix            7 passed   (759 routes, 0 findings)
+cross-tenant (all specs)             139 passed, 11 skipped
+consultation-telemetry-cross-tenant    4 passed   (new)
+```
+
+**The matrix had been RED since TASK-932, and nothing could see it.** Commit `8a4ec224a` added
+`GET /internal/harness/consultations/{id}/live-handoff` without updating A5b's frozen inventory of
+`@Public() /internal/*` routes (34 → 35). It stayed hidden because this suite could not run at all
+while 5433 was occupied. Before re-pinning the number, the security property was checked rather
+than assumed: A5b's `assertAll` runs BEFORE the count and passed for all 35, so every one of those
+routes does return 401 without credentials — only the inventory was stale.
+
+TASK-999 itself added no `@Public() /internal/*` route: the manifest at `e396f45a9` (its parent)
+already listed 35, and a before/after diff shows this ticket added and removed none.
+
 ## 7. Follow-ups (not in this ticket)
 
 - A session whose gateway dies before teardown strands a `PROCESSING` STREAMING row forever; closing
@@ -476,6 +498,7 @@ AI pipeline.
 | 2026-09-22 | Owner said go, and asked for maximum parallelism with NO gates run by lanes — the orchestrator gates at the end of each wave and dispatches fix agents. |
 | 2026-09-22 | **Correction to §4.2.1**: `AiPriceBook` has no `operation` column (it keys on capability/provider/model/unit), so a new operation value needs NO price-book row. The real coupling is `metering.service.ts:379`, which excludes with `operation: { notIn: ... }` — a new value therefore keeps counting toward billable LLM_TOKENS by default, which is the wanted behaviour. Lane G pins it with a test. |
 | 2026-09-22 | Step 0 landed (`c1e879dde`): 4 columns + 2 counters + 3 indexes, migration `20260921192153_task_999_consultation_and_job_telemetry` authored on a throwaway shadow DB with the ledger replayed (`migrate diff` reports an empty migration), dev DB pushed, shadow dropped. `gen:model:check` / `gen:entity:check` / `gen:factory:check` all green. Wire contracts C-1 and C-2 frozen in §3.1. |
+| 2026-09-22 | E2E run after stopping `alaas-postgres`: authz matrix 7/7, cross-tenant 139 passed, plus a new `consultation-telemetry-cross-tenant` spec (4 passed). Found and fixed a PRE-EXISTING red: A5b's internal-route inventory has been stale since TASK-932. Worktrees for all 8 lanes removed after verifying each was merged with 0 commits ahead of `dev-2.2`. |
 | 2026-09-22 | **Follow-up closed**: the telemetry endpoint no longer decrypts transcripts. `TranscriptionJobRepository.findTelemetryByConsultation` projects `servedBy`/`resultWordCount`/`resultCharCount`; the decrypt walker skips ciphertext columns absent from the row, so the read never reaches Vault. Pinned against `PHI_MODEL_CIPHERTEXT.transcriptionJob` rather than hardcoded names. Gates re-run: domains 2037, applications 14809, api build + typecheck + lint, all 5 drift/generator checks green; endpoint returns identical telemetry live. |
 | 2026-09-22 | Lane H added (4 more SSE consumers with the same defect, found by lane D's audit). All 8 lanes merged; wave-2 gate run: 6 failures out of 14,816 fixed by the orchestrator (reaper kind filter + its missing STREAMING test, frozen-list count 15→16, telemetry fixture that asserted encryption while passing no secrets service). Five artifacts regenerated, all drift gates green. |
 | 2026-09-22 | Cross-lane contract drift reconciled: `servedBy.chainIndex` is -1 for the PRIMARY too, so the drawer must branch on `source` first; `TelemetrySource` widened with `'consultation'`. |
