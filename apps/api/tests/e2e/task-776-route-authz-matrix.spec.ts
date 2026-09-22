@@ -385,6 +385,12 @@ test.describe(' route authorization conformance matrix', () => {
     // TASK-890 black-box F11 added the 34th: GET /internal/harness/models/resolve — the
     // registry-model resolve the durable `core.classify` node had always called, on the same
     // HarnessServiceTokenGuard as its siblings.
-    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(34);
+    // TASK-932 (`8a4ec224a`) added the 35th: GET /internal/harness/consultations/{id}/live-handoff,
+    // on the same HarnessServiceTokenGuard as its siblings — but did NOT update this number, and
+    // the drift went unseen until TASK-999 because this suite could not run (port 5433 was held by
+    // an unrelated container, so the test Postgres never started). The `assertAll` above runs
+    // FIRST and passed for all 35, so every one of them IS service-token-gated; only the inventory
+    // was stale. Re-pinned 2026-09-22 after verifying that, not by taking the new count on trust.
+    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(35);
   });
 });
