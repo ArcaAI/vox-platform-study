@@ -38,6 +38,29 @@
  * artifact (`DocumentTemplateVersion.compiled`) and the finalisation path's contract, so it is
  * untouched and needs no recompile or `compilerVersion` bump: the turn schema is DERIVED here, at
  * call time, from the same `sectionKeys` and `checklist`.
+ *
+ * ## TASK-1001 OD-5 — the append guard is per SENTENCE, not per addition
+ *
+ * The guard above was `!before.includes(addition)`: a case-, whitespace- and punctuation-sensitive
+ * containment test of the WHOLE trimmed addition. One decrypted consultation showed what that
+ * misses. Two genuine blocks `S1` and `S2` were stored (joined, as storage always joins, with
+ * `\n\n`), and five further copies accumulated on top of them: `S1 + S2` restated as one addition
+ * joined by a single SPACE — so not a contiguous substring of `S1\n\nS2` — twice; `S1' + S2` where
+ * `S1'` differed by one space inside a drug name; `S2` then `S1` reordered; and `S2` with its doses
+ * respaced (`1000mg` → `1000 mg`). Every shape sails through a whole-addition containment test.
+ *
+ * **Every one of them was an exact-sentence repeat modulo whitespace, punctuation or ordering — not
+ * one was a paraphrase.** That is why the fix is exact-normalised SENTENCE dedup and nothing more.
+ * Similarity or paraphrase matching would drop clinical content the clinician actually said, and a
+ * silently missing sentence is a worse defect than a duplicated one (OD-5).
+ *
+ * Two rules keep it on the safe side of that line:
+ *
+ * - normalisation is for COMPARISON ONLY — every surviving sentence is appended in its original
+ *   text, in its original order. Nothing lowercased or respaced is ever written; and because
+ *   normalisation removes whitespace rather than digits, `1000mg` and `100mg` stay distinct, so a
+ *   sentence differing in a number, dose, date or laterality is NEW and is appended.
+ * - a sentence is eligible to be dropped only when it is at least two words (see `splitSentences`).
  */
 import type { CompiledDocumentTemplate, CompiledResponseFormat } from '../../../document-template/document-template-compiler';
 // TASK-1000 OD-7 — the ONE sentinel both planes must agree about. Imported rather than
@@ -70,7 +93,7 @@ export interface TurnSectionWrite {
   readonly contradiction?: { readonly reason: string };
 }
 
-export type TurnRefusalReason = 'revision-without-contradiction';
+export type TurnRefusalReason = 'revision-without-contradiction' | 'addition-already-present';
 
 export interface TurnRefusal {
   readonly sectionKey: string;
@@ -84,6 +107,8 @@ export interface AppliedTurn {
   readonly writes: TurnSectionWrite[];
   /** Refused contributions, for PHI-safe logging and the churn metric. */
   readonly refusals: TurnRefusal[];
+  /** TASK-1001 — sentences dropped from additions because the section already held them. */
+  readonly droppedSentenceCount: number;
 }
 
 /**
@@ -276,7 +301,9 @@ export function wholeDocumentAsTurn(parsed: readonly LiveSummarySectionDto[], co
     writes.push({ sectionKey, title: section.title, idx, mode: 'replace', content });
   }
 
-  return { sections: [...parsed], writes, refusals: [] };
+  // `droppedSentenceCount` is 0 by construction, not by omission: this path emits `replace` writes,
+  // which overwrite rather than accumulate, so there is nothing for sentence dedup to protect.
+  return { sections: [...parsed], writes, refusals: [], droppedSentenceCount: 0 };
 }
 
 /**
@@ -302,6 +329,143 @@ function priorByKey(prior: readonly LiveSummarySectionDto[], compiled: CompiledD
   );
 }
 
+/** TASK-1001 — what ends a sentence. `…` is included because models emit it where they elide. */
+const SENTENCE_TERMINATORS: ReadonlySet<string> = new Set(['.', '!', '?', '…']);
+
+/** Non-global on purpose: a `g` regex carries `lastIndex` between `.test()` calls. */
+const WHITESPACE = /\s/;
+
+interface Sentence {
+  /** The sentence EXACTLY as written (trimmed). Never the normalised form — that is comparison-only. */
+  readonly text: string;
+  /** The whitespace that followed it, so the survivors re-join in the author's own layout. */
+  readonly separator: string;
+}
+
+/**
+ * Split a body into sentences.
+ *
+ * Two boundary rules, and the second one is the load-bearing one:
+ *
+ * 1. **A line break always ends a sentence**, whatever punctuation it carries. Storage joins blocks
+ *    with `\n\n`, and a clinical line ("Inj ATG 5 mg IV") frequently carries no terminator at all —
+ *    without this rule a stored block and the same block restated inline would not compare equal.
+ * 2. **A terminator ends a sentence only when whitespace, or the end of the body, follows it.** That
+ *    single condition IS the decimal rule: in `1.05 ng/mL` and `488.2 IU/mL` the `.` is followed by
+ *    a DIGIT, so it is never a boundary. It matters twice over — a splitter that shattered
+ *    `Serum TSH 1.05 ng/mL.` into `Serum TSH 1.` and `05 ng/mL.` would then drop the first fragment
+ *    as "already present" and append a bare `50 ng/mL.` to the note, losing the analyte and turning
+ *    a dedup into a data-corruption bug.
+ *
+ * Note what this deliberately does NOT do: it has no abbreviation dictionary, so `Inj. ATG 5 mg.`
+ * splits into `Inj.` and `ATG 5 mg.`. That is harmless because both sides of the comparison are
+ * split by the same rule, and because a one-word sentence is never eligible to be dropped
+ * (`withoutSentencesAlreadyPresent`) — which is what stops `Inj.` being deleted from a new drug
+ * line just because an older line already carried it.
+ */
+function splitSentences(body: string): Sentence[] {
+  const sentences: Sentence[] = [];
+  let start = 0;
+  let cursor = 0;
+
+  const whitespaceRunEnd = (from: number): number => {
+    let at = from;
+    while (at < body.length && WHITESPACE.test(body[at]!)) at += 1;
+    return at;
+  };
+
+  const take = (end: number, separatorEnd: number): void => {
+    const text = body.slice(start, end).trim();
+    if (text.length > 0) sentences.push({ text, separator: body.slice(end, separatorEnd) });
+    start = separatorEnd;
+  };
+
+  while (cursor < body.length) {
+    const char = body[cursor]!;
+
+    if (char === '\n' || char === '\r') {
+      const separatorEnd = whitespaceRunEnd(cursor);
+      take(cursor, separatorEnd);
+      cursor = separatorEnd;
+      continue;
+    }
+
+    if (SENTENCE_TERMINATORS.has(char)) {
+      let end = cursor;
+      while (end < body.length && SENTENCE_TERMINATORS.has(body[end]!)) end += 1;
+      if (end >= body.length || WHITESPACE.test(body[end]!)) {
+        const separatorEnd = whitespaceRunEnd(end);
+        take(end, separatorEnd);
+        cursor = separatorEnd;
+      } else {
+        cursor = end;
+      }
+      continue;
+    }
+
+    cursor += 1;
+  }
+
+  if (start < body.length) take(body.length, body.length);
+  return sentences;
+}
+
+/**
+ * The comparison key. Lowercase, ALL whitespace removed, trailing sentence punctuation stripped.
+ *
+ * That is exactly enough to equate the observed duplicates — `tg, atg` with `tg,atg`, `1000mg` with
+ * `1000 mg`, a block restated with a different line break — and no more. Digits are untouched, so
+ * `1000mg` and `100mg` normalise apart and the dose-change case is NEW text, not a duplicate.
+ */
+function normaliseForComparison(sentence: string): string {
+  return sentence
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[.!?…]+$/, '');
+}
+
+interface DedupedAddition {
+  /** The surviving sentences, in their ORIGINAL text and original order. Empty ⇒ nothing is new. */
+  readonly text: string;
+  readonly dropped: number;
+}
+
+/** TASK-1001 OD-5 — drop from `addition` the sentences `before` already holds. */
+function withoutSentencesAlreadyPresent(before: string, addition: string): DedupedAddition {
+  const sentences = splitSentences(addition);
+
+  // The pre-TASK-1001 whole-addition guard, KEPT as a floor rather than replaced. It covers the one
+  // case sentence dedup deliberately declines to: an addition that is a single token already
+  // written verbatim (see the two-word rule below).
+  if (before.includes(addition)) return { text: '', dropped: sentences.length };
+
+  const present = new Set(
+    splitSentences(before)
+      .map((sentence) => normaliseForComparison(sentence.text))
+      .filter((key) => key.length > 0),
+  );
+
+  const kept: Sentence[] = [];
+  let dropped = 0;
+
+  for (const sentence of sentences) {
+    // A sentence may be DROPPED only when it is at least two words. Splitting on
+    // "<terminator><whitespace>" cuts a clinical abbreviation — `Inj.`, `Tab.`, `Dr.` — into a
+    // token of its own, and such a token is present in nearly any section that already names an
+    // injection. Dropping it would silently delete the route from the NEXT drug line, which is
+    // precisely the content loss OD-5 ranks worse than a duplicated sentence. A genuine restatement
+    // of clinical content is never one word.
+    const key = normaliseForComparison(sentence.text);
+    if (key.length > 0 && WHITESPACE.test(sentence.text) && present.has(key)) {
+      dropped += 1;
+      continue;
+    }
+    kept.push(sentence);
+  }
+
+  return { text: kept.map((sentence) => `${sentence.text}${sentence.separator}`).join('').trim(), dropped };
+}
+
 /**
  * Fold a turn onto the prior note.
  *
@@ -316,6 +480,7 @@ export function applyTurn(prior: readonly LiveSummarySectionDto[], turn: ParsedT
   const sections: LiveSummarySectionDto[] = [];
   const writes: TurnSectionWrite[] = [];
   const refusals: TurnRefusal[] = [];
+  let droppedSentenceCount = 0;
 
   for (const [idx, sectionKey] of compiled.sectionKeys.entries()) {
     const title = titles.get(sectionKey) ?? sectionKey;
@@ -344,15 +509,25 @@ export function applyTurn(prior: readonly LiveSummarySectionDto[], turn: ParsedT
       const addition = contribution.addition.trim();
       // A model restating something it already wrote must not duplicate it. Checked on the stored
       // text rather than trusted from the instruction, because "never repeat" is advice and this
-      // is the only place it can be enforced.
-      if (addition.length > 0 && !before.includes(addition)) {
-        after = before.trim().length > 0 ? `${before.trim()}\n\n${addition}` : addition;
-        writes.push({ sectionKey, title, idx, mode: 'append', content: addition });
+      // is the only place it can be enforced. TASK-1001: per SENTENCE, because a restatement that
+      // merges, respaces or reorders what is already written is not a substring of it.
+      if (addition.length > 0) {
+        const novel = withoutSentencesAlreadyPresent(before, addition);
+        droppedSentenceCount += novel.dropped;
+
+        if (novel.text.length > 0) {
+          after = before.trim().length > 0 ? `${before.trim()}\n\n${novel.text}` : novel.text;
+          writes.push({ sectionKey, title, idx, mode: 'append', content: novel.text });
+        } else {
+          // Nothing in the addition was new. No write at all — the section is byte-stable — and the
+          // refusal is what makes the pressure countable instead of invisible.
+          refusals.push({ sectionKey, reason: 'addition-already-present' });
+        }
       }
     }
 
     sections.push({ title, content: after });
   }
 
-  return { sections, writes, refusals };
+  return { sections, writes, refusals, droppedSentenceCount };
 }
