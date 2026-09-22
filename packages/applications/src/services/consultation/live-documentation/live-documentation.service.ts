@@ -127,7 +127,7 @@ import {
   type TurnRefusal,
   type TurnSectionWrite,
 } from './realtime/turn-contract';
-import { readSummaryLanguage, summaryLanguageName } from '../consultation/summary-language';
+import { readSummaryLanguage } from '../consultation/summary-language';
 // TASK-951 D-3 — the visit type the CLIENT recorded at `open`, which wins over the parent-link
 // derivation. Read through lane C's one reader so the marker's storage stays its business.
 import { readRecordedVisitType } from '../consultation/open-markers';
@@ -164,7 +164,7 @@ import { LiveToolRegistry } from './live-tool-registry';
 // sequence; it walks a LANE, and which lane it walks is data.
 import { GUARDRAIL_GROUNDEDNESS_TOOL } from './live-tool-registry';
 // TASK-946 D6 — the CLOSED vocabulary of PHI-safe degrade codes, shared with the warm start.
-import { LIVE_DEGRADE_FALLBACK, degradeCode } from './degrade-codes';
+import { LIVE_DEGRADE_FALLBACK, degradeCode, repetitionPressureCode } from './degrade-codes';
 import {
   DocumentSectionStore,
   GuardMemo,
@@ -579,6 +579,11 @@ interface GraphFlushProjection {
   turnWrites: TurnSectionWrite[];
   /** Contributions the turn contract refused (an unjustified rewrite). PHI-safe: keys and reasons. */
   turnRefusals: TurnRefusal[];
+  /**
+   * TASK-1001 (Phase 5) — sentences this turn proposed that the note already recorded, dropped by
+   * the append guard. A COUNT, never the text: repetition is measured, never quoted.
+   */
+  turnDroppedSentences: number;
   /** True when the generation could not be read as a turn and fell back to a whole-document rewrite. */
   turnDegraded: boolean;
   /**
@@ -3005,7 +3010,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       elidedParts > 0,
       this.stablePrefixFor(agent, template),
       template.compiled.title,
-      this.operatingFrame(template, session.summaryLanguage),
+      this.operatingFrame(template),
       // TASK-939 OD-2(a) — the turn contract's prose half, kept beside its schema so the two
       // cannot drift.
       turnInstruction(template.compiled),
@@ -3035,6 +3040,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // section, so a quiet section costs no write and publishes no patch.
     let turnWrites: TurnSectionWrite[] = [];
     let turnRefusals: TurnRefusal[] = [];
+    // TASK-1001 (Phase 5) — already-recorded sentences this turn's additions carried, dropped
+    // by the append guard. A count: what repeats is clinical text and never leaves this scope.
+    let turnDroppedSentences = 0;
     /** True when the turn contract could not be honoured and this flush fell back to a full rewrite. */
     let turnDegraded = false;
     /**
@@ -3100,7 +3108,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               elidedParts > 0,
               this.stablePrefixFor(agent, template),
               template.compiled.title,
-              this.operatingFrame(template, session.summaryLanguage),
+              this.operatingFrame(template),
               turnInstruction(template.compiled),
               clientContext.vitals,
               clientContext.previousVisits,
@@ -3139,6 +3147,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         runningSummary = graph.runningSummary;
         turnWrites = graph.turnWrites;
         turnRefusals = graph.turnRefusals;
+        turnDroppedSentences = graph.turnDroppedSentences;
         turnDegraded = graph.turnDegraded;
         cursorAdvanceTo = deltaEnd;
       }
@@ -3235,6 +3244,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         runningSummary = buildRunningSummary(applied.sections);
         turnWrites = applied.writes;
         turnRefusals = applied.refusals;
+        turnDroppedSentences = applied.droppedSentenceCount;
         // Advance only over the segments actually sent (C5-04): on a truncated
         // flush `deltaEnd < flushUpTo`, so the carried-forward tail is re-sent next.
         //
@@ -3415,6 +3425,30 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const flushFailed = textFailed || graph?.run.failed === true;
     const flushDegradeReason = flushFailed ? (laneDegradeReason ?? LIVE_DEGRADE_FALLBACK) : undefined;
 
+    /**
+     * TASK-1001 (OD-6) — the flush's REPETITION verdict, which nothing computed before.
+     *
+     * The counts existed: `turnRefusedRewrites` has been on the stats since TASK-939. What was
+     * missing is a threshold, so a reader had a number with nothing to compare it to and every
+     * repetitive flush looked like every healthy one. `repetitionPressureCode` owns the rule (and
+     * the reasoning for the number) — this line only decides WHEN it is asked.
+     *
+     * Only on a flush that SUCCEEDED. On a failed flush there is no note for repetition to be a
+     * property of, and `flushDegradeReason` already answers the only question worth asking.
+     */
+    const repetitionDegradeReason = flushFailed
+      ? undefined
+      : repetitionPressureCode({ refusedRewrites: turnRefusals.length, droppedSentences: turnDroppedSentences });
+
+    /**
+     * What the admin live console's stats snapshot reports as this flush's reason.
+     *
+     * A FAILED flush keeps its own code: "there is no note" outranks "the note repeats itself",
+     * and the two are mutually exclusive above anyway. Otherwise this is the one case where the
+     * field describes a note that EXISTS — which is precisely the case that was invisible.
+     */
+    const statsDegradeReason = flushDegradeReason ?? repetitionDegradeReason;
+
     const payload: LiveSummaryEventDto = {
       consultationId,
       runningSummary,
@@ -3529,7 +3563,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       turnSectionsAppended: turnWrites.filter((write) => write.mode === 'append').length,
       turnSectionsRewritten: turnWrites.filter((write) => write.mode === 'replace').length,
       turnRefusedRewrites: turnRefusals.length,
+      // TASK-1001 — the other half of the repetition measurement: a refused rewrite and a dropped
+      // sentence are the same model re-saying itself, at two granularities. Counts only.
+      turnDroppedSentences,
+      // `turnDegraded` stays what it was (the turn contract fell back to a whole-document
+      // rewrite); pressure is reported as its own code so the two cannot be confused.
       turnDegraded,
+      ...(repetitionDegradeReason ? { repetitionPressure: repetitionDegradeReason } : {}),
       // TASK-946 D6 — the flush's own verdict, beside the two stage flags. `turnDegraded` is a
       // quality signal about a SUCCESSFUL flush; this is the one that says there is no note.
       flushFailed,
@@ -3574,7 +3614,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       turnDegraded,
       // TASK-946 D6 — the flush verdict and its PHI-safe reason code.
       flushFailed,
-      ...(flushDegradeReason ? { degradeReason: flushDegradeReason } : {}),
+      // TASK-1001 (OD-6) — `repetition_pressure` on a successful flush; see `statsDegradeReason`.
+      ...(statsDegradeReason ? { degradeReason: statsDegradeReason } : {}),
     });
 
     // Emit the ordered per-flush trajectory. Non-fatal: a
@@ -3666,6 +3707,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // are produced inside the capability.
     let turnWrites: TurnSectionWrite[] = [];
     let turnRefusals: TurnRefusal[] = [];
+    // TASK-1001 (Phase 5) — already-recorded sentences this turn's additions carried, dropped
+    // by the append guard. A count: what repeats is clinical text and never leaves this scope.
+    let turnDroppedSentences = 0;
     let turnDegraded = false;
     /**
      * A3 — the candidates the document node was allowed to run this turn, captured for PROVENANCE.
@@ -3773,6 +3817,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         parsedSections = outcome.value.sections;
         turnWrites = outcome.value.writes;
         turnRefusals = outcome.value.refusals;
+        turnDroppedSentences = outcome.value.droppedSentenceCount;
         return {
           text: buildRunningSummary(parsedSections),
           sections: parsedSections,
@@ -3886,6 +3931,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // writes, so a degraded generation can never be mistaken for "the turn had nothing to say".
       turnWrites: summarize?.status === 'succeeded' ? turnWrites : [],
       turnRefusals: summarize?.status === 'succeeded' ? turnRefusals : [],
+      turnDroppedSentences: summarize?.status === 'succeeded' ? turnDroppedSentences : 0,
       turnDegraded: summarize?.status === 'succeeded' ? turnDegraded : false,
       textFailed: summarize !== undefined && summarize.status !== 'succeeded' && summarize.status !== 'skipped',
       textLatencyMs,
@@ -5191,17 +5237,32 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *     seconds and the note changes language mid-consultation.
    *  2. MERGE, don't restart. The prior note is already in the prompt (`Current <title> so far`),
    *     but "here is your previous output" is not an instruction to preserve it.
-   *  3. WRITE IN the declared language — omitted entirely when none was declared, because
-   *     undeclared is not English (TASK-891 OD-1's posture, applied to the output axis).
-   *  4. FILL the resolved template's sections, BY KEY. The section list is the compiled
+   *  3. FILL the resolved template's sections, BY KEY. The section list is the compiled
    *     template's own, so a department shape and its prompt cannot disagree.
+   *  4. The consultation is still running, so no closing summary.
+   *
+   * ## What is NO LONGER here, and why (TASK-1001, OD-1 / OD-3)
+   *
+   * A step 3 used to state the note's OUTPUT LANGUAGE, generated from the consultation's declared
+   * `summaryLanguage`. That was a defect of ownership, not of wording: the language a note is
+   * written in is a tenant DECISION, and stating it in code meant no tenant admin could change
+   * it. ALaaS declares `ml-en` — the STT code-switch MODE, not an output language — the resolver
+   * took its primary subtag, and the frame duly instructed Malayalam. The clinician got a
+   * code-switched hematology note that no console setting could have prevented.
+   *
+   * It now lives in CONTENT, as an unconditional `instruction.fragments[]` pointer to ONE shared
+   * "Output language policy" template (`07b-arcaai-clinical-templates.ts`) — TASK-947's mechanism,
+   * which had shipped with an editor and per-call telemetry and no seeded user. The clause that
+   * rode along with the generated line, "keep the section keys and headings exactly as given, in
+   * English", travels with the policy body: it is the only defence against ALaaS twinning every
+   * section (finding S-4), and `live-documentation.operating-frame.task1001.test.ts` pins it.
+   *
+   * Nothing replaces it HERE. A tenant that configures no policy gets no output-language
+   * instruction at all — which is TASK-891 OD-1's posture on the output axis: absent is not
+   * English, and inventing a default in code is the thing this ticket removed.
    */
-  private operatingFrame(template: ResolvedDocumentTemplate, summaryLanguage: string | null | undefined): string {
+  private operatingFrame(template: ResolvedDocumentTemplate): string {
     const sectionKeys = template.compiled.sectionKeys;
-    const languageName = summaryLanguageName(summaryLanguage);
-    const languageStep = languageName
-      ? `Write every section value in ${languageName}${languageName === summaryLanguage ? '' : ` (${summaryLanguage})`}, whatever language was spoken. Keep the section keys and headings exactly as given, in English.`
-      : 'No output language was declared for this consultation: follow the clinical instruction above, and do not switch language part-way through the note.';
 
     return [
       '',
@@ -5209,9 +5270,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       'HOW TO PRODUCE THIS TURN:',
       "1. The transcript is PARTIAL and may be code-switched or not in English. Read it in whatever language it is in and understand it in English internally; never transcribe another language's words into the note untranslated.",
       '2. This is an UPDATE, not a fresh note. Keep everything the running note above already records, extend a section the new transcript adds to, and revise one only where the new transcript contradicts it.',
-      `3. ${languageStep}`,
-      `4. Fill the sections of this document and no others, using these keys exactly: ${sectionKeys.join(', ')}. A section the consultation has not reached is null — never a placeholder, never invented content.`,
-      '5. The consultation is still in progress. Write no closing summary, no sign-off and no statement that the encounter has ended.',
+      `3. Fill the sections of this document and no others, using these keys exactly: ${sectionKeys.join(', ')}. A section the consultation has not reached is null — never a placeholder, never invented content.`,
+      '4. The consultation is still in progress. Write no closing summary, no sign-off and no statement that the encounter has ended.',
     ].join('\n');
   }
 
@@ -7012,7 +7072,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       turnDegraded: boolean;
       /** TASK-946 D6 — this flush produced no note. See `LiveDocSessionStatsResponse`. */
       flushFailed: boolean;
-      /** TASK-946 D6 — the PHI-safe code from `degrade-codes.ts`; absent on a healthy flush. */
+      /**
+       * TASK-946 D6 — the PHI-safe code from `degrade-codes.ts`; absent on a healthy flush.
+       *
+       * TASK-1001 (OD-6) — it is no longer only a failure code. On a flush that SUCCEEDED it may
+       * carry `repetition_pressure`, which says the note exists but the generation spent the turn
+       * restating it. `flushFailed` is the field that distinguishes the two, and it always has
+       * been; reading this one alone never told a consumer whether there was a note.
+       */
       degradeReason?: string;
     },
   ): Promise<void> {

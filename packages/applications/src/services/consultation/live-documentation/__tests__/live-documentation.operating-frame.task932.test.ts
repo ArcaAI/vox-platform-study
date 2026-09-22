@@ -11,10 +11,12 @@
  * language is a different axis from the transcript's.
  *
  * Those are properties of the RUNTIME, identical across all 22 department bodies, so the frame is
- * stated once by the lane. This suite pins that it says the four things it exists to say, that it
- * names the SESSION's sections rather than a hardcoded SOAP tuple, and — the one that would rot
- * silently — that an UNDECLARED language produces no language instruction at all rather than a
- * quiet "English", which is TASK-891 OD-1's posture applied to the output axis.
+ * stated once by the lane. This suite pins that it says the things it exists to say and that it
+ * names the SESSION's sections rather than a hardcoded SOAP tuple.
+ *
+ * TASK-1001 removed the OUTPUT LANGUAGE from that list: the note's language is a tenant DECISION,
+ * not a runtime property, and stating it here is what made it unconfigurable. It is now a seeded
+ * prompt fragment; see `live-documentation.operating-frame.task1001.test.ts` and the note below.
  *
  * The frame is asserted through the real prompt the service sends, not through a snapshot of a
  * private method, so a refactor that stops appending it fails here.
@@ -85,7 +87,7 @@ async function flushOnce(metadata: Record<string, unknown> | null): Promise<stri
 }
 
 describe('TASK-932 §3.7 — the partial-summary operating frame', () => {
-  it('states the four turn steps, in order, after the delta instruction', async () => {
+  it('states the turn steps, in order, after the delta instruction', async () => {
     const prompt = await flushOnce({});
 
     expect(prompt).toContain('HOW TO PRODUCE THIS TURN:');
@@ -95,10 +97,11 @@ describe('TASK-932 §3.7 — the partial-summary operating frame', () => {
     expect(prompt).toMatch(/understand it in English internally/);
     // 2 — merge, do not restart.
     expect(prompt).toMatch(/This is an UPDATE, not a fresh note/);
-    // 4 — the template's sections, by key, with null for what has not been reached.
+    // 3 — the template's sections, by key, with null for what has not been reached (was 4
+    //     before TASK-1001 retired the language step).
     expect(prompt).toMatch(/using these keys exactly:/);
     expect(prompt).toMatch(/never a placeholder, never invented content/);
-    // 5 — the consultation is still running.
+    // 4 — the consultation is still running.
     expect(prompt).toMatch(/still in progress/);
 
     // The frame is the LAST thing the model reads: it is the turn's procedure.
@@ -114,33 +117,31 @@ describe('TASK-932 §3.7 — the partial-summary operating frame', () => {
     for (const key of ['subjective', 'objective', 'assessment', 'plan']) expect(line).toContain(key);
   });
 
-  it('with a declared summary language, instructs the model to write in it and to keep the keys in English', async () => {
+  /**
+   * TASK-1001 (OD-1 / OD-3) — the LANGUAGE cases that stood here are GONE, and deliberately not
+   * replaced in kind.
+   *
+   * They pinned a step this frame no longer has: the output language was generated in code from
+   * the consultation's declared `summaryLanguage`, which is exactly why a tenant admin could not
+   * change it and why ALaaS's `ml-en` (an STT code-switch MODE) produced a Malayalam note. The
+   * rule is now CONTENT — one shared `Output language policy` template referenced as an
+   * unconditional `instruction.fragments[]` pointer by every ArcaAI summary agent.
+   *
+   * What replaces them lives in `live-documentation.operating-frame.task1001.test.ts`: that the
+   * frame emits no language line at all, that the policy arrives through the fragment path, and —
+   * the clause that used to ride along with the generated line — that section keys and headings
+   * are still required to stay in English (finding S-4; a translated heading makes ALaaS insert a
+   * twin section that nothing ever removes).
+   *
+   * The TASK-891 OD-1 posture this suite was written to protect is unchanged and is asserted
+   * there: absent is still not English, and now nothing in code says otherwise.
+   */
+  it('says nothing about the output language — that rule is tenant content now (TASK-1001)', async () => {
     const prompt = await flushOnce({ summaryLanguage: 'ml' });
 
-    expect(prompt).toContain('Write every section value in Malayalam (ml)');
-    expect(prompt).toContain('whatever language was spoken');
-    expect(prompt).toMatch(/Keep the section keys and headings exactly as given, in English/);
-  });
-
-  it('a regional tag keeps its own name and its tag — `en-IN` is not silently flattened to `en`', async () => {
-    const prompt = await flushOnce({ summaryLanguage: 'en-IN' });
-    expect(prompt).toContain('Write every section value in English (en-IN)');
-  });
-
-  it('UNDECLARED is not English: no language instruction is issued at all', async () => {
-    const prompt = await flushOnce({});
-
     expect(prompt).not.toContain('Write every section value in');
-    // …and what IS said is the honest version: keep one language, whichever the body chooses.
-    expect(prompt).toContain('No output language was declared for this consultation');
-  });
-
-  it('a malformed language marker reads as undeclared rather than reaching the prompt', async () => {
-    // A display name is the value that actually arrives by accident. It must not be echoed into
-    // the prompt as though it were a tag.
-    const prompt = await flushOnce({ summaryLanguage: 'English please, doctor' });
-    expect(prompt).not.toContain('English please');
-    expect(prompt).toContain('No output language was declared for this consultation');
+    expect(prompt).not.toContain('No output language was declared');
+    expect(prompt).not.toContain('Malayalam');
   });
 
   it('leaves the prefix-cacheable lead-in untouched — the frame is appended, never prepended', async () => {
@@ -151,6 +152,6 @@ describe('TASK-932 §3.7 — the partial-summary operating frame', () => {
   it('survives a consultation repository that is not wired at all', async () => {
     const prompt = await flushOnce(null);
     expect(prompt).toContain('HOW TO PRODUCE THIS TURN:');
-    expect(prompt).toContain('No output language was declared for this consultation');
+    expect(prompt).toContain('using these keys exactly:');
   });
 });
