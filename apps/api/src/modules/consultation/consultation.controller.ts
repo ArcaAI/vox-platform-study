@@ -2073,8 +2073,9 @@ export class ConsultationController {
   async approveSummary(
     @Param('id') id: string,
     @Param('contextItemId') contextItemId: string,
-    // Optional one-click safety-flag override; `expectedVersion` is
-    // REQUIRED (folded from the `If-Match` header below when present).
+    // Optional one-click safety-flag override. The version is REQUIRED through
+    // the `If-Match` header (`@RequiresIfMatch()`); a body `expectedVersion` is
+    // optional and loses to it (TASK-1001).
     @Body() body: SummaryApprovalRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
     @Req() req: RequestWithAuth,

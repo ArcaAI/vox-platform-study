@@ -76,6 +76,14 @@ export interface UpdateSummaryRequest {
   changeSummary?: string;
   /** Source of the change. */
   changeSource?: 'doctor_edit' | 'ai_regeneration' | 'system';
+  /**
+   * The clinician this edit belongs to — same rule as
+   * {@link ApproveSummaryRequest.clinicianUserId}: REQUIRED when this client authenticates as a
+   * SERVICE ACCOUNT or API key (400 `CLINICIAN_REQUIRED` otherwise), and refused for a human
+   * caller who is not `SUPER_ADMIN` / `TENANT_ADMIN`. The gateway DTO has accepted it since
+   * TASK-972; this type was missing it (TASK-1001).
+   */
+  clinicianUserId?: string;
 }
 
 /**

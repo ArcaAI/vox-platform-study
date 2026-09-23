@@ -7,7 +7,7 @@
  * and the review plane the SDK demo composes around it.
  */
 
-import { GatewayError, getJson, getWithEtag, patchJson, patchWithEtag, postJson } from '@/shared/api';
+import { GatewayError, getJson, getWithEtag, patchJson, patchWithEtag, postJson, request } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import type { DocumentSectionRecord } from './document-sections';
 import type { CorrectionProposal } from './live-assist';
@@ -243,9 +243,25 @@ export function getSummaryProvenance(consultationId: string, contextItemId: stri
   return getJson(consultationPath(consultationId, `summary/${encodeURIComponent(contextItemId)}/provenance`));
 }
 
-/** Approve & sign-off; `contextItemId` is the summary's `id`. */
-export function approveSummary(consultationId: string, contextItemId: string, body: ApproveSummaryRequest = {}): Promise<SummaryApproval> {
-  return postJson(consultationPath(consultationId, `summary/${encodeURIComponent(contextItemId)}/approve`), body);
+/**
+ * Approve & sign-off; `contextItemId` is the summary's `id`.
+ *
+ * `If-Match` is MANDATORY on this route (`@RequiresIfMatch()`) — without it the sign-off is 428 and
+ * the note is never signed (TASK-1001). As with {@link updateSummary}, the precondition is the
+ * `version` carried by the summary read.
+ */
+export async function approveSummary(
+  consultationId: string,
+  contextItemId: string,
+  body: ApproveSummaryRequest,
+  expectedVersion: number,
+): Promise<SummaryApproval> {
+  const result = await request<SummaryApproval>(consultationPath(consultationId, `summary/${encodeURIComponent(contextItemId)}/approve`), {
+    method: 'POST',
+    body,
+    etag: `"${expectedVersion}"`,
+  });
+  return result.data;
 }
 
 function documentSectionPath(consultationId: string, documentKey: string, sectionKey: string): string {

@@ -199,25 +199,27 @@ Settings"); it is not edited there.
 
 ## 6. What your integration sends and receives
 
-| You call                                                             | Legal from                                                                                                                                                                  | Gives you                                     |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `consultations.open(…)`                                              | —                                                                                                                                                                           | the consultation (existing one if it matches) |
-| `recording.start(id, { sessionId })`                                 | `PRIMED`, `DRAINING`, `PENDING_REVIEW`, `CLOSED_INCOMPLETE` always; any other state only while the platform's _require PRIMED before recording_ switch is off (its default) | `RECORDING`                                   |
-| `recording.stop(id)`                                                 | `RECORDING`                                                                                                                                                                 | `DRAINING`; the final note follows            |
-| `summaries.latest(id)`                                               | once the final note exists                                                                                                                                                  | the note, its `id` and `version`              |
-| `summaries.update(id, summaryId, { content })`                       | an unsigned note                                                                                                                                                            | a new version of the note                     |
-| `summaries.approve(id, summaryId, { clinicianUserId }, { ifMatch })` | `PENDING_REVIEW`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT`, `CLOSED_INCOMPLETE`                                                                                                 | `SIGNED`                                      |
-| `consultations.close(id, …, { ifMatch })`                            | `SIGNED` → `CLOSED_COMPLETE`; `TIMED_OUT` → `CLOSED_INCOMPLETE`; already closed → returned as is                                                                            | the closed consultation                       |
-| `consultations.reopen(id)`                                           | `SIGNED`, `TIMED_OUT`, `CLOSED_COMPLETE`, `CLOSED_INCOMPLETE`                                                                                                               | `REOPENED`                                    |
+| You call                                                                     | Legal from                                                                                                                                                                  | Gives you                                     |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `consultations.open(…)`                                                      | —                                                                                                                                                                           | the consultation (existing one if it matches) |
+| `recording.start(id, { sessionId })`                                         | `PRIMED`, `DRAINING`, `PENDING_REVIEW`, `CLOSED_INCOMPLETE` always; any other state only while the platform's _require PRIMED before recording_ switch is off (its default) | `RECORDING`                                   |
+| `recording.stop(id)`                                                         | `RECORDING`                                                                                                                                                                 | `DRAINING`; the final note follows            |
+| `summaries.latest(id)`                                                       | once the final note exists                                                                                                                                                  | the note, its `id` and `version`              |
+| `summaries.update(id, summaryId, { content, clinicianUserId }, { ifMatch })` | an unsigned note                                                                                                                                                            | a new version of the note                     |
+| `summaries.approve(id, summaryId, { clinicianUserId }, { ifMatch })`         | `PENDING_REVIEW`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT`, `CLOSED_INCOMPLETE`                                                                                                 | `SIGNED`                                      |
+| `consultations.close(id, …, { ifMatch })`                                    | `SIGNED` → `CLOSED_COMPLETE`; `TIMED_OUT` → `CLOSED_INCOMPLETE`; already closed → returned as is                                                                            | the closed consultation                       |
+| `consultations.reopen(id)`                                                   | `SIGNED`, `TIMED_OUT`, `CLOSED_COMPLETE`, `CLOSED_INCOMPLETE`                                                                                                               | `REOPENED`                                    |
 
 Streams you can subscribe to while a consultation is live: `streams.liveSummary` (the live note,
 section by section), `streams.harnessProgress` (final-note generation; its terminal event means the
 note is ready), `streams.liveAssist`, `streams.loop`. See the
 [integration guide, chapter 6](client-integration-guide.md#6-live-summary-and-events).
 
-`approve` and `close` use optimistic concurrency: pass the row's `version` as `ifMatch` (missing →
-428, stale → 412 — re-read and retry). A service-account caller must name `clinicianUserId`; the
-clinician is the one attested, never the service account.
+`update`, `approve` and `close` use optimistic concurrency: pass the row's `version` as `ifMatch`
+(missing → 428, stale → 412 — re-read and retry). The header alone is enough; a body
+`expectedVersion` is optional and loses to it. A service-account caller must name
+`clinicianUserId` on `update` and `approve`; the clinician is the one attested, never the service
+account.
 
 ---
 

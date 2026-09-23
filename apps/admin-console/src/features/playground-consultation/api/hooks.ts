@@ -190,8 +190,17 @@ export function useCancelConsultationJob() {
 export function useApproveSummary() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ consultationId, contextItemId, body }: { consultationId: string; contextItemId: string; body?: ApproveSummaryRequest }) =>
-      approveSummary(consultationId, contextItemId, body ?? {}),
+    mutationFn: ({
+      consultationId,
+      contextItemId,
+      expectedVersion,
+      body,
+    }: {
+      consultationId: string;
+      contextItemId: string;
+      expectedVersion: number;
+      body?: ApproveSummaryRequest;
+    }) => approveSummary(consultationId, contextItemId, body ?? {}, expectedVersion),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: playgroundConsultationKeys.root }),
   });
 }

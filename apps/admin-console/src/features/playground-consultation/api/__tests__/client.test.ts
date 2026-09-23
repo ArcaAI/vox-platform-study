@@ -248,8 +248,8 @@ describe('playground consultation client', () => {
     const calls = installFetchMock(() =>
       Response.json({ contextItemId: 'ctx-9', approvalStatus: 'APPROVED', approvedBy: 'u-1', approvedAt: '2026-07-06T15:00:00.000Z' }),
     );
-    await approveSummary('c-1', 'ctx-9');
-    await approveSummary('c-1', 'ctx-9', { overrideSafetyFlag: true });
+    await approveSummary('c-1', 'ctx-9', {}, 3);
+    await approveSummary('c-1', 'ctx-9', { overrideSafetyFlag: true }, 3);
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
       'POST /api/hope/consultations/c-1/summary/ctx-9/approve',
       'POST /api/hope/consultations/c-1/summary/ctx-9/approve',
@@ -283,7 +283,7 @@ describe('playground consultation client', () => {
   it('escapes path params', async () => {
     const calls = installFetchMock();
     await startRecording('c/1');
-    await approveSummary('c 1', 'ctx#9');
+    await approveSummary('c 1', 'ctx#9', {}, 1);
     await getConsultationJob('j/1');
     expect(calls.map((call) => call.url)).toEqual([
       '/api/hope/consultations/c%2F1/recording/start',
@@ -346,6 +346,18 @@ describe('the previously-unsent request shapes', () => {
     // `@RequiresIfMatch()` — without this header the route is 428, not a write.
     expect(calls[0].headers['if-match']).toBe('"7"');
     expect(calls[0].body).toMatchObject({ content: 'edited', changeSource: 'doctor_edit', expectedVersion: 7 });
+  });
+
+  it('approveSummary signs under If-Match — the route is @RequiresIfMatch (TASK-1001)', async () => {
+    const calls = installHeaderAwareFetch(() => Response.json({ contextItemId: 'sum-1', approvalStatus: 'APPROVED' }));
+
+    await approveSummary('c-1', 'sum-1', {}, 4);
+
+    expect(calls[0].method).toBe('POST');
+    expect(calls[0].url).toBe('/api/hope/consultations/c-1/summary/sum-1/approve');
+    // Without this header the sign-off is a 428 and the note is never signed.
+    expect(calls[0].headers['if-match']).toBe('"4"');
+    expect(calls[0].body).toEqual({});
   });
 
   it('generateSummary carries dnaStyleId when one is selected (W2)', async () => {

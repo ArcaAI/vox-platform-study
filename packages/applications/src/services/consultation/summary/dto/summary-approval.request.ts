@@ -13,20 +13,25 @@ export class SummaryApprovalRequest {
 
   /**
    * optimistic-concurrency token. Mirrors
-   * `UpdateDepartmentRequest.expectedVersion` verbatim: required. Approval
+   * `UpdateDepartmentRequest.expectedVersion`, except that it is OPTIONAL here (TASK-1001): the
+   * route's `@RequiresIfMatch()` makes the `If-Match` header mandatory, so a caller that sends
+   * only the header (`@arcaai/vox-node`, and ALaaS through it) must not be refused for the body. Approval
    * writes the ContextItem row (and flips the parent Consultation to
    * SIGNED), so it needs the same Compare-And-Set predicate as the other
    * note-content write routes. On a `@RequiresIfMatch()` route the
    * controller folds the `If-Match` header value over this field when both
    * are present.
    */
-  @ApiProperty({
-    description: 'Current version of the summary row (from the prior GET). The approval fails with 412 if the version drifted.',
+  @ApiPropertyOptional({
+    description:
+      'Current version of the summary row (from the prior GET). The approval fails with 412 if the version drifted. ' +
+      'Optional: the `If-Match` header is REQUIRED on this route and wins when both are sent.',
     example: 7,
   })
+  @IsOptional()
   @IsInt()
   @Min(1)
-  expectedVersion!: number;
+  expectedVersion?: number;
 
   /**
    * TASK-972 Lane 1/4 — the clinician this note is ATTESTED BY.

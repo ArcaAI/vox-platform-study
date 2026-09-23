@@ -713,10 +713,35 @@ Superseded in passing: the J1 commit `8f3b7b989` (column + migration + console k
 again by `484aa8429` before any push, so no environment ever held the column.
 
 
+### The sign-off never reached HOPE — second cluster check (consultation `01a0cf01`), 2026-09-23
+
+The lifecycle re-run after `0e8807640` passed every step up to the late sign-off: ready → closed unsigned after
+the tenant window, resumed from `CLOSED_INCOMPLETE`, re-finalised over both recordings, closed unsigned again. The
+late `summaries.approve` then answered **400 `VALIDATION.FAILED`** — and that is not a test artefact, it is every
+machine sign-off:
+
+| Caller | Leg | What HOPE answered | Why |
+|---|---|---|---|
+| vox-node `summaries.approve` (so ALaaS's unedited Save) | approve | 400 | the body DTO still REQUIRED `expectedVersion`; the SDK sends the version as `If-Match` only, and the global pipe rejects the body before the controller folds the header in |
+| ALaaS edited Save | update | 428, then 400 | no `If-Match` at all (a stale vox-node note called it a no-op), and no `clinicianUserId` (`CLINICIAN_REQUIRED`) — vox-node's `UpdateSummaryRequest` type did not even declare the field |
+| console playground Approve | approve | 428 (15× in 72 h, one clinician, `…0001` tenant) | posted a bare body, no `If-Match` |
+
+Fixes:
+
+| Where | Change |
+|---|---|
+| `SummaryApprovalRequest`, `UpdateSummaryRequest`, `UpdateContextRequest` | body `expectedVersion` OPTIONAL. Each DTO is used by exactly one route and each carries `@RequiresIfMatch()`, whose `@ExpectedVersion()` returns a number or throws 428/400 — so the compare-and-set always has its operand. Test `note-write-if-match.task1001.test.ts` (gateway pipe options) |
+| console `approveSummary` | sends `If-Match` from the draft's `version` (client test RED → GREEN) |
+| vox-node | `UpdateSummaryRequest.clinicianUserId`; `update()`'s `ifMatch` documented as gateway-required (type kept optional — no signature break) |
+| ALaaS `b9d5335` | the edit leg names the clinician and carries `If-Match`, through the approve's one-retry-on-412 helper |
+| API artifacts | `openapi.json` + both portal copies: three `required: ["expectedVersion"]` entries dropped; route manifest and vox-node admin unchanged |
+
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-09-23 | Sign-off defect found by the second lifecycle check: approve/update refused a header-only version (400), ALaaS's edit sent no `If-Match`/clinician, console Approve sent no `If-Match`. Body `expectedVersion` optional on the three note-write DTOs; console, vox-node and ALaaS (`b9d5335`) fixed |
 | 2026-09-23 | Waves 5–6 (owner): completion timeout as a tenant setting (default 5 min) enforced by the harness gate, closed unsigned at expiry, late sign-off signs, resume from `CLOSED_INCOMPLETE`, ALaaS Save signs off; lifecycle guide. |
 | 2026-09-23 | Wave 4 deployed (`6b864c73`) and verified: final note refreshed after all four stops of the replay, 0 Malayalam in live and final notes, guard repaired 1 live leak; ALaaS Save → HOPE sign-off (`4e89a4e`). |
 | 2026-09-23 | Wave 4 opened: tester report on `01a0cd63` investigated (config English everywhere; live snapshot leak on E2B; OD-14 root-caused to three stacked defects), replay harness from the consultation's own MinIO recordings, owner answered OD-14 + D-1…D-5. |

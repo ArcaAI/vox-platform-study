@@ -649,9 +649,15 @@ function ScribeWorkspace() {
 
   function handleApprove({ overrideSafetyFlag }: { overrideSafetyFlag: boolean }) {
     const draftId = draft.data?.id;
-    if (!consultation || !draftId) return;
+    const draftVersion = draft.data?.version;
+    if (!consultation || !draftId || draftVersion === undefined) return;
     approve.mutate(
-      { consultationId: consultation.id, contextItemId: draftId, body: overrideSafetyFlag ? { overrideSafetyFlag: true } : undefined },
+      {
+        consultationId: consultation.id,
+        contextItemId: draftId,
+        expectedVersion: draftVersion,
+        body: overrideSafetyFlag ? { overrideSafetyFlag: true } : undefined,
+      },
       {
         onSuccess: () => {
           setApproved(true);

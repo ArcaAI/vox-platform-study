@@ -55,23 +55,10 @@ export interface GenerateSummaryOptions extends ConsultationSummaryRequestOption
 /** Options for {@link ConsultationSummariesResource.update}. */
 export interface UpdateSummaryOptions extends ConsultationSummaryRequestOptions {
   /**
-   * Sent as the `If-Match` header when set.
-   *
-   * NOTE — unlike the general HOPE house pattern for versioned PATCH routes
-   * (`.claude/rules/05-nestjs-api.md` "Optimistic Concurrency"), the gateway's
-   * `PATCH :id/summary/:summaryId` route carries neither `@RequiresIfMatch()`
-   * nor `@ExpectedVersion()` (verified against
-   * `apps/api/src/modules/consultation/consultation.controller.ts` — the
-   * `updateSummary` handler has no OCC decorators at all), and
-   * `SummaryService.updateSummary` has no `_version`/`updateWithVersion` path
-   * — every edit is instead appended as a new `ContextItemVersion` row. So
-   * TODAY, on this specific route: `If-Match` is accepted and forwarded but
-   * has NO server-side effect, a missing `If-Match` never yields 428, and a
-   * conflicting edit never yields 412. This option (and the SDK's generic
-   * `VersionConflictError`/`PreconditionRequiredError` mapping in
-   * `core/errors.ts`) is kept for forward compatibility in case OCC is added
-   * to this route later, and so the SDK's behavior is uniform with every
-   * other versioned resource in the meantime.
+   * Sent as the `If-Match` header. **REQUIRED by the gateway**: the route carries
+   * `@RequiresIfMatch()`, so an omitted header is a guaranteed 428 and a stale one a 412
+   * (`VersionConflictError`). Pass the summary's `version` as read (`'"7"'`). Typed optional only
+   * so existing callers keep compiling.
    */
   ifMatch?: string;
 }
@@ -79,7 +66,7 @@ export interface UpdateSummaryOptions extends ConsultationSummaryRequestOptions 
 /** Options for {@link ConsultationSummariesResource.approve}. */
 export interface ApproveSummaryOptions extends ConsultationSummaryRequestOptions {
   /**
-   * Sent as `If-Match`. **REQUIRED** — unlike `update()`'s route, this one
+   * Sent as `If-Match`. **REQUIRED** — like `update()`'s route, this one
    * carries `@RequiresIfMatch()` on the gateway, so an omitted header is a
    * guaranteed 428, not a silently-skipped precondition. Pass the strong
    * validator you read the summary at (e.g. `'"7"'`).
@@ -197,7 +184,7 @@ export class ConsultationSummariesResource {
     });
   }
 
-  /** `PATCH /api/v1/consultations/:id/summary/:summaryId`. See {@link UpdateSummaryOptions.ifMatch} for this route's current (no-op) OCC status. */
+  /** `PATCH /api/v1/consultations/:id/summary/:summaryId` — under `If-Match` (see {@link UpdateSummaryOptions.ifMatch}). */
   async update(
     consultationId: string,
     summaryId: string,

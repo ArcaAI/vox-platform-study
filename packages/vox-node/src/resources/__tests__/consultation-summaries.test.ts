@@ -223,6 +223,17 @@ describe('ConsultationSummariesResource#update', () => {
     expect(headers.get('if-match')).toBe('"3"');
   });
 
+  it('carries clinicianUserId — a machine caller must name the clinician the edit belongs to (TASK-1001)', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, SUMMARY));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationSummariesResource(transport);
+
+    await resource.update('c1', 'sum-1', { content: 'edited', changeSource: 'doctor_edit', clinicianUserId: 'doc-1' }, { ifMatch: '"3"' });
+
+    const [, init] = callArgs(fetchImpl);
+    expect(JSON.parse(String(init.body))).toEqual({ content: 'edited', changeSource: 'doctor_edit', clinicianUserId: 'doc-1' });
+  });
+
   it('omits the If-Match header when ifMatch is not supplied', async () => {
     const fetchImpl = fetchMock(async () => jsonResponse(200, SUMMARY));
     const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });

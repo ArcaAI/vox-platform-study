@@ -20315,7 +20315,7 @@
             "type": "string"
           },
           "expectedVersion": {
-            "description": "Current version of the summary row (from the prior GET). The approval fails with 412 if the version drifted.",
+            "description": "Current version of the summary row (from the prior GET). The approval fails with 412 if the version drifted. Optional: the `If-Match` header is REQUIRED on this route and wins when both are sent.",
             "example": 7,
             "type": "number"
           },
@@ -20324,9 +20324,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "expectedVersion"
-        ],
         "type": "object"
       },
       "SummaryApprovalResponseDto": {
@@ -22851,7 +22848,7 @@
             "type": "string"
           },
           "expectedVersion": {
-            "description": "Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted.",
+            "description": "Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted. Optional: the `If-Match` header is REQUIRED on this route and wins when both are sent.",
             "example": 7,
             "type": "number"
           },
@@ -22865,9 +22862,6 @@
             "type": "object"
           }
         },
-        "required": [
-          "expectedVersion"
-        ],
         "type": "object"
       },
       "UpdateDepartmentPromptConfigRequest": {
@@ -24221,14 +24215,11 @@
             "type": "string"
           },
           "expectedVersion": {
-            "description": "Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted.",
+            "description": "Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted. Optional: the `If-Match` header is REQUIRED on this route and wins when both are sent.",
             "example": 7,
             "type": "number"
           }
         },
-        "required": [
-          "expectedVersion"
-        ],
         "type": "object"
       },
       "UpdateTenantAllowedOriginRequest": {

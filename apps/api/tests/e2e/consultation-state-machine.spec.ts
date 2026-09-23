@@ -434,12 +434,10 @@ test.describe('gate SLA TIMED_OUT path (RUN_FULL, service-token)', () => {
     const summaries = await summariesRes.json();
     expect(summaries.length, 'the harness draft from beforeAll must have produced a summary').toBeGreaterThan(0);
 
-    // TASK-869 — `expectedVersion` is REQUIRED on `SummaryApprovalRequest`
-    // (`@IsInt() @Min(1)`, no `@IsOptional`), and the global pipe validates the
-    // body BEFORE the controller folds `If-Match` over it. An empty body is
-    // therefore a 400, not a 428/412 — which is what this test used to send,
-    // alongside a hardcoded `If-Match: "1"` that would have drifted anyway. Both
-    // now come from the row the test just read.
+    // TASK-869 — the version comes from the row the test just read, never a
+    // hardcoded `If-Match: "1"` that would have drifted. (Since TASK-1001 the body
+    // `expectedVersion` is OPTIONAL — the mandatory `If-Match` carries it and wins —
+    // so sending both, as here, is still accepted.)
     const summaryVersion = summaries[0].version as number;
     const approveRes = await request.post(`/api/v1/consultations/${consultationId}/summary/${summaries[0].id}/approve`, {
       headers: { ...bearer(doctorToken), 'If-Match': `"${summaryVersion}"` },

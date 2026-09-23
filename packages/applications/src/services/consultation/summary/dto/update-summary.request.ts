@@ -25,20 +25,25 @@ export class UpdateSummaryRequest {
 
   /**
    * optimistic-concurrency token. Mirrors
-   * `UpdateDepartmentRequest.expectedVersion` verbatim: required. The client
+   * `UpdateDepartmentRequest.expectedVersion`, except that it is OPTIONAL here (TASK-1001): the
+   * route's `@RequiresIfMatch()` makes the `If-Match` header mandatory, so a caller that sends
+   * only the header (`@arcaai/vox-node`, and ALaaS through it) must not be refused for the body. The client
    * echoes the `version` it read from a prior GET; the service runs a
    * Compare-And-Set (`contextItemRepository.updateWithVersion`) and fails with
    * `OptimisticConcurrencyException` -> HTTP 412 on drift. On a
    * `@RequiresIfMatch()` route the controller folds the `If-Match` header
    * value over this field when both are present.
    */
-  @ApiProperty({
-    description: 'Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted.',
+  @ApiPropertyOptional({
+    description:
+      'Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted. ' +
+      'Optional: the `If-Match` header is REQUIRED on this route and wins when both are sent.',
     example: 7,
   })
+  @IsOptional()
   @IsInt()
   @Min(1)
-  expectedVersion!: number;
+  expectedVersion?: number;
 
   /**
    * TASK-972 Lane 1 — the clinician this edit belongs to.
