@@ -991,7 +991,8 @@ export class DnaWritingStyleProcessor extends WorkerHost {
   }
 
   /**
-   * The agent's `parameters.generation` as the three fields `apps/text` reads.
+   * The agent's `parameters.generation` as the fields `apps/text` reads — the three sampling
+   * parameters plus (TASK-1001 OD-10) the two repetition penalties.
    *
    * Both spellings are accepted for the same reason `buildTextGeneratePayload` accepts both: the
    * authored block is camelCase (`maxTokens`) and the wire is snake_case. A key is emitted only
@@ -1009,10 +1010,14 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     const temperature = pick('temperature');
     const maxTokens = pick('maxTokens', 'max_tokens');
     const topP = pick('topP', 'top_p');
+    const frequencyPenalty = pick('frequencyPenalty', 'frequency_penalty');
+    const presencePenalty = pick('presencePenalty', 'presence_penalty');
     return {
       ...(temperature !== undefined ? { temperature } : {}),
       ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
       ...(topP !== undefined ? { top_p: topP } : {}),
+      ...(frequencyPenalty !== undefined ? { frequency_penalty: frequencyPenalty } : {}),
+      ...(presencePenalty !== undefined ? { presence_penalty: presencePenalty } : {}),
     };
   }
 

@@ -150,7 +150,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // posture. Deliberately NOT `consumedBy`: it varies by tenant, so it travels
   // per-request injection, never the platform-scope pull snapshot (D-1).
   ...TEXT_GUARDRAIL_POLICY_SETTINGS,
-  // TEXT's platform generation profile (temperature/maxTokens/topP), registered
+  // TEXT's platform generation profile (temperature/maxTokens/topP, plus the
+  // TASK-1001 frequency/presence penalties at their neutral 0), registered
   // verbatim at `GENERATION_FLOOR`, so cataloging them changes no behaviour.
   ...TEXT_GENERATION_SETTINGS,
 

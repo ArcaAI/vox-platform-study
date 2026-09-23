@@ -14,25 +14,54 @@ import {
 
 /**
  * finding F-32 — the generation hyper-parameters this platform can actually deliver to
- * a provider, declared once and shared by every generation row below.
+ * EVERY provider, declared once and shared by every generation row below.
  *
- * This is a MEASURED fact about `apps/text`, not a vendor capability matrix:
+ * This is a MEASURED fact about `apps/text`, not a vendor capability matrix: `temperature`,
+ * `max_tokens` and `top_p` are the resolved parameter set every adapter receives
+ * (`apps/text/src/text/core/defaults.py`), each with a platform default
+ * (`text.generation.temperature|maxTokens|topP`) behind it.
  *
- *   - `apps/text/src/text/core/defaults.py:41-43` defines the whole resolved parameter set as
- *     `{temperature, max_tokens, top_p}`, and `:69-71` is where a request's values enter it.
- *   - `AiRuntimeProfile` carries exactly `temperature`, `topP`, `maxTokens` and no other
- *     generation column (`ai-runtime-profile.prisma:28-30`).
- *   - No adapter in `apps/text/src/text/providers/` mentions a penalty parameter at all.
+ * `seed` and `stopSequences` still reach no provider, so a node that sets either is tuning a
+ * value that is dropped. Declaring the honest set is what lets the publish gate say so at
+ * authoring time instead of letting it be discovered in a consultation.
  *
- * So on THIS platform, a node that sets `presencePenalty`, `frequencyPenalty`, `seed` or
- * `stopSequences` is tuning a value that never reaches a provider. Declaring the honest set is
- * what lets the publish gate say so at authoring time instead of letting it be discovered in a
- * consultation.
+ * The two repetition penalties are NOT in this universal set — see
+ * `OPENAI_COMPAT_PENALTY_PARAMS` below: they now reach a provider, but not every provider
+ * accepts them.
  */
 const TEXT_PLANE_GENERATION_PARAMS: GenerationParamName[] = ['temperature', 'maxTokens', 'topP'];
 
 /**
- * The LM Studio tier declares one MORE parameter than the resolved set above: `reasoning`.
+ * TASK-1001 OD-10 — `frequencyPenalty` / `presencePenalty`, declared per ENGINE.
+ *
+ * Until TASK-1001 this file stated, correctly, that no penalty reached a provider: `defaults.py`
+ * resolved only `{temperature, max_tokens, top_p}` and no adapter mentioned a penalty. TASK-1001
+ * plumbed them end to end — the gateway forwards an agent's authored value as
+ * `frequency_penalty` / `presence_penalty` on `/api/v1/generate`, and `apps/text` applies the
+ * platform default (`text.generation.frequencyPenalty` / `.presencePenalty`, neutral `0`) to a
+ * request that states none. The reason was a 2B model at temperature 0 writing notes that
+ * repeat sentences (OD-7 kept that model), and the per-agent half matters because this set is
+ * what the publish gate checks an agent's `parameters.generation` against.
+ *
+ * Declared only where the ENGINE accepts them, because declaring a parameter an engine refuses
+ * is worse than the silent drop the honest set exists to prevent — it lets an author publish a
+ * value that turns every call into a provider 400:
+ *
+ *   - LM Studio (`lm-studio`): an OpenAI-compatible `/v1/chat/completions` server whose documented
+ *     payload includes `frequency_penalty` and `presence_penalty`, mapped onto the llama.cpp
+ *     sampler these GGUF rows run on. DECLARED.
+ *   - Azure OpenAI `gpt-5.4-mini`: a GPT-5-family REASONING deployment. The Azure / OpenAI
+ *     reasoning-model APIs refuse `presence_penalty` and `frequency_penalty` as unsupported
+ *     parameters, so the row keeps `TEXT_PLANE_GENERATION_PARAMS` alone. NOT declared.
+ *
+ * A tenant BYO row on another OpenAI-compatible engine declares its own set
+ * (`byo-model-declaration.ts`); nothing here widens it.
+ */
+const OPENAI_COMPAT_PENALTY_PARAMS: GenerationParamName[] = ['frequencyPenalty', 'presencePenalty'];
+
+/**
+ * The LM Studio tier declares the two penalties above (TASK-1001) and one more parameter than the
+ * resolved set: `reasoning`.
  *
  * It is not part of `defaults.py`'s `{temperature, max_tokens, top_p}` because it does not travel
  * that way at all. `parameters.generation.reasoning` (TASK-891 C1 / OD-4) travels as its own
@@ -49,7 +78,7 @@ const TEXT_PLANE_GENERATION_PARAMS: GenerationParamName[] = ['temperature', 'max
  * Azure row: `AzureOpenAIProvider` is its own class and forwards no `extra`, so there the
  * parameter WOULD be dropped on the wire and the publish gate is right to refuse it.
  */
-const LM_STUDIO_GENERATION_PARAMS: GenerationParamName[] = [...TEXT_PLANE_GENERATION_PARAMS, 'reasoning'];
+const LM_STUDIO_GENERATION_PARAMS: GenerationParamName[] = [...TEXT_PLANE_GENERATION_PARAMS, ...OPENAI_COMPAT_PENALTY_PARAMS, 'reasoning'];
 
 /**
  * The context window the LM Studio rows are SERVED with (owner directive 2026-09-18).

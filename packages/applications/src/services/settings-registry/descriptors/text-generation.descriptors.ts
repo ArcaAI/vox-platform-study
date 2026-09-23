@@ -31,6 +31,20 @@
 // out at exactly the number the service runs on today. Parity is asserted
 // mechanically, cross-language, by
 // `apps/text/src/text/tests/unit/test_task799_descriptor_parity.py`.
+//
+// TASK-1001 OD-10 — `frequencyPenalty` / `presencePenalty` joined the family.
+// Decode-time repetition pressure for a small model that repeats sentences at
+// temperature 0 (OD-7 kept that model). The per-agent path exists
+// (`parameters.generation.*Penalty`), but a PUBLISHED Agent's parameters cannot
+// be updated — a DB trigger refuses it — so the value that reaches the existing
+// fleet has to be THIS runtime setting, not an agent edit. Their default is `0`,
+// the neutral value: no penalty, which is what every engine applies today when
+// the field is absent, so registering them is likewise a zero-behaviour change
+// until a platform admin writes a row. Their range is the one the Agent contract
+// declares for the same knob (`GENERATION_PROPERTY` in
+// `@arcaai/workflow-contract`), refused rather than clamped; this file stays
+// dependency-free, so the bound is written out here and parity-tested
+// (`text-generation-penalties.descriptors.task1001.test.ts`).
 
 import { SettingDescriptor } from '../registry.types';
 
@@ -42,11 +56,27 @@ export const TEXT_GENERATION_DEFAULTS = {
   'text.generation.temperature': 0.1,
   'text.generation.maxTokens': 16384,
   'text.generation.topP': 0.95,
+  'text.generation.frequencyPenalty': 0,
+  'text.generation.presencePenalty': 0,
 } as const;
 
 export type TextGenerationKey = keyof typeof TEXT_GENERATION_DEFAULTS;
 
-const META: Record<TextGenerationKey, { label: string; description: string }> = {
+/**
+ * The inclusive bound `GENERATION_PROPERTY` (`@arcaai/workflow-contract`) declares for
+ * `frequencyPenalty` / `presencePenalty` on an Agent. Written out rather than imported so this
+ * file stays dependency-free; parity with the contract is asserted by the descriptor test.
+ */
+const PENALTY_RANGE = { min: -2, max: 2 } as const;
+
+/** An inclusive numeric bound, refused rather than clamped so an admin is told. */
+const numberBetween = (min: number, max: number, what: string) => (value: unknown) => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+    return `${what} must be a number between ${min} and ${max}.`;
+  }
+};
+
+const META: Record<TextGenerationKey, { label: string; description: string; validate?: (value: unknown) => string | void }> = {
   'text.generation.temperature': {
     label: 'Default sampling temperature',
     description:
@@ -66,6 +96,26 @@ const META: Record<TextGenerationKey, { label: string; description: string }> = 
     description:
       'Applied only when the request omits `top_p` AND the Agent (TASK-863) supplied none. Trims the long tail of ' +
       'the token distribution; lowering it narrows what the model may say, raising it toward 1.0 removes the trim.',
+  },
+  'text.generation.frequencyPenalty': {
+    label: 'Default frequency penalty',
+    description:
+      'Applied only when the request omits `frequency_penalty` AND the Agent (TASK-863) supplied none. Penalises a ' +
+      'token in proportion to how often it has already appeared — decode-time pressure against a note that repeats ' +
+      'its own sentences. 0 is neutral (no penalty, today`s behaviour); positive values discourage repetition, ' +
+      'negative values encourage it. Range -2 to 2. It applies to every generation that states no penalty of its own, ' +
+      'so set it with the whole fleet in mind; a published Agent cannot be edited, which is why this default exists.',
+    validate: numberBetween(PENALTY_RANGE.min, PENALTY_RANGE.max, 'Default frequency penalty'),
+  },
+  'text.generation.presencePenalty': {
+    label: 'Default presence penalty',
+    description:
+      'Applied only when the request omits `presence_penalty` AND the Agent (TASK-863) supplied none. Penalises any ' +
+      'token that has already appeared at all, however often — pressure towards new content rather than against ' +
+      'repeat counts. 0 is neutral (no penalty, today`s behaviour); positive values push away from what was already ' +
+      'said, negative values toward it. Range -2 to 2. It applies to every generation that states no penalty of its ' +
+      'own, so set it with the whole fleet in mind.',
+    validate: numberBetween(PENALTY_RANGE.min, PENALTY_RANGE.max, 'Default presence penalty'),
   },
 };
 
@@ -89,5 +139,6 @@ export const TEXT_GENERATION_SETTINGS: SettingDescriptor[] = (Object.keys(TEXT_G
     label: META[key].label,
     description: META[key].description,
     default: TEXT_GENERATION_DEFAULTS[key],
+    ...(META[key].validate ? { validate: META[key].validate } : {}),
   }),
 );

@@ -783,6 +783,34 @@ describe('TextProxyController', () => {
     });
   });
 
+  // TASK-1001 OD-10 — decode-time repetition pressure from a caller (the LLM playground / the SDK).
+  // The proxy forwards the body as received, so a stated penalty must reach TEXT verbatim and an
+  // unstated one must NOT be invented here: TEXT applies the platform default
+  // (`text.generation.*Penalty`) only to a request that omitted the field.
+  describe('POST /text/generate with repetition penalties', () => {
+    it('forwards frequency_penalty and presence_penalty to TEXT unchanged', async () => {
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { task_id: 'task-pen-1', status: 'completed', content: 'ok' } });
+
+      await controller.generate({ prompt: 'Summarise', stream: false, top_p: 0.9, frequency_penalty: 0.4, presence_penalty: -0.2 });
+
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/generate'),
+        expect.objectContaining({ top_p: 0.9, frequency_penalty: 0.4, presence_penalty: -0.2 }),
+        expect.any(Object),
+      );
+    });
+
+    it('adds neither key when the caller stated none', async () => {
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { task_id: 'task-pen-2', status: 'completed', content: 'ok' } });
+
+      await controller.generate({ prompt: 'Summarise', stream: false });
+
+      const forwarded = mockHttpService.axiosRef.post.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+      expect(Object.keys(forwarded)).not.toContain('frequency_penalty');
+      expect(Object.keys(forwarded)).not.toContain('presence_penalty');
+    });
+  });
+
   // ── Providers listings repointed to the AiModel registry ──────────────────
   // `GET /text/providers` and `GET /text/guardrail-providers` no longer read the
   // retired GlobalSetting keys (`text-provider-models` / `default-text-*` /

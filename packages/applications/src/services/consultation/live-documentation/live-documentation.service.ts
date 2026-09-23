@@ -6051,6 +6051,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TENANT's key and metered `funding: 'tenant'` — the opposite of the tier that actually
     // served, and of `candidate.fundingTier` stamped on the stats one block below.
     const { provider: _overrideProvider, ...overrideEntry } = candidate.providerOverride ?? {};
+    const frequencyPenalty = numberOrUndefined(generation.frequencyPenalty);
+    const presencePenalty = numberOrUndefined(generation.presencePenalty);
     const payload = {
       prompt: corrective ? `${promptText}${corrective}` : promptText,
       system_prompt: composed?.prompt ?? LIVE_DOCUMENT_SYSTEM_PROMPT,
@@ -6066,6 +6068,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // by the template the flush is actually filling — see `output-budget.ts`.
       max_tokens: this.liveOutputBudget(generation, compiled, isRepairAttempt === true),
       top_p: numberOrUndefined(generation.topP),
+      // TASK-1001 OD-10 — decode-time repetition pressure, on the same precedence as `top_p` (node
+      // `overrides.generation` over the agent's own). Spread only when authored: an ABSENT key is
+      // what lets TEXT apply the platform default (`text.generation.*Penalty`) instead.
+      ...(frequencyPenalty !== undefined ? { frequency_penalty: frequencyPenalty } : {}),
+      ...(presencePenalty !== undefined ? { presence_penalty: presencePenalty } : {}),
       stream: false as const,
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
       ...(candidate.providerOverride ? { provider_overrides: { [candidate.provider]: overrideEntry } } : {}),

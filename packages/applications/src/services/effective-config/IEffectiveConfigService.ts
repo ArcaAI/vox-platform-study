@@ -138,6 +138,10 @@ export interface EffectiveGeneration {
   temperature: number | null;
   topP: number | null;
   maxTokens: number | null;
+  /** TASK-1001 OD-10 — the platform default `frequency_penalty` (`text.generation.frequencyPenalty`). */
+  frequencyPenalty: number | null;
+  /** TASK-1001 OD-10 — the platform default `presence_penalty` (`text.generation.presencePenalty`). */
+  presencePenalty: number | null;
   source: EffectiveConfigSource;
 }
 
