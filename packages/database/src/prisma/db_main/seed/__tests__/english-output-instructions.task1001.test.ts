@@ -45,10 +45,7 @@ describe('TASK-1001 — the seeded system instructions name English', () => {
 
   it('the Corrective Retry row and the runtime CORRECTIVE_RETRY_INSTRUCTION are byte-identical', () => {
     const HERE = path.dirname(fileURLToPath(import.meta.url));
-    const source = readFileSync(
-      path.resolve(HERE, '../../../../../../applications/src/services/consultation/shared/bounded-json-repair.ts'),
-      'utf8',
-    );
+    const source = readFileSync(path.resolve(HERE, '../../../../../../applications/src/services/consultation/shared/bounded-json-repair.ts'), 'utf8');
     const literal = /export const CORRECTIVE_RETRY_INSTRUCTION = `([^`]*)`;/.exec(source);
     expect(literal, 'CORRECTIVE_RETRY_INSTRUCTION literal not found').not.toBeNull();
     // The literal carries no interpolation and no escape other than `\n`.

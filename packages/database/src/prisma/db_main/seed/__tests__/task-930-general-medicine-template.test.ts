@@ -25,7 +25,14 @@ describe('TASK-930 — general-medicine-consultation-summary', () => {
     expect(global.id).toBe(TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY);
     expect(system.id).toBe(SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID);
     for (const row of [global, system]) {
-      expect(row).toMatchObject({ status: 'APPROVED', approvedVersionNumber: 1, currentVersionNumber: 1, category: 'SUMMARY', scope: 'TENANT_DEFAULT', departmentId: null });
+      expect(row).toMatchObject({
+        status: 'APPROVED',
+        approvedVersionNumber: 1,
+        currentVersionNumber: 1,
+        category: 'SUMMARY',
+        scope: 'TENANT_DEFAULT',
+        departmentId: null,
+      });
       expect(row.tags).toContain('slug:general-medicine-consultation-summary');
     }
     expect(system.sourceTemplateId).toBe(global.id);
@@ -41,7 +48,16 @@ describe('TASK-930 — general-medicine-consultation-summary', () => {
     const declared = (global.variables as Array<{ name: string; type: string; required: boolean }>).map((variable) => variable.name);
     expect(declared).toEqual(GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES);
     // the §8.2 fields …
-    for (const name of ['visit_type', 'current_department', 'safe_age', 'safe_dob', 'safe_gender', 'formatted_previous_visits', 'formatted_vitals', 'chief_complaint']) {
+    for (const name of [
+      'visit_type',
+      'current_department',
+      'safe_age',
+      'safe_dob',
+      'safe_gender',
+      'formatted_previous_visits',
+      'formatted_vitals',
+      'chief_complaint',
+    ]) {
       expect(declared).toContain(name);
     }
     // … except `language` (TASK-1001, owner directive 2026-09-23: "all pre-summary and summary must

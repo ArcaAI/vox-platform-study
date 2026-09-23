@@ -65,7 +65,7 @@ describe('department-free pre-summary fork content drift lock', () => {
     ).toBe(PINNED_SHA256);
   });
 
-  it('carries none of v1\'s department/visit-type indicators (RF-1 — the whole point of the fork)', () => {
+  it("carries none of v1's department/visit-type indicators (RF-1 — the whole point of the fork)", () => {
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('{current_department}');
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('{visit_type}');
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('Department:');
