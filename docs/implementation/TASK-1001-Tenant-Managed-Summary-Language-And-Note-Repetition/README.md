@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — wave 3 (every open item closed) merged and gated on `dev-2.2`; cluster rollout and verification below; awaiting owner sign-off |
+| **Status** | Review — waves 1–3 and the English-only directive merged, gated, deployed and verified on `hope-v2-dev`; OD-14 open; awaiting owner sign-off |
 | **Type** | bugfix + feature |
 | **Branch** | `dev-2.2` |
 | **Repos** | `arca/hope-v2` (primary) · `ALaaSv3.0` (secondary, latent defects) |
@@ -231,6 +231,7 @@ cause.
 | **OD-9** | Do the ALaaS defects (S-1…S-5) ship in this ticket or a sibling? | (a) sibling ticket in `ALaaSv3.0`, this ticket owns HOPE; (b) one ticket across both repos | **ANSWERED 2026-09-23: (a).** `ALaaSv3.0/docs/HOPE_TASK_1001_LIVE_SUMMARY_CLIENT_FIX_PLAN.md`, merged into `refactor-hope-integaration` (`50bf477`) |
 | **OD-12** | **NEW 2026-09-23 (owner): output language.** *"ALaaS still sends the language: `ml-en` indicates code-mixed/code-switch enabled for realtime/job transcription, Malayalam as main language. The summarization (both pre-summary and summary) is still in English by admin configuration OR by default."* | — | **Implemented in wave 2 (lane L5).** The output language never reads `open.language`: the tenant's selected policy fragment, else the platform default `consultation.summary.outputLanguage` (English), which the runtime states and which names and overrides the corpus's "write in the conversation language" clause. Supersedes the TASK-891/TASK-932 "absent is not English" posture on the native path |
 | **OD-13** | Cluster rollout of the policy fragment | heme first / all 22 / hope-reset | **ANSWERED 2026-09-23: all 22 at once**, via the admin API (new agent versions; previous versions stay as the rollback target) |
+| **OD-14** | Should a RESUMED recording re-finalise the note? | re-run the finalize on every stop / only when the resume added content / keep one finalize per consultation (today) | **OPEN** — found on the cluster 2026-09-23 (consultation `01a0cccb`): one `RAW_SUMMARY` per consultation, written after the first stop, so ALaaS's `note.final` omits everything said after a resume. The live note does carry it. |
 
 ---
 
@@ -507,6 +508,52 @@ touched files. **RED:** with the pre-wave-3 source restored, all 8 new applicati
 (53 tests) and both new seed test files fail; the harness suite fails to collect against the old
 `core.py`.
 
+### English-only instructions — owner directive 2026-09-23 (lane L-G + cluster rollout)
+
+> *"for now, all pre-summary and summary must be in english, therefore, prompt instructions and
+> configuration must be set to english"*
+
+The runtime already forced English; the directive is that the TEXT and the CONFIGURATION say so too.
+
+- **Configuration:** `consultation.summary.outputLanguage` written explicitly as `en` at system scope on
+  `hope-v2-dev` (it was only the code default).
+- **Code + seeds (L-G `f31661b72`, merged `013dc456a`):** the corrective JSON-repair retry (runtime — it
+  said *"MUST be in the conversation language. Do NOT include any English words inside values"*), the
+  SYSTEM base prompt ("Always respond in CONVERSATION LANGUAGE"), the JSON enforcement note, the
+  General Medicine body's rule 5 (*"in the conversation language ({{language}})"*, the SOURCE tag — the
+  `language` binding is gone), and both SYSTEM pre-summary defaults (the `{{language_name}}`
+  localisation block → the ArcaAI v3 English-only wording; placeholder kept). Checksum locks updated
+  deliberately. Untouched: the v1/v2 ArcaAI history rows (current is v3, already English), the v1
+  compat wrappers (they substitute `English`), the override sentences.
+- **Cluster (admin API, `scratchpad/rerun/english-rollout.mjs`, nothing destructive):** 10 template rows
+  (SYSTEM + Global + ArcaAI pre-summary defaults and their department-free forks, Global General
+  Medicine, the three Global SMR rows) got an approved English v2. Global `general-medicine-summarization`
+  and `casenote-finalization` → v2 with the policy fragment; Global `case-notes-pre-summary` → v2 on
+  Global's own English clone (binding the SYSTEM row directly is refused: content is cloned); all three
+  promoted into SYSTEM (v2) — which also replaces the SYSTEM General Medicine agent that had frozen the
+  PRE-SUMMARY prompt; ArcaAI synced the reference-set templates and republished its
+  `general-medicine-summarization` (its tenant-default TEXT_GENERATION agent, same defect) on the
+  English body + its own policy. Every previous version stays PUBLISHED as the rollback.
+  **Post-check:** one active version per slug in every tenant; **0** active TEXT_GENERATION agents whose
+  frozen prompt carries a conversation-language / localisation clause; every pre-summary agent carries
+  "Write the entire pre-summary in English".
+
+### Cluster verification — wave 3 (build `87728892`, consultation `01a0cccb-1243`)
+
+Resumed hematology recording (`ml-en`), A → stop → 90 s → B1 (recap + new content) → stop:
+- live note **0** repeated sentences, **0** Malayalam characters, prompt fragments
+  `[clinical_note, output_language_policy]`;
+- a subscriber joining each segment saw **0** stale `closed` snapshots before its own stop (L-D);
+- `recording/start` naming the closed STT session → **409 `STT_SESSION_NOT_ACTIVE`** (L-E);
+- final note (`summary/latest`): English, 0 Malayalam, 0 repeated sentences.
+
+**Found — owner decision needed (OD-14):** a RESUMED recording is never re-finalised. Every test
+consultation holds exactly ONE `RAW_SUMMARY`, written after the FIRST stop; the resume's stop writes
+none, so `summary/latest` — and ALaaS's `note.final` — shows the first segment's note without what
+was said after the resume. Pre-existing (not introduced here); A-B saw the same from the ALaaS side.
+Whether a resume should re-run the finalize (and how it relates to the live note, which does carry
+the resumed content) is a lifecycle decision, left open.
+
 ### Follow-ups — status after wave 3
 1. ~~Direct summary-generation path~~ — closed by L-A.
 2. ~~SYSTEM `general-medicine-summarization` on the durable lane~~ — closed by L-B (runtime step) and L-C (policy fragment; id collision fixed).
@@ -528,6 +575,7 @@ Still open, recorded rather than built:
 | Date | Change |
 |---|---|
 | 2026-09-22 | Ticket opened. Both defects root-caused against `hope-v2-dev`. Design drafted; OD-1…OD-8 pending. |
+| 2026-09-23 | Owner directive: English-only instructions and configuration. L-G merged, gated, RED verified; platform setting set to `en`; 10 template rows + Global/SYSTEM/ArcaAI agents republished through the admin API (SYSTEM + ArcaAI General Medicine agents off the pre-summary prompt). Cluster-verified on `87728892`. OD-14 opened (resumed recording not re-finalised). |
 | 2026-09-23 | Wave 3 — every open item: final-note flags on `summary/latest`, English by default on the direct/processor/harness paths, SYSTEM reference-set policy (and the General Medicine id collision it exposed), late-join section replay + F5 + resumed-recording snapshot clear, console label/badge, `recording/start` 409 for a stale STT session; ALaaS sibling lanes. Merged, gated once, RED verified, worktrees destroyed. |
 | 2026-09-23 | Cross-section duplicate flag (X1 HOPE, X2 ALaaS) merged, gated, RED verified, deployed `dc4c218f`, verified on the cluster. Penalty A/B: kept at 0. 22-agent policy rollout done via the admin API. |
 | 2026-09-23 | Wave 2: owner answered OD-7/9/10/12/13. Penalty plumbing (P1/P2), English-by-default output language with `ml-en` accepted (L5), ALaaS sibling ticket S-1…S-5 (A1/A2). Merged, gated once, RED verified, worktrees destroyed, pushed `9e8db9d91` (pipeline #1304). |
