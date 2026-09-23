@@ -522,6 +522,7 @@ export interface AsrSpecAgent {
   versionNumber: number;
   /** The tenant that owns the agent row (the caller's, or SYSTEM for a platform default). */
   tenantId: string;
+  /** Which tier chose it — `explicit` | `workflow` (TASK-1002, the governing workflow) | `department` | `tenant`. */
   source: ResolvedAgent['source'];
 }
 
