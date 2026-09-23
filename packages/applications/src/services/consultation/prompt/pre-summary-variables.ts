@@ -77,8 +77,9 @@ const V1_LANGUAGE_NAMES: Record<string, string> = { en: 'English', ml: 'Malayala
  * reduction is the defect this ticket was opened for, verified live on 2026-08-10 on this very
  * surface and again on 2026-09-22 on the native live-summary lane.
  *
- * The NATIVE path keeps the opposite posture — absent means undeclared, never English. That is
- * {@link resolveSummaryLanguage}, and the two are different contracts, not a disagreement.
+ * The NATIVE path is a different contract: its output language never reads the declared tag at
+ * all — it is the tenant's selected policy fragment, else the platform default (English). That is
+ * `resolveOutputLanguage` in `../consultation/summary-language.ts`.
  */
 export function resolveV1LanguageName(language?: string | null): string {
   const tag = parseLanguageTag(language);

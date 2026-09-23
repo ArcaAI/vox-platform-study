@@ -117,8 +117,10 @@ export class ConsultationsResource {
    * The other three identity details all matter at open and only at open:
    * `departmentId` selects the governing workflow and the department's SOAP
    * shape, `parentConsultationId` IS the visit-type signal (absent = new visit,
-   * present = revisit), and `language` fixes the language the note is written
-   * in. None of them can be supplied later.
+   * present = revisit), and `language` declares what is SPOKEN (a code-switch
+   * mode such as `ml-en` is accepted) — it does not choose the note's language,
+   * which is the tenant's configured output language or the platform default.
+   * None of them can be supplied later.
    *
    * **Never retried.** The route accepts no idempotency key, and get-or-create
    * makes a retry harmless in principle — but `core/retry.ts` does not retry a

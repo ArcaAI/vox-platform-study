@@ -91,11 +91,15 @@ export interface OpenConsultationRequest<TContext extends Record<string, unknown
    */
   workflowDefinitionSlug?: string;
   /**
-   * BCP-47 tag the generated NOTE is written in (`en`, `ml`, `en-IN`).
+   * The consultation's SOURCE language — what is spoken — as a BCP-47 tag
+   * (`en`, `ml`, `en-IN`) or an STT code-switch mode such as `ml-en`
+   * ("Malayalam-led, English mixed"), which is accepted.
    *
-   * NOT the STT language — a Malayalam-English consultation is routinely
-   * documented in English. Absent means undeclared, which is not "English":
-   * the agent's own body decides.
+   * It does NOT choose the language the note is written in (HOPE TASK-1001,
+   * owner decision 2026-09-23). The pre-summary, live summary and final
+   * summary are written in the tenant's configured output language, or in the
+   * platform default (`consultation.summary.outputLanguage`, English) when the
+   * tenant has none — never in the language declared here.
    */
   language?: string;
   /**

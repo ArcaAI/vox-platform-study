@@ -67,10 +67,11 @@ export interface Consultation {
   /** Lifecycle status. Optional for backward-compat — absent when backend hasn't adopted the extended enum. */
   status?: ConsultationStatus;
   /**
-   * TASK-932 — the language the generated notes are written in, as declared at open.
+   * The consultation's SOURCE language as declared at open — what is spoken, including an STT
+   * code-switch mode such as `ml-en`. Set it with {@link OpenSessionInput.language}.
    *
-   * `undefined` = undeclared (the agent decides). Set it with
-   * {@link OpenSessionInput.language}; it is independent of the STT language mode.
+   * It does NOT choose the note's language (HOPE TASK-1001, owner decision 2026-09-23): notes are
+   * written in the tenant's configured output language, else the platform default (English).
    */
   language?: string;
   /** Custom metadata */
