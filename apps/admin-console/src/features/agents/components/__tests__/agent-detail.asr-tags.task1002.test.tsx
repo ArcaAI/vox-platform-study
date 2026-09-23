@@ -11,8 +11,8 @@
  *  - every ALREADY-tagged assignment row for a speech-to-text agent is flagged "Never used";
  *  - none of this applies to any other task — text-generation keeps tags exactly as before.
  */
-import { cleanup, fireEvent, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import type { Agent, AgentAssignment, AgentLineage } from '../../api/types';
 import { AgentLineageDrawer } from '../agent-detail';
@@ -107,11 +107,29 @@ function lineageFor(row: Agent): AgentLineage {
   };
 }
 
-function stubFetch(rows: Agent[], assignments: AgentAssignment[] = []) {
+/** A recorded write against `admin/agent-assignments`, for the department-write tests below. */
+interface RecordedWrite {
+  method: string;
+  body: Record<string, unknown>;
+  ifMatch: string | null;
+}
+
+function stubFetch(rows: Agent[], assignments: AgentAssignment[] = [], writes: RecordedWrite[] = []) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: string | URL | Request) => {
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const path = new URL(String(input), 'http://test.local').pathname;
+      const method = init?.method ?? 'GET';
+      // POST creates the tenant/department row; PATCH (If-Match) updates an existing one — both
+      // land on the same collection path, distinguished only by method (mirrors client.ts).
+      if (path === '/api/hope/admin/agent-assignments' && (method === 'POST' || method === 'PATCH')) {
+        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+        const headers = init?.headers instanceof Headers ? init.headers : new Headers(init?.headers as HeadersInit | undefined);
+        const ifMatch = headers.get('if-match');
+        writes.push({ method, body, ifMatch });
+        const version = typeof body.expectedVersion === 'number' ? body.expectedVersion + 1 : 1;
+        return Response.json({ id: 'as-written', version, ...body }, { headers: { etag: `"${version}"` } });
+      }
       for (const row of rows) {
         if (path === `/api/hope/admin/agents/${row.id}`) return Response.json(row, { headers: { etag: `"${row.version}"` } });
         if (path === `/api/hope/admin/agents/${row.id}/versions`) return Response.json(rows);
@@ -121,10 +139,17 @@ function stubFetch(rows: Agent[], assignments: AgentAssignment[] = []) {
       if (path === '/api/hope/admin/ai-models/catalogue') return Response.json(CATALOGUE);
       if (path === '/api/hope/admin/consultation-context-schemas') return Response.json([]);
       if (path === '/api/hope/admin/prompt-templates') return Response.json({ data: [] });
-      throw new Error(`Unhandled fetch: ${path}`);
+      throw new Error(`Unhandled fetch: ${method} ${path}`);
     }),
   );
 }
+
+// Radix Select scrolls the highlighted item into view on open; happy-dom has no layout engine.
+beforeAll(() => {
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -197,5 +222,55 @@ describe('AgentLineageDrawer — ASR agents ignore assignment tags (TASK-1002 OD
 
     const list = await within(drawer).findByRole('list', { name: 'Assignments for this task' });
     expect(within(list).queryByText('Never used')).toBeNull();
+  });
+});
+
+describe('AgentLineageDrawer — assigning an agent to a department (TASK-1002 follow-up)', () => {
+  it('selecting a department and assigning POSTs scope: DEPARTMENT with the right scopeId', async () => {
+    const row = agent();
+    const writes: RecordedWrite[] = [];
+    stubFetch([row], [], writes);
+    renderWithProviders(<AgentLineageDrawer slug="ward-asr" lineage={lineageFor(row)} onOpenChange={vi.fn()} />);
+
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.mouseDown(within(drawer).getByRole('tab', { name: 'Assignments' }), { button: 0 });
+
+    const trigger = await within(drawer).findByLabelText('Department');
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(await screen.findByRole('option', { name: 'Radiology' }));
+
+    const assignButton = await within(drawer).findByRole('button', { name: 'Assign to Radiology' });
+    fireEvent.click(assignButton);
+
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].method).toBe('POST');
+    expect(writes[0].body).toMatchObject({ scope: 'DEPARTMENT', scopeId: 'dept-1', task: 'SPEECH_TO_TEXT', agentSlug: 'ward-asr' });
+    // No existing row for this department — a create carries no If-Match.
+    expect(writes[0].ifMatch).toBeNull();
+  });
+
+  it('an existing department row for this task is PATCHed with its own etag', async () => {
+    const row = agent();
+    const existing = assignmentRow({ id: 'as-existing', scope: 'DEPARTMENT', scopeId: 'dept-1', agentSlug: 'other-agent', selectorTags: [], version: 3 });
+    const writes: RecordedWrite[] = [];
+    stubFetch([row], [existing], writes);
+    renderWithProviders(<AgentLineageDrawer slug="ward-asr" lineage={lineageFor(row)} onOpenChange={vi.fn()} />);
+
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.mouseDown(within(drawer).getByRole('tab', { name: 'Assignments' }), { button: 0 });
+
+    const trigger = await within(drawer).findByLabelText('Department');
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(await screen.findByRole('option', { name: 'Radiology' }));
+
+    // The row currently serves a DIFFERENT agent, so the button offers to take it over rather
+    // than reading "Is assigned".
+    const assignButton = await within(drawer).findByRole('button', { name: 'Assign to Radiology' });
+    fireEvent.click(assignButton);
+
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].method).toBe('PATCH');
+    expect(writes[0].ifMatch).toBe('"3"');
+    expect(writes[0].body).toMatchObject({ scope: 'DEPARTMENT', scopeId: 'dept-1', task: 'SPEECH_TO_TEXT', agentSlug: 'ward-asr', expectedVersion: 3 });
   });
 });
