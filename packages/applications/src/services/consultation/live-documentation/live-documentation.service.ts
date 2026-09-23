@@ -132,12 +132,14 @@ import {
   type TurnRefusal,
   type TurnSectionWrite,
 } from './realtime/turn-contract';
+import { repairTurnScript, type ScriptRepairOutcome } from './realtime/script-guard';
 import {
   OUTPUT_LANGUAGE_DEFAULT,
   defaultOutputLanguageInstruction,
   platformOutputLanguage,
   readSummaryLanguage,
   resolveOutputLanguage,
+  translateOnlyInstruction,
   type OutputLanguage,
 } from '../consultation/summary-language';
 // TASK-951 D-3 — the visit type the CLIENT recorded at `open`, which wins over the parent-link
@@ -658,6 +660,9 @@ interface GraphFlushProjection {
    * write (`TurnSectionWrite.duplicates`) and never dropped. A count, never the text.
    */
   turnCrossSectionDuplicates: number;
+  /** TASK-1001 wave 4 — section writes whose non-English script the translate-only retry repaired / could not. */
+  turnScriptRepairs: number;
+  turnScriptRepairsUnresolved: number;
   /** True when the generation could not be read as a turn and fell back to a whole-document rewrite. */
   turnDegraded: boolean;
   /**
@@ -3192,6 +3197,9 @@ return 0`;
     // TASK-1001 (wave 2) — runs this turn wrote that another section already carried: flagged, not
     // dropped, and counted here so `repetition_pressure` sees them.
     let turnCrossSectionDuplicates = 0;
+    // TASK-1001 wave 4 — the script guard's counts for this turn (see `guardTurnScript`).
+    let turnScriptRepairs = 0;
+    let turnScriptRepairsUnresolved = 0;
     /** True when the turn contract could not be honoured and this flush fell back to a full rewrite. */
     let turnDegraded = false;
     /**
@@ -3298,6 +3306,8 @@ return 0`;
         turnRefusals = graph.turnRefusals;
         turnDroppedSentences = graph.turnDroppedSentences;
         turnCrossSectionDuplicates = graph.turnCrossSectionDuplicates;
+        turnScriptRepairs = graph.turnScriptRepairs;
+        turnScriptRepairsUnresolved = graph.turnScriptRepairsUnresolved;
         turnDegraded = graph.turnDegraded;
         cursorAdvanceTo = deltaEnd;
       }
@@ -3386,7 +3396,13 @@ return 0`;
           repairStats = repairCall.stats;
         }
 
-        const applied = outcome.value;
+        // TASK-1001 wave 4 (D-1/D-2) — the output check, BEFORE anything reads the note: NER grounding
+        // below anchors entities to this text, and the writes are what the section store persists.
+        const guarded = await this.guardTurnScript(session, outcome.value.sections, outcome.value.writes, signal);
+        if (isStale()) return this.dropStale(session);
+        const applied = { ...outcome.value, sections: guarded.sections, writes: guarded.writes };
+        turnScriptRepairs = guarded.repaired;
+        turnScriptRepairsUnresolved = guarded.unresolved;
         // A turn that changed NOTHING is a real outcome, not a failure: the new transcript may have
         // carried no clinical content. The cursor must still advance — the delta WAS consumed — but
         // nothing is written or published, which is the whole point of an additive contract.
@@ -3726,6 +3742,9 @@ return 0`;
       // TASK-1001 (wave 2) — runs flagged as already carried by ANOTHER section. Flagged, never
       // dropped; a count, never the text.
       turnCrossSectionDuplicates,
+      // TASK-1001 wave 4 — section writes the script guard repaired / left unresolved. Counts only.
+      turnScriptRepairs,
+      turnScriptRepairsUnresolved,
       // `turnDegraded` stays what it was (the turn contract fell back to a whole-document
       // rewrite); pressure is reported as its own code so the two cannot be confused.
       turnDegraded,
@@ -3876,6 +3895,9 @@ return 0`;
     let turnDroppedSentences = 0;
     // TASK-1001 (wave 2) — cross-section runs flagged by the turn contract; see the flush's own local.
     let turnCrossSectionDuplicates = 0;
+    // TASK-1001 wave 4 — the script guard's counts for this turn (see `guardTurnScript`).
+    let turnScriptRepairs = 0;
+    let turnScriptRepairsUnresolved = 0;
     let turnDegraded = false;
     /**
      * A3 — the candidates the document node was allowed to run this turn, captured for PROVENANCE.
@@ -3991,8 +4013,13 @@ return 0`;
           repairLatencyMs = repairCall.latencyMs;
           repairStats = repairCall.stats;
         }
-        parsedSections = outcome.value.sections;
-        turnWrites = outcome.value.writes;
+        // TASK-1001 wave 4 (D-1/D-2) — the output check, inside the node: the lane's downstream
+        // nodes ground entities against the text this handler returns.
+        const guarded = await this.guardTurnScript(session, outcome.value.sections, outcome.value.writes, signal);
+        parsedSections = guarded.sections;
+        turnWrites = guarded.writes;
+        turnScriptRepairs = guarded.repaired;
+        turnScriptRepairsUnresolved = guarded.unresolved;
         turnRefusals = outcome.value.refusals;
         turnDroppedSentences = outcome.value.droppedSentenceCount;
         turnCrossSectionDuplicates = outcome.value.crossSectionDuplicateCount;
@@ -4111,6 +4138,8 @@ return 0`;
       turnRefusals: summarize?.status === 'succeeded' ? turnRefusals : [],
       turnDroppedSentences: summarize?.status === 'succeeded' ? turnDroppedSentences : 0,
       turnCrossSectionDuplicates: summarize?.status === 'succeeded' ? turnCrossSectionDuplicates : 0,
+      turnScriptRepairs: summarize?.status === 'succeeded' ? turnScriptRepairs : 0,
+      turnScriptRepairsUnresolved: summarize?.status === 'succeeded' ? turnScriptRepairsUnresolved : 0,
       turnDegraded: summarize?.status === 'succeeded' ? turnDegraded : false,
       textFailed: summarize !== undefined && summarize.status !== 'succeeded' && summarize.status !== 'skipped',
       textLatencyMs,
@@ -6674,6 +6703,68 @@ return 0`;
     });
     this.recordLlmUsage(tenantId, response.data, consultationId, guardrail);
     return { text: mapTextGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data) };
+  }
+
+  /**
+   * TASK-1001 wave 4 (owner decisions D-1/D-2, 2026-09-23) — the live note's output check.
+   *
+   * Applies only while the platform output language (`consultation.summary.outputLanguage`) is
+   * English — the owner's "for now, all pre-summary and summary must be in English" — whether or not
+   * the tenant's agent carries its own output-language policy fragment (D-1: ArcaAI's does, and the
+   * leak happened anyway). Each section write that carries Indic script gets ONE translate-only
+   * retry; a failed or still-leaking retry keeps the original text (D-2). See `realtime/script-guard.ts`.
+   */
+  private async guardTurnScript(
+    session: LiveSession,
+    sections: LiveSummarySectionDto[],
+    writes: TurnSectionWrite[],
+    signal?: AbortSignal,
+  ): Promise<ScriptRepairOutcome> {
+    const language = platformOutputLanguage(await this.sessionPlatformOutputLanguage(session));
+    if (language.tag.split('-')[0]!.toLowerCase() !== 'en') return { sections, writes, repaired: 0, unresolved: 0 };
+    const outcome = await repairTurnScript({ sections, writes }, (text) => this.translateSectionText(text, language.name, session, signal));
+    if (outcome.repaired > 0 || outcome.unresolved > 0) {
+      // PHI-safe: counts only, never the text.
+      this.logger.warn({
+        message: 'Live note section carried non-English script — translate-only retry applied',
+        consultationId: session.consultationId,
+        repaired: outcome.repaired,
+        unresolved: outcome.unresolved,
+      });
+    }
+    return outcome;
+  }
+
+  /**
+   * The translate-only call behind {@link guardTurnScript}: one TEXT generation on the same LIVE
+   * selection, quota and tenant headers the grammar pass uses ({@link proposeCorrections}), with no
+   * `response_format` — the answer is plain text spliced back in place of what was sent.
+   */
+  private async translateSectionText(text: string, languageName: string, session: LiveSession, signal?: AbortSignal): Promise<string> {
+    const { tenantId, consultationId } = session;
+    let provider: string | undefined;
+    let model: string | undefined;
+    let generation: unknown;
+    if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    const payload = {
+      prompt: text,
+      system_prompt: translateOnlyInstruction(languageName),
+      provider,
+      model,
+      max_tokens: this.realtimeBudgets.textMaxTokens,
+      stream: false as const,
+    };
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
+    await this.assertLlmQuota(tenantId);
+    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
+      timeout: this.textTimeoutMs,
+      headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
+      signal,
+    });
+    this.recordLlmUsage(tenantId, response.data, consultationId);
+    return mapTextGenerateResponse(response.data).summary;
   }
 
   /**

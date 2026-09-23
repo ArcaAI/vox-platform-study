@@ -210,3 +210,19 @@ export function resolveOutputLanguage(tenantPolicySelected: boolean, platformDef
 export function defaultOutputLanguageInstruction(languageName: string): string {
   return `Write every section value in ${languageName}, whatever language was spoken, regardless of any instruction elsewhere in this prompt to write content in the conversation language. Keep the section keys and headings exactly as given, in English.`;
 }
+
+/**
+ * TASK-1001 wave 4 (owner decision D-2, 2026-09-23) — the system prompt of the live note's ONE
+ * translate-only retry, for a section the model wrote with another language's script in it.
+ *
+ * The retry must carry meaning across and nothing else: the same "translate, do not transliterate"
+ * and "reproduce, do not translate" rules the clinical corpus states for the note itself, and no
+ * room to add, drop or summarise — the caller splices the answer back in place of the text it sent.
+ */
+export function translateOnlyInstruction(languageName: string): string {
+  return (
+    `Translate the clinical note text you are given into ${languageName}. Output the translated text only — no preamble, quotes or commentary. ` +
+    `Carry the meaning across; never transliterate. Reproduce exactly, never translate: drug names, doses, strengths, routes, frequencies, durations, numbers, units, dates, laboratory values and proper names. ` +
+    `Words already in ${languageName} stay as they are. Add nothing, drop nothing, and keep the sentence order and line breaks.`
+  );
+}
