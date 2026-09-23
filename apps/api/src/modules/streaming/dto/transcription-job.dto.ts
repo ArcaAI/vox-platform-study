@@ -270,6 +270,22 @@ export class StreamSessionResponse {
   agentVersionId?: string;
 
   /**
+   * TASK-1002 — which rule chose the session's speech-to-text agent: an explicit `agentSlug`
+   * on the request (`'explicit'`), the consultation's governing workflow's SPEECH_TO_TEXT node
+   * (`'workflow'`), or the `AgentAssignment` cascade — a department-level assignment
+   * (`'department'`) or the tenant's untagged default (`'tenant'`).
+   */
+  @ApiPropertyOptional({
+    description:
+      "Which rule chose the session's speech-to-text agent: an explicit agentSlug on the request, the consultation's " +
+      'governing workflow speech-to-text node, or the department then tenant assignment.',
+    enum: ['explicit', 'workflow', 'department', 'tenant'],
+  })
+  @IsOptional()
+  @IsString()
+  agentSource?: 'explicit' | 'workflow' | 'department' | 'tenant';
+
+  /**
    * The engine actually live at create: `'primary'`, or `'fallback'` when the
    * session opened on the tenant fallback — by choice (`startOn`) or because
    * the primary ASR failed to load.

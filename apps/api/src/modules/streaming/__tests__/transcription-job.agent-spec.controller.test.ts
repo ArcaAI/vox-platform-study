@@ -62,7 +62,7 @@ describe('createStreamSession — agent path', () => {
   it('agentSlug → the resolver (explicit slug) and the spec goes to STT keyed on runtimeKey; no pipeline row is consulted', async () => {
     const { controller, m } = build();
     const out = await controller.createStreamSession({ agentSlug: 'platform-transcription', languageMode: 'ml-en' } as never, res() as never);
-    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: 'platform-transcription', departmentId: null });
+    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: 'platform-transcription', departmentId: null, consultationId: null });
     expect(m.pipelineService.getById).not.toHaveBeenCalled();
     expect(m.sttConfig.getEffective).not.toHaveBeenCalled();
     const payload = m.sessionService.createSession.mock.calls[0][0];
@@ -81,7 +81,7 @@ describe('createStreamSession — agent path', () => {
   it('no agentSlug and no pipelineId → the assignment cascade decides', async () => {
     const { controller, m } = build();
     await controller.createStreamSession({} as never, res() as never);
-    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null });
+    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null, consultationId: null });
   });
 
   it('startOn=fallback with a spec that declares no fallback → 409 (fail closed), nothing forwarded', async () => {
@@ -113,7 +113,7 @@ describe('create (JSON) — agent path', () => {
     const { controller, m } = build();
     m.jobService.create = vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' });
     await controller.create({ mediaId: 'media-1' } as never);
-    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null });
+    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null, consultationId: null });
     expect(m.jobService.create).toHaveBeenCalledWith(expect.objectContaining({ mediaId: 'media-1', agentVersionId: 'agent-v-1', resolvedSpec: spec }));
     expect(m.jobService.create.mock.calls[0][0]).not.toHaveProperty('agentSlug');
     expect(m.jobService.create.mock.calls[0][0]).not.toHaveProperty('pipelineId');
@@ -123,7 +123,7 @@ describe('create (JSON) — agent path', () => {
     const { controller, m } = build();
     m.jobService.create = vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' });
     await controller.create({ mediaId: 'media-1', agentSlug: 'platform-transcription' } as never);
-    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: 'platform-transcription', departmentId: null });
+    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: 'platform-transcription', departmentId: null, consultationId: null });
     expect(m.jobService.create.mock.calls[0][0]).not.toHaveProperty('agentSlug');
   });
 
@@ -152,7 +152,7 @@ describe('transcribeFile — agent path', () => {
   it('creates an agent-keyed job (agentVersionId + resolvedSpec, no pipelineId) and dispatches the spec as a kwarg', async () => {
     const { controller, m } = build();
     const out = await controller.transcribeFile(file, { agentSlug: 'platform-transcription', language: 'en' } as never, res() as never);
-    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: 'platform-transcription', departmentId: null });
+    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: 'platform-transcription', departmentId: null, consultationId: null });
     expect(m.jobService.createBatchJob).toHaveBeenCalledWith(expect.objectContaining({ agentVersionId: 'agent-v-1', resolvedSpec: spec }));
     expect(m.jobService.createBatchJob.mock.calls[0][0]).not.toHaveProperty('pipelineId');
     expect(m.realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-1', pipelineId: 'agent-v-1', resolvedSpec: spec, language: 'en' }));

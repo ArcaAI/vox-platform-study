@@ -217,11 +217,11 @@ export class TranscriptionJobController {
     return Boolean(body.pipelineId) || (!this.asrResolver && !body.agentSlug);
   }
 
-  private async resolveAsrAgent(tenantId: string, agentSlug?: string | null): Promise<ResolvedAsrSession> {
+  private async resolveAsrAgent(tenantId: string, agentSlug?: string | null, consultationId?: string | null): Promise<ResolvedAsrSession> {
     if (!this.asrResolver) {
       throw new ServiceUnavailableException('ASR agent resolution is not configured on this gateway');
     }
-    return this.asrResolver.resolve({ tenantId, agentSlug: agentSlug ?? null, departmentId: null });
+    return this.asrResolver.resolve({ tenantId, agentSlug: agentSlug ?? null, departmentId: null, consultationId: consultationId ?? null });
   }
 
   /**
@@ -562,7 +562,7 @@ export class TranscriptionJobController {
       return this.jobService.create(dto);
     }
     if (!dto.agentVersionId) {
-      const resolved = await this.resolveAsrAgent(this.getTenantId(), dto.agentSlug);
+      const resolved = await this.resolveAsrAgent(this.getTenantId(), dto.agentSlug, dto.consultationId);
       const { agentSlug: _agentSlug, ...rest } = dto;
       return this.jobService.create({
         ...rest,
@@ -605,7 +605,12 @@ export class TranscriptionJobController {
 
   @Post('transcribe')
   @HttpCode(201)
-  @ApiOperation({ summary: 'Upload audio file for batch transcription via worker' })
+  @ApiOperation({
+    summary:
+      'Upload audio file for batch transcription via worker. The speech-to-text agent is resolved in order: an explicit ' +
+      "agentSlug on the request, else the consultation's governing workflow speech-to-text node, else the department then " +
+      'tenant assignment.',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, description: 'Batch job created and queued', type: BatchTranscribeResponse })
   @ApiResponse({
@@ -711,7 +716,7 @@ export class TranscriptionJobController {
       // Block cross-tenant pipeline use before any I/O.
       await this.assertPipelineOwnership(pipelineId);
     } else {
-      resolved = await this.resolveAsrAgent(tenantId, body.agentSlug);
+      resolved = await this.resolveAsrAgent(tenantId, body.agentSlug, body.consultationId);
       pipelineId = resolved.spec.runtimeKey;
     }
     const mediaId = uuidv7();
@@ -954,7 +959,11 @@ export class TranscriptionJobController {
 
   @Post('stream/session')
   @HttpCode(201)
-  @ApiOperation({ summary: 'Create a WebSocket streaming session' })
+  @ApiOperation({
+    summary:
+      'Create a WebSocket streaming session. The speech-to-text agent is resolved in order: an explicit agentSlug on the ' +
+      "request, else the consultation's governing workflow speech-to-text node, else the department then tenant assignment.",
+  })
   @ApiResponse({ status: 201, description: 'Streaming session created', type: StreamSessionResponse })
   // TASK-951 R2 — the two refusals `context` introduces. Documented here because a client that
   // cannot tell "too big" from "wrong shape" cannot fix either one.
@@ -1021,9 +1030,23 @@ export class TranscriptionJobController {
     const [resolved, { audioBucketName, storage }] = await Promise.all([
       legacyPipelinePath
         ? this.assertPipelineOwnership(body.pipelineId as string).then(() => undefined)
-        : this.resolveAsrAgent(tenantId, body.agentSlug),
+        : this.resolveAsrAgent(tenantId, body.agentSlug, body.consultationId),
       resolveAudioBucket(),
     ]);
+
+    // TASK-1002 — which tier resolved this session's ASR agent, so an operator can answer
+    // "which tier won" from Grafana without reading Redis. Agent path only — the deprecated
+    // pipeline path never touches the resolver and carries no `source`.
+    if (resolved) {
+      this.logger.log({
+        message: 'stt.asr_agent_resolved',
+        consultationId: body.consultationId ?? null,
+        agentSlug: resolved.spec.agent.slug,
+        agentVersionId: resolved.spec.agent.versionId,
+        source: resolved.spec.agent.source,
+        workflowDefinitionSlug: resolved.workflowDefinitionSlug ?? null,
+      });
+    }
 
     // TASK-951 R2 (D-8) — the context gate, once the agent that governs it is known. It runs
     // BEFORE the STT session is created so a refused request leaves nothing behind upstream.
@@ -1166,7 +1189,10 @@ export class TranscriptionJobController {
       ...(result.pipelineId ? { pipelineId: result.pipelineId } : {}),
       ...(result.activeEngine ? { activeEngine: result.activeEngine } : {}),
       // TASK-861 — the agent identity the session resolved to.
-      ...(resolved ? { agentSlug: resolved.spec.agent.slug, agentVersionId: resolved.spec.agent.versionId } : {}),
+      // TASK-1002 — plus which tier resolved it (`agentSource`).
+      ...(resolved
+        ? { agentSlug: resolved.spec.agent.slug, agentVersionId: resolved.spec.agent.versionId, agentSource: resolved.spec.agent.source }
+        : {}),
       // TASK-951 R2 — what the session will echo, confirmed at create rather than discovered on
       // the first utterance.
       ...(context ? { context } : {}),
