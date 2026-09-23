@@ -33,7 +33,6 @@ function policy(overrides: Partial<HarnessPolicy> = {}): HarnessPolicy {
     maxRegen: 2,
     gateSlaSeconds: 86400,
     gateEscalationSeconds: 43200,
-    gateMaxEscalations: null,
     toolAllowlist: null,
     updatedAt: '2026-07-01T00:00:00.000Z',
     version: 7,
@@ -128,6 +127,18 @@ describe('HarnessPolicyScreen', () => {
     expect(screen.getByLabelText('Max regen budget')).toBeDefined();
     expect(screen.getByLabelText('Reason')).toBeDefined();
     expect(screen.getByRole('button', { name: /Save · If-Match/ })).toBeDefined();
+  });
+
+  // TASK-1001 wave 6 — the clinician gate IS the consultation completion timeout, owned by Settings
+  // (`consultation.session.completionTimeoutMinutes`). This screen shows it and points there.
+  it('shows the completion timeout read-only and points to Settings, with no gate inputs', async () => {
+    stubFetch({ tenantPolicy: policy({ gateSlaSeconds: 300 }) });
+    renderWithProviders(<HarnessPolicyScreen />);
+
+    expect(await screen.findByText('completion timeout')).toBeDefined();
+    expect(screen.getByText(/5 min · set in Settings/)).toBeDefined();
+    expect(screen.queryByLabelText('Gate SLA (seconds)')).toBeNull();
+    expect(screen.queryByLabelText('Gate escalation (seconds)')).toBeNull();
   });
 
   it('saves a sparse patch with If-Match and expectedVersion from the read ETag', async () => {
@@ -276,7 +287,7 @@ describe('HarnessPolicyScreen', () => {
    * super-admin-only server-side. The TENANT tab must render them disabled
    * with a visible reason rather than letting a tenant admin flip a switch
    * that 403s on save (rule 11 §5: a disabled control needs a visible reason).
-   */
+ */
   describe('E3-L1 locked safety/PHI switches', () => {
     // Every key the TENANT route rejects must render read-only.
     // Mirrors TENANT_LOCKED_POLICY_KEYS in ../policy-fields.ts, by rendered

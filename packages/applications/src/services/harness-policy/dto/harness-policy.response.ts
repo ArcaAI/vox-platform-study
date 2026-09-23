@@ -82,7 +82,11 @@ export class HarnessPolicyResponse {
   @ApiProperty({ description: 'Bounded-regen budget.', example: 2 })
   maxRegen: number;
 
-  @ApiProperty({ description: 'Clinician-gate SLA in seconds.', example: 86400 })
+  @ApiProperty({
+    description:
+      'Clinician-gate SLA in seconds. On the effective policy this is the consultation completion timeout (`consultation.session.completionTimeoutMinutes` × 60, tenant → platform, default 300); the stored row value is superseded.',
+    example: 300,
+  })
   gateSlaSeconds: number;
 
   @ApiProperty({ description: 'Clinician-gate escalation in seconds.', example: 43200 })
@@ -90,9 +94,8 @@ export class HarnessPolicyResponse {
 
   @ApiPropertyOptional({
     description:
-      'SLA breaches the clinician gate records before it abandons — terminal: the consultation is closed unsigned (a late sign-off still signs). 1 = the first breach of gateSlaSeconds closes it. null = no opinion (tenant inherits SYSTEM; absent on both, the harness bound of 3 applies).',
+      'SLA breaches the clinician gate records before it abandons (terminal: the consultation is closed unsigned; a late sign-off still signs). DERIVED, not stored: 1 whenever the consultation completion timeout (`consultation.session.completionTimeoutMinutes`, which also sets gateSlaSeconds) governs the gate; null when no settings graph is wired, in which case the harness keeps its own bound.',
     nullable: true,
-    minimum: 1,
     example: 1,
   })
   gateMaxEscalations: number | null;

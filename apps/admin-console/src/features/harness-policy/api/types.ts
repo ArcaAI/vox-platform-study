@@ -31,8 +31,6 @@ export interface HarnessPolicy {
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
-  /** TASK-1001 wave 5 — SLA breaches before the gate abandons and closes the consultation; null = inherit. */
-  gateMaxEscalations: number | null;
   toolAllowlist: string[] | null;
   updatedAt: string | null;
   version: number;
@@ -56,7 +54,6 @@ export interface UpdateHarnessPolicyRequest {
   maxRegen?: number;
   gateSlaSeconds?: number;
   gateEscalationSeconds?: number;
-  gateMaxEscalations?: number | null;
   toolAllowlist?: string[] | null;
   reason?: string;
   expectedVersion?: number;

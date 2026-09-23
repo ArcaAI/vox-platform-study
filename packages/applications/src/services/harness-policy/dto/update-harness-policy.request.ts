@@ -84,18 +84,6 @@ export class UpdateHarnessPolicyRequest {
   @Min(0)
   gateEscalationSeconds?: number;
 
-  @ApiPropertyOptional({
-    description:
-      'SLA breaches before the clinician gate abandons and the consultation is closed unsigned (integer ≥ 1; null = no opinion — inherit SYSTEM / the harness bound).',
-    minimum: 1,
-    nullable: true,
-    example: 1,
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  gateMaxEscalations?: number | null;
-
   @ApiPropertyOptional({ description: 'Allow-listed tool ids the loop may call (null = all tools allowed).', type: [String], nullable: true })
   @IsOptional()
   @IsArray()

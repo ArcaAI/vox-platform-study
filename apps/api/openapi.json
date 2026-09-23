@@ -10931,15 +10931,14 @@
             "type": "number"
           },
           "gateMaxEscalations": {
-            "description": "SLA breaches the clinician gate records before it abandons — terminal: the consultation is closed unsigned (a late sign-off still signs). 1 = the first breach of gateSlaSeconds closes it. null = no opinion (tenant inherits SYSTEM; absent on both, the harness bound of 3 applies).",
+            "description": "SLA breaches the clinician gate records before it abandons (terminal: the consultation is closed unsigned; a late sign-off still signs). DERIVED, not stored: 1 whenever the consultation completion timeout (`consultation.session.completionTimeoutMinutes`, which also sets gateSlaSeconds) governs the gate; null when no settings graph is wired, in which case the harness keeps its own bound.",
             "example": 1,
-            "minimum": 1,
             "nullable": true,
             "type": "number"
           },
           "gateSlaSeconds": {
-            "description": "Clinician-gate SLA in seconds.",
-            "example": 86400,
+            "description": "Clinician-gate SLA in seconds. On the effective policy this is the consultation completion timeout (`consultation.session.completionTimeoutMinutes` × 60, tenant → platform, default 300); the stored row value is superseded.",
+            "example": 300,
             "type": "number"
           },
           "groundednessThreshold": {
@@ -23182,13 +23181,6 @@
             "description": "Clinician-gate escalation in seconds (non-negative integer).",
             "example": 43200,
             "minimum": 0,
-            "type": "number"
-          },
-          "gateMaxEscalations": {
-            "description": "SLA breaches before the clinician gate abandons and the consultation is closed unsigned (integer ≥ 1; null = no opinion — inherit SYSTEM / the harness bound).",
-            "example": 1,
-            "minimum": 1,
-            "nullable": true,
             "type": "number"
           },
           "gateSlaSeconds": {

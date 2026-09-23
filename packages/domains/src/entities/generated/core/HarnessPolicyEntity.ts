@@ -28,8 +28,6 @@ export interface IHarnessPolicyEntity extends IBaseTenantEntity {
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
-  /** TASK-1001 wave 5 — SLA breaches before the clinician gate abandons (terminal). null ⇒ the harness's own bound. */
-  gateMaxEscalations?: number | null;
   toolAllowlist?: JsonValue | null;
   // agentic loop knobs. null ⇒ harness env/code default.
   optimisticDeliveryEnabled?: boolean | null;
@@ -58,7 +56,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
   private _maxRegen: IHarnessPolicyEntity['maxRegen'];
   private _gateSlaSeconds: IHarnessPolicyEntity['gateSlaSeconds'];
   private _gateEscalationSeconds: IHarnessPolicyEntity['gateEscalationSeconds'];
-  private _gateMaxEscalations?: IHarnessPolicyEntity['gateMaxEscalations'];
   private _toolAllowlist?: IHarnessPolicyEntity['toolAllowlist'];
   private _optimisticDeliveryEnabled?: IHarnessPolicyEntity['optimisticDeliveryEnabled'];
   private _atomicFactEnabled?: IHarnessPolicyEntity['atomicFactEnabled'];
@@ -82,7 +79,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this._maxRegen = init.maxRegen;
     this._gateSlaSeconds = init.gateSlaSeconds;
     this._gateEscalationSeconds = init.gateEscalationSeconds;
-    this._gateMaxEscalations = init.gateMaxEscalations;
     this._toolAllowlist = init.toolAllowlist;
     this._optimisticDeliveryEnabled = init.optimisticDeliveryEnabled;
     this._atomicFactEnabled = init.atomicFactEnabled;
@@ -230,14 +226,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this.setProperty('nerPriorsEnabled', value);
   }
 
-  get gateMaxEscalations(): IHarnessPolicyEntity['gateMaxEscalations'] {
-    return this._gateMaxEscalations;
-  }
-
-  set gateMaxEscalations(value: IHarnessPolicyEntity['gateMaxEscalations']) {
-    this.setProperty('gateMaxEscalations', value);
-  }
-
   get maxEditReruns(): IHarnessPolicyEntity['maxEditReruns'] {
     return this._maxEditReruns;
   }
@@ -283,11 +271,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     // the agentic knobs are nullable overrides; only range-check when set.
     if (this._maxEditReruns !== null && this._maxEditReruns !== undefined) {
       this.assertNonNegativeInt('maxEditReruns', this._maxEditReruns);
-    }
-    // TASK-1001 wave 5 — a bound of 0 would abandon a gate before it ever waited: at least 1.
-    if (this._gateMaxEscalations !== null && this._gateMaxEscalations !== undefined) {
-      this.assertNonNegativeInt('gateMaxEscalations', this._gateMaxEscalations);
-      if (this._gateMaxEscalations < 1) throw new BusinessException(`HarnessPolicy gateMaxEscalations must be at least 1, got ${String(this._gateMaxEscalations)}.`);
     }
   }
 

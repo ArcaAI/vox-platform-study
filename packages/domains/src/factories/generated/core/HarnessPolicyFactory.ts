@@ -27,7 +27,6 @@ export const HARNESS_POLICY_DEFAULTS = {
   maxRegen: 2,
   gateSlaSeconds: 86400,
   gateEscalationSeconds: 43200,
-  gateMaxEscalations: null as number | null,
   toolAllowlist: null as IHarnessPolicyEntity['toolAllowlist'],
   // agentic loop knobs default to null so the harness
   // env/code default applies (per-field fallthrough). Only an explicit non-null
@@ -58,7 +57,6 @@ export interface CreateHarnessPolicyProps extends BaseEntityFactoryCreateProps {
   maxRegen?: IHarnessPolicyEntity['maxRegen'];
   gateSlaSeconds?: IHarnessPolicyEntity['gateSlaSeconds'];
   gateEscalationSeconds?: IHarnessPolicyEntity['gateEscalationSeconds'];
-  gateMaxEscalations?: IHarnessPolicyEntity['gateMaxEscalations'];
   toolAllowlist?: IHarnessPolicyEntity['toolAllowlist'];
   optimisticDeliveryEnabled?: IHarnessPolicyEntity['optimisticDeliveryEnabled'];
   atomicFactEnabled?: IHarnessPolicyEntity['atomicFactEnabled'];
@@ -109,7 +107,6 @@ export class HarnessPolicyFactory {
       maxRegen: props.maxRegen ?? d.maxRegen,
       gateSlaSeconds: props.gateSlaSeconds ?? d.gateSlaSeconds,
       gateEscalationSeconds: props.gateEscalationSeconds ?? d.gateEscalationSeconds,
-      gateMaxEscalations: props.gateMaxEscalations ?? d.gateMaxEscalations,
       toolAllowlist: props.toolAllowlist ?? d.toolAllowlist,
       optimisticDeliveryEnabled: props.optimisticDeliveryEnabled ?? d.optimisticDeliveryEnabled,
       atomicFactEnabled: props.atomicFactEnabled ?? d.atomicFactEnabled,

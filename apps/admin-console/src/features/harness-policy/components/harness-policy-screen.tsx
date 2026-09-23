@@ -38,8 +38,8 @@ function EffectiveResolveCard({ policy }: { policy: HarnessPolicy }) {
     { label: 'phi', value: policy.phiEnabled ? (policy.phiFailClosed ? 'on \u00b7 fail-closed' : 'on') : 'off' },
     { label: 'text model', value: policy.textProvider && policy.textModel ? `${policy.textProvider} / ${policy.textModel}` : 'service chooses' },
     { label: 'max regen', value: String(policy.maxRegen) },
-    { label: 'gate sla', value: `${policy.gateSlaSeconds} s` },
-    { label: 'gate escalation', value: `${policy.gateEscalationSeconds} s` },
+    // TASK-1001 wave 6 — derived from Settings (`consultation.session.completionTimeoutMinutes`).
+    { label: 'completion timeout', value: `${Math.round(policy.gateSlaSeconds / 60)} min \u00b7 set in Settings` },
     { label: 'tools', value: policy.toolAllowlist && policy.toolAllowlist.length > 0 ? policy.toolAllowlist.join(', ') : 'all allowed' },
   ];
   return (

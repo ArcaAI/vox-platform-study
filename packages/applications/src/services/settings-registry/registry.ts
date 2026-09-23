@@ -12,6 +12,7 @@ import { AGENTIC_FEWSHOT_SETTINGS } from './descriptors/agentic-fewshot.descript
 import { AI_READINESS_SETTINGS } from './descriptors/ai-readiness.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
+import { CONSULTATION_COMPLETION_TIMEOUT_SETTINGS } from './descriptors/consultation-completion.descriptors';
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { CONSULTATION_OUTPUT_LANGUAGE_SETTINGS } from './descriptors/consultation-output-language.descriptors';
 import { CONSULTATION_PRE_SUMMARY_SETTINGS } from './descriptors/consultation-presummary.descriptors';
@@ -216,6 +217,10 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // WRITTEN in when the tenant's output-language policy fragment states none. Never derived from
   // the consultation's declared (source) language.
   ...CONSULTATION_OUTPUT_LANGUAGE_SETTINGS,
+  // TASK-1001 wave 6 (owner decision 2026-09-23) — minutes a consultation that is ready to complete
+  // (recording stopped, final note generated) waits for the clinician's approval before it is closed
+  // unsigned. Tenant-editable; the platform value is the fallback. Enforced by the harness clinician gate.
+  ...CONSULTATION_COMPLETION_TIMEOUT_SETTINGS,
   // `consultation.endpoint.actions` was here. TASK-882 moved the stage onto the assigned graph
   // (endpoint nodes, presence + `enabled`, in edge order).
 

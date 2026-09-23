@@ -26,7 +26,6 @@ export class HarnessPolicy extends BaseTenantDataModel {
   public maxRegen: number;
   public gateSlaSeconds: number;
   public gateEscalationSeconds: number;
-  public gateMaxEscalations: number | null;
   public toolAllowlist: JsonValue | null;
   // agentic loop knobs. null ⇒ harness env/code default.
   public optimisticDeliveryEnabled: boolean | null;
@@ -54,7 +53,6 @@ export class HarnessPolicy extends BaseTenantDataModel {
     this.maxRegen = data.maxRegen;
     this.gateSlaSeconds = data.gateSlaSeconds;
     this.gateEscalationSeconds = data.gateEscalationSeconds;
-    this.gateMaxEscalations = data.gateMaxEscalations;
     this.toolAllowlist = data.toolAllowlist;
     this.optimisticDeliveryEnabled = data.optimisticDeliveryEnabled;
     this.atomicFactEnabled = data.atomicFactEnabled;

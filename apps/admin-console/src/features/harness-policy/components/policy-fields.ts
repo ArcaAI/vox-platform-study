@@ -9,8 +9,7 @@ import type { HarnessPolicy, UpdateHarnessPolicyRequest } from '../api';
 
 // TASK-881: the `text` / `nullable-text` kinds went with the two text-generation
 // controls; every surviving knob is a number, a switch or a list.
-// TASK-1001 wave 5 — `nullable-integer`: an emptied input clears the knob to null ("no opinion").
-export type PolicyFieldKind = 'fraction' | 'integer' | 'nullable-integer' | 'switch' | 'list';
+export type PolicyFieldKind = 'fraction' | 'integer' | 'switch' | 'list';
 
 export interface PolicyField {
   key: keyof HarnessPolicy & keyof UpdateHarnessPolicyRequest;
@@ -46,7 +45,11 @@ export interface PolicyFieldGroup {
  * no locked keys — would have patched a column that no longer exists. A control nobody may
  * successfully use is deleted, not disabled.
  */
-export const TENANT_LOCKED_POLICY_KEYS = ['safetyEnabled', 'phiEnabled', 'phiFailClosed'] as const satisfies readonly PolicyField['key'][];
+export const TENANT_LOCKED_POLICY_KEYS = [
+  'safetyEnabled',
+  'phiEnabled',
+  'phiFailClosed',
+] as const satisfies readonly PolicyField['key'][];
 
 /** The copy shown under every locked control (rule 11 §5: visible reason). */
 export const LOCKED_FIELD_HINT = 'Super Admins only';
@@ -77,19 +80,9 @@ export const POLICY_FIELD_GROUPS: PolicyFieldGroup[] = [
     // (`/agents`), and the summary card above shows the derived value.
     fields: [{ key: 'maxRegen', label: 'Max regen budget', kind: 'integer' }],
   },
-  {
-    title: 'Clinician gate',
-    fields: [
-      { key: 'gateSlaSeconds', label: 'Gate SLA (seconds)', kind: 'integer' },
-      { key: 'gateEscalationSeconds', label: 'Gate escalation (seconds)', kind: 'integer' },
-      {
-        key: 'gateMaxEscalations',
-        label: 'Close after SLA breaches',
-        kind: 'nullable-integer',
-        hint: 'the consultation is closed unsigned after this many breaches; 1 = at the first SLA; empty = inherit',
-      },
-    ],
-  },
+  // TASK-1001 wave 6 — the 'Clinician gate' group is gone: the gate SLA IS the consultation completion
+  // timeout, owned by Settings (`consultation.session.completionTimeoutMinutes`, tenant → platform, and
+  // its first breach closes the session). One authoritative editor per value; this screen shows it read-only.
   {
     title: 'Tools',
     fields: [{ key: 'toolAllowlist', label: 'Tool allowlist', kind: 'list', hint: 'comma-separated ids; empty = all tools allowed' }],
@@ -132,12 +125,6 @@ function parseDraft(field: PolicyField, draft: string | boolean): UpdateHarnessP
     case 'integer': {
       const text = String(draft).trim();
       if (text === '') return undefined;
-      const parsed = Number(text);
-      return Number.isFinite(parsed) ? parsed : undefined;
-    }
-    case 'nullable-integer': {
-      const text = String(draft).trim();
-      if (text === '') return null;
       const parsed = Number(text);
       return Number.isFinite(parsed) ? parsed : undefined;
     }
