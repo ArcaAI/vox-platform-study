@@ -191,3 +191,22 @@ export function platformOutputLanguage(platformDefault: unknown): OutputLanguage
 export function resolveOutputLanguage(tenantPolicySelected: boolean, platformDefault: unknown): OutputLanguage | null {
   return tenantPolicySelected ? null : platformOutputLanguage(platformDefault);
 }
+
+/**
+ * TASK-1001 (owner decision 2026-09-23) — the instruction a runtime STATES when {@link
+ * resolveOutputLanguage} answers a language (no tenant policy fragment owns it): the platform
+ * default, by name. ONE builder for every surface that states it — the live operating frame and the
+ * direct summary generation — so the sentence cannot drift between them.
+ *
+ * Three clauses, each load-bearing:
+ *  - the language, NAMED (pass {@link OutputLanguage.name}) — never a tag, and never the
+ *    consultation's declared (source) language;
+ *  - the OVERRIDE, named: the clinical corpus says "the section content MUST be in the conversation
+ *    language" in ~40 places, and a generic label loses to that specific in-template instruction
+ *    (the 2026-08-10 lesson, `summary-prompt.builder.ts` `languageDirective`);
+ *  - "Keep the section keys and headings exactly as given, in English." — verbatim, finding S-4:
+ *    a translated heading makes a client insert a twin section nothing ever removes.
+ */
+export function defaultOutputLanguageInstruction(languageName: string): string {
+  return `Write every section value in ${languageName}, whatever language was spoken, regardless of any instruction elsewhere in this prompt to write content in the conversation language. Keep the section keys and headings exactly as given, in English.`;
+}

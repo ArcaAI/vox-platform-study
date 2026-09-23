@@ -235,6 +235,54 @@ export interface ConsultationSummaryResponse {
    * or `summaries.update`; the SDK quotes it.
    */
   version?: number;
+  /**
+   * `summaries.latest` only — {@link ConsultationSummaryResponse.content} split at its heading lines
+   * (`## Title`, `**Title**`, `**Title:**`; text before the first heading belongs to no section),
+   * each section LOCATED by offsets into `content` and carrying the cross-section `duplicate` flags
+   * computed over this final text. `content` itself is never altered by them. Absent when `content`
+   * has fewer than two headed sections. Mirrors `SummaryResponse.sections`
+   * (`packages/applications/.../summary.response.ts`).
+   */
+  sections?: ConsultationSummarySection[];
+}
+
+/**
+ * One headed section of a final note ({@link ConsultationSummaryResponse.sections}). Its body is
+ * `content.slice(start, end)` — located, never copied. Mirrors `SummaryNoteSectionDto`.
+ */
+export interface ConsultationSummarySection {
+  /**
+   * The key of the consultation's document section with the same title (the key
+   * `documents/sections` reports), else one derived from the heading (`Family History` →
+   * `family_history`).
+   */
+  sectionKey: string;
+  /** The heading as the note prints it, trailing colon dropped. */
+  title: string;
+  /** Offset in `content` where the body starts (after the heading line, leading whitespace skipped). */
+  start: number;
+  /** Offset in `content` where the body ends (exclusive, trailing whitespace excluded). */
+  end: number;
+  /** `duplicate` flags ONLY; offsets are section-LOCAL. Absent when nothing is flagged. */
+  annotations?: ConsultationSummaryDuplicateAnnotation[];
+}
+
+/**
+ * A run of at least two consecutive sentences of this section that an EARLIER section of the same
+ * note already carries (normalised-equal, or word-token Jaccard >= 0.8 with identical numbers) — the
+ * same rule, and the same shape, as the live note's `duplicate` annotation. A flag only: nothing was
+ * dropped. Mirrors `SummaryDuplicateAnnotationDto`.
+ */
+export interface ConsultationSummaryDuplicateAnnotation {
+  kind: 'duplicate';
+  /** Offset within THIS SECTION's text — `content.slice(section.start, section.end)`. */
+  start: number;
+  /** Exclusive end within THIS SECTION's text. */
+  end: number;
+  /** The `sectionKey` of the earlier section that already carries the passage. */
+  duplicateOf: string;
+  /** That section's heading as the note prints it — prefer it when naming the section to a reader. */
+  duplicateOfTitle?: string;
 }
 
 // -----------------------------------------------------------------------------

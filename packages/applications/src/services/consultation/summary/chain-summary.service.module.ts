@@ -13,6 +13,7 @@ import { NoteGenerationServiceModule } from '../note-generation/note-generation.
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
+import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 
 @Module({
   // HarnessPolicyServiceModule supplies the TEXT-selection resolver.
@@ -39,6 +40,10 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     // supplies `IGateEditExemplarRetriever` for the
     // `PromptAssemblyService` provided below; absent ⇒ silent zero-shot.
     GateEditMiningServiceModule,
+    // TASK-1001 (OD-12) — supplies `EffectiveSettingsService`, through which `ChainSummaryService`
+    // resolves `consultation.summary.outputLanguage`. Injected `@Optional()`, so a missing import
+    // would leave a platform admin's write silently dead on the chain path.
+    EffectiveSettingsModule,
   ],
   providers: [PromptAssemblyService, ChainSummaryService],
   exports: [ChainSummaryService],

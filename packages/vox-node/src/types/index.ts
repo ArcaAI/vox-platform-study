@@ -36,6 +36,8 @@ export type {
   ConsultationGetResponse,
   ConsultationSummaryStructuredData,
   ConsultationSummaryResponse,
+  ConsultationSummarySection,
+  ConsultationSummaryDuplicateAnnotation,
   JobStatusType,
   JobType,
   AsyncJobResponse,

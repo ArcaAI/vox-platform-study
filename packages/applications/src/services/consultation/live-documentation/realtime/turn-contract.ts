@@ -675,6 +675,46 @@ function crossSectionDuplicates(content: string, references: readonly SectionRef
   return annotations;
 }
 
+/** One section of a FINISHED document, as {@link crossSectionDuplicateAnnotations} reads it. */
+export interface DocumentSectionText {
+  readonly sectionKey: string;
+  /** What a `duplicate` naming this section carries as `duplicateOfTitle`. */
+  readonly title: string;
+  readonly content: string;
+}
+
+/**
+ * TASK-1001 (wave 2, final note) — the cross-section `duplicate` annotations of a FINISHED document:
+ * the detector a turn runs (`crossSectionDuplicates`, above), over text that will not change again.
+ *
+ * The live flags are computed per turn, against whatever the other sections held at that moment, so
+ * they describe the note as it was being written. A note that has been finalised needs them computed
+ * over its final text, and by THIS rule rather than a second copy of it — which is why this exists.
+ *
+ * Returns one list per input section, index-aligned, each exactly what `crossSectionDuplicates`
+ * returns for it: offsets are section-LOCAL (they index that section's own `content`) and a list is
+ * empty when nothing is flagged. Each section is compared with the sections BEFORE it in the order
+ * given and never after, so a passage in two sections is flagged once, on the later copy, pointing
+ * at the earlier — the outcome `applyTurn` gives one turn writing a paragraph into two sections. Two
+ * entries sharing a `sectionKey` are one section and are never compared with each other, as
+ * `applyTurn` never compares a section with itself.
+ *
+ * Pure: content is read for the comparison and never altered, reordered or dropped.
+ */
+export function crossSectionDuplicateAnnotations(sections: readonly DocumentSectionText[]): SectionAnnotationDto[][] {
+  const forms = sections.map((section) => splitSentences(section.content).map((sentence) => matchForm(sentence.text)));
+
+  return sections.map((section, index) => {
+    const references: SectionReference[] = [];
+    for (let at = 0; at < index; at += 1) {
+      const other = sections[at]!;
+      if (other.sectionKey === section.sectionKey) continue;
+      references.push({ sectionKey: other.sectionKey, title: other.title, forms: forms[at]! });
+    }
+    return crossSectionDuplicates(section.content, references);
+  });
+}
+
 /**
  * Fold a turn onto the prior note.
  *

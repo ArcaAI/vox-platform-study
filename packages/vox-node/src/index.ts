@@ -228,6 +228,8 @@ export type {
   ConsultationSchemaBundle,
   ConsultationSummaryResponse,
   ConsultationSummaryStructuredData,
+  ConsultationSummarySection,
+  ConsultationSummaryDuplicateAnnotation,
   ContextItemResponse,
   ContextItemSource,
   ContextItemType,

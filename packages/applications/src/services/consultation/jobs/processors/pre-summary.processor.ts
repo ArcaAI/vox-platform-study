@@ -29,6 +29,8 @@ import { INoteGenerationService, GenerationTrigger } from '../../note-generation
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition } from '../../visit-type/visit-type.service';
 import { readRecordedVisitType } from '../../consultation/open-markers';
 import { QUEUE_CONCURRENCY } from '../../../baseServices/redis/queue-concurrency';
+import { EffectiveSettingsService } from '../../../settings-registry/effective-settings.service';
+import { resolvePlatformOutputLanguage } from '../../summary/platform-output-language';
 
 // boundary (owner decision,: KEPT,
 // un-gated, as an explicitly non-signable helper generator — never had a
@@ -83,6 +85,10 @@ export class PreSummaryProcessor extends WorkerHost {
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
+    // TASK-1001 (OD-12) — resolves `consultation.summary.outputLanguage`, the platform-default
+    // language the pre-summary is WRITTEN in. Optional + trailing so the positional fixtures keep
+    // their arity; unwired ⇒ the descriptor's code default (English).
+    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {
     super();
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -215,7 +221,8 @@ export class PreSummaryProcessor extends WorkerHost {
           // transcript, which told the model that text from previous encounters was said today.
           transcript: '',
           caseNotes: promptCaseNotes,
-          conversationLanguage: this.resolveConversationLanguage(request.options),
+          // TASK-1001 (OD-12) — the platform-default OUTPUT language; never a per-request option.
+          conversationLanguage: (await resolvePlatformOutputLanguage(this.effectiveSettings, tenantId, this.logger)).tag,
           dnaStyleId: request.dnaStyleId,
           // Thread the doctor-preferred prompt id into assembly.
           preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
@@ -377,12 +384,6 @@ export class PreSummaryProcessor extends WorkerHost {
       });
       throw new Error('Failed to generate pre-summary from AI service');
     }
-  }
-
-  private resolveConversationLanguage(options?: Record<string, unknown>): string {
-    const candidate = options?.conversationLanguage ?? options?.language ?? options?.locale;
-
-    return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : 'en';
   }
 
   /**

@@ -21,6 +21,7 @@ import { NoteGenerationServiceModule } from '../note-generation/note-generation.
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
+import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 
 @Module({
   imports: [
@@ -49,6 +50,11 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     // `:id/summary/comprehensive/async`); both call `promptAssemblyService.assemble(...)`
     // directly.
     GateEditMiningServiceModule,
+    // TASK-1001 (OD-12) — supplies `EffectiveSettingsService`, through which both processors resolve
+    // `consultation.summary.outputLanguage`, the platform-default language the note is WRITTEN in.
+    // They inject it `@Optional()`, so without this import every job would still write English (the
+    // code default) and a platform admin's write would be silently dead on these paths.
+    EffectiveSettingsModule,
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
     // `GenerateSummary`/`ExtractNamedEntities` (the legacy
