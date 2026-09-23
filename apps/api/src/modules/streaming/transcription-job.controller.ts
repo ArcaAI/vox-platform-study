@@ -606,10 +606,10 @@ export class TranscriptionJobController {
   @Post('transcribe')
   @HttpCode(201)
   @ApiOperation({
-    summary:
-      'Upload audio file for batch transcription via worker. The speech-to-text agent is resolved in order: an explicit ' +
-      "agentSlug on the request, else the consultation's governing workflow speech-to-text node, else the department then " +
-      'tenant assignment.',
+    summary: 'Upload audio file for batch transcription via worker',
+    description:
+      'The speech-to-text agent is resolved in order: an explicit agentSlug on the request, else the speech-to-text node ' +
+      "of the consultation's governing workflow, else the department then tenant assignment.",
   })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, description: 'Batch job created and queued', type: BatchTranscribeResponse })
@@ -960,9 +960,12 @@ export class TranscriptionJobController {
   @Post('stream/session')
   @HttpCode(201)
   @ApiOperation({
-    summary:
-      'Create a WebSocket streaming session. The speech-to-text agent is resolved in order: an explicit agentSlug on the ' +
-      "request, else the consultation's governing workflow speech-to-text node, else the department then tenant assignment.",
+    summary: 'Create a WebSocket streaming session',
+    description:
+      'The speech-to-text agent is resolved in order: an explicit agentSlug on the request, else the speech-to-text node ' +
+      "of the consultation's governing workflow, else the department then tenant assignment. A governing workflow that " +
+      'names more than one speech-to-text agent, or one that can no longer serve, is refused with 409 ' +
+      'WORKFLOW_ASR_AGENT_UNAVAILABLE.',
   })
   @ApiResponse({ status: 201, description: 'Streaming session created', type: StreamSessionResponse })
   // TASK-951 R2 — the two refusals `context` introduces. Documented here because a client that

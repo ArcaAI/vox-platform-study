@@ -16,11 +16,21 @@ export const OUTPUT_FIELDS_UNREACHABLE = 'OUTPUT_FIELDS_UNREACHABLE';
 const SPEECH_TO_TEXT = 'SPEECH_TO_TEXT';
 
 /**
- * What a speech-to-text node hands downstream. Fixed by the runtime, not by the agent: the
- * realtime `core.agent` handler's `transcribe` branch emits these (plus lane metadata), and no
- * ASR agent declares an output schema that could change them.
+ * What a speech-to-text node hands downstream. Fixed by the runtime, not by the agent: the union
+ * of what the realtime `core.agent` handler's `transcribe` branch and the durable harness ASR
+ * branch emit, so an output requiring any of them is never refused. No ASR agent declares an
+ * output schema that could change them.
  */
-export const SPEECH_TO_TEXT_OUTPUT_FIELDS: readonly string[] = Object.freeze(['transcript', 'segments', 'audio']);
+export const SPEECH_TO_TEXT_OUTPUT_FIELDS: readonly string[] = Object.freeze([
+  'transcript',
+  'segments',
+  'audio',
+  'language',
+  'data',
+  'pipelineId',
+  'jobId',
+  'agent',
+]);
 
 /** What the service resolved about the agent ONE `core.agent` node runs. */
 export interface GraphAgentFacts {
