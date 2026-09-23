@@ -40,6 +40,7 @@ import pytest
 
 from text.core.defaults import (
     GENERATION_FLOOR,
+    PENALTY_NEUTRAL,
     active_generation_defaults,
     apply_generation_defaults,
     resolve_request_defaults,
@@ -79,6 +80,12 @@ _PARITY: dict[str, dict[str, object]] = {
         "text.generation.temperature": GENERATION_FLOOR["temperature"],
         "text.generation.maxTokens": GENERATION_FLOOR["max_tokens"],
         "text.generation.topP": GENERATION_FLOOR["top_p"],
+        # TASK-1001 OD-10 — the penalties have NO floor (they are never sent
+        # when nobody set one), so their descriptor default must be the NEUTRAL
+        # value instead: anything else would start sending a penalty on first
+        # deploy with no row written, which is failure mode 1 above.
+        "text.generation.frequencyPenalty": PENALTY_NEUTRAL,
+        "text.generation.presencePenalty": PENALTY_NEUTRAL,
     },
     # The TENANT half of the posture. Its `default` is never what a tenant is
     # served (absence pushes nothing, so the platform value stands) — it is the
@@ -202,7 +209,14 @@ class TestTheViewEmitsTheNamesThisServiceReads:
     ) -> None:
         fields = _parse_view_fields(effective_config_source, "generationView")
         # Exactly the names `core/effective_config.generation_defaults` reads.
-        assert fields == {"temperature", "topP", "maxTokens", "source"}
+        assert fields == {
+            "temperature",
+            "topP",
+            "maxTokens",
+            "frequencyPenalty",
+            "presencePenalty",
+            "source",
+        }
 
 
 class TestAServedValueChangesBehaviour:
@@ -255,7 +269,14 @@ class TestAServedValueChangesBehaviour:
         self, effective_config_source: str
     ) -> None:
         fields = _parse_view_fields(effective_config_source, "generationView")
-        served = {"temperature": 0.85, "topP": 0.4, "maxTokens": 2048, "source": "db"}
+        served = {
+            "temperature": 0.85,
+            "topP": 0.4,
+            "maxTokens": 2048,
+            "frequencyPenalty": 0.3,
+            "presencePenalty": 0.6,
+            "source": "db",
+        }
         assert set(served) == fields
 
         apply_platform_posture(
@@ -266,7 +287,13 @@ class TestAServedValueChangesBehaviour:
         # Not "the field exists": the hyperparameters an unprofiled request
         # actually carries to the engine are now the served ones.
         resolved = resolve_request_defaults(GenerateRequest(prompt="hello"))
-        assert resolved == {"temperature": 0.85, "max_tokens": 2048, "top_p": 0.4}
+        assert resolved == {
+            "temperature": 0.85,
+            "max_tokens": 2048,
+            "top_p": 0.4,
+            "frequency_penalty": 0.3,
+            "presence_penalty": 0.6,
+        }
         assert resolved != {
             "temperature": GENERATION_FLOOR["temperature"],
             "max_tokens": GENERATION_FLOOR["max_tokens"],
@@ -320,6 +347,8 @@ class TestWithNoRowNothingMoves:
                         "temperature": generation_defaults["text.generation.temperature"],
                         "topP": generation_defaults["text.generation.topP"],
                         "maxTokens": generation_defaults["text.generation.maxTokens"],
+                        "frequencyPenalty": generation_defaults["text.generation.frequencyPenalty"],
+                        "presencePenalty": generation_defaults["text.generation.presencePenalty"],
                         "source": "env-fallback",
                     },
                 },

@@ -17,7 +17,7 @@ import structlog
 from openai import AsyncOpenAI
 
 from text.core.connection import resolve_connection
-from text.core.defaults import resolve_request_defaults
+from text.core.defaults import penalty_kwargs, resolve_request_defaults
 from text.core.exceptions import (
     ProviderConnectionMissingError,
     ProviderCredentialsError,
@@ -40,6 +40,11 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 _PROVIDER_NAME = "openai"
+
+# TASK-1001 OD-10 — repetition penalties are FORWARDED. Source: the OpenAI
+# chat-completions reference (`frequency_penalty` / `presence_penalty`, -2.0 to
+# 2.0, default 0), both TYPED parameters of the pinned SDK (openai==3.1.0
+# `completion_create_params`). Only a non-neutral value is ever sent.
 
 
 def _get_tracer() -> Tracer:
@@ -213,6 +218,8 @@ class OpenAIProvider:
                 "top_p": resolved["top_p"],
                 "stream": False,
             }
+            # TASK-1001 OD-10 — FORWARDED (source: module note under `_PROVIDER_NAME`).
+            kwargs.update(penalty_kwargs(resolved))
             self._apply_response_format(kwargs, request)
             self._apply_reasoning(kwargs, request)
 
@@ -268,6 +275,8 @@ class OpenAIProvider:
                 "stream": True,
                 "stream_options": {"include_usage": True},
             }
+            # TASK-1001 OD-10 — FORWARDED (source: module note under `_PROVIDER_NAME`).
+            kwargs.update(penalty_kwargs(resolved))
             self._apply_response_format(kwargs, request)
             self._apply_reasoning(kwargs, request)
 

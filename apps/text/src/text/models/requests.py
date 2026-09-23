@@ -6,6 +6,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
+from text.core.defaults import PENALTY_MAX, PENALTY_MIN
+
 
 class RetryConfig(BaseModel):
     max_retries: int = 3
@@ -297,6 +299,14 @@ class GenerateRequest(BaseModel):
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1)
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    # TASK-1001 OD-10 — decode-time repetition pressure, by its OpenAI-wire
+    # names. OPTIONAL end to end and deliberately NOT floored: absent means "no
+    # opinion" and `0` means "neutral", and neither is ever sent to an engine
+    # (`core/defaults.resolve_request_defaults`). An engine that cannot take a
+    # penalty drops it with a debug log, never an error. Bounds are the agent
+    # schema's (`GENERATION_PROPERTY`, `packages/workflow-contract`).
+    frequency_penalty: float | None = Field(default=None, ge=PENALTY_MIN, le=PENALTY_MAX)
+    presence_penalty: float | None = Field(default=None, ge=PENALTY_MIN, le=PENALTY_MAX)
     stream: bool = False
     response_format: ResponseFormat | None = None
     context: dict[str, Any] | None = None

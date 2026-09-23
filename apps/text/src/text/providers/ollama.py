@@ -11,7 +11,7 @@ import httpx
 import structlog
 
 from text.core.connection import require_base_url
-from text.core.defaults import resolve_request_defaults
+from text.core.defaults import record_dropped_penalties, resolve_request_defaults
 from text.core.reasoning import (
     REASON_EFFORT_NOT_EXPRESSIBLE,
     ReasoningSupport,
@@ -132,6 +132,19 @@ class OllamaProvider:
         }
         if request.system_prompt:
             payload["system"] = request.system_prompt
+
+        # TASK-1001 OD-10 — DROPPED, logged. Ollama's Modelfile "Valid Parameters"
+        # table (docs/modelfile.mdx) documents only `repeat_penalty` /
+        # `repeat_last_n`; `presence_penalty` / `frequency_penalty` appear solely
+        # in an `/api/generate` options EXAMPLE (docs/api.md), and the Go-native
+        # sampler that serves newer models (Gemma 4 included) accepts and silently
+        # ignores them (ollama/ollama#15783). Which runner a model lands on is not
+        # visible from here, so forwarding would be a silent drop some of the
+        # time. `repeat_penalty` is NOT an alias: multiplicative, 1.0 = off,
+        # different semantics — mapping a clinician's value onto it is a guess.
+        record_dropped_penalties(
+            resolved, provider=self._probe_name, model=self._resolve_model(request)
+        )
 
         self._apply_reasoning(payload, request)
 

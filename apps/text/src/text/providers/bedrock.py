@@ -15,7 +15,7 @@ from botocore.config import Config as BotocoreConfig
 from botocore.tokens import FrozenAuthToken
 
 from text.core.connection import resolve_connection
-from text.core.defaults import resolve_request_defaults
+from text.core.defaults import record_dropped_penalties, resolve_request_defaults
 from text.core.exceptions import InputValidationError, ProviderConnectionMissingError
 from text.core.reasoning import ReasoningSupport, record_unsupported_posture
 from text.core.telemetry import get_tracer
@@ -295,6 +295,13 @@ class BedrockProvider:
             }
 
         record_unsupported_posture(request, provider="bedrock", model=self._resolve_model(request))
+        # TASK-1001 OD-10 — DROPPED, logged, for the same reason as the posture
+        # above. Converse `InferenceConfiguration` is exactly maxTokens /
+        # temperature / topP / stopSequences (pinned botocore==1.43.72,
+        # `bedrock-runtime/2023-09-30`); a penalty could only ride
+        # `additionalModelRequestFields` in the underlying family's own
+        # vocabulary, where an unknown key is a ValidationException.
+        record_dropped_penalties(resolved, provider="bedrock", model=self._resolve_model(request))
 
         return params
 

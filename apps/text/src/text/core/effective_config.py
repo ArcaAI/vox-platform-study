@@ -35,6 +35,8 @@ from typing import Any
 import httpx
 import structlog
 
+from text.core.defaults import PENALTY_MAX, PENALTY_MIN
+
 logger = structlog.get_logger(__name__)
 
 DEFAULT_TTL_S = 60
@@ -215,6 +217,16 @@ class EffectiveConfigSnapshot:
         max_tokens = _positive_int(group.get("maxTokens"))
         if max_tokens is not None:
             resolved["max_tokens"] = max_tokens
+        # TASK-1001 OD-10 — the repetition penalties. A served 0 (the
+        # descriptor's shipped default) is returned as served; it is neutral,
+        # and `core/defaults.resolve_request_defaults` never sends it.
+        for served_name, field_name in (
+            ("frequencyPenalty", "frequency_penalty"),
+            ("presencePenalty", "presence_penalty"),
+        ):
+            penalty = _penalty_float(group.get(served_name))
+            if penalty is not None:
+                resolved[field_name] = penalty
         return resolved
 
     def external_guardrail(self) -> dict[str, Any]:
@@ -268,6 +280,18 @@ def _non_negative_float(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return float(value) if value >= 0 else None
+
+
+def _penalty_float(value: Any) -> float | None:
+    """A served repetition penalty inside the agent-schema range, or None.
+
+    NEGATIVE values are legal (they encourage repetition). Out of range — or
+    NaN, which fails both comparisons — is refused rather than clamped: the
+    process keeps "no opinion" instead of sending a number nobody chose.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if PENALTY_MIN <= value <= PENALTY_MAX else None
 
 
 class EffectiveConfigClient:
