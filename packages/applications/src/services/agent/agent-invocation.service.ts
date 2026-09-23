@@ -353,6 +353,10 @@ export class AgentInvocationService {
       ...(typeof generation.temperature === 'number' ? { temperature: generation.temperature } : {}),
       ...(typeof generation.maxTokens === 'number' ? { max_tokens: generation.maxTokens } : {}),
       ...(typeof generation.topP === 'number' ? { top_p: generation.topP } : {}),
+      // TASK-1001 OD-10 — decode-time repetition pressure, exactly like `top_p`: sent only when the
+      // agent authored it, so an absent key lets TEXT apply the platform default instead.
+      ...(typeof generation.frequencyPenalty === 'number' ? { frequency_penalty: generation.frequencyPenalty } : {}),
+      ...(typeof generation.presencePenalty === 'number' ? { presence_penalty: generation.presencePenalty } : {}),
       // TASK-930 §5 — the author's explicit `responseFormat` first; failing that, the agent's own
       // DECLARED `outputSchema` as a `json_schema` constraint. Without the second half the column
       // was documentation: an agent could promise `{ case_note, redactions }` and be handed prose.

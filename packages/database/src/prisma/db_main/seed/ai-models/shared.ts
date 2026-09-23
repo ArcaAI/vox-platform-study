@@ -367,11 +367,13 @@ export type NlpModelCapability = AiModelCapability;
  *
  * ## What the platform can actually serve today
  *
- * `apps/text`'s generation plane forwards exactly three parameters to every adapter —
- * `temperature`, `max_tokens`, `top_p` (`apps/text/src/text/core/defaults.py:41-43,69-71`), and
- * `AiRuntimeProfile` carries those same three columns and no others. No adapter in
- * `apps/text/src/text/providers/` references a penalty parameter at all. So a row declaring the
- * three is stating a verified fact about this platform, not a vendor's brochure.
+ * `apps/text`'s generation plane forwards three parameters to every adapter — `temperature`,
+ * `max_tokens`, `top_p` (`apps/text/src/text/core/defaults.py`). Since TASK-1001 (OD-10) it also
+ * forwards `frequency_penalty` / `presence_penalty`, but only engines that ACCEPT a penalty may
+ * declare `frequencyPenalty` / `presencePenalty` — an engine that refuses them (e.g. an Azure
+ * GPT-5 reasoning deployment) would turn a published value into a provider 400. `seed` and
+ * `stopSequences` still reach no provider. The seeded sets and the per-engine reasoning live in
+ * `llm.ts` (`TEXT_PLANE_GENERATION_PARAMS`, `OPENAI_COMPAT_PENALTY_PARAMS`).
  */
 export type GenerationParamName =
   | 'temperature'

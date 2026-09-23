@@ -337,3 +337,49 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     expect(calls[0]).toMatchObject({ provider: 'vllm', model: 'tenant-default', system_prompt: 'SESSION SYSTEM PROMPT.' });
   });
 });
+
+/**
+ * TASK-1001 OD-10 — decode-time repetition pressure on the realtime lane. The running note is
+ * where the repeated sentences were observed, so the agent's authored penalties must reach TEXT on
+ * exactly the precedence `top_p` already has (node `overrides.generation` over the agent's own),
+ * and an agent with no opinion must send NO key — the platform default applies inside TEXT only
+ * to a request that omitted it.
+ */
+describe('TASK-1001 — frequency/presence penalties on the realtime core.agent call', () => {
+  it('forwards the agent`s authored penalties under the /generate field names', async () => {
+    textAgents.resolve.mockResolvedValue({
+      ...spec(),
+      primary: candidate({ parameters: { generation: { temperature: 0, topP: 0.8, frequencyPenalty: 0.4, presencePenalty: 0.2 } } }),
+    });
+    const { service, post } = buildService({ generate: () => NOTE });
+    const { calls } = await runOneFlush(service, post);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].frequency_penalty).toBe(0.4);
+    expect(calls[0].presence_penalty).toBe(0.2);
+    expect(calls[0].top_p).toBe(0.8);
+  });
+
+  it('a node `overrides.generation` penalty wins over the agent`s, like every other hyper-parameter', async () => {
+    textAgents.resolve.mockResolvedValue({
+      ...spec(),
+      primary: candidate({ parameters: { generation: { frequencyPenalty: 0.4 } } }),
+    });
+    const { service, post } = buildService({ generate: () => NOTE, nodeConfig: { overrides: { generation: { frequencyPenalty: 0.7 } } } });
+    const { calls } = await runOneFlush(service, post);
+
+    expect(calls[0].frequency_penalty).toBe(0.7);
+  });
+
+  it('an agent that authored no penalty sends neither key, so TEXT applies the platform default', async () => {
+    // `spec()`'s primary authors temperature / maxTokens / topP and no penalty.
+    const { service, post } = buildService({ generate: () => NOTE });
+    const { calls } = await runOneFlush(service, post);
+
+    const wire = JSON.parse(JSON.stringify(calls[0])) as Record<string, unknown>;
+    expect(wire).not.toHaveProperty('frequency_penalty');
+    expect(wire).not.toHaveProperty('presence_penalty');
+    expect('frequency_penalty' in calls[0]).toBe(false);
+    expect('presence_penalty' in calls[0]).toBe(false);
+  });
+});

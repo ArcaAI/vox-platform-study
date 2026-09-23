@@ -482,3 +482,37 @@ describe('the ingested time series must be orderable', () => {
     expect(result.reportData.ingest).toMatchObject({ itemCount: 2, from: '2026-09-01T09:00:00.000Z', to: '2026-09-02T09:00:00.000Z' });
   });
 });
+
+/**
+ * TASK-1001 OD-10 — the analyst agent's repetition penalties reach the wire the way `top_p` does
+ * (`hyperparameters()`: both spellings, `0` travels, absent is OMITTED so TEXT applies the
+ * platform default rather than a `null` or a synthesised `0`).
+ */
+describe('TASK-1001 — the platform agent`s repetition penalties', () => {
+  it('puts authored frequency/presence penalties on the wire beside top_p', async () => {
+    const { processor, httpService } = build({
+      generation: { temperature: 0, maxTokens: 2048, topP: 0.95, frequencyPenalty: 0.4, presencePenalty: 0.2 },
+    });
+
+    await processor.process(job());
+
+    expect(body(httpService)).toMatchObject({ top_p: 0.95, frequency_penalty: 0.4, presence_penalty: 0.2 });
+  });
+
+  it('accepts the snake_case spelling too, exactly as for the other hyper-parameters', async () => {
+    const { processor, httpService } = build({ generation: { frequency_penalty: 0.3, presence_penalty: 0 } });
+
+    await processor.process(job());
+
+    expect(body(httpService)).toMatchObject({ frequency_penalty: 0.3, presence_penalty: 0 });
+  });
+
+  it('an analyst with no penalty opinion sends neither key', async () => {
+    const { processor, httpService } = build();
+
+    await processor.process(job());
+
+    expect(Object.keys(body(httpService))).not.toContain('frequency_penalty');
+    expect(Object.keys(body(httpService))).not.toContain('presence_penalty');
+  });
+});

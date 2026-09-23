@@ -350,13 +350,19 @@ export class EffectiveConfigService implements IEffectiveConfigService {
    * Same shape contract as above: `apps/text` reads `temperature` / `topP` /
    * `maxTokens` off `raw["generation"]`, and treats an omitted key as "keep the
    * in-code floor" rather than as a zero.
+   *
+   * TASK-1001 OD-10 — `frequencyPenalty` / `presencePenalty` ride the SAME group
+   * under those names: the platform default decode-time repetition pressure,
+   * applied by `apps/text` only to a request that states none of its own.
    */
   private generationView(resolved: Map<string, ResolvedKey>): { generation?: EffectiveGeneration } {
     const temperature = resolved.get('text.generation.temperature');
     const topP = resolved.get('text.generation.topP');
     const maxTokens = resolved.get('text.generation.maxTokens');
+    const frequencyPenalty = resolved.get('text.generation.frequencyPenalty');
+    const presencePenalty = resolved.get('text.generation.presencePenalty');
 
-    const present = [temperature, topP, maxTokens].filter(isPresent);
+    const present = [temperature, topP, maxTokens, frequencyPenalty, presencePenalty].filter(isPresent);
     if (present.length === 0) return {};
 
     return {
@@ -364,6 +370,8 @@ export class EffectiveConfigService implements IEffectiveConfigService {
         temperature: numberOrNull(temperature),
         topP: numberOrNull(topP),
         maxTokens: numberOrNull(maxTokens),
+        frequencyPenalty: numberOrNull(frequencyPenalty),
+        presencePenalty: numberOrNull(presencePenalty),
         source: groupSource(present),
       },
     };

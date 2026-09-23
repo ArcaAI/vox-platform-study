@@ -99,6 +99,9 @@ describe('effective-config: the TEXT generation view', () => {
       temperature: 0.1,
       topP: 0.95,
       maxTokens: 16_384,
+      // TASK-1001 OD-10 — neutral until a platform admin writes a value.
+      frequencyPenalty: 0,
+      presencePenalty: 0,
       source: 'env-fallback',
     });
   });
@@ -108,7 +111,35 @@ describe('effective-config: the TEXT generation view', () => {
       'text',
     );
 
-    expect(response.generation).toEqual({ temperature: 0.7, topP: 0.95, maxTokens: 4096, source: 'db' });
+    expect(response.generation).toEqual({ temperature: 0.7, topP: 0.95, maxTokens: 4096, frequencyPenalty: 0, presencePenalty: 0, source: 'db' });
+  });
+
+  // TASK-1001 OD-10 — the platform default for decode-time repetition pressure. A published
+  // Agent's parameters cannot be edited, so THIS row is what reaches the fleet: it must arrive in
+  // the same group, under the names apps/text reads, and mark the group `db`.
+  it('a stored penalty row reaches the wire under `frequencyPenalty` / `presencePenalty`', async () => {
+    const response = await serviceWith(
+      settingsStub({
+        'text.generation.frequencyPenalty': 0.4,
+        'text.generation.presencePenalty': -0.25,
+      }),
+    ).resolveForService('text');
+
+    expect(response.generation).toEqual({
+      temperature: 0.1,
+      topP: 0.95,
+      maxTokens: 16_384,
+      frequencyPenalty: 0.4,
+      presencePenalty: -0.25,
+      source: 'db',
+    });
+  });
+
+  it('a penalty of the wrong declared type is refused as null — never a substituted default', async () => {
+    const response = await serviceWith(settingsStub({ 'text.generation.frequencyPenalty': '0.4' })).resolveForService('text');
+
+    expect(response.generation?.frequencyPenalty).toBeNull();
+    expect(response.generation?.presencePenalty).toBe(0);
   });
 
   it('is omitted entirely for a service that declares none of the keys', async () => {

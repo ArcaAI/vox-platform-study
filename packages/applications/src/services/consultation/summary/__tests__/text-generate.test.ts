@@ -66,3 +66,52 @@ describe('buildTextGeneratePayload — SOAP json_schema forwarding', () => {
     expect(payload.response_format).toBeUndefined();
   });
 });
+
+/**
+ * TASK-1001 OD-10 — decode-time repetition pressure reaches the `/generate` body the same way
+ * `top_p` does: from the caller's options first, then the assembled prompt's hyperparameters,
+ * both spellings accepted. ABSENT means the key is not sent at all, so TEXT applies the platform
+ * default (`text.generation.frequencyPenalty` / `.presencePenalty`) — sending `null`, or a
+ * synthesised `0`, would override that default with an opinion nobody stated.
+ */
+describe('buildTextGeneratePayload — repetition penalties (TASK-1001)', () => {
+  /** What actually crosses the wire: axios JSON-serialises the body. */
+  const wire = (payload: unknown) => JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
+
+  it('forwards penalties authored on the prompt hyperparameters (snake_case)', () => {
+    const payload = buildTextGeneratePayload(
+      makeAssembledPrompt({ hyperparameters: { temperature: 0.1, frequency_penalty: 0.4, presence_penalty: 0.2 } }),
+      { provider: 'lm-studio' },
+    );
+
+    expect(wire(payload)).toMatchObject({ frequency_penalty: 0.4, presence_penalty: 0.2 });
+  });
+
+  it('accepts the camelCase spelling an Agent`s `parameters.generation` uses', () => {
+    const payload = buildTextGeneratePayload(
+      makeAssembledPrompt({ hyperparameters: { frequencyPenalty: 0.5, presencePenalty: -0.1 } }),
+      { provider: 'lm-studio' },
+    );
+
+    expect(wire(payload)).toMatchObject({ frequency_penalty: 0.5, presence_penalty: -0.1 });
+  });
+
+  it('a caller-supplied value wins over the prompt hyperparameters, exactly like top_p', () => {
+    const payload = buildTextGeneratePayload(
+      makeAssembledPrompt({ hyperparameters: { frequency_penalty: 0.4, presence_penalty: 0.2 } }),
+      { provider: 'lm-studio', frequencyPenalty: 0.9, presence_penalty: 0 },
+    );
+
+    // `0` is a deliberate value, not an absence: it travels.
+    expect(wire(payload)).toMatchObject({ frequency_penalty: 0.9, presence_penalty: 0 });
+  });
+
+  it('OMITS both keys when nobody authored one, so TEXT applies the platform default', () => {
+    const payload = buildTextGeneratePayload(makeAssembledPrompt(), { provider: 'lm-studio' });
+
+    expect(wire(payload)).not.toHaveProperty('frequency_penalty');
+    expect(wire(payload)).not.toHaveProperty('presence_penalty');
+    expect('frequency_penalty' in payload).toBe(false);
+    expect('presence_penalty' in payload).toBe(false);
+  });
+});

@@ -19,6 +19,9 @@ interface TextGeneratePayload {
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
+  /** TASK-1001 OD-10 — OMITTED when unauthored, so TEXT applies the platform default. */
+  frequency_penalty?: number;
+  presence_penalty?: number;
   stream: false;
   response_format?: AssembledPrompt['responseFormat'];
   context?: Record<string, unknown>;
@@ -98,6 +101,13 @@ export function buildTextGeneratePayload(
   const temperature = pickNumber(options, 'temperature') ?? pickNumber(assembledPrompt.hyperparameters, 'temperature');
   const maxTokens = pickNumber(options, 'max_tokens', 'maxTokens') ?? pickNumber(assembledPrompt.hyperparameters, 'max_tokens', 'maxTokens');
   const topP = pickNumber(options, 'top_p', 'topP') ?? pickNumber(assembledPrompt.hyperparameters, 'top_p', 'topP');
+  // TASK-1001 OD-10 — same precedence as `top_p`. Spread only when present: an absent key is what
+  // tells TEXT to apply `text.generation.*Penalty`, so it must not travel as `undefined`/`null`.
+  const frequencyPenalty =
+    pickNumber(options, 'frequency_penalty', 'frequencyPenalty') ??
+    pickNumber(assembledPrompt.hyperparameters, 'frequency_penalty', 'frequencyPenalty');
+  const presencePenalty =
+    pickNumber(options, 'presence_penalty', 'presencePenalty') ?? pickNumber(assembledPrompt.hyperparameters, 'presence_penalty', 'presencePenalty');
   const provider = pickString(options, 'provider', 'textProvider');
 
   return {
@@ -108,6 +118,8 @@ export function buildTextGeneratePayload(
     temperature,
     max_tokens: maxTokens,
     top_p: topP,
+    ...(frequencyPenalty !== undefined ? { frequency_penalty: frequencyPenalty } : {}),
+    ...(presencePenalty !== undefined ? { presence_penalty: presencePenalty } : {}),
     stream: false,
     response_format: shouldForwardResponseFormat(provider) ? (assembledPrompt.responseFormat ?? undefined) : undefined,
     context: Object.keys(context).length > 0 ? context : undefined,

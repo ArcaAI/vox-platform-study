@@ -94,6 +94,13 @@ interface TextGenerateRequest {
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
+  /**
+   * TASK-1001 OD-10 — decode-time repetition pressure, ACCEPTED FROM THE CALLER and forwarded
+   * verbatim like `top_p`. Absent ⇒ absent on the wire: TEXT then applies the platform default
+   * (`text.generation.frequencyPenalty` / `.presencePenalty`), so this proxy never invents one.
+   */
+  frequency_penalty?: number;
+  presence_penalty?: number;
   stream?: boolean;
   response_format?: TextResponseFormat;
   context?: Record<string, unknown>;
