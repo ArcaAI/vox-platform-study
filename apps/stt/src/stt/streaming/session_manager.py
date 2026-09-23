@@ -5458,6 +5458,9 @@ class SessionManager:
                     transcription_source="streaming",
                     idempotency_key=idempotency_key,
                     segments=segments,
+                    # TASK-1001 wave 4 (OD-14): the gateway keys the aggregate transcript on this
+                    # session, so a RESUMED recording is persisted rather than deduped away.
+                    metadata={"sessionId": session.session_id},
                 )
                 logger.info(
                     "Streaming transcript persisted",

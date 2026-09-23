@@ -88,6 +88,39 @@ class TestStartDocument:
         assert wf_input.gate.max_regen == settings.max_regen
 
     @pytest.mark.asyncio
+    async def test_start_leaves_an_open_run_alone_by_default(self, harness):
+        """Without ``supersede`` a start never touches an open run (the idempotent no-op)."""
+        http, client, _handle, _settings = harness
+        await http.post(
+            "/api/v1/internal/consultations/c-1/document:start",
+            headers=_HEADERS,
+            json={"tenantId": "t-1"},
+        )
+        _args, kwargs = client.start_workflow.call_args
+        assert "id_conflict_policy" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_supersede_terminates_the_open_run_and_starts_a_fresh_one(self, harness):
+        """TASK-1001 wave 4 (OD-14, D-3): a stop after a resume re-finalises the note.
+
+        The first draft's run is parked at the clinician gate; a plain start answers
+        ``already_running`` and the resumed recording never reaches the note. ``supersede``
+        replaces that run in ONE server-side step, with no workflow-code change.
+        """
+        from temporalio.common import WorkflowIDConflictPolicy
+
+        http, client, _handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/consultations/c-1/document:start",
+            headers=_HEADERS,
+            json={"tenantId": "t-1", "supersede": True, "transcriptText": "both sessions"},
+        )
+        assert resp.status_code == 200
+        _args, kwargs = client.start_workflow.call_args
+        assert kwargs["id"] == "harness-doc-c-1"
+        assert kwargs["id_conflict_policy"] == WorkflowIDConflictPolicy.TERMINATE_EXISTING
+
+    @pytest.mark.asyncio
     async def test_start_threads_external_patient_id_into_workflow_input(self, harness):
         """(consent-abac Phase 4) — externalPatientId reaches
         HarnessDocWorkflowInput so call_mcp_tool/retrieve_context can key a

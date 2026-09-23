@@ -1943,6 +1943,63 @@ describe('SttInternalService', () => {
       const pipelineCalls = mockEventEmitter.emit.mock.calls.filter((c: any[]) => c[0] === 'consultation.transcription.created');
       expect(pipelineCalls).toHaveLength(0);
     });
+
+    // TASK-1001 wave 4 (OD-14) — a RESUMED recording is a new STT session on the same consultation.
+    // The second layer used to be keyed on the CONSULTATION, so the resumed session's transcript was
+    // never persisted and its `TranscriptionCreated` never fired: the final note could not see it.
+    it('persists a RESUMED session’s aggregate beside the first one, stamped with its session, and emits', async () => {
+      const first = createMockContextItemEntity({ id: 'aggregate-s1', metaData: { subType: 'STT_AGGREGATE', sttSessionId: 'stt-1' } });
+      const second = createMockContextItemEntity({ id: 'aggregate-s2' });
+      mockContextItemRepository.findTranscripts.mockResolvedValue([first]);
+      mockContextItemRepository.create.mockResolvedValue(second);
+
+      const result = await service.createTranscript({
+        consultationId: 'consultation-resume-1',
+        tenantId: 'tenant-resume-1',
+        transcriptText: 'what was said after the resume',
+        transcriptionSource: 'streaming',
+        metadata: { sessionId: 'stt-2' },
+      } as any);
+
+      expect(result.contextItemId).toBe('aggregate-s2');
+      expect(mockContextItemRepository.create.mock.calls[0][0].metaData).toEqual({ subType: 'STT_AGGREGATE', sttSessionId: 'stt-2' });
+      const pipelineCalls = mockEventEmitter.emit.mock.calls.filter((c: any[]) => c[0] === 'consultation.transcription.created');
+      expect(pipelineCalls).toHaveLength(1);
+    });
+
+    it('a legacy aggregate with no session stamp does not swallow a later session’s transcript', async () => {
+      const legacy = createMockContextItemEntity({ id: 'aggregate-legacy', metaData: { subType: 'STT_AGGREGATE' } });
+      mockContextItemRepository.findTranscripts.mockResolvedValue([legacy]);
+      mockContextItemRepository.create.mockResolvedValue(createMockContextItemEntity({ id: 'aggregate-new' }));
+
+      const result = await service.createTranscript({
+        consultationId: 'consultation-resume-2',
+        tenantId: 'tenant-resume-2',
+        transcriptText: 'resumed speech',
+        transcriptionSource: 'streaming',
+        metadata: { sessionId: 'stt-9' },
+      } as any);
+
+      expect(result.contextItemId).toBe('aggregate-new');
+    });
+
+    it('is still idempotent for the SAME session — replays its aggregate, no create, no emit', async () => {
+      const mine = createMockContextItemEntity({ id: 'aggregate-mine', metaData: { subType: 'STT_AGGREGATE', sttSessionId: 'stt-3' } });
+      mockContextItemRepository.findTranscripts.mockResolvedValue([mine]);
+
+      const result = await service.createTranscript({
+        consultationId: 'consultation-resume-3',
+        tenantId: 'tenant-resume-3',
+        transcriptText: 'duplicate finalize of the same session',
+        transcriptionSource: 'streaming',
+        metadata: { sessionId: 'stt-3' },
+      } as any);
+
+      expect(result.contextItemId).toBe('aggregate-mine');
+      expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+      const pipelineCalls = mockEventEmitter.emit.mock.calls.filter((c: any[]) => c[0] === 'consultation.transcription.created');
+      expect(pipelineCalls).toHaveLength(0);
+    });
   });
 
   // F-09: streaming-transcript create TOCTOU. Two duplicate calls for the

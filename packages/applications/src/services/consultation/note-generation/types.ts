@@ -80,4 +80,9 @@ export interface GenerateParams {
   contextItemId?: string;
   transcriptText?: string;
   redactionRules?: Record<string, unknown>[];
+  /**
+   * TASK-1001 wave 4 (OD-14, D-3) — replace an OPEN document run for this consultation instead of
+   * no-op'ing on it. Set only for a RESUMED recording landing on an unsigned harness draft.
+   */
+  supersede?: boolean;
 }

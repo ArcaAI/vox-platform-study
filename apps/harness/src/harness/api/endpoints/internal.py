@@ -22,7 +22,12 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from temporalio.client import Client
-from temporalio.common import SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
+from temporalio.common import (
+    SearchAttributeKey,
+    SearchAttributePair,
+    TypedSearchAttributes,
+    WorkflowIDConflictPolicy,
+)
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from harness.core.config import Settings
@@ -119,6 +124,11 @@ class StartDocumentRequest(BaseModel):
     # insertion is a no-op (byte-identical to the prior start). Each entry is
     # the RedactionRule shape ({ id, type, match, pattern, replacement?, note? }).
     redaction_rules: list[dict[str, Any]] = Field(default_factory=list, alias="redactionRules")
+    # TASK-1001 wave 4 (OD-14, owner decision D-3) — replace an OPEN run for this consultation
+    # instead of answering ``already_running``. apps/api sets it only when a RESUMED recording's
+    # transcript lands on an unsigned draft: that run is parked at the clinician gate and would
+    # otherwise hold the note to the first recording forever. Default False ⇒ unchanged behaviour.
+    supersede: bool = Field(default=False)
 
 
 class ApprovalRequest(BaseModel):
@@ -290,6 +300,12 @@ async def start_document(
         "task_queue": settings.temporal.task_queue,
         "memo": memo,
     }
+    if body.supersede:
+        # One server-side step: terminate the open run (if any) and start this one under the same
+        # id. The fresh run adopts the same RAW_SUMMARY row (``findOwnHarnessDraft``, newest-wins).
+        # Nothing in either workflow changes, so no replay history is affected; a loop parent that
+        # was awaiting the terminated run records it as degraded and completes.
+        start_kwargs["id_conflict_policy"] = WorkflowIDConflictPolicy.TERMINATE_EXISTING
 
     try:
         await client.start_workflow(

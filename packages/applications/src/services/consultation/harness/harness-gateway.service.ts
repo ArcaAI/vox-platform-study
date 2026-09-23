@@ -39,6 +39,12 @@ export interface HarnessStartContext {
    * a genuine denial — R4) rather than crash.
    */
   externalPatientId?: string;
+  /**
+   * TASK-1001 wave 4 (OD-14, D-3) — ask the harness to TERMINATE an open `harness-doc-<id>` run and
+   * start this one in its place. Omitted (never `false`) otherwise, so every other start's body is
+   * byte-identical to before.
+   */
+  supersede?: boolean;
 }
 
 /**
@@ -407,6 +413,7 @@ export class HarnessGatewayService {
       // to the pre-redaction body (the harness defaults redactionRules to []).
       ...(ctx.redactionRules && ctx.redactionRules.length > 0 ? { redactionRules: ctx.redactionRules } : {}),
       ...(ctx.externalPatientId ? { externalPatientId: ctx.externalPatientId } : {}),
+      ...(ctx.supersede ? { supersede: true } : {}),
     };
 
     const response = await this.httpService.axiosRef.post(url, body, {

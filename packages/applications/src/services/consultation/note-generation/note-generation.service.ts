@@ -96,6 +96,7 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
       transcriptText: params.transcriptText,
       redactionRules: params.redactionRules,
       externalPatientId,
+      ...(params.supersede ? { supersede: true } : {}),
     });
 
     this.logger.log({

@@ -75,6 +75,7 @@ import type {
   HarnessResolvedModelResponse,
   HarnessSegmentCitationRef,
 } from './dto';
+import { HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
 
 /** TASK-946 OD-4 — what the gateway's run-completion watcher reports about a terminal run. */
 export interface FailGovernedRunInput {
@@ -159,7 +160,7 @@ export class HarnessInternalService extends BaseService {
   // OVERWRITE a note this workflow never authored, which is strictly worse than a
   // duplicate. Unmarked rows are therefore never touched: the lookup fails safe to
   // create. (Same `metaData.subType` convention as `LIVE_SOAP_SNAPSHOT`.)
-  private readonly HARNESS_DRAFT_SUBTYPE = 'HARNESS_DRAFT';
+  private readonly HARNESS_DRAFT_SUBTYPE = HARNESS_DRAFT_SUBTYPE;
 
   // The same ownership idea, for `persistEntities`. `NamedEntity`
   // has no `metaData` column to mark: its `metadata` is Vault-Transit ciphertext

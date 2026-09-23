@@ -131,6 +131,17 @@ describe('NoteGenerationService', () => {
       expect(decision.generator).toBe('harness');
       expect(mockHarnessGateway.start).toHaveBeenCalledWith('consultation-001', expect.not.objectContaining({ externalPatientId: expect.anything() }));
     });
+
+    // TASK-1001 wave 4 (OD-14, D-3) — the resumed-recording re-finalise.
+    it('(h) forwards `supersede` to the gateway only when asked — every other start stays byte-identical', async () => {
+      const { service } = buildService(mockHarnessGateway);
+
+      await service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, { ...baseParams, supersede: true });
+      expect(mockHarnessGateway.start).toHaveBeenLastCalledWith('consultation-001', expect.objectContaining({ supersede: true }));
+
+      await service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, baseParams);
+      expect(mockHarnessGateway.start.mock.calls.at(-1)![1]).not.toHaveProperty('supersede');
+    });
   });
 
   describe('SUMMARY_REGENERATE', () => {

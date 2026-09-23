@@ -128,6 +128,18 @@ describe('HarnessGatewayService', () => {
       const [, body] = mockHttpService.axiosRef.post.mock.calls[0];
       expect(body).not.toHaveProperty('externalPatientId');
     });
+
+    // TASK-1001 wave 4 (OD-14, D-3) — the resumed-recording re-finalise asks the harness to replace
+    // the open run; every other start's body stays byte-identical.
+    it('sends `supersede: true` only when asked', async () => {
+      const service = build('http://harness:8866', 'tok');
+
+      await service.start('c-11', { tenantId: 'tenant-11', supersede: true });
+      await service.start('c-12', { tenantId: 'tenant-12' });
+
+      expect(mockHttpService.axiosRef.post.mock.calls[0][1].supersede).toBe(true);
+      expect(mockHttpService.axiosRef.post.mock.calls[1][1]).not.toHaveProperty('supersede');
+    });
   });
 
   describe('signalApproval', () => {

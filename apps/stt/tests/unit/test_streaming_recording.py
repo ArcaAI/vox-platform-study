@@ -826,6 +826,9 @@ class TestFinalizeTranscriptPersistence:
         assert kwargs["transcript_text"] == "Hello world"
         assert kwargs.get("transcription_source") == "streaming"
         assert kwargs.get("job_id") is None
+        # TASK-1001 wave 4 (OD-14): the gateway keys the aggregate per SESSION, so a resumed
+        # recording (a new session on the same consultation) is persisted instead of swallowed.
+        assert kwargs.get("metadata") == {"sessionId": session.session_id}
 
     @pytest.mark.asyncio
     async def test_finalize_skips_transcript_without_consultation(self):

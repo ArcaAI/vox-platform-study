@@ -185,9 +185,13 @@ export class SttInternalService extends BaseService implements ISttInternalServi
    * back to `tenantId:consultationId` alone when absent.
    */
   private deriveStreamingIdempotencyKey(dto: CreateTranscriptRequest): string {
+    return `${dto.tenantId ?? ''}:${dto.consultationId ?? ''}:${this.streamingSessionIdOf(dto) ?? ''}`;
+  }
+
+  /** The STT streaming session a finalize names (`metadata.sessionId`), or `null` when it names none. */
+  private streamingSessionIdOf(dto: CreateTranscriptRequest): string | null {
     const meta = dto.metadata as Record<string, unknown> | undefined;
-    const sessionId = typeof meta?.sessionId === 'string' ? meta.sessionId : '';
-    return `${dto.tenantId ?? ''}:${dto.consultationId ?? ''}:${sessionId}`;
+    return typeof meta?.sessionId === 'string' && meta.sessionId ? meta.sessionId : null;
   }
 
   private buildTranscriptIdempotencyKey(tenantId: string, idempotencyKey: string): string {
@@ -415,8 +419,17 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     // type-only guard let the first of those suppress the aggregate — and
     // with it `TranscriptionCreated`, the sole trigger for harness note
     // generation. See `transcript-provenance.ts`.
+    //
+    // TASK-1001 wave 4 (OD-14) — and keyed on the STT SESSION when the caller names one. A resumed
+    // recording is a new session on the same consultation; keying on the consultation alone dropped
+    // every resumed session's transcript AND its `TranscriptionCreated`, so the final note could never
+    // cover what was said after a resume. An aggregate without a session stamp (written before this
+    // change) blocks only a caller that also names no session.
+    const sttSessionId = this.streamingSessionIdOf(dto);
     const existing = await this.contextItemRepository.findTranscripts(consultationId);
-    const existingAggregate = existing.find((item) => isSttAggregateTranscript(item));
+    const existingAggregate = existing.find(
+      (item) => isSttAggregateTranscript(item) && (sttSessionId === null || (item.metaData as Record<string, unknown> | undefined)?.sttSessionId === sttSessionId),
+    );
     if (existingAggregate) {
       return { contextItemId: existingAggregate.id };
     }
@@ -429,7 +442,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       content: dto.transcriptText,
     });
 
-    contextItem.metaData = { subType: STT_AGGREGATE_SUBTYPE };
+    contextItem.metaData = sttSessionId === null ? { subType: STT_AGGREGATE_SUBTYPE } : { subType: STT_AGGREGATE_SUBTYPE, sttSessionId };
 
     // Encrypt the transcript text into `encryptedContent` before
     // persistence — the plaintext `content` column was dropped by the PHI

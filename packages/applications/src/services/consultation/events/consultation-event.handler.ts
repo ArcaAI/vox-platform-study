@@ -19,11 +19,19 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { ConsultationRepository, ContextItemRepository, DnaWritingStyleReportRepository } from '@arcaai/domains';
+import {
+  ConsultationRepository,
+  ConsultationStatus,
+  ContextItemRepository,
+  ContextItemType,
+  ContextItemVersionRepository,
+  DnaWritingStyleReportRepository,
+} from '@arcaai/domains';
 import { ConfigResolver } from '../../config-resolver';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { validateRedactionRuleSet } from '../../dna-writing-style/redaction-rules';
-import { createWorkerSession } from '../../../common';
+import { createWorkerSession, isSttAggregateTranscript } from '../../../common';
+import { HARNESS_DRAFT_SUBTYPE } from '../harness/harness-draft.constants';
 import { IActiveUserContext } from '../../../interfaces';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import {
@@ -70,6 +78,9 @@ export class ConsultationEventHandler {
     // the harness starts with NO redaction rules (safe no-op).
     @Optional() @Inject(DnaWritingStyleReportRepository) private readonly dnaReportRepository?: DnaWritingStyleReportRepository,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-1001 wave 4 (OD-14, D-4) — reads whether the harness draft carries a clinician sign-off.
+    // Optional + trailing like every dependency above; absent ⇒ only the consultation status speaks.
+    @Optional() @Inject(ContextItemVersionRepository) private readonly contextItemVersionRepository?: ContextItemVersionRepository,
   ) {
     this.logger.log('ConsultationEventHandler initialized — auto-pipeline enabled');
   }
@@ -119,6 +130,44 @@ export class ConsultationEventHandler {
       });
 
       try {
+        // TASK-1001 wave 4 (OD-14; owner decisions D-3/D-4) — a RESUMED recording. Its session's
+        // aggregate transcript lands on a consultation whose first draft's document run is parked at
+        // the clinician gate, so a plain start is a no-op and the final note would never see what was
+        // said after the resume. Decided BEFORE the auto-summary gate on purpose: this path continues
+        // a note the harness has already written, it does not start a new one.
+        const resumed = await this.resumedSessionPlan(consultationId, contextItemId);
+        if (resumed?.kind === 'signed') {
+          this.logger.log({
+            message: 'Resumed recording transcript on a SIGNED note — not re-finalised (a signed note is never replaced)',
+            consultationId,
+            contextItemId,
+            correlationId,
+          });
+          return;
+        }
+        if (resumed?.kind === 'supersede') {
+          const redactionRules = await this.resolveRedactionRulesForHarness(consultationId, tenantId);
+          const decision = await this.noteGenerationService.generate(GenerationTrigger.TRANSCRIPTION_CREATED, {
+            consultationId,
+            tenantId,
+            userId: payload.userId,
+            correlationId: correlationId ?? payload.jobId,
+            contextItemId,
+            transcriptText: resumed.transcriptText,
+            redactionRules,
+            supersede: true,
+          });
+          this.logger.log({
+            message: 'Resumed recording — re-finalising the note over the whole visit (supersedes the open draft run)',
+            consultationId,
+            contextItemId,
+            sessions: resumed.sessions,
+            generator: decision.generator,
+            correlationId,
+          });
+          return;
+        }
+
         const config = await this.noteGenerationService.resolveConfig(consultationId);
 
         if (!config.autoSummaryEnabled) {
@@ -394,6 +443,56 @@ export class ConsultationEventHandler {
   // =========================================================================
   // DNA redaction rule resolution (harness path)
   // =========================================================================
+
+  /**
+   * TASK-1001 wave 4 (OD-14) — is `contextItemId` a RESUMED session's aggregate transcript on a
+   * consultation that already holds a harness draft, and may that draft be replaced?
+   *
+   *  - `null` — not a resume (the first session), or no draft yet (the first finalize is still
+   *    running and its assemble reloads every transcript): today's path, unchanged.
+   *  - `signed` — the draft carries a clinician sign-off, or the consultation is signed (D-4).
+   *  - `supersede` — re-finalise over EVERY session's aggregate, oldest first.
+   *
+   * Best-effort: a read failure answers `null`, i.e. today's behaviour — never a lost first note.
+   */
+  private async resumedSessionPlan(
+    consultationId: string,
+    contextItemId: string,
+  ): Promise<{ kind: 'signed' } | { kind: 'supersede'; transcriptText: string; sessions: number } | null> {
+    if (!this.contextItemRepository) return null;
+    try {
+      const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
+      const aggregates = transcripts
+        .filter((item) => isSttAggregateTranscript(item))
+        .sort((a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
+      if (!aggregates.some((item) => item.id !== contextItemId)) return null;
+
+      const drafts = (await this.contextItemRepository.findByType(consultationId, ContextItemType.RAW_SUMMARY)).filter(
+        (row) => (row.metaData as Record<string, unknown> | undefined)?.subType === HARNESS_DRAFT_SUBTYPE,
+      );
+      if (drafts.length === 0) return null;
+      const draft = drafts.reduce((a, b) => (new Date(a.createdAt ?? 0).getTime() >= new Date(b.createdAt ?? 0).getTime() ? a : b));
+
+      const consultation = await this.consultationRepository.findById(consultationId);
+      const signedStatuses: readonly string[] = [ConsultationStatus.SIGNED, ConsultationStatus.CLOSED_COMPLETE];
+      const approvals = (await this.contextItemVersionRepository?.getVersionsByChangeReason(draft.id, 'approved')) ?? [];
+      if (signedStatuses.includes(String(consultation?.status)) || approvals.length > 0) return { kind: 'signed' };
+
+      const transcriptText = aggregates
+        .map((item) => item.content?.trim())
+        .filter((text): text is string => !!text)
+        .join('\n\n');
+      return { kind: 'supersede', transcriptText, sessions: aggregates.length };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Resumed-recording check failed — continuing on the first-session path',
+        consultationId,
+        contextItemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
 
   /**
    * Resolve the doctor's DNA redaction/rewrite rules for a harness start.
