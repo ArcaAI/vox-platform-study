@@ -16,6 +16,8 @@ import { NotificationServiceModule } from '../../notification';
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 import { AiProviderConnectionServiceModule } from '../../ai-provider-connection/ai-provider-connection.service.module';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
+import { ConsultationCompletionTimeoutSchedulerModule } from '../completion-timeout/consultation-completion-timeout.scheduler.module';
+import { ConsultationCompletionTimeoutProcessor } from '../completion-timeout/consultation-completion-timeout.processor';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -26,6 +28,8 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
   imports: [
     VisitTypeServiceModule,
     CoreDatabaseModule,
+    // TASK-1001 wave 6 — `persistDraft` starts the completion timeout; the processor below ends it.
+    ConsultationCompletionTimeoutSchedulerModule,
     // ConfigService for the providers below that still read bootstrap env. The warm-start
     // switch is NOT one of them any more: `HarnessPolicy.warmStartEnabled` (via
     // HarnessPolicyServiceModule below) is its only source since TASK-882.
@@ -75,7 +79,7 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     // branch is addressed by a ConsultationJob id the interpreter never has).
     HarnessProgressServiceModule,
   ],
-  providers: [HarnessInternalService, PromptAssemblyService],
+  providers: [HarnessInternalService, PromptAssemblyService, ConsultationCompletionTimeoutProcessor],
   exports: [HarnessInternalService],
 })
 export class HarnessInternalServiceModule {}

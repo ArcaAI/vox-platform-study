@@ -76,6 +76,7 @@ import { IContextService } from '../context/IContextService';
 // The class is the DI token (the service is provided by class); the interface is what is used.
 import { StreamingSessionService } from '../../stt/streaming/streamingSession.service';
 import type { IStreamingSessionService } from '../../stt/streaming/IStreamingSessionService';
+import { ConsultationCompletionTimeoutScheduler } from '../completion-timeout/consultation-completion-timeout.scheduler';
 
 /**
  * TASK-1001 — the stable `code` of the 409 `startRecording` answers when the request names an STT
@@ -218,6 +219,12 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // `recording/start` cannot re-bind the recording to a closed session. Absent ⇒ no check, and a
     // recording binds exactly as it did before.
     @Optional() @Inject(StreamingSessionService) private readonly streamingSessions?: Pick<IStreamingSessionService, 'getSessionStatus'>,
+    // TASK-1001 wave 6 — a recording that (re)starts means the consultation is no longer ready to
+    // complete: its pending completion timeout is cancelled; the next stop's note schedules a fresh
+    // one. Optional + trailing (append-only DI); absent ⇒ the job re-checks the status when it fires.
+    @Optional()
+    @Inject(ConsultationCompletionTimeoutScheduler)
+    private readonly completionTimeout?: ConsultationCompletionTimeoutScheduler,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -2226,6 +2233,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     }
     const expectedVersion = consultation.version;
     const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion);
+    await this.completionTimeout?.cancel(id);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,

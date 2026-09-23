@@ -14,6 +14,7 @@ import { ContextUserIdentityServiceModule } from '../../user/identity';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 import { ContextServiceModule } from '../context/context.service.module';
 import { StreamingSessionServiceModule } from '../../stt/streaming/streamingSession.service.module';
+import { ConsultationCompletionTimeoutSchedulerModule } from '../completion-timeout/consultation-completion-timeout.scheduler.module';
 
 @Module({
   // HarnessAuditServiceModule resolves the @Optional
@@ -24,6 +25,8 @@ import { StreamingSessionServiceModule } from '../../stt/streaming/streamingSess
   imports: [
     CommonServiceModule,
     CoreDatabaseModule,
+    // TASK-1001 wave 6 — `startRecording` cancels the pending completion timeout.
+    ConsultationCompletionTimeoutSchedulerModule,
     EntitlementsServiceModule,
     HarnessAuditServiceModule,
     EffectiveSettingsModule,

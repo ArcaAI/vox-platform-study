@@ -1124,6 +1124,18 @@ describe('HarnessInternalService', () => {
       expect(contextItemRepository.create.mock.calls[0][0]).toBe(entityArg);
     });
 
+    // TASK-1001 wave 6 — persisting the draft is the moment the consultation becomes READY TO
+    // COMPLETE, whichever engine wrote it; the gateway starts the completion timeout here.
+    it('starts the completion timeout for the consultation once the draft is persisted', async () => {
+      const completionTimeout = { schedule: vi.fn().mockResolvedValue(null), cancel: vi.fn() };
+      (service as unknown as { completionTimeout: unknown }).completionTimeout = completionTimeout;
+
+      await service.persistDraft('consultation-1', draftBody());
+
+      expect(completionTimeout.schedule).toHaveBeenCalledWith('tenant-1', 'consultation-1');
+      expect(completionTimeout.schedule.mock.invocationCallOrder[0]).toBeGreaterThan(contextItemRepository.create.mock.invocationCallOrder[0]);
+    });
+
     it('creates RAW_SUMMARY, persists SummaryMeta with scores+citations, sets PENDING_REVIEW, and returns contextItemId', async () => {
       const result = await service.persistDraft('consultation-1', draftBody());
 

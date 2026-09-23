@@ -220,3 +220,36 @@ describe('HarnessInternalService.recordEscalation — terminal gate abandon clos
     expect(wormActions()).toEqual([HarnessAuditAction.GATE_ESCALATED]);
   });
 });
+
+// TASK-1001 wave 6 — the gateway's own completion-timeout job (engine-independent) closes through the
+// same lifecycle writer, and leaves a consultation that is not waiting for approval alone.
+describe('HarnessInternalService.closeOnCompletionTimeout (TASK-1001 wave 6)', () => {
+  it('closes a PENDING_REVIEW consultation unsigned', async () => {
+    const consultation = consultationIn(ConsultationStatus.PENDING_REVIEW);
+    const { service, consultationRepository } = build(consultation);
+
+    await service.closeOnCompletionTimeout(CONSULTATION, TENANT);
+
+    expect(consultation.status).toBe(ConsultationStatus.CLOSED_INCOMPLETE);
+    expect(consultationRepository.updateWithVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([ConsultationStatus.RECORDING, ConsultationStatus.SIGNED, ConsultationStatus.CLOSED_COMPLETE, ConsultationStatus.CLOSED_INCOMPLETE])(
+    'leaves a %s consultation alone',
+    async (status) => {
+      const consultation = consultationIn(status);
+      const { service, consultationRepository } = build(consultation);
+
+      await service.closeOnCompletionTimeout(CONSULTATION, TENANT);
+
+      expect(consultation.status).toBe(status);
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+    },
+  );
+
+  it('a consultation that no longer exists is a no-op, never a throw', async () => {
+    const { service, consultationRepository } = build(consultationIn(ConsultationStatus.PENDING_REVIEW));
+    consultationRepository.findById.mockResolvedValue(null);
+    await expect(service.closeOnCompletionTimeout(CONSULTATION, TENANT)).resolves.toBeUndefined();
+  });
+});

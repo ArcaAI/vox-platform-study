@@ -76,6 +76,7 @@ import type {
   HarnessSegmentCitationRef,
 } from './dto';
 import { HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
+import { ConsultationCompletionTimeoutScheduler } from '../completion-timeout/consultation-completion-timeout.scheduler';
 
 /** TASK-946 OD-4 — what the gateway's run-completion watcher reports about a terminal run. */
 export interface FailGovernedRunInput {
@@ -317,6 +318,12 @@ export class HarnessInternalService extends BaseService {
     // other lifecycle writer. Optional + trailing so every existing positional unit fixture
     // keeps its arity; absent ⇒ the transition still persists and only the broadcast is skipped.
     @Optional() @Inject(EventEmitter2) eventEmitter?: EventEmitter2,
+    // TASK-1001 wave 6 — the consultation COMPLETION TIMEOUT clock: `persistDraft` is the moment a
+    // consultation becomes ready to complete, whichever engine wrote the note. Optional + trailing so
+    // every positional fixture keeps its arity; absent ⇒ no timeout (the idle sweeps remain).
+    @Optional()
+    @Inject(ConsultationCompletionTimeoutScheduler)
+    private readonly completionTimeout?: ConsultationCompletionTimeoutScheduler,
   ) {
     super(eventEmitter as EventEmitter2, cls, ResourceType.Consultation);
   }
@@ -1720,6 +1727,9 @@ export class HarnessInternalService extends BaseService {
           contextItemId,
           gateDecision: isEarly ? null : (dto.gateDecision ?? null),
         });
+        // TASK-1001 wave 6 — READY TO COMPLETE: the final note exists. Start (or, after a resumed
+        // recording's re-finalise, restart) the completion window. Never throws.
+        await this.completionTimeout?.schedule(tenantId, consultationId);
         return { contextItemId };
       }),
     );
@@ -2064,6 +2074,30 @@ export class HarnessInternalService extends BaseService {
         return { recorded: true };
       }),
     );
+  }
+
+  /**
+   * TASK-1001 wave 6 (owner decision 2026-09-23) — the consultation's COMPLETION TIMEOUT fired
+   * (`ConsultationCompletionTimeoutProcessor`): nobody approved the final note within the tenant's
+   * `consultation.session.completionTimeoutMinutes` of it being ready.
+   *
+   * The same lifecycle outcome as a terminal harness gate abandon, through the same writer: still
+   * waiting for approval (`PENDING_REVIEW`, `DRAINING`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT`) ⇒
+   * closed unsigned, `CLOSED_INCOMPLETE`; recording again, signed or already closed ⇒ left alone.
+   * A late approval still signs it. Never throws for a consultation that is gone.
+   */
+  async closeOnCompletionTimeout(consultationId: string, tenantId: string): Promise<void> {
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      this.cls.set('user', createWorkerSession({ tenantId, kind: 'harness-internal' }));
+      const consultation = await this.consultationRepository.findById(consultationId).catch(() => null);
+      if (!consultation) {
+        this.logger.warn({ message: 'Completion timeout fired for a consultation that no longer exists', consultationId });
+        return;
+      }
+      assertEqualTenants(consultation, { tenantId });
+      await this.closeOnTerminalGateAbandon(consultation, { tenantId, reason: 'completion_timeout' } as HarnessEscalationRequest, tenantId);
+    });
   }
 
   /**

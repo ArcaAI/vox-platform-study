@@ -106,6 +106,7 @@ export const DB_BOUND_QUEUES = [
   JobQueue.AuditLog,
   JobQueue.SysEvent,
   JobQueue.MineGateEditExemplar,
+  JobQueue.ConsultationCompletionTimeout,
   JobQueue.SyncTenantDirectoryUsers,
   JobQueue.AiUsageOutboxDrain,
 ] as const;
@@ -174,6 +175,13 @@ export const QUEUE_CONCURRENCY: Record<string, number> = {
    * of sign-offs drains, and small enough that it never competes with `AuditLog`.
    */
   [JobQueue.MineGateEditExemplar]: 2,
+
+  /**
+   * TASK-1001 wave 6 — one short job per consultation that reached "ready to complete" and was not
+   * approved in time: a read and at most one OCC write. Low volume and not latency-critical (the
+   * delay IS the point), so serial is plenty and costs one pool connection.
+   */
+  [JobQueue.ConsultationCompletionTimeout]: 1,
 
   /**
    * MUST stay 1. Per-user JIT provisioning inside a transaction with a seat-

@@ -132,6 +132,20 @@ describe('ConsultationService — recording lifecycle (WS2)', () => {
 
     // TASK-1001 wave 6 (owner) — the clinician resumes a session the completion timeout closed
     // unsigned. A sanctioned edge, so it works with the kill-switch ON as well.
+    // TASK-1001 wave 6 — recording again means the consultation is no longer ready to complete: the
+    // pending completion timeout is cancelled (the next stop's note schedules a fresh one).
+    it('cancels the pending completion timeout when recording (re)starts', async () => {
+      const entity = makeEntity({ status: ConsultationStatus.PENDING_REVIEW });
+      mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+      mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
+      const completionTimeout = { schedule: vi.fn(), cancel: vi.fn().mockResolvedValue(undefined) };
+      (service as unknown as { completionTimeout: unknown }).completionTimeout = completionTimeout;
+
+      await service.startRecording('c-1');
+
+      expect(completionTimeout.cancel).toHaveBeenCalledWith('c-1');
+    });
+
     it('kill-switch ON: a PENDING_REVIEW consultation resumes recording (the clinician adds more)', async () => {
       service = makeService({ resolvePlatform: () => ({ value: true }) });
       const entity = makeEntity({ status: ConsultationStatus.PENDING_REVIEW });

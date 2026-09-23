@@ -41,6 +41,8 @@ describe('BullMQ queue concurrency (TASK-993 lane D)', () => {
         JobQueue.GenerateDnaReport,
         JobQueue.IngestKnowledgeDocument,
         JobQueue.MineGateEditExemplar,
+        // TASK-1001 wave 6 — the consultation completion timeout.
+        JobQueue.ConsultationCompletionTimeout,
         JobQueue.SyncTenantDirectoryUsers,
         JobQueue.DownloadAiModel,
         USAGE_OUTBOX_QUEUE,

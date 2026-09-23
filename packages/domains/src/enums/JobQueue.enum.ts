@@ -30,6 +30,10 @@ export enum JobQueue {
   // Gate-edit mining — derived learning-loop corpus
   MineGateEditExemplar = 'MineGateEditExemplar',
 
+  // TASK-1001 wave 6 — one delayed job per consultation that is ready to complete; closes it
+  // unsigned when nobody approved within the tenant's completion timeout.
+  ConsultationCompletionTimeout = 'ConsultationCompletionTimeout',
+
   // AI usage-ledger outbox drain (promoted from a local
   // constant in packages/applications/src/services/usageLedger/usage-ledger.constants.ts
   // per the outbox-drain handoff).
