@@ -451,6 +451,73 @@ class TestGate:
         assert recorder.escalate_inputs[-1].reason == "gate_sla_abandoned"
         assert recorder.escalate_inputs[0].reason == "gate_sla_breached"
 
+    @pytest.mark.asyncio
+    async def test_policy_gate_max_escalations_overrides_input_default(self):
+        """Owner decision 2026-09-23 (TASK-1001 wave 5): a tenant's
+        ``HarnessPolicy.gateMaxEscalations`` overrides the input-snapshotted bound —
+        here it lowers the bound to 1, so the gate abandons on the FIRST SLA breach
+        even though the input default (3) would still be escalating."""
+        recorder = StubRecorder()
+        config = StubConfig(
+            verdicts=["PASS"],
+            policy=HarnessPolicy(
+                gate_sla_seconds=30.0,
+                gate_escalation_seconds=30.0,
+                gate_max_escalations=1,
+            ),
+        )
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=HarnessGateConfig(max_regen=2, gate_max_escalations=3)),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                # Never approve — the policy's bound of 1 must win, so the workflow
+                # abandons after exactly one escalation (the input's 3 never governs).
+                result = await handle.result()
+
+        assert result.approved is False
+        assert result.escalations == 1
+        assert recorder.calls["escalate_gate"] == 1
+        assert recorder.escalate_inputs[0].reason == "gate_sla_abandoned"
+
+    @pytest.mark.asyncio
+    async def test_policy_null_gate_max_escalations_keeps_input_default(self):
+        """A policy with no opinion (``gateMaxEscalations`` absent -> None) leaves the
+        workflow INPUT's ``gate_max_escalations`` governing the terminal bound."""
+        recorder = StubRecorder()
+        config = StubConfig(
+            verdicts=["PASS"],
+            policy=HarnessPolicy(gate_sla_seconds=30.0, gate_escalation_seconds=30.0),
+        )
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=HarnessGateConfig(max_regen=2, gate_max_escalations=2)),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                result = await handle.result()
+
+        assert result.approved is False
+        assert result.escalations == 2
+        assert recorder.calls["escalate_gate"] == 2
+
 
 class TestInferentialPass:
     """Phase 2: the inferential pass runs after the computational loop settles —
