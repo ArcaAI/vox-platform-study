@@ -338,15 +338,19 @@ export interface STTPluginConfig {
    * @deprecated TASK-865 — removed in R4 (the `AsrPipeline` resource retires
    * under TASK-861). Name the tenant's ASR Agent with {@link STTPluginConfig.agentSlug}
    * — or pass `agentSlug` per capture via `audio.start({ agentSlug })` — or
-   * omit both and let the tenant's assignment cascade decide.
+   * omit both and let the gateway resolve one: the session's governing
+   * workflow first, when it names a speech-to-text agent, otherwise the
+   * tenant admin's assignment (department, then tenant default).
    */
   pipelineId?: string;
   /**
    * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
    * transcribe this session. A lineage key, like `workflowDefinitionSlug` at
-   * `session.open()`. Omit to let the tenant → department assignment cascade
-   * pick. The per-capture `audio.start({ agentSlug })` wins over this value.
-   * Discover the selectable set with `useSelectableAsrAgents()`.
+   * `session.open()`. Omit it and the gateway resolves one: the session's
+   * governing workflow first, when it names a speech-to-text agent, otherwise
+   * the tenant admin's assignment (department, then tenant default). The
+   * per-capture `audio.start({ agentSlug })` wins over this value. Discover
+   * the selectable set with `useSelectableAsrAgents()`.
    */
   agentSlug?: string;
   /** WebSocket URL for backend STT streaming (overrides api.wsUrl + default path) */

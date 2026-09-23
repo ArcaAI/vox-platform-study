@@ -1,5 +1,11 @@
 # @arcaai/vox — Changelog
 
+## Unreleased
+
+### Minor Changes
+
+- `StreamingSessionResponse` gains `agentSource?: 'explicit' | 'workflow' | 'department' | 'tenant'`, naming which rule picked the session's ASR agent. When `agentSlug` is omitted from `audio.start()` / `createSession()`, the active session's governing workflow — when it names a speech-to-text agent — now wins over the tenant admin's assignment (department, then tenant default), which previously was the only rule.
+
 ## 3.6.0
 
 ### Minor Changes

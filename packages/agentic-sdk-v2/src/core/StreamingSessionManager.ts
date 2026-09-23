@@ -156,7 +156,10 @@ export class StreamingSessionManager {
    * pre-agent selector. The body carries AT MOST ONE of them:
    *   - both      → `agentSlug` only, and a warning naming the conflict;
    *   - pipeline  → sent as-is, with a deprecation warning;
-   *   - neither   → nothing; the gateway resolves the tenant default agent.
+   *   - neither   → nothing; the gateway resolves one — the request's
+   *                 `consultationId`'s governing workflow first, when it names
+   *                 a speech-to-text agent, otherwise the tenant admin's
+   *                 assignment (department, then tenant default).
    * Never both silently.
    */
   private normalizeSelection(request: CreateStreamingSessionRequest): CreateStreamingSessionRequest {

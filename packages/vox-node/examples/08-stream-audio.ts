@@ -7,8 +7,10 @@
  * This SDK is a socket CLIENT, not an inference stack: it opens HOPE's STT
  * stream protocol and sends bytes. Which ASR model runs is the tenant's
  * decision — name a published `SPEECH_TO_TEXT` agent with `agentSlug`, or name
- * nothing and let the tenant's assignment cascade choose. Realtime capture from
- * a BROWSER is the browser SDK's job, not this one's.
+ * nothing: the session's `consultationId`, when its governing workflow names
+ * one, wins; otherwise the tenant admin's assignment (department, then tenant
+ * default) decides. Realtime capture from a BROWSER is the browser SDK's job,
+ * not this one's.
  *
  * Audio format: PCM16 little-endian, mono. Anything else is silence to the
  * recognizer.

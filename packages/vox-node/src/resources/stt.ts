@@ -8,10 +8,13 @@
  * ## What "select an ASR" means here
  *
  * It means naming an AGENT, or naming nothing. `agentSlug` is a lineage key for
- * a published `SPEECH_TO_TEXT` agent; omit it and the tenant → department
- * `AgentAssignment` cascade decides. There is no engine, no model id and no
- * pipeline to choose — `pipelineId` survives only as a deprecated alias and is
- * removed in R4.
+ * a published `SPEECH_TO_TEXT` agent. Omit it and the gateway resolves one in
+ * order: a `consultationId` here whose governing workflow names a
+ * speech-to-text agent wins; otherwise the tenant admin's assignment
+ * (department first, then tenant default) decides.
+ * {@link StreamSessionResponse.agentSource} reports which rule won. There is
+ * no engine, no model id and no pipeline to choose — `pipelineId` survives
+ * only as a deprecated alias and is removed in R4.
  *
  * ## Session ownership
  *
@@ -49,8 +52,14 @@ export class SttResource {
    * `POST /api/v1/audio/transcription-jobs/stream/session` — open a session and
    * receive its WS coordinates plus the FIRST single-use ticket.
    *
-   * Send `{}` (the default) to let the tenant's assignment cascade pick the ASR
-   * agent, which is what an integration should normally do.
+   * Send `{}` (the default) to let the gateway pick the ASR agent: the
+   * `consultationId`'s governing workflow first, then the tenant admin's
+   * assignment (department, then tenant default) — see
+   * {@link CreateStreamSessionRequest}. That is what an integration should
+   * normally do. A governing workflow that names an unusable speech-to-text
+   * agent, or more than one, refuses the session with 409
+   * `WORKFLOW_ASR_AGENT_UNAVAILABLE` rather than silently falling through to
+   * the assignment cascade.
    *
    * **Never retried.** The route accepts no idempotency key, so a retried POST
    * would leak a second live session against the tenant's concurrency ceiling —
