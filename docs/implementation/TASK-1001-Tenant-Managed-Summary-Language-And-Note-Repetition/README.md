@@ -448,6 +448,26 @@ orchestrator merged, gated once, verified RED, then destroyed every worktree and
 
 **Pre-existing, out of scope:** `agentPromotion` membership-sync integration file (stale `test` DB credentials in `afterAll`; its tests are skipped) · ALaaS jest suites `sanitization.util`, `create-notification.dto`, `audio.controller`, `medical-summary.controller` fail identically on the pre-merge base (Jest transform config) · `black --check` flags `test_task871_output_gate.py` (TASK-969) · four touched TS files were already unformatted before this ticket.
 
+### Cluster verification — `hope-v2-dev`, 2026-09-23 (build `9e8db9d9`)
+
+**Rollout (OD-13, all 22 at once):** policy template `01a0cc2d-8576-7288-94bd-37067c9fb80b` created and approved on the ArcaAI tenant; all 22 `arcaai-*-summary-*` agents branched, given `fragments: [clinical_note, output_language_policy]`, validated, published and activated through the admin API as `arcaai_admin`. Post-condition: 22 slugs, each exactly one active version, each composite with the policy. Every v1 stays PUBLISHED as the rollback target (`rollout.mjs --rollback`). `arcaai-bren-summary-new-visit` became v3 because of a tester's v2 draft, left untouched. Flush telemetry confirms the live lane ran on the new version: `prompt_fragments: ["clinical_note","output_language_policy"]`.
+
+**`ml-en` accepted:** `open` with `language: "ml-en"` answered 201 on every run.
+
+**Resumed-recording re-runs** (HEME, 107 s Malayalam follow-up recorded → stopped → resumed with a 60 s recap of already-documented content + new speech). Flush telemetry on the RESUME flush — the exact moment the reported defect was produced:
+
+| Run | Penalty | Dropped on resume | Refused rewrites | `repetition_pressure` | Repeats in final note | Malayalam in note |
+|---|---|---|---|---|---|---|
+| `01a0cc2d-f82f` | 0 | 3 + 2 | 3 + 2 | 2 flushes | 0 | 0 |
+| `01a0cc3d-885b` (A/B baseline) | 0 | 7 | 3 + 3 | 2 flushes | 0 | 0 |
+| `01a0cc45-04c8` (A/B penalty) | **0.3** | 12 + 12 | 4 + 4 | 2 flushes | 0 | 0 |
+
+Every run: the resume made the model restate what it had already written, and the sentence dedup dropped those sentences where the old whole-addition check would have appended them. Section revisions stayed 1–2 at 125–425 bytes, against the reported note's `plan_of_care` at revision 6 / 2685 bytes.
+
+**Penalty A/B — decision: keep `frequencyPenalty` at 0** (restored, settings `version 2`). The penalty arm needed the dedup MORE (25 dropped vs 7) and distorted a clinical value: the recording's pain score "from eight to two" became "reduced to about two-thirds of its previous level" (the penalty-0 run rendered it correctly). n=1 per arm, but the mechanism agrees: this defect is the model re-copying the PRIOR NOTE from its prompt across turns, which a completion-side frequency penalty does not target. The plumbing remains for in-generation loops.
+
+**New finding — cross-section repeats.** One run filed the same paragraph (lecture content with no clinical home) into both `family_history` and `diagnosis`, as a near-duplicate ("many of the symptoms" / "symptoms"). Per-section dedup cannot see it by design. Owner decision 2026-09-23: FLAG, NEVER DROP — lane X1 (HOPE `duplicate` annotation kind, near-duplicate matching with digit tokens required to match exactly) and lane X2 (ALaaS renders it on the routed clinical screen; the export stays byte-identical).
+
 ### Follow-ups — recorded, not in this ticket
 1. **Direct summary-generation path** (`summary.service`, used by the SDK's `summary.generateSummary`, not by ALaaS): the output language reaches the prompt only as a variable; a department body that says "write in the conversation language" can still win there. Append the same named-override sentence at assembly.
 2. **SYSTEM `general-medicine-summarization`** says "in the conversation language ({{language}})", and on the durable/harness lane no runtime step overrides it. Non-ArcaAI tenants inherit it. Needs a harness-side default step or the template to bind `{{language_name}}`.
@@ -455,7 +475,7 @@ orchestrator merged, gated once, verified RED, then destroyed every worktree and
 4. The composite-selection answer on the graph lane asks the PRIMARY candidate only; a fallback agent with a different instruction could get a mismatched language step.
 5. Admin-console playground picker still labelled "Summary language" — it now sets the SOURCE language.
 6. ALaaS races A1 could not close from the client (an old start's `recording/start` landing last; `note.final` from a finalizing old runtime) and the fake adapter that masked S-1.
-7. A penalty VALUE on the cluster is a tuning decision to be measured, not assumed: frequency penalties can distort legitimately repeated clinical tokens (units, doses).
+7. ~~Penalty value~~ — measured 2026-09-23: kept at 0 (see Cluster verification).
 
 ## Change History
 
