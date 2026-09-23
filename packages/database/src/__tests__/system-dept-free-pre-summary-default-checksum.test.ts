@@ -38,8 +38,15 @@ import { SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT } from '../prisma/db_main/seed/07d
  * `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT` — a deliberate, reviewed content
  * change. `{current_department}` / `{visit_type}` remain ABSENT (unaffected
  * by this ticket — RF-1's wire-contract split is untouched).
+ *
+ * Updated 2026-09-23 (TASK-1001, owner directive: "all pre-summary and summary
+ * must be in english, therefore, prompt instructions and configuration must be
+ * set to english"): the same English-only block replaced the
+ * `{{context.language_name}}` localization block here as in
+ * `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT`; `language_name` is retained, neutralised.
+ * Previous pin: 076241d02f41cef8cebde7a7e559dfd8b1d802b52b58f127f50f9083514ab898.
  */
-const PINNED_SHA256 = '076241d02f41cef8cebde7a7e559dfd8b1d802b52b58f127f50f9083514ab898';
+const PINNED_SHA256 = '1df4d44694b7ffe3a2defb5516ac425f7ed01c6cdd8f4989127ec0961b588e92';
 
 function sha256Hex(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
@@ -64,6 +71,16 @@ describe('department-free pre-summary fork content drift lock', () => {
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('Department:');
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('Visit Type:');
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('(Latest Dept Note)');
+  });
+
+  // TASK-1001 (owner directive 2026-09-23) — the instruction itself says English.
+  it('instructs English only, and no longer localizes into {{context.language_name}}', () => {
+    expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).toContain('- Language: English (see INSTRUCTIONS).');
+    expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).toContain('**Write the entire pre-summary in English.**');
+    expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('in {{context.language_name}}');
+    expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('into {{context.language_name}}');
+    expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('Parentheses Localization Policy');
+    expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('English words');
   });
 
   // TASK-890 §3.2 — converted to the ONE `{{context.*}}` grammar.

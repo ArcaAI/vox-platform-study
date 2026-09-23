@@ -25,10 +25,16 @@
  * Appended to the regeneration prompt on the one bounded auto-repair retry so the
  * corrective content is identical whether it is resolved from the DB or applied
  * inline on the realtime hot path.
+ *
+ * TASK-1001 (owner directive 2026-09-23: "all pre-summary and summary must be in
+ * english, therefore, prompt instructions and configuration must be set to
+ * english") — the language rule names ENGLISH, whatever language was spoken. It
+ * used to demand "the conversation language" and forbid English words, which
+ * contradicted the English output every summary path now states.
  */
 export const CORRECTIVE_RETRY_INSTRUCTION = `\n\nREVISE STRICTLY:
-- Do NOT use placeholders like 'Not documented' or 'Summary not available' (or their equivalents in the conversation language).
-- Monolingual rule: All headings/labels and descriptive content inside values MUST be in the conversation language. Do NOT include any English words inside values.
+- Do NOT use placeholders like 'Not documented' or 'Summary not available'.
+- Monolingual rule: All headings/labels and descriptive content inside values MUST be in English, whatever language was spoken.
 - Respond ONLY with a valid single JSON object (no pre/post text).
 - Provide a best‑effort concise summary from available information.`;
 

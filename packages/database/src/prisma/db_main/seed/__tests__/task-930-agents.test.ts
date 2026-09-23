@@ -169,7 +169,6 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
       for (const name of [
         'visit_type',
         'current_department',
-        'language',
         'safe_age',
         'safe_dob',
         'safe_gender',
@@ -179,6 +178,9 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
       ]) {
         expect(instruction.variables[name]).toEqual({ path: `trigger.context.${name}` });
       }
+      // TASK-1001 (owner directive 2026-09-23) — the body writes English and reads no `language`,
+      // so the agent no longer binds the consultation's SOURCE tag.
+      expect(instruction.variables.language).toBeUndefined();
       // the document template SHAPES ride as constants (no document-template binding kind exists)
       expect(instruction.variables.new_visit_headings.value).toContain('Presenting Complaints');
       expect(instruction.variables.revisit_headings.value).toContain('Last Visit Complaints');
