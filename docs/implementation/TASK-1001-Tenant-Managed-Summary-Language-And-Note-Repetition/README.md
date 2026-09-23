@@ -677,8 +677,12 @@ engineers.
 | D-10 | ALaaS Save runs the full HOPE finish (update → approve → close); a `CLOSED_INCOMPLETE` consultation is not "already finished" for it. |
 | D-11 | The guide lives in the repo only (`docs/guides/consultation-session-lifecycle.md`). |
 
-**How it works.** The timer is the harness clinician gate (`HarnessDocWorkflow`), a durable Temporal timer
-started when the final-note draft is persisted. `HarnessPolicyService.getEffectivePolicy` derives it from the
+**How it works.** The clock is held by the GATEWAY (corrected after the first cluster check — see below):
+`HarnessInternalService.persistDraft`, which every engine's draft goes through, schedules one delayed
+`ConsultationCompletionTimeout` BullMQ job per consultation for the tenant's timeout; a re-finalise replaces it,
+`startRecording` cancels it, and `closeOnCompletionTimeout` closes the consultation unsigned only while it is still
+waiting. As a second, idempotent bound the harness clinician gate (`HarnessDocWorkflow`) is also derived from the
+setting — a durable Temporal timer started when its draft is persisted. `HarnessPolicyService.getEffectivePolicy` derives it from the
 setting on every return path (`gateSlaSeconds = minutes × 60`, `gateMaxEscalations = 1`), as it already serves
 `tokenBudgetPerRun`; a lookup failure serves the 5-minute code default, never the row's 24 h. The harness takes
 its abandon bound from the policy (`gate_max_escalations`, clamped ≥ 1; `None` ⇒ the input default — replay-safe,
@@ -696,6 +700,14 @@ used to 409). A resumed recording's stop re-finalises (wave 4) and starts a fres
 | `484aa8429` | the setting + effective-policy overlay; `gateMaxEscalations` storage withdrawn; console shows the timeout read-only on Harness Policy, pointing to Settings; API artifacts |
 | `329f4a416` | Consultation Session Lifecycle guide; client guide ch. 7 table; tenant admin guide section |
 | ALaaS `e02e390`, `219bf2a` | Save → HOPE finish; `CLOSED_INCOMPLETE` not terminal for finish |
+
+**First cluster check (build `b1e25a31`, consultation `01a0cecb`) FAILED, and why:** ArcaAI consultations are
+documented by the tenant workflow `arcaai-gen-consultation` v3 — the graph writes the draft and parks on its own
+`core.humanReview` node (`ReviewGate`, authored `timeoutSeconds`), which ALaaS auto-releases on the clinician's
+behalf ("OD-14, 2026-09-09: every ArcaAI review gate is released on the clinician's behalf"). No `HarnessDocWorkflow`
+ran on the first recording, so the setting-derived harness gate never started and the note sat in `PENDING_REVIEW`.
+The earlier replay passed only because re-finalise goes through the harness gate. Fix `0e8807640`: the gateway-held
+clock above.
 
 Superseded in passing: the J1 commit `8f3b7b989` (column + migration + console knob) — its storage is removed
 again by `484aa8429` before any push, so no environment ever held the column.

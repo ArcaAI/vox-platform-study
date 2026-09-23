@@ -89,6 +89,16 @@ That is the moment the consultation becomes _ready to complete_. You can observe
 - `summaries.latest(id)` starts returning the note (before that it is a 404);
 - the harness progress stream (`streams.harnessProgress`) sends its terminal event.
 
+The window is held by HOPE's gateway, so it applies to every consultation whichever engine wrote
+the note — the tenant's own workflow graph or HOPE's default documentation workflow. Starting to
+record again **cancels** it (the consultation is no longer ready to complete); the note produced when
+that recording stops starts a new one.
+
+> A tenant workflow can also contain its own **review** step (a `core.humanReview` node). That is a
+> step of the workflow, released by `hope.workflows.reviews.decide` (ALaaS releases it automatically
+> on the clinician's behalf); it is not the clinician's sign-off and does not stop the completion
+> window. The sign-off is `summaries.approve`.
+
 ### What ends it
 
 | Outcome       | Trigger                                                                                                                                               | Result                                                              |
