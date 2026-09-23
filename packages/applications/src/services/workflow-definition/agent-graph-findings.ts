@@ -123,8 +123,10 @@ function producedFields(facts: GraphAgentFacts | undefined): readonly string[] |
 
 function describeFeeder(nodeId: string, facts: GraphAgentFacts, produced: readonly string[]): string {
   const fields = produced.length > 0 ? produced.join(', ') : 'no fields';
+  // The ASR message names what an admin recognises (a transcript); the accepted field list also
+  // carries runtime metadata (`pipelineId`, `jobId`, …) that would only confuse the fix hint.
   return facts.task === SPEECH_TO_TEXT
-    ? `\`${nodeId}\`, a speech-to-text agent (\`${facts.slug}\`) that produces only ${fields}`
+    ? `\`${nodeId}\`, a speech-to-text agent (\`${facts.slug}\`) that produces only transcript, segments, audio`
     : `\`${nodeId}\`, agent \`${facts.slug}\`, whose output schema declares only ${fields}`;
 }
 

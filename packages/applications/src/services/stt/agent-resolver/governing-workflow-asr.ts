@@ -104,11 +104,11 @@ export function workflowAgentNodes(compiled: unknown): WorkflowAgentNodeRef[] {
       if (!isRecord(node) || node.type !== 'core.agent' || !isRecord(node.config)) continue;
       const ref = readAgentRef(node.config);
       // Discriminates the slug form; a task-only ref names no agent and so states no ASR opinion.
-      if (!ref?.slug) continue;
+      if (!ref || !ref.slug) continue;
       refs.push({
         nodeId: typeof node.nodeId === 'string' ? node.nodeId : '',
         slug: ref.slug,
-        ...(ref.versionNumber !== undefined ? { versionNumber: ref.versionNumber } : {}),
+        ...('versionNumber' in ref && ref.versionNumber !== undefined ? { versionNumber: ref.versionNumber } : {}),
       });
     }
   }

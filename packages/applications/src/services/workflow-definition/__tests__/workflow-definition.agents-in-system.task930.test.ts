@@ -202,13 +202,22 @@ describe('WorkflowDefinitionService.promoteToSystem — the graph’s agents mus
   });
 
   it('leaves a graph with no core.agent node exactly as it was — the gate reads nothing to check', async () => {
+    // The promoted SYSTEM row carries the source's graph, so both sides are agent-free here — the
+    // publish gate's per-node agent reads (TASK-1002) then have nothing to read either.
+    const noAgentGraph = { version: 1, nodes: [{ id: 'n1', type: 'core.output', config: {} }], edges: [] };
     mockRepository.findPublishedBySlug.mockImplementation((tenantId: string) =>
       Promise.resolve(
         tenantId === GLOBAL
-          ? entity({ graph: { version: 1, nodes: [{ id: 'n1', type: 'core.output', config: {} }], edges: [] } })
-          : entity({ id: 'sys-v1', tenantId: SYSTEM_TENANT_ID, versionNumber: 1, isActive: true }),
+          ? entity({ graph: noAgentGraph })
+          : entity({ id: 'sys-v1', tenantId: SYSTEM_TENANT_ID, versionNumber: 1, isActive: true, graph: noAgentGraph }),
       ),
     );
+    const draft = entity({ id: 'sys-draft-1', tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.DRAFT, isActive: false, graph: noAgentGraph });
+    mockRepository.findById.mockResolvedValue(draft);
+    mockAgentPromotion.promote.mockImplementation(async (_dto: unknown, options?: { afterWrite?: (d: unknown) => Promise<void> }) => {
+      await options?.afterWrite?.(draft);
+      return { id: 'promo-1', targetDefinitionVersionId: 'sys-draft-1', warnings: [] };
+    });
 
     await service.promoteToSystem({ sourceDefinitionSlug: 'general-medicine-consultation' });
 
