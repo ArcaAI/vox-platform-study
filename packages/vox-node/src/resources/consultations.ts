@@ -279,9 +279,9 @@ export class ConsultationsResource {
    * `POST /api/v1/consultations/:id/close` — the bookend to {@link open}
    * (TASK-972).
    *
-   * Legal only from `SIGNED` or `TIMED_OUT` — `summaries.approve()` must
-   * succeed first on a `PENDING_REVIEW` consultation; a state with no direct
-   * edge to a closed state is a 409. The gateway compare-and-sets against
+   * Legal from `SIGNED` (→ `CLOSED_COMPLETE`) or `TIMED_OUT` (→ `CLOSED_INCOMPLETE`) —
+   * `summaries.approve()` must succeed first on a `PENDING_REVIEW` consultation; an already-closed
+   * consultation is returned unchanged; any other state is a 409. The gateway compare-and-sets against
    * the consultation row's `_version` — see {@link CloseConsultationOptions.ifMatch}.
    *
    * `close` is real and OCC-guarded at the gateway today — the **browser**

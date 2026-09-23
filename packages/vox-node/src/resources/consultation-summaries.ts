@@ -223,8 +223,9 @@ export class ConsultationSummariesResource {
    * {@link ConsultationSummariesResource.generate}/`list`/`latest` return as
    * `id`), **not** the consultation id.
    *
-   * Reachable from `PENDING_REVIEW` only; a summary that is not pending
-   * review is a 409. The gateway compare-and-sets against the summary row's
+   * Accepted while the consultation is `PENDING_REVIEW`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT` or
+   * `CLOSED_INCOMPLETE` — a consultation the completion timeout closed unsigned still signs
+   * (TASK-1001); any other state is a 409. The gateway compare-and-sets against the summary row's
    * `_version` — see {@link ApproveSummaryOptions.ifMatch}.
    */
   async approve(
