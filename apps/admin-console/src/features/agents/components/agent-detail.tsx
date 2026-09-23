@@ -351,6 +351,12 @@ export function AgentLineageDrawer({
   );
   const isTenantDefault = !!lineage && tenantRow?.agentSlug === lineage.slug;
   const taskAssignments = useMemo(() => (assignments.data ?? []).filter((row) => !lineage || row.task === lineage.task), [assignments.data, lineage]);
+  // TASK-1002 OD-3 (3a) — an ASR agent is resolved by request → workflow → department → tenant
+  // default; selector tags are never consulted on that path, so a tag-qualified assignment row
+  // can never be selected. The tag input stays usable (existing rows still manage), but writing
+  // a NEW tagged row for this task is blocked, and every tagged row already on file is flagged.
+  const isSpeechToText = lineage?.task === 'SPEECH_TO_TEXT';
+  const sttTagsBlocked = isSpeechToText && selectorTags.length > 0;
 
   async function run<T>(action: () => Promise<T>, success: string, fallback: string): Promise<T | null> {
     try {
@@ -917,6 +923,11 @@ export function AgentLineageDrawer({
                           {(row.selectorTags ?? []).length ? (
                             <span className="text-muted-foreground font-mono text-xs">{(row.selectorTags ?? []).join(' + ')}</span>
                           ) : null}
+                          {isSpeechToText && (row.selectorTags ?? []).length ? (
+                            <Badge variant="destructive" aria-label="Never used — speech-to-text assignments ignore tags">
+                              Never used
+                            </Badge>
+                          ) : null}
                         </span>
                         {hidden ? null : (
                           <Button
@@ -949,11 +960,24 @@ export function AgentLineageDrawer({
                       <span className="font-medium">{selectorTags.length ? `Assignment for ${selectorTags.join(' + ')}` : `Tenant default for ${AGENT_TASK_LABEL[lineage.task].toLowerCase()}`}</span>
                       <span className="text-muted-foreground text-xs">{tenantRow ? `Currently ${tenantRow.agentSlug}` : 'Not assigned yet'}</span>
                     </div>
-                    <Button type="button" variant="outline" size="sm" disabled={isTenantDefault || upsertAssignment.isPending || !!selectorProblem} onClick={() => void setAsTenantDefault()}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isTenantDefault || upsertAssignment.isPending || !!selectorProblem || sttTagsBlocked}
+                      aria-describedby={sttTagsBlocked ? 'assignment-selector-stt-warning' : undefined}
+                      onClick={() => void setAsTenantDefault()}
+                    >
                       {upsertAssignment.isPending ? <Spinner /> : null}
                       {isTenantDefault ? 'Is assigned' : selectorTags.length ? 'Assign for these tags' : 'Set as tenant default'}
                     </Button>
                   </div>
+                  {isSpeechToText ? (
+                    <p id="assignment-selector-stt-warning" className="text-warning-strong flex items-start gap-2 text-sm">
+                      <IconAlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+                      Speech-to-text assignments ignore tags. Assign this agent to a department instead; a tagged row will never be used.
+                    </p>
+                  ) : null}
                   <div className="flex flex-col gap-1">
                     <Label htmlFor="assignment-selector">Tag selector (optional)</Label>
                     <Input
@@ -961,7 +985,7 @@ export function AgentLineageDrawer({
                       value={selectorInput}
                       onChange={(event) => setSelectorInput(event.target.value)}
                       placeholder="specialty:rheumatology, lang:ml"
-                      aria-describedby="assignment-selector-hint"
+                      aria-describedby={isSpeechToText ? 'assignment-selector-hint assignment-selector-stt-warning' : 'assignment-selector-hint'}
                       aria-invalid={!!selectorProblem}
                     />
                     <p id="assignment-selector-hint" className={selectorProblem ? 'text-destructive text-sm' : 'text-muted-foreground text-xs'}>
