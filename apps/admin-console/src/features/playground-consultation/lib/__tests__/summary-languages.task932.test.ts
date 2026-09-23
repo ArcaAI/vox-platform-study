@@ -1,14 +1,15 @@
 /**
- * TASK-932 §3.7 — the summary-language options are DERIVED, not listed.
+ * TASK-932 §3.7 — the consultation-language options are DERIVED, not listed. (TASK-1001 OD-12:
+ * the chosen tag is the SPOKEN/source language; it never chooses the note's language.)
  *
- * The languages a clinician can be documented in are the languages the platform transcribes, and
+ * The languages a consultation can be declared in are the languages the platform transcribes, and
  * the backend already publishes that set. A list written in the console would be a second,
  * drifting statement of the platform's language support — the "no hardcoded configuration" rule,
  * applied to a picker.
  *
- * The distinction the derivation has to preserve is the one the whole field exists for: a MODE
- * (`ml-en`, code-switch) says what the microphone may hear; a TAG (`ml`) says what the note is
- * written in. This reads the catalogue for its LANGUAGES and discards the rest of it.
+ * The distinction the derivation has to preserve: a MODE (`ml-en`, code-switch) says how the
+ * microphone decodes a capture; a TAG (`ml`) declares the consultation's spoken language. This
+ * reads the catalogue for its LANGUAGES and discards the rest of it.
  */
 import { describe, expect, it } from 'vitest';
 

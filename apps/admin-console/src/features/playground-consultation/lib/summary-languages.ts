@@ -1,28 +1,33 @@
 /**
- * TASK-932 §3.7 — the SUMMARY-LANGUAGE options, derived from the STT language catalogue.
+ * TASK-932 §3.7 — the consultation-language options, derived from the STT language catalogue.
+ *
+ * TASK-1001 OD-12: the tag chosen here is the consultation's SPOKEN (source) language, sent as
+ * `session.open({ language })`. It never chooses the language the note is written in — that is the
+ * tenant's output-language policy, else the platform default (English). The module and function
+ * names keep their historical "summary" wording.
  *
  * ## Why derived and not listed
  *
- * The languages a clinician can be documented in are the languages this platform actually
+ * The languages a consultation can be declared in are the languages this platform actually
  * transcribes, and the backend already publishes that set: `GET
  * /audio/transcription-jobs/language-modes` returns each mode with its `primaryLanguage` and
  * `secondaryLanguage` as ISO 639-1 tags. Writing a list here instead would be a second, drifting
  * statement of the platform's language support living in a console — the "no hardcoded
  * configuration" rule, applied to a picker.
  *
- * The two axes stay separate, which is the point of the whole field: a MODE (`ml-en`,
- * code-switch) says what the microphone may hear; a TAG (`ml`) says what the note is written in.
+ * The two controls stay separate: a MODE (`ml-en`, code-switch) says how the microphone decodes
+ * this capture; a TAG (`ml`) declares the consultation's spoken language on the record.
  * This function reads the mode catalogue for its LANGUAGES and discards everything else about it.
  *
  * ## The fallback, and why it is a UI fallback and not a default
  *
- * When the catalogue cannot be read the picker still has to offer something, or a clinician who
- * needs a Malayalam note is silently unable to ask for one. The fallback is the pair the
+ * When the catalogue cannot be read the picker still has to offer something, or a clinician
+ * running a Malayalam consultation is silently unable to declare it. The fallback is the pair the
  * platform's own ASR agent declares (`ASR_PARAMETERS.decoding.languageMode: 'ml-en'`), and it
- * changes no default: "Not declared" remains the selected value, and undeclared is not English.
+ * changes no default: "Not declared" remains the selected value.
  */
 
-/** One offerable summary language. */
+/** One offerable spoken language. */
 export interface SummaryLanguageOption {
   /** The BCP-47 tag sent as `session.open({ language })`. */
   tag: string;

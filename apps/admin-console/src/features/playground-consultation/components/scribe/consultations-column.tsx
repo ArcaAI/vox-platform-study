@@ -61,7 +61,7 @@ export interface ConsultationsColumnProps {
    * Open (get-or-create) a consultation for a patient id.
    *
    * ONE options object rather than a positional tail: TASK-932 adds three more axes (visit type,
-   * summary language, the prior record) and a five-argument call whose middle three are all
+   * the spoken language, the prior record) and a five-argument call whose middle three are all
    * optional strings is a bug waiting for someone to transpose two of them.
  */
   onOpenPatient: (patientId: string, options: OpenConsultationOptions) => Promise<void>;
@@ -95,7 +95,8 @@ export interface ConsultationsColumnProps {
   selectedDepartmentId?: string;
   onDepartmentChange?: (id: string) => void;
   /**
-   * TASK-932 §3.7 — the BCP-47 tags the summary-language picker offers.
+   * TASK-932 §3.7 — the BCP-47 tags the spoken-language picker offers (TASK-1001 OD-12: the
+   * consultation's SOURCE language; the prop keeps its historical "summary" name).
    *
    * Supplied by the screen from the STT language catalogue rather than hardcoded here, so the
    * console offers what the platform actually transcribes. `undefined` keeps the control off, the
@@ -106,7 +107,7 @@ export interface ConsultationsColumnProps {
   onSummaryLanguageChange?: (tag: string) => void;
 }
 
-/** One offerable summary language: the tag that is sent, and the name a clinician reads. */
+/** One offerable spoken language: the tag that is sent, and the name a clinician reads. */
 export interface SummaryLanguageOption {
   tag: string;
   label: string;
@@ -170,9 +171,8 @@ const ASSIGNED_WORKFLOW = '__assigned__';
 const NO_PARENT = '__none__';
 
 /**
- * Sentinel for "declare no summary language", which is the DEFAULT and is not English: the
- * tenant's own agent body decides, exactly as it did before the field existed (TASK-891 OD-1's
- * posture, applied to the output axis).
+ * Sentinel for "declare no spoken language", the DEFAULT: nothing is sent and the consultation
+ * records no source language. It has no bearing on the note's language (TASK-1001 OD-12).
  */
 const UNDECLARED_LANGUAGE = '__undeclared__';
 
@@ -544,24 +544,27 @@ export function ConsultationsColumn({
               ) : null}
             </fieldset>
 
-            {/* TASK-932 §3.7 — SUMMARY LANGUAGE. A different axis from the STT language mode in
-                the footer: that one governs what the microphone may HEAR and stays undeclared by
-                default (TASK-891 OD-1); this governs what the NOTE is written in. */}
+            {/* TASK-932 §3.7, relabelled by TASK-1001 OD-12 — the consultation's SPOKEN (source)
+                language, sent as `open({ language })`. It never chooses what the NOTE is written in:
+                that is the tenant's output-language policy, else the platform default (English).
+                The footer's STT language mode is the capture-time decoding control. The prop and
+                id names still say "summary" (historical); the control, its values and its payload
+                are unchanged. */}
             {summaryLanguages === undefined ? null : (
               <>
-                <Label htmlFor="scribe-summary-language">Summary language</Label>
+                <Label htmlFor="scribe-summary-language">Spoken language</Label>
                 <Select
                   value={selectedSummaryLanguage || UNDECLARED_LANGUAGE}
                   onValueChange={(next) => onSummaryLanguageChange?.(next === UNDECLARED_LANGUAGE ? '' : next)}
                 >
-                  <SelectTrigger id="scribe-summary-language" className="w-full">
+                  <SelectTrigger id="scribe-summary-language" aria-describedby="scribe-summary-language-help" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={UNDECLARED_LANGUAGE}>
                       <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate">Not declared</span>
-                        <span className="text-muted-foreground truncate text-xs">the agent decides</span>
+                        <span className="text-muted-foreground truncate text-xs">none recorded</span>
                       </span>
                     </SelectItem>
                     {summaryLanguages.map((language) => (
@@ -574,8 +577,8 @@ export function ConsultationsColumn({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-muted-foreground text-xs">
-                  The language the generated notes are written in. Independent of the transcription language.
+                <p id="scribe-summary-language-help" className="text-muted-foreground text-xs">
+                  The language spoken in this consultation. The note&apos;s language is set by the tenant&apos;s output-language policy (English by default), not by this.
                 </p>
               </>
             )}

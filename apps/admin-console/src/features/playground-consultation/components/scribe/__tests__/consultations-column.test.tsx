@@ -394,8 +394,9 @@ describe('ConsultationsColumn — workflow selection on open', () => {
 });
 
 /**
- * TASK-932 §3.7 — the three axes the New form gained: visit type, summary language, and the
- * prior record.
+ * TASK-932 §3.7 — the three axes the New form gained: visit type, the consultation's language,
+ * and the prior record. TASK-1001 OD-12 relabelled the language control: it declares the SPOKEN
+ * (source) language, and never the language the note is written in.
  *
  * The one worth stating plainly is VISIT TYPE, because there is no visit-type field on the wire.
  * The platform derives it from `parentConsultationId` (`SummaryService.visitType`,
@@ -403,7 +404,7 @@ describe('ConsultationsColumn — workflow selection on open', () => {
  * so the control writes a PARENT. Picking "Revisit" without naming one therefore opens a new
  * visit — and the form says so rather than showing a badge that disagrees with what was sent.
  */
-describe('ConsultationsColumn — TASK-932 visit type, summary language and the prior record', () => {
+describe('ConsultationsColumn — TASK-932 visit type, spoken language and the prior record', () => {
   const LANGUAGES = [
     { tag: 'en', label: 'English' },
     { tag: 'ml', label: 'Malayalam' },
@@ -453,19 +454,38 @@ describe('ConsultationsColumn — TASK-932 visit type, summary language and the 
     expect(screen.getByText(/open as a new visit/i)).toBeTruthy();
   });
 
-  it('renders the summary-language picker with the offered tags, and DEFAULTS to undeclared', async () => {
+  it('renders the spoken-language picker with the offered tags, and DEFAULTS to undeclared', async () => {
     const { props } = setup({ summaryLanguages: LANGUAGES, selectedSummaryLanguage: '', onSummaryLanguageChange: vi.fn() });
     openNewForm();
 
-    expect(screen.getByLabelText(/summary language/i)).toBeTruthy();
+    expect(screen.getByLabelText(/spoken language/i)).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-900' } });
     fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
 
-    // Undeclared is NOT English: nothing is sent, and the agent's own body decides.
+    // Undeclared sends nothing — the consultation records no source language.
     await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-900', {}));
   });
 
-  it('sends the declared summary language when one is chosen', async () => {
+  /**
+   * TASK-1001 OD-12 — `language` is the SOURCE language (what is spoken and transcribed). The note is
+   * written in the tenant's output-language policy, English by default, and never in this value. A
+   * control labelled "Summary language" told a clinician the opposite of what the platform does.
+   */
+  it('labels the control as the SPOKEN language and says the note language comes from the tenant policy', () => {
+    setup({ summaryLanguages: LANGUAGES, selectedSummaryLanguage: '', onSummaryLanguageChange: vi.fn() });
+    openNewForm();
+
+    expect(screen.queryByText(/summary language/i)).toBeNull();
+    expect(screen.queryByText(/language the generated notes are written in/i)).toBeNull();
+    expect(screen.getByText(/output-language policy/i)).toBeTruthy();
+    // The helper is wired to the control, so a screen reader hears it with the label.
+    const picker = screen.getByLabelText(/spoken language/i);
+    const describedBy = picker.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)?.textContent).toMatch(/output-language policy/i);
+  });
+
+  it('sends the declared spoken language when one is chosen', async () => {
     const { props } = setup({ summaryLanguages: LANGUAGES, selectedSummaryLanguage: 'ml', onSummaryLanguageChange: vi.fn() });
     openNewForm();
     fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-900' } });
@@ -477,7 +497,7 @@ describe('ConsultationsColumn — TASK-932 visit type, summary language and the 
   it('hides the language picker entirely when the caller wires none', () => {
     setup();
     openNewForm();
-    expect(screen.queryByLabelText(/summary language/i)).toBeNull();
+    expect(screen.queryByLabelText(/spoken language/i)).toBeNull();
   });
 
   it('sends the pasted prior record so the warm start has something to read', async () => {

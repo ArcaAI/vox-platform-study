@@ -1,6 +1,7 @@
 /**
- * TASK-932 §3.7 — the two things `POST /consultations/open` learned: a SUMMARY LANGUAGE, and a
- * VISIT TYPE that is observable.
+ * TASK-932 §3.7 — the two things `POST /consultations/open` learned: a declared LANGUAGE, and a
+ * VISIT TYPE that is observable. (TASK-932 called it the "summary language"; TASK-1001 OD-12
+ * settled that it is the SOURCE language — see below. Test titles keep the historical wording.)
  *
  * ## Why `language` is a field and not an option bag entry
  *
@@ -11,12 +12,16 @@
  *
  * ## The distinction being pinned
  *
- * `language` is the language the NOTE is written in. It is NOT the STT language mode, which
+ * `language` is the consultation's SOURCE language — what is spoken — stored as declared and
+ * echoed back (`en`, `ml`, `en-IN`, or a code-switch mode such as `ml-en`). It is NOT the language
+ * the NOTE is written in: owner decision TASK-1001 OD-12 — the pre-summary and the summary are
+ * written in the tenant's output-language policy, or the platform default (English) when there is
+ * none, and never in this value. Nor is it the STT language mode that decodes a capture, which
  * TASK-891 OD-1 settled separately ("the code-switch is always enabled … to use a specific
  * language, the SDK or end-user must declare the language code") and which travels on
- * `audio.start({ languageMode })`. Absent means UNDECLARED, and undeclared is not English — the
- * tenant's own agent body decides, exactly as before the field existed. A test that asserted a
- * default of `en` would be asserting the opposite of the owner's decision.
+ * `audio.start({ languageMode })`. Absent means UNDECLARED: no source tag is invented, so a test
+ * that asserted a default of `en` on this field would be asserting something the platform does not
+ * do.
  *
  * ## Visit type
  *
@@ -89,8 +94,8 @@ test.describe('TASK-932 — POST /consultations/open declares the summary langua
   });
 
   test('a malformed tag is REFUSED at the edge rather than reaching a prompt as prose', async ({ request }) => {
-    // The value that actually arrives by accident is a display name. Rendered into
-    // `{{language_name}}` it would read as an instruction; refusing it is the honest answer.
+    // The value that actually arrives by accident is a display name. Stored as the source tag it
+    // would be prose where a code belongs; refusing it at the edge is the honest answer.
     for (const language of ['English please', 'e', '../etc', 'toolongtobealanguagetag-really-quite-long-indeed']) {
       const res = await open(request, token, { patientId: uniquePatientId('bad'), language });
       expect(res.status(), `\`${language}\` must be refused`).toBe(400);
@@ -120,7 +125,7 @@ test.describe('TASK-932 — visit type is derived from the parent, and is observ
     });
 
     expect(followUp.parentConsultationId, 'the parent is what makes this a revisit').toBe(first.id);
-    // A revisit declares its OWN summary language rather than inheriting one from a visit that
+    // A revisit declares its OWN (source) language rather than inheriting one from a visit that
     // may be weeks old.
     expect(followUp.language).toBe('ml');
 

@@ -950,6 +950,11 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`code: STT_SESSION_NOT_ACTIVE` — the `sessionId` names an STT streaming session that is no longer live (`sttSessionStatus`: `closed`, `finalizing`, `rejected`, or `unknown` when the STT service does not know it). Typically a stale, superseded start that landed after a newer one; nothing was written, and the recording was not bound to it. Create a new STT streaming session and start with that. Also returned for an illegal state transition from the consultation`s current status.',
+  })
   // Consent & ABAC. Capture start is one of the four gated
   // stages named in flow.
   @RequiresConsent(ConsentPurpose.AI_DOCUMENTATION)
@@ -960,7 +965,9 @@ export class ConsultationController {
     // the service-account id here would put a machine into the clinician's live-documentation
     // session (and, through it, into the DNA-style and prompt resolution that reads it).
     const owned = await this.verifyConsultationOwnership(id);
-    const consultation = await this.consultationService.startRecording(id);
+    // TASK-1001 — the service refuses (409 STT_SESSION_NOT_ACTIVE) a session that is no longer
+    // live, BEFORE the live session below is started or re-bound to it.
+    const consultation = await this.consultationService.startRecording(id, { sttSessionId: request?.sessionId });
     this.liveDocumentationService.start({
       consultationId: id,
       tenantId: this.cls.get('tenantId') ?? '',
