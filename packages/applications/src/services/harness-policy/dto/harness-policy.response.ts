@@ -88,6 +88,15 @@ export class HarnessPolicyResponse {
   @ApiProperty({ description: 'Clinician-gate escalation in seconds.', example: 43200 })
   gateEscalationSeconds: number;
 
+  @ApiPropertyOptional({
+    description:
+      'SLA breaches the clinician gate records before it abandons — terminal: the consultation is closed unsigned (a late sign-off still signs). 1 = the first breach of gateSlaSeconds closes it. null = no opinion (tenant inherits SYSTEM; absent on both, the harness bound of 3 applies).',
+    nullable: true,
+    minimum: 1,
+    example: 1,
+  })
+  gateMaxEscalations: number | null;
+
   @ApiPropertyOptional({ description: 'Allow-listed tool ids the loop may call (null = all tools allowed).', type: [String], nullable: true })
   toolAllowlist: string[] | null;
 

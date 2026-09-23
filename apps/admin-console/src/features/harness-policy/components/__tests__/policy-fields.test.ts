@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { POLICY_FIELD_GROUPS, POLICY_FIELDS, TENANT_LOCKED_POLICY_KEYS } from '../policy-fields';
+import { buildSparsePatch, fieldDisplayValue, POLICY_FIELD_GROUPS, POLICY_FIELDS, TENANT_LOCKED_POLICY_KEYS } from '../policy-fields';
 
 const RETIRED_KEYS = ['safetyProvider', 'safetyModel', 'textProvider', 'textModel'];
 
@@ -37,5 +37,26 @@ describe('policy field descriptors after the column drops', () => {
   it('keeps the Generation group, reduced to the regen budget', () => {
     const group = POLICY_FIELD_GROUPS.find((candidate) => candidate.title === 'Generation');
     expect(group?.fields.map((field) => field.key)).toEqual(['maxRegen']);
+  });
+});
+
+// TASK-1001 wave 5 — the clinician gate's abandon bound ("close after N SLA breaches"). Nullable:
+// an empty input clears it back to "no opinion" (inherit SYSTEM), never to 0.
+describe('gate abandon bound (gateMaxEscalations)', () => {
+  const base = { gateMaxEscalations: 1 } as unknown as Parameters<typeof buildSparsePatch>[0];
+
+  it('renders in the Clinician gate group after the two timers', () => {
+    const group = POLICY_FIELD_GROUPS.find((candidate) => candidate.title === 'Clinician gate');
+    expect(group?.fields.map((field) => field.key)).toEqual(['gateSlaSeconds', 'gateEscalationSeconds', 'gateMaxEscalations']);
+  });
+
+  it('an emptied input sends null (inherit), a number sends the number', () => {
+    expect(buildSparsePatch(base, { gateMaxEscalations: '' })).toEqual({ gateMaxEscalations: null });
+    expect(buildSparsePatch(base, { gateMaxEscalations: '2' })).toEqual({ gateMaxEscalations: 2 });
+  });
+
+  it('shows an unset bound as a dash', () => {
+    const field = POLICY_FIELDS.find((candidate) => candidate.key === 'gateMaxEscalations')!;
+    expect(fieldDisplayValue(field, { gateMaxEscalations: null } as never)).toBe('—');
   });
 });

@@ -33,6 +33,7 @@ function policy(overrides: Partial<HarnessPolicy> = {}): HarnessPolicy {
     maxRegen: 2,
     gateSlaSeconds: 86400,
     gateEscalationSeconds: 43200,
+    gateMaxEscalations: null,
     toolAllowlist: null,
     updatedAt: '2026-07-01T00:00:00.000Z',
     version: 7,
@@ -275,7 +276,7 @@ describe('HarnessPolicyScreen', () => {
    * super-admin-only server-side. The TENANT tab must render them disabled
    * with a visible reason rather than letting a tenant admin flip a switch
    * that 403s on save (rule 11 §5: a disabled control needs a visible reason).
- */
+   */
   describe('E3-L1 locked safety/PHI switches', () => {
     // Every key the TENANT route rejects must render read-only.
     // Mirrors TENANT_LOCKED_POLICY_KEYS in ../policy-fields.ts, by rendered

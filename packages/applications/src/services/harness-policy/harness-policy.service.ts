@@ -167,6 +167,8 @@ export interface HarnessPolicyKnobs {
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
+  /** TASK-1001 wave 5 — SLA breaches before the clinician gate abandons; null ⇒ the harness's own bound. */
+  gateMaxEscalations: number | null;
   toolAllowlist: string[] | null;
   // agentic loop knobs (null ⇒ harness env/code default).
   optimisticDeliveryEnabled: boolean | null;
@@ -239,7 +241,9 @@ const SUPER_ADMIN_ONLY_POLICY_KEYS = [
  * revoking a platform default it had been inheriting. The tenant would have
  * disabled MCP by editing a faithfulness threshold.
  */
-const TENANT_INHERITS_ON_NULL_KEYS = ['mcpToolsEnabled'] as const satisfies readonly (keyof HarnessPolicyKnobs)[];
+// TASK-1001 wave 5 — `gateMaxEscalations` joins for the same reason: a tenant row created by an unrelated
+// edit must not freeze the gate's abandon bound at "no opinion" while SYSTEM says close after one breach.
+const TENANT_INHERITS_ON_NULL_KEYS = ['mcpToolsEnabled', 'gateMaxEscalations'] as const satisfies readonly (keyof HarnessPolicyKnobs)[];
 
 const KNOB_KEYS = Object.keys(HARNESS_POLICY_DEFAULTS) as (keyof HarnessPolicyKnobs)[];
 
@@ -257,6 +261,7 @@ function entityToKnobs(e: HarnessPolicyEntity): HarnessPolicyKnobs {
     maxRegen: e.maxRegen,
     gateSlaSeconds: e.gateSlaSeconds,
     gateEscalationSeconds: e.gateEscalationSeconds,
+    gateMaxEscalations: e.gateMaxEscalations ?? null,
     toolAllowlist: (e.toolAllowlist as string[] | null) ?? null,
     optimisticDeliveryEnabled: e.optimisticDeliveryEnabled ?? null,
     atomicFactEnabled: e.atomicFactEnabled ?? null,

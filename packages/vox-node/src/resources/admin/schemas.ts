@@ -2977,6 +2977,8 @@ export interface HarnessPolicyResponse {
   entityFaithfulnessThreshold: number;
   /** Clinician-gate escalation in seconds. */
   gateEscalationSeconds: number;
+  /** SLA breaches the clinician gate records before it abandons — terminal: the consultation is closed unsigned (a late sign-off still signs). 1 = the first breach of gateSlaSeconds closes it. null = no opinion (tenant inherits SYSTEM; absent on both, the harness bound of 3 applies). */
+  gateMaxEscalations?: number | null;
   /** Clinician-gate SLA in seconds. */
   gateSlaSeconds: number;
   /** Groundedness (inferential) sensor threshold (fraction in [0,1]). */
@@ -6294,6 +6296,8 @@ export interface UpdateHarnessPolicyRequest {
   expectedVersion?: number;
   /** Clinician-gate escalation in seconds (non-negative integer). */
   gateEscalationSeconds?: number;
+  /** SLA breaches before the clinician gate abandons and the consultation is closed unsigned (integer ≥ 1; null = no opinion — inherit SYSTEM / the harness bound). */
+  gateMaxEscalations?: number | null;
   /** Clinician-gate SLA in seconds (non-negative integer). */
   gateSlaSeconds?: number;
   /** Groundedness (inferential) sensor threshold (fraction in [0,1]). */

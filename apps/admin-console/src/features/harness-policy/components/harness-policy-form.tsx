@@ -42,13 +42,14 @@ function FieldEditor({
       </div>
     );
   }
-  if (field.kind === 'fraction' || field.kind === 'integer') {
+  if (field.kind === 'fraction' || field.kind === 'integer' || field.kind === 'nullable-integer') {
     return (
       <Input
         id={id}
         type="number"
         inputMode="decimal"
-        min={0}
+        min={field.kind === 'nullable-integer' ? 1 : 0}
+        placeholder={field.kind === 'nullable-integer' ? 'inherit' : undefined}
         max={field.kind === 'fraction' ? 1 : undefined}
         step={field.kind === 'fraction' ? 0.05 : 1}
         value={String(value)}
