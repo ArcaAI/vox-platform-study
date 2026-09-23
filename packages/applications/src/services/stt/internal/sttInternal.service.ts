@@ -428,7 +428,9 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     const sttSessionId = this.streamingSessionIdOf(dto);
     const existing = await this.contextItemRepository.findTranscripts(consultationId);
     const existingAggregate = existing.find(
-      (item) => isSttAggregateTranscript(item) && (sttSessionId === null || (item.metaData as Record<string, unknown> | undefined)?.sttSessionId === sttSessionId),
+      (item) =>
+        isSttAggregateTranscript(item) &&
+        (sttSessionId === null || (item.metaData as Record<string, unknown> | undefined)?.sttSessionId === sttSessionId),
     );
     if (existingAggregate) {
       return { contextItemId: existingAggregate.id };
