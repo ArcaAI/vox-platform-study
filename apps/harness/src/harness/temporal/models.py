@@ -368,6 +368,12 @@ class HarnessPolicy(BaseModel):
     token_budget_per_run: int | None = None
     ner_priors_enabled: bool | None = None
     max_edit_reruns: int | None = None
+    # TERMINAL gate-abandon bound, policy-driven (owner decision 2026-09-23,
+    # TASK-1001 wave 5). NULLABLE by design, like ``max_edit_reruns``: ``None`` ⇒ no
+    # opinion ⇒ the input/code default (``HarnessGateConfig.gate_max_escalations``,
+    # 3) governs. A non-null value overrides that input default in the workflow's
+    # gate merge — see the merge comment in workflows.py.
+    gate_max_escalations: int | None = None
     regen_feedback_enabled: bool | None = None
     # MCP external-tools master switch. NULLABLE by design:
     # ``None`` ⇒ OFF (the whole MCP tool path stays dormant), so the feature is off
@@ -434,6 +440,9 @@ class HarnessPolicy(BaseModel):
             token_budget_per_run=data.get("tokenBudgetPerRun"),
             ner_priors_enabled=data.get("nerPriorsEnabled"),
             max_edit_reruns=data.get("maxEditReruns"),
+            # nullable pass-through (like ``max_edit_reruns``): None ⇒ the
+            # input/code default governs the terminal gate-abandon bound.
+            gate_max_escalations=data.get("gateMaxEscalations"),
             regen_feedback_enabled=data.get("regenFeedbackEnabled"),
             # nullable MCP master switch (None ⇒ OFF) + the enabled
             # SYSTEM-shared registry rows. ``mcpServers`` is the registry snapshot the

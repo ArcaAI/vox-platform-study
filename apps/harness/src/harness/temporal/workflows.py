@@ -533,10 +533,21 @@ class HarnessDocWorkflow:
                     if policy.optimistic_delivery_enabled is not None
                     else inp.gate.optimistic_delivery_enabled
                 ),
-                # The gate/edit safety bounds are loop-safety knobs.
-                # ``gate_max_escalations`` stays input-only; lets the policy
-                # override ``max_edit_reruns`` when non-null (else the input default).
-                gate_max_escalations=inp.gate.gate_max_escalations,
+                # The gate/edit safety bounds are loop-safety knobs. Owner
+                # decision 2026-09-23 (TASK-1001 wave 5): ``gate_max_escalations`` is now
+                # policy-overridable, per-field fallthrough like ``max_edit_reruns`` (policy
+                # value wins when non-null, else the input-snapshotted default governs).
+                # Clamped to >= 1 so a misconfigured policy (0 or negative) can never
+                # produce an unbounded/zero-escalation loop; the clamp is a pure function
+                # of deterministic workflow state ⇒ replay-safe, no new command.
+                gate_max_escalations=max(
+                    1,
+                    (
+                        policy.gate_max_escalations
+                        if policy.gate_max_escalations is not None
+                        else inp.gate.gate_max_escalations
+                    ),
+                ),
                 max_edit_reruns=(
                     policy.max_edit_reruns
                     if policy.max_edit_reruns is not None
@@ -1612,7 +1623,8 @@ class HarnessDocWorkflow:
         # ``gate_escalation_seconds`` with no max). Patch-gated — a history predating this
         # bound has no marker, so ``workflow.patched`` returns False on replay and the legacy
         # infinite-wait command sequence is preserved. The ``gate_max_escalations`` value
-        # comes from the deterministic input, so the bound is replay-stable.
+        # is resolved once above (policy override or the input default, clamped >= 1)
+        # from deterministic workflow state, so the bound is replay-stable.
         gate_terminal = workflow.patched("task-458-gate-terminal-abandon")
         while self._approval is None:
             try:

@@ -83,6 +83,27 @@ class TestFromApiMapsAgenticKnobs:
         assert policy.regen_feedback_enabled is None
 
 
+class TestFromApiMapsGateMaxEscalations:
+    """Owner decision 2026-09-23 (TASK-1001 wave 5): ``gateMaxEscalations`` becomes a
+    policy-driven knob, like ``maxEditReruns`` — nullable pass-through, ``None`` ⇒ the
+    input/code default (3) governs the terminal gate-abandon bound."""
+
+    def test_maps_gate_max_escalations(self):
+        policy = HarnessPolicy.from_api({"gateMaxEscalations": 1})
+        assert policy.gate_max_escalations == 1
+
+    def test_missing_gate_max_escalations_maps_to_none(self):
+        policy = HarnessPolicy.from_api({})
+        assert policy.gate_max_escalations is None
+
+    def test_explicit_null_gate_max_escalations_maps_to_none(self):
+        policy = HarnessPolicy.from_api({"gateMaxEscalations": None})
+        assert policy.gate_max_escalations is None
+
+    def test_model_default_is_none(self):
+        assert HarnessPolicy().gate_max_escalations is None
+
+
 class TestResolveFlagFallthrough:
     """The per-field fallthrough the activities use to prefer policy over env."""
 
