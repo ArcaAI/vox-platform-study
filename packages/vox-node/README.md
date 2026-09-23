@@ -193,8 +193,10 @@ journey, including the finish (below), is `examples/06-realtime-consultation.ts`
 single-use ticket (never a credential), reconnects resume via `{ type: 'resume', sessionId,
 lastSeq }`, and it needs `globalThis.WebSocket` (Node 22+) — no polyfill is bundled, so its
 absence throws `SocketUnavailableError` rather than silently degrading. Which ASR runs is
-`agentSlug` (a published `SPEECH_TO_TEXT` agent) or nothing, letting the tenant's assignment
-cascade decide.
+`agentSlug` (a published `SPEECH_TO_TEXT` agent) or nothing: omitted, the session's
+`consultationId` — when its governing workflow names a speech-to-text agent — wins, otherwise the
+tenant admin's assignment (department first, then tenant default) decides. The resolved choice is
+echoed on `agentSource`.
 
 `hope.tenants.contextSchema()` returns the tenant's pinned context-schema bundle; pin its
 `contextSchemaVersionId` on every `addContext` call so a mid-run publish never silently changes

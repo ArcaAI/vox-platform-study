@@ -365,9 +365,11 @@ export function useArcaAudio() {
       serverPipelineRef.current = null;
 
       // WHAT transcribes (TASK-865): an ASR Agent slug, or the deprecated
-      // pipeline id, or nothing (the tenant assignment cascade decides). The
-      // two are never forwarded together — `agentSlug` wins and the conflict
-      // is warned about, never dropped silently.
+      // pipeline id, or nothing — the governing workflow's speech-to-text
+      // agent wins when one is named, otherwise the tenant admin's assignment
+      // (department, then tenant default) decides. The two selectors are
+      // never forwarded together — `agentSlug` wins and the conflict is
+      // warned about, never dropped silently.
       const requestedAgentSlug = options?.agentSlug || undefined;
       let requestedPipelineId = options?.pipelineId || undefined;
       if (requestedAgentSlug && requestedPipelineId) {

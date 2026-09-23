@@ -68,8 +68,9 @@ Microphone -> @arcaai/room AudioTrack (native getUserMedia constraints stay on)
 
 Selection is by `agentSlug`, never a pipeline/engine/model id: `useSelectableAsrAgents()` reads
 `GET /agents?task=SPEECH_TO_TEXT` (`null` = unresolved, `[]` = none published), and
-`audio.start({ agentSlug })` names the tenant's ASR Agent; omit it and the tenant -> department
-`AgentAssignment` cascade decides. `AudioStartOptions.pipelineId` is DEPRECATED (removed in R4):
+`audio.start({ agentSlug })` names the tenant's ASR Agent; omit it and the gateway resolves one —
+the active session's governing workflow first, when it names a speech-to-text agent, otherwise the
+tenant admin's assignment (department, then tenant default). `AudioStartOptions.pipelineId` is DEPRECATED (removed in R4):
 still forwarded with a warning, and when both are passed `agentSlug` wins and `pipelineId` is
 dropped with a warning, never silently.
 

@@ -5,6 +5,7 @@
 ### Minor Changes
 
 - The live note flags a paragraph repeated across sections, says when the model is repeating itself, and `recording.start` refuses a closed STT session. Adds the `duplicate` section annotation kind (with `duplicateOf` / `duplicateOfTitle`), the `repetition_pressure` degrade code, a 409 `STT_SESSION_NOT_ACTIVE` on `recording.start`, and a clarified contract: a consultation's `language` is its SOURCE language and never the language of the note (HOPE TASK-1001).
+- `StreamSessionResponse` gains `agentSource?: 'explicit' | 'workflow' | 'department' | 'tenant'`, naming which rule picked the session's ASR agent. When `agentSlug` is omitted from `createStreamSession`, a `consultationId` whose governing workflow names a speech-to-text agent now wins over the tenant admin's assignment (department, then tenant default) — previously the assignment cascade was the only rule. A governing workflow naming an unusable or more than one speech-to-text agent refuses the session with 409 `WORKFLOW_ASR_AGENT_UNAVAILABLE`.
 
 ### Details (Unreleased)
 

@@ -372,10 +372,12 @@ export interface AudioStartOptions {
   /**
    * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
    * transcribe this capture — a lineage key, like `workflowDefinitionSlug` at
-   * `session.open()`. Omit to let the tenant → department assignment cascade
-   * decide. The client never names a pipeline, an engine, a model or a VAD:
-   * what transcribes is a server-side decision. Discover the selectable set
-   * with `useSelectableAsrAgents()`.
+   * `session.open()`. Omit it and the gateway resolves one: the active
+   * session's governing workflow, when it names a speech-to-text agent, wins;
+   * otherwise the tenant admin's assignment (department first, then tenant
+   * default) decides. The client never names a pipeline, an engine, a model
+   * or a VAD: what transcribes is a server-side decision. Discover the
+   * selectable set with `useSelectableAsrAgents()`.
    */
   agentSlug?: string;
   /**

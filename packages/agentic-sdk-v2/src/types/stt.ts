@@ -85,7 +85,9 @@ export interface CreateStreamingSessionRequest {
   /**
    * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
    * transcribe this session (TASK-865). Optional: absent ⇒ the gateway
-   * resolves the tenant → department default.
+   * resolves one in order — if `consultationId` is present, the speech-to-text
+   * agent named in that consultation's governing workflow; otherwise the
+   * tenant admin's assignment (department first, then tenant default).
    */
   agentSlug?: string;
   /** Optional consultation to link the session to */
@@ -205,6 +207,13 @@ export interface StreamingSessionResponse {
    * voice-enrollment-status round-trip.
    */
   voiceProfileSeeded?: boolean;
+  /**
+   * Which rule resolved this session's ASR agent: `'explicit'` (the request
+   * named `agentSlug`), `'workflow'` (the consultation's governing workflow
+   * named it), or `'department'` / `'tenant'` (the tenant admin's assignment,
+   * department first). Absent against a gateway that predates the field.
+   */
+  agentSource?: 'explicit' | 'workflow' | 'department' | 'tenant';
 }
 
 /**

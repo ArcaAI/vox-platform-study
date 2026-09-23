@@ -22,13 +22,18 @@
  * Body of `POST /api/v1/audio/transcription-jobs/stream/session`.
  *
  * Every field is optional. Sending `{}` is the intended default: the gateway
- * resolves the tenant's ASSIGNED ASR agent through the department → tenant
- * cascade, which is the selection HOPE wants an integration to use.
+ * resolves the ASR agent in order — (1) {@link agentSlug}, when named; (2) if
+ * {@link consultationId} is present, the speech-to-text agent named in that
+ * consultation's governing workflow; (3) the tenant admin's assignment
+ * (department first, then tenant default). Which rule won is echoed on
+ * {@link StreamSessionResponse.agentSource}.
  */
 export interface CreateStreamSessionRequest {
   /**
    * Lineage slug of a published `SPEECH_TO_TEXT` agent visible to the tenant.
-   * Omit it to use the assigned agent. A slug the tenant cannot see is a 404.
+   * Omit it and the gateway resolves one — see the resolution order on
+   * {@link CreateStreamSessionRequest} above. A slug the tenant cannot see is
+   * a 404.
    *
    * This — never a model id, never an engine name — is how ASR is selected.
    */
@@ -38,7 +43,12 @@ export interface CreateStreamSessionRequest {
    * `Deprecation` headers. Name {@link agentSlug} instead, or send neither.
    */
   pipelineId?: string;
-  /** Link the session to a consultation, so its transcript lands on that record. */
+  /**
+   * Link the session to a consultation, so its transcript lands on that
+   * record. When {@link agentSlug} is absent, a governing workflow that names
+   * a speech-to-text agent decides this session's ASR too — see the
+   * resolution order on {@link CreateStreamSessionRequest} above.
+   */
   consultationId?: string;
   /** Hz. Default 16000 server-side; the negotiated value is what the gateway forwards to STT. */
   sampleRate?: number;
@@ -103,6 +113,13 @@ export interface StreamSessionResponse {
   /** The agent the session resolved to — echoed even when the caller named none. */
   agentSlug?: string;
   agentVersionId?: string;
+  /**
+   * Which rule picked {@link agentSlug}: `'explicit'` (the request named it),
+   * `'workflow'` (the consultation's governing workflow named it),
+   * `'department'` or `'tenant'` (the tenant admin's assignment, department
+   * first). Absent against a gateway that predates the field.
+   */
+  agentSource?: 'explicit' | 'workflow' | 'department' | 'tenant';
   /** Engine live at create; `'fallback'` when the primary could not load or was not asked for. */
   activeEngine?: 'primary' | 'fallback';
   voiceProfileSeeded?: boolean;
