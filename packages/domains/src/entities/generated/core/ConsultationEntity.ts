@@ -25,7 +25,12 @@ import * as Entities from '../../../entities';
 // unclosable (its only edge was `OPEN → PRIMED`), so neither a manual close
 // nor a timeout sweep could ever clear a consultation abandoned before
 // recording. Added `OPEN → CLOSED_INCOMPLETE`.
-// 23 legal, non-reflexive transitions — is the source.
+// (continued, 2026-09-23) — TASK-1001 wave 5, owner decisions D-6/D-7: a
+// terminal harness gate abandon closes the consultation `CLOSED_INCOMPLETE`
+// (closed, unsigned), and a clinician who approves AFTER that still signs —
+// "the clock never signs, a human still can", exactly as `TIMED_OUT → SIGNED`.
+// Added `CLOSED_INCOMPLETE → SIGNED` (then `SIGNED → CLOSED_COMPLETE` as usual).
+// 24 legal, non-reflexive transitions — is the source.
 const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySet<Enums.ConsultationStatus>> = new Map<
   Enums.ConsultationStatus,
   ReadonlySet<Enums.ConsultationStatus>
@@ -79,7 +84,7 @@ const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySe
   [Enums.ConsultationStatus.CLOSED_COMPLETE, new Set([Enums.ConsultationStatus.REOPENED])],
   [
     Enums.ConsultationStatus.CLOSED_INCOMPLETE,
-    new Set([Enums.ConsultationStatus.REOPENED]),
+    new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.SIGNED]),
   ],
   [
     Enums.ConsultationStatus.REOPENED,

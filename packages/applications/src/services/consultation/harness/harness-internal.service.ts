@@ -120,6 +120,19 @@ const GOVERNED_RUN_OBSERVABLE_STATUSES: readonly ConsultationStatus[] = [
   ConsultationStatus.PRIMED,
 ];
 
+/**
+ * TASK-1001 wave 5 (D-6) — the states a TERMINAL review-gate abandon closes `CLOSED_INCOMPLETE`.
+ * An EXPLICIT list rather than `canTransitionTo(CLOSED_INCOMPLETE)`: `OPEN`, `PRIMED` and
+ * `REOPENED` also reach that state legally, but a consultation there is one a clinician is
+ * actively working on, not one sitting at a review gate. See `closeOnTerminalGateAbandon`.
+ */
+const GATE_ABANDON_CLOSABLE_STATUSES: ReadonlySet<ConsultationStatus> = new Set([
+  ConsultationStatus.PENDING_REVIEW,
+  ConsultationStatus.TIMED_OUT,
+  ConsultationStatus.DRAINING,
+  ConsultationStatus.DRAFT_PENDING_SENSORS,
+]);
+
 /** The live-summary channel every realtime consultation frame shares. */
 const LIVE_SUMMARY_CHANNEL_PREFIX = 'consultation:live-summary:';
 
@@ -2041,55 +2054,127 @@ export class HarnessInternalService extends BaseService {
           createdBy: null,
         });
 
-        // the TERMINAL abandon additionally drives the session
-        // state machine: PENDING_REVIEW -> TIMED_OUT
-        // A distinct, persisted, visibly-unsigned TIMED_OUT + notification
-        // (INV-177/181/182/183/413/255/147) — "the clock never signs".
+        // the TERMINAL abandon additionally drives the session state machine.
         // Non-terminal GATE_ESCALATED writes no status, as before.
         if (isTerminalAbandon && consultation) {
-          const expectedConsultationVersion = consultation.version;
-          const applied = this.applyTransition(consultation, ConsultationStatus.TIMED_OUT, 'system', 'recordEscalation');
-          if (applied) {
-            await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
-
-            await this.harnessAuditService.append({
-              tenantId,
-              consultationId,
-              action: HarnessAuditAction.SESSION_TIMED_OUT,
-              modelName: 'session-lifecycle',
-              modelVersion: 'v1',
-              sensorScores: { reason: dto.reason, jobId: dto.jobId ?? null },
-              citations: [],
-              createdBy: null,
-            });
-
-            // Best-effort: a notification-send failure must never roll back
-            // the (already persisted + WORM-recorded) TIMED_OUT transition —
-            // the WORM row is the record, the notification is the courtesy.
-            try {
-              await this.notificationService?.create({
-                title: 'Consultation gate timed out',
-                message: `Consultation ${consultationId} reached its review SLA with no clinician sign-off and is now TIMED_OUT. A later approval still commits.`,
-                type: NotificationType.ACTION,
-                read: false,
-                targetUserId: consultation.doctorId,
-                tenantId,
-                data: { consultationId, action: 'SESSION_TIMED_OUT' },
-              } as CreateNotificationRequest);
-            } catch (error) {
-              this.logger.warn({
-                message: 'TIMED_OUT clinician notification failed (best-effort, transition not rolled back)',
-                consultationId,
-                error: error instanceof Error ? error.message : String(error),
-              });
-            }
-          }
+          await this.closeOnTerminalGateAbandon(consultation, dto, tenantId);
         }
 
         this.logger.log({ message: 'Harness gate escalation recorded', consultationId, reason: dto.reason, action });
         return { recorded: true };
       }),
     );
+  }
+
+  /**
+   * TASK-1001 wave 5, owner decision D-6 (2026-09-23) — "time out and close the consultation
+   * session if there is no approval signal". The gate SLA itself is configuration (the harness
+   * policy); this is what the gateway does once the harness reports the TERMINAL abandon.
+   *
+   *   1. `PENDING_REVIEW → TIMED_OUT`, unchanged in meaning: the WORM `SESSION_TIMED_OUT` row and
+   *      the clinician notification ("the clock never signs", INV-177/181/182/183/413/255/147).
+   *   2. `→ CLOSED_INCOMPLETE` — closed, unsigned — from `TIMED_OUT` (step 1's result, or a sweep
+   *      that got there first), `DRAINING` (a draft persisted WITHOUT advancing the lifecycle, see
+   *      `persistDraft`) or `DRAFT_PENDING_SENSORS`. The note is not lost: D-7 made
+   *      `CLOSED_INCOMPLETE → SIGNED` legal, so a clinician's late Save still signs it through
+   *      `SummaryService.approveSummary`, and the close after that is the ordinary
+   *      `SIGNED → CLOSED_COMPLETE`.
+   *
+   * Both edges run through `transitionTo` (the single writer of `status`, matrix-validated) and
+   * land in ONE compare-and-set of the final state, so there is no window in which a persisted
+   * `TIMED_OUT` waits on a second write that might never come.
+   *
+   * Every other state is a logged no-op SUCCESS, never a 409: `RECORDING` means the clinician
+   * resumed and must not be closed under them; `SIGNED` / `CLOSED_COMPLETE` / `REOPENED` have
+   * moved past this gate; and `CLOSED_INCOMPLETE` is a retried terminal escalation, which used to
+   * answer `Illegal consultation state transition: CLOSED_INCOMPLETE → TIMED_OUT`.
+   */
+  private async closeOnTerminalGateAbandon(consultation: ConsultationEntity, dto: HarnessEscalationRequest, tenantId: string): Promise<void> {
+    const consultationId = consultation.id;
+    if (!GATE_ABANDON_CLOSABLE_STATUSES.has(consultation.status)) {
+      this.logger.log({
+        message: 'Terminal gate abandon on a consultation that is not awaiting review — status left unchanged',
+        consultationId,
+        currentStatus: consultation.status,
+        reason: dto.reason,
+      });
+      return;
+    }
+
+    const expectedConsultationVersion = consultation.version;
+    const timedOut =
+      consultation.status === ConsultationStatus.PENDING_REVIEW &&
+      this.applyTransition(consultation, ConsultationStatus.TIMED_OUT, 'system', 'recordEscalation');
+    this.applyTransition(consultation, ConsultationStatus.CLOSED_INCOMPLETE, 'system', 'recordEscalation');
+    await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
+
+    if (timedOut) {
+      await this.harnessAuditService.append({
+        tenantId,
+        consultationId,
+        action: HarnessAuditAction.SESSION_TIMED_OUT,
+        modelName: 'session-lifecycle',
+        modelVersion: 'v1',
+        sensorScores: { reason: dto.reason, jobId: dto.jobId ?? null },
+        citations: [],
+        createdBy: null,
+      });
+
+      // Best-effort: a notification-send failure must never roll back
+      // the (already persisted + WORM-recorded) transition —
+      // the WORM row is the record, the notification is the courtesy.
+      try {
+        await this.notificationService?.create({
+          title: 'Consultation gate timed out',
+          message: `Consultation ${consultationId} reached its review SLA with no clinician sign-off and was closed unsigned. A later approval still signs it.`,
+          type: NotificationType.ACTION,
+          read: false,
+          targetUserId: consultation.doctorId,
+          tenantId,
+          data: { consultationId, action: 'SESSION_TIMED_OUT' },
+        } as CreateNotificationRequest);
+      } catch (error) {
+        this.logger.warn({
+          message: 'TIMED_OUT clinician notification failed (best-effort, transition not rolled back)',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (this.eventEmitter) {
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: consultationId,
+        data: { action: 'recordEscalation', status: ConsultationStatus.CLOSED_INCOMPLETE, reason: dto.reason, jobId: dto.jobId ?? null },
+      });
+    }
+
+    // Best-effort, mirroring the timeout sweep and `ConsultationService`'s close: a WORM-append
+    // failure is logged but never rolls back the already-persisted status write.
+    try {
+      await this.harnessAuditService.append({
+        tenantId,
+        consultationId,
+        action: HarnessAuditAction.SESSION_CLOSED_INCOMPLETE,
+        modelName: 'session-lifecycle',
+        modelVersion: 'v1',
+        sensorScores: { reason: dto.reason, jobId: dto.jobId ?? null },
+        citations: [],
+        createdBy: null,
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'WORM append failed for a gate-abandon close (non-fatal, status write not rolled back)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    this.logger.warn({
+      message: 'Consultation closed incomplete — its review gate was abandoned with no clinician sign-off',
+      consultationId,
+      reason: dto.reason,
+    });
   }
 
   /**

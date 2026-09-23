@@ -11,7 +11,7 @@
  * the harness calls these out-of-band of the API edge ClsModule middleware.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConsultationEntity, ConsultationStatus, HarnessAuditAction, ResourceStatusType, SummaryMetaFactory } from '@arcaai/domains';
 import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_TERMINAL_STAGE } from '../dto';
@@ -1586,22 +1586,25 @@ describe('HarnessInternalService', () => {
   // deliberately still NOT a global reclassification of `BusinessException`.
   // =========================================================================
   describe('a state-machine violation on the harness surface is a 409, not a 500', () => {
-    it('recordEscalation answers ConflictException when TIMED_OUT is illegal from the current state', async () => {
-      consultationRepository.findById.mockResolvedValue(
-        consultationFixture({
-          id: 'consultation-1',
-          tenantId: 'tenant-1',
-          doctorId: 'doctor-1',
-          // gate_sla_abandoned targets TIMED_OUT, whose only legal predecessor is
-          // PENDING_REVIEW. From DRAINING the matrix refuses.
-          status: ConsultationStatus.DRAINING,
-          resourceStatus: ResourceStatusType.ENABLED,
-        }),
-      );
+    // TASK-1001 wave 5 (D-6): this used to pin a 409 for a terminal abandon on a DRAINING
+    // consultation (DRAINING → TIMED_OUT is illegal). The terminal abandon now CLOSES a DRAINING
+    // consultation (DRAINING → CLOSED_INCOMPLETE is a matrix row) and answers every state it does
+    // not close with a logged no-op success, so that route no longer has a 409 to pin. The full
+    // per-state contract lives in `harness-internal.gate-abandon-close.task1001-wave5.test.ts`.
+    it('recordEscalation closes a DRAINING consultation on a terminal abandon instead of answering 409', async () => {
+      const draining = consultationFixture({
+        id: 'consultation-1',
+        tenantId: 'tenant-1',
+        doctorId: 'doctor-1',
+        status: ConsultationStatus.DRAINING,
+        resourceStatus: ResourceStatusType.ENABLED,
+      });
+      consultationRepository.findById.mockResolvedValue(draining);
 
       await expect(
         service.recordEscalation('consultation-1', { tenantId: 'tenant-1', reason: 'gate_sla_abandoned', jobId: 'harness-doc-1' } as any),
-      ).rejects.toThrow(ConflictException);
+      ).resolves.toEqual({ recorded: true });
+      expect(draining.status).toBe(ConsultationStatus.CLOSED_INCOMPLETE);
     });
   });
 
@@ -2126,20 +2129,25 @@ describe('HarnessInternalService', () => {
 
       // the terminal abandon ALSO drives PENDING_REVIEW -> TIMED_OUT,
       // which appends a second WORM row (SESSION_TIMED_OUT) alongside the
-      // pre-existing GATE_ABANDONED event.
-      expect(harnessAuditService.append).toHaveBeenCalledTimes(2);
+      // pre-existing GATE_ABANDONED event — and, since TASK-1001 wave 5 (D-6),
+      // closes the consultation, which appends a third (SESSION_CLOSED_INCOMPLETE).
+      expect(harnessAuditService.append).toHaveBeenCalledTimes(3);
       const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
       expect(actions).toContain(HarnessAuditAction.GATE_ABANDONED);
       expect(actions).toContain(HarnessAuditAction.SESSION_TIMED_OUT);
+      expect(actions).toContain(HarnessAuditAction.SESSION_CLOSED_INCOMPLETE);
       expect(result).toEqual({ recorded: true });
     });
 
-    it('gate_sla_abandoned transitions PENDING_REVIEW -> TIMED_OUT, persisted via updateWithVersion', async () => {
+    it('gate_sla_abandoned transitions PENDING_REVIEW -> TIMED_OUT -> CLOSED_INCOMPLETE, persisted via ONE updateWithVersion', async () => {
+      // TASK-1001 wave 5 (D-6): the TIMED_OUT leg is kept and the consultation is then closed
+      // unsigned; both edges land in one compare-and-set of the final state.
       await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned'));
 
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledTimes(1);
       expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
         'consultation-1',
-        expect.objectContaining({ status: ConsultationStatus.TIMED_OUT }),
+        expect.objectContaining({ status: ConsultationStatus.CLOSED_INCOMPLETE }),
         expect.any(Number),
       );
     });
@@ -2424,11 +2432,16 @@ describe('HarnessInternalService', () => {
       const second = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned') as any, 'run-1:escalate_gate');
 
       // The idempotency cache replays the whole prior response, so the
-      // underlying work — including both WORM appends (GATE_ABANDONED +
-      // SESSION_TIMED_OUT) — runs exactly once despite two calls.
-      expect(harnessAuditService.append).toHaveBeenCalledTimes(2);
+      // underlying work — including every WORM append (GATE_ABANDONED +
+      // SESSION_TIMED_OUT + SESSION_CLOSED_INCOMPLETE, the last since TASK-1001
+      // wave 5 D-6) — runs exactly once despite two calls.
+      expect(harnessAuditService.append).toHaveBeenCalledTimes(3);
       const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
-      expect(actions).toEqual([HarnessAuditAction.GATE_ABANDONED, HarnessAuditAction.SESSION_TIMED_OUT]);
+      expect(actions).toEqual([
+        HarnessAuditAction.GATE_ABANDONED,
+        HarnessAuditAction.SESSION_TIMED_OUT,
+        HarnessAuditAction.SESSION_CLOSED_INCOMPLETE,
+      ]);
       expect(second).toEqual(first);
       expect(second).toEqual({ recorded: true });
     });
