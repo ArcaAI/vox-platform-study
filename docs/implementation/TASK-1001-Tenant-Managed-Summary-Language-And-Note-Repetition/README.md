@@ -658,10 +658,54 @@ consultation cannot record again.
 - Cluster: re-run the replay; after EVERY stop `summary/latest.createdAt` ≥ stop time and the note reflects the
   resumed recordings; live note 0 Indic script; flush telemetry shows `turnScriptRepairs` when it fires.
 
+## Waves 5–6 — consultation completion timeout, late sign-off, resume (owner, 2026-09-23)
+
+**Owner requirements.** "Time out and close the consultation session after 5 min if there is no approval
+signal." Then: the tenant admin configures the timeout in **Settings** ("where tenant admin can see all
+tenant settings and where the platform admin can see the platform and default settings for tenants to fall
+back"), platform default 5 min; the clock starts when recording has **stopped and the final summary is
+generated** ("ready to complete"); an approval signal (ALaaS Save/Submit) completes it, else it times out; the
+end-user may resume or continue a `CLOSED_INCOMPLETE` session; a lifecycle user guide for tenant/customer
+engineers.
+
+| # | Decision |
+|---|---|
+| D-6 | At the timeout the harness gate ends and the consultation lands `CLOSED_INCOMPLETE` (closed unsigned). |
+| D-7 | A late approval still signs: `CLOSED_INCOMPLETE → SIGNED`, then `close` → `CLOSED_COMPLETE`. |
+| D-8 | The timeout is a settings-registry key, `consultation.session.completionTimeoutMinutes` (`maxScope: tenant`, tenant → SYSTEM → 5, whole minutes 1..10080). The wave-5 `HarnessPolicy.gateMaxEscalations` column (never pushed) was withdrawn with its migration. |
+| D-9 | Resume is a sanctioned edge: `CLOSED_INCOMPLETE → RECORDING` (works with `requirePrimedBeforeRecording` ON too). |
+| D-10 | ALaaS Save runs the full HOPE finish (update → approve → close); a `CLOSED_INCOMPLETE` consultation is not "already finished" for it. |
+| D-11 | The guide lives in the repo only (`docs/guides/consultation-session-lifecycle.md`). |
+
+**How it works.** The timer is the harness clinician gate (`HarnessDocWorkflow`), a durable Temporal timer
+started when the final-note draft is persisted. `HarnessPolicyService.getEffectivePolicy` derives it from the
+setting on every return path (`gateSlaSeconds = minutes × 60`, `gateMaxEscalations = 1`), as it already serves
+`tokenBudgetPerRun`; a lookup failure serves the 5-minute code default, never the row's 24 h. The harness takes
+its abandon bound from the policy (`gate_max_escalations`, clamped ≥ 1; `None` ⇒ the input default — replay-safe,
+no patch marker). On the terminal abandon `recordEscalation` moves `PENDING_REVIEW → TIMED_OUT → CLOSED_INCOMPLETE`
+(one OCC write; WORM `SESSION_TIMED_OUT` + `SESSION_CLOSED_INCOMPLETE`), `DRAINING` / `DRAFT_PENDING_SENSORS` →
+`CLOSED_INCOMPLETE`, and leaves `RECORDING` (a resumed session) alone; a retried terminal is a no-op success (it
+used to 409). A resumed recording's stop re-finalises (wave 4) and starts a fresh gate.
+
+| Commit | What |
+|---|---|
+| `88aad4fd9` / merge `f01e0b444` | J2 harness: policy-driven `gate_max_escalations` |
+| `57f3d1eec` / merge `a81dbbd74` | J3: terminal abandon closes `CLOSED_INCOMPLETE`; `CLOSED_INCOMPLETE → SIGNED`; approve accepts it |
+| `2bde97e85`, `af4504bf3` | stale "reaches only REOPENED" notes corrected |
+| `b15d3920b` | `CLOSED_INCOMPLETE → RECORDING` (25 legal transitions) |
+| `484aa8429` | the setting + effective-policy overlay; `gateMaxEscalations` storage withdrawn; console shows the timeout read-only on Harness Policy, pointing to Settings; API artifacts |
+| `329f4a416` | Consultation Session Lifecycle guide; client guide ch. 7 table; tenant admin guide section |
+| ALaaS `e02e390`, `219bf2a` | Save → HOPE finish; `CLOSED_INCOMPLETE` not terminal for finish |
+
+Superseded in passing: the J1 commit `8f3b7b989` (column + migration + console knob) — its storage is removed
+again by `484aa8429` before any push, so no environment ever held the column.
+
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-09-23 | Waves 5–6 (owner): completion timeout as a tenant setting (default 5 min) enforced by the harness gate, closed unsigned at expiry, late sign-off signs, resume from `CLOSED_INCOMPLETE`, ALaaS Save signs off; lifecycle guide. |
 | 2026-09-23 | Wave 4 deployed (`6b864c73`) and verified: final note refreshed after all four stops of the replay, 0 Malayalam in live and final notes, guard repaired 1 live leak; ALaaS Save → HOPE sign-off (`4e89a4e`). |
 | 2026-09-23 | Wave 4 opened: tester report on `01a0cd63` investigated (config English everywhere; live snapshot leak on E2B; OD-14 root-caused to three stacked defects), replay harness from the consultation's own MinIO recordings, owner answered OD-14 + D-1…D-5. |
 | 2026-09-22 | Ticket opened. Both defects root-caused against `hope-v2-dev`. Design drafted; OD-1…OD-8 pending. |
