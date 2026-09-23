@@ -105,6 +105,7 @@ import {
   WorkflowSyncTargetResponse,
 } from './dto';
 import { collectGenerationBindings, type NodeGenerationBindingRef } from './node-generation-binding';
+import { agentGraphFindings, agentNodesNeedingFacts, agentSlugOf, type GraphAgentFacts } from './agent-graph-findings';
 import { collectPromptBindings, promptContentChecksum, withMovedPin } from './node-prompt-binding';
 import {
   collectPortableReferences,
@@ -523,7 +524,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // refused with ERRORs was stored with `ok: true` — a green draft the console could not act
     // on. A draft is still WRITTEN: authoring feedback belongs on the report, not in a 400.
     const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
-    const report = this.mergePublishGate(baseReport, await this.graphPublishFindings(graph, triggerContextSchema));
+    const report = this.mergePublishGate(baseReport, await this.graphPublishFindings(graph, tenantId, triggerContextSchema));
 
     if (dto.parentVersionId) {
       const parent = await this.workflowDefinitionRepository.findById(dto.parentVersionId).catch(() => null);
@@ -1515,7 +1516,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // authoring feedback, and refusing a draft for a problem publish will refuse anyway would
     // just move the same wall earlier in the author's day.
     const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
-    const publishGate = await this.graphPublishFindings(graph, triggerContextSchema);
+    const publishGate = await this.graphPublishFindings(graph, entity.tenantId, triggerContextSchema);
     const report: WorkflowValidationReport = this.mergePublishGate(baseReport, publishGate);
     // Same bindings publish() will stamp — a validate() that compiled against different
     // policyBindings would greenlight an artifact the publish() then produces differently.
@@ -1655,7 +1656,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // (`GUARDRAIL_OPTED_OUT`, and `PROMPT_VARIABLE_UNDECLARED` during the OD-C ramp) are recorded
     // and never block: an opt-out is a decision to record, not a defect to refuse.
     const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
-    const publishGate = await this.graphPublishFindings(graph, triggerContextSchema);
+    const publishGate = await this.graphPublishFindings(graph, entity.tenantId, triggerContextSchema);
     const report: WorkflowValidationReport = this.mergePublishGate(baseReport, publishGate);
     if (hasBlockingFindings(publishGate)) {
       throw new BadRequestException({
@@ -2207,9 +2208,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * would not be. An unknown slug is already `AGENT_REF_MISSING` from the gate itself, so
    * inventing an empty view for it would mask a hard finding behind a soft one.
    */
-  private async graphPublishFindings(graph: WorkflowGraph, triggerContextSchema?: TriggerContextSchemaResolution): Promise<WorkflowFinding[]> {
+  private async graphPublishFindings(
+    graph: WorkflowGraph,
+    tenantId: string,
+    triggerContextSchema?: TriggerContextSchemaResolution,
+  ): Promise<WorkflowFinding[]> {
     const agents = await this.publishAgentViews(graph);
-    return publishFindings(graph, {
+    const contractFindings = publishFindings(graph, {
       schemaValueProblems: jsonSchemaValueProblems,
       templateReferenceSeverity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
       ...(agents === undefined ? {} : { agents }),
@@ -2221,6 +2226,46 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
           ? { triggerContextSchema: null, triggerContextSchemaFailure: triggerContextSchema.failure }
           : { triggerContextSchema: triggerContextSchema.resolved?.payloadSchema ?? null }),
     });
+    // TASK-1002 (OD-2, OD-5) — the rules that need each `core.agent` node's TASK and output
+    // schema: one speech-to-text agent per graph, and a `core.output` fed the fields it requires.
+    return [...contractFindings, ...agentGraphFindings(graph, await this.graphAgentFacts(graph, tenantId))];
+  }
+
+  /**
+   * The agent each `core.agent` node runs, keyed by NODE id, for `agentGraphFindings`. Read the
+   * way the node will run it: a PINNED `agentRef.versionNumber` names that version, otherwise the
+   * ACTIVE published one (the same pair of reads `generationCapabilitiesFor` makes). An inline
+   * `agentRef.task` wins over the row's, as it does in the realtime handler.
+   *
+   * Only the nodes a rule could act on are read (`agentNodesNeedingFacts`), so a graph neither
+   * rule applies to costs no read. Best-effort, like `publishAgentViews`: a node whose agent does
+   * not resolve is simply absent, and an absent node never causes a finding —
+   * `AGENT_REF_MISSING` already speaks for it.
+   */
+  private async graphAgentFacts(graph: WorkflowGraph, tenantId: string): Promise<Record<string, GraphAgentFacts>> {
+    const facts: Record<string, GraphAgentFacts> = {};
+    const needed = new Set(agentNodesNeedingFacts(graph));
+    if (needed.size === 0) return facts;
+    for (const node of graph.nodes ?? []) {
+      if (node?.type !== 'core.agent' || !needed.has(node.id)) continue;
+      const slug = agentSlugOf(node.config);
+      if (slug === null) continue;
+      const agentRef = asRecord(asRecord(node.config)?.agentRef);
+      const inlineTask = typeof agentRef?.task === 'string' ? agentRef.task : null;
+      const pin = agentRef?.versionNumber;
+      let agent: Awaited<ReturnType<AgentRepository['findPublishedActiveBySlug']>> = null;
+      try {
+        agent =
+          (typeof pin === 'number'
+            ? await this.agentRepository?.findPublishedVisibleBySlugVersion(tenantId, slug, pin)
+            : await this.agentRepository?.findPublishedActiveBySlug(tenantId, slug)) ?? null;
+      } catch {
+        agent = null;
+      }
+      if (!agent && inlineTask === null) continue;
+      facts[node.id] = { slug, task: inlineTask ?? agent?.task ?? null, outputSchema: agent?.outputSchema ?? null };
+    }
+    return facts;
   }
 
   /**
