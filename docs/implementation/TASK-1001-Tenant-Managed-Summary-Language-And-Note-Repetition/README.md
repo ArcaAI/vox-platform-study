@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — implemented and merged to `dev-2.2`, gate green; OD-10 open |
+| **Status** | In Progress — wave 2 merged and pushed (`9e8db9d91`); cluster rollout + resumed-recording re-run pending |
 | **Type** | bugfix + feature |
 | **Branch** | `dev-2.2` |
 | **Repos** | `arca/hope-v2` (primary) · `ALaaSv3.0` (secondary, latent defects) |
@@ -221,14 +221,16 @@ cause.
 | **OD-1** | Where a tenant admin authors the output-language policy | (a) `instruction.fragments[]` → a shared PromptTemplate; (b) new `parameters.output.language`; (c) a `GlobalSetting` descriptor | **(a)** — exists, has a console editor and per-call telemetry, and expresses conditional translation. (c) cannot express "based on the context" |
 | **OD-2** | Does tenant configuration beat the caller's per-consultation `language`? | (a) config wins when set, absent ⇒ caller flows through; (b) caller always wins; (c) a tenant flag | **(a)** — mirrors `AiProviderConnection`'s "absent = no opinion". No new flag, no change for non-adopters |
 | **OD-3** | Retire `operatingFrame`'s generated language step into a seeded policy fragment? | (a) retire; (b) keep, sourced from resolved config | **(a)** — one mechanism for every lane. Must carry the headings-stay-English clause (S-4) |
-| **OD-4** | Reject a code-switch tag at `/consultations/open`? | (a) 400; (b) accept and normalise; (c) accept as today | **(a)** — plus the caller-side fix in ALaaS |
+| **OD-4** | Reject a code-switch tag at `/consultations/open`? | (a) 400; (b) accept and normalise; (c) accept as today | **SUPERSEDED 2026-09-23 by the owner: accept.** `ml-en` declares code-switched transcription with Malayalam primary; it is a legitimate SOURCE value. The wave-1 400 is reversed at the DTO; the OUTPUT grammar still refuses a mixed language |
 | **OD-5** | Dedup strength | (a) exact-normalised sentence dedup; (b) add similarity/paraphrase dropping; (c) similarity flagging only | **(a) now, (c) later — settled by evidence.** Every observed duplicate is an exact-sentence repeat modulo whitespace, punctuation or ordering. **No paraphrase dropping is needed to fix this report**, and similarity dropping risks silently losing clinical content |
 | **OD-6** | Promote repetition pressure to a degrade code + metric? | (a) yes; (b) log only | **(a)** — 11 of 13 flushes carried refusals and nothing surfaced it |
 | **OD-7** | Model tier for the summary agents | (a) keep 2B; (b) evaluate larger | **ANSWERED 2026-09-22: (a) keep `gemma-4-e2b-it-qat`.** Consequence: the sentence dedup is the ONLY structural defence against repetition |
 | **OD-8** | Ship the English-only policy as a SYSTEM reference-set default? | (a) yes; (b) tenant opt-in only | **(a)**, noting content is cloned — existing tenants need an edit or a reference-set sync |
-| **OD-10** | **NEW — Phase 6 is a no-op as specified.** `frequencyPenalty` / `presencePenalty` exist in `AGENT_PARAMETER_SCHEMAS` but **never reach a provider**: `resolve_request_defaults` (`apps/text/src/text/core/defaults.py`) returns exactly `{temperature, max_tokens, top_p}`, `grep` for the penalties across `apps/text/src` returns zero hits, the LM Studio adapter's only `extra_body` passthrough is a retention `ttl`, and `TEXT_PLANE_GENERATION_PARAMS` declares the honest set with a publish gate behind it | (a) accept dedup-only; (b) plumb the penalties through `apps/text` (`GenerateRequest`, `defaults.py`, the adapters, `AiRuntimeProfile` columns, the contract's param list) | **(a) accept dedup-only.** Every observed duplicate was an exact repeat, and Phase 4 covers all three shapes. Open (b) as its own scoped ticket only if repetition survives — do not bundle a Python/Prisma/contract change here on speculation |
+| **OD-10** | **ANSWERED 2026-09-23: (b) build the plumbing.** Phase 6 was a no-op as specified. `frequencyPenalty` / `presencePenalty` exist in `AGENT_PARAMETER_SCHEMAS` but **never reach a provider**: `resolve_request_defaults` (`apps/text/src/text/core/defaults.py`) returns exactly `{temperature, max_tokens, top_p}`, `grep` for the penalties across `apps/text/src` returns zero hits, the LM Studio adapter's only `extra_body` passthrough is a retention `ttl`, and `TEXT_PLANE_GENERATION_PARAMS` declares the honest set with a publish gate behind it | (a) accept dedup-only; (b) plumb the penalties through `apps/text` (`GenerateRequest`, `defaults.py`, the adapters, `AiRuntimeProfile` columns, the contract's param list) | Built in wave 2 (lanes P1/P2) as runtime platform settings — no Prisma change — because a published agent's parameters cannot be updated |
 | **OD-11** | ~~Does the frozen v1-compat surface keep its `'English'` default?~~ | — | **RESOLVED during integration: yes.** §A2 first called it drift; that was wrong. The compat PRE-SUMMARY template renders `{language_name}` into a live instruction and is pinned by byte-identical golden fixtures, so `null` there would emit *"Write ALL bullet content in ."* The default stays; the shared grammar now rejects `ml-en` first, so it lands on v1's unknown→English rule. The native path keeps absent ⇒ `null`. Two surfaces, two contracts |
-| **OD-9** | Do the ALaaS defects (S-1…S-5) ship in this ticket or a sibling? | (a) sibling ticket in `ALaaSv3.0`, this ticket owns HOPE; (b) one ticket across both repos | **(a)** — different repo, different release train. S-1 is confirmed-occurred and should be expedited |
+| **OD-9** | Do the ALaaS defects (S-1…S-5) ship in this ticket or a sibling? | (a) sibling ticket in `ALaaSv3.0`, this ticket owns HOPE; (b) one ticket across both repos | **ANSWERED 2026-09-23: (a).** `ALaaSv3.0/docs/HOPE_TASK_1001_LIVE_SUMMARY_CLIENT_FIX_PLAN.md`, merged into `refactor-hope-integaration` (`50bf477`) |
+| **OD-12** | **NEW 2026-09-23 (owner): output language.** *"ALaaS still sends the language: `ml-en` indicates code-mixed/code-switch enabled for realtime/job transcription, Malayalam as main language. The summarization (both pre-summary and summary) is still in English by admin configuration OR by default."* | — | **Implemented in wave 2 (lane L5).** The output language never reads `open.language`: the tenant's selected policy fragment, else the platform default `consultation.summary.outputLanguage` (English), which the runtime states and which names and overrides the corpus's "write in the conversation language" clause. Supersedes the TASK-891/TASK-932 "absent is not English" posture on the native path |
+| **OD-13** | Cluster rollout of the policy fragment | heme first / all 22 / hope-reset | **ANSWERED 2026-09-23: all 22 at once**, via the admin API (new agent versions; previous versions stay as the rollback target) |
 
 ---
 
@@ -299,7 +301,7 @@ file boundaries and may run in parallel.
   `output_truncated`, plus a counter for refusals and dropped sentences.
 - Files: `degrade-codes.ts`, `live-documentation.service.ts`.
 
-### Phase 6 — decoding pressure — **BLOCKED, see OD-10**
+### Phase 6 — decoding pressure — **BUILT in wave 2 (OD-10 b)**
 
 **Not implemented, and not implementable as written.** The penalties are declared in the agent
 schema but are inert on this platform's TEXT plane (evidence in OD-10). Earlier drafts of this
@@ -423,10 +425,43 @@ context.
 
 ---
 
+### Wave 2 — 2026-09-23 (owner decisions OD-7, OD-9, OD-10, OD-12, OD-13)
+
+Five opus lanes, each in its own worktree with a disjoint file boundary; no lane ran a gate. The
+orchestrator merged, gated once, verified RED, then destroyed every worktree and branch.
+
+| Lane | Repo | Commits | What shipped |
+|---|---|---|---|
+| P1 | hope-v2 `apps/text` | `9e759cbe4`, `279b82028` | `frequency_penalty` / `presence_penalty` resolved request → platform default → nothing; `0` is never sent. Forwarded by `lm-studio`, `openai_compat`, `vllm`, `llama-cpp`, `openai`, `azure_openai`; dropped with a once-per-process WARNING by `ollama`, `anthropic`, `bedrock`, `vertex`. A **platform-default** penalty reaches only the self-hosted OpenAI-compatible engines (managed endpoints such as Azure GPT-5 refuse penalties with a 400); a request-authored one reaches any supporting engine. **The judge path never takes a penalty** — a repetition penalty on a Yes/No verdict can bias the verdict tokens |
+| P2 | hope-v2 TS | `432dd3aa4` | Descriptors `text.generation.frequencyPenalty` / `presencePenalty` (`global-kv`, platform, default `0`, range −2…2) served in the effective-config `generation` group; agent-level values forwarded at the five `/generate` call sites; LM Studio model rows' honest set gains both penalties |
+| L5 | hope-v2 TS | `f93606b38` | OD-12. `ml-en` accepted at open (`SOURCE_LANGUAGE_PATTERN`); output language = selected tenant policy, else platform default `consultation.summary.outputLanguage` (`global-kv`, default `en`, refuses a code-switch value); `operatingFrame` states the default and names the override it wins over; pre-summary `language_name` and the final-summary path use the resolved OUTPUT language; platform-reserved key `OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY` in `@arcaai/types`; policy text now names the conflict it overrides |
+| A1 | ALaaS broker | `11f8813` | S-1 (a repeat `start` builds a fresh runtime and fully closes the old one — also fixed a stacked STT socket and a detach timer that killed the *restarted* session), S-2 (counter resets only on the first frame from the current subscription), S-3 (cap test driven through `onError`) |
+| A2 | ALaaS web_ui | `4b1e427` | S-4 (same-document, same-title twins collapse, higher revision wins; edit-locked twins never hidden), S-5 (a durable row overlays the live section by title before duplicates are dropped) |
+
+**Corrections to earlier claims in this ticket, found by the wave-2 scout:**
+- **Publish FREEZES the resolved fragment text** into `compiledConfig.resolvedPrompt`. Editing the shared policy template does NOT reach any note until each agent is branched and republished. Practices #2/#3 ("edit one row") were wrong as written: the pointer saves the per-agent instruction edit, not the republish. The runtime-editable lever is the platform-default setting.
+- The HEME v3 clinical bodies already say the note is entirely in English; the historical Malayalam came from `operatingFrame`'s old appended line. Other departments and older corpus versions carry "the section content MUST be in the conversation language" (~40 occurrences), which is why the default step must name and override it.
+
+**Gate — one pass, after all five lanes landed (HOPE `9e8db9d91`):** applications 14943 passed · database 1917 · api 4863 · vox 3807 · workflow-contract 974 · vox-node 587 · types 79 · `apps/text` pytest 1957, ruff clean, mypy clean · typecheck clean incl. `apps/api` `__tests__` (the CI step) · openapi / portal / gen:admin no drift · no new lint warnings in touched files. **ALaaS (`50bf477`):** `nest build` 0 · jest 625/625 tests · web_ui 377/377.
+
+**RED verified** (no lane could witness its own): with the pre-L5 code restored, 32 of 45 English-by-default tests fail (the 13 that pass are the untouched v1-parity cases), 45/45 after; with pre-P1 `apps/text` restored, all 133 penalty tests error at collection (the symbols do not exist), 133/133 after.
+
+**Pre-existing, out of scope:** `agentPromotion` membership-sync integration file (stale `test` DB credentials in `afterAll`; its tests are skipped) · ALaaS jest suites `sanitization.util`, `create-notification.dto`, `audio.controller`, `medical-summary.controller` fail identically on the pre-merge base (Jest transform config) · `black --check` flags `test_task871_output_gate.py` (TASK-969) · four touched TS files were already unformatted before this ticket.
+
+### Follow-ups — recorded, not in this ticket
+1. **Direct summary-generation path** (`summary.service`, used by the SDK's `summary.generateSummary`, not by ALaaS): the output language reaches the prompt only as a variable; a department body that says "write in the conversation language" can still win there. Append the same named-override sentence at assembly.
+2. **SYSTEM `general-medicine-summarization`** says "in the conversation language ({{language}})", and on the durable/harness lane no runtime step overrides it. Non-ArcaAI tenants inherit it. Needs a harness-side default step or the template to bind `{{language_name}}`.
+3. `pre-summary.processor.ts`, `comprehensive-summary.processor.ts`, `chain-summary.service.ts` use an `'en'` literal instead of the setting (functionally English; a config-rule violation).
+4. The composite-selection answer on the graph lane asks the PRIMARY candidate only; a fallback agent with a different instruction could get a mismatched language step.
+5. Admin-console playground picker still labelled "Summary language" — it now sets the SOURCE language.
+6. ALaaS races A1 could not close from the client (an old start's `recording/start` landing last; `note.final` from a finalizing old runtime) and the fake adapter that masked S-1.
+7. A penalty VALUE on the cluster is a tuning decision to be measured, not assumed: frequency penalties can distort legitimately repeated clinical tokens (units, doses).
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-22 | Ticket opened. Both defects root-caused against `hope-v2-dev`. Design drafted; OD-1…OD-8 pending. |
+| 2026-09-23 | Wave 2: owner answered OD-7/9/10/12/13. Penalty plumbing (P1/P2), English-by-default output language with `ml-en` accepted (L5), ALaaS sibling ticket S-1…S-5 (A1/A2). Merged, gated once, RED verified, worktrees destroyed, pushed `9e8db9d91` (pipeline #1304). |
 | 2026-09-22 | Implemented in four parallel worktree lanes, merged to `dev-2.2`, gated once (`640762e55`). OD-7 answered (keep E2B). OD-10 opened: the decode-time penalties are inert on this platform, so the dedup is the only defence. OD-11 resolved against the ticket's own §A2. Worktrees and branches destroyed after the merge and the green gate. |
 | 2026-09-22 | Four parallel read-only investigation lanes (HOPE stream contract · ALaaS consumer · cluster log forensics · stored-data truth). **Part B confirmed by decryption**: the duplication is in HOPE's stored note, in three exact-repeat shapes, none a paraphrase — which settles OD-5 toward exact-normalised sentence dedup. Nine secondary findings (S-1…S-9) recorded, including one confirmed-occurred ALaaS double-subscription and an observability bug that inflated the apparent stream-open count from 4 to 58. OD-9 added. |
