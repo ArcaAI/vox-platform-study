@@ -380,7 +380,8 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
    *     So a clinician who reviews and submits hours after the timeout still
    *     signs the note, still closes the consultation, and still yields the
    *     `(AI draft, clinician-edited)` training pair.
-   *   • `CLOSED_INCOMPLETE` reaches only `REOPENED` and would destroy that.
+   *   • `CLOSED_INCOMPLETE` is a CLOSE: it also accepts a late sign-off (`→ SIGNED`, TASK-1001 wave 5),
+   *     but it ends the session, which an idle review must not do on its own.
    *
    * This is the state a genuinely stranded consultation was measured in on the
    * live cluster (29.4 h) and the one state nothing could clear. The narrower

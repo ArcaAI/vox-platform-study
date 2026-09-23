@@ -219,7 +219,7 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     category: CONSULTATION_PIPELINE_CATEGORY,
     label: 'Consultation open idle timeout (minutes)',
     description:
-      'Minutes a consultation may sit in OPEN — never primed, never recorded — before the scheduled sweep transitions it to CLOSED_INCOMPLETE. OPEN was structurally unclosable before TASK-972 (its only outgoing edge was OPEN → PRIMED), so an abandoned pre-recording session leaked forever. TWO signals are required, not one: the row must have been untouched for the window AND no ContextItem may have been created inside it, because adding context does not bump `Consultation.updatedAt` and this target reaches only REOPENED. Default 120 (2h), live-tunable with no redeploy. Consumed by `ConsultationTimeoutSweepService.sweepIdleOpen`.',
+      'Minutes a consultation may sit in OPEN — never primed, never recorded — before the scheduled sweep transitions it to CLOSED_INCOMPLETE. OPEN was structurally unclosable before TASK-972 (its only outgoing edge was OPEN → PRIMED), so an abandoned pre-recording session leaked forever. TWO signals are required, not one: the row must have been untouched for the window AND no ContextItem may have been created inside it, because adding context does not bump `Consultation.updatedAt` and this target is a close (it leaves only by REOPENED, or a clinician's approve → SIGNED). Default 120 (2h), live-tunable with no redeploy. Consumed by `ConsultationTimeoutSweepService.sweepIdleOpen`.',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY],
   },
   // The RECORDING leg's own staleness window (TASK-932 OD-9, N). A tuning

@@ -136,7 +136,8 @@ export const CONSULTATION_RECORDING_STALE_MINUTES_KEY = 'consultation.state.reco
  * of `SIGNED` ("the clock never signs, a human still can"), so a clinician who
  * comes back hours later still signs, still closes, and still yields the
  * `(AI draft, clinician-edited)` training pair the ticket exists to capture.
- * `CLOSED_INCOMPLETE` reaches only `REOPENED` and would destroy that path.
+ * `CLOSED_INCOMPLETE` ends the session (a late sign-off can still sign it since TASK-1001 wave 5,
+ * but only a clinician's approve reaches `SIGNED`; nothing else leaves it but `REOPENED`).
  *
  * `PENDING_REVIEW` is the state a real stranded consultation was measured in on
  * `hope-v2-dev` (29.4 h, README §2b) and it was the one state NOTHING in the
@@ -161,7 +162,7 @@ export const CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY = 'consultation.state.revie
  * orphan path — a browser that vanishes without sending `stop` — lands here).
  *
  * Unlike the `PENDING_REVIEW` leg above, this target is NOT recoverable
- * (`CLOSED_INCOMPLETE → REOPENED` only), so the eligibility test carries a
+ * (`CLOSED_INCOMPLETE` leaves only by `REOPENED`, or a clinician approve → `SIGNED`), so the eligibility test carries a
  * SECOND signal: `ConsultationRepository.findIdleOpen` additionally requires
  * that no `ContextItem` was created inside the window. `ContextService` only
  * READS the consultation row, so adding a case note or an attachment does not
