@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — waves 1–3 and the English-only directive merged, gated, deployed and verified on `hope-v2-dev`; OD-14 open; awaiting owner sign-off |
+| **Status** | In Progress — wave 4 (live-note script guard, OD-14 re-finalise, ALaaS sign-off); waves 1–3 + English-only directive deployed on `hope-v2-dev` |
 | **Type** | bugfix + feature |
 | **Branch** | `dev-2.2` |
 | **Repos** | `arca/hope-v2` (primary) · `ALaaSv3.0` (secondary, latent defects) |
@@ -231,7 +231,7 @@ cause.
 | **OD-9** | Do the ALaaS defects (S-1…S-5) ship in this ticket or a sibling? | (a) sibling ticket in `ALaaSv3.0`, this ticket owns HOPE; (b) one ticket across both repos | **ANSWERED 2026-09-23: (a).** `ALaaSv3.0/docs/HOPE_TASK_1001_LIVE_SUMMARY_CLIENT_FIX_PLAN.md`, merged into `refactor-hope-integaration` (`50bf477`) |
 | **OD-12** | **NEW 2026-09-23 (owner): output language.** *"ALaaS still sends the language: `ml-en` indicates code-mixed/code-switch enabled for realtime/job transcription, Malayalam as main language. The summarization (both pre-summary and summary) is still in English by admin configuration OR by default."* | — | **Implemented in wave 2 (lane L5).** The output language never reads `open.language`: the tenant's selected policy fragment, else the platform default `consultation.summary.outputLanguage` (English), which the runtime states and which names and overrides the corpus's "write in the conversation language" clause. Supersedes the TASK-891/TASK-932 "absent is not English" posture on the native path |
 | **OD-13** | Cluster rollout of the policy fragment | heme first / all 22 / hope-reset | **ANSWERED 2026-09-23: all 22 at once**, via the admin API (new agent versions; previous versions stay as the rollback target) |
-| **OD-14** | Should a RESUMED recording re-finalise the note? | re-run the finalize on every stop / only when the resume added content / keep one finalize per consultation (today) | **OPEN** — found on the cluster 2026-09-23 (consultation `01a0cccb`): one `RAW_SUMMARY` per consultation, written after the first stop, so ALaaS's `note.final` omits everything said after a resume. The live note does carry it. |
+| **OD-14** | Should a RESUMED recording re-finalise the note? | re-run the finalize on every stop / only when the resume added content / keep one finalize per consultation (today) | **ANSWERED 2026-09-23 (owner): re-finalise on a stop after a resume, supersede-via-restart, never overwrite a signed note** — wave 4 lane L-I. |
 
 ---
 
@@ -570,10 +570,70 @@ Still open, recorded rather than built:
 - `harness-internal.service.ts` passes the workflow node's `conversationLanguage` (default `en`) — admin configuration under OD-12, left as is.
 - The durable step applies to every TEXT_GENERATION `core.agent`, not only note writers; a tenant agent that must write another language opts out with its own `output_language_policy` fragment.
 
+
+## Wave 4 — tester report 2026-09-23: "mixed English and Malayalam after the latest deployment" + OD-14
+
+### Evidence (consultation `01a0cd63-e0ab`, ArcaAI, General Medicine, `ml-en`, recorded 4× 08:31–09:44 UTC)
+- **Configuration is English at every layer**: `consultation.summary.outputLanguage=en` (SYSTEM); active
+  `arcaai-gen-summary-new-visit` v2 ("THE NOTE IS WRITTEN ENTIRELY IN ENGLISH" + `output_language_policy`);
+  the live `operatingFrame` language step; ArcaAI `case-notes-pre-summary` v1 / `casenote-finalization` v1.
+- **Decrypted stats (owner-approved, scoped Transit token, revoked):** Malayalam script in exactly one item —
+  the LIVE note snapshot (`PRE_SUMMARY/LIVE_SOAP_SNAPSHOT`, 147 chars, Plan section: a doctor instruction copied
+  verbatim from the transcript, ASR errors included). Final note, all pre-summaries, all 10 prior ALaaS case
+  notes: 0. ALaaS reads `documents/sections` (the live note) after every stop — that is what the tester saw.
+- **Cause:** instruction-following on `gemma-4-e2b-it-qat` with ~16k-token live prompts, not configuration.
+  Nothing inspects a live section's script before it is persisted and published.
+- **OD-14, three stacked causes** (cluster, Temporal + DB):
+  1. `HarnessDocWorkflow` parks at the clinician gate after its draft, waiting for an `approval` signal that
+     ALaaS never sends — five `harness-doc-*` runs from 2026-09-23 are still open. The loop awaits that child,
+     so every later `consultation-ending` signal lands on a parked loop.
+  2. `document:start` answers `already_running` while that run is open, so every regenerate (incl. the
+     existing `POST summary/async`) is a silent no-op after the first draft.
+  3. `createStreamingTranscriptInner`'s second idempotency layer is keyed on the CONSULTATION, not the STT
+     session: a resumed session's aggregate transcript is never persisted and its `TranscriptionCreated`
+     is never emitted. (`01a0cd63` and the replay both hold exactly one `STT_AGGREGATE`.)
+- **Replay** (`scratchpad/repro/repro.mjs`, the consultation's own four MinIO recordings,
+  `hope-recordings-arcaai/2026/09/23/streams/<session>/raw/complete.wav`) on `c4f52db5`, consultation `01a0cdd9`:
+  final note written once after R1 and never refreshed after R2–R4 (OD-14 reproduced). The Malayalam leak did
+  not recur on that run (0 chars) — it is non-deterministic, and the original prompt also carried 10 prior
+  case notes.
+
+### Owner decisions (2026-09-23)
+| # | Decision |
+|---|---|
+| D-1 | The script guard keys off the platform `consultation.summary.outputLanguage` = `en` (any Indic-script character, U+0900–U+0DFF), whether or not the tenant has a policy fragment. |
+| D-2 | One translate-only retry per affected section write; if it still carries Indic script or fails, KEEP the original and count it (never drop clinical text). |
+| D-3 | OD-14 by supersede-via-restart: `document:start` gains `supersede`, which terminates the open `harness-doc-<id>` run and starts a fresh one; the fresh run adopts the same `RAW_SUMMARY` row (newest-wins). No workflow-code change → no replay risk. |
+| D-4 | A SIGNED (approved) note is never re-finalised automatically. |
+| D-5 | If the guard cannot hold the live note to English on the replay, switch the live/summary agents to `lms-gemma-4-e4b` (present on the LM Studio volume, not loaded; SYSTEM catalogue row exists). Supersedes OD-7's "keep E2B" only on that evidence. |
+
+### Lanes
+| Lane | Scope | Files |
+|---|---|---|
+| **L-H** live-note script guard | Pure helper (count Indic script; repair a turn's writes + sections). After the turn is applied — graph and legacy branches alike — and before NER / publish / `publishSectionPatches`: when D-1 holds, one translate-only TEXT call per affected write (same live selection + quota + tenant headers as the grammar pass), accepted only if Indic-free. Repaired write's `duplicate` offsets no longer index the text, so they are dropped for that write. Flush log + stats gain `turnScriptRepairs` / `turnScriptRepairsUnresolved`. | `live-documentation/realtime/script-guard.ts` (new), `live-documentation.service.ts` |
+| **L-I** OD-14 re-finalise | (a) aggregate idempotency per STT session (stamp `sttSessionId`; a legacy aggregate without one never blocks a different session); (b) `TranscriptionCreated` for a consultation that already holds an UNSIGNED harness draft → regenerate with `supersede`, whole-visit transcript, regardless of the first-generation stand-down (the harness already owns the note); (c) harness `document:start` `supersede` → `id_conflict_policy=TERMINATE_EXISTING`. | `sttInternal.service.ts`, `consultation-event.handler.ts`, `note-generation` types/service, `harness-gateway.service.ts`, `apps/harness/.../internal.py` (+ request model) |
+| **A-C** ALaaS sign-off | ALaaS sends HOPE's approval when the clinician Saves/Submits the summary — review in progress. | ALaaS backend |
+
+### Implementation (2026-09-23, `dev-2.2`, primary checkout — no worktrees)
+| Lane | Commit | What |
+|---|---|---|
+| L-H | `b50b2c4fa` | `realtime/script-guard.ts` (`countIndicScript`, `repairTurnScript`); `guardTurnScript` runs inside the graph lane's `generateDocument` handler (before downstream grounding) and after the legacy `applyTurn`; `translateSectionText` = one `/generate` on the live selection with `translateOnlyInstruction` (`summary-language.ts`). Flush log gains `turnScriptRepairs` / `turnScriptRepairsUnresolved`; the stats DTO is untouched (no API artifact change). |
+| L-I | `df10e2ee5`, `526b39306` | STT sends `metadata.sessionId` on the streaming finalize; `createStreamingTranscriptInner` keys the aggregate per session (`sttSessionId`); `ConsultationEventHandler.resumedSessionPlan` → `supersede` on an unsigned draft (whole-visit transcript, oldest first), `signed` stops; `GenerateParams` / `HarnessStartContext.supersede`; harness `document:start` `supersede` → `WorkflowIDConflictPolicy.TERMINATE_EXISTING`; `HARNESS_DRAFT_SUBTYPE` shared constant. |
+
+RED witnessed for every new test: script guard (module missing; service tests 3/5 fail with the guard short-circuited), transcript key (2 fail), handler (3/5 fail), seam + gateway pins (2 fail with the spreads removed), harness supersede (1 fail), STT metadata (1 fail).
+
+**Gate (one pass, after both lanes):** applications `954 files / 15056 passed, 4 skipped`, typecheck clean, eslint 0 errors on touched files · harness unit `2738 passed` · STT unit `3820 passed, 1 failed` — `test_task799_env_surface::test_minio_credentials_default_to_empty`, pre-existing and unrelated (fails identically with no env file and no host vars; this wave touches only `session_manager.py`'s finalize call).
+
+### Verification
+- RED→GREEN unit tests per lane; one gate pass after merge (owner rule).
+- Cluster: re-run the replay; after EVERY stop `summary/latest.createdAt` ≥ stop time and the note reflects the
+  resumed recordings; live note 0 Indic script; flush telemetry shows `turnScriptRepairs` when it fires.
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-09-23 | Wave 4 opened: tester report on `01a0cd63` investigated (config English everywhere; live snapshot leak on E2B; OD-14 root-caused to three stacked defects), replay harness from the consultation's own MinIO recordings, owner answered OD-14 + D-1…D-5. |
 | 2026-09-22 | Ticket opened. Both defects root-caused against `hope-v2-dev`. Design drafted; OD-1…OD-8 pending. |
 | 2026-09-23 | Owner directive: English-only instructions and configuration. L-G merged, gated, RED verified; platform setting set to `en`; 10 template rows + Global/SYSTEM/ArcaAI agents republished through the admin API (SYSTEM + ArcaAI General Medicine agents off the pre-summary prompt). Cluster-verified on `87728892`. OD-14 opened (resumed recording not re-finalised). |
 | 2026-09-23 | Wave 3 — every open item: final-note flags on `summary/latest`, English by default on the direct/processor/harness paths, SYSTEM reference-set policy (and the General Medicine id collision it exposed), late-join section replay + F5 + resumed-recording snapshot clear, console label/badge, `recording/start` 409 for a stale STT session; ALaaS sibling lanes. Merged, gated once, RED verified, worktrees destroyed. |
