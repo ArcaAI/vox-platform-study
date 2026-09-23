@@ -1435,10 +1435,13 @@ export class SummaryService extends BaseService implements ISummaryService {
       // authenticated-user check, tenant assertion, idempotency read, safety
       // FLAG hard block, fail-closed-ordered ATTEST WORM append are all
       // unchanged). The matrix's legal predecessors of SIGNED are exactly
-      // the three states `approveSummary` can be reached from:
+      // the four states `approveSummary` can be reached from:
       // DRAFT_PENDING_SENSORS (Q2a optimistic delivery), PENDING_REVIEW
-      // (the legacy path), and TIMED_OUT ("the clock never signs, a human
-      // still can" — Any other predecessor is a
+      // (the legacy path), TIMED_OUT ("the clock never signs, a human
+      // still can"), and CLOSED_INCOMPLETE (TASK-1001 wave 5, D-7 — a
+      // terminal gate abandon closed the consultation unsigned, and a
+      // clinician's late Save still signs it; the close that follows is the
+      // ordinary SIGNED → CLOSED_COMPLETE). Any other predecessor is a
       // genuine ordering bug and `transitionTo` throws — mapped to 409 here
       // rather than the domain `BusinessException`'s default 500, mirroring
       // `ConsultationService.applyTransition`.
