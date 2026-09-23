@@ -1627,6 +1627,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // lost its owner lock, or was stood down by the substrate gate never reaches
     // stop(), and those are exactly the ones whose watermark would poison the next.
     this.sections().forget(params.consultationId);
+    // TASK-1001 — and the PREVIOUS session's terminal snapshot with it (a resumed recording).
+    // Issued here, synchronously inside start(), so the command is on the wire before the
+    // recording controller answers — ahead of any subscribe that answer prompts.
+    void this.clearStaleTerminalSnapshot(params.consultationId);
 
     const startedAt = Date.now();
     const session: LiveSession = {
@@ -1707,6 +1711,58 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.onStartPromise = this.runOnStartNodes(session);
 
     this.logger.log({ message: 'Live documentation session started', consultationId: params.consultationId, sessionId: params.sessionId });
+  }
+
+  /**
+   * TASK-1001 — drop the cached whole-document snapshot when, and ONLY when, it is a TERMINAL one.
+   *
+   * ## Why
+   *
+   * `…:last`'s final write at stop is the `closed: true` payload, and it outlives the session by
+   * design (a late joiner of a FINISHED consultation is owed it). But when the same consultation
+   * records again — a resumed recording — it kept being replayed until the new session's first flush
+   * overwrote it: every SDK stops reading at `closed`, and the relay ends the stream there (F5), so a
+   * client that (re)connected in that window never saw the resumed recording's note at all.
+   *
+   * ## Why a compare-and-delete, and not a DEL or an overwrite
+   *
+   * - Only a TERMINAL payload is removed, and the `closed` payload is written by `stop()` and nothing
+   *   else, so a snapshot that is terminal belongs to a session that is over. A live session's note
+   *   is never terminal and is never touched — whichever replica this start lands on (the key is
+   *   shared in Redis), and however many times start() runs for one consultation. That is what an
+   *   unconditional DEL cannot promise: a start on a replica that does not own the running session
+   *   would wipe that session's note for every late joiner until its next flush.
+   * - ATOMIC (one Lua body, like the owner-lock scripts above), so a snapshot the new session writes
+   *   between a read and a delete can never be the one removed.
+   * - DELETE rather than overwrite, because there is no true value to overwrite with. An empty note
+   *   would tell a snapshot-only client the note is blank; the previous note with `closed` stripped
+   *   would present the finished session's per-flush state (`textFailed`, `degradeReason`, stats,
+   *   groundedness) as current. Absent is the truth — this session has not produced a note yet — and
+   *   a late joiner in that window is still owed the note through the section replay
+   *   ({@link loadLiveSummaryLateJoin}): the persisted sections, then this session's warm start, and
+   *   an open stream that the first flush's snapshot reaches live.
+   *
+   * Best-effort: a failure leaves the key to expire with its `SNAPSHOT_TTL` and is logged; it never
+   * fails a start.
+   */
+  private async clearStaleTerminalSnapshot(consultationId: string): Promise<void> {
+    const script = `-- live-doc:snapshot:clear-terminal
+local cur = redis.call('GET', KEYS[1])
+if not cur then return 0 end
+local ok, doc = pcall(cjson.decode, cur)
+if ok and type(doc) == 'table' and doc['closed'] == true then
+  return redis.call('DEL', KEYS[1])
+end
+return 0`;
+    try {
+      await this.cacheService.eval(script, 1, this.snapshotKey(consultationId));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to clear the previous session`s terminal live-summary snapshot',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   // ------------------------------------------------------------------

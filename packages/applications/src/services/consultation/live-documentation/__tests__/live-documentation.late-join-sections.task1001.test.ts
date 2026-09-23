@@ -123,21 +123,54 @@ function repositoryDouble(rows = persistedRows()) {
   };
 }
 
+/** Tag of the compare-and-delete script `start()` runs on the cached snapshot key. */
+const CLEAR_TERMINAL_TAG = 'live-doc:snapshot:clear-terminal';
+
 function buildService(wiring: Wiring = {}) {
-  const cached = wiring.cached ?? { [SNAPSHOT_KEY]: noteSnapshot(), [PRESUMMARY_KEY]: PRESUMMARY };
+  const store = new Map(Object.entries(wiring.cached ?? { [SNAPSHOT_KEY]: noteSnapshot(), [PRESUMMARY_KEY]: PRESUMMARY }));
   const cache = {
-    get: vi.fn(async (key: string) => cached[key] ?? null),
-    set: vi.fn(),
-    setex: vi.fn(),
+    store,
+    get: vi.fn(async (key: string) => store.get(key) ?? null),
+    set: vi.fn(async (key: string, value: string) => {
+      store.set(key, value);
+    }),
+    setex: vi.fn(async (key: string, _ttl: number, value: string) => {
+      store.set(key, value);
+    }),
     publish: vi.fn(),
-    del: vi.fn(),
-    eval: vi.fn().mockResolvedValue(1),
+    del: vi.fn(async (key: string) => {
+      store.delete(key);
+    }),
+    // Dispatched by the script's tag comment, as the single-owner lock suite does. The clear is
+    // emulated with the contract its Lua states — delete the key ONLY when it holds a terminal
+    // (`closed: true`) payload — and the store moves at CALL time, as Redis serialises the body.
+    eval: vi.fn((script: string, _numKeys: number, key: string) => {
+      if (!script.includes(CLEAR_TERMINAL_TAG)) return Promise.resolve(1);
+      const current = store.get(key);
+      let terminal = false;
+      try {
+        terminal = current !== undefined && (JSON.parse(current) as { closed?: unknown }).closed === true;
+      } catch {
+        terminal = false;
+      }
+      if (!terminal) return Promise.resolve(0);
+      store.delete(key);
+      return Promise.resolve(1);
+    }),
     sadd: vi.fn(),
     srem: vi.fn(),
     smembers: vi.fn().mockResolvedValue([]),
     expire: vi.fn(),
   };
-  const channel = new Subject<string>();
+  const channels = new Map<string, Subject<string>>();
+  const channelFor = (name: string): Subject<string> => {
+    const known = channels.get(name);
+    if (known) return known;
+    const created = new Subject<string>();
+    channels.set(name, created);
+    return created;
+  };
+  const channel = channelFor(CHANNEL);
   const repository = wiring.repository === null ? undefined : (wiring.repository ?? repositoryDouble());
   const clsTenant = wiring.clsTenant === undefined ? TENANT : wiring.clsTenant;
 
@@ -145,7 +178,7 @@ function buildService(wiring: Wiring = {}) {
   args[0] = { axiosRef: { post: vi.fn() }, post: vi.fn() };
   args[1] = { get: vi.fn(() => undefined) };
   args[2] = cache;
-  args[3] = { subscribeToChannel: vi.fn(async () => channel.asObservable()), unsubscribeFromChannel: vi.fn() };
+  args[3] = { subscribeToChannel: vi.fn(async (name: string) => channelFor(name).asObservable()), unsubscribeFromChannel: vi.fn() };
   args[7] = wiring.secrets === null ? undefined : (wiring.secrets ?? { encrypt: vi.fn(), decrypt: vi.fn() });
   args[11] = { get: vi.fn((key: string) => (key === 'tenantId' ? (clsTenant ?? undefined) : undefined)), set: vi.fn(), run: vi.fn() };
   args[18] = repository;
@@ -159,18 +192,23 @@ interface Frame {
   data: string;
 }
 
-async function lateJoin(wiring: Wiring = {}) {
-  const built = buildService(wiring);
+/** Subscribe to the live-summary stream and let the late join settle. */
+async function watch(service: LiveDocumentationService) {
   const frames: Frame[] = [];
   let completed = false;
-  const sub = built.service.subscribeToLiveSummary(CID).subscribe({
+  const sub = service.subscribeToLiveSummary(CID).subscribe({
     next: (event: unknown) => frames.push(event as Frame),
     complete: () => {
       completed = true;
     },
   });
   await tick();
-  return { ...built, frames, sub, completed: () => completed };
+  return { frames, sub, completed: () => completed };
+}
+
+async function lateJoin(wiring: Wiring = {}) {
+  const built = buildService(wiring);
+  return { ...built, ...(await watch(built.service)) };
 }
 
 const parsed = (frame: Frame) => JSON.parse(frame.data) as Record<string, unknown>;
@@ -375,5 +413,81 @@ describe('TASK-1001 S-9 — the replay only ever ADDS frames; every gap degrades
     const sections = parsed(frames[0]!).sections as Array<Record<string, unknown>>;
     expect(sections[0]).toEqual({ title: 'Subjective', content: 'Cough for three days.' });
     sub.unsubscribe();
+  });
+});
+
+/**
+ * TASK-1001 — a RESUMED recording must not replay the PREVIOUS session's terminal.
+ *
+ * `…:last`'s final write at stop is the `closed: true` payload, and nothing reset it when the same
+ * consultation started recording again — so until the new session's first flush overwrote it, every
+ * subscriber was replayed a `closed` that belonged to a session already over. Every SDK stops
+ * reading there, and with F5 the relay ends the stream there too: the resumed recording's live note
+ * never reached a client that (re)connected in that window. Resuming is the clinician's ordinary
+ * second-segment flow, so this is the case that must work.
+ *
+ * `start()` now runs a compare-and-delete on the key: it goes ONLY when it holds a terminal. A live
+ * session's snapshot is never terminal (the `closed` payload is written by `stop` and nothing else),
+ * so no replica can delete a still-running session's note, whichever instance the start lands on.
+ */
+describe('TASK-1001 — a resumed recording drops the previous session`s terminal snapshot', () => {
+  it('resume after close: the late joiner gets NO `closed`, the persisted note, and an open stream', async () => {
+    const { service, cache } = buildService({ cached: {} });
+    // The previous session's stop — the real write: `…:last` becomes the `closed: true` payload.
+    await service.stop(CID);
+    expect((JSON.parse(cache.store.get(SNAPSHOT_KEY)!) as { closed?: boolean }).closed).toBe(true);
+
+    // The clinician resumes recording on the same consultation.
+    service.start({ consultationId: CID, tenantId: TENANT, userId: 'doctor-1' });
+    await tick();
+
+    const { frames, sub, completed } = await watch(service);
+
+    expect(frames.some((frame) => (JSON.parse(frame.data) as { closed?: boolean }).closed === true)).toBe(false);
+    // What a late joiner sees between the resume and the first flush: the persisted sections.
+    expect(frames.map((frame) => frame.type)).toEqual(['section.patch', 'section.patch']);
+    expect(completed()).toBe(false);
+    sub.unsubscribe();
+  });
+
+  it('a finished consultation that is NOT resumed still replays `closed`, last, and ends the stream', async () => {
+    const { service } = buildService({ cached: {} });
+    await service.stop(CID);
+
+    const { frames, completed } = await watch(service);
+
+    expect(frames.map((frame) => frame.type)).toEqual(['section.patch', 'section.patch', undefined]);
+    expect((JSON.parse(frames.at(-1)!.data) as { closed?: boolean }).closed).toBe(true);
+    expect(completed()).toBe(true);
+  });
+
+  it('never clears a LIVE session`s snapshot — a start landing on another replica leaves it alone', async () => {
+    // A session is running (on whichever instance owns it) and has flushed: its snapshot is live.
+    const { service, cache } = buildService({ cached: { [SNAPSHOT_KEY]: noteSnapshot() } });
+
+    // A duplicate start on THIS instance (it holds no session, so it is a genuinely new start here).
+    service.start({ consultationId: CID, tenantId: TENANT });
+    await tick();
+
+    expect(cache.store.get(SNAPSHOT_KEY)).toBe(noteSnapshot());
+    const { frames, sub, completed } = await watch(service);
+    expect(frames[0]!.type).toBeUndefined();
+    expect(parsed(frames[0]!)).toMatchObject({ consultationId: CID, updatedAt: SNAPSHOT_AT });
+    expect(completed()).toBe(false);
+    sub.unsubscribe();
+  });
+
+  it('runs the ATOMIC compare-and-delete on the snapshot key, once per genuinely new session', async () => {
+    const { service, cache } = buildService({ cached: {} });
+
+    service.start({ consultationId: CID, tenantId: TENANT });
+    // Re-binding an already-running session is not a new session: it must not run again.
+    service.start({ consultationId: CID, tenantId: TENANT });
+    await tick();
+
+    const clears = cache.eval.mock.calls.filter((call) => String(call[0]).includes(CLEAR_TERMINAL_TAG));
+    expect(clears).toEqual([[expect.stringContaining(CLEAR_TERMINAL_TAG), 1, SNAPSHOT_KEY]]);
+    // Never a blind DEL of the note: a live session's snapshot must survive any start.
+    expect(cache.del).not.toHaveBeenCalledWith(SNAPSHOT_KEY);
   });
 });

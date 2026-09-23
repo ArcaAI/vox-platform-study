@@ -13,10 +13,17 @@
  * ## The one shape a caller must get right
  *
  * `GET :id/live-summary/stream` is a MULTIPLEXED channel. Three payload kinds
- * ride it, and they are told apart by the `event` field IN THE JSON, never by
- * the SSE `event:` line (the gateway relays every one of them as a default
- * `message` frame). The legacy whole-document snapshot carries no `event` at
- * all, which is why its absence is the discriminator for that arm.
+ * ride it, and they are told apart by the `event` field IN THE JSON. The
+ * legacy whole-document snapshot carries no `event` at all, which is why its
+ * absence is the discriminator for that arm.
+ *
+ * The gateway ALSO names the SSE frame after that field (since TASK-932 L-2):
+ * a `section.patch` arrives as `event: section.patch` and a `presummary` as
+ * `event: presummary`, while the snapshot and its terminal `closed: true` stay
+ * on the default `message` frame. That is a convenience for an `EventSource`
+ * consumer (`addEventListener('section.patch', …)`); the JSON `event` field is
+ * the discriminator this SDK dispatches on, because it reads the same on a
+ * gateway that predates the frame names.
  */
 
 import type { GoverningRunSummary } from '@arcaai/types';
