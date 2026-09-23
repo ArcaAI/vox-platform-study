@@ -4,6 +4,8 @@ import { Prisma } from '../../../generated/core-prisma-client/client';
 import type { PromptTemplateCategory, PromptTemplateScope, PromptTemplateStatus } from '../../../generated/core-prisma-client/enums';
 import {
   SEED_DEPARTMENT_IDS,
+  SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
+  SYSTEM_GENERAL_MEDICINE_SUMMARY_VERSION_ID,
   SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
   SYSTEM_OUTPUT_LANGUAGE_POLICY_VERSION_ID,
   SYSTEM_TENANT_ID,
@@ -1723,10 +1725,13 @@ export const EXTRA_PROMPT_VERSIONS = [
 // stamps on a clone, so proof #9 cannot tell a seeded promotion from a real one.
 // =============================================================================
 
-export const SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID = '71000000-0000-0000-0004-000000000002';
+// TASK-1001 — the SYSTEM ids are declared in `00-constants.ts` beside the rest of the `…-0004-…`
+// block (they used to be a local literal here, on the slot that block had reserved for the
+// department-free pre-summary — see the note there). Re-exported so every importer is unchanged.
+export { SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID };
 const GENERAL_MEDICINE_SUMMARY_VERSION_IDS = {
   GLOBAL: '72000000-0000-0000-0000-000000000051',
-  SYSTEM: '72000000-0000-0000-0004-000000000002',
+  SYSTEM: SYSTEM_GENERAL_MEDICINE_SUMMARY_VERSION_ID,
 } as const;
 
 /** Declared in the order the body reads them; the agent binds each by name. */
@@ -1832,10 +1837,9 @@ export const GENERAL_MEDICINE_SUMMARY_VERSIONS = GENERAL_MEDICINE_SUMMARY_TEMPLA
 // A running tenant keeps what it has (the reference-set resync is missing-only, and a published
 // agent is immutable) — for those, the policy is an admin-API rollout, as OD-13 did for ArcaAI.
 //
-// Ids: SYSTEM takes the next free slot of the `…-0004-…` block (declared in `00-constants.ts`);
+// Ids: SYSTEM takes slot `…003` of the `…-0004-…` block (declared in `00-constants.ts`);
 // Global takes `…-0000-…052` beside the General Medicine summary (`…051`), its version mirroring
-// the slot the same way. Both clear every seeded template and version id
-// (`system-output-language-policy.task1001.test.ts`).
+// the slot the same way. `prompt-seed-id-uniqueness.test.ts` fails on any id two seeded rows share.
 // =============================================================================
 
 export const GLOBAL_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID = '71000000-0000-0000-0000-000000000052';

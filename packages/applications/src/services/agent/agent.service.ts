@@ -1179,7 +1179,14 @@ export class AgentService extends BaseService implements IAgentService {
         if (!clone) return null;
         // The clone's version lineage restarts at 1, so the SOURCE's pin numbers a version that
         // does not exist in the target. Carrying it would pin the agent to a missing snapshot.
-        return { templateId: clone.id, versionNumber: clone.approvedVersionNumber };
+        //
+        // TASK-1001 (OD-8) — only a pin that EXISTS is translated. An UNPINNED binding means
+        // "whatever version is approved when I am published" and stays that way (`undefined`
+        // leaves the fragment without a pin). Pinning it at the clone's v1 froze the tenant's
+        // output-language policy fragment across every republish, so an admin's approved edit to
+        // the one policy row never reached a note. Twin: `repointInstructionTemplates` in
+        // `seed/26-tenant-reference-set.ts`, so a seeded and an API-created tenant agree.
+        return { templateId: clone.id, versionNumber: ref.versionNumber === null ? undefined : clone.approvedVersionNumber };
       }) ?? undefined
     );
   }
