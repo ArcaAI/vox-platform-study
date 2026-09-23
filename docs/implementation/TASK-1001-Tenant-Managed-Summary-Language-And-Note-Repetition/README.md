@@ -736,6 +736,13 @@ Fixes:
 | ALaaS `b9d5335` | the edit leg names the clinician and carries `If-Match`, through the approve's one-retry-on-412 helper |
 | API artifacts | `openapi.json` + both portal copies: three `required: ["expectedVersion"]` entries dropped; route manifest and vox-node admin unchanged |
 
+**Verified on the cluster, build `2b47d665` (2026-09-24):** the tail of the lifecycle check re-run on `01a0cf01`
+(`CLOSED_INCOMPLETE`), approving exactly as vox-node / ALaaS do — version in `If-Match`, none in the body:
+`approve → APPROVED`, consultation `SIGNED`, `close → CLOSED_COMPLETE`. With the earlier steps of the same
+consultation (closed unsigned after the tenant window, resumed from `CLOSED_INCOMPLETE`, re-finalised over both
+recordings, closed unsigned again) the whole lifecycle has now passed end to end. The replay recordings and the
+plaintext note outputs were deleted from the local scratchpad afterwards (owner instruction).
+
 
 ## Change History
 
