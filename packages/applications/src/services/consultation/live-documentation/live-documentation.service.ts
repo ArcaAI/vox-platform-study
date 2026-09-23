@@ -67,10 +67,15 @@ import {
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
   resolveGuardrailDecision,
+  selectPromptFragments,
   type ComposableResolvedPrompt,
   type ComposedPrompt,
   type ExpressionValue,
 } from '@arcaai/workflow-contract';
+// TASK-1001 (owner decision 2026-09-23) — the platform-reserved key of a tenant's output-language
+// policy fragment. Declared in `@arcaai/types` so the seed that attaches it and this lane that asks
+// whether it was selected read ONE spelling.
+import { OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY } from '@arcaai/types';
 import { buildAgentPromptScope } from '../../agent/agent-prompt-scope';
 import { unwrapSingleKindContextPayload } from '../../consultation-context-schema/context-schema-definition';
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
@@ -127,7 +132,13 @@ import {
   type TurnRefusal,
   type TurnSectionWrite,
 } from './realtime/turn-contract';
-import { readSummaryLanguage } from '../consultation/summary-language';
+import {
+  OUTPUT_LANGUAGE_DEFAULT,
+  platformOutputLanguage,
+  readSummaryLanguage,
+  resolveOutputLanguage,
+  type OutputLanguage,
+} from '../consultation/summary-language';
 // TASK-951 D-3 — the visit type the CLIENT recorded at `open`, which wins over the parent-link
 // derivation. Read through lane C's one reader so the marker's storage stays its business.
 import { readRecordedVisitType } from '../consultation/open-markers';
@@ -221,6 +232,7 @@ import {
   CONSULTATION_REALTIME_TEXT_MAX_TOKENS_KEY,
   CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY,
 } from '../../settings-registry/descriptors/consultation-realtime.descriptors';
+import { CONSULTATION_OUTPUT_LANGUAGE_KEY } from '../../settings-registry/descriptors/consultation-output-language.descriptors';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { LIVE_DOC_GROUNDEDNESS_ENABLED_KEY } from '../../settings-registry/descriptors/feature-availability.descriptors';
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
@@ -295,6 +307,69 @@ class LivePromptUnresolvedError extends Error {
 }
 
 /**
+ * The §3.3 render scope a `core.agent` instruction is composed over on the REALTIME lane — built in
+ * ONE place because two readers need it and must agree: {@link renderLivePrompt}, which renders the
+ * instruction, and {@link outputLanguagePolicySelected}, which asks which fragments that render
+ * will select. A `when` sees exactly what the template sees (TASK-947 §4.1), so the two cannot use
+ * different scopes.
+ *
+ * TASK-947 R1 #1 — `context` is the J3-5 VIEW of the trigger (the single kind unwrapped when the
+ * agent's frozen schema declares one), exactly as the invocation route, the bench and the durable
+ * lane's `_prompt_scope` publish it. This lane was the one renderer that aliased the raw payload,
+ * so `context.visit_type` selected a fragment on three lanes and was a silent `condition_error` on
+ * this one. `trigger` stays the payload verbatim.
+ *
+ * Throws what `buildAgentPromptScope` throws (an unresolvable `{ path }` binding).
+ */
+function livePromptScope(
+  variables: Record<string, unknown>,
+  agentSlug: string,
+  trigger?: Readonly<Record<string, unknown>> | null,
+  contextSchema?: ResolvedTextCandidate['contextSchema'],
+): Record<string, unknown> {
+  const context = trigger ? (unwrapSingleKindContextPayload(contextSchema?.payloadSchema ?? null, trigger) as Record<string, unknown>) : undefined;
+  return buildAgentPromptScope({ variables, trigger, context, templateRef: `agent:${agentSlug}` });
+}
+
+/**
+ * TASK-1001 (owner decision 2026-09-23) — is the tenant's OUTPUT-LANGUAGE policy fragment SELECTED
+ * for this candidate's generation?
+ *
+ * "Selected" in exactly `composePrompt`'s sense, and computed by the same function over the same
+ * scope: the candidate's frozen composite carries a fragment under the platform-reserved
+ * `OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY`, and its `when` is absent or held for THIS call. A policy
+ * whose condition is false or cannot be evaluated is NOT selected — `composePrompt` excludes it, so
+ * nothing in the rendered instruction states a language, and the platform default must.
+ *
+ * Read off the FROZEN artifact (`compiledConfig.resolvedPrompt`), because that is what the call
+ * renders: publish freezes each fragment's text into the agent, so the answer is about the version
+ * that will actually run, not about the shared template row today.
+ *
+ * `false` for the two single-body forms and for a candidate with no instruction — neither can carry
+ * a fragment. `false`, too, when the scope cannot be built (an unresolvable binding): the render of
+ * the same scope then degrades the node anyway, so no generation reads the answer.
+ */
+function outputLanguagePolicySelected(
+  candidate: ResolvedTextCandidate,
+  overrides: NodeOverrides,
+  trigger?: Readonly<Record<string, unknown>> | null,
+): boolean {
+  const instruction = asRecord(candidate.instruction);
+  const source = liveCandidatePromptSource(candidate.resolvedPrompt, instruction);
+  if (!source || source.source !== 'composite') return false;
+  // Same guard `composePrompt` applies: a malformed composite with no list selects nothing.
+  const fragments = Array.isArray(source.fragments) ? source.fragments : [];
+  try {
+    // The variables `callTextCandidate` renders with — the agent's own, the node's overrides on top.
+    const variables = { ...asRecord(instruction.variables), ...overrides.promptVariables };
+    const scope = livePromptScope(variables, candidate.agent.slug, trigger, candidate.contextSchema);
+    return selectPromptFragments(fragments, scope).selected.some((fragment) => fragment.key === OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Render an agent instruction on the REALTIME lane through the ONE grammar (§3.2), over the
  * §3.3 scope.
  *
@@ -331,14 +406,7 @@ function renderLivePrompt(
     // Scope construction is INSIDE the try: a `{ path }` binding is resolved through the same
     // grammar, so an unresolvable binding raises here and must degrade the node with the path
     // named rather than escape as an unhandled error.
-    //
-    // TASK-947 R1 #1 — `context` is the J3-5 VIEW of the trigger (the single kind unwrapped when
-    // the agent's frozen schema declares one), exactly as the invocation route, the bench and the
-    // durable lane's `_prompt_scope` publish it. This lane was the one renderer that aliased the
-    // raw payload, so `context.visit_type` selected a fragment on three lanes and was a silent
-    // `condition_error` on this one. `trigger` stays the payload verbatim.
-    const context = trigger ? (unwrapSingleKindContextPayload(contextSchema?.payloadSchema ?? null, trigger) as Record<string, unknown>) : undefined;
-    const scope = buildAgentPromptScope({ variables, trigger, context, templateRef: `agent:${agentSlug}` });
+    const scope = livePromptScope(variables, agentSlug, trigger, contextSchema);
     return composePrompt(resolvedPrompt, scope, { templateRef: `agent:${agentSlug}` });
   } catch (error) {
     if (error instanceof PromptVariableUnresolvedError) {
@@ -374,6 +442,21 @@ function liveCandidatePromptSource(resolvedPrompt: ComposableResolvedPrompt, ins
   if (resolvedPrompt && resolvedPrompt.source === 'composite') return resolvedPrompt;
   const content = resolvedPrompt?.content ?? (typeof instruction.systemPrompt === 'string' ? instruction.systemPrompt : null);
   return content ? { source: 'inline', content } : null;
+}
+
+/**
+ * TASK-1001 (owner decision 2026-09-23) — the operating frame's language step, emitted ONLY when no
+ * tenant output-language policy fragment is selected for the call: the platform default, by name.
+ *
+ * Three clauses, each load-bearing:
+ *  - the language, named — never a tag, and never the consultation's declared (source) language;
+ *  - the OVERRIDE, named: the clinical corpus says "the section content MUST be in the conversation
+ *    language" in ~40 places, and a generic label loses to that specific in-template instruction
+ *    (the 2026-08-10 lesson, `summary-prompt.builder.ts` `languageDirective`);
+ *  - "Keep the section keys and headings exactly as given, in English." — verbatim, finding S-4.
+ */
+function defaultOutputLanguageStep(languageName: string): string {
+  return `Write every section value in ${languageName}, whatever language was spoken, regardless of any instruction elsewhere in this prompt to write content in the conversation language. Keep the section keys and headings exactly as given, in English.`;
 }
 
 const PLATFORM_TEMPLATE: ResolvedDocumentTemplate = Object.freeze({
@@ -810,14 +893,23 @@ interface LiveSession {
    */
   sttPipelineId?: string | null;
   /**
-   * TASK-932 §3.7 — the consultation's declared SUMMARY language, frozen at `start()`.
+   * TASK-932 §3.7 — the consultation's declared SOURCE language (`en`, `ml`, `ml-en` …), frozen at
+   * `start()`. Published as `trigger.context.language`.
    *
-   * `null` = undeclared, which is not English: the operating frame then says nothing about an
-   * output language and the department body decides, exactly as it did before this ticket. Frozen
-   * with the agent, the template and the lane for the same reason all three are — the note being
-   * produced must not change language halfway through because a row was edited.
+   * TASK-1001 (owner decision 2026-09-23) — it NEVER decides the note's output language: that is
+   * the tenant's policy fragment when selected, else {@link LiveSession.platformOutputLanguagePromise}.
+   * `null` = undeclared.
    */
   summaryLanguage?: string | null;
+  /**
+   * TASK-1001 (owner decision 2026-09-23) — the resolved value of
+   * `consultation.summary.outputLanguage`, the PLATFORM-DEFAULT language this session's note is
+   * written in when the tenant's output-language policy fragment is not selected. Resolved once, on
+   * the first flush, and frozen for the same reason `summaryLanguage` is: the note being produced
+   * must not change language halfway through because a setting was edited. A promise, memoized, so
+   * two racing first flushes share one read (the `clientContextPromise` discipline).
+   */
+  platformOutputLanguagePromise?: Promise<string>;
   /**
    * TASK-932 — the consultation's VISIT TYPE key (`new-visit` / `revisit`), frozen at `start()`.
    *
@@ -1989,8 +2081,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     try {
       const consultation = await this.consultationRepository.findById(session.consultationId);
       governed = tenantWorkflowGoverns(consultation?.metadata);
-      // TASK-932 §3.7 — freeze the declared summary language off the SAME row read, so the
-      // operating frame costs no extra I/O on the start path.
+      // TASK-932 §3.7 — freeze the declared SOURCE language off the SAME row read, so the run
+      // context's `language` costs no extra I/O on the start path. (TASK-1001: it no longer decides
+      // the note's output language — see `operatingFrame`.)
       session.summaryLanguage = readSummaryLanguage(consultation?.metadata);
       // ...and the visit type off the same row, for the same reason. `forConsultation` is pure.
       //
@@ -3003,6 +3096,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // What the client sent at `open`, resolved once for the session (the read is memoised, so
     // asking for it here costs nothing the run context below was not going to pay anyway).
     const clientContext = await this.resolveClientContext(session);
+    // TASK-1001 (owner decision 2026-09-23) — the platform-default OUTPUT language, frozen on the
+    // session. Resolved here, before either prompt is built, so both branches state the same one.
+    const platformOutputLanguageTag = await this.sessionPlatformOutputLanguage(session);
     const promptText = this.buildTextUserPrompt(
       priorNote,
       delta || transcript,
@@ -3010,7 +3106,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       elidedParts > 0,
       this.stablePrefixFor(agent, template),
       template.compiled.title,
-      this.operatingFrame(template),
+      // The LEGACY branch serves the session's frozen snapshot, whose system prompt is a single
+      // template body with no fragment list — so no tenant policy can be selected here and the
+      // platform default is always stated.
+      this.operatingFrame(template, resolveOutputLanguage(false, platformOutputLanguageTag)),
       // TASK-939 OD-2(a) — the turn contract's prose half, kept beside its schema so the two
       // cannot drift.
       turnInstruction(template.compiled),
@@ -3100,7 +3199,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     };
     const graph = lane
       ? await this.runGraphLane(session, lane, {
-          buildPrompt: (sourceText) =>
+          buildPrompt: (sourceText, policySelected) =>
             this.buildTextUserPrompt(
               priorNote,
               sourceText,
@@ -3108,7 +3207,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               elidedParts > 0,
               this.stablePrefixFor(agent, template),
               template.compiled.title,
-              this.operatingFrame(template),
+              this.operatingFrame(template, resolveOutputLanguage(policySelected, platformOutputLanguageTag)),
               turnInstruction(template.compiled),
               clientContext.vitals,
               clientContext.previousVisits,
@@ -3667,8 +3766,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
        * the bound value IS `delta || transcript`, so the bytes are identical to
        * legacy — but on a tenant lane whose generation node is wired to something
        * else, the prompt follows the wiring instead of silently ignoring it.
+       *
+       * TASK-1001 — and from whether the tenant's OUTPUT-LANGUAGE policy fragment is selected for
+       * the agent this node runs, which only the node knows: selected ⇒ the frame states no
+       * language (the tenant's text owns it); not selected ⇒ it states the platform default.
        */
-      buildPrompt: (sourceText: string) => string;
+      buildPrompt: (sourceText: string, policySelected: boolean) => string;
       agent: FrozenLiveAgentSnapshot;
       template: ResolvedDocumentTemplate;
       signal: AbortSignal;
@@ -3743,11 +3846,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       resolveAgent: async (ref) => this.resolveRealtimeAgentView(ref, session.tenantId),
 
       generateDocument: async (input, signal) => {
-        // Built from the node's BOUND `sourceText`, not from an expression this
-        // method happened to have in scope. On the platform lane that bound value
-        // IS `delta || transcript`, so the prompt bytes are identical to legacy —
-        // parity by construction, not by coincidence.
-        const promptText = ctx.buildPrompt(input.sourceText);
         // TASK-876 — a `core.agent` node names the agent it runs. Resolved HERE (the host),
         // once per call: explicit slug + version pin, FAIL CLOSED on drift or an unresolvable
         // slug — the throw degrades the node with a named reason and nothing is generated on
@@ -3758,6 +3856,20 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // walks them. WHICH of them served is read back off the stats below, because that is the
         // one field that already knows.
         if (textAgent) turnCandidates = [textAgent.spec.primary, ...textAgent.spec.fallback.chain];
+        // Built from the node's BOUND `sourceText`, not from an expression this
+        // method happened to have in scope. On the platform lane that bound value
+        // IS `delta || transcript`, so the prompt bytes are identical to legacy —
+        // parity by construction, not by coincidence.
+        //
+        // TASK-1001 — built AFTER the agent resolves (it used to be the first line), because the
+        // frame's language step depends on whether this agent's output-language policy fragment is
+        // selected. Asked of the PRIMARY: it is the candidate that serves unless it fails, and the
+        // prompt is built once for the whole fallback walk. The assigned-agent path
+        // (`textAgent` undefined) serves a single-template snapshot, so nothing can be selected.
+        const promptText = ctx.buildPrompt(
+          input.sourceText,
+          textAgent ? outputLanguagePolicySelected(textAgent.spec.primary, textAgent.overrides, ctx.runContext.trigger as Readonly<Record<string, unknown>>) : false,
+        );
         // TASK-939 OD-2(a) — the TURN schema, derived per call. `responseFormat` is the only field
         // the call path reads off `compiled`, and the committed one is a persisted artifact the
         // durable finalisation path decodes against, so it is spread rather than mutated.
@@ -4265,6 +4377,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private async realtimeRunContext(session: LiveSession): Promise<Record<string, ExpressionValue>> {
     const client = await this.resolveClientContext(session);
     const clientVitals = client.vitals;
+    // TASK-1001 (owner decision 2026-09-23) — the note's OUTPUT language, for `language_name`.
+    const outputLanguage = platformOutputLanguage(await this.sessionPlatformOutputLanguage(session));
 
     const shared = buildPreSummaryVariables({
       currentDepartment: await this.resolveDepartmentName(session),
@@ -4280,8 +4394,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     const context: Record<string, ExpressionValue> = {
       ...shared,
+      // TASK-1001 (owner decision 2026-09-23) — `language_name` is the language the pre-summary is
+      // WRITTEN in ("Write ALL bullet content in {{language_name}}"), so on this native lane it is
+      // the resolved OUTPUT language, never the builder's reading of the SOURCE tag. The builder
+      // itself is left alone: it backs the frozen v1-compat surface, byte-pinned by golden fixtures.
+      //
+      // It is the platform default, not a per-agent answer: this context is built ONCE per flush
+      // and shared by every `core.agent` in the lane, before any of them has selected fragments. An
+      // agent whose own policy fragment is selected states its language in its instruction; the
+      // corpus bodies that carry such a fragment do not bind `language_name`.
+      language_name: outputLanguage.name,
       // The general-medicine template's own names for the three the pre-summary list spells
       // differently (`language_name`, `safe_vitals`) or does not carry (`chief_complaint`).
+      // `language` is the consultation's declared SOURCE tag (`ml-en` included) — what is spoken.
       language: (session.summaryLanguage ?? '').trim(),
       chief_complaint: '',
       formatted_vitals: clientVitals ?? formatVitalsForPrompt(session.lastPayload?.vitals) ?? shared.safe_vitals,
@@ -5215,7 +5340,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-932 §3.7 — the OPERATING FRAME: the four steps a partial-summary turn actually performs.
+   * TASK-932 §3.7 — the OPERATING FRAME: the steps a partial-summary turn actually performs (four,
+   * or five when the platform-default output language is stated — see below).
    *
    * ## Why this is not in the department body
    *
@@ -5237,42 +5363,86 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *     seconds and the note changes language mid-consultation.
    *  2. MERGE, don't restart. The prior note is already in the prompt (`Current <title> so far`),
    *     but "here is your previous output" is not an instruction to preserve it.
-   *  3. FILL the resolved template's sections, BY KEY. The section list is the compiled
+   *  3. (only when no tenant policy owns it) the OUTPUT LANGUAGE — the section below.
+   *  4. FILL the resolved template's sections, BY KEY. The section list is the compiled
    *     template's own, so a department shape and its prompt cannot disagree.
-   *  4. The consultation is still running, so no closing summary.
+   *  5. The consultation is still running, so no closing summary.
    *
-   * ## What is NO LONGER here, and why (TASK-1001, OD-1 / OD-3)
+   * Numbered as emitted, so the list never has a gap when the language step is absent.
    *
-   * A step 3 used to state the note's OUTPUT LANGUAGE, generated from the consultation's declared
-   * `summaryLanguage`. That was a defect of ownership, not of wording: the language a note is
-   * written in is a tenant DECISION, and stating it in code meant no tenant admin could change
-   * it. ALaaS declares `ml-en` — the STT code-switch MODE, not an output language — the resolver
-   * took its primary subtag, and the frame duly instructed Malayalam. The clinician got a
-   * code-switched hematology note that no console setting could have prevented.
+   * ## The output language (TASK-1001; owner decision 2026-09-23)
    *
-   * It now lives in CONTENT, as an unconditional `instruction.fragments[]` pointer to ONE shared
-   * "Output language policy" template (`07b-arcaai-clinical-templates.ts`) — TASK-947's mechanism,
-   * which had shipped with an editor and per-call telemetry and no seeded user. The clause that
-   * rode along with the generated line, "keep the section keys and headings exactly as given, in
-   * English", travels with the policy body: it is the only defence against ALaaS twinning every
-   * section (finding S-4), and `live-documentation.operating-frame.task1001.test.ts` pins it.
+   * A step used to state the note's OUTPUT LANGUAGE, GENERATED from the consultation's declared
+   * `summaryLanguage`. ALaaS declares `ml-en` — the STT code-switch MODE, "Malayalam-led, English
+   * mixed" — the resolver took its primary subtag, and the frame instructed Malayalam. TASK-1001 L3
+   * then removed the step entirely, leaving the language to a tenant policy fragment; with no
+   * fragment the department body decided, and ~40 places in the clinical corpus say "the section
+   * content MUST be in the conversation language" — which, for a code-switched consultation, is a
+   * code-switched note.
    *
-   * Nothing replaces it HERE. A tenant that configures no policy gets no output-language
-   * instruction at all — which is TASK-891 OD-1's posture on the output axis: absent is not
-   * English, and inventing a default in code is the thing this ticket removed.
+   * The owner settled it: *"The summarization (both pre-summary and summary) is still in English,
+   * by admin configuration OR by default."* So the step is back, with a different SOURCE and a
+   * different condition (`resolveOutputLanguage`):
+   *  - the tenant's output-language POLICY FRAGMENT selected for this call ⇒ `outputLanguage` is
+   *    `null` and NO step is emitted — the tenant's text owns the language, and a second, generated
+   *    statement beside it would be two answers to one question;
+   *  - otherwise ⇒ the PLATFORM DEFAULT (`consultation.summary.outputLanguage`, English), stated
+   *    by name. Never the consultation's declared language, which describes what is SPOKEN.
+   *
+   * The default step does two things a bare "write in English" would not:
+   *  - it NAMES and overrides the corpus's own "write content in the conversation language" clause.
+   *    The 2026-08-10 lesson on the v1-compat summary (`summary-prompt.builder.ts`
+   *    `languageDirective`): a generic label loses to that specific in-template instruction, so the
+   *    directive must name the conflict it overrides;
+   *  - it keeps "Keep the section keys and headings exactly as given, in English." That clause is
+   *    load-bearing (finding S-4): ALaaS merges sections by byte-identical title when one identity
+   *    is generic, so a translated heading inserts a twin section nothing ever removes.
+   * `live-documentation.operating-frame.task1001.test.ts` pins both.
    */
-  private operatingFrame(template: ResolvedDocumentTemplate): string {
+  private operatingFrame(template: ResolvedDocumentTemplate, outputLanguage: OutputLanguage | null): string {
     const sectionKeys = template.compiled.sectionKeys;
+    const steps = [
+      "The transcript is PARTIAL and may be code-switched or not in English. Read it in whatever language it is in and understand it in English internally; never transcribe another language's words into the note untranslated.",
+      'This is an UPDATE, not a fresh note. Keep everything the running note above already records, extend a section the new transcript adds to, and revise one only where the new transcript contradicts it.',
+      ...(outputLanguage ? [defaultOutputLanguageStep(outputLanguage.name)] : []),
+      `Fill the sections of this document and no others, using these keys exactly: ${sectionKeys.join(', ')}. A section the consultation has not reached is null — never a placeholder, never invented content.`,
+      'The consultation is still in progress. Write no closing summary, no sign-off and no statement that the encounter has ended.',
+    ];
 
-    return [
-      '',
-      '',
-      'HOW TO PRODUCE THIS TURN:',
-      "1. The transcript is PARTIAL and may be code-switched or not in English. Read it in whatever language it is in and understand it in English internally; never transcribe another language's words into the note untranslated.",
-      '2. This is an UPDATE, not a fresh note. Keep everything the running note above already records, extend a section the new transcript adds to, and revise one only where the new transcript contradicts it.',
-      `3. Fill the sections of this document and no others, using these keys exactly: ${sectionKeys.join(', ')}. A section the consultation has not reached is null — never a placeholder, never invented content.`,
-      '4. The consultation is still in progress. Write no closing summary, no sign-off and no statement that the encounter has ended.',
-    ].join('\n');
+    return ['', '', 'HOW TO PRODUCE THIS TURN:', ...steps.map((step, idx) => `${idx + 1}. ${step}`)].join('\n');
+  }
+
+  /**
+   * TASK-1001 — the platform-default output language this session states, resolved ONCE and frozen
+   * (see {@link LiveSession.platformOutputLanguagePromise}).
+   */
+  private sessionPlatformOutputLanguage(session: LiveSession): Promise<string> {
+    session.platformOutputLanguagePromise ??= this.resolvePlatformOutputLanguage(session.tenantId);
+    return session.platformOutputLanguagePromise;
+  }
+
+  /**
+   * TASK-1001 (owner decision 2026-09-23) — the resolved value of `consultation.summary.outputLanguage`
+   * for `tenantId`, as an OUTPUT tag.
+   *
+   * Never throws, on the same posture as {@link resolveAgenticContext}: this sits on the live flush
+   * and on the durable handoff, and a settings-backend failure must degrade to the descriptor's code
+   * default (English) — logged — rather than cost the clinician a note. An unwired settings graph
+   * (the positional fixtures, background compositions) answers the same default.
+   */
+  private async resolvePlatformOutputLanguage(tenantId: string): Promise<string> {
+    if (!this.effectiveSettings) return OUTPUT_LANGUAGE_DEFAULT;
+    try {
+      const resolved = await this.effectiveSettings.resolveEffective(CONSULTATION_OUTPUT_LANGUAGE_KEY, { tenantId });
+      return platformOutputLanguage(resolved.value).tag;
+    } catch (error) {
+      this.logger.warn({
+        message: 'consultation.summary.outputLanguage could not be resolved — stating the code-default output language',
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return OUTPUT_LANGUAGE_DEFAULT;
+    }
   }
 
   /**
@@ -6811,8 +6981,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * `realtimeRunContext` uses — so a field the platform has no value for inherits v1's declared
    * default rather than a newly invented one, and the two lanes cannot drift on what an absent
    * value means. `visit_type` is therefore the catalogue KEY (`new-visit` / `revisit`), which is
-   * the enum the seeded CEL compares; `language` is the consultation's declared language CODE
-   * beside the builder's `language_name`, exactly as the realtime context spells the pair.
+   * the enum the seeded CEL compares; `language` is the consultation's declared SOURCE language
+   * CODE beside `language_name`, the note's OUTPUT language (TASK-1001: the platform default, never
+   * the builder's reading of the source tag), exactly as the realtime context spells the pair.
    *
    * `chief_complaint` is deliberately NOT published: it is an empty-string placeholder the
    * workflow's own trigger-context schema already defaults, and publishing `''` would claim this
@@ -6828,6 +6999,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private async handoffClinicalContext(consultation: ConsultationEntity): Promise<Record<string, unknown>> {
     const language = readSummaryLanguage(consultation.metadata);
+    // TASK-1001 (owner decision 2026-09-23) — the OUTPUT language, for `language_name`, resolved for
+    // the consultation's own tenant exactly as the realtime lane resolves it for the session.
+    const outputLanguage = platformOutputLanguage(await this.resolvePlatformOutputLanguage(consultation.tenantId));
     const client = await clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).read(consultation.id);
     const shared = buildPreSummaryVariables({
       currentDepartment: await this.departmentNameOf(consultation.departmentId ?? null),
@@ -6847,6 +7021,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     });
     return {
       ...shared,
+      // TASK-1001 — the pair spelled exactly as `realtimeRunContext` spells it: `language_name` is
+      // the note's OUTPUT language (the platform default), `language` the declared SOURCE tag.
+      language_name: outputLanguage.name,
       language: (language ?? '').trim(),
       // The general-medicine templates' own name for the reading line the pre-summary list spells
       // `safe_vitals`; the realtime lane publishes both under the same rule.

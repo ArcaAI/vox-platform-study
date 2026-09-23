@@ -14,9 +14,10 @@
  * stated once by the lane. This suite pins that it says the things it exists to say and that it
  * names the SESSION's sections rather than a hardcoded SOAP tuple.
  *
- * TASK-1001 removed the OUTPUT LANGUAGE from that list: the note's language is a tenant DECISION,
- * not a runtime property, and stating it here is what made it unconfigurable. It is now a seeded
- * prompt fragment; see `live-documentation.operating-frame.task1001.test.ts` and the note below.
+ * TASK-1001 changed WHERE the OUTPUT LANGUAGE comes from, not whether the frame may state it: a
+ * tenant's selected policy fragment owns it, and otherwise the frame states the PLATFORM DEFAULT
+ * (English) — never the consultation's declared language. See
+ * `live-documentation.operating-frame.task1001.test.ts` and the note below.
  *
  * The frame is asserted through the real prompt the service sends, not through a snapshot of a
  * private method, so a refactor that stops appending it fails here.
@@ -97,11 +98,12 @@ describe('TASK-932 §3.7 — the partial-summary operating frame', () => {
     expect(prompt).toMatch(/understand it in English internally/);
     // 2 — merge, do not restart.
     expect(prompt).toMatch(/This is an UPDATE, not a fresh note/);
-    // 3 — the template's sections, by key, with null for what has not been reached (was 4
-    //     before TASK-1001 retired the language step).
+    // 3 — the platform-default output language (this suite's agent carries no tenant policy).
+    expect(prompt).toMatch(/3\. Write every section value in English/);
+    // 4 — the template's sections, by key, with null for what has not been reached.
     expect(prompt).toMatch(/using these keys exactly:/);
     expect(prompt).toMatch(/never a placeholder, never invented content/);
-    // 4 — the consultation is still running.
+    // 5 — the consultation is still running.
     expect(prompt).toMatch(/still in progress/);
 
     // The frame is the LAST thing the model reads: it is the turn's procedure.
@@ -118,29 +120,21 @@ describe('TASK-932 §3.7 — the partial-summary operating frame', () => {
   });
 
   /**
-   * TASK-1001 (OD-1 / OD-3) — the LANGUAGE cases that stood here are GONE, and deliberately not
-   * replaced in kind.
+   * TASK-1001 (owner decision 2026-09-23) — the LANGUAGE case, as it now stands on the LEGACY path.
    *
-   * They pinned a step this frame no longer has: the output language was generated in code from
-   * the consultation's declared `summaryLanguage`, which is exactly why a tenant admin could not
-   * change it and why ALaaS's `ml-en` (an STT code-switch MODE) produced a Malayalam note. The
-   * rule is now CONTENT — one shared `Output language policy` template referenced as an
-   * unconditional `instruction.fragments[]` pointer by every ArcaAI summary agent.
-   *
-   * What replaces them lives in `live-documentation.operating-frame.task1001.test.ts`: that the
-   * frame emits no language line at all, that the policy arrives through the fragment path, and —
-   * the clause that used to ride along with the generated line — that section keys and headings
-   * are still required to stay in English (finding S-4; a translated heading makes ALaaS insert a
-   * twin section that nothing ever removes).
-   *
-   * The TASK-891 OD-1 posture this suite was written to protect is unchanged and is asserted
-   * there: absent is still not English, and now nothing in code says otherwise.
+   * The legacy flush serves the session's frozen single-template snapshot, so no tenant policy
+   * fragment can be selected here and the frame always states the platform default. What it must
+   * NOT do is what it once did: derive the note's language from the consultation's declaration
+   * (`ml` here) — that describes what is SPOKEN. The full matrix (policy selected / not, the `when`,
+   * the platform default changed) lives in `live-documentation.operating-frame.task1001.test.ts`.
    */
-  it('says nothing about the output language — that rule is tenant content now (TASK-1001)', async () => {
+  it('states the platform default — English — whatever the consultation declared (TASK-1001)', async () => {
     const prompt = await flushOnce({ summaryLanguage: 'ml' });
+    const frame = prompt.slice(prompt.indexOf('HOW TO PRODUCE THIS TURN:'));
 
-    expect(prompt).not.toContain('Write every section value in');
-    expect(prompt).not.toContain('No output language was declared');
+    expect(frame).toContain('Write every section value in English, whatever language was spoken');
+    expect(frame).toContain('regardless of any instruction elsewhere in this prompt to write content in the conversation language');
+    expect(frame).toContain('Keep the section keys and headings exactly as given, in English.');
     expect(prompt).not.toContain('Malayalam');
   });
 

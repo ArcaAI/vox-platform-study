@@ -1,7 +1,7 @@
 import { IsString, IsOptional, IsDateString, IsObject, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
-import { SUMMARY_LANGUAGE_PATTERN } from '../summary-language';
+import { SOURCE_LANGUAGE_PATTERN } from '../summary-language';
 
 /**
  * TASK-933 — the platform's own id GRAMMAR (8-4-4-4-12 hex), NOT `@IsUUID()`.
@@ -88,37 +88,39 @@ export class OpenConsultationRequest {
   workflowDefinitionSlug?: string;
 
   /**
-   * TASK-932 §3.7 — the language the NOTE is written in.
+   * The consultation's SOURCE language — what is spoken and transcribed.
    *
-   * NOT the STT language mode, and the distinction is the whole point of the field: a
-   * Malayalam-English consultation is routinely documented in English. TASK-891 OD-1 governs
-   * DECODING and leaves it undeclared by default ("the code-switch is always enabled"); this
-   * governs OUTPUT and is likewise undeclared by default — absent means the agent's own body
-   * decides, which is what every consultation did before this ticket. Declaring one never sets
-   * the other.
+   * `en`, `ml`, `en-IN`, or an STT CODE-SWITCH mode such as `ml-en` ("Malayalam as the main
+   * language, English mixed" — the value ALaaS sends, `ASR_PARAMETERS.decoding.languageMode`). It is
+   * stored as declared and echoed back on the consultation's `language`.
+   *
+   * It does NOT choose the language the notes are WRITTEN in (owner decision 2026-09-23: *"The
+   * summarization (both pre-summary and summary) is still in English, by admin configuration OR by
+   * default."*). The output language is the tenant's output-language policy fragment when one is
+   * selected, and otherwise the platform default (`consultation.summary.outputLanguage`, English) —
+   * see `resolveOutputLanguage` in `../summary-language.ts`. Absent means undeclared.
+   *
+   * TASK-1001 L1 briefly REJECTED a code-switch mode here with a 400, on the reading that this field
+   * named the note's language. Under the owner decision it names the source, so `ml-en` is a
+   * legitimate value again; what changed instead is that nothing downstream derives the note's
+   * language from it.
    *
    * Declared here because it has to be: the gateway's global pipe runs `forbidNonWhitelisted`,
    * so an undeclared field REJECTS THE WHOLE OPEN with a 400 rather than being ignored.
    *
    * Honoured on `open` and on `revisit`. A re-open of an ALREADY-OPEN consultation keeps the
    * language it was opened with, exactly as it keeps its governing workflow.
-   *
-   * TASK-1001 OD-4: a code-switch mode such as `ml-en` — the value of the STT session's
-   * `languageMode`, meaning "the microphone hears Malayalam and English mixed" — is REJECTED
-   * here with a 400, not silently accepted and misread as "write the note in Malayalam". It is
-   * shaped exactly like the legitimate region tag `en-IN`, so `SUMMARY_LANGUAGE_PATTERN` itself
-   * carries the discriminator (see its docstring).
    */
   @ApiPropertyOptional({
     description:
-      'BCP-47 language tag the generated notes should be written in (`en`, `ml`, `en-IN`). Independent of the STT language mode: absent means undeclared, and the agent decides. A code-switch mode such as `ml-en` is rejected — that describes what the microphone hears (`languageMode`), never what the note is written in.',
-    example: 'ml',
+      "BCP-47 tag of the consultation's SOURCE language — what is spoken and transcribed (`en`, `ml`, `en-IN`), or an STT code-switch mode such as `ml-en` (Malayalam-led, English mixed). It does not choose the language the notes are written in: that is the tenant's output-language policy when one is configured, otherwise the platform default (English). Absent means undeclared.",
+    example: 'ml-en',
   })
   @IsOptional()
   @IsString()
-  @Matches(SUMMARY_LANGUAGE_PATTERN, {
+  @Matches(SOURCE_LANGUAGE_PATTERN, {
     message:
-      'language must be the note output-language tag (e.g. `en`, `ml`, `en-IN`), not an STT decoding mode such as `ml-en` or `en-ml`: `language` sets what the note is written in and is independent of `languageMode`, the STT code-switch setting',
+      'language must be a BCP-47 language tag for the SOURCE language (e.g. `en`, `ml`, `en-IN`) or an STT code-switch mode (e.g. `ml-en`); it never selects the language the notes are written in',
   })
   language?: string;
 

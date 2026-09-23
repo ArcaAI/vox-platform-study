@@ -1,56 +1,77 @@
 /**
- * TASK-932 §3.7 — the consultation's SUMMARY LANGUAGE: what the note is written in.
+ * TASK-932 §3.7 / TASK-1001 — the consultation's two LANGUAGES, and which one decides the note.
  *
  * ## Two languages, one consultation, and they are not the same question
  *
- * TASK-891 OD-1 settled the FIRST one: the STT language mode has no default, because "the
- * code-switch is always enabled … to use a specific language, the SDK or end-user must declare
- * the language code". That governs DECODING — what the microphone is allowed to hear.
+ * The SOURCE language is what is spoken and transcribed. It is what `OpenConsultationRequest.language`
+ * declares and what is stored under {@link SUMMARY_LANGUAGE_METADATA_KEY}: `en`, `ml`, `en-IN`, or an
+ * STT code-switch mode such as `ml-en` ("Malayalam-led, English mixed" — the value ALaaS sends,
+ * `ASR_PARAMETERS.decoding.languageMode`). TASK-891 OD-1 governs how the microphone decodes it.
  *
- * This is the SECOND one, and it moves in the opposite direction: a Malayalam-English
- * consultation is routinely documented in English, and an English consultation may be documented
- * in Malayalam. The transcript's language and the note's language are independent, so declaring
- * one must never silently set the other. Nothing here touches the STT channel; nothing on the STT
- * channel is read here.
+ * The OUTPUT language is what the note is WRITTEN in, and it moves independently: a
+ * Malayalam-English consultation is routinely documented in English. The transcript's language and
+ * the note's language are independent, so declaring one must never silently set the other.
  *
- * Absent means UNDECLARED, and undeclared is not English — the prompt simply says nothing about
- * an output language and the agent's own body decides, which is what every consultation did
- * before this ticket.
+ * ## Owner decision 2026-09-23 — the output language is configuration, never the source tag
+ *
+ * *"ALaaS still sends the language: `ml-en` indicates code-mixed/code-switch enabled for
+ * realtime/job transcription, Malayalam as the main language. The summarization (both pre-summary
+ * and summary) is still in English, by admin configuration OR by default."*
+ *
+ * So, on the NATIVE path, the output language resolves in exactly two tiers and the source tag is
+ * in neither:
+ *   1. the TENANT'S POLICY — an `instruction.fragments[]` entry under the platform-reserved key
+ *      `OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY` (`@arcaai/types`), when it is SELECTED for the call.
+ *      Its text is the tenant's to write, so the runtime then states NO language of its own;
+ *   2. the PLATFORM DEFAULT — `consultation.summary.outputLanguage` (`global-kv`, English unless a
+ *      platform admin changes it), which the runtime states EXPLICITLY, naming and overriding the
+ *      "write content in the conversation language" clause the clinical corpus carries.
+ * {@link resolveOutputLanguage} is that rule. The TASK-932/TASK-1001-L1 posture it replaces —
+ * "absent is not English, the agent's own body decides" — is what let the department bodies'
+ * own conversation-language clause win, and it is retired on this surface.
+ *
+ * The FROZEN v1-compat surface keeps its own contract (`resolveV1LanguageName` in
+ * `../prompt/pre-summary-variables.ts`, byte-pinned by golden fixtures) and is untouched: it still
+ * runs the tag through {@link parseLanguageTag}, so `ml-en` still lands on v1's unknown → English
+ * rule and never becomes "Malayalam".
  *
  * ## Why `metadata`, and what would be better
  *
  * `Consultation.language` EXISTS as a column ("Detected or specified language",
- * `consultation.prisma:248`) and is the right long-term home. It is not surfaced by
- * `ConsultationEntity` / `ConsultationModel` / `ConsultationEntityMapper`, so writing it means a
- * domain-layer change (hand-authored entity + mapper + factory props, `gen:model` regeneration,
- * and the `generate-data-entity-check` / `generate-data-model-check` drift gates) — outside this
- * lane's file boundary. The marker below is deliberately shaped so that promotion is a
- * one-function change: every reader goes through {@link readSummaryLanguage}, and the response
- * DTO already exposes it as a first-class `language` field, so the API contract does not move
- * when the storage does.
+ * `consultation.prisma:248`) and is the right long-term home for the SOURCE tag. It is not surfaced
+ * by `ConsultationEntity` / `ConsultationModel` / `ConsultationEntityMapper`, so writing it means a
+ * domain-layer change outside this module. Every reader goes through {@link readSummaryLanguage},
+ * so promotion stays a one-function change.
  *
- * ## Validation
+ * ## Two grammars
  *
- * A LANGUAGE TAG, not free text: `en`, `ml`, `en-IN`, `zh-Hant-HK`. The pattern is the
- * conservative BCP-47 subset the platform already speaks (`ResolvedAsrSpec` language modes are
- * 2-16 chars, `IO_DEFAULTS.SPEECH_TO_TEXT.language` in the agent seed says the same), rejecting
- * the two things that actually arrive by accident — a display name ("English") and a sentence.
- * It is not a registry check: refusing a valid-but-unlisted tag would be a worse failure than
- * passing one through to a model that reads it as prose.
- *
- * TASK-1001 OD-4 added a third rejection: an STT CODE-SWITCH mode (`ml-en`) is shaped exactly
- * like a legitimate region tag (`en-IN`), so shape alone cannot discriminate them — see
- * {@link SUMMARY_LANGUAGE_PATTERN}'s own docstring for the rule.
+ * Both are the conservative BCP-47 subset the platform speaks (`en`, `ml`, `en-IN`, `zh-Hant-HK`),
+ * rejecting the two things that arrive by accident — a display name ("English") and a sentence.
+ * They differ in exactly one respect:
+ *  - {@link SOURCE_LANGUAGE_PATTERN} ACCEPTS a code-switch mode (`ml-en`): it is a legitimate
+ *    description of what is spoken, and refusing it at `/consultations/open` (as TASK-1001 L1 did)
+ *    rejected the one value the reference integrator actually sends.
+ *  - {@link SUMMARY_LANGUAGE_PATTERN} REFUSES one: an OUTPUT language cannot be "mixed". It guards
+ *    the platform-default setting's value and the v1-compat name lookup.
  */
 
 import type { JsonObject } from '@arcaai/domains';
 
-/** The namespaced key the summary language lives under inside `Consultation.metadata`. */
+/** The namespaced key the declared SOURCE language lives under inside `Consultation.metadata` (historical name). */
 export const SUMMARY_LANGUAGE_METADATA_KEY = 'summaryLanguage';
 
 /**
- * BCP-47-ish: a 2-3 letter primary subtag, then up to three `-`-separated alphanumeric subtags.
- * Exported so the request DTO and the tests state ONE grammar.
+ * The SOURCE-language grammar: BCP-47-ish — a 2-3 letter primary subtag, then up to three
+ * `-`-separated alphanumeric subtags. Accepts an STT code-switch mode (`ml-en`, `en-ml`), which is a
+ * legitimate description of what is SPOKEN. Exported so the request DTO and the tests state ONE
+ * grammar.
+ */
+export const SOURCE_LANGUAGE_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/;
+
+/**
+ * The OUTPUT-language grammar: {@link SOURCE_LANGUAGE_PATTERN} minus the code-switch modes. A note
+ * is written in ONE language, so a "mixed" value is refused here — for the platform-default
+ * setting's value (`consultation.summary.outputLanguage`) and for the v1-compat name lookup.
  *
  * TASK-1001 OD-4 — shape alone cannot tell a REGION subtag from an STT CODE-SWITCH marker: `ml-en`
  * (`ASR_PARAMETERS.decoding.languageMode`) is shaped exactly like the legitimate `en-IN`. The
@@ -66,26 +87,39 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/**
- * Shared shape+grammar check: a non-blank string matching {@link SUMMARY_LANGUAGE_PATTERN}
- * (which, since TASK-1001 OD-4, also excludes STT code-switch markers), or `null`.
- */
-export function parseLanguageTag(value: unknown): string | null {
+function matchTag(value: unknown, pattern: RegExp): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
-  return trimmed.length > 0 && SUMMARY_LANGUAGE_PATTERN.test(trimmed) ? trimmed : null;
+  return trimmed.length > 0 && pattern.test(trimmed) ? trimmed : null;
 }
 
 /**
- * The consultation's declared summary language, or `null`.
+ * OUTPUT-grammar shape check: a non-blank string matching {@link SUMMARY_LANGUAGE_PATTERN} (which,
+ * since TASK-1001 OD-4, excludes STT code-switch markers), or `null`. The v1-compat
+ * `resolveV1LanguageName` depends on exactly this behaviour — do not widen it.
+ */
+export function parseLanguageTag(value: unknown): string | null {
+  return matchTag(value, SUMMARY_LANGUAGE_PATTERN);
+}
+
+/** SOURCE-grammar shape check: like {@link parseLanguageTag}, but a code-switch mode (`ml-en`) is a valid answer. */
+export function parseSourceLanguageTag(value: unknown): string | null {
+  return matchTag(value, SOURCE_LANGUAGE_PATTERN);
+}
+
+/**
+ * The consultation's declared SOURCE language — what was declared at open — or `null`.
  *
- * A malformed, blank, or code-switch-shaped value reads as ABSENT rather than raising: the
- * fail-safe direction is "the agent's own body decides the language", never "this consultation
- * cannot be documented".
+ * Kept under its historical name because the storage key and every reader already carry it. It
+ * answers "what is spoken", including a code-switch mode such as `ml-en`, and it NEVER decides the
+ * note's output language on the native path — {@link resolveOutputLanguage} does, and takes no
+ * source tag at all.
+ *
+ * A malformed or blank value reads as ABSENT rather than raising.
  */
 export function readSummaryLanguage(metadata: unknown): string | null {
   if (!isPlainObject(metadata)) return null;
-  return parseLanguageTag(metadata[SUMMARY_LANGUAGE_METADATA_KEY]);
+  return parseSourceLanguageTag(metadata[SUMMARY_LANGUAGE_METADATA_KEY]);
 }
 
 /**
@@ -114,31 +148,46 @@ export function summaryLanguageName(tag: string | null | undefined): string | nu
 }
 
 /**
- * The summary-language resolver for the NATIVE consultation path (TASK-1001 OD-2). Every caller
- * that needs "what language should this note be written in" goes through this function.
- *
- * It does NOT subsume `resolveV1LanguageName` in `../prompt/pre-summary-variables.ts`, and that
- * is deliberate — §A2 of the ticket first called that function's `'English'` default drift, and
- * that reading was wrong. The frozen v1-compat PRE-SUMMARY template renders `{language_name}`
- * into a live instruction and has byte-identical golden fixtures, so an absent language must
- * still resolve to a NAME there; resolving it to `null` would emit "Write ALL bullet content
- * in ." Two surfaces, two contracts. What they now share is the grammar below, which is what
- * actually fixes the reported defect: neither can be handed a code-switch tag any more.
- *
- * Resolution order — configured-first, exactly like `AiProviderConnection`'s "absent = no
- * opinion" cascade:
- *   1. `configuredLanguage` — an explicitly configured agent-level language, when the caller
- *      passes one. Wins even when the consultation declares a different language.
- *   2. the consultation's own declared {@link SUMMARY_LANGUAGE_METADATA_KEY}, via
- *      {@link readSummaryLanguage}.
- *   3. `null` — no output language was declared by either source. The agent's own prompt body
- *      decides (see the module docstring). **Never** coerced to `'English'`.
- *
- * A malformed or code-switch-shaped `configuredLanguage` is treated as "no opinion" and falls
- * through to the consultation's own declaration — the same fail-safe posture
- * {@link readSummaryLanguage} already takes on the stored value.
+ * The platform's CODE default for the note OUTPUT language — the `default` of the
+ * `consultation.summary.outputLanguage` descriptor, and the answer when no settings graph is wired
+ * or the stored value is unusable. It is that descriptor's default declared once, not a second
+ * opinion: a platform admin changes the effective value through the setting, never here.
  */
-export function resolveSummaryLanguage(configuredLanguage: string | null | undefined, consultationMetadata: unknown): string | null {
-  const tag = parseLanguageTag(configuredLanguage) ?? readSummaryLanguage(consultationMetadata);
-  return summaryLanguageName(tag);
+export const OUTPUT_LANGUAGE_DEFAULT = 'en';
+
+/** A resolved note output language: the tag, and the name a prompt states. */
+export interface OutputLanguage {
+  tag: string;
+  name: string;
+}
+
+/**
+ * The PLATFORM-DEFAULT output language from the resolved value of
+ * `consultation.summary.outputLanguage`.
+ *
+ * A value that is not a valid OUTPUT tag — unset, blank, a display name, or a code-switch mode that
+ * somehow bypassed the write lane's `validate` — falls to {@link OUTPUT_LANGUAGE_DEFAULT}: the note
+ * must still be written in one named language, and "no instruction" is the failure this ticket
+ * exists to remove.
+ */
+export function platformOutputLanguage(platformDefault: unknown): OutputLanguage {
+  const tag = parseLanguageTag(platformDefault) ?? OUTPUT_LANGUAGE_DEFAULT;
+  return { tag, name: summaryLanguageName(tag) ?? tag };
+}
+
+/**
+ * The note OUTPUT-language resolver for the NATIVE consultation path (owner decision 2026-09-23).
+ *
+ * Two tiers, configuration first — the same "absent = no opinion" shape as `AiProviderConnection`:
+ *   1. `tenantPolicySelected` — the tenant's output-language policy fragment
+ *      (`OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY`) was SELECTED for this generation. Its text owns the
+ *      language, so this returns `null` and the caller states NONE: a second, generated statement
+ *      beside the tenant's would be two answers to one question.
+ *   2. otherwise the platform default ({@link platformOutputLanguage}), which the caller STATES.
+ *
+ * The consultation's declared SOURCE tag is deliberately not a parameter. `ml-en` is what the
+ * microphone hears; it never selects what the note is written in.
+ */
+export function resolveOutputLanguage(tenantPolicySelected: boolean, platformDefault: unknown): OutputLanguage | null {
+  return tenantPolicySelected ? null : platformOutputLanguage(platformDefault);
 }

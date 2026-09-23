@@ -147,6 +147,24 @@ export interface AgentCompiledPromptFragment {
 }
 
 /**
+ * TASK-1001 (owner decision 2026-09-23) — the PLATFORM-RESERVED fragment key under which a tenant
+ * states its note OUTPUT-LANGUAGE policy in a composite instruction.
+ *
+ * Reserved because the RUNTIME reads it, not just the author: when a fragment with this key is
+ * SELECTED for a generation (present and, if it carries a `when`, that condition held), the
+ * tenant's policy owns the language the note is written in and the live lane states none of its
+ * own. When it is not selected, the lane states the platform default
+ * (`consultation.summary.outputLanguage`, English unless a platform admin changes it).
+ *
+ * Declared HERE because this is the one package both halves can read: the seed
+ * (`packages/database`, which depends only on `@arcaai/types` — the `API_KEY_SCOPE_PRESETS`
+ * precedent) attaches it to the ArcaAI department agents, and `packages/applications` asks whether
+ * it was selected. A second spelling on either side would be a policy the runtime never sees.
+ * Satisfies the fragment-key grammar `^[a-z0-9_]{2,48}$` (`AGENT_PROMPT_FRAGMENT_KEY_PATTERN`).
+ */
+export const OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY = 'output_language_policy';
+
+/**
  * What `compiledConfig` carries once published — the fully resolved references
  * the runtime consumes. Stamped by `AgentService.publish`, never from a DTO.
  */

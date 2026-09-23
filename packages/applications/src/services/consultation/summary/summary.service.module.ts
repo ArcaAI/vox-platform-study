@@ -22,6 +22,7 @@ import { TextRequestServiceModule } from '../../text-request/text-request.servic
 import { DocumentTemplateServiceModule } from '../../document-template/document-template.service.module';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 import { WorkflowExposureServiceModule } from '../../workflow-exposure/workflow-exposure.service.module';
+import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -88,6 +89,14 @@ import { WorkflowExposureServiceModule } from '../../workflow-exposure/workflow-
     // `WorkflowExposureServiceModule` imports this module — its only importer anywhere is
     // `live-pre-summary.module.ts`.
     WorkflowExposureServiceModule,
+    // TASK-1001 (owner decision 2026-09-23) — supplies `EffectiveSettingsService`, through which
+    // `SummaryService` resolves `consultation.summary.outputLanguage`, the platform-default
+    // language a note is WRITTEN in. Without this import the `@Optional()` injection is undefined
+    // and a platform admin's write would be dead on the pre-summary and final-summary paths (they
+    // would still write English — the code default — but could never be told otherwise). No cycle:
+    // `EffectiveSettingsModule` imports only `CommonServiceModule`, `GlobalSettingServiceModule`
+    // and `CoreDatabaseModule`, and `live-pre-summary.module.ts` already imports both side by side.
+    EffectiveSettingsModule,
   ],
   providers: [
     PromptAssemblyService,
