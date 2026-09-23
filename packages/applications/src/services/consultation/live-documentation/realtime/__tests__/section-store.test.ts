@@ -318,7 +318,10 @@ describe('task 12 — the section.patch payload contract (§2b)', () => {
     // Lane N adds `finding` as its OWN kind rather than an `entity` with a special `type`: an
     // entity is what a DETECTOR recognised, a finding is what the TENANT'S instruction said is
     // important, and a console has to be able to render the two differently.
-    expect(SECTION_ANNOTATION_KINDS).toEqual(['entity', 'groundedness', 'flagged', 'finding']);
+    //
+    // TASK-1001 (wave 2) adds `duplicate`: a span another section of the same document already
+    // carries. FLAGGED, never removed — the same clinical fact legitimately appears in two sections.
+    expect(SECTION_ANNOTATION_KINDS).toEqual(['entity', 'groundedness', 'flagged', 'finding', 'duplicate']);
   });
 
   it('refuses cleanly when no repository is wired rather than pretending the write happened', async () => {

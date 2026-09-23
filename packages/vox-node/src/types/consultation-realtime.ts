@@ -376,8 +376,17 @@ export interface LiveSummaryEvent {
   closed?: boolean;
 }
 
-/** What a {@link SectionPatchEvent} annotation asserts about a span. */
-export type SectionAnnotationKind = 'entity' | 'groundedness' | 'flagged' | 'finding';
+/**
+ * What a {@link SectionPatchEvent} annotation asserts about a span.
+ *
+ * `duplicate` marks a span of this section that ANOTHER section of the same document already
+ * carries; {@link SectionAnnotation.duplicateOf} (its key) and {@link SectionAnnotation.duplicateOfTitle}
+ * (its title) name that section. It is a FLAG, never a removal: the same clinical fact legitimately
+ * appears in two sections, so the text is left exactly as written. Like `groundedness` and `flagged`
+ * it is a claim about the note, so it carries no transcript anchor, and no `type`, `verdict`,
+ * `icd10` or `score` either.
+ */
+export type SectionAnnotationKind = 'entity' | 'groundedness' | 'flagged' | 'finding' | 'duplicate';
 
 /** One annotation, addressed LOCALLY into this section's `content`. */
 export interface SectionAnnotation {
@@ -391,12 +400,26 @@ export interface SectionAnnotation {
   /**
    * The transcript anchor for an `entity` / `finding`, mirroring {@link LiveSummaryEntity}'s.
    * `start`/`end` above address this section's rendered content; these address the utterance the
-   * annotation was extracted FROM. All three together or none. Never present on `groundedness` or
-   * `flagged`, which are claims about the note and have no transcript span of their own.
+   * annotation was extracted FROM. All three together or none. Never present on `groundedness`,
+   * `flagged` or `duplicate`, which are claims about the note and have no transcript span of their own.
    */
   transcriptSegmentId?: string;
   transcriptStart?: number;
   transcriptEnd?: number;
+  /**
+   * For `duplicate` ONLY: the `sectionKey` of the other section, in the SAME document, that already
+   * carries the text `start`/`end` address here. `start`/`end` stay section-LOCAL, as on every other
+   * kind: they index THIS section's `content`, never the other section's. Absent on every other kind.
+   */
+  duplicateOf?: string;
+  /**
+   * For `duplicate` ONLY: the TITLE of the section {@link SectionAnnotation.duplicateOf} names, as
+   * HOPE knows it (the compiled template's title for that key). Present on every `duplicate`. A
+   * client may hold that section under a different key, or under a generic identity, and then
+   * cannot resolve the key to a heading; this lets it name the section anyway. Prefer it for display
+   * and fall back to `duplicateOf`, which stays the identifier.
+   */
+  duplicateOfTitle?: string;
 }
 
 /** Where a section's content came from, anchored to transcript segments. */

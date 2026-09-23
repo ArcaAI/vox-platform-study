@@ -667,6 +667,11 @@ interface GraphFlushProjection {
    * the append guard. A COUNT, never the text: repetition is measured, never quoted.
    */
   turnDroppedSentences: number;
+  /**
+   * TASK-1001 (wave 2) — runs this turn wrote that ANOTHER section already carried, FLAGGED on the
+   * write (`TurnSectionWrite.duplicates`) and never dropped. A count, never the text.
+   */
+  turnCrossSectionDuplicates: number;
   /** True when the generation could not be read as a turn and fell back to a whole-document rewrite. */
   turnDegraded: boolean;
   /**
@@ -3142,6 +3147,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-1001 (Phase 5) — already-recorded sentences this turn's additions carried, dropped
     // by the append guard. A count: what repeats is clinical text and never leaves this scope.
     let turnDroppedSentences = 0;
+    // TASK-1001 (wave 2) — runs this turn wrote that another section already carried: flagged, not
+    // dropped, and counted here so `repetition_pressure` sees them.
+    let turnCrossSectionDuplicates = 0;
     /** True when the turn contract could not be honoured and this flush fell back to a full rewrite. */
     let turnDegraded = false;
     /**
@@ -3247,6 +3255,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         turnWrites = graph.turnWrites;
         turnRefusals = graph.turnRefusals;
         turnDroppedSentences = graph.turnDroppedSentences;
+        turnCrossSectionDuplicates = graph.turnCrossSectionDuplicates;
         turnDegraded = graph.turnDegraded;
         cursorAdvanceTo = deltaEnd;
       }
@@ -3344,6 +3353,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         turnWrites = applied.writes;
         turnRefusals = applied.refusals;
         turnDroppedSentences = applied.droppedSentenceCount;
+        turnCrossSectionDuplicates = applied.crossSectionDuplicateCount;
         // Advance only over the segments actually sent (C5-04): on a truncated
         // flush `deltaEnd < flushUpTo`, so the carried-forward tail is re-sent next.
         //
@@ -3537,7 +3547,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
      */
     const repetitionDegradeReason = flushFailed
       ? undefined
-      : repetitionPressureCode({ refusedRewrites: turnRefusals.length, droppedSentences: turnDroppedSentences });
+      : repetitionPressureCode({
+          refusedRewrites: turnRefusals.length,
+          droppedSentences: turnDroppedSentences,
+          // TASK-1001 (wave 2) — the third granularity of the same behaviour: a paragraph re-said in
+          // another section. Flagged rather than dropped, so this sum is where its pressure shows.
+          crossSectionDuplicates: turnCrossSectionDuplicates,
+        });
 
     /**
      * What the admin live console's stats snapshot reports as this flush's reason.
@@ -3665,6 +3681,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // TASK-1001 — the other half of the repetition measurement: a refused rewrite and a dropped
       // sentence are the same model re-saying itself, at two granularities. Counts only.
       turnDroppedSentences,
+      // TASK-1001 (wave 2) — runs flagged as already carried by ANOTHER section. Flagged, never
+      // dropped; a count, never the text.
+      turnCrossSectionDuplicates,
       // `turnDegraded` stays what it was (the turn contract fell back to a whole-document
       // rewrite); pressure is reported as its own code so the two cannot be confused.
       turnDegraded,
@@ -3813,6 +3832,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-1001 (Phase 5) — already-recorded sentences this turn's additions carried, dropped
     // by the append guard. A count: what repeats is clinical text and never leaves this scope.
     let turnDroppedSentences = 0;
+    // TASK-1001 (wave 2) — cross-section runs flagged by the turn contract; see the flush's own local.
+    let turnCrossSectionDuplicates = 0;
     let turnDegraded = false;
     /**
      * A3 — the candidates the document node was allowed to run this turn, captured for PROVENANCE.
@@ -3932,6 +3953,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         turnWrites = outcome.value.writes;
         turnRefusals = outcome.value.refusals;
         turnDroppedSentences = outcome.value.droppedSentenceCount;
+        turnCrossSectionDuplicates = outcome.value.crossSectionDuplicateCount;
         return {
           text: buildRunningSummary(parsedSections),
           sections: parsedSections,
@@ -4046,6 +4068,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       turnWrites: summarize?.status === 'succeeded' ? turnWrites : [],
       turnRefusals: summarize?.status === 'succeeded' ? turnRefusals : [],
       turnDroppedSentences: summarize?.status === 'succeeded' ? turnDroppedSentences : 0,
+      turnCrossSectionDuplicates: summarize?.status === 'succeeded' ? turnCrossSectionDuplicates : 0,
       turnDegraded: summarize?.status === 'succeeded' ? turnDegraded : false,
       textFailed: summarize !== undefined && summarize.status !== 'succeeded' && summarize.status !== 'skipped',
       textLatencyMs,
@@ -4194,6 +4217,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
           // render ordinal, so they are addressed by `idx` rather than by the write's position in
           // this loop — only changed sections are written, so the two are no longer the same.
           annotations: perSection[idx],
+          // TASK-1001 (wave 2) — the turn's `duplicate` flags, addressed into THIS WRITE's content.
+          // The store re-bases them onto the body the write lands on and merges them with the
+          // annotations above, so they are persisted on the row and published on the patch.
+          ...(write.duplicates && write.duplicates.length > 0 ? { contentAnnotations: write.duplicates } : {}),
           ...(write.contradiction ? { contradiction: write.contradiction } : {}),
           documentTemplateVersionId: ctx.template.documentTemplateVersionId,
           generation: ctx.generation,

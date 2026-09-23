@@ -30,6 +30,7 @@ import {
   type JsonValue,
 } from '@arcaai/domains';
 import type { SectionAnnotationDto, SectionPatchDto, SectionProvenanceDto } from './dto/section-patch.dto';
+import { compareSectionAnnotations } from './reanchor-annotations';
 
 /** Minimal structural view of the PHI encryptor — mirrors `SecretsServiceLike`. */
 export interface SectionSecretsLike {
@@ -76,6 +77,14 @@ export interface SectionWriteInput {
   /** @see SectionWriteMode — absent ⇒ `replace`. */
   readonly mode?: SectionWriteMode;
   readonly annotations?: SectionAnnotationDto[];
+  /**
+   * TASK-1001 (wave 2) — annotations whose offsets index THIS WRITE's `content` (for an `append`,
+   * the new part) rather than the section body. Today: the `duplicate` flags the turn contract put
+   * on the write. `applyFlushPatch` re-bases them onto the body the write actually produced and
+   * merges them with `annotations` — see `mergeDuplicateFlags`. Absent ⇒ the row's annotations are
+   * exactly `annotations`, as they were before this ticket.
+   */
+  readonly contentAnnotations?: readonly SectionAnnotationDto[];
   readonly provenance?: SectionProvenanceDto[];
   readonly documentTemplateVersionId?: string | null;
   /** The flush generation that produced this content — the staleness token. */
@@ -293,6 +302,8 @@ export class DocumentSectionStore {
         });
         if (appending) created.appendMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
         else created.applyMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
+        // A new row has no prior flags to carry — only this write's own.
+        this.mergeDuplicateFlags(created, input, appending, []);
         this.stampContradiction(created, input.contradiction);
         await this.encrypt(created);
         await this.repository.create(created);
@@ -301,11 +312,14 @@ export class DocumentSectionStore {
       }
 
       const expectedVersion = section.version;
+      // Read BEFORE the write below replaces the row's annotations and moves its body.
+      const carried = this.carriedDuplicateFlags(section, appending);
       section.title = input.title;
       section.idx = input.idx;
       if (input.documentTemplateVersionId !== undefined) section.documentTemplateVersionId = input.documentTemplateVersionId;
       if (appending) section.appendMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
       else section.applyMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
+      this.mergeDuplicateFlags(section, input, appending, carried);
       this.stampContradiction(section, input.contradiction);
       await this.encrypt(section);
       await this.repository.updateWithVersion(section.id, section, expectedVersion);
@@ -370,6 +384,7 @@ export class DocumentSectionStore {
       // is a check that cannot fail, which is precisely what a client editing from
       // a stale render must not get.
       const expectedVersion = input.expectedVersion ?? section.version;
+      this.dropDuplicateFlags(section);
       section.applyClinicianContent(input.content, input.userId ?? null);
       await this.encrypt(section);
       await this.repository.updateWithVersion(section.id, section, expectedVersion);
@@ -406,6 +421,100 @@ export class DocumentSectionStore {
       documentTemplateVersionId: section.documentTemplateVersionId ?? null,
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * TASK-1001 (wave 2) — the `duplicate` flags an APPEND must keep, re-addressed onto the body the
+   * append will produce. Called BEFORE the write, while the row still holds its prior body and list.
+   *
+   * Every other annotation kind is recomputed by `reanchorAnnotations` over the post-turn note on
+   * every write, so `input.annotations` replacing the list is right for them. A `duplicate` flag is
+   * not recomputable — it is a fact about the turn that WROTE the text, established against what the
+   * other sections held at that moment — so it must be carried, or the next append to the section
+   * would silently erase it.
+   *
+   * Why the offsets stay valid: `appendMachineContent` produces `${prior.trim()}\n\n${addition}`, so
+   * everything the prior body held keeps its position, less the prior body's LEADING whitespace,
+   * which `trim()` removes. A flag is shifted by exactly that, and one that no longer lies wholly
+   * inside the carried-forward body is dropped rather than clamped — a clamped span would point at
+   * text the flag was not made about. That also covers a row whose body was never loaded: its
+   * carried-forward body is empty, so nothing is carried.
+   *
+   * A REPLACE carries nothing: the text the flags addressed is gone.
+   */
+  private carriedDuplicateFlags(section: DocumentSectionEntity, appending: boolean): SectionAnnotationDto[] {
+    if (!appending || !Array.isArray(section.annotations)) return [];
+    const body = section.content ?? '';
+    const lead = body.length - body.trimStart().length;
+    const kept = body.trim().length;
+
+    const carried: SectionAnnotationDto[] = [];
+    for (const annotation of section.annotations as unknown as SectionAnnotationDto[]) {
+      if (annotation?.kind !== 'duplicate') continue;
+      const start = annotation.start - lead;
+      const end = annotation.end - lead;
+      if (start < 0 || end > kept || start >= end) continue;
+      carried.push({ ...annotation, start, end });
+    }
+    return carried;
+  }
+
+  /**
+   * TASK-1001 (wave 2) — leave the `duplicate` flags on the row: the ones carried from before an
+   * append, plus this write's own (`input.contentAnnotations`), merged into `input.annotations` in
+   * the one order `reanchorAnnotations` keeps. Called AFTER the write, so `section.content` is the
+   * body the flags must index — which is what makes them correct on both the persisted row and the
+   * published `section.patch` (`toPatch` reads the same field).
+   *
+   * This write's own flags are addressed into its `content`. An append lands that content, trimmed,
+   * at the END of the body; a replace IS the body. Each flag is re-based by where the write landed,
+   * and a flag the body does not end with the written text for — or that falls outside it — is
+   * dropped, never guessed.
+   *
+   * Does nothing at all when there is no flag to carry or add, so a write this rule does not concern
+   * persists exactly the annotations it persisted before.
+   */
+  private mergeDuplicateFlags(
+    section: DocumentSectionEntity,
+    input: SectionWriteInput,
+    appending: boolean,
+    carried: readonly SectionAnnotationDto[],
+  ): void {
+    const added: SectionAnnotationDto[] = [];
+    const own = input.contentAnnotations ?? [];
+    if (own.length > 0) {
+      const body = section.content ?? '';
+      const written = appending ? input.content.trim() : input.content;
+      const lead = appending ? input.content.length - input.content.trimStart().length : 0;
+      const base = body.length - written.length;
+      if (base >= 0 && body.slice(base) === written) {
+        for (const annotation of own) {
+          const start = annotation.start - lead;
+          const end = annotation.end - lead;
+          if (start < 0 || end > written.length || start >= end) continue;
+          added.push({ ...annotation, start: base + start, end: base + end });
+        }
+      }
+    }
+
+    if (carried.length === 0 && added.length === 0) return;
+    const merged = [...(input.annotations ?? []), ...carried, ...added].sort(compareSectionAnnotations);
+    section.annotations = this.asJson(merged) ?? null;
+  }
+
+  /**
+   * TASK-1001 (wave 2) — a clinician edit REWRITES the body, so a `duplicate` flag's offsets no longer
+   * address the text it was established over — and a later append would otherwise carry it forward
+   * onto the clinician's own words. By editing, the clinician has also adjudicated the section.
+   *
+   * Only `duplicate` is removed; what this path does with every other kind is unchanged. A row with no
+   * flag is not touched, so an edit this rule does not concern writes exactly what it wrote before.
+   */
+  private dropDuplicateFlags(section: DocumentSectionEntity): void {
+    if (!Array.isArray(section.annotations)) return;
+    const annotations = section.annotations as unknown as SectionAnnotationDto[];
+    if (!annotations.some((annotation) => annotation?.kind === 'duplicate')) return;
+    section.annotations = this.asJson(annotations.filter((annotation) => annotation?.kind !== 'duplicate')) ?? null;
   }
 
   private stampContradiction(section: DocumentSectionEntity, contradiction?: TranscriptContradiction | null): void {
