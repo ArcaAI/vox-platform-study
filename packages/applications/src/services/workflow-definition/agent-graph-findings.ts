@@ -43,6 +43,31 @@ export function agentSlugOf(config: unknown): string | null {
 }
 
 /**
+ * The `core.agent` node ids either rule could act on — so the service reads an agent row only
+ * when the answer can matter: every agent node once the graph has two or more (rule A), and the
+ * agent nodes that feed a `core.output` declaring required keys (rule B).
+ */
+export function agentNodesNeedingFacts(graph: WorkflowGraph): string[] {
+  const nodes = (graph.nodes ?? []).filter((node) => typeof node?.id === 'string' && typeof node?.type === 'string');
+  const agentIds = new Set(nodes.filter((node) => node.type === 'core.agent').map((node) => node.id));
+  if (agentIds.size >= 2) return [...agentIds];
+
+  const needed = new Set<string>();
+  for (const output of nodes) {
+    if (output.type !== 'core.output' || requiredKeysOf(output.config).length === 0) continue;
+    for (const e of graph.edges ?? []) {
+      if (e?.to === output.id && agentIds.has(e.from)) needed.add(e.from);
+    }
+  }
+  return [...needed];
+}
+
+function requiredKeysOf(config: unknown): string[] {
+  const schema = isPlainObject(config) ? config.outputSchema : undefined;
+  return isPlainObject(schema) && Array.isArray(schema.required) ? schema.required.filter((key): key is string => typeof key === 'string') : [];
+}
+
+/**
  * Both rules, over one graph. `agents` is keyed by NODE id (two nodes may pin two versions of one
  * slug); a node absent from it is unresolved, and an unresolved node is never the cause of a
  * finding — the contract's `AGENT_REF_MISSING` already speaks for a node that names nothing.
@@ -103,9 +128,7 @@ function unreachableOutputFindings(
 
   for (const output of nodes) {
     if (output.type !== 'core.output') continue;
-    const schema = isPlainObject(output.config) ? output.config.outputSchema : undefined;
-    const required =
-      isPlainObject(schema) && Array.isArray(schema.required) ? schema.required.filter((key): key is string => typeof key === 'string') : [];
+    const required = requiredKeysOf(output.config);
     if (required.length === 0) continue;
 
     // `after` is an ordering port; it carries no result (`_output_payload` in the harness skips it).

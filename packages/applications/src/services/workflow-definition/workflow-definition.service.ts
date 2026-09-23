@@ -105,7 +105,7 @@ import {
   WorkflowSyncTargetResponse,
 } from './dto';
 import { collectGenerationBindings, type NodeGenerationBindingRef } from './node-generation-binding';
-import { agentGraphFindings, agentSlugOf, type GraphAgentFacts } from './agent-graph-findings';
+import { agentGraphFindings, agentNodesNeedingFacts, agentSlugOf, type GraphAgentFacts } from './agent-graph-findings';
 import { collectPromptBindings, promptContentChecksum, withMovedPin } from './node-prompt-binding';
 import {
   collectPortableReferences,
@@ -2237,13 +2237,17 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * ACTIVE published one (the same pair of reads `generationCapabilitiesFor` makes). An inline
    * `agentRef.task` wins over the row's, as it does in the realtime handler.
    *
-   * Best-effort, like `publishAgentViews`: a node whose agent does not resolve is simply absent,
-   * and an absent node never causes a finding — `AGENT_REF_MISSING` already speaks for it.
+   * Only the nodes a rule could act on are read (`agentNodesNeedingFacts`), so a graph neither
+   * rule applies to costs no read. Best-effort, like `publishAgentViews`: a node whose agent does
+   * not resolve is simply absent, and an absent node never causes a finding —
+   * `AGENT_REF_MISSING` already speaks for it.
    */
   private async graphAgentFacts(graph: WorkflowGraph, tenantId: string): Promise<Record<string, GraphAgentFacts>> {
     const facts: Record<string, GraphAgentFacts> = {};
+    const needed = new Set(agentNodesNeedingFacts(graph));
+    if (needed.size === 0) return facts;
     for (const node of graph.nodes ?? []) {
-      if (node?.type !== 'core.agent') continue;
+      if (node?.type !== 'core.agent' || !needed.has(node.id)) continue;
       const slug = agentSlugOf(node.config);
       if (slug === null) continue;
       const agentRef = asRecord(asRecord(node.config)?.agentRef);
