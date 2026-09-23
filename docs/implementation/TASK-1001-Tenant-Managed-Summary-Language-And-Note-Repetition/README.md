@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — wave 4 (live-note script guard, OD-14 re-finalise, ALaaS sign-off); waves 1–3 + English-only directive deployed on `hope-v2-dev` |
+| **Status** | Review — wave 4 (live-note script guard, OD-14 re-finalise) deployed on `hope-v2-dev` (`6b864c73`) and verified by replay; ALaaS Save sign-off committed, not pushed; awaiting owner sign-off |
 | **Type** | bugfix + feature |
 | **Branch** | `dev-2.2` |
 | **Repos** | `arca/hope-v2` (primary) · `ALaaSv3.0` (secondary, latent defects) |
@@ -624,6 +624,35 @@ RED witnessed for every new test: script guard (module missing; service tests 3/
 
 **Gate (one pass, after both lanes):** applications `954 files / 15056 passed, 4 skipped`, typecheck clean, eslint 0 errors on touched files · harness unit `2738 passed` · STT unit `3820 passed, 1 failed` — `test_task799_env_surface::test_minio_credentials_default_to_empty`, pre-existing and unrelated (fails identically with no env file and no host vars; this wave touches only `session_manager.py`'s finalize call).
 
+### Cluster verification — `hope-v2-dev`, build `6b864c73` (pipeline #1312), 2026-09-23
+Replay of `01a0cd63`'s own four MinIO recordings (consultation `01a0ce4c`, General Medicine, `ml-en`,
+stop/resume between each), against the baseline run on `c4f52db5` (`01a0cdd9`):
+
+| Stop | Baseline: final note | Fixed: final note (same row, updated in place) | Live note Malayalam | Final note Malayalam |
+|---|---|---|---|---|
+| R1 | written, 939 chars | written 12:48:19, 715 chars | 0 | 0 |
+| R2 (resume) | **not refreshed** | refreshed 12:51:30, 2568 chars | 0 | 0 |
+| R3 (resume) | **not refreshed** | refreshed 12:54:59, 2879 chars | 0 | 0 |
+| R4 (resume) | **not refreshed** | refreshed 12:58:19, 3295 chars | 0 | 0 |
+
+- Each resumed session's `STT_AGGREGATE` is persisted with its `sttSessionId`; the gateway logs
+  `Resumed recording — re-finalising the note over the whole visit` per resume.
+- A real ALaaS consultation (`01a0cd09`, first draft written 06:55 before the fix, legacy un-stamped
+  aggregate) was resumed by the tester at 12:26: both new sessions persisted and the draft re-finalised at
+  12:27:47 over all three. A resume from `PENDING_REVIEW` still starts (the `requirePrimedBeforeRecording`
+  kill-switch is OFF — pre-existing posture, unchanged).
+- The script guard fired live: an earlier replay's resume flush (12:36:26) logged `turnScriptRepairs: 1,
+  turnScriptRepairsUnresolved: 0` — the reported failure mode, caught and translated. Since the deploy:
+  1 repair, 0 unresolved (Loki). **D-5 (switch to E4B) not needed on this evidence**; E4B remains available
+  (`lms-gemma-4-e4b`, not loaded).
+- Found in passing, not addressed: `stt.stream.job_row_open_failed` — `TranscriptionJob_pipelineId_fkey`
+  violated when a streaming session opens its job row (the session still works; it is absent from the job list).
+
+**ALaaS (`ALaaSv3.0@4e89a4e`, branch `refactor-hope-integaration`, committed, not pushed):** `save_summary`
+now runs `finishInHope` (update → approve → close, owner: "Save = full finish") after the local save, fire-and-forget;
+the correction is sent only when the Save created a new edited version. jest 36/36, `tsc` clean. A signed HOPE
+consultation cannot record again.
+
 ### Verification
 - RED→GREEN unit tests per lane; one gate pass after merge (owner rule).
 - Cluster: re-run the replay; after EVERY stop `summary/latest.createdAt` ≥ stop time and the note reflects the
@@ -633,6 +662,7 @@ RED witnessed for every new test: script guard (module missing; service tests 3/
 
 | Date | Change |
 |---|---|
+| 2026-09-23 | Wave 4 deployed (`6b864c73`) and verified: final note refreshed after all four stops of the replay, 0 Malayalam in live and final notes, guard repaired 1 live leak; ALaaS Save → HOPE sign-off (`4e89a4e`). |
 | 2026-09-23 | Wave 4 opened: tester report on `01a0cd63` investigated (config English everywhere; live snapshot leak on E2B; OD-14 root-caused to three stacked defects), replay harness from the consultation's own MinIO recordings, owner answered OD-14 + D-1…D-5. |
 | 2026-09-22 | Ticket opened. Both defects root-caused against `hope-v2-dev`. Design drafted; OD-1…OD-8 pending. |
 | 2026-09-23 | Owner directive: English-only instructions and configuration. L-G merged, gated, RED verified; platform setting set to `en`; 10 template rows + Global/SYSTEM/ArcaAI agents republished through the admin API (SYSTEM + ArcaAI General Medicine agents off the pre-summary prompt). Cluster-verified on `87728892`. OD-14 opened (resumed recording not re-finalised). |
