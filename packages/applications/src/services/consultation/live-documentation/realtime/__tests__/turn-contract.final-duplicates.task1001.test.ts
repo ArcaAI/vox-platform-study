@@ -104,15 +104,16 @@ describe('crossSectionDuplicateAnnotations — a paragraph repeated across two s
     // Without the number rule the dose sentence would match (15/17 tokens shared) and, with the exact
     // second sentence, form a flaggable run of two. With it the run is one sentence long.
     const doseChanged = PLAN.replace('7.5 mg', '10 mg');
-    expect(
-      crossSectionDuplicateAnnotations([section('plan_of_care', 'Plan of Care', PLAN), section('follow_up', 'Follow-up', doseChanged)]),
-    ).toEqual([[], []]);
+    expect(crossSectionDuplicateAnnotations([section('plan_of_care', 'Plan of Care', PLAN), section('follow_up', 'Follow-up', doseChanged)])).toEqual(
+      [[], []],
+    );
   });
 
   it('two entries under the SAME sectionKey are one section, and are never compared with each other', () => {
-    expect(
-      crossSectionDuplicateAnnotations([section('plan_of_care', 'Plan', PARAGRAPH), section('plan_of_care', 'Plan', PARAGRAPH)]),
-    ).toEqual([[], []]);
+    expect(crossSectionDuplicateAnnotations([section('plan_of_care', 'Plan', PARAGRAPH), section('plan_of_care', 'Plan', PARAGRAPH)])).toEqual([
+      [],
+      [],
+    ]);
   });
 
   it('a third copy points at the EARLIEST section (ties go to the section first in order)', () => {

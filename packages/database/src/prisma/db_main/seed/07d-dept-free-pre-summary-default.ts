@@ -46,12 +46,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
 import type { PromptTemplateCategory, PromptTemplateScope, PromptTemplateStatus } from '../../../generated/core-prisma-client/enums';
-import {
-  SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE_ID,
-  SYSTEM_DEPT_FREE_PRE_SUMMARY_VERSION_ID,
-  SYSTEM_TENANT_ID,
-  SYSTEM_USER_ID,
-} from './00-constants';
+import { SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE_ID, SYSTEM_DEPT_FREE_PRE_SUMMARY_VERSION_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
 /**
  * The department-free pre-summary body served to native callers

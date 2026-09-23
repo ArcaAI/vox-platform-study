@@ -57,7 +57,9 @@ export function splitHeadedNote(content: string): HeadedNoteSpan[] {
     const lineEnd = newline === -1 ? content.length : newline;
     // The client splits on `\r?\n`, so a CRLF line's `\r` is not part of the line it tests.
     const line = content.slice(lineStart, lineEnd).replace(/\r$/, '');
-    const title = NOTE_HEADING.exec(line)?.[1]?.trim().replace(/[\s:]+$/, '');
+    const title = NOTE_HEADING.exec(line)?.[1]
+      ?.trim()
+      .replace(/[\s:]+$/, '');
     if (title && title.length <= MAX_HEADING_LENGTH) {
       headings.push({ title, lineStart, bodyStart: newline === -1 ? content.length : newline + 1 });
     }

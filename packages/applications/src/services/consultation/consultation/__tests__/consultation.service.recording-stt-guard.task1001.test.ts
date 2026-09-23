@@ -110,22 +110,25 @@ describe('ConsultationService.startRecording — TASK-1001 stale STT session gua
     expect(result.status).toBe(ConsultationStatus.RECORDING);
   });
 
-  it.each(['closed', 'finalizing', 'rejected'] as const)('refuses a %s session with 409 STT_SESSION_NOT_ACTIVE and writes nothing', async (status) => {
-    mockStreamingSessions.getSessionStatus.mockResolvedValue(sttStatus(status));
+  it.each(['closed', 'finalizing', 'rejected'] as const)(
+    'refuses a %s session with 409 STT_SESSION_NOT_ACTIVE and writes nothing',
+    async (status) => {
+      mockStreamingSessions.getSessionStatus.mockResolvedValue(sttStatus(status));
 
-    const error = await makeService()
-      .startRecording('c-1', { sttSessionId: 'stt-old' })
-      .catch((caught: unknown) => caught);
+      const error = await makeService()
+        .startRecording('c-1', { sttSessionId: 'stt-old' })
+        .catch((caught: unknown) => caught);
 
-    expect(error).toBeInstanceOf(ConflictException);
-    expect((error as ConflictException).getResponse()).toMatchObject({
-      code: STT_SESSION_NOT_ACTIVE_CODE,
-      sttSessionId: 'stt-old',
-      sttSessionStatus: status,
-    });
-    expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
-    expect(mockEventEmitter.emit).not.toHaveBeenCalled();
-  });
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: STT_SESSION_NOT_ACTIVE_CODE,
+        sttSessionId: 'stt-old',
+        sttSessionStatus: status,
+      });
+      expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    },
+  );
 
   it('refuses a session apps/stt does not know (removed, reaped, or never created) as `unknown`', async () => {
     mockStreamingSessions.getSessionStatus.mockResolvedValue(null);

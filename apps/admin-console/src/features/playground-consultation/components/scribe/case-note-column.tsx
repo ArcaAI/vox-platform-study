@@ -391,7 +391,12 @@ function PreSummaryPanel({ preSummary }: { preSummary: PreSummaryView | null }) 
   const isBenign = preSummary.status === 'degraded' && preSummary.error === 'no_case_notes';
 
   return (
-    <section aria-label="Pre-summary" data-testid="pre-summary-panel" data-status={preSummary.status} className="flex flex-col gap-2 rounded-md border p-3">
+    <section
+      aria-label="Pre-summary"
+      data-testid="pre-summary-panel"
+      data-status={preSummary.status}
+      className="flex flex-col gap-2 rounded-md border p-3"
+    >
       <div className="flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-1.5 text-sm font-medium">
           <IconClipboardCheck aria-hidden className="size-4" />
@@ -448,14 +453,14 @@ export interface CaseNoteColumnProps {
    * (`useDocumentSectionsStream`). Non-empty ⇒ takes priority over the legacy single-section
    * `live.sections` view below (richer: per-section state, multiple documents). Empty ⇒
    * nothing has arrived on that plane yet and the legacy view renders unchanged.
- */
+   */
   documentSections?: DocumentView[];
   /**
    * R4/OD-5 — confirms one `provisional` section as a clinician checkpoint
    * (`PATCH .../documents/:documentKey/sections/:sectionKey`), transitioning it to `confirmed`
    * so a later flush may append but never overwrite it again. Absent renders no Confirm control
    * at all (mirrors `editor`'s opt-in shape), so every other caller of this column is unaffected.
- */
+   */
   onConfirmSection?: (documentKey: string, sectionKey: string) => void;
   /** True while ANY section confirm is in flight (mirrors `approvePending`/`generatePending`'s
    *  single-flag shape) — disables every Confirm control so a second click cannot race the first. */
@@ -467,7 +472,7 @@ export interface CaseNoteColumnProps {
    * one publishes `running` within a moment of the session opening, and a graph that authors none
    * publishes nothing ever. The panel renders only once something arrives, so a lane without a
    * warm start shows no empty box.
- */
+   */
   preSummary?: PreSummaryView | null;
   draft: SummaryResult | null;
   draftLoading: boolean;
@@ -505,7 +510,7 @@ export interface CaseNoteColumnProps {
    * and friends). PROGRESS ONLY: `summary.interim` event carries
    * `{ kindKey, ordinal, total, chars }` and deliberately no text, so this
    * renders what the assistant is working on, never a synthesised body.
- */
+   */
   loopActivity?: readonly LoopActivityEntry[];
   /**
    * W3 — the PERSISTED NER aggregate (`GET :id/named-entities`). Live entities ride the
@@ -526,7 +531,7 @@ export interface CaseNoteColumnProps {
    * `use-note-editor.ts` is untouched. That edit corrects the NOTE; promoting the SAME
    * correction over the raw TRANSCRIPT (`feedback.capture`) is a separate,
    * explicit step — see `onAcceptCorrectionForPromotion`.
- */
+   */
   correctionProposals?: CorrectionsEnvelope | null;
   /**
    * fires alongside `onAccept` the moment the clinician accepts a proposal
@@ -534,7 +539,7 @@ export interface CaseNoteColumnProps {
    * correction already IS the clinician's judgement that it is right). The parent accumulates
    * these and threads them into `stopRecording` so `feedback.capture` has
    * something to promote over the raw transcript when the endpoint sequence runs.
- */
+   */
   onProposalAccepted?: (proposal: CorrectionProposal) => void;
   /** W2/R3 — intelligent suggestions, same stream. */
   suggestions?: readonly ClinicalSuggestion[] | null;
@@ -608,7 +613,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
    * an interpreter-produced INTERIM summary arrives on this same plane, marked
    * `source: 'interpreter'`. Say so, and say where it sits in its sequence: an interim summary
    * is a snapshot of work in progress, and a clinician reading it should know that.
- */
+   */
   const interimLabel = useMemo(() => {
     if (live?.source !== 'interpreter') return null;
     const position = typeof live.ordinal === 'number' && typeof live.total === 'number' ? ` · ${live.ordinal} of ${live.total}` : '';
@@ -623,7 +628,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
    * Corrections rewrite text, so they are offered live ONLY while the clinician is editing —
    * that is the only moment a buffer exists to write into. Outside it they stay visible but
    * inert, with the reason stated (rule 11 §5: a disabled control needs a visible reason).
- */
+   */
   const correctionsDisabledReason = approved
     ? 'This note is signed — corrections can no longer be applied.'
     : isEditing
@@ -659,7 +664,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 ? `Personalized draft · ${provenance}`
                 : 'Personalized draft'
               : showLive
-                ? interimLabel ?? 'Running SOAP · auto-drafted live'
+                ? (interimLabel ?? 'Running SOAP · auto-drafted live')
                 : 'Drafts appear here after a session'}
           </p>
         </div>
@@ -676,7 +681,10 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             {liveHasContent ? 'Note assistant unavailable — showing last update' : 'Note assistant unavailable — no update yet'}
           </Badge>
         ) : showLive && isRecording ? (
-          <span className="border-ai/40 bg-ai/10 text-ai flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium" aria-live="polite">
+          <span
+            className="border-ai/40 bg-ai/10 text-ai flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium"
+            aria-live="polite"
+          >
             <Spinner aria-hidden className="size-3.5" />
             Note assistant drafting
           </span>
@@ -730,8 +738,8 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 <AlertTitle>This note changed while you were editing</AlertTitle>
                 <AlertDescription className="flex flex-col gap-2">
                   <span>
-                    Someone or something saved version {editor.conflict.serverVersion} of this note. Your text is still in the editor below —
-                    nothing has been lost.
+                    Someone or something saved version {editor.conflict.serverVersion} of this note. Your text is still in the editor below — nothing
+                    has been lost.
                   </span>
                   {editor.conflict.serverContent ? (
                     <details className="w-full">

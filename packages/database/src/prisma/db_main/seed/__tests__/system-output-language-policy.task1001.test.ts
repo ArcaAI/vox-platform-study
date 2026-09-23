@@ -155,10 +155,12 @@ describe('the platform output-language policy TEMPLATE (Global authors, SYSTEM i
     for (const row of OUTPUT_LANGUAGE_POLICY_TEMPLATES) {
       expect(row).toMatchObject({ status: 'APPROVED', approvedVersionNumber: 1, currentVersionNumber: 1 });
     }
-    expect(OUTPUT_LANGUAGE_POLICY_VERSIONS.map((version) => [version.id, version.tenantId, version.promptTemplateId, version.versionNumber])).toEqual([
-      [GLOBAL_OUTPUT_LANGUAGE_POLICY_VERSION_ID, SEED_TENANT_ID, GLOBAL_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, 1],
-      [SYSTEM_OUTPUT_LANGUAGE_POLICY_VERSION_ID, SYSTEM_TENANT_ID, SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, 1],
-    ]);
+    expect(OUTPUT_LANGUAGE_POLICY_VERSIONS.map((version) => [version.id, version.tenantId, version.promptTemplateId, version.versionNumber])).toEqual(
+      [
+        [GLOBAL_OUTPUT_LANGUAGE_POLICY_VERSION_ID, SEED_TENANT_ID, GLOBAL_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, 1],
+        [SYSTEM_OUTPUT_LANGUAGE_POLICY_VERSION_ID, SYSTEM_TENANT_ID, SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, 1],
+      ],
+    );
   });
 
   it('is TENANT_DEFAULT with no department — the reference set carries every non-personal SYSTEM row, and a department cannot cross a tenant', () => {
@@ -237,22 +239,29 @@ describe.each(TENANTS)('%s agents', (_label, specs, policyTemplateId, generalMed
     expect(specOf(specs, PRE_SUMMARY_AGENT_SLUG).instruction).toHaveProperty('promptTemplateId', TEMPLATE_IDS.PRE_SUMMARY_DEFAULT);
   });
 
-  it.each([...OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS])('%s: two fragments, the clinical body then the policy — LAST, unpinned, unconditional, its OWN tenant`s row', (slug) => {
-    const fragments = fragmentsOf(specOf(specs, slug).instruction);
-    expect(fragments.map((fragment) => fragment.key)).toEqual([CLINICAL_NOTE_FRAGMENT_KEY, OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY]);
-    expect(fragments[1]).toEqual({ key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: policyTemplateId });
-    expect(fragments[1]).toEqual(outputLanguagePolicyFragment(policyTemplateId));
-    // No top-level binding survives beside the composite (the three forms are exclusive, and a
-    // top-level pin on a composite is a publish ERROR).
-    const instruction = specOf(specs, slug).instruction!;
-    expect(instruction).not.toHaveProperty('promptTemplateId');
-    expect(instruction).not.toHaveProperty('systemPrompt');
-    expect(instruction).not.toHaveProperty('promptVersionNumber');
-  });
+  it.each([...OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS])(
+    '%s: two fragments, the clinical body then the policy — LAST, unpinned, unconditional, its OWN tenant`s row',
+    (slug) => {
+      const fragments = fragmentsOf(specOf(specs, slug).instruction);
+      expect(fragments.map((fragment) => fragment.key)).toEqual([CLINICAL_NOTE_FRAGMENT_KEY, OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY]);
+      expect(fragments[1]).toEqual({ key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: policyTemplateId });
+      expect(fragments[1]).toEqual(outputLanguagePolicyFragment(policyTemplateId));
+      // No top-level binding survives beside the composite (the three forms are exclusive, and a
+      // top-level pin on a composite is a publish ERROR).
+      const instruction = specOf(specs, slug).instruction!;
+      expect(instruction).not.toHaveProperty('promptTemplateId');
+      expect(instruction).not.toHaveProperty('systemPrompt');
+      expect(instruction).not.toHaveProperty('promptVersionNumber');
+    },
+  );
 
   it('general-medicine-summarization keeps its template, its pin and EVERY variable binding (F6)', () => {
     const instruction = specOf(specs, 'general-medicine-summarization').instruction as Record<string, any>;
-    expect(fragmentsOf(instruction)[0]).toEqual({ key: CLINICAL_NOTE_FRAGMENT_KEY, promptTemplateId: generalMedicineTemplateId, promptVersionNumber: 1 });
+    expect(fragmentsOf(instruction)[0]).toEqual({
+      key: CLINICAL_NOTE_FRAGMENT_KEY,
+      promptTemplateId: generalMedicineTemplateId,
+      promptVersionNumber: 1,
+    });
     expect(Object.keys(instruction.variables).sort()).toEqual([...GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES].sort());
   });
 
@@ -267,14 +276,26 @@ describe.each(TENANTS)('%s agents', (_label, specs, policyTemplateId, generalMed
 // 3 + 4. seedAgentSpecs — the composite compiles, fails closed, and is CREATE-ONLY
 // =================================================================================================
 
-const TEMPLATE_ROWS = new Map<string, { id: string; status: string; content: string; approvedVersionNumber: number | null; currentVersionNumber: number | null }>(
+const TEMPLATE_ROWS = new Map<
+  string,
+  { id: string; status: string; content: string; approvedVersionNumber: number | null; currentVersionNumber: number | null }
+>(
   [...OUTPUT_LANGUAGE_POLICY_TEMPLATES, ...GENERAL_MEDICINE_SUMMARY_TEMPLATES].map((row) => [
     row.id,
-    { id: row.id, status: row.status, content: row.content, approvedVersionNumber: row.approvedVersionNumber, currentVersionNumber: row.currentVersionNumber },
+    {
+      id: row.id,
+      status: row.status,
+      content: row.content,
+      approvedVersionNumber: row.approvedVersionNumber,
+      currentVersionNumber: row.currentVersionNumber,
+    },
   ]),
 );
 const VERSION_ROWS = new Map(
-  [...OUTPUT_LANGUAGE_POLICY_VERSIONS, ...GENERAL_MEDICINE_SUMMARY_VERSIONS].map((row) => [`${row.promptTemplateId}@${row.versionNumber}`, row.content]),
+  [...OUTPUT_LANGUAGE_POLICY_VERSIONS, ...GENERAL_MEDICINE_SUMMARY_VERSIONS].map((row) => [
+    `${row.promptTemplateId}@${row.versionNumber}`,
+    row.content,
+  ]),
 );
 
 const MODELS = [
@@ -323,47 +344,55 @@ function seedClient(options: { policyStatus?: string; existing?: Map<string, Rec
 }
 
 describe('seedAgentSpecs compiles the composite exactly as AgentService.resolveCompositePrompt does', () => {
-  it.each(TENANTS)('%s casenote-finalization: the INLINE fragment resolves through the composite branch beside the template one', async (_label, specs, policyTemplateId) => {
-    const spec = specOf(specs, 'casenote-finalization');
-    const { client, agents } = seedClient();
-    expect(await seedAgentSpecs(client, [spec], 'test', 1)).toMatchObject({ created: 1, skippedUnresolvable: 0 });
+  it.each(TENANTS)(
+    '%s casenote-finalization: the INLINE fragment resolves through the composite branch beside the template one',
+    async (_label, specs, policyTemplateId) => {
+      const spec = specOf(specs, 'casenote-finalization');
+      const { client, agents } = seedClient();
+      expect(await seedAgentSpecs(client, [spec], 'test', 1)).toMatchObject({ created: 1, skippedUnresolvable: 0 });
 
-    const resolved = (agents.get(spec.id)!.compiledConfig as { resolvedPrompt: SeedResolvedPrompt }).resolvedPrompt;
-    expect(resolved).toEqual({
-      source: 'composite',
-      // The STATIC PROJECTION: both fragments are unconditional, joined in authored order.
-      content: `${CASENOTE_FINALIZATION_SYSTEM_PROMPT}${JOIN}${ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT}`,
-      join: JOIN,
-      fragments: [
-        { key: CLINICAL_NOTE_FRAGMENT_KEY, source: 'inline', content: CASENOTE_FINALIZATION_SYSTEM_PROMPT, when: null },
-        {
-          key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
-          source: 'template',
-          promptTemplateId: policyTemplateId,
-          // UNPINNED on the instruction, so publish resolves the template's own approved version.
-          promptVersionNumber: 1,
-          content: ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT,
-          when: null,
-        },
-      ],
-    });
-    // The policy text is the LAST thing in the compiled prompt — nearest the generation point.
-    expect((resolved as { content: string }).content.endsWith(ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT)).toBe(true);
-  });
+      const resolved = (agents.get(spec.id)!.compiledConfig as { resolvedPrompt: SeedResolvedPrompt }).resolvedPrompt;
+      expect(resolved).toEqual({
+        source: 'composite',
+        // The STATIC PROJECTION: both fragments are unconditional, joined in authored order.
+        content: `${CASENOTE_FINALIZATION_SYSTEM_PROMPT}${JOIN}${ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT}`,
+        join: JOIN,
+        fragments: [
+          { key: CLINICAL_NOTE_FRAGMENT_KEY, source: 'inline', content: CASENOTE_FINALIZATION_SYSTEM_PROMPT, when: null },
+          {
+            key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
+            source: 'template',
+            promptTemplateId: policyTemplateId,
+            // UNPINNED on the instruction, so publish resolves the template's own approved version.
+            promptVersionNumber: 1,
+            content: ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT,
+            when: null,
+          },
+        ],
+      });
+      // The policy text is the LAST thing in the compiled prompt — nearest the generation point.
+      expect((resolved as { content: string }).content.endsWith(ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT)).toBe(true);
+    },
+  );
 
-  it.each(TENANTS)('%s general-medicine-summarization: the tenant`s own template, then its own policy', async (_label, specs, policyTemplateId, generalMedicineTemplateId) => {
-    const spec = specOf(specs, 'general-medicine-summarization');
-    const { client, agents } = seedClient();
-    await seedAgentSpecs(client, [spec], 'test', 1);
+  it.each(TENANTS)(
+    '%s general-medicine-summarization: the tenant`s own template, then its own policy',
+    async (_label, specs, policyTemplateId, generalMedicineTemplateId) => {
+      const spec = specOf(specs, 'general-medicine-summarization');
+      const { client, agents } = seedClient();
+      await seedAgentSpecs(client, [spec], 'test', 1);
 
-    const resolved = (agents.get(spec.id)!.compiledConfig as { resolvedPrompt: any }).resolvedPrompt;
-    expect(resolved.source).toBe('composite');
-    expect(resolved.fragments.map((fragment: any) => [fragment.key, fragment.source, fragment.promptTemplateId, fragment.promptVersionNumber])).toEqual([
-      [CLINICAL_NOTE_FRAGMENT_KEY, 'template', generalMedicineTemplateId, 1],
-      [OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, 'template', policyTemplateId, 1],
-    ]);
-    expect(resolved.content.endsWith(ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT)).toBe(true);
-  });
+      const resolved = (agents.get(spec.id)!.compiledConfig as { resolvedPrompt: any }).resolvedPrompt;
+      expect(resolved.source).toBe('composite');
+      expect(
+        resolved.fragments.map((fragment: any) => [fragment.key, fragment.source, fragment.promptTemplateId, fragment.promptVersionNumber]),
+      ).toEqual([
+        [CLINICAL_NOTE_FRAGMENT_KEY, 'template', generalMedicineTemplateId, 1],
+        [OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, 'template', policyTemplateId, 1],
+      ]);
+      expect(resolved.content.endsWith(ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT)).toBe(true);
+    },
+  );
 
   it('fails CLOSED when the policy template is not APPROVED — neither note agent is published with half a prompt', async () => {
     const { client, agents } = seedClient({ policyStatus: 'DRAFT' });
@@ -414,7 +443,10 @@ describe('the seed only ever CREATES a published agent (agent_immutability_guard
     const HERE = path.dirname(fileURLToPath(import.meta.url));
     const source = readFileSync(path.resolve(HERE, '../25-agents.ts'), 'utf8');
     expect(source).not.toMatch(/\bagent\.(update|upsert|updateMany)\s*\(/);
-    const clientSlice = source.slice(source.indexOf('export interface SeedAgentsClient'), source.indexOf('agentModelFallback:', source.indexOf('export interface SeedAgentsClient')));
+    const clientSlice = source.slice(
+      source.indexOf('export interface SeedAgentsClient'),
+      source.indexOf('agentModelFallback:', source.indexOf('export interface SeedAgentsClient')),
+    );
     expect(clientSlice).toContain('create(args');
     expect(clientSlice).not.toMatch(/\b(update|upsert|updateMany)\s*\(/);
   });
@@ -458,11 +490,22 @@ function referenceSetClient() {
 /** The SYSTEM reference set as a fresh seed leaves it: the two templates, their versions, the two note agents. */
 function withSystemReferenceSet(tables: ReturnType<typeof referenceSetClient>['tables']) {
   const system = <T extends { tenantId: string }>(rows: readonly T[]) => rows.filter((row) => row.tenantId === SYSTEM_TENANT_ID);
-  tables.promptTemplate.push(...(system(GENERAL_MEDICINE_SUMMARY_TEMPLATES) as unknown as Row[]), ...(system(OUTPUT_LANGUAGE_POLICY_TEMPLATES) as unknown as Row[]));
-  tables.promptVersion.push(...(system(GENERAL_MEDICINE_SUMMARY_VERSIONS) as unknown as Row[]), ...(system(OUTPUT_LANGUAGE_POLICY_VERSIONS) as unknown as Row[]));
+  tables.promptTemplate.push(
+    ...(system(GENERAL_MEDICINE_SUMMARY_TEMPLATES) as unknown as Row[]),
+    ...(system(OUTPUT_LANGUAGE_POLICY_TEMPLATES) as unknown as Row[]),
+  );
+  tables.promptVersion.push(
+    ...(system(GENERAL_MEDICINE_SUMMARY_VERSIONS) as unknown as Row[]),
+    ...(system(OUTPUT_LANGUAGE_POLICY_VERSIONS) as unknown as Row[]),
+  );
   for (const slug of OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS) {
     const spec = specOf(PLATFORM_AGENT_SPECS, slug);
-    const row = buildAgentRow(spec, { id: 'model-gemma', slug: spec.modelSlug, taskType: 'TEXT_GENERATION', provider: 'lm-studio', wireModelId: null }, [], null);
+    const row = buildAgentRow(
+      spec,
+      { id: 'model-gemma', slug: spec.modelSlug, taskType: 'TEXT_GENERATION', provider: 'lm-studio', wireModelId: null },
+      [],
+      null,
+    );
     tables.agent.push({ ...row, resourceStatus: 'ENABLED' } as unknown as Row);
   }
 }
@@ -473,7 +516,9 @@ describe('phase 26 carries the policy into a NEW tenant and re-points the cloned
     withSystemReferenceSet(tables);
 
     expect(await copyPromptTemplates(client, NEW_TENANT)).toBe(2);
-    const clone = tables.promptTemplate.find((row) => row.tenantId === NEW_TENANT && row.sourceTemplateId === SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID)!;
+    const clone = tables.promptTemplate.find(
+      (row) => row.tenantId === NEW_TENANT && row.sourceTemplateId === SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+    )!;
     expect(clone).toMatchObject({
       name: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE.name,
       content: ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT,
@@ -497,7 +542,9 @@ describe('phase 26 carries the policy into a NEW tenant and re-points the cloned
     const policyRows = tables.promptTemplate.filter((row) => row.tenantId === NEW_TENANT && row.name === ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE.name);
     expect(policyRows).toHaveLength(1);
     const policyClone = policyRows[0]!;
-    const gmClone = tables.promptTemplate.find((row) => row.tenantId === NEW_TENANT && row.sourceTemplateId === SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID)!;
+    const gmClone = tables.promptTemplate.find(
+      (row) => row.tenantId === NEW_TENANT && row.sourceTemplateId === SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
+    )!;
 
     const cloned = (slug: string) => tables.agent.find((row) => row.tenantId === NEW_TENANT && row.slug === slug)!;
     expect(fragmentsOf(cloned('general-medicine-summarization').instruction)).toEqual([
@@ -512,7 +559,9 @@ describe('phase 26 carries the policy into a NEW tenant and re-points the cloned
       { key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: policyClone.id },
     ]);
     // The variable bindings travel with the composite.
-    expect(Object.keys((cloned('general-medicine-summarization').instruction as any).variables).sort()).toEqual([...GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES].sort());
+    expect(Object.keys((cloned('general-medicine-summarization').instruction as any).variables).sort()).toEqual(
+      [...GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES].sort(),
+    );
   });
 
   it('a tenant that already OWNS a policy (ArcaAI) keeps exactly one policy row; the SYSTEM binding then travels verbatim', async () => {
@@ -523,12 +572,17 @@ describe('phase 26 carries the policy into a NEW tenant and re-points the cloned
     await copyPromptTemplates(client, ARCAAI);
     await copyAgents(client, ARCAAI);
 
-    expect(tables.promptTemplate.filter((row) => row.tenantId === ARCAAI && row.name === ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE.name)).toHaveLength(1);
+    expect(tables.promptTemplate.filter((row) => row.tenantId === ARCAAI && row.name === ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE.name)).toHaveLength(
+      1,
+    );
     // No provenance clone exists, so — exactly as `AgentService.referenceInstruction` does — the
     // binding keeps the SYSTEM id (publish names it in its findings). The compiled artifact still
     // carries the same frozen text.
     const finalization = tables.agent.find((row) => row.tenantId === ARCAAI && row.slug === 'casenote-finalization')!;
-    expect(fragmentsOf(finalization.instruction)[1]).toEqual({ key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID });
+    expect(fragmentsOf(finalization.instruction)[1]).toEqual({
+      key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
+      promptTemplateId: SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+    });
   });
 
   it('repointInstructionTemplates: a pin is translated, an absent pin is never invented', () => {

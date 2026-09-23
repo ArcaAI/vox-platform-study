@@ -292,7 +292,7 @@ function ScribeWorkspace() {
    * the partial/finalize summarization agents and the DNA writing-style redaction agent. The
    * former separate ASR-agent and DNA-writing-style pickers (`useSelectableAsrAgents`,
    * `useDnaStyleOptions`) were removed from this screen along with their footer dropdowns.
- */
+   */
   const selectableWorkflows = useSelectableConsultationWorkflows();
 
   const recordingStart = useStartRecording();
@@ -721,7 +721,11 @@ function ScribeWorkspace() {
             <>
               <span>Live capture → transcription → personalized note → sign-off, on @arcaai/vox.</span>
               {/* Which engine is actually writing this note. */}
-              <GoverningWorkflowMeta workflow={governingWorkflow.workflow} isLoading={governingWorkflow.isLoading} hasConsultation={!!consultationId} />
+              <GoverningWorkflowMeta
+                workflow={governingWorkflow.workflow}
+                isLoading={governingWorkflow.isLoading}
+                hasConsultation={!!consultationId}
+              />
             </>
           }
         />

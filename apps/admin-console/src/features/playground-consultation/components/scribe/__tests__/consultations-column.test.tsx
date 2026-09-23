@@ -36,7 +36,7 @@ describe('ConsultationsColumn', () => {
    * WCAG 2.1.1 / 2.1.3 — axe `scrollable-region-focusable` (impact: serious).
    * The list pane scrolls; while it is loading or empty it holds no focusable
    * child, so a keyboard user cannot scroll it. Real-browser-only finding
- */
+   */
   it('exposes the scrolling list pane to the keyboard', () => {
     const { container } = setup({ isLoading: true });
     const pane = container.querySelector('.overflow-y-auto');
@@ -98,7 +98,7 @@ describe('ConsultationsColumn', () => {
   });
 
   describe('patient lookup (replaces pure free-text entry)', () => {
-    it('offers the patient ids already seen in this clinician\'s consultation list as suggestions', () => {
+    it("offers the patient ids already seen in this clinician's consultation list as suggestions", () => {
       setup();
       fireEvent.click(screen.getByRole('button', { name: /new/i }));
       const input = screen.getByLabelText(/patient id/i) as HTMLInputElement;

@@ -110,7 +110,7 @@ describe('PreSummaryProcessor', () => {
    * `'new-patient'`). What is asserted now is the SOURCE: `{visit_type}` is
    * filled from the platform's visit-type vocabulary (`VisitTypeService`), and
    * `parentConsultationId` still chooses between the two.
-*/
+   */
   it("passes the tenant and the consultation's visit type to prompt assembly", async () => {
     const { processor, promptAssemblyService } = createProcessor({ ...CONSULTATION, parentConsultationId: 'consult-0' });
     await processor.process(job());
@@ -128,5 +128,4 @@ describe('PreSummaryProcessor', () => {
 
     expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ visitType: 'New visit' }));
   });
-
 });

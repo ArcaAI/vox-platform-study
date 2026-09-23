@@ -1753,7 +1753,7 @@ export const GENERAL_MEDICINE_SUMMARY_CONTENT =
   'You are an expert medical scribe with postgraduate training in Medicine and extensive EMR documentation experience, following SAIL scoring best practices (logical organization, clinical relevance, clarity, no redundancy).\n\n' +
   'You maintain the RUNNING consultation note for a {{current_department}} {{visit_type}} encounter while the consultation is still in progress. The transcript you receive is PARTIAL and grows on every turn, and the note you have already written is shown to you: carry that note forward VERBATIM, add only what the new transcript contributes, change wording you have already written ONLY where the new transcript corrects it, and never treat the conversation as finished — no closing summary, no sign-off, no "end of consultation". A clinician is reading this note as you write it, so text that is merely rephrased reads to them as the note changing its mind.\n\n' +
   '=== SOURCE-OF-TRUTH PROTOCOL (binding) ===\n' +
-  'T1 TRANSCRIPT of today\'s encounter — the only admissible source for what was reported, examined, found, discussed, decided, advised, prescribed or ordered today.\n' +
+  "T1 TRANSCRIPT of today's encounter — the only admissible source for what was reported, examined, found, discussed, decided, advised, prescribed or ordered today.\n" +
   'T2 ENCOUNTER METADATA — age {{safe_age}}, date of birth {{safe_dob}}, gender {{safe_gender}}, presenting complaint "{{chief_complaint}}".\n' +
   'T3 RECENT VITALS — {{formatted_vitals}}\n' +
   'T4 PREVIOUS VISITS (pre-summary of prior case notes, most recent first, each fact stamped with the date it was recorded) — {{formatted_previous_visits}}\n' +
@@ -1774,7 +1774,9 @@ export const GENERAL_MEDICINE_SUMMARY_CONTENT =
   'Output the running note as Markdown: one `##` heading per section present, nothing before the first heading and nothing after the last section.';
 
 const GENERAL_MEDICINE_SUMMARY_VARIABLES = declareTypedVariables(
-  Object.fromEntries(GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES.map((name) => [name, { type: 'string' as const, required: name !== 'chief_complaint' }])),
+  Object.fromEntries(
+    GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES.map((name) => [name, { type: 'string' as const, required: name !== 'chief_complaint' }]),
+  ),
 );
 
 const generalMedicineSummaryRow = (tenantId: string, id: string, sourceTemplateId: string | null) => ({
@@ -1957,7 +1959,9 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
   for (const version of GENERAL_MEDICINE_SUMMARY_VERSIONS) {
     await client.promptVersion.upsert({ where: { id: version.id }, update: version, create: version });
   }
-  console.log(`Seeded ${GENERAL_MEDICINE_SUMMARY_TEMPLATES.length} General Medicine summary templates + ${GENERAL_MEDICINE_SUMMARY_VERSIONS.length} versions`);
+  console.log(
+    `Seeded ${GENERAL_MEDICINE_SUMMARY_TEMPLATES.length} General Medicine summary templates + ${GENERAL_MEDICINE_SUMMARY_VERSIONS.length} versions`,
+  );
 
   // TASK-1001 (OD-8) — the output-language policy, Global + SYSTEM. Phase 3, so the rows exist
   // before phase 25 resolves the agents that reference them (fail-closed otherwise).
@@ -1968,5 +1972,7 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
   for (const version of OUTPUT_LANGUAGE_POLICY_VERSIONS) {
     await client.promptVersion.upsert({ where: { id: version.id }, update: version, create: version });
   }
-  console.log(`Seeded ${OUTPUT_LANGUAGE_POLICY_TEMPLATES.length} output-language policy templates + ${OUTPUT_LANGUAGE_POLICY_VERSIONS.length} versions`);
+  console.log(
+    `Seeded ${OUTPUT_LANGUAGE_POLICY_TEMPLATES.length} output-language policy templates + ${OUTPUT_LANGUAGE_POLICY_VERSIONS.length} versions`,
+  );
 };

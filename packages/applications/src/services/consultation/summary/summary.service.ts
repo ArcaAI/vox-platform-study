@@ -763,7 +763,9 @@ export class SummaryService extends BaseService implements ISummaryService {
       const requestedIds = new Set(request.contextItemIds);
       const contextItems = await Promise.all(request.contextItemIds.map((id) => this.contextItemRepository.findById(id)));
       const orderedItems = contextItems.filter((item): item is NonNullable<typeof item> => !!item).filter((item) => requestedIds.has(item.id));
-      content = assembleTranscriptText(orderedItems.map((item) => ({ content: item.content, createdAt: item.createdAt, speakerId: readSpeakerId(item) })));
+      content = assembleTranscriptText(
+        orderedItems.map((item) => ({ content: item.content, createdAt: item.createdAt, speakerId: readSpeakerId(item) })),
+      );
     }
     if (!content) {
       const transcripts = await this.contextItemRepository.findTranscripts(consultationId);

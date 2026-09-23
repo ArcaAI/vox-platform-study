@@ -77,7 +77,10 @@ interface VersionRow {
  * `(tenantId, sourceId)` (`cloneId`), so they have no literal to collide.
  */
 const WRITTEN_TEMPLATES: ReadonlyArray<readonly [string, ReadonlyArray<TemplateRow>]> = [
-  ['07-prompt-template DEFAULT_PROMPT_TEMPLATES', DEFAULT_PROMPT_TEMPLATES.map((row) => ({ ...row, ...resolvePromptPublication(row) })) as TemplateRow[]],
+  [
+    '07-prompt-template DEFAULT_PROMPT_TEMPLATES',
+    DEFAULT_PROMPT_TEMPLATES.map((row) => ({ ...row, ...resolvePromptPublication(row) })) as TemplateRow[],
+  ],
   ['07-prompt-template CUSTOMER_PROMPT_TEMPLATES', CUSTOMER_PROMPT_TEMPLATES as unknown as TemplateRow[]],
   ['07-prompt-template GENERAL_MEDICINE_SUMMARY_TEMPLATES', GENERAL_MEDICINE_SUMMARY_TEMPLATES],
   ['07-prompt-template OUTPUT_LANGUAGE_POLICY_TEMPLATES', OUTPUT_LANGUAGE_POLICY_TEMPLATES],
@@ -110,7 +113,10 @@ const PROMPT_WRITER_FILES = [
 ];
 
 /** `id → the writers that name it`, only for ids named more than once. */
-function duplicates<T extends { id: string }>(writers: ReadonlyArray<readonly [string, ReadonlyArray<T>]>, keyOf: (row: T) => string = (row) => row.id) {
+function duplicates<T extends { id: string }>(
+  writers: ReadonlyArray<readonly [string, ReadonlyArray<T>]>,
+  keyOf: (row: T) => string = (row) => row.id,
+) {
   const owners = new Map<string, string[]>();
   for (const [writer, rows] of writers) {
     for (const row of rows) owners.set(keyOf(row), [...(owners.get(keyOf(row)) ?? []), writer]);
@@ -151,8 +157,8 @@ describe('seeded prompt rows — one row per id', () => {
 
   it('the enrolment ORDER is the order index.ts runs the writers in (it decides who a collision would have let win)', () => {
     const index = readFileSync(path.join(SEED_DIR, 'index.ts'), 'utf8');
-    const positions = ['seedPromptTemplate(', 'seedArcaaiClinicalTemplates(', 'seedLiveAgentDefaults(', 'seedDeptFreePreSummaryDefault('].map((call) =>
-      index.indexOf(`await ${call}`),
+    const positions = ['seedPromptTemplate(', 'seedArcaaiClinicalTemplates(', 'seedLiveAgentDefaults(', 'seedDeptFreePreSummaryDefault('].map(
+      (call) => index.indexOf(`await ${call}`),
     );
     expect(positions.every((position) => position > -1)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -173,7 +179,9 @@ function phaseThreeClient() {
   const agents = new Map<string, any>();
   const client = {
     aiModel: {
-      findMany: vi.fn(async () => [{ id: 'model-gemma', slug: 'lms-gemma-4-e2b-it-qat', taskType: 'TEXT_GENERATION', provider: 'lm-studio', wireModelId: null }]),
+      findMany: vi.fn(async () => [
+        { id: 'model-gemma', slug: 'lms-gemma-4-e2b-it-qat', taskType: 'TEXT_GENERATION', provider: 'lm-studio', wireModelId: null },
+      ]),
     },
     promptTemplate: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
@@ -191,7 +199,9 @@ function phaseThreeClient() {
     },
     promptVersion: {
       findFirst: vi.fn(async ({ where }: { where: { promptTemplateId: string; versionNumber: number } }) => {
-        const version = [...versionsById.values()].find((row) => row.promptTemplateId === where.promptTemplateId && row.versionNumber === where.versionNumber);
+        const version = [...versionsById.values()].find(
+          (row) => row.promptTemplateId === where.promptTemplateId && row.versionNumber === where.versionNumber,
+        );
         return version ? { content: version.content ?? null } : null;
       }),
     },
@@ -208,7 +218,10 @@ function phaseThreeClient() {
 describe('the SYSTEM general-medicine-summarization agent freezes the General Medicine text', () => {
   it('the SYSTEM General Medicine rows sit on their own slot, not the department-free pre-summary`s', () => {
     expect(SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID).not.toBe(SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE_ID);
-    expect(templatesById.get(SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID)).toMatchObject({ tenantId: SYSTEM_TENANT_ID, content: GENERAL_MEDICINE_SUMMARY_CONTENT });
+    expect(templatesById.get(SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID)).toMatchObject({
+      tenantId: SYSTEM_TENANT_ID,
+      content: GENERAL_MEDICINE_SUMMARY_CONTENT,
+    });
     expect(versionsById.get(SYSTEM_GENERAL_MEDICINE_SUMMARY_VERSION_ID)).toMatchObject({
       promptTemplateId: SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
       content: GENERAL_MEDICINE_SUMMARY_CONTENT,

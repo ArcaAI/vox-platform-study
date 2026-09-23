@@ -13,7 +13,12 @@ import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CaseNoteColumn } from '../case-note-column';
-import { SECTION_ANNOTATION_KINDS, type DocumentSectionRecord, type DocumentSectionView, type SectionAnnotation } from '../../../api/document-sections';
+import {
+  SECTION_ANNOTATION_KINDS,
+  type DocumentSectionRecord,
+  type DocumentSectionView,
+  type SectionAnnotation,
+} from '../../../api/document-sections';
 import { foldHydratedDocumentSections } from '../../../api/hooks';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -109,7 +114,9 @@ describe('TASK-1001 — the duplicate flag in the live documents view', () => {
   });
 
   it('still flags the span when the wire names no section at all', () => {
-    renderSections([section({ sectionKey: 'diagnosis', title: 'Diagnosis', content: DIAGNOSIS_CONTENT, annotations: [{ kind: 'duplicate', start: 0, end: 5 }] })]);
+    renderSections([
+      section({ sectionKey: 'diagnosis', title: 'Diagnosis', content: DIAGNOSIS_CONTENT, annotations: [{ kind: 'duplicate', start: 0, end: 5 }] }),
+    ]);
     expect(screen.getByText(/also in another section/i)).toBeTruthy();
   });
 

@@ -63,7 +63,7 @@ export interface ConsultationsColumnProps {
    * ONE options object rather than a positional tail: TASK-932 adds three more axes (visit type,
    * the spoken language, the prior record) and a five-argument call whose middle three are all
    * optional strings is a bug waiting for someone to transpose two of them.
- */
+   */
   onOpenPatient: (patientId: string, options: OpenConsultationOptions) => Promise<void>;
   activeIsRecording: boolean;
   /**
@@ -74,7 +74,7 @@ export interface ConsultationsColumnProps {
    * `undefined` = the caller did not wire the picker (render nothing), `null` = we could not
    * ask (offline/503/unauthorized), `[]` = the tenant has published none. Telling a clinician
    * their tenant has no workflows because a request blipped is the failure this prevents.
- */
+   */
   workflows?: WorkflowSelectionOption[] | null;
   /** Read in flight ⇒ skeleton, never a premature "none". */
   workflowsLoading?: boolean;
@@ -86,7 +86,7 @@ export interface ConsultationsColumnProps {
    * clinician plane ( / P-4). Empty is a real, explainable state,
    * not a reason to hide the control: see `departmentsLoading` /
    * `departmentsError` below.
- */
+   */
   departments?: DepartmentOption[];
   /** Catalog read in flight ⇒ skeleton, never a blank or a premature "none". */
   departmentsLoading?: boolean;
@@ -101,7 +101,7 @@ export interface ConsultationsColumnProps {
    * Supplied by the screen from the STT language catalogue rather than hardcoded here, so the
    * console offers what the platform actually transcribes. `undefined` keeps the control off, the
    * same convention `workflows` uses.
- */
+   */
   summaryLanguages?: SummaryLanguageOption[];
   selectedSummaryLanguage?: string;
   onSummaryLanguageChange?: (tag: string) => void;
@@ -419,9 +419,7 @@ export function ConsultationsColumn({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-muted-foreground text-xs">
-                  Scopes the drafted note to the department&apos;s prompt and agent configuration.
-                </p>
+                <p className="text-muted-foreground text-xs">Scopes the drafted note to the department&apos;s prompt and agent configuration.</p>
               </>
             ) : (
               <DepartmentScopingNotice unavailable={departmentsError} />
@@ -516,7 +514,10 @@ export function ConsultationsColumn({
                 parentCandidates.length > 0 ? (
                   <>
                     <Label htmlFor="scribe-parent-consultation">Previous consultation</Label>
-                    <Select value={parentConsultationId || NO_PARENT} onValueChange={(next) => setParentConsultationId(next === NO_PARENT ? '' : next)}>
+                    <Select
+                      value={parentConsultationId || NO_PARENT}
+                      onValueChange={(next) => setParentConsultationId(next === NO_PARENT ? '' : next)}
+                    >
                       <SelectTrigger id="scribe-parent-consultation" className="w-full">
                         <SelectValue placeholder="Pick the visit this follows" />
                       </SelectTrigger>
@@ -578,7 +579,8 @@ export function ConsultationsColumn({
                   </SelectContent>
                 </Select>
                 <p id="scribe-summary-language-help" className="text-muted-foreground text-xs">
-                  The language spoken in this consultation. The note&apos;s language is set by the tenant&apos;s output-language policy (English by default), not by this.
+                  The language spoken in this consultation. The note&apos;s language is set by the tenant&apos;s output-language policy (English by
+                  default), not by this.
                 </p>
               </>
             )}

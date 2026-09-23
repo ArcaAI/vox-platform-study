@@ -11,8 +11,7 @@ export class SummaryDuplicateAnnotationDto {
   kind: 'duplicate';
 
   @ApiProperty({
-    description:
-      "Character offset start within THIS SECTION's text — `content.slice(section.start, section.end)` — never within the whole `content`",
+    description: "Character offset start within THIS SECTION's text — `content.slice(section.start, section.end)` — never within the whole `content`",
   })
   start: number;
 
@@ -115,7 +114,7 @@ export class SummaryResponse {
    */
   @ApiPropertyOptional({
     description:
-      "`GET :id/summary/latest` only — `content` split at its heading lines (`## Title`, `**Title**`, `**Title:**`; text before the first heading belongs to no section), each section located by offsets into `content` and carrying the cross-section `duplicate` flags computed over this final text. A flag never removes or alters content. Absent when `content` has fewer than two headed sections.",
+      '`GET :id/summary/latest` only — `content` split at its heading lines (`## Title`, `**Title**`, `**Title:**`; text before the first heading belongs to no section), each section located by offsets into `content` and carrying the cross-section `duplicate` flags computed over this final text. A flag never removes or alters content. Absent when `content` has fewer than two headed sections.',
     type: [SummaryNoteSectionDto],
   })
   sections?: SummaryNoteSectionDto[];
