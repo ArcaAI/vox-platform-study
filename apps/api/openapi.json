@@ -20211,6 +20211,16 @@
             "description": "ASR Agent slug the session resolved to",
             "type": "string"
           },
+          "agentSource": {
+            "description": "Which rule chose the session's speech-to-text agent: an explicit agentSlug on the request, the consultation's governing workflow speech-to-text node, or the department then tenant assignment.",
+            "enum": [
+              "explicit",
+              "workflow",
+              "department",
+              "tenant"
+            ],
+            "type": "string"
+          },
           "agentVersionId": {
             "description": "ASR Agent VERSION id the session runs on",
             "type": "string"
@@ -54926,6 +54936,7 @@
     },
     "/api/v1/audio/transcription-jobs/stream/session": {
       "post": {
+        "description": "The speech-to-text agent is resolved in order: an explicit agentSlug on the request, else the speech-to-text node of the consultation's governing workflow, else the department then tenant assignment. A governing workflow that names more than one speech-to-text agent, or one that can no longer serve, is refused with 409 WORKFLOW_ASR_AGENT_UNAVAILABLE.",
         "operationId": "TranscriptionJobController_createStreamSession",
         "parameters": [],
         "requestBody": {
@@ -55168,6 +55179,7 @@
     },
     "/api/v1/audio/transcription-jobs/transcribe": {
       "post": {
+        "description": "The speech-to-text agent is resolved in order: an explicit agentSlug on the request, else the speech-to-text node of the consultation's governing workflow, else the department then tenant assignment.",
         "operationId": "TranscriptionJobController_transcribeFile",
         "parameters": [],
         "requestBody": {
