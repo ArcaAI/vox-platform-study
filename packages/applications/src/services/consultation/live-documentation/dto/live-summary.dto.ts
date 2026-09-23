@@ -100,6 +100,34 @@ export class LiveSummarySectionDto {
 
   @ApiProperty({ description: 'Section body text (a contiguous substring of `runningSummary`); may be empty if not yet populated' })
   content: string;
+
+  /**
+   * TASK-1001 S-9 — the section's IDENTITY on the per-section plane, and where the snapshot is
+   * known to agree with it, its revision. All three are optional and additive: a consumer that
+   * reads only `title`/`content` sees nothing change.
+   *
+   * They are stamped from the persisted `DocumentSection` row when the service can tie this section
+   * to exactly one row (same render ordinal, same title) — today on a late-join replay. They are
+   * never guessed: a live flush's snapshot is published BEFORE that flush's section writes land, so
+   * it does not know the revision its own content will get and carries none of the three.
+   */
+  @ApiPropertyOptional({
+    description:
+      "TASK-1001 S-9 — WHICH document this section belongs to (the tenant's `DocumentTemplate.slug`), the same `documentKey` this section's `section.patch` events carry. Present when the service tied this section to its persisted row — today on a late-join replay; absent otherwise, never guessed.",
+  })
+  documentKey?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-1001 S-9 — WHICH section within that document (the compiled template section key), the same `sectionKey` this section`s `section.patch` events carry, so a client can hold the snapshot`s section and the patches under ONE identity. Present together with `documentKey`.',
+  })
+  sectionKey?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-1001 S-9 — the persisted row`s `revision` that THIS `content` is, exactly. Present only when the content is byte-identical to that revision, so a client may seed its per-section revision map from it and discard a `section.patch` whose revision is not greater. Absent when the snapshot and the row disagree — a flush whose section write has not landed yet, or a clinician-confirmed section the flush was refused on — and then the `section.patch` replayed right after the snapshot carries the authoritative state.',
+  })
+  revision?: number;
 }
 
 /**
@@ -300,6 +328,12 @@ export class LiveSummaryMetadataDto {
  * by {@link LiveDocumentationService} and relayed verbatim to clients over
  * `GET /consultations/:id/live-summary/stream`. Transient — never persisted
  * per tick (the last snapshot may optionally be saved as a PRE_SUMMARY on stop).
+ *
+ * TASK-1001 S-9 — a late joiner (a (re)connect) is replayed this snapshot with its sections
+ * stamped from their persisted rows (see {@link LiveSummarySectionDto}), then one `section.patch`
+ * per persisted section at its current revision, then the last `presummary`. On a finished
+ * consultation the terminal `closed: true` snapshot is replayed LAST, after the patches, and the
+ * stream ends there.
  */
 export class LiveSummaryEventDto {
   @ApiProperty({ description: 'Consultation this running summary belongs to' })
