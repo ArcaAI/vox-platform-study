@@ -87,12 +87,28 @@ function localSpan(span: SectionSpan, start?: number, end?: number): { start: nu
 }
 
 /**
+ * The ONE order a section's annotation list is kept in: by position, then by kind.
+ *
+ * Exported because this module is no longer the only producer of a section's list. TASK-1001's
+ * `duplicate` flags are not global-offset annotations — they are computed per WRITE by the turn
+ * contract and merged into this module's output by `DocumentSectionStore` — and a merge that
+ * ordered differently would make two flushes with identical annotations diff on ordering alone.
+ */
+export function compareSectionAnnotations(a: SectionAnnotationDto, b: SectionAnnotationDto): number {
+  return a.start - b.start || a.end - b.end || a.kind.localeCompare(b.kind);
+}
+
+/**
  * Re-anchor a flush's annotations onto their sections.
  *
  * Returns one entry per section, in section order, carrying only the annotations
  * that fall wholly within it. Sections that could not be located in the document
  * (empty, or content the parser transformed) receive an empty list — never a
  * guessed offset.
+ *
+ * `duplicate` (TASK-1001) is deliberately NOT produced here: it is a claim about the text a turn
+ * WROTE, not about a span of the concatenated document, so it has no global offset to translate.
+ * `DocumentSectionStore.applyFlushPatch` merges it into the list this returns.
  */
 export function reanchorAnnotations(
   sections: readonly LiveSummarySectionDto[],
@@ -162,6 +178,6 @@ export function reanchorAnnotations(
     }
 
     // Stable order so a diff between two flushes is about CONTENT, not ordering.
-    return annotations.sort((a, b) => a.start - b.start || a.end - b.end || a.kind.localeCompare(b.kind));
+    return annotations.sort(compareSectionAnnotations);
   });
 }

@@ -31,8 +31,16 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * console unable to render one differently from the other, which is precisely the "popped up and
  * highlighted" behaviour the owner asked for — and it would let a tenant's importance vocabulary
  * silently mix into the NER entity classes.
+ *
+ * `duplicate` (TASK-1001) marks a span of this section that ANOTHER section of the same document
+ * already carries — the other section is named by `duplicateOf` (its key) and `duplicateOfTitle`
+ * (its title). It is a FLAG, never a removal: the same clinical fact legitimately appears in two
+ * sections (a drug under treatment history AND under the plan of care), so the platform points the
+ * repeat out and leaves the text exactly as it was written. Like `groundedness` and `flagged` it is
+ * a claim about the NOTE, so it carries no transcript anchor, and it carries no `type`, `verdict`,
+ * `icd10` or `score` either.
  */
-export const SECTION_ANNOTATION_KINDS = ['entity', 'groundedness', 'flagged', 'finding'] as const;
+export const SECTION_ANNOTATION_KINDS = ['entity', 'groundedness', 'flagged', 'finding', 'duplicate'] as const;
 export type SectionAnnotationKind = (typeof SECTION_ANNOTATION_KINDS)[number];
 
 /**
@@ -72,8 +80,8 @@ export class SectionAnnotationDto {
    * {@link LiveSummaryEntityDto}'s. `start`/`end` above address this SECTION's rendered content;
    * these address the utterance the annotation was extracted FROM, which is a different question
    * and the one a "jump to transcript" control asks. The three fields are one anchor: all present
-   * or all absent, never fabricated. Always absent on `groundedness` and `flagged`, which are
-   * claims about the note and have no transcript span of their own.
+   * or all absent, never fabricated. Always absent on `groundedness`, `flagged` and `duplicate`,
+   * which are claims about the note and have no transcript span of their own.
    */
   @ApiPropertyOptional({ description: 'A2 — the `TranscriptSegment` id (`utt-<utteranceIndex>`) this annotation was extracted from' })
   transcriptSegmentId?: string;
@@ -83,6 +91,30 @@ export class SectionAnnotationDto {
 
   @ApiPropertyOptional({ description: "A2 — character offset end within THAT SEGMENT's text" })
   transcriptEnd?: number;
+
+  /**
+   * TASK-1001 — for `duplicate` ONLY: the `sectionKey` of the OTHER section, in the SAME document,
+   * that already carries the text `start`/`end` address here. `start`/`end` stay section-LOCAL, as
+   * on every other kind: they index THIS section's `content`, never the other section's.
+   */
+  @ApiPropertyOptional({
+    description:
+      'TASK-1001 — for `duplicate`: the `sectionKey` of the other section in the SAME document that already carries the text `start`/`end` address in THIS section. A flag, never a removal — the text is left exactly as written. Absent on every other kind.',
+  })
+  duplicateOf?: string;
+
+  /**
+   * TASK-1001 — for `duplicate` ONLY: the TITLE of the section `duplicateOf` names, as HOPE knows it
+   * (the compiled template's title for that key). Present on every `duplicate`. A client may hold
+   * that section under a different key, or under a generic identity, and then cannot resolve the
+   * key to a heading; this lets it name the section anyway. Prefer it for display and fall back to
+   * `duplicateOf`, which stays the identifier.
+   */
+  @ApiPropertyOptional({
+    description:
+      'TASK-1001 — for `duplicate`: the TITLE of the section `duplicateOf` names, as HOPE knows it (the compiled template`s title for that key). Present on every `duplicate`; prefer it for display and fall back to `duplicateOf` when a client cannot resolve the key. Absent on every other kind.',
+  })
+  duplicateOfTitle?: string;
 }
 
 /**

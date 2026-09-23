@@ -61,6 +61,18 @@
  *   normalisation removes whitespace rather than digits, `1000mg` and `100mg` stay distinct, so a
  *   sentence differing in a number, dose, date or laterality is NEW and is appended.
  * - a sentence is eligible to be dropped only when it is at least two words (see `splitSentences`).
+ *
+ * ## TASK-1001 (wave 2) — a repeat ACROSS sections is FLAGGED, never dropped
+ *
+ * The per-section guard above cannot see one turn writing the same paragraph into two DIFFERENT
+ * sections (observed: `family_history` and `diagnosis`), and by design it must not: the same
+ * clinical fact legitimately belongs in two sections all the time — a drug under treatment history
+ * AND under the plan of care — so deleting a cross-section repeat could silently lose content,
+ * which OD-5 ranks worse than a duplicate. The owner's decision (2026-09-23) is therefore to FLAG
+ * it: the later section's write carries a `duplicate` annotation naming the section that already
+ * holds the text, and the write itself is byte-for-byte what it would have been without the rule.
+ * See `crossSectionDuplicates` for the rule, and why it — unlike the dedup above — may match
+ * near-duplicates.
  */
 import type { CompiledDocumentTemplate, CompiledResponseFormat } from '../../../document-template/document-template-compiler';
 // TASK-1000 OD-7 — the ONE sentinel both planes must agree about. Imported rather than
@@ -68,6 +80,7 @@ import type { CompiledDocumentTemplate, CompiledResponseFormat } from '../../../
 // drift apart; `document-shape-parser` imports only types, so this closes no cycle.
 import { RUNNING_SUMMARY_TITLE } from '../document-shape-parser';
 import type { LiveSummarySectionDto } from '../dto';
+import type { SectionAnnotationDto } from './dto/section-patch.dto';
 
 /** One section's contribution to a turn. Every field is optional — a quiet section says nothing. */
 export interface TurnSection {
@@ -91,6 +104,17 @@ export interface TurnSectionWrite {
   /** The NEW PART for `append`; the whole new body for `replace`. */
   readonly content: string;
   readonly contradiction?: { readonly reason: string };
+  /**
+   * TASK-1001 (wave 2) — `duplicate` annotations for runs of THIS write that another section of
+   * the same document already carries. Absent when there are none, so every write the rule does
+   * not concern keeps its exact pre-existing shape.
+   *
+   * **Offsets index THIS WRITE's `content`** — for an `append`, the new part — not the section
+   * body: only the store knows the body the append actually lands on, so it re-bases them
+   * (`SectionWriteInput.contentAnnotations`). Nothing here changes `content`; a flag never drops,
+   * alters, reorders or truncates text.
+   */
+  readonly duplicates?: readonly SectionAnnotationDto[];
 }
 
 export type TurnRefusalReason = 'revision-without-contradiction' | 'addition-already-present';
@@ -109,6 +133,12 @@ export interface AppliedTurn {
   readonly refusals: TurnRefusal[];
   /** TASK-1001 — sentences dropped from additions because the section already held them. */
   readonly droppedSentenceCount: number;
+  /**
+   * TASK-1001 (wave 2) — runs this turn wrote that ANOTHER section already carries, turn-wide.
+   * Counted per flagged run (one `duplicate` annotation each), never per sentence. Nothing was
+   * dropped for them; this is the count `repetition_pressure` adds to its sum.
+   */
+  readonly crossSectionDuplicateCount: number;
 }
 
 /**
@@ -303,7 +333,10 @@ export function wholeDocumentAsTurn(parsed: readonly LiveSummarySectionDto[], co
 
   // `droppedSentenceCount` is 0 by construction, not by omission: this path emits `replace` writes,
   // which overwrite rather than accumulate, so there is nothing for sentence dedup to protect.
-  return { sections: [...parsed], writes, refusals: [], droppedSentenceCount: 0 };
+  // `crossSectionDuplicateCount` is 0 for the same reason: the cross-section flag concerns text a
+  // TURN appends (or first writes). A whole-document degrade rewrites every section each flush, so
+  // flagging it would re-flag the entire note on every turn and measure the degrade, not a repeat.
+  return { sections: [...parsed], writes, refusals: [], droppedSentenceCount: 0, crossSectionDuplicateCount: 0 };
 }
 
 /**
@@ -340,6 +373,12 @@ interface Sentence {
   readonly text: string;
   /** The whitespace that followed it, so the survivors re-join in the author's own layout. */
   readonly separator: string;
+  /**
+   * TASK-1001 (wave 2) — where `text` sits in the body that was split: `body.slice(start, end)`
+   * is `text`, exactly. The cross-section flag needs it to address a span; the dedup ignores it.
+   */
+  readonly start: number;
+  readonly end: number;
 }
 
 /**
@@ -375,8 +414,14 @@ function splitSentences(body: string): Sentence[] {
   };
 
   const take = (end: number, separatorEnd: number): void => {
-    const text = body.slice(start, end).trim();
-    if (text.length > 0) sentences.push({ text, separator: body.slice(end, separatorEnd) });
+    const raw = body.slice(start, end);
+    const text = raw.trim();
+    if (text.length > 0) {
+      // `trim()` removes the same leading whitespace `trimStart()` does, so this is where `text`
+      // begins inside `body`.
+      const textStart = start + (raw.length - raw.trimStart().length);
+      sentences.push({ text, separator: body.slice(end, separatorEnd), start: textStart, end: textStart + text.length });
+    }
     start = separatorEnd;
   };
 
@@ -424,6 +469,16 @@ function normaliseForComparison(sentence: string): string {
     .replace(/[.!?…]+$/, '');
 }
 
+/**
+ * The two-word rule, stated ONCE: a sentence is eligible when it has at least two words and
+ * something left after normalisation. The dedup may DROP only an eligible sentence (see the
+ * reasoning in `withoutSentencesAlreadyPresent`); the cross-section flag builds its runs out of
+ * eligible sentences only, so a lone `Inj.` can neither be deleted nor make a run.
+ */
+function isEligibleSentence(text: string): boolean {
+  return WHITESPACE.test(text) && normaliseForComparison(text).length > 0;
+}
+
 interface DedupedAddition {
   /** The surviving sentences, in their ORIGINAL text and original order. Empty ⇒ nothing is new. */
   readonly text: string;
@@ -456,7 +511,7 @@ function withoutSentencesAlreadyPresent(before: string, addition: string): Dedup
     // precisely the content loss OD-5 ranks worse than a duplicated sentence. A genuine restatement
     // of clinical content is never one word.
     const key = normaliseForComparison(sentence.text);
-    if (key.length > 0 && WHITESPACE.test(sentence.text) && present.has(key)) {
+    if (isEligibleSentence(sentence.text) && present.has(key)) {
       dropped += 1;
       continue;
     }
@@ -464,6 +519,154 @@ function withoutSentencesAlreadyPresent(before: string, addition: string): Dedup
   }
 
   return { text: kept.map((sentence) => `${sentence.text}${sentence.separator}`).join('').trim(), dropped };
+}
+
+// =================================================================================================
+// TASK-1001 (wave 2) — cross-section repeats: FLAGGED, never dropped
+// =================================================================================================
+
+/**
+ * How similar two sentences must be to count as the same one for the cross-section FLAG: the
+ * Jaccard similarity of their token sets, inclusive.
+ *
+ * ## Why this path may match near-duplicates when the dedup above may not
+ *
+ * OD-5's caution about similarity matching is about DROPPING: a paraphrase the dedup mistook for a
+ * repeat would silently delete something the clinician said. This path never removes anything —
+ * the worst a false match can do is put a flag on text that was fine — so the argument that kept
+ * the dedup exact does not apply here, and the observed case REQUIRES a looser match: the
+ * `diagnosis` copy of the `family_history` paragraph read `that symptoms such as` where the
+ * original read `that many of the symptoms such as`, so only its SECOND sentence was an exact
+ * repeat and an exact-only rule would have flagged nothing. The tests' same-shape reconstruction
+ * of that sentence pair scores 18/20 = 0.9.
+ *
+ * 0.8 still keeps apart two sentences that differ by a clinical word or two (`dry cough … at night`
+ * against `wet cough … at dawn` is 10/14 ≈ 0.71). What it does NOT keep apart is a long sentence
+ * whose only difference is a negation (`no`): that pair is flagged, which is the acceptable failure
+ * of a rule that only flags.
+ */
+export const CROSS_SECTION_DUPLICATE_JACCARD = 0.8;
+
+/**
+ * The shortest run of consecutive eligible sentences that is flagged. A single shared sentence is
+ * the ordinary case — the same vital sign in `objective` and `assessment`, the same drug line in
+ * treatment history and the plan — and flagging it would put a flag on most notes.
+ */
+export const CROSS_SECTION_DUPLICATE_MIN_RUN = 2;
+
+/**
+ * The tokeniser for the similarity comparison. A NUMBER is one token — a run of digits with an
+ * optional internal decimal point, so `1.05` stays `1.05` and never `1` + `05` — and a WORD is a
+ * run of letters (with their combining marks, so a Malayalam word is not split at every vowel
+ * sign). Everything else separates. Digits never fuse with letters: `1000mg` is `1000` + `mg`, so
+ * the number is always visible to the digit rule below.
+ */
+const MATCH_TOKEN = /\p{N}+(?:\.\p{N}+)?|[\p{L}\p{M}]+/gu;
+/** Non-global on purpose — see `WHITESPACE`. */
+const NUMBER_TOKEN = /^\p{N}/u;
+
+/** A sentence in the three forms the cross-section comparison reads. Comparison-only, never written. */
+interface MatchForm {
+  /** The dedup's own comparison key: equal keys are a match whatever the similarity says. */
+  readonly key: string;
+  readonly tokens: ReadonlySet<string>;
+  /**
+   * The number tokens as a sorted MULTISET: the same numbers in another order compare equal, and a
+   * number that appears twice in one sentence must appear twice in the other.
+   */
+  readonly numbers: string;
+}
+
+function matchForm(text: string): MatchForm {
+  const tokens = text.toLowerCase().match(MATCH_TOKEN) ?? [];
+  return {
+    key: normaliseForComparison(text),
+    tokens: new Set(tokens),
+    numbers: tokens
+      .filter((token) => NUMBER_TOKEN.test(token))
+      .sort()
+      .join(' '),
+  };
+}
+
+/**
+ * Two sentences are the same sentence, for the FLAG, when either:
+ *  - their normalised forms are equal (the dedup's own rule — so everything the dedup would call a
+ *    repeat, this calls a repeat too); or
+ *  - their token sets have a Jaccard similarity of at least {@link CROSS_SECTION_DUPLICATE_JACCARD}
+ *    AND their number tokens are identical as a multiset.
+ *
+ * The number condition is not a refinement, it is the safety rule: `1000 mg` against `100 mg`, a
+ * changed date, a changed count or a changed lab value is DIFFERENT clinical content however many
+ * words the two sentences share, and is never reported as a repeat.
+ */
+function sentencesMatch(a: MatchForm, b: MatchForm): boolean {
+  if (a.key.length > 0 && a.key === b.key) return true;
+  if (a.numbers !== b.numbers) return false;
+  let shared = 0;
+  for (const token of a.tokens) if (b.tokens.has(token)) shared += 1;
+  const union = a.tokens.size + b.tokens.size - shared;
+  return union > 0 && shared / union >= CROSS_SECTION_DUPLICATE_JACCARD;
+}
+
+/** Another section of the same document, as the cross-section comparison sees it. */
+interface SectionReference {
+  readonly sectionKey: string;
+  /** The compiled template's title for `sectionKey` — what `duplicateOfTitle` carries. */
+  readonly title: string;
+  readonly forms: readonly MatchForm[];
+}
+
+/**
+ * The `duplicate` annotations for `content` — the text a turn writes into one section — against
+ * every OTHER section of the same document.
+ *
+ * A run is a maximal stretch of at least {@link CROSS_SECTION_DUPLICATE_MIN_RUN} CONSECUTIVE
+ * eligible sentences of `content`, every one of which matches (see `sentencesMatch`) some sentence
+ * of ONE other section. A one-word or empty sentence is not eligible and ends a run. Runs are found
+ * greedily left to right: at each sentence the longest run any single section supports wins (ties
+ * go to the section earliest in template order), it is flagged, and the scan resumes after it — so
+ * runs never overlap.
+ *
+ * Offsets index `content`, and span the run's first sentence start to its last sentence end —
+ * exactly the text, never the separator after it. Each annotation names the other section twice:
+ * `duplicateOf` (its key) and `duplicateOfTitle` (its compiled title).
+ */
+function crossSectionDuplicates(content: string, references: readonly SectionReference[]): SectionAnnotationDto[] {
+  const sentences = splitSentences(content);
+  const forms = sentences.map((sentence) => (isEligibleSentence(sentence.text) ? matchForm(sentence.text) : null));
+  const annotations: SectionAnnotationDto[] = [];
+
+  let at = 0;
+  while (at < sentences.length) {
+    let best: { reference: SectionReference; length: number } | undefined;
+    for (const reference of references) {
+      let length = 0;
+      for (;;) {
+        const form = forms[at + length];
+        if (!form || !reference.forms.some((candidate) => sentencesMatch(form, candidate))) break;
+        length += 1;
+      }
+      if (length >= CROSS_SECTION_DUPLICATE_MIN_RUN && (!best || length > best.length)) best = { reference, length };
+    }
+
+    if (!best) {
+      at += 1;
+      continue;
+    }
+    annotations.push({
+      kind: 'duplicate',
+      start: sentences[at]!.start,
+      end: sentences[at + best.length - 1]!.end,
+      duplicateOf: best.reference.sectionKey,
+      // The title as HOPE knows it, so a client that holds the section under another key (or under
+      // a generic identity) can still name it rather than print a raw key.
+      duplicateOfTitle: best.reference.title,
+    });
+    at += best.length;
+  }
+
+  return annotations;
 }
 
 /**
@@ -482,6 +685,36 @@ export function applyTurn(prior: readonly LiveSummarySectionDto[], turn: ParsedT
   const refusals: TurnRefusal[] = [];
   let droppedSentenceCount = 0;
 
+  // TASK-1001 (wave 2) — what every section holds AT THIS POINT of the fold, for the cross-section
+  // flag: its stored text until the fold reaches it, its post-turn text from then on. A write is
+  // therefore compared against every other section's stored text AND against what this turn wrote
+  // EARLIER in template order — so a paragraph written into two sections in one turn is flagged on
+  // the LATER one only, pointing at the earlier one, and never on both.
+  const current = new Map(existing);
+  const formCache = new Map<string, MatchForm[]>();
+  const referencesFor = (sectionKey: string): SectionReference[] =>
+    compiled.sectionKeys
+      .filter((key) => key !== sectionKey)
+      .map((key) => {
+        let forms = formCache.get(key);
+        if (!forms) {
+          forms = splitSentences(current.get(key) ?? '').map((sentence) => matchForm(sentence.text));
+          formCache.set(key, forms);
+        }
+        return { sectionKey: key, title: titles.get(key) ?? key, forms };
+      });
+  let crossSectionDuplicateCount = 0;
+  /**
+   * Attach the flag to a write that APPENDS or FIRST writes a section. It returns the SAME write
+   * when nothing is flagged, and otherwise the same write plus `duplicates` — `content` is never
+   * read for anything but the comparison, so the write is byte-for-byte what it was without it.
+   */
+  const flagged = (write: TurnSectionWrite): TurnSectionWrite => {
+    const duplicates = crossSectionDuplicates(write.content, referencesFor(write.sectionKey));
+    crossSectionDuplicateCount += duplicates.length;
+    return duplicates.length > 0 ? { ...write, duplicates } : write;
+  };
+
   for (const [idx, sectionKey] of compiled.sectionKeys.entries()) {
     const title = titles.get(sectionKey) ?? sectionKey;
     const before = existing.get(sectionKey) ?? '';
@@ -496,7 +729,7 @@ export function applyTurn(prior: readonly LiveSummarySectionDto[], turn: ParsedT
       if (!hadContent) {
         // Nothing to contradict — on an empty section a "revision" is just the first content.
         after = contribution.revision.trim();
-        writes.push({ sectionKey, title, idx, mode: 'replace', content: after });
+        writes.push(flagged({ sectionKey, title, idx, mode: 'replace', content: after }));
       } else if (contribution.contradiction) {
         after = contribution.revision.trim();
         writes.push({ sectionKey, title, idx, mode: 'replace', content: after, contradiction: { reason: contribution.contradiction } });
@@ -517,7 +750,7 @@ export function applyTurn(prior: readonly LiveSummarySectionDto[], turn: ParsedT
 
         if (novel.text.length > 0) {
           after = before.trim().length > 0 ? `${before.trim()}\n\n${novel.text}` : novel.text;
-          writes.push({ sectionKey, title, idx, mode: 'append', content: novel.text });
+          writes.push(flagged({ sectionKey, title, idx, mode: 'append', content: novel.text }));
         } else {
           // Nothing in the addition was new. No write at all — the section is byte-stable — and the
           // refusal is what makes the pressure countable instead of invisible.
@@ -527,7 +760,11 @@ export function applyTurn(prior: readonly LiveSummarySectionDto[], turn: ParsedT
     }
 
     sections.push({ title, content: after });
+    if (after !== before) {
+      current.set(sectionKey, after);
+      formCache.delete(sectionKey);
+    }
   }
 
-  return { sections, writes, refusals, droppedSentenceCount };
+  return { sections, writes, refusals, droppedSentenceCount, crossSectionDuplicateCount };
 }

@@ -202,6 +202,12 @@ export function degradeCode(error: unknown, fallback: string): string {
  * It is a per-FLUSH threshold, not a rolling window: a session-wide counter answers "was this
  * consultation repetitive", which is a question about the past, while this one has to be
  * answerable on the flush it describes, beside that flush's own stats.
+ *
+ * TASK-1001 (wave 2) adds a THIRD measurement to the same sum: runs a turn wrote into one section
+ * that another section of the note already carried (`crossSectionDuplicates`, one per flagged run).
+ * Same behaviour again — the model re-saying what the note already says — at the granularity of a
+ * paragraph across sections rather than a sentence within one. Those runs are FLAGGED, not dropped,
+ * so this count is the only place their pressure is measured at all.
  */
 export const LIVE_REPETITION_PRESSURE_THRESHOLD = 3;
 
@@ -212,7 +218,12 @@ export const LIVE_REPETITION_PRESSURE_THRESHOLD = 3;
  * and `undefined` otherwise — `undefined` rather than a boolean so a caller spreads the result
  * straight into the telemetry it is already building, exactly as `degradeCode`'s output is used.
  */
-export function repetitionPressureCode(counts: { refusedRewrites: number; droppedSentences: number }): string | undefined {
-  const total = Math.max(0, counts.refusedRewrites) + Math.max(0, counts.droppedSentences);
+export function repetitionPressureCode(counts: {
+  refusedRewrites: number;
+  droppedSentences: number;
+  /** TASK-1001 (wave 2) — optional so every caller written before the third count keeps compiling. */
+  crossSectionDuplicates?: number;
+}): string | undefined {
+  const total = Math.max(0, counts.refusedRewrites) + Math.max(0, counts.droppedSentences) + Math.max(0, counts.crossSectionDuplicates ?? 0);
   return total >= LIVE_REPETITION_PRESSURE_THRESHOLD ? LIVE_DEGRADE_REPETITION_PRESSURE : undefined;
 }
