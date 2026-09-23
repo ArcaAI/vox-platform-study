@@ -62,9 +62,18 @@ describe('repointInstructionTemplates', () => {
         { key: 'base', promptTemplateId: 'clone-1', promptVersionNumber: 1 },
         { key: 'revisit', promptTemplateId: 'clone-2', when: "context.visit_type == 'revisit'" },
         { key: 'unknown', promptTemplateId: S3 },
-        { key: 'again', promptTemplateId: 'clone-1', promptVersionNumber: 1 },
+        // TASK-1001 (OD-8) — UNPINNED at the source, so unpinned in the clone: re-pointed, never
+        // given a pin it did not have (that would freeze e.g. the output-language policy at v1).
+        { key: 'again', promptTemplateId: 'clone-1' },
       ],
       variables: { language: { path: 'context.language' } },
+    });
+  });
+
+  it('TASK-1001 (OD-8) — only an EXISTING pin is translated; an absent one is never invented, in either form', () => {
+    expect(repointInstructionTemplates({ promptTemplateId: S1 }, clones)).toEqual({ promptTemplateId: 'clone-1' });
+    expect(repointInstructionTemplates({ fragments: [{ key: 'policy', promptTemplateId: S1 }] }, clones)).toEqual({
+      fragments: [{ key: 'policy', promptTemplateId: 'clone-1' }],
     });
   });
 

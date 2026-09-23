@@ -458,6 +458,15 @@ export const SYSTEM_LIVE_SOAP_VERSION_ID = '72000000-0000-0000-0004-000000000001
 export const SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE_ID = '71000000-0000-0000-0004-000000000002';
 export const SYSTEM_DEPT_FREE_PRE_SUMMARY_VERSION_ID = '72000000-0000-0000-0004-000000000002';
 
+/**
+ * TASK-1001 (OD-8) — the SYSTEM promoted copy of the OUTPUT LANGUAGE POLICY
+ * (`07-prompt-template.ts`), the reference-set row every new tenant clones and
+ * its note-writing agents point at. Not a `SYSTEM_DEFAULTS` pointer: it is
+ * reached only through the agents' `instruction.fragments[]`.
+ */
+export const SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID = '71000000-0000-0000-0004-000000000003';
+export const SYSTEM_OUTPUT_LANGUAGE_POLICY_VERSION_ID = '72000000-0000-0000-0004-000000000003';
+
 // Version IDs are generated dynamically — one per template.
 // Use helper: SEED_VERSION_ID(n) → '72000000-0000-0000-0000-' + n.toString().padStart(12, '0')
 export const SEED_VERSION_ID = (n: number): string => `72000000-0000-0000-0000-${n.toString().padStart(12, '0')}`;
