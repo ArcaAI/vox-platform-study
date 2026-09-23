@@ -259,8 +259,12 @@ export interface ResolvedAgent {
    * reference set a tenant is PROVISIONED from and never a tier resolved through at runtime. A
    * platform agent reaches a tenant as the tenant's own clone (`sourceTenantId = SYSTEM`), which
    * resolves through the `tenant` tier like any other row.
+   *
+   * TASK-1002 — `workflow`: the ASR plane's tier 2, where a consultation's GOVERNING WORKFLOW
+   * named the agent on a `SPEECH_TO_TEXT` `core.agent` node (ahead of the assignment cascade,
+   * behind an explicit slug). Only `AsrAgentResolverService` stamps it.
    */
-  source: 'explicit' | 'department' | 'tenant';
+  source: 'explicit' | 'workflow' | 'department' | 'tenant';
   compiledConfig: AgentCompiledConfig;
   models: ResolvedAgentModel[];
   providerOverride?: ResolvedAgentProviderOverride;
