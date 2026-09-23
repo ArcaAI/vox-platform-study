@@ -62,6 +62,8 @@ const LEGAL_TRANSITIONS: Array<[ConsultationStatus, ConsultationStatus]> = [
   // consultation unsigned, and a clinician who approves AFTER that still signs — the same
   // "the clock never signs, a human still can" rule as `TIMED_OUT → SIGNED`.
   [ConsultationStatus.CLOSED_INCOMPLETE, ConsultationStatus.SIGNED],
+  // TASK-1001 wave 6 — the clinician resumes a session the completion timeout closed unsigned.
+  [ConsultationStatus.CLOSED_INCOMPLETE, ConsultationStatus.RECORDING],
 ];
 
 // Reserved but disabled — must throw naming the epic that will enable them,
@@ -155,8 +157,8 @@ describe('ConsultationEntity.transitionTo — full Cartesian legality matrix', (
     }
   }
 
-  it('the count of legal transitions equals the matrix row count (24)', () => {
-    expect(LEGAL_TRANSITIONS.length).toBe(24);
+  it('the count of legal transitions equals the matrix row count (25)', () => {
+    expect(LEGAL_TRANSITIONS.length).toBe(25);
 
     let legalCount = 0;
     for (const from of ALL_STATUSES) {

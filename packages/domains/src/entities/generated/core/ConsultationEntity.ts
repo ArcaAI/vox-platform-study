@@ -30,7 +30,11 @@ import * as Entities from '../../../entities';
 // (closed, unsigned), and a clinician who approves AFTER that still signs —
 // "the clock never signs, a human still can", exactly as `TIMED_OUT → SIGNED`.
 // Added `CLOSED_INCOMPLETE → SIGNED` (then `SIGNED → CLOSED_COMPLETE` as usual).
-// 24 legal, non-reflexive transitions — is the source.
+// (continued, 2026-09-23) — TASK-1001 wave 6 (owner): the clinician may RESUME a session the
+// completion timeout closed unsigned. Added `CLOSED_INCOMPLETE → RECORDING`, so resume is a
+// sanctioned edge rather than the kill-switch-OFF bypass in `startRecording`; the next stop
+// re-finalises the note over the whole visit and starts a fresh completion timeout.
+// 25 legal, non-reflexive transitions — is the source.
 const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySet<Enums.ConsultationStatus>> = new Map<
   Enums.ConsultationStatus,
   ReadonlySet<Enums.ConsultationStatus>
@@ -84,7 +88,7 @@ const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySe
   [Enums.ConsultationStatus.CLOSED_COMPLETE, new Set([Enums.ConsultationStatus.REOPENED])],
   [
     Enums.ConsultationStatus.CLOSED_INCOMPLETE,
-    new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.SIGNED]),
+    new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.RECORDING]),
   ],
   [
     Enums.ConsultationStatus.REOPENED,

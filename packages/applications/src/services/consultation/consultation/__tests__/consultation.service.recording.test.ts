@@ -130,6 +130,19 @@ describe('ConsultationService — recording lifecycle (WS2)', () => {
       expect(result.status).toBe(ConsultationStatus.RECORDING);
     });
 
+    // TASK-1001 wave 6 (owner) — the clinician resumes a session the completion timeout closed
+    // unsigned. A sanctioned edge, so it works with the kill-switch ON as well.
+    it('kill-switch ON: a CLOSED_INCOMPLETE consultation resumes recording', async () => {
+      service = makeService({ resolvePlatform: () => ({ value: true }) });
+      const entity = makeEntity({ status: ConsultationStatus.CLOSED_INCOMPLETE });
+      mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+      mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
+
+      const result = await service.startRecording('c-1');
+
+      expect(result.status).toBe(ConsultationStatus.RECORDING);
+    });
+
     it('throws NotFoundException when consultation is missing', async () => {
       mockConsultationRepository.findWithRelations.mockResolvedValue(null);
       await expect(service.startRecording('missing')).rejects.toThrow(NotFoundException);
