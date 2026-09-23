@@ -24,8 +24,9 @@
  *
  * ## What is asserted per department, and what is deliberately not
  *
- * ASSERTED: the department picks its OWN workflow (`arcaai-<dept>-consultation`), the summary
- * language and visit type reach the consultation, the warm-start panel RESOLVES (a panel that
+ * ASSERTED: the department picks its OWN workflow (`arcaai-<dept>-consultation`), the declared
+ * language (the SPOKEN language since TASK-1001 OD-12 — the owner's quote above predates that) and
+ * visit type reach the consultation, the warm-start panel RESOLVES (a panel that
  * never resolves is the defect — `ready` and `no_case_notes` are both resolutions), and the
  * finalise path produces a note.
  *
@@ -174,7 +175,7 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('TASK-932 — the five-department consultation journey', () => {
   for (const department of DEPARTMENTS) {
-    test(`${department.code} — department workflow, visit type, summary language, warm start and the live note`, async ({ page }) => {
+    test(`${department.code} — department workflow, visit type, spoken language, warm start and the live note`, async ({ page }) => {
       // `test.slow()`'s 3x (90s) does not cover the panel-visible (90s) +
       // status-poll (120s) budget below on their own, let alone the rest of
       // the journey's steps — set the whole-test ceiling explicitly instead.
@@ -187,14 +188,14 @@ test.describe('TASK-932 — the five-department consultation journey', () => {
 
       const patientId = `e2e-932-${department.code.toLowerCase()}-${Date.now()}`;
 
-      // ── 1. Open with department + summary language + the prior record ────────────────────
+      // ── 1. Open with department + spoken language + the prior record ─────────────────────
       const consultation = await openConsultation(page, {
         patientId,
         departmentId: departmentId!,
         language: 'ml',
         previousCaseNotes: PRIOR_RECORD,
       });
-      expect(consultation.language, 'the declared summary language must reach the consultation').toBe('ml');
+      expect(consultation.language, 'the declared spoken language must reach the consultation').toBe('ml');
 
       // ── 2. The DEPARTMENT decides the workflow ───────────────────────────────────────────
       // No slug was sent, so this is the `department → tenant` assignment cascade answering —
@@ -249,7 +250,7 @@ test.describe('TASK-932 — the five-department consultation journey', () => {
 });
 
 test.describe('TASK-932 — the New form declares what the journey needs', () => {
-  test('offers visit type, summary language and the prior record, and opens a revisit against a picked parent', async ({ page }) => {
+  test('offers visit type, spoken language and the prior record, and opens a revisit against a picked parent', async ({ page }) => {
     await impersonateUser(page, DEPARTMENTS[0].clinician);
     await page.goto(SCRIBE);
 
@@ -258,7 +259,7 @@ test.describe('TASK-932 — the New form declares what the journey needs', () =>
     // The three controls TASK-932 added, all present and all optional.
     await expect(page.getByRole('radio', { name: /new visit/i })).toBeVisible();
     await expect(page.getByRole('radio', { name: /^revisit$/i })).toBeVisible();
-    await expect(page.getByLabel(/summary language/i)).toBeVisible();
+    await expect(page.getByLabel(/spoken language/i)).toBeVisible();
     await expect(page.getByLabel(/previous case notes/i)).toBeVisible();
 
     // New visit is the default — a consultation must never become a revisit by accident.
@@ -271,13 +272,14 @@ test.describe('TASK-932 — the New form declares what the journey needs', () =>
     await expect(parentPicker.or(noHistory).first()).toBeVisible();
   });
 
-  test('the summary language is a SEPARATE axis from the transcription language', async ({ page }) => {
+  test('the spoken language is a SEPARATE control from the transcription language mode', async ({ page }) => {
     await impersonateUser(page, DEPARTMENTS[0].clinician);
     await page.goto(SCRIBE);
 
-    // The note's language lives on the New form (a property of the CONSULTATION)…
+    // The consultation's spoken language lives on the New form (a property of the CONSULTATION;
+    // TASK-1001 OD-12 — it never chooses the note's language)…
     await page.getByRole('button', { name: /^new$/i }).click();
-    await expect(page.getByLabel(/summary language/i)).toBeVisible();
+    await expect(page.getByLabel(/spoken language/i)).toBeVisible();
     await page.getByRole('button', { name: /^cancel$/i }).click();
 
     // …and the transcription language lives in the footer (a property of the CAPTURE), where

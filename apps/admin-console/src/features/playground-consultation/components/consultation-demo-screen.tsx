@@ -261,16 +261,17 @@ function ScribeWorkspace() {
   // assignment — `isTenantDefault` describes the tenant tier, not this consultation.
   const [workflowChoice, setWorkflowChoice] = useState('');
   /**
-   * TASK-932 §3.7 — the language the NOTE is written in, declared at OPEN.
+   * TASK-932 §3.7 — the consultation's SPOKEN (source) language, declared at OPEN. TASK-1001 OD-12:
+   * it never chooses the language the NOTE is written in — that is the tenant's output-language
+   * policy, else the platform default (English). The state keeps its historical "summary" name.
    *
-   * A different axis from `languageMode` above and bound at a different moment: the STT mode is a
-   * property of the CAPTURE (`audio.start`), this is a property of the CONSULTATION
-   * (`session.open`). EMPTY IS THE DEFAULT here for the same reason it is there — undeclared is
-   * not English; the tenant's own agent body decides.
+   * A different control from `languageMode` above and bound at a different moment: the STT mode is
+   * a property of the CAPTURE (`audio.start`), this is a property of the CONSULTATION
+   * (`session.open`). EMPTY IS THE DEFAULT: nothing is sent.
    */
   const [summaryLanguage, setSummaryLanguage] = useState('');
   const languageModes = useArcaSttLanguageModes();
-  /** The offerable summary languages, DERIVED from the same catalogue the STT picker reads. */
+  /** The offerable spoken languages, DERIVED from the same catalogue the STT picker reads. */
   const summaryLanguages = useMemo(() => deriveSummaryLanguages(languageModes.modes), [languageModes.modes]);
   // the citation currently highlighted in the live-session
   // column's transcript-review pane (click-to-source from the case-note

@@ -85,8 +85,8 @@ const AUTO_LANGUAGE_OPTION: SttLanguageModeOption = {
  * `kind` is optional on the option type — a catalogue entry that omits it must not slip
  * through.
  *
- * The catalogue itself is untouched: `deriveSummaryLanguages` reads the same list for the
- * SUMMARY-language axis and needs it whole.
+ * The catalogue itself is untouched: `deriveSummaryLanguages` reads the same list for the New
+ * form's spoken-language picker and needs it whole.
  */
 function withoutCatalogueAuto(modes: SttLanguageModeOption[]): SttLanguageModeOption[] {
   return modes.filter((mode) => mode.kind !== 'auto' && mode.id !== 'auto');

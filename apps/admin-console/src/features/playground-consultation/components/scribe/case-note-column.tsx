@@ -22,6 +22,7 @@ import {
   IconDeviceFloppy,
   IconLayoutList,
   IconFileText,
+  IconFiles,
   IconPencil,
   IconShieldCheck,
   IconShieldExclamation,
@@ -59,7 +60,7 @@ import { HighlightedNoteText } from './highlighted-note-text';
 import { ClinicalSuggestionsPanel } from './clinical-suggestions-panel';
 import { CorrectionProposalsPanel } from './correction-proposals-panel';
 import { composeAutofill, formatSoapSections } from '../../lib/soap-autofill';
-import type { DocumentView, SectionState } from '../../api/document-sections';
+import type { DocumentSectionView, DocumentView, SectionState } from '../../api/document-sections';
 import type { PreSummaryView } from '../../api/hooks';
 import type { ClinicalSuggestion, CorrectionProposal, CorrectionsEnvelope } from '../../api/live-assist';
 
@@ -120,6 +121,38 @@ function SectionBody({ content, appended, revision }: { content: string; appende
 }
 
 /**
+ * TASK-1001 — "Also in <section>" for each OTHER section a `duplicate` annotation says this one
+ * repeats, one label per repeated section however many spans point at it. The name, first to last:
+ * the wire's `duplicateOfTitle`, the title of the held sibling `duplicateOf` names, the raw key,
+ * then "another section" (the span is flagged even when the wire names nothing). A FLAG, never a
+ * removal — the section's text is rendered whole regardless.
+ */
+function duplicateFlagLabels(section: DocumentSectionView, siblings: readonly DocumentSectionView[]): string[] {
+  const labels = new Set<string>();
+  for (const annotation of section.annotations) {
+    if (annotation.kind !== 'duplicate') continue;
+    const name =
+      annotation.duplicateOfTitle?.trim() ||
+      siblings.find((sibling) => sibling.sectionKey === annotation.duplicateOf)?.title.trim() ||
+      annotation.duplicateOf?.trim() ||
+      'another section';
+    labels.add(`Also in ${name}`);
+  }
+  return [...labels];
+}
+
+/** The duplicate flag — icon + words, never colour alone (rule 11 §10). */
+function DuplicateFlagBadge({ label }: { label: string }) {
+  return (
+    <Badge variant="outline" data-annotation="duplicate" className="border-warning/40 bg-warning/10 text-warning-strong shrink-0 gap-1">
+      <IconFiles aria-hidden className="size-3" />
+      <span className="sr-only">Repeated text: </span>
+      {label}
+    </Badge>
+  );
+}
+
+/**
  * / — N documents, each rendering its OWN sections in `idx` order
  * with a live per-section state (`empty` renders as a skeleton, never an error). Read-only
  * except for ONE action: confirming a `provisional` section (`onConfirmSection`) — the
@@ -157,6 +190,9 @@ function DocumentSectionsView({
                   <div className="mb-1 flex flex-wrap items-center gap-1.5">
                     <h4 className="text-xs font-medium tracking-wide uppercase">{section.title}</h4>
                     <SectionStateBadge state={section.state} />
+                    {duplicateFlagLabels(section, document.sections).map((label) => (
+                      <DuplicateFlagBadge key={label} label={label} />
+                    ))}
                     {onConfirmSection && section.state === 'provisional' ? (
                       <Button
                         type="button"

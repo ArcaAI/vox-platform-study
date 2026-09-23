@@ -11,6 +11,16 @@ import {
 } from './dto';
 import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch/dto';
 
+/** TASK-1001 — what `startRecording` is told about the capture it is starting. */
+export interface StartRecordingOptions {
+  /**
+   * The STT streaming session the recording binds to (`StartRecordingRequest.sessionId`). When
+   * present it must still be LIVE on apps/stt, or the start is refused 409
+   * `STT_SESSION_NOT_ACTIVE` (a stale, superseded `recording/start`). Absent ⇒ nothing to check.
+   */
+  sttSessionId?: string;
+}
+
 /**
  * Consultation Service Interface
  *
@@ -172,9 +182,10 @@ export abstract class IConsultationService {
    * `consultation.state.requirePrimedBeforeRecording`). The harness later
    * promotes a drained consult to PENDING_REVIEW once a draft note is
    * generated. The LiveDocumentationService session is started by the
-   * controller around this.
+   * controller around this. TASK-1001: a named STT session that is not live ⇒ 409
+   * `STT_SESSION_NOT_ACTIVE`, nothing written.
    */
-  abstract startRecording(id: string): Promise<ConsultationResponse>;
+  abstract startRecording(id: string, options?: StartRecordingOptions): Promise<ConsultationResponse>;
 
   /**
    * Clinical Workflow Playground (WS2) — `RECORDING → DRAINING`

@@ -1,5 +1,54 @@
 # @arcaai/vox-node — Changelog
 
+## Unreleased
+
+### Minor Changes
+
+- The live note flags a paragraph repeated across sections, says when the model is repeating itself, and `recording.start` refuses a closed STT session. Adds the `duplicate` section annotation kind (with `duplicateOf` / `duplicateOfTitle`), the `repetition_pressure` degrade code, a 409 `STT_SESSION_NOT_ACTIVE` on `recording.start`, and a clarified contract: a consultation's `language` is its SOURCE language and never the language of the note (HOPE TASK-1001).
+
+### Details (Unreleased)
+
+- **`SectionAnnotationKind` gains `duplicate`; `SectionAnnotation` gains `duplicateOf` and
+  `duplicateOfTitle`.** A `duplicate` annotation marks a span of one section that ANOTHER section
+  of the same document already carries: `duplicateOf` is that section's `sectionKey`,
+  `duplicateOfTitle` its title as HOPE knows it (prefer the title for display, and fall back to
+  the key). `start`/`end` still index THIS section's `content`. It is a flag, never a removal: the
+  text is left exactly as written, so render it as something like "Also in Family History" and
+  keep the text. It arrives on `section.patch` (`streams.liveSummary`) and on
+  `documentSections()` rows. It is dropped when a section is replaced or edited by a clinician,
+  because the offsets would be stale.
+- **New degrade code `repetition_pressure`** on the live-documentation flush stats
+  (`degradeReason` on `LiveDocSessionStatsResponse`, via `hope.admin.harness.listLiveSessions` /
+  `getLiveSession`). Unlike every other code, it comes with `flushFailed: false`: the flush
+  **succeeded** and the note exists, but the model spent the turn restating what the note already
+  said, and HOPE's sentence dedup kept the repeats out. Use `flushFailed`, not `degradeReason`
+  alone, to decide whether there is a note.
+- **`language` is the consultation's SOURCE language, not the note's.** On `open()` and on the
+  consultation responses, `language` is what is spoken and transcribed: `en`, `ml`, `en-IN`, or a
+  code-switch mode such as `ml-en` (Malayalam-led, English mixed), which `open()` accepts again.
+  It never chooses the language the pre-summary or the note is written in. That comes from the
+  tenant's output-language policy, or from the platform default (English) when the tenant has
+  none. A caller that sent `language` hoping for a note in that language gets an English note
+  unless the tenant admin configures otherwise.
+- **`recording.start` can now answer 409 `STT_SESSION_NOT_ACTIVE`.** When the `sessionId` you
+  pass names an STT streaming session that is no longer live, the gateway refuses the start
+  instead of binding the recording to it. "No longer live" means `closed`, `finalizing`,
+  `rejected`, or `unknown` when the STT service does not know the id. Nothing is written, and the
+  body carries `code`, `message`, `sttSessionId` and `sttSessionStatus`. It typically means a
+  retried `start` whose older request landed after the newer one had already completed. Treat it
+  as "this attempt is stale": a start that a newer one has superseded can drop it; a current
+  start should create a fresh STT session (`hope.stt.createStreamSession`) and call
+  `recording.start` again with that id. A start with no `sessionId`, or with a live one, behaves
+  exactly as before.
+
+### Read this before you upgrade
+
+- This SDK maps **every** HTTP 409 to `QuotaExceededError`, and the new refusal is no exception.
+  Match on `error.status === 409 && error.code === 'STT_SESSION_NOT_ACTIVE'`, never on the class
+  name.
+- A renderer that switches over `SectionAnnotationKind` exhaustively needs a `duplicate` branch.
+  A renderer that ignores unknown kinds keeps working and simply shows no flag.
+
 ## 3.6.0
 
 ### Minor Changes

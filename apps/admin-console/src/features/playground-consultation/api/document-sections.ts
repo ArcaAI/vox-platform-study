@@ -12,8 +12,15 @@
  * over Redis pub/sub, so more than one subscriber on the same consultation is normal.
  */
 
-/** Discriminates the kinds of annotation a section can carry. */
-export const SECTION_ANNOTATION_KINDS = ['entity', 'groundedness', 'flagged'] as const;
+/**
+ * Discriminates the kinds of annotation a section can carry — the gateway's full list.
+ *
+ * `finding` is what the TENANT'S instruction said is important (its label rides on `type`).
+ * `duplicate` (TASK-1001) marks a span of this section that ANOTHER section of the same document
+ * already carries, named by `duplicateOf` / `duplicateOfTitle`. It is a FLAG, never a removal: the
+ * text stays exactly as written.
+ */
+export const SECTION_ANNOTATION_KINDS = ['entity', 'groundedness', 'flagged', 'finding', 'duplicate'] as const;
 export type SectionAnnotationKind = (typeof SECTION_ANNOTATION_KINDS)[number];
 
 /** One annotation, addressed LOCALLY — offsets index THIS section's `content`, never a concatenated document. */
@@ -25,6 +32,12 @@ export interface SectionAnnotation {
   verdict?: 'grounded' | 'ungrounded' | 'unverified';
   icd10?: string;
   score?: number;
+  /** For `duplicate` ONLY: the `sectionKey` of the other section in the SAME document that already
+   *  carries the text `start`/`end` address here. `start`/`end` still index THIS section. */
+  duplicateOf?: string;
+  /** For `duplicate` ONLY: that section's title as HOPE knows it. Prefer it for display; fall back
+   *  to `duplicateOf`, which stays the identifier. */
+  duplicateOfTitle?: string;
 }
 
 /** Where a section's content came from — a transcript anchor. */

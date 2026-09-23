@@ -27,7 +27,7 @@ import {
   UserRoleAssignmentRepository,
   WorkflowDefinitionRepository,
 } from '@arcaai/domains';
-import { IConsultationService } from './IConsultationService';
+import { IConsultationService, type StartRecordingOptions } from './IConsultationService';
 import {
   OpenConsultationRequest,
   UpdateConsultationRequest,
@@ -72,6 +72,17 @@ import { IContextUserIdentityService, extractUserIdentityValue } from '../../use
 // service that already knows how (schema pin, canonical content, Vault-Transit encryption, the
 // v1 audit version, the live fan-out). Reproducing those five things here is how they drift.
 import { IContextService } from '../context/IContextService';
+// TASK-1001 — `startRecording` asks apps/stt whether the STT session a request names is still live.
+// The class is the DI token (the service is provided by class); the interface is what is used.
+import { StreamingSessionService } from '../../stt/streaming/streamingSession.service';
+import type { IStreamingSessionService } from '../../stt/streaming/IStreamingSessionService';
+
+/**
+ * TASK-1001 — the stable `code` of the 409 `startRecording` answers when the request names an STT
+ * streaming session that is no longer live (`closed` / `finalizing` / `rejected`, or unknown to
+ * apps/stt). Body: `{ code, message, sttSessionId, sttSessionStatus }` plus the gateway envelope.
+ */
+export const STT_SESSION_NOT_ACTIVE_CODE = 'STT_SESSION_NOT_ACTIVE';
 
 /**
  * TASK-951 — everything `open` learned from the caller's `context`, in one value.
@@ -202,6 +213,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // but nothing is written as an item, which is logged rather than silent. NOT a 503: unlike
     // validation, persistence is not a claim the open response makes.
     @Optional() @Inject(IContextService) private readonly contextService?: IContextService,
+    // TASK-1001 — optional + trailing (append-only DI). READ-ONLY: `startRecording` asks apps/stt
+    // whether the STT session the request names is still live, so a stale, superseded
+    // `recording/start` cannot re-bind the recording to a closed session. Absent ⇒ no check, and a
+    // recording binds exactly as it did before.
+    @Optional() @Inject(StreamingSessionService) private readonly streamingSessions?: Pick<IStreamingSessionService, 'getSessionStatus'>,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -2158,8 +2174,15 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
   /**
    * Flip the consultation's `status` column `PRIMED → RECORDING`.
+   *
+   * TASK-1001 — when the request names the STT streaming session the recording binds to
+   * (`options.sttSessionId`), that session must still be LIVE. A client that retries `start` can
+   * have its OLDER `recording/start` land after the newer one completed, naming a session it has
+   * since closed; binding it would leave live documentation subscribed to a session that never
+   * publishes again. Such a request is refused 409 {@link STT_SESSION_NOT_ACTIVE_CODE} before
+   * anything is written. Existence and tenancy are resolved first, so a foreign id stays a 404.
    */
-  async startRecording(id: string): Promise<ConsultationResponse> {
+  async startRecording(id: string, options: StartRecordingOptions = {}): Promise<ConsultationResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
@@ -2170,6 +2193,10 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new NotFoundException('Consultation not found');
     }
     assertEqualTenants(consultation, { tenantId });
+
+    if (options.sttSessionId) {
+      await this.assertSttSessionLive(id, options.sttSessionId, tenantId);
+    }
 
     const actor = this.requestUserId ?? 'system';
     const requirePrimed = this.tenantSettings?.resolvePlatform<boolean>(CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY).value === true;
@@ -2210,6 +2237,50 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // row was already at N+1 — any client chaining If-Match from this response got an
     // immediate 412. Mirrors the house pattern in department.service.ts:318.
     return ConsultationDtoMapper.toResponseWithContext(updated);
+  }
+
+  /**
+   * TASK-1001 — refuse (409) an STT session apps/stt reports as not `active`, or does not know at
+   * all (404: removed, idle-reaped, or never created). apps/stt holds live sessions in memory, so
+   * its answer is the authority on liveness.
+   *
+   * A lookup that FAILS (transport error, apps/stt down) proceeds exactly as before, logged: this
+   * guard refuses a session it KNOWS is stale, never one it merely could not check — an STT outage
+   * must not turn into a refused recording whose context-driven live note would still work.
+   *
+   * It cannot tell whether the session was opened for THIS consultation: apps/stt does not echo the
+   * `consultationId` a session was created with, and the `TranscriptionJob` row that records it is
+   * best-effort bookkeeping, so its absence proves nothing.
+   */
+  private async assertSttSessionLive(consultationId: string, sttSessionId: string, tenantId: string): Promise<void> {
+    if (!this.streamingSessions) return;
+    let status: string;
+    try {
+      const session = await this.streamingSessions.getSessionStatus(sttSessionId, tenantId);
+      status = session?.status ?? 'unknown';
+    } catch (error) {
+      this.logger.warn({
+        message: 'recording/start could not ask apps/stt whether the STT session is live — binding it unchecked',
+        consultationId,
+        sttSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (status === 'active') return;
+
+    this.logger.warn({
+      message: 'recording/start refused: the STT session it names is not live (a stale or superseded start)',
+      consultationId,
+      sttSessionId,
+      sttSessionStatus: status,
+    });
+    throw new ConflictException({
+      code: STT_SESSION_NOT_ACTIVE_CODE,
+      message: `STT streaming session ${sttSessionId} is not active (${status}); it was not bound to this recording. Create a new STT streaming session and start recording with it.`,
+      sttSessionId,
+      sttSessionStatus: status,
+    });
   }
 
   /**
