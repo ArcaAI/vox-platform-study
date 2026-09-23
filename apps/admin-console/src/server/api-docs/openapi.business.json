@@ -20350,6 +20350,40 @@
         ],
         "type": "object"
       },
+      "SummaryDuplicateAnnotationDto": {
+        "properties": {
+          "duplicateOf": {
+            "description": "The `sectionKey` of the EARLIER section of this note that already carries the passage",
+            "type": "string"
+          },
+          "duplicateOfTitle": {
+            "description": "The heading of that section as this note prints it — prefer it over `duplicateOf` when naming the section to a reader",
+            "type": "string"
+          },
+          "end": {
+            "description": "Character offset end within THIS SECTION's text (exclusive)",
+            "type": "number"
+          },
+          "kind": {
+            "description": "Always `duplicate` — the only annotation the final note carries",
+            "enum": [
+              "duplicate"
+            ],
+            "type": "string"
+          },
+          "start": {
+            "description": "Character offset start within THIS SECTION's text — `content.slice(section.start, section.end)` — never within the whole `content`",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "start",
+          "end",
+          "duplicateOf"
+        ],
+        "type": "object"
+      },
       "SummaryMetaResponse": {
         "properties": {
           "aiModelId": {
@@ -20448,6 +20482,40 @@
         ],
         "type": "object"
       },
+      "SummaryNoteSectionDto": {
+        "properties": {
+          "annotations": {
+            "description": "`duplicate` flags ONLY — runs of at least two consecutive sentences that an EARLIER section of this note already carries (normalised-equal, or word-token Jaccard >= 0.8 with identical numbers). Offsets are section-LOCAL. Absent when nothing is flagged.",
+            "items": {
+              "$ref": "#/components/schemas/SummaryDuplicateAnnotationDto"
+            },
+            "type": "array"
+          },
+          "end": {
+            "description": "Character offset in `content` where this section's body ends (exclusive, trailing whitespace excluded)",
+            "type": "number"
+          },
+          "sectionKey": {
+            "description": "The key of this consultation's document section with the same title (the key `GET consultations/:id/documents/sections` reports), else a key derived from the heading (`Family History` → `family_history`)",
+            "type": "string"
+          },
+          "start": {
+            "description": "Character offset in `content` where this section's body starts (after the heading line, leading whitespace skipped)",
+            "type": "number"
+          },
+          "title": {
+            "description": "The heading as the note prints it (`## Family History`, `**Family History:**` → `Family History`)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sectionKey",
+          "title",
+          "start",
+          "end"
+        ],
+        "type": "object"
+      },
       "SummaryProvenanceResponse": {
         "properties": {
           "citationsMap": {
@@ -20520,6 +20588,13 @@
           },
           "id": {
             "type": "string"
+          },
+          "sections": {
+            "description": "`GET :id/summary/latest` only — `content` split at its heading lines (`## Title`, `**Title**`, `**Title:**`; text before the first heading belongs to no section), each section located by offsets into `content` and carrying the cross-section `duplicate` flags computed over this final text. A flag never removes or alters content. Absent when `content` has fewer than two headed sections.",
+            "items": {
+              "$ref": "#/components/schemas/SummaryNoteSectionDto"
+            },
+            "type": "array"
           },
           "structuredData": {
             "description": "Summary metadata including LLM info",
@@ -33478,6 +33553,9 @@
           },
           "404": {
             "description": "Consultation not found"
+          },
+          "409": {
+            "description": "`code: STT_SESSION_NOT_ACTIVE` — the `sessionId` names an STT streaming session that is no longer live (`sttSessionStatus`: `closed`, `finalizing`, `rejected`, or `unknown` when the STT service does not know it). Typically a stale, superseded start that landed after a newer one; nothing was written, and the recording was not bound to it. Create a new STT streaming session and start with that. Also returned for an illegal state transition from the consultation`s current status."
           }
         },
         "security": [
