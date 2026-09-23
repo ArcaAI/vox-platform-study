@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Pending — awaiting owner go** |
+| Status | **Review** — merged into `dev-2.2`, gated; awaiting push + cluster verification |
 | Type | bugfix |
 | Branch | `dev-2.2` |
 | Reported by | tester — "the workflow did not trigger the STT model set in the agent/workflow, it used the default one" |
@@ -206,7 +206,51 @@ Cluster: open an ALaaS-style consultation in General Medicine → `stt.asr_agent
 
 ## 7. Implementation summary
 
-_Not started._
+Status: **Review** — merged into `dev-2.2` and gated locally; not yet pushed / deployed, so the
+§6 cluster verification is still to run.
+
+### What changed
+
+| Lane (tier) | Result |
+|---|---|
+| L-A (sonnet) | `apps/stt/src/stt/pipeline/spec.py` — `AsrSpecAgent.source` accepts `"workflow"`. **Deploy STT before the gateway.** |
+| L-B (opus) | `AsrAgentResolverService.resolve` takes `consultationId`: explicit → governing workflow (pinned run version; the ONE `SPEECH_TO_TEXT` `core.agent` node, found by agent task) → cascade under the consultation's `departmentId`, no tags. New `governing-workflow-asr.ts` (`GoverningWorkflowAsrReader`, `WORKFLOW_ASR_AGENT_UNAVAILABLE`). `ResolvedAgent['source']` gains `'workflow'`. |
+| L-C (sonnet) | `transcription-job.controller.ts` — stream session, batch `transcribe` and job `create` pass `consultationId`; `StreamSessionResponse.agentSource`; one `stt.asr_agent_resolved` log line per session. |
+| L-D (sonnet) | vox-node + browser SDK: `agentSource` on the session response types, resolution-order docs, the 409 documented; `.claude/rules/08-vox-sdk.md` updated; CHANGELOG Unreleased entries. |
+| L-E (opus) | `workflow-definition/agent-graph-findings.ts` + service wiring — publish/validate/create ERRORs `MULTIPLE_SPEECH_TO_TEXT_AGENTS` (OD-2) and `OUTPUT_FIELDS_UNREACHABLE` (OD-5, the radiology graph). |
+| L-F (sonnet) | Agents screen — speech-to-text tag selector warns and blocks, tagged ASR rows badged "Never used", and a **Department** picker so a department assignment can be written from the console (the API always supported it; the console only wrote tenant rows, which would have left OD-3 = 3a unusable). |
+
+Orchestrator fixes after merge: route `summary` kept one line (order moved to `description`);
+ASR output field list widened to everything both ASR runtime branches emit (the fix-hint text still
+names transcript / segments / audio); a TS narrowing error the worktree could not typecheck; the
+TASK-930 promotion test fixture now carries the source graph on the promoted row.
+
+### Behaviour notes (decided in-lane, accepted)
+
+- Tier 2 resolves the named agent `primaryBinding: 'fail-closed'`: a connection disabled after
+  publish is the named 409 — the agent's own fallback chain is not tried in that case.
+- A workflow node whose agent row was hard-deleted cannot be classified and is skipped (tier 3
+  serves). An unpublished/deprecated one is still recognised and is the 409.
+- An explicit `agentSlug` skips the consultation read entirely (tier 1 unchanged).
+- The ambiguous 409 carries `agentSlugs: [...]` and `agentSlug: null`.
+- The already-published radiology v1 does not show the new ERROR until the admin validates or
+  publishes a new draft (`validate()` refuses PUBLISHED rows) — consistent with OD-5a.
+
+### Gate pass (2026-09-24, primary checkout, after all merges)
+
+| Gate | Result |
+|---|---|
+| `@arcaai/types` build + test | pass — 79 tests |
+| `@arcaai/applications` build / test / lint | pass — 962 files, 15125 tests; lint 0 errors |
+| `pnpm api:build`, `@arcaai/api` typecheck / test / lint | pass — 347 files, 4873 tests; lint 0 errors |
+| `tests/contracts/resolved-asr-spec-parity.contract.test.ts` | pass — 22 |
+| `pnpm stt:test:unit` | 3822 passed, **1 failed** — `test_task799_env_surface::test_minio_credentials_default_to_empty`; **pre-existing**: fails identically on `2b47d665c` (before TASK-1002) — this machine's `.env.dev` MinIO key reaches a code-default assertion. Out of scope. |
+| `@arcaai/admin-console` typecheck / test / lint | pass — 385 files, 3737 tests; lint `--max-warnings 0` clean |
+| vox-node typecheck + test, `@arcaai/vox` typecheck | pass — 588 tests |
+| route-manifest / openapi / portal / vox-node `gen:admin` regenerated; `api:openapi:check`, `api:portal:check`, `gen:admin:check` | pass — only `agentSource` + two route descriptions changed |
+
+Not run: API e2e, browser runtime check of the console, and the §6 cluster verification (needs
+push → CI → promote; STT image first).
 
 ## 8. Change history
 
@@ -215,3 +259,4 @@ _Not started._
 | 2026-09-23 | Ticket opened from the tester report; cluster evidence (Redis `stt:session:*`, `hope-stt` fingerprints, DB agents/assignments/workflows) and plan recorded. Awaiting owner go. |
 | 2026-09-23 | Owner answered OD-1 (named error), OD-2 (reject), OD-4 (yes), OD-5 (fix now). OD-3 explained (§5.1) and OD-5a raised (§5.2); still awaiting go. |
 | 2026-09-23 | Owner answered OD-3 = 3a (department tier, no ASR request tags, console warning → lane L-F) and OD-5a = tenant admin rebuilds. All ODs closed; awaiting go. |
+| 2026-09-24 | Owner said go. Six lanes (opus: L-B, L-E; sonnet: L-A, L-C, L-D, L-F) in sibling worktrees, lane-local RED→GREEN only; L-F extended with a department picker. All merged into `dev-2.2`; one gate pass (§7); API artifacts regenerated. Status → Review. |
