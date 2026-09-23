@@ -20,10 +20,22 @@ export interface LiveSummaryStats {
   model?: string | null;
 }
 
-/** A logical section of the running summary (SOAP heading, or "Running Summary" fallback). */
+/**
+ * A logical section of the running summary (SOAP heading, or "Running Summary" fallback).
+ *
+ * `documentKey` / `sectionKey` / `revision` (TASK-1001 S-9) are optional and additive: present only
+ * when the server tied the section to its persisted row — today on a late-join replay, which is
+ * followed by one `section.patch` per persisted section. Never guessed; absent means "unknown".
+ */
 export interface LiveSummarySection {
   title: string;
   content: string;
+  /** The same `documentKey` this section's `section.patch` events carry. */
+  documentKey?: string;
+  /** The same `sectionKey` this section's `section.patch` events carry. */
+  sectionKey?: string;
+  /** The persisted revision THIS `content` is, exactly; present only when the two are byte-identical. */
+  revision?: number;
 }
 
 /** A medical entity detected in the running transcript. */

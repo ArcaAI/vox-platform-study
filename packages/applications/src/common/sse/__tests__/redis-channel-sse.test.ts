@@ -23,7 +23,7 @@
  * either way, and a caller that does not opt in relays exactly as it does today.
  */
 import { Logger, type MessageEvent } from '@nestjs/common';
-import { Observable, Subject } from 'rxjs';
+import { Observable, Subject, finalize } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { sseFromRedisChannel, type RedisChannelSseOptions } from '../redis-channel-sse';
@@ -176,6 +176,117 @@ describe('L-2 — the frame type is tagged from the payload`s own `event`', () =
     await tick();
 
     expect(events.map((event) => [event.type, event.data])).toEqual([[undefined, PATCH]]);
+    sub.unsubscribe();
+  });
+});
+
+/**
+ * TASK-1001 F5 — a REPLAYED terminal entry ends the stream, exactly as a RELAYED one does.
+ *
+ * The relay has always completed on a terminal event (`takeWhile(…, true)` on the merged stream),
+ * but the late-join replay loop only ever called `next`. Every consumer with a terminal caches it
+ * as its last snapshot — the live-summary `…:last` key's final write IS the `closed: true` payload,
+ * and the harness-progress / harness-assurance folds cache theirs the same way — so a reconnect
+ * after the feed finished was handed the terminal marker and then parked on heartbeats for as long
+ * as the client kept the socket open: a zombie per late joiner of a finished consultation.
+ *
+ * A caller that declares no `isTerminal` (the trajectory and loop feeds) is untouched, and a
+ * non-terminal replay still hands over to the relay exactly as before.
+ */
+describe('F5 — a replayed terminal entry completes the stream', () => {
+  const CLOSED = JSON.stringify({ consultationId: 'c-1', closed: true, updatedAt: '2026-09-09T00:00:03.000Z' });
+  const isTerminal = (raw: string): boolean => {
+    try {
+      return (JSON.parse(raw) as { closed?: boolean }).closed === true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** A subscriber that counts how many relays still hold the channel. */
+  function trackedSubscriber() {
+    const subject = new Subject<string>();
+    let held = 0;
+    return {
+      subscribeToChannel: vi.fn(async (): Promise<Observable<string>> => {
+        held += 1;
+        return subject.asObservable().pipe(
+          finalize(() => {
+            held -= 1;
+          }),
+        );
+      }),
+      publish: (message: string) => subject.next(message),
+      held: () => held,
+    };
+  }
+
+  function run(options: Partial<RedisChannelSseOptions>) {
+    const subscriber = trackedSubscriber();
+    const events: MessageEvent[] = [];
+    let completed = false;
+    const sub = sseFromRedisChannel(subscriber, new Logger('test'), {
+      channel: CHANNEL,
+      // SHORT on purpose: a stream that wrongly stays open shows up as heartbeat frames.
+      heartbeatMs: 5,
+      setupErrorPayload: JSON.stringify({ error: 'setup failed' }),
+      logContext: {},
+      isTerminal,
+      ...options,
+    }).subscribe({
+      next: (event) => events.push(event),
+      complete: () => {
+        completed = true;
+      },
+    });
+    return { subscriber, events, sub, completed: () => completed };
+  }
+
+  it('emits the replayed terminal entry, then completes — no heartbeat, no relay, and the channel is released', async () => {
+    const { subscriber, events, sub, completed } = run({ loadSnapshot: async () => CLOSED });
+    await tick(30); // several heartbeat periods
+
+    subscriber.publish(PATCH);
+    await tick();
+
+    expect(events.map((event) => event.data)).toEqual([CLOSED]);
+    expect(completed()).toBe(true);
+    // The refcounted channel subscription is what a zombie pinned; completing must release it.
+    expect(subscriber.held()).toBe(0);
+    sub.unsubscribe();
+  });
+
+  it('emits every entry BEFORE a terminal one, and nothing after it — the terminal is always last', async () => {
+    const { events, sub, completed } = run({ loadSnapshot: async () => [PATCH, CLOSED, PRESUMMARY] });
+    await tick(30);
+
+    expect(events.map((event) => event.data)).toEqual([PATCH, CLOSED]);
+    expect(completed()).toBe(true);
+    sub.unsubscribe();
+  });
+
+  it('a NON-terminal replay still hands over to the relay and stays open', async () => {
+    const { subscriber, events, sub, completed } = run({ loadSnapshot: async () => SNAPSHOT, heartbeatMs: 60_000 });
+    await tick();
+
+    subscriber.publish(PATCH);
+    await tick();
+
+    expect(events.map((event) => event.data)).toEqual([SNAPSHOT, PATCH]);
+    expect(completed()).toBe(false);
+    expect(subscriber.held()).toBe(1);
+    sub.unsubscribe();
+  });
+
+  it('a caller with NO terminal predicate is untouched — a `closed: true` replay is just an entry', async () => {
+    const { subscriber, events, sub, completed } = run({ loadSnapshot: async () => CLOSED, isTerminal: undefined, heartbeatMs: 60_000 });
+    await tick();
+
+    subscriber.publish(PATCH);
+    await tick();
+
+    expect(events.map((event) => event.data)).toEqual([CLOSED, PATCH]);
+    expect(completed()).toBe(false);
     sub.unsubscribe();
   });
 });

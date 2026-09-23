@@ -34,7 +34,11 @@ export interface RedisChannelSseOptions {
    * cached event of another).
    */
   isDuplicateOfSnapshot?: (raw: string, snapshot: string | null | undefined, emitted: readonly string[]) => boolean;
-  /** True for the terminal event — it is emitted, then the stream completes. */
+  /**
+   * True for the terminal event — it is emitted, then the stream completes. That holds for a
+   * REPLAYED entry too (TASK-1001 F5): a late joiner of a finished feed is handed the terminal and
+   * the stream ends there, so a caller whose late join may contain one should put it LAST.
+   */
   isTerminal?: (raw: string) => boolean;
   /**
    * Tag each frame's SSE `type` from the relayed payload's OWN `event` field (opt-in).
@@ -118,6 +122,16 @@ export function sseFromRedisChannel(
         emitted = (Array.isArray(loaded) ? loaded : [loaded]).filter((entry): entry is string => typeof entry === 'string' && entry !== '');
         for (const entry of emitted) {
           subscriber.next(toEvent(entry));
+          // TASK-1001 F5 — a REPLAYED terminal ends the stream exactly as a relayed one does (the
+          // `takeWhile` below). A finished feed caches its terminal as its last snapshot, so a
+          // reconnect after it finished used to be handed `closed` and then parked on heartbeats
+          // for as long as the client held the socket. Completing runs the teardown, which releases
+          // the refcounted channel subscription; nothing after the terminal is emitted, the same
+          // "terminal is last" rule the relay keeps. A caller with no `isTerminal` is untouched.
+          if (isTerminal?.(entry)) {
+            subscriber.complete();
+            return;
+          }
         }
       }
 

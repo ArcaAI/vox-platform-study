@@ -1627,6 +1627,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // lost its owner lock, or was stood down by the substrate gate never reaches
     // stop(), and those are exactly the ones whose watermark would poison the next.
     this.sections().forget(params.consultationId);
+    // TASK-1001 — and the PREVIOUS session's terminal snapshot with it (a resumed recording).
+    // Issued here, synchronously inside start(), so the command is on the wire before the
+    // recording controller answers — ahead of any subscribe that answer prompts.
+    void this.clearStaleTerminalSnapshot(params.consultationId);
 
     const startedAt = Date.now();
     const session: LiveSession = {
@@ -1707,6 +1711,58 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.onStartPromise = this.runOnStartNodes(session);
 
     this.logger.log({ message: 'Live documentation session started', consultationId: params.consultationId, sessionId: params.sessionId });
+  }
+
+  /**
+   * TASK-1001 — drop the cached whole-document snapshot when, and ONLY when, it is a TERMINAL one.
+   *
+   * ## Why
+   *
+   * `…:last`'s final write at stop is the `closed: true` payload, and it outlives the session by
+   * design (a late joiner of a FINISHED consultation is owed it). But when the same consultation
+   * records again — a resumed recording — it kept being replayed until the new session's first flush
+   * overwrote it: every SDK stops reading at `closed`, and the relay ends the stream there (F5), so a
+   * client that (re)connected in that window never saw the resumed recording's note at all.
+   *
+   * ## Why a compare-and-delete, and not a DEL or an overwrite
+   *
+   * - Only a TERMINAL payload is removed, and the `closed` payload is written by `stop()` and nothing
+   *   else, so a snapshot that is terminal belongs to a session that is over. A live session's note
+   *   is never terminal and is never touched — whichever replica this start lands on (the key is
+   *   shared in Redis), and however many times start() runs for one consultation. That is what an
+   *   unconditional DEL cannot promise: a start on a replica that does not own the running session
+   *   would wipe that session's note for every late joiner until its next flush.
+   * - ATOMIC (one Lua body, like the owner-lock scripts above), so a snapshot the new session writes
+   *   between a read and a delete can never be the one removed.
+   * - DELETE rather than overwrite, because there is no true value to overwrite with. An empty note
+   *   would tell a snapshot-only client the note is blank; the previous note with `closed` stripped
+   *   would present the finished session's per-flush state (`textFailed`, `degradeReason`, stats,
+   *   groundedness) as current. Absent is the truth — this session has not produced a note yet — and
+   *   a late joiner in that window is still owed the note through the section replay
+   *   ({@link loadLiveSummaryLateJoin}): the persisted sections, then this session's warm start, and
+   *   an open stream that the first flush's snapshot reaches live.
+   *
+   * Best-effort: a failure leaves the key to expire with its `SNAPSHOT_TTL` and is logged; it never
+   * fails a start.
+   */
+  private async clearStaleTerminalSnapshot(consultationId: string): Promise<void> {
+    const script = `-- live-doc:snapshot:clear-terminal
+local cur = redis.call('GET', KEYS[1])
+if not cur then return 0 end
+local ok, doc = pcall(cjson.decode, cur)
+if ok and type(doc) == 'table' and doc['closed'] == true then
+  return redis.call('DEL', KEYS[1])
+end
+return 0`;
+    try {
+      await this.cacheService.eval(script, 1, this.snapshotKey(consultationId));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to clear the previous session`s terminal live-summary snapshot',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   // ------------------------------------------------------------------
@@ -4704,15 +4760,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *   parsing every message. The payloads are byte-identical, and the two kinds a legacy
    *   consumer actually folds — the snapshot and `closed` — carry no `event` and therefore stay
    *   on the default `message` type.
+   *
+   * TASK-1001 S-9 added the SECTION plane to the late join — see {@link loadLiveSummaryLateJoin}.
    */
   subscribeToLiveSummary(consultationId: string): Observable<MessageEvent> {
+    // S-9 — the tenant the late join reads persisted sections under, captured HERE: this runs
+    // synchronously inside the request, the one moment the caller's tenant is certainly in scope,
+    // while the read itself runs later inside the relay. The local session's tenant covers a
+    // subscriber with no request context. Neither ⇒ no section replay, never a guessed tenant.
+    const tenantId = this.cls?.get('tenantId') || this.sessions.get(consultationId)?.tenantId;
     return sseFromRedisChannel(this.redisSubscriber, this.logger, {
       channel: this.channel(consultationId),
       // TASK-940 — the last RESOLVED heartbeat. This call site is synchronous and
       // holds no tenant, so it reads the snapshot the most recent flush refreshed;
       // the descriptor documents that granularity rather than claiming per-flush.
       heartbeatMs: this.realtimeBudgets.heartbeatMs,
-      loadSnapshot: () => this.loadLiveSummaryLateJoin(consultationId),
+      loadSnapshot: () => this.loadLiveSummaryLateJoin(consultationId, tenantId),
       isDuplicateOfSnapshot: (raw, _snapshot, emitted) => this.isDuplicateOfLiveSummarySnapshot(raw, emitted),
       // This channel is MULTIPLEXED, so the frame says which kind it carries: `section.patch` and
       // `presummary` become named SSE frames, and the undiscriminated whole-document snapshot and
@@ -4727,18 +4790,137 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Everything a late joiner is owed, in RENDER order: the whole-document note snapshot first,
-   * then the last warm-start `presummary` event.
+   * then one `section.patch` per persisted section (TASK-1001 S-9), then the last warm-start
+   * `presummary` event.
    *
-   * They live under two keys because they are two documents (see {@link preSummaryKey}), and the
-   * order is the contract — the note is what the clinician is writing, the pre-summary is the
-   * background material beside it. Either may be absent; absent entries are simply not emitted.
+   * The note and the pre-summary live under two keys because they are two documents (see
+   * {@link preSummaryKey}), and the order is the contract — the note (whole, then per section) is
+   * what the clinician is writing, the pre-summary is the background material beside it. Any of
+   * them may be absent; absent entries are simply not emitted.
+   *
+   * ## S-9 — why the section plane is replayed, and why AFTER the snapshot
+   *
+   * A client folds `section.patch` by `(documentKey, sectionKey)` and applies one only when its
+   * `revision` is newer. Replayed nothing but the snapshot — whose sections carried no key and no
+   * revision — a reconnecting client could not seed that map: it applied whatever patch arrived
+   * next, older or not, and held the snapshot's sections under a title-derived identity beside the
+   * patches' template identity (the same section twice). Each section's CURRENT row is replayed as
+   * the patch it would publish now, so a patch-plane client converges without waiting for the next
+   * flush — and to the rows, which include a clinician's confirmed text that no patch ever carried
+   * (an edit is written through REST, not this channel). After the snapshot, so a client that
+   * replaces its sections on every snapshot still ends on the rows.
+   *
+   * The snapshot's own sections are stamped from the same rows — see {@link stampSnapshotSections}.
+   *
+   * ## A finished consultation — the terminal is LAST
+   *
+   * `…:last`'s final write is the `closed: true` payload. Every SDK stops reading there
+   * (`@arcaai/vox-node` aborts on it, the browser SDK and the console disconnect), and the relay
+   * completes on it (F5), so the terminal snapshot is moved BEHIND the section replay — a patch
+   * after it would never be seen. That is also the order a live client saw at stop: the last
+   * flush's patches, then `closed`.
    */
-  private async loadLiveSummaryLateJoin(consultationId: string): Promise<string[]> {
-    const [snapshot, preSummary] = await Promise.all([
+  private async loadLiveSummaryLateJoin(consultationId: string, tenantId?: string): Promise<string[]> {
+    const [snapshot, preSummary, sections] = await Promise.all([
       this.cacheService.get(this.snapshotKey(consultationId)),
       this.cacheService.get(this.preSummaryKey(consultationId)),
+      this.readLateJoinSections(consultationId, tenantId),
     ]);
-    return [snapshot, preSummary].filter((entry): entry is string => typeof entry === 'string' && entry !== '');
+    const note = typeof snapshot === 'string' && snapshot !== '' ? this.stampSnapshotSections(snapshot, sections) : null;
+    const replayed = sections.map((section) => JSON.stringify(section));
+    const background = typeof preSummary === 'string' && preSummary !== '' ? [preSummary] : [];
+    if (note === null) return [...replayed, ...background];
+    return closedFlagTerminal(note) ? [...replayed, ...background, note] : [note, ...replayed, ...background];
+  }
+
+  /**
+   * S-9 — every persisted section of the consultation, as the `section.patch` it would publish
+   * NOW: its latest `revision`, its decrypted body, its current annotations (a `duplicate` flag
+   * included) — built by the same `DocumentSectionStore.toPatch` the flush publishes through, so a
+   * replayed patch and a live one cannot drift apart. `updatedAt` is the row's own (when that
+   * revision was written); a replay is never an append, so `appended` is absent.
+   *
+   * Only ever ADDS frames. No repository, no encryptor, no tenant, or a failed read ⇒ `[]`, i.e.
+   * exactly the late join that shipped before this. The encryptor is required rather than
+   * optional: `content` has no column, so without it every body reads back empty — and an empty
+   * body replayed at the row's revision would BLANK the section on the client and make it discard
+   * the patch that restores it. For the same reason a section whose body cannot be decrypted is
+   * left out rather than replayed empty. Never throws; logs counts, never content (PHI).
+   */
+  private async readLateJoinSections(consultationId: string, tenantId: string | undefined): Promise<SectionPatchDto[]> {
+    const repository = this.documentSectionRepository;
+    const secrets = this.secretsService;
+    if (!repository || !secrets || !tenantId) return [];
+    try {
+      const rows = await repository.findByConsultation(tenantId, consultationId);
+      const read = await Promise.all(
+        rows.map(async (row): Promise<SectionPatchDto | null> => {
+          try {
+            const content = (await repository.decryptContentFromEntity(row, secrets)) ?? '';
+            return { ...this.sections().toPatch(row, consultationId), content, updatedAt: row.updatedAt.toISOString() };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const patches = read.filter((patch): patch is SectionPatchDto => patch !== null);
+      if (patches.length < rows.length) {
+        this.logger.warn({
+          message: 'Late-join section replay left out sections whose body could not be read',
+          consultationId,
+          skipped: rows.length - patches.length,
+        });
+      }
+      return patches;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Late-join section replay unavailable — replaying the note snapshot only',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
+
+  /**
+   * S-9 — give the replayed snapshot's sections the identity of their persisted rows.
+   *
+   * A snapshot section is tied to a row by render ordinal AND title (the flush builds
+   * `sections[idx]` for the row it writes at `idx`, under the template's title); a section no row
+   * matches, or more than one does (two documents sharing a heading at one ordinal), is left as it
+   * was. A matched section gains `documentKey` + `sectionKey` — the key its patches carry — and
+   * `revision` ONLY when its text is byte-identical to the row's. The snapshot is published BEFORE
+   * the flush's section writes land, and a CONFIRMED section's snapshot text is the machine's
+   * refused version, so the two can disagree; a revision stamped on text that is not that revision
+   * would make a client discard the replayed patch carrying the real one.
+   *
+   * Nothing matched, or a snapshot it cannot read ⇒ the cached string is returned untouched, byte
+   * for byte. Never throws: a throw here would reach the relay as a setup failure and cost the late
+   * joiner the snapshot it was always owed.
+   */
+  private stampSnapshotSections(snapshot: string, sections: readonly SectionPatchDto[]): string {
+    if (sections.length === 0) return snapshot;
+    try {
+      const payload = JSON.parse(snapshot) as LiveSummaryEventDto;
+      if (!Array.isArray(payload.sections)) return snapshot;
+
+      let stamped = false;
+      const next = payload.sections.map((section, idx): LiveSummarySectionDto => {
+        const rows = sections.filter((row) => row.idx === idx && row.title === section.title);
+        const [row] = rows;
+        if (rows.length !== 1 || !row) return section;
+        stamped = true;
+        return {
+          ...section,
+          documentKey: row.documentKey,
+          sectionKey: row.sectionKey,
+          ...(row.content === section.content ? { revision: row.revision } : {}),
+        };
+      });
+      return stamped ? JSON.stringify({ ...payload, sections: next }) : snapshot;
+    } catch {
+      return snapshot;
+    }
   }
 
   /** The `updatedAt` of a serialized live-summary payload; null when absent/corrupt. */
@@ -4785,17 +4967,72 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * forever on a warm start that already finished. The cached entry is a byte-identical copy of
    * what was published, which makes identity both the exact test for "this is the replay" and
    * the only one that cannot drop a newer event.
+   *
+   * The `section.patch` kind (TASK-1001 S-9) is keyed on the SECTION, not on the kind: a relayed
+   * patch is a duplicate when the replay already delivered that `(documentKey, sectionKey)` at a
+   * revision at least as new — which is exactly the patch a client would discard anyway, so
+   * dropping it can never lose content, while a naive client is spared the repeat. Neither bytes
+   * nor `updatedAt` would do: the replay rebuilds a patch from its row (a live one stamps the
+   * publish time), and every section a flush writes shares that flush's clock. A patch missing
+   * its `documentKey`, `sectionKey` or `revision` is relayed untouched.
    */
   private isDuplicateOfLiveSummarySnapshot(raw: string, emitted: readonly string[]): boolean {
     const kind = this.liveSummaryEventKind(raw);
     if (kind === null) return false;
-    const sameKind = emitted.find((entry) => this.liveSummaryEventKind(entry) === kind);
+    const replay = this.lateJoinReplayIndex(emitted);
+    if (kind === 'section.patch') {
+      const address = this.sectionPatchAddress(raw);
+      const replayedRevision = address ? replay.sectionRevisions.get(address.key) : undefined;
+      return address !== null && replayedRevision !== undefined && address.revision <= replayedRevision;
+    }
+    const sameKind = replay.firstOfKind.get(kind);
     if (sameKind === undefined) return false;
     if (kind === PRE_SUMMARY_EVENT) return raw === sameKind;
     const emittedUpdatedAt = this.parseLiveSummaryUpdatedAt(sameKind);
     if (!emittedUpdatedAt) return false;
     const updatedAt = this.parseLiveSummaryUpdatedAt(raw);
     return updatedAt != null && updatedAt <= emittedUpdatedAt;
+  }
+
+  /**
+   * S-9 — what a late joiner's replay contained, indexed ONCE per subscription.
+   *
+   * The dedup runs for every relayed message for as long as the stream is open, and the replay
+   * now carries a patch per section beside the whole note, so re-parsing it per message would
+   * parse the entire note a dozen times over on every flush. The relay hands the predicate the
+   * same `emitted` array for its whole lifetime, which is what the WeakMap keys on.
+   */
+  private readonly lateJoinReplayIndexes = new WeakMap<
+    readonly string[],
+    { firstOfKind: ReadonlyMap<string, string>; sectionRevisions: ReadonlyMap<string, number> }
+  >();
+
+  private lateJoinReplayIndex(emitted: readonly string[]) {
+    const known = this.lateJoinReplayIndexes.get(emitted);
+    if (known) return known;
+    const firstOfKind = new Map<string, string>();
+    const sectionRevisions = new Map<string, number>();
+    for (const entry of emitted) {
+      const kind = this.liveSummaryEventKind(entry);
+      if (kind === null) continue;
+      if (!firstOfKind.has(kind)) firstOfKind.set(kind, entry);
+      const address = kind === 'section.patch' ? this.sectionPatchAddress(entry) : null;
+      if (address) sectionRevisions.set(address.key, Math.max(address.revision, sectionRevisions.get(address.key) ?? address.revision));
+    }
+    const index = { firstOfKind, sectionRevisions };
+    this.lateJoinReplayIndexes.set(emitted, index);
+    return index;
+  }
+
+  /** `documentKey::sectionKey` + `revision` of a serialized `section.patch`; null unless it carries all three. */
+  private sectionPatchAddress(raw: string): { key: string; revision: number } | null {
+    try {
+      const patch = JSON.parse(raw) as Partial<SectionPatchDto>;
+      if (typeof patch.documentKey !== 'string' || typeof patch.sectionKey !== 'string' || typeof patch.revision !== 'number') return null;
+      return { key: `${patch.documentKey}::${patch.sectionKey}`, revision: patch.revision };
+    } catch {
+      return null;
+    }
   }
 
   // ------------------------------------------------------------------

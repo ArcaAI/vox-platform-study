@@ -13,10 +13,17 @@
  * ## The one shape a caller must get right
  *
  * `GET :id/live-summary/stream` is a MULTIPLEXED channel. Three payload kinds
- * ride it, and they are told apart by the `event` field IN THE JSON, never by
- * the SSE `event:` line (the gateway relays every one of them as a default
- * `message` frame). The legacy whole-document snapshot carries no `event` at
- * all, which is why its absence is the discriminator for that arm.
+ * ride it, and they are told apart by the `event` field IN THE JSON. The
+ * legacy whole-document snapshot carries no `event` at all, which is why its
+ * absence is the discriminator for that arm.
+ *
+ * The gateway ALSO names the SSE frame after that field (since TASK-932 L-2):
+ * a `section.patch` arrives as `event: section.patch` and a `presummary` as
+ * `event: presummary`, while the snapshot and its terminal `closed: true` stay
+ * on the default `message` frame. That is a convenience for an `EventSource`
+ * consumer (`addEventListener('section.patch', …)`); the JSON `event` field is
+ * the discriminator this SDK dispatches on, because it reads the same on a
+ * gateway that predates the frame names.
  */
 
 import type { GoverningRunSummary } from '@arcaai/types';
@@ -315,10 +322,28 @@ export interface LiveSummaryEntity {
   transcriptEnd?: number;
 }
 
-/** A logical section of the running summary. */
+/**
+ * A logical section of the running summary.
+ *
+ * `documentKey`, `sectionKey` and `revision` are OPTIONAL and additive: they tie this section to
+ * the per-section plane ({@link SectionPatchEvent}) and are present only when HOPE tied it to its
+ * persisted section row — today on a late-join replay (see {@link LiveSummaryEvent}). They are
+ * never guessed, so treat their absence as "unknown", not as a distinct section.
+ */
 export interface LiveSummarySection {
   title: string;
   content: string;
+  /** The same `documentKey` this section's {@link SectionPatchEvent}s carry. Present together with `sectionKey`. */
+  documentKey?: string;
+  /** The same `sectionKey` this section's {@link SectionPatchEvent}s carry — hold the snapshot's section and its patches under ONE identity. */
+  sectionKey?: string;
+  /**
+   * The persisted revision THIS `content` is, exactly — present only when the two are
+   * byte-identical. Seed your per-section revision map from it and discard any patch whose
+   * `revision` is not greater. When it is absent (the snapshot and the row disagree), the
+   * `section.patch` replayed right after the snapshot carries the authoritative state: apply it.
+   */
+  revision?: number;
 }
 
 /** Structured vitals, accumulated field-wise across flushes. Never fabricated. */
@@ -351,6 +376,25 @@ export interface LiveSummaryGroundedness {
 /**
  * The whole-document snapshot — the LEGACY payload of the live-summary channel,
  * and the one that carries no `event` discriminator.
+ *
+ * ## What a (re)connect is replayed, in order
+ *
+ * A subscriber that joins mid-consultation — including every reconnect — is first
+ * replayed what it missed, before any live event:
+ *
+ * 1. this snapshot, its `sections` stamped with `documentKey` / `sectionKey` /
+ *    `revision` where HOPE could tie them to their persisted rows;
+ * 2. one {@link SectionPatchEvent} PER PERSISTED SECTION, at its current revision
+ *    with its current annotations (the `duplicate` flag included) — so a
+ *    `section.patch` may arrive immediately after a snapshot. It is not a new
+ *    write: fold it by the usual rule (discard unless its `revision` is greater
+ *    than the one you hold), and it converges you on the persisted note,
+ *    including a clinician's confirmed text that no live patch ever carried;
+ * 3. the last {@link PreSummaryEvent}.
+ *
+ * A live patch the replay already delivered (same section, revision not newer) is
+ * not sent again. On a FINISHED consultation the terminal snapshot (`closed: true`)
+ * is replayed LAST, after the patches, and the stream ends there.
  */
 export interface LiveSummaryEvent {
   consultationId: string;
