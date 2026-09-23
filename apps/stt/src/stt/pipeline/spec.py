@@ -529,7 +529,7 @@ class AsrSpecAgent(_Wire):
     version_id: str
     version_number: int
     tenant_id: str
-    source: Literal["explicit", "department", "tenant", "platform-default"]
+    source: Literal["explicit", "department", "tenant", "platform-default", "workflow"]
 
 
 class AsrSpecCore(_Wire):
