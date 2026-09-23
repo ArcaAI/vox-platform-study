@@ -26,9 +26,18 @@ OD-10) follow steps 1 and 2 and then STOP: there is no step 3 for them. They are
 optional end to end. ABSENT and ``0`` both mean "send nothing" — ``0`` is the
 neutral value on every engine that honours a penalty, and it is the descriptor's
 shipped default — so a deployment where nobody set one sends byte-identical
-provider requests. Each adapter then either forwards a non-zero value (its
-engine documents the parameter) or drops it with `record_dropped_penalties`
-(its engine does not) — never an error.
+provider requests. Each adapter then either forwards a non-zero value through
+`penalty_kwargs` (its engine documents the parameter) or drops it with
+`record_dropped_penalties` (its engine does not) — never an error.
+
+ORIGIN decides reach. A penalty the REQUEST carried was authored for that
+call's model (an agent's value, which the publish gate checks against the
+model's declared parameter set), so any adapter that supports penalties sends
+it. A penalty that came from the PLATFORM default was chosen without knowing the
+model, so only the self-hosted OpenAI-compatible engines in
+`PLATFORM_DEFAULT_PENALTY_PROVIDERS` send it — a managed endpoint such as a
+GPT-5-class Azure deployment refuses penalties with a 400, and one admin setting
+must not be able to break every call to it.
 
 The active platform values live in module state rather than being threaded
 through every adapter signature, mirroring how `apply_provider_retention`
@@ -76,8 +85,27 @@ PENALTY_NEUTRAL = 0.0
 PENALTY_MIN = -2.0
 PENALTY_MAX = 2.0
 
-#: Stable event name for a penalty an adapter's engine cannot take.
-PENALTIES_DROPPED_EVENT = "text.generation.penalties_dropped"
+#: The adapters (by the provider identity they report) that may send a penalty
+#: which came from the PLATFORM default. Self-hosted OpenAI-compatible engines
+#: only: each documents both penalties for every model it serves, so a value
+#: chosen without knowing the model cannot turn into a refusal there. Every other
+#: adapter sends only a penalty the request itself carried.
+PLATFORM_DEFAULT_PENALTY_PROVIDERS: frozenset[str] = frozenset(
+    {"lm-studio", "openai_compat", "vllm", "llama-cpp"}
+)
+
+#: Stable event name for a penalty an adapter did not send.
+PENALTY_DROPPED_EVENT = "text.generation.penalty_dropped"
+#: The engine has no penalty parameter (or refuses it per model).
+REASON_ENGINE_CANNOT_TAKE = "engine_cannot_take_penalty"
+#: The penalty came from the platform default and this adapter is not in
+#: `PLATFORM_DEFAULT_PENALTY_PROVIDERS`.
+REASON_PLATFORM_DEFAULT_NOT_FORWARDED = "platform_default_not_forwarded"
+
+#: `(provider, penalty)` pairs already warned about in this process. A drop is
+#: warned ONCE per pair: the platform default applies to every request, so a
+#: per-call warning would flood the log with one fact.
+_WARNED_DROPS: set[tuple[str, str]] = set()
 
 #: The platform generation profile currently served by the control plane.
 #: Replaced wholesale by `apply_generation_defaults`; empty until the first
@@ -127,14 +155,38 @@ def resolve_request_defaults(request: GenerateRequest) -> dict[str, float | int]
     return resolved
 
 
-def penalty_kwargs(resolved: Mapping[str, float | int]) -> dict[str, float]:
-    """The penalties to put on the wire, keyed by their OpenAI-wire names.
+def penalty_kwargs(
+    resolved: Mapping[str, float | int],
+    request: GenerateRequest,
+    *,
+    provider: str,
+    model: str | None,
+) -> dict[str, float]:
+    """The penalties an adapter that SUPPORTS them puts on the wire.
+
+    ORIGIN is read off the request, with no second channel: a resolved penalty
+    whose request field is ``None`` can only have come from the platform
+    default (`resolve_request_defaults` has no other source). Such a penalty is
+    sent only by a provider in `PLATFORM_DEFAULT_PENALTY_PROVIDERS`; anywhere
+    else it is dropped and warned. A penalty the request carried is always sent.
 
     Empty unless a non-neutral penalty resolved — `resolve_request_defaults`
-    never carries a neutral one — so ``kwargs.update(penalty_kwargs(resolved))``
+    never carries a neutral one — so ``kwargs.update(penalty_kwargs(...))``
     leaves an untouched request byte-identical.
     """
-    return {name: float(resolved[name]) for name in PENALTY_PARAMS if name in resolved}
+    sent: dict[str, float] = {}
+    for name in PENALTY_PARAMS:
+        if name not in resolved:
+            continue
+        value = float(resolved[name])
+        from_platform_default = getattr(request, name) is None
+        if from_platform_default and provider not in PLATFORM_DEFAULT_PENALTY_PROVIDERS:
+            _warn_dropped_once(
+                provider, name, value, model, reason=REASON_PLATFORM_DEFAULT_NOT_FORWARDED
+            )
+            continue
+        sent[name] = value
+    return sent
 
 
 def record_dropped_penalties(
@@ -143,12 +195,29 @@ def record_dropped_penalties(
     """The whole penalty story for an adapter whose engine cannot take one.
 
     Sends nothing and FAILS nothing: a non-zero penalty is a tuning knob, and a
-    provider swap must not turn it into an outage. Logged at DEBUG, not WARNING,
-    because the platform default applies to every request — a warning here
-    would fire on every call to every non-supporting engine. Silent when there
-    was nothing to drop.
+    provider swap must not turn it into an outage. Silent when there was nothing
+    to drop.
     """
-    dropped = penalty_kwargs(resolved)
-    if not dropped:
+    for name in PENALTY_PARAMS:
+        if name in resolved:
+            _warn_dropped_once(
+                provider, name, float(resolved[name]), model, reason=REASON_ENGINE_CANNOT_TAKE
+            )
+
+
+def _warn_dropped_once(
+    provider: str, name: str, value: float, model: str | None, *, reason: str
+) -> None:
+    """WARNING, once per ``(provider, penalty)`` per process — visible in
+    production without repeating on every call the platform default reaches."""
+    if (provider, name) in _WARNED_DROPS:
         return
-    logger.debug(PENALTIES_DROPPED_EVENT, provider=provider, model=model or "", **dropped)
+    _WARNED_DROPS.add((provider, name))
+    logger.warning(
+        PENALTY_DROPPED_EVENT,
+        provider=provider,
+        model=model or "",
+        penalty=name,
+        value=value,
+        reason=reason,
+    )

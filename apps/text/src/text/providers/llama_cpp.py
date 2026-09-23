@@ -112,8 +112,11 @@ class LlamaCppProvider:
         # `POST /completion` options — `presence_penalty` / `frequency_penalty`,
         # "repeat alpha … penalty (default: 0.00, 0.0 = disabled)". Same names as
         # the OpenAI wire; NOT `repeat_penalty`, a different (multiplicative,
-        # 1.0 = off) knob that is never synthesized from these.
-        payload.update(penalty_kwargs(resolved))
+        # 1.0 = off) knob that is never synthesized from these. In
+        # `PLATFORM_DEFAULT_PENALTY_PROVIDERS`, so a platform default is sent too.
+        payload.update(
+            penalty_kwargs(resolved, request, provider=_ENGINE, model=self._resolve_model(request))
+        )
 
         # Structured output. A GBNF grammar (supplied via ``context.grammar``)
         # takes precedence over a JSON schema; both are native ``/completion``

@@ -41,7 +41,10 @@ _POOL_NAME = "azure-openai"
 # REST reference for chat completions (`frequency_penalty` / `presence_penalty`,
 # -2.0 to 2.0), sent through the same TYPED parameters of the pinned SDK
 # (openai==3.1.0 `completion_create_params`) `AsyncAzureOpenAI` shares with
-# OpenAI. Only a non-neutral value is ever sent.
+# OpenAI. Only a non-neutral value is ever sent, and ONLY when the request itself
+# carried it: GPT-5-class reasoning deployments refuse penalties with a 400, so a
+# platform default — chosen without knowing the deployment — is dropped and
+# warned here (`PLATFORM_DEFAULT_PENALTY_PROVIDERS`).
 
 
 def _get_tracer() -> Tracer:
@@ -246,7 +249,9 @@ class AzureOpenAIProvider:
                 "stream": False,
             }
             # TASK-1001 OD-10 — FORWARDED (source: module note under `_POOL_NAME`).
-            kwargs.update(penalty_kwargs(resolved))
+            kwargs.update(
+                penalty_kwargs(resolved, request, provider="azure_openai", model=resolved_model)
+            )
 
             if (
                 request.response_format is not None
@@ -344,7 +349,9 @@ class AzureOpenAIProvider:
                 "stream_options": {"include_usage": True},
             }
             # TASK-1001 OD-10 — FORWARDED (source: module note under `_POOL_NAME`).
-            kwargs.update(penalty_kwargs(resolved))
+            kwargs.update(
+                penalty_kwargs(resolved, request, provider="azure_openai", model=resolved_model)
+            )
 
             if request.response_format is not None:
                 if request.response_format.type == "json_schema":

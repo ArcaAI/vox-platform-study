@@ -232,7 +232,9 @@ class OpenAICompatProvider:
             off_is_expressible=self.reasoning_support is ReasoningSupport.NATIVE_OFF,
         )
 
-    def _apply_penalties(self, kwargs: dict[str, Any], resolved: dict[str, float | int]) -> None:
+    def _apply_penalties(
+        self, kwargs: dict[str, Any], resolved: dict[str, float | int], request: GenerateRequest
+    ) -> None:
         """Forward the repetition penalties (TASK-1001 OD-10) as top-level fields.
 
         FORWARDED by this class and both subclasses, each on its engine's own
@@ -248,10 +250,19 @@ class OpenAICompatProvider:
         * `openai_compat` — the OpenAI chat-completions reference, which is the
           wire this class is defined by.
 
-        Only a non-neutral value is ever present (`penalty_kwargs`), so a request
-        with no penalty is byte-identical to before.
+        All three identities are in `PLATFORM_DEFAULT_PENALTY_PROVIDERS`, so a
+        platform-default penalty is sent here as well as a request-authored one.
+        Only a non-neutral value is ever present, so a request with no penalty is
+        byte-identical to before.
         """
-        kwargs.update(penalty_kwargs(resolved))
+        kwargs.update(
+            penalty_kwargs(
+                resolved,
+                request,
+                provider=self._provider_name,
+                model=self._resolve_model(request),
+            )
+        )
 
     def _apply_retention_hint(self, kwargs: dict[str, Any]) -> None:
         """Hook: attach the engine's server-side idle-retention directive.
@@ -344,7 +355,7 @@ class OpenAICompatProvider:
                 "top_p": resolved["top_p"],
                 "stream": False,
             }
-            self._apply_penalties(kwargs, resolved)
+            self._apply_penalties(kwargs, resolved, request)
 
             self._apply_response_format(kwargs, request)
             self._apply_retention_hint(kwargs)
@@ -405,7 +416,7 @@ class OpenAICompatProvider:
                 "stream": True,
                 "stream_options": {"include_usage": True},
             }
-            self._apply_penalties(kwargs, resolved)
+            self._apply_penalties(kwargs, resolved, request)
 
             self._apply_response_format(kwargs, request)
             self._apply_retention_hint(kwargs)
