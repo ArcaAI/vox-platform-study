@@ -146,6 +146,14 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE = {
   // 'text-v1' pre-summary row so the tenant tier never sees two candidates for
   // the same surface. 'system-default' matches the C1 D2 fork contract.
   tags: ['pre-summary', 'dept-free', 'system-default'],
+  // TASK-1001 — stated, not left to the column default. Until the General Medicine
+  // summary moved off this row's id (`00-constants.ts`), `seedPromptTemplate` CREATED
+  // this row as that template's SYSTEM copy and this upsert then overwrote its body,
+  // leaving `sourceTemplateId` → the Global General Medicine row. That stale pointer is
+  // exactly what `POST admin/agents/promote-to-system` looks SYSTEM's existing copy of a
+  // Global template up by (`materializeTemplate`), so promoting the Global agent would
+  // re-bind SYSTEM to this pre-summary body again. A re-seed must clear it.
+  sourceTemplateId: null as string | null,
 };
 
 export const SYSTEM_DEPT_FREE_PRE_SUMMARY_VERSION = {

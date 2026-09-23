@@ -458,6 +458,29 @@ export const SYSTEM_LIVE_SOAP_VERSION_ID = '72000000-0000-0000-0004-000000000001
 export const SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE_ID = '71000000-0000-0000-0004-000000000002';
 export const SYSTEM_DEPT_FREE_PRE_SUMMARY_VERSION_ID = '72000000-0000-0000-0004-000000000002';
 
+/**
+ * TASK-1001 (OD-8) — the SYSTEM promoted copy of the OUTPUT LANGUAGE POLICY
+ * (`07-prompt-template.ts`), the reference-set row every new tenant clones and
+ * its note-writing agents point at. Not a `SYSTEM_DEFAULTS` pointer: it is
+ * reached only through the agents' `instruction.fragments[]`.
+ */
+export const SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID = '71000000-0000-0000-0004-000000000003';
+export const SYSTEM_OUTPUT_LANGUAGE_POLICY_VERSION_ID = '72000000-0000-0000-0004-000000000003';
+
+/**
+ * TASK-930 §8.3 — the SYSTEM promoted copy of the General Medicine consultation summary
+ * (`07-prompt-template.ts`), bound by the SYSTEM `general-medicine-summarization` agent.
+ *
+ * TASK-1001 — MOVED here from `…-0004-000000000002`. TASK-930 declared it in `07-prompt-template.ts`
+ * on the slot this block had already reserved for the department-free pre-summary (above), and
+ * `seedDeptFreePreSummaryDefault` runs AFTER `seedPromptTemplate`, so every fresh database ended
+ * with the PRE-SUMMARY body in that row — and the SYSTEM agent (and every tenant's clone of it)
+ * froze the pre-summary prompt as its running note. `…002` belongs to the pre-summary alone;
+ * `prompt-seed-id-uniqueness.test.ts` now fails on any id two seeded rows share.
+ */
+export const SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID = '71000000-0000-0000-0004-000000000004';
+export const SYSTEM_GENERAL_MEDICINE_SUMMARY_VERSION_ID = '72000000-0000-0000-0004-000000000004';
+
 // Version IDs are generated dynamically — one per template.
 // Use helper: SEED_VERSION_ID(n) → '72000000-0000-0000-0000-' + n.toString().padStart(12, '0')
 export const SEED_VERSION_ID = (n: number): string => `72000000-0000-0000-0000-${n.toString().padStart(12, '0')}`;

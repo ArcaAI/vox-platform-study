@@ -11,8 +11,8 @@
  *   realtime-transcription          SPEECH_TO_TEXT            arcaai-whisper-large-ml-en-gguf (+ gguf-q8_0, + faster-whisper CT2)
  *   medical-ner                     NAMED_ENTITY_RECOGNITION  medical-ner (TOKEN_CLASSIFICATION, built-in)         INTERFACES §2
  *   case-notes-pre-summary          TEXT_GENERATION           gemma + the platform pre-summary template, guards ON  TASK-932 D-9
- *   general-medicine-summarization  TEXT_GENERATION           gemma + the General Medicine summary template, guards ON
- *   casenote-finalization           TEXT_GENERATION           gemma + inline system prompt, `{ case_note, redactions }` output schema
+ *   general-medicine-summarization  TEXT_GENERATION           gemma + the General Medicine summary template + output-language policy, guards ON
+ *   casenote-finalization           TEXT_GENERATION           gemma + inline system prompt + output-language policy, `{ case_note, redactions }` output schema
  *   text-to-speech                  TEXT_TO_SPEECH            kokoro / af_heart
  *
  * `AgentAssignment` (TENANT scope) in BOTH tenants: one row per task, unqualified — plus ONE
@@ -32,13 +32,15 @@
  */
 import { createHash } from 'node:crypto';
 import type { CorePrismaClient } from '../../../client';
-import { SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
+import { SEED_TENANT_ID, SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 import {
   DNA_ANALYSIS_CONTENT_V3,
   DNA_OUTPUT_SCHEMA,
   GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES,
+  GLOBAL_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
   SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
   TEMPLATE_IDS,
+  outputLanguagePolicyFragment,
 } from './07-prompt-template';
 import { NEW_VISIT_NOTE_SHAPE, REVISIT_NOTE_SHAPE } from './27-document-template-library';
 
@@ -234,6 +236,31 @@ export const PRE_SUMMARY_AGENT_SLUG = 'case-notes-pre-summary';
 
 /** The ONE ASR lineage key — Global and SYSTEM both carry it (§8.3); `09-consultation.ts` names it. */
 export const ASR_AGENT_SLUG = 'realtime-transcription';
+
+/**
+ * TASK-1001 (OD-8) — the agents that WRITE THE NOTE, and therefore carry the tenant's output-language
+ * policy as their last, unconditional, unpinned fragment. The same shape the 22 ArcaAI department
+ * agents took in wave 1 (`29-arcaai-agents-and-workflows.ts`).
+ *
+ * Deliberately NOT on this list, each for its own reason:
+ *  - `realtime-transcription`, `medical-ner`, `text-to-speech` — they write no note (and only a
+ *    TEXT_GENERATION instruction has a prompt to compose into);
+ *  - `case-notes-pre-summary` — its body already binds `{{context.language_name}}`, which the
+ *    runtime resolves from the platform default output language, so a policy fragment would state
+ *    the rule a second time — the reason ArcaAI's own warm start was left without one in wave 1
+ *    (`output-language-policy.task1001.test.ts`);
+ *  - `dna-writing-style-analyst` — the PLATFORM HIDDEN agent (TASK-974 D-1) is configuration, not
+ *    content: never cloned, so a tenant policy fragment could never reach its row anyway, and its
+ *    output is a closed-vocabulary style profile, not a note.
+ */
+export const OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS = ['general-medicine-summarization', 'casenote-finalization'] as const;
+
+/**
+ * The key of the note agent's own clinical body inside its composite instruction — the spelling the
+ * ArcaAI department agents use, so every note-writing agent in the seed reads the same way in the
+ * console and in per-call fragment telemetry.
+ */
+export const CLINICAL_NOTE_FRAGMENT_KEY = 'clinical_note';
 
 // ----------------------------------------------------------------------------------------------
 // Shared configuration (exported so phase 29 builds the ArcaAI department agents the same way)
@@ -553,9 +580,19 @@ export const CASENOTE_OUTPUT_SCHEMA: Record<string, unknown> = {
 
 /**
  * ONE catalogue for both tenants — the whole point of §8.3 is that Global and SYSTEM differ only
- * by tenant, id, the template id each tenant owns, and provenance.
+ * by tenant, id, the template ids each tenant owns, and provenance.
+ *
+ * TASK-1001 (OD-8) — `outputLanguagePolicyTemplateId` is the tenant's OWN policy row: an agent
+ * never binds another tenant's template, and the reference-set copy re-points each clone's
+ * fragment at the target tenant's clone of it.
  */
-function catalogue(tenantId: string, ids: (n: number) => string, generalMedicineTemplateId: string, preSummaryTemplateId: string): SeedAgentSpec[] {
+function catalogue(
+  tenantId: string,
+  ids: (n: number) => string,
+  generalMedicineTemplateId: string,
+  preSummaryTemplateId: string,
+  outputLanguagePolicyTemplateId: string,
+): SeedAgentSpec[] {
   const tier = tenantId === SYSTEM_TENANT_ID ? 'tier:platform-default' : 'tier:playground';
   return [
     {
@@ -642,7 +679,19 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       task: 'TEXT_GENERATION',
       modelSlug: 'lms-gemma-4-e2b-it-qat',
       fallbackModelSlugs: [],
-      instruction: { promptTemplateId: generalMedicineTemplateId, promptVersionNumber: 1, variables: generalMedicinePromptVariables() },
+      // TASK-1001 (OD-8) — COMPOSITE: the General Medicine body (template and pin unchanged), then
+      // the tenant's output-language policy, LAST so it is the instruction nearest the generation
+      // point. The body's rule 5 says "write all content values in the conversation language"; the
+      // policy names that clause and overrides it, which is the whole reason it rides here — on the
+      // durable lane no runtime step states an output language for this agent. `variables` stays
+      // on the instruction: it binds what EVERY fragment reads (the policy reads none).
+      instruction: {
+        fragments: [
+          { key: CLINICAL_NOTE_FRAGMENT_KEY, promptTemplateId: generalMedicineTemplateId, promptVersionNumber: 1 },
+          outputLanguagePolicyFragment(outputLanguagePolicyTemplateId),
+        ],
+        variables: generalMedicinePromptVariables(),
+      },
       parameters: SUMMARIZATION_PARAMETERS,
       outputSchema: null,
       status: 'PUBLISHED',
@@ -660,7 +709,18 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       task: 'TEXT_GENERATION',
       modelSlug: 'lms-gemma-4-e2b-it-qat',
       fallbackModelSlugs: [],
-      instruction: { systemPrompt: CASENOTE_FINALIZATION_SYSTEM_PROMPT },
+      // TASK-1001 (OD-8) — COMPOSITE: the inline finalization body becomes an INLINE fragment
+      // (byte-identical), then the tenant's output-language policy. The policy adds the
+      // headings-stay-English clause (S-4) and sits under the platform-reserved key, so the
+      // runtime reads this agent's language as the tenant's. NOTE: the body itself still says the
+      // finalized note is entirely in English — a tenant that moves its policy AWAY from English
+      // must edit this fragment of its copy too, or the two instructions disagree.
+      instruction: {
+        fragments: [
+          { key: CLINICAL_NOTE_FRAGMENT_KEY, systemPrompt: CASENOTE_FINALIZATION_SYSTEM_PROMPT },
+          outputLanguagePolicyFragment(outputLanguagePolicyTemplateId),
+        ],
+      },
       // No `responseFormat`: the declared `outputSchema` IS the response format (INTERFACES §5).
       //
       // Reasoning OFF (owner directive 2026-09-13). TASK-891 C3 seeded the posture on the REALTIME
@@ -739,6 +799,7 @@ export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = catalogue(
   glob,
   TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY,
   TEMPLATE_IDS.PRE_SUMMARY_DEFAULT,
+  GLOBAL_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
 );
 
 /** SYSTEM is the promoted copy — provenance → the Global row of the same slug. */
@@ -747,6 +808,7 @@ export const PLATFORM_AGENT_SPECS: SeedAgentSpec[] = catalogue(
   sys,
   SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
   TEMPLATE_IDS.PRE_SUMMARY_DEFAULT,
+  SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
 ).map((spec) => {
   const source = GLOBAL_AGENT_SPECS.find((global) => global.slug === spec.slug);
   if (!source) throw new Error(`SYSTEM agent ${spec.slug} has no Global source`);
@@ -983,6 +1045,11 @@ async function resolveTemplateBinding(
  * but something worse: a PUBLISHED agent whose compiled artifact carries no prompt at all, so the
  * live lane falls back to the platform system prompt and the department's clinical instruction is
  * silently gone. Fail CLOSED instead, like every other unresolvable binding here.
+ *
+ * Both fragment kinds compile: a TEMPLATE fragment through `resolveTemplateBinding` (the ArcaAI
+ * department agents, and every policy fragment), an INLINE one (`systemPrompt`) verbatim as
+ * `{ source: 'inline', content }` — which `casenote-finalization` relies on since OD-8 moved its
+ * inline body into a fragment beside the policy.
  */
 async function resolveCompositePrompt(
   client: SeedAgentsClient,

@@ -131,8 +131,13 @@ async function copyContextSchemas(client: CorePrismaClient, tenantId: string): P
   return added;
 }
 
-/** Clone the SYSTEM prompt library into one tenant, stamping `sourceTemplateId`. */
-async function copyPromptTemplates(client: CorePrismaClient, tenantId: string): Promise<number> {
+/**
+ * Clone the SYSTEM prompt library into one tenant, stamping `sourceTemplateId`.
+ *
+ * Exported so the copy is testable without a database (TASK-1001: the output-language policy must
+ * reach a new tenant as its own APPROVED row) — the same reason `copyAgents` is.
+ */
+export async function copyPromptTemplates(client: CorePrismaClient, tenantId: string): Promise<number> {
   const sources = await client.promptTemplate.findMany({
     where: { tenantId: SYSTEM_TENANT_ID, resourceStatus: 'ENABLED', scope: { not: 'USER_PERSONAL' } },
   });
@@ -240,6 +245,13 @@ export function boundTemplateIdsOf(instruction: Record<string, unknown> | null):
  * version lineage restarts at 1, so the SOURCE's pin numbers a version the target does not have:
  * the pin becomes the clone's approved version, or is dropped when it has none. Pure — a NEW
  * object; the input is never mutated.
+ *
+ * TASK-1001 (OD-8) — only a pin that EXISTS is translated. An UNPINNED binding stays unpinned: it
+ * says "whatever version of this template is approved when I am published", and the tenant's own
+ * lineage honours that exactly. Pinning it at the clone's v1 — what this function used to do for
+ * every binding — would freeze the clone's output-language policy fragment on v1 across every
+ * republish, so a tenant admin's approved edit to its ONE policy row would never reach a note.
+ * The runtime twin is `AgentService.referenceInstruction` (`@arcaai/applications`).
  */
 export function repointInstructionTemplates(
   instruction: Record<string, unknown> | null,
@@ -251,6 +263,7 @@ export function repointInstructionTemplates(
     const clone = nonEmptyString(boundId) ? clones.get(boundId) : undefined;
     if (!clone) return holder;
     const next: Record<string, unknown> = { ...holder, promptTemplateId: clone.id };
+    if (next['promptVersionNumber'] === undefined || next['promptVersionNumber'] === null) return next;
     if (clone.approvedVersionNumber === null) delete next['promptVersionNumber'];
     else next['promptVersionNumber'] = clone.approvedVersionNumber;
     return next;

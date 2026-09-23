@@ -1,7 +1,16 @@
+import { OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY } from '@arcaai/types';
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
 import type { PromptTemplateCategory, PromptTemplateScope, PromptTemplateStatus } from '../../../generated/core-prisma-client/enums';
-import { SEED_DEPARTMENT_IDS, SYSTEM_TENANT_ID } from './00-constants';
+import {
+  SEED_DEPARTMENT_IDS,
+  SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
+  SYSTEM_GENERAL_MEDICINE_SUMMARY_VERSION_ID,
+  SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+  SYSTEM_OUTPUT_LANGUAGE_POLICY_VERSION_ID,
+  SYSTEM_TENANT_ID,
+} from './00-constants';
+import { ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT, ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE } from './07b-arcaai-clinical-templates';
 
 /**
  * Publication baseline.
@@ -1716,10 +1725,13 @@ export const EXTRA_PROMPT_VERSIONS = [
 // stamps on a clone, so proof #9 cannot tell a seeded promotion from a real one.
 // =============================================================================
 
-export const SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID = '71000000-0000-0000-0004-000000000002';
+// TASK-1001 — the SYSTEM ids are declared in `00-constants.ts` beside the rest of the `…-0004-…`
+// block (they used to be a local literal here, on the slot that block had reserved for the
+// department-free pre-summary — see the note there). Re-exported so every importer is unchanged.
+export { SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID };
 const GENERAL_MEDICINE_SUMMARY_VERSION_IDS = {
   GLOBAL: '72000000-0000-0000-0000-000000000051',
-  SYSTEM: '72000000-0000-0000-0004-000000000002',
+  SYSTEM: SYSTEM_GENERAL_MEDICINE_SUMMARY_VERSION_ID,
 } as const;
 
 /** Declared in the order the body reads them; the agent binds each by name. */
@@ -1801,6 +1813,92 @@ export const GENERAL_MEDICINE_SUMMARY_VERSIONS = GENERAL_MEDICINE_SUMMARY_TEMPLA
   changedBy: SYSTEM_USER_ID,
 }));
 
+// =============================================================================
+// OUTPUT LANGUAGE POLICY — the platform reference-set default (TASK-1001 OD-8)
+//
+// Wave 1 of TASK-1001 seeded this policy as ArcaAI-tenant CONTENT only
+// (`07b-arcaai-clinical-templates.ts`), so a tenant provisioned from SYSTEM got none — and
+// `general-medicine-summarization`'s body says "write all content values in the conversation
+// language", which on the durable lane nothing overrides. OD-8 (a) ships the same English policy
+// as a SYSTEM reference-set default, bound as an unconditional, UNPINNED fragment on the
+// note-writing agents (`25-agents.ts` `OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS`).
+//
+// ONE text: the body IS `ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT`, not a second copy of it, so the
+// S-4 headings clause and the named override (pinned by `output-language-policy.task1001.test.ts`)
+// hold here by construction. The NAME is ArcaAI's too, and that is load-bearing: phase 26 and
+// `PromptManagementService.cloneFromSystem` skip a SYSTEM source whose `(tenantId, name)` the target
+// already owns, so a tenant that authors its own policy (ArcaAI, Global) is never handed a second
+// row it cannot tell apart from the first.
+//
+// Authoring follows D-8 exactly as the General Medicine summary above does: Global AUTHORS the row,
+// SYSTEM carries the promoted copy with `sourceTemplateId` pointing back.
+//
+// CONTENT IS CLONED: this reaches tenants provisioned from here on, and fresh / reset databases.
+// A running tenant keeps what it has (the reference-set resync is missing-only, and a published
+// agent is immutable) — for those, the policy is an admin-API rollout, as OD-13 did for ArcaAI.
+//
+// Ids: SYSTEM takes slot `…003` of the `…-0004-…` block (declared in `00-constants.ts`);
+// Global takes `…-0000-…052` beside the General Medicine summary (`…051`), its version mirroring
+// the slot the same way. `prompt-seed-id-uniqueness.test.ts` fails on any id two seeded rows share.
+// =============================================================================
+
+export const GLOBAL_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID = '71000000-0000-0000-0000-000000000052';
+export const GLOBAL_OUTPUT_LANGUAGE_POLICY_VERSION_ID = '72000000-0000-0000-0000-000000000052';
+
+const outputLanguagePolicyRow = (tenantId: string, id: string, sourceTemplateId: string | null) => ({
+  id,
+  tenantId,
+  name: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE.name,
+  // Travels verbatim onto every tenant's clone, so it names no tenant.
+  description:
+    'The language the note-writing agents of this tenant write in, and the rule that section keys and headings stay English. Referenced as an unconditional prompt fragment by the general-medicine-summarization and casenote-finalization agents. Publishing an agent freezes this text into it, so an approved new version reaches a note only after each agent that references it is republished; the platform default output-language setting is the lever that applies without a republish, to agents that carry no policy.',
+  content: ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT,
+  category: 'SUMMARY' as PromptTemplateCategory,
+  status: 'APPROVED' as PromptTemplateStatus,
+  // TENANT_DEFAULT, not USER_PERSONAL — the reference set carries every other SYSTEM row.
+  scope: 'TENANT_DEFAULT' as PromptTemplateScope,
+  currentVersionNumber: 1,
+  approvedVersionNumber: 1,
+  departmentId: null as string | null,
+  sourceTemplateId,
+  templateLocked: false,
+  // NOT `pre-summary`: that tag is how the tenant pre-summary row is FOUND (`findTenantPreSummaryTemplateId`).
+  tags: ['policy', 'output-language'],
+});
+
+/** Global authors; SYSTEM is the promoted copy (`sourceTemplateId` → the Global row). */
+export const OUTPUT_LANGUAGE_POLICY_TEMPLATES = [
+  outputLanguagePolicyRow(DEFAULT_TENANT_ID, GLOBAL_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, null),
+  outputLanguagePolicyRow(SYSTEM_TENANT_ID, SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, GLOBAL_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID),
+];
+
+/** One v1 snapshot per row — the row the resolver actually serves (F-01/F-02). */
+export const OUTPUT_LANGUAGE_POLICY_VERSIONS = OUTPUT_LANGUAGE_POLICY_TEMPLATES.map((template) => ({
+  id: template.tenantId === SYSTEM_TENANT_ID ? SYSTEM_OUTPUT_LANGUAGE_POLICY_VERSION_ID : GLOBAL_OUTPUT_LANGUAGE_POLICY_VERSION_ID,
+  tenantId: template.tenantId,
+  promptTemplateId: template.id,
+  versionNumber: 1,
+  content: template.content,
+  changeReason: template.sourceTemplateId
+    ? 'Promoted from the Global playground (TASK-1001 OD-8)'
+    : 'Initial version — the output-language policy as a platform reference-set default (TASK-1001 OD-8)',
+  changedBy: SYSTEM_USER_ID,
+}));
+
+/**
+ * The fragment a note-writing agent attaches to reference its OWN tenant's policy row — the same
+ * shape as `arcaaiOutputLanguagePolicyFragment` in `07b`, under the platform-reserved key the
+ * runtime asks about.
+ *
+ * NO `promptVersionNumber`: publish then resolves the template's own `approvedVersionNumber`, so an
+ * agent's next publish picks up whatever an admin last approved without anyone editing its
+ * instruction. NO `when`: this is the unconditional policy.
+ */
+export const outputLanguagePolicyFragment = (templateId: string) => ({
+  key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
+  promptTemplateId: templateId,
+});
+
 export const seedPromptTemplate = async (client: CorePrismaClient) => {
   console.log('Seeding prompt templates...');
   for (const template of DEFAULT_PROMPT_TEMPLATES) {
@@ -1860,4 +1958,15 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
     await client.promptVersion.upsert({ where: { id: version.id }, update: version, create: version });
   }
   console.log(`Seeded ${GENERAL_MEDICINE_SUMMARY_TEMPLATES.length} General Medicine summary templates + ${GENERAL_MEDICINE_SUMMARY_VERSIONS.length} versions`);
+
+  // TASK-1001 (OD-8) — the output-language policy, Global + SYSTEM. Phase 3, so the rows exist
+  // before phase 25 resolves the agents that reference them (fail-closed otherwise).
+  console.log('Seeding the output-language policy template (Global + SYSTEM)...');
+  for (const template of OUTPUT_LANGUAGE_POLICY_TEMPLATES) {
+    await client.promptTemplate.upsert({ where: { id: template.id }, update: template, create: template });
+  }
+  for (const version of OUTPUT_LANGUAGE_POLICY_VERSIONS) {
+    await client.promptVersion.upsert({ where: { id: version.id }, update: version, create: version });
+  }
+  console.log(`Seeded ${OUTPUT_LANGUAGE_POLICY_TEMPLATES.length} output-language policy templates + ${OUTPUT_LANGUAGE_POLICY_VERSIONS.length} versions`);
 };

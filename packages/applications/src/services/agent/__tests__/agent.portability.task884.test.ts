@@ -878,4 +878,41 @@ describe('composite instructions — the reference-set copy', () => {
       { key: 'peds', systemPrompt: 'minor', when: 'true' },
     ]);
   });
+
+  it('TASK-1001 (OD-8) — an UNPINNED fragment is re-pointed but never given a pin it did not have', async () => {
+    // The shape the seeded SYSTEM note agents carry since OD-8: a pinned clinical body, then the
+    // output-language policy UNPINNED, so each publish takes whatever policy version is approved.
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(
+      agent({
+        id: 'sys-1',
+        tenantId: SYSTEM_TENANT_ID,
+        slug: 'general-medicine-summarization',
+        instruction: COMPOSITE(
+          [
+            { key: 'clinical_note', promptTemplateId: 'sys-gm', promptVersionNumber: 1 },
+            { key: 'output_language_policy', promptTemplateId: 'sys-policy' },
+          ],
+          { variables: { language: { path: 'trigger.context.language' } } },
+        ),
+      }),
+    );
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([]);
+    promptTemplateRepository.findByTenantAndSourceTemplateId.mockImplementation(async (_tenantId: string, sourceId: string) =>
+      sourceId === 'sys-gm' ? ({ id: 'clone-gm', approvedVersionNumber: 1 } as never) : ({ id: 'clone-policy', approvedVersionNumber: 1 } as never),
+    );
+
+    await makeService().cloneFromSystem('general-medicine-summarization', PARTNER);
+
+    const written = agentRepository.create.mock.calls[0][0] as unknown as { instruction: Record<string, unknown> };
+    expect(written.instruction).toEqual({
+      fragments: [
+        // A SOURCE pin is translated to the clone's lineage…
+        { key: 'clinical_note', promptTemplateId: 'clone-gm', promptVersionNumber: 1 },
+        // …an absent one stays absent. A v1 pin here would hold the tenant's agent on policy v1
+        // across every republish, so the admin's edit to its one policy row would never land.
+        { key: 'output_language_policy', promptTemplateId: 'clone-policy' },
+      ],
+      variables: { language: { path: 'trigger.context.language' } },
+    });
+  });
 });

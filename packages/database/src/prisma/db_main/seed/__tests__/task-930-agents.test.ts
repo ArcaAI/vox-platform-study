@@ -31,7 +31,7 @@ import {
   type SeedModelRef,
 } from '../25-agents';
 import { GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES, SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID, TEMPLATE_IDS } from '../07-prompt-template';
-import { SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../00-constants';
+import { SEED_TENANT_ID, SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, SYSTEM_TENANT_ID } from '../00-constants';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONTRACT_SRC = path.resolve(HERE, '../../../../../../workflow-contract/src/index.ts');
@@ -158,10 +158,13 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
   it('general-medicine-summarization binds the tenant`s own General Medicine template and populates EVERY declared variable (F6)', () => {
     for (const spec of ALL_SPECS.filter((s) => s.slug === 'general-medicine-summarization')) {
       const instruction = spec.instruction as Record<string, any>;
-      expect(instruction.promptTemplateId).toBe(
+      // TASK-1001 (OD-8) — the template is the composite's FIRST fragment (the output-language
+      // policy rides after it; `system-output-language-policy.task1001.test.ts` pins that half).
+      const clinical = instruction.fragments[0];
+      expect(clinical.promptTemplateId).toBe(
         spec.tenantId === SYSTEM_TENANT_ID ? SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID : TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY,
       );
-      expect(instruction.promptVersionNumber).toBe(1);
+      expect(clinical.promptVersionNumber).toBe(1);
       expect(Object.keys(instruction.variables).sort()).toEqual([...GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES].sort());
       for (const name of [
         'visit_type',
@@ -185,7 +188,8 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
 
   it('casenote-finalization is an inline system prompt with the §8.3 output schema, guards on, and NO responseFormat (the schema is the format — INTERFACES §5)', () => {
     for (const spec of ALL_SPECS.filter((s) => s.slug === 'casenote-finalization')) {
-      expect((spec.instruction as any).systemPrompt).toMatch(/redact/i);
+      // TASK-1001 (OD-8) — the inline body is now the composite's first (inline) fragment.
+      expect((spec.instruction as any).fragments[0].systemPrompt).toMatch(/redact/i);
       expect(spec.outputSchema).toMatchObject({ type: 'object', required: ['case_note', 'redactions'] });
       expect((spec.outputSchema as any).properties.redactions.items.required).toEqual(['text', 'label']);
       expect(spec.parameters).toMatchObject({ guards: { enabled: true } });
@@ -298,10 +302,13 @@ describe('TASK-930 — seedAgents against an in-memory client', () => {
     // and NER/TTS/STT/TEXT_GENERATION plus the one qualified pre-summary row make five per tenant.
     expect(first).toEqual({ created: 14, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 10 });
     const system = agents.get(PLATFORM_AGENT_SPECS.find((s) => s.slug === 'general-medicine-summarization')!.id);
+    // TASK-1001 (OD-8) — a COMPOSITE: the General Medicine body, then SYSTEM's own output-language policy.
     expect(system.compiledConfig.resolvedPrompt).toMatchObject({
-      source: 'template',
-      promptTemplateId: SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
-      promptVersionNumber: 1,
+      source: 'composite',
+      fragments: [
+        { key: 'clinical_note', source: 'template', promptTemplateId: SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID, promptVersionNumber: 1 },
+        { key: 'output_language_policy', source: 'template', promptTemplateId: SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, promptVersionNumber: 1 },
+      ],
     });
     expect(system).toMatchObject({ sourceTenantId: SEED_TENANT_ID, sourceSlug: 'general-medicine-summarization', sourceVersionNumber: 1 });
     expect(fallbacks.filter((f) => f.agentId === PLATFORM_AGENT_SPECS.find((s) => s.slug === 'realtime-transcription')!.id)).toHaveLength(2);
@@ -327,10 +334,12 @@ describe('TASK-930 — seedAgents against an in-memory client', () => {
 
     const unapproved = fakeClient({ approvedTemplates: false });
     const result2 = await seedAgents(unapproved.client);
-    // The FOUR template-bound agents: two summarization + two warm-start (TASK-932 D-9). The DNA
-    // analyst is NOT among them — its instruction is INLINE on the agent (D-2), precisely so a
-    // tenant is not handed a cloned template it could mistake for the platform's own.
-    expect(result2.skippedUnresolvable).toBe(4);
-    expect(result2.created).toBe(10);
+    // The SIX template-bound agents: two summarization + two warm-start (TASK-932 D-9) + two
+    // finalization, which since TASK-1001 (OD-8) binds the output-language policy TEMPLATE beside
+    // its inline body. The DNA analyst is NOT among them — its instruction is INLINE on the agent
+    // (D-2), precisely so a tenant is not handed a cloned template it could mistake for the
+    // platform's own.
+    expect(result2.skippedUnresolvable).toBe(6);
+    expect(result2.created).toBe(8);
   });
 });
