@@ -115,8 +115,10 @@ describe('PreSummaryProcessor', () => {
     const { processor, promptAssemblyService } = createProcessor({ ...CONSULTATION, parentConsultationId: 'consult-0' });
     await processor.process(job());
 
+    // TASK-1001 (OD-12) — the job's `options.conversationLanguage: 'ml'` is NOT admin configuration
+    // and no longer chooses the output: the platform default does (English, with no settings wired).
     expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'tenant-1', visitType: 'Revisit', conversationLanguage: 'ml' }),
+      expect.objectContaining({ tenantId: 'tenant-1', visitType: 'Revisit', conversationLanguage: 'en' }),
     );
   });
 

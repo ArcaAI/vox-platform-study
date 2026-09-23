@@ -37,6 +37,8 @@ import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition } from '../visit-type/visit-type.service';
 import { readRecordedVisitType } from '../consultation/open-markers';
+import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
+import { resolvePlatformOutputLanguage } from './platform-output-language';
 
 /**
  * ChainSummaryService — generates comprehensive cross-chain summaries.
@@ -112,6 +114,10 @@ export class ChainSummaryService extends BaseService {
     // records NO compute row for a self-hosted call rather than guessing one, and this is the
     // most expensive generation the platform runs. Optional + trailing like the ledger above it.
     @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
+    // TASK-1001 (OD-12) — resolves `consultation.summary.outputLanguage`, the platform-default
+    // language the chain summary is WRITTEN in. Optional + trailing so the positional fixtures keep
+    // their arity; unwired ⇒ the descriptor's code default (English).
+    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -645,7 +651,8 @@ export class ChainSummaryService extends BaseService {
       // remains the follow-up signal, the vocabulary is no longer a literal.
       promptType: this.visitType(consultation).key,
       transcript,
-      conversationLanguage: this.resolveConversationLanguage(request.options),
+      // TASK-1001 (OD-12) — the platform-default OUTPUT language; never a per-request option.
+      conversationLanguage: (await resolvePlatformOutputLanguage(this.effectiveSettings, consultation.tenantId, this.logger)).tag,
       dnaStyleId: request.dnaStyleId,
       explicitTemplate: request.template ?? 'comprehensive',
       // Thread the requesting doctor's preferred prompt template id (Tier-0).
@@ -755,12 +762,6 @@ export class ChainSummaryService extends BaseService {
       });
       throw new BadRequestException('Failed to generate comprehensive summary from AI service');
     }
-  }
-
-  private resolveConversationLanguage(options?: Record<string, unknown>): string {
-    const candidate = options?.conversationLanguage ?? options?.language ?? options?.locale;
-
-    return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : 'en';
   }
 
   /**

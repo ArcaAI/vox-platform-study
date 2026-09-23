@@ -36,6 +36,7 @@ import {
   UserRepository,
   UserRoleAssignmentRepository,
   WorkflowDefinitionRepository,
+  DocumentSectionRepository,
   generateId,
 } from '@arcaai/domains';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
@@ -45,10 +46,11 @@ import { ConfigResolver } from '../../config-resolver';
 import { diffContent } from './content-diff.util';
 import { assembleTranscriptText, readSpeakerId } from './transcript-assembly.util';
 import { assertAttributedClinicianInTenant, resolveAttributedClinician, tenantRoleReaderFor, type ClinicalCaller } from './clinician-attribution';
-import { OUTPUT_LANGUAGE_DEFAULT, platformOutputLanguage } from '../consultation/summary-language';
+import { defaultOutputLanguageInstruction, resolveOutputLanguage, type OutputLanguage } from '../consultation/summary-language';
 // TASK-1001 (owner decision 2026-09-23) — the platform-default language the note is WRITTEN in.
-import { CONSULTATION_OUTPUT_LANGUAGE_KEY } from '../../settings-registry/descriptors/consultation-output-language.descriptors';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
+import { resolvePlatformOutputLanguage } from './platform-output-language';
+import { finalNoteSections, sectionKeysByTitle, splitHeadedNote } from './final-note-sections';
 import { ISummaryService } from './ISummaryService';
 import {
   GenerateSummaryRequest,
@@ -199,6 +201,16 @@ type TextCallResult = LegacyTextSummaryResponse & {
   usage: TextUsageDetail | null;
   guardrailUsage: TextUsageDetail | null;
 };
+
+/**
+ * TASK-1001 (OD-12) — the assembled prompt with the output-language instruction as its LAST line:
+ * after the rendered body and every data block assembly appends, because the instruction nearest
+ * the generation point is the one a model honours most reliably. `null` (a tenant policy fragment
+ * owns the language) returns the prompt unchanged. Nothing else is touched.
+ */
+function withOutputLanguageInstruction<T extends { userPrompt: string }>(prompt: T, language: OutputLanguage | null): T {
+  return language ? { ...prompt, userPrompt: `${prompt.userPrompt}\n\n${defaultOutputLanguageInstruction(language.name)}` } : prompt;
+}
 
 @Injectable()
 export class SummaryService extends BaseService implements ISummaryService {
@@ -397,6 +409,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     // above it, so the positional `new SummaryService(...)` fixtures keep their arity; unwired ⇒
     // the descriptor's own code default (English), never the consultation's declared language.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // TASK-1001 (wave 2, final note) — the consultation's document sections, read ONLY for their
+    // `sectionKey`/`title` pairs, so the final note's `duplicate` flags name a section by the key
+    // `documents/sections` and the live flags already use. Optional + trailing like every
+    // dependency above it; unwired ⇒ keys derived from the note's own headings.
+    @Optional() @Inject(DocumentSectionRepository) private readonly documentSectionRepository?: DocumentSectionRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -532,7 +549,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       caseNotes: promptCaseNotes,
       vitals: client.vitals,
       previousVisits: client.previousVisits,
-      conversationLanguage: await this.resolveNoteOutputLanguage(tenantId),
+      conversationLanguage: (await this.resolveNoteOutputLanguage(tenantId)).tag,
       dnaStyleId: request.dnaStyleId,
       preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
     });
@@ -769,7 +786,8 @@ export class SummaryService extends BaseService implements ISummaryService {
     // The measured readings and prior-visit history the client stated at `open`. The transcript
     // stays authoritative for what happened today; these are background the note may cite.
     const client = await this.readClientClinicalContext(consultationId);
-    const assembledPrompt = await this.promptAssemblyService.assemble({
+    const outputLanguage = await this.resolveNoteOutputLanguage(tenantId);
+    const assembled = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
       vitals: client.vitals,
       previousVisits: client.previousVisits,
@@ -777,7 +795,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // remains the follow-up signal, the vocabulary is no longer a literal.
       promptType: this.visitType(consultation).key,
       transcript: content,
-      conversationLanguage: await this.resolveNoteOutputLanguage(tenantId),
+      conversationLanguage: outputLanguage.tag,
       dnaStyleId: effectiveDnaStyleId,
       preSummaryText: latestPreSummaryText ?? undefined,
       // The SAME agent that ran live reviews and
@@ -790,6 +808,14 @@ export class SummaryService extends BaseService implements ISummaryService {
       explicitTemplate: request.template,
       preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
     });
+    // TASK-1001 (OD-12) — the output language reaches the body above only as a VARIABLE, and a
+    // department body that says "write the content in the conversation language" can still win
+    // over a variable. So the note's language is also STATED, by name, as the prompt's last
+    // instruction — the same sentence the live lane's operating frame states, from the one shared
+    // builder. Stated only when no tenant output-language policy fragment owns the language, and
+    // on this surface none can: assembly resolves the agent's PRIMARY template, never its fragment
+    // list, so the policy fragment is never selected here (`resolveOutputLanguage(false, …)`).
+    const assembledPrompt = withOutputLanguageInstruction(assembled, resolveOutputLanguage(false, outputLanguage.tag));
 
     // Call TEXT service
     const textResponse = await this.callTextService({
@@ -1701,6 +1727,12 @@ export class SummaryService extends BaseService implements ISummaryService {
 
   /**
    * Get latest summary for consultation (raw or modified)
+   *
+   * TASK-1001 (wave 2, final note) — plus `sections`: the note split at its headings, each carrying
+   * the cross-section `duplicate` flags computed over this FINAL text (`final-note-sections.ts`).
+   * This is the note a client shows once the consultation is finalised; the live flags describe the
+   * text as it was being written and do not survive the finalizer's rewrite. `content` is returned
+   * exactly as persisted — the sections only LOCATE text in it.
    */
   async getLatestSummary(consultationId: string): Promise<SummaryResponse | null> {
     // Try to get latest modified summary first, then raw summary
@@ -1709,7 +1741,35 @@ export class SummaryService extends BaseService implements ISummaryService {
       summary = await this.contextItemRepository.findLatestRawSummary(consultationId);
     }
     if (!summary) return null;
-    return SummaryDtoMapper.toResponse(summary);
+    const response = SummaryDtoMapper.toResponse(summary);
+
+    // Fewer than two headed sections has nothing to compare across — and no reason to read rows.
+    if (splitHeadedNote(response.content).length < 2) return response;
+    const sections = finalNoteSections(response.content, await this.documentSectionKeysByTitle(consultationId));
+    return sections ? { ...response, sections } : response;
+  }
+
+  /**
+   * TASK-1001 (wave 2, final note) — the consultation's own section keys, by title, so a final
+   * `duplicate` flag names a section by the key `GET consultations/:id/documents/sections` reports.
+   *
+   * Enrichment, never a precondition: no repository, no tenant, or a failed read answers an empty
+   * map and the note's headings derive the keys. Reads keys and titles only — no content, so
+   * nothing is decrypted.
+   */
+  private async documentSectionKeysByTitle(consultationId: string): Promise<Map<string, string>> {
+    const tenantId = this.tenantId;
+    if (!this.documentSectionRepository || !tenantId) return new Map();
+    try {
+      return sectionKeysByTitle(await this.documentSectionRepository.findByConsultation(tenantId, consultationId));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Document sections could not be read for the final note`s section keys — deriving them from its headings',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return new Map();
+    }
   }
 
   /**
@@ -2216,20 +2276,14 @@ export class SummaryService extends BaseService implements ISummaryService {
    *
    * Never throws: a settings-backend failure is logged and the note is written in the code default
    * rather than failing a clinician's summary.
+   *
+   * Returns the tag (what assembly binds) AND the name (what `generateSummary` STATES), the name
+   * from `summaryLanguageName` — so a platform default of `hi` is stated as "Hindi", never through
+   * the frozen v1-compat map, which knows only en/ml and would say "English". The one read shared
+   * with the chain-summary and queue paths: `resolvePlatformOutputLanguage`.
    */
-  private async resolveNoteOutputLanguage(tenantId: string): Promise<string> {
-    if (!this.effectiveSettings) return OUTPUT_LANGUAGE_DEFAULT;
-    try {
-      const resolved = await this.effectiveSettings.resolveEffective(CONSULTATION_OUTPUT_LANGUAGE_KEY, { tenantId });
-      return platformOutputLanguage(resolved.value).tag;
-    } catch (error) {
-      this.logger.warn({
-        message: 'consultation.summary.outputLanguage could not be resolved — writing the note in the code default',
-        tenantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return OUTPUT_LANGUAGE_DEFAULT;
-    }
+  private resolveNoteOutputLanguage(tenantId: string): Promise<OutputLanguage> {
+    return resolvePlatformOutputLanguage(this.effectiveSettings, tenantId, this.logger);
   }
 
   /**
