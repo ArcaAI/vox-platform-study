@@ -164,7 +164,11 @@ export interface ConsultationGetResponse {
     | 'CLOSED_INCOMPLETE';
   /** The PRIOR consultation, when this visit is a revisit or a referral — see `OpenConsultationRequest.parentConsultationId`. */
   parentConsultationId?: string;
-  /** As DECLARED at open; absent = undeclared. NOT the STT language. */
+  /**
+   * The SPOKEN (source) language as DECLARED at open — e.g. `ml-en`, Malayalam-English code-switch;
+   * absent = undeclared. It never chooses the note's language: that is the tenant's output-language
+   * policy, English by default (TASK-1001).
+   */
   language?: string;
   metadata?: Record<string, unknown>;
   createdAt: string;

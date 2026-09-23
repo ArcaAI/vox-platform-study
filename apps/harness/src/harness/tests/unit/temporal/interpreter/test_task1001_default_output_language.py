@@ -247,8 +247,7 @@ class TestParityWithTheGateway:
 
     def test_the_output_grammar(self) -> None:
         declaration = (
-            "export const SUMMARY_LANGUAGE_PATTERN = "
-            f"/{ol.OUTPUT_LANGUAGE_PATTERN_SOURCE}/i;"
+            "export const SUMMARY_LANGUAGE_PATTERN = " f"/{ol.OUTPUT_LANGUAGE_PATTERN_SOURCE}/i;"
         )
         assert declaration in _source(_SUMMARY_LANGUAGE_TS)
 
@@ -260,15 +259,22 @@ class TestParityWithTheGateway:
         assert names == ol.LANGUAGE_NAMES
 
     def test_the_step_is_the_live_lanes_wording(self) -> None:
-        source = _source(_LIVE_DOCUMENTATION_TS)
+        # One builder serves the realtime lane and the direct summary path.
+        source = _source(_SUMMARY_LANGUAGE_TS)
         match = re.search(
-            r"function defaultOutputLanguageStep\(languageName: string\): string \{\s*"
+            r"export function defaultOutputLanguageInstruction\(languageName: string\): string \{\s*"
             r"return `([^`]*)`;",
             source,
         )
-        assert match is not None, "defaultOutputLanguageStep moved — re-point this parity test"
+        assert (
+            match is not None
+        ), "defaultOutputLanguageInstruction moved — re-point this parity test"
         live = match.group(1).replace("${languageName}", "{language_name}")
         assert live == ol.DEFAULT_OUTPUT_LANGUAGE_STEP_TEMPLATE
+        # ...and the live lane calls it rather than keeping its own copy.
+        assert "defaultOutputLanguageInstruction(outputLanguage.name)" in _source(
+            _LIVE_DOCUMENTATION_TS
+        )
 
 
 # ---------------------------------------------------------------------------------------------

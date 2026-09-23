@@ -134,6 +134,7 @@ import {
 } from './realtime/turn-contract';
 import {
   OUTPUT_LANGUAGE_DEFAULT,
+  defaultOutputLanguageInstruction,
   platformOutputLanguage,
   readSummaryLanguage,
   resolveOutputLanguage,
@@ -442,21 +443,6 @@ function liveCandidatePromptSource(resolvedPrompt: ComposableResolvedPrompt, ins
   if (resolvedPrompt && resolvedPrompt.source === 'composite') return resolvedPrompt;
   const content = resolvedPrompt?.content ?? (typeof instruction.systemPrompt === 'string' ? instruction.systemPrompt : null);
   return content ? { source: 'inline', content } : null;
-}
-
-/**
- * TASK-1001 (owner decision 2026-09-23) — the operating frame's language step, emitted ONLY when no
- * tenant output-language policy fragment is selected for the call: the platform default, by name.
- *
- * Three clauses, each load-bearing:
- *  - the language, named — never a tag, and never the consultation's declared (source) language;
- *  - the OVERRIDE, named: the clinical corpus says "the section content MUST be in the conversation
- *    language" in ~40 places, and a generic label loses to that specific in-template instruction
- *    (the 2026-08-10 lesson, `summary-prompt.builder.ts` `languageDirective`);
- *  - "Keep the section keys and headings exactly as given, in English." — verbatim, finding S-4.
- */
-function defaultOutputLanguageStep(languageName: string): string {
-  return `Write every section value in ${languageName}, whatever language was spoken, regardless of any instruction elsewhere in this prompt to write content in the conversation language. Keep the section keys and headings exactly as given, in English.`;
 }
 
 const PLATFORM_TEMPLATE: ResolvedDocumentTemplate = Object.freeze({
@@ -5670,7 +5656,7 @@ return 0`;
     const steps = [
       "The transcript is PARTIAL and may be code-switched or not in English. Read it in whatever language it is in and understand it in English internally; never transcribe another language's words into the note untranslated.",
       'This is an UPDATE, not a fresh note. Keep everything the running note above already records, extend a section the new transcript adds to, and revise one only where the new transcript contradicts it.',
-      ...(outputLanguage ? [defaultOutputLanguageStep(outputLanguage.name)] : []),
+      ...(outputLanguage ? [defaultOutputLanguageInstruction(outputLanguage.name)] : []),
       `Fill the sections of this document and no others, using these keys exactly: ${sectionKeys.join(', ')}. A section the consultation has not reached is null — never a placeholder, never invented content.`,
       'The consultation is still in progress. Write no closing summary, no sign-off and no statement that the encounter has ended.',
     ];

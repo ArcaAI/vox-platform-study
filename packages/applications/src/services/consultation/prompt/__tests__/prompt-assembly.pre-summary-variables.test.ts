@@ -125,6 +125,29 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
     expect(en.userPrompt).toContain('- Language: English');
   });
 
+  // TASK-1001 — callers pass the NOTE OUTPUT language here (the platform default), not the
+  // spoken one. v1's map knows only en/ml, so a Hindi default used to render as "English".
+  it('names an output language outside v1’s map natively, and keeps a code-switch tag at English', async () => {
+    const service = await getService();
+    const hi = await service.assemble({
+      tenantId: 'tenant-1',
+      departmentId: 'dept-1',
+      promptType: 'pre-summary',
+      transcript: 'case notes',
+      conversationLanguage: 'hi',
+    });
+    expect(hi.userPrompt).toContain('- Language: Hindi');
+
+    const codeSwitch = await service.assemble({
+      tenantId: 'tenant-1',
+      departmentId: 'dept-1',
+      promptType: 'pre-summary',
+      transcript: 'case notes',
+      conversationLanguage: 'ml-en',
+    });
+    expect(codeSwitch.userPrompt).toContain('- Language: English');
+  });
+
   it("applies v1's defaults for the fields the native context has no equivalent for", async () => {
     const service = await getService();
     const { userPrompt } = await service.assemble({

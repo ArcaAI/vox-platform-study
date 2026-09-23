@@ -30,7 +30,7 @@ TypeScript source (``tests/unit/temporal/interpreter/test_task1001_default_outpu
 * :data:`OUTPUT_LANGUAGE_DEFAULT`, :data:`OUTPUT_LANGUAGE_PATTERN_SOURCE` (the OUTPUT grammar,
   ``SUMMARY_LANGUAGE_PATTERN``) and :data:`LANGUAGE_NAMES` (``summaryLanguageName``) —
   ``consultation/consultation/summary-language.ts``;
-* the step's wording — ``defaultOutputLanguageStep`` in ``live-documentation.service.ts``.
+* the step's wording — ``defaultOutputLanguageInstruction`` in ``summary-language.ts``.
 
 Pure: no I/O and no Temporal import. The setting is READ by the ``interpreter.core_agent``
 activity (``core._output_language_snapshot``) and handed to :func:`resolve_platform_output_language`
@@ -97,7 +97,7 @@ LANGUAGE_NAMES: dict[str, str] = {
 }
 
 #: The live lane's proven text, with ``{language_name}`` where the TypeScript template literal
-#: has ``${languageName}``. Three clauses, each load-bearing (see ``defaultOutputLanguageStep``):
+#: has ``${languageName}``. Three clauses, each load-bearing (see ``defaultOutputLanguageInstruction``):
 #: the language BY NAME; the override NAMED, because a generic label loses to the clinical
 #: corpus's specific "write in the conversation language" clause; and the headings clause,
 #: verbatim, because a translated heading makes ALaaS insert a twin section (finding S-4).
@@ -180,7 +180,7 @@ def resolve_platform_output_language(snapshot: Any | None) -> OutputLanguage:
 
 
 def default_output_language_step(language_name: str) -> str:
-    """The step that states the platform default BY NAME. Mirrors ``defaultOutputLanguageStep``."""
+    """The step that states the platform default BY NAME. Mirrors ``defaultOutputLanguageInstruction``."""
     return DEFAULT_OUTPUT_LANGUAGE_STEP_TEMPLATE.format(language_name=language_name)
 
 

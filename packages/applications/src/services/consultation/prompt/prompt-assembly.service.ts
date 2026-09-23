@@ -31,6 +31,7 @@ import { HarnessPolicyService } from '../../harness-policy/harness-policy.servic
 import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
 import { truncatePriorVisitSummary } from '../harness/prior-visit-summary';
+import { parseLanguageTag, summaryLanguageName } from '../consultation/summary-language';
 import { IActiveUserContext } from '../../../interfaces';
 import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
 
@@ -933,6 +934,11 @@ export class PromptAssemblyService {
           language: params.conversationLanguage,
         }),
       );
+      // TASK-1001 — every caller now passes the NOTE OUTPUT language (the platform default), and
+      // v1's map knows only en/ml, so a Hindi default rendered "English". Name it natively. A
+      // code-switch tag (`ml-en`) fails the output grammar and keeps v1's defused "English".
+      const nativeName = summaryLanguageName(parseLanguageTag(params.conversationLanguage));
+      if (nativeName) variables.language_name = nativeName;
     }
 
     if (params.preSummaryText) {

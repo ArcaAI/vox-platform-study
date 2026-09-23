@@ -54,7 +54,11 @@ export interface LiveSummaryHandlers extends StreamHandlersBase {
   onPreSummary?(event: PreSummaryEvent): void;
 }
 
-/** Discriminate one live-summary payload. The `event` field is IN THE JSON, not on the SSE frame. */
+/**
+ * Discriminate one live-summary payload by the `event` field IN THE JSON. `section.patch` and
+ * `presummary` also arrive as named SSE frames (TASK-932 L-2), but the snapshot and `closed` stay on
+ * the default frame, so the JSON field is the one discriminator that covers all four.
+ */
 function isSectionPatch(payload: Record<string, unknown>): payload is SectionPatchEvent & Record<string, unknown> {
   return payload.event === 'section.patch';
 }
