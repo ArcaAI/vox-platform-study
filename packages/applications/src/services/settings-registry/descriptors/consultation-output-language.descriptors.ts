@@ -33,6 +33,18 @@
 // Absent must never mean "no instruction": that is exactly the posture that let the clinical
 // corpus's own "write content in the conversation language" clause win and produced a
 // code-switched hematology note. An absent row therefore resolves to the code default, English.
+//
+// ## Why `consumedBy: ['harness']` (TASK-1001 lane L-B)
+//
+// The DURABLE lane runs in `apps/harness`, and it writes notes too: `platform-default-summarization`
+// runs the SYSTEM `general-medicine-summarization` agent there, whose body says "write … in the
+// conversation language ({{language}})". Its `core.agent` TEXT_GENERATION activity now states this
+// default exactly as the live lane's `operatingFrame` does (when no tenant policy fragment is
+// selected), and it reads the value on `GET /internal/effective-config?service=harness` — the pull
+// route every other harness knob rides, with its TTL, negative cache and push invalidation. That
+// route is PLATFORM-scope, which is exactly this key's `maxScope`: one value, no tenant opinion, so
+// the one-snapshot-per-process channel is the right one (`registry.types.ts` `consumedBy`). The
+// gateway's own readers (the live flush, the durable handoff) keep resolving it directly.
 
 import { OUTPUT_LANGUAGE_DEFAULT, SUMMARY_LANGUAGE_PATTERN } from '../../consultation/consultation/summary-language';
 import { SettingDescriptor } from '../registry.types';
@@ -47,6 +59,9 @@ export const CONSULTATION_OUTPUT_LANGUAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: CONSULTATION_OUTPUT_LANGUAGE_KEY,
     tier: 'global-kv',
+    // The durable lane's reader — see the header. The ONLY wiring step: this is what puts the key
+    // on `GET /internal/effective-config?service=harness`.
+    consumedBy: ['harness'],
     dataType: 'string',
     sensitivity: 'internal',
     // PLATFORM-owned — see the header: the tenant's lever is its policy fragment.

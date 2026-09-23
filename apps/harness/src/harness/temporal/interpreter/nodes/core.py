@@ -47,6 +47,7 @@ from harness.services.text_client import TextServiceError, usage_detail_counters
 from harness.temporal.activities import (
     FailedAttempt,
     _api_client,
+    _config_snapshot,
     _nlp_client,
     _phi_redactor,
     _text_client,
@@ -88,6 +89,11 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     read_text_fallback,
     read_text_primary,
     wire_provider,
+)
+from harness.temporal.interpreter.output_language import (
+    append_default_output_language_step,
+    output_language_policy_selected,
+    resolve_platform_output_language,
 )
 from harness.temporal.interpreter.prompt_composition import (
     ComposedPrompt,
@@ -794,6 +800,22 @@ def _system_prompt(
     return _compose_system_prompt(resolved, config, context).prompt
 
 
+async def _output_language_snapshot() -> Any | None:
+    """TASK-1001 (OD-12) — the control-plane snapshot the platform-default NOTE OUTPUT LANGUAGE
+    (``consultation.summary.outputLanguage``) is read from, or ``None`` when it cannot be read.
+
+    I/O, so it is called from the ``interpreter.core_agent`` ACTIVITY only — never from workflow
+    code. It is the service's ONE effective-config client (TTL + jitter, negative cache,
+    single-flight, push invalidation on ``arca:config:invalidate``), so a platform admin's write
+    reaches the next durable generation without a redeploy. Never raises: ``_config_snapshot``
+    degrades every failure to ``None``, which ``resolve_platform_output_language`` reads as the
+    code default, English.
+
+    A seam: the hermetic suite replaces it (``tests/conftest.py``) with "no control plane".
+    """
+    return await _config_snapshot()
+
+
 #: OD-E's closed `trigger` vocabulary, mirrored from
 #: `packages/applications/src/services/usageLedger/usage-attributes.ts` (`USAGE_TRIGGERS`). A
 #: value outside that list is dropped by the ledger's attribute allow-list, so the two spellings
@@ -1239,6 +1261,13 @@ async def _run_text_generation(
     attributable on the same rule as every fallback: bare ``ResolvedAgent.fundingTier`` is set
     only for a cloud BYO override, so without it a self-hosted platform primary emits
     ``fundingTier: null`` while its own fallback emits ``"platform"``.
+
+    TASK-1001 (OD-12) — this arm is the durable lane's NOTE writer, so its system prompt states
+    the note's OUTPUT language exactly as the realtime lane's ``generateDocument`` does
+    (``operatingFrame``): when the candidate's composed instruction SELECTED no
+    ``output_language_policy`` fragment, the platform default's step is appended as the last
+    paragraph. The consultation's declared (SOURCE) language is never consulted. See
+    ``output_language.py``.
     """
     config = _config(payload)
     bound = _bound(payload)
@@ -1323,6 +1352,11 @@ async def _run_text_generation(
     budget = ActivityBudget.for_activity(settings.text_timeout_s)
     run_context = _run_context(payload)
     redactor = _phi_redactor()
+    # TASK-1001 (OD-12) — the platform-default note OUTPUT language, read ONCE for the whole walk
+    # (every candidate that selects no tenant policy states the same default). Read HERE, inside
+    # the activity: it is I/O, and workflow code never sees it — the replayer feeds this
+    # activity's recorded RESULT back, so no command changes and no `workflow.patched` is needed.
+    platform_default = resolve_platform_output_language(await _output_language_snapshot())
     last_error: TextServiceError | None = None
     # §6.2 Gap A — one stats block per candidate that was TRIED and lost. The walk used to do
     # `last_error = exc; continue` with no timer at all, so a failed BYOK attempt cost the
@@ -1368,7 +1402,22 @@ async def _run_text_generation(
                 status="DEGRADED",
                 reason=f"core.agent: prompt_composition_empty: {exc}",
             )
-        system_prompt = composed.prompt
+        # TASK-1001 (OD-12) — per CANDIDATE, because a fallback agent carries its own instruction:
+        # a selected tenant policy owns the language (nothing added); otherwise the platform
+        # default is stated by name, last, overriding any "write in the conversation language"
+        # clause the instruction carries. Appended BEFORE the PHI egress guard below, so what is
+        # screened is exactly what is sent.
+        policy_selected = output_language_policy_selected(composed.selected)
+        system_prompt = append_default_output_language_step(
+            composed.prompt, composed.selected, platform_default
+        )
+        _LOGGER.info(
+            "core.agent.output_language",
+            node_id=payload.node_id,
+            slug=candidate.slug,
+            policy_selected=policy_selected,
+            output_language=None if policy_selected else platform_default.tag,
+        )
         prompt_fragments = composed.selected or None
         for exclusion in composed.excluded:
             # OD-5/OD-11 — an exclusion is not a degrade, and only the KEY is observable: a

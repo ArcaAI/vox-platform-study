@@ -4,10 +4,12 @@
  * policy fragment is not selected.
  *
  * What is pinned, because each one fails SILENTLY when it drifts:
- *  1. The exact key. Three runtimes read it by name (the live lane, the durable handoff and the
- *     summary service); a renamed key is a default nobody can ever change.
+ *  1. The exact key. Four runtimes read it by name (the live lane, the durable handoff, the
+ *     summary service and — in Python — the harness's durable `core.agent`, parity-pinned by
+ *     `test_task1001_default_output_language.py`); a renamed key is a default nobody can ever change.
  *  2. The channel: `global-kv`, SYSTEM-only. The tenant's lever is its policy fragment; a tenant
- *     row here would be a second, unconditional place to say the same thing.
+ *     row here would be a second, unconditional place to say the same thing. `consumedBy:
+ *     ['harness']` — the durable lane reads it on the platform-scope pull route (lane L-B).
  *  3. `open-to-default` with default `en`: absent must mean English, never "no instruction" — the
  *     posture that let the corpus's "write in the conversation language" clause produce a
  *     code-switched note.
@@ -53,8 +55,19 @@ describe('TASK-1001 — consultation.summary.outputLanguage descriptor', () => {
     expect(CONSULTATION_OUTPUT_LANGUAGE_DEFAULT).toBe('en');
   });
 
-  it('is not served on the Python pull route — the gateway is its only reader', () => {
-    expect(HOPE_SETTINGS_REGISTRY.getOrThrow(KEY).consumedBy).toBeUndefined();
+  it('is served to the harness on the Python pull route — the durable lane states it too (lane L-B)', () => {
+    // `apps/harness` reads it off `GET /internal/effective-config?service=harness`; without this
+    // declaration the pull route never carries it and the durable lane would state the code
+    // default forever, whatever a platform admin wrote.
+    expect(HOPE_SETTINGS_REGISTRY.getOrThrow(KEY).consumedBy).toEqual(['harness']);
+  });
+
+  it('rides the pull route only because it is PLATFORM-scope — never a tenant-varying key', () => {
+    // `registry.types.ts`: a `maxScope: 'tenant'` descriptor must not declare `consumedBy` (the
+    // route is one cached snapshot per process). The tenant's lever is its policy fragment.
+    const d = HOPE_SETTINGS_REGISTRY.getOrThrow(KEY);
+    expect(d.maxScope).toBe('system');
+    expect(d.sensitivity).not.toBe('secret');
   });
 
   it('accepts ONE language tag', () => {
