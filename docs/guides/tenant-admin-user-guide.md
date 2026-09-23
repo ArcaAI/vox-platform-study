@@ -356,6 +356,17 @@ A failed run adds a plain sentence and the raw reason underneath:
 That raw line is the one to send your integrator — it names exactly what was wrong. **View run**
 opens the run itself, where you can see which step failed.
 
+### How long a finished consultation waits for sign-off
+
+Once the doctor stops recording and the final note is ready, the consultation waits for the
+doctor's approval (in ALaaS: **Save** or **Submit**). If nobody approves in time, it is closed
+**unsigned** (`CLOSED_INCOMPLETE`) — the doctor can still sign it later, or resume recording.
+
+**Settings → Consultation Pipeline → Consultation completion timeout (minutes)** sets how long it
+waits for your tenant. Leave it unset to follow the platform default (5 minutes); **Reset** returns
+to the default. The whole life of a consultation, and what each state means, is in the
+[Consultation Session Lifecycle](consultation-session-lifecycle.md) guide.
+
 ---
 
 ## 11. What each refusal means to your integrator

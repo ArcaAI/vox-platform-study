@@ -19,6 +19,7 @@ docs/
 |-- development-guide.md                   Hands-on developer guide (setup, workflows)
 |-- guides/                                Day-1 guides for people outside this repo
 |   |-- client-integration-guide.md        Client-side Development & Integration Guide
+|   |-- consultation-session-lifecycle.md  Consultation Session Lifecycle (states, completion timeout, resume)
 |   `-- tenant-admin-user-guide.md         Tenant Admin User Guide (console click-paths)
 |-- consultation-context-schema-integration-guide.md   Pointer stub -> guides/client-integration-guide.md
 |-- section-syntax.md                      Optional tabbed-rendering markers for docs
@@ -50,6 +51,7 @@ docs/
 | [development-patterns-and-standards.md](./development-patterns-and-standards.md) | Layer-by-layer coding standards and patterns (database -> domains -> applications -> API; Python services; SDK) |
 | [development-guide.md](./development-guide.md) | Practical developer guide: environment setup, dev stack, testing, common workflows |
 | [guides/client-integration-guide.md](./guides/client-integration-guide.md) | **Client-side Development & Integration Guide** — credentials and scope presets, type generation, opening a consultation with typed context and every refusal code, streaming audio, the live streams, the review gate and the approve -> close finish, completion signals, and the browser-SDK equivalent of every step |
+| [guides/consultation-session-lifecycle.md](./guides/consultation-session-lifecycle.md) | **Consultation Session Lifecycle** — for tenant admins and integration engineers: every state and transition, the completion window (stop + final note → approve, or closed unsigned after the tenant's timeout), late sign-off, resuming, configuring the timeout in Settings, the calls and streams per step, the other timers, troubleshooting |
 | [guides/tenant-admin-user-guide.md](./guides/tenant-admin-user-guide.md) | **Tenant Admin User Guide** — the console side, as click-paths: departments, clinicians, consent, defining and publishing the context schema, agents and workflows, issuing an API key, watching a consultation, and what each refusal means to your integrator |
 | [consultation-context-schema-integration-guide.md](./consultation-context-schema-integration-guide.md) | Pointer stub -> `guides/client-integration-guide.md` |
 | [section-syntax.md](./section-syntax.md) | Optional `<!-- @section -->` / `<!-- @example -->` / `<!-- @tabs -->` markers for docs that render with Content/Example tabs |

@@ -606,10 +606,15 @@ await hope.consultations.close(consultation.id, { clinicianUserId: '<clinician-u
 
 Legal states, which is where 409s come from:
 
-| Call                | Legal from            | Otherwise           |
-| ------------------- | --------------------- | ------------------- |
-| `summaries.approve` | `PENDING_REVIEW`      | 409                 |
-| `close`             | `SIGNED`, `TIMED_OUT` | 409 — approve first |
+| Call                | Legal from                                                                   | Otherwise           |
+| ------------------- | ---------------------------------------------------------------------------- | ------------------- |
+| `summaries.approve` | `PENDING_REVIEW`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT`, `CLOSED_INCOMPLETE`  | 409                 |
+| `close`             | `SIGNED`, `TIMED_OUT` (an already-closed consultation is returned unchanged) | 409 — approve first |
+
+A consultation nobody approves within the tenant's **completion timeout** (default 5 minutes after
+the final note is ready) is closed unsigned, `CLOSED_INCOMPLETE`; approving it later still signs it.
+The states, the timeout and resuming are in the
+[Consultation Session Lifecycle](consultation-session-lifecycle.md) guide.
 
 `clinicianUserId` names the clinician the approval is attested for: required for a service-account
 caller, refused for a human acting for themselves, 404 for a clinician outside the tenant. Pass
