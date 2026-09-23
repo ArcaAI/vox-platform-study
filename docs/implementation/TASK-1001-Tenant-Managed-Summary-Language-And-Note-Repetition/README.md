@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — wave 2 merged and pushed (`9e8db9d91`); cluster rollout + resumed-recording re-run pending |
+| **Status** | Review — deployed to `hope-v2-dev` (`dc4c218f`) and verified there across resumed recordings; awaiting owner sign-off |
 | **Type** | bugfix + feature |
 | **Branch** | `dev-2.2` |
 | **Repos** | `arca/hope-v2` (primary) · `ALaaSv3.0` (secondary, latent defects) |
@@ -468,6 +468,16 @@ Every run: the resume made the model restate what it had already written, and th
 
 **New finding — cross-section repeats.** One run filed the same paragraph (lecture content with no clinical home) into both `family_history` and `diagnosis`, as a near-duplicate ("many of the symptoms" / "symptoms"). Per-section dedup cannot see it by design. Owner decision 2026-09-23: FLAG, NEVER DROP — lane X1 (HOPE `duplicate` annotation kind, near-duplicate matching with digit tokens required to match exactly) and lane X2 (ALaaS renders it on the routed clinical screen; the export stays byte-identical).
 
+### Cross-section duplicate flag — lanes X1 (HOPE) and X2 (ALaaS), verified on the cluster
+
+Owner decision 2026-09-23: **flag, never drop.** HOPE `03270e7a5` (merged `d6632ce18`, artifacts `dc4c218f5`): `SECTION_ANNOTATION_KINDS` gains `duplicate`; `SectionAnnotationDto` gains `duplicateOf` (sectionKey) and `duplicateOfTitle`. A run of ≥2 consecutive eligible sentences in the text a turn writes to section S that all match sentences of ONE other section T (T's stored text, or its post-turn text when T precedes S in template order) gets one annotation on S. Two sentences match when their normalised forms are equal, or when word-token Jaccard ≥ 0.8 AND their number tokens are identical as a multiset (so `1000 mg` never matches `100 mg`; `1.05` is one token; Malayalam words stay whole). Content is never dropped or altered. The flag is persisted on `DocumentSection.annotations`, published on `section.patch`, returned by `GET /consultations/:id/documents/sections`, dropped on a replace or a clinician edit (stale offsets), and counted in `repetition_pressure` and as `turnCrossSectionDuplicates` on the flush log. The first exact-match rule would have MISSED the observed pair ("many of the symptoms" vs "symptoms"); the near-duplicate rule was added after measuring it. ALaaS renders it on both screens (see the sibling ticket).
+
+**Gate (after merge):** applications 14976 passed · api 4863 · vox-node 587 · api tsc incl. tests 0 errors · typecheck set green · openapi / portal / gen:admin no drift. **RED:** with the pre-X1 turn contract and store restored, 25 of 29 flag tests fail; 29/29 after. Realtime suite 212/212 after formatting.
+
+**Cluster (`dc4c218f`, consultation `01a0cc66-faef`):** the case reproduced and was flagged — `diagnosis` carries `{kind: duplicate, duplicateOf: family_history, duplicateOfTitle: "Family History"}` over the near-duplicate paragraph; both copies kept; flush 04:02:16 logged `turnCrossSectionDuplicates: 1`, `turnDroppedSentences: 2`, `repetition_pressure`; the resume flush before it dropped 3. Final note: 0 repeated sentences within any section, 0 Malayalam, all six spoken clinical facts intact including "pain from eight to two".
+
+**Open from X1/X2:** the final note built after `note.final` from durable rows carries no annotations, so a section whose final text differs from its live text shows no flag — needs HOPE's final document to carry `duplicate` annotations. A long sentence differing only by a negation can be flagged (never dropped). The admin-console playground keeps its own annotation-kind list, already missing `finding` and now `duplicate`.
+
 ### Follow-ups — recorded, not in this ticket
 1. **Direct summary-generation path** (`summary.service`, used by the SDK's `summary.generateSummary`, not by ALaaS): the output language reaches the prompt only as a variable; a department body that says "write in the conversation language" can still win there. Append the same named-override sentence at assembly.
 2. **SYSTEM `general-medicine-summarization`** says "in the conversation language ({{language}})", and on the durable/harness lane no runtime step overrides it. Non-ArcaAI tenants inherit it. Needs a harness-side default step or the template to bind `{{language_name}}`.
@@ -482,6 +492,7 @@ Every run: the resume made the model restate what it had already written, and th
 | Date | Change |
 |---|---|
 | 2026-09-22 | Ticket opened. Both defects root-caused against `hope-v2-dev`. Design drafted; OD-1…OD-8 pending. |
+| 2026-09-23 | Cross-section duplicate flag (X1 HOPE, X2 ALaaS) merged, gated, RED verified, deployed `dc4c218f`, verified on the cluster. Penalty A/B: kept at 0. 22-agent policy rollout done via the admin API. |
 | 2026-09-23 | Wave 2: owner answered OD-7/9/10/12/13. Penalty plumbing (P1/P2), English-by-default output language with `ml-en` accepted (L5), ALaaS sibling ticket S-1…S-5 (A1/A2). Merged, gated once, RED verified, worktrees destroyed, pushed `9e8db9d91` (pipeline #1304). |
 | 2026-09-22 | Implemented in four parallel worktree lanes, merged to `dev-2.2`, gated once (`640762e55`). OD-7 answered (keep E2B). OD-10 opened: the decode-time penalties are inert on this platform, so the dedup is the only defence. OD-11 resolved against the ticket's own §A2. Worktrees and branches destroyed after the merge and the green gate. |
 | 2026-09-22 | Four parallel read-only investigation lanes (HOPE stream contract · ALaaS consumer · cluster log forensics · stored-data truth). **Part B confirmed by decryption**: the duplication is in HOPE's stored note, in three exact-repeat shapes, none a paraphrase — which settles OD-5 toward exact-normalised sentence dedup. Nine secondary findings (S-1…S-9) recorded, including one confirmed-occurred ALaaS double-subscription and an observability bug that inflated the apparent stream-open count from 4 to 58. OD-9 added. |
