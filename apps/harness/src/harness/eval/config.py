@@ -248,6 +248,7 @@ class JudgeConfig(BaseSettings):
     #   • the read side, by `harness.eval.reasoning.resolve_judge_reasoning`, which REFUSES
     #     an out-of-vocabulary value and logs it rather than coercing it.
 
+
 class EvalConfig(BaseSettings):
     """Eval-run thresholds + golden-set pin (the release-gate knobs)."""
 

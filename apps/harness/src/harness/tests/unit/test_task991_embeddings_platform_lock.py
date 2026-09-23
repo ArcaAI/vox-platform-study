@@ -220,9 +220,7 @@ class TestTheModelIsStillFailClosed:
         assert require_embeddings_model(folded) == "BAAI/bge-m3"
 
     @pytest.mark.asyncio
-    async def test_an_absent_platform_row_degrades_rather_than_inventing_a_model(
-        self, monkeypatch
-    ):
+    async def test_an_absent_platform_row_degrades_rather_than_inventing_a_model(self, monkeypatch):
         async def _absent(*_a, **_k):
             return ProviderCredential(outcome=CredentialOutcome.ABSENT)
 
@@ -304,9 +302,7 @@ class TestTheActivityEmbedsWithThePlatformModel:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("outcome", [CredentialOutcome.DENIED, CredentialOutcome.UNAVAILABLE])
-    async def test_an_unusable_platform_row_degrades_and_builds_nothing(
-        self, monkeypatch, outcome
-    ):
+    async def test_an_unusable_platform_row_degrades_and_builds_nothing(self, monkeypatch, outcome):
         """One lane means no fallback — which must degrade VISIBLY rather than
         embed on something else."""
         asked: list[str] = []

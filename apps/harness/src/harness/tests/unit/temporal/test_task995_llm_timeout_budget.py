@@ -61,9 +61,9 @@ def test_generate_budget_admits_a_five_minute_llm_call() -> None:
     prompt tokens): 70.9s -> 102.9s -> 195.7s -> 179.3s, climbing under GPU
     contention. A 120s bound discarded every completed generation past 03:28.
     """
-    assert workflows._GENERATE_TIMEOUT >= timedelta(seconds=300), (
-        "the activity budget must leave room for a full 5-minute LLM call"
-    )
+    assert workflows._GENERATE_TIMEOUT >= timedelta(
+        seconds=300
+    ), "the activity budget must leave room for a full 5-minute LLM call"
 
 
 def test_generate_activity_is_invoked_with_its_own_timeout() -> None:
@@ -85,6 +85,6 @@ def test_generate_activity_is_invoked_with_its_own_timeout() -> None:
     assert call is not None, "could not locate the `generate` activity call site"
 
     timeouts = re.findall(r"start_to_close_timeout=(\w+)", call.group("body"))
-    assert timeouts == ["_GENERATE_TIMEOUT"], (
-        f"`generate` is wired to {timeouts}, expected exactly ['_GENERATE_TIMEOUT']"
-    )
+    assert timeouts == [
+        "_GENERATE_TIMEOUT"
+    ], f"`generate` is wired to {timeouts}, expected exactly ['_GENERATE_TIMEOUT']"

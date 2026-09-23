@@ -271,10 +271,12 @@ def test_is_retryable_classification():
 # --------------------------------------------------------------------------- #
 
 
-def test_request_timeout_default_is_120():
+def test_request_timeout_default_is_300():
     # Safety net for the raised HARNESS_LLM_MAX_CONCURRENCY: a hung
     # call must be bounded by default, not only when an operator opts in.
-    assert LlmGovernorConfig().request_timeout_s == 120.0
+    # TASK-995 raised it from 120s (owner directive 2026-09-21); the nesting
+    # below `_GENERATE_TIMEOUT` is pinned by `test_task995_llm_timeout_budget.py`.
+    assert LlmGovernorConfig().request_timeout_s == 300.0
 
 
 def test_get_llm_governor_config_reads_request_timeout(monkeypatch):

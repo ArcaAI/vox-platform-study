@@ -207,7 +207,9 @@ class TestCreateAppObservabilityWiring:
         def _boom(*_args: Any, **_kwargs: Any) -> Any:
             raise RuntimeError("collector unreachable")
 
-        monkeypatch.setattr("opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter", _boom)
+        monkeypatch.setattr(
+            "opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter", _boom
+        )
         monkeypatch.delenv(OTEL_ENABLED_ENV_VAR, raising=False)
 
         app = create_app(settings_override=_enabled_settings())  # must not raise

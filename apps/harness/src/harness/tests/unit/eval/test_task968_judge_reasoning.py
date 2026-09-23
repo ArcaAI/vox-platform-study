@@ -47,9 +47,7 @@ def test_the_floor_is_reasoning_off():
 
 
 def test_a_platform_admin_can_raise_both_levers():
-    snapshot = _Snapshot(
-        {JUDGE_REASONING_MODE_KEY: "think", JUDGE_REASONING_EFFORT_KEY: "high"}
-    )
+    snapshot = _Snapshot({JUDGE_REASONING_MODE_KEY: "think", JUDGE_REASONING_EFFORT_KEY: "high"})
     assert resolve_judge_reasoning(snapshot) == JudgeReasoning(mode="think", effort="high")
 
 
@@ -62,9 +60,7 @@ def test_the_two_levers_resolve_independently():
     "snapshot",
     [
         pytest.param(None, id="no snapshot"),
-        pytest.param(
-            _Snapshot({JUDGE_REASONING_MODE_KEY: "think"}, ok=False), id="failed pull"
-        ),
+        pytest.param(_Snapshot({JUDGE_REASONING_MODE_KEY: "think"}, ok=False), id="failed pull"),
         pytest.param(_Snapshot({}), id="key absent"),
         pytest.param(_Snapshot({JUDGE_REASONING_MODE_KEY: None}), id="null value"),
     ],
