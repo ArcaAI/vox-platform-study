@@ -673,7 +673,7 @@ engineers.
 | D-6 | At the timeout the harness gate ends and the consultation lands `CLOSED_INCOMPLETE` (closed unsigned). |
 | D-7 | A late approval still signs: `CLOSED_INCOMPLETE → SIGNED`, then `close` → `CLOSED_COMPLETE`. |
 | D-8 | The timeout is a settings-registry key, `consultation.session.completionTimeoutMinutes` (`maxScope: tenant`, tenant → SYSTEM → 5, whole minutes 1..10080). The wave-5 `HarnessPolicy.gateMaxEscalations` column (never pushed) was withdrawn with its migration. |
-| D-9 | Resume is a sanctioned edge: `CLOSED_INCOMPLETE → RECORDING` (works with `requirePrimedBeforeRecording` ON too). |
+| D-9 | Resume is a sanctioned edge: `CLOSED_INCOMPLETE → RECORDING` and (owner, same day) `PENDING_REVIEW → RECORDING` — both work with `requirePrimedBeforeRecording` ON too. 26 legal transitions. `DRAFT_PENDING_SENSORS` was not added. |
 | D-10 | ALaaS Save runs the full HOPE finish (update → approve → close); a `CLOSED_INCOMPLETE` consultation is not "already finished" for it. |
 | D-11 | The guide lives in the repo only (`docs/guides/consultation-session-lifecycle.md`). |
 
@@ -692,7 +692,7 @@ used to 409). A resumed recording's stop re-finalises (wave 4) and starts a fres
 | `88aad4fd9` / merge `f01e0b444` | J2 harness: policy-driven `gate_max_escalations` |
 | `57f3d1eec` / merge `a81dbbd74` | J3: terminal abandon closes `CLOSED_INCOMPLETE`; `CLOSED_INCOMPLETE → SIGNED`; approve accepts it |
 | `2bde97e85`, `af4504bf3` | stale "reaches only REOPENED" notes corrected |
-| `b15d3920b` | `CLOSED_INCOMPLETE → RECORDING` (25 legal transitions) |
+| `b15d3920b`, `0106362b6` | `CLOSED_INCOMPLETE → RECORDING`, then `PENDING_REVIEW → RECORDING` (26 legal transitions) |
 | `484aa8429` | the setting + effective-policy overlay; `gateMaxEscalations` storage withdrawn; console shows the timeout read-only on Harness Policy, pointing to Settings; API artifacts |
 | `329f4a416` | Consultation Session Lifecycle guide; client guide ch. 7 table; tenant admin guide section |
 | ALaaS `e02e390`, `219bf2a` | Save → HOPE finish; `CLOSED_INCOMPLETE` not terminal for finish |
