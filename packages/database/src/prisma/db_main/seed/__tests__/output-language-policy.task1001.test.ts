@@ -4,9 +4,10 @@
  *
  * The applications-side twin of this file
  * (`live-documentation.operating-frame.task1001.test.ts`) proves the policy reaches the RENDERED
- * prompt and that `operatingFrame` no longer generates one. This one proves the SEED says what
+ * prompt, that `operatingFrame` states no language of its own while the policy is selected, and
+ * that it states the platform default (English) when it is not. This one proves the SEED says what
  * that render needs it to say — the two halves are in different packages and neither can see the
- * other, so the S-4 clause is pinned on both sides on purpose.
+ * other, so the S-4 clause and the named override are pinned on both sides on purpose.
  *
  * **Finding S-4, restated because it is the reason this file exists.** ALaaS merges a live section
  * onto a held one by exact `documentKey::sectionKey`, or by title SLUG when one identity is
@@ -17,6 +18,7 @@
  * section in the client duplicates.
  */
 import { describe, expect, it } from 'vitest';
+import { OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY } from '@arcaai/types';
 
 import {
   ARCAAI_CLINICAL_APPROVED_VERSION,
@@ -34,6 +36,14 @@ import { ARCAAI_DEPARTMENT_AGENT_SPECS, ARCAAI_PRE_SUMMARY_AGENT_SPEC } from '..
 
 /** Verbatim. The whole point of S-4 is that these bytes survive. */
 const HEADINGS_CLAUSE = 'Keep the section keys and headings exactly as given, in English.';
+
+/**
+ * TASK-1001 (owner decision 2026-09-23) — the conflict the policy overrides, NAMED. The clinical
+ * corpus says "the section content MUST be in the conversation language" in ~40 places, and a
+ * generic label loses to that specific in-template instruction (the 2026-08-10 lesson). The
+ * runtime's own platform-default step names the same conflict in the same words.
+ */
+const OVERRIDE_CLAUSE = 'regardless of any instruction elsewhere in this prompt to write content in the conversation language';
 
 /** `AGENT_PROMPT_FRAGMENT_KEY_PATTERN` of @arcaai/workflow-contract (this package takes no dependency on it). */
 const FRAGMENT_KEY_PATTERN = /^[a-z0-9_]{2,48}$/;
@@ -63,6 +73,21 @@ describe('the policy TEMPLATE', () => {
   it('states an output language — the half a tenant admin actually edits', () => {
     expect(ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT).toMatch(/Write every section value in English/);
     expect(ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT).toMatch(/whatever language was spoken/);
+  });
+
+  it('NAMES the conflict it overrides — the corpus`s own "write in the conversation language" clause', () => {
+    expect(ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT).toContain(OVERRIDE_CLAUSE);
+    // In the SAME sentence as the language, so the override cannot be read as a separate rule.
+    const languageSentence = ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT.split('\n').find((line) => line.startsWith('Write every section value in'));
+    expect(languageSentence).toContain(OVERRIDE_CLAUSE);
+  });
+
+  it('does not promise what the runtime does not do: publish freezes the text, so a republish is required', () => {
+    // The row's description is what a tenant admin reads in the console. It used to say "edit THIS
+    // row to change the output language for the whole tenant", which is false at runtime: each
+    // agent serves the copy frozen into its `compiledConfig` at publish.
+    expect(ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE.description).not.toMatch(/edit THIS row/i);
+    expect(ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE.description).toMatch(/republish/i);
   });
 
   it('names no diagnostic code system (INV-065/066) — it is outside the corpus`s own containment sweep', () => {
@@ -119,6 +144,15 @@ describe('the FRAGMENT every department summary agent attaches', () => {
 
   it('has a key the publish gate accepts', () => {
     expect(ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY).toMatch(FRAGMENT_KEY_PATTERN);
+  });
+
+  it('uses the PLATFORM-RESERVED key the runtime asks about — one spelling, declared in @arcaai/types', () => {
+    // The live lane decides "does the tenant's policy own the language?" by looking for a SELECTED
+    // fragment under exactly this key. A seed-local spelling would attach a policy the runtime never
+    // recognises, and the platform default would then be stated beside it.
+    expect(ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY).toBe(OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
+    expect(OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY).toBe('output_language_policy');
+    expect(arcaaiOutputLanguagePolicyFragment().key).toBe(OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
   });
 });
 

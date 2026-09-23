@@ -1,38 +1,43 @@
 /**
- * TASK-1001 Phase 3 (OD-1 / OD-3) — the output-language policy moves from CODE to CONTENT.
+ * TASK-1001 — the note's OUTPUT language on the live lane: the tenant's policy when it is selected,
+ * the PLATFORM DEFAULT (English) otherwise, and never the consultation's declared language.
  *
- * ## What was wrong
+ * ## The history this file carries
  *
- * `operatingFrame()` GENERATED the note's output language from the consultation's declared
- * `summaryLanguage` and appended it after the rendered instruction. ALaaS declares `ml-en` — the
- * STT code-switch MODE, not an output language — the resolver took its primary subtag, and the
- * frame instructed the model to write the note in Malayalam. It did. No console setting could
- * have stopped it, because the rule lived in a private method.
+ * `operatingFrame()` used to GENERATE the output language from the consultation's declared
+ * `summaryLanguage`. ALaaS declares `ml-en` — the STT code-switch MODE, "Malayalam-led, English
+ * mixed" — the resolver took its primary subtag, and the frame instructed Malayalam. Lane L3 then
+ * removed the step and moved the policy into a tenant prompt fragment, leaving NO instruction when
+ * a tenant had none; the clinical corpus's own "the section content MUST be in the conversation
+ * language" (~40 places) then decided, which for a code-switched consultation is a code-switched
+ * note.
  *
- * TASK-947 had already shipped the mechanism this needs (`instruction.fragments[]`: ordered,
- * each an inline body or a template pointer, each with an optional CEL `when`), with a tenant-admin
- * editor and per-call telemetry — and no seeded agent used it. The policy is now one shared
- * PromptTemplate referenced as an unconditional fragment by all 22 ArcaAI department summary
- * agents.
+ * Owner decision 2026-09-23: *"The summarization (both pre-summary and summary) is still in
+ * English, by admin configuration OR by default."* So:
  *
- * ## The regression pin that is the whole point of this file (finding S-4)
+ *  - policy fragment SELECTED for the call ⇒ the frame states NO language; the tenant's text owns
+ *    it (and a tenant that wants Malayalam notes gets them, headings still English);
+ *  - otherwise ⇒ the frame states the platform default (`consultation.summary.outputLanguage`), by
+ *    name, NAMING and overriding the corpus's conversation-language clause (the 2026-08-10 lesson:
+ *    a generic label loses to a specific in-template instruction), and keeping the headings clause;
+ *  - the pre-summary's `language_name` is the OUTPUT language; `language` stays the SOURCE tag.
  *
- * The generated line carried a second clause: *"Keep the section keys and headings exactly as
- * given, in English."* That clause is not cosmetic. ALaaS merges a live section onto a held one
- * by exact `documentKey::sectionKey`, or by title SLUG when one identity is generic
- * (`reducer/document.js` `findHeldIndex`). A translated or reworded heading is a DIFFERENT section
- * to that reducer: it inserts a twin, and `orderSections` dedupes on key only, so nothing ever
- * removes it. Retiring the generated line without carrying the clause forward would have caused
- * duplicate sections in the client — the very defect this ticket was opened about — by fixing the
- * language half. `carries the S-4 headings clause` below is that pin.
+ * ## The regression pin that must never go (finding S-4)
  *
- * Everything is asserted through the REAL prompt the service sends, never a snapshot of a private
- * method: `prompt` carries the operating frame, `system_prompt` carries the composed instruction.
+ * *"Keep the section keys and headings exactly as given, in English."* ALaaS merges a live section
+ * onto a held one by byte-identical title when one identity is generic; a translated heading is a
+ * different section to that reducer, it inserts a twin, and nothing ever removes it. Whichever of
+ * the two sources states the language — the tenant's policy or the platform default — the clause
+ * must be in the prompt.
+ *
+ * Everything is asserted through the REAL request the service sends: `prompt` carries the operating
+ * frame, `system_prompt` the composed instruction.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LiveDocumentationService } from '../live-documentation.service';
 import { CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY } from '../../consultation-gates.constants';
+import { CONSULTATION_OUTPUT_LANGUAGE_KEY } from '../../../settings-registry/descriptors/consultation-output-language.descriptors';
 import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot } from '../live-agent.port';
 import type { ResolvedWorkflowAssignment } from '../../../workflow-assignment/IWorkflowAssignmentService';
 import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../../agent/text-generation-spec';
@@ -47,24 +52,24 @@ const CLINICAL_BODY = 'HEMATOLOGY — NEW REFERRAL. Record the encounter under t
 
 /**
  * The S-4 clause, verbatim. Written out here rather than imported so this file states the
- * requirement independently of whatever any seed happens to say today: if the seeded policy body
- * ever drops it, the seed-side twin of this pin
- * (`packages/database/…/seed/__tests__/output-language-policy.task1001.test.ts`) fails, and if the
- * RENDER ever drops it, this one does.
+ * requirement independently of whatever the runtime or any seed happens to say today.
  */
 const HEADINGS_CLAUSE = 'Keep the section keys and headings exactly as given, in English.';
+
+/** The override, named — the corpus says "the section content MUST be in the conversation language". */
+const OVERRIDE_CLAUSE = 'regardless of any instruction elsewhere in this prompt to write content in the conversation language';
 
 /** What the seeded `Output language policy` template says — the tenant's English opinion. */
 const ENGLISH_POLICY = `OUTPUT LANGUAGE POLICY
 
-Write every section value in English, whatever language was spoken.
+Write every section value in English, whatever language was spoken, ${OVERRIDE_CLAUSE}.
 
 ${HEADINGS_CLAUSE} Do not translate, reword or re-order them.`;
 
-/** The same row, edited by a tenant admin who wants Malayalam notes. One row, one edit, 22 agents. */
+/** The same row, edited by a tenant admin who wants Malayalam notes. */
 const MALAYALAM_POLICY = `OUTPUT LANGUAGE POLICY
 
-Write every section value in Malayalam, whatever language was spoken.
+Write every section value in Malayalam, whatever language was spoken, ${OVERRIDE_CLAUSE}.
 
 ${HEADINGS_CLAUSE} Do not translate, reword or re-order them.`;
 
@@ -93,19 +98,20 @@ const withArtifact = (resolvedPrompt: ResolvedPrompt): ResolvedTextGenerationSpe
     fallback: { autoSwitch: true, chain: [] },
   }) as ResolvedTextGenerationSpec;
 
+const INLINE_BODY = (): ResolvedPrompt => ({ source: 'inline', content: CLINICAL_BODY }) as ResolvedPrompt;
+
 /**
- * The seeded shape: the department's clinical template, then the shared policy row, BOTH
- * unconditional. `when: null` is what publish freezes for "always included"; the policy is LAST
- * because the nearest instruction to the generation point is the one a model honours.
+ * The seeded shape: the department's clinical template, then the shared policy row. `when: null` is
+ * what publish freezes for "always included"; a string is the authored CEL condition.
  */
-const compositeWithPolicy = (policyBody: string): ResolvedPrompt =>
+const compositeWithPolicy = (policyBody: string, when: string | null = null): ResolvedPrompt =>
   ({
     source: 'composite',
     join: '\n\n',
-    content: `${CLINICAL_BODY}\n\n${policyBody}`,
+    content: when === null ? `${CLINICAL_BODY}\n\n${policyBody}` : CLINICAL_BODY,
     fragments: [
       { key: 'clinical_note', source: 'template' as const, content: CLINICAL_BODY, when: null },
-      { key: 'output_language_policy', source: 'template' as const, content: policyBody, when: null },
+      { key: 'output_language_policy', source: 'template' as const, content: policyBody, when },
     ],
   }) as ResolvedPrompt;
 
@@ -159,8 +165,23 @@ const snapshot = (): FrozenLiveAgentSnapshot => ({
 
 const textAgents = { resolve: vi.fn() };
 
+/**
+ * The settings facade: the graph executor on, and `consultation.summary.outputLanguage` answering
+ * `platformDefault` — `undefined` reproduces "nothing stored", which the real facade answers with
+ * the descriptor default and this lane must treat the same way.
+ */
+const settingsFacade = (platformDefault?: unknown) => ({
+  resolveEffective: vi.fn(async (key: string) => {
+    if (key === CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY) return { value: true, sourceScope: 'tenant' };
+    if (key === CONSULTATION_OUTPUT_LANGUAGE_KEY) {
+      return platformDefault === undefined ? { value: 'en', sourceScope: 'code-default' } : { value: platformDefault, sourceScope: 'system' };
+    }
+    return { value: undefined, sourceScope: 'code-default' };
+  }),
+});
+
 /** `metadata` is what the consultation row carries — `{ summaryLanguage }` or nothing. */
-function buildService(spec: ResolvedTextGenerationSpec, metadata: Record<string, unknown> | null) {
+function buildService(spec: ResolvedTextGenerationSpec, metadata: Record<string, unknown> | null, platformDefault?: unknown) {
   const post = vi.fn().mockImplementation((url: string) => {
     if (url.includes('/generate')) return Promise.resolve({ data: { summary: NOTE, stats: { provider: 'lm-studio', model: 'gemma-4-e2b' } } });
     return Promise.resolve({ data: {} });
@@ -168,11 +189,6 @@ function buildService(spec: ResolvedTextGenerationSpec, metadata: Record<string,
   textAgents.resolve.mockResolvedValue(spec);
   const env: Record<string, unknown> = { LIVE_DOC_MIN_INTERVAL_MS: '0' };
   const configService = { get: vi.fn().mockImplementation((k: string) => env[k]) };
-  const effectiveSettings = {
-    resolveEffective: vi.fn(async (key: string) =>
-      key === CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY ? { value: true, sourceScope: 'tenant' } : { value: undefined, sourceScope: 'code-default' },
-    ),
-  };
   const assignments = { resolve: vi.fn(async (): Promise<ResolvedWorkflowAssignment> => ({ workflowDefinitionSlug: SLUG, source: 'tenant' })) };
   const definitions = {
     findPublishedBySlug: vi.fn(async (tenantId: string, slug: string) =>
@@ -189,7 +205,7 @@ function buildService(spec: ResolvedTextGenerationSpec, metadata: Record<string,
     { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'gemma-4-e2b' }) } as never,
     { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('svc-token') } as never,
     undefined,
-    effectiveSettings as never,
+    settingsFacade(platformDefault) as never,
     undefined,
     { run: vi.fn((cb: () => unknown) => cb()), set: vi.fn(), get: vi.fn() } as never,
     { resolveForSession: vi.fn().mockResolvedValue(snapshot()) } as never,
@@ -212,12 +228,18 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
+interface Flush {
+  prompt: string;
+  systemPrompt: string;
+  /** From `HOW TO PRODUCE THIS TURN:` to the end of the user prompt. */
+  frame: string;
+  /** The numbered frame steps, in order. */
+  steps: string[];
+}
+
 /** One flush. Returns BOTH halves of what the model reads: the user prompt and the instruction. */
-async function flushOnce(
-  spec: ResolvedTextGenerationSpec,
-  metadata: Record<string, unknown> | null = null,
-): Promise<{ prompt: string; systemPrompt: string; everything: string }> {
-  const { service, post } = buildService(spec, metadata);
+async function flushOnce(spec: ResolvedTextGenerationSpec, metadata: Record<string, unknown> | null = null, platformDefault?: unknown): Promise<Flush> {
+  const { service, post } = buildService(spec, metadata, platformDefault);
   service.start({ consultationId: CID, tenantId: TENANT });
   await settle();
   service.ingestSegment(CID, { text: 'Patient reports cough for three days.', isFinal: true, segmentId: 's1' });
@@ -228,110 +250,226 @@ async function flushOnce(
   expect(generate.length, 'the flush made no TEXT call').toBeGreaterThan(0);
   const body = generate.at(-1)![1] as { prompt?: string; system_prompt?: string };
   const prompt = String(body.prompt ?? '');
-  const systemPrompt = String(body.system_prompt ?? '');
-  return { prompt, systemPrompt, everything: `${systemPrompt}\n${prompt}` };
+  const frame = prompt.slice(prompt.indexOf('HOW TO PRODUCE THIS TURN:'));
+  return {
+    prompt,
+    systemPrompt: String(body.system_prompt ?? ''),
+    frame,
+    steps: frame.split('\n').filter((line) => /^\d+\. /.test(line)),
+  };
 }
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('`operatingFrame` no longer states the output language', () => {
-  it('emits no language line for a consultation that DECLARED one', async () => {
-    const { prompt } = await flushOnce(withArtifact({ source: 'inline', content: CLINICAL_BODY }), { summaryLanguage: 'ml' });
+describe('no tenant policy selected — the frame states the PLATFORM DEFAULT, English', () => {
+  it.each([
+    ['`ml-en` (the code-switch mode that caused the report)', { summaryLanguage: 'ml-en' }],
+    ['`ml`', { summaryLanguage: 'ml' }],
+    ['nothing', {}],
+  ])('a consultation declaring %s gets an ENGLISH note', async (_label, metadata) => {
+    const { frame } = await flushOnce(withArtifact(INLINE_BODY()), metadata);
 
-    expect(prompt).toContain('HOW TO PRODUCE THIS TURN:');
-    // The two forms the retired step could take. Neither may survive in generated text.
-    expect(prompt, 'the generated language directive is still being appended').not.toContain('Write every section value in');
-    expect(prompt).not.toContain('No output language was declared');
-    // …and `ml` must not reach the prompt by any other spelling either.
-    expect(prompt).not.toContain('Malayalam');
+    expect(frame).toContain('Write every section value in English, whatever language was spoken');
+    // The source tag never reaches the output instruction by any spelling.
+    expect(frame).not.toContain('Malayalam');
+    expect(frame).not.toContain('ml-en');
   });
 
-  it('emits no language line for the `ml-en` code-switch tag that caused the report', async () => {
-    const { prompt } = await flushOnce(withArtifact({ source: 'inline', content: CLINICAL_BODY }), { summaryLanguage: 'ml-en' });
-
-    expect(prompt).not.toContain('Write every section value in');
-    expect(prompt).not.toContain('Malayalam');
+  it('…and so does a session with no consultation repository wired at all', async () => {
+    const { frame } = await flushOnce(withArtifact(INLINE_BODY()), null);
+    expect(frame).toContain('Write every section value in English');
   });
 
-  it('keeps every OTHER step of the frame — this ticket retires one rule, not the procedure', async () => {
-    const { prompt } = await flushOnce(withArtifact({ source: 'inline', content: CLINICAL_BODY }), { summaryLanguage: 'ml' });
-
-    // 1 — translate internally (a property of the TRANSCRIPT, which is genuinely runtime).
-    expect(prompt).toMatch(/PARTIAL and may be code-switched/);
-    expect(prompt).toMatch(/understand it in English internally/);
-    // 2 — merge, do not restart.
-    expect(prompt).toMatch(/This is an UPDATE, not a fresh note/);
-    // 3 — fill by key.
-    expect(prompt).toMatch(/using these keys exactly:/);
-    expect(prompt).toMatch(/never a placeholder, never invented content/);
-    // 4 — no closing summary.
-    expect(prompt).toMatch(/still in progress/);
+  it('NAMES the conflict it overrides — a bare "write in English" loses to the corpus`s own clause', async () => {
+    const { frame } = await flushOnce(withArtifact(INLINE_BODY()), { summaryLanguage: 'ml-en' });
+    expect(frame).toContain(OVERRIDE_CLAUSE);
   });
 
-  it('renumbers the remaining steps 1-4 with no gap where the language step used to be', async () => {
-    const { prompt } = await flushOnce(withArtifact({ source: 'inline', content: CLINICAL_BODY }));
-    const frame = prompt.slice(prompt.indexOf('HOW TO PRODUCE THIS TURN:'));
-
-    expect(frame.split('\n').filter((line) => /^\d+\. /.test(line)).map((line) => line.slice(0, 2))).toEqual(['1.', '2.', '3.', '4.']);
-  });
-});
-
-describe('ABSENT is not English — nothing invents a default (TASK-891 OD-1 on the output axis)', () => {
-  it('a consultation that declares nothing, on an agent with no policy, gets NO output-language instruction at all', async () => {
-    const { everything } = await flushOnce(withArtifact({ source: 'inline', content: CLINICAL_BODY }), {});
-
-    expect(everything).not.toContain('Write every section value in');
-    expect(everything).not.toContain('No output language was declared');
-    // The trap this whole posture exists to close: silently defaulting to English.
-    expect(everything, 'an output language was invented for a consultation that declared none').not.toMatch(/OUTPUT LANGUAGE POLICY/);
+  it('carries the S-4 headings clause verbatim (REGRESSION PIN)', async () => {
+    const { frame } = await flushOnce(withArtifact(INLINE_BODY()), { summaryLanguage: 'ml-en' });
+    expect(frame, 'without it ALaaS twins every section it cannot match by title').toContain(HEADINGS_CLAUSE);
   });
 
-  it('…and the same holds when there is no consultation repository wired at all', async () => {
-    const { everything } = await flushOnce(withArtifact({ source: 'inline', content: CLINICAL_BODY }), null);
+  it('is step 3 of five, numbered with no gap, and every other step is still there', async () => {
+    const { steps } = await flushOnce(withArtifact(INLINE_BODY()), { summaryLanguage: 'ml' });
 
-    expect(everything).not.toContain('Write every section value in');
-    expect(everything).not.toContain('No output language was declared');
+    expect(steps.map((line) => line.slice(0, 2))).toEqual(['1.', '2.', '3.', '4.', '5.']);
+    expect(steps[0]).toMatch(/PARTIAL and may be code-switched/);
+    expect(steps[1]).toMatch(/This is an UPDATE, not a fresh note/);
+    expect(steps[2]).toMatch(/^3\. Write every section value in English/);
+    expect(steps[3]).toMatch(/using these keys exactly:/);
+    expect(steps[4]).toMatch(/still in progress/);
+  });
+
+  it('a platform admin can change the default — `ml` is stated as Malayalam, headings still English', async () => {
+    const { frame } = await flushOnce(withArtifact(INLINE_BODY()), { summaryLanguage: 'en' }, 'ml');
+
+    expect(frame).toContain('Write every section value in Malayalam');
+    expect(frame).toContain(HEADINGS_CLAUSE);
+  });
+
+  it('a stored value that is not ONE language (`ml-en` past the write lane) still states English', async () => {
+    const { frame } = await flushOnce(withArtifact(INLINE_BODY()), { summaryLanguage: 'ml-en' }, 'ml-en');
+    expect(frame).toContain('Write every section value in English');
   });
 });
 
-describe('the policy arrives through the FRAGMENT path instead', () => {
-  it('carries the S-4 headings clause into the rendered instruction (REGRESSION PIN)', async () => {
-    const { systemPrompt, everything } = await flushOnce(withArtifact(compositeWithPolicy(ENGLISH_POLICY)), { summaryLanguage: 'ml-en' });
+describe('the tenant`s policy fragment SELECTED — the tenant owns the language, the frame states none', () => {
+  it('emits NO language step: four steps, numbered 1-4', async () => {
+    const { steps, frame } = await flushOnce(withArtifact(compositeWithPolicy(ENGLISH_POLICY)), { summaryLanguage: 'ml-en' });
 
-    // If this fails, ALaaS twins every section it cannot match by title slug and nothing removes
-    // the duplicates. See the module comment.
-    expect(everything, 'the section-keys-and-headings-stay-English clause is gone from the prompt').toContain(HEADINGS_CLAUSE);
-    expect(systemPrompt, 'the clause must ride on the instruction, where the tenant can edit it').toContain(HEADINGS_CLAUSE);
+    expect(steps.map((line) => line.slice(0, 2))).toEqual(['1.', '2.', '3.', '4.']);
+    expect(frame, 'a second, generated statement beside the tenant`s policy').not.toContain('Write every section value in');
   });
 
-  it('states the tenant`s output language, and the department body is still there beside it', async () => {
+  it('the policy — with its headings clause — rides on the INSTRUCTION, beside the department body (S-4 pin)', async () => {
     const { systemPrompt } = await flushOnce(withArtifact(compositeWithPolicy(ENGLISH_POLICY)), { summaryLanguage: 'ml-en' });
 
     expect(systemPrompt).toContain('Write every section value in English');
-    // The policy must be ADDED to the clinical instruction, never instead of it: the composite
-    // form replaces `promptTemplateId`, so a wrong compile silently loses the department's body.
+    expect(systemPrompt).toContain(HEADINGS_CLAUSE);
+    // ADDED to the clinical instruction, never instead of it; last, nearest the generation point.
     expect(systemPrompt).toContain(CLINICAL_BODY);
-    // Order: the policy is last, nearest the generation point.
     expect(systemPrompt.indexOf(CLINICAL_BODY)).toBeLessThan(systemPrompt.indexOf('OUTPUT LANGUAGE POLICY'));
   });
 
-  it('a tenant that wants Malayalam notes gets them from ONE edited row — a consultation declaring `ml` included', async () => {
-    const { systemPrompt, everything } = await flushOnce(withArtifact(compositeWithPolicy(MALAYALAM_POLICY)), { summaryLanguage: 'ml' });
+  it('a tenant that wants Malayalam notes gets them — and the headings still stay English', async () => {
+    const { systemPrompt, frame } = await flushOnce(withArtifact(compositeWithPolicy(MALAYALAM_POLICY)), { summaryLanguage: 'ml' });
 
     expect(systemPrompt).toContain('Write every section value in Malayalam');
-    // …and even then the keys and headings stay English. The two clauses are independent: the
-    // language is the tenant's choice, the heading identity is the client's contract.
     expect(systemPrompt).toContain(HEADINGS_CLAUSE);
-    // The frame still says nothing about language — one place states the rule, and it is the row.
-    expect(everything.slice(everything.indexOf('HOW TO PRODUCE THIS TURN:'))).not.toContain('Malayalam');
+    // One place states the rule: the tenant's row. The frame does not contradict it with English.
+    expect(frame).not.toContain('Write every section value in');
   });
 
-  it('the policy does not depend on the consultation`s declaration — an undeclared consultation still gets it', async () => {
-    // This is the flip side of "absent is not English": absent means the PLATFORM has no opinion,
-    // not that the TENANT's configured one stops applying.
-    const { systemPrompt } = await flushOnce(withArtifact(compositeWithPolicy(ENGLISH_POLICY)), {});
+  it('the TENANT beats the platform: an English policy wins over a platform default of Malayalam', async () => {
+    const { systemPrompt, frame } = await flushOnce(withArtifact(compositeWithPolicy(ENGLISH_POLICY)), {}, 'ml');
 
     expect(systemPrompt).toContain('Write every section value in English');
-    expect(systemPrompt).toContain(HEADINGS_CLAUSE);
+    expect(frame).not.toContain('Malayalam');
+  });
+});
+
+describe('"selected" is decided PER CALL, by the fragment`s own `when`', () => {
+  const WHEN_CODE_SWITCHED = "trigger.context.language == 'ml-en'";
+
+  it('condition TRUE ⇒ selected ⇒ the policy states the language and the frame does not', async () => {
+    const { systemPrompt, frame } = await flushOnce(withArtifact(compositeWithPolicy(MALAYALAM_POLICY, WHEN_CODE_SWITCHED)), {
+      summaryLanguage: 'ml-en',
+    });
+
+    expect(systemPrompt).toContain('Write every section value in Malayalam');
+    expect(frame).not.toContain('Write every section value in');
+  });
+
+  it('condition FALSE ⇒ excluded ⇒ nothing in the instruction states a language, so the frame states the platform default', async () => {
+    const { systemPrompt, frame } = await flushOnce(withArtifact(compositeWithPolicy(MALAYALAM_POLICY, WHEN_CODE_SWITCHED)), {
+      summaryLanguage: 'ml',
+    });
+
+    expect(systemPrompt).not.toContain('OUTPUT LANGUAGE POLICY');
+    expect(frame).toContain('Write every section value in English');
+    expect(frame).toContain(HEADINGS_CLAUSE);
+  });
+
+  it('a condition that cannot be evaluated is excluded, never "selected" — the default is stated', async () => {
+    const { frame } = await flushOnce(withArtifact(compositeWithPolicy(ENGLISH_POLICY, 'trigger.context.no_such_field == 1')), {
+      summaryLanguage: 'ml-en',
+    });
+
+    expect(frame).toContain('Write every section value in English');
+  });
+
+  it('a composite WITHOUT the reserved key is not a policy, whatever its text says', async () => {
+    const otherKey = {
+      source: 'composite',
+      join: '\n\n',
+      content: `${CLINICAL_BODY}\n\n${ENGLISH_POLICY}`,
+      fragments: [
+        { key: 'clinical_note', source: 'template' as const, content: CLINICAL_BODY, when: null },
+        { key: 'house_style', source: 'template' as const, content: ENGLISH_POLICY, when: null },
+      ],
+    } as ResolvedPrompt;
+
+    const { frame } = await flushOnce(withArtifact(otherKey), { summaryLanguage: 'ml-en' });
+    expect(frame).toContain('Write every section value in English');
+  });
+});
+
+describe('the PRE-SUMMARY variables on the native lane — `language_name` is OUTPUT, `language` is SOURCE', () => {
+  /** A pre-summary-shaped body reading the pair through the run's trigger context. */
+  const PRE_SUMMARY_BODY = (): ResolvedPrompt =>
+    ({
+      source: 'inline',
+      content: 'PRE-SUMMARY. Write ALL bullet content in {{trigger.context.language_name}}. Spoken: [{{trigger.context.language}}].',
+    }) as ResolvedPrompt;
+
+  it.each([
+    ['ml-en', 'Spoken: [ml-en]'],
+    ['ml', 'Spoken: [ml]'],
+  ])('a consultation declaring `%s` renders English output with the source tag intact', async (declared, spoken) => {
+    const { systemPrompt } = await flushOnce(withArtifact(PRE_SUMMARY_BODY()), { summaryLanguage: declared });
+
+    expect(systemPrompt).toContain('Write ALL bullet content in English.');
+    expect(systemPrompt).toContain(spoken);
+    expect(systemPrompt).not.toContain('in Malayalam');
+  });
+
+  it('a consultation declaring nothing renders English, with an empty source tag', async () => {
+    const { systemPrompt } = await flushOnce(withArtifact(PRE_SUMMARY_BODY()), {});
+
+    expect(systemPrompt).toContain('Write ALL bullet content in English.');
+    expect(systemPrompt).toContain('Spoken: []');
+  });
+
+  it('follows the platform default, not the source tag', async () => {
+    const { systemPrompt } = await flushOnce(withArtifact(PRE_SUMMARY_BODY()), { summaryLanguage: 'en' }, 'ml');
+    expect(systemPrompt).toContain('Write ALL bullet content in Malayalam.');
+  });
+});
+
+describe('the durable HANDOFF context spells the same pair', () => {
+  function buildHandoffService(language: string | undefined, platformDefault?: unknown) {
+    const stored = new Map<string, string>([
+      [`live-doc:handoff:${CID}`, JSON.stringify({ endedAt: '2026-09-23T10:00:00.000Z', tenantId: TENANT, outputs: {} })],
+    ]);
+    const args: unknown[] = new Array(29).fill(undefined);
+    args[0] = { axiosRef: { post: vi.fn() }, post: vi.fn() };
+    args[1] = { get: vi.fn(() => undefined) };
+    args[2] = { ...cacheMock(), get: vi.fn(async (key: string) => stored.get(key) ?? null) };
+    args[3] = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
+    args[7] = { decrypt: vi.fn() };
+    args[9] = settingsFacade(platformDefault);
+    args[15] = {
+      findById: vi.fn(async () => ({
+        id: CID,
+        tenantId: TENANT,
+        doctorId: 'doctor-1001',
+        departmentId: null,
+        parentConsultationId: null,
+        status: 'DRAINING',
+        metadata: language === undefined ? null : { summaryLanguage: language },
+      })),
+    };
+    return new (LiveDocumentationService as unknown as new (...a: unknown[]) => LiveDocumentationService)(...args);
+  }
+
+  it('`ml-en` declared ⇒ `language_name` English, `language` ml-en', async () => {
+    const answer = await buildHandoffService('ml-en').readLiveHandoff(CID);
+    expect(answer.context).toMatchObject({ language_name: 'English', language: 'ml-en' });
+  });
+
+  it('`ml` declared ⇒ still English — the source tag is not the output', async () => {
+    const answer = await buildHandoffService('ml').readLiveHandoff(CID);
+    expect(answer.context).toMatchObject({ language_name: 'English', language: 'ml' });
+  });
+
+  it('nothing declared ⇒ English, empty source tag', async () => {
+    const answer = await buildHandoffService(undefined).readLiveHandoff(CID);
+    expect(answer.context).toMatchObject({ language_name: 'English', language: '' });
+  });
+
+  it('follows the platform default', async () => {
+    const answer = await buildHandoffService('en', 'ml').readLiveHandoff(CID);
+    expect(answer.context).toMatchObject({ language_name: 'Malayalam', language: 'en' });
   });
 });

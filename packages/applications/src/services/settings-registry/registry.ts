@@ -13,6 +13,7 @@ import { AI_READINESS_SETTINGS } from './descriptors/ai-readiness.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
+import { CONSULTATION_OUTPUT_LANGUAGE_SETTINGS } from './descriptors/consultation-output-language.descriptors';
 import { CONSULTATION_PRE_SUMMARY_SETTINGS } from './descriptors/consultation-presummary.descriptors';
 import { CONSULTATION_REALTIME_SETTINGS } from './descriptors/consultation-realtime.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
@@ -206,6 +207,10 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // TASK-982 §3.4.5 — the warm-start pre-summary's bounded retry (not the realtime flush lane
   // above; `LivePreSummaryAdapter` runs once, at recording start).
   ...CONSULTATION_PRE_SUMMARY_SETTINGS,
+  // TASK-1001 (owner decision 2026-09-23) — the platform-default language every native note is
+  // WRITTEN in when the tenant's output-language policy fragment states none. Never derived from
+  // the consultation's declared (source) language.
+  ...CONSULTATION_OUTPUT_LANGUAGE_SETTINGS,
   // `consultation.endpoint.actions` was here. TASK-882 moved the stage onto the assigned graph
   // (endpoint nodes, presence + `enabled`, in edge order).
 

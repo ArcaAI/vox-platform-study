@@ -54,6 +54,7 @@
  * the TASK-1001 output-language policy; their versions mirror in
  * `72000000-…-0001-…` via the deterministic `72${id.slice(2)}` convention.
  */
+import { OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY } from '@arcaai/types';
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
 import type { PromptTemplateCategory, PromptTemplateScope, PromptTemplateStatus } from '../../../generated/core-prisma-client/enums';
@@ -661,13 +662,33 @@ export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_SEEDED_VERSIONS.flatMap(
 /**
  * The note's output language was GENERATED IN CODE — `operatingFrame()` in
  * `live-documentation.service.ts` derived it from the consultation's declared `summaryLanguage`
- * and appended it after the rendered instruction. Code beats configuration, so a tenant admin had
- * no lever at all: a consultation opened with the STT code-switch tag `ml-en` collapsed to
- * "Malayalam" and the hematology note came back code-switched, exactly as instructed.
+ * and appended it after the rendered instruction. A consultation opened with the STT code-switch
+ * tag `ml-en` collapsed to "Malayalam" and the hematology note came back code-switched, exactly as
+ * instructed.
  *
- * This row is the lever. It is ONE shared template that every ArcaAI summary agent references as
- * an unconditional `instruction.fragments[]` POINTER (TASK-947) — never inlined into 22 agents —
- * so changing the output language for the whole tenant is one edit of one row in the console.
+ * ## Where the output language comes from now (owner decision 2026-09-23)
+ *
+ * *"The summarization (both pre-summary and summary) is still in English, by admin configuration
+ * OR by default."* Two tiers, and the consultation's declared language is in neither:
+ *  1. THIS policy — CONTENT the tenant owns. When an agent's composite instruction SELECTS a
+ *     fragment under the platform-reserved key (`OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY`,
+ *     `@arcaai/types`), the policy's text owns the language and the live lane states none of its
+ *     own;
+ *  2. otherwise the PLATFORM DEFAULT — the `consultation.summary.outputLanguage` setting (English),
+ *     which the runtime states itself.
+ *
+ * ## What editing this row does — and does NOT do
+ *
+ * Every ArcaAI summary agent references this row as an unconditional `instruction.fragments[]`
+ * POINTER (TASK-947), never an inlined copy, and WITHOUT a version pin. But PUBLISH FREEZES THE
+ * TEXT: `AgentService` compiles each resolved fragment into `compiledConfig.resolvedPrompt`, and
+ * the live lane serves that frozen copy. So approving a new version of this template changes NO
+ * note on its own. What the unpinned pointer buys is that each agent's NEXT publish picks up the
+ * newest APPROVED policy version without anyone editing its instruction — but every one of the 22
+ * agents must still be branched and republished (per tenant, TASK-994) before its notes change.
+ *
+ * The lever that takes effect at RUNTIME, with no republish, is the platform-default setting — and
+ * it only governs agents whose policy fragment is NOT selected.
  *
  * ## Why it is not in `ARCAAI_CLINICAL_TEMPLATE_IDS` / `ARCAAI_CLINICAL_TEMPLATES`
  *
@@ -678,36 +699,47 @@ export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_SEEDED_VERSIONS.flatMap(
  * directions). This is a POLICY row with one version and no department axis; folding it into the
  * corpus would either force a false v1/v2/v3 history or make it look like a 23rd clinical body.
  *
- * ## The two clauses, and why the second is load-bearing (finding S-4)
+ * ## The three clauses, and why each is load-bearing
  *
- * The first states the output language. The second — "Keep the section keys and headings exactly
- * as given, in English" — is the ONLY thing standing between this note and duplicated sections in
- * the client: ALaaS merges a live section onto a held one by exact `documentKey::sectionKey`, or
- * by title SLUG when one identity is generic (`reducer/document.js`). A translated or reworded
- * heading is a different section to that reducer, it inserts a twin, and `orderSections` dedupes
- * on key only — so nothing ever removes it. The clause travelled with the generated line it
- * replaces; it must travel with this one, and
- * `live-documentation.operating-frame.task1001.test.ts` pins that it does.
+ * The first states the output language. The second NAMES the conflict it overrides: the clinical
+ * corpus says "the section content MUST be in the conversation language" in ~40 places, and a
+ * generic "write in English" loses to that specific in-template instruction — the 2026-08-10
+ * lesson recorded on the v1-compat summary (`summary-prompt.builder.ts`). (The v3 HEME bodies
+ * already say the note is written entirely in English — the historical Malayalam came from the old
+ * generated line — but other departments' bodies and the older corpus versions still carry the
+ * conversation-language clause.) The third — "Keep the section keys and headings exactly as given,
+ * in English" — is the ONLY thing standing between this note and duplicated sections in the
+ * client: ALaaS merges a live section onto a held one by exact `documentKey::sectionKey`, or by
+ * title SLUG when one identity is generic (`reducer/document.js`). A translated or reworded heading
+ * is a different section to that reducer, it inserts a twin, and `orderSections` dedupes on key
+ * only — so nothing ever removes it (finding S-4). `live-documentation.operating-frame.task1001.test.ts`
+ * pins that the runtime's own default step carries the same two clauses.
  */
 export const ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID = '71000000-0000-0000-0001-000000000033';
 
-/** The fragment key every summary agent references this row under. `^[a-z0-9_]{2,48}$` (TASK-947). */
-export const ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY = 'output_language_policy';
+/**
+ * The fragment key every summary agent references this row under — the PLATFORM-RESERVED
+ * `OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY` of `@arcaai/types`, not a seed-local literal. The runtime
+ * asks whether a fragment under exactly this key was selected; a seed that spelled it differently
+ * would attach a policy the runtime never recognises, and the platform default would be stated
+ * beside it. `^[a-z0-9_]{2,48}$` (TASK-947).
+ */
+export const ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY = OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY;
 
 /**
- * The policy body.
+ * The policy body — the ArcaAI tenant's stated opinion: English.
  *
- * English is the TENANT'S stated opinion here, not a platform default — "absent is not English"
- * still holds in code (TASK-891 OD-1, applied to the output axis): with no fragment and no
- * configuration, nothing instructs a language at all. A tenant that wants Malayalam notes edits
- * THIS body; it does not re-declare a consultation's STT language mode and hope.
+ * It says the same thing the platform default would (English), on purpose: the owner decision is
+ * English "by admin configuration OR by default", and this is the configuration half. What it adds
+ * over the default is that it is the TENANT'S — editable, and extendable with a conditional sibling
+ * — and that it keeps the ArcaAI-specific clinical rule about names and numbers.
  *
  * Deliberately says nothing about who administers it (that is the row's `description`) and names
  * no diagnostic code system (INV-065/066, `icd10-prompt-containment.test.ts`).
  */
 export const ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT = `OUTPUT LANGUAGE POLICY
 
-Write every section value in English, whatever language was spoken. A transcript that is in Malayalam, or that switches between Malayalam and English, is understood first and then written up in English; drug names, doses, numbers, units, dates, values and proper names are reproduced exactly, never translated.
+Write every section value in English, whatever language was spoken, regardless of any instruction elsewhere in this prompt to write content in the conversation language. A transcript that is in Malayalam, or that switches between Malayalam and English, is understood first and then written up in English; drug names, doses, numbers, units, dates, values and proper names are reproduced exactly, never translated.
 
 Keep the section keys and headings exactly as given, in English. Do not translate, reword or re-order them.`;
 
@@ -717,7 +749,7 @@ export const ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE = {
   tenantId: ARCAAI_TENANT_ID,
   name: 'Output language policy',
   description:
-    'The language every ArcaAI summary agent writes its note in, and the rule that section keys and headings stay English. Referenced as an unconditional prompt fragment by all 22 department summary agents — edit THIS row to change the output language for the whole tenant.',
+    'The language every ArcaAI summary agent writes its note in, and the rule that section keys and headings stay English. Referenced as an unconditional prompt fragment by all 22 department summary agents. Publishing an agent freezes this text into it, so an approved new version reaches a note only after each agent is republished; the platform default output-language setting is the lever that applies without a republish, to agents that carry no policy.',
   content: ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT,
   category: 'SUMMARY' as PromptTemplateCategory,
   status: 'APPROVED' as PromptTemplateStatus,
@@ -745,9 +777,10 @@ export const ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION = {
 /**
  * The fragment an agent attaches to reference this row.
  *
- * NO `promptVersionNumber`: pinning one would freeze the agents at today's body and forfeit the
- * single-point edit this row exists to provide — the resolver then serves the template's own
- * `approvedVersionNumber`, which is what an admin moves when they approve a new version.
+ * NO `promptVersionNumber`: a pin would hold every agent at today's body even across a republish.
+ * Unpinned, publish resolves the template's own `approvedVersionNumber`, so the next publish of each
+ * agent picks up whatever version an admin last approved without anyone editing 22 instructions.
+ * It is still a REPUBLISH that delivers it — publish freezes the text (see the block comment above).
  *
  * NO `when`: this is the UNCONDITIONAL policy. A conditional translate-to-X sibling is
  * deliberately NOT seeded — see the note in `29-arcaai-agents-and-workflows.ts`.

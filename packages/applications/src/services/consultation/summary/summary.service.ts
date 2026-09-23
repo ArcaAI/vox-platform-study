@@ -45,7 +45,10 @@ import { ConfigResolver } from '../../config-resolver';
 import { diffContent } from './content-diff.util';
 import { assembleTranscriptText, readSpeakerId } from './transcript-assembly.util';
 import { assertAttributedClinicianInTenant, resolveAttributedClinician, tenantRoleReaderFor, type ClinicalCaller } from './clinician-attribution';
-import { readSummaryLanguage } from '../consultation/summary-language';
+import { OUTPUT_LANGUAGE_DEFAULT, platformOutputLanguage } from '../consultation/summary-language';
+// TASK-1001 (owner decision 2026-09-23) — the platform-default language the note is WRITTEN in.
+import { CONSULTATION_OUTPUT_LANGUAGE_KEY } from '../../settings-registry/descriptors/consultation-output-language.descriptors';
+import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { ISummaryService } from './ISummaryService';
 import {
   GenerateSummaryRequest,
@@ -389,6 +392,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     // released must never fail a signature.
     @Optional() @Inject(IWorkflowExposureService) private readonly workflowExposure?: IWorkflowExposureService,
     @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
+    // TASK-1001 (owner decision 2026-09-23) — resolves `consultation.summary.outputLanguage`, the
+    // platform-default language a note is WRITTEN in. Optional + trailing like every dependency
+    // above it, so the positional `new SummaryService(...)` fixtures keep their arity; unwired ⇒
+    // the descriptor's own code default (English), never the consultation's declared language.
+    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -524,7 +532,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       caseNotes: promptCaseNotes,
       vitals: client.vitals,
       previousVisits: client.previousVisits,
-      conversationLanguage: this.resolveConversationLanguage(request.options, consultation),
+      conversationLanguage: await this.resolveNoteOutputLanguage(tenantId),
       dnaStyleId: request.dnaStyleId,
       preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
     });
@@ -769,7 +777,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // remains the follow-up signal, the vocabulary is no longer a literal.
       promptType: this.visitType(consultation).key,
       transcript: content,
-      conversationLanguage: this.resolveConversationLanguage(request.options, consultation),
+      conversationLanguage: await this.resolveNoteOutputLanguage(tenantId),
       dnaStyleId: effectiveDnaStyleId,
       preSummaryText: latestPreSummaryText ?? undefined,
       // The SAME agent that ran live reviews and
@@ -2183,24 +2191,45 @@ export class SummaryService extends BaseService implements ISummaryService {
     };
   }
 
-  private resolveConversationLanguage(options?: Record<string, unknown>, consultation?: { metadata?: unknown }): string {
-    const candidate = options?.conversationLanguage ?? options?.language ?? options?.locale;
-    if (typeof candidate === 'string' && candidate.trim().length > 0) return candidate;
-
-    // TASK-932 §3.7 — the consultation's OWN declared summary language, second.
-    //
-    // Per-request options win, because a caller asking for one note in another language is
-    // asking about THIS generation. The consultation's declaration is what the clinician chose
-    // when they opened it, and it is the tier that was missing: with the writing-style and
-    // language dropdowns gone from the scribe (TASK-891 OD-5), nothing on the console could
-    // reach `options` at all, so every finalize fell to the literal below.
-    //
-    // `'en'` remains the last resort and is NOT a policy statement about the platform's default
-    // language — it is this prompt variable's pre-existing fallback, kept so an undeclared
-    // consultation renders byte-identically to before this ticket. The place a default language
-    // is refused is the STT channel (OD-1), which this does not touch.
-    const declared = readSummaryLanguage(consultation?.metadata);
-    return declared ?? 'en';
+  /**
+   * TASK-1001 (owner decision 2026-09-23) — the language the note is WRITTEN in, as the tag this
+   * surface feeds `PromptAssemblyService` under its historical name, `conversationLanguage`.
+   *
+   * That name is misleading and the misreading was the defect. What the value actually DOES is
+   * decide the OUTPUT: it renders as `{{conversation_language}}` into bodies that say "write the
+   * content in the conversation language", and through `buildPreSummaryVariables` it becomes the
+   * pre-summary's `{{language_name}}` ("Write ALL bullet content in …"). So it was fed the
+   * consultation's declared SOURCE language — and a consultation ALaaS opens as `ml-en`
+   * (Malayalam-led code-switch) was told to write its note in the conversation language.
+   *
+   * Owner decision: *"The summarization (both pre-summary and summary) is still in English, by
+   * admin configuration OR by default."* On this surface the tenant's configuration cannot be
+   * SELECTED — `PromptAssemblyService` resolves the agent's primary template, not its fragment list,
+   * so an output-language policy fragment never reaches this prompt — which leaves the platform
+   * default, `consultation.summary.outputLanguage` (English unless a platform admin changes it).
+   *
+   * Two sources are therefore deliberately NOT consulted any more:
+   *  - the consultation's declared language (`readSummaryLanguage`) — it describes what is SPOKEN;
+   *  - per-request `options.conversationLanguage` / `options.language` / `options.locale` — a
+   *    caller's per-call language is neither admin configuration nor the default, and a client that
+   *    forwards its STT locale there would reproduce the same code-switched note.
+   *
+   * Never throws: a settings-backend failure is logged and the note is written in the code default
+   * rather than failing a clinician's summary.
+   */
+  private async resolveNoteOutputLanguage(tenantId: string): Promise<string> {
+    if (!this.effectiveSettings) return OUTPUT_LANGUAGE_DEFAULT;
+    try {
+      const resolved = await this.effectiveSettings.resolveEffective(CONSULTATION_OUTPUT_LANGUAGE_KEY, { tenantId });
+      return platformOutputLanguage(resolved.value).tag;
+    } catch (error) {
+      this.logger.warn({
+        message: 'consultation.summary.outputLanguage could not be resolved — writing the note in the code default',
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return OUTPUT_LANGUAGE_DEFAULT;
+    }
   }
 
   /**

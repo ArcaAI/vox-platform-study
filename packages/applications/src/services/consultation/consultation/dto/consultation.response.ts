@@ -72,7 +72,8 @@ export class ConsultationResponse {
   status?: ConsultationStatus;
 
   /**
-   * TASK-932 §3.7 — the language the generated notes are written in, as DECLARED at open.
+   * TASK-932 §3.7 / TASK-1001 — the consultation's SOURCE language, as DECLARED at open (`en`,
+   * `ml`, or a code-switch mode such as `ml-en`).
    *
    * A first-class field rather than a `metadata` reach-through, so the API contract does not move
    * when the storage does: the marker currently lives under `metadata.summaryLanguage` because
@@ -80,11 +81,13 @@ export class ConsultationResponse {
    * domain-layer change. Every reader goes through `readSummaryLanguage`; this is the only shape
    * a client ever sees.
    *
-   * `undefined` = undeclared, which is not English — the agent's own body decides.
+   * It is NOT the language the notes are written in (owner decision 2026-09-23): that is the
+   * tenant's output-language policy, else the platform default (English). `undefined` = undeclared.
    */
   @ApiPropertyOptional({
-    description: 'BCP-47 language tag the generated notes are written in, as declared at open. Absent = undeclared (the agent decides).',
-    example: 'ml',
+    description:
+      "BCP-47 tag of the consultation's SOURCE language as declared at open (`en`, `ml`, or a code-switch mode such as `ml-en`). Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared.",
+    example: 'ml-en',
   })
   language?: string;
 
