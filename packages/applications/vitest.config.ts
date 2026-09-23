@@ -20,7 +20,10 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/__tests__/**/*.test.ts'],
-    exclude: ['**/node_modules/**', '**/dist/**'],
+    // Live-DB suites run under the root `vitest.integration.config.ts`
+    // (`pnpm test:integration`); mirror the root unit config's exclusion so a
+    // package-level run does not pick them up against the unit env.
+    exclude: ['**/node_modules/**', '**/dist/**', '**/integration/**', '**/*.integration.ts'],
     testTimeout: 30000,
     hookTimeout: 30000,
     // `.env.test` sets `SECRETS_PROVIDER=vault` (the correct

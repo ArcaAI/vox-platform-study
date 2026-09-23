@@ -456,9 +456,7 @@ describe('the ingested time series must be orderable', () => {
     const { processor, httpService, notifyFailed } = build();
 
     await expect(
-      processor.process(
-        job({ textSamples: undefined, samples: [{ text: 'A note.', writtenAt: '2026-W01', kind: 'CASE_NOTE' }] }),
-      ),
+      processor.process(job({ textSamples: undefined, samples: [{ text: 'A note.', writtenAt: '2026-W01', kind: 'CASE_NOTE' }] })),
     ).rejects.toThrow(/writtenAt/);
 
     expect(httpService.axiosRef.post).not.toHaveBeenCalled();

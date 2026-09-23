@@ -464,7 +464,9 @@ class TestNonStreamingPath:
         redis = AsyncMock()
         redis.get = AsyncMock(return_value=None)
         phi_shaped_reason = "contains patient name John Smith and dob 1990-01-01"
-        client = await client_factory(_guardrail(screen=_block(reason=phi_shaped_reason)), redis=redis)
+        client = await client_factory(
+            _guardrail(screen=_block(reason=phi_shaped_reason)), redis=redis
+        )
 
         resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
 

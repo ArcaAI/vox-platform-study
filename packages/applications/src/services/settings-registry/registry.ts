@@ -29,7 +29,12 @@ import { METERING_COMPUTE_SETTINGS } from './descriptors/metering-compute.descri
 import { METERING_STORAGE_SETTINGS } from './descriptors/metering-storage.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
 import { PHI_REDACTION_SETTINGS } from './descriptors/phi-redaction.descriptors';
-import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_LOCKOUT_SETTINGS, RATE_LIMIT_PRINCIPAL_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/platform-knobs.descriptors';
+import {
+  PLATFORM_KNOB_SETTINGS,
+  RATE_LIMIT_LOCKOUT_SETTINGS,
+  RATE_LIMIT_PRINCIPAL_SETTINGS,
+  RATE_LIMIT_TIER_SETTINGS,
+} from './descriptors/platform-knobs.descriptors';
 import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
 import { PLATFORM_SECRET_SETTINGS } from './descriptors/platform-secrets.descriptors';
 import { SECURITY_POLICY_SETTINGS } from './descriptors/security-policy.descriptors';

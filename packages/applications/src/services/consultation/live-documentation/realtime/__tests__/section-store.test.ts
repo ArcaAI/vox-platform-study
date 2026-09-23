@@ -26,7 +26,9 @@ function repositoryDouble() {
 
   return {
     rows,
-    findSection: vi.fn(async (_tenantId: string, _cid: string, documentKey: string, sectionKey: string) => rows.get(key(documentKey, sectionKey)) ?? null),
+    findSection: vi.fn(
+      async (_tenantId: string, _cid: string, documentKey: string, sectionKey: string) => rows.get(key(documentKey, sectionKey)) ?? null,
+    ),
     create: vi.fn(async (entity: DocumentSectionEntity) => {
       rows.set(key(entity.documentKey, entity.sectionKey), entity);
       return entity;
@@ -208,9 +210,10 @@ describe('task 8 — per-section state and per-section OCC', () => {
     // The forgotten consultation accepts a restarted counter...
     await expect(store.applyFlushPatch(write({ generation: 1, content: 'A gen 1 again.' }))).resolves.toMatchObject({ applied: true });
     // ...while the untouched one still refuses a late flush.
-    await expect(
-      store.applyFlushPatch(write({ consultationId: 'other-consultation', generation: 3, content: 'B late.' })),
-    ).resolves.toEqual({ applied: false, reason: 'stale-generation' });
+    await expect(store.applyFlushPatch(write({ consultationId: 'other-consultation', generation: 3, content: 'B late.' }))).resolves.toEqual({
+      applied: false,
+      reason: 'stale-generation',
+    });
   });
 });
 

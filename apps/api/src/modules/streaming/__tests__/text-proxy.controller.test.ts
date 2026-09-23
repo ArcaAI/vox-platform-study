@@ -17,9 +17,7 @@ const streamingGenerateAck = (generationId: string) => {
   stream.destroy = vi.fn();
   stream.on('newListener', (event) => {
     if (event !== 'data') return;
-    setImmediate(() =>
-      stream.emit('data', Buffer.from(`event: meta\ndata: {"generation_id":"${generationId}"}\nid: ${generationId}:0\n\n`)),
-    );
+    setImmediate(() => stream.emit('data', Buffer.from(`event: meta\ndata: {"generation_id":"${generationId}"}\nid: ${generationId}:0\n\n`)));
   });
   return stream;
 };
