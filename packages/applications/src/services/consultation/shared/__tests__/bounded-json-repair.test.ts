@@ -165,6 +165,19 @@ describe('generateJsonWithRepair', () => {
   });
 });
 
+// TASK-1001 (owner directive 2026-09-23: "all pre-summary and summary must be in english") — the
+// corrective retry is appended to a summary prompt, so its language rule must name English.
+describe('CORRECTIVE_RETRY_INSTRUCTION', () => {
+  it('demands English whatever language was spoken, and names no conversation language', () => {
+    expect(CORRECTIVE_RETRY_INSTRUCTION).toContain(
+      'All headings/labels and descriptive content inside values MUST be in English, whatever language was spoken.',
+    );
+    expect(CORRECTIVE_RETRY_INSTRUCTION).not.toMatch(/conversation language/i);
+    expect(CORRECTIVE_RETRY_INSTRUCTION).not.toContain('English words');
+    expect(CORRECTIVE_RETRY_INSTRUCTION).not.toContain('equivalents');
+  });
+});
+
 describe('looksLikeJsonObject', () => {
   it('detects a bare or fenced JSON object attempt', () => {
     expect(looksLikeJsonObject('{"a":1}')).toBe(true);

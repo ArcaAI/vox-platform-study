@@ -41,14 +41,25 @@ describe('TASK-930 — general-medicine-consultation-summary', () => {
     const declared = (global.variables as Array<{ name: string; type: string; required: boolean }>).map((variable) => variable.name);
     expect(declared).toEqual(GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES);
     // the §8.2 fields …
-    for (const name of ['visit_type', 'current_department', 'language', 'safe_age', 'safe_dob', 'safe_gender', 'formatted_previous_visits', 'formatted_vitals', 'chief_complaint']) {
+    for (const name of ['visit_type', 'current_department', 'safe_age', 'safe_dob', 'safe_gender', 'formatted_previous_visits', 'formatted_vitals', 'chief_complaint']) {
       expect(declared).toContain(name);
     }
+    // … except `language` (TASK-1001, owner directive 2026-09-23: "all pre-summary and summary must
+    // be in english"). It bound the consultation's SOURCE tag as the language to write in.
+    expect(declared).not.toContain('language');
     // … and the two document-template heading lists (no document-template binding kind exists on an agent).
     expect(declared).toContain('new_visit_headings');
     expect(declared).toContain('revisit_headings');
     const referenced = new Set([...global.content.matchAll(BARE_REFERENCE)].map((match) => match[1]!));
     expect([...referenced].sort()).toEqual([...declared].sort());
+  });
+
+  // TASK-1001 (owner directive 2026-09-23: "all pre-summary and summary must be in english,
+  // therefore, prompt instructions and configuration must be set to english").
+  it('rule 5 writes every content value in English, whatever language was spoken', () => {
+    expect(global.content).toContain('5. Write all content values in English, whatever language was spoken; keep the headings in English.');
+    expect(global.content).not.toContain('{{language}}');
+    expect(global.content).not.toMatch(/conversation language/i);
   });
 
   it('the four orphaned customer templates are gone', () => {

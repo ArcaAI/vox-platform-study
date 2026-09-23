@@ -445,8 +445,9 @@ export const headingList = (shape: { sections: ReadonlyArray<{ title: string }> 
   shape.sections.map((section) => section.title).join(' | ');
 
 /**
- * F6 — a binding for EVERY variable the General Medicine template declares. The nine §8.2 fields
- * resolve from the trigger's validated context (`{{trigger.context.*}}`, INTERFACES §8.3); the two
+ * F6 — a binding for EVERY variable the General Medicine template declares. The §8.2 fields it
+ * reads (eight of the nine since TASK-1001 dropped `language` from the body) resolve from the
+ * trigger's validated context (`{{trigger.context.*}}`, INTERFACES §8.3); the two
  * document-template heading lists are CONSTANTS, because `Agent.instruction.variables` knows only
  * `{ value }` | `{ path }` — there is no document-template binding kind (reported).
  */
@@ -681,10 +682,10 @@ function catalogue(
       fallbackModelSlugs: [],
       // TASK-1001 (OD-8) — COMPOSITE: the General Medicine body (template and pin unchanged), then
       // the tenant's output-language policy, LAST so it is the instruction nearest the generation
-      // point. The body's rule 5 says "write all content values in the conversation language"; the
-      // policy names that clause and overrides it, which is the whole reason it rides here — on the
-      // durable lane no runtime step states an output language for this agent. `variables` stays
-      // on the instruction: it binds what EVERY fragment reads (the policy reads none).
+      // point. The body's rule 5 used to say "write all content values in the conversation language";
+      // the policy names that clause and overrides it. Since the owner directive of 2026-09-23 rule 5
+      // itself names English, and the policy remains the tenant's lever for its own language.
+      // `variables` stays on the instruction: it binds what EVERY fragment reads (the policy reads none).
       instruction: {
         fragments: [
           { key: CLINICAL_NOTE_FRAGMENT_KEY, promptTemplateId: generalMedicineTemplateId, promptVersionNumber: 1 },

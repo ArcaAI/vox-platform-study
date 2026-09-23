@@ -32,6 +32,14 @@
  *     `formatted_test_results`, `formatted_previous_visits`, `language_name`)
  *     are byte-identical to the v1-parity body.
  *
+ * TASK-1001 (owner directive 2026-09-23: "all pre-summary and summary must be in
+ * english, therefore, prompt instructions and configuration must be set to
+ * english") — the STYLE language line and the INSTRUCTIONS localization block
+ * changed IN BOTH bodies, identically: the `{{context.language_name}}`
+ * localization rules gave way to the English-only block of the ArcaAI v3
+ * pre-summary. `{{context.language_name}}` is retained (neutralised in the text),
+ * so the seven-variable list above still holds and the derivation is unchanged.
+ *
  * This row is SYSTEM-owned, resolved DIRECTLY by
  * `SYSTEM_DEFAULTS.deptFreePreSummaryPromptId`
  * (`prompt-resolution.service.ts`) — never by a tag scan — exactly like the
@@ -88,18 +96,10 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT =
   '- Use bullet points\n\n' +
   '- Group by clinical importance, not strictly chronology\n\n' +
   '- Maintain brevity: keep each bullet to one sentence or phrase\n\n' +
-  '- Language: {{context.language_name}}\n\n' +
+  '- Language: English (see INSTRUCTIONS).\n\n' +
   '### INSTRUCTIONS\n\n' +
-  '- Use the following section headers EXACTLY as written (in English) and do NOT translate them.\n' +
-  '- Write ALL bullet content in {{context.language_name}}, including any text inside parentheses.\n' +
-  '- Translate ALL English descriptors from context into {{context.language_name}}\n' +
-  '- Translate ALL text that appears in parentheses into {{context.language_name}}\n' +
-  '- Parentheses Localization Policy: For any parentheses that contain English words, translate them into {{context.language_name}}. If a direct translation is unclear, paraphrase briefly in {{context.language_name}}. Only leave English inside parentheses for standard clinical abbreviations (BP, HR, RR, Temp, SpO2) and measurement units (°C, mmHg, mg, ml).\n' +
-  '- Do NOT include English words in bullet items or parentheses, except for:\n' +
-  '- Standard clinical abbreviations (e.g., BP, HR, RR, Temp, SpO2)\n' +
-  '- Measurement units (e.g., °C, mmHg, mg, ml)\n' +
-  '- Before finalizing, perform a self-check: scan every pair of parentheses and ensure there are no English words inside (except the allowed abbreviations/units). If any are found, replace them with {{context.language_name}} equivalents.\n' +
-  '- Translate or localize any status or qualifier terms or any text inside parentheses into {{context.language_name}}.\n\n' +
+  '- **Write the entire pre-summary in English.** The output is always English — every heading, every bullet, every word inside parentheses. Never localise it into another language. (`{{context.language_name}}` is supplied by the caller and resolves to English for this deployment. If it ever arrives as anything else, ignore it: this prompt does not write in another language.)\n' +
+  '- Use the following section headers EXACTLY as written (in English) and do NOT translate them.\n\n' +
   '---\n\n' +
   '## FORMAT\n\n' +
   'Pre-Summary of Medical History  \n\n' +

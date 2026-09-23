@@ -326,7 +326,13 @@ const VERSION_IDS = {
 // a failed migration, not a stale comment.
 const DEPT = SEED_DEPARTMENT_IDS;
 
-// Content constants from Python sources (exact copy)
+// Content constants from Python sources (exact copy) — EXCEPT their language instructions:
+// TASK-1001 (owner directive 2026-09-23: "all pre-summary and summary must be in english,
+// therefore, prompt instructions and configuration must be set to english"). The language lines of
+// TEXT_SYSTEM_BASE_CONTENT, JSON_ENFORCEMENT_NOTE and CORRECTIVE_RETRY_SUFFIX now name English,
+// whatever language was spoken, where they used to name "the conversation language". The v1-compat
+// surface does not read these rows: it renders its own byte-exact v1 copies
+// (`apps/api/src/modules/text-compat/v1-wrapper`), which are deliberately unchanged.
 const TEXT_SYSTEM_BASE_CONTENT = `You are an expert medical AI assistant specialized in analyzing medical conversations between healthcare providers and patients. Your role is to create clear, accurate, and clinically relevant summaries in structured JSON format with markdown-formatted content.
 
 Key responsibilities:
@@ -340,9 +346,9 @@ Key responsibilities:
 - Flag any safety concerns or urgent findings
 
 LANGUAGE REQUIREMENTS:
-- CRITICAL: Always respond in CONVERSATION LANGUAGE
+- CRITICAL: Always respond in English, whatever language the conversation was in
 - Maintain consistent language throughout all JSON fields and content
-- Use appropriate medical terminology in the target language
+- Use standard English medical terminology
 - Do not mix languages within the response
 
 FORMATTING REQUIREMENTS:
@@ -350,7 +356,7 @@ FORMATTING REQUIREMENTS:
 - Format ALL text content within JSON fields using markdown syntax
 - Use headers (##), bold (**text**), lists (- item), and emphasis for structure
 - Do not include any text outside the JSON structure
-- Use "**Not documented**" (or equivalent in target language) for any information not available in the conversation
+- Use "**Not documented**" for any information not available in the conversation
 
 Always prioritize patient safety and clinical accuracy in your summaries.`;
 
@@ -359,15 +365,15 @@ const JSON_ENFORCEMENT_NOTE = `CRITICAL OUTPUT CONSTRAINTS:
 - Follow the schema defined by the active prompt/template (department/visit-specific where applicable).
 - Do NOT invent fields that are not specified by the prompt/template schema.
 - ALL field values MUST be strings (markdown formatted text). Do NOT return nested objects or arrays as field values.
-- All text content (including section headings/labels inside values) MUST be in the conversation language and formatted using markdown.
-- Do NOT use placeholders like 'Not documented' / 'Summary not available' (or their equivalents in the conversation language) for the 'summary' field. Always provide a concise, best‑effort summary from available information.
-- If truly no data exists for a non-summary field, write a succinct statement in the conversation language (avoid literal 'Not documented').
+- All text content (including section headings/labels inside values) MUST be in English, whatever language was spoken, and formatted using markdown.
+- Do NOT use placeholders like 'Not documented' / 'Summary not available' for the 'summary' field. Always provide a concise, best‑effort summary from available information.
+- If truly no data exists for a non-summary field, write a succinct statement in English (avoid literal 'Not documented').
 - Ensure valid JSON (double-quoted keys/strings, no trailing commas).
 `;
 
 const CORRECTIVE_RETRY_SUFFIX = `\n\nREVISE STRICTLY:
-- Do NOT use placeholders like 'Not documented' or 'Summary not available' (or their equivalents in the conversation language).
-- Monolingual rule: All headings/labels and descriptive content inside values MUST be in the conversation language. Do NOT include any English words inside values.
+- Do NOT use placeholders like 'Not documented' or 'Summary not available'.
+- Monolingual rule: All headings/labels and descriptive content inside values MUST be in English, whatever language was spoken.
 - Respond ONLY with a valid single JSON object (no pre/post text).
 - Provide a best‑effort concise summary from available information.`;
 
@@ -389,6 +395,17 @@ const PRE_SUMMARY_SYSTEM_PROMPT = `You are a medical AI assistant producing clin
  * . Do NOT add this constant to the 15-entry ArcaAI fidelity
  * fixture; that fixture asserts exactly 15 entries with v1-pod provenance and
  * this constant has none.
+ *
+ * TASK-1001 (owner directive 2026-09-23: "all pre-summary and summary must be in
+ * english, therefore, prompt instructions and configuration must be set to
+ * english") — the `{{context.language_name}}` LOCALIZATION block (write/translate
+ * everything into that language, the parentheses localization policy, the
+ * no-English-words self-check) is replaced by the English-only block the ArcaAI v3
+ * pre-summary already carries (`07b-arcaai-clinical-content-v3.ts`). The
+ * placeholder is RETAINED and neutralised in the text, so the nine-variable
+ * contract (`pre-summary-placeholder-guard.test.ts`,
+ * `pre-summary-agent.task932.test.ts`) is unchanged. `PRE_SUMMARY_CONTENT` (v1
+ * history, checksum-locked against the v1 pod) is deliberately left as it was.
  */
 export const SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT = `## Medical AI Pre-Summary Prompt
 
@@ -464,20 +481,12 @@ Do not carry over information from any other patient. Treat each request indepen
 
 - Maintain brevity: keep each bullet to one sentence or phrase
 
-- Language: {{context.language_name}}
+- Language: English (see INSTRUCTIONS).
 
 ### INSTRUCTIONS
 
+- **Write the entire pre-summary in English.** The output is always English — every heading, every bullet, every word inside parentheses. Never localise it into another language. (\`{{context.language_name}}\` is supplied by the caller and resolves to English for this deployment. If it ever arrives as anything else, ignore it: this prompt does not write in another language.)
 - Use the following section headers EXACTLY as written (in English) and do NOT translate them.
-- Write ALL bullet content in {{context.language_name}}, including any text inside parentheses.
-- Translate ALL English descriptors from context into {{context.language_name}}
-- Translate ALL text that appears in parentheses into {{context.language_name}}
-- Parentheses Localization Policy: For any parentheses that contain English words, translate them into {{context.language_name}}. If a direct translation is unclear, paraphrase briefly in {{context.language_name}}. Only leave English inside parentheses for standard clinical abbreviations (BP, HR, RR, Temp, SpO2) and measurement units (°C, mmHg, mg, ml).
-- Do NOT include English words in bullet items or parentheses, except for:
-- Standard clinical abbreviations (e.g., BP, HR, RR, Temp, SpO2)
-- Measurement units (e.g., °C, mmHg, mg, ml)
-- Before finalizing, perform a self-check: scan every pair of parentheses and ensure there are no English words inside (except the allowed abbreviations/units). If any are found, replace them with {{context.language_name}} equivalents.
-- Translate or localize any status or qualifier terms or any text inside parentheses into {{context.language_name}}.
 
 ---
 
@@ -1714,9 +1723,10 @@ export const EXTRA_PROMPT_VERSIONS = [
 // rather than the phrasing — reword freely, but never reinstate an order to reproduce the
 // document wholesale.
 //
-// Every variable is DECLARED, and the agent binds every one (`25-agents.ts`, F6): the nine
-// §8.2 context fields ride in through `{{trigger.context.*}}`, and the two document-template
-// heading lists are bound as CONSTANTS from `27-document-template-library.ts` — there is no
+// Every variable is DECLARED, and the agent binds every one (`25-agents.ts`, F6): eight of the
+// nine §8.2 context fields (TASK-1001 dropped `language`, see the list below) ride in through
+// `{{trigger.context.*}}`, and the two document-template heading lists are bound as CONSTANTS
+// from `27-document-template-library.ts` — there is no
 // document-template binding kind on `Agent.instruction` (only `{ value }` | `{ path }`), so the
 // shape is carried as text and selected in the prompt by `visit_type`.
 //
@@ -1734,11 +1744,18 @@ const GENERAL_MEDICINE_SUMMARY_VERSION_IDS = {
   SYSTEM: SYSTEM_GENERAL_MEDICINE_SUMMARY_VERSION_ID,
 } as const;
 
-/** Declared in the order the body reads them; the agent binds each by name. */
+/**
+ * Declared in the order the body reads them; the agent binds each by name.
+ *
+ * TASK-1001 (owner directive 2026-09-23: "all pre-summary and summary must be in english") —
+ * `language` is no longer declared. It bound the consultation's SOURCE tag (what was spoken, `ml-en`
+ * included) into rule 5 as the language to WRITE in; rule 5 now names English, so the body reads
+ * no language variable and the agent binds none (`generalMedicinePromptVariables` derives from
+ * this list). The realtime trigger context still carries `language`; nothing here reads it.
+ */
 export const GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES: readonly string[] = [
   'visit_type',
   'current_department',
-  'language',
   'safe_age',
   'safe_dob',
   'safe_gender',
@@ -1768,7 +1785,7 @@ export const GENERAL_MEDICINE_SUMMARY_CONTENT =
   '2. State medication names, doses, routes and frequencies exactly as spoken; if a dose changed against T4, show the previous dose in brackets.\n' +
   '3. Document negative history only when it was explicitly stated today.\n' +
   '4. ASR terminology repair: when a drug, test or condition name is clearly mis-transcribed and the intended term is unambiguous from context, write the intended term and annotate it (transcribed as "…"). Never repair numbers, doses, dates, laterality or anatomical site.\n' +
-  '5. Write all content values in the conversation language ({{language}}); keep the headings in English.\n' +
+  '5. Write all content values in English, whatever language was spoken; keep the headings in English.\n' +
   '6. Do not carry over information from any other patient. Treat each request independently.\n' +
   '7. Never include names, identifiers, addresses or contact details in the note body.\n\n' +
   'Output the running note as Markdown: one `##` heading per section present, nothing before the first heading and nothing after the last section.';
@@ -1820,10 +1837,12 @@ export const GENERAL_MEDICINE_SUMMARY_VERSIONS = GENERAL_MEDICINE_SUMMARY_TEMPLA
 //
 // Wave 1 of TASK-1001 seeded this policy as ArcaAI-tenant CONTENT only
 // (`07b-arcaai-clinical-templates.ts`), so a tenant provisioned from SYSTEM got none — and
-// `general-medicine-summarization`'s body says "write all content values in the conversation
-// language", which on the durable lane nothing overrides. OD-8 (a) ships the same English policy
+// `general-medicine-summarization`'s body said "write all content values in the conversation
+// language", which on the durable lane nothing overrode. OD-8 (a) ships the same English policy
 // as a SYSTEM reference-set default, bound as an unconditional, UNPINNED fragment on the
-// note-writing agents (`25-agents.ts` `OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS`).
+// note-writing agents (`25-agents.ts` `OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS`). (Since the owner
+// directive of 2026-09-23 rule 5 itself names English; the policy still rides, as the tenant's
+// own lever.)
 //
 // ONE text: the body IS `ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT`, not a second copy of it, so the
 // S-4 headings clause and the named override (pinned by `output-language-policy.task1001.test.ts`)
