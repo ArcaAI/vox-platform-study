@@ -29,10 +29,14 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     TextFallbackCandidate,
     candidate_as_resolved_agent,
 )
+from harness.temporal.interpreter.output_language import default_output_language_step
 from harness.temporal.interpreter.templating import PromptVariableUnresolved
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
 _RUN = "018f3a7c-5b84-7d19-9e63-0a2c8d5f7b43"
+#: TASK-1001 (OD-12) — what the ACTIVITY appends when no output-language policy is selected; the
+#: `_system_prompt` / `_compose_system_prompt` composers below are unchanged and never carry it.
+_ENGLISH_STEP = default_output_language_step("English")
 
 
 def _resolved(prompt: str, variables: dict[str, Any] | None = None) -> ResolvedAgent:
@@ -719,7 +723,9 @@ class TestCoreAgentCompositeOnTheActivity:
             ],
         )
 
-        assert calls[0]["system_prompt"] == "Base.\n\nAdult."
+        # TASK-1001 (OD-12) — no `output_language_policy` fragment was selected, so the platform
+        # default's output-language step is the last paragraph.
+        assert calls[0]["system_prompt"] == "Base.\n\nAdult.\n\n" + _ENGLISH_STEP
 
     @pytest.mark.asyncio
     async def test_the_selected_keys_ride_the_node_result(self, harness) -> None:
@@ -764,7 +770,7 @@ class TestCoreAgentCompositeOnTheActivity:
 
         assert result.status == "SUCCEEDED"
         assert result.prompt_fragments == ["base"]
-        assert calls[0]["system_prompt"] == "Base."
+        assert calls[0]["system_prompt"] == "Base.\n\n" + _ENGLISH_STEP
 
     @pytest.mark.asyncio
     async def test_an_empty_composition_degrades_with_the_named_code(self, harness) -> None:

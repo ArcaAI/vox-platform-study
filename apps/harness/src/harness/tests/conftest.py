@@ -117,6 +117,29 @@ def _trajectory_delivery_test_defaults(monkeypatch):
     trajectory_delivery.reset_trajectory_spool()
 
 
+@pytest.fixture(autouse=True)
+def _output_language_control_plane_absent(monkeypatch):
+    """TASK-1001 (OD-12) — the hermetic suite has NO control plane for the note output language.
+
+    Every `core.agent` TEXT_GENERATION activity now reads `consultation.summary.outputLanguage`
+    off the effective-config pull client. Without this, each such test would build the real
+    client and issue an HTTP GET against the gateway address — a network call in a suite rule 06
+    declares hermetic, whose outcome (refused, or a timeout) would depend on the machine.
+
+    `None` is the TRUTHFUL hermetic answer, exactly like the BYO-credential stub above: "the
+    control plane could not be read", which the resolver answers with the descriptor's code
+    default, ENGLISH — so a test that asserts the prompt sent to Text sees the English step, as
+    production does when nobody has written the key. Tests that exercise a platform admin's value
+    override the seam with their own `monkeypatch.setattr`, which runs after this fixture and wins.
+    """
+    from harness.temporal.interpreter.nodes import core
+
+    async def _absent():
+        return None
+
+    monkeypatch.setattr(core, "_output_language_snapshot", _absent)
+
+
 @pytest.fixture
 def settings() -> Settings:
     """Default test settings (process-local, no external dependencies)."""

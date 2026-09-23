@@ -40,6 +40,7 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     read_text_primary,
     wire_provider,
 )
+from harness.temporal.interpreter.output_language import default_output_language_step
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
 _SYSTEM = "00000000-0000-0000-0000-000000000000"
@@ -255,9 +256,13 @@ class TestFallbackOnPrimaryFailure:
         assert result.status == "SUCCEEDED"
         assert [c["provider"] for c in text.calls] == ["azure-openai", "lm-studio"]
         # The fallback candidate runs on ITS model, ITS resolved prompt (node variables interpolated) and ITS parameters.
+        # TASK-1001 (OD-12): its instruction selects no output-language policy, so the platform
+        # default's step follows it.
         served = text.calls[1]
         assert served["model"] == "gemma-4-e2b-it-qat"
-        assert served["system_prompt"] == "PLATFORM Ada"
+        assert served["system_prompt"] == "PLATFORM Ada\n\n" + default_output_language_step(
+            "English"
+        )
         assert served["temperature"] == 0.2 and served["max_tokens"] == 2048
         # And the output names the row that served — metering follows it.
         assert result.output is not None

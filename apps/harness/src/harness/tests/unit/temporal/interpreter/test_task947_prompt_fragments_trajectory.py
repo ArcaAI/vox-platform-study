@@ -20,6 +20,7 @@ import pytest
 
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import _shared, core
+from harness.temporal.interpreter.output_language import default_output_language_step
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
 _RUN = "018f3a7c-5b84-7d19-9e63-0a2c8d5f7b43"
@@ -253,8 +254,12 @@ class TestCoreAgentStampsTheSelectedFragments:
         assert result.prompt_fragments == ["base", "revisit"]
         assert len(recorded) == 1
         assert recorded[0]["node_stats"] == {"prompt_fragments": ["base", "revisit"]}
-        # The prompt that went to TEXT is the composition — the excluded fragment is absent.
-        assert _StubText.calls[0]["system_prompt"] == "Base.\n\nRevisit."
+        # The prompt that went to TEXT is the composition — the excluded fragment is absent —
+        # then (TASK-1001 OD-12) the platform-default output-language step, because no
+        # `output_language_policy` fragment was selected.
+        assert _StubText.calls[0]["system_prompt"] == (
+            "Base.\n\nRevisit.\n\n" + default_output_language_step("English")
+        )
 
     async def test_a_single_body_generation_records_no_node_stats(self, run) -> None:
         recorded, result = await run(_INLINE, {"systemPrompt": "Summarise."})
