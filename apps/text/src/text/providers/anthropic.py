@@ -18,7 +18,7 @@ import structlog
 from anthropic import AsyncAnthropic
 
 from text.core.connection import resolve_connection
-from text.core.defaults import resolve_request_defaults
+from text.core.defaults import record_dropped_penalties, resolve_request_defaults
 from text.core.exceptions import (
     ProviderConnectionMissingError,
     ProviderCredentialsError,
@@ -183,6 +183,11 @@ class AnthropicProvider:
         }
         if request.system_prompt:
             kwargs["system"] = request.system_prompt
+        # TASK-1001 OD-10 — DROPPED, logged. The Messages API has no repetition
+        # penalty: the pinned SDK's `message_create_params` (anthropic==0.122.0)
+        # declares no `frequency_penalty` / `presence_penalty` member, so
+        # `messages.create` has no keyword to carry one.
+        record_dropped_penalties(resolved, provider=_PROVIDER_NAME, model=kwargs["model"])
         self._apply_reasoning(kwargs, request)
         return kwargs
 

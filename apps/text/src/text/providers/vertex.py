@@ -23,7 +23,7 @@ from google.genai import types
 from google.oauth2 import service_account
 
 from text.core.connection import resolve_connection
-from text.core.defaults import resolve_request_defaults
+from text.core.defaults import record_dropped_penalties, resolve_request_defaults
 from text.core.exceptions import (
     ProviderConnectionMissingError,
     ProviderCredentialsError,
@@ -232,6 +232,16 @@ class VertexProvider:
             # NOT forwarded as ``response_schema`` — Gemini's schema type is
             # narrower than JSON-Schema and a mismatch would fail the generation.
             cfg_kwargs["response_mime_type"] = "application/json"
+        # TASK-1001 OD-10 — DROPPED, logged, although the pinned SDK HAS the
+        # fields (google-genai==2.18.1 `GenerateContentConfig.presence_penalty` /
+        # `.frequency_penalty`). The ENGINE refuses them per model: Google Cloud's
+        # Gemini 3.6 Flash model page states custom penalty values "return an
+        # error" on 3.6 Flash and later, and gemini-2.5-* answers INVALID_ARGUMENT
+        # "Penalty is not enabled". Nothing here knows which model accepts them,
+        # and a platform default would turn every such call into a 400.
+        record_dropped_penalties(
+            resolved, provider=_PROVIDER_NAME, model=self._resolve_model(request)
+        )
         self._apply_reasoning(cfg_kwargs, request)
         return types.GenerateContentConfig(**cfg_kwargs)
 

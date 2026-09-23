@@ -679,3 +679,46 @@ class TestPublicGeneratePathUnchanged:
 
         assert resp.status_code == 200, resp.text
         assert resp.json()["guardrail_usage"]["provider"] == "lm-studio"
+
+
+# --------------------------------------------------------------------------
+# 8. TASK-1001 OD-10 — a judgement never takes a repetition penalty
+# --------------------------------------------------------------------------
+
+
+class TestJudgeTakesNoRepetitionPenalty:
+    """The platform penalty default is for long-form notes. On a short
+    classification it biases the verdict tokens themselves (a llama.cpp-backed
+    engine's penalty window can include recent prompt tokens, so an answer word
+    the question contains is pushed down), so the judge path resolves its
+    hyperparameters WITHOUT the penalty keys even while one is served."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_generation_defaults(self):
+        from text.core.defaults import apply_generation_defaults
+
+        apply_generation_defaults({})
+        yield
+        apply_generation_defaults({})
+
+    @pytest.mark.asyncio
+    async def test_a_served_penalty_default_never_reaches_a_judgement(
+        self, client_factory, mock_provider
+    ):
+        from text.core.defaults import apply_generation_defaults, resolve_request_defaults
+
+        apply_generation_defaults({"frequency_penalty": 0.5, "presence_penalty": 0.5})
+        # The default is LIVE — a public request would carry it — so the judge
+        # assertion below cannot pass vacuously.
+        public = resolve_request_defaults(GenerateRequest(prompt="hello", model="m"))
+        assert public["frequency_penalty"] == 0.5
+        assert public["presence_penalty"] == 0.5
+
+        client, _ = await client_factory()
+        resp = await client.post(JUDGE_PATH, json=_payload())
+
+        assert resp.status_code == 200, resp.text
+        sent = mock_provider.generate.await_args.args[0]
+        resolved = resolve_request_defaults(sent)
+        assert "frequency_penalty" not in resolved
+        assert "presence_penalty" not in resolved

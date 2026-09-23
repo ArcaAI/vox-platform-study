@@ -10,7 +10,7 @@ import structlog
 from openai import AsyncAzureOpenAI, BadRequestError
 
 from text.core.connection import resolve_connection
-from text.core.defaults import resolve_request_defaults
+from text.core.defaults import penalty_kwargs, resolve_request_defaults
 from text.core.exceptions import ProviderConnectionMissingError, ProviderCredentialsError
 from text.core.reasoning import ReasoningSupport, apply_openai_wire_reasoning
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
@@ -36,6 +36,15 @@ logger = structlog.get_logger(__name__)
 #: string has to match the vocabulary a platform admin types into the config
 #: plane, or the pool silently never receives its tuning.
 _POOL_NAME = "azure-openai"
+
+# TASK-1001 OD-10 — repetition penalties are FORWARDED. Source: the Azure OpenAI
+# REST reference for chat completions (`frequency_penalty` / `presence_penalty`,
+# -2.0 to 2.0), sent through the same TYPED parameters of the pinned SDK
+# (openai==3.1.0 `completion_create_params`) `AsyncAzureOpenAI` shares with
+# OpenAI. Only a non-neutral value is ever sent, and ONLY when the request itself
+# carried it: GPT-5-class reasoning deployments refuse penalties with a 400, so a
+# platform default — chosen without knowing the deployment — is dropped and
+# warned here (`PLATFORM_DEFAULT_PENALTY_PROVIDERS`).
 
 
 def _get_tracer() -> Tracer:
@@ -239,6 +248,10 @@ class AzureOpenAIProvider:
                 "top_p": resolved["top_p"],
                 "stream": False,
             }
+            # TASK-1001 OD-10 — FORWARDED (source: module note under `_POOL_NAME`).
+            kwargs.update(
+                penalty_kwargs(resolved, request, provider="azure_openai", model=resolved_model)
+            )
 
             if (
                 request.response_format is not None
@@ -335,6 +348,10 @@ class AzureOpenAIProvider:
                 "stream": True,
                 "stream_options": {"include_usage": True},
             }
+            # TASK-1001 OD-10 — FORWARDED (source: module note under `_POOL_NAME`).
+            kwargs.update(
+                penalty_kwargs(resolved, request, provider="azure_openai", model=resolved_model)
+            )
 
             if request.response_format is not None:
                 if request.response_format.type == "json_schema":

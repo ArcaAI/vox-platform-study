@@ -57,6 +57,7 @@ from pydantic import BaseModel, Field
 # a second copy of `_credential_attribution` is exactly how a call site starts
 # stamping its own attribution.
 from text.api.endpoints.generate import _coerce_stats, _credential_attribution, _extract_usage
+from text.core.defaults import PENALTY_NEUTRAL
 from text.core.dependencies import (
     get_app_state,
     get_judge_circuit_breakers,
@@ -242,6 +243,15 @@ async def _run_judge(
         temperature=request_body.temperature,
         max_tokens=request_body.max_tokens,
         top_p=request_body.top_p,
+        # TASK-1001 OD-10 — a judgement NEVER takes a repetition penalty. The
+        # platform default is for long-form notes; on a short classification it
+        # biases the verdict tokens themselves (on llama.cpp-backed engines the
+        # penalty window can include recent prompt tokens, so an answer word the
+        # question contains can be pushed down). An explicit neutral value is a
+        # caller's own value, so it wins over the served default and nothing is
+        # sent (`core/defaults.resolve_request_defaults`).
+        frequency_penalty=PENALTY_NEUTRAL,
+        presence_penalty=PENALTY_NEUTRAL,
         stream=False,
         response_format=request_body.response_format,
         retry_config=RetryConfig(max_retries=0, retry_on=[]),
