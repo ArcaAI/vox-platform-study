@@ -29,6 +29,7 @@ stateDiagram-v2
     DRAFT_PENDING_SENSORS --> CLOSED_INCOMPLETE: completion timeout
     CLOSED_INCOMPLETE --> SIGNED: late approve()
     CLOSED_INCOMPLETE --> RECORDING: resume
+    PENDING_REVIEW --> RECORDING: resume — add more
     SIGNED --> CLOSED_COMPLETE: close()
     SIGNED --> REOPENED: reopen()
     CLOSED_COMPLETE --> REOPENED: reopen()
@@ -58,7 +59,7 @@ The short version:
 | `RECORDING`             | Audio is streaming; the live note is being written.                                                                     | `recording.start()`             | `recording.stop`                                                                                             |
 | `DRAINING`              | Recording stopped; the final note is being produced.                                                                    | `recording.stop()`              | resume (`RECORDING`), the final note (`PENDING_REVIEW` / `DRAFT_PENDING_SENSORS`), or the completion timeout |
 | `DRAFT_PENDING_SENSORS` | The final note is readable, quality checks are still running.                                                           | final note, optimistic delivery | `PENDING_REVIEW`, `approve`, the completion timeout                                                          |
-| `PENDING_REVIEW`        | **Ready to complete**: the final note waits for the clinician's approval.                                               | final note                      | `approve` → `SIGNED`, or the completion timeout                                                              |
+| `PENDING_REVIEW`        | **Ready to complete**: the final note waits for the clinician's approval.                                               | final note                      | `approve` → `SIGNED`, resume (`RECORDING`), or the completion timeout                                        |
 | `SIGNED`                | A clinician attested the note.                                                                                          | `approve()`                     | `close` → `CLOSED_COMPLETE`, `reopen`                                                                        |
 | `CLOSED_COMPLETE`       | Done: signed and closed.                                                                                                | `close()` after `SIGNED`        | `reopen`                                                                                                     |
 | `CLOSED_INCOMPLETE`     | Closed **unsigned** — the completion timeout ran out, an idle sweep closed it, or someone closed it without a sign-off. | timeout / sweep / `close()`     | late `approve` → `SIGNED`, resume (`RECORDING`), `reopen`                                                    |
@@ -139,8 +140,8 @@ ALaaS sends these fire-and-forget after its own save succeeded, and treats "alre
 A consultation is not finished just because the clinician stopped once.
 
 - **Stop, then record again.** `recording.start()` on a stopped consultation resumes it — while the
-  final note is still being written (`DRAINING`) or, with the platform's prime switch off (the
-  default, §2), once it is ready (`PENDING_REVIEW`). When that recording stops, HOPE
+  final note is still being written (`DRAINING`) or once it is ready (`PENDING_REVIEW`). When that
+  recording stops, HOPE
   **re-generates the final note over the whole visit** — every recording so far, in order — and
   replaces the unsigned draft in place (the same summary id). The completion window **starts
   again** from that moment.
@@ -188,16 +189,16 @@ Settings"); it is not edited there.
 
 ## 6. What your integration sends and receives
 
-| You call                                                             | Legal from                                                                                                                                                | Gives you                                     |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `consultations.open(…)`                                              | —                                                                                                                                                         | the consultation (existing one if it matches) |
-| `recording.start(id, { sessionId })`                                 | `PRIMED`, `DRAINING`, `CLOSED_INCOMPLETE` always; any other state only while the platform's _require PRIMED before recording_ switch is off (its default) | `RECORDING`                                   |
-| `recording.stop(id)`                                                 | `RECORDING`                                                                                                                                               | `DRAINING`; the final note follows            |
-| `summaries.latest(id)`                                               | once the final note exists                                                                                                                                | the note, its `id` and `version`              |
-| `summaries.update(id, summaryId, { content })`                       | an unsigned note                                                                                                                                          | a new version of the note                     |
-| `summaries.approve(id, summaryId, { clinicianUserId }, { ifMatch })` | `PENDING_REVIEW`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT`, `CLOSED_INCOMPLETE`                                                                               | `SIGNED`                                      |
-| `consultations.close(id, …, { ifMatch })`                            | `SIGNED` → `CLOSED_COMPLETE`; `TIMED_OUT` → `CLOSED_INCOMPLETE`; already closed → returned as is                                                          | the closed consultation                       |
-| `consultations.reopen(id)`                                           | `SIGNED`, `TIMED_OUT`, `CLOSED_COMPLETE`, `CLOSED_INCOMPLETE`                                                                                             | `REOPENED`                                    |
+| You call                                                             | Legal from                                                                                                                                                                  | Gives you                                     |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `consultations.open(…)`                                              | —                                                                                                                                                                           | the consultation (existing one if it matches) |
+| `recording.start(id, { sessionId })`                                 | `PRIMED`, `DRAINING`, `PENDING_REVIEW`, `CLOSED_INCOMPLETE` always; any other state only while the platform's _require PRIMED before recording_ switch is off (its default) | `RECORDING`                                   |
+| `recording.stop(id)`                                                 | `RECORDING`                                                                                                                                                                 | `DRAINING`; the final note follows            |
+| `summaries.latest(id)`                                               | once the final note exists                                                                                                                                                  | the note, its `id` and `version`              |
+| `summaries.update(id, summaryId, { content })`                       | an unsigned note                                                                                                                                                            | a new version of the note                     |
+| `summaries.approve(id, summaryId, { clinicianUserId }, { ifMatch })` | `PENDING_REVIEW`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT`, `CLOSED_INCOMPLETE`                                                                                                 | `SIGNED`                                      |
+| `consultations.close(id, …, { ifMatch })`                            | `SIGNED` → `CLOSED_COMPLETE`; `TIMED_OUT` → `CLOSED_INCOMPLETE`; already closed → returned as is                                                                            | the closed consultation                       |
+| `consultations.reopen(id)`                                           | `SIGNED`, `TIMED_OUT`, `CLOSED_COMPLETE`, `CLOSED_INCOMPLETE`                                                                                                               | `REOPENED`                                    |
 
 Streams you can subscribe to while a consultation is live: `streams.liveSummary` (the live note,
 section by section), `streams.harnessProgress` (final-note generation; its terminal event means the
