@@ -518,7 +518,13 @@ function withoutSentencesAlreadyPresent(before: string, addition: string): Dedup
     kept.push(sentence);
   }
 
-  return { text: kept.map((sentence) => `${sentence.text}${sentence.separator}`).join('').trim(), dropped };
+  return {
+    text: kept
+      .map((sentence) => `${sentence.text}${sentence.separator}`)
+      .join('')
+      .trim(),
+    dropped,
+  };
 }
 
 // =================================================================================================

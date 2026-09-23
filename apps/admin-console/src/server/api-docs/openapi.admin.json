@@ -18856,6 +18856,14 @@
       },
       "SectionAnnotationDto": {
         "properties": {
+          "duplicateOf": {
+            "description": "TASK-1001 — for `duplicate`: the `sectionKey` of the other section in the SAME document that already carries the text `start`/`end` address in THIS section. A flag, never a removal — the text is left exactly as written. Absent on every other kind.",
+            "type": "string"
+          },
+          "duplicateOfTitle": {
+            "description": "TASK-1001 — for `duplicate`: the TITLE of the section `duplicateOf` names, as HOPE knows it (the compiled template`s title for that key). Present on every `duplicate`; prefer it for display and fall back to `duplicateOf` when a client cannot resolve the key. Absent on every other kind.",
+            "type": "string"
+          },
           "end": {
             "description": "Character offset end within THIS SECTION's `content`",
             "type": "number"
@@ -18870,7 +18878,8 @@
               "entity",
               "groundedness",
               "flagged",
-              "finding"
+              "finding",
+              "duplicate"
             ],
             "type": "string"
           },

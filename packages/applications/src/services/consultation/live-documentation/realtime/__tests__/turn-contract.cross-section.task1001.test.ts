@@ -285,8 +285,7 @@ describe('TASK-1001 (wave 2) — what is NOT flagged', () => {
 
   it('two unrelated sentences that merely share many words (below 0.8) are not flagged', () => {
     // 10/14 ≈ 0.71 and 9/12 = 0.75: close in wording, different in content.
-    const stored =
-      'The patient reports a dry cough with fever and chills at night. She has no known drug allergies and takes no regular medication.';
+    const stored = 'The patient reports a dry cough with fever and chills at night. She has no known drug allergies and takes no regular medication.';
     const written =
       'The patient reports a wet cough with fever and chills at dawn. She has known drug allergies to penicillin and takes regular medication.';
 
