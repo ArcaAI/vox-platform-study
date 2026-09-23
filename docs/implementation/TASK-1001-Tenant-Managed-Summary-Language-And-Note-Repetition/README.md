@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — deployed to `hope-v2-dev` (`dc4c218f`) and verified there across resumed recordings; awaiting owner sign-off |
+| **Status** | Review — wave 3 (every open item closed) merged and gated on `dev-2.2`; cluster rollout and verification below; awaiting owner sign-off |
 | **Type** | bugfix + feature |
 | **Branch** | `dev-2.2` |
 | **Repos** | `arca/hope-v2` (primary) · `ALaaSv3.0` (secondary, latent defects) |
@@ -412,7 +412,7 @@ throws in `afterAll` with *"Authentication failed… credentials for `test` are 
 tests are skipped and nothing in this ticket touches `agentPromotion`, Prisma credentials or tenant
 context.
 
-### Not done
+### Not done (as of wave 1 — every item below was closed by waves 2 and 3)
 
 - **Phase 6** — blocked on OD-10.
 - **Phase 7 partial** — S-9 (the late-join gap) left out; it is a design question, not a defect fix.
@@ -478,20 +478,57 @@ Owner decision 2026-09-23: **flag, never drop.** HOPE `03270e7a5` (merged `d6632
 
 **Open from X1/X2:** the final note built after `note.final` from durable rows carries no annotations, so a section whose final text differs from its live text shows no flag — needs HOPE's final document to carry `duplicate` annotations. A long sentence differing only by a negation can be flagged (never dropped). The admin-console playground keeps its own annotation-kind list, already missing `finding` and now `duplicate`.
 
-### Follow-ups — recorded, not in this ticket
-1. **Direct summary-generation path** (`summary.service`, used by the SDK's `summary.generateSummary`, not by ALaaS): the output language reaches the prompt only as a variable; a department body that says "write in the conversation language" can still win there. Append the same named-override sentence at assembly.
-2. **SYSTEM `general-medicine-summarization`** says "in the conversation language ({{language}})", and on the durable/harness lane no runtime step overrides it. Non-ArcaAI tenants inherit it. Needs a harness-side default step or the template to bind `{{language_name}}`.
-3. `pre-summary.processor.ts`, `comprehensive-summary.processor.ts`, `chain-summary.service.ts` use an `'en'` literal instead of the setting (functionally English; a config-rule violation).
-4. The composite-selection answer on the graph lane asks the PRIMARY candidate only; a fallback agent with a different instruction could get a mismatched language step.
-5. Admin-console playground picker still labelled "Summary language" — it now sets the SOURCE language.
-6. ALaaS races A1 could not close from the client (an old start's `recording/start` landing last; `note.final` from a finalizing old runtime) and the fake adapter that masked S-1.
-7. ~~Penalty value~~ — measured 2026-09-23: kept at 0 (see Cluster verification).
+### Wave 3 — 2026-09-23: every open item closed (owner: "finish all open/remaining items")
+
+Five HOPE lanes (L-A…L-E) and two ALaaS lanes (A-A, A-B), all Opus, disjoint by file, no gates in
+any lane; one orchestrator gate after the merge.
+
+| Lane | Commit(s) | What landed |
+|---|---|---|
+| L-A final note + summary paths | `5e01afd04` | `GET summary/latest` gains `SummaryResponse.sections[] {sectionKey, title, start, end, annotations?}` — the finalizer narrative split with ALaaS's own heading rule, each section carrying `duplicate` flags from the SAME detector (`crossSectionDuplicateAnnotations`, exported from `turn-contract.ts`); `content` byte-identical. The note ALaaS shows at `note.final` IS that narrative, so this is where a flag has to live. Direct `generateSummary` appends the named-override sentence (follow-up #1). The two processors and `ChainSummaryService` read `consultation.summary.outputLanguage` instead of an `'en'` literal (#3) — a per-request `language`/`locale` no longer chooses the note there. |
+| L-B harness | `4fce970be` | The durable lane's `core.agent` TEXT_GENERATION arm appends the platform default's language step, per candidate, when no `output_language_policy` fragment was selected (#2, #4). Read inside the activity (effective-config client, fails open to `en`); no workflow change, replay-safe. `consultation.summary.outputLanguage` gains `consumedBy: ['harness']`. |
+| L-C SYSTEM reference set | `a7354450c`, `f01877b61` | OD-8 finished: SYSTEM + Global "Output language policy" rows; `general-medicine-summarization` and `casenote-finalization` carry it unpinned, last. Found and fixed on the way: **the SYSTEM General Medicine template shared its id with the department-free pre-summary**, so the seeded SYSTEM `general-medicine-summarization` (and every clone) froze the PRE-SUMMARY prompt — confirmed live on the local DB and on `hope-v2-dev` (SYSTEM + ArcaAI). Moved to `…0004-000000000004`; a guard test now fails on any duplicate prompt seed id. `AgentService.referenceInstruction` no longer pins an unpinned fragment on clone. |
+| L-D reconnect | `b0c0e260e`, `772a08428` | S-9: late join replays one `section.patch` per saved section after the snapshot (dedup by `documentKey::sectionKey` + revision); `LiveSummarySection` gains optional `documentKey`/`sectionKey`/`revision`. F5: a replayed terminal completes the stream. Found on the way: `start()` never cleared the cached `closed` snapshot, so after F5 a client joining a RESUMED recording before its first flush would be ended by the previous session's `closed` — now cleared atomically (Lua, `closed`-only, so a live session's snapshot is never touched). |
+| L-E console + guard | `f36aca3ec` | Console: "Spoken language" label (#5); `finding`/`duplicate` kinds and an "Also in <title>" badge. `recording/start` answers **409 `STT_SESSION_NOT_ACTIVE`** for a closed/finalizing/rejected/unknown STT session (fails open when apps/stt cannot be asked) — the HOPE half of #6. vox-node CHANGELOG. |
+| A-A / A-B (ALaaS) | sibling ticket | Final-note flags from both HOPE sources, the null-final crash, Race 2 (#6), the fake adapter, the four jest suites, and closing a superseded walk's STT session so the 409 can fire. |
+
+Integration (orchestrator): one shared `defaultOutputLanguageInstruction` for the live frame and
+the direct path (the harness parity test pins it); pre-summary `{{language_name}}` names the output
+language natively (`hi` → Hindi; v1's map said English); the applications package's own vitest run
+no longer picks up live-DB `integration/**` suites; a stale TASK-995 timeout test (120 s → 300 s)
+and black/prettier drift in pre-existing files.
+
+**Gate (merged `dev-2.2`, one pass):** build 20/20 · typecheck 26/26 (api incl. tests, applications,
+database, vox-node, vox, admin-console) · applications 15033 passed · api 4863 · database 1961 ·
+vox-node 587 · vox 3807 · admin-console 3728 + lint + production build · contracts/cross-tenant 414 ·
+harness pytest 2740 passed, ruff clean, mypy clean · route manifest unchanged, OpenAPI/portal
+regenerated, `openapi:check` / `portal:check` / `gen:admin:check` no drift · no new lint warnings in
+touched files. **RED:** with the pre-wave-3 source restored, all 8 new applications test files fail
+(53 tests) and both new seed test files fail; the harness suite fails to collect against the old
+`core.py`.
+
+### Follow-ups — status after wave 3
+1. ~~Direct summary-generation path~~ — closed by L-A.
+2. ~~SYSTEM `general-medicine-summarization` on the durable lane~~ — closed by L-B (runtime step) and L-C (policy fragment; id collision fixed).
+3. ~~`'en'` literals in the processors and chain summary~~ — closed by L-A.
+4. ~~Fallback candidate language step~~ — closed by L-B (decided per candidate).
+5. ~~Console "Summary language" label~~ — closed by L-E.
+6. ~~ALaaS races and the fake adapter~~ — closed by L-E (HOPE 409) and A-B (ALaaS).
+7. ~~Penalty value~~ — measured 2026-09-23: kept at 0.
+
+Still open, recorded rather than built:
+- `DocumentSectionStore.lock()` does not bump `revision`, so a client discards a replayed `locked` patch.
+- The live flush publishes its snapshot before the section writes land, so live snapshots carry no `revision`; only late-join snapshots are stamped.
+- harness-progress / harness-assurance replay the previous run's `closed` until the new run publishes (clients already stop there).
+- `harness-internal.service.ts` passes the workflow node's `conversationLanguage` (default `en`) — admin configuration under OD-12, left as is.
+- The durable step applies to every TEXT_GENERATION `core.agent`, not only note writers; a tenant agent that must write another language opts out with its own `output_language_policy` fragment.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-22 | Ticket opened. Both defects root-caused against `hope-v2-dev`. Design drafted; OD-1…OD-8 pending. |
+| 2026-09-23 | Wave 3 — every open item: final-note flags on `summary/latest`, English by default on the direct/processor/harness paths, SYSTEM reference-set policy (and the General Medicine id collision it exposed), late-join section replay + F5 + resumed-recording snapshot clear, console label/badge, `recording/start` 409 for a stale STT session; ALaaS sibling lanes. Merged, gated once, RED verified, worktrees destroyed. |
 | 2026-09-23 | Cross-section duplicate flag (X1 HOPE, X2 ALaaS) merged, gated, RED verified, deployed `dc4c218f`, verified on the cluster. Penalty A/B: kept at 0. 22-agent policy rollout done via the admin API. |
 | 2026-09-23 | Wave 2: owner answered OD-7/9/10/12/13. Penalty plumbing (P1/P2), English-by-default output language with `ml-en` accepted (L5), ALaaS sibling ticket S-1…S-5 (A1/A2). Merged, gated once, RED verified, worktrees destroyed, pushed `9e8db9d91` (pipeline #1304). |
 | 2026-09-22 | Implemented in four parallel worktree lanes, merged to `dev-2.2`, gated once (`640762e55`). OD-7 answered (keep E2B). OD-10 opened: the decode-time penalties are inert on this platform, so the dedup is the only defence. OD-11 resolved against the ticket's own §A2. Worktrees and branches destroyed after the merge and the green gate. |
