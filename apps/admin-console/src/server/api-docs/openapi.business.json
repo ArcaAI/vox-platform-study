@@ -4804,8 +4804,8 @@
             "type": "boolean"
           },
           "language": {
-            "description": "BCP-47 language tag the generated notes are written in, as declared at open. Absent = undeclared (the agent decides).",
-            "example": "ml",
+            "description": "BCP-47 tag of the consultation's SOURCE language as declared at open (`en`, `ml`, or a code-switch mode such as `ml-en`). Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared.",
+            "example": "ml-en",
             "type": "string"
           },
           "metadata": {
@@ -13917,8 +13917,8 @@
             "type": "string"
           },
           "language": {
-            "description": "BCP-47 language tag the generated notes should be written in (`en`, `ml`, `en-IN`). Independent of the STT language mode: absent means undeclared, and the agent decides. A code-switch mode such as `ml-en` is rejected — that describes what the microphone hears (`languageMode`), never what the note is written in.",
-            "example": "ml",
+            "description": "BCP-47 tag of the consultation's SOURCE language — what is spoken and transcribed (`en`, `ml`, `en-IN`), or an STT code-switch mode such as `ml-en` (Malayalam-led, English mixed). It does not choose the language the notes are written in: that is the tenant's output-language policy when one is configured, otherwise the platform default (English). Absent means undeclared.",
+            "example": "ml-en",
             "type": "string"
           },
           "metadata": {

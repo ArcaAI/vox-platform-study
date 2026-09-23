@@ -65,7 +65,9 @@ function build(wiring: Wiring = {}) {
     findById: vi.fn(),
   };
   args[1] = {
-    findById: vi.fn().mockResolvedValue({ id: CID, tenantId: TENANT, doctorId: 'doctor-1', departmentId: 'dept-1', metadata: wiring.metadata ?? null }),
+    findById: vi
+      .fn()
+      .mockResolvedValue({ id: CID, tenantId: TENANT, doctorId: 'doctor-1', departmentId: 'dept-1', metadata: wiring.metadata ?? null }),
   };
   args[2] = { create: vi.fn() };
   args[3] = { create: vi.fn() };
@@ -92,7 +94,9 @@ const preSummary = async (service: SummaryService, options?: Record<string, unkn
   expect(service.generatePreSummary(CID, { ...(options ? { options } : {}) } as never)).rejects.toBe(STOP);
 
 const finalSummary = async (service: SummaryService, options?: Record<string, unknown>) =>
-  expect(service.generateSummary(CID, { transcription: 'today the patient reported …', ...(options ? { options } : {}) } as never)).rejects.toBe(STOP);
+  expect(service.generateSummary(CID, { transcription: 'today the patient reported …', ...(options ? { options } : {}) } as never)).rejects.toBe(
+    STOP,
+  );
 
 describe.each([
   ['PRE-SUMMARY', preSummary],

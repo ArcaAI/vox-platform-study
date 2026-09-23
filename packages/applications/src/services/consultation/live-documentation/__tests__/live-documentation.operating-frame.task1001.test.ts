@@ -238,7 +238,11 @@ interface Flush {
 }
 
 /** One flush. Returns BOTH halves of what the model reads: the user prompt and the instruction. */
-async function flushOnce(spec: ResolvedTextGenerationSpec, metadata: Record<string, unknown> | null = null, platformDefault?: unknown): Promise<Flush> {
+async function flushOnce(
+  spec: ResolvedTextGenerationSpec,
+  metadata: Record<string, unknown> | null = null,
+  platformDefault?: unknown,
+): Promise<Flush> {
   const { service, post } = buildService(spec, metadata, platformDefault);
   service.start({ consultationId: CID, tenantId: TENANT });
   await settle();

@@ -88,19 +88,19 @@ describe('buildTextGeneratePayload — repetition penalties (TASK-1001)', () => 
   });
 
   it('accepts the camelCase spelling an Agent`s `parameters.generation` uses', () => {
-    const payload = buildTextGeneratePayload(
-      makeAssembledPrompt({ hyperparameters: { frequencyPenalty: 0.5, presencePenalty: -0.1 } }),
-      { provider: 'lm-studio' },
-    );
+    const payload = buildTextGeneratePayload(makeAssembledPrompt({ hyperparameters: { frequencyPenalty: 0.5, presencePenalty: -0.1 } }), {
+      provider: 'lm-studio',
+    });
 
     expect(wire(payload)).toMatchObject({ frequency_penalty: 0.5, presence_penalty: -0.1 });
   });
 
   it('a caller-supplied value wins over the prompt hyperparameters, exactly like top_p', () => {
-    const payload = buildTextGeneratePayload(
-      makeAssembledPrompt({ hyperparameters: { frequency_penalty: 0.4, presence_penalty: 0.2 } }),
-      { provider: 'lm-studio', frequencyPenalty: 0.9, presence_penalty: 0 },
-    );
+    const payload = buildTextGeneratePayload(makeAssembledPrompt({ hyperparameters: { frequency_penalty: 0.4, presence_penalty: 0.2 } }), {
+      provider: 'lm-studio',
+      frequencyPenalty: 0.9,
+      presence_penalty: 0,
+    });
 
     // `0` is a deliberate value, not an absence: it travels.
     expect(wire(payload)).toMatchObject({ frequency_penalty: 0.9, presence_penalty: 0 });

@@ -3868,7 +3868,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // (`textAgent` undefined) serves a single-template snapshot, so nothing can be selected.
         const promptText = ctx.buildPrompt(
           input.sourceText,
-          textAgent ? outputLanguagePolicySelected(textAgent.spec.primary, textAgent.overrides, ctx.runContext.trigger as Readonly<Record<string, unknown>>) : false,
+          textAgent
+            ? outputLanguagePolicySelected(textAgent.spec.primary, textAgent.overrides, ctx.runContext.trigger as Readonly<Record<string, unknown>>)
+            : false,
         );
         // TASK-939 OD-2(a) — the TURN schema, derived per call. `responseFormat` is the only field
         // the call path reads off `compiled`, and the committed one is a persisted artifact the

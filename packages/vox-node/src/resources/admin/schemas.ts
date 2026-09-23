@@ -1213,7 +1213,7 @@ export interface ConsultationResponse {
   id: string;
   /** Whether this consultation was just created (true) or already existed (false) */
   isNew: boolean;
-  /** BCP-47 language tag the generated notes are written in, as declared at open. Absent = undeclared (the agent decides). */
+  /** BCP-47 tag of the consultation's SOURCE language as declared at open (`en`, `ml`, or a code-switch mode such as `ml-en`). Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared. */
   language?: string;
   /** Additional metadata */
   metadata?: Record<string, unknown>;
