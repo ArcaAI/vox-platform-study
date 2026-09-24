@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — owner said **go** 2026-09-24 (all ODs as recommended, with the amendments in §7.1) |
+| Status | **In Progress** — all lanes merged on `task-1003/integration` and gated (§10.2); awaiting merge-target confirmation, push and cluster verification |
 | Type | bugfix + infrastructure |
 | Branch | `dev-2.2` (hope-v2) · `main` (hope-v2-deployment) · `refactor-hope-integaration` (ALaaSv3.0) |
 | Repos | `arca/hope-v2`, `arca/hope-v2-deployment`, `ALaaSv3.0` (`apps/audio-stream-svc`) |
@@ -335,7 +335,39 @@ Checked 2026-09-24: `AiRoutingPolicy` `guardrail.validate` has no `configJson` t
 
 ## 10. Implementation summary
 
-_Pending — filled in on completion._
+### 10.1 What changed, per lane
+
+| Lane | Tier | Branch / commits | Change |
+|---|---|---|---|
+| L-TUN | sonnet | deployment `task-1003/tun` `889ca4c` | `protocol: http2` (config-revision 2); 3 alert rules + promtool tests; `docs/cloudflare-tunnel.md` §8 |
+| L-DTO | sonnet | `3a38ecaee` | DTO accepts `lexicon_correction_count`; cross-language contract fixture `tests/contracts/stt-streaming-usage.fixture.json` pinned by a real-builder pytest and a DTO vitest |
+| L-STT | sonnet | `dbc1e67ab` | absent size estimate no longer warns; `stt_streaming_script_profile_chars_total{script}` + `stt.streaming.script_profile` (telemetry only, pinned not to switch engines); `stt_cloud_asr_non_fatal_errors_total{provider,code}` |
+| L-GRD | opus | `b38cc3851` | TEXT→guardrail 75 s / retry only connect + 502/503/504 (never ReadTimeout, never a judge-timeout 503) / 5 s connect bound / breaker (5 failures, 15 s); judge `max_attempts` 1; seed + descriptor + floor at 75; nesting invariant test |
+| L-NER | opus | `c8829b0c2`, `05a5f68d6`, `c48424ddf` | `GET internal/harness/models/resolve?taskKey=nlp.ner` (SYSTEM-only, fail-closed 503); harness resolves inside `extract_entities`/`nlp_extract_entities` and calls `classify_tokens_raw` with `model_name` + labels + `clinical_taxonomy` (no `model_path`, matching the gateway so NLP keeps one resident copy) |
+| L-EOS | opus | `85e19f489` | WS `stop` writes an in-band `isFinal` frame after the last forwarded frame (control finalize kept as fallback); STT drains the audio backlog (bounded by the governed tail-wait budget) before finalizing; DELETE waits for an in-flight teardown and returns the summary (200) after the upload; `stt.session.superseded` listener finalizes the replaced session (never cancels) |
+| L-LIFECYCLE | opus | `84d0ecfc0` | `recording/stop` returns once DRAINING (same body); drain + loop signal run in the background inside a copied CLS context, single-flight; `live-doc:handoff-pending` marker keeps the harness from reading "ended with nothing" early; `recording/start` waits for a running drain and supersedes a replaced session (live re-bind, else durable `TranscriptionJob` binding); `summary/latest` 404 carries `SUMMARY_NOT_READY` + `progressStreamPath`; completion timeout pinned at 5 min / gate SLA 300 s |
+| L-ALS | opus | ALaaS `task-1003/als` `c08c1b1` | one reconnect authority (SDK resume; broker recreates only after resume fails, releasing the old socket + session first); 30 s pre-open/resume hold buffer; finalize refuses late frames and awaits terminal status before `recording/stop`; transient stop failures (5xx/network/timeout) still wait for the note via harness-progress + poll, ≥ 180 s floor on `ALAAS_SUMMARY_TIMEOUT_MS`; ASR selection logged; stale `package-lock.json` removed |
+| integration | orchestrator | `0417f072f` | shared `STT_SESSION_SUPERSEDED_EVENT` import in the gateway; regenerated `openapi.json` + console api-docs; e2e task-939/task-635 wait for `closed: true` after stop |
+
+### 10.2 Gate pass (2026-09-24, integration worktree `hope-v2-task-1003-verify` with a real `pnpm install`)
+
+| Gate | Result |
+|---|---|
+| `db:generate`, `build:packages`, `api:build`, `typecheck`, `api tsc --noEmit` | PASS |
+| `pnpm lint` | PASS after a prettier fix in `stt-ws.gateway.ts` (8 formatting errors from L-EOS); `@arcaai/api` 0 errors / 65 warnings, none on added lines; admin-console PASS when run alone (the turbo run aborted it after the api failure) |
+| `pnpm test:unit` | 28 485 passed, **6 failed**: `loki-line-contract.test.ts`, which fails identically on `dev-2.2` (pre-existing) |
+| `stt` pytest | 4 140 passed, 40 failed + 8 errors: 46 fail identically on `dev-2.2` (e2e/integration needing live MinIO/DB/models, stale mocks); 2 CORS e2e fail only without the gitignored `apps/stt/.env` (pass with it) |
+| `text` / `guardrail` / `harness` unit (incl. `test_replay_compat`) | 1 999 / 562 / 2 758 passed |
+| `nlp` pytest | 703 passed, 2 failed (`test_metrics_endpoint_task636.py`, identical on `dev-2.2`) |
+| `py-runtime-models` | 91 passed |
+| Python lint (stt, text, guardrail, harness) | PASS |
+| Python typecheck | stt: 4 mypy errors, the same 4 files on `dev-2.2`; others PASS |
+| `api:openapi:check`, `api:portal:check`, `vox-node gen:admin:check` | PASS (only the `summary/latest` 404 description changed) |
+| Affected API vitest re-run on the integrated build | 148 passed |
+| ALaaS (`task-1003/als` worktree) | `tsc --noEmit` PASS; jest 34 suites / **806 passed**; eslint on `src/consultation` PASS |
+| Deployment repo | `kubectl kustomize` dev/staging/prod/standalone render (orbstack is a pre-existing local-only failure); `promtool check rules` 61 rules, `promtool test rules` SUCCESS |
+
+Not run: the API Playwright e2e suite (needs the live test stack); the two adapted specs compile (`playwright test --list`). Runtime proof is §9 after deploy.
 
 ## 11. Change history
 
