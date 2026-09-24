@@ -286,6 +286,13 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
   { name: 'admin-knowledge', displayName: 'Knowledge Base', plane: 'admin', description: 'Knowledge documents and their retrieval indexes.' },
   { name: 'admin-mcp-servers', displayName: 'Tools & MCP', plane: 'admin', description: 'Registered MCP servers and the tools they expose.' },
   {
+    name: 'admin-model-residency',
+    displayName: 'Model Residency',
+    plane: 'admin',
+    description:
+      'Platform control over which models are resident on the shared GPUs and host memory across stt, nlp and LM Studio: live residency with measured footprints, load / unload / pin, the residency policies, and the controller`s shadow-mode recommendations. Platform administrators only.',
+  },
+  {
     name: 'admin-nlp-task-instructions',
     displayName: 'NLP Task Instructions',
     plane: 'admin',

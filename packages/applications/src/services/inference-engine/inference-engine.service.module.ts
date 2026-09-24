@@ -21,6 +21,8 @@ import { LmStudioServingService } from './lmstudio-serving.service';
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, AiProviderConnectionServiceModule, PlatformMetricsServiceModule, EffectiveSettingsModule],
   providers: [LmStudioEngineClient, { provide: IInferenceEngineService, useClass: LmStudioServingService }],
-  exports: [IInferenceEngineService],
+  // TASK-1005 — `LmStudioEngineClient` is exported so the residency controller shares
+  // THIS instance, and with it the adapter's per-engine load lock.
+  exports: [IInferenceEngineService, LmStudioEngineClient],
 })
 export class InferenceEngineServiceModule {}
