@@ -118,8 +118,6 @@ import { RbacModule } from './modules/rbac/rbac.module';
 import { ResourceSubscriptionModule } from './modules/resource-subscription/resource-subscription.module';
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
-import { TextCompatModule } from './modules/text-compat/text-compat.module';
-import { SttCompatModule } from './modules/stt-compat/stt-compat.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { SpeechModule } from './modules/speech/speech.module';
 import { TenantBucketModule } from './modules/tenant-bucket/tenant-bucket.module';
@@ -546,9 +544,6 @@ const featureModules: any[] = [
   ResourceSubscriptionModule,
   StorageModule,
   StorageAccessKeyModule,
-  // v1-compat TEXT summary shims (/api/smr/api/v1/summary/sync + /presummary).
-  TextCompatModule,
-  SttCompatModule,
   StreamingModule,
   SpeechModule,
   PipelineModule,

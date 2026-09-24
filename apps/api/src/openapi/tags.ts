@@ -157,19 +157,6 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     plane: 'business',
     description: 'Ask whether the caller may perform an action — single, bulk, or "list everything I can do".',
   },
-  {
-    name: 'text-compat',
-    displayName: 'Text (v1 compat)',
-    plane: 'business',
-    description: 'Legacy v1-compatible summarization paths. Exempt from the /api/v1 prefix; kept for existing integrations.',
-  },
-  {
-    name: 'stt-compat',
-    displayName: 'Speech-to-Text (v1 compat)',
-    plane: 'business',
-    description: 'Legacy v1-compatible STT session paths. Exempt from the /api/v1 prefix; kept for existing integrations.',
-  },
-
   // ── Administration plane — /api/v1/admin/**, never reachable by an API key ──
   {
     name: 'admin-agent-promotions',
