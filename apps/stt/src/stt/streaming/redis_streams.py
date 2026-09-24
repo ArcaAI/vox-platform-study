@@ -597,6 +597,7 @@ class ResultPublisher:
         reason: str,
         active: str = "fallback",
         utterance_index: int | None = None,
+        language_resolution: str | None = None,
     ) -> str:
         """Publish a ``provider_switched`` status result.
 
@@ -611,6 +612,10 @@ class ResultPublisher:
         are carried so clients can tell which engine is live in BOTH directions
         of a switch (the switch is now bidirectional for user requests). The
         gateway maps ``is_fallback`` → the client ``isFallback`` field.
+
+        TASK-1004 — ``language_resolution`` is the JSON-encoded
+        ``LanguageResolution`` receipt of the engine that just took over (the
+        language parameters it actually applied), omitted when there is none.
         """
         fields: dict[str, str] = {
             "type": "status",
@@ -623,6 +628,8 @@ class ResultPublisher:
         }
         if utterance_index is not None:
             fields["utterance_index"] = str(utterance_index)
+        if language_resolution:
+            fields["language_resolution"] = language_resolution
         key = result_stream_key(self._session_id)
         entry_id = await self._redis.xadd(
             key,

@@ -349,6 +349,11 @@ class SessionMetadata:
     # spec's mapped PRIMARY subtag instead — turning a declared-English session
     # into a Malayalam-pinned one, silently. Empty = nothing declared.
     language_mode: str = ""
+    # TASK-1004 — the ``LanguageResolution`` receipt (JSON, the snake_case wire form)
+    # of the engine currently serving the session: rewritten on every engine switch,
+    # so recovery keeps WHO declared the mode (``source``) and the receipt it rebuilds
+    # names the same declaration. Empty = no receipt.
+    language_resolution: str = ""
     closed_at: str | None = None  # ISO-8601 (set when status=closed)
     raw_audio_uri: str | None = None
     processed_audio_uri: str | None = None
@@ -388,6 +393,8 @@ class SessionMetadata:
             d["resolved_spec_json"] = self.resolved_spec_json
         if self.language_mode:
             d["language_mode"] = self.language_mode
+        if self.language_resolution:
+            d["language_resolution"] = self.language_resolution
         if self.closed_at:
             d["closed_at"] = self.closed_at
         if self.raw_audio_uri:
@@ -445,6 +452,7 @@ class SessionMetadata:
             pipeline_config_json=_get("pipeline_config_json"),
             resolved_spec_json=_get("resolved_spec_json"),
             language_mode=_get("language_mode"),
+            language_resolution=_get("language_resolution"),
             closed_at=closed_at,
             raw_audio_uri=raw_audio_uri,
             processed_audio_uri=processed_audio_uri,

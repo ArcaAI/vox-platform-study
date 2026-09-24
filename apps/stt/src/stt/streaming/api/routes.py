@@ -179,6 +179,7 @@ async def create_streaming_session(
             channel_count=request.channel_count,
             resolved_spec=request.resolved_spec,
             voice_profiles=request.voice_profiles,
+            language_mode_source=request.language_mode_source,
         )
     except SessionManagerDrainingError as exc:
         # PLANNED scale-down — distinct from
@@ -248,6 +249,7 @@ async def create_streaming_session(
         pipeline_id=active_pipeline_id,
         active_engine=active_engine,
         voice_profile_seeded=mgr.get_voice_profile_seeded(session.session_id),
+        language_resolution=mgr.get_language_resolution(session.session_id),
     )
 
 
@@ -309,6 +311,7 @@ async def get_streaming_session(session_id: str) -> StreamingSessionResponse:
         pipeline_id=active_pipeline_id,
         active_engine=active_engine,
         voice_profile_seeded=mgr.get_voice_profile_seeded(session.session_id),
+        language_resolution=mgr.get_language_resolution(session.session_id),
     )
 
 

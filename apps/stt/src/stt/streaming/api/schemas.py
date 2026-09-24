@@ -56,6 +56,15 @@ class CreateStreamingSessionRequest(BaseModel):
             "mode is excluded from the session chain; if none qualifies, 422."
         ),
     )
+    language_mode_source: Literal["request", "consultation", "agent", "default"] | None = Field(
+        default=None,
+        description=(
+            "TASK-1004 — which precedence tier supplied `language_mode` (request > "
+            "consultation > agent > default), stamped on the session's LanguageResolution "
+            "receipt. Absent ⇒ 'request' when a mode is sent, 'agent' when the spec's own "
+            "mode applies, 'default' when there is none."
+        ),
+    )
     audio_bucket_name: str | None = Field(
         default=None,
         description="Tenant-scoped audio bucket name. Defaults to 'hope-audio' if not provided.",
@@ -147,6 +156,49 @@ class SwitchProviderResponse(BaseModel):
     )
 
 
+class LanguageResolutionParams(BaseModel):
+    """The four engine-neutral language fields STT actually applied (TASK-1004)."""
+
+    language: str | None = Field(..., description="Pinned language; null = the engine auto-detects")
+    code_switching: bool = Field(..., description="Engine code-switch / auto-detect flag")
+    streaming_english_gloss: bool = Field(
+        ..., description="An English translation track is produced beside the transcript"
+    )
+    primed: bool = Field(..., description="A language priming prompt was actually sent")
+
+
+class LanguageResolution(BaseModel):
+    """TASK-1004 — what the session was asked for and what its serving engine applied.
+
+    The ``receipt.python`` shape of ``tests/contracts/language-resolution.fixture.json``.
+    Rebuilt on every engine switch (the ``provider_switched`` status entry carries it
+    JSON-encoded in ``language_resolution``).
+    """
+
+    requested_mode: str = Field(
+        ..., description="The declared mode, normalized when it is a catalog id"
+    )
+    source: Literal["request", "consultation", "agent", "default"]
+    applied_mode: str = Field(
+        ..., description="The catalog mode applied ('auto' when none could be)"
+    )
+    engine: str = Field(..., description="AiModelFormat of the engine serving the session")
+    provider: str | None = Field(
+        ..., description="The serving ASR model's provider; null for self-hosted"
+    )
+    params: LanguageResolutionParams
+    degraded: bool = Field(..., description="The mode is served, visibly less well than natively")
+    reason: (
+        Literal[
+            "whisper_cpp_pair_unprimed",
+            "gloss_translation_only",
+            "engine_auto_detect",
+            "fallback_engine_switch",
+        ]
+        | None
+    ) = Field(..., description="Why the receipt is degraded; null when it is not")
+
+
 class StreamingSessionResponse(BaseModel):
     """Response for session creation and status queries."""
 
@@ -170,6 +222,15 @@ class StreamingSessionResponse(BaseModel):
             "this session's SpeakerTracker. `False` for a session with no diarization, or "
             "one where every pushed profile was skipped (wrong embedding model, malformed "
             "vector, tracker at capacity)."
+        ),
+    )
+    language_resolution: LanguageResolution | None = Field(
+        default=None,
+        description=(
+            "TASK-1004 — the LanguageResolution receipt of the engine serving the session "
+            "now: the declared mode, who declared it, and the language parameters the engine "
+            "applied (degraded + reason when it serves the mode less than natively). Null "
+            "when the session has no catalog mode to describe."
         ),
     )
 
