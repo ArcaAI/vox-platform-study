@@ -25,6 +25,14 @@ two cannot drift.
 What is NOT here, on purpose: the stt format→loader map, the tts pipeline
 handles, the harness llama handle. Those are service concerns injected as
 ``factory`` / ``unload`` callables. Contract, not framework.
+
+**Residency (TASK-1005).** A cache built with ``residency=CacheResidency(...)``
+additionally measures each load's footprint on its device, emits the per-model
+residency metrics, and can gate loads behind an admission check (off by default).
+Two operator controls work on ANY cache: an operator pin (``admin_pinned`` —
+survives idle TTL and is never LRU/pressure-evicted, and is NOT a request in
+flight) and a per-model TTL override, both set through ``set_policy``; and an
+explicit ``unload`` that refuses while requests hold the model unless forced.
 """
 
 from __future__ import annotations
@@ -32,12 +40,16 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import math
 import threading
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, Generic, NamedTuple, Protocol, TypeVar
+
+from .devices import LoadToken
+from .residency import AdmissionPolicy, CacheResidency
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +66,15 @@ _TTL_MAX_SECONDS = 3600
 #: both depend on exactly these three values.
 EVICTION_REASONS = ("ttl", "lru", "vram")
 
+#: TASK-1005 — the residency contract's finer reasons (`model_evictions_total`)
+#: and the legacy label each one is counted under. `pressure` is admission
+#: room-making; `admin` / `policy` are explicit unloads (operator / controller).
+_LEGACY_REASON = {"pressure": "vram", "admin": "lru", "policy": "lru"}
+_RESIDENCY_REASON = {"vram": "pressure"}
+
+#: "Leave this policy field as it is" (``None`` is a value: reset to default).
+UNSET: Any = object()
+
 
 def clamp_cache_ttl_seconds(ttl_seconds: int) -> int:
     """Clamp idle TTL to the product window [60, 3600]."""
@@ -62,6 +83,44 @@ def clamp_cache_ttl_seconds(ttl_seconds: int) -> int:
 
 class ModelUnavailableError(RuntimeError):
     """A required model could not be resolved/loaded (fail-closed → HTTP 503)."""
+
+
+class ModelInFlightError(RuntimeError):
+    """An explicit unload was refused: requests still hold the model (HTTP 409)."""
+
+    def __init__(self, key: str, in_flight: int) -> None:
+        super().__init__(
+            f"{key} is serving {in_flight} request(s); pass force=true to unload anyway"
+        )
+        self.key = key
+        self.in_flight = in_flight
+
+
+class AdmissionRejected(ModelUnavailableError):
+    """No room for a load within the admission wait (HTTP 503 + ``Retry-After``)."""
+
+    def __init__(
+        self,
+        key: str,
+        *,
+        device_id: str,
+        free_bytes: int,
+        total_bytes: int,
+        needed_bytes: int,
+        headroom_bytes: int,
+        retry_after_seconds: int,
+    ) -> None:
+        super().__init__(
+            f"no room to load {key} on {device_id}: {free_bytes} bytes free, "
+            f"{needed_bytes} needed plus {headroom_bytes} headroom, and nothing is evictable"
+        )
+        self.key = key
+        self.device_id = device_id
+        self.free_bytes = free_bytes
+        self.total_bytes = total_bytes
+        self.needed_bytes = needed_bytes
+        self.headroom_bytes = headroom_bytes
+        self.retry_after_seconds = retry_after_seconds
 
 
 class MetricsSink(Protocol):
@@ -115,6 +174,41 @@ class _Entry(Generic[T]):
     last_accessed: float
     bytes_estimate: int = 0
     pin_count: int = 0
+    #: Residency (TASK-1005): when it was admitted (the cache clock), and what
+    #: its load measured. `measured_bytes` is None whenever the load could not
+    #: be attributed — never an estimate.
+    loaded_at: float = 0.0
+    measured_bytes: int | None = None
+    load_seconds: float | None = None
+
+
+@dataclass(frozen=True)
+class ResidentModel:
+    """One model as the residency report sees it (ages are cache-clock seconds)."""
+
+    key: str
+    instance: Any
+    state: str
+    in_flight: int
+    admin_pinned: bool
+    ttl_seconds: int
+    measured_bytes: int | None
+    load_seconds: float | None
+    loaded_seconds_ago: float | None
+    idle_seconds: float | None
+
+
+class _PendingLoad(NamedTuple):
+    key: str
+    started: float
+    token: LoadToken | None
+
+
+class _AdmissionVerdict(NamedTuple):
+    """None rejection = admit. Victims = room was made; unload them, ask again."""
+
+    rejection: AdmissionRejected | None
+    victims: list[tuple[str, Any]]
 
 
 class _CacheCore(Generic[T]):
@@ -142,6 +236,7 @@ class _CacheCore(Generic[T]):
         vram_probe: Callable[[], int] | None = None,
         vram_headroom_bytes: int = 0,
         name: str = "model_cache",
+        residency: CacheResidency | None = None,
     ) -> None:
         self._factory = factory
         self._unload = unload
@@ -154,11 +249,27 @@ class _CacheCore(Generic[T]):
         self._vram_probe = vram_probe
         self._vram_headroom_bytes = vram_headroom_bytes
         self._name = name
+        self._residency = residency
 
         self._entries: OrderedDict[str, _Entry[T]] = OrderedDict()
         # key → pin refcount. Kept OUTSIDE `_entries` so a pin survives a brief
         # cache miss during reload (behaviour inherited from all three caches).
         self._pins: dict[str, int] = {}
+
+        # ── residency state (TASK-1005) ──
+        #: Operator pins: never TTL/LRU/pressure-evicted; dropped by unload/clear.
+        self._admin_pins: set[str] = set()
+        #: Per-model idle TTL overrides (clamped), dropped when the model leaves.
+        self._ttl_overrides: dict[str, int] = {}
+        #: key → (measured bytes, load seconds) of the load that just finished,
+        #: consumed by `_admit_locked`.
+        self._measurements: dict[str, tuple[int | None, float]] = {}
+        #: key → last MEASURED footprint; survives eviction (admission sizing).
+        self._footprints: dict[str, int] = {}
+        #: key → cache-clock start of a factory call in progress.
+        self._loading: dict[str, float] = {}
+        #: key → an evicted entry whose unload hook has not finished yet.
+        self._unloading: dict[str, _Entry[T]] = {}
 
         self._hits = 0
         self._misses = 0
@@ -169,6 +280,14 @@ class _CacheCore(Generic[T]):
         self._vram_probe_enabled = vram_probe is not None
 
     # ── introspection ───────────────────────────────────────────────────────
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def residency(self) -> CacheResidency | None:
+        return self._residency
 
     def cached_keys(self) -> list[str]:
         """Resident keys, least → most recently used (tests / introspection)."""
@@ -236,7 +355,7 @@ class _CacheCore(Generic[T]):
         entry.pin_count = pin_count
         idle = self._time() - entry.last_accessed
 
-        if pin_count == 0 and idle > self._idle_limit():
+        if not self._is_pinned(key) and idle > self._idle_limit(key):
             victims = self._evict_locked(key, reason="ttl")
             self._misses += 1
             return None, victims
@@ -248,13 +367,20 @@ class _CacheCore(Generic[T]):
 
     def _admit_locked(self, key: str, instance: T) -> tuple[list[tuple[str, T]], int, int]:
         """Install a freshly-loaded instance. Returns (victims, resident, bytes)."""
+        measured_bytes, load_seconds = self._measurements.pop(key, (None, None))
+        now = self._time()
         self._entries[key] = _Entry(
             instance=instance,
-            last_accessed=self._time(),
+            last_accessed=now,
             bytes_estimate=self._estimate_for(key),
             pin_count=self._pins.get(key, 0),
+            loaded_at=now,
+            measured_bytes=measured_bytes,
+            load_seconds=load_seconds,
         )
         self._loads += 1
+        self._emit_state(key, "loaded")
+        self._emit_bytes(key, measured_bytes)
         victims = self._enforce_size_locked()
         return victims, len(self._entries), self._resident_bytes()
 
@@ -289,25 +415,59 @@ class _CacheCore(Generic[T]):
     # ── explicit eviction / teardown ────────────────────────────────────────
 
     def _evict_request_locked(self, key: str) -> list[tuple[str, T]]:
-        """Body of the public `evict`: refuses pinned entries."""
-        if self._pins.get(key, 0) > 0:
+        """Body of the public `evict`: refuses pinned entries (operator pins too)."""
+        if self._is_pinned(key):
             logger.info("%s.refusing_to_evict_pinned key=%s", self._name, key)
             return []
         return self._evict_locked(key, reason="lru")
 
+    def _unload_locked(self, key: str, *, force: bool, reason: str) -> list[tuple[str, T]]:
+        """Body of the public `unload`: the operator/controller verb.
+
+        Refuses while requests hold the model (``ModelInFlightError``) unless
+        ``force``; an operator pin is NOT a request and never blocks it. Forcing
+        leaves the request pins in place — their holders unpin as they finish,
+        and a reload in the meantime is born pinned, exactly as after any miss.
+        """
+        if key not in self._entries:
+            return []
+        in_flight = self._pins.get(key, 0)
+        if in_flight > 0 and not force:
+            raise ModelInFlightError(key, in_flight)
+        return self._evict_locked(key, reason=reason)
+
+    def _set_policy_locked(self, key: str, *, admin_pinned: Any, ttl_seconds: Any) -> bool:
+        """Body of the public `set_policy`. False (and no change) when not resident."""
+        if key not in self._entries:
+            return False
+        if admin_pinned is not UNSET:
+            if admin_pinned:
+                self._admin_pins.add(key)
+            else:
+                self._admin_pins.discard(key)
+                # Unpinned now: its idle clock starts from here, as after `unpin`.
+                self._entries[key].last_accessed = self._time()
+        if ttl_seconds is not UNSET:
+            if ttl_seconds is None:
+                self._ttl_overrides.pop(key, None)
+            else:
+                self._ttl_overrides[key] = clamp_cache_ttl_seconds(ttl_seconds)
+        return True
+
     def _sweep_locked(self) -> tuple[list[tuple[str, T]], int, int]:
         """Body of the public `sweep`. Returns (victims, resident, bytes)."""
-        limit = self._idle_limit()
-        now = self._time()
-        expired = [
-            key
-            for key, entry in self._entries.items()
-            if self._pins.get(key, 0) == 0 and (now - entry.last_accessed) > limit
-        ]
         victims: list[tuple[str, T]] = []
-        for key in expired:
+        for key in self._expired_keys_locked():
             victims.extend(self._evict_locked(key, reason="ttl"))
         return victims, len(self._entries), self._resident_bytes()
+
+    def _expired_keys_locked(self) -> list[str]:
+        now = self._time()
+        return [
+            key
+            for key, entry in self._entries.items()
+            if not self._is_pinned(key) and (now - entry.last_accessed) > self._idle_limit(key)
+        ]
 
     def _clear_locked(self) -> list[tuple[str, T]]:
         """Body of the public `clear`: evicts everything, pins included."""
@@ -319,13 +479,20 @@ class _CacheCore(Generic[T]):
 
     # ── pressure relief ─────────────────────────────────────────────────────
 
-    def _idle_limit(self) -> float:
+    def _is_pinned(self, key: str) -> bool:
+        """Held by a request/session (refcount) OR by the operator."""
+        return self._pins.get(key, 0) > 0 or key in self._admin_pins
+
+    def _idle_limit(self, key: str | None = None) -> float:
         """Effective idle limit — never below the 60 s min-residency floor.
 
         Anti-thrash guard: with a small TTL and a small `max_size`, bursty
-        traffic could otherwise cycle load/evict on every request.
+        traffic could otherwise cycle load/evict on every request. A per-model
+        override (``set_policy(ttl_seconds=…)``) replaces the cache TTL for that
+        key and is clamped to the same window.
         """
-        return max(self._ttl_seconds, _TTL_MIN_SECONDS)
+        ttl = self._ttl_overrides.get(key, self._ttl_seconds) if key else self._ttl_seconds
+        return max(ttl, _TTL_MIN_SECONDS)
 
     def _make_room_locked(self, incoming_key: str) -> list[tuple[str, T]]:
         """Pre-load pressure relief: ttl → lru → vram. Caller holds the lock.
@@ -336,12 +503,7 @@ class _CacheCore(Generic[T]):
         victims: list[tuple[str, T]] = []
 
         # 1. ttl — expired idle entries are free wins, take them first.
-        now, limit = self._time(), self._idle_limit()
-        for key in [
-            key
-            for key, entry in self._entries.items()
-            if self._pins.get(key, 0) == 0 and (now - entry.last_accessed) > limit
-        ]:
+        for key in self._expired_keys_locked():
             victims.extend(self._evict_locked(key, reason="ttl"))
 
         # 2. lru — the estimate-budget path (also the CPU-only / no-NVML path).
@@ -399,7 +561,7 @@ class _CacheCore(Generic[T]):
     def _pick_lru_victim_locked(self, *, exclude: str | None = None) -> str | None:
         """Least-recently-used UNPINNED key, or None when nothing is evictable."""
         for key in self._entries:
-            if key == exclude or self._pins.get(key, 0) > 0:
+            if key == exclude or self._is_pinned(key):
                 continue
             return key
         return None
@@ -410,16 +572,155 @@ class _CacheCore(Generic[T]):
         Returning the instance is the ONLY way an evicted model's weights ever
         get released, so every eviction path routes through here and every caller
         must hand the result to its unload runner.
+
+        ``reason`` may be a legacy label (ttl/lru/vram) or a residency one
+        (pressure/admin/policy); the legacy counters and `model_cache_evictions_total`
+        always see the legacy label, so that three-value contract never grows.
         """
         entry = self._entries.pop(key, None)
         if entry is None:
             return []
 
-        self._evictions[reason] = self._evictions.get(reason, 0) + 1
+        legacy = _LEGACY_REASON.get(reason, reason)
+        self._evictions[legacy] = self._evictions.get(legacy, 0) + 1
         logger.info("%s.evicted key=%s reason=%s", self._name, key, reason)
         if self._metrics is not None:
-            self._metrics.on_evict(self._name, key, reason)
+            self._metrics.on_evict(self._name, key, legacy)
+
+        # Operator policy belongs to the resident entry; it leaves with it.
+        self._admin_pins.discard(key)
+        self._ttl_overrides.pop(key, None)
+        self._unloading[key] = entry
+        if self._residency is not None and self._residency.metrics is not None:
+            self._residency.metrics.on_eviction(
+                self._residency.service, _RESIDENCY_REASON.get(reason, reason)
+            )
+        self._emit_state(key, "unloading")
         return [(key, entry.instance)]
+
+    # ── residency: load measurement, unload tracking, admission ─────────────
+
+    def _begin_load(self, key: str) -> _PendingLoad:
+        """Mark ``key`` loading; open its footprint measurement on the device."""
+        self._loading[key] = self._time()
+        token = self._residency.device.begin_load(key) if self._residency is not None else None
+        self._emit_state(key, "loading")
+        return _PendingLoad(key=key, started=time.perf_counter(), token=token)
+
+    def _end_load(self, pending: _PendingLoad, *, succeeded: bool) -> None:
+        """Close the measurement; a success is attached to the entry at admit."""
+        key = pending.key
+        self._loading.pop(key, None)
+        measured = None
+        if pending.token is not None and self._residency is not None:
+            measured = self._residency.device.end_load(pending.token, succeeded=succeeded)
+        if not succeeded:
+            self._emit_state(key, None)
+            return
+        seconds = time.perf_counter() - pending.started
+        self._measurements[key] = (measured, seconds)
+        if measured is not None:
+            self._footprints[key] = measured
+        residency = self._residency
+        if residency is not None and residency.metrics is not None:
+            residency.metrics.on_load_seconds(residency.service, residency.model_ref(key), seconds)
+
+    def _begin_unload(self) -> None:
+        if self._residency is not None:
+            self._residency.device.begin_unload()
+
+    def _finish_unload(self, key: str, instance: T) -> None:
+        if self._residency is not None:
+            self._residency.device.end_unload()
+        entry = self._unloading.get(key)
+        if entry is not None and entry.instance is instance:
+            self._unloading.pop(key, None)
+            if key not in self._entries:
+                self._emit_state(key, None)
+                self._emit_bytes(key, None)
+
+    def _admission_policy(self) -> AdmissionPolicy | None:
+        residency = self._residency
+        if residency is None or not residency.admission.enabled:
+            return None
+        return residency.admission
+
+    def _admission_verdict_locked(self, key: str) -> _AdmissionVerdict:
+        """Would loading ``key`` now leave the device's headroom intact?
+
+        If not, evict ONE idle, unpinned model (reason ``pressure``) and let the
+        caller unload it and ask again; with nothing evictable, return the
+        rejection the load would get if the wait ran out now.
+        """
+        residency, policy = self._residency, self._admission_policy()
+        if residency is None or policy is None:
+            return _AdmissionVerdict(None, [])
+        reading = residency.device.memory()
+        if reading is None or reading.total_bytes <= 0:
+            return _AdmissionVerdict(None, [])  # an unreadable device cannot refuse
+
+        needed = self._footprints.get(key, 0)
+        headroom = int(reading.total_bytes * policy.headroom_percent / 100)
+        if reading.free_bytes - needed >= headroom:
+            return _AdmissionVerdict(None, [])
+
+        victim = self._pick_lru_victim_locked(exclude=key)
+        if victim is not None:
+            return _AdmissionVerdict(None, self._evict_locked(victim, reason="pressure"))
+        rejection = AdmissionRejected(
+            key,
+            device_id=residency.device.id,
+            free_bytes=reading.free_bytes,
+            total_bytes=reading.total_bytes,
+            needed_bytes=needed,
+            headroom_bytes=headroom,
+            retry_after_seconds=max(1, math.ceil(policy.max_wait_ms / 1000)),
+        )
+        return _AdmissionVerdict(rejection, [])
+
+    def _residency_snapshot_locked(self) -> list[ResidentModel]:
+        """Loading, loaded and unloading models, oldest first."""
+        now = self._time()
+        models: list[ResidentModel] = []
+        for key in list(self._loading):
+            if key in self._entries:
+                continue
+            models.append(self._resident_model(key, None, "loading", now))
+        for key, entry in list(self._entries.items()):
+            models.append(self._resident_model(key, entry, "loaded", now))
+        for key, entry in list(self._unloading.items()):
+            models.append(self._resident_model(key, entry, "unloading", now))
+        return models
+
+    def _resident_model(
+        self, key: str, entry: _Entry[T] | None, state: str, now: float
+    ) -> ResidentModel:
+        return ResidentModel(
+            key=key,
+            instance=None if entry is None else entry.instance,
+            state=state,
+            in_flight=self._pins.get(key, 0),
+            admin_pinned=key in self._admin_pins,
+            ttl_seconds=self._ttl_overrides.get(key, self._ttl_seconds),
+            measured_bytes=None if entry is None else entry.measured_bytes,
+            load_seconds=None if entry is None else entry.load_seconds,
+            loaded_seconds_ago=None if entry is None else now - entry.loaded_at,
+            idle_seconds=None if entry is None else now - entry.last_accessed,
+        )
+
+    def _emit_state(self, key: str, state: str | None) -> None:
+        residency = self._residency
+        if residency is not None and residency.metrics is not None:
+            residency.metrics.on_state(
+                residency.service, residency.model_ref(key), residency.device.id, state
+            )
+
+    def _emit_bytes(self, key: str, measured: int | None) -> None:
+        residency = self._residency
+        if residency is not None and residency.metrics is not None:
+            residency.metrics.on_bytes(
+                residency.service, residency.model_ref(key), residency.device.id, measured
+            )
 
     # ── sizing helpers ──────────────────────────────────────────────────────
 
@@ -474,6 +775,7 @@ class ModelCache(_CacheCore[T]):
         vram_probe: Callable[[], int] | None = None,
         vram_headroom_bytes: int = 0,
         name: str = "model_cache",
+        residency: CacheResidency | None = None,
     ) -> None:
         super().__init__(
             factory=factory,
@@ -487,6 +789,7 @@ class ModelCache(_CacheCore[T]):
             vram_probe=vram_probe,
             vram_headroom_bytes=vram_headroom_bytes,
             name=name,
+            residency=residency,
         )
         self._lock = asyncio.Lock()
         # key → future of the load in progress (single-flight).
@@ -528,8 +831,15 @@ class ModelCache(_CacheCore[T]):
             async with self._lock:
                 victims = self._make_room_locked(key)
             await self._run_unloads(victims)
+            await self._await_admission(key)
 
-            instance: T = await self._factory(key)
+            pending = self._begin_load(key)
+            try:
+                instance: T = await self._factory(key)
+            except BaseException:
+                self._end_load(pending, succeeded=False)
+                raise
+            self._end_load(pending, succeeded=True)
         except BaseException as exc:
             if not future.done():
                 future.set_exception(exc)
@@ -545,6 +855,24 @@ class ModelCache(_CacheCore[T]):
         finally:
             async with self._lock:
                 self._inflight.pop(key, None)
+
+    async def _await_admission(self, key: str) -> None:
+        """Hold a load until its device has room (no-op unless admission is on)."""
+        policy = self._admission_policy()
+        if policy is None:
+            return
+        deadline = time.monotonic() + policy.max_wait_ms / 1000
+        while True:
+            async with self._lock:
+                verdict = self._admission_verdict_locked(key)
+            if verdict.victims:
+                await self._run_unloads(verdict.victims)
+                continue
+            if verdict.rejection is None:
+                return
+            if time.monotonic() >= deadline:
+                raise verdict.rejection
+            await asyncio.sleep(policy.poll_interval_ms / 1000)
 
     async def _admit(self, key: str, instance: T) -> None:
         """Install a freshly-loaded instance and report it."""
@@ -607,17 +935,47 @@ class ModelCache(_CacheCore[T]):
         await self._run_unloads(victims)
         return len(victims)
 
+    # ── residency verbs (TASK-1005) ─────────────────────────────────────────
+
+    async def unload(self, key: str, *, force: bool = False, reason: str = "admin") -> bool:
+        """Operator/controller unload. Returns whether ``key`` was resident.
+
+        Raises ``ModelInFlightError`` while requests hold ``key`` unless
+        ``force``. ``reason`` is ``admin`` (a person) or ``policy`` (the
+        controller) on ``model_evictions_total``.
+        """
+        async with self._lock:
+            victims = self._unload_locked(key, force=force, reason=reason)
+        await self._run_unloads(victims)
+        return bool(victims)
+
+    async def set_policy(
+        self, key: str, *, admin_pinned: Any = UNSET, ttl_seconds: Any = UNSET
+    ) -> bool:
+        """Set the operator pin and/or the per-model TTL (None = cache default).
+
+        Returns False, changing nothing, when ``key`` is not resident.
+        """
+        async with self._lock:
+            return self._set_policy_locked(key, admin_pinned=admin_pinned, ttl_seconds=ttl_seconds)
+
+    def residency_snapshot(self) -> list[ResidentModel]:
+        """Loading / loaded / unloading models (no await: atomic on the loop)."""
+        return self._residency_snapshot_locked()
+
     async def _run_unloads(self, victims: list[tuple[str, T]]) -> None:
         """Best-effort unload of evicted instances — never fails the caller."""
         for key, instance in victims:
-            if self._unload is None:
-                continue
+            self._begin_unload()
             try:
-                result = self._unload(key, instance)
-                if inspect.isawaitable(result):
-                    await result
+                if self._unload is not None:
+                    result = self._unload(key, instance)
+                    if inspect.isawaitable(result):
+                        await result
             except Exception:
                 logger.warning("%s.unload_failed key=%s", self._name, key, exc_info=True)
+            finally:
+                self._finish_unload(key, instance)
 
 
 class _SyncLoad(Generic[T]):
@@ -660,6 +1018,7 @@ class SyncModelCache(_CacheCore[T]):
         vram_probe: Callable[[], int] | None = None,
         vram_headroom_bytes: int = 0,
         name: str = "model_cache",
+        residency: CacheResidency | None = None,
     ) -> None:
         super().__init__(
             factory=factory,
@@ -673,6 +1032,7 @@ class SyncModelCache(_CacheCore[T]):
             vram_probe=vram_probe,
             vram_headroom_bytes=vram_headroom_bytes,
             name=name,
+            residency=residency,
         )
         self._lock = threading.Lock()
         # key → the load in progress (single-flight).
@@ -715,8 +1075,15 @@ class SyncModelCache(_CacheCore[T]):
             with self._lock:
                 victims = self._make_room_locked(key)
             self._run_unloads(victims)
+            self._await_admission(key)
 
-            instance: T = self._factory(key)
+            pending = self._begin_load(key)
+            try:
+                instance: T = self._factory(key)
+            except BaseException:
+                self._end_load(pending, succeeded=False)
+                raise
+            self._end_load(pending, succeeded=True)
         except BaseException as exc:
             load.error = exc
             raise
@@ -736,6 +1103,24 @@ class SyncModelCache(_CacheCore[T]):
 
         self._run_unloads(victims)
         self._report_load(key, resident, resident_bytes)
+
+    def _await_admission(self, key: str) -> None:
+        """Hold a load until its device has room (no-op unless admission is on)."""
+        policy = self._admission_policy()
+        if policy is None:
+            return
+        deadline = time.monotonic() + policy.max_wait_ms / 1000
+        while True:
+            with self._lock:
+                verdict = self._admission_verdict_locked(key)
+            if verdict.victims:
+                self._run_unloads(verdict.victims)
+                continue
+            if verdict.rejection is None:
+                return
+            if time.monotonic() >= deadline:
+                raise verdict.rejection
+            time.sleep(policy.poll_interval_ms / 1000)
 
     # ── pinning ─────────────────────────────────────────────────────────────
 
@@ -785,20 +1170,40 @@ class SyncModelCache(_CacheCore[T]):
         self._run_unloads(victims)
         return len(victims)
 
+    # ── residency verbs (TASK-1005) ─────────────────────────────────────────
+
+    def unload(self, key: str, *, force: bool = False, reason: str = "admin") -> bool:
+        """Operator/controller unload — see :meth:`ModelCache.unload`."""
+        with self._lock:
+            victims = self._unload_locked(key, force=force, reason=reason)
+        self._run_unloads(victims)
+        return bool(victims)
+
+    def set_policy(self, key: str, *, admin_pinned: Any = UNSET, ttl_seconds: Any = UNSET) -> bool:
+        """Operator pin / per-model TTL — see :meth:`ModelCache.set_policy`."""
+        with self._lock:
+            return self._set_policy_locked(key, admin_pinned=admin_pinned, ttl_seconds=ttl_seconds)
+
+    def residency_snapshot(self) -> list[ResidentModel]:
+        with self._lock:
+            return self._residency_snapshot_locked()
+
     def _run_unloads(self, victims: list[tuple[str, T]]) -> None:
         """Best-effort unload of evicted instances — never fails the caller."""
         for key, instance in victims:
-            if self._unload is None:
-                continue
+            self._begin_unload()
             try:
-                result = self._unload(key, instance)
-                if inspect.isawaitable(result):
-                    # No loop to await on. Close the coroutine so Python does
-                    # not warn about it, and say so loudly — an async unload
-                    # hook on this class would silently never free the weights.
-                    close = getattr(result, "close", None)
-                    if close is not None:
-                        close()
-                    logger.warning("%s.async_unload_hook_unsupported key=%s", self._name, key)
+                if self._unload is not None:
+                    result = self._unload(key, instance)
+                    if inspect.isawaitable(result):
+                        # No loop to await on. Close the coroutine so Python does
+                        # not warn about it, and say so loudly — an async unload
+                        # hook on this class would silently never free the weights.
+                        close = getattr(result, "close", None)
+                        if close is not None:
+                            close()
+                        logger.warning("%s.async_unload_hook_unsupported key=%s", self._name, key)
             except Exception:
                 logger.warning("%s.unload_failed key=%s", self._name, key, exc_info=True)
+            finally:
+                self._finish_unload(key, instance)

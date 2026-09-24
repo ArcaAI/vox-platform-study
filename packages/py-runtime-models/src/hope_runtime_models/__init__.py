@@ -1,27 +1,47 @@
 """Shared model-lifecycle contract for the HOPE Python services.
 
 See the package README for the contract and its conformance clauses.
+
+The residency agent (TASK-1005) lives in two submodules that are NOT re-exported
+here: `hope_runtime_models.residency_agent` (the report + verbs) and
+`hope_runtime_models.residency_api` (its FastAPI router — importing FastAPI, which
+this package does not depend on).
 """
 
 from .cache import (
     EVICTION_REASONS,
+    UNSET,
+    AdmissionRejected,
     CacheStats,
     EvictionCount,
     MetricsSink,
     ModelCache,
+    ModelInFlightError,
     ModelUnavailableError,
+    ResidentModel,
     SyncModelCache,
     clamp_cache_ttl_seconds,
 )
+from .devices import Device, cpu_device, default_device, gpu_device
 from .metrics import (
     EVICTIONS_TOTAL,
     LOADS_TOTAL,
+    MODEL_LOAD_SECONDS,
+    MODEL_LOAD_SECONDS_BUCKETS,
+    RESIDENCY_EVICTION_REASONS,
+    RESIDENCY_EVICTIONS_TOTAL,
+    RESIDENCY_STATES,
+    RESIDENT,
+    RESIDENT_BYTES,
     RESIDENT_BYTES_ESTIMATE,
     RESIDENT_MODELS,
     VRAM_FREE_BYTES,
     NullMetricsSink,
     PrometheusMetricsSink,
+    PrometheusResidencyMetrics,
+    ResidencyMetricsSink,
 )
+from .residency import AdmissionPolicy, CacheResidency
 from .resolvable import (
     CACHE_TTL_SECONDS,
     DEFAULT_BUDGET_SECONDS,
@@ -41,7 +61,7 @@ from .resolvable import (
     warm_cache_roots,
     warmup_state,
 )
-from .vram import make_vram_probe, reset_nvml_detection
+from .vram import DeviceMemory, make_vram_info_probe, make_vram_probe, reset_nvml_detection
 
 __all__ = [
     "CACHE_TTL_SECONDS",
@@ -50,19 +70,36 @@ __all__ = [
     "EVICTION_REASONS",
     "LOADS_TOTAL",
     "MAX_PROBE_THREADS",
+    "MODEL_LOAD_SECONDS",
+    "MODEL_LOAD_SECONDS_BUCKETS",
     "PACKAGE_PROVIDED_LIBRARIES",
+    "RESIDENCY_EVICTIONS_TOTAL",
+    "RESIDENCY_EVICTION_REASONS",
+    "RESIDENCY_STATES",
+    "RESIDENT",
+    "RESIDENT_BYTES",
     "RESIDENT_BYTES_ESTIMATE",
     "RESIDENT_MODELS",
     "SLOW_OP_SECONDS",
+    "UNSET",
     "VRAM_FREE_BYTES",
     "WARMUP_BUDGET_SECONDS",
+    "AdmissionPolicy",
+    "AdmissionRejected",
+    "CacheResidency",
     "CacheStats",
+    "Device",
+    "DeviceMemory",
     "EvictionCount",
     "MetricsSink",
     "ModelCache",
+    "ModelInFlightError",
     "ModelUnavailableError",
     "NullMetricsSink",
     "PrometheusMetricsSink",
+    "PrometheusResidencyMetrics",
+    "ResidencyMetricsSink",
+    "ResidentModel",
     "ResolvableQuery",
     "ResolvableResult",
     "SyncModelCache",
@@ -71,6 +108,10 @@ __all__ = [
     "check_resolvable_many",
     "clamp_cache_ttl_seconds",
     "clear_resolvable_cache",
+    "cpu_device",
+    "default_device",
+    "gpu_device",
+    "make_vram_info_probe",
     "make_vram_probe",
     "probe_state",
     "reset_nvml_detection",

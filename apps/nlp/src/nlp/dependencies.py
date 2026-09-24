@@ -291,6 +291,7 @@ def _retention_kwargs() -> dict[str, Any]:
     """Resolved retention: control-plane value when known, else settings."""
     from nlp.core.config import settings
     from nlp.core.metrics import build_model_cache_metrics_sink
+    from nlp.residency import nlp_cache_residency
 
     return {
         "ttl_seconds": _current_retention.get(
@@ -298,6 +299,8 @@ def _retention_kwargs() -> dict[str, Any]:
         ),
         "max_size": _current_retention.get("max_models", settings.service.model_cache_max_models),
         "metrics": build_model_cache_metrics_sink(),
+        # TASK-1005 — measured RSS footprints + residency metrics; admission off.
+        "residency": nlp_cache_residency(),
     }
 
 
