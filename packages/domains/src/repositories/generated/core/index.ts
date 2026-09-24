@@ -78,6 +78,7 @@ export * from './KnowledgeDocumentRepository';
 export * from './GlobalSettingRepository.encryption';
 export * from './McpServerRepository';
 export * from './MediaRepository';
+export * from './ModelResidencyPolicyRepository';
 export * from './NamedEntityRepository';
 // Sibling that patches NamedEntityRepository.prototype.
 export * from './NamedEntityRepository.encryption';

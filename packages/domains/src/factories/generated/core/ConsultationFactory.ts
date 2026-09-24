@@ -18,6 +18,8 @@ export interface CreateConsultationProps extends BaseEntityFactoryCreateProps {
   status?: IConsultationEntity['status'];
   // Health-flag projection on the active phase; not a state of its own
   degradedReasons?: IConsultationEntity['degradedReasons'];
+  // Typed promotion of the legacy `metadata.summaryLanguage` (TASK-1004 D-3)
+  spokenLanguageMode?: IConsultationEntity['spokenLanguageMode'];
   tenantId: IConsultationEntity['tenantId'];
 
   createdAt?: IConsultationEntity['createdAt'];
@@ -52,6 +54,7 @@ export class ConsultationFactory {
       metadata: props.metadata ?? null,
       status: props.status ?? Enums.ConsultationStatus.OPEN,
       degradedReasons: props.degradedReasons ?? [],
+      spokenLanguageMode: props.spokenLanguageMode ?? null,
       tenantId: props.tenantId,
     });
   }

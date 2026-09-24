@@ -53,6 +53,7 @@ export * from './KnowledgeChunkModel';
 export * from './KnowledgeDocumentModel';
 export * from './McpServerModel';
 export * from './MediaModel';
+export * from './ModelResidencyPolicyModel';
 export * from './NamedEntityModel';
 export * from './NotificationModel';
 export * from './PasswordResetTokenModel';

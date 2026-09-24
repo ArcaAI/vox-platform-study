@@ -17,6 +17,7 @@ export class Consultation extends BaseTenantDataModel {
   // Typed lifecycle state machine
   public status: Enums.ConsultationStatus;
   public degradedReasons: string[];
+  public spokenLanguageMode: string | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -45,6 +46,7 @@ export class Consultation extends BaseTenantDataModel {
     this.metadata = data.metadata;
     this.status = data.status;
     this.degradedReasons = data.degradedReasons;
+    this.spokenLanguageMode = data.spokenLanguageMode;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

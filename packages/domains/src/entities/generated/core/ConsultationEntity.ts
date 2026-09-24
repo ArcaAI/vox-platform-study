@@ -40,14 +40,8 @@ const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySe
   Enums.ConsultationStatus,
   ReadonlySet<Enums.ConsultationStatus>
 >([
-  [
-    Enums.ConsultationStatus.OPEN,
-    new Set([Enums.ConsultationStatus.PRIMED, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
-  ],
-  [
-    Enums.ConsultationStatus.PRIMED,
-    new Set([Enums.ConsultationStatus.RECORDING, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
-  ],
+  [Enums.ConsultationStatus.OPEN, new Set([Enums.ConsultationStatus.PRIMED, Enums.ConsultationStatus.CLOSED_INCOMPLETE])],
+  [Enums.ConsultationStatus.PRIMED, new Set([Enums.ConsultationStatus.RECORDING, Enums.ConsultationStatus.CLOSED_INCOMPLETE])],
   [Enums.ConsultationStatus.RECORDING, new Set([Enums.ConsultationStatus.DRAINING])],
   [
     Enums.ConsultationStatus.DRAINING,
@@ -60,27 +54,16 @@ const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySe
   ],
   [
     Enums.ConsultationStatus.DRAFT_PENDING_SENSORS,
-    new Set([
-      Enums.ConsultationStatus.PENDING_REVIEW,
-      Enums.ConsultationStatus.SIGNED,
-      Enums.ConsultationStatus.CLOSED_INCOMPLETE,
-    ]),
+    new Set([Enums.ConsultationStatus.PENDING_REVIEW, Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
   ],
   [
     Enums.ConsultationStatus.PENDING_REVIEW,
     new Set([Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.TIMED_OUT, Enums.ConsultationStatus.RECORDING]),
   ],
-  [
-    Enums.ConsultationStatus.SIGNED,
-    new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.CLOSED_COMPLETE]),
-  ],
+  [Enums.ConsultationStatus.SIGNED, new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.CLOSED_COMPLETE])],
   [
     Enums.ConsultationStatus.TIMED_OUT,
-    new Set([
-      Enums.ConsultationStatus.SIGNED,
-      Enums.ConsultationStatus.REOPENED,
-      Enums.ConsultationStatus.CLOSED_INCOMPLETE,
-    ]),
+    new Set([Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
   ],
   // CLOSED: deliberately no outgoing edges — superseded, never live, never a
   // `to` either. See row 9 and the wiring-gate note in
@@ -91,22 +74,16 @@ const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySe
     Enums.ConsultationStatus.CLOSED_INCOMPLETE,
     new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.RECORDING]),
   ],
-  [
-    Enums.ConsultationStatus.REOPENED,
-    new Set([Enums.ConsultationStatus.PENDING_REVIEW, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
-  ],
+  [Enums.ConsultationStatus.REOPENED, new Set([Enums.ConsultationStatus.PENDING_REVIEW, Enums.ConsultationStatus.CLOSED_INCOMPLETE])],
 ]);
 
 // Reserved but DISABLED — the pair is a legitimate future edge (owned by
 // another epic), so it must throw a distinct, named error rather than being
 // silently treated as just another illegal pair.
-const RESERVED_DISABLED_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlyMap<Enums.ConsultationStatus, string>> =
-  new Map<Enums.ConsultationStatus, ReadonlyMap<Enums.ConsultationStatus, string>>([
-    [
-      Enums.ConsultationStatus.PENDING_REVIEW,
-      new Map([[Enums.ConsultationStatus.DRAFT_PENDING_SENSORS, 'note-sections']]),
-    ],
-  ]);
+const RESERVED_DISABLED_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlyMap<Enums.ConsultationStatus, string>> = new Map<
+  Enums.ConsultationStatus,
+  ReadonlyMap<Enums.ConsultationStatus, string>
+>([[Enums.ConsultationStatus.PENDING_REVIEW, new Map([[Enums.ConsultationStatus.DRAFT_PENDING_SENSORS, 'note-sections']])]]);
 
 export interface ConsultationTransitionRecord {
   from: Enums.ConsultationStatus;
@@ -126,6 +103,11 @@ export interface IConsultationEntity extends IBaseTenantEntity {
   status?: Enums.ConsultationStatus;
   // Health-flag projection on the active phase; not a state of its own
   degradedReasons?: string[];
+  // TASK-1004 D-3 — the declared SOURCE (spoken) language, a closed catalog
+  // id (`en`, `ml`, `ml-en`, ...). Typed promotion of the legacy
+  // `metadata.summaryLanguage` (see `summary-language.ts`); null means "no
+  // declared default".
+  spokenLanguageMode?: string | null;
   Doctor?: Entities.UserEntity | null;
   Department?: Entities.DepartmentEntity | null;
   ParentConsultation?: Entities.ConsultationEntity | null;
@@ -142,6 +124,7 @@ export class ConsultationEntity extends BaseTenantEntity {
   private _metadata?: IConsultationEntity['metadata'];
   private _status: Enums.ConsultationStatus;
   private _degradedReasons: string[];
+  private _spokenLanguageMode?: IConsultationEntity['spokenLanguageMode'];
   // not persisted — the last transition applied by `transitionTo`,
   // held only so the calling service can read `actor`/`reason` to build the
   // sys-event / WORM append without threading them through a second
@@ -163,6 +146,7 @@ export class ConsultationEntity extends BaseTenantEntity {
     this._metadata = init.metadata;
     this._status = init.status ?? Enums.ConsultationStatus.OPEN;
     this._degradedReasons = init.degradedReasons ?? [];
+    this._spokenLanguageMode = init.spokenLanguageMode;
     this._Doctor = init.Doctor;
     this._Department = init.Department;
     this._ParentConsultation = init.ParentConsultation;
@@ -233,7 +217,7 @@ export class ConsultationEntity extends BaseTenantEntity {
    * would break `pnpm --filter @arcaai/applications build`, which is out of
    * this ticket's database/domain-layer scope for this execution pass — see
    * the ticket's own documented fallback (README.md Task 5).
- */
+   */
   set status(value: Enums.ConsultationStatus) {
     this.setProperty('status', value);
   }
@@ -244,6 +228,14 @@ export class ConsultationEntity extends BaseTenantEntity {
 
   set degradedReasons(value: string[]) {
     this.setProperty('degradedReasons', value);
+  }
+
+  get spokenLanguageMode(): IConsultationEntity['spokenLanguageMode'] {
+    return this._spokenLanguageMode;
+  }
+
+  set spokenLanguageMode(value: IConsultationEntity['spokenLanguageMode']) {
+    this.setProperty('spokenLanguageMode', value);
   }
 
   get Doctor(): IConsultationEntity['Doctor'] {
@@ -340,7 +332,7 @@ export class ConsultationEntity extends BaseTenantEntity {
    *   `degradedReasons` when the destination is `SIGNED`.
    *
    * @returns `true` if a transition was applied, `false` for a self-transition no-op.
- */
+   */
   public transitionTo(next: Enums.ConsultationStatus, actor: string, reason: string): boolean {
     const from = this._status;
 
@@ -386,7 +378,7 @@ export class ConsultationEntity extends BaseTenantEntity {
    * Appends a health-flag reason to the active phase
    * Append-only within a session; deduplicated — adding an already-present
    * reason is a no-op against `changes` tracking beyond the first add.
- */
+   */
   public addDegradedReason(reason: string): void {
     if (this._degradedReasons.includes(reason)) {
       return;

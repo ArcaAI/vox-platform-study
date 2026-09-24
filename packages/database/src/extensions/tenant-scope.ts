@@ -155,6 +155,24 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // in AiProviderConnection). Also a SYSTEM-shared read model — see the
   // SYSTEM_SHARED_READ_MODELS entry below.
   'AiRoutingPolicy',
+  // model-residency-policy.prisma (1) — TASK-1005 §5.2. Desired
+  // load/unload/pin state per (aiModelId, service). SYSTEM-only platform
+  // configuration (D-11: "platform-admin only; tenants never see this
+  // surface") — every row ALWAYS carries the reserved SYSTEM tenantId, there
+  // is no tenant → SYSTEM cascade and no tenant-owned row ever exists. Carries
+  // no secret. Registered here (rather than left off both allow-lists) so it
+  // gets the same tenant-scope injection every other tenant-scoped model
+  // gets, mirroring `AiModel` / `AiRoutingPolicy` — also a
+  // SYSTEM_SHARED_READ_MODELS entry below, for the SAME reason those two are:
+  // a super admin's own request may carry ANY working tenant in CLS (this is
+  // a global-tier admin screen, not a per-tenant one), so the read must widen
+  // to [caller, SYSTEM] to find the SYSTEM row regardless of which tenant
+  // happens to be selected. WRITES are NOT widened — the admin routes over
+  // this repository must be SUPER_ADMIN-gated (`@ForbidApiKey` + an imperative
+  // super-admin check) at the service/controller layer; the DB widening below
+  // only affects which rows an ALREADY-authorized read can see, it performs
+  // no authorization of its own.
+  'ModelResidencyPolicy',
   // entitlement.prisma (1) — rolling-monthly usage meters. The
   // reconcile job reads/writes these via the UNSCOPED `baseClient` (explicit
   // tenantId filters, no CLS — same escape hatch as the audit-retention
@@ -459,6 +477,18 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // AiTaskDefault precedent). No secrets on the model — candidates reference a
   // connection, they do not carry its credential.
   'AiRoutingPolicy',
+  // TASK-1005 — desired load/unload/pin state per (model, service). Unlike
+  // every other entry on this list, there is no tenant → SYSTEM cascade at
+  // all: EVERY row is SYSTEM's (D-11, platform-admin only), so widening reads
+  // to [caller, SYSTEM] never exposes another tenant's data — there is no
+  // other tenant's data to expose. It is here so the ONE read this model ever
+  // serves — the platform admin's "Model residency" console screen (a
+  // global-tier screen, `12-design-workflow.md` range 10-19) — resolves
+  // regardless of which working tenant happens to be selected in that admin's
+  // CLS context. WRITES are NOT widened; the admin routes must still be
+  // SUPER_ADMIN-gated at the controller/service layer — this widening
+  // performs no authorization of its own. No secrets on the model.
+  'ModelResidencyPolicy',
   // the MCP external-tools registry: server rows are registered by a
   // super admin under the SYSTEM tenant and every tenant's harness run must
   // READ the shared registry to resolve a server it references (server metadata

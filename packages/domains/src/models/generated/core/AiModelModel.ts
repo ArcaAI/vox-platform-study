@@ -39,6 +39,9 @@ export class AiModel extends BaseTenantDataModel {
   public isPlatformDefaultFor: Enums.AiTaskKind[];
   public memorySizeMb: number | null;
   public computeType: string | null;
+  public observedMemoryMb: number | null;
+  public observedLoadSeconds: number | null;
+  public observedAt: Date | null;
   public checksum: string | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
@@ -52,6 +55,8 @@ export class AiModel extends BaseTenantDataModel {
   public agents: Models.Agent[] | undefined;
   @VirtualDbProperty()
   public agentFallbacks: Models.AgentModelFallback[] | undefined;
+  @VirtualDbProperty()
+  public residencyPolicies: Models.ModelResidencyPolicy[] | undefined;
 
   constructor(data: AiModel & BaseTenantDataModel) {
     super(data);
@@ -86,6 +91,9 @@ export class AiModel extends BaseTenantDataModel {
     this.isPlatformDefaultFor = data.isPlatformDefaultFor;
     this.memorySizeMb = data.memorySizeMb;
     this.computeType = data.computeType;
+    this.observedMemoryMb = data.observedMemoryMb;
+    this.observedLoadSeconds = data.observedLoadSeconds;
+    this.observedAt = data.observedAt;
     this.checksum = data.checksum;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
@@ -95,5 +103,6 @@ export class AiModel extends BaseTenantDataModel {
     this.routingPolicies = data.routingPolicies;
     this.agents = data.agents;
     this.agentFallbacks = data.agentFallbacks;
+    this.residencyPolicies = data.residencyPolicies;
   }
 }

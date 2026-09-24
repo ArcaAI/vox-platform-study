@@ -1019,3 +1019,26 @@ enum AgentTask {
 
   @@schema("core")
 }
+
+// ── ModelResidencyClass (TASK-1005 §5.2) ──────────────────────────────────
+// The DESIRED residency state a `ModelResidencyPolicy` row (or the implicit
+// default when no row exists) asks the gateway's ModelResidencyController to
+// hold a (model, service) pair in.
+//
+//   PINNED    always resident; loaded before readiness; never evicted by the
+//             policy engine (ttl/lru/pressure). Every model backing an
+//             assigned ASR agent's primary, or the live-summary LLM, is
+//             implicitly PINNED even absent a row.
+//   WARM      promoted to resident once sustained demand crosses the EWMA
+//             rate threshold for N windows (hysteresis); evicted like
+//             ON_DEMAND once idle.
+//   ON_DEMAND loaded on a request miss, evicted after `idleTtlSeconds` of no
+//             in-flight use. The default class for a (model, service) pair
+//             with no row.
+enum ModelResidencyClass {
+  PINNED
+  WARM
+  ON_DEMAND
+
+  @@schema("core")
+}

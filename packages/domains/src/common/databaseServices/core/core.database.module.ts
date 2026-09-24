@@ -10,6 +10,7 @@ import { AiProviderConnectionRepository } from '../../../repositories/generated/
 import { WorkflowWebhookSecretRepository } from '../../../repositories/generated/core/WorkflowWebhookSecretRepository';
 import { ServiceAccountRepository } from '../../../repositories/generated/core/ServiceAccountRepository';
 import { AiRoutingPolicyRepository } from '../../../repositories/generated/core/AiRoutingPolicyRepository';
+import { ModelResidencyPolicyRepository } from '../../../repositories/generated/core/ModelResidencyPolicyRepository';
 import { RateLimitRuleRepository } from '../../../repositories/generated/core/RateLimitRuleRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
 import { TenantPlanHistoryRepository } from '../../../repositories/generated/core/TenantPlanHistoryRepository';
@@ -190,6 +191,10 @@ const repositories = [
   // Also a SYSTEM_SHARED_READ_MODEL — the SYSTEM row is the
   // platform default every tenant without its own policy must read.
   AiRoutingPolicyRepository,
+  // TASK-1005 — desired load/unload/pin state per (model, service).
+  // SYSTEM-only platform configuration (D-11): every row carries the
+  // reserved SYSTEM tenantId; tenants never see this surface.
+  ModelResidencyPolicyRepository,
   TranscriptionJobRepository,
   // Audit domain
   AuditLogRepository,

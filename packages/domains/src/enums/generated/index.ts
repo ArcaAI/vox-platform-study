@@ -43,6 +43,7 @@ export * from './IdpStatus';
 export * from './KnowledgeDocumentStatus';
 export * from './ModelCategory';
 export * from './ModelJobStatus';
+export * from './ModelResidencyClass';
 export * from './ModelTaskType';
 export * from './ModelType';
 export * from './NotificationType';
