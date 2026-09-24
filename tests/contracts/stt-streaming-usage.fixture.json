@@ -1,0 +1,34 @@
+{
+  "_comment": "TASK-1003 F-10a — the cross-language contract fixture for POST /api/v1/internal/stt/streaming/usage. `pushback` is the exact wire body `apps/stt/src/stt/core/api_client/gateway.py::record_streaming_usage` sends: `{**summary, interrupted}`, where `summary` is `SessionManager._build_teardown_summary()` (apps/stt/src/stt/streaming/session_manager.py) and `interrupted` is the one field gateway.py adds on top. It carries every top-level key the summary builder returns plus `interrupted`, and one `segments[]` entry with every key `UsageSegment.to_dict()` (apps/stt/src/stt/streaming/usage_segments.py) emits. Both halves read this SAME file: apps/api/src/modules/internal/__tests__/stt-streaming-usage.contract.test.ts (the DTO, `SttStreamingUsagePushbackRequest`, must accept it whole under the global ValidationPipe's whitelist+forbidNonWhitelisted+forbidUnknownValues) and apps/stt/tests/unit/contracts/test_streaming_usage_contract.py (a REAL summary built through `_build_teardown_summary` must carry exactly this key set, and its one segment exactly the segment key set — minus `interrupted`, which the summary itself never carries). Change either producer's field set and update this fixture in the same commit, or one half goes stale silently.",
+  "pushback": {
+    "session_id": "sess-task1003-f10a",
+    "lexicon_correction_count": 3,
+    "tenant_id": "50000000-0000-0000-0000-000000000000",
+    "consultation_id": "c-task1003",
+    "user_id": "u-task1003",
+    "pipeline_id": "p-task1003",
+    "closed_at": "2026-09-24T10:01:30",
+    "audio_seconds": 42.5,
+    "session_seconds": 90.0,
+    "engine": "whisper_cpp",
+    "deployment": "SELF_HOSTED",
+    "connection_id": null,
+    "segments": [
+      {
+        "engine": "whisper_cpp",
+        "deployment": "SELF_HOSTED",
+        "audio_seconds": 42.5,
+        "session_seconds": 90.0,
+        "connection_id": null,
+        "processing_seconds": 10.0,
+        "device": "cpu",
+        "request_bytes": null,
+        "response_bytes": null,
+        "byte_source": null
+      }
+    ],
+    "language_mode": "ml-en",
+    "channel_count": 1,
+    "interrupted": false
+  }
+}

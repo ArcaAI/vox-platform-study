@@ -120,6 +120,15 @@ export class SttStreamingUsagePushbackRequest {
   @IsString()
   session_id!: string;
 
+  @ApiPropertyOptional({
+    description:
+      'TASK-935 — corrections the lexicon-normalization stage applied this session (partials + finals). Absent from an STT that predates the field.',
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  lexicon_correction_count?: number;
+
   @ApiProperty({ description: 'Tenant the session belonged to.' })
   @IsString()
   tenant_id!: string;
