@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { BadRequestException } from '@nestjs/common';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { ResourceStatusType, SysEventType } from '@arcaai/domains';
 import { ConsultationService } from '../consultation.service';
 import { ConsultationDtoMapper } from '../consultation.dto.mapper';
@@ -156,6 +157,29 @@ describe('open on an EXISTING consultation — an explicit, different mode updat
     expect(updates).toHaveLength(1);
     expect(updates[0]).toMatchObject({ resourceId: 'existing-1', data: expect.objectContaining({ previous: 'en', next: 'ml-en' }) });
     expect(m.consultationRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('two concurrent re-opens: the loser of the CAS re-reads, and a row already at the mode is a no-op (never a 412 from open)', async () => {
+    m.consultationRepository.findByUniqueKey.mockResolvedValue(existingRow());
+    m.consultationRepository.updateWithVersion.mockRejectedValueOnce(
+      new OptimisticConcurrencyException('Consultation', 'existing-1', { expectedVersion: 4, currentVersion: 5 }),
+    );
+    m.consultationRepository.findById.mockResolvedValue(existingRow({ version: 5, spokenLanguageMode: 'ml-en' }));
+
+    await expect(makeService(m).getOrCreate({ patientId: 'p-1', languageMode: 'ml-en' } as never, 'doctor-1')).resolves.toBeDefined();
+    expect(m.consultationRepository.updateWithVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it('a lost CAS against a row at ANOTHER mode retries once on the fresh version', async () => {
+    m.consultationRepository.findByUniqueKey.mockResolvedValue(existingRow());
+    m.consultationRepository.updateWithVersion.mockRejectedValueOnce(
+      new OptimisticConcurrencyException('Consultation', 'existing-1', { expectedVersion: 4, currentVersion: 5 }),
+    );
+    m.consultationRepository.findById.mockResolvedValue(existingRow({ version: 5, spokenLanguageMode: 'vi' }));
+
+    await makeService(m).getOrCreate({ patientId: 'p-1', languageMode: 'ml-en' } as never, 'doctor-1');
+    expect(m.consultationRepository.updateWithVersion).toHaveBeenCalledTimes(2);
+    expect(m.consultationRepository.updateWithVersion.mock.calls[1]![2]).toBe(5);
   });
 
   it('the same mode (after normalization) writes nothing', async () => {

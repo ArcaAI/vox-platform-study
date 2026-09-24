@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { BusinessException } from '@arcaai/exceptions';
+import { BusinessException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import {
   ConsultationEntity,
   ConsultationRepository,
@@ -1165,7 +1165,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       // later step (live, batch, workflow), so the declaration follows them rather than silently
       // keeping the first one. Same mode (after normalization), or none at all, writes nothing.
       if (declaredLanguageMode && normalizeStoredMode(readSpokenLanguageMode(existing)) !== declaredLanguageMode) {
-        await this.writeSpokenLanguageMode(existing, declaredLanguageMode, 'open');
+        await this.reopenWithSpokenLanguageMode(existing, declaredLanguageMode);
       }
 
       this.broadcastSysEvent(SysEventType.ResourceViewed, {
@@ -2215,6 +2215,23 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // from this response would get an immediate 412. Same fix as
     // `reopenConsultation` above.
     return ConsultationDtoMapper.toResponseWithContext(updated);
+  }
+
+  /**
+   * TASK-1004 — the re-open write, safe under the race a repeat `start` invites (two opens for the
+   * same visit, a moment apart). `open` has never answered 412, so the loser of the CAS re-reads:
+   * a row that already carries the mode is done; otherwise it retries ONCE on the fresh version.
+   */
+  private async reopenWithSpokenLanguageMode(consultation: ConsultationEntity, mode: string): Promise<void> {
+    try {
+      await this.writeSpokenLanguageMode(consultation, mode, 'open');
+    } catch (error) {
+      if (!(error instanceof OptimisticConcurrencyException)) throw error;
+      const fresh = await this.consultationRepository.findById(consultation.id);
+      if (fresh && normalizeStoredMode(readSpokenLanguageMode(fresh)) !== mode) {
+        await this.writeSpokenLanguageMode(fresh, mode, 'open');
+      }
+    }
   }
 
   /**
