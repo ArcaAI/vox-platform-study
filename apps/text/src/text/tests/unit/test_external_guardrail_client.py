@@ -20,6 +20,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 
 from text.core.guardrail_posture import GuardrailPosture
@@ -58,7 +59,9 @@ class _RaisingClient:
 
     async def post(self, *args: Any, **kwargs: Any):
         self.calls += 1
-        raise RuntimeError("guardrail unreachable")
+        # A connect failure: the one failure class that is retried and that
+        # provably started no judgement (see test_external_guardrail_budget.py).
+        raise httpx.ConnectError("guardrail unreachable")
 
 
 class _RaiseThenSucceedClient:
@@ -72,7 +75,7 @@ class _RaiseThenSucceedClient:
     async def post(self, *args: Any, **kwargs: Any):
         self.calls += 1
         if self.calls <= self.fail_times:
-            raise RuntimeError("guardrail blip")
+            raise httpx.ConnectError("guardrail blip")
         return _FakeResponse(self.payload)
 
 
@@ -313,7 +316,7 @@ async def test_the_served_timeout_reaches_the_transport() -> None:
 
     await client.validate("patient note")
 
-    assert http.calls[0]["timeout"] == 3
+    assert http.calls[0]["timeout"].read == 3
 
 
 # --- Degrade-safe → fail-CLOSED posture -------------------------------------

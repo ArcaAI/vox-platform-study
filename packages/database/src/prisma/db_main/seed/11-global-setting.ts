@@ -571,11 +571,11 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     namespace: 'registry',
     name: 'Guardrail call timeout (s)',
     key: 'text.externalGuardrail.timeoutS',
-    value: '10',
-    defaultValue: '10',
+    value: '75',
+    defaultValue: '75',
     dataType: ValueType.Integer,
     description:
-      'Per-attempt timeout, in seconds, on the moderation call TEXT makes before generating. Raise it only against the caller-side request timeout that bounds it. Locked — only SUPER_ADMIN may change it.',
+      'How long, in seconds, TEXT waits for guardrail to answer one moderation call. It must outlast one guardrail validation (admission wait plus one judge attempt at guardrail.judge.timeoutSeconds) and stay below the caller-side request timeout that bounds it. A timed-out call is not retried. Locked — only SUPER_ADMIN may change it.',
     locked: true,
   },
   {

@@ -37,10 +37,12 @@ from text.services.runtime_limits import apply_platform_posture
 class TestTheFloors:
     def test_the_floor_is_the_retired_env_defaults(self):
         """Behaviour-preserving by construction: an unwritten row resolves to
-        exactly what `TEXT_EXTERNAL_GUARDRAIL_*` resolved to."""
+        exactly what `TEXT_EXTERNAL_GUARDRAIL_*` resolved to — except the timeout,
+        re-sized from 10 s to nest inside guardrail's judge budget
+        (`test_external_guardrail_budget.py`)."""
         floor = GuardrailPosture()
         assert floor.enabled is GUARDRAIL_ENABLED_FLOOR is False
-        assert floor.timeout_s == GUARDRAIL_TIMEOUT_FLOOR_S == 10
+        assert floor.timeout_s == GUARDRAIL_TIMEOUT_FLOOR_S == 75
         assert floor.max_retries == GUARDRAIL_MAX_RETRIES_FLOOR == 2
         assert floor.retry_backoff_ms == GUARDRAIL_RETRY_BACKOFF_FLOOR_MS == 100
         assert floor.require_medical is GUARDRAIL_REQUIRE_MEDICAL_FLOOR is True

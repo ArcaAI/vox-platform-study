@@ -40,7 +40,9 @@ class JudgePolicy(BaseModel):
     What remains below is deliberately NOT config: the confidence floor has its
     own governed key (``judgeMinConfidence``) whose default is derived from here,
     and the retry budget and input bound are contracts between guardrail and
-    ``text``'s judge lane rather than knobs an operator tunes.
+    ``text``'s judge lane rather than knobs an operator tunes. The retry budget
+    is one attempt: ``apps/text`` sizes its own deadline on the call that
+    triggers the judgement to exactly one judge budget.
     """
 
     # A verdict below this confidence is logged, never silently trusted.
@@ -48,7 +50,13 @@ class JudgePolicy(BaseModel):
 
     # Guardrail owns the retry budget by contract: `text`'s judge route runs zero
     # retries so a public generation never waits behind a compounding backoff.
-    max_attempts: int = 2
+    # ONE attempt: a judgement that timed out is still running on the shared GPU
+    # (nothing cancels across the hop), so a retry stacks load instead of
+    # recovering the verdict. `apps/text`'s moderation deadline is sized to one
+    # attempt (`text.externalGuardrail.timeoutS` > admission wait + one
+    # `guardrail.judge.timeoutSeconds`); raising this re-inverts that nesting,
+    # which the tests on both sides pin.
+    max_attempts: int = 1
     retry_backoff_s: float = 0.1
 
     # The judge sees a bounded prefix — a validation is a classification, not a read.

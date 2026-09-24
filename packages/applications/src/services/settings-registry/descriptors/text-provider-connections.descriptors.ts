@@ -76,7 +76,7 @@ import { SettingDescriptor } from '../registry.types';
  */
 export const TEXT_GUARDRAIL_POSTURE_DEFAULTS = {
   'text.externalGuardrail.enabled': false,
-  'text.externalGuardrail.timeoutS': 10,
+  'text.externalGuardrail.timeoutS': 75,
   'text.externalGuardrail.maxRetries': 2,
   'text.externalGuardrail.retryBackoffMs': 100,
   'text.externalGuardrail.requireMedical': true,
@@ -101,17 +101,20 @@ const META: Record<TextGuardrailPostureKey, KeyMeta> = {
     label: 'Guardrail call timeout (s)',
     dataType: 'number',
     description:
-      'Per-attempt timeout on the moderation call TEXT makes before generating. Worst-case added latency under a ' +
-      'HANG-style outage is roughly `(maxRetries + 1) x timeoutS` plus backoff, so raise it only against the ' +
-      'caller-side request timeout that bounds it.',
+      'How long TEXT waits for guardrail to answer one moderation call (the connect phase has its own short bound). ' +
+      'It must outlast one guardrail validation — admission wait plus one judge attempt at ' +
+      '`guardrail.judge.timeoutSeconds` — or TEXT abandons judgements guardrail is still running and they stack on ' +
+      'the shared GPU. A timed-out call is not retried, so a hang costs one timeoutS; keep it below the caller-side ' +
+      'request timeout that bounds it.',
   },
   'text.externalGuardrail.maxRetries': {
     label: 'Guardrail retry budget',
     dataType: 'number',
     description:
-      'EXTRA attempts after the first (total tries = maxRetries + 1). This is what makes the posture degrade-safe ' +
-      'rather than brittle: a momentary blip is absorbed and the prompt proceeds on a clean re-check, while only a ' +
-      'sustained outage exhausts the budget and fails closed. 0 = no retry.',
+      'EXTRA attempts after the first (total tries = maxRetries + 1), spent only on failures that started no work in ' +
+      'guardrail: a connection that could not be made or was dropped before any response, and an upstream ' +
+      '502/503/504. A timeout is never retried (the judgement is still running). A blip is absorbed and the prompt ' +
+      'proceeds on a clean re-check; a sustained outage exhausts the budget and fails closed. 0 = no retry.',
   },
   'text.externalGuardrail.retryBackoffMs': {
     label: 'Guardrail retry backoff (ms)',
