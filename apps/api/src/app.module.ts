@@ -109,6 +109,7 @@ import { PlatformMetricsModule } from './modules/platform-metrics/platform-metri
 import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { AiModelModule } from './modules/ai-model/ai-model.module';
 import { InferenceEnginesModule } from './modules/inference-engines/inference-engines.module';
+import { ModelResidencyModule } from './modules/model-residency/model-residency.module';
 import { PromptManagementModule } from './modules/prompt-management/prompt-management.module';
 import { PrismaStudioModule, shouldEnablePrismaStudio } from './modules/pstudio/pstudio.module';
 import { PrismaStudioStatusModule } from './modules/pstudio/pstudio-status.module';
@@ -452,6 +453,11 @@ const featureModules: any[] = [
   // guardrail and STT workloads from time-sliced cards that give no memory
   // isolation.
   InferenceEnginesModule,
+  // /admin/model-residency — the one control plane for which models are resident
+  // on stt, nlp and LM Studio (load / unload / pin / policies, shadow-mode
+  // recommendations). Platform-admin only; shares InferenceEnginesModule's
+  // LM Studio client so both surfaces hold one load lock per engine.
+  ModelResidencyModule,
   // /admin/ai-task-defaults (per-tenant default model per AI task key).
   // /admin/nlp-task-instructions (tenant-writable nlp.topic/nlp.intent
   // instruction content — separate subject from AiRoutingPolicy).

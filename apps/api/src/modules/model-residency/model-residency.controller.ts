@@ -17,7 +17,7 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags 
 import type { Response } from 'express';
 import { CanManage, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIfMatch } from '../../decorators';
 
-const READ_SCOPES = ['svc:admin:model-residency:read', 'svc:admin:model-residency:manage'] as const;
+const READ_SCOPES = ['svc:admin:model-residency:manage'] as const;
 const MANAGE_SCOPE = 'svc:admin:model-residency:manage';
 
 const FORBIDDEN = 'Not a platform administrator, or a working tenant is selected (this surface is platform-wide and tenant-less).';
@@ -30,8 +30,8 @@ const FORBIDDEN = 'Not a platform administrator, or a working tenant is selected
  * pinned by `tests/contracts/model-residency-admin.fixture.json`.
  *
  * Tenants never see this surface (D-11). `@ForbidApiKey()` keeps the business
- * plane out; a service account needs `svc:admin:model-residency:read` (reads)
- * or `:manage` (writes).
+ * plane out; a service account needs `svc:admin:model-residency:manage` for every route — one scope,
+ * because every route already demands `manage:ModelResidencyPolicy` (a read-only scope could satisfy none).
  */
 @ApiBearerAuth()
 @ApiTags('admin-model-residency')

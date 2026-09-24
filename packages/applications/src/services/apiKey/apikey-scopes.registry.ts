@@ -523,6 +523,15 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'GlobalSetting' }],
     reserved: true,
   },
+  // TASK-1005 D-11 — the platform-admin model-residency surface. One scope: every
+  // `admin/model-residency` route demands `manage:ModelResidencyPolicy`, and the real gate
+  // (SUPER_ADMIN in a tenant-less context) is imperative in the service.
+  'admin:model-residency:manage': {
+    description: 'Read and control model residency (load / unload / pin / policies) across the shared GPUs',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'ModelResidencyPolicy' }],
+    reserved: true,
+  },
   'admin:harness:manage': {
     description: 'Manage the Clinical Documentation Harness admin surface',
     category: 'Admin',

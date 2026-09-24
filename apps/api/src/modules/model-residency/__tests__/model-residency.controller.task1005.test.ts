@@ -71,16 +71,14 @@ describe('ModelResidencyController (TASK-1005)', () => {
     }
   });
 
-  it('is admin-plane only: @ForbidApiKey, a class-level CASL permission, and read vs manage svc scopes', () => {
+  it('is admin-plane only: @ForbidApiKey, a class-level CASL permission, and one manage svc scope on every route', () => {
     const reflector = new Reflector();
     expect(reflector.getAllAndOverride(API_KEY_FORBIDDEN, [proto.view, ModelResidencyController])).toBe(true);
-    for (const [handler, , , level] of ROUTES) {
+    for (const [handler] of ROUTES) {
       const permissions = reflector.getAllAndOverride(REQUIRED_PERMISSIONS_KEY, [proto[handler], ModelResidencyController]);
       expect(permissions, handler).toEqual([{ action: 'manage', subject: 'ModelResidencyPolicy' }]);
       const scopes = reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [proto[handler], ModelResidencyController]);
-      expect(scopes, handler).toEqual(
-        level === 'read' ? ['svc:admin:model-residency:read', 'svc:admin:model-residency:manage'] : ['svc:admin:model-residency:manage'],
-      );
+      expect(scopes, handler).toEqual(['svc:admin:model-residency:manage']);
     }
   });
 
