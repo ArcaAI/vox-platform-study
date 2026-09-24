@@ -103,7 +103,7 @@ The cards are mostly idle. **The performance problem is cold loads on the reques
   - `GET /internal/residency` returns resident models, each with `state`, `bytes` (measured), `device`, `inFlight`, `lastUsedAt`, `loadSeconds`, `pinned`, `ttlSeconds`, and device free/total.
   - `POST /internal/residency/load` (`{modelRef, pin?, ttlSeconds?}`), `POST /internal/residency/unload` (`{modelRef, force?}`; refuses `inFlight > 0` unless `force`), `PUT /internal/residency/{model}/policy` (pin, TTL).
   - Guarded by `X-Service-Token`, with `X-Tenant-Id: tenantless:residency`.
-- **LM Studio adapter**: REST v1 for list, load and unload. TTL and pin are enforced by the controller (it unloads on idle), because REST v1 has no TTL field. GPU split per model uses REST if Phase 0 shows it is accepted; otherwise it goes through an in-pod SDK sidecar (see D-5).
+- **LM Studio adapter**: REST v1 for list, load and unload, sending ONLY the documented load keys (`model`, `context_length`, `eval_batch_size`, `flash_attention`, `num_experts`, `offload_kv_cache_to_gpu`, `echo_load_config`). TTL and pin are enforced by the controller (it unloads on idle), because REST v1 has no TTL field. Load is **not idempotent** — a second load of a loaded key creates a new instance (`<key>:2`) — so the adapter lists `loaded_instances` first and treats "already loaded" as success. The GPU split is the daemon's own strategy (no per-load field). Footprint = the per-device `nvidia-smi`/DCGM delta around a load, which is only valid because loads are serialised (one in flight per node).
 - **Ledger**: controller memory, rebuilt from agent reports every 10 s (bounded staleness) and on every command result. The Prometheus gauges below are the durable history.
 - **Metrics** (new, uniform): `model_resident{service,model,device,state}`, `model_resident_bytes{service,model,device}` (measured), `model_load_seconds{service,model}` histogram, `model_evictions_total{service,reason}` (`ttl|lru|pressure|admin|policy`), `residency_decisions_total{action,mode=shadow|enforce}`, `residency_admission_rejections_total{reason}`. The existing `model_running_instances` supplies in-flight counts.
 
@@ -154,7 +154,7 @@ The cards are mostly idle. **The performance problem is cold loads on the reques
 | D-2 | **Measured** footprint, never catalogue estimates. The observed size is written back to `AiModel` as an observed field | Estimates are null today; time-slicing punishes over-commit |
 | D-3 | **Shadow mode first** (`residency.enforce=false`); enforcement is a SYSTEM flag | A safe rollout for an autonomous loop |
 | D-4 | Live-path models are **implicitly PINNED** and warmed before readiness; the ad-hoc `stt.warmDefaultAsrOnBoot` is superseded (it gets a descriptor in the TASK-1003 addendum meanwhile) | Latency-first; removes cold loads from live sessions |
-| D-5 | **LM Studio load via the official REST v1 API.** Phase 0 reproduces the failure live: try `lms load --estimate-only` and REST load, check the resource-guardrail setting in the headless config, and test whether undocumented `ttl`/GPU fields are accepted. If REST v1 is unusable, promote the existing in-pod SDK loader (`load.mjs`) to a small authenticated sidecar on loopback | Use the vendor's supported, versioned surface first |
+| D-5 | **LM Studio load via the official REST v1 API — CONFIRMED by the Phase 0 spike (§10.1); no sidecar.** REST v1 load/unload works on the running llmster. The schema is strict: only the documented keys are accepted, and `ttl`, `identifier`, `gpu` return 400 `unrecognized_keys` (the most likely cause of the historical "load always fails"). The adapter sends documented keys only; TTL/idle unload is the controller's job; the GPU split is the daemon's (`LMS_GPU_SPLIT_STRATEGY=priorityOrder`), not per load | Use the vendor's supported, versioned surface; measured, not assumed |
 | D-6 | Enable **LM Studio API authentication**; the token lives in Vault kv (`vault-kv` tier), injected into the gateway only | Least privilege; LM Studio is reachable in-cluster today without auth |
 | D-7 | **Placement stays within each workload's visible devices** (LM Studio spans both cards; stt and stt-worker hold one slice each). Cross-workload balancing is by per-device memory budgets, not by moving pods | Kubernetes time-slice slots are static; moving models between pods would mean restarts |
 | D-8 | **Evaluate NVIDIA MPS** in a bounded spike (Phase 4): measure p95 latency and co-tenant OOM behaviour with per-client memory limits. Adopt only if it improves p95 and caps blast radius with no stability regression | MPS gives soft memory limits and concurrent kernels; MIG is not available on this card class |
@@ -225,6 +225,23 @@ Each lane runs only its own RED → GREEN test file (owner rule); the orchestrat
 
 ## 10. Implementation summary
 
+### 10.1 Phase 0 spike — LM Studio REST v1 (2026-09-24, pod `hope-lmstudio-6c8489cfc8-bnxhr`, loopback via `kubernetes_exec`)
+
+| Probe | Result |
+|---|---|
+| `POST /api/v1/models/load {"model":"text-embedding-nomic-embed-text-v1.5"}` (84 MB) | **200**, `load_time_seconds` 0.97, `instance_id` = the key |
+| Same request again (+ `echo_load_config`) | **200**, a SECOND instance `text-embedding-nomic-embed-text-v1.5:2` — load is **not idempotent** |
+| `+ "ttl":120` / `+ "identifier":"probe-x"` / `+ "gpu":{"ratio":1}` | **400** `unrecognized_keys` each — strict schema |
+| `POST /api/v1/models/load {"model":"gemma-4-e4b-it-qat@q4_0","context_length":4096,"flash_attention":true,"echo_load_config":true}` (5.15 GB file) | **200** after **98.4 s** (`parallel` 4 inherited from `LMS_PARALLEL`) |
+| Device memory, before → loaded → unloaded | GPU0 3927 → 5418 → 3927 MiB · GPU1 2 → 1990 → 2 MiB — the daemon split the model across **both** cards (+3.5 GB total); unload returns everything |
+| `POST /api/v1/models/unload {"instance_id":…}` | **200** for every instance |
+
+Consequences (folded into D-5 and §5.1): REST v1 only, no sidecar; list-before-load; documented keys only; controller-owned TTL; a
+~100 s reload cost means an LM Studio LLM is never an `ON_DEMAND` candidate on the live path (the cost-aware score already weighs
+`reloadSeconds`, and live-path models are implicitly `PINNED`).
+
+### 10.2 Lanes
+
 _Pending._
 
 ## 11. Sources
@@ -237,5 +254,6 @@ _Pending._
 
 | Date | Change |
 |---|---|
+| 2026-09-24 | Phase 0 spike: REST v1 load/unload works (strict schema, not idempotent, 98 s for a 5 GB LLM); D-5 resolved to REST v1, no sidecar. |
 | 2026-09-24 | Owner **go**: OD-1 (7 days shadow + review), OD-2 (≤ 5 s wait then 503), OD-3 (audited force-load) as recommended. |
 | 2026-09-24 | Ticket opened from the owner's TASK-1003 follow-up comments. Discovery: two read-only agents (repo state; LM Studio + serving research), plus live checks (LM Studio v1 API present, no `/metrics`; DCGM baseline and 7-day peak). Plan, decisions and ODs written; awaiting go. |
