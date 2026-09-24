@@ -30,6 +30,7 @@ import {
   sttGatewayFirstPartialSeconds,
 } from '@arcaai/applications';
 import { Inject, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { type Span, SpanKind, context, trace } from '@opentelemetry/api';
 import type { IncomingMessage } from 'http';
@@ -80,6 +81,26 @@ export const WS_GENERIC_AUTH_REASON = 'Authentication failed';
  * recipient already proved it owns the session.
  */
 export const WS_SESSION_SUPERSEDED_REASON = 'Session resumed elsewhere';
+
+/** Reason sent to a socket whose consultation re-bound recording to a different STT session. */
+export const WS_RECORDING_SUPERSEDED_REASON = 'Superseded by a new recording session';
+
+/** `finalizeSession` reason for a session replaced by a newer recording session. */
+const RECORDING_SUPERSEDED_FINALIZE_REASON = 'superseded by a new recording session';
+
+/**
+ * Emitted when a consultation's `recording/start` re-binds to a different STT session
+ * (last writer wins). The replaced session must be FINALIZED — flushed and uploaded — never
+ * cancelled.
+ */
+const STT_SESSION_SUPERSEDED_EVENT = 'stt.session.superseded';
+
+interface SttSessionSupersededPayload {
+  tenantId: string;
+  consultationId: string;
+  supersededSessionId: string;
+  supersedingSessionId: string;
+}
 
 /**
  * TASK-985 ST-5 — read a DEPRECATED positive-number env seed, or `undefined` when it is unset
@@ -1979,7 +2000,12 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
           // what lets the terminal-`closed` finalize below distinguish "the clinician ended the
           // consultation" from "the socket died". STT cannot make that distinction and does not
           // try to — `_build_teardown_summary` says so in its own docstring.
+          const firstStop = !session.stopRequested;
           session.stopRequested = true;
+          // End of stream goes IN BAND first: STT reads it strictly after every frame already
+          // forwarded. The control `finalize` below travels on a separate, unordered stream and
+          // stays only as the fallback for consumers that never see the terminal frame.
+          if (firstStop) this.writeEndOfStream(session);
           await this.bridgeService.writeControlCommand(session.sessionId, 'finalize');
           break;
         }
@@ -2035,6 +2061,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * `lastSeq` resume protocol handles recovery.
    */
   private forwardAudioFrame(session: SessionInfo, seq: number, data: Buffer): void {
+    // Keep the counter at the highest seq forwarded, so a frame numbered after a client-supplied
+    // JSON seq (the terminal frame included) never lands at or below one STT already counted.
+    if (seq > session.binarySeq) session.binarySeq = seq;
     // TASK-985 M-03 — the start of the `first_partial_seconds` interval. Set on SUBMISSION of
     // the first frame, for the same reason the audio clock below is: the Redis ack is
     // deliberately not awaited, and a start time that only existed after a successful write
@@ -2081,6 +2110,101 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       });
       this.sendError(session.client, 'BRIDGE_ERROR', 'Failed to forward audio frame');
     });
+  }
+
+  /**
+   * Append the in-band end-of-stream marker to `stt:audio`: a zero-length `final=1` frame with
+   * the next seq.
+   *
+   * Ordered after every forwarded frame by construction: `writeAudioFrame` issues its XADD
+   * synchronously on the bridge's single writer connection (FIFO, offline queue included), Redis
+   * runs one connection's commands in order, and stream IDs only grow — so STT's consumer reaches
+   * this entry strictly after all earlier audio. Zero bytes, so it bills nothing. Not awaited,
+   * like every frame: a slow or failed write must not hold back the control fallback.
+   */
+  private writeEndOfStream(session: SessionInfo): void {
+    const seq = ++session.binarySeq;
+    this.bridgeService.writeAudioFrame(session.sessionId, seq, Buffer.alloc(0), session.sampleRate, 'pcm_s16le', true, session.traceCarrier).catch((err) => {
+      this.logger.warn({
+        message: 'Failed to write the in-band end-of-stream frame — STT finalizes on the control fallback',
+        sessionId: session.sessionId,
+        seq,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
+  /**
+   * A consultation re-bound recording to a different STT session: finalize the one it replaced.
+   *
+   * FINALIZE, never cancel — STT flushes the tail and uploads the recording either way. A session
+   * this instance holds goes through `finalizeSession` (its socket is closed as superseded); one
+   * held elsewhere, or already dropped here, is finalized on STT through `removeSession`. Only the
+   * tenant that owns the session may do this, and a repeat for the same session is a no-op: the
+   * first one drops the in-memory state and the tenant binding that both paths require.
+   */
+  @OnEvent(STT_SESSION_SUPERSEDED_EVENT)
+  async onSttSessionSuperseded(payload: SttSessionSupersededPayload): Promise<void> {
+    const sessionId = payload?.supersededSessionId;
+    const tenantId = payload?.tenantId;
+    if (!sessionId || !tenantId || sessionId === payload.supersedingSessionId) return;
+
+    try {
+      const session = this.sessionsById.get(sessionId);
+      if (session) {
+        if (session.tenantId !== tenantId) {
+          this.logger.warn({
+            message: 'Ignoring superseded-session event from a tenant that does not own the session',
+            sessionId,
+            consultationId: payload.consultationId,
+          });
+          return;
+        }
+        if (session.finalizing) return;
+        const client = session.client;
+        this.finalizeSession(session, RECORDING_SUPERSEDED_FINALIZE_REASON);
+        if (client.readyState === client.OPEN) {
+          try {
+            client.close(WS_CLOSE_CODES.SESSION_SUPERSEDED, WS_RECORDING_SUPERSEDED_REASON);
+          } catch {
+            // Already gone.
+          }
+        }
+        return;
+      }
+
+      const binding = await this.sessionBinding.lookupBinding(sessionId);
+      if (!binding) {
+        // No binding: already finalized (finalize clears it) or expired. Nothing left to do.
+        this.logger.debug({ message: 'Superseded STT session has no binding — already finalized', sessionId });
+        return;
+      }
+      if (binding.tenantId !== tenantId) {
+        this.logger.warn({
+          message: 'Ignoring superseded-session event from a tenant that does not own the session',
+          sessionId,
+          consultationId: payload.consultationId,
+        });
+        return;
+      }
+      // Same order as `finalizeSession`: no ticket may be minted against a session being finalized.
+      await this.sessionBinding.clear(sessionId);
+      this.logger.log({ message: 'Finalizing superseded STT session held by no local socket', sessionId, consultationId: payload.consultationId });
+      await this.sessionService.removeSession(sessionId, true, tenantId).catch((err) => {
+        this.logger.warn({
+          message: 'Superseded session cleanup failed; parked for retry',
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        this.removalRetry.enqueue(sessionId, true, tenantId);
+      });
+    } catch (err) {
+      this.logger.warn({
+        message: 'Failed to finalize a superseded STT session',
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
