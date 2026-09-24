@@ -65,9 +65,6 @@ const REQUEST_TIMEOUT_MS = 5_000;
 /** A load's HTTP budget. The 5.15 GB `gemma-4-e4b-it-qat@q4_0` took 98.4 s on the live pod (§10.1). */
 export const LM_STUDIO_LOAD_TIMEOUT_MS = 300_000;
 
-/** The `vault-kv` secret name (`toEnvVarName('lmStudio.apiToken')`). Spelled as a literal at the read so the coverage guard sees it. */
-export const LM_STUDIO_API_TOKEN_SECRET = 'LM_STUDIO_API_TOKEN';
-
 /** One loaded instance, as `GET /api/v1/models[].loaded_instances[]` reports it. */
 export interface LmStudioInstance {
   /** `loaded_instances[].id` — the handle `POST .../unload` takes as `instance_id`. */
