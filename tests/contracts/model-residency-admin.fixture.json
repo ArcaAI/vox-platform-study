@@ -78,18 +78,26 @@
     "classSource": ["policy", "implicit-live-path", "default"],
     "recommendationAction": ["load", "unload", "pin", "unpin"],
     "recommendationReason": ["idle_ttl_expired", "promotion_rate", "live_path_pin", "make_room", "admission_rejected"],
-    "errorCode": ["MODEL_UNKNOWN", "IN_FLIGHT", "OVER_BUDGET", "LOAD_IN_PROGRESS", "LOAD_FAILED", "SERVICE_UNREACHABLE"],
+    "errorCode": ["IN_FLIGHT", "LOAD_FAILED", "LOAD_IN_PROGRESS", "MODEL_UNKNOWN", "OPTIONS_UNSUPPORTED", "OVER_BUDGET", "SERVICE_UNREACHABLE"],
     "loadOutcome": ["accepted", "already_loaded"],
     "operationStatus": ["running", "succeeded", "failed"]
   },
   "load": {
     "path": "POST /api/v1/admin/model-residency/load",
     "request": {
-      "service": "nlp",
-      "modelRef": "gliner-medical-large",
+      "service": "lm-studio",
+      "modelRef": "gemma-4-e4b-it-qat@q4_0",
       "pin": false,
       "force": false,
-      "reason": null
+      "reason": null,
+      "replace": false,
+      "options": {
+        "contextLength": 8192,
+        "evalBatchSize": null,
+        "flashAttention": true,
+        "numExperts": null,
+        "offloadKvCacheToGpu": null
+      }
     },
     "status": 202,
     "response": {
@@ -97,7 +105,8 @@
       "operationId": "0199a1b2-0000-7000-8000-00000000c0de",
       "model": "<one entry of get.response.models, state: loading>"
     },
-    "$note": "ASYNCHRONOUS. A 5 GB LLM load takes ~100 s (TASK-1005 §10.1), past Cloudflare's 100 s edge timeout for a browser request, so the route answers 202 as soon as the load is admitted and the load runs in the background. Progress is read from GET (models[].state loading -> loaded, or the entry disappears on failure) and from GET /api/v1/admin/model-residency/operations/:operationId -> { id, action, service, modelRef, status: running|succeeded|failed, error: {code,message}|null, startedAt, finishedAt }. A model that is already resident answers 200 with `outcome: already_loaded` and the resident entry; no operation is created. A second load of the same model while one is running answers 409 LOAD_IN_PROGRESS. Unload is fast and stays synchronous (200)."
+    "$note": "ASYNCHRONOUS. A 5 GB LLM load takes ~100 s (TASK-1005 §10.1), past Cloudflare's 100 s edge timeout for a browser request, so the route answers 202 as soon as the load is admitted and the load runs in the background. Progress is read from GET (models[].state loading -> loaded, or the entry disappears on failure) and from GET /api/v1/admin/model-residency/operations/:operationId -> { id, action, service, modelRef, status: running|succeeded|failed, error: {code,message}|null, startedAt, finishedAt }. A model that is already resident answers 200 with `outcome: already_loaded` and the resident entry; no operation is created. A second load of the same model while one is running answers 409 LOAD_IN_PROGRESS. Unload is fast and stays synchronous (200).",
+    "$optionsNote": "`options` is accepted ONLY for service `lm-studio` (400 OPTIONS_UNSUPPORTED otherwise) and carries exactly LM Studio REST v1's documented load keys (camelCased); anything the engine cannot take over REST (parallel slots, KV quantization, GPU split) is not expressible. `replace: true` = 'apply & reload': unload the resident instance(s) of this modelRef first, then load with `options`, as ONE operation (refused 409 IN_FLIGHT while the model serves requests unless `force: true`). Without `replace`, a resident model answers 200 `already_loaded` and `options` are ignored."
   },
   "unload": {
     "path": "POST /api/v1/admin/model-residency/unload",
