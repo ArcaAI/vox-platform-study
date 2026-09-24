@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { IconPlugConnectedX } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import type { AiModelServingProfile } from '@arcaai/types';
@@ -13,9 +13,11 @@ import { formatBytes } from '@/shared/format';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
-import { useLmStudioRuntime, useLoadLmStudioModel, useUnloadLmStudioModel } from '../api/serving-hooks';
-import { asVramBudgetConflict, type LmStudioDevice, type LmStudioLoadedModel, type LoadModelResponse } from '../api/serving-types';
+import { asModelResidencyConflict, isTerminalResidencyOperation, useModelResidencyOperation } from '@/shared/residency';
+import { useLmStudioRuntime, useLoadLmStudioModelViaResidency, useUnloadLmStudioModel } from '../api/serving-hooks';
+import type { LmStudioDevice, LmStudioLoadedModel } from '../api/serving-types';
 import { BYTES_PER_MIB } from './serving-estimate';
+import { toResidencyLoadOptions } from './residency-options';
 import { ServingProfileDrawer } from './serving-profile-drawer';
 
 /** One model row: the running instance when there is one, otherwise a catalogue entry. */
@@ -100,15 +102,22 @@ export interface ServingControlTabProps {
  * workload (owner decision D-1). Every other tab on this screen, and every
  * other engine screen, remains strictly read-only.
  *
- * Three honesty constraints shape what is on this tab, and none of them is
- * decoration:
+ * Since TASK-1005 §5.1, "Apply & reload" goes through the model-residency
+ * plane (`admin/model-residency/load`) rather than this engine's own
+ * `.../models/:key/load` — that route stopped accepting a profile (400) and
+ * stayed synchronous past Cloudflare's 100s edge timeout for a real LLM load.
+ * The load is now ASYNCHRONOUS: the POST only admits it (202 + `operationId`,
+ * or 200 `already_loaded`), and this tab polls the operation
+ * (`useModelResidencyOperation`, `@/shared/residency`) to learn when it
+ * settles, then refreshes this engine's own `/runtime` read.
  *
- *  - Context, parallel, flash attention and GPU split are LOAD-TIME parameters.
- *    There is no live edit, so there is no Save — only "Apply & reload", behind
- *    a confirmation naming the in-flight generations it drops (D-2).
+ * Three more honesty constraints shape what is on this tab:
+ *
+ *  - Only `contextLength`/`flashAttention` reach the engine through a reload —
+ *    everything else the drawer edits (parallel, KV quantization, GPU split)
+ *    is restart-only, and the drawer says so rather than claiming it applied.
  *  - Unload is ADVISORY. JIT loading cannot be disabled on this build, so the
- *    next inference request loads the model again (§2.5). Saying "unloaded" and
- *    stopping there would be a statement that expires without notice.
+ *    next inference request loads the model again (§2.5).
  *  - VRAM exists per DEVICE and per MODEL, and not per thread — CUDA attributes
  *    memory to a process, and no layer below that exists in the driver, DCGM or
  *    NVML (D-5). The per-model KV figure is derived from context × parallel and
@@ -116,12 +125,32 @@ export interface ServingControlTabProps {
  */
 export function ServingControlTab({ catalogueModelKeys }: ServingControlTabProps) {
   const runtime = useLmStudioRuntime();
-  const load = useLoadLmStudioModel();
+  const load = useLoadLmStudioModelViaResidency();
   const unload = useUnloadLmStudioModel();
 
   const [editing, setEditing] = useState<ServingRow | null>(null);
   const [unloading, setUnloading] = useState<LmStudioLoadedModel | null>(null);
-  const [lastApplied, setLastApplied] = useState<LoadModelResponse | null>(null);
+  const [pendingOperationId, setPendingOperationId] = useState<string | null>(null);
+  const operation = useModelResidencyOperation(pendingOperationId);
+
+  // The reload is async (~100s for a real LLM) — poll the operation to a
+  // terminal state, then refresh the runtime read so the applied
+  // context/flash-attention (and the newly measured VRAM) show up. No
+  // `setPendingOperationId` here: once `refetchInterval` sees a terminal
+  // status it stops polling on its own (react-hooks/set-state-in-effect), and
+  // the id is already overwritten by the NEXT load's `onSuccess` or cleared
+  // when the "Serving profile" button opens a fresh editor session below.
+  useEffect(() => {
+    const current = operation.data;
+    if (!current || !isTerminalResidencyOperation(current.status)) return;
+    void runtime.refetch();
+    if (current.status === 'succeeded') {
+      toast.success(`${current.modelRef} reloaded.`);
+    } else {
+      toast.error(current.error?.message || `Reloading ${current.modelRef} failed.`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `runtime` is stable per render cycle; re-running on its identity would refetch on every poll tick.
+  }, [operation.data]);
 
   if (runtime.isPending) return <TabSkeleton />;
   if (runtime.error) {
@@ -144,27 +173,36 @@ export function ServingControlTab({ catalogueModelKeys }: ServingControlTabProps
 
   const rows = mergeRows(data.loaded, catalogueModelKeys);
 
-  function applyProfile(profile: AiModelServingProfile) {
-    const row = editing;
-    if (!row) return;
-    setLastApplied(null);
+  function startLoad(row: ServingRow, profile: AiModelServingProfile, force: boolean, reason?: string) {
+    const { options } = toResidencyLoadOptions(profile);
     load.mutate(
-      { modelKey: row.modelKey, body: { profile } },
+      { service: 'lm-studio', modelRef: row.modelKey, replace: true, force, reason: force ? reason : undefined, options },
       {
-        onSuccess: (result) => {
-          setLastApplied(result);
-          toast.success(`${row.modelKey} reloaded on the applied profile.`);
+        onSuccess: (response) => {
+          if (response.outcome === 'already_loaded') {
+            toast.success(`${row.modelKey} is already resident on that profile.`);
+            return;
+          }
+          setPendingOperationId(response.operationId ?? null);
+          toast.success(`Reloading ${row.modelKey}…`);
         },
         onError: (error) => {
-          const conflict = asVramBudgetConflict(error);
-          toast.error(
-            conflict
-              ? `Refused: ${formatBytes(conflict.estimateBytes)} estimated against ${formatBytes(conflict.freeBytes)} free.`
-              : `Couldn’t reload ${row.modelKey}.`,
-          );
+          const conflict = asModelResidencyConflict(error);
+          toast.error(conflict ? conflict.message || `Refused: ${conflict.code}.` : `Couldn't reload ${row.modelKey}.`);
         },
       },
     );
+  }
+
+  function applyProfile(profile: AiModelServingProfile) {
+    if (!editing) return;
+    load.reset();
+    startLoad(editing, profile, false);
+  }
+
+  function forceApplyProfile(profile: AiModelServingProfile, reason: string) {
+    if (!editing) return;
+    startLoad(editing, profile, true, reason);
   }
 
   return (
@@ -177,21 +215,21 @@ export function ServingControlTab({ catalogueModelKeys }: ServingControlTabProps
           ))}
         </ul>
         <p className="text-muted-foreground text-xs">
-          Per-thread VRAM is not shown here because it does not exist: CUDA attributes memory to a process and its contexts, and neither the
-          driver, DCGM nor NVML accounts for anything below that. Device and model are the two granularities that are real.
+          Per-thread VRAM is not shown here because it does not exist: CUDA attributes memory to a process, and neither the driver, DCGM nor NVML
+          accounts for anything below that. Device and model are the two granularities that are real.
         </p>
       </Card>
 
       <Card className="gap-3 p-4">
         <h2 className="text-sm font-medium">Models</h2>
         <p className="text-muted-foreground text-xs">
-          Weights are measured. KV cache figures are derived from context × parallel — LM Studio gives every parallel slot the full context —
-          so they are an estimate of residency, never a measurement of it.
+          Weights are measured. KV cache figures are derived from context × parallel — LM Studio gives every parallel slot the full context — so they
+          are an estimate of residency, never a measurement of it.
         </p>
         {rows.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            The engine answered and is holding no model, and the registry lists none for it either. There is nothing to load — publish a model
-            to this engine first.
+            The engine answered and is holding no model, and the registry lists none for it either. There is nothing to load — publish a model to this
+            engine first.
           </p>
         ) : null}
         <ul className="flex flex-col">
@@ -201,7 +239,9 @@ export function ServingControlTab({ catalogueModelKeys }: ServingControlTabProps
                 <span className="truncate font-mono text-sm">{row.modelKey}</span>
                 <span className="flex flex-wrap items-center gap-1.5">
                   {row.loaded ? (
-                    <Badge variant={row.loaded.status === 'ACTIVE' ? 'default' : 'secondary'}>{row.loaded.status === 'ACTIVE' ? 'Active' : 'Idle'}</Badge>
+                    <Badge variant={row.loaded.status === 'ACTIVE' ? 'default' : 'secondary'}>
+                      {row.loaded.status === 'ACTIVE' ? 'Active' : 'Idle'}
+                    </Badge>
                   ) : (
                     <Badge variant="outline">Not loaded</Badge>
                   )}
@@ -222,8 +262,8 @@ export function ServingControlTab({ catalogueModelKeys }: ServingControlTabProps
                   size="sm"
                   aria-label={`Serving profile for ${row.modelKey}`}
                   onClick={() => {
-                    setLastApplied(null);
                     load.reset();
+                    setPendingOperationId(null);
                     setEditing(row);
                   }}
                 >
@@ -244,8 +284,8 @@ export function ServingControlTab({ catalogueModelKeys }: ServingControlTabProps
         <h2 className="text-sm font-medium">Platform default</h2>
         <span className="text-muted-foreground text-sm">{profileSummary(data.platformDefault)}</span>
         <p className="text-muted-foreground text-xs">
-          What a model inherits when its own row states nothing. It is shared by every model with no opinion, so a change here reaches all of
-          them at their next load.
+          What a model inherits when its own row states nothing. It is shared by every model with no opinion, so a change here reaches all of them at
+          their next load.
         </p>
       </Card>
 
@@ -262,7 +302,9 @@ export function ServingControlTab({ catalogueModelKeys }: ServingControlTabProps
           platformDefault={data.platformDefault}
           isPending={load.isPending}
           onApply={applyProfile}
-          result={lastApplied}
+          onForceApply={forceApplyProfile}
+          operationStatus={pendingOperationId ? (operation.data?.status ?? 'running') : null}
+          operationError={operation.data?.error?.message ?? null}
           error={load.error}
         />
       ) : null}
@@ -277,8 +319,8 @@ export function ServingControlTab({ catalogueModelKeys }: ServingControlTabProps
         description="Unloading frees this model’s VRAM now and drops any generation it is serving."
         body={
           <p>
-            It is advisory, not a stop: JIT loading cannot be disabled on this build, so the next inference request will load it again — on the
-            JIT defaults, not on the profile it is running now.
+            It is advisory, not a stop: JIT loading cannot be disabled on this build, so the next inference request will load it again — on the JIT
+            defaults, not on the profile it is running now.
           </p>
         }
         confirmLabel="Unload"
