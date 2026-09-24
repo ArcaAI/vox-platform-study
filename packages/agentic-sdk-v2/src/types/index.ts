@@ -378,6 +378,15 @@ export type {
 
 export { AiModelDownloadStatus, ResourceStatus, TranscriptionJobStatus, TranscriptionJobType } from './stt';
 
+/** The spoken-language selection contract shared with `apps/stt`, `@arcaai/vox-node`, and ALaaS (TASK-1004). */
+export type {
+  LanguageModeId,
+  LanguageResolution,
+  LanguageResolutionDegradeReason,
+  LanguageResolutionParams,
+  LanguageResolutionSource,
+} from './language';
+
 // Consultation job types
 export type { ConsultationJob, JobStatus, JobStreamCallbacks, PollOptions } from './consultation-job';
 
