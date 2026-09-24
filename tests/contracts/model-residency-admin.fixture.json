@@ -1,0 +1,147 @@
+{
+  "$comment": "TASK-1005 — the platform-admin model-residency API, PINNED by the orchestrator before wave 2 so the controller lane (L-CTRL, producer) and the console lane (L-UI, consumer) build in parallel against the same shape. All routes are under /api/v1/admin/model-residency, platform-admin only (SUPER_ADMIN in a tenant-less context; tenants never see this surface — D-11), @ForbidApiKey, svc scope `svc:admin:model-residency:manage` for writes and `svc:admin:model-residency:read` for reads. `mode` is `shadow` until the SYSTEM setting `residency.enforce` is true. Every write is audited as a sys-event on ResourceType `ModelResidencyPolicy` (actions) — a force-load over budget REQUIRES a non-empty `reason` (owner OD-3) and answers 409 `OVER_BUDGET` without `force: true`. Unload with in-flight work answers 409 `IN_FLIGHT` unless `force: true`. Policy writes are OCC: `If-Match` required (428 missing, 412 drift). `models[].requestsPerMin` and `p50LatencyMs` come from Prometheus (`model_running_instances`, `model_inference_latency_seconds`) and may be null. `freshness.staleServices` lists services whose last agent report is older than 30 s. Error bodies follow the gateway house form: the object passed to Nest's ConflictException etc. — { code, message, ...details } — exactly like AGENT_CONNECTION_UNAVAILABLE.",
+  "get": {
+    "path": "GET /api/v1/admin/model-residency",
+    "response": {
+      "mode": "shadow",
+      "reportedAt": "2026-09-24T13:00:05Z",
+      "freshness": {
+        "maxAgeSeconds": 15,
+        "staleServices": []
+      },
+      "devices": [
+        {
+          "id": "gpu0",
+          "kind": "gpu",
+          "name": "NVIDIA RTX 2000 Ada Generation",
+          "totalBytes": 17175674880,
+          "usedBytes": 4117757952,
+          "freeBytes": 13057916928,
+          "utilisationPercent": 1.5,
+          "headroomPercent": 15
+        },
+        {
+          "id": "gpu1",
+          "kind": "gpu",
+          "name": "NVIDIA RTX 2000 Ada Generation",
+          "totalBytes": 17175674880,
+          "usedBytes": 2097152,
+          "freeBytes": 17173577728,
+          "utilisationPercent": 0.3,
+          "headroomPercent": 15
+        }
+      ],
+      "models": [
+        {
+          "service": "stt",
+          "instance": "hope-stt-5d9f7c8b6-abcde",
+          "modelRef": "arcaai-whisper-ml-en-ggml",
+          "aiModelId": "0199a1b2-0000-7000-8000-000000000001",
+          "aiModelName": "ArcaAI Whisper ml-en (GGML)",
+          "device": "gpu0",
+          "state": "loaded",
+          "bytes": 1623195648,
+          "bytesSource": "measured",
+          "inFlight": 1,
+          "requestsPerMin": 4.2,
+          "p50LatencyMs": 310,
+          "loadedAt": "2026-09-24T12:40:00Z",
+          "lastUsedAt": "2026-09-24T12:59:58Z",
+          "loadSeconds": 6.8,
+          "class": "PINNED",
+          "classSource": "implicit-live-path",
+          "ttlSeconds": null,
+          "pinned": true,
+          "adminPinned": false,
+          "policyId": null,
+          "policyVersion": null
+        }
+      ],
+      "recommendations": [
+        {
+          "id": "0199a1b2-0000-7000-8000-00000000abcd",
+          "at": "2026-09-24T12:58:00Z",
+          "action": "unload",
+          "service": "nlp",
+          "modelRef": "gliner-medical-large",
+          "reason": "idle_ttl_expired",
+          "mode": "shadow",
+          "applied": false
+        }
+      ]
+    }
+  },
+  "enums": {
+    "mode": ["shadow", "enforce"],
+    "state": ["loading", "loaded", "unloading"],
+    "class": ["PINNED", "WARM", "ON_DEMAND"],
+    "classSource": ["policy", "implicit-live-path", "default"],
+    "recommendationAction": ["load", "unload", "pin", "unpin"],
+    "recommendationReason": ["idle_ttl_expired", "promotion_rate", "live_path_pin", "make_room", "admission_rejected"],
+    "errorCode": ["MODEL_UNKNOWN", "IN_FLIGHT", "OVER_BUDGET", "LOAD_IN_PROGRESS", "LOAD_FAILED", "SERVICE_UNREACHABLE"]
+  },
+  "load": {
+    "path": "POST /api/v1/admin/model-residency/load",
+    "request": {
+      "service": "nlp",
+      "modelRef": "gliner-medical-large",
+      "pin": false,
+      "force": false,
+      "reason": null
+    },
+    "response": {
+      "outcome": "loaded",
+      "model": "<one entry of get.response.models>"
+    }
+  },
+  "unload": {
+    "path": "POST /api/v1/admin/model-residency/unload",
+    "request": {
+      "service": "nlp",
+      "modelRef": "gliner-medical-large",
+      "force": false,
+      "reason": null
+    },
+    "response": {
+      "outcome": "unloaded",
+      "service": "nlp",
+      "modelRef": "gliner-medical-large"
+    }
+  },
+  "pin": {
+    "path": "PUT /api/v1/admin/model-residency/pins",
+    "request": {
+      "service": "stt",
+      "modelRef": "arcaai-whisper-ml-en-ggml",
+      "pinned": true,
+      "ttlSeconds": null
+    },
+    "response": {
+      "model": "<one entry of get.response.models>"
+    }
+  },
+  "policies": {
+    "list": "GET /api/v1/admin/model-residency/policies",
+    "create": "POST /api/v1/admin/model-residency/policies",
+    "update": "PATCH /api/v1/admin/model-residency/policies/:id (If-Match)",
+    "delete": "DELETE /api/v1/admin/model-residency/policies/:id (soft delete)",
+    "item": {
+      "id": "0199a1b2-0000-7000-8000-00000000beef",
+      "aiModelId": "0199a1b2-0000-7000-8000-000000000001",
+      "service": "stt",
+      "class": "PINNED",
+      "idleTtlSeconds": null,
+      "priority": 100,
+      "maxInstances": 1,
+      "preferredDevice": "gpu0",
+      "_version": 1,
+      "updatedAt": "2026-09-24T12:00:00Z",
+      "updatedBy": "60000000-0000-0000-0000-000000000000"
+    }
+  },
+  "error": {
+    "code": "IN_FLIGHT",
+    "message": "gliner-medical-large is serving 2 request(s); pass force=true to unload anyway",
+    "inFlight": 2
+  }
+}
