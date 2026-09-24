@@ -58,6 +58,9 @@ def mock_session_manager():
     # `bool`. Left to the AsyncMock default the session-create route hands a coroutine to
     # `StreamingSessionResponse.voice_profile_seeded`, which pydantic rejects.
     mgr.get_voice_profile_seeded = MagicMock(return_value=False)
+    # TASK-1004 — and again: `get_language_resolution` is SYNCHRONOUS (`dict | None`),
+    # and the create/status routes now answer it as `language_resolution`.
+    mgr.get_language_resolution = MagicMock(return_value=None)
     return mgr
 
 

@@ -59,7 +59,8 @@ def test_pipeline_config_from_bundle_is_keyed_on_the_runtime_key() -> None:
     assert fallback.spec.models.asr.slug == "faster-whisper-large-v3-turbo-int8"
     # Independent copies: mutating one job's language never leaks into another.
     primary.spec.inference.language = "vi"
-    assert pipeline_config_from_bundle(bundle, SPEC["runtimeKey"]).spec.inference.language == "ml"
+    # TASK-1004 G-2 — the chain's own value is the whisper.cpp pair's: unpinned.
+    assert pipeline_config_from_bundle(bundle, SPEC["runtimeKey"]).spec.inference.language is None
     with pytest.raises(KeyError):
         pipeline_config_from_bundle(bundle, "unknown-key")
 

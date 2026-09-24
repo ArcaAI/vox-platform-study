@@ -26,6 +26,8 @@ def mock_session_manager():
     mgr = AsyncMock()
     # TASK-991 — synchronous accessor; the AsyncMock default yields a coroutine pydantic rejects.
     mgr.get_voice_profile_seeded = MagicMock(return_value=False)
+    # TASK-1004 — same: a synchronous accessor the create route now answers.
+    mgr.get_language_resolution = MagicMock(return_value=None)
     guard = MagicMock()
     guard.max_streams = 10
     guard.active_count = 1

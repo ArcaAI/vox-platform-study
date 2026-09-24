@@ -105,8 +105,12 @@ def test_platform_default_maps_to_the_runtime_pipeline_spec() -> None:
     assert pipeline.diarization.max_speakers == 2
     assert pipeline.diarization.backend == "embedding"
     assert pipeline.inference.beam_size == 5
-    assert pipeline.inference.code_switching is True
-    assert pipeline.inference.language == "ml"  # primary language of the ml-en mode
+    # TASK-1004 G-2 — the ml-en mode is resolved for THIS chain's engine (whisper.cpp):
+    # a pair pins no language and sets no flag. The old engine-unaware reading pinned
+    # the pair's primary subtag `ml` + code_switching on every engine.
+    assert pipeline.inference.code_switching is False
+    assert pipeline.inference.language is None
+    assert pipeline.inference.streaming_english_gloss is False
     assert pipeline.postprocessing.timestamps.word_timestamps is True
     assert pipeline.postprocessing.punctuation.enabled is True
     assert pipeline.streaming.commit_policy == "local_agreement_2"

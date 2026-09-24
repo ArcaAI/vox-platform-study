@@ -47,7 +47,16 @@ from stt.core.metrics import (
 )
 from stt.models.whisper_kwargs import build_whisper_generate_kwargs
 from stt.pipeline.dto import AiModelConfig, AiModelFormat, DualCaptureConfig, EndpointConfig
-from stt.pipeline.spec import ResolvedSpecBundle, bundle_from_resolved
+from stt.pipeline.language_modes import (
+    LANGUAGE_MODE_SOURCES,
+    LanguageModeUnsupportedError,
+    LanguageResolution,
+    default_language_resolution,
+    mark_fallback_engine_switch,
+    normalize_language_mode,
+    resolve_language,
+)
+from stt.pipeline.spec import ResolvedSpecBundle, bundle_from_resolved, fallback_chain
 from stt.storage.blob_service import BlobService
 from stt.streaming.capacity_guard import CapacityGuard
 from stt.streaming.commit_policy import LocalAgreementPolicy, normalize_for_comparison
@@ -259,6 +268,10 @@ class _EngineBinding:
     gloss_callable: Any = None
     partial_window_s: float | None = None
     max_utterance_sec: float | None = None
+    #: TASK-1004 — the ``LanguageResolution`` receipt ``_load_asr_pipeline`` built
+    #: for THIS engine; committed as the session's by ``_apply`` in the same body
+    #: that installs the callable, so the two can never describe different engines.
+    language_resolution: LanguageResolution | None = None
 
 
 @dataclass
@@ -296,6 +309,106 @@ def _spec_bundles_of(manager: Any) -> dict[str, ResolvedSpecBundle]:
     """
     bundles = getattr(manager, "_session_specs", None)
     return bundles if isinstance(bundles, dict) else {}
+
+
+#: TASK-1004 — the per-session language state, each a ``{session_id: value}`` dict:
+#: who declared the mode, the receipt of the engine SERVING the session, and the
+#: receipt ``_load_asr_pipeline`` built for an engine that has not taken over yet.
+_LANGUAGE_SOURCES = "_session_language_sources"
+_LANGUAGE_RECEIPTS = "_session_language_receipts"
+_PENDING_LANGUAGE_RECEIPTS = "_pending_language_receipts"
+
+
+def _language_state_of(manager: Any, name: str) -> dict[str, Any]:
+    """One of ``manager``'s TASK-1004 per-session language dicts.
+
+    Same posture as ``_spec_bundles_of`` (``MagicMock(spec=SessionManager)`` doubles
+    expose only CLASS attributes), except that these dicts are also WRITTEN: a double
+    that predates them gets a real dict attached on first use, so a write is never
+    lost into a throwaway.
+    """
+    state = getattr(manager, name, None)
+    if not isinstance(state, dict):
+        state = {}
+        setattr(manager, name, state)
+    return state
+
+
+def _spec_asr_provider_of(manager: Any, session_id: str, slug: str | None) -> str | None:
+    """The ``provider`` the session's spec declares for ASR row *slug* (any chain).
+
+    ``None`` for a self-hosted row, a slug no chain names, or a session without a
+    spec (the deprecated pipeline path carries no provider).
+    """
+    bundle = _spec_bundles_of(manager).get(session_id)
+    if bundle is None or not slug:
+        return None
+    for core in (bundle.spec, *fallback_chain(bundle.spec)):
+        if core.models.asr.slug == slug:
+            return core.models.asr.provider
+    return None
+
+
+def _default_language_receipt(
+    inference_config: Any, engine: Any, provider: str | None
+) -> LanguageResolution | None:
+    """The ``source=default`` receipt for an engine running with NO declared mode.
+
+    Only when the engine really runs unpinned: a raw non-catalog ``language``
+    override (the deprecated path) is not ``auto`` and has no catalog receipt, so
+    it answers ``None`` rather than a receipt that would misdescribe it.
+    """
+    if (
+        not isinstance(engine, AiModelFormat)
+        or getattr(inference_config, "language", 0) is not None
+    ):
+        return None
+    return default_language_resolution(
+        engine,
+        provider=provider,
+        code_switching=getattr(inference_config, "code_switching", False) is True,
+        streaming_english_gloss=getattr(inference_config, "streaming_english_gloss", False) is True,
+    )
+
+
+def _commit_language_receipt(
+    manager: Any,
+    session_id: str,
+    receipt: LanguageResolution | None,
+    metadata: Any = None,
+) -> None:
+    """Make *receipt* the session's: the in-memory answer AND the hash field.
+
+    ``None`` clears both — a receipt describes the engine serving NOW, so keeping
+    the previous engine's after a switch would misreport what is being applied.
+    """
+    receipts = _language_state_of(manager, _LANGUAGE_RECEIPTS)
+    if receipt is None:
+        receipts.pop(session_id, None)
+    else:
+        receipts[session_id] = receipt
+    if isinstance(metadata, SessionMetadata):
+        metadata.language_resolution = receipt.to_json() if receipt is not None else ""
+
+
+def _recovered_language_source(meta: SessionMetadata, spec_mode: str | None) -> str:
+    """Who declared a RECOVERED session's mode (the receipt's ``source``).
+
+    The persisted receipt says it outright. A session persisted before receipts
+    existed carries only its effective mode: equal to the agent's own mode reads as
+    ``agent``, anything else as ``request``, and no mode at all as ``default``.
+    """
+    if meta.language_resolution:
+        try:
+            return LanguageResolution.from_json(meta.language_resolution).source
+        except (ValueError, KeyError, TypeError):
+            logger.warning(
+                "Persisted language resolution is unreadable; deriving its source",
+                session_id=meta.session_id,
+            )
+    if meta.language_mode:
+        return "agent" if meta.language_mode == spec_mode else "request"
+    return "agent" if spec_mode else "default"
 
 
 def _duplex_sessions_of(manager: Any) -> dict[str, Any]:
@@ -419,13 +532,15 @@ def _language_mode_for_declared_language(language: str | None) -> str | None:
     own priming prompt. A language OUTSIDE the catalog cannot become a mode; it
     keeps the raw ``inference.language`` override instead, which now survives
     because the spec backfill no longer runs over a declaration.
+
+    TASK-1004 — read through the shared edge normalizer, so a BCP-47 tag whose
+    language IS a single-language mode (``en-US``, ``ml-IN``) promotes too, exactly
+    as the gateway's normalizer maps it.
     """
     if not language:
         return None
-    from stt.pipeline.language_modes import LANGUAGE_MODES_BY_ID
 
-    normalized = language.strip().lower()
-    return normalized if normalized in LANGUAGE_MODES_BY_ID else None
+    return normalize_language_mode(language)
 
 
 class SessionManager:
@@ -483,6 +598,13 @@ class SessionManager:
         # Per-session end-user language mode id, resolved against the
         # session's ASR engine at load time.
         self._session_language_modes: dict[str, str] = {}
+        # TASK-1004 — who declared that mode (the receipt's `source`), the
+        # `LanguageResolution` receipt of the engine serving the session, and the
+        # receipt `_load_asr_pipeline` built for an engine that has not taken over
+        # yet (a switch commits it in `_apply`; create/recovery once assembled).
+        self._session_language_sources: dict[str, str] = {}
+        self._session_language_receipts: dict[str, LanguageResolution] = {}
+        self._pending_language_receipts: dict[str, LanguageResolution] = {}
         # Per-session dual-/multi-mic source count (absent ⇒ 1).
         self._session_channel_counts: dict[str, int] = {}
         # The ASR AiModelFormat actually loaded for this session,
@@ -1500,6 +1622,7 @@ class SessionManager:
         channel_count: int = 1,
         resolved_spec: dict[str, Any] | None = None,
         voice_profiles: list[dict[str, Any]] | None = None,
+        language_mode_source: str | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -1559,6 +1682,12 @@ class SessionManager:
                 ``fallback_pipeline_id`` become the spec's runtime keys and the
                 request's ``auto_switch_enabled`` / ``consecutive_failure_threshold``
                 / ``language_mode`` fill in from the spec when omitted.
+            language_mode_source: TASK-1004 — who declared ``language_mode``
+                (``request`` | ``consultation`` | ``agent`` | ``default``), as the
+                gateway's precedence resolved it; stamped on the session's
+                ``LanguageResolution`` receipt. Absent (or not one of those) ⇒
+                ``request`` for a mode the caller sent, ``agent`` for the spec's own
+                and ``default`` when there is none.
         """
         # PLANNED scale-down: reject before touching capacity at all. Distinct
         # signal (SessionManagerDrainingError) from the ordinary at-capacity
@@ -1587,6 +1716,11 @@ class SessionManager:
         # runbook already documents the resulting 503 as a known, reproduced
         # symptom of a cold start.
         self._creating.add(session_id)
+        # TASK-1004 — whether the mode is the SPEC's own (source `agent`) rather than
+        # one the caller declared, and whether the create-time fallback below was
+        # taken because the PRIMARY cannot serve the mode (the receipt then says so).
+        mode_from_spec = False
+        language_driven_fallback = False
         try:
             # TASK-861 — the agent path: register the spec bundle FIRST so every
             # loader below resolves from it, and let the spec govern the keys.
@@ -1617,6 +1751,7 @@ class SessionManager:
                     language_mode = _language_mode_for_declared_language(language)
                     if not language_mode and not language:
                         language_mode = bundle.spec.decoding.language_mode
+                        mode_from_spec = bool(language_mode)
 
             # Register per-tenant storage routing before any audio I/O. A
             # `storage` descriptor (multi-provider) wins and also pins the audio
@@ -1669,6 +1804,17 @@ class SessionManager:
             # any create-time fallback assembly resolve it against their engine.
             if language_mode:
                 self._session_language_modes[session_id] = language_mode
+            # TASK-1004 — and who declared it, for the receipt. The gateway names
+            # the tier its precedence picked, which holds only for a mode the
+            # CALLER sent; a value outside the closed enum is ignored rather than
+            # stamped onto a receipt clients will switch on.
+            if not language_mode:
+                language_mode_source = "default"
+            elif mode_from_spec:
+                language_mode_source = "agent"
+            elif language_mode_source not in LANGUAGE_MODE_SOURCES:
+                language_mode_source = "request"
+            _language_state_of(self, _LANGUAGE_SOURCES)[session_id] = language_mode_source
             # Stash the dual-/multi-mic source count so the teardown
             # summary (from EVERY finalize path, including the idle reaper) can
             # echo it for usage repricing.
@@ -1739,6 +1885,7 @@ class SessionManager:
                 except Exception as primary_exc:
                     if not fallback_pipeline_id:
                         raise
+                    language_driven_fallback = isinstance(primary_exc, LanguageModeUnsupportedError)
                     logger.warning(
                         "Primary ASR pipeline failed at create; opening session on fallback",
                         session_id=session_id,
@@ -1781,6 +1928,13 @@ class SessionManager:
             session._vad_active = runtime.vad_service is not None
 
             metadata.diarization = runtime.effective_diarization
+            # TASK-1004 — the receipt of the engine that actually loaded, persisted
+            # with the rest of the metadata below. A fallback reached because the
+            # primary cannot serve the mode is served, and SAYS so (D-4).
+            receipt = _language_state_of(self, _PENDING_LANGUAGE_RECEIPTS).pop(session_id, None)
+            if receipt is not None and language_driven_fallback:
+                receipt = mark_fallback_engine_switch(receipt)
+            _commit_language_receipt(self, session_id, receipt, metadata)
             await session.force_persist()
 
             # `publisher` explicitly: `self._publishers` is not populated until
@@ -1903,6 +2057,15 @@ class SessionManager:
         where every pushed profile was skipped (wrong embedding model, malformed vector,
         tracker at capacity)."""
         return self._session_voice_profile_seeded.get(session_id, False)
+
+    def get_language_resolution(self, session_id: str) -> dict[str, Any] | None:
+        """TASK-1004 — the session's ``LanguageResolution`` receipt, wire form.
+
+        What the engine serving the session NOW applied for the declared mode;
+        ``None`` for an unknown session or one with no catalog mode to describe.
+        """
+        receipt = _language_state_of(self, _LANGUAGE_RECEIPTS).get(session_id)
+        return receipt.to_wire() if receipt is not None else None
 
     async def request_switch(self, session_id: str, target: str = "fallback") -> None:
         """Request a manual mid-session engine switch.
@@ -2105,6 +2268,16 @@ class SessionManager:
                 # mid-utterance corrupts the LocalAgreement window, so it is
                 # stashed and adopted at the next utterance boundary.
                 self._pending_front_end_geometry[session_id] = binding
+                # TASK-1004 — the receipt moves with the callable, in this same
+                # synchronous body, for the same reason the provenance stamp does:
+                # a receipt describing the engine that just LEFT is a wrong answer.
+                live = self._sessions.get(session_id)
+                _commit_language_receipt(
+                    self,
+                    session_id,
+                    binding.language_resolution,
+                    getattr(live, "metadata", None),
+                )
 
             # TASK-985 N-2 — reset the commit policy and cancel the in-flight
             # partial, in this same synchronous body. For an AUTO switch this is
@@ -2154,6 +2327,11 @@ class SessionManager:
             active: str,
             utterance_index: int | None,
         ) -> None:
+            # TASK-1004 — the receipt `_apply` just committed rides on the switch
+            # frame (the gateway relays it) and is written to the session hash now,
+            # not at the next periodic persist, so a restart in between keeps it.
+            receipt = _language_state_of(self, _LANGUAGE_RECEIPTS).get(session_id)
+            receipt_json = receipt.to_json() if receipt is not None else None
             publisher = self._publishers.get(session_id)
             if publisher is not None:
                 await publisher.publish_provider_switched(
@@ -2162,7 +2340,19 @@ class SessionManager:
                     reason=reason,
                     active=active,
                     utterance_index=utterance_index,
+                    language_resolution=receipt_json,
                 )
+            if receipt_json is not None:
+                try:
+                    await self._redis.hset(
+                        session_meta_key(session_id), "language_resolution", receipt_json
+                    )
+                except Exception as exc:  # noqa: BLE001 — never fail a swap on a persist
+                    logger.warning(
+                        "stt.stream.language_resolution_persist_failed",
+                        session_id=session_id,
+                        error=str(exc),
+                    )
 
         # The tenant's auto-switch governance. Both values are real
         # `TenantSttConfig` settings resolved by the gateway, but nothing ever
@@ -2284,13 +2474,16 @@ class SessionManager:
         asr_callable, initial_prompt = await self._load_asr_pipeline(
             fb_config, session_id, tenant_id=tenant_id, provider_overrides=overrides
         )
+        receipt = _language_state_of(self, _PENDING_LANGUAGE_RECEIPTS).pop(session_id, None)
         if asr_callable is None:
             raise RuntimeError(
                 f"Fallback pipeline '{fallback_pipeline_id}' produced no ASR callable"
             )
-        return await self._binding_from_pipeline_config(
+        binding = await self._binding_from_pipeline_config(
             session_id, asr_callable, fb_config, initial_prompt
         )
+        binding.language_resolution = receipt
+        return binding
 
     async def _binding_from_pipeline_config(
         self,
@@ -2350,11 +2543,14 @@ class SessionManager:
         asr_callable, initial_prompt = await self._load_asr_pipeline(
             p_config, session_id, tenant_id=tenant_id, provider_overrides=overrides
         )
+        receipt = _language_state_of(self, _PENDING_LANGUAGE_RECEIPTS).pop(session_id, None)
         if asr_callable is None:
             raise RuntimeError(f"Primary pipeline '{primary_pipeline_id}' produced no ASR callable")
-        return await self._binding_from_pipeline_config(
+        binding = await self._binding_from_pipeline_config(
             session_id, asr_callable, p_config, initial_prompt
         )
+        binding.language_resolution = receipt
+        return binding
 
     def _seed_voice_profiles(
         self, tracker: Any, session_id: str, model_slug: str | None
@@ -2519,6 +2715,8 @@ class SessionManager:
         self._pending_front_end_geometry.pop(session_id, None)
         self._fallback_pipeline_ids.pop(session_id, None)
         self._session_language_modes.pop(session_id, None)
+        for language_state in (_LANGUAGE_SOURCES, _LANGUAGE_RECEIPTS, _PENDING_LANGUAGE_RECEIPTS):
+            _language_state_of(self, language_state).pop(session_id, None)
         self._session_channel_counts.pop(session_id, None)
         _spec_bundles_of(self).pop(session_id, None)
         # The teardown summary (if any) is built BEFORE this
@@ -3053,18 +3251,36 @@ class SessionManager:
         # actually loaded. "Selection constrains providers": if this engine
         # cannot serve the mode, raise so create_session falls through to a
         # compatible fallback (or surfaces a 422 when none qualifies).
+        #
+        # TASK-1004 — `resolve_language` is the SAME call the batch worker makes, and
+        # it also returns the `LanguageResolution` receipt for this engine. The
+        # receipt is only STASHED here: this method also builds engines that never
+        # take over (a switch build that raises later), so the caller commits it
+        # once the engine is actually serving.
         mode_id = self._session_language_modes.get(session_id)
         code_switch_prompt: str | None = None
+        provider = _spec_asr_provider_of(self, session_id, asr_ref.slug)
+        receipt: LanguageResolution | None
         if mode_id:
-            from stt.pipeline.language_modes import resolve_mode_for_engine
-
-            resolved = resolve_mode_for_engine(mode_id, asr_model.format)
+            resolved, receipt = resolve_language(
+                mode_id,
+                asr_model.format,
+                source=_language_state_of(self, _LANGUAGE_SOURCES).get(session_id, "request"),
+                provider=provider,
+            )
             inference_config.language = resolved.language
             inference_config.code_switching = resolved.code_switching
             inference_config.streaming_english_gloss = resolved.streaming_english_gloss
             # whisper.cpp code-switch: a bilingual priming prompt (the engine has
             # no translate gloss); applied to the session's initial_prompt below.
             code_switch_prompt = resolved.initial_prompt
+        else:
+            receipt = _default_language_receipt(inference_config, asr_model.format, provider)
+        pending = _language_state_of(self, _PENDING_LANGUAGE_RECEIPTS)
+        if receipt is None:
+            pending.pop(session_id, None)
+        else:
+            pending[session_id] = receipt
 
         # TASK-861 — the agent's LITERAL prompt wins; the template-id lookup
         # (a database read) survives only for the deprecated pipeline path.
@@ -6480,6 +6696,18 @@ class SessionManager:
                     )
                     if recovered_mode:
                         self._session_language_modes[meta.session_id] = recovered_mode
+                    # TASK-1004 — and WHO declared it, so the receipt rebuilt below
+                    # names the same declaration the session opened with.
+                    _language_state_of(self, _LANGUAGE_SOURCES)[meta.session_id] = (
+                        _recovered_language_source(
+                            meta,
+                            (
+                                recovered_bundle.spec.decoding.language_mode
+                                if recovered_bundle is not None
+                                else None
+                            ),
+                        )
+                    )
 
                     session = StreamSession(metadata=meta, redis=self._redis)
 
@@ -6517,6 +6745,16 @@ class SessionManager:
                     # TASK-985 CL-4 — same rule on the recovery path: what
                     # LOADED, not what was declared.
                     session._vad_active = runtime.vad_service is not None
+                    # TASK-1004 — the receipt of the engine recovery actually
+                    # loaded; persisted by the `force_persist` below.
+                    _commit_language_receipt(
+                        self,
+                        meta.session_id,
+                        _language_state_of(self, _PENDING_LANGUAGE_RECEIPTS).pop(
+                            meta.session_id, None
+                        ),
+                        meta,
+                    )
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to
                     # warm VAD state. Deferred — VAD starts cold but

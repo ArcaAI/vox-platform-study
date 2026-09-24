@@ -6,6 +6,7 @@ import logging
 import os
 import socket
 from collections.abc import Coroutine
+from dataclasses import dataclass
 from typing import Any
 
 import dramatiq
@@ -23,11 +24,28 @@ from ...core.exceptions import (
     NotFoundError,
     TranscriptionError,
 )
+from ...core.initial_prompt import compose_prompt
 from ...core.job_concurrency import get_job_gate, refresh_job_concurrency_limit
 from ...core.messaging.pubsub import TranscriptionEventPublisher
 from ...core.worker_loop import run_on_worker_loop
 from ...pipeline.config_reader import get_pipeline_reader
-from ...pipeline.spec import bundle_from_resolved, pipeline_config_from_bundle
+from ...pipeline.dto import PipelineConfig
+from ...pipeline.language_modes import (
+    LANGUAGE_MODE_SOURCES,
+    LanguageModeSource,
+    LanguageModeUnsupportedError,
+    LanguageResolution,
+    default_language_resolution,
+    mark_fallback_engine_switch,
+    normalize_language_mode,
+    resolve_language,
+)
+from ...pipeline.spec import (
+    ResolvedSpecBundle,
+    bundle_from_resolved,
+    fallback_chain,
+    pipeline_config_from_bundle,
+)
 from ...storage.blob_service import get_blob_service
 from ..batch_service import get_batch_service
 
@@ -49,13 +67,16 @@ def transcribe_file(
     consultation_id: str | None = None,
     media_id: str | None = None,
     language: str | None = None,
-    code_switching: bool | None = None,
+    _ignored_code_switching: bool | None = None,
     audio_bucket_name: str | None = None,
     user_id: str | None = None,
     storage: dict[str, Any] | None = None,
     fallback_pipeline_id: str | None = None,
     resolved_spec: dict[str, Any] | None = None,
     voice_profiles: list[dict[str, Any]] | None = None,
+    *,
+    language_mode: str | None = None,
+    language_mode_source: str | None = None,
 ) -> None:
     """
     Dramatiq actor for batch file transcription.
@@ -81,8 +102,20 @@ def transcribe_file(
         audio_uri: MinIO URI for audio file
         consultation_id: Optional consultation ID
         media_id: Optional media ID
-        language: Optional language hint for ASR
-        code_switching: Optional flag to enable code-switching mode
+        language: Optional language hint for ASR. A value naming a catalog mode
+            (``en``, ``en-US``) is promoted to that mode, exactly as a live session
+            promotes it; any other value is a raw ``inference.language`` override.
+        _ignored_code_switching: TASK-1004 — the DEAD positional slot where
+            ``code_switching`` used to sit. The gateway always sent ``null`` and the
+            worker never applied it; it stays so an already-queued positional message
+            still binds, and is ignored. Never send it.
+        language_mode: TASK-1004 — the job's effective language-mode id
+            (``en`` | ``ml`` | ``ml-en`` | … | ``auto``), KEYWORD-ONLY. Resolved per
+            chain against that chain's engine by the same call a live session makes.
+            Absent ⇒ a declared catalog ``language``, else the agent's own mode.
+        language_mode_source: TASK-1004 — which precedence tier supplied
+            ``language_mode`` (``request`` | ``consultation`` | ``agent`` |
+            ``default``), stamped on the job's LanguageResolution receipt.
         audio_bucket_name: Optional tenant-scoped bucket name
         user_id: Optional authenticated user ID
         voice_profiles: TASK-887 — the end-user's ENROLLED voice profiles for the agent's
@@ -118,13 +151,14 @@ def transcribe_file(
                 consultation_id=consultation_id,
                 media_id=media_id,
                 language=language,
-                code_switching=code_switching,
                 audio_bucket_name=audio_bucket_name,
                 user_id=user_id,
                 storage=storage,
                 fallback_pipeline_id=fallback_pipeline_id,
                 resolved_spec=resolved_spec,
                 voice_profiles=voice_profiles,
+                language_mode=language_mode,
+                language_mode_source=language_mode_source,
             )
         )
 
@@ -137,13 +171,14 @@ async def _transcribe_file_async(
     consultation_id: str | None = None,
     media_id: str | None = None,
     language: str | None = None,
-    code_switching: bool | None = None,
     audio_bucket_name: str | None = None,
     user_id: str | None = None,
     storage: dict[str, Any] | None = None,
     fallback_pipeline_id: str | None = None,
     resolved_spec: dict[str, Any] | None = None,
     voice_profiles: list[dict[str, Any]] | None = None,
+    language_mode: str | None = None,
+    language_mode_source: str | None = None,
 ) -> None:
     """Async implementation of file transcription.
 
@@ -209,18 +244,42 @@ async def _transcribe_file_async(
         await publisher.publish_status(job_id, "PROCESSING", worker_id=worker_id)
 
         # Step 2: Load pipeline configuration
+        # TASK-1004 — on the agent path the job's effective language mode is
+        # resolved per chain, against that chain's engine, by the same call a live
+        # session makes; it may start the job on a fallback when the primary cannot
+        # serve the mode, and raises when no chain can.
+        job_language: _JobLanguage | None = None
+        language_resolution: LanguageResolution | None = None
         if bundle is not None:
             logger.info(
                 f"[{job_id}] Assembling engine chain from resolved spec {bundle.runtime_key}"
             )
-            pipeline_config = pipeline_config_from_bundle(bundle, bundle.runtime_key)
+            job_language = _plan_job_language(
+                bundle,
+                language_mode=language_mode,
+                language_mode_source=language_mode_source,
+                language=language,
+            )
+            pipeline_config = job_language.pipeline_config
+            language_resolution = job_language.receipt
+            if job_language.runtime_key != bundle.runtime_key:
+                logger.warning(
+                    f"[{job_id}] Primary cannot serve language mode "
+                    f"'{job_language.mode}'; running on fallback {job_language.runtime_key}"
+                )
         else:
             assert pipeline_reader is not None
             logger.info(f"[{job_id}] Loading pipeline {pipeline_id}")
             pipeline_config = await pipeline_reader.get_pipeline(pipeline_id)
-
-        if language is not None:
-            pipeline_config.spec.inference.language = language
+            if language_mode:
+                # The deprecated pipeline path knows no engine before loading, so a
+                # mode cannot be resolved against one; only `language` applies here.
+                logger.warning(
+                    f"[{job_id}] language_mode '{language_mode}' is ignored on the "
+                    "deprecated pipeline path"
+                )
+            if language is not None:
+                pipeline_config.spec.inference.language = language
 
         # Check for cancellation before downloading audio
         await _check_cancelled()
@@ -347,7 +406,9 @@ async def _transcribe_file_async(
 
         # The fallback engine: the spec's own `fallback` chain on the agent path,
         # the deprecated tenant pointer otherwise.
-        fallback_key = bundle.fallback_runtime_key if bundle is not None else fallback_pipeline_id
+        fallback_key = (
+            job_language.fallback_key if job_language is not None else fallback_pipeline_id
+        )
 
         try:
             result = await _do_transcribe(pipeline_config)
@@ -363,13 +424,28 @@ async def _transcribe_file_async(
                 f"[{job_id}] Primary ASR failed ({type(asr_exc).__name__}); "
                 f"re-dispatching on fallback {fallback_key}"
             )
-            if bundle is not None:
-                fb_pipeline_config = pipeline_config_from_bundle(bundle, fallback_key)
+            if job_language is not None:
+                assert bundle is not None
+                try:
+                    fb_pipeline_config, language_resolution = _resolve_chain_language(
+                        bundle,
+                        fallback_key,
+                        job_language.mode,
+                        job_language.source,
+                        language,
+                    )
+                except LanguageModeUnsupportedError:
+                    # The fallback cannot serve the job's mode: the engine error stands.
+                    logger.warning(
+                        f"[{job_id}] Fallback {fallback_key} cannot serve language mode "
+                        f"'{job_language.mode}'; not re-dispatching"
+                    )
+                    raise asr_exc from None
             else:
                 assert pipeline_reader is not None
                 fb_pipeline_config = await pipeline_reader.get_pipeline(fallback_key)
-            if language is not None:
-                fb_pipeline_config.spec.inference.language = language
+                if language is not None:
+                    fb_pipeline_config.spec.inference.language = language
             result = await _do_transcribe(fb_pipeline_config)
             # Auditability: record which fallback actually produced the result.
             result.metadata["usedFallbackPipelineId"] = fallback_key
@@ -458,6 +534,12 @@ async def _transcribe_file_async(
             request_bytes=result.request_bytes,
             response_bytes=result.response_bytes,
             byte_source=result.byte_source,
+            # TASK-1004 — what the engine that PRODUCED the result applied for the
+            # job's language mode; a typed sibling for the same reason as the
+            # fields above (the metadata blob is encrypted on persist).
+            language_resolution=(
+                language_resolution.to_wire() if language_resolution is not None else None
+            ),
         )
 
         # Publish status: COMPLETED
@@ -473,6 +555,22 @@ async def _transcribe_file_async(
         logger.error(f"[{job_id}] Resource not found: {e}")
         await publisher.publish_error(job_id, "NOT_FOUND", str(e))
         await _fail_job(api_client, publisher, job_id, str(e), "NOT_FOUND", tenant_id=tenant_id)
+        raise dramatiq.middleware.SkipMessage() from e
+
+    except LanguageModeUnsupportedError as e:
+        # TASK-1004 — no engine in the job's chain can serve the requested mode:
+        # the batch counterpart of a live session's 422. Re-running the same chain
+        # can only fail the same way, so the broker skips the retries.
+        logger.error(f"[{job_id}] Language mode unsupported: {e}")
+        await publisher.publish_error(job_id, "LANGUAGE_MODE_UNSUPPORTED", str(e))
+        await _fail_job(
+            api_client,
+            publisher,
+            job_id,
+            str(e),
+            "LANGUAGE_MODE_UNSUPPORTED",
+            tenant_id=tenant_id,
+        )
         raise dramatiq.middleware.SkipMessage() from e
 
     except JobCancelledError as e:
@@ -564,3 +662,136 @@ async def _fail_job(
 
     # Publish status: FAILED
     await publisher.publish_status(job_id, "FAILED")
+
+
+# ---------------------------------------------------------------------------
+# TASK-1004 — the job's spoken-language selection, resolved per chain
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _JobLanguage:
+    """The job's effective mode and the chain that will serve it first.
+
+    ``fallback_key`` is the engine an ASR failure re-dispatches to — today's single
+    spec fallback when the job starts on the primary, none when the MODE already
+    moved it onto a fallback.
+    """
+
+    mode: str | None
+    source: LanguageModeSource
+    runtime_key: str
+    pipeline_config: PipelineConfig
+    receipt: LanguageResolution | None
+    fallback_key: str | None
+
+
+def _effective_job_mode(
+    bundle: ResolvedSpecBundle,
+    *,
+    language_mode: str | None,
+    language_mode_source: str | None,
+    language: str | None,
+) -> tuple[str | None, LanguageModeSource]:
+    """``(mode, source)`` by the rules a live session applies in ``create_session``.
+
+    A caller mode wins; else a ``language`` naming a catalog mode is promoted
+    (TASK-938); else — only when nothing was declared — the agent's own mode. The
+    gateway's ``language_mode_source`` holds only for a mode the CALLER sent.
+    """
+    if language_mode:
+        mode: str | None = language_mode
+    else:
+        mode = normalize_language_mode(language) if language else None
+        if not mode and not language:
+            spec_mode = bundle.spec.decoding.language_mode
+            return (spec_mode, "agent") if spec_mode else (None, "default")
+    if not mode:
+        return None, "default"
+    if language_mode_source in LANGUAGE_MODE_SOURCES:
+        return mode, language_mode_source  # type: ignore[return-value]
+    return mode, "request"
+
+
+def _resolve_chain_language(
+    bundle: ResolvedSpecBundle,
+    runtime_key: str,
+    mode: str | None,
+    source: LanguageModeSource,
+    language: str | None = None,
+) -> tuple[PipelineConfig, LanguageResolution | None]:
+    """One chain's ``PipelineConfig`` with the job's mode applied, plus its receipt.
+
+    The batch half of the streaming loader's resolution (``_load_asr_pipeline``):
+    the same ``resolve_language`` call against the chain's engine, the same three
+    fields, and the priming prompt composed AHEAD of the agent's prompt exactly as a
+    live session composes it. Raises ``LanguageModeUnsupportedError`` when this
+    chain's engine cannot serve the mode. With no mode, a raw ``language`` override
+    applies and the receipt is ``default``/``auto`` only if the engine runs unpinned.
+    """
+    config = pipeline_config_from_bundle(bundle, runtime_key)
+    inference = config.spec.inference
+    core = next(
+        c for c in (bundle.spec, *fallback_chain(bundle.spec)) if c.runtime_key == runtime_key
+    )
+    asr = core.models.asr
+    engine = bundle.model_configs[asr.slug].format
+    if mode:
+        resolved, receipt = resolve_language(mode, engine, source=source, provider=asr.provider)
+        inference.language = resolved.language
+        inference.code_switching = resolved.code_switching
+        inference.streaming_english_gloss = resolved.streaming_english_gloss
+        if resolved.initial_prompt:
+            inference.initial_prompt_text = compose_prompt(
+                resolved.initial_prompt, inference.initial_prompt_text
+            )
+        return config, receipt
+    if language is not None:
+        inference.language = language
+    if inference.language is not None:
+        return config, None
+    return config, default_language_resolution(
+        engine,
+        provider=asr.provider,
+        code_switching=inference.code_switching,
+        streaming_english_gloss=inference.streaming_english_gloss,
+    )
+
+
+def _plan_job_language(
+    bundle: ResolvedSpecBundle,
+    *,
+    language_mode: str | None,
+    language_mode_source: str | None,
+    language: str | None,
+) -> _JobLanguage:
+    """Pick the chain that serves the job's mode first: the primary, else — only
+    when the primary cannot serve it — the first fallback that can, marked
+    ``fallback_engine_switch`` (D-4). Language never re-routes a primary that CAN
+    serve the mode, however degraded (OD-6). Raises when no chain can."""
+    mode, source = _effective_job_mode(
+        bundle,
+        language_mode=language_mode,
+        language_mode_source=language_mode_source,
+        language=language,
+    )
+    last_error: LanguageModeUnsupportedError | None = None
+    for key in (bundle.runtime_key, *bundle.fallback_runtime_keys):
+        try:
+            config, receipt = _resolve_chain_language(bundle, key, mode, source, language)
+        except LanguageModeUnsupportedError as exc:
+            last_error = exc
+            continue
+        on_primary = key == bundle.runtime_key
+        if not on_primary and receipt is not None:
+            receipt = mark_fallback_engine_switch(receipt)
+        return _JobLanguage(
+            mode=mode,
+            source=source,
+            runtime_key=key,
+            pipeline_config=config,
+            receipt=receipt,
+            fallback_key=bundle.fallback_runtime_key if on_primary else None,
+        )
+    assert last_error is not None  # the primary is always tried
+    raise last_error

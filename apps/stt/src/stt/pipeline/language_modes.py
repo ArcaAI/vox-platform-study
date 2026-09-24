@@ -20,18 +20,30 @@ This module is the **single, backend-authoritative source of truth**:
   :class:`~stt.pipeline.dto.InferenceConfig` fields (``language``,
   ``code_switching``, ``streaming_english_gloss``) for a concrete engine, or
   raises :class:`LanguageModeUnsupportedError` when the engine cannot serve it.
+* TASK-1004 — ``normalize_language_mode`` (the edge normalizer both runtimes and
+  the gateway share), ``mode_capability`` (``native`` | ``degraded`` |
+  ``unsupported`` per mode and engine) and ``resolve_language``, which returns
+  the resolved fields together with the :class:`LanguageResolution` receipt. It is
+  the ONE call the streaming session loader and the batch worker both make, so
+  the two can no longer disagree about what a mode means on an engine.
 
 "Selection constrains providers": at session-create the mode is resolved
 against the engine that will actually serve the session. An engine that cannot
 serve the mode is excluded from the session's chain (the fallback path picks it
 up); if no configured engine qualifies, the create request is rejected (422).
+Language never CHOOSES the engine (TASK-1003 OD-6): a level only describes what
+the admin-configured chain delivers, and a degraded level is served and SAID,
+never silently (TASK-1004 D-4).
 """
 
 from __future__ import annotations
 
+import json
+import re
 import unicodedata
-from dataclasses import dataclass
-from typing import Literal
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+from typing import Any, Literal, cast, get_args
 
 from stt.pipeline.dto import AiModelFormat, is_valid_language_for_engine
 
@@ -548,10 +560,20 @@ def modes_supported_by_engine(engine: AiModelFormat) -> list[str]:
     return [m.id for m in LANGUAGE_MODE_CATALOG if engine_supports_mode(m, engine)]
 
 
-def language_mode_catalog_payload() -> list[dict[str, object]]:
-    """Serialisable catalog + per-mode supported engines, for the capability API."""
-    return [
-        {
+def language_mode_catalog_payload(
+    engines: Sequence[AiModelFormat] | None = None,
+) -> list[dict[str, object]]:
+    """Serialisable catalog + per-mode supported engines, for the capability API.
+
+    TASK-1004 — with *engines* (a chain's formats, primary first) each mode also
+    carries ``levels`` (``{engine: native|degraded|unsupported}``) and
+    ``effective``, the level that chain actually delivers
+    (:func:`chain_effective_level`). Without it the payload is byte-identical to
+    the catalog-wide one.
+    """
+    payload: list[dict[str, object]] = []
+    for m in LANGUAGE_MODE_CATALOG:
+        entry: dict[str, object] = {
             "id": m.id,
             "label": m.label,
             "kind": m.kind,
@@ -559,5 +581,291 @@ def language_mode_catalog_payload() -> list[dict[str, object]]:
             "secondaryLanguage": m.secondary_language,
             "supportedEngines": engines_supporting_mode(m.id),
         }
-        for m in LANGUAGE_MODE_CATALOG
-    ]
+        if engines is not None:
+            entry["levels"] = {e.value: mode_capability(m.id, e)[0] for e in engines}
+            entry["effective"] = chain_effective_level(m.id, engines)
+        payload.append(entry)
+    return payload
+
+
+# --- TASK-1004: the edge normalizer ----------------------------------------------
+# The SAME table as the gateway's TypeScript normalizer, pinned by
+# `tests/contracts/language-resolution.fixture.json` (`normalize`). A catalog id
+# (case-insensitive, trimmed) wins as-is; otherwise a BCP-47 `<lang>-<REGION>` tag
+# whose language subtag IS a single-language catalog id maps to that id; anything
+# else — another script subtag, a language the catalog does not carry — is not a
+# mode (`None`; the gateway answers 400 LANGUAGE_MODE_UNKNOWN).
+
+#: BCP-47 region subtag: two letters or three digits (``US``, ``IN``, ``419``).
+_BCP47_REGION = re.compile(r"^(?:[a-z]{2}|[0-9]{3})$")
+
+
+def normalize_language_mode(value: object) -> str | None:
+    """The catalog mode id *value* names, or ``None`` when it names none."""
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip().lower()
+    if candidate in LANGUAGE_MODES_BY_ID:
+        return candidate
+    parts = candidate.split("-")
+    if len(parts) != 2 or not _BCP47_REGION.match(parts[1]):
+        return None
+    mode = LANGUAGE_MODES_BY_ID.get(parts[0])
+    return mode.id if mode is not None and mode.kind == "single" else None
+
+
+# --- TASK-1004: capability LEVELS ---------------------------------------------------
+
+LanguageCapabilityLevel = Literal["native", "degraded", "unsupported"]
+#: Who declared the mode a session/job resolved — the gateway's precedence tiers
+#: (request > consultation > agent > default). Closed: extend the contract fixture first.
+LanguageModeSource = Literal["request", "consultation", "agent", "default"]
+#: Why a receipt is ``degraded``. Closed: extend the contract fixture first.
+#:
+#: * ``whisper_cpp_pair_unprimed`` — a whisper.cpp code-switch pair while its priming
+#:   prompt is off: the decoder gets NO language signal and re-runs its own LID per
+#:   window (TASK-985 OD-B; TASK-1004 D-5).
+#: * ``gloss_translation_only`` — a Whisper-family pair is served as the primary
+#:   language plus an English translation track, not as code-switched transcription.
+#: * ``engine_auto_detect`` — the requested value names no catalog mode, so nothing
+#:   could be pinned and the engine auto-detects (``applied_mode`` = ``auto``).
+#: * ``fallback_engine_switch`` — the chain's PRIMARY cannot serve the mode, so the
+#:   session/job runs on a fallback engine that can (D-4: served, never refused, while
+#:   any engine in the chain can serve it).
+LanguageResolutionReason = Literal[
+    "whisper_cpp_pair_unprimed",
+    "gloss_translation_only",
+    "engine_auto_detect",
+    "fallback_engine_switch",
+]
+
+CAPABILITY_LEVELS: tuple[str, ...] = get_args(LanguageCapabilityLevel)
+LANGUAGE_MODE_SOURCES: tuple[str, ...] = get_args(LanguageModeSource)
+LANGUAGE_RESOLUTION_REASONS: tuple[str, ...] = get_args(LanguageResolutionReason)
+
+
+def mode_capability(
+    mode_id: str, engine: AiModelFormat
+) -> tuple[LanguageCapabilityLevel, LanguageResolutionReason | None]:
+    """``(level, degrade reason)`` for catalog mode *mode_id* on *engine*.
+
+    ``unsupported`` is exactly ``not engine_supports_mode`` — the levels refine
+    the support matrix, they never move an engine into or out of it. Raises
+    ``KeyError`` for a mode outside the catalog.
+    """
+    mode = get_language_mode(mode_id)
+    if not engine_supports_mode(mode, engine):
+        return "unsupported", None
+    if mode.kind == "code_switch":
+        capability = _CODE_SWITCH_CAPABILITY[engine]
+        if capability == "gloss":
+            return "degraded", "gloss_translation_only"
+        if capability == "prompt" and not _is_pair_prompt_capable(engine):
+            return "degraded", "whisper_cpp_pair_unprimed"
+    return "native", None
+
+
+def chain_effective_level(
+    mode_id: str, engines: Sequence[AiModelFormat]
+) -> LanguageCapabilityLevel:
+    """The level an ordered engine chain delivers for *mode_id*.
+
+    The primary serves whatever it can (a degraded primary is NOT skipped for a
+    native fallback — language never re-routes the engine); only a primary that
+    cannot serve the mode at all hands it to the first fallback that can.
+    """
+    for engine in engines:
+        level, _ = mode_capability(mode_id, engine)
+        if level != "unsupported":
+            return level
+    return "unsupported"
+
+
+# --- TASK-1004: the receipt ---------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LanguageResolution:
+    """What a session/job was asked for and what its serving engine actually applied.
+
+    Built once where the effective mode is resolved (session create, batch job
+    start) and REBUILT on every engine switch. Wire form (:meth:`to_wire`) is the
+    ``receipt.python`` shape of the contract fixture; the gateway re-emits it in
+    camelCase. ``engine`` is the serving ``AiModelFormat`` value and ``provider``
+    the resolved ASR model's provider (``None`` for self-hosted). The four params
+    are the engine-neutral fields STT applied; ``primed`` is whether a priming
+    prompt was actually sent.
+    """
+
+    requested_mode: str
+    source: LanguageModeSource
+    applied_mode: str
+    engine: str
+    provider: str | None
+    language: str | None
+    code_switching: bool
+    streaming_english_gloss: bool
+    primed: bool
+    degraded: bool
+    reason: LanguageResolutionReason | None
+
+    def to_wire(self) -> dict[str, Any]:
+        return {
+            "requested_mode": self.requested_mode,
+            "source": self.source,
+            "applied_mode": self.applied_mode,
+            "engine": self.engine,
+            "provider": self.provider,
+            "params": {
+                "language": self.language,
+                "code_switching": self.code_switching,
+                "streaming_english_gloss": self.streaming_english_gloss,
+                "primed": self.primed,
+            },
+            "degraded": self.degraded,
+            "reason": self.reason,
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_wire(), separators=(",", ":"))
+
+    @classmethod
+    def from_wire(cls, data: Mapping[str, Any]) -> LanguageResolution:
+        """Parse the wire form; ``ValueError`` on a value outside the closed enums."""
+        source = data["source"]
+        reason = data.get("reason")
+        if source not in LANGUAGE_MODE_SOURCES:
+            raise ValueError(f"Unknown language-mode source {source!r}")
+        if reason is not None and reason not in LANGUAGE_RESOLUTION_REASONS:
+            raise ValueError(f"Unknown language-resolution reason {reason!r}")
+        params = data["params"]
+        return cls(
+            requested_mode=str(data["requested_mode"]),
+            source=cast(LanguageModeSource, source),
+            applied_mode=str(data["applied_mode"]),
+            engine=str(data["engine"]),
+            provider=data.get("provider"),
+            language=params.get("language"),
+            code_switching=bool(params["code_switching"]),
+            streaming_english_gloss=bool(params["streaming_english_gloss"]),
+            primed=bool(params["primed"]),
+            degraded=bool(data["degraded"]),
+            reason=cast("LanguageResolutionReason | None", reason),
+        )
+
+    @classmethod
+    def from_json(cls, raw: str) -> LanguageResolution:
+        return cls.from_wire(json.loads(raw))
+
+
+def resolve_language(
+    requested_mode: str,
+    engine: AiModelFormat,
+    *,
+    source: LanguageModeSource,
+    provider: str | None = None,
+) -> tuple[ResolvedInference, LanguageResolution]:
+    """Resolve *requested_mode* on *engine*: the fields to apply AND the receipt.
+
+    The ONE resolution the streaming session loader and the batch worker share
+    (TASK-1004 G-2). *requested_mode* is normalized first (``en-US`` → ``en``).
+
+    Raises
+    ------
+    LanguageModeUnsupportedError
+        When *engine* cannot serve the (catalog) mode — unchanged from
+        :func:`resolve_mode_for_engine`, so the create-time fallback / 422 path
+        keeps working.
+
+    A value that names NO catalog mode fails OPEN (language is tuning, never
+    selection): nothing is pinned, the engine auto-detects, and the receipt says
+    ``engine_auto_detect``.
+    """
+    mode_id = normalize_language_mode(requested_mode)
+    if mode_id is None:
+        resolved = ResolvedInference(
+            language=None, code_switching=False, streaming_english_gloss=False
+        )
+        return resolved, _receipt(
+            requested_mode=requested_mode,
+            applied_mode="auto",
+            source=source,
+            engine=engine,
+            provider=provider,
+            resolved=resolved,
+            reason="engine_auto_detect",
+        )
+    resolved = resolve_mode_for_engine(mode_id, engine)
+    _level, reason = mode_capability(mode_id, engine)
+    return resolved, _receipt(
+        requested_mode=mode_id,
+        applied_mode=mode_id,
+        source=source,
+        engine=engine,
+        provider=provider,
+        resolved=resolved,
+        reason=reason,
+    )
+
+
+def default_language_resolution(
+    engine: AiModelFormat | str,
+    *,
+    provider: str | None,
+    code_switching: bool,
+    streaming_english_gloss: bool,
+) -> LanguageResolution:
+    """The receipt for a session/job NOBODY declared a mode for (``source=default``).
+
+    The engine runs unpinned (its own LID) — which is what ``auto`` means — so the
+    receipt is ``auto``/``auto`` with the flags the engine actually runs with.
+    """
+    return LanguageResolution(
+        requested_mode="auto",
+        source="default",
+        applied_mode="auto",
+        engine=engine.value if isinstance(engine, AiModelFormat) else str(engine),
+        provider=provider,
+        language=None,
+        code_switching=bool(code_switching),
+        streaming_english_gloss=bool(streaming_english_gloss),
+        primed=False,
+        degraded=False,
+        reason=None,
+    )
+
+
+def mark_fallback_engine_switch(receipt: LanguageResolution) -> LanguageResolution:
+    """Mark *receipt* as served by a fallback because the primary could not serve it.
+
+    A receipt that is already degraded keeps its own, more specific reason — it
+    says what the listener actually hears; the engine name says where it came from.
+    """
+    if receipt.degraded:
+        return receipt
+    return replace(receipt, degraded=True, reason="fallback_engine_switch")
+
+
+def _receipt(
+    *,
+    requested_mode: str,
+    applied_mode: str,
+    source: LanguageModeSource,
+    engine: AiModelFormat,
+    provider: str | None,
+    resolved: ResolvedInference,
+    reason: LanguageResolutionReason | None,
+) -> LanguageResolution:
+    return LanguageResolution(
+        requested_mode=requested_mode,
+        source=source,
+        applied_mode=applied_mode,
+        engine=engine.value,
+        provider=provider,
+        language=resolved.language,
+        code_switching=resolved.code_switching,
+        streaming_english_gloss=resolved.streaming_english_gloss,
+        primed=resolved.initial_prompt is not None,
+        degraded=reason is not None,
+        reason=reason,
+    )
