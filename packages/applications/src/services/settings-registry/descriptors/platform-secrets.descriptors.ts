@@ -189,6 +189,17 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
       'NOT a free-form shared secret like the `*_SERVICE_TOKEN` values: `X-Internal-Service-Key` is also read by the GLOBAL `UnifiedAuthGuard` (`ApiKeyService.extractApiKeyFromRequest`), so this MUST be the RAW value of a registered ACTIVE SERVICE_ACCOUNT ApiKey row — a random secret with no matching row 401s every `/internal/stt/*` callback (BUG-013). Dev uses the seeded fixture; provision one with `pnpm gen:api-key`.',
     'Service Tokens',
   ),
+  platformSecret(
+    'lmStudio.apiToken',
+    'LM Studio API token',
+    'Bearer token the GATEWAY presents to the LM Studio server (`Authorization: Bearer`) on its control-plane calls — `GET /api/v1/models`, ' +
+      '`POST /api/v1/models/load` and `/unload` (`LmStudioEngineClient`). OPTIONAL: unset (or the `CHANGE_ME` placeholder) sends no header, ' +
+      'which is correct while LM Studio API authentication is OFF — as it is on the pod today. Set it only together with enabling auth on the ' +
+      'engine (TASK-1005 D-6), and note it covers the gateway ONLY: `apps/text` reaches the OpenAI-compatible `/v1/*` with the key on the SYSTEM ' +
+      '`llm:lm-studio` `AiProviderConnection` row, and the harness judge with its own `llm:openai-compat` row, so turning auth on without also ' +
+      'keying those rows 401s every generation. Read per request, so a rotation needs no restart.',
+    'Service Tokens',
+  ),
 
   // ── Data-plane credentials ────────────────────────────────────────────────
   platformSecret(

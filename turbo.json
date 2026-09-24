@@ -393,6 +393,7 @@
         "LIVE_DOC_TEXT_TIMEOUT_MS",
         "LMS_LOAD",
         "LMS_PORT",
+        "LM_STUDIO_API_TOKEN",
         "LOG_CONSOLE_COLORIZE",
         "LOG_CONSOLE_ENABLED",
         "LOG_CONSOLE_JSON",

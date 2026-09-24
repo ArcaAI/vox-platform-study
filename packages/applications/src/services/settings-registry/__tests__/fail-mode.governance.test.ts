@@ -57,7 +57,9 @@ describe('SettingsRegistry — secret ⇒ fail-closed (assembly invariant)', () 
   it('rejects a secret-sensitivity descriptor that declares a sampleValue', () => {
     const r = new SettingsRegistry();
     expect(() =>
-      r.register(desc({ key: 'bad.secret.sample', sensitivity: 'secret', dataType: 'secret', failMode: 'closed', sampleValue: 'not-a-secret-honest' })),
+      r.register(
+        desc({ key: 'bad.secret.sample', sensitivity: 'secret', dataType: 'secret', failMode: 'closed', sampleValue: 'not-a-secret-honest' }),
+      ),
     ).toThrow(/secret.*sampleValue/i);
   });
 
@@ -173,6 +175,8 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // reader was retired.
     'guardrail.serviceToken': 'GUARDRAIL_SERVICE_TOKEN',
     'harness.serviceToken': 'HARNESS_SERVICE_TOKEN',
+    // TASK-1005: the optional Bearer token the gateway presents to LM Studio's REST API.
+    'lmStudio.apiToken': 'LM_STUDIO_API_TOKEN',
     // Lane J: four credentials the gateway already fetched through SecretsService
     // but that had no descriptor, so `vault-seed-secrets.sh` never seeded them.
     'harness.internalServiceToken': 'HARNESS_INTERNAL_SERVICE_TOKEN',
