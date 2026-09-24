@@ -1336,7 +1336,12 @@ describe('SttWsGateway', () => {
       await gateway.handleMessage(client as any, stopFrame as any, false);
 
       expect(mockBridgeService.writeControlCommand).toHaveBeenCalledWith('sess-ctrl-stop', 'finalize');
-      expect(mockBridgeService.writeAudioFrame).not.toHaveBeenCalled();
+      // The frame's own bytes never reach `stt:audio`; the only audio write is the empty
+      // in-band end-of-stream marker that `stop` appends.
+      const audioWrites = (mockBridgeService.writeAudioFrame as any).mock.calls;
+      expect(audioWrites).toHaveLength(1);
+      expect(audioWrites[0][2]).toHaveLength(0);
+      expect(audioWrites[0][5]).toBe(true);
     });
 
     it('answers a resume handshake delivered as a Buffer text frame (isBinary=false)', async () => {

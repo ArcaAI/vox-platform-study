@@ -162,6 +162,19 @@ _TAIL_WAIT_GRACE_S = 5.0
 # same trade ``_await_tail_flush`` makes, for the same reason.
 _DUPLEX_DRAIN_TIMEOUT_S = 5.0
 
+
+def _parse_stream_id(entry_id: Any) -> tuple[int, int] | None:
+    """A Redis stream id (``b"<ms>-<seq>"`` or ``"<ms>-<seq>"``) as a comparable pair."""
+    if isinstance(entry_id, bytes):
+        entry_id = entry_id.decode("ascii", errors="replace")
+    if not isinstance(entry_id, str):
+        return None
+    ms, sep, seq = entry_id.partition("-")
+    if not sep or not ms.isdigit() or not seq.isdigit():
+        return None
+    return (int(ms), int(seq))
+
+
 StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
 
 # Cloud ASR engines whose loaders accept a per-tenant ``provider_overrides``
@@ -566,6 +579,13 @@ class SessionManager:
         # ``_begin_tail_flush``), and the later trigger now has something to
         # AWAIT. Dropped in ``remove_session`` alongside the finalize lock.
         self._tail_flush_done: dict[str, asyncio.Event] = {}
+        # Out-of-band finalizers (control FINALIZE, HTTP DELETE) wait on this for
+        # the audio consumer to read what is already on `stt:audio`; set per
+        # consumed batch, on the in-band terminal frame, and on removal. Only
+        # present while someone waits. See `_await_audio_backlog`.
+        self._ingest_progress: dict[str, asyncio.Event] = {}
+        # Sessions whose in-band terminal frame has been read off `stt:audio`.
+        self._terminal_frame_seen: set[str] = set()
         # TASK-985 M-23 — teardown summaries built by a NON-HTTP finalizer,
         # held for the gateway's DELETE to claim. Deliberately NOT dropped by
         # ``remove_session``: the session is gone precisely when this matters.
@@ -2375,9 +2395,22 @@ class SessionManager:
             return None
 
         try:
+            # Out of band like the control FINALIZE: read the audio already
+            # written before closing the session to it.
+            await self._await_audio_backlog(session)
+            if self._sessions.get(session_id) is not session:
+                # Another finalizer completed (and stashed) while we waited.
+                return None
             # F-32 / TASK-985 M-04 — flush the tail at most once per session,
             # and WAIT for it when another trigger claimed it first.
             await self._run_tail_flush(session, self._preprocessors.get(session_id))
+            if self._sessions.get(session_id) is not session:
+                return None
+            # A `None` below means another finalizer closed the session; the
+            # DELETE route then claims the summary it stashed.
+            lock = self._finalize_locks.get(session_id)
+            if lock is not None and lock.locked():
+                return await self._finalize_after_other_finalizer(session, lock)
             # TASK-985 M-23 — this caller RETURNS the summary to the gateway,
             # so it is the one that emits the ledger row; nothing to stash.
             return await self._finalize_session(session, stash_summary=False)
@@ -2389,6 +2422,31 @@ class SessionManager:
             )
             await self.remove_session(session_id)
             return None
+
+    async def _finalize_after_other_finalizer(
+        self, session: StreamSession, lock: asyncio.Lock
+    ) -> dict[str, Any] | None:
+        """``end_session``'s finalize while another finalizer holds the lock.
+
+        That finalizer is mid-teardown (upload, then stash). Waiting for it is
+        bounded by ``_tail_wait_timeout_s`` — the budget for a later finalizer
+        waiting on an earlier one — and giving up never interrupts it: its
+        summary is stashed when it finishes, for a later claim or the push-back.
+        Our own teardown, when the lock is free, is never under this bound.
+        """
+        try:
+            await asyncio.wait_for(lock.acquire(), timeout=self._tail_wait_timeout_s)
+        except TimeoutError:
+            logger.error(
+                "stt.stream.teardown_wait_timeout",
+                session_id=session.session_id,
+                timeout_s=self._tail_wait_timeout_s,
+            )
+            return None
+        try:
+            return await self._finalize_session_locked(session, stash_summary=False)
+        finally:
+            lock.release()
 
     async def remove_session(self, session_id: str) -> None:
         """Remove a session, stopping its consumers and releasing capacity."""
@@ -2483,6 +2541,11 @@ class SessionManager:
         tail_done = self._tail_flush_done.pop(session_id, None)
         if tail_done is not None:
             tail_done.set()
+        # Same for a finalizer still waiting on the audio backlog.
+        self._terminal_frame_seen.discard(session_id)
+        progress = self._ingest_progress.pop(session_id, None)
+        if progress is not None:
+            progress.set()
         self._sessions.pop(session_id, None)
         # Release pipeline model pins so idle TTL can apply.
         pinned = self._session_pinned_models.pop(session_id, None)
@@ -4701,6 +4764,7 @@ class SessionManager:
 
         async def _on_batch(last_id: str) -> None:
             session.metadata.last_stream_id = last_id
+            self._signal_ingest_progress(session_id)
             try:
                 # TASK-985 M-66 — `last_seq` is persisted on the SAME cadence as
                 # `last_stream_id`, which is the cadence of the XACK. Without
@@ -4889,6 +4953,10 @@ class SessionManager:
                     seq=frame.seq,
                     bytes=len(frame.data),
                 )
+                # Every frame sent before `stop` has now been read: release an
+                # out-of-band finalizer waiting on the backlog.
+                self._terminal_frame_seen.add(session.session_id)
+                self._signal_ingest_progress(session.session_id)
                 try:
                     # F-32 / TASK-985 M-04 — one tail flush per session across
                     # all triggers, and a bounded WAIT when another claimed it.
@@ -4919,6 +4987,14 @@ class SessionManager:
         async def _on_control(control: SessionControl) -> None:
             if control.action == ControlAction.FINALIZE:
                 if session.status == SessionStatus.CLOSED:
+                    return
+
+                # `stt:control` is not ordered against `stt:audio`: let the
+                # consumer read the audio already written before this session
+                # stops accepting frames.
+                await self._await_audio_backlog(session)
+                if session.status == SessionStatus.CLOSED:
+                    # The in-band terminal frame finalized it while we waited.
                     return
 
                 if session.status == SessionStatus.ACTIVE:
@@ -5085,6 +5161,90 @@ class SessionManager:
                 utterance_index=utterance.utterance_index,
                 error=str(retry_exc),
             )
+
+    def _signal_ingest_progress(self, session_id: str) -> None:
+        """Wake a finalizer waiting in :meth:`_await_audio_backlog` (no-op if none waits)."""
+        event = self._ingest_progress.get(session_id)
+        if event is not None:
+            event.set()
+
+    async def _audio_stream_tail_id(self, session_id: str) -> tuple[int, int] | None:
+        """The id of the newest entry on ``stt:audio`` right now, or ``None``."""
+        try:
+            entries = await self._redis.xrevrange(audio_stream_key(session_id), count=1)
+        except Exception as exc:
+            logger.warning(
+                "stt.stream.audio_tail_lookup_failed",
+                session_id=session_id,
+                error=str(exc),
+            )
+            return None
+        if not isinstance(entries, (list, tuple)) or not entries:
+            return None
+        return _parse_stream_id(entries[0][0])
+
+    def _audio_consumed_through(self, session: StreamSession, tail: tuple[int, int]) -> bool:
+        if session.status != SessionStatus.ACTIVE:
+            return True
+        if session.session_id in self._terminal_frame_seen:
+            return True
+        consumed = _parse_stream_id(session.metadata.last_stream_id)
+        return consumed is not None and consumed >= tail
+
+    async def _await_audio_backlog(self, session: StreamSession) -> bool:
+        """Hold an out-of-band finalize until the audio already on ``stt:audio`` is read.
+
+        The control ``FINALIZE`` and the HTTP DELETE do not travel on
+        ``stt:audio``, so either can arrive while the consumer still has frames
+        queued; finalizing then makes ``_on_frame`` drop them — from the
+        captions and from the stored recording. The target is the stream's tail
+        as it stands NOW, which already holds every frame written before the
+        finalize was issued. The wait ends when the consumer has read through it,
+        when the in-band terminal frame is seen, or when another trigger
+        finalizes the session.
+
+        Bounded by ``_tail_wait_timeout_s``: the consumer's per-frame work
+        includes the bounded inference enqueue whose drain that budget is derived
+        from. On timeout it logs and lets the caller finalize anyway (the
+        residue is still counted in ``frames_dropped_after_finalize``). Returns
+        ``False`` on timeout.
+        """
+        session_id = session.session_id
+        if session.status != SessionStatus.ACTIVE:
+            return True
+        consumer = self._consumers.get(session_id)
+        if consumer is None or not consumer.is_running:
+            return True
+        tail = await self._audio_stream_tail_id(session_id)
+        if tail is None:
+            return True
+
+        progress = self._ingest_progress.setdefault(session_id, asyncio.Event())
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._tail_wait_timeout_s
+        while not self._audio_consumed_through(session, tail):
+            remaining = deadline - loop.time()
+            if remaining <= 0 or not consumer.is_running:
+                break
+            # No await between the check above and this clear, so no wake-up is lost.
+            progress.clear()
+            try:
+                await asyncio.wait_for(progress.wait(), timeout=remaining)
+            except TimeoutError:
+                break
+        else:
+            return True
+
+        if not consumer.is_running:
+            return True
+        logger.error(
+            "stt.stream.finalize_audio_backlog_timeout",
+            session_id=session_id,
+            timeout_s=self._tail_wait_timeout_s,
+            tail_id=f"{tail[0]}-{tail[1]}",
+            consumed_id=session.metadata.last_stream_id,
+        )
+        return False
 
     def _begin_tail_flush(self, session_id: str) -> tuple[bool, asyncio.Event]:
         """Claim the one-and-only tail flush/drain for ``session_id``.

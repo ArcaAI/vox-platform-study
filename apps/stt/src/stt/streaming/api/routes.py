@@ -332,6 +332,17 @@ async def delete_streaming_session(
     logger.info("Removing streaming session via API", session_id=session_id)
     summary = await mgr.end_session(session_id)
     if summary is None:
+        # Another finalizer (control FINALIZE, the in-band final frame) was
+        # already tearing the session down; `end_session` waited for it, and its
+        # summary — stashed after the recording upload — is claimable now.
+        summary = mgr.claim_teardown_summary(session_id)
+        if summary is not None:
+            logger.info(
+                "stt.stream.teardown_stash_claimed",
+                session_id=session_id,
+                after_wait=True,
+            )
+    if summary is None:
         response.status_code = 204
         return None
     return StreamingSessionTeardownResponse(**summary)
