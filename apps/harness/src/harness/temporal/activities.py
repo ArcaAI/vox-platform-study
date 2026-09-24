@@ -1258,7 +1258,6 @@ async def _extract_clinical_entities(
     source_uri = model.get("sourceUri")
     if not isinstance(source_uri, str) or not source_uri:
         raise ValueError(f"{_NER_TASK_KEY!r} resolved to a model with no sourceUri")
-    local_path = model.get("localPath")
     label_taxonomy = model.get("labelTaxonomy")
     raw_labels = label_taxonomy.get("labels") if isinstance(label_taxonomy, dict) else None
     labels = (
@@ -1270,8 +1269,9 @@ async def _extract_clinical_entities(
     data = await _nlp_client(settings).classify_tokens_raw(
         text,
         tenant_id=tenant_id,
+        # `model_name` only, exactly like the gateway's clinical NER: NLP keys its model
+        # cache on (name, path), so also sending the path would load a second copy.
         model_name=source_uri,
-        model_path=local_path if isinstance(local_path, str) and local_path else None,
         labels=labels or None,
         clinical_taxonomy=clinical_taxonomy if isinstance(clinical_taxonomy, dict) else None,
         language=language,

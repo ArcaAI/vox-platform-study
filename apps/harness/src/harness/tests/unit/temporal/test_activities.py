@@ -419,7 +419,7 @@ class TestExtractEntitiesResolvesTheNerModel:
         assert call["text"] == "note"
         assert call["tenant_id"] == "t-1"
         assert call["model_name"] == "blaze999/Medical-NER"
-        assert call["model_path"] == "/mnt/models-bucket/nlp/medical-ner/"
+        assert call.get("model_path") is None
         assert call["labels"] == ["disease", "medication"]
         assert call["clinical_taxonomy"] == clinical
         assert call["language"] == "en"
@@ -541,7 +541,7 @@ class TestNlpExtractEntities:
 
         assert api.resolve_calls == [("nlp.ner", "t-1")]
         assert nlp.raw_calls[0]["model_name"] == "blaze999/Medical-NER"
-        assert nlp.raw_calls[0]["model_path"] == "/mnt/models-bucket/nlp/medical-ner/"
+        assert nlp.raw_calls[0].get("model_path") is None
         assert result.derived is True
         assert result.text == "hypertension"
 
