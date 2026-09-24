@@ -160,10 +160,25 @@ export interface SttLanguageMode {
   secondaryLanguage: string | null;
   /** Engine `format` values (catalog-wide) that can serve this mode. */
   supportedEngines: string[];
+  /**
+   * TASK-1004 — present only when the catalog was asked about an engine CHAIN: per engine format,
+   * how well it serves this mode (`native`, `degraded` — served with a documented limitation — or
+   * `unsupported`).
+   */
+  levels?: Record<string, LanguageCapabilityLevel>;
+  /** TASK-1004 — the level the chain actually delivers (the primary, unless it cannot serve the mode). */
+  effective?: LanguageCapabilityLevel;
 }
+
+/** TASK-1004 — how well one engine serves one language mode. */
+export type LanguageCapabilityLevel = 'native' | 'degraded' | 'unsupported';
 
 export interface SttLanguageModeCatalog {
   modes: SttLanguageMode[];
+  /** TASK-1004 — the ASR agent whose chain the `levels` describe; absent on the catalog-wide payload. */
+  agentSlug?: string;
+  /** TASK-1004 — that agent's engine chain (formats), primary first; absent on the catalog-wide payload. */
+  engines?: string[];
 }
 
 /**

@@ -195,6 +195,24 @@ export class AsrAgentResolverService {
     };
   }
 
+  /**
+   * TASK-1004 — the ASR engine CHAIN (model formats, primary first) the agent would run on, for
+   * the language-capability catalog and the configuration-time warnings. The SAME agent + fallback
+   * resolution as {@link resolve} (explicit slug, else the tenant assignment cascade), minus the
+   * credentials and the spec build: judging capability needs neither, and a catalog read must not
+   * decrypt anybody's key.
+   */
+  async resolveChainFormats(input: { tenantId: string; agentSlug?: string | null }): Promise<{ agentSlug: string; formats: string[] }> {
+    const { agent } = await this.resolvePrimary({ tenantId: input.tenantId, agentSlug: input.agentSlug ?? null, departmentId: null });
+    const fallbackAgent = await this.resolveFallbackAgent(agent, input.tenantId);
+    const { primary, fallbackChain } = asrChainModels(agent, fallbackAgent);
+    const formats: string[] = [];
+    for (const model of [primary, ...fallbackChain]) {
+      if (model?.format && !formats.includes(model.format)) formats.push(model.format);
+    }
+    return { agentSlug: agent.slug, formats };
+  }
+
   /** TASK-1002 — tiers 1 → 3 for the PRIMARY agent. See {@link resolve}. */
   private async resolvePrimary(
     input: ResolveAsrSpecInput,

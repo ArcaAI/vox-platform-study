@@ -107,3 +107,20 @@ describe('TASK-1004 — the consultation’s mode rides out of the existing read
     expect(agents.resolve.mock.calls[0]).toEqual(agents.resolve.mock.calls[1]);
   });
 });
+
+describe('TASK-1004 — resolveChainFormats: the engine chain the catalog judges, without credentials', () => {
+  it('primary first, then the model fallback chain; no credential or consultation read', async () => {
+    const formats = await make().resolveChainFormats({ tenantId: TENANT, agentSlug: 'platform-transcription' });
+    expect(formats).toEqual({ agentSlug: asrAgent.slug, formats: ['WHISPER_CPP', 'FASTER_WHISPER'] });
+    expect(credentials.resolve).not.toHaveBeenCalled();
+    expect(consultations.findById).not.toHaveBeenCalled();
+    expect(agents.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ agentSlug: 'platform-transcription', task: AgentTask.SPEECH_TO_TEXT, departmentId: null }),
+    );
+  });
+
+  it('no slug → the tenant assignment cascade names the agent', async () => {
+    await make().resolveChainFormats({ tenantId: TENANT, agentSlug: null });
+    expect(agents.resolve).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: null, departmentId: null }));
+  });
+});

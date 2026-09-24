@@ -303,6 +303,23 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
+   * TASK-1004 — the catalog judged against an ASR engine CHAIN (`?engines=FMT1,FMT2`, primary
+   * first): each mode also carries `levels` and `effective`. Unlike {@link getLanguageModes} this
+   * THROWS on any failure (STT answers 422 for a format it does not know), so the caller decides
+   * how to degrade rather than mistaking a failure for an empty catalog.
+   */
+  async fetchLanguageModes(engines: readonly string[]): Promise<SttLanguageModeCatalog> {
+    const { data } = await firstValueFrom(
+      this.httpService.get<SttLanguageModeCatalog>(`${this.sttBaseUrl}/internal/streaming/language-modes`, {
+        timeout: 5000,
+        params: { engines: engines.join(',') },
+        headers: await this.sttHeaders(null, TENANTLESS.CONTROL_PLANE),
+      }),
+    );
+    return { modes: data?.modes ?? [] };
+  }
+
+  /**
    * Create a new streaming session on STT.
    *
    * @returns Session status, or null if at capacity (503)

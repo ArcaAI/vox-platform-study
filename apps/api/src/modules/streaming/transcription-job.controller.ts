@@ -6,6 +6,7 @@ import type {
 } from '@arcaai/applications';
 import {
   AsrAgentResolverService,
+  AsrLanguageCapabilityService,
   Authorize,
   BATCH_TRANSCRIPTION_DEFAULTS,
   BatchTranscriptionLimitsService,
@@ -40,6 +41,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  Headers,
   HttpException,
   Inject,
   InternalServerErrorException,
@@ -66,6 +68,7 @@ import { uuidv7 } from 'uuidv7';
 import { markPipelineIdDeprecated, StreamSessionTenantBindingService, TenantOwnedResource } from '../../common';
 import {
   ALLOWED_AUDIO_MIMES,
+  AGENT_SLUG_PATTERN,
   AUDIO_BUCKET,
   BatchTranscribeResponse,
   BatchTranscriptionLimitsResponse,
@@ -95,6 +98,13 @@ const TRANSCRIPTION_ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'];
  */
 type TranscribeCaller =
   { credentialClass: 'service-account' } | { credentialClass: 'api-key'; boundUserId: string | null } | { credentialClass: 'jwt' };
+
+/** RFC 7232 §3.2 — `If-None-Match` is a list compared WEAKLY, so `W/"x"` matches `"x"`. */
+function ifNoneMatchHits(header: string | undefined, etag: string): boolean {
+  if (!header) return false;
+  const opaque = (tag: string) => tag.trim().replace(/^W\//, '');
+  return header.split(',').some((candidate) => candidate.trim() === '*' || opaque(candidate) === opaque(etag));
+}
 
 @ApiBearerAuth()
 @Authorize()
@@ -204,6 +214,10 @@ export class TranscriptionJobController {
     // TRAILING so the positional unit-test construction in `__tests__/` keeps compiling; absent,
     // the machine path fails CLOSED with a 503 rather than accepting an unverified clinician.
     @Optional() @Inject(IUserRoleAssignmentService) private readonly roleAssignments?: IUserRoleAssignmentService,
+    // TASK-1004 — the per-agent language capability (chain-judged catalog + ETag cache). Optional +
+    // TRAILING for the same positional-fixture reason; absent, `language-modes` answers the
+    // catalog-wide payload exactly as before.
+    @Optional() private readonly languageCapability?: AsrLanguageCapabilityService,
   ) {}
 
   /**
@@ -991,12 +1005,41 @@ export class TranscriptionJobController {
   }
 
   @Get('language-modes')
-  @ApiOperation({ summary: 'List selectable STT language modes + per-mode supported engines ' })
+  @ApiOperation({
+    summary: 'List selectable spoken-language modes, judged against an ASR agent’s engine chain',
+    description:
+      'Backend-authoritative catalog (STT owns the capability matrix). TASK-1004: each mode carries `levels` ' +
+      '(per engine of the agent’s chain, primary first: `native` | `degraded` | `unsupported`) and `effective` for the chain, plus ' +
+      '`agentSlug` / `engines`. `agentSlug` defaults to the caller’s resolved ASR agent; with no agent assigned the catalog-wide payload ' +
+      'is returned unchanged. Strong `ETag`; send it back as `If-None-Match` for a 304. Language never chooses the engine.',
+  })
+  @ApiQuery({ name: 'agentSlug', required: false, description: 'ASR agent to judge the catalog against. Default: the caller’s resolved agent.' })
   @ApiResponse({ status: 200, description: 'Language-mode catalog' })
-  async getLanguageModes(): Promise<SttLanguageModeCatalog> {
-    // Backend-authoritative catalog (STT owns the capability matrix). Read-only,
-    // not tenant-scoped; the class-level `@Authorize()` gate is sufficient.
-    return this.sessionService.getLanguageModes();
+  @ApiResponse({ status: 304, description: 'Not modified — the `If-None-Match` validator is current.' })
+  @ApiResponse({ status: 400, description: '`agentSlug` is not a slug.' })
+  @ApiResponse({ status: 404, description: 'The named agent is unknown, unpublished, or another tenant’s.' })
+  async getLanguageModes(
+    @Query('agentSlug') agentSlug?: string,
+    @Headers('if-none-match') ifNoneMatch?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ): Promise<SttLanguageModeCatalog | undefined> {
+    if (agentSlug !== undefined && !AGENT_SLUG_PATTERN.test(agentSlug)) {
+      throw new BadRequestException('agentSlug must be a slug ([A-Za-z0-9-])');
+    }
+    if (!this.languageCapability) return this.sessionService.getLanguageModes();
+
+    // TASK-1004 — per TENANT (its default agent, its BYO chain), so never shared across tenants;
+    // the capability service caches under `(tenantId, agentSlug)`.
+    const { catalog, etag } = await this.languageCapability.catalogFor(this.getTenantId(), agentSlug ?? null);
+    // `no-transform` so an intermediary may not rewrite the body and weaken the validator
+    // (RFC 9110 §8.8.1 — the TASK-983 ingress lesson).
+    res?.setHeader('Cache-Control', 'private, no-cache, no-transform');
+    res?.setHeader('ETag', etag);
+    if (ifNoneMatchHits(ifNoneMatch, etag)) {
+      res?.status(HttpStatus.NOT_MODIFIED);
+      return undefined;
+    }
+    return catalog;
   }
 
   @Post('stream/session')

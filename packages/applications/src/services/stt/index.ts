@@ -14,3 +14,5 @@ export * from './served-by';
 export * from './transcript-size';
 // TASK-861 — the ASR Agent resolver + the ResolvedAsrSpec contract (replaces AsrPipeline selection).
 export * from './agent-resolver';
+// TASK-1004 — per-agent language capability: the chain-judged catalog + configuration-time warnings.
+export * from './language-capability';
