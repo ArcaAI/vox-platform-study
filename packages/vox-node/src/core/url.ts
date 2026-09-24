@@ -3,42 +3,26 @@
  *
  * This is the single most important piece of the transport: get it wrong and
  * every request 404s. The gateway (`apps/api/src/main.ts`) sets a global
- * route prefix of `api/v1` on every controller EXCEPT a short, exact,
- * literal-path exclusion list — the v1-compat shims, which keep their
- * pre-existing v1 URLs so legacy clients don't have to change anything:
+ * route prefix of `api/v1` on every controller — every path this package
+ * builds gets that prefix, so {@link buildUrl} has nothing to exempt.
  *
- *   - `POST /api/smr/api/v1/presummary` (summarization; the renamed
- *   - `POST /api/smr/api/v1/summary/sync` `text` service's frozen
- *                                             `text`-legacy routes)
- *   - `POST /api/stt/start_session` (speech-to-text session
- * `POST /api/stt/switch` lifecycle —)
- *   - `POST /api/stt/stop_session`
- *
- * Everything else (e.g. `consultations/:id/summary`) DOES get the `api/v1`
- * prefix. Naively prepending `api/v1` to every path would turn the compat
- * routes into `/api/v1/api/smr/api/v1/...`, which 404s — hence this module.
+ * TASK-1004 (D-8): `main.ts` used to carry a short, literal exclusion list
+ * for the v1-compat shims (`POST /api/smr/api/v1/{presummary,summary/sync}`,
+ * `POST /api/stt/{start_session,switch,stop_session}`), which kept their
+ * pre-existing v1 URLs outside the `api/v1` prefix. Those routes — and this
+ * package's `hope.summarization.*` resource that called the first two — were
+ * removed outright (zero production traffic in 10 days; see the deprecation
+ * register). {@link PREFIX_EXEMPT_PATHS} is kept as an explicit EMPTY set
+ * rather than deleted, so a future compat-shaped exemption has a documented
+ * place to be added rather than reinventing this module's contract.
  */
 
 /**
  * Exact relative paths (no leading slash) that `main.ts` excludes from the
- * `api/v1` global prefix. Kept as a literal set — matching `main.ts`'s own
- * `exclude: [...]` array — rather than a pattern, because the exclusion is
- * itself a short, exact list, not a rule ("everything under `api/smr/`" would
- * be wrong: only these exact routes are compat shims).
- *
- * The `api/stt/*` entries are unreachable from THIS SDK today — it ships no
- * speech-to-text resource, and its zero-dependency, non-audio posture means it
- * is not getting one. They are carried anyway because this set is a verbatim
- * mirror of `main.ts`'s `exclude: [...]`: a partial mirror is the failure mode
- * that turns a future STT call into a silent `/api/v1/api/stt/...` 404.
+ * `api/v1` global prefix, mirrored here so {@link buildUrl} does not
+ * double-prefix them. Empty since TASK-1004 — see the module docstring.
  */
-const PREFIX_EXEMPT_PATHS: ReadonlySet<string> = new Set([
-  'api/smr/api/v1/presummary',
-  'api/smr/api/v1/summary/sync',
-  'api/stt/start_session',
-  'api/stt/switch',
-  'api/stt/stop_session',
-]);
+const PREFIX_EXEMPT_PATHS: ReadonlySet<string> = new Set([]);
 
 /** The gateway's global route prefix (`app.setGlobalPrefix('api/v1', ...)`). */
 const API_PREFIX = 'api/v1';

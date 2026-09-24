@@ -22,7 +22,6 @@ import {
   DnaWritingStyleResource,
   JobsResource,
   SttResource,
-  SummarizationResource,
   TenantsResource,
   WorkflowsResource,
 } from './resources';
@@ -91,12 +90,11 @@ export interface HopeClientOptions {
  *
  * ```ts
  * const hope = new HopeClient({ baseUrl: process.env.HOPE_API_URL!, apiKey: process.env.HOPE_API_KEY! });
- * const { summary } = await hope.summarization.summary({ session_data: {...} });
+ * const consultation = await hope.consultations.open({ patientId: 'p-1' });
+ * const { content } = await hope.consultations.summaries.generate(consultation.id, {});
  * ```
  */
 export class HopeClient {
-  /** P0 — stateless, v1-compat pre-summary/summary (`POST /api/smr/api/v1/{presummary,summary/sync}`). */
-  readonly summarization: SummarizationResource;
   /**
    * The CONSULTATION plane: `open` a consultation, drive its `recording`, read
    * its four live `streams`, write `addContext` items, and read its
@@ -227,7 +225,6 @@ export class HopeClient {
     // that acts on it — see `resources/workflows.ts#assertApiKeyPlane`.
     const isServiceAccount = options.serviceAccount !== undefined;
 
-    this.summarization = new SummarizationResource(transport);
     this.consultations = new ConsultationsResource(transport, isServiceAccount);
     this.jobs = new JobsResource(transport);
     this.stt = new SttResource(transport);

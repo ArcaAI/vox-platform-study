@@ -10,9 +10,7 @@ automated coverage see `packages/vox-node/src/**/__tests__/*.test.ts`
 
 | File                            | Shows                                                                                                                                                                                                                                     |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `01-summary.ts`                 | Stateless summary from a transcript — the 60-second quickstart                                                                                                                                                                            |
-| `02-presummary-stream.ts`       | Streaming a pre-summary: iterating deltas, then `.result()`                                                                                                                                                                               |
-| `03-consultation-async.ts`      | `generateAsync` + `jobs.waitFor` — the recommended pattern for long transcripts                                                                                                                                                           |
+| `03-consultation-async.ts`      | `generateAsync` + `jobs.waitFor` — the recommended pattern for long transcripts, and the 60-second quickstart                                                                                                                             |
 | `04-error-handling.ts`          | Catching the typed error hierarchy, including the 404-over-403 nuance                                                                                                                                                                     |
 | `05-agents-and-workflows.ts`    | Invoking a published agent (including NER), streaming a workflow run over SSE and over a socket, and releasing a `core.humanReview` node                                                                                                  |
 | `06-realtime-consultation.ts`   | The whole machine-driven consultation journey: open (with a typed `context`) -> record -> live summary -> stop -> release the governing workflow's review gate -> approve the summary -> close -> read the context items and the run back |
@@ -24,16 +22,16 @@ automated coverage see `packages/vox-node/src/**/__tests__/*.test.ts`
 
 Each script reads its config from environment variables — no config file, no CLI flags.
 
-| Command                                                                                | Effect                                 |
-| -------------------------------------------------------------------------------------- | -------------------------------------- |
-| `HOPE_API_URL=http://localhost:8868 HOPE_API_KEY=<key> npx tsx examples/01-summary.ts` | Run an example directly, no build step |
-| `pnpm dlx tsx examples/01-summary.ts`                                                  | Same, without a local `tsx` install    |
+| Command                                                                                           | Effect                                 |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `HOPE_API_URL=http://localhost:8868 HOPE_API_KEY=<key> npx tsx examples/03-consultation-async.ts` | Run an example directly, no build step |
+| `pnpm dlx tsx examples/03-consultation-async.ts`                                                  | Same, without a local `tsx` install    |
 
 ## How it works
 
 `03-consultation-async.ts` additionally needs `HOPE_CONSULTATION_ID` — an existing consultation id
 in your tenant, since this SDK does not create consultations on its own (see the package README's
-"Two summarization families").
+"Summarization is consultation-bound").
 
 `05-agents-and-workflows.ts` reads two optional slugs (`HOPE_AGENT_SLUG`, `HOPE_WORKFLOW_SLUG`) and
 falls back to the first published entry of each. Its human-review section runs only when you also

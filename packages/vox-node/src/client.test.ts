@@ -4,7 +4,6 @@ import { HopeClient } from './client';
 import { ConsultationsResource } from './resources/consultations';
 import { ConsultationSummariesResource } from './resources/consultation-summaries';
 import { JobsResource } from './resources/jobs';
-import { SummarizationResource } from './resources/summarization';
 // Root-barrel reachability: a package consumer imports from `@arcaai/vox-node`
 // (this package's `.`), never from a resource/type's own module path — this
 // proves the DNA writing-style surface (TASK-974) is actually reachable from
@@ -50,7 +49,6 @@ describe('HopeClient — construction', () => {
 
   it('wires each resource to the right class, sharing a single transport', () => {
     const client = new HopeClient({ baseUrl: 'http://localhost:8868' });
-    expect(client.summarization).toBeInstanceOf(SummarizationResource);
     expect(client.consultations).toBeInstanceOf(ConsultationsResource);
     expect(client.consultations.summaries).toBeInstanceOf(ConsultationSummariesResource);
     expect(client.jobs).toBeInstanceOf(JobsResource);
@@ -61,14 +59,21 @@ describe('HopeClient — construction', () => {
 describe('HopeClient — request wiring', () => {
   it('forwards apiKey, tenantId, baseUrl, and the injected fetch to every resource call', async () => {
     const fetchImpl = fetchMock(async () =>
-      okResponse({ pre_summary: 'x', structured_data: { title: 't', sections: [] }, created_at: '2026-01-01T00:00:00Z' }),
+      okResponse({
+        id: 'c1',
+        patientId: 'p1',
+        doctorId: 'd1',
+        appointmentDate: '2026-01-01',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      }),
     );
     const client = new HopeClient({ baseUrl: 'http://localhost:8868', apiKey: 'key-abc', tenantId: 'tenant-1', fetch: fetchImpl });
 
-    await client.summarization.preSummary({});
+    await client.consultations.get('c1');
 
     const [url, init] = [fetchImpl.mock.calls[0]?.[0] as string, fetchImpl.mock.calls[0]?.[1] as RequestInit];
-    expect(url).toBe('http://localhost:8868/api/smr/api/v1/presummary');
+    expect(url).toBe('http://localhost:8868/api/v1/consultations/c1');
     const headers = init.headers as Headers;
     expect(headers.get('x-api-key')).toBe('key-abc');
     expect(headers.get('x-tenant-id')).toBe('tenant-1');
