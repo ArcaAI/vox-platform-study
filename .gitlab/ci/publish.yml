@@ -869,6 +869,30 @@ sign-qdrant-init:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ALL-/
 
+# Same gating as build-gpu-process-exporter (.build-common-rules + ALL- tag),
+# exactly like the qdrant-init pair above.
+sbom-gpu-process-exporter:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-gpu-process-exporter
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
+sign-gpu-process-exporter:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-gpu-process-exporter
+      artifacts: true
+    - job: sbom-gpu-process-exporter
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Registry retention: stop the 90-day reap eating release tags
 # ══════════════════════════════════════════════════════════════════════════════

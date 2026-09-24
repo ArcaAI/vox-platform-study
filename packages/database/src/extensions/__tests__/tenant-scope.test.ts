@@ -167,7 +167,10 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // default set. NOT SYSTEM-shared: both resolvers widen to SYSTEM on
     // ABSENCE only, and a shared read would erase the absence signal they
     // branch on.
-    expect(TENANT_SCOPED_MODELS.size).toBe(88);
+    // +1 (89): TASK-1005 adds `ModelResidencyPolicy` — SYSTEM-only platform
+    // residency configuration (every row is the SYSTEM tenant); also a
+    // SYSTEM_SHARED_READ_MODEL (see that suite below).
+    expect(TENANT_SCOPED_MODELS.size).toBe(89);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -475,6 +478,12 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // above. READS widen to [caller, SYSTEM]; WRITES are
         // NOT widened — a tenant can never mutate a SYSTEM-owned rule row.
         'WorkflowInvariantRule',
+        // TASK-1005 — model residency policies exist ONLY as SYSTEM rows (D-11:
+        // platform infrastructure, tenants never see it). Widening the READ lets
+        // the platform admin's global screen resolve them whatever working tenant
+        // its CLS carries; WRITES are not widened and the admin routes are
+        // SUPER_ADMIN-gated in the service.
+        'ModelResidencyPolicy',
       ]),
     );
   });

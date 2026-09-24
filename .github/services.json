@@ -120,6 +120,21 @@
       ]
     },
     {
+      "name": "gpu-process-exporter",
+      "tagPrefixes": [],
+      "dockerfile": "infrastructure/gpu-process-exporter/Dockerfile",
+      "context": "infrastructure/gpu-process-exporter",
+      "target": null,
+      "pythonBase": false,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "infrastructure/gpu-process-exporter/**"
+      ]
+    },
+    {
       "name": "guardrail",
       "tagPrefixes": [
         "GUARD"

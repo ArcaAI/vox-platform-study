@@ -89,6 +89,8 @@ _fill_secret() {
 _EXTERNAL_SECRET_KEYS=(
   AZURE_FOUNDRY_API_KEY
   AZURE_STORAGE_CONNECTION_STRING AZURE_STORAGE_ACCOUNT_KEY
+  # TASK-1005 D-6: optional; only when LM Studio API auth is enabled on the engine.
+  LM_STUDIO_API_TOKEN
 )
 
 # TASK-941 R3 — `_SUPERSEDED_KEYS` is now EMPTY, and that is the correct state
