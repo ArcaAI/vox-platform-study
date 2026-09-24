@@ -401,6 +401,37 @@ build-qdrant-init:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ALL-/
 
+# ── GPU process exporter (TASK-1005 D-9 / L-OBS) ────────────────────────────
+# Per-process GPU memory attribution (infrastructure/gpu-process-exporter/,
+# README.md §1-§4). DCGM 4.4.2 reports device-level VRAM only, and under
+# time-slicing that figure is credited to whichever sharing pod dcgm-exporter
+# happened to resolve — not the process actually holding the memory. This
+# image reads `nvidia-smi --query-compute-apps` on a loop and maps each PID
+# back to a pod via /proc/<pid>/cgroup.
+#
+# Same shape as build-qdrant-init: a standalone image with no `apps/*`
+# dependency (stdlib-only Python, no lockfile), so it is not built from
+# hope-python-base and has no test job to `needs:`. UNLIKE qdrant-init, the
+# Dockerfile COPYs only files inside its own directory (like build-lmstudio),
+# so the build context is that directory rather than the repo root. No
+# per-service release tag exists for it in the closed <SVC> grammar
+# (packages/utils/src/version-grammar.ts), so — same as build-lmstudio and
+# build-qdrant-init — it builds on every dev/staging/cicd branch push and on
+# an `ALL-` release tag only.
+
+build-gpu-process-exporter:
+  extends: .build-template
+  needs:
+    - job: warm-up-base-images
+      optional: true
+  variables:
+    SERVICE_NAME: gpu-process-exporter
+    DOCKER_CONTEXT: infrastructure/gpu-process-exporter
+    DOCKERFILE: infrastructure/gpu-process-exporter/Dockerfile
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
 # ── TTS ─────────────────────────────────────────────────────────────────────
 
 build-tts:

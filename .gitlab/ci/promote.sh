@@ -328,19 +328,22 @@ assert_promotion_is_fresh
 # ── Re-tag the already-built images (zero rebuild) ─────────────────────────
 echo "── Promoting ${SOURCE_TAG} → ${DEPLOY_ENV} (env tag: ${ENV_TAG}) ──"
 
-# The canonical 11-service list, plus the two job images: `database`
-# (the migration Job) and `qdrant-init` (the Argo PreSync collection-bootstrap
-# Job). Both are built by build.yml and referenced by the deployment repo's
-# base/, so both must be pinned or they deploy as an unresolvable
-# `hope-v2/<name>:latest`. `harness-worker` graduated from placeholder to a
-# real build job (build.yml `build-harness-worker`) + manifest
-# (base/harness-worker.yaml).
+# The canonical 11-service list, plus the three job/daemon images: `database`
+# (the migration Job), `qdrant-init` (the Argo PreSync collection-bootstrap
+# Job) and `gpu-process-exporter` (TASK-1005 D-9 — the per-process GPU memory
+# DaemonSet, deployment repo `base/gpu-process-exporter.yaml`). All three are
+# built by build.yml and referenced by the deployment repo's base/, so all
+# three must be pinned or they deploy as an unresolvable `hope-v2/<name>:dev`.
+# `harness-worker` graduated from placeholder to a real build job (build.yml
+# `build-harness-worker`) + manifest (base/harness-worker.yaml); the same
+# graduation — placeholder digest in the overlay until the first real
+# promotion — applies to `gpu-process-exporter` on its first run.
 #
 # Every name here MUST equal the `SERVICE_NAME` of its build job — that is what
 # forms `$REGISTRY/$CI_PROJECT_PATH/<name>` — and the `hope-v2/<name>` key the
 # overlays use. A name with no matching `sha-<sha8>` tag is skipped with a
 # warning rather than failing the whole promotion.
-SERVICES="api lmstudio stt-ml-runtime stt-worker text guardrail harness harness-worker nlp tts admin-console database qdrant-init"
+SERVICES="api lmstudio stt-ml-runtime stt-worker text guardrail harness harness-worker nlp tts admin-console database qdrant-init gpu-process-exporter"
 
 PROMOTED=""
 for svc in $SERVICES; do
