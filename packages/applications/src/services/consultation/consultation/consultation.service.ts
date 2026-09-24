@@ -22,12 +22,15 @@ import {
   HarnessAuditAction,
   ResourceType,
   SysEventType,
+  TranscriptionJobRepository,
+  TranscriptionJobType,
   UserDepartmentRepository,
   UserRepository,
   UserRoleAssignmentRepository,
   WorkflowDefinitionRepository,
 } from '@arcaai/domains';
 import { IConsultationService, type StartRecordingOptions } from './IConsultationService';
+import { STT_SESSION_SUPERSEDED_EVENT, type SttSessionSupersededEvent } from './stt-session-superseded.event';
 import {
   OpenConsultationRequest,
   UpdateConsultationRequest,
@@ -225,6 +228,12 @@ export class ConsultationService extends BaseService implements IConsultationSer
     @Optional()
     @Inject(ConsultationCompletionTimeoutScheduler)
     private readonly completionTimeout?: ConsultationCompletionTimeoutScheduler,
+    // Optional + trailing (append-only DI). READ-ONLY: the consultation's open
+    // STREAMING rows are the durable STT binding `startRecording` supersedes by when no live
+    // session is held in process. Absent ⇒ nothing is superseded here, exactly as before.
+    @Optional()
+    @Inject(TranscriptionJobRepository)
+    private readonly transcriptionJobs?: Pick<TranscriptionJobRepository, 'findAll'>,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -2240,6 +2249,10 @@ export class ConsultationService extends BaseService implements IConsultationSer
       data: { action: 'startRecording', status: ConsultationStatus.RECORDING },
     });
 
+    if (options.sttSessionId && options.supersedeByDurableBinding) {
+      await this.supersedeByDurableBinding(id, tenantId, options.sttSessionId);
+    }
+
     // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
     // bumps _version, so returning `consultation` handed the caller version N while the
     // row was already at N+1 — any client chaining If-Match from this response got an
@@ -2289,6 +2302,81 @@ export class ConsultationService extends BaseService implements IConsultationSer
       sttSessionId,
       sttSessionStatus: status,
     });
+  }
+
+  /**
+   * Supersede: exactly one live STT session per consultation, last writer wins,
+   * for a start whose caller holds no in-process binding to replace (a restarted gateway, another
+   * replica, live documentation switched off).
+   *
+   * The durable binding is the consultation's open STREAMING `TranscriptionJob` rows: each names a
+   * session opened for this consultation. A row is superseded only when apps/stt reports its session
+   * `active` (rows are best-effort and can outlive their session) and only when it is OLDER than the
+   * new session's own row, so two racing starts can never supersede each other. The listener
+   * finalizes each one through the normal teardown, so its recording is stored.
+   *
+   * Never throws: a supersede that cannot be decided leaves the old session to its own idle reaper,
+   * exactly as before, and never fails the start that is already persisted.
+   */
+  private async supersedeByDurableBinding(consultationId: string, tenantId: string, sttSessionId: string): Promise<void> {
+    if (!this.transcriptionJobs || !this.streamingSessions) return;
+    const streamingSessions = this.streamingSessions;
+
+    let rows: Awaited<ReturnType<TranscriptionJobRepository['findAll']>>;
+    try {
+      rows = await this.transcriptionJobs.findAll({
+        // STREAMING rows carry no transcript ciphertext, so this read decrypts nothing.
+        filters: { consultationId, jobType: TranscriptionJobType.STREAMING, completedAt: null } as never,
+        sort: [{ createdAt: 'desc' }],
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'recording/start could not read the STT sessions bound to this consultation — none superseded',
+        consultationId,
+        sttSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    const own = rows.find((row) => row.streamSessionId === sttSessionId);
+    const candidates = new Set<string>();
+    for (const row of rows) {
+      if (!row.streamSessionId || row.streamSessionId === sttSessionId) continue;
+      if (own && row.createdAt > own.createdAt) continue;
+      candidates.add(row.streamSessionId);
+    }
+
+    const live = await Promise.all(
+      [...candidates].map(async (candidate) => {
+        try {
+          return (await streamingSessions.getSessionStatus(candidate, tenantId))?.status === 'active' ? candidate : null;
+        } catch (error) {
+          this.logger.warn({
+            message: 'recording/start could not ask apps/stt whether an older STT session is live — not superseded',
+            consultationId,
+            sttSessionId: candidate,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        }
+      }),
+    );
+
+    for (const supersededSessionId of live) {
+      if (!supersededSessionId) continue;
+      const event: SttSessionSupersededEvent = { tenantId, consultationId, supersededSessionId, supersedingSessionId: sttSessionId };
+      this.logger.log({ message: 'STT session superseded by a newer recording/start (durable binding)', ...event });
+      try {
+        this.eventEmitter.emit(STT_SESSION_SUPERSEDED_EVENT, event);
+      } catch (error) {
+        this.logger.warn({
+          message: 'STT session superseded event could not be delivered — the old session ends by its own idle reaper',
+          ...event,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   /**

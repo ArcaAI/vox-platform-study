@@ -27,7 +27,12 @@ function buildController(overrides: { doctorId?: string; tenantId?: string } = {
     getById: vi.fn().mockResolvedValue(consultation),
     startRecording: vi.fn().mockResolvedValue(consultation),
   };
-  const liveDocumentationService = { start: vi.fn(), stop: vi.fn().mockResolvedValue(undefined) };
+  const liveDocumentationService = {
+    start: vi.fn(),
+    stop: vi.fn().mockResolvedValue(undefined),
+    isActive: vi.fn().mockReturnValue(false),
+    whenStopped: vi.fn().mockResolvedValue(undefined),
+  };
   const cls = {
     get: vi.fn((key: string) =>
       key === 'user' ? { id: overrides.doctorId ?? 'doctor-1' } : key === 'tenantId' ? (overrides.tenantId ?? 'tenant-1') : undefined,
@@ -78,6 +83,10 @@ describe('ConsultationController.startRecording — the gated entry point', () =
     const response = await controller.startRecording('consult-1', { sessionId: 'stt-1' });
 
     expect(response.sseUrl).toBe('/consultations/consult-1/live-summary/stream');
-    expect(Object.keys(liveDocumentationService).filter((k) => liveDocumentationService[k as 'start'].mock.calls.length > 0)).toEqual(['start']);
+    // `isActive` / `whenStopped` are probes (who supersedes the previous STT session; wait out a
+    // running stop), not paths into the engine.
+    const probes = new Set(['isActive', 'whenStopped']);
+    const entered = Object.keys(liveDocumentationService).filter((k) => !probes.has(k) && liveDocumentationService[k as 'start'].mock.calls.length > 0);
+    expect(entered).toEqual(['start']);
   });
 });

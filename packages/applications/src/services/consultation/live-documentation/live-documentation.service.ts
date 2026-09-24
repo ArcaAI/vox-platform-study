@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { Observable, type Subscription } from 'rxjs';
 import {
@@ -91,6 +91,7 @@ import { persistLiveNamedEntities } from '../shared/liveNamedEntity';
 import { stampContentCounters } from '../shared/contentCounters';
 import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
+import { STT_SESSION_SUPERSEDED_EVENT, type SttSessionSupersededEvent } from '../consultation/stt-session-superseded.event';
 import {
   LiveDocEngineConfigResponse,
   LiveDocRealtimeCapabilitiesResponse,
@@ -1169,6 +1170,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly HANDOFF_PREFIX = 'live-doc:handoff:';
   /** Matches the interpreter's own `_LIVE_HANDOFF_MAX_WAIT`: past it, nothing is still asking. */
   private readonly HANDOFF_TTL = 7200; // 2h
+  /**
+   * `+ consultationId`: the handoff is still being produced by a stop that is draining
+   * in the background, so a DRAINING consultation without a record is "not yet", not "nothing".
+   * The TTL bounds a drain whose process died: past it, the read reports the honest empty.
+   */
+  private readonly HANDOFF_PENDING_PREFIX = 'live-doc:handoff-pending:';
+  private readonly HANDOFF_PENDING_TTL = 600; // 10 min — far past any observed drain (35 s)
+
+  /** The one running stop per consultation; a second stop joins it. */
+  private readonly stopsInFlight = new Map<string, Promise<LiveSummaryEventDto | null>>();
 
   // Admin live console: cross-instance per-session stats in Redis.
   private readonly STATS_PREFIX = 'live-doc:stats:'; // + consultationId → JSON LiveDocSessionStatsResponse
@@ -1454,6 +1465,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // entity count of zero forever. Optional + trailing like every dependency above it: absent
     // ⇒ the flush behaves exactly as it did before, entities are published and not persisted.
     @Optional() @Inject(NamedEntityRepository) private readonly namedEntityRepository?: NamedEntityRepository,
+    // Announces an STT session this service's re-bind superseded
+    // (`STT_SESSION_SUPERSEDED_EVENT`). Optional + trailing like every dependency above it; absent
+    // ⇒ the re-bind still happens and the superseded session ends by its own idle reaper, as before.
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1601,7 +1616,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (existing) {
       // Re-bind a (possibly new) STT session without losing accumulated state.
       if (params.sessionId && params.sessionId !== existing.sessionId) {
+        const superseded = existing.sessionId;
         this.attachSttStream(existing, params.sessionId);
+        if (superseded) this.announceSupersededSttSession(existing, superseded, params.sessionId);
       }
       return;
     }
@@ -2617,8 +2634,70 @@ return 0`;
    * Suppressing it for a governed consultation would delete the warm start the finalizer is
    * asking for, so `persistSnapshot` is honoured exactly as before. The drain loop is a
    * `flush(force)` loop, which is where the governed legacy fall-through guard does its work.
+   *
+   * ## One stop at a time
+   *
+   * Single-flight per consultation: a stop that arrives while one is running (a client retry
+   * against the now-fast `recording/stop`, the shutdown hook, the loop's `livedoc.stop`) JOINS it
+   * and resolves or rejects with it. Two forced-flush loops over one session would double the TEXT
+   * spend and race each other's snapshot and handoff writes. The first caller's options win.
    */
-  async stop(consultationId: string, opts?: { persistSnapshot?: boolean }): Promise<LiveSummaryEventDto | null> {
+  stop(consultationId: string, opts?: { persistSnapshot?: boolean }): Promise<LiveSummaryEventDto | null> {
+    const inFlight = this.stopsInFlight.get(consultationId);
+    if (inFlight) {
+      this.logger.log({ message: 'Live documentation stop already running — joining it', consultationId });
+      return inFlight;
+    }
+    // Only a stop that owns the session writes the handoff, so only it clears the pending marker;
+    // cleared on failure too, so the durable run reads the honest empty instead of waiting.
+    const owned = this.sessions.has(consultationId);
+    const run: Promise<LiveSummaryEventDto | null> = this.runStop(consultationId, opts).finally(async () => {
+      if (owned) await this.clearHandoffPending(consultationId);
+      if (this.stopsInFlight.get(consultationId) === run) this.stopsInFlight.delete(consultationId);
+    });
+    this.stopsInFlight.set(consultationId, run);
+    return run;
+  }
+
+  /**
+   * Resolves once no stop is running for this consultation; never rejects. A resumed recording
+   * waits on it: the running stop ends by tearing the session down and publishing `closed`, which
+   * must not take the resumed recording's session with it.
+   */
+  async whenStopped(consultationId: string): Promise<void> {
+    const inFlight = this.stopsInFlight.get(consultationId);
+    if (!inFlight) return;
+    this.logger.log({ message: 'Live documentation start waits for the running stop to finish', consultationId });
+    await inFlight.catch(() => undefined);
+  }
+
+  /**
+   * Mark this consultation's live handoff PENDING, before the consultation leaves RECORDING.
+   *
+   * `recording/stop` now persists DRAINING first and drains in the background. The durable run
+   * polls {@link readLiveHandoff} from consultation open, and it reads DRAINING without a record as
+   * "ended with nothing" — so a poll landing inside the drain would finalize the note with nothing
+   * bound. The marker makes that window read "not yet" instead. `stop()` clears it once the handoff
+   * is written, or once the drain fails, and its TTL bounds a drain whose process died.
+   *
+   * Written only when THIS instance holds the live session: only then will this instance's stop
+   * write the record. A stop routed elsewhere keeps today's behaviour. Best-effort — a failed write
+   * costs exactly the old race, never the stop.
+   */
+  async markHandoffPending(consultationId: string): Promise<void> {
+    if (!this.sessions.has(consultationId)) return;
+    try {
+      await this.cacheService.setex(this.handoffPendingKey(consultationId), this.HANDOFF_PENDING_TTL, new Date().toISOString());
+    } catch (error) {
+      this.logger.warn({
+        message: 'Live handoff could not be marked pending — a durable-run poll during the stop drain may read "ended with nothing"',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async runStop(consultationId: string, opts?: { persistSnapshot?: boolean }): Promise<LiveSummaryEventDto | null> {
     const session = this.sessions.get(consultationId);
     let finalPayload: LiveSummaryEventDto | null = null;
 
@@ -5111,6 +5190,34 @@ return 0`;
     return built;
   }
 
+  /**
+   * Supersede: one live STT session per consultation, last writer wins. The
+   * re-bind above is the moment the old binding is replaced, and it is synchronous, so two racing
+   * starts on this instance each announce exactly the session they replaced. The listener
+   * finalizes it through the normal teardown (flush, then upload), so its recording is stored;
+   * nothing here cancels it. Instances without this session fall back to the durable binding
+   * (`ConsultationService.startRecording`).
+   */
+  private announceSupersededSttSession(session: LiveSession, supersededSessionId: string, supersedingSessionId: string): void {
+    const event: SttSessionSupersededEvent = {
+      tenantId: session.tenantId,
+      consultationId: session.consultationId,
+      supersededSessionId,
+      supersedingSessionId,
+    };
+    this.logger.log({ message: 'STT session superseded by a newer recording/start (live binding)', ...event });
+    try {
+      this.eventEmitter?.emit(STT_SESSION_SUPERSEDED_EVENT, event);
+    } catch (error) {
+      // A synchronous listener failure must never fail the recording start it rode on.
+      this.logger.warn({
+        message: 'STT session superseded event could not be delivered — the old session ends by its own idle reaper',
+        ...event,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   private attachSttStream(session: LiveSession, sessionId: string): void {
     session.sttSubscription?.unsubscribe();
     session.sessionId = sessionId;
@@ -7149,6 +7256,33 @@ return 0`;
     return `${this.HANDOFF_PREFIX}${consultationId}`;
   }
 
+  /** Where one consultation's "handoff pending" marker lives ({@link markHandoffPending}). */
+  private handoffPendingKey(consultationId: string): string {
+    return `${this.HANDOFF_PENDING_PREFIX}${consultationId}`;
+  }
+
+  /** Best-effort: a marker left behind expires with its TTL. */
+  private async clearHandoffPending(consultationId: string): Promise<void> {
+    try {
+      await this.cacheService.del(this.handoffPendingKey(consultationId));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Live handoff pending marker could not be cleared — it expires with its TTL',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** A read failure answers "not pending", which is exactly the behaviour before the marker existed. */
+  private async isHandoffPending(consultationId: string): Promise<boolean> {
+    try {
+      return await this.cacheService.exists(this.handoffPendingKey(consultationId));
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Fold ONE flush's successful node outputs into the session's accumulated set.
    *
@@ -7207,7 +7341,8 @@ return 0`;
    * Answers three states, and the distinction between the last two is the whole contract:
    *
    *  * **not ended** — a handoff record has not been written and the consultation can still
-   *    produce one (it is `OPEN` / `PRIMED` / `RECORDING` / `REOPENED`). The caller polls.
+   *    produce one (it is `OPEN` / `PRIMED` / `RECORDING` / `REOPENED`, or its stop is still
+   *    draining — {@link markHandoffPending}). The caller polls.
    *  * **ended with outputs** — the live lane handed off. `outputs` is filtered to the node ids
    *    the caller asked about, so a graph is never told about a lane it does not have.
    *  * **ended with nothing** — a consultation that never recorded, or one whose lifecycle has
@@ -7226,8 +7361,10 @@ return 0`;
     // Capture is over the moment the consultation leaves the states that can still produce it.
     // `DRAINING` counts as ended on purpose: it means capture stopped, so nothing more is
     // coming, and a run must not wait two hours for a record that a non-owner stop never wrote.
+    // The one exception is a stop still draining in the background: its record IS
+    // coming, and the pending marker says so until it lands.
     const stillLive = consultation !== null && LIVE_CAPTURE_STATUSES.has(String(consultation.status ?? ''));
-    if (!record && stillLive) return { ended: false, outputs: {}, context: {} };
+    if (!record && (stillLive || (await this.isHandoffPending(consultationId)))) return { ended: false, outputs: {}, context: {} };
 
     const requested = new Set(nodeIds);
     const outputs = Object.fromEntries(Object.entries(record?.outputs ?? {}).filter(([nodeId]) => requested.size === 0 || requested.has(nodeId)));
