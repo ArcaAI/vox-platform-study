@@ -443,6 +443,18 @@ export type {
 export { AiModelDownloadStatus, ResourceStatus, TranscriptionJobStatus, TranscriptionJobType } from './types';
 
 // =============================================================================
+// Types - Language selection (TASK-1004)
+// =============================================================================
+
+export type {
+  LanguageModeId,
+  LanguageResolution,
+  LanguageResolutionDegradeReason,
+  LanguageResolutionParams,
+  LanguageResolutionSource,
+} from './types';
+
+// =============================================================================
 // Types - Common
 // =============================================================================
 

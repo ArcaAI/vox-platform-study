@@ -4,6 +4,7 @@
  * configured (that is `hope.admin.agent.*`, generated from the admin plane).
  */
 
+import type { LanguageModeId, LanguageResolution } from './language';
 import type { WorkflowRunEvent } from './workflow';
 
 /** The task family a published Agent serves. */
@@ -93,14 +94,22 @@ export type TranscribeSource =
       file: Blob;
       /** File name for the multipart part (default `audio`). */
       filename?: string;
-      /** ISO 639-1 language hint; omit to let the agent decide. */
+      /** Link the job to a consultation, so it inherits the consultation's declared language mode when {@link languageMode} is omitted (TASK-1004). */
+      consultationId?: string;
+      /** ISO 639-1 language hint; omit to let the agent decide. {@link languageMode} takes precedence. */
       language?: string;
+      /** End-user language mode id (TASK-1004) — see {@link CreateStreamSessionRequest.languageMode}. */
+      languageMode?: LanguageModeId;
       mediaId?: never;
     }
   | {
       /** Id of media already uploaded through the media routes. Sent as JSON. */
       mediaId: string;
+      /** Link the job to a consultation, so it inherits the consultation's declared language mode when {@link languageMode} is omitted (TASK-1004). */
+      consultationId?: string;
       language?: string;
+      /** End-user language mode id (TASK-1004) — see {@link CreateStreamSessionRequest.languageMode}. */
+      languageMode?: LanguageModeId;
       file?: never;
     };
 
@@ -124,6 +133,8 @@ export interface TranscriptionJobHandle {
   agentSlug?: string;
   /** The agent VERSION the job runs on; what makes the run reproducible. */
   agentVersionId?: string;
+  /** How the effective language mode was resolved for this job (TASK-1004). See {@link StreamSessionResponse.languageResolution}. */
+  languageResolution?: LanguageResolution;
   [extra: string]: unknown;
 }
 
@@ -177,6 +188,8 @@ export interface TranscriptionJobStatus {
   jobType?: string;
   agentSlug?: string;
   agentVersionId?: string | null;
+  /** How the effective language mode was resolved for this job (TASK-1004). See {@link StreamSessionResponse.languageResolution}. */
+  languageResolution?: LanguageResolution;
   [extra: string]: unknown;
 }
 

@@ -26,8 +26,7 @@ export type { UseArcaAudio } from './useArca';
  * `TranscriptionPipeline.getStreamingSessionManager()` (in `@arcaai/vox`
  * core, outside this file's edit scope) declares only the pre-586
  * `getSessionId`/`switchToFallback` members; this WIDENS that view locally so
- * `switchProvider` can reach the additions
- * (`switchProvider`/`setCompatSwitchEnabled`) on the real
+ * `switchProvider` can reach the addition (`switchProvider`) on the real
  * `StreamingSessionManager` instance without changing the shared duck-typed
  * interface.
  */
@@ -35,7 +34,6 @@ type StreamingSessionManagerLike = {
   getSessionId(): string | null;
   switchToFallback?(): Promise<void>;
   switchProvider?(target: 'primary' | 'fallback'): Promise<void>;
-  setCompatSwitchEnabled?(enabled: boolean): void;
 };
 
 /**
@@ -1596,9 +1594,7 @@ export function useArcaAudio() {
    * Primary path: POST the switch route via the streaming session manager.
    * BOTH directions are native: `target: 'fallback'` POSTs
    * `.../switch-to-fallback` and `target: 'primary'` POSTs
-   * `.../switch-to-primary`. Compat mode only REROUTES them through the
-   * `/api/stt/switch` shim when a compat session opted in — it is not required
-   * for either direction. The backend swaps the ASR
+   * `.../switch-to-primary`. The backend swaps the ASR
    * engine while the WebSocket/session survive, and the client learns the new
    * pipeline from the `provider_switched` status frame (which updates
    * `activePipeline` / `sttConnectionState` — see the `onProviderSwitched`
@@ -1610,17 +1606,9 @@ export function useArcaAudio() {
    * fallback surfaced honestly as `reconnecting`. Symmetric rebuild support
    * for the primary direction via `opts.primaryPipelineId`. Without an id to
    * rebuild on, the NOT_FOUND error propagates.
-   *
-   * `opts.useCompatEndpoint` (compat layer only) opts the session manager
-   * into the `/api/stt/switch` shim route for this call via
-   * `sessionManager.setCompatSwitchEnabled()` — native SDK consumers never
-   * set this, so their `switchToFallback()` keeps hitting the native route.
    */
   const switchProvider = useCallback(
-    async (
-      target: 'primary' | 'fallback',
-      opts?: { fallbackPipelineId?: string; primaryPipelineId?: string; useCompatEndpoint?: boolean },
-    ): Promise<void> => {
+    async (target: 'primary' | 'fallback', opts?: { fallbackPipelineId?: string; primaryPipelineId?: string }): Promise<void> => {
       const { pluginManager } = store;
       const logger = getLogger();
       if (!pluginManager) throw new Error('SDK not initialized');
@@ -1630,10 +1618,6 @@ export function useArcaAudio() {
       const sessionId = sessionManager?.getSessionId?.() ?? null;
       if (!sessionManager || !sessionId) {
         throw new Error(`No active streaming session to switch to ${target}`);
-      }
-
-      if (opts?.useCompatEndpoint) {
-        sessionManager.setCompatSwitchEnabled?.(true);
       }
 
       logger?.info('Switching streaming session provider', {

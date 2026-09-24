@@ -177,6 +177,26 @@ describe('StreamingSessionManager', () => {
       expect(callBody.microphoneId).toBe('mic-1');
     });
 
+    it('forwards languageMode and returns the languageResolution receipt (TASK-1004)', async () => {
+      const resolution: NonNullable<StreamingSessionResponse['languageResolution']> = {
+        requestedMode: 'ml-en',
+        source: 'request',
+        appliedMode: 'ml-en',
+        engine: 'WHISPER_CPP',
+        provider: null,
+        params: { language: null, codeSwitching: false, streamingEnglishGloss: false, primed: false },
+        degraded: true,
+        reason: 'whisper_cpp_pair_unprimed',
+      };
+      mockFetch.mockResolvedValueOnce(createMockResponse({ ...mockSessionResponse, languageResolution: resolution }));
+
+      const result = await manager.createSession({ pipelineId: 'default-pipeline', languageMode: 'ml-en' });
+
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(callBody.languageMode).toBe('ml-en');
+      expect(result.languageResolution).toEqual(resolution);
+    });
+
     it('should throw on API error', async () => {
       mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Internal Server Error'));
 

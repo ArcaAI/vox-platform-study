@@ -5,80 +5,38 @@ import { buildUrl, encodePathSegment } from '../url';
 describe('buildUrl', () => {
   describe('non-exempt (v2 native) paths — get the api/v1 prefix', () => {
     it('prefixes a bare baseUrl', () => {
-      expect(buildUrl('http://localhost:8868', 'consultations/abc/summary')).toBe(
-        'http://localhost:8868/api/v1/consultations/abc/summary',
-      );
+      expect(buildUrl('http://localhost:8868', 'consultations/abc/summary')).toBe('http://localhost:8868/api/v1/consultations/abc/summary');
     });
 
     it('prefixes when the path has a leading slash', () => {
-      expect(buildUrl('http://localhost:8868', '/consultations/abc/summary')).toBe(
-        'http://localhost:8868/api/v1/consultations/abc/summary',
-      );
+      expect(buildUrl('http://localhost:8868', '/consultations/abc/summary')).toBe('http://localhost:8868/api/v1/consultations/abc/summary');
     });
 
     it('treats a trailing slash on baseUrl the same as no trailing slash', () => {
-      expect(buildUrl('http://localhost:8868/', 'consultations/abc/summary')).toBe(
-        'http://localhost:8868/api/v1/consultations/abc/summary',
-      );
+      expect(buildUrl('http://localhost:8868/', 'consultations/abc/summary')).toBe('http://localhost:8868/api/v1/consultations/abc/summary');
     });
 
     it('normalizes a baseUrl that already includes /api/v1 (documented behavior: stripped then re-added)', () => {
-      expect(buildUrl('http://localhost:8868/api/v1', 'consultations/abc/summary')).toBe(
-        'http://localhost:8868/api/v1/consultations/abc/summary',
-      );
+      expect(buildUrl('http://localhost:8868/api/v1', 'consultations/abc/summary')).toBe('http://localhost:8868/api/v1/consultations/abc/summary');
     });
 
     it('normalizes a baseUrl that already includes /api/v1/ (trailing slash)', () => {
-      expect(buildUrl('http://localhost:8868/api/v1/', 'consultations/abc/summary')).toBe(
-        'http://localhost:8868/api/v1/consultations/abc/summary',
-      );
+      expect(buildUrl('http://localhost:8868/api/v1/', 'consultations/abc/summary')).toBe('http://localhost:8868/api/v1/consultations/abc/summary');
     });
 
     it('does not treat /api/v1 as exempt merely for being a substring of the path', () => {
       // consultations/jobs/:jobId is a real v2 route and MUST still be prefixed
-      expect(buildUrl('http://localhost:8868', 'consultations/jobs/job-123')).toBe(
-        'http://localhost:8868/api/v1/consultations/jobs/job-123',
-      );
+      expect(buildUrl('http://localhost:8868', 'consultations/jobs/job-123')).toBe('http://localhost:8868/api/v1/consultations/jobs/job-123');
     });
   });
 
-  describe('prefix-exempt v1-compat paths — main.ts excludes these from api/v1', () => {
-    it('does not prefix POST /api/smr/api/v1/presummary', () => {
-      expect(buildUrl('http://localhost:8868', 'api/smr/api/v1/presummary')).toBe(
-        'http://localhost:8868/api/smr/api/v1/presummary',
-      );
-    });
-
-    it('does not prefix POST /api/smr/api/v1/summary/sync', () => {
-      expect(buildUrl('http://localhost:8868', 'api/smr/api/v1/summary/sync')).toBe(
-        'http://localhost:8868/api/smr/api/v1/summary/sync',
-      );
-    });
-
-    it.each(['api/stt/start_session', 'api/stt/switch', 'api/stt/stop_session'])(
-      'does not prefix POST /%s (v1-compat STT session lifecycle)',
+  describe('the v1-compat prefix exemption is retired (TASK-1004 D-8)', () => {
+    it.each(['api/smr/api/v1/presummary', 'api/smr/api/v1/summary/sync', 'api/stt/start_session', 'api/stt/switch', 'api/stt/stop_session'])(
+      'now gets the ordinary api/v1 prefix like any other path: %s',
       (path) => {
-        expect(buildUrl('http://localhost:8868', path)).toBe(`http://localhost:8868/${path}`);
+        expect(buildUrl('http://localhost:8868', path)).toBe(`http://localhost:8868/api/v1/${path}`);
       },
     );
-
-    it('does not prefix when the exempt path has a leading slash', () => {
-      expect(buildUrl('http://localhost:8868', '/api/smr/api/v1/presummary')).toBe(
-        'http://localhost:8868/api/smr/api/v1/presummary',
-      );
-    });
-
-    it('stays exempt even when baseUrl already includes /api/v1', () => {
-      expect(buildUrl('http://localhost:8868/api/v1', 'api/smr/api/v1/presummary')).toBe(
-        'http://localhost:8868/api/smr/api/v1/presummary',
-      );
-    });
-
-    it('stays exempt with a trailing-slash baseUrl', () => {
-      expect(buildUrl('http://localhost:8868/', 'api/smr/api/v1/summary/sync')).toBe(
-        'http://localhost:8868/api/smr/api/v1/summary/sync',
-      );
-    });
   });
 
   describe('query params', () => {
@@ -86,9 +44,7 @@ describe('buildUrl', () => {
       const url = buildUrl('http://localhost:8868', 'consultations', {
         query: { status: 'RUNNING', label: 'a b&c=d' },
       });
-      expect(url).toBe(
-        'http://localhost:8868/api/v1/consultations?status=RUNNING&label=a+b%26c%3Dd',
-      );
+      expect(url).toBe('http://localhost:8868/api/v1/consultations?status=RUNNING&label=a+b%26c%3Dd');
     });
 
     it('coerces number and boolean values to strings', () => {
@@ -160,9 +116,7 @@ describe('buildUrl', () => {
 
 describe('encodePathSegment', () => {
   it('percent-encodes a plain uuid unchanged (no-op for safe characters)', () => {
-    expect(encodePathSegment('0198f2b1-1234-7abc-9def-000000000001')).toBe(
-      '0198f2b1-1234-7abc-9def-000000000001',
-    );
+    expect(encodePathSegment('0198f2b1-1234-7abc-9def-000000000001')).toBe('0198f2b1-1234-7abc-9def-000000000001');
   });
 
   it('encodes a slash so a malicious id cannot inject an extra path segment', () => {

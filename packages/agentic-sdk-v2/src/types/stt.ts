@@ -15,6 +15,8 @@
  * @see SDK-206 Gap Analysis — Layer 0 Foundation
  */
 
+import type { LanguageModeId, LanguageResolution } from './language';
+
 // =============================================================================
 // Enums (mirroring packages/domains/src/enums/generated/)
 // =============================================================================
@@ -100,11 +102,13 @@ export interface CreateStreamingSessionRequest {
    * End-user language mode id, e.g. `"en"`, `"ml"`, `"ml-en"`
    * (Malayalam+English code-switch), `"auto"`. POSTed verbatim to the gateway
    * (`languageMode`), which forwards it to STT. STT resolves it against the
-   * session engine and returns 422 when no configured engine can serve it.
-   * Takes precedence over `language`. Selectable modes come from
+   * session engine and returns 422 when no configured engine can serve it at
+   * all — a mode the engine can only approximate is applied and reported
+   * `degraded: true` on {@link StreamingSessionResponse.languageResolution}
+   * instead. Takes precedence over `language`. Selectable modes come from
    * `GET /audio/transcription-jobs/language-modes` (see {@link LanguageMode}).
    */
-  languageMode?: string;
+  languageMode?: LanguageModeId;
   /**
    * Pre-start STT engine selection. Default `'primary'`. POSTed
    * verbatim (camelCase `startOn`) to the gateway; `'fallback'` opens the
@@ -214,6 +218,14 @@ export interface StreamingSessionResponse {
    * department first). Absent against a gateway that predates the field.
    */
   agentSource?: 'explicit' | 'workflow' | 'department' | 'tenant';
+  /**
+   * How the effective language mode was resolved for this session (TASK-1004) — which tier won
+   * (request/consultation/agent/default) and what the engine actually applied, including a
+   * `degraded` flag when it could not serve the mode natively. Absent against a gateway that
+   * predates the field. Re-emitted on the `status`/`ready` WS frames — see
+   * {@link WsStatusMessage.languageResolution} and {@link WsReadyMessage.languageResolution}.
+   */
+  languageResolution?: LanguageResolution;
 }
 
 /**
@@ -526,6 +538,12 @@ export interface WsStatusMessage {
   active?: 'primary' | 'fallback';
   /** True when the session is now on the fallback engine; false after a switch back to primary. */
   is_fallback?: boolean;
+  /**
+   * Re-resolved language receipt on a `provider_switched` status — the new engine may apply the
+   * session's mode differently than the one it replaced (TASK-1004). See
+   * {@link StreamingSessionResponse.languageResolution}.
+   */
+  languageResolution?: LanguageResolution;
 }
 
 /**
@@ -579,6 +597,12 @@ export interface WsReadyMessage {
   fromSeq?: number;
   /** Epoch ms the session's audio clock is anchored to, when the gateway reports one. */
   sessionEpochMs?: number;
+  /**
+   * The language resolution in force as this session became ready (TASK-1004) — the same receipt
+   * as {@link StreamingSessionResponse.languageResolution}, repeated here so a socket-only
+   * consumer (one that never reads the HTTP create response) still sees it.
+   */
+  languageResolution?: LanguageResolution;
 }
 
 /**

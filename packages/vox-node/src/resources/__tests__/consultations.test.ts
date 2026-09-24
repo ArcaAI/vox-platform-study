@@ -339,3 +339,93 @@ describe('ConsultationsResource#close', () => {
     });
   });
 });
+
+// -----------------------------------------------------------------------------
+// updateLanguage (TASK-1004)
+// -----------------------------------------------------------------------------
+
+describe('ConsultationsResource#updateLanguage', () => {
+  it('PATCHes /api/v1/consultations/:id with the languageMode body and the supplied If-Match', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, { ...CONSULTATION, language: 'ml-en' }));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    const result = await resource.updateLanguage('c1', { languageMode: 'ml-en' }, { ifMatch: '"7"' });
+
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('http://localhost:8868/api/v1/consultations/c1');
+    expect((init as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ languageMode: 'ml-en' });
+    expect(headerOf(init, 'if-match')).toBe('"7"');
+    expect(result).toEqual({ ...CONSULTATION, language: 'ml-en' });
+    // Only one call — no GET was needed because ifMatch was supplied.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('percent-encodes the consultation id', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, CONSULTATION));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await resource.updateLanguage('c/1', { languageMode: 'en' }, { ifMatch: '"7"' });
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:8868/api/v1/consultations/c%2F1');
+  });
+
+  it('GETs the consultation first to build If-Match when ifMatch is omitted', async () => {
+    const fetchImpl = fetchMock(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/consultations/c1')) return jsonResponse(200, { ...CONSULTATION, version: 9 });
+      return jsonResponse(200, { ...CONSULTATION, version: 10, language: 'ml-en' });
+    });
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await resource.updateLanguage('c1', { languageMode: 'ml-en' });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const [getUrl, getInit] = fetchImpl.mock.calls[0]!;
+    expect((getInit as RequestInit | undefined)?.method ?? 'GET').toBe('GET');
+    expect(getUrl).toBe('http://localhost:8868/api/v1/consultations/c1');
+    const [patchUrl, patchInit] = fetchImpl.mock.calls[1]!;
+    expect(patchUrl).toBe('http://localhost:8868/api/v1/consultations/c1');
+    expect((patchInit as RequestInit).method).toBe('PATCH');
+    expect(headerOf(patchInit, 'if-match')).toBe('"9"');
+  });
+
+  it('throws locally when the auto-GET consultation carries no version', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, { ...CONSULTATION, version: undefined }));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await expect(resource.updateLanguage('c1', { languageMode: 'ml-en' })).rejects.toThrow(/version/);
+  });
+
+  it('surfaces a 412 response as VersionConflictError carrying currentVersion', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(412, { message: 'Version conflict', metadata: { currentVersion: 5 } }));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl, maxRetries: 0 });
+    const resource = new ConsultationsResource(transport);
+
+    await expect(resource.updateLanguage('c1', { languageMode: 'ml-en' }, { ifMatch: '"3"' })).rejects.toMatchObject({
+      status: 412,
+      currentVersion: 5,
+    });
+  });
+});
+
+// -----------------------------------------------------------------------------
+// open — languageMode (TASK-1004)
+// -----------------------------------------------------------------------------
+
+describe('ConsultationsResource#open — languageMode', () => {
+  it('forwards languageMode verbatim in the open() body', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(201, { ...CONSULTATION, isNew: true }));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await resource.open({ patientId: 'p1', languageMode: 'ml-en' });
+
+    const [, init] = fetchImpl.mock.calls[0]!;
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ patientId: 'p1', languageMode: 'ml-en' });
+  });
+});

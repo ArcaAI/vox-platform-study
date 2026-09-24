@@ -58,6 +58,27 @@ describe('SttResource#createStreamSession', () => {
     const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toEqual({});
   });
+
+  it('forwards languageMode verbatim and returns the languageResolution receipt (TASK-1004)', async () => {
+    const RESOLUTION = {
+      requestedMode: 'ml-en',
+      source: 'request' as const,
+      appliedMode: 'ml-en',
+      engine: 'WHISPER_CPP',
+      provider: null,
+      params: { language: null, codeSwitching: false, streamingEnglishGloss: false, primed: false },
+      degraded: true,
+      reason: 'whisper_cpp_pair_unprimed' as const,
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(200, { ...SESSION, languageResolution: RESOLUTION }));
+    const stt = new SttResource(transportWith(fetchImpl));
+
+    const session = await stt.createStreamSession({ languageMode: 'ml-en' });
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ languageMode: 'ml-en' });
+    expect(session.languageResolution).toEqual(RESOLUTION);
+  });
 });
 
 describe('SttResource#refreshTicket', () => {

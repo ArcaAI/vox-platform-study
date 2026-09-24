@@ -18,6 +18,8 @@
  * PCM16 frames from wherever they already have them.
  */
 
+import type { LanguageModeId, LanguageResolution } from './language';
+
 /**
  * Body of `POST /api/v1/audio/transcription-jobs/stream/session`.
  *
@@ -57,9 +59,11 @@ export interface CreateStreamSessionRequest {
   /**
    * End-user language mode id — `'en'`, `'ml'`, `'ml-en'` (code-switch),
    * `'auto'`. Resolved by STT against the session engine: a mode no configured
-   * engine can serve is a 422, not a silent downgrade.
+   * engine can serve at all is a 422, not a silent downgrade — a mode the
+   * engine can only approximate is applied and reported `degraded: true` on
+   * {@link StreamSessionResponse.languageResolution} instead.
    */
-  languageMode?: string;
+  languageMode?: LanguageModeId;
   /** `'fallback'` opens directly on the tenant's default provider. Fail-closed: no fallback configured ⇒ 409. */
   startOn?: 'primary' | 'fallback';
   /**
@@ -123,6 +127,14 @@ export interface StreamSessionResponse {
   /** Engine live at create; `'fallback'` when the primary could not load or was not asked for. */
   activeEngine?: 'primary' | 'fallback';
   voiceProfileSeeded?: boolean;
+  /**
+   * How the effective language mode was resolved for this session (TASK-1004) — which tier won
+   * (request/consultation/agent/default) and what the engine actually applied, including a
+   * `degraded` flag when it could not serve the mode natively. Absent against a gateway that
+   * predates the field. Re-emitted on the `status`/`ready` socket frames — see
+   * {@link SttStatusMessage.languageResolution} and {@link SttReadyMessage.languageResolution}.
+   */
+  languageResolution?: LanguageResolution;
   /** Echoed verbatim from {@link CreateStreamSessionRequest.context}, when the request carried one. */
   context?: Record<string, unknown>;
   /**
@@ -280,6 +292,12 @@ export interface SttStatusMessage {
   utterance_index?: number | string;
   active?: 'primary' | 'fallback';
   is_fallback?: boolean;
+  /**
+   * Re-resolved language receipt on a `provider_switched` status — the new engine may apply the
+   * session's mode differently than the one it replaced (TASK-1004). See
+   * {@link StreamSessionResponse.languageResolution}.
+   */
+  languageResolution?: LanguageResolution;
   [key: string]: unknown;
 }
 
@@ -343,6 +361,12 @@ export interface SttReadyMessage {
   fromSeq?: number;
   /** Epoch ms the session's audio clock is anchored to, when the gateway reports one. */
   sessionEpochMs?: number;
+  /**
+   * The language resolution in force as this session became ready (TASK-1004) — the same receipt
+   * as {@link StreamSessionResponse.languageResolution}, repeated here so a socket-only consumer
+   * (one that never reads the HTTP create response) still sees it.
+   */
+  languageResolution?: LanguageResolution;
 }
 
 /**

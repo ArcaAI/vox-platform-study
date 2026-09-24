@@ -1,27 +1,22 @@
 /**
- * Barrel for `@arcaai/vox-node` request/response types — the day-1
- * summarization surface (stateless v1-compat + v2 native consultation-bound).
+ * Barrel for `@arcaai/vox-node` request/response types — the v2 native,
+ * consultation-bound surface (`hope.consultations.*`, `hope.agents.*`, `hope.workflows.*`, ...).
+ *
+ * The v1-compat, stateless summarization types (`SummaryResponse`, `PreSummaryResponse`, ...)
+ * were removed outright with `hope.summarization.*` (TASK-1004 D-8, zero traffic in production) —
+ * use `hope.consultations.summaries.*` instead.
  */
 
-export type {
-  ConversationSegment,
-  TestResult,
-  PreviousVisitRecord,
-  SessionData,
-  PreSummaryRequest,
-  SyncSummaryRequest,
-  TokenUsage,
-  SummaryResponseMetadata,
-  SummaryResponse,
-  PreSummarySectionItem,
-  PreSummarySection,
-  StructuredPreSummary,
-  PreSummaryResponse,
-  SummaryStreamEvent,
-  PreSummaryStreamEvent,
-} from './summarization';
-
 export { CONTEXT_CONTENT_MAX_LENGTH } from './consultation';
+
+/** The spoken-language selection contract shared with `apps/stt`, `@arcaai/vox`, and ALaaS (TASK-1004). */
+export type {
+  LanguageModeId,
+  LanguageResolution,
+  LanguageResolutionDegradeReason,
+  LanguageResolutionParams,
+  LanguageResolutionSource,
+} from './language';
 
 export type {
   GenerateSummaryRequest,
@@ -72,6 +67,7 @@ export type {
   SectionProvenance,
   StartRecordingRequest,
   StopRecordingRequest,
+  UpdateConsultationLanguageRequest,
 } from './consultation-realtime';
 
 /** The STT streaming session and the `/ws/stt/stream` wire protocol (TASK-933). */

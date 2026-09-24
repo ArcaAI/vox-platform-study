@@ -6,6 +6,7 @@
 
 import type { GoverningRunSummary } from '@arcaai/types';
 import type { ContextItem, AddContextInput } from './context';
+import type { LanguageModeId } from './language';
 
 // =============================================================================
 // Consultation Status (SES-02)
@@ -159,22 +160,35 @@ export interface OpenSessionInput {
    */
   workflowDefinitionSlug?: string;
   /**
-   * TASK-932 — the language the generated NOTES are written in (BCP-47: `en`, `ml`, `en-IN`).
+   * The consultation's SOURCE language as declared at open — what is SPOKEN, as a BCP-47 tag
+   * (`en`, `ml`, `en-IN`) or an STT code-switch mode such as `ml-en` ("Malayalam-led, English
+   * mixed").
    *
-   * NOT the STT language mode, and the difference is the point of the field: a Malayalam-English
-   * consultation is routinely documented in English. `audio.start({ languageMode })` governs what
-   * the microphone is allowed to HEAR and has no default (TASK-891 OD-1: "the code-switch is
-   * always enabled … to use a specific language, the SDK or end-user must declare the language
-   * code"); this governs what the note is WRITTEN IN. Declaring either never sets the other.
+   * **Corrected TASK-1004 (G-7): this is NOT the note's language**, and the difference is the
+   * point of the field: a Malayalam-English consultation is routinely documented in English. The
+   * pre-summary, live summary and final summary are written in the tenant's configured output
+   * language, or the platform default (English) when the tenant has none — never in the language
+   * declared here (TASK-1001 OD-12). Prefer {@link languageMode} — a normalized catalog id
+   * rather than a free-form tag — when you have one; sending both is fine, and `languageMode`
+   * wins.
    *
-   * Omit it and the note's language is undeclared — which is not English: the tenant's own agent
-   * body decides, exactly as it did before this field existed.
+   * Every live/batch STT entry point this consultation's recordings reach
+   * (`audio.start({ languageMode })`, batch transcription) inherits this value when it declares
+   * no mode of its own — declare it here once rather than on every session.
    *
    * Honoured by `session.open()` and by a re-visit. Re-opening an ALREADY-OPEN consultation keeps
    * the language it was opened with, the same way it keeps its governing workflow. Read it back
-   * on {@link Consultation.language}.
+   * on {@link Consultation.language}. Changing it after open (e.g. `PATCH consultations/:id`,
+   * OCC) is not yet exposed as a hook on this SDK — see `@arcaai/vox-node`'s
+   * `consultations.updateLanguage()` for the server-side equivalent.
    */
   language?: string;
+  /**
+   * The same SOURCE language as {@link language}, as a catalog mode id (e.g. `'ml-en'`) rather
+   * than a BCP-47 tag. TASK-1004: preferred over {@link language} — when both are sent this one
+   * wins; the gateway normalizes either into the same stored mode.
+   */
+  languageMode?: LanguageModeId;
   /** Custom metadata */
   metadata?: Record<string, unknown>;
 }
