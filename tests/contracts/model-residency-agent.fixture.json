@@ -1,0 +1,83 @@
+{
+  "$comment": "TASK-1005 — the model-residency agent contract. PINNED by the orchestrator before the lanes branched. PRODUCERS: the residency agent API in packages/py-runtime-models (hope_runtime_models), mounted by apps/stt and apps/nlp (lane L-AGENT) — snake_case JSON under `python`; the gateway-side LM Studio adapter (lane L-LMS) — which emits the camelCase `gateway` ResidencyReport shape directly from LM Studio REST v1. CONSUMER: the gateway ModelResidencyController (lane L-CTRL, wave 2), which maps every `python` report to the same camelCase `gateway` shape, and the console screen (lane L-UI). Transport for the Python agents: `X-Service-Token` + `X-Tenant-Id: tenantless:control-plane` (TENANTLESS.CONTROL_PLANE in packages/applications/src/common/internal-service-headers.ts). Routes: GET /internal/residency · POST /internal/residency/load · POST /internal/residency/unload · PUT /internal/residency/models/{model_ref}/policy. Lanes MAY add per-service `load_spec` examples under `loadSpecExamples`; they may NOT rename, retype or remove a pinned key. `bytes` is MEASURED (device free-memory delta around the load, loads serialised per device) or null — never a catalogue estimate; `bytes_source` says which. `in_flight` is the cache pin refcount (requests/sessions currently holding the model). `pinned` is true when ANY holder pins it; `admin_pinned` only when the operator/controller pinned it (survives idle TTL, never LRU/pressure-evicted). An unload with `in_flight > 0` and no `force` answers 409 IN_FLIGHT.",
+  "enums": {
+    "state": ["loading", "loaded", "unloading"],
+    "bytesSource": ["measured", "unknown"],
+    "deviceKind": ["gpu", "cpu"],
+    "loadOutcome": ["loaded", "already_loaded"],
+    "unloadOutcome": ["unloaded", "not_loaded"],
+    "errorCode": ["MODEL_UNKNOWN", "IN_FLIGHT", "INSUFFICIENT_MEMORY", "LOAD_FAILED", "LOAD_IN_PROGRESS"]
+  },
+  "python": {
+    "report": {
+      "service": "stt",
+      "instance": "hope-stt-5d9f7c8b6-abcde",
+      "reported_at": "2026-09-24T13:00:00Z",
+      "devices": [
+        { "id": "cuda:0", "kind": "gpu", "total_bytes": 17175674880, "free_bytes": 12817793024 },
+        { "id": "cpu", "kind": "cpu", "total_bytes": 67430170624, "free_bytes": 30064771072 }
+      ],
+      "models": [
+        {
+          "model_ref": "arcaai-whisper-ml-en-ggml",
+          "ai_model_id": "0199a1b2-0000-7000-8000-000000000001",
+          "cache": "asr",
+          "state": "loaded",
+          "device": "cuda:0",
+          "bytes": 1623195648,
+          "bytes_source": "measured",
+          "in_flight": 1,
+          "pinned": true,
+          "admin_pinned": false,
+          "ttl_seconds": 900,
+          "loaded_at": "2026-09-24T12:40:00Z",
+          "last_used_at": "2026-09-24T12:59:58Z",
+          "load_seconds": 6.8
+        }
+      ]
+    },
+    "loadRequest": { "model_ref": "arcaai-whisper-ml-en-ggml", "load_spec": {}, "pin": true, "ttl_seconds": null },
+    "loadResponse": { "outcome": "loaded", "model": "<one entry of report.models>" },
+    "unloadRequest": { "model_ref": "arcaai-whisper-ml-en-ggml", "force": false },
+    "unloadResponse": { "outcome": "unloaded", "model_ref": "arcaai-whisper-ml-en-ggml" },
+    "policyRequest": { "admin_pinned": true, "ttl_seconds": 1800 },
+    "policyResponse": { "model": "<one entry of report.models>" },
+    "error": {
+      "error": {
+        "code": "IN_FLIGHT",
+        "message": "arcaai-whisper-ml-en-ggml is serving 1 request(s); pass force=true to unload anyway",
+        "in_flight": 1
+      }
+    }
+  },
+  "gateway": {
+    "report": {
+      "service": "lm-studio",
+      "instance": "hope-lmstudio-6c8489cfc8-bnxhr",
+      "reportedAt": "2026-09-24T13:00:00Z",
+      "devices": [],
+      "models": [
+        {
+          "modelRef": "gemma-4-e2b-it-qat",
+          "aiModelId": null,
+          "cache": "llm",
+          "state": "loaded",
+          "device": "multi",
+          "bytes": null,
+          "bytesSource": "unknown",
+          "inFlight": null,
+          "pinned": false,
+          "adminPinned": false,
+          "ttlSeconds": null,
+          "loadedAt": null,
+          "lastUsedAt": null,
+          "loadSeconds": null,
+          "instanceId": "gemma-4-e2b-it-qat",
+          "loadConfig": { "contextLength": 65536, "parallel": 4, "flashAttention": true }
+        }
+      ]
+    },
+    "$lmStudioNotes": "LM Studio reports no per-model bytes, in-flight count or timestamps (REST v1, verified 2026-09-24): those fields are null and the controller fills bytes from the DCGM per-device delta it measured around its own serialised load. `device` is `multi` because the daemon splits a model across both cards itself. `instanceId` and `loadConfig` are LM Studio-only extras (optional on every other service)."
+  },
+  "loadSpecExamples": {}
+}

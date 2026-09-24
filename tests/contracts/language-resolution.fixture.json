@@ -1,0 +1,107 @@
+{
+  "$comment": "TASK-1004 — the cross-language contract for the spoken-language selection. PINNED by the orchestrator before the lanes branched; change it only with every reader open. Readers: the TS normalizer + resolver (@arcaai/applications, lane L-GW), apps/stt's normalizer + receipt builder (lane L-STT), @arcaai/vox-node + @arcaai/vox types (lane L-SDK), and the ALaaS broker (lane L-ALS). `normalize` is the edge normalizer: a catalog id (case-insensitive) wins as-is; otherwise a BCP-47 `<lang>-<REGION>` tag whose language subtag IS a single-language catalog id maps to that id; anything else is 400 LANGUAGE_MODE_UNKNOWN (`expected: null`). `precedence` is the EffectiveLanguageModeResolver table: request > consultation > agent > default('auto'); it never names or changes an engine. `receipt` is the LanguageResolution object, snake_case on the apps/stt wire (HTTP `language_resolution` on the session-create response; the JSON-encoded string field `language_resolution` on the `status` result-stream entries) and camelCase everywhere the gateway emits it (REST `languageResolution`, the client-facing WS status frame, TranscriptionJob attributes, SDK types). `engine` is the serving AiModelFormat value; `provider` is that resolved ASR model's `provider` as carried on ResolvedAsrSpec (null for self-hosted). `params` is exactly the four engine-neutral ResolvedInference fields STT applied (`primed` = a priming prompt was actually sent). `source` enum and `reason` enum are closed: add a value here first.",
+  "catalogIds": ["en", "ml", "ml-en", "vi", "vi-en", "auto"],
+  "normalize": [
+    { "input": "en", "expected": "en" },
+    { "input": "EN", "expected": "en" },
+    { "input": "en-US", "expected": "en" },
+    { "input": "en-in", "expected": "en" },
+    { "input": "ml", "expected": "ml" },
+    { "input": "ml-IN", "expected": "ml" },
+    { "input": "ml-en", "expected": "ml-en" },
+    { "input": "ML-EN", "expected": "ml-en" },
+    { "input": "vi-VN", "expected": "vi" },
+    { "input": "vi-en", "expected": "vi-en" },
+    { "input": "auto", "expected": "auto" },
+    { "input": " ml-en ", "expected": "ml-en" },
+    { "input": "xx", "expected": null },
+    { "input": "fr-FR", "expected": null },
+    { "input": "en-Latn-US", "expected": null },
+    { "input": "", "expected": null }
+  ],
+  "precedence": [
+    { "request": "ml-en", "consultation": "en", "agent": "ml", "expected": { "mode": "ml-en", "source": "request" } },
+    { "request": null, "consultation": "ml-en", "agent": "en", "expected": { "mode": "ml-en", "source": "consultation" } },
+    { "request": null, "consultation": null, "agent": "ml-en", "expected": { "mode": "ml-en", "source": "agent" } },
+    { "request": null, "consultation": null, "agent": null, "expected": { "mode": "auto", "source": "default" } }
+  ],
+  "enums": {
+    "source": ["request", "consultation", "agent", "default"],
+    "reason": ["whisper_cpp_pair_unprimed", "gloss_translation_only", "engine_auto_detect", "fallback_engine_switch"]
+  },
+  "receipt": {
+    "keys": ["requestedMode", "source", "appliedMode", "engine", "provider", "params", "degraded", "reason"],
+    "paramsKeys": ["language", "codeSwitching", "streamingEnglishGloss", "primed"],
+    "examples": [
+      {
+        "name": "whisper.cpp pair while the priming prompt is disabled — degraded",
+        "python": {
+          "requested_mode": "ml-en",
+          "source": "request",
+          "applied_mode": "ml-en",
+          "engine": "WHISPER_CPP",
+          "provider": null,
+          "params": { "language": null, "code_switching": false, "streaming_english_gloss": false, "primed": false },
+          "degraded": true,
+          "reason": "whisper_cpp_pair_unprimed"
+        },
+        "gateway": {
+          "requestedMode": "ml-en",
+          "source": "request",
+          "appliedMode": "ml-en",
+          "engine": "WHISPER_CPP",
+          "provider": null,
+          "params": { "language": null, "codeSwitching": false, "streamingEnglishGloss": false, "primed": false },
+          "degraded": true,
+          "reason": "whisper_cpp_pair_unprimed"
+        }
+      },
+      {
+        "name": "Sarvam native code-mix — inherited from the consultation",
+        "python": {
+          "requested_mode": "ml-en",
+          "source": "consultation",
+          "applied_mode": "ml-en",
+          "engine": "SARVAM",
+          "provider": "sarvam",
+          "params": { "language": "ml", "code_switching": true, "streaming_english_gloss": false, "primed": false },
+          "degraded": false,
+          "reason": null
+        },
+        "gateway": {
+          "requestedMode": "ml-en",
+          "source": "consultation",
+          "appliedMode": "ml-en",
+          "engine": "SARVAM",
+          "provider": "sarvam",
+          "params": { "language": "ml", "codeSwitching": true, "streamingEnglishGloss": false, "primed": false },
+          "degraded": false,
+          "reason": null
+        }
+      },
+      {
+        "name": "single language on whisper.cpp — agent default",
+        "python": {
+          "requested_mode": "en",
+          "source": "agent",
+          "applied_mode": "en",
+          "engine": "WHISPER_CPP",
+          "provider": null,
+          "params": { "language": "en", "code_switching": false, "streaming_english_gloss": false, "primed": false },
+          "degraded": false,
+          "reason": null
+        },
+        "gateway": {
+          "requestedMode": "en",
+          "source": "agent",
+          "appliedMode": "en",
+          "engine": "WHISPER_CPP",
+          "provider": null,
+          "params": { "language": "en", "codeSwitching": false, "streamingEnglishGloss": false, "primed": false },
+          "degraded": false,
+          "reason": null
+        }
+      }
+    ]
+  }
+}
