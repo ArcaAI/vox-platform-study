@@ -203,6 +203,53 @@ interface SseWatchResult {
  * wait outlives the test, the test dies on a timeout instead of reaching its
  * graceful skip.
  */
+/**
+ * Read the live-summary plane until a frame carries `closed: true` (the terminal frame a stopped
+ * consultation replays to late joiners). Returns false if `timeoutMs` passes first.
+ */
+async function waitForLiveSummaryClosed(baseURL: string, consultationId: string, token: string, timeoutMs: number): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${new URL(baseURL).origin}/api/v1/consultations/${consultationId}/live-summary/stream`, {
+      headers: { ...bearer(token), Accept: 'text/event-stream' },
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) return false;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return false;
+      buffer += decoder.decode(value, { stream: true });
+      let split = buffer.indexOf('\n\n');
+      while (split !== -1) {
+        const data = buffer
+          .slice(0, split)
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trim())
+          .join('');
+        buffer = buffer.slice(split + 2);
+        try {
+          if (data && (JSON.parse(data) as { closed?: boolean }).closed === true) {
+            await reader.cancel().catch(() => undefined);
+            return true;
+          }
+        } catch {
+          /* heartbeat or partial frame */
+        }
+        split = buffer.indexOf('\n\n');
+      }
+    }
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function readFirstAgentFromSse(baseURL: string, consultationId: string, token: string, timeoutMs = 20_000): Promise<SseWatchResult | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -530,7 +577,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     expect(typeof sseAgent.promptVersionNumber, 'the pinned immutable PromptVersion number').toBe('number');
   });
 
-  test('finalize pins the SAME agent and stamps BOTH prompt versions, distinctly (R-N2)', async ({ request }) => {
+  test('finalize pins the SAME agent and stamps BOTH prompt versions, distinctly (R-N2)', async ({ request, baseURL }) => {
     // recording/stop DRAINS the transcript backlog — it loops flush({force:true})
     // until the cursor catches up — and then finalize runs its own generation.
     // That is several real LLM round-trips, far past the 30s default.
@@ -546,6 +593,10 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
       data: { persistSnapshot: true },
     });
     expect([200, 201], 'POST recording/stop').toContain(stopped.status());
+    // recording/stop answers once DRAINING; the drain and the LIVE_SOAP_SNAPSHOT write run after it
+    // and end with the plane's terminal `closed: true` (replayed to a late joiner). Finalize reads
+    // that snapshot, so wait for it.
+    expect(await waitForLiveSummaryClosed(baseURL!, consultationId, token, 240_000), 'live-summary never sent `closed: true` after stop').toBe(true);
 
     const summary = await request.post(`/api/v1/consultations/${consultationId}/summary`, { headers: bearer(token), data: {} });
     if (![200, 201].includes(summary.status())) {

@@ -89,6 +89,12 @@ function collectSectionPatches(baseURL: string, token: string, consultationId: s
   const url = `${new URL(baseURL).origin}/api/v1/consultations/${consultationId}/live-summary/stream`;
   const patches: ChurnPatch[] = [];
   const controller = new AbortController();
+  // `recording/stop` answers once the consultation is DRAINING; the final flush lands afterwards
+  // and the plane ends with a terminal `closed: true` frame. Resolve on it.
+  let markClosed: () => void = () => undefined;
+  const closed = new Promise<void>((resolve) => {
+    markClosed = resolve;
+  });
 
   const done = (async () => {
     try {
@@ -117,9 +123,10 @@ function collectSectionPatches(baseURL: string, token: string, consultationId: s
             .join('');
           if (payload) {
             try {
-              const parsed = JSON.parse(payload) as ChurnPatch & { event?: string };
+              const parsed = JSON.parse(payload) as ChurnPatch & { event?: string; closed?: boolean };
               // The channel multiplexes three payload kinds; the discriminator is IN THE JSON.
               if (parsed.event === 'section.patch') patches.push(parsed);
+              if (parsed.closed === true) markClosed();
             } catch {
               // A keepalive or a comment frame. Not ours.
             }
@@ -134,6 +141,9 @@ function collectSectionPatches(baseURL: string, token: string, consultationId: s
 
   return {
     patches,
+    /** Resolves on the terminal `closed: true` frame, or after `timeoutMs` (false). */
+    waitForClosed: (timeoutMs: number) =>
+      Promise.race([closed.then(() => true), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs))]),
     stop: async () => {
       controller.abort();
       await done;
@@ -181,12 +191,14 @@ test.describe('TASK-939 — the case note accumulates across a real consultation
     await feedFramesRealtime(socket, pcm, { realtime: true });
     socket.close();
 
-    // `recording/stop` runs the lane's FINAL flush before answering.
+    // `recording/stop` answers once DRAINING; the lane's FINAL flush runs after it and ends the
+    // plane with `closed: true`. Wait for that, or the last patches would be missed.
     const stopped = await request.post(`/api/v1/consultations/${consultationId}/recording/stop`, {
       headers: { Authorization: `Bearer ${token}` },
       data: {},
     });
     expect(stopped.status(), await stopped.text()).toBe(200);
+    expect(await collector.waitForClosed(180_000), 'the live-summary plane never sent `closed: true` after stop').toBe(true);
 
     await collector.stop();
     await closeStreamSession(request, token, created.session.sessionId);

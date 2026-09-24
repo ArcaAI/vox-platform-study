@@ -67162,7 +67162,7 @@
             "description": "Retrieving a single SummaryResponse by id"
           },
           "404": {
-            "description": "Consultation not found (or cross-tenant), or no summary has been generated yet."
+            "description": "Consultation not found (or cross-tenant). Or no summary has been generated yet: then the body carries `code: SUMMARY_NOT_READY` and `progressStreamPath`, the harness progress stream whose terminal event (`closed: true`) says the draft is persisted."
           }
         },
         "security": [

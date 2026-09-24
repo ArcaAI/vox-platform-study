@@ -28,6 +28,8 @@ import {
   sttGatewayClientAudioDroppedTotal,
   sttGatewayCommitLatencySeconds,
   sttGatewayFirstPartialSeconds,
+  STT_SESSION_SUPERSEDED_EVENT,
+  type SttSessionSupersededEvent,
 } from '@arcaai/applications';
 import { Inject, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -87,20 +89,6 @@ export const WS_RECORDING_SUPERSEDED_REASON = 'Superseded by a new recording ses
 
 /** `finalizeSession` reason for a session replaced by a newer recording session. */
 const RECORDING_SUPERSEDED_FINALIZE_REASON = 'superseded by a new recording session';
-
-/**
- * Emitted when a consultation's `recording/start` re-binds to a different STT session
- * (last writer wins). The replaced session must be FINALIZED — flushed and uploaded — never
- * cancelled.
- */
-const STT_SESSION_SUPERSEDED_EVENT = 'stt.session.superseded';
-
-interface SttSessionSupersededPayload {
-  tenantId: string;
-  consultationId: string;
-  supersededSessionId: string;
-  supersedingSessionId: string;
-}
 
 /**
  * TASK-985 ST-5 — read a DEPRECATED positive-number env seed, or `undefined` when it is unset
@@ -2124,14 +2112,16 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    */
   private writeEndOfStream(session: SessionInfo): void {
     const seq = ++session.binarySeq;
-    this.bridgeService.writeAudioFrame(session.sessionId, seq, Buffer.alloc(0), session.sampleRate, 'pcm_s16le', true, session.traceCarrier).catch((err) => {
-      this.logger.warn({
-        message: 'Failed to write the in-band end-of-stream frame — STT finalizes on the control fallback',
-        sessionId: session.sessionId,
-        seq,
-        error: err instanceof Error ? err.message : String(err),
+    this.bridgeService
+      .writeAudioFrame(session.sessionId, seq, Buffer.alloc(0), session.sampleRate, 'pcm_s16le', true, session.traceCarrier)
+      .catch((err) => {
+        this.logger.warn({
+          message: 'Failed to write the in-band end-of-stream frame — STT finalizes on the control fallback',
+          sessionId: session.sessionId,
+          seq,
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
-    });
   }
 
   /**
@@ -2144,7 +2134,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * first one drops the in-memory state and the tenant binding that both paths require.
    */
   @OnEvent(STT_SESSION_SUPERSEDED_EVENT)
-  async onSttSessionSuperseded(payload: SttSessionSupersededPayload): Promise<void> {
+  async onSttSessionSuperseded(payload: SttSessionSupersededEvent): Promise<void> {
     const sessionId = payload?.supersededSessionId;
     const tenantId = payload?.tenantId;
     if (!sessionId || !tenantId || sessionId === payload.supersedingSessionId) return;
