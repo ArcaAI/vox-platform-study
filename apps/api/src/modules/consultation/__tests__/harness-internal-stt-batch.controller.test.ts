@@ -82,6 +82,9 @@ describe('HarnessInternalController — STT batch-trigger routes (Task 5)', () =
       consultationId: 'consultation-1',
       mediaId: 'media-1',
       language: 'en',
+      // TASK-1004 — the request's `language` is normalized to a mode and sent as the named kwargs.
+      languageMode: 'en',
+      languageModeSource: 'request',
     });
     expect(result).toEqual({ jobId: 'job-1', status: TranscriptionJobStatus.QUEUED });
   });

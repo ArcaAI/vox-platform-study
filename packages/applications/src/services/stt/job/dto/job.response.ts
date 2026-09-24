@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TranscriptionJobStatus, TranscriptionJobType } from '@arcaai/domains';
 import { JsonValue } from '@arcaai/domains';
 import { PipelineResponse } from '../../pipeline/dto';
+import { LanguageResolutionResponse } from '../../../../common/language/language-resolution.response';
 
 /**
  * TASK-999 §3.1 C-2 — which entry of `resolvedSpec.fallback.chain` actually
@@ -57,8 +58,7 @@ export class TranscriptionJobResponse {
   resolvedSpec?: JsonValue | null;
 
   @ApiPropertyOptional({
-    description:
-      'TASK-999 — the STT session (`stt:session:{id}`) this row mirrors. Set on `STREAMING` rows only; `null` for every `BATCH` row.',
+    description: 'TASK-999 — the STT session (`stt:session:{id}`) this row mirrors. Set on `STREAMING` rows only; `null` for every `BATCH` row.',
     nullable: true,
   })
   streamSessionId?: string | null;
@@ -70,6 +70,14 @@ export class TranscriptionJobResponse {
     nullable: true,
   })
   servedBy?: ServedByResponse | null;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-1004 — the language RECEIPT the worker reported for this job: the spoken-language mode requested and who declared it (request > consultation > agent > auto), and what the serving engine applied (`degraded` + `reason` when only partially). `null` = not reported (a running job, or a worker that predates it).',
+    type: () => LanguageResolutionResponse,
+    nullable: true,
+  })
+  languageResolution?: LanguageResolutionResponse | null;
 
   @ApiPropertyOptional({
     description:

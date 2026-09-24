@@ -46,6 +46,10 @@ import {
   RecordSessionEndpointResponse,
   TranscriptionJobService,
   TranscriptionRealtimeService,
+  IConsultationService,
+  normalizeLanguageMode,
+  requestedLanguageMode,
+  type LanguageModeSource,
 } from '@arcaai/applications';
 import type { ResolvedTextFallback } from '@arcaai/applications';
 import { AgentSessionKind, AgentStepStatus, AgentStepType, JsonValue, TranscriptionJobStatus, TranscriptionJobType } from '@arcaai/domains';
@@ -78,6 +82,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -125,10 +130,22 @@ class HarnessCreateSttBatchJobRequest {
   @IsUUID(7)
   mediaId?: string;
 
-  @ApiPropertyOptional({ description: 'Language hint forwarded to the worker.' })
+  @ApiPropertyOptional({
+    description: 'Language hint forwarded to the worker (normalized to a spoken-language mode; 400 LANGUAGE_MODE_UNKNOWN otherwise).',
+  })
   @IsOptional()
   @IsString()
+  @MaxLength(64)
   language?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "TASK-1004 — spoken-language mode id (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`); wins over `language`. Omit both to inherit the consultation's declared mode. The workflow node names only the agent; this never chooses the engine.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  languageMode?: string;
 }
 
 class HarnessSttBatchJobResponse {
@@ -482,6 +499,10 @@ export class HarnessInternalController {
     // clear 500 (never a silent no-op) if these are absent when called.
     @Optional() private readonly transcriptionJobService?: TranscriptionJobService,
     @Optional() private readonly transcriptionRealtimeService?: TranscriptionRealtimeService,
+    // TASK-1004 — the consultation's declared spoken-language mode, for a workflow run's batch job
+    // that declares none. Optional + TRAILING for the same arity reason as the two above; absent,
+    // the job simply carries no mode and STT applies the agent's own.
+    @Optional() @Inject(IConsultationService) private readonly consultationService?: IConsultationService,
   ) {}
 
   @Get('policy')
@@ -1178,6 +1199,8 @@ export class HarnessInternalController {
     }
     const jobService = this.transcriptionJobService;
     const realtimeService = this.transcriptionRealtimeService;
+    // TASK-1004 — the explicit mode, normalized; 400 LANGUAGE_MODE_UNKNOWN before any I/O.
+    const requestedMode = requestedLanguageMode(dto);
     return this.cls.run(async () => {
       this.cls.set('tenantId', dto.tenantId);
 
@@ -1204,9 +1227,26 @@ export class HarnessInternalController {
         consultationId: dto.consultationId,
         mediaId: job.mediaId ?? undefined,
         language: dto.language,
+        ...(await this.batchLanguage(dto.consultationId, requestedMode)),
       });
       return { jobId: job.id, status: job.status };
     });
+  }
+
+  /**
+   * TASK-1004 — a workflow run's batch job mode: the request's, else the consultation's declared
+   * one (read through the consultation service, tenant-scoped in the CLS set above — a foreign id
+   * is 404), else none (STT applies the agent's own). Engine-blind: the node named the agent.
+   */
+  private async batchLanguage(
+    consultationId: string | undefined,
+    requestedMode: string | null,
+  ): Promise<{ languageMode?: string; languageModeSource?: LanguageModeSource }> {
+    if (requestedMode) return { languageMode: requestedMode, languageModeSource: 'request' };
+    if (!consultationId || !this.consultationService) return {};
+    const consultation = await this.consultationService.getById(consultationId);
+    const inherited = normalizeLanguageMode(consultation?.language);
+    return inherited ? { languageMode: inherited, languageModeSource: 'consultation' } : {};
   }
 
   /**

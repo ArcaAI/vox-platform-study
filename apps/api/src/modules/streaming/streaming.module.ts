@@ -3,6 +3,7 @@ import {
   AiProviderConnectionServiceModule,
   AiRoutingPolicyServiceModule,
   AsrAgentResolverServiceModule,
+  AsrLanguageCapabilityServiceModule,
   DnaWritingStyleServiceModule,
   EffectiveSettingsModule,
   EntitlementsServiceModule,
@@ -95,6 +96,8 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
     // TASK-861 — the ONE resolution path (agent → ResolvedAsrSpec + credentials)
     // for stream/session, transcribe and the fallback surfaces.
     AsrAgentResolverServiceModule,
+    // TASK-1004 — per-agent language capability for `GET audio/transcription-jobs/language-modes`.
+    AsrLanguageCapabilityServiceModule,
     // Deprecated (TASK-861, removed in R4): the tenant-wide STT fallback pointer +
     // BYO provider overrides for the legacy `pipelineId` path only.
     TenantSttConfigServiceModule,

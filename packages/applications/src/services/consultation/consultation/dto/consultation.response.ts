@@ -72,21 +72,17 @@ export class ConsultationResponse {
   status?: ConsultationStatus;
 
   /**
-   * TASK-932 §3.7 / TASK-1001 — the consultation's SOURCE language, as DECLARED at open (`en`,
-   * `ml`, or a code-switch mode such as `ml-en`).
-   *
-   * A first-class field rather than a `metadata` reach-through, so the API contract does not move
-   * when the storage does: the marker currently lives under `metadata.summaryLanguage` because
-   * `Consultation.language` is not surfaced by the domain entity, and promoting it is a
-   * domain-layer change. Every reader goes through `readSummaryLanguage`; this is the only shape
-   * a client ever sees.
+   * TASK-932 §3.7 / TASK-1001 / TASK-1004 — the consultation's declared SOURCE (spoken) language:
+   * the normalized spoken-language mode stored in `Consultation.spokenLanguageMode` (`en`, `ml`,
+   * `ml-en`, `auto`, …), or — for one release, on a row the backfill could not normalize — the
+   * legacy `metadata.summaryLanguage` tag. Every reader goes through `readSpokenLanguageMode`.
    *
    * It is NOT the language the notes are written in (owner decision 2026-09-23): that is the
    * tenant's output-language policy, else the platform default (English). `undefined` = undeclared.
    */
   @ApiPropertyOptional({
     description:
-      "BCP-47 tag of the consultation's SOURCE language as declared at open (`en`, `ml`, or a code-switch mode such as `ml-en`). Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared.",
+      "The consultation's declared SOURCE (spoken) language mode (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`), inherited by every live and batch transcription of this consultation that declares none. Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared.",
     example: 'ml-en',
   })
   language?: string;

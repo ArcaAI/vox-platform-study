@@ -51,6 +51,7 @@ import {
   InternalStartJobRequest,
   InternalUpdateProgressRequest,
 } from './dto';
+import { languageResolutionFromWire } from '../../../common/language';
 
 @Injectable()
 export class SttInternalService extends BaseService implements ISttInternalService {
@@ -653,6 +654,15 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     const servedBy = resolveServedBy(job.resolvedSpec ?? null, dto.engine);
     if (servedBy) {
       job.servedBy = servedBy as unknown as JsonValue;
+    }
+
+    // TASK-1004 — the worker's language receipt, camelCased through the ONE projector and kept
+    // beside the dispatch facts of the attempt it describes (see `BatchDispatchEnvelope`). A
+    // malformed one is dropped: a completion never fails over a display/audit fact.
+    const languageResolution = dto.languageResolution ? languageResolutionFromWire(dto.languageResolution) : null;
+    if (languageResolution) {
+      const envelope = (job.dispatchEnvelope as Record<string, unknown> | null | undefined) ?? {};
+      job.dispatchEnvelope = { ...envelope, languageResolution } as unknown as JsonValue;
     }
 
     // Encrypt resultText/resultMetadata into the ciphertext

@@ -1,6 +1,6 @@
 import { ConsultationEntity, ContextItemEntity, UserEntity, DepartmentEntity } from '@arcaai/domains';
 import { ConsultationResponse, DoctorInfo, DepartmentInfo } from './dto';
-import { readSummaryLanguage } from './summary-language';
+import { readSpokenLanguageMode } from './summary-language';
 import { governingRunOf } from '../governing-engine';
 import { ContextDtoMapper } from '../context/context.dto.mapper';
 
@@ -28,10 +28,10 @@ export class ConsultationDtoMapper {
       appointmentDate: entity.appointmentDate.toISOString().split('T')[0],
       parentConsultationId: entity.parentConsultationId ?? undefined,
       status: entity.status,
-      // TASK-932 §3.7 — read through the ONE reader, so a malformed marker reads as absent here
-      // exactly as it does on the prompt paths, and so promoting the storage to the
-      // `Consultation.language` column is a change to `readSummaryLanguage` and nothing else.
-      language: readSummaryLanguage(entity.metadata) ?? undefined,
+      // TASK-932 §3.7 / TASK-1004 D-3 — read through the ONE reader: the typed
+      // `spokenLanguageMode` column first, the legacy `metadata.summaryLanguage` marker for one
+      // release after it, so every surface reports the same declaration.
+      language: readSpokenLanguageMode(entity) ?? undefined,
       metadata: entity.metadata as Record<string, unknown> | undefined,
       // the OCC row version, so a client can build the `If-Match`
       // header the state-machine transition routes require. Also feeds

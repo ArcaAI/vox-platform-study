@@ -1,5 +1,11 @@
-import { AgentAssignmentResponse, AgentTask, IAgentAssignmentService, UpsertAgentAssignmentRequest } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  AgentAssignmentResponse,
+  AgentTask,
+  AsrLanguageCapabilityService,
+  IAgentAssignmentService,
+  UpsertAgentAssignmentRequest,
+} from '@arcaai/applications';
+import { Body, Controller, Delete, Get, Inject, Optional, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CanManage, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIfMatch } from '../../decorators';
 
@@ -16,7 +22,23 @@ import { CanManage, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIf
 @Controller('admin/agent-assignments')
 @CanManage('Agent')
 export class AgentAssignmentAdminController {
-  constructor(@Inject(IAgentAssignmentService) private readonly assignments: IAgentAssignmentService) {}
+  constructor(
+    @Inject(IAgentAssignmentService) private readonly assignments: IAgentAssignmentService,
+    // TASK-1004 §4.5 — advisory language warnings for an ASR assignment. Optional: absent, the
+    // response is exactly what it was.
+    @Optional() private readonly languageCapability?: AsrLanguageCapabilityService,
+  ) {}
+
+  /**
+   * TASK-1004 §4.5 — a SPEECH_TO_TEXT assignment decides the tenant's (or department's) engine, so
+   * it is where an admin learns which spoken-language modes that engine serves only partially.
+   * Advisory: the assignment is already written, and nothing is re-routed.
+   */
+  private async withLanguageWarnings(assignment: AgentAssignmentResponse): Promise<AgentAssignmentResponse> {
+    if (assignment.task !== AgentTask.SPEECH_TO_TEXT || !this.languageCapability) return assignment;
+    const warnings = await this.languageCapability.warningsForAgent(assignment.tenantId, assignment.agentSlug);
+    return warnings.length > 0 ? { ...assignment, warnings } : assignment;
+  }
 
   @Get()
   @ApiOperation({ summary: 'List the caller tenant’s agent assignments (plus SYSTEM’s platform defaults), optionally by task' })
@@ -41,7 +63,7 @@ export class AgentAssignmentAdminController {
   @ApiResponse({ status: 400, description: 'Unsupported scope, or a slug with no ACTIVE PUBLISHED agent of that task visible to the tenant.' })
   @ApiResponse({ status: 404, description: 'The referenced department does not belong to the caller tenant.' })
   async create(@Body() request: UpsertAgentAssignmentRequest): Promise<AgentAssignmentResponse> {
-    return this.assignments.upsert(request);
+    return this.withLanguageWarnings(await this.assignments.upsert(request));
   }
 
   @Patch()
@@ -60,7 +82,7 @@ export class AgentAssignmentAdminController {
     @Body() request: UpsertAgentAssignmentRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<AgentAssignmentResponse> {
-    return this.assignments.upsert(request, expectedFromHeader ?? request.expectedVersion);
+    return this.withLanguageWarnings(await this.assignments.upsert(request, expectedFromHeader ?? request.expectedVersion));
   }
 
   @Delete(':id')

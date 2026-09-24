@@ -11,6 +11,7 @@ import {
 } from '../../baseServices/observability/trace-propagation';
 import { StreamSessionEcho, StreamingTranscriptMessage, StreamingServerMessage, StreamingStatusMessage } from './dto';
 import { deriveSpeakerLabel } from './speaker-label';
+import { languageResolutionFromWire } from '../../../common/language';
 import { metadataInForce } from './stream-metadata-timeline';
 // TASK-985 M-03 — the gateway's Prometheus contract. Imported for the relay-lag observation
 // only; registration is idempotent and side-effect-free beyond the default register.
@@ -719,6 +720,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     const utterance = data.utterance_index != null && data.utterance_index !== '' ? Number.parseInt(data.utterance_index, 10) : undefined;
     const isFallback =
       data.is_fallback != null && data.is_fallback !== '' ? data.is_fallback === '1' || data.is_fallback.toLowerCase() === 'true' : undefined;
+    const receipt = data.language_resolution ? languageResolutionFromWire(data.language_resolution) : null;
     return {
       type: 'status',
       status: data.status,
@@ -729,6 +731,9 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       ...(data.active === 'primary' || data.active === 'fallback' ? { active: data.active } : {}),
       ...(isFallback !== undefined ? { is_fallback: isFallback } : {}),
       ...(utterance != null && Number.isFinite(utterance) && utterance >= 0 ? { utterance_index: utterance } : {}),
+      // TASK-1004 — the re-resolved language receipt a `provider_switched` entry carries as a JSON
+      // string. Parsed + camelCased through the ONE projector; a malformed one is dropped.
+      ...(receipt ? { languageResolution: receipt } : {}),
     };
   }
 

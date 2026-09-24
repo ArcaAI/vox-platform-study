@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDateString, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsObject, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -33,4 +33,20 @@ export class UpdateConsultationRequest {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  /**
+   * TASK-1004 (OD-2 (a)) — change the consultation's declared spoken-language mode between
+   * recordings, so every LATER live session, batch job and workflow run inherits what the
+   * clinician last chose. Normalized like `open`'s; 400 `LANGUAGE_MODE_UNKNOWN` when it names no
+   * mode. Never the note's language.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Spoken-language mode id (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`, or a BCP-47 tag such as `ml-IN`) inherited by every later live and batch transcription of this consultation that declares none. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.',
+    example: 'ml-en',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  languageMode?: string;
 }

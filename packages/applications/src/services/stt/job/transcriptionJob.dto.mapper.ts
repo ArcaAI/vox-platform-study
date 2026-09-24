@@ -1,6 +1,7 @@
 import { TranscriptionJobEntity } from '@arcaai/domains';
 import { ServedByResponse, TranscriptionJobResponse } from './dto';
 import { PipelineDtoMapper } from '../pipeline/pipeline.dto.mapper';
+import { languageResolutionFromWire } from '../../../common/language';
 
 export class TranscriptionJobDtoMapper {
   static toResponse(entity: TranscriptionJobEntity): TranscriptionJobResponse {
@@ -16,6 +17,11 @@ export class TranscriptionJobDtoMapper {
       // a row written before TASK-999 carries `null` and stays `null`.
       streamSessionId: entity.streamSessionId ?? null,
       servedBy: (entity.servedBy as unknown as ServedByResponse | null | undefined) ?? null,
+      // TASK-1004 — the worker's language receipt, persisted beside the dispatch facts of the
+      // attempt it describes; re-validated on the way out so a hand-edited row never leaks junk.
+      languageResolution: languageResolutionFromWire(
+        (entity.dispatchEnvelope as { languageResolution?: unknown } | null | undefined)?.languageResolution,
+      ),
       resultWordCount: entity.resultWordCount ?? null,
       resultCharCount: entity.resultCharCount ?? null,
       // Computed, never stored: the entity already derives it from

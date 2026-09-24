@@ -1,4 +1,5 @@
 import {
+  AsrLanguageCapabilityService,
   AgentBundleResponse,
   AgentResponse,
   ListAgentLineagesQuery,
@@ -18,7 +19,7 @@ import {
   TestAgentRequest,
   UpdateAgentRequest,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Optional, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { CanManage, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIfMatch } from '../../decorators';
@@ -48,7 +49,12 @@ import { CanManage, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIf
 @Controller('admin/agents')
 @CanManage('Agent')
 export class AgentAdminController {
-  constructor(@Inject(IAgentService) private readonly agentService: IAgentService) {}
+  constructor(
+    @Inject(IAgentService) private readonly agentService: IAgentService,
+    // TASK-1004 §4.5 — advisory language warnings when a SPEECH_TO_TEXT agent is published.
+    // Optional: absent, the publish response is exactly what it was.
+    @Optional() private readonly languageCapability?: AsrLanguageCapabilityService,
+  ) {}
 
   /**
    * TASK-890 OD-M/OD-K — `includeTemplates` is GONE, not deprecated. It used to append the SYSTEM
@@ -177,7 +183,11 @@ export class AgentAdminController {
   @ApiResponse({ status: 400, description: 'Blocking findings — nothing was published; the report is stored on the row.' })
   @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
   async publish(@Param('id') id: string, @Body() request: PublishAgentRequest): Promise<AgentResponse> {
-    return this.agentService.publish(id, request ?? {});
+    const published = await this.agentService.publish(id, request ?? {});
+    // TASK-1004 §4.5 — advisory, after the publish succeeded; never blocks, never re-routes.
+    if (published.task !== AgentTask.SPEECH_TO_TEXT || !this.languageCapability) return published;
+    const warnings = await this.languageCapability.warningsForAgent(published.tenantId, published.slug);
+    return warnings.length > 0 ? { ...published, warnings } : published;
   }
 
   @Post(':id/versions')

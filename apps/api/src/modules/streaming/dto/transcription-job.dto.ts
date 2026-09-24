@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, Min, MinLength } from 'class-validator';
+import { LanguageResolutionResponse } from '@arcaai/applications';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export const AUDIO_BUCKET = 'hope-audio';
 
@@ -95,10 +96,30 @@ export class TranscribeFileRequest {
   @IsOptional()
   consultationId?: string;
 
-  @ApiPropertyOptional({ description: 'Override pipeline language (ISO 639-1 code, e.g. en, vi, auto)' })
+  @ApiPropertyOptional({
+    description:
+      'Spoken language as a BCP-47 tag (`en-US`, `ml-IN`) or a mode id — normalized to one spoken-language mode. `languageMode` wins when both are sent. ' +
+      '400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.',
+  })
   @IsString()
   @IsOptional()
+  @MaxLength(64)
   language?: string;
+
+  /**
+   * TASK-1004 — the spoken-language MODE for this recording. Omit it (and `language`) to inherit
+   * the consultation's declared mode (`consultationId`), else the ASR agent's own default. It
+   * configures decoding only; the engine is the agent's.
+   */
+  @ApiPropertyOptional({
+    description:
+      "Spoken-language mode id: 'en', 'ml', 'ml-en', 'vi', 'vi-en', 'auto'. Takes precedence over `language`. Omit both to inherit the consultation's declared mode, " +
+      'else the ASR agent’s own default. Never chooses the engine. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode. The job reports what was applied as `languageResolution`.',
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(64)
+  languageMode?: string;
 
   /**
    * The clinician this recording belongs to.
@@ -162,18 +183,26 @@ export class CreateStreamSessionRequest {
   @IsOptional()
   sampleRate?: number;
 
-  @ApiPropertyOptional({ description: 'Override pipeline language (ISO 639-1 code, e.g. en, vi, auto)' })
+  @ApiPropertyOptional({
+    description:
+      'Spoken language as a BCP-47 tag (`en-US`, `ml-IN`) or a mode id — normalized to one spoken-language mode. `languageMode` wins when both are sent. ' +
+      '400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.',
+  })
   @IsString()
   @IsOptional()
+  @MaxLength(64)
   language?: string;
 
   @ApiPropertyOptional({
     description:
-      "End-user language mode id , e.g. 'en', 'ml', 'ml-en' (Malayalam+English code-switch), 'auto'. " +
-      'Resolved by STT against the session engine; a mode no configured engine can serve is rejected (422). Takes precedence over `language`.',
+      "Spoken-language mode id: 'en', 'ml', 'ml-en' (Malayalam+English code-switch), 'vi', 'vi-en', 'auto'. Takes precedence over `language`. " +
+      "Omit both to inherit the consultation's declared mode (`consultationId`), else the ASR agent's own default. " +
+      'It configures decoding only — it never chooses the engine. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode; ' +
+      '422 when no engine in the agent’s chain can serve it. What was applied is echoed as `languageResolution`.',
   })
   @IsString()
   @IsOptional()
+  @MaxLength(64)
   languageMode?: string;
 
   @ApiPropertyOptional({
@@ -341,6 +370,19 @@ export class StreamSessionResponse {
   @IsNumber()
   @IsOptional()
   sessionEpochMs?: number;
+
+  /**
+   * TASK-1004 — the language RECEIPT: the mode the precedence resolved (request > consultation >
+   * agent > auto), who declared it, and what the serving engine actually applied (`degraded` +
+   * `reason` when only partially). Also on the WS `ready` frame and on every `provider_switched`.
+   */
+  @ApiPropertyOptional({
+    type: LanguageResolutionResponse,
+    description: 'What the session was asked for and what its serving engine applied. Absent against an STT that predates the receipt.',
+  })
+  @IsObject()
+  @IsOptional()
+  languageResolution?: LanguageResolutionResponse;
 }
 
 export class BatchTranscribeResponse {

@@ -13,7 +13,7 @@ import type {
 } from '../../ai-provider-connection/IProviderConnectionService';
 import type { SttProviderOverrides } from '../../tenant-stt-config/platform-limits';
 import { AsrSpecBuildError, asrChainModels, buildResolvedAsrSpec, type AsrConnectionBinding } from './build-resolved-asr-spec';
-import { GoverningWorkflowAsrReader, workflowAsrAgentUnavailable } from './governing-workflow-asr';
+import { GoverningWorkflowAsrReader, workflowAsrAgentUnavailable, type ConsultationAsrContext } from './governing-workflow-asr';
 
 export interface ResolveAsrSpecInput {
   tenantId: string;
@@ -27,6 +27,14 @@ export interface ResolveAsrSpecInput {
    * An unknown or foreign id is a 404. Absent ⇒ resolution is exactly what it was before.
    */
   consultationId?: string | null;
+  /**
+   * TASK-1004 — the caller declared no spoken-language mode, so it will inherit the
+   * consultation's. With an explicit `agentSlug` the consultation is otherwise never read; this
+   * asks for that ONE read (same tenant-scoped 404) so {@link ResolvedAsrSession.consultationLanguageMode}
+   * is populated. Without an `agentSlug` the consultation is read anyway and the flag is moot.
+   * It never influences which agent resolves.
+   */
+  inheritConsultationLanguage?: boolean;
 }
 
 /** What one STT session / batch job needs from the gateway: the spec, plus the credentials that ride beside it. */
@@ -65,6 +73,14 @@ export interface ResolvedAsrSession {
    * tester can see WHICH workflow drove the engine.
    */
   workflowDefinitionSlug?: string | null;
+  /**
+   * TASK-1004 — the consultation's declared spoken-language mode, present (possibly `null` =
+   * undeclared) whenever this resolution READ the consultation: always when `consultationId` was
+   * given without an `agentSlug`, and with one only when `inheritConsultationLanguage` asked.
+   * Absent = the consultation was not read. A decoding input for the caller's precedence
+   * (request > consultation > agent > auto); resolution itself never looked at it.
+   */
+  consultationLanguageMode?: string | null;
 }
 
 const rec = (value: unknown): Record<string, unknown> =>
@@ -131,7 +147,7 @@ export class AsrAgentResolverService {
    */
   async resolve(input: ResolveAsrSpecInput): Promise<ResolvedAsrSession> {
     const { tenantId } = input;
-    const { agent, workflowDefinitionSlug } = await this.resolvePrimary(input);
+    const { agent, workflowDefinitionSlug, consultation } = await this.resolvePrimary(input);
 
     const fallbackAgent = await this.resolveFallbackAgent(agent, tenantId);
 
@@ -175,11 +191,32 @@ export class AsrAgentResolverService {
       ...(fundingTier ? { fundingTier } : {}),
       ...(contextSchema ? { contextSchema } : {}),
       ...(workflowDefinitionSlug ? { workflowDefinitionSlug } : {}),
+      ...(consultation ? { consultationLanguageMode: consultation.spokenLanguageMode } : {}),
     };
   }
 
+  /**
+   * TASK-1004 — the ASR engine CHAIN (model formats, primary first) the agent would run on, for
+   * the language-capability catalog and the configuration-time warnings. The SAME agent + fallback
+   * resolution as {@link resolve} (explicit slug, else the tenant assignment cascade), minus the
+   * credentials and the spec build: judging capability needs neither, and a catalog read must not
+   * decrypt anybody's key.
+   */
+  async resolveChainFormats(input: { tenantId: string; agentSlug?: string | null }): Promise<{ agentSlug: string; formats: string[] }> {
+    const { agent } = await this.resolvePrimary({ tenantId: input.tenantId, agentSlug: input.agentSlug ?? null, departmentId: null });
+    const fallbackAgent = await this.resolveFallbackAgent(agent, input.tenantId);
+    const { primary, fallbackChain } = asrChainModels(agent, fallbackAgent);
+    const formats: string[] = [];
+    for (const model of [primary, ...fallbackChain]) {
+      if (model?.format && !formats.includes(model.format)) formats.push(model.format);
+    }
+    return { agentSlug: agent.slug, formats };
+  }
+
   /** TASK-1002 — tiers 1 → 3 for the PRIMARY agent. See {@link resolve}. */
-  private async resolvePrimary(input: ResolveAsrSpecInput): Promise<{ agent: ResolvedAgent; workflowDefinitionSlug?: string }> {
+  private async resolvePrimary(
+    input: ResolveAsrSpecInput,
+  ): Promise<{ agent: ResolvedAgent; workflowDefinitionSlug?: string; consultation?: ConsultationAsrContext }> {
     const { tenantId } = input;
     const cascade = (departmentId: string | null) =>
       this.agents.resolve({
@@ -195,7 +232,15 @@ export class AsrAgentResolverService {
       });
 
     // Tier 1, and every caller without a consultation: byte-identical to the pre-1002 call.
-    if (input.agentSlug || !input.consultationId) return { agent: await cascade(input.departmentId ?? null) };
+    if (input.agentSlug || !input.consultationId) {
+      // TASK-1004 — the one exception: an explicit agent on a consultation-bound request that
+      // declared no language reads the consultation ONCE for its mode (never for the agent).
+      const consultation =
+        input.agentSlug && input.consultationId && input.inheritConsultationLanguage && this.governingWorkflows
+          ? await this.governingWorkflows.readConsultation(tenantId, input.consultationId)
+          : undefined;
+      return { agent: await cascade(input.departmentId ?? null), ...(consultation ? { consultation } : {}) };
+    }
 
     if (!this.governingWorkflows) {
       throw new ServiceUnavailableException('Consultation-governed ASR resolution is not configured on this gateway');
@@ -237,11 +282,11 @@ export class AsrAgentResolverService {
         nodeId: named.nodeId,
         agentSlug: resolved.slug,
       });
-      return { agent: { ...resolved, source: 'workflow' }, workflowDefinitionSlug: named.workflowDefinitionSlug };
+      return { agent: { ...resolved, source: 'workflow' }, workflowDefinitionSlug: named.workflowDefinitionSlug, consultation };
     }
 
     // Tier 3 (→ 4) — the assignment cascade, under the CONSULTATION's department.
-    return { agent: await cascade(consultation.departmentId ?? null) };
+    return { agent: await cascade(consultation.departmentId ?? null), consultation };
   }
 
   /**

@@ -296,6 +296,16 @@ export class InternalCompleteJobRequest {
   @IsOptional()
   @IsIn([...BYTE_SOURCES])
   byteSource?: ByteSource;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-1004 — the language RECEIPT for this job: the mode requested and who declared it, and what the serving engine applied (`requested_mode`, `source`, `applied_mode`, `engine`, `provider`, `params`, `degraded`, `reason` — inner keys snake_case, as `apps/stt` builds it). Persisted camelCase and answered as `languageResolution` on every job read. Absent from a worker that predates it; a malformed one is dropped, never fails the completion.',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsObject()
+  @IsOptional()
+  languageResolution?: Record<string, unknown>;
 }
 
 /**
@@ -311,7 +321,8 @@ export class InternalFailJobRequest {
   errorMessage: string;
 
   @ApiPropertyOptional({
-    description: 'Error code',
+    description:
+      'Error code (free-form). TASK-1004: `LANGUAGE_MODE_UNSUPPORTED` = no engine in the job’s chain can serve its spoken-language mode (not retried).',
     example: 'AUDIO_CORRUPT',
   })
   @IsString()

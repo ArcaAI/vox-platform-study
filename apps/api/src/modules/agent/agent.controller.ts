@@ -16,6 +16,8 @@ import {
   IMediaService,
   IUsageLedgerService,
   LlmStreamUsageCollector,
+  requestedLanguageMode,
+  resolveEffectiveLanguageMode,
   SecretsService,
   TranscriptionJobService,
   TranscriptionRealtimeService,
@@ -72,6 +74,7 @@ import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
 import { classifyTtsProvider, isAttributableTtsProvider } from '../speech/tts-provider-classification';
+import { AgentTranscriptionRequest } from './dto/agent-transcription.request';
 
 /** Plain interfaces (not class-validator DTOs) so the global pipe passes the body through; TIER 3 validation runs against the agent's own `inputSchema`. */
 export interface AgentInvocationBody {
@@ -88,11 +91,6 @@ export interface AgentInvocationBody {
 export interface AgentSpeechBody {
   text?: string;
   ssml?: string;
-}
-export interface AgentTranscriptionBody {
-  mediaId: string;
-  consultationId?: string;
-  language?: string;
 }
 
 export interface AgentTextInvocationResponse {
@@ -756,30 +754,27 @@ export class AgentController {
   @ApiOperation({
     summary: 'Start a batch transcription with a SPEECH_TO_TEXT agent (returns a TranscriptionJob)',
     description:
-      'Body `{ mediaId, consultationId?, language? }` — the media must already be uploaded. The agent is resolved to a `ResolvedAsrSpec` ' +
+      'Body `{ mediaId, consultationId?, language?, languageMode? }` — the media must already be uploaded. The spoken-language mode is the ' +
+      "request's (`languageMode` > `language`), else the consultation's declared one, else the agent's own; it never chooses the engine. " +
+      'The agent is resolved to a `ResolvedAsrSpec` ' +
       '(TASK-861) the job is keyed to and reproducible from; no pipeline row is involved. Progress streams from the returned `sseUrl`.',
   })
   @ApiParam({ name: 'slug', type: String })
-  // TASK-971 (F-F1) — see the note on `invocations`: `AgentTranscriptionBody` stays a plain
-  // interface, so the shape is documented rather than derived from a DTO.
+  // TASK-1004 — the body is a real DTO now (`AgentTranscriptionRequest`): unlike `invocations`,
+  // its shape is the gateway's, not the agent's `inputSchema`, so an undeclared field is refused.
   @ApiBody({
     required: true,
+    type: AgentTranscriptionRequest,
     description:
       'Batch transcription of media ALREADY uploaded through the media plane — this route takes an id, never audio bytes. ' +
       'The answer is a 201 carrying the job and an `sseUrl` to watch it on; the transcript is not in the response.',
-    schema: {
-      type: 'object',
-      required: ['mediaId'],
-      properties: {
-        mediaId: { type: 'string', description: 'Id of the uploaded media object to transcribe. Another tenant’s id is a 404, like an unknown one.' },
-        consultationId: { type: 'string', description: 'Optional consultation to attach the resulting transcript to.' },
-        language: { type: 'string', description: 'Optional language hint forwarded to the ASR worker; omit to use the agent’s own resolved spec.' },
-      },
-      example: { mediaId: '019a1f1e-2c3d-7e4f-8a90-1b2c3d4e5f60' },
-    },
   })
   @ApiResponse({ status: 201, description: 'The transcription job.' })
-  @ApiResponse({ status: 400, description: 'Missing mediaId, or the agent is not a SPEECH_TO_TEXT agent.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Missing mediaId, the agent is not a SPEECH_TO_TEXT agent, or `LANGUAGE_MODE_UNKNOWN` — `languageMode` / `language` names no spoken-language mode.',
+  })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent (or media).' })
   @ApiResponse({ status: 409, description: 'The agent cannot become a runnable ASR spec (no primary model), or a provider veto.' })
   // TASK-957 F-4 — the tenant's own monthly spend ceiling (D12). Documented on every metered
@@ -789,9 +784,11 @@ export class AgentController {
     status: 402,
     description: 'The tenant has reached the monthly spend limit it set (`monthlySpendLimitMicros`). Refused before anything is spent.',
   })
-  async transcribe(@Param('slug') slug: string, @Body() body: AgentTranscriptionBody): Promise<AgentTranscriptionResponse> {
+  async transcribe(@Param('slug') slug: string, @Body() body: AgentTranscriptionRequest): Promise<AgentTranscriptionResponse> {
     const tenantId = this.requireTenant();
     if (!body?.mediaId) throw new BadRequestException('`mediaId` is required.');
+    // TASK-1004 — the explicit mode, normalized; 400 LANGUAGE_MODE_UNKNOWN before any I/O.
+    const requestedMode = requestedLanguageMode(body);
     // TASK-957 F-4 — the ceiling, before a job row exists or a worker is dispatched. This route
     // carries no meter quota of its own (batch minutes are metered on COMPLETION, when the audio
     // length is known), so the ceiling is the only pre-flight money gate it has.
@@ -802,7 +799,22 @@ export class AgentController {
     // TASK-861 — one resolution: explicit slug → PUBLISHED ACTIVE SPEECH_TO_TEXT agent
     // (404-over-403 inside) → ResolvedAsrSpec. Credentials never enter the job row or
     // the queue message; the worker pulls them at execution time.
-    const { spec } = await this.asrResolver.resolve({ tenantId, agentSlug: slug, departmentId: null });
+    //
+    // TASK-1004 — a request that declares no language inherits the consultation's: the resolver
+    // reads it ONCE (tenant-scoped, 404 on a foreign id) and never lets it touch the agent choice.
+    const inherit = Boolean(body.consultationId && !requestedMode);
+    const resolved = await this.asrResolver.resolve({
+      tenantId,
+      agentSlug: slug,
+      departmentId: null,
+      ...(inherit ? { consultationId: body.consultationId, inheritConsultationLanguage: true } : {}),
+    });
+    const { spec } = resolved;
+    const effective = resolveEffectiveLanguageMode({ request: requestedMode, consultation: resolved.consultationLanguageMode ?? null });
+    const language =
+      effective.source === 'request' || effective.source === 'consultation'
+        ? { languageMode: effective.mode, languageModeSource: effective.source }
+        : {};
     const media = await this.mediaService.fetchById(body.mediaId);
     const job = await this.jobService.createBatchJob({
       agentVersionId: spec.agent.versionId,
@@ -821,6 +833,8 @@ export class AgentController {
         mediaId: body.mediaId,
         language: body.language,
         userId: this.cls.get('user')?.id,
+        // TASK-1004 — request > consultation, as the named kwargs; absent → STT applies the agent's own.
+        ...language,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

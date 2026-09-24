@@ -21,16 +21,12 @@
  * Reads go through the domain repositories only; the service layer never touches Prisma.
  */
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import {
-  AgentRepository,
-  AgentTask,
-  ConsultationRepository,
-  WorkflowDefinitionRepository,
-  WorkflowRunRepository,
-} from '@arcaai/domains';
+import { AgentRepository, AgentTask, ConsultationRepository, WorkflowDefinitionRepository, WorkflowRunRepository } from '@arcaai/domains';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { readGoverningEngineMarker } from '../../consultation/governing-engine';
 import { readWorkflowSelectionMarker } from '../../consultation/consultation/workflow-selection';
+import { readSpokenLanguageMode } from '../../consultation/consultation/summary-language';
+import { normalizeLanguageMode } from '../../../common/language';
 import { readAgentRef } from '../../consultation/live-documentation/realtime/realtime-node-registry';
 import { consultationDispatchSessionId } from '../../workflow-run/workflow-run.service';
 
@@ -79,8 +75,7 @@ interface CompiledStageLike {
   nodes?: unknown;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 function stagesOf(value: unknown): CompiledStageLike[] {
   return Array.isArray(value) ? (value.filter(isRecord) as CompiledStageLike[]) : [];
@@ -120,6 +115,12 @@ export function workflowAgentNodes(compiled: unknown): WorkflowAgentNodeRef[] {
 export interface ConsultationAsrContext {
   departmentId: string | null;
   metadata: unknown;
+  /**
+   * TASK-1004 — the consultation's declared spoken-language mode (typed column first, legacy
+   * marker after it), normalized; `null` = undeclared. Carried out of the SAME read so a session
+   * inherits it with no extra round trip. It is a decoding input only — never an agent selector.
+   */
+  spokenLanguageMode: string | null;
 }
 
 /** The workflow version a consultation is governed by. */
@@ -156,7 +157,11 @@ export class GoverningWorkflowAsrReader {
   async readConsultation(tenantId: string, consultationId: string): Promise<ConsultationAsrContext> {
     const consultation = await tolerant(() => this.consultations.findById(consultationId));
     if (!consultation || consultation.tenantId !== tenantId) throw new NotFoundException('Consultation not found');
-    return { departmentId: consultation.departmentId ?? null, metadata: consultation.metadata };
+    return {
+      departmentId: consultation.departmentId ?? null,
+      metadata: consultation.metadata,
+      spokenLanguageMode: normalizeLanguageMode(readSpokenLanguageMode(consultation)),
+    };
   }
 
   /**
@@ -218,9 +223,7 @@ export class GoverningWorkflowAsrReader {
   private async readPinnedVersion(tenantId: string, workflowRunId: string): Promise<GoverningWorkflow | null> {
     // The marker carries the RUN's `runId`, not the WorkflowRun row id: consultation dispatch
     // keys the row `(tenantId, 'wf-' + runId, runId)`, the same key `WorkflowRunService` reads.
-    const run = await tolerant(() =>
-      this.workflowRuns.findByRunKey(tenantId, consultationDispatchSessionId(workflowRunId), workflowRunId),
-    );
+    const run = await tolerant(() => this.workflowRuns.findByRunKey(tenantId, consultationDispatchSessionId(workflowRunId), workflowRunId));
     if (!run || run.tenantId !== tenantId || !run.workflowVersionId) return null;
     const definition = await tolerant(() => this.workflowDefinitions.findById(run.workflowVersionId));
     if (!definition || definition.tenantId !== tenantId || !definition.compiledConfig) return null;
