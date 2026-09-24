@@ -19,9 +19,14 @@ callables.
 |---|---|
 | `src/hope_runtime_models/cache.py` | `ModelCache` (asyncio) and `SyncModelCache` (threads), `CacheStats`, `ModelUnavailableError`, `clamp_cache_ttl_seconds` |
 | `src/hope_runtime_models/metrics.py` | `MetricsSink`, `NullMetricsSink`, `PrometheusMetricsSink`, `EvictionCount` |
-| `src/hope_runtime_models/vram.py` | `make_vram_probe`, `reset_nvml_detection` |
+| `src/hope_runtime_models/vram.py` | `make_vram_probe`, `make_vram_info_probe`, `DeviceMemory`, `reset_nvml_detection` |
+| `src/hope_runtime_models/devices.py` | `Device` (memory + usage probes, load/unload overlap bookkeeping), `gpu_device`, `cpu_device`, `default_device` |
+| `src/hope_runtime_models/residency.py` | `CacheResidency`, `AdmissionPolicy` — what a cache needs to take part in residency control |
+| `src/hope_runtime_models/residency_agent.py` | `ResidencyAgent` — the residency report and the load / unload / policy verbs |
+| `src/hope_runtime_models/residency_api.py` | `build_residency_router` — the `/internal/residency/*` FastAPI routes (imports FastAPI; not re-exported) |
 | `src/hope_runtime_models/resolvable.py` | `check_resolvable`/`check_resolvable_many` — network-free, filesystem-only readiness probes (see below) |
 | `tests/test_cache_contract.py` | The parameterized conformance suite (both cache classes, all clauses) |
+| `tests/test_residency_task1005.py` | The residency agent contract (pinned by `tests/contracts/model-residency-agent.fixture.json`) |
 | `tests/test_resolvable_probes_task890.py` | Readiness-probe tests |
 
 ## Commands
@@ -79,6 +84,22 @@ cache classes so the two cannot drift):
 8. **Min-residency floor** — an entry is never TTL-evicted younger than `_TTL_MIN_SECONDS` (60s) idle, regardless of settings (anti-thrash).
 9. **Every eviction path releases the weights, exactly once** — `unload` is called once per evicted key on ALL SIX paths (explicit `evict`, lazy TTL on `get`, TTL `sweep`, LRU overflow, VRAM pressure, `clear`) for BOTH cache classes.
 10. **Identical stats surface** — `stats()` returns the same `CacheStats` field-for-field from both classes, so one Grafana dashboard reads both.
+
+### Model residency (TASK-1005)
+
+The gateway residency controller decides; each service executes through one agent
+implemented here and mounted by `apps/stt` and `apps/nlp`
+(`GET /internal/residency`, `POST …/load`, `POST …/unload`,
+`PUT …/models/{model_ref}/policy`; shapes pinned in
+`tests/contracts/model-residency-agent.fixture.json`). Clauses, each tested in
+`tests/test_residency_task1005.py`:
+
+1. **`in_flight` is the request/session pin refcount**; an explicit `unload` refuses while it is above zero unless forced (409 `IN_FLIGHT`).
+2. **The operator pin (`admin_pinned`) is not a request pin**: it survives idle TTL and is never LRU/pressure-evicted, only `unload`/`clear` drop it. A per-model TTL override rides with it (`set_policy`).
+3. **Footprints are measured, never estimated**: with `residency=CacheResidency(...)`, a load's `bytes` is the device usage delta around the factory call (NVML free memory on a GPU — `pynvml` or, without it, the driver's `libnvidia-ml` through `ctypes`; process RSS on the CPU). An overlapping load or unload on the same device, a missing probe or a non-positive delta makes it `unknown`. Caches on one device must share one `Device`.
+4. **Explicit loads are serialised per device** (409 `LOAD_IN_PROGRESS` for a second model); a second load of the SAME model joins the cache's single-flight.
+5. **Admission is off by default.** When on, a load that would breach `headroom_percent` evicts idle unpinned models (`pressure`), then waits up to `max_wait_ms`, then raises `AdmissionRejected` (503 + `Retry-After`).
+6. **Metrics**: `model_resident{service,model,device,state}`, `model_resident_bytes`, `model_load_seconds`, `model_evictions_total{service,reason=ttl|lru|pressure|admin|policy}`, emitted by every process that builds the cache. `model_cache_evictions_total` keeps its three legacy reasons.
 
 ### Model readiness probes (`resolvable.py`, TASK-890)
 
