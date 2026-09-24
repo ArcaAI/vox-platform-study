@@ -12,7 +12,7 @@
  */
 
 import { getJson, postJson } from '@/shared/api';
-import type { LmStudioRuntimeResponse, LoadModelRequest, LoadModelResponse, UnloadModelResponse } from './serving-types';
+import type { LmStudioRuntimeResponse, UnloadModelResponse } from './serving-types';
 
 /** Base path of the serving-control plane, relative to `/api/v1`. */
 export const LM_STUDIO_SERVING_BASE = 'admin/inference-engines/lm-studio';
@@ -22,15 +22,13 @@ export function getLmStudioRuntime(): Promise<LmStudioRuntimeResponse> {
   return getJson(`${LM_STUDIO_SERVING_BASE}/runtime`);
 }
 
-/**
- * Load (or RELOAD) one model on an explicit profile.
- *
- * Addressed by `modelKey`, not by the running `identifier`: a model that is not
- * loaded has no identifier, and this is the route that brings it up.
- */
-export function loadLmStudioModel(modelKey: string, body: LoadModelRequest): Promise<LoadModelResponse> {
-  return postJson(`${LM_STUDIO_SERVING_BASE}/models/${encodeURIComponent(modelKey)}/load`, body);
-}
+// Loading a model is NOT this route any more (TASK-1005 §5.1): the gateway
+// removed `{profile}` support from `POST .../models/:key/load` (400) and the
+// route stayed synchronous past Cloudflare's 100s edge timeout for a real
+// LLM load. "Apply & reload" now posts to `admin/model-residency/load`
+// (`useLoadLmStudioModelViaResidency`, `serving-hooks.ts`) — async, and this
+// engine's own `/runtime` read (below) is still how the drawer sees the
+// result once the operation settles.
 
 /**
  * Unload one running instance, addressed by its `identifier`.

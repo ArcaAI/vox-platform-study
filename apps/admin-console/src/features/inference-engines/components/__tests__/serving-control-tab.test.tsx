@@ -80,7 +80,11 @@ function stubFetch({ runtime = RUNTIME, custom }: StubOptions = {}) {
       // The surrounding screen's own reads, so the integration describe below
       // can mount `EngineScreen` against this same stub.
       if (url.pathname === '/api/hope/admin/ai-models/discovery') {
-        return Response.json({ entries: [], probes: [{ provider: url.searchParams.get('provider'), probeStatus: 'ok', latencyMs: 8 }], probedAt: '2026-09-21T08:00:00.000Z' });
+        return Response.json({
+          entries: [],
+          probes: [{ provider: url.searchParams.get('provider'), probeStatus: 'ok', latencyMs: 8 }],
+          probedAt: '2026-09-21T08:00:00.000Z',
+        });
       }
       if (url.pathname.startsWith('/api/hope/admin/providers/llm/')) {
         return Response.json({ tenantId: 'sys', service: 'llm', provider: 'lm-studio', baseUrl: null, hasKey: false, enabled: false, version: 0 });
@@ -177,19 +181,30 @@ describe('ServingControlTab — nothing applies silently (D-2)', () => {
     expect(within(confirm).getByText(/drops every generation in flight/i)).toBeDefined();
   });
 
-  it('sends the edited profile once confirmed, and says so', async () => {
+  it('posts to the model-residency load route with only the documented options — "replace: true" (TASK-1005 §5.1)', async () => {
     const calls = stubFetch({
       custom: (call) => {
-        if (call.method === 'POST' && call.url.includes('/models/gemma-4-e2b-it-qat/load')) {
+        if (call.method === 'POST' && call.url.includes('/admin/model-residency/load')) {
           return Response.json(
             {
-              identifier: 'gemma-4-e2b-it-qat',
-              applied: { contextLength: 32_768, parallel: 4, flashAttention: true },
-              sources: { contextLength: 'request', parallel: 'model', flashAttention: 'platform' },
-              estimateBytes: 4_350_000_000,
+              outcome: 'accepted',
+              operationId: 'op-1',
+              model: { service: 'lm-studio', instance: 'gemma-4-e2b-it-qat', modelRef: 'gemma-4-e2b-it-qat', state: 'loading' },
             },
             { status: 202 },
           );
+        }
+        if (call.url.includes('/admin/model-residency/operations/op-1')) {
+          return Response.json({
+            id: 'op-1',
+            action: 'load',
+            service: 'lm-studio',
+            modelRef: 'gemma-4-e2b-it-qat',
+            status: 'running',
+            error: null,
+            startedAt: '2026-09-24T00:00:00Z',
+            finishedAt: null,
+          });
         }
         return undefined;
       },
@@ -197,29 +212,54 @@ describe('ServingControlTab — nothing applies silently (D-2)', () => {
     renderWithProviders(<ServingControlTab catalogueModelKeys={[]} />);
     const editor = await openEditor();
 
+    // Parallel is a REAL field on this profile but the reload route cannot
+    // apply it — only contextLength/flashAttention should reach the wire.
     fireEvent.change(within(editor).getByLabelText(/Context length/i), { target: { value: '32768' } });
     fireEvent.click(within(editor).getByRole('button', { name: /Apply & reload/i }));
     fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /Unload & reload/i }));
 
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
-    const load = calls.find((call) => call.method === 'POST');
-    expect(load?.url).toContain('/admin/inference-engines/lm-studio/models/gemma-4-e2b-it-qat/load');
-    expect((load?.body as { profile: { contextLength: number } }).profile.contextLength).toBe(32_768);
+    const load = calls.find((call) => call.method === 'POST' && call.url.includes('/admin/model-residency/load'));
+    expect(load).toBeDefined();
+    expect(load?.body).toMatchObject({ service: 'lm-studio', modelRef: 'gemma-4-e2b-it-qat', replace: true, force: false });
+    expect((load?.body as { options: Record<string, unknown> }).options).toEqual({ contextLength: 32_768, flashAttention: true });
   });
 
-  it('shows which tier supplied each applied value (the cascade is not guessable)', async () => {
+  it('names the restart-only fields instead of claiming they applied', async () => {
+    stubFetch();
+    renderWithProviders(<ServingControlTab catalogueModelKeys={[]} />);
+    const editor = await openEditor();
+
+    fireEvent.change(within(editor).getByLabelText(/Parallel/i), { target: { value: '8' } });
+
+    expect(within(editor).getByText(/Applies at the pod.s next restart only, not this reload/i)).toBeDefined();
+    expect(within(editor).getAllByText(/Parallel slots/).length).toBeGreaterThan(0);
+  });
+
+  it('reports the operation status once the reload has been admitted', async () => {
     stubFetch({
       custom: (call) => {
-        if (call.method === 'POST' && call.url.includes('/load')) {
+        if (call.method === 'POST' && call.url.includes('/admin/model-residency/load')) {
           return Response.json(
             {
-              identifier: 'gemma-4-e2b-it-qat',
-              applied: { contextLength: 32_768, parallel: 4, flashAttention: true },
-              sources: { contextLength: 'request', parallel: 'model', flashAttention: 'platform' },
-              estimateBytes: 4_350_000_000,
+              outcome: 'accepted',
+              operationId: 'op-2',
+              model: { service: 'lm-studio', instance: 'gemma-4-e2b-it-qat', modelRef: 'gemma-4-e2b-it-qat', state: 'loading' },
             },
             { status: 202 },
           );
+        }
+        if (call.url.includes('/admin/model-residency/operations/op-2')) {
+          return Response.json({
+            id: 'op-2',
+            action: 'load',
+            service: 'lm-studio',
+            modelRef: 'gemma-4-e2b-it-qat',
+            status: 'running',
+            error: null,
+            startedAt: '2026-09-24T00:00:00Z',
+            finishedAt: null,
+          });
         }
         return undefined;
       },
@@ -231,23 +271,40 @@ describe('ServingControlTab — nothing applies silently (D-2)', () => {
     fireEvent.click(within(editor).getByRole('button', { name: /Apply & reload/i }));
     fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /Unload & reload/i }));
 
-    const applied = await screen.findByRole('list', { name: /Where each applied value came from/i });
-    expect(within(applied).getByText(/contextLength/)).toBeDefined();
-    expect(within(applied).getByText('This request')).toBeDefined();
-    expect(within(applied).getByText('Model row')).toBeDefined();
-    expect(within(applied).getByText('Platform default')).toBeDefined();
+    expect(await screen.findByText(/Reload in progress/i)).toBeDefined();
   });
 });
 
 describe('ServingControlTab — a refused load renders its own numbers', () => {
-  it('renders estimateBytes against freeBytes on a 409, not a generic failure', async () => {
-    stubFetch({
+  it('renders the IN_FLIGHT conflict and requires a reason before it can be forced', async () => {
+    let attempt = 0;
+    const calls = stubFetch({
       custom: (call) => {
-        if (call.method === 'POST' && call.url.includes('/load')) {
+        if (call.method === 'POST' && call.url.includes('/admin/model-residency/load')) {
+          attempt += 1;
+          if (attempt === 1) {
+            return Response.json({ code: 'IN_FLIGHT', message: 'gemma-4-e2b-it-qat is serving 3 request(s)', inFlight: 3 }, { status: 409 });
+          }
           return Response.json(
-            { code: 'VRAM_BUDGET_EXCEEDED', estimateBytes: 34_000_000_000, freeBytes: 26_000_000_000, message: 'over budget' },
-            { status: 409 },
+            {
+              outcome: 'accepted',
+              operationId: 'op-3',
+              model: { service: 'lm-studio', instance: 'gemma-4-e2b-it-qat', modelRef: 'gemma-4-e2b-it-qat', state: 'loading' },
+            },
+            { status: 202 },
           );
+        }
+        if (call.url.includes('/admin/model-residency/operations/op-3')) {
+          return Response.json({
+            id: 'op-3',
+            action: 'load',
+            service: 'lm-studio',
+            modelRef: 'gemma-4-e2b-it-qat',
+            status: 'running',
+            error: null,
+            startedAt: '2026-09-24T00:00:00Z',
+            finishedAt: null,
+          });
         }
         return undefined;
       },
@@ -255,17 +312,22 @@ describe('ServingControlTab — a refused load renders its own numbers', () => {
     renderWithProviders(<ServingControlTab catalogueModelKeys={[]} />);
     const editor = await openEditor();
 
-    fireEvent.change(within(editor).getByLabelText(/Parallel/i), { target: { value: '64' } });
+    fireEvent.change(within(editor).getByLabelText(/Context length/i), { target: { value: '32768' } });
     fireEvent.click(within(editor).getByRole('button', { name: /Apply & reload/i }));
     fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /Unload & reload/i }));
 
     const alert = await screen.findByRole('alert');
-    // Both numbers rendered — a bare "409" tells the admin nothing about how
-    // much to give back. (`formatBytes` is binary-scaled, so 34e9 B reads
-    // 31.7 and 26e9 B reads 24.2.)
-    expect(within(alert).getByText(/31\.7 GB/)).toBeDefined();
-    expect(within(alert).getByText(/24\.2 GB/)).toBeDefined();
-    expect(toast.error).toHaveBeenCalled();
+    expect(within(alert).getByText(/serving 3 request/i)).toBeDefined();
+    const forceButton = within(alert).getByRole('button', { name: /Force reload/i });
+    expect(forceButton).toHaveProperty('disabled', true);
+
+    fireEvent.change(within(alert).getByLabelText(/Reason to force/i), { target: { value: 'Clinic is closing, safe to drop' } });
+    expect(forceButton).toHaveProperty('disabled', false);
+    fireEvent.click(forceButton);
+
+    await waitFor(() => expect(calls.filter((call) => call.method === 'POST' && call.url.includes('/admin/model-residency/load'))).toHaveLength(2));
+    const forced = calls.filter((call) => call.method === 'POST' && call.url.includes('/admin/model-residency/load'))[1];
+    expect(forced?.body).toMatchObject({ force: true, reason: 'Clinic is closing, safe to drop' });
   });
 });
 

@@ -46,6 +46,7 @@ import {
   IconRocket,
   IconRoute,
   IconSchema,
+  IconServer2,
   IconServerBolt,
   IconServerCog,
   IconSettings,
@@ -572,6 +573,19 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
     order: 6,
   },
+  // TASK-1005 — the platform-admin load/unload/pin/policy control plane over
+  // stt, text, nlp and LM Studio (D-11: platform-admin only, no tenant scope,
+  // never listed under a working-tenant screen).
+  {
+    route: '/model-residency',
+    domain: 'ai-platform',
+    label: 'Model residency',
+    tier: '10-19',
+    icon: IconServer2,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 7,
+  },
   // TASK-862 (README §3.4): the ONE AI provider screen. Tier 20-29 because it
   // renders cross-tenant for a super admin and tenant-scoped for a tenant
   // admin, and because tenancy is a CONTROL on the screen rather than a
@@ -827,7 +841,16 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
     order: 1,
   },
-  { route: '/users', domain: 'identity-access', label: 'Users', tier: '20-29', icon: IconUsers, required: [['manage', 'User']], implemented: true, order: 1 },
+  {
+    route: '/users',
+    domain: 'identity-access',
+    label: 'Users',
+    tier: '20-29',
+    icon: IconUsers,
+    required: [['manage', 'User']],
+    implemented: true,
+    order: 1,
+  },
   {
     route: '/rbac/roles',
     domain: 'identity-access',

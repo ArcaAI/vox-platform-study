@@ -12,6 +12,12 @@
  * and this console all read. Copying the strategy list or the `[min, max]`
  * bounds into the console would put a second, silently-drifting copy of a
  * validation table in front of an admin whose edit the gateway then rejects.
+ *
+ * TASK-1005 §5.1 moved LOADING off this plane entirely — `POST .../load` no
+ * longer accepts a profile — onto `admin/model-residency/load`
+ * (`@/shared/residency`); the request/response/conflict shapes for that route
+ * live there, not here. This file keeps only what `/runtime` (the read) and
+ * `/unload` (unchanged) still own.
  */
 
 import type { AiModelServingProfile } from '@arcaai/types';
@@ -52,28 +58,6 @@ export interface LmStudioRuntimeResponse {
 }
 
 /**
- * Which tier of the cascade supplied one applied value. An admin who cannot see
- * this cannot reason about the cascade at all: an identical number means three
- * different things depending on whether it came from the request, the model row
- * or the platform default, and only the last is shared with every other model.
- */
-export type ServingValueSource = 'request' | 'model' | 'platform';
-
-/** POST admin/inference-engines/lm-studio/models/:modelKey/load */
-export interface LoadModelRequest {
-  profile?: AiModelServingProfile;
-  /** Sends the load past the platform VRAM precheck. Never set implicitly. */
-  force?: boolean;
-}
-
-export interface LoadModelResponse {
-  identifier: string;
-  applied: AiModelServingProfile;
-  sources: Record<string, ServingValueSource>;
-  estimateBytes: number;
-}
-
-/**
  * POST admin/inference-engines/lm-studio/models/:identifier/unload
  *
  * `jitReloadPossible` is always `true` on this build and that is the point of
@@ -84,32 +68,4 @@ export interface LoadModelResponse {
 export interface UnloadModelResponse {
   unloaded: boolean;
   jitReloadPossible: true;
-}
-
-/** The typed 409 from the load precheck (D-6). */
-export interface VramBudgetConflict {
-  code: 'VRAM_BUDGET_EXCEEDED';
-  estimateBytes: number;
-  freeBytes: number;
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-/**
- * The VRAM refusal carried by a rejected load, or null for any other failure.
- *
- * Reads `GatewayError.details` (the parsed error body) rather than the message:
- * the two numbers are the whole point of this refusal — "over budget" without
- * them tells the admin nothing about how much to give back — and a message
- * string cannot be rendered as data.
- */
-export function asVramBudgetConflict(error: unknown): VramBudgetConflict | null {
-  const details = (error as { details?: unknown } | null)?.details;
-  if (details === null || typeof details !== 'object') return null;
-  const body = details as Record<string, unknown>;
-  if (body['code'] !== 'VRAM_BUDGET_EXCEEDED') return null;
-  if (!isFiniteNumber(body['estimateBytes']) || !isFiniteNumber(body['freeBytes'])) return null;
-  return { code: 'VRAM_BUDGET_EXCEEDED', estimateBytes: body['estimateBytes'], freeBytes: body['freeBytes'] };
 }

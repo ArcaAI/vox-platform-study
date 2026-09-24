@@ -55,14 +55,14 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
   // tier 10-19). TASK-954 re-tiered the three Overview screens (Dashboard,
   // Monitoring, Releases) from 10-19 to 20-29: 22/12/19/5.
   it('covers the full 58-route rail map across the four tiers', () => {
-    expect(NAV_ENTRIES).toHaveLength(58);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
+    expect(NAV_ENTRIES).toHaveLength(59);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(12);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(19);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     // The two routes moved to the user menu, plus the new /developer/invoke
     // entry (TASK-971 lane E), are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(61);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(62);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -359,7 +359,12 @@ describe('visibleNavEntries', () => {
     });
 
     it('leaves each gate independent — closing one does not close the others', () => {
-      const gates: FeatureGateMap = { 'console.mlflow.enabled': false, 'console.agenticPolicy.enabled': true, 'console.tools.mcp.enabled': true, 'console.workflowHarness.enabled': true };
+      const gates: FeatureGateMap = {
+        'console.mlflow.enabled': false,
+        'console.agenticPolicy.enabled': true,
+        'console.tools.mcp.enabled': true,
+        'console.workflowHarness.enabled': true,
+      };
       const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], gates).map((entry) => entry.route);
       expect(visible).not.toContain('/ai-services/mlflow');
       expect(visible).toContain('/agentic-policy');
@@ -499,6 +504,7 @@ const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
   ['/ai-services/vllm', 'ai-platform', '10-19', 4, [['manage', 'all']]],
   ['/ai-services/ollama', 'ai-platform', '10-19', 5, [['manage', 'all']]],
   ['/ai-services/llama-cpp', 'ai-platform', '10-19', 6, [['manage', 'all']]],
+  ['/model-residency', 'ai-platform', '10-19', 7, [['manage', 'all']]],
   [
     '/ai-providers',
     'ai-platform',
@@ -631,8 +637,24 @@ const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
 describe('EXPECTED_NAV_ENTRIES — the full route/domain/tier/order/ability/gate pin', () => {
   it('matches NAV_ENTRIES exactly, in declaration order', () => {
     expect(
-      NAV_ENTRIES.map((entry) => [entry.route, entry.domain, entry.tier, entry.order, entry.required.map(([action, subject]) => [action, subject]), entry.gate]),
-    ).toEqual(EXPECTED_NAV_ENTRIES.map(([route, domain, tier, order, required, gate]) => [route, domain, tier, order, required.map(([action, subject]) => [action, subject]), gate]));
+      NAV_ENTRIES.map((entry) => [
+        entry.route,
+        entry.domain,
+        entry.tier,
+        entry.order,
+        entry.required.map(([action, subject]) => [action, subject]),
+        entry.gate,
+      ]),
+    ).toEqual(
+      EXPECTED_NAV_ENTRIES.map(([route, domain, tier, order, required, gate]) => [
+        route,
+        domain,
+        tier,
+        order,
+        required.map(([action, subject]) => [action, subject]),
+        gate,
+      ]),
+    );
   });
 
   it('pins exactly 58 entries, matching NAV_ENTRIES', () => {
@@ -759,7 +781,9 @@ describe('USER_MENU_ENTRIES — the three routes that leave the rail', () => {
 
 describe('visibleNavDomains (AC-3)', () => {
   it('shows a super admin every domain when every gate is open', () => {
-    expect(visibleNavDomains(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], ALL_GATES_OPEN).map((domain) => domain.id)).toEqual(NAV_DOMAINS.map((domain) => domain.id));
+    expect(visibleNavDomains(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], ALL_GATES_OPEN).map((domain) => domain.id)).toEqual(
+      NAV_DOMAINS.map((domain) => domain.id),
+    );
   });
 
   it('hides a domain whose every entry is gated closed (Workflow & Harness)', () => {
@@ -878,7 +902,11 @@ describe('domainLandingRoute (Open Question — a rail click always navigates)',
 // ---------------------------------------------------------------------------
 
 /** Builds the same {domain: {tier: [label, ...]}} shape the rail actually renders. */
-function renderedInventory(rules: readonly PermissionRule[] | null, roles: readonly string[], gates: FeatureGateMap): Record<string, Record<string, string[]>> {
+function renderedInventory(
+  rules: readonly PermissionRule[] | null,
+  roles: readonly string[],
+  gates: FeatureGateMap,
+): Record<string, Record<string, string[]>> {
   const visible = visibleNavEntries(rules, roles, gates);
   const table: Record<string, Record<string, string[]>> = {};
   for (const domain of NAV_DOMAINS) {
@@ -921,11 +949,20 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
         '30-49': ['Storage browser'],
       },
       'ai-platform': {
-        '10-19': ['AI models', 'AI services', 'LM Studio', 'vLLM', 'Ollama', 'llama.cpp'],
+        '10-19': ['AI models', 'AI services', 'LM Studio', 'vLLM', 'Ollama', 'llama.cpp', 'Model residency'],
         '20-29': ['AI providers'],
       },
       'knowledge-agents': {
-        '30-49': ['Agents', 'Prompt templates', 'Context Schemas', 'Document Templates', 'Knowledge Base', 'DNA writing styles', 'Workflow Studio', 'Workflow Assignments'],
+        '30-49': [
+          'Agents',
+          'Prompt templates',
+          'Context Schemas',
+          'Document Templates',
+          'Knowledge Base',
+          'DNA writing styles',
+          'Workflow Studio',
+          'Workflow Assignments',
+        ],
       },
       clinical: { '30-49': ['Patient consent', 'Transcription jobs', 'Consultations'] },
       'workflow-harness': { '30-49': ['Harness policy', 'Harness observability', 'Harness workflows', 'Workflow Runs'] },
@@ -970,6 +1007,8 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
   });
 
   it('never widens the tenant-admin inventory when every gate is CLOSED — a tenant admin held none of the gated entries anyway', () => {
-    expect(renderedInventory(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], {})).toEqual(renderedInventory(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN));
+    expect(renderedInventory(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], {})).toEqual(
+      renderedInventory(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN),
+    );
   });
 });

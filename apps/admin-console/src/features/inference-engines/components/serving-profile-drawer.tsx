@@ -19,20 +19,17 @@ import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { NativeSelect, NativeSelectOption } from '@arcaai/ui/components/shadcn/native-select';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
+import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
+import { asModelResidencyConflict, type ModelResidencyOperationStatus } from '@/shared/residency';
 import { formatBytes } from '@/shared/format';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
-import { asVramBudgetConflict, type LmStudioDevice, type LmStudioLoadedModel, type LoadModelResponse, type ServingValueSource } from '../api/serving-types';
+import type { LmStudioDevice, LmStudioLoadedModel } from '../api/serving-types';
+import { toResidencyLoadOptions } from './residency-options';
 import { projectServingFootprint } from './serving-estimate';
 
 /** Tri-state selects: an admin who means "inherit" must not silently write `false`. */
 const INHERIT = 'inherit';
-
-const SOURCE_LABEL: Record<ServingValueSource, string> = {
-  request: 'This request',
-  model: 'Model row',
-  platform: 'Platform default',
-};
 
 interface Draft {
   contextLength: string;
@@ -61,10 +58,8 @@ function initialDraft(effective: AiModelServingProfile): Draft {
  * The draft as a SPARSE profile.
  *
  * Sparse on purpose: only what the admin actually stated travels in the
- * request, so the gateway's `sources` map can still answer "model row" or
- * "platform default" for everything else. Sending the resolved profile back
- * wholesale would stamp every value as `request` and flatten the cascade into
- * one tier the next reader could not see through.
+ * request. `toResidencyLoadOptions` (below) then projects this down to the
+ * handful of keys the reload route can actually apply.
  */
 function toProfile(draft: Draft): AiModelServingProfile {
   const profile: AiModelServingProfile = {};
@@ -105,6 +100,12 @@ function rangeProblems(draft: Draft): string[] {
   return problems;
 }
 
+const OPERATION_STATUS_LABEL: Record<ModelResidencyOperationStatus, string> = {
+  running: 'Reload in progress…',
+  succeeded: 'Reload succeeded.',
+  failed: 'Reload failed.',
+};
+
 export interface ServingProfileDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -114,19 +115,29 @@ export interface ServingProfileDrawerProps {
   devices: LmStudioDevice[];
   platformDefault: AiModelServingProfile;
   isPending: boolean;
+  /** Admits the reload (202/200) — never armed with `force` implicitly. */
   onApply: (profile: AiModelServingProfile) => void;
-  /** The last successful load — its `applied` values and which tier supplied each. */
-  result: LoadModelResponse | null;
+  /** The RETRY after a refused reload (409 IN_FLIGHT/OVER_BUDGET) — reason is mandatory (OD-3). */
+  onForceApply: (profile: AiModelServingProfile, reason: string) => void;
+  /** The async operation's own status, once the load has been admitted (`@/shared/residency`). */
+  operationStatus: ModelResidencyOperationStatus | null;
+  operationError: string | null;
+  /** The POST /load rejection (e.g. a 409 conflict), before any operation exists. */
   error: unknown;
 }
 
 /**
- * The per-model serving-profile editor (ticket §4 Phase 5).
+ * The per-model serving-profile editor (ticket §4 Phase 5; migrated onto the
+ * model-residency load route by TASK-1005 §5.1).
  *
  * Every field here is a LOAD-TIME parameter of llama.cpp, so there is no such
  * thing as saving one quietly: the model has to come down and go back up. The
  * drawer therefore has no "Save" — only "Apply & reload", behind a confirmation
- * that names what the reload costs (D-2).
+ * that names what the reload costs (D-2). Since TASK-1005, that reload runs
+ * ASYNCHRONOUSLY (~100s for a real LLM, past Cloudflare's edge timeout) and
+ * only `contextLength`/`flashAttention` reach the engine through it — the rest
+ * of this profile is restart-only, and this drawer says so rather than
+ * pretending the field it just collected took effect.
  */
 export function ServingProfileDrawer({
   open,
@@ -137,16 +148,21 @@ export function ServingProfileDrawer({
   platformDefault,
   isPending,
   onApply,
-  result,
+  onForceApply,
+  operationStatus,
+  operationError,
   error,
 }: ServingProfileDrawerProps) {
   const [draft, setDraft] = useState<Draft>(() => initialDraft(loaded?.effective ?? {}));
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [forceReason, setForceReason] = useState('');
 
   const profile = useMemo(() => toProfile(draft), [draft]);
   const precheck = useMemo(() => projectServingFootprint({ loaded, draft: profile, devices }), [loaded, profile, devices]);
+  const { options, restartOnlyFields } = useMemo(() => toResidencyLoadOptions(profile), [profile]);
   const problems = rangeProblems(draft);
-  const conflict = asVramBudgetConflict(error);
+  const conflict = asModelResidencyConflict(error);
+  const canForceRetry = conflict?.code === 'IN_FLIGHT' || conflict?.code === 'OVER_BUDGET';
 
   function patch(next: Partial<Draft>) {
     setDraft((current) => ({ ...current, ...next }));
@@ -166,10 +182,17 @@ export function ServingProfileDrawer({
         onOpenChange={onOpenChange}
         size="lg"
         title={`Serving profile — ${modelKey}`}
-        badges={loaded ? <Badge variant={loaded.status === 'ACTIVE' ? 'default' : 'secondary'}>{loaded.status === 'ACTIVE' ? 'Active' : 'Idle'}</Badge> : <Badge variant="outline">Not loaded</Badge>}
+        badges={
+          loaded ? (
+            <Badge variant={loaded.status === 'ACTIVE' ? 'default' : 'secondary'}>{loaded.status === 'ACTIVE' ? 'Active' : 'Idle'}</Badge>
+          ) : (
+            <Badge variant="outline">Not loaded</Badge>
+          )
+        }
         meta={
           <span>
-            Every field below is applied when the model is LOADED. Changing one means an unload and a reload — there is no live edit.
+            Only context length and flash attention reach the engine through a reload; every other field below applies at the pod&rsquo;s next
+            restart. The reload runs in the background — a real LLM load can take ~100s.
           </span>
         }
         footer={
@@ -206,8 +229,8 @@ export function ServingProfileDrawer({
                 </dl>
                 <p className="text-muted-foreground text-xs">
                   An estimate, not a measurement: weights are measured, the KV half is derived from context × parallel and projected onto this
-                  profile. The headroom counts the VRAM this instance releases when the reload unloads it. The gateway runs its own precheck
-                  against live VRAM and is the one that decides.
+                  profile. The headroom counts the VRAM this instance releases when the reload unloads it. The gateway runs its own precheck against
+                  live VRAM and is the one that decides.
                 </p>
               </>
             )}
@@ -238,7 +261,9 @@ export function ServingProfileDrawer({
                   onChange={(event) => patch({ contextLength: event.target.value })}
                   className="font-mono"
                 />
-                <span className="text-muted-foreground text-xs">Blank inherits the platform default ({platformDefault.contextLength ?? 'engine default'}).</span>
+                <span className="text-muted-foreground text-xs">
+                  Blank inherits the platform default ({platformDefault.contextLength ?? 'engine default'}).
+                </span>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="serving-parallel">Parallel slots</Label>
@@ -253,7 +278,9 @@ export function ServingProfileDrawer({
                   onChange={(event) => patch({ parallel: event.target.value })}
                   className="font-mono"
                 />
-                <span className="text-muted-foreground text-xs">Every slot gets the FULL context, so KV memory scales with the product of the two.</span>
+                <span className="text-muted-foreground text-xs">
+                  Restart-only — the reload route has no field for it. Takes effect at the pod&rsquo;s next restart.
+                </span>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="serving-flash">Flash attention</Label>
@@ -274,6 +301,7 @@ export function ServingProfileDrawer({
                     </NativeSelectOption>
                   ))}
                 </NativeSelect>
+                <span className="text-muted-foreground text-xs">Restart-only — applies at the pod&rsquo;s next restart, not this reload.</span>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="serving-kcache">KV cache — K</Label>
@@ -296,7 +324,7 @@ export function ServingProfileDrawer({
                     </NativeSelectOption>
                   ))}
                 </NativeSelect>
-                <span className="text-muted-foreground text-xs">Quantizing V requires flash attention on — llama.cpp refuses otherwise.</span>
+                <span className="text-muted-foreground text-xs">Restart-only, same as K. Quantizing V also requires flash attention on.</span>
               </div>
             </div>
           </section>
@@ -320,10 +348,16 @@ export function ServingProfileDrawer({
               ))}
             </ul>
             <p className="text-muted-foreground text-xs">
-              Unchecking a device sets `disabledGpus`, which is how a model is pinned to one card. The engine defaults to spreading a model
-              evenly across every visible device even when it would fit on one.
+              Restart-only, same as the split strategy above — the engine defaults to spreading a model evenly across every visible device even when
+              it would fit on one.
             </p>
           </section>
+
+          {restartOnlyFields.length > 0 ? (
+            <p className="border-warning/40 bg-warning/10 text-warning-strong rounded-md border p-3 text-xs">
+              Applies at the pod&rsquo;s next restart only, not this reload: {restartOnlyFields.join(', ')}.
+            </p>
+          ) : null}
 
           {problems.length > 0 ? (
             <ul className="text-destructive flex flex-col gap-1 text-sm" aria-label="Problems with this profile">
@@ -334,35 +368,50 @@ export function ServingProfileDrawer({
           ) : null}
 
           {error && !isPending ? (
-            <div role="alert" className="border-destructive/40 bg-destructive/10 flex flex-col gap-1 rounded-md border p-3 text-sm">
-              <span className="text-destructive font-medium">The load was refused</span>
-              {conflict ? (
-                <span>
-                  The engine has {formatBytes(conflict.freeBytes)} free and this profile was estimated at {formatBytes(conflict.estimateBytes)}.
-                  Lower the context length or the parallel slots, or pin the model to a card with more headroom.
-                </span>
-              ) : (
-                <span>{error instanceof Error ? error.message : 'The gateway rejected the load.'}</span>
-              )}
+            <div role="alert" className="border-destructive/40 bg-destructive/10 flex flex-col gap-2 rounded-md border p-3 text-sm">
+              <span className="text-destructive font-medium">The reload was refused</span>
+              <span>
+                {conflict
+                  ? conflict.code === 'IN_FLIGHT'
+                    ? `${modelKey} is serving ${conflict.inFlight ?? 'some'} request(s) right now. Forcing the reload drops them in flight.`
+                    : conflict.message || 'Refused — over budget on the target device.'
+                  : error instanceof Error
+                    ? error.message
+                    : 'The gateway rejected the reload.'}
+              </span>
+              {canForceRetry ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="serving-force-reason">Reason to force it anyway (required, audited)</Label>
+                  <Textarea id="serving-force-reason" value={forceReason} onChange={(event) => setForceReason(event.target.value)} />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="self-start"
+                    disabled={forceReason.trim().length === 0 || isPending}
+                    onClick={() => onForceApply(profile, forceReason)}
+                  >
+                    Force reload
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
-          {result ? (
-            <section aria-labelledby="serving-applied" className="flex flex-col gap-2 rounded-md border p-3">
-              <h3 id="serving-applied" className="text-sm font-medium">
-                Applied to {result.identifier}
+          {operationStatus ? (
+            <section aria-labelledby="serving-operation" className="flex flex-col gap-1 rounded-md border p-3">
+              <h3 id="serving-operation" className="text-sm font-medium">
+                {OPERATION_STATUS_LABEL[operationStatus]}
               </h3>
-              <ul className="flex flex-col gap-1 text-sm" aria-label="Where each applied value came from">
-                {Object.entries(result.sources).map(([field, source]) => (
-                  <li key={field} className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs">{field}</span>
-                    <Badge variant={source === 'request' ? 'default' : source === 'model' ? 'secondary' : 'outline'}>{SOURCE_LABEL[source]}</Badge>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-muted-foreground text-xs">
-                “Platform default” is shared with every model that states no opinion of its own; “Model row” travels with this model.
-              </p>
+              {operationStatus === 'failed' && operationError ? <p className="text-destructive text-sm">{operationError}</p> : null}
+              {operationStatus === 'succeeded' ? (
+                <p className="text-muted-foreground text-xs">
+                  Applied: {options.contextLength !== undefined ? `context ${options.contextLength}` : null}
+                  {options.contextLength !== undefined && options.flashAttention !== undefined ? ', ' : null}
+                  {options.flashAttention !== undefined ? `flash attention ${options.flashAttention ? 'on' : 'off'}` : null}
+                  {Object.keys(options).length === 0 ? 'the platform default.' : '.'}
+                </p>
+              ) : null}
             </section>
           ) : null}
         </div>
@@ -373,17 +422,17 @@ export function ServingProfileDrawer({
         onOpenChange={setConfirmOpen}
         destructive
         title={`Reload ${modelKey} on this profile?`}
-        description="Context, parallel slots, flash attention and GPU split are load-time parameters, so applying them restarts the model."
+        description="Context length and flash attention are load-time parameters, so applying them restarts the model. Every other field above is restart-only and will not be applied by this reload."
         body={
           <div className="flex flex-col gap-2">
             <p>
-              The engine unloads this model and loads it again, which drops every generation in flight — including clinical summaries a
-              clinician is waiting on. There is no drain and no live edit; this is the only way these values change.
+              The engine unloads this model and loads it again, which drops every generation in flight — including clinical summaries a clinician is
+              waiting on. There is no drain and no live edit; the reload runs in the background and can take ~100s.
             </p>
             {precheck.overBudget ? (
               <p className="text-destructive">
-                This profile is also projected at {formatBytes(precheck.estimateBytes)} against {formatBytes(precheck.headroomBytes)} of
-                headroom, so the gateway is expected to refuse it.
+                This profile is also projected at {formatBytes(precheck.estimateBytes)} against {formatBytes(precheck.headroomBytes)} of headroom, so
+                the gateway is expected to refuse it.
               </p>
             ) : null}
           </div>
