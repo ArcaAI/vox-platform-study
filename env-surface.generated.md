@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 141 |
-| … of which required (`failMode: closed`) | 26 |
-| … of which secret | 25 |
+| Declared keys (distinct) | 142 |
+| … of which required (`failMode: closed`) | 27 |
+| … of which secret | 26 |
 | … tier `env` | 111 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 21 |
+| … tier `vault-kv` | 22 |
 | Python declared fields | 304 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 350 |
-| `turbo.json#globalEnv` entries | 508 |
+| `turbo.json#globalEnv` entries | 509 |
 
 ## Variables — the TypeScript platform surface
 
@@ -61,6 +61,7 @@ disagree with those declarations.
 | `HIGHLIGHT_PROJECT_ID` | `env` | no | — | `apps/api` | Enables the Highlight.io log transport. UNSET ⇒ the transport does not mount at all, which is the shipped posture. |
 | `INTERNAL_ACCESS_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | THE canonical internal service-to-service credential (owner decision D-D, 2026-08-17): **one** shared access token, identical across every service, set by the DevOps engineer, internal use only. It is presented and accepted as `X-Service-Token` on every internal hop — gateway↔text/nlp/guardrail/harness/tts and every peer-to-peer hop (harness→text/nlp/guardrail, text→guardrail, nlp→text). There is deliberately NO per-service and NO per-pair token in the target state: the `*_SERVICE_TOKEN` family below (`TEXT_`, `NLP_`, `GUARDRAIL_`, `HARNESS_`, `TTS_`, and harness’s outbound `HARNESS_TEXT_`/`HARNESS_NLP_`) is retained ONLY as a zero-cost backward-compatibility fallback — every inbound middleware accepts EITHER this token or its own legacy secret, and every outbound client PREFERS this token and falls back to its legacy per-target secret when unset. Set this one variable and the legacy family can all be dropped. This is the sanctioned env-var exception to D-B (configuration lives in the DB) — it is bootstrap-floor auth material, delivered from Vault in deployed environments. NOT the same thing as `HARNESS_INTERNAL_SERVICE_TOKEN`, which gates the harness knowledge-ingest endpoint only, nor `API_GATEWAY_KEY`, which must be a real ApiKey row (see below). |
 | `JWT_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | HS256 signing secret for gateway-issued access tokens. Warmed at boot; `apps/api/src/main.ts` refuses to start when it is still a placeholder. Rotating it invalidates every outstanding access token immediately (they are short-lived, so the blast radius is one token TTL). |
+| `LM_STUDIO_API_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Bearer token the GATEWAY presents to the LM Studio server (`Authorization: Bearer`) on its control-plane calls — `GET /api/v1/models`, `POST /api/v1/models/load` and `/unload` (`LmStudioEngineClient`). OPTIONAL: unset (or the `CHANGE_ME` placeholder) sends no header, which is correct while LM Studio API authentication is OFF — as it is on the pod today. Set it only together with enabling auth on the engine (TASK-1005 D-6), and note it covers the gateway ONLY: `apps/text` reaches the OpenAI-compatible `/v1/*` with the key on the SYSTEM `llm:lm-studio` `AiProviderConnection` row, and the harness judge with its own `llm:openai-compat` row, so turning auth on without also keying those rows 401s every generation. Read per request, so a rotation needs no restart. |
 | `LOG_CONSOLE_COLORIZE` | `env` | no | — | `apps/api` | ANSI colour on stdout. Unset ⇒ ON in development and OFF elsewhere (`isDevelopment()`), so a collected log stream is not full of escape codes. |
 | `LOG_CONSOLE_ENABLED` | `env` | no | `true` | `apps/api` | Writes log records to stdout. Turning this off leaves only the file/Loki/OTel transports. |
 | `LOG_CONSOLE_JSON` | `env` | no | — | `apps/api` | One JSON object per record — the shape a collector parses. The inverse of the development default: unset ⇒ ON outside development. |

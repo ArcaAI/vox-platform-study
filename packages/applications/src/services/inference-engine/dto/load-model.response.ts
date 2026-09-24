@@ -1,51 +1,107 @@
-import type { AiModelServingProfile } from '@arcaai/types';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { LmStudioLoadConfig, LmStudioLoadOutcome, LmStudioResidencyModel } from '../lmstudio-engine.client';
 
-/** Which tier supplied one resolved field: this request, the model row, or the platform default. */
-export type LmStudioServingProfileSource = 'request' | 'model' | 'platform';
+/** The configuration LM Studio reports an instance was loaded with (whitelisted — never the prompt template). */
+export class LmStudioLoadConfigResponse implements LmStudioLoadConfig {
+  @ApiPropertyOptional({ description: '`context_length` — the window the engine actually applied.' })
+  contextLength?: number;
+
+  @ApiPropertyOptional({ description: '`eval_batch_size`.' })
+  evalBatchSize?: number;
+
+  @ApiPropertyOptional({ description: '`physical_batch_size`.' })
+  physicalBatchSize?: number;
+
+  @ApiPropertyOptional({ description: '`parallel` — decode slots. Not settable over REST; the pod`s `LMS_PARALLEL` decides it.' })
+  parallel?: number;
+
+  @ApiPropertyOptional({ description: '`flash_attention`.' })
+  flashAttention?: boolean;
+
+  @ApiPropertyOptional({ description: '`offload_kv_cache_to_gpu`.' })
+  offloadKvCacheToGpu?: boolean;
+
+  @ApiPropertyOptional({ description: '`num_experts`, for a mixture-of-experts model.' })
+  numExperts?: number;
+}
 
 /**
- * The 202 body of `POST .../models/{modelKey}/load`.
+ * One loaded instance in the residency contract's `gateway` shape
+ * (`tests/contracts/model-residency-agent.fixture.json`). LM Studio reports no
+ * per-model bytes, in-flight count or timestamps, so those are `null` rather
+ * than invented.
+ */
+export class LmStudioResidencyModelResponse implements LmStudioResidencyModel {
+  @ApiProperty({ description: 'The exact engine model key — `AiModel.wireModelId`.' })
+  modelRef!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'The platform catalogue row that claims this key, when known.' })
+  aiModelId!: string | null;
+
+  @ApiProperty({ description: 'LM Studio`s model type (`llm`, `embedding`, …).' })
+  cache!: string;
+
+  @ApiProperty({ enum: ['loading', 'loaded', 'unloading'] })
+  state!: 'loading' | 'loaded' | 'unloading';
+
+  @ApiProperty({ description: '`multi`: the daemon splits a model across both cards itself (`LMS_GPU_SPLIT_STRATEGY`).' })
+  device!: string;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Resident bytes. Always `null` here — LM Studio reports none; the residency controller measures it.',
+  })
+  bytes!: number | null;
+
+  @ApiProperty({ enum: ['measured', 'unknown'] })
+  bytesSource!: 'measured' | 'unknown';
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Requests in flight. Always `null` — LM Studio does not report it.' })
+  inFlight!: number | null;
+
+  @ApiProperty()
+  pinned!: boolean;
+
+  @ApiProperty()
+  adminPinned!: boolean;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Idle TTL. `null` — REST v1 has no TTL; idle unload is the controller`s job.' })
+  ttlSeconds!: number | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  loadedAt!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  lastUsedAt!: string | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: '`load_time_seconds` of the load that produced this answer; `null` when it was already loaded.',
+  })
+  loadSeconds!: number | null;
+
+  @ApiProperty({ description: 'The instance handle an unload takes.' })
+  instanceId!: string;
+
+  @ApiProperty({ type: LmStudioLoadConfigResponse })
+  loadConfig!: LmStudioLoadConfigResponse;
+}
+
+/**
+ * The 200 body of `POST .../models/{modelKey}/load` (TASK-1005).
  *
- * ⚠️ NOT REACHABLE ON THIS ENGINE BUILD. The route runs its whole gate chain —
- * privilege, existence, profile coherence, live VRAM budget — and then refuses
- * with **501 `ENGINE_LOAD_UNSUPPORTED`**, because no loader that can carry a
- * serving profile is reachable from the gateway: `POST /api/v1/models/load`
- * fails for every payload on this deployment (ticket §2.8) and cannot express
- * KV-cache quantization or GPU placement in any case, and the working
- * `@lmstudio/sdk` kvConfig websocket is driven over loopback inside the pod at
- * boot.
- *
- * This class is not aspirational padding: the 501 body carries the SAME three
- * fields (`applied`, `sources`, `estimateBytes`), so the console's
- * "show the precheck before arming the button" step (Phase 5) has a real answer
- * today, and the day a gateway-reachable loader lands the shape is already the
- * one every caller was written against.
+ * `already_loaded` is the answer for a key the engine already holds: REST v1
+ * load is not idempotent (a second load creates `<key>:2`, a second full copy
+ * in VRAM), so the gateway lists first and returns the existing instance.
  */
 export class LoadLmStudioModelResponse {
-  @ApiProperty({ description: 'The loaded instance handle — what a later unload takes.' })
-  identifier!: string;
+  @ApiProperty({ enum: ['loaded', 'already_loaded'] })
+  outcome!: LmStudioLoadOutcome;
 
-  @ApiProperty({
-    type: 'object',
-    additionalProperties: true,
-    description: 'The resolved serving profile the engine was asked for: this request over the model row over the platform default.',
-  })
-  applied!: AiModelServingProfile;
-
-  @ApiProperty({
-    type: 'object',
-    additionalProperties: true,
-    description:
-      'Dotted field path -> the tier that supplied it (`request` | `model` | `platform`). A field NO tier declared is absent, which means the engine`s own default applies.',
-  })
-  sources!: Record<string, LmStudioServingProfileSource>;
-
-  @ApiProperty({
-    description:
-      'Expected resident VRAM: the MEASURED weights plus the DERIVED KV cache (`contextLength x parallel`, scaled by the KV element types). An estimate, and the number the 409 budget gate compares against the largest single card.',
-  })
-  estimateBytes!: number;
+  @ApiProperty({ type: LmStudioResidencyModelResponse })
+  model!: LmStudioResidencyModelResponse;
 }
 
 /** The 202 body of `POST .../models/{identifier}/unload`. */
