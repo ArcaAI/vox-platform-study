@@ -427,10 +427,15 @@ class ApiClient:
                 raise _api_error(path, exc) from exc
             return cast("dict[str, Any]", resp.json())
 
-    async def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
+    async def _get(
+        self, path: str, params: dict[str, Any], *, tenant_id: str | None = None
+    ) -> dict[str, Any]:
+        headers = self._headers()
+        if tenant_id:
+            headers["X-Tenant-Id"] = tenant_id
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
             try:
-                resp = await client.get(self._url(path), params=params, headers=self._headers())
+                resp = await client.get(self._url(path), params=params, headers=headers)
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise _api_error(path, exc) from exc
@@ -558,6 +563,22 @@ class ApiClient:
         if task_type:
             params["taskType"] = task_type
         return await self._get("/models/resolve", params)
+
+    async def resolve_task_model(self, task_key: str, *, tenant_id: str) -> dict[str, Any]:
+        """The model a platform routing task key elects, for an activity that runs a fixed task.
+
+            GET /api/v1/internal/harness/models/resolve?taskKey=<key>&tenantId=<uuid>
+            headers: X-Service-Token, X-Tenant-Id
+            200 -> the same shape as :meth:`resolve_model`, plus ``clinicalTaxonomy?``
+            400 -> tenant missing, or a key the worker may not resolve
+            503 -> the election names no enabled model
+
+        Selection fails CLOSED: every non-2xx raises :class:`ApiServiceError` (a 400 as the
+        terminal :class:`ApiClientError`), and the caller must not substitute a model.
+        """
+        return await self._get(
+            "/models/resolve", {"taskKey": task_key, "tenantId": tenant_id}, tenant_id=tenant_id
+        )
 
     async def get_resolved_prompt_template(
         self, template_id: str, *, tenant_id: str

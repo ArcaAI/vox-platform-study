@@ -20,7 +20,6 @@ import pytest
 from temporalio.testing import ActivityEnvironment
 
 from harness.core.config import ClaimCheckConfig, Settings
-from harness.sensors.base import NEREntity
 from harness.services.api_client import DraftResponse
 from harness.services.text_client import TextGenerationResult
 from harness.temporal import activities
@@ -120,11 +119,22 @@ class _FakeNlp:
     def __init__(self) -> None:
         self.text: str | None = None
 
-    async def classify_tokens(
-        self, text: str, *, tenant_id: str = "", language: str = "en"
-    ) -> list[NEREntity]:
+    async def classify_tokens_raw(self, text: str, **kwargs: Any) -> dict[str, Any]:
         self.text = text
-        return [NEREntity(text="hypertension", type="DISEASE", start=0, end=12)]
+        return {
+            "entities": [
+                {
+                    "text": "hypertension",
+                    "entity_type": "DISEASE",
+                    "position": {"start": 0, "end": 12},
+                }
+            ]
+        }
+
+
+class _FakeApiNerModel:
+    async def resolve_task_model(self, task_key: str, *, tenant_id: str) -> dict[str, Any]:
+        return {"slug": "medical-ner", "taskType": "TOKEN_CLASSIFICATION", "sourceUri": "m/ner"}
 
 
 class TestGenerateOffloadsNote:
@@ -262,6 +272,7 @@ class TestConsumersResolveInlineOrRef:
         monkeypatch.setattr(activities, "get_settings", lambda: _settings())
         _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: _FakeApiNerModel())
 
         result = await env.run(
             activities.extract_entities,

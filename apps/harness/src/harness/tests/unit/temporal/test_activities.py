@@ -29,10 +29,12 @@ from harness.services.api_client import (
     RecordGateResponse,
     RetractDraftResponse,
 )
+from harness.services.nlp_client import NlpClient
 from harness.services.text_client import TextGenerationResult, TextServiceError
 from harness.temporal import activities
 from harness.temporal.models import (
     AssembleInput,
+    DeriveContextInput,
     EscalateInput,
     ExtractEntitiesInput,
     FetchPolicyInput,
@@ -48,16 +50,39 @@ from harness.temporal.models import (
     RunSensorsInput,
 )
 
+#: One raw ``/classify/tokens`` span, as the NLP service answers it.
+_RAW_SPAN: dict[str, Any] = {
+    "text": "hypertension",
+    "entity_type": "DISEASE",
+    "confidence": 0.97,
+    "position": {"start": 0, "end": 12},
+    "snomed_code": "38341003",
+    "assertion": "PRESENT",
+}
+
+_RAW_SPAN_RESPONSE: dict[str, Any] = {"entities": [_RAW_SPAN]}
+
+#: The gateway's ``nlp.ner`` resolve answer (same shape as the slug resolve).
+_NER_MODEL: dict[str, Any] = {
+    "slug": "medical-ner",
+    "taskType": "TOKEN_CLASSIFICATION",
+    "tenantId": "00000000-0000-0000-0000-000000000000",
+    "sourceUri": "blaze999/Medical-NER",
+    "localPath": "/mnt/models-bucket/nlp/medical-ner/",
+}
+
 
 class _FakeNlp:
+    """Records every cold NER call; the activities reach it through ``classify_tokens_raw``."""
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
+        self.raw_calls: list[dict[str, Any]] = []
 
-    async def classify_tokens(
-        self, text: str, *, tenant_id: str = "", language: str = "en"
-    ) -> list[NEREntity]:
-        self.calls.append((text, language))
-        return [NEREntity(text="hypertension", type="DISEASE", start=0, end=12)]
+    async def classify_tokens_raw(self, text: str, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append((text, kwargs.get("language", "en")))
+        self.raw_calls.append({"text": text, **kwargs})
+        return {"entities": [dict(_RAW_SPAN)], "model_version": "m"}
 
 
 class _FakeText:
@@ -108,17 +133,31 @@ class _FakeApiPriors:
     """apps/api read client stub for coded NER priors (returns priors or raises)."""
 
     def __init__(
-        self, *, priors: list[NEREntity] | None = None, error: Exception | None = None
+        self,
+        *,
+        priors: list[NEREntity] | None = None,
+        error: Exception | None = None,
+        model: dict[str, Any] | None = None,
+        resolve_error: Exception | None = None,
     ) -> None:
         self._priors = priors or []
         self._error = error
+        self._model = dict(_NER_MODEL) if model is None else model
+        self._resolve_error = resolve_error
         self.calls: list[tuple[str, str]] = []
+        self.resolve_calls: list[tuple[str, str]] = []
 
     async def load_entity_priors(self, consultation_id: str, *, tenant_id: str) -> list[NEREntity]:
         self.calls.append((consultation_id, tenant_id))
         if self._error is not None:
             raise self._error
         return list(self._priors)
+
+    async def resolve_task_model(self, task_key: str, *, tenant_id: str) -> dict[str, Any]:
+        self.resolve_calls.append((task_key, tenant_id))
+        if self._resolve_error is not None:
+            raise self._resolve_error
+        return dict(self._model)
 
 
 class _StubJudge:
@@ -223,6 +262,7 @@ class TestExtractEntities:
     async def test_delegates_to_nlp_client_and_maps_entities(self, env, monkeypatch):
         fake = _FakeNlp()
         monkeypatch.setattr(activities, "_nlp_client", lambda s: fake)
+        monkeypatch.setattr(activities, "_api_client", lambda s: _FakeApiPriors())
         result = await env.run(
             activities.extract_entities,
             ExtractEntitiesInput(
@@ -346,6 +386,179 @@ class TestExtractEntities:
         )
         assert result.reused is False
         assert nlp.calls == [("hi", "en")]
+
+
+class TestExtractEntitiesResolvesTheNerModel:
+    """The cold NER pass runs on the gateway-resolved ``nlp.ner`` model. apps/nlp fails closed
+    (503) on a model-less ``/classify/tokens`` call, so without the resolve every doc workflow's
+    NER degraded and every note was forced into review."""
+
+    @pytest.mark.asyncio
+    async def test_forwards_the_resolved_model_to_classify_tokens_raw(self, env, monkeypatch):
+        nlp = _FakeNlp()
+        clinical = {"assertion": {"triggers": {"ABSENT": ["denies"]}}}
+        api = _FakeApiPriors(
+            model={
+                **_NER_MODEL,
+                "labelTaxonomy": {"labels": ["disease", "medication"]},
+                "clinicalTaxonomy": clinical,
+            }
+        )
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+
+        await env.run(
+            activities.extract_entities,
+            ExtractEntitiesInput(tenant_id="t-1", text="note", language="en"),
+        )
+
+        assert api.resolve_calls == [("nlp.ner", "t-1")]
+        assert len(nlp.raw_calls) == 1
+        call = nlp.raw_calls[0]
+        assert call["text"] == "note"
+        assert call["tenant_id"] == "t-1"
+        assert call["model_name"] == "blaze999/Medical-NER"
+        assert call["model_path"] == "/mnt/models-bucket/nlp/medical-ner/"
+        assert call["labels"] == ["disease", "medication"]
+        assert call["clinical_taxonomy"] == clinical
+        assert call["language"] == "en"
+        # The checkpoint's own declared aggregation applies, as on the gateway's NER path.
+        assert call.get("aggregation_strategy") is None
+
+    @pytest.mark.asyncio
+    async def test_omits_labels_and_taxonomy_the_row_does_not_declare(self, env, monkeypatch):
+        nlp = _FakeNlp()
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: _FakeApiPriors())
+
+        await env.run(activities.extract_entities, ExtractEntitiesInput(tenant_id="t-1", text="x"))
+
+        call = nlp.raw_calls[0]
+        assert call.get("labels") is None
+        assert call.get("clinical_taxonomy") is None
+
+    @pytest.mark.asyncio
+    async def test_maps_spans_through_the_classify_tokens_projection(self, env, monkeypatch):
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: _FakeNlp())
+        monkeypatch.setattr(activities, "_api_client", lambda s: _FakeApiPriors())
+
+        result = await env.run(
+            activities.extract_entities, ExtractEntitiesInput(tenant_id="t-1", text="x")
+        )
+
+        assert result.entities == [NlpClient.entities_from(_RAW_SPAN_RESPONSE)[0]]
+        assert result.entities[0] == NEREntity(
+            text="hypertension",
+            type="DISEASE",
+            start=0,
+            end=12,
+            snomed_code="38341003",
+            assertion="PRESENT",
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_resolution_failure_raises_so_the_workflow_degrades(self, env, monkeypatch):
+        """Selection fails closed: nothing is sent to NLP without a model, and the activity
+        error is what the workflow's existing degrade path (forced review) handles."""
+        nlp = _FakeNlp()
+        api = _FakeApiPriors(resolve_error=ApiServiceError("503 nlp.ner"))
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+
+        with pytest.raises(ApiServiceError):
+            await env.run(
+                activities.extract_entities, ExtractEntitiesInput(tenant_id="t-1", text="x")
+            )
+        assert nlp.raw_calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_model_without_source_uri_raises(self, env, monkeypatch):
+        nlp = _FakeNlp()
+        api = _FakeApiPriors(model={**_NER_MODEL, "sourceUri": None})
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+
+        with pytest.raises(ValueError):
+            await env.run(
+                activities.extract_entities, ExtractEntitiesInput(tenant_id="t-1", text="x")
+            )
+        assert nlp.raw_calls == []
+
+    @pytest.mark.asyncio
+    async def test_priors_reuse_short_circuits_before_any_resolution(self, env, monkeypatch):
+        nlp = _FakeNlp()
+        api = _FakeApiPriors(
+            priors=[NEREntity(text="x", type="DISEASE", umls_cui="C0020538")],
+            resolve_error=AssertionError("must not resolve"),
+        )
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+
+        result = await env.run(
+            activities.extract_entities,
+            ExtractEntitiesInput(
+                text="x",
+                reuse_priors=True,
+                ner_priors_enabled=True,
+                consultation_id="c-1",
+                tenant_id="t-1",
+            ),
+        )
+        assert result.reused is True
+        assert api.resolve_calls == []
+        assert nlp.raw_calls == []
+
+
+class TestNlpExtractEntities:
+    """The loop's ``nlp.extract_entities`` action shares the doc workflow's NER path."""
+
+    @staticmethod
+    def _input() -> DeriveContextInput:
+        return DeriveContextInput(
+            consultation_id="c-1",
+            tenant_id="t-1",
+            action="nlp.extract_entities",
+            context_item_id="ci-1",
+            kind_key="note",
+            text="Patient has hypertension.",
+        )
+
+    @pytest.mark.asyncio
+    async def test_forwards_the_resolved_model_and_derives_the_surfaces(self, env, monkeypatch):
+        nlp = _FakeNlp()
+        api = _FakeApiPriors()
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+
+        result = await env.run(activities.nlp_extract_entities, self._input())
+
+        assert api.resolve_calls == [("nlp.ner", "t-1")]
+        assert nlp.raw_calls[0]["model_name"] == "blaze999/Medical-NER"
+        assert nlp.raw_calls[0]["model_path"] == "/mnt/models-bucket/nlp/medical-ner/"
+        assert result.derived is True
+        assert result.text == "hypertension"
+
+    @pytest.mark.asyncio
+    async def test_a_resolution_failure_ends_the_branch_without_a_model_less_call(
+        self, env, monkeypatch
+    ):
+        nlp = _FakeNlp()
+        api = _FakeApiPriors(resolve_error=ApiServiceError("503 nlp.ner"))
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+
+        result = await env.run(activities.nlp_extract_entities, self._input())
+
+        assert result.derived is False
+        assert nlp.raw_calls == []
 
 
 class TestGenerate:

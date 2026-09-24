@@ -1238,6 +1238,47 @@ async def _load_coded_priors(settings: Settings, payload: ExtractEntitiesInput) 
     return priors if any(_has_ontology_code(e) for e in priors) else []
 
 
+#: The routing task key clinical NER selects its model through (platform-only election).
+_NER_TASK_KEY = "nlp.ner"
+
+
+async def _extract_clinical_entities(
+    settings: Settings, text: str, *, tenant_id: str, language: str = "en"
+) -> list[NEREntity]:
+    """Clinical NER over ``text`` on the model the gateway elects for ``nlp.ner``.
+
+    Resolved INSIDE the calling activity, so the workflow schedules nothing new
+    (replay-safe). Selection fails CLOSED: a resolve error, or a model without a
+    ``sourceUri``, raises and NLP is never called without a model. The row's declared
+    ``labelTaxonomy.labels`` ride along for an open-taxonomy extractor (a closed
+    checkpoint ignores them) and its ``clinicalTaxonomy`` is forwarded verbatim, as the
+    gateway's own clinical NER calls do.
+    """
+    model = await _api_client(settings).resolve_task_model(_NER_TASK_KEY, tenant_id=tenant_id)
+    source_uri = model.get("sourceUri")
+    if not isinstance(source_uri, str) or not source_uri:
+        raise ValueError(f"{_NER_TASK_KEY!r} resolved to a model with no sourceUri")
+    local_path = model.get("localPath")
+    label_taxonomy = model.get("labelTaxonomy")
+    raw_labels = label_taxonomy.get("labels") if isinstance(label_taxonomy, dict) else None
+    labels = (
+        [label for label in raw_labels if isinstance(label, str) and label]
+        if isinstance(raw_labels, list)
+        else []
+    )
+    clinical_taxonomy = model.get("clinicalTaxonomy")
+    data = await _nlp_client(settings).classify_tokens_raw(
+        text,
+        tenant_id=tenant_id,
+        model_name=source_uri,
+        model_path=local_path if isinstance(local_path, str) and local_path else None,
+        labels=labels or None,
+        clinical_taxonomy=clinical_taxonomy if isinstance(clinical_taxonomy, dict) else None,
+        language=language,
+    )
+    return NlpClient.entities_from(data)
+
+
 @activity.defn
 async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
     """Run medical NER over ``text`` via the NLP service.
@@ -1271,7 +1312,10 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
             return EntitiesResult(entities=priors, reused=True)
     # Resolve the (possibly offloaded) note/transcript before the cold NER pass.
     text = await _resolve_ref(settings, payload.text, payload.text_ref)
-    entities = await _nlp_client(settings).classify_tokens(
+    # A resolve failure propagates: the workflow's existing degrade path (forced review)
+    # handles it, and nothing is ever sent to NLP without a model.
+    entities = await _extract_clinical_entities(
+        settings,
         text,
         tenant_id=_required_tenant(payload.tenant_id, "extract_entities"),
         language=payload.language,
@@ -3759,7 +3803,7 @@ async def document_extract_text(payload: DeriveContextInput) -> DeriveContextRes
 async def nlp_extract_entities(payload: DeriveContextInput) -> DeriveContextResult:
     """Extract clinical entities from a TEXT context item.
 
-    Backs `nlp.extract_entities` using the SAME `classify_tokens` call the
+    Backs `nlp.extract_entities` using the SAME resolved-model NER call the
     document workflow's `extract_entities` activity uses — one NER path, not two.
     The derived item carries the entity surfaces so a downstream subscription can
     act on them.
@@ -3769,8 +3813,8 @@ async def nlp_extract_entities(payload: DeriveContextInput) -> DeriveContextResu
     if not source.strip():
         return DeriveContextResult(derived=False)
     try:
-        entities = await _nlp_client(settings).classify_tokens(
-            source, tenant_id=_required_tenant(payload.tenant_id, "nlp_extract_entities")
+        entities = await _extract_clinical_entities(
+            settings, source, tenant_id=_required_tenant(payload.tenant_id, "nlp_extract_entities")
         )
     except Exception as exc:  # noqa: BLE001 — a dead branch of the cascade, not an error
         activity.logger.warning(

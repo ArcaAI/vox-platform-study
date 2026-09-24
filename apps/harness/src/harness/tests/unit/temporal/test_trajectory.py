@@ -24,7 +24,6 @@ from temporalio.testing import ActivityEnvironment
 from temporalio.worker import Worker
 
 from harness.core.config import Settings
-from harness.sensors.base import NEREntity
 from harness.services.api_client import (
     ApiServiceError,
     AssembleResponse,
@@ -403,10 +402,16 @@ class TestActivityEmission:
 
 
 class _FakeNlp:
-    async def classify_tokens(
-        self, text: str, *, tenant_id: str = "", language: str = "en"
-    ) -> list[NEREntity]:
-        return [NEREntity(text="hypertension", type="DISEASE", start=0, end=12)]
+    async def classify_tokens_raw(self, text: str, **kwargs: Any) -> dict[str, Any]:
+        return {
+            "entities": [
+                {
+                    "text": "hypertension",
+                    "entity_type": "DISEASE",
+                    "position": {"start": 0, "end": 12},
+                }
+            ]
+        }
 
 
 class _FakeText:
@@ -428,6 +433,9 @@ class _FakeApi:
         # the (stubbed) judge instead of failing closed on a missing selection.
         # Accepts the consultation_id the workflow now threads through.
         return {"judgeProvider": "openai_compat", "judgeModel": "stub-judge"}
+
+    async def resolve_task_model(self, task_key: str, *, tenant_id: str) -> dict[str, Any]:
+        return {"slug": "medical-ner", "taskType": "TOKEN_CLASSIFICATION", "sourceUri": "m/ner"}
 
     async def persist_entities(self, consultation_id: str, **kw: Any) -> PersistEntitiesResponse:
         return PersistEntitiesResponse(saved_count=len(kw.get("entities", [])), entity_ids=["e0"])
