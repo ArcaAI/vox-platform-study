@@ -23,6 +23,7 @@ from stt.pipeline.language_modes import (
 from stt.streaming._runtime import get_session_manager
 from stt.streaming.api.schemas import (
     CreateStreamingSessionRequest,
+    LanguageResolution,
     StreamingAvailabilityResponse,
     StreamingSessionResponse,
     StreamingSessionTeardownResponse,
@@ -71,6 +72,12 @@ def _resolve_active_pipeline(mgr: SessionManager, session: Any) -> tuple[str, st
     if controller is None:
         return session.pipeline_id, "primary"
     return (controller.active_pipeline_id or session.pipeline_id), controller.active_engine
+
+
+def _language_resolution_of(mgr: SessionManager, session_id: str) -> LanguageResolution | None:
+    """TASK-1004 — the session's receipt as the response model (``None`` when absent)."""
+    wire = mgr.get_language_resolution(session_id)
+    return LanguageResolution.model_validate(wire) if wire is not None else None
 
 
 # -------------------------------------------------------------------------
@@ -249,7 +256,7 @@ async def create_streaming_session(
         pipeline_id=active_pipeline_id,
         active_engine=active_engine,
         voice_profile_seeded=mgr.get_voice_profile_seeded(session.session_id),
-        language_resolution=mgr.get_language_resolution(session.session_id),
+        language_resolution=_language_resolution_of(mgr, session.session_id),
     )
 
 
@@ -311,7 +318,7 @@ async def get_streaming_session(session_id: str) -> StreamingSessionResponse:
         pipeline_id=active_pipeline_id,
         active_engine=active_engine,
         voice_profile_seeded=mgr.get_voice_profile_seeded(session.session_id),
-        language_resolution=mgr.get_language_resolution(session.session_id),
+        language_resolution=_language_resolution_of(mgr, session.session_id),
     )
 
 
