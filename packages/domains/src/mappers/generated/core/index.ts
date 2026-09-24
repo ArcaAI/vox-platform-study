@@ -42,6 +42,7 @@ export * from './KnowledgeChunkEntityMapper';
 export * from './KnowledgeDocumentEntityMapper';
 export * from './McpServerEntityMapper';
 export * from './MediaEntityMapper';
+export * from './ModelResidencyPolicyEntityMapper';
 export * from './NamedEntityEntityMapper';
 export * from './NotificationEntityMapper';
 export * from './PasswordResetTokenEntityMapper';
