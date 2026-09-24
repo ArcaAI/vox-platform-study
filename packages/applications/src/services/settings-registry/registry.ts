@@ -24,6 +24,7 @@ import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
 import { HARNESS_JUDGE_SETTINGS } from './descriptors/harness-judge.descriptors';
 import { LM_STUDIO_SERVING_SETTINGS } from './descriptors/lmstudio-serving.descriptors';
+import { MODEL_RESIDENCY_SETTINGS } from './descriptors/model-residency.descriptors';
 import { TEXT_REASONING_SETTINGS } from './descriptors/text-reasoning.descriptors';
 import { MCP_EGRESS_SETTINGS } from './descriptors/mcp-egress.descriptors';
 import { METERING_COMPUTE_SETTINGS } from './descriptors/metering-compute.descriptors';
@@ -281,6 +282,13 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // `AiModel._metadata.serving`, because "this model on that GPU" is a
   // statement about a model and no flat key can express it.
   ...LM_STUDIO_SERVING_SETTINGS,
+
+  // ── Model residency control ──────────────────────────────────────────────
+  // TASK-1005 §5.2 — the residency controller's SYSTEM knobs (shadow/enforce,
+  // headroom, anti-thrash floors, WARM promotion hysteresis, admission wait)
+  // and `stt.warmDefaultAsrOnBoot`, which STT has read off its effective-config
+  // pull since TASK-985 with no descriptor behind it.
+  ...MODEL_RESIDENCY_SETTINGS,
 ]);
 
 // TASK-969 WS-1 — the one CROSS-descriptor invariant, run once the whole catalog
