@@ -26,7 +26,7 @@ from hope_runtime_models.residency_agent import (
 )
 from hope_runtime_models.residency_api import build_residency_router
 
-from .wiring import SERVICE
+from .wiring import SERVICE, stt_device
 
 #: `to_ai_model_config` stamps `agent-model:<slug>` as the config id when the model
 #: came from a resolved spec — a label, not an `AiModel` id, so it is not reported
@@ -74,7 +74,9 @@ async def _plan(model_ref: str, load_spec: dict[str, Any]) -> LoadPlan | None:
 
 @lru_cache(maxsize=1)
 def stt_residency_agent() -> ResidencyAgent:
-    return ResidencyAgent(service=SERVICE, bindings=_bindings, planner=_plan)
+    return ResidencyAgent(
+        service=SERVICE, bindings=_bindings, planner=_plan, devices=lambda: [stt_device()]
+    )
 
 
 def residency_router() -> APIRouter:
