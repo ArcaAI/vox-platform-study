@@ -39,6 +39,12 @@ export interface CreateAiModelProps extends BaseEntityFactoryCreateProps {
   metaData?: IAiModelEntity['metaData'];
   memorySizeMb?: IAiModelEntity['memorySizeMb'];
   computeType?: IAiModelEntity['computeType'];
+  // TASK-1005 D-2 — measured footprint; never supplied at creation in
+  // practice (the residency controller writes these back after a load), but
+  // accepted here for symmetry with `memorySizeMb`/`computeType` and tests.
+  observedMemoryMb?: IAiModelEntity['observedMemoryMb'];
+  observedLoadSeconds?: IAiModelEntity['observedLoadSeconds'];
+  observedAt?: IAiModelEntity['observedAt'];
   tenantId: IAiModelEntity['tenantId'];
   tags?: IAiModelEntity['tags'];
 
@@ -99,6 +105,9 @@ export class AiModelFactory {
       isPlatformDefaultFor: props.isPlatformDefaultFor ?? [],
       memorySizeMb: props.memorySizeMb ?? null,
       computeType: props.computeType ?? null,
+      observedMemoryMb: props.observedMemoryMb ?? null,
+      observedLoadSeconds: props.observedLoadSeconds ?? null,
+      observedAt: props.observedAt ?? null,
       checksum: null,
       tenantId: props.tenantId,
       tags: props.tags ?? [],

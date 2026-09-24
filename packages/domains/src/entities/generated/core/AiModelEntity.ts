@@ -59,6 +59,13 @@ export interface IAiModelEntity extends IBaseTaggedEntity {
   isPlatformDefaultFor: Enums.AiTaskKind[];
   memorySizeMb?: number | null;
   computeType?: string | null;
+  // TASK-1005 D-2 — MEASURED footprint, written back by the
+  // ModelResidencyController from the NVML/DCGM delta observed around an
+  // actual load. Never a catalogue estimate (see `memorySizeMb` above,
+  // chronically null).
+  observedMemoryMb?: number | null;
+  observedLoadSeconds?: number | null;
+  observedAt?: Date | null;
   checksum?: string | null;
 }
 
@@ -110,6 +117,9 @@ export class AiModelEntity extends BaseTaggedEntity {
   private _isPlatformDefaultFor: IAiModelEntity['isPlatformDefaultFor'];
   private _memorySizeMb?: IAiModelEntity['memorySizeMb'];
   private _computeType?: IAiModelEntity['computeType'];
+  private _observedMemoryMb?: IAiModelEntity['observedMemoryMb'];
+  private _observedLoadSeconds?: IAiModelEntity['observedLoadSeconds'];
+  private _observedAt?: IAiModelEntity['observedAt'];
   private _checksum?: IAiModelEntity['checksum'];
 
   constructor(init: IAiModelEntity) {
@@ -146,6 +156,9 @@ export class AiModelEntity extends BaseTaggedEntity {
     this._isPlatformDefaultFor = init.isPlatformDefaultFor ?? [];
     this._memorySizeMb = init.memorySizeMb;
     this._computeType = init.computeType;
+    this._observedMemoryMb = init.observedMemoryMb;
+    this._observedLoadSeconds = init.observedLoadSeconds;
+    this._observedAt = init.observedAt;
     this._checksum = init.checksum;
   }
 
@@ -406,6 +419,30 @@ export class AiModelEntity extends BaseTaggedEntity {
     this.setProperty('computeType', value);
   }
 
+  get observedMemoryMb(): IAiModelEntity['observedMemoryMb'] {
+    return this._observedMemoryMb;
+  }
+
+  set observedMemoryMb(value: IAiModelEntity['observedMemoryMb']) {
+    this.setProperty('observedMemoryMb', value);
+  }
+
+  get observedLoadSeconds(): IAiModelEntity['observedLoadSeconds'] {
+    return this._observedLoadSeconds;
+  }
+
+  set observedLoadSeconds(value: IAiModelEntity['observedLoadSeconds']) {
+    this.setProperty('observedLoadSeconds', value);
+  }
+
+  get observedAt(): IAiModelEntity['observedAt'] {
+    return this._observedAt;
+  }
+
+  set observedAt(value: IAiModelEntity['observedAt']) {
+    this.setProperty('observedAt', value);
+  }
+
   get checksum(): IAiModelEntity['checksum'] {
     return this._checksum;
   }
@@ -545,7 +582,9 @@ export class AiModelEntity extends BaseTaggedEntity {
     // (TASK-934: the seeded catalogue names GGUF quantisations `…-q8_0`; the old rule made those
     // rows un-editable through the API because update() re-validates the entity).
     if (!/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(this._slug)) {
-      throw new BusinessException('Model slug must be lowercase alphanumeric with hyphens (e.g., "whisper-large-v3"); an underscore may join segments (a GGUF quantisation suffix such as "q8_0")');
+      throw new BusinessException(
+        'Model slug must be lowercase alphanumeric with hyphens (e.g., "whisper-large-v3"); an underscore may join segments (a GGUF quantisation suffix such as "q8_0")',
+      );
     }
   }
 }
