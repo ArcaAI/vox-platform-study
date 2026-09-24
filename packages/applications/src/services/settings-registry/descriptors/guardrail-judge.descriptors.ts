@@ -55,10 +55,11 @@ export const GUARDRAIL_JUDGE_SETTINGS: SettingDescriptor[] = [
       "`apps/text`'s isolated judge lane, or a classification/PII/entailment call on `apps/nlp`. It is " +
       'the deployment’s latency envelope, not a property of any model: the judge’s temperature and ' +
       'output-token budget are model-coupled and live on the selected `AiModel._metadata.policy` ' +
-      'instead. Guardrail retries a judgement twice, so the worst-case wait a caller sees is roughly ' +
-      'twice this value plus backoff — `apps/text` maps the resulting outage to a retryable 503, never ' +
-      'to a content rejection. Raise it for a slow self-hosted guardian; lowering it below the ' +
-      'guardian’s real p99 turns healthy judgements into 503s, which fail CLOSED and block generation.',
+      'instead. Guardrail makes ONE judge attempt (a timed-out judgement is still running, so it is not ' +
+      'retried); `apps/text` maps the resulting outage to a retryable 503, never to a content rejection. ' +
+      'The timeouts NEST: `text.externalGuardrail.timeoutS` must stay above this value plus guardrail’s ' +
+      'admission wait, so raising this means raising that first. Lowering it below the guardian’s real ' +
+      'p99 (measured 50.6 s) turns healthy judgements into 503s, which fail CLOSED and block generation.',
     default: GUARDRAIL_JUDGE_DEFAULTS[GUARDRAIL_JUDGE_TIMEOUT_KEY],
   },
 ];

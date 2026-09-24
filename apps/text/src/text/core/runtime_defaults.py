@@ -166,7 +166,15 @@ LANE_FLOORS: dict[str, LaneBudget] = {"user": USER_LANE_FLOOR, "judge": JUDGE_LA
 #: an env edit — which is the point: it can be done, and audited, without a
 #: redeploy.
 GUARDRAIL_ENABLED_FLOOR = False
-GUARDRAIL_TIMEOUT_FLOOR_S = 10
+#: How long TEXT waits for guardrail's ANSWER. It must outlast one guardrail
+#: validation: admission wait (5 s) + one judge attempt at
+#: `guardrail.judge.timeoutSeconds` (60 s; measured judge p99 50.6 s) + slack.
+#: Shorter, and TEXT abandons judgements guardrail is still running. The nesting
+#: is pinned by tests on both services and over the two descriptors.
+GUARDRAIL_TIMEOUT_FLOOR_S = 75
+#: Retries apply only to failures that started no work downstream (connect
+#: failures, a connection dropped before any response, 502/503/504) — see
+#: `services/external_guardrail.py`.
 GUARDRAIL_MAX_RETRIES_FLOOR = 2
 GUARDRAIL_RETRY_BACKOFF_FLOOR_MS = 100
 #: Clinical enforce: a reachable guardrail must classify the prompt as medical.
@@ -174,3 +182,16 @@ GUARDRAIL_RETRY_BACKOFF_FLOOR_MS = 100
 #: changing the platform floor.
 GUARDRAIL_REQUIRE_MEDICAL_FLOOR = True
 GUARDRAIL_INCLUDE_REASONING_FLOOR = False
+
+#: Connect-phase bound on the moderation call, independent of the answer wait.
+#: A connect failure is retried, so under the full answer budget three
+#: unreachable attempts would cost minutes. A resource-safety floor, not a policy.
+GUARDRAIL_CONNECT_TIMEOUT_S = 5
+
+#: Circuit breaker on the TEXT → guardrail leg. Mirrors guardrail's own per-peer
+#: breakers (`TransportPolicy.breaker_failure_threshold` /
+#: `breaker_recovery_timeout_s` in `apps/guardrail/.../core/config.py`), which are
+#: code contracts with one definition site rather than settings. Open after this
+#: many consecutive peer-health failures; admit one probe after the cool-down.
+GUARDRAIL_BREAKER_FAILURE_THRESHOLD = 5
+GUARDRAIL_BREAKER_RECOVERY_S = 15.0

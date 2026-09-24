@@ -50,6 +50,8 @@ _JITTER_FRACTION = 0.10
 #: for the nlp peer. ONE definition site, mirrored by the descriptor's `default`
 #: in `settings-registry/descriptors/guardrail-judge.descriptors.ts`; the value is
 #: `JudgePolicy.timeout_s`'s former literal, so registering it changed nothing.
+#: Measured judge p99 is 50.6 s. `apps/text` waits longer than one attempt at this
+#: budget (`text.externalGuardrail.timeoutS`); keep the two nested.
 DEFAULT_JUDGE_TIMEOUT_S = 60.0
 
 

@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -181,7 +182,7 @@ class _RaisingHttp:
 
     async def post(self, *args: Any, **kwargs: Any):
         self.calls += 1
-        raise RuntimeError("guardrail unreachable")
+        raise httpx.ConnectError("guardrail unreachable")
 
 
 def _client(http: Any, **posture: Any) -> ExternalGuardrailClient:
@@ -261,7 +262,13 @@ class TestScreenOutputClient:
     async def test_http_error_status_is_an_outage_not_a_content_verdict(self) -> None:
         """A guardrail 503 (admission gate, undetermined verdict) must surface as
         retryable, never as `allowed` and never as a content rejection."""
-        http = _RecordingHttp({"decision": "allow"}, status_error=RuntimeError("503"))
+        request = httpx.Request("POST", _BASE_URL)
+        http = _RecordingHttp(
+            {"decision": "allow"},
+            status_error=httpx.HTTPStatusError(
+                "503", request=request, response=httpx.Response(503, request=request)
+            ),
+        )
         client = _client(http, max_retries=1)
 
         verdict = await client.screen_output("x", tenant_id="t")
