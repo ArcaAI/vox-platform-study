@@ -8,6 +8,7 @@ from nlp.core.internal_auth import assert_internal_access_token
 from nlp.core.logging import get_logger, setup_logging
 from nlp.core.observability import setup_opentelemetry, setup_prometheus
 from nlp.lifespan import lifespan
+from nlp.residency import residency_router
 from nlp.utils import is_production
 
 logger = get_logger(__name__)
@@ -81,6 +82,8 @@ def get_app() -> FastAPI:
     app.add_exception_handler(Exception, general_exception_handler)
 
     app.include_router(api_router)
+    # TASK-1005 — the model-residency agent the gateway controller drives.
+    app.include_router(residency_router())
 
     return app
 
