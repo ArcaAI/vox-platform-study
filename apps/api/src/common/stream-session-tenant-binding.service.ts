@@ -49,7 +49,13 @@
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
-import { IRedisCacheService, parseMetadataMarks, type StreamMetadataMarks } from '@arcaai/applications';
+import {
+  IRedisCacheService,
+  languageResolutionFromWire,
+  parseMetadataMarks,
+  type LanguageResolution,
+  type StreamMetadataMarks,
+} from '@arcaai/applications';
 
 export const STREAM_SESSION_TENANT_KEY_PREFIX = 'stream-session-tenant:';
 export const STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24h
@@ -117,6 +123,12 @@ export interface StreamSessionMeta {
    * `assertStreamContextConforms` gives an agent with no bound schema at all.
    */
   metadataSchema?: Record<string, unknown>;
+  /**
+   * TASK-1004 — the language RECEIPT the session was created with (camelCase), frozen here beside
+   * the sampleRate so the WS handshake's ONE meta read also gives `ready` its receipt. Absent for a
+   * session created before TASK-1004, or when STT answered none.
+   */
+  languageResolution?: LanguageResolution;
 }
 
 /**
@@ -242,11 +254,15 @@ export class StreamSessionTenantBindingService {
           parsed.metadataSchema !== null && typeof parsed.metadataSchema === 'object' && !Array.isArray(parsed.metadataSchema)
             ? (parsed.metadataSchema as Record<string, unknown>)
             : undefined;
+        // TASK-1004 — read on the same terms again: a record without one (or with a malformed one)
+        // is "no receipt", never a failed handshake.
+        const languageResolution = parsed.languageResolution ? languageResolutionFromWire(parsed.languageResolution) : null;
         return {
           sampleRate: parsed.sampleRate,
           ...(context ? { context } : {}),
           ...(sessionEpochMs != null ? { sessionEpochMs } : {}),
           ...(metadataSchema ? { metadataSchema } : {}),
+          ...(languageResolution ? { languageResolution } : {}),
         };
       }
     } catch {

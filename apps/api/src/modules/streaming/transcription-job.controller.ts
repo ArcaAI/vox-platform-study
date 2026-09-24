@@ -19,11 +19,13 @@ import {
   IUserRoleAssignmentService,
   jsonSchemaValueProblems,
   PipelineService,
+  requestedLanguageMode,
+  resolveEffectiveLanguageMode,
   StreamingSessionService,
   TranscriptionJobService,
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
-import type { ResolvedAsrSession, ResolvedAsrSpec, SttProviderOverrides } from '@arcaai/applications';
+import type { LanguageModeSource, ResolvedAsrSession, ResolvedAsrSpec, SttProviderOverrides } from '@arcaai/applications';
 import { TenantBucketPurpose } from '@arcaai/domains';
 import type { Response } from 'express';
 import { probeAudioDurationSeconds } from './audio-duration';
@@ -217,11 +219,43 @@ export class TranscriptionJobController {
     return Boolean(body.pipelineId) || (!this.asrResolver && !body.agentSlug);
   }
 
-  private async resolveAsrAgent(tenantId: string, agentSlug?: string | null, consultationId?: string | null): Promise<ResolvedAsrSession> {
+  private async resolveAsrAgent(
+    tenantId: string,
+    agentSlug?: string | null,
+    consultationId?: string | null,
+    requestedMode?: string | null,
+  ): Promise<ResolvedAsrSession> {
     if (!this.asrResolver) {
       throw new ServiceUnavailableException('ASR agent resolution is not configured on this gateway');
     }
-    return this.asrResolver.resolve({ tenantId, agentSlug: agentSlug ?? null, departmentId: null, consultationId: consultationId ?? null });
+    // TASK-1004 — an explicit agent on a consultation-bound request that declared no mode is the
+    // one case whose consultation is not read for agent resolution; ask for that read so the
+    // session can inherit the consultation's mode. Without an agentSlug the resolver reads the
+    // consultation anyway (tier 2/3), so the flag would be noise there.
+    const inheritConsultationLanguage = Boolean(agentSlug && consultationId && !requestedMode);
+    return this.asrResolver.resolve({
+      tenantId,
+      agentSlug: agentSlug ?? null,
+      departmentId: null,
+      consultationId: consultationId ?? null,
+      ...(inheritConsultationLanguage ? { inheritConsultationLanguage } : {}),
+    });
+  }
+
+  /**
+   * TASK-1004 — the mode (and its tier) a session or job SENDS to STT: request > consultation.
+   * The agent's own default and `auto` are deliberately NOT sent — STT applies the spec's mode
+   * itself and stamps `agent`/`default` on the receipt, exactly as before this ticket. Language
+   * is a decoding input only; the agent was resolved before this and is never revisited.
+   */
+  private effectiveLanguage(
+    requestedMode: string | null,
+    resolved?: ResolvedAsrSession,
+  ): { languageMode?: string; languageModeSource?: LanguageModeSource } {
+    const effective = resolveEffectiveLanguageMode({ request: requestedMode, consultation: resolved?.consultationLanguageMode ?? null });
+    return effective.source === 'request' || effective.source === 'consultation'
+      ? { languageMode: effective.mode, languageModeSource: effective.source }
+      : {};
   }
 
   /**
@@ -975,6 +1009,9 @@ export class TranscriptionJobController {
   async createStreamSession(@Body() body: CreateStreamSessionRequest, @Res({ passthrough: true }) res?: Response): Promise<StreamSessionResponse> {
     const sessionId = uuidv7();
     const tenantId = this.getTenantId();
+    // TASK-1004 — the caller's explicit mode (`languageMode` > `language`), normalized; a value
+    // that names no mode is 400 LANGUAGE_MODE_UNKNOWN here, before any quota, resolution or STT I/O.
+    const requestedMode = requestedLanguageMode(body);
     // TASK-933 — resolved ONCE, up front, and used by all three writes below. Resolving it here
     // also means an ownerless caller is refused BEFORE any STT or bucket I/O runs.
     const ownerId = this.resolveStreamOwnerId();
@@ -1033,7 +1070,7 @@ export class TranscriptionJobController {
     const [resolved, { audioBucketName, storage }] = await Promise.all([
       legacyPipelinePath
         ? this.assertPipelineOwnership(body.pipelineId as string).then(() => undefined)
-        : this.resolveAsrAgent(tenantId, body.agentSlug, body.consultationId),
+        : this.resolveAsrAgent(tenantId, body.agentSlug, body.consultationId, requestedMode),
       resolveAudioBucket(),
     ]);
 
@@ -1089,8 +1126,11 @@ export class TranscriptionJobController {
       ...(resolved ? { resolvedSpec: resolved.spec } : {}),
       consultationId: body.consultationId,
       sampleRate,
-      language: body.language,
-      languageMode: body.languageMode,
+      // TASK-1004 — ONE carrier: the normalized mode and the tier that declared it (request >
+      // consultation, the latter inherited off the resolver's own consultation read — no extra
+      // round trip). The raw `language` is never forwarded: every accepted value IS a mode now.
+      // On the deprecated pipeline path there is no resolver read, so only the request tier applies.
+      ...this.effectiveLanguage(requestedMode, resolved),
       userId: ownerId,
       audioBucketName,
       storage,
@@ -1159,6 +1199,9 @@ export class TranscriptionJobController {
         // agent or read a schema row on a control frame, and it must not: what a live session
         // accepts is decided once, at create, and never changes under the caller.
         ...(metadataSchema ? { metadataSchema } : {}),
+        // TASK-1004 — the create-time language receipt, frozen beside the sampleRate so the WS
+        // handshake's ONE meta read also gives `ready` its receipt.
+        ...(result.languageResolution ? { languageResolution: result.languageResolution } : {}),
       }),
     ]);
 
@@ -1200,6 +1243,8 @@ export class TranscriptionJobController {
       // the first utterance.
       ...(context ? { context } : {}),
       sessionEpochMs,
+      // TASK-1004 — what the session was asked for and what its serving engine applied.
+      ...(result.languageResolution ? { languageResolution: result.languageResolution } : {}),
     };
   }
 

@@ -701,6 +701,51 @@ describe('StreamingAudioBridgeService', () => {
       expect(result).not.toHaveProperty('is_fallback');
     });
 
+    // TASK-1004 — the re-resolved language receipt rides a `provider_switched` entry as a JSON
+    // STRING (`language_resolution`); the client frame carries it parsed and camelCased, and a
+    // malformed one is dropped rather than relayed raw.
+    it('projects language_resolution (JSON string) onto the status frame as camelCase languageResolution', async () => {
+      const receipt = {
+        requested_mode: 'ml-en',
+        source: 'request',
+        applied_mode: 'ml-en',
+        engine: 'SARVAM',
+        provider: 'sarvam',
+        params: { language: 'ml', code_switching: true, streaming_english_gloss: false, primed: false },
+        degraded: false,
+        reason: 'fallback_engine_switch',
+      };
+      mockXreadgroup
+        .mockResolvedValueOnce(switchEntry(['active', 'fallback', 'is_fallback', '1', 'language_resolution', JSON.stringify(receipt)]))
+        .mockResolvedValue(null);
+
+      const result = await firstValueFrom(service.subscribeToResults('s-1').pipe(take(1)));
+
+      expect(result).toMatchObject({
+        status: 'provider_switched',
+        languageResolution: {
+          requestedMode: 'ml-en',
+          source: 'request',
+          appliedMode: 'ml-en',
+          engine: 'SARVAM',
+          provider: 'sarvam',
+          params: { language: 'ml', codeSwitching: true, streamingEnglishGloss: false, primed: false },
+          degraded: false,
+          reason: 'fallback_engine_switch',
+        },
+      });
+      expect(result).not.toHaveProperty('language_resolution');
+    });
+
+    it('drops a malformed language_resolution instead of relaying it', async () => {
+      mockXreadgroup.mockResolvedValueOnce(switchEntry(['active', 'fallback', 'language_resolution', '{nope'])).mockResolvedValue(null);
+
+      const result = await firstValueFrom(service.subscribeToResults('s-1').pipe(take(1)));
+
+      expect(result).not.toHaveProperty('languageResolution');
+      expect(result).not.toHaveProperty('language_resolution');
+    });
+
     it('stays an allow-list — a novel upstream status field is still dropped', async () => {
       // The result stream is PHI-bearing; widening it must never become a
       // blind spread of whatever a future publisher adds.

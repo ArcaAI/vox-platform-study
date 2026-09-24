@@ -14,6 +14,7 @@ import {
   StreamingAudioBridgeService,
   StreamingSessionService,
   type ClippedMetadataSpan,
+  type LanguageResolution,
   type MetadataSpan,
   type TraceCarrier,
   clipSpansToWindow,
@@ -283,6 +284,12 @@ interface SessionInfo {
    * and any object is accepted on the size bound alone.
    */
   metadataSchema?: Record<string, unknown>;
+  /**
+   * TASK-1004 — the session's CURRENT language receipt: the create-time one from the meta read,
+   * replaced whenever a `provider_switched` status carries a re-resolved one, so every `ready`
+   * (first connect or grace-window rebind) reports what is serving now.
+   */
+  languageResolution?: LanguageResolution;
   /**
    * TASK-951 R2 (clarified) — the session's AUDIO CLOCK, in bytes forwarded upstream.
    *
@@ -985,6 +992,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     // SAME await as the sampleRate (one `Promise.all`, two keys), so the handshake still pays
     // for one round trip's latency, and both degrade to "nothing" on any failure.
     let metadataSchema: Record<string, unknown> | undefined;
+    // TASK-1004 — the create-time language receipt, off the same read.
+    let languageResolution: LanguageResolution | undefined;
     let metadataSpans: MetadataSpan[] = [];
     let audioBytesForwarded = 0;
     try {
@@ -994,6 +1003,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         streamContext = meta.context;
         sessionEpochMs = meta.sessionEpochMs;
         metadataSchema = meta.metadataSchema;
+        languageResolution = meta.languageResolution;
       }
       if (marks.spans.length > 0) {
         metadataSpans = marks.spans;
@@ -1044,6 +1054,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       ...(streamContext ? { streamContext } : {}),
       ...(sessionEpochMs != null ? { sessionEpochMs } : {}),
       ...(metadataSchema ? { metadataSchema } : {}),
+      ...(languageResolution ? { languageResolution } : {}),
       audioBytesForwarded,
       metadataSpans,
       // TASK-985 ST-5 — resolved ONCE, here, so the per-transcript relay path stays synchronous.
@@ -1269,6 +1280,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       // control frame, so an additive field here costs nothing per utterance. Absent only for a
       // session whose meta record predates this ticket or could not be read.
       ...(session.sessionEpochMs != null ? { sessionEpochMs: session.sessionEpochMs } : {}),
+      // TASK-1004 — the receipt in force as this socket becomes ready, for a socket-only consumer
+      // that never read the HTTP create response. Absent when the session has none.
+      ...(session.languageResolution ? { languageResolution: session.languageResolution } : {}),
     });
   }
 
@@ -1406,6 +1420,12 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    */
   private relayResult(client: WebSocket, session: SessionInfo, msg: { type: string; isFinal?: boolean; [key: string]: unknown }): void {
     const isTranscript = msg?.type === 'transcript';
+    // TASK-1004 — an engine switch re-resolves the language; keep the new receipt as the session's
+    // current one so a later `ready` (rebind) reports what is serving now. The bridge has already
+    // validated + camelCased it; the frame itself is relayed unchanged below.
+    if (msg?.type === 'status' && msg.status === 'provider_switched' && msg.languageResolution) {
+      session.languageResolution = msg.languageResolution as LanguageResolution;
+    }
     const backpressured = this.isEgressOverThreshold(session) || session.pendingFinalResults.length > 0;
 
     // TASK-985 M-43 — clear the once-per-episode partial-drop latch the moment the socket is

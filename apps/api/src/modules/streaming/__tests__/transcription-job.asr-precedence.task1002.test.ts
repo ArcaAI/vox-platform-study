@@ -53,7 +53,14 @@ const mocks = () => ({
   sessionService: {
     createSession: vi
       .fn()
-      .mockResolvedValue({ sessionId: 'sess-1', status: 'active', maxConcurrent: 10, currentActive: 1, pipelineId: 'agent-v-1', activeEngine: 'primary' }),
+      .mockResolvedValue({
+        sessionId: 'sess-1',
+        status: 'active',
+        maxConcurrent: 10,
+        currentActive: 1,
+        pipelineId: 'agent-v-1',
+        activeEngine: 'primary',
+      }),
     switchToFallback: vi.fn().mockResolvedValue(undefined),
   },
   cls: { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : { id: 'user-1', tenantId: 'tenant-1' })) },
@@ -111,7 +118,15 @@ describe('TASK-1002 — createStreamSession forwards consultationId to the ASR r
   it('an explicit agentSlug still passes consultationId alongside it', async () => {
     const { controller, m } = build();
     await controller.createStreamSession({ agentSlug: 'saaras-test', consultationId: 'c-1' } as never, res() as never);
-    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: 'saaras-test', departmentId: null, consultationId: 'c-1' });
+    // TASK-1004 — and, because this request declared no language, asks for the ONE consultation
+    // read an explicit slug otherwise skips (the session inherits the consultation's mode).
+    expect(m.asrResolver.resolve).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      agentSlug: 'saaras-test',
+      departmentId: null,
+      consultationId: 'c-1',
+      inheritConsultationLanguage: true,
+    });
   });
 
   it('the response carries agentSource from the resolved spec', async () => {
@@ -177,7 +192,12 @@ describe('TASK-1002 — a WORKFLOW_ASR_AGENT_UNAVAILABLE refusal from the resolv
   it('createStreamSession surfaces the 409 with its code, and never opens an STT session', async () => {
     const { controller, m } = build();
     m.asrResolver.resolve.mockRejectedValueOnce(
-      new ConflictException({ code: 'WORKFLOW_ASR_AGENT_UNAVAILABLE', reason: 'agent disabled', workflowDefinitionSlug: 'wf-1', agentSlug: 'saaras-test' }),
+      new ConflictException({
+        code: 'WORKFLOW_ASR_AGENT_UNAVAILABLE',
+        reason: 'agent disabled',
+        workflowDefinitionSlug: 'wf-1',
+        agentSlug: 'saaras-test',
+      }),
     );
     try {
       await controller.createStreamSession({ consultationId: 'c-1' } as never, res() as never);

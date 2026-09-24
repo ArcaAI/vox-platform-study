@@ -16,6 +16,7 @@ import type { CompletedStreamSessionJob } from '../job/ITranscriptionJobService'
 import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey, type UsageTrigger } from '../../usageLedger';
 import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
 import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
+import { languageResolutionFromWire, type LanguageResolution } from '../../../common/language';
 import { STT_GATEWAY_DEFAULTS, STT_SESSION_CREATE_TIMEOUT_MS_KEY } from '../../settings-registry/descriptors/stt-gateway.descriptors';
 import { IStreamingSessionService } from './IStreamingSessionService';
 // TASK-985 D8 §1.5 item 4 / §8 N-5 — a teardown that emits no ledger row must be COUNTED, not
@@ -42,6 +43,13 @@ import {
  * line above is the failure this contract exists to prevent.
  */
 const SESSION_TENANTLESS_REASON = TENANTLESS.JOB_QUEUE;
+
+/** TASK-1004 — `{ languageResolution }` from an STT session payload, or `{}` when absent/malformed. */
+function languageResolutionOf(data: unknown): { languageResolution?: LanguageResolution } {
+  const raw = (data as { language_resolution?: unknown; languageResolution?: unknown } | null) ?? {};
+  const receipt = languageResolutionFromWire(raw.language_resolution ?? raw.languageResolution);
+  return receipt ? { languageResolution: receipt } : {};
+}
 
 /**
  * StreamingSessionService
@@ -333,6 +341,9 @@ export class StreamingSessionService implements IStreamingSessionService {
             // End-user language mode; STT resolves it against the
             // session engine and 422s a mode no configured engine can serve.
             language_mode: dto.languageMode ?? null,
+            // TASK-1004 — who declared it, for the receipt. Sent only beside a mode; without one
+            // STT stamps `agent`/`default` itself.
+            ...(dto.languageMode && dto.languageModeSource ? { language_mode_source: dto.languageModeSource } : {}),
             // Pre-start default-provider selection. STT opens the
             // session on the fallback engine when 'fallback' and a fallback is
             // configured; otherwise proceeds on primary (fail-open).
@@ -411,6 +422,8 @@ export class StreamingSessionService implements IStreamingSessionService {
         // activeEngine above.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         voiceProfileSeeded: data.voiceProfileSeeded ?? (data as any).voice_profile_seeded,
+        // TASK-1004 — the language receipt, camelCased; omitted when STT sent none (or a bad one).
+        ...languageResolutionOf(data),
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
@@ -472,6 +485,7 @@ export class StreamingSessionService implements IStreamingSessionService {
         maxConcurrent: data.maxConcurrent ?? (data as any).max_concurrent,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         currentActive: data.currentActive ?? (data as any).current_active,
+        ...languageResolutionOf(data),
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {

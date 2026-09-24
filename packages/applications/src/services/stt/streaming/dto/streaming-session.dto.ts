@@ -8,6 +8,7 @@
 import type { ResolvedAsrSpec } from '@arcaai/types';
 import { StorageDescriptor } from '../../../baseServices/storage/providers/IBlobStorageProvider';
 import type { ClippedMetadataSpan } from '../stream-metadata-timeline';
+import type { LanguageModeSource, LanguageResolution } from '../../../../common/language';
 
 // ---------------------------------------------------------------------------
 // Requests
@@ -48,6 +49,13 @@ export interface CreateStreamingSessionRequest {
    * engine can serve. Takes precedence over `language`.
    */
   languageMode?: string;
+  /**
+   * TASK-1004 — which precedence tier supplied {@link languageMode} (`request` or `consultation`;
+   * the gateway sends a mode only for those two). Forwarded as `language_mode_source` and stamped
+   * on the session's `LanguageResolution` receipt. Omitted when no mode is sent: STT then stamps
+   * `agent` (the spec's own mode) or `default` itself.
+   */
+  languageModeSource?: LanguageModeSource;
   /**
    * Pre-start default-provider selection. `'fallback'` opens the
    * session directly on the tenant-admin default (fallback) engine from frame 1
@@ -130,6 +138,12 @@ export interface StreamingSessionStatus {
    * session's SpeakerTracker. `undefined` against an older STT that predates the echo.
    */
   voiceProfileSeeded?: boolean;
+  /**
+   * TASK-1004 — the language receipt STT answered with (`language_resolution`), in camelCase:
+   * what the session was asked for and what its serving engine applied. `undefined` against an
+   * older STT, or when STT's receipt was malformed (dropped, never relayed raw).
+   */
+  languageResolution?: LanguageResolution;
 }
 
 /**
@@ -477,6 +491,12 @@ export interface StreamingStatusMessage {
   is_fallback?: boolean;
   /** Utterance ordinal at which the swap happened. */
   utterance_index?: number;
+  /**
+   * TASK-1004 — the language receipt re-resolved for the engine now serving (a
+   * `provider_switched` entry carries it as a JSON string, `language_resolution`), projected to
+   * camelCase. Absent when STT sent none, or a malformed one (dropped, never relayed raw).
+   */
+  languageResolution?: LanguageResolution;
 }
 
 export interface StreamingErrorMessage {
