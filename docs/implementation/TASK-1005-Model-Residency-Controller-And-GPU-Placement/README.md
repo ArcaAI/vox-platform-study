@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — owner said **go** 2026-09-24 with all OD recommendations |
+| Status | **In Progress** — Phases 0–3 built and merged locally (`dev-2.2`, deployment `main`); gate pass green apart from pre-existing failures (TASK-1004 §9.2); awaiting push + deploy; then the 7-day shadow review (OD-1) before `residency.enforce` |
 | Type | feature + infrastructure |
 | Branch | `dev-2.2` (hope-v2) · `main` (hope-v2-deployment) |
 | Services | `stt` (+ `stt-worker`), `nlp`, `text`, LM Studio (`hope-lmstudio`), gateway (`apps/api`, `packages/applications`), admin console |
@@ -242,7 +242,32 @@ Consequences (folded into D-5 and §5.1): REST v1 only, no sidecar; list-before-
 
 ### 10.2 Lanes
 
-_Pending._
+| Lane | Tier | Branch @ tip | Change |
+|---|---|---|---|
+| L-SPIKE | orchestrator (inline) | §10.1 | REST v1 load confirmed; D-5 resolved without a sidecar |
+| L-DB (shared with TASK-1004) | sonnet | `task-1004-1005/db` @ `3012222fb` | `ModelResidencyPolicy` + `ModelResidencyClass`, `AiModel.observed*`, `ResourceType.ModelResidencyPolicy`, domain trio + repository; allow-lists mirror `AiRoutingPolicy` (tenant-scoped + SYSTEM shared-read; writes not widened) |
+| migration | orchestrator | `3c4234abe` | `20260924133100_task_1005_model_residency_policy` (shadow DB; `migrate diff` empty) |
+| L-AGENT | opus | `task-1005/agent` @ `c9d0fdaa5` | `hope_runtime_models` residency agent API (list/load/unload/policy), operator pin separate from request pins, measured bytes (NVML via `libnvidia-ml` / RSS; null when overlapped), admission gated OFF, metrics `model_resident*`, `model_load_seconds`, `model_evictions_total`; mounted in stt + nlp; stt-worker emits metrics only |
+| L-LMS | opus | `task-1005/lms` @ `603888a83` | REST v1 load (documented keys only, list-before-load, per-engine lock, 300 s), unload `not_loaded`, `report()` in the fixture shape, optional `lmStudio.apiToken` (vault-kv, read optionally — never blocks boot) |
+| L-CTRL | opus | `task-1005/ctrl` @ `bf9798039` | ledger (10 s), policy engine (implicit live-path PINNED, hysteresis, cost-aware eviction, cool-down, headroom), **shadow by default — no commands sent**, one load per physical GPU (LM Studio holds both), async operator API (202 + operation, `replace`, LM Studio `options`, `OVER_BUDGET` needs `force` + reason), policy CRUD with OCC, descriptors `residency.*` + `stt.warmDefaultAsrOnBoot`, DCGM-delta footprint write-back |
+| L-UI | sonnet | `task-1005/ui` @ `7e371c121` | `/model-residency` (global tier, `ai-platform` nav), per-GPU bars, table, recommendations, load/unload/pin/policy with force + reason gates, operation polling; LM Studio "Apply & reload" moved to the async residency load (non-REST fields flagged "applies at next pod restart") |
+| L-OBS | sonnet | hope-v2 `task-1005/obs` @ `ef205c6e3`; deployment `task-1005/obs-deploy` @ `a9e1388` | exporter image build + promote; DaemonSet (no GPU slot, `hostPID`, unprivileged), scrape job (25 jobs = alert threshold), alerts `GpuMemoryHeadroomLow` / `ModelThrash` / `ResidencyAdmissionRejections` + promtool tests, dashboard `model-residency.json` |
+| integration | orchestrator | `2512b85a6`, `f7f05de25`, `0b9098e4e`, `8b6f783b3` | module wired; ONE `admin:model-residency:manage` scope (every route demands `manage`); exporter in the service inventory (manifest, scan, sbom, sign); LM Studio token classified external; allow-list pins; regenerated artifacts |
+
+Gate evidence: TASK-1004 §9.2 (one shared pass).
+
+**Deploy sequencing (deployment repo):** the dev overlay pins the exporter to an all-zero sentinel digest until the first `build-gpu-process-exporter` + `promote-dev` run replaces it, so `hope-gpu-process-exporter` shows `ImagePullBackOff` for that window and nothing else is affected.
+
+### 10.3 Follow-ups (not done here)
+
+1. **Enforce needs a shared lock.** The GPU gate, operation registry, recommendations, LM Studio pins and cool-downs are per gateway process; add a Redis lock/ledger before `residency.enforce=true` with more than one gateway replica.
+2. STT warm-on-boot reads `GET /internal/stt/default-asr-spec`, which no gateway route serves — the new descriptor is settable but STT warns and skips until the route exists (live-path pinning by the controller supersedes it once enforce is on).
+3. Map `AdmissionRejected` to 503 + `Retry-After` on the stt/nlp request paths before admission is enabled.
+4. stt-worker has no control verbs (metrics only).
+5. D-6 (LM Studio API auth) is **not safe yet**: the harness judge's `llm:openai-compat` row is unkeyed, apps/text's `llm:lm-studio` row carries `not-needed`, the gateway "Test connection" probe reports connected on a 401, and the in-pod loader is unverified.
+6. The old synchronous `admin/inference-engines/lm-studio/models/:key/load` stays for API callers (~100 s); the console no longer uses it.
+7. Phase 4 (D-8 MPS spike) and the 7-day shadow review (OD-1) remain.
+
 
 ## 11. Sources
 
@@ -254,6 +279,7 @@ _Pending._
 
 | Date | Change |
 |---|---|
+| 2026-09-24 | Phases 1–3 built by 6 lanes + orchestrator integration; merged locally; shared gate pass (TASK-1004 §9.2). |
 | 2026-09-24 | Phase 0 spike: REST v1 load/unload works (strict schema, not idempotent, 98 s for a 5 GB LLM); D-5 resolved to REST v1, no sidecar. |
 | 2026-09-24 | Owner **go**: OD-1 (7 days shadow + review), OD-2 (≤ 5 s wait then 503), OD-3 (audited force-load) as recommended. |
 | 2026-09-24 | Ticket opened from the owner's TASK-1003 follow-up comments. Discovery: two read-only agents (repo state; LM Studio + serving research), plus live checks (LM Studio v1 API present, no `/metrics`; DCGM baseline and 7-day peak). Plan, decisions and ODs written; awaiting go. |

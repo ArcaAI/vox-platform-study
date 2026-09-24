@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — owner said **go** 2026-09-24 with all OD recommendations |
+| Status | **In Progress** — all lanes merged on `dev-2.2` (local), ALaaS `refactor-hope-integaration` (local) and deployment `main` (local); single gate pass green apart from pre-existing failures (§9.2); awaiting push + deploy + live verification (§8.3) |
 | Type | feature + bugfix + refactor (removal) |
 | Branch | `dev-2.2` (hope-v2) · `main` (hope-v2-deployment) · `refactor-hope-integaration` (ALaaSv3.0) |
 | Surfaces | `apps/api`, `packages/applications`, `packages/database`, `packages/domains`, `apps/stt`, `packages/agentic-sdk-v2`, `packages/vox-node`, `apps/admin-console` (docs sample + agent-assignment warning), ALaaS `apps/web_ui` + `apps/audio-stream-svc`, deployment repo |
@@ -235,11 +235,52 @@ Order keeps every CI gate green at each step:
 
 ## 9. Implementation summary
 
-_Pending._
+### 9.1 Lanes (merge targets confirmed by the owner 2026-09-24: hope-v2 `dev-2.2`, deployment `main`, ALaaS `refactor-hope-integaration`)
+
+| Lane | Tier | Branch @ tip | Change |
+|---|---|---|---|
+| L-DB (shared with TASK-1005) | sonnet | `task-1004-1005/db` @ `3012222fb` | `Consultation.spokenLanguageMode`; domain entity/factory/mapper |
+| migrations | orchestrator | `3c4234abe` | `20260924133000_task_1004_consultation_spoken_language_mode` with the backfill IN the migration (catalog id, or `<lang>-<REGION>` with region = 2 letters or 3 digits); authored on a shadow DB, `migrate diff` empty afterwards |
+| L-STT | opus | `task-1004/stt` @ `a201cd3dd` | `normalize_language_mode`, capability levels (`native`/`degraded`/`unsupported`), `LanguageResolution` receipt (session create, `provider_switched` entries, session hash, job completion), batch resolves per engine (`_language_from_mode` deleted), actor kwargs `language_mode` / `language_mode_source` (positional arity kept), catalog `?engines=` |
+| L-GW | opus | `task-1004/gw` @ `4727ea1fe` | TS normalizer + precedence resolver + receipt projection; `open` stores and updates the mode (accepts `auto`), `PATCH consultations/:id {languageMode}` (If-Match); live + batch inheritance from the consultation; bridge + WS `ready` carry the receipt; `AgentTranscriptionRequest` DTO; harness batch route; catalog `?agentSlug` + ETag/304 (cache keyed by tenant); advisory `warnings[]` on ASR assignment/publish; legacy `metadata.summaryLanguage` readers switched to the column |
+| L-SDK | sonnet | `task-1004/sdk` @ `9fc7adc4c` | `LanguageModeId`, `LanguageResolution`, `consultations.updateLanguage`, `languageMode` on open/stream/transcribe; `./compat` and `hope.summarization.*` removed; `agents.transcribe` now forwards `consultationId` (bug); console SDK sample rewritten; changeset → **4.0.0** (`30e94aea7`) |
+| L-COMPAT | sonnet | `task-1004/compat` @ `7aa913dff`; deployment `task-1004/compat-deploy` @ `1d5188c` | `stt-compat/**` + `text-compat/**` deleted (6 routes, 2 tags), scopes `stt:stream:write` / `svc:stt:stream:write` retired (existing credentials keep authenticating — scopes match by string), preset fix, docs (deprecation register, OD-704 SUPERSEDED, rules 05/08/09); `hope-compat-playground` removed from every overlay |
+| L-ALS | opus | ALaaS `task-1004/als` @ `a536809` (merged as `a6afbeb` after a peer's message-whitespace rewrite, tree-identical) | one `languageMode` on `start`; `language: <mode>` on open (works on today's gateway); explicit mode on the stream session; repeat start refreshes; `HOPE_STT_AGENT_SLUG_BY_MODE` routing removed; receipt forwarded + chip; `updateLanguage` feature-detected until vox-node 4.0.0 is installed |
+| integration | orchestrator | `8b6f783b3` | regenerated route-manifest, openapi, portal, vox-node admin |
+
+### 9.2 Gate pass (2026-09-24, integration worktree `hope-v2-task-1004-1005-verify`, real `pnpm install`)
+
+| Gate | Result |
+|---|---|
+| `db:generate`, `build:packages`, `api:build`, `typecheck`, api `tsc --noEmit`, `pnpm lint` | PASS |
+| `pnpm test:unit` (after the integration fixes) | **28 429 passed, 6 failed** — all six in `loki-line-contract.test.ts`, pre-existing (identical in the TASK-1003 gate) |
+| `stt` pytest | 4 338 passed; the 46 failing ids are EXACTLY the pre-existing set (diffed against the TASK-1003 gate log: 0 new, 2 fixed) |
+| `nlp` pytest | 716 passed, 2 failed (`test_metrics_endpoint_task636.py`, pre-existing) |
+| `harness` unit, `text`, `py-runtime-models` | PASS |
+| Python lint; typecheck | lint PASS; stt mypy: the same 4 pre-existing errors |
+| `gen:model/entity/factory:check`, `env:sync --check`, `sdk-node:check:exports`, `api:openapi:check`, `api:portal:check`, `gen:admin:check` | PASS |
+| ALaaS (merged branch) | `tsc` PASS; jest 833 passed / 5 failed — the same 5 on the pre-merge commit `41dc1a7`; web_ui 470 / 12 failed, the lane's documented pre-existing `priorCaseNotes` / `consultationStartContext` |
+| Deployment `main` (merged) | render dev/staging/prod/standalone OK, `compat-playground` absent; `promtool` 64 rules + tests SUCCESS |
+
+### 9.3 Behaviour changes to expect after deploy
+
+- whisper.cpp `ml-en` sessions report `degraded: whisper_cpp_pair_unprimed` (true today, silent before); batch whisper.cpp `ml-en` jobs are no longer pinned to `ml`, so transcripts change.
+- A non-catalog language (`hi`, `fr-FR`, `en-Latn-US`) is now **400 `LANGUAGE_MODE_UNKNOWN`** at the gateway (D-1) instead of a raw pass-through.
+- `PATCH consultations/:id` is reachable by service accounts (`svc:consultation:session:write`, TASK-933 OD-2 posture) — and so can change `appointmentDate` / `departmentId` / `metadata`, not only the language. **Owner review point.**
+- Explicit `agentSlug` + a foreign `consultationId` with no language is now 404 (previously unchecked).
+
+### 9.4 Follow-ups (not done here)
+
+1. Harness Python `_run_transcription` must send `consultation_id` and leave the legacy `pipeline_id` path (TASK-861 TODO); until then workflow batch jobs do not inherit the consultation's mode.
+2. The batch receipt lives at `TranscriptionJob.dispatchEnvelope.languageResolution` (the entity has no metadata accessor); give it a proper field.
+3. Confirm the batch Whisper-family path honours `streaming_english_gloss` for `ml-en`.
+4. ~20 historical code comments still name the deleted compat controllers (provenance only).
+5. Install `@arcaai/vox-node` 4.0.0 in ALaaS once the owner cuts `SDK-4.0.0`, to light up `updateLanguage`.
 
 ## 10. Change history
 
 | Date | Change |
 |---|---|
+| 2026-09-24 | All lanes merged locally (6 lanes + migrations + artifacts + SDK 4.0.0); integration fixes; gate pass §9.2. |
 | 2026-09-24 | Owner **go**: OD-1 (supersede OD-704), OD-2 (a), OD-3 (major) as recommended. |
 | 2026-09-24 | Ticket opened from the owner's TASK-1003 follow-up. Discovery: HOPE language path (live, batch, workflow, per-engine, fallback), ALaaS language capture, and the compat surface + consumers (three read-only `sonnet` agents), plus live evidence (Redis `language_mode=ml-en` on both tester sessions; zero compat requests in 10 days). Plan, decisions and ODs written; awaiting go. |
