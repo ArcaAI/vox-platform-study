@@ -18,8 +18,7 @@
  *
  * Everything here is pure and side-effect free so it can be unit-tested
  * directly and reused by the few proxy controllers that must keep their own
- * frozen v1-compat body SHAPES but should still take their STATUS from one
- * classifier.
+ * frozen body SHAPES but should still take their STATUS from one classifier.
  */
 import { HttpStatus } from '@nestjs/common';
 
@@ -238,12 +237,9 @@ const CAPABILITY_BY_PATH: Array<[RegExp, string]> = [
   [/\/summary\/(?:async|pre-summary\/async)|\/pre-summary\/async/, 'Note generation'],
   [/\/(?:admin|internal)\/harness\b|\/workflow-runs?\b|\/workflows\b/, 'Note generation'],
   [/\/speech\b|\/tts\b/, 'Speech synthesis'],
-  [/\/transcription-jobs\b|\/api\/stt\b|\/internal\/stt\b|\/stt\b/, 'Transcription'],
+  [/\/transcription-jobs\b|\/internal\/stt\b|\/stt\b/, 'Transcription'],
   [/\/text-analyses\b|\/safety-checks\b|\/diagnosis-suggestions\b|\/ai\//, 'AI text analysis'],
-  // `\/api\/smr\b` matches the FROZEN v1 compat prefix `api/smr/api/v1` (owner
-  // decision 704), which D-740-1 deliberately does not rename — so this literal
-  // must stay `smr` even though the service is `text` everywhere else.
-  [/\/summary\b|\/prompt-templates\/[^/]+\/test|\/text-generations\b|\/api\/smr\b|\/text\b/, 'Text'],
+  [/\/summary\b|\/prompt-templates\/[^/]+\/test|\/text-generations\b|\/text\b/, 'Text'],
 ];
 
 /** The user-facing name of the capability a path depends on. Never contains topology. */

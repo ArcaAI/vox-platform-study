@@ -37,8 +37,8 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
 @Module({
   imports: [
     VisitTypeServiceModule,
-    // TASK-993 lane C — keepAlive pooling shared with `text-compat.module.ts` (both
-    // call TEXT_URL); see `common/gateway-http-agent.ts` for the sizing rationale.
+    // TASK-993 lane C — keepAlive pooling shared with the other TEXT_URL/TTS_URL
+    // callers; see `common/gateway-http-agent.ts` for the sizing rationale.
     HttpModule.register({
       timeout: 120000,
       maxRedirects: 3,

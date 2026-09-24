@@ -89,7 +89,7 @@ describe('SttInternalController + @RequiredScopes (gap closure)', () => {
 
   it('403s an ordinary tenant SDK key (STT/consultation self-service scopes, no internal scope)', async () => {
     apiKeyService.authenticateByRawKey = async () =>
-      buildApiKey(['stt:transcription:read', 'stt:transcription:write', 'stt:stream:write', 'consultation:session:read', 'consultation:session:write']);
+      buildApiKey(['stt:transcription:read', 'stt:transcription:write', 'consultation:session:read', 'consultation:session:write']);
 
     await expect(guard.canActivate(createMockContext())).rejects.toThrow(ForbiddenException);
     await expect(guard.canActivate(createMockContext())).rejects.toThrow(/internal:stt:worker/);

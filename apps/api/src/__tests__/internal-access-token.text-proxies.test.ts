@@ -2,21 +2,24 @@
 //
 // Owner rule: a single devops-set `INTERNAL_ACCESS_TOKEN` authenticates every
 // internal hop. The per-service `TEXT_SERVICE_TOKEN` was the migration
-// fallback; these three sites are the last gateway readers of it and they are
+// fallback; these sites are the last gateway readers of it and they are
 // retired here. (The descriptor itself is NOT removed by this lane — ~10
 // `packages/applications` call sites still pass the name to
 // `resolveInternalAccessToken` as their legacy fallback.)
 //
-// All three are SYNCHRONOUS hot paths — `on.proxyReq` and `getForwardHeaders`
+// Both are SYNCHRONOUS hot paths — `on.proxyReq` and `getForwardHeaders`
 // cannot await — so they read the bootstrap-warmed cache via `getSecretSync`
 // rather than the async `resolveInternalAccessToken` helper.
+//
+// TASK-1004 removed the third site, `src/modules/text-compat/text-compat.controller.ts`
+// (the v1 compat surface, deleted outright).
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(__dirname, '../..');
 
-const SOURCES = ['src/shared/base-proxy.controller.ts', 'src/modules/streaming/text-proxy.controller.ts', 'src/modules/text-compat/text-compat.controller.ts'];
+const SOURCES = ['src/shared/base-proxy.controller.ts', 'src/modules/streaming/text-proxy.controller.ts'];
 
 describe('gateway TEXT proxies present INTERNAL_ACCESS_TOKEN', () => {
   for (const rel of SOURCES) {

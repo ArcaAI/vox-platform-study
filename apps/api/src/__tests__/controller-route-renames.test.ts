@@ -328,26 +328,3 @@ describe(' class rename — AudioPipelinePublicController lied about @Public()',
     expect(Reflect.getMetadata(PATH_METADATA, AudioPipelineCatalogController)).toBe('audio/pipelines');
   });
 });
-
-describe(' scope fence — compat surfaces are untouched', () => {
-  const frozen: [string, string][] = [
-    ['text-compat/text-compat.controller.ts', 'api/smr/api/v1'],
-    ['stt-compat/stt-compat.controller.ts', 'api/stt'],
-  ];
-
-  it.each(frozen)('%s still declares the frozen prefix "%s"', (file, expectedPath) => {
-    const source = readController(file);
-    expect(extractControllerPath(source)).toBe(expectedPath);
-  });
-
-  it('the stt-compat websocket gateway still binds ws /stt', () => {
-    const source = readController('stt-compat/stt-compat.gateway.ts');
-    expect(source).toMatch(/path:\s*'\/stt'/);
-  });
-
-  it('no compat file carries a redirect shim', () => {
-    for (const file of ['text-compat/text-compat.controller.ts', 'stt-compat/stt-compat.controller.ts']) {
-      expect(readController(file)).not.toContain('redirect308');
-    }
-  });
-});

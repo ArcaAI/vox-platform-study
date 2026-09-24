@@ -2,10 +2,10 @@ import { Agent as HttpAgent } from 'node:http';
 import { Agent as HttpsAgent } from 'node:https';
 
 /**
- * TASK-993 lane C — keep-alive pooling for the four `HttpModule.register(...)`
+ * TASK-993 lane C — keep-alive pooling for the three `HttpModule.register(...)`
  * clients the gateway holds open to its in-cluster Python peers: `agent.module.ts`,
- * `speech.module.ts`, `streaming.module.ts`, `text-compat.module.ts`. None of the
- * four supplied an `httpAgent`/`httpsAgent`, so axios fell back to Node's
+ * `speech.module.ts`, `streaming.module.ts`. None of the
+ * three supplied an `httpAgent`/`httpsAgent`, so axios fell back to Node's
  * `http.globalAgent`/`https.globalAgent`.
  *
  * CORRECTION to the defect as originally framed (README S2.8: "no custom agent =>
@@ -16,7 +16,7 @@ import { Agent as HttpsAgent } from 'node:https';
  * global agents with `{ keepAlive: true, scheduling: 'lifo', timeout: 5000 }` since
  * Node 19 (nodejs/node#43522) — confirmed locally (`node -e "require('http').
  * globalAgent.keepAlive"` -> `true`). A bare `new http.Agent()` still defaults to
- * `keepAlive: false`; the GLOBAL singletons specifically do not. So these four call
+ * `keepAlive: false`; the GLOBAL singletons specifically do not. So these three call
  * sites were already getting opportunistic connection reuse, not a fresh handshake
  * on every call — the socket-reuse test below proves this directly (see its
  * "explicit keepAlive: false" case, not a bare "no agent" case, for exactly why).
@@ -25,13 +25,13 @@ import { Agent as HttpsAgent } from 'node:https';
  *   - `http.globalAgent.maxSockets` is `Infinity` — no per-host ceiling at all.
  *   - it is a PROCESS-WIDE SHARED singleton: any code in the gateway that does not
  *     pass its own agent — unrelated libraries, instrumentation, anything added
- *     later — pools through the SAME agent as these four modules' downstream
+ *     later — pools through the SAME agent as these three modules' downstream
  *     calls, so an unrelated caller can starve or bloat this pool.
  *   - its `timeout: 5000` (idle-socket inactivity) is one blunt value shared by
- *     EVERY caller of the global agent, yet these four modules run calls up to
+ *     EVERY caller of the global agent, yet these three modules run calls up to
  *     300_000ms (see the sizing note below) — a value chosen FOR these calls,
  *     not inherited from an unrelated default, is what removes that mismatch.
- *   - none of this was explicit or documented at the four call sites — the
+ *   - none of this was explicit or documented at the three call sites — the
  *     pooling behaviour a reader saw depended on which Node major version the
  *     process happened to run, not on anything stated in the code.
  *
@@ -40,13 +40,13 @@ import { Agent as HttpsAgent } from 'node:https';
  * BOUNDED, DEDICATED, documented pool is still the right fix even though the
  * "zero reuse today" framing does not hold on this runtime.
  *
- * ONE pair of agents, shared BY REFERENCE across all four modules, not four
+ * ONE pair of agents, shared BY REFERENCE across all three modules, not three
  * independent pools: `agent.module.ts` and `speech.module.ts` both call `TTS_URL`;
- * `streaming.module.ts` and `text-compat.module.ts` both call `TEXT_URL` (verified
+ * `streaming.module.ts` calls `TEXT_URL` (verified
  * against each controller's own `getConfigValue(...)` call site —
  * `agent.controller.ts:616`, `speech-proxy.controller.ts:148`,
- * `harness-tts-internal.controller.ts:160`, `text-proxy.controller.ts:426`,
- * `text-compat.controller.ts:885`). Sharing lets a socket opened for one module's
+ * `harness-tts-internal.controller.ts:160`, `text-proxy.controller.ts:426`).
+ * Sharing lets a socket opened for one module's
  * call to a host be reused by the OTHER module calling the SAME host, instead of
  * each warming its own disjoint pool to the same peer — while still being a
  * SMALLER, bounded, dedicated pool than the process-wide global agent above.
@@ -72,7 +72,7 @@ import { Agent as HttpsAgent } from 'node:https';
  *     gateway process.
  *   - `maxFreeSockets: 32` — Node's own default is 256; steady-state concurrency
  *     here (~167 req/s spread over many routes, most of which never reach these
- *     four modules) needs nowhere near that many idle warm sockets per host. 32
+ *     three modules) needs nowhere near that many idle warm sockets per host. 32
  *     gives a good reuse hit-rate for the README's ~10-req/min-per-user cadence
  *     without pinning excess idle file descriptors once a burst subsides.
  *   - `keepAliveMsecs` is left at Node's default (1000ms — the delay before the OS
@@ -85,7 +85,7 @@ import { Agent as HttpsAgent } from 'node:https';
  *     (README S2.12 F-2).
  *   - `timeout` (idle-socket INACTIVITY, not a request timeout — see
  *     `GATEWAY_HTTP_AGENT_IDLE_SOCKET_TIMEOUT_MS` below): set safely ABOVE the
- *     longest per-call axios timeout actually configured across these four
+ *     longest per-call axios timeout actually configured across these three
  *     modules' controllers (300_000ms). It resets on every byte transferred, so an
  *     active-but-sparse stream is untouched by it; its job is reaping a socket —
  *     usually a FREE, pooled one — that went silently dead (a rescheduled pod, a
@@ -100,7 +100,7 @@ import { Agent as HttpsAgent } from 'node:https';
  * `NLP_URL`, `HARNESS_URL`, `TTS_URL` are all plain HTTP, in-cluster, no TLS
  * termination at the pod). `httpAgent` is the one expected to see any traffic.
  *
- * `timeout`/`maxRedirects` on the four `HttpModule.register(...)` calls are
+ * `timeout`/`maxRedirects` on the three `HttpModule.register(...)` calls are
  * UNCHANGED by this file — those are axios REQUEST-level settings; this file only
  * supplies the transport-level `httpAgent`/`httpsAgent`.
  */

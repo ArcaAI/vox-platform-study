@@ -83,7 +83,10 @@ describe('classifyDownstreamFailure — classify by CAUSE, never by what the cli
     // The observed production error: `AggregateError: connect ECONNREFUSED ::1:8862;
     // connect ECONNREFUSED 127.0.0.1:8862`. The AggregateError itself carries no
     // `.code` — the errno lives on its `.errors[]` members.
-    const agg = new AggregateError([transportError('ECONNREFUSED', 'connect ECONNREFUSED ::1:8862'), transportError('ECONNREFUSED')], 'AggregateError');
+    const agg = new AggregateError(
+      [transportError('ECONNREFUSED', 'connect ECONNREFUSED ::1:8862'), transportError('ECONNREFUSED')],
+      'AggregateError',
+    );
     expect(classifyDownstreamFailure(agg)).toBe('transport');
     expect(downstreamStatusFor(classifyDownstreamFailure(agg)!)).toBe(HttpStatus.SERVICE_UNAVAILABLE);
   });
@@ -135,12 +138,14 @@ describe('containsTopology — the predicate every client-facing body is held to
     expect(containsTopology(s)).toBe(true);
   });
 
-  it.each(['Text is temporarily unavailable. Please retry.', 'Service Unavailable', 'Note generation returned an invalid response.', 'updated at 12:34'])(
-    'does NOT flag %j',
-    (s) => {
-      expect(containsTopology(s)).toBe(false);
-    },
-  );
+  it.each([
+    'Text is temporarily unavailable. Please retry.',
+    'Service Unavailable',
+    'Note generation returned an invalid response.',
+    'updated at 12:34',
+  ])('does NOT flag %j', (s) => {
+    expect(containsTopology(s)).toBe(false);
+  });
 });
 
 describe('redactTopology — strips topology while keeping an operator-legible reason', () => {
@@ -173,10 +178,8 @@ describe('capabilityForPath — names the CAPABILITY, never the topology', () =>
     ['/api/v1/consultations/abc/summary', 'Text'],
     ['/api/v1/admin/prompt-templates/t-1/test', 'Text'],
     ['/api/v1/text-generations/tasks/x/stream', 'Text'],
-    ['/api/v1/api/smr/api/v1/summarize', 'Text'],
     ['/api/v1/speech/synthesize', 'Speech synthesis'],
     ['/api/v1/audio/transcription-jobs', 'Transcription'],
-    ['/api/v1/api/stt/transcribe', 'Transcription'],
     ['/api/v1/text-analyses/ner', 'AI text analysis'],
     ['/api/v1/safety-checks', 'AI text analysis'],
   ])('%s → %s', (path, expected) => {
@@ -252,7 +255,10 @@ describe('describeCauseForOperator — the operator gets EVERYTHING', () => {
   });
 
   it('flattens an AggregateError into every member cause', () => {
-    const agg = new AggregateError([transportError('ECONNREFUSED', 'connect ECONNREFUSED ::1:8862'), transportError('ECONNREFUSED')], 'AggregateError');
+    const agg = new AggregateError(
+      [transportError('ECONNREFUSED', 'connect ECONNREFUSED ::1:8862'), transportError('ECONNREFUSED')],
+      'AggregateError',
+    );
     expect(String(detailText(describeCauseForOperator(agg)))).toContain('8862');
   });
 
