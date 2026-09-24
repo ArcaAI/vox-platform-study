@@ -1,5 +1,9 @@
 # @arcaai/vox-codegen
 
+## 4.0.0
+
+No changes in this release.
+
 ## 3.6.0
 
 ### Minor Changes

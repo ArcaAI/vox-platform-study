@@ -1,5 +1,11 @@
 # @arcaai/noise-filter
 
+## 4.0.0
+
+### Patch Changes
+
+- @arcaai/room@4.0.0
+
 ## 3.6.0
 
 ### Patch Changes
