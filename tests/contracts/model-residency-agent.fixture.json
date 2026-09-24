@@ -79,5 +79,13 @@
     },
     "$lmStudioNotes": "LM Studio reports no per-model bytes, in-flight count or timestamps (REST v1, verified 2026-09-24): those fields are null and the controller fills bytes from the DCGM per-device delta it measured around its own serialised load. `device` is `multi` because the daemon splits a model across both cards itself. `instanceId` and `loadConfig` are LM Studio-only extras (optional on every other service)."
   },
-  "loadSpecExamples": {}
+  "loadSpecExamples": {
+    "stt": [
+      {
+        "$comment": "stt (lane L-AGENT). `load_spec` is `{\"resolved_spec\": <ResolvedAsrSpec>}` — exactly the spec the gateway resolves for a session (tests/contracts/resolved-asr-spec.fixture.json; the `$ref` stands for the whole object). stt loads the spec's PRIMARY ASR model (`models.asr`) through the same `bundle_from_resolved` → `ModelCache.get_or_load` path a session create uses, so it is keyed and budgeted identically; `model_ref` must equal `models.asr.slug` (400 LOAD_FAILED otherwise). An empty `load_spec` is valid only for a model already resident (`already_loaded`); stt holds no catalogue to resolve a bare slug (404 MODEL_UNKNOWN). `ai_model_id` is null on stt: the spec carries no AiModel id.",
+        "model_ref": "arcaai-whisper-large-ml-en-gguf",
+        "load_spec": { "resolved_spec": { "$ref": "resolved-asr-spec.fixture.json#/platformDefault/expected" } }
+      }
+    ]
+  }
 }
