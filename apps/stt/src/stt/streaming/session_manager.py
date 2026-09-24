@@ -2254,7 +2254,9 @@ class SessionManager:
                         )
                     worker._uses_cadence_fast = worker._resolve_uses_cadence_fast()
                     worker._republish_punctuated = (
-                        getattr(worker._punctuation_config, "republish_after_publish", False)
+                        getattr(
+                            worker._punctuation_config, "republish_after_publish", False
+                        )
                         is True
                     )
                     worker._gloss_callable = binding.gloss_callable
@@ -4116,7 +4118,9 @@ class SessionManager:
                     # could never reach it even once the empty decodes started
                     # raising. Raises at the streak, inside this `try`, so the
                     # classifier below sees it like any other engine failure.
-                    empty_with_speech = self._note_decode_outcome(session.session_id, utt, result)
+                    empty_with_speech = self._note_decode_outcome(
+                        session.session_id, utt, result
+                    )
                     # A clean utterance resets the consecutive-failure
                     # run that arms the threshold auto-switch.
                     controller = self._switch_controllers.get(session.session_id)
@@ -5107,7 +5111,9 @@ class SessionManager:
                         # that re-armed the local front end created one after
                         # this closure was already bound. Without it the
                         # re-armed session would drop every utterance silently.
-                        queue = inference_queue or self._inference_queues.get(session.session_id)
+                        queue = inference_queue or self._inference_queues.get(
+                            session.session_id
+                        )
                         if queue is not None:
                             # F-08: bounded wait, not a blocking put. This runs on the
                             # single ingestion dispatch loop — a full queue must never
@@ -6638,7 +6644,9 @@ class SessionManager:
                             recovered_bundle = self._register_resolved_spec(
                                 meta.session_id, json.loads(meta.resolved_spec_json)
                             )
-                        except Exception as spec_exc:  # noqa: BLE001 — recovery must not crash the sweep
+                        except (
+                            Exception
+                        ) as spec_exc:  # noqa: BLE001 — recovery must not crash the sweep
                             logger.warning(
                                 "Cannot recover session — persisted resolved spec is invalid",
                                 session_id=meta.session_id,
@@ -6693,9 +6701,11 @@ class SessionManager:
                     _language_state_of(self, _LANGUAGE_SOURCES)[meta.session_id] = (
                         _recovered_language_source(
                             meta,
-                            recovered_bundle.spec.decoding.language_mode
-                            if recovered_bundle is not None
-                            else None,
+                            (
+                                recovered_bundle.spec.decoding.language_mode
+                                if recovered_bundle is not None
+                                else None
+                            ),
                         )
                     )
 
@@ -6750,7 +6760,9 @@ class SessionManager:
                     # warm VAD state. Deferred — VAD starts cold but
                     # stabilizes within 1-2 s of new audio.
 
-                    self._register_inference_runtime(session, inference_worker, publisher=publisher)
+                    self._register_inference_runtime(
+                        session, inference_worker, publisher=publisher
+                    )
 
                     # Wire up consumers — the audio consumer
                     # group persists its own cursor in Redis, so on recovery the
@@ -6889,7 +6901,9 @@ class SessionManager:
                     # row outright to a pod roll inside that window. The entry
                     # is then kept, marked `pushed_back`, only so a late DELETE
                     # is answered honestly rather than re-emitting.
-                    teardown_summary = await self._finalize_session(session, stash_summary=False)
+                    teardown_summary = await self._finalize_session(
+                        session, stash_summary=False
+                    )
                     # The reaper is the FINALIZER here, which means
                     # the gateway crashed and its removal retries were exhausted:
                     # no removeSession() caller received the DELETE-teardown
