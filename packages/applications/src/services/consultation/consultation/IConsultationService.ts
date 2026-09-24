@@ -19,6 +19,15 @@ export interface StartRecordingOptions {
    * `STT_SESSION_NOT_ACTIVE` (a stale, superseded `recording/start`). Absent ⇒ nothing to check.
    */
   sttSessionId?: string;
+  /**
+   * Supersede, by the DURABLE binding, any older STT session of this consultation that is still
+   * live (exactly one live STT session per consultation; the listener of
+   * `STT_SESSION_SUPERSEDED_EVENT` finalizes it through the normal teardown). Set by a caller that
+   * holds no in-process binding to replace — live documentation re-binds, and announces the
+   * superseded session, itself when it holds one, and asking both would announce it twice.
+   * Absent ⇒ nothing is superseded here.
+   */
+  supersedeByDurableBinding?: boolean;
 }
 
 /**

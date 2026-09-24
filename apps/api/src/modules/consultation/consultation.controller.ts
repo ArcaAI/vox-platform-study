@@ -107,6 +107,9 @@ import { CloseConsultationRequest } from './dto';
  */
 type ClinicalCaller = NonNullable<NonNullable<Parameters<ISummaryService['updateSummary']>[2]>['caller']>;
 
+/** `summary/latest` 404 for a consultation whose summary is not written yet (vs a missing consultation). */
+const SUMMARY_NOT_READY_CODE = 'SUMMARY_NOT_READY';
+
 class AsyncJobResponseDto {
   @ApiProperty({ description: 'Async job ID' })
   jobId: string;
@@ -965,9 +968,19 @@ export class ConsultationController {
     // the service-account id here would put a machine into the clinician's live-documentation
     // session (and, through it, into the DNA-style and prompt resolution that reads it).
     const owned = await this.verifyConsultationOwnership(id);
+    // A resume that lands while the previous stop still drains in the background waits for it:
+    // that drain ends by tearing the live session down and publishing `closed`.
+    await this.liveDocumentationService.whenStopped(id);
     // TASK-1001 — the service refuses (409 STT_SESSION_NOT_ACTIVE) a session that is no longer
     // live, BEFORE the live session below is started or re-bound to it.
-    const consultation = await this.consultationService.startRecording(id, { sttSessionId: request?.sessionId });
+    //
+    // One live STT session per consultation: a start naming a different session supersedes the
+    // previous one. When this process holds the live session, its re-bind below announces the
+    // superseded session; otherwise the service supersedes by the durable binding. Never both.
+    const consultation = await this.consultationService.startRecording(id, {
+      sttSessionId: request?.sessionId,
+      supersedeByDurableBinding: !this.liveDocumentationService.isActive(id),
+    });
     this.liveDocumentationService.start({
       consultationId: id,
       tenantId: this.cls.get('tenantId') ?? '',
@@ -1000,21 +1013,20 @@ export class ConsultationController {
   @RequiredSvcScopes('svc:consultation:session:write')
   async stopRecording(@Param('id') id: string, @Body() request: StopRecordingRequest): Promise<RecordingStateResponse> {
     await this.verifyConsultationOwnership(id);
-    await this.liveDocumentationService.stop(id, { persistSnapshot: request?.persistSnapshot });
-    const consultation = await this.consultationService.stopRecording(id);
-    // Tell the consultation loop the recording stopped so it can
-    // drain, run its ending actions, and finalize. Best-effort (a no-op when the
-    // tenant is not entitled to the loop or the platform emergency stop is
-    // engaged, and it swallows a failed harness call) — never lets a
-    // loop-signal hiccup break the recording-stop response.
-    await this.loopContextSignalService.signalConsultationEnding(id, {
-      reason: 'recording_stopped',
-      persistSnapshot: request?.persistSnapshot ?? true,
-      // forward accepted corrections so `feedback.capture` has
-      // something to promote over the raw transcript when the endpoint sequence runs.
-      // Omitted (not an empty array) when the clinician accepted nothing this session.
-      ...(request?.acceptedProposals?.length ? { acceptedProposals: request.acceptedProposals } : {}),
-    });
+    // The answer needs only the DRAINING write. The live-note drain and the loop signal finish in
+    // the background; completion is pushed (the live-summary stream's `closed: true` frame, the
+    // harness progress stream). The handoff is marked pending FIRST, so the durable run keeps
+    // waiting for that drain rather than reading DRAINING as "ended with nothing".
+    await this.liveDocumentationService.markHandoffPending(id);
+    let consultation: ConsultationResponse;
+    try {
+      consultation = await this.consultationService.stopRecording(id);
+    } catch (error) {
+      // The live session still stops, as it did when the drain ran first; the loop is not told.
+      this.finishRecordingStop(id, request, { signalEnding: false });
+      throw error;
+    }
+    this.finishRecordingStop(id, request, { signalEnding: true });
     return {
       consultationId: id,
       status: consultation.status ?? 'OPEN',
@@ -1022,6 +1034,51 @@ export class ConsultationController {
       sseUrl: `/consultations/${id}/live-summary/stream`,
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * The slow half of `recording/stop`, off the request path, in the order it always ran: drain the
+   * live note (the terminal `closed` frame and the live handoff are written there), then tell the
+   * consultation loop the recording stopped so it can run its ending actions and finalize. A second
+   * stop while a drain runs joins it (`LiveDocumentationService.stop` is single-flight).
+   *
+   * Runs in a COPY of the request's CLS context (`ifNested: 'inherit'`, taken synchronously here),
+   * so tenant-scoped reads and writes keep the caller's tenant and user after the response is sent,
+   * whatever happens to the request's own context. Never rejects: each failure is logged.
+   */
+  private finishRecordingStop(id: string, request: StopRecordingRequest, opts: { signalEnding: boolean }): void {
+    const tenantId = this.cls.get('tenantId');
+    const work = async (): Promise<void> => {
+      try {
+        await this.liveDocumentationService.stop(id, { persistSnapshot: request?.persistSnapshot });
+      } catch (error) {
+        this.logger.error({
+          message: 'recording/stop: the live-note drain failed after the response — the consultation is DRAINING without its final live note',
+          consultationId: id,
+          tenantId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      if (!opts.signalEnding) return;
+      try {
+        // Best-effort (a no-op when the tenant is not entitled to the loop or the platform
+        // emergency stop is engaged). Accepted corrections ride along so `feedback.capture` has
+        // something to promote; omitted, not empty, when the clinician accepted nothing.
+        await this.loopContextSignalService.signalConsultationEnding(id, {
+          reason: 'recording_stopped',
+          persistSnapshot: request?.persistSnapshot ?? true,
+          ...(request?.acceptedProposals?.length ? { acceptedProposals: request.acceptedProposals } : {}),
+        });
+      } catch (error) {
+        this.logger.warn({
+          message: 'recording/stop: the loop consultation-ending signal failed after the response',
+          consultationId: id,
+          tenantId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+    void Promise.resolve(this.cls.run({ ifNested: 'inherit' }, work)).catch(() => undefined);
   }
 
   @Get(':id/live-summary/stream')
@@ -1629,13 +1686,23 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
-  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant), or no summary has been generated yet.' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Consultation not found (or cross-tenant). Or no summary has been generated yet: then the body carries `code: SUMMARY_NOT_READY` and `progressStreamPath`, the harness progress stream whose terminal event (`closed: true`) says the draft is persisted.',
+  })
   @RequiredScopes('consultation:report:read')
   @RequiredSvcScopes('svc:consultation:report:read')
   async getLatestSummary(@Param('id') id: string): Promise<SummaryResponse> {
     await this.verifyConsultationAccess(id);
     const summary = await this.summaryService.getLatestSummary(id);
-    if (!summary) throw new NotFoundException(`No summary has been generated yet for consultation ${id}`);
+    if (!summary) {
+      throw new NotFoundException({
+        code: SUMMARY_NOT_READY_CODE,
+        message: `No summary has been generated yet for consultation ${id}`,
+        progressStreamPath: `/api/v1/consultations/${id}/harness-progress/stream`,
+      });
+    }
     return summary;
   }
 

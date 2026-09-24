@@ -41,7 +41,13 @@ function buildController(opts: { principal: 'user' | 'serviceAccount'; userId?: 
   const contextService = { addContext: vi.fn() };
   const summaryService = { getLatestSummary: vi.fn() };
   const jobService = { createPreSummaryJob: vi.fn().mockResolvedValue({ jobId: 'job-1' }) };
-  const liveDocumentationService = { start: vi.fn(), stop: vi.fn().mockResolvedValue(undefined) };
+  const liveDocumentationService = {
+    start: vi.fn(),
+    stop: vi.fn().mockResolvedValue(undefined),
+    isActive: vi.fn().mockReturnValue(false),
+    whenStopped: vi.fn().mockResolvedValue(undefined),
+    markHandoffPending: vi.fn().mockResolvedValue(undefined),
+  };
   const loopContextSignalService = { signalConsultationEnding: vi.fn().mockResolvedValue(undefined) };
   const policyEngine = { can: vi.fn().mockReturnValue(false), cannot: vi.fn().mockReturnValue(true) };
 
@@ -52,6 +58,8 @@ function buildController(opts: { principal: 'user' | 'serviceAccount'; userId?: 
       if (key === 'serviceAccount') return opts.principal === 'serviceAccount' ? { id: SVC_ACCOUNT_ID, scopes: [] } : undefined;
       return undefined;
     }),
+    // `recording/stop` finishes its drain in a copy of the request context.
+    run: vi.fn((_options: unknown, fn: () => unknown) => fn()),
   };
 
   const controller = new ConsultationController(

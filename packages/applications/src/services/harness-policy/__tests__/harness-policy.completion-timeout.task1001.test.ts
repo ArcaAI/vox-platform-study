@@ -12,9 +12,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HarnessPolicyFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { HarnessPolicyService } from '../harness-policy.service';
 import {
+  CONSULTATION_COMPLETION_TIMEOUT_MINUTES_DEFAULT,
   CONSULTATION_COMPLETION_TIMEOUT_MINUTES_KEY,
   CONSULTATION_COMPLETION_TIMEOUT_SETTINGS,
 } from '../../settings-registry/descriptors/consultation-completion.descriptors';
+import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
+import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 
 const TENANT = 'tenant-1';
 const USER = 'user-1';
@@ -143,5 +146,31 @@ describe('the descriptor', () => {
     expect(descriptor.validate?.(5)).toBeUndefined();
     expect(descriptor.validate?.(10080)).toBeUndefined();
     for (const bad of [0, -1, 1.5, 10081, '5', null]) expect(descriptor.validate?.(bad)).toEqual(expect.any(String));
+  });
+});
+
+/**
+ * TASK-1003 OD-7 (owner, 2026-09-24): "make sure timeout is set to 5m". Verified live that no
+ * override row exists in any tenant, so the descriptor default is what every tenant runs on. This
+ * pins that default through the REAL cascade (no stubbed resolver): no tenant row, no platform row
+ * ⇒ 5 minutes ⇒ a 300 s clinician gate.
+ */
+describe('TASK-1003 OD-7 — with no override row anywhere the completion timeout is 5 minutes', () => {
+  it('the platform code default is 5', () => {
+    expect(CONSULTATION_COMPLETION_TIMEOUT_MINUTES_DEFAULT).toBe(5);
+  });
+
+  it('the real tenant → platform → default cascade answers 5, and the gate SLA derived from it is 300 s', async () => {
+    const noRows = { getValueFromCache: vi.fn(() => null), getTenantValueFromCache: vi.fn(() => null) };
+    const cascade = new EffectiveSettingsService(new TenantSettingsService(noRows as never));
+
+    await expect(cascade.resolveEffective(CONSULTATION_COMPLETION_TIMEOUT_MINUTES_KEY, { tenantId: TENANT })).resolves.toMatchObject({
+      value: 5,
+      sourceScope: 'code-default',
+    });
+
+    const effective = await makeService(TENANT, cascade).getEffectivePolicy(TENANT);
+    expect(effective.gateSlaSeconds).toBe(300);
+    expect(effective.gateMaxEscalations).toBe(1);
   });
 });
