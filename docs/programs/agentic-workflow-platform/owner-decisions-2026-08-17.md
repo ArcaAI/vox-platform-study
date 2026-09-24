@@ -73,7 +73,7 @@ all expected to be RUN, with real pasted output.
 |---|---|
 | **700** dna-phi | No production data — free to review and complete the work fully, including running the scan locally. |
 | **702** icd10 | **Allow all current prompt versions.** v3 becomes the default at go-live. The v1 sign-off blocker is dissolved. |
-| **704** seam | **Do NOT touch legacy pre-summarization and summarization** — they are STANDALONE features, kept deliberately. They serve SDK-compat and API-compat consumers. Work them through the summarization agent with pre-defined instruction prompt templates selected by context. The sync short-circuit question is closed: no short-circuit. |
+| **704** seam | **SUPERSEDED 2026-09-24 by TASK-1004 OD-1** — the owner reversed this decision and the v1 compat surface it protected (`TextCompatController`, `SttCompatController`, `SttCompatGateway`, `@arcaai/vox/compat`, `hope.summarization.*`) was removed outright. Original text, kept for the record: ~~Do NOT touch legacy pre-summarization and summarization — they are STANDALONE features, kept deliberately. They serve SDK-compat and API-compat consumers. Work them through the summarization agent with pre-defined instruction prompt templates selected by context. The sync short-circuit question is closed: no short-circuit.~~ |
 | **705** loop-status | The harness agentic loop is **core business**. Treat it as a **feature in the subscription plan** (entitlement-gated), not an environment kill-switch. |
 | **707** naming | **SUPER_ADMIN is the supreme platform-managing user.** Global admins are consolidated into SUPER_ADMIN. That is the only term used anywhere. |
 | **710** phi-redactor | Finish properly and completely. Internal service auth uses the single shared access token (D-D). |
@@ -126,6 +126,10 @@ egress rollout comms (#13), and cluster/deployment-repo access for 730 — which
 | **5. STARTER tier** | Loop is **ON for STARTER, but capped at 5 consultation sessions per day.** | `agenticLoop` is therefore **not a boolean** — it is a boolean plus a per-day quantity quota. See the note below. |
 
 ### The one carve-out to decision 3, flagged for confirmation
+
+**SUPERSEDED 2026-09-24 by TASK-1004 OD-1** — decision 704 (which this carve-out depended on) was
+reversed, and `api/smr/api/v1` was removed outright along with the rest of the v1 compat surface.
+This section is kept for the record; the carve-out no longer applies.
 
 The frozen **external wire route** `@Controller('api/smr/api/v1')` and vox-node's matching v1-compat
 paths are a PUBLISHED API contract, and decision **704** deliberately preserved exactly these

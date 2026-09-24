@@ -3,11 +3,11 @@
 |           |                                                              |                   |                           |
 | --------- | ------------------------------------------------------------ | ----------------- | ------------------------- |
 | **Owner** | Platform / Architecture                                      | **Last verified** | 2026-08-18                |
-| **Scope** | NestJS HTTP controllers and WebSocket gateways in `apps/api` | **Handlers**      | 605 HTTP/SSE + 3 gateways |
+| **Scope** | NestJS HTTP controllers and WebSocket gateways in `apps/api` | **Handlers**      | 600 HTTP/SSE + 2 gateways |
 
-Catalog of the NestJS API gateway (`apps/api`, port 8868): every live HTTP controller class, every HTTP/SSE handler, and the three raw WebSocket gateways. Companion to [overview.md](./overview.md). This is an architecture inventory, not a ticket README.
+Catalog of the NestJS API gateway (`apps/api`, port 8868): every live HTTP controller class, every HTTP/SSE handler, and the two raw WebSocket gateways. Companion to [overview.md](./overview.md). This is an architecture inventory, not a ticket README.
 
-**Sources (2026-08-18):** decorator recount of `apps/api/src/**/*.controller.ts` (`@Get` / `@Post` / `@Put` / `@Patch` / `@Delete` / `@Sse` / `@ApiEndpoint`, clustered per handler so `@Get`+`@Sse` counts as one); merged canvas `api-controller-inventory.canvas.tsx` (auth classification and notes); per-endpoint catalogs from the controller/gateway exploration transcripts. File wins if a transcript total disagrees — `SttInternalController` is **10** handlers.
+**Sources (2026-08-18; TASK-1004, 2026-09-24, removed `TextCompatController`, `SttCompatController` and `SttCompatGateway` — the row-count edits below are traced exactly, but a fresh decorator recount has not been re-run since, so treat every OTHER number in this document as this doc's usual staleness risk, now compounded by one release):** decorator recount of `apps/api/src/**/*.controller.ts` (`@Get` / `@Post` / `@Put` / `@Patch` / `@Delete` / `@Sse` / `@ApiEndpoint`, clustered per handler so `@Get`+`@Sse` counts as one); merged canvas `api-controller-inventory.canvas.tsx` (auth classification and notes); per-endpoint catalogs from the controller/gateway exploration transcripts. File wins if a transcript total disagrees — `SttInternalController` is **10** handlers.
 
 Global HTTP prefix is `api/v1` (`apps/api/src/main.ts`) except the prefix-excluded surfaces listed in [Completeness](#7-completeness). WebSocket paths are **not** under `api/v1`.
 
@@ -39,7 +39,7 @@ Routes are **authenticated by default**. The global `APP_GUARD` `UnifiedAuthGuar
 
 **SSE:** Still HTTP — Bearer JWT, or `?token=` JWT, or `?ticket=` when `@StreamScope` is present. Tickets are minted at `POST /api/v1/auth/stream-ticket` (JWT, `@ForbidApiKey()`).
 
-**WebSockets:** Nest `APP_GUARD` does **not** run. STT/TTS stream gateways use single-use `?ticket=` (`stt_session:<id>` / `tts_session:<id>`). The STT compat gateway uses API keys on the WebSocket handshake.
+**WebSockets:** Nest `APP_GUARD` does **not** run. STT/TTS stream gateways use single-use `?ticket=` (`stt_session:<id>` / `tts_session:<id>`).
 
 **Human-only (not API-key reachable):** class `@ForbidApiKey()`. This is a REASONED list, not a default: policy A1 makes the business plane JWT + API key, and the only business-plane surfaces that keep the marker are
 
@@ -57,32 +57,35 @@ The list is policed at boot by `auditBusinessPlaneApiKeyExemptions` (`apps/api/s
 
 | Stat                         | Verified count                                                                                |
 | ---------------------------- | --------------------------------------------------------------------------------------------- |
-| HTTP `@Controller` classes   | **105** (all registered in modules)                                                           |
-| Live `*.controller.ts` files | **103** (two files hold two classes)                                                          |
+| HTTP `@Controller` classes   | **103** (all registered in modules)                                                           |
+| Live `*.controller.ts` files | **101** (two files hold two classes)                                                          |
 | Unused abstract helper       | `BaseProxyController` (`src/shared/base-proxy.controller.ts`) — no `@Controller()`, no routes |
-| HTTP + SSE handlers          | **605**                                                                                       |
-| WebSocket gateways           | **3** (`APP_GUARD` does not run)                                                              |
+| HTTP + SSE handlers          | **600**                                                                                       |
+| WebSocket gateways           | **2** (`APP_GUARD` does not run)                                                              |
 | Vendored HTTP                | `PrometheusController` `GET /metrics` (patched `@Public()`)                                   |
 
-### Handler auth split (605 HTTP/SSE)
+### Handler auth split (600 HTTP/SSE)
 
 Mixed controllers are split into public vs JWT-only at the handler. The only mixed class is `AuthController` — `ApiHealthController` is public-only.
 
 | Auth                                                                   |                             Controllers | Handlers |
 | ---------------------------------------------------------------------- | --------------------------------------: | -------: |
-| JWT + API key (`@RequiredScopes`)                                      |                                      24 |      148 |
+| JWT + API key (`@RequiredScopes`)                                      |                                      22 |      143 |
 | JWT only (`@ForbidApiKey` or no key path), including mixed JWT methods | 70 jwt-only classes + mixed JWT methods |      420 |
 | Public (`@Public()`), including mixed public methods                   | 4 public classes + mixed public methods |       15 |
 | Service token (`@Public()` + `X-Service-Token`)                        |                                       4 |       22 |
-| **Total**                                                              |                                 **105** |  **605** |
+| **Total**                                                              |                                 **103** |  **600** |
 
-API-key-reachable handlers: **148** — the whole business plane and `SttInternalController`'s
-documented carve-out, and nothing else.
+API-key-reachable handlers: **143** — the whole business plane and `SttInternalController`'s
+documented carve-out, and nothing else. (TASK-1004 removed the v1-compat surface's 2 controllers /
+5 handlers — `TextCompatController` and `SttCompatController` — from this row; they were JWT + API
+key like every other business-plane controller here.)
 
 **Policy A2 — the admin plane is JWT-only.** 65 controllers / **386
 handlers** move from _JWT + API key_ to _JWT only_: every `admin/`-prefixed controller that carried
 a class-level `@RequiredScopes(...)` now carries `@ForbidApiKey()` instead. All 70 admin-prefixed
-controllers are now JWT-only, so API-key-reachable handlers fall 534 → **148**. No handler was
+controllers are now JWT-only, so API-key-reachable handlers fall 534 → **148** (TASK-1004 further
+reduced this to **143** by removing the v1-compat surface). No handler was
 created, deleted or moved and no CASL/permission decorator changed — this is purely the removal of
 a credential class from one plane.
 
@@ -97,7 +100,7 @@ it is the platform SERVICE_ACCOUNT wildcard for `/internal/*` and is made inert 
 path to administration. `X-Service-Token` is structurally confined to `/internal/*` and a boot audit
 refuses to start if an admin controller adopts it.
 
-**Rules P1/P2 (admin-plane relocation).** No handler was created or deleted and no gate changed; two handlers changed class and two controllers changed prefix, so the class total is **105** and the handler total stays **605**. `MonitoringController` `api/v1/monitoring` → `api/v1/admin/monitoring` (4 handlers, still JWT-only). `ApiHealthController` drops from 6 handlers to 4 and stops being _Mixed_; the 2 CASL-gated handlers become `AdminHealthServicesController` at `api/v1/admin/health/services` (JWT-only). Both moved surfaces were already `@ForbidApiKey()`, so the _count_ of API-key-reachable handlers is unchanged — what changes is the REASON: "undeclared, therefore closed" becomes "admin plane, therefore closed" (A2). Hard move, no alias: the pre-move paths 404.
+**Rules P1/P2 (admin-plane relocation).** No handler was created or deleted and no gate changed; two handlers changed class and two controllers changed prefix, so the class total (as of this rule, before TASK-1004's later compat removal) was **105** and the handler total stayed **605**. `MonitoringController` `api/v1/monitoring` → `api/v1/admin/monitoring` (4 handlers, still JWT-only). `ApiHealthController` drops from 6 handlers to 4 and stops being _Mixed_; the 2 CASL-gated handlers become `AdminHealthServicesController` at `api/v1/admin/health/services` (JWT-only). Both moved surfaces were already `@ForbidApiKey()`, so the _count_ of API-key-reachable handlers is unchanged — what changes is the REASON: "undeclared, therefore closed" becomes "admin plane, therefore closed" (A2). Hard move, no alias: the pre-move paths 404.
 
 Largest HTTP surfaces: `ConsultationController` 51, `HarnessAdminController` 26, `UserController` 21, `TranscriptionJobController` 20, `HarnessInternalController` 19.
 
@@ -162,7 +165,6 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | ProviderConnectionController             | `api/v1/admin/providers`                                                   |    5 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read/manage:GlobalSetting                           | The one provider surface (TASK-862): + `POST :service/:provider/test`.                                                                    |
 | AiRoutingPolicyAdminController           | `api/v1/admin/routing-policies`                                            |   11 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:AiRoutingPolicy                              | Writes SUPER_ADMIN-only in service; `resolveDefault` is the task-default read (TASK-862).                                                 |
 | RateLimitAdminController                 | `api/v1/admin/rate-limit`                                                  |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:all                                          | SUPER_ADMIN policy editor.                                                                                                               |
-| SttCompatGateway                         | `/stt (no api/v1)`                                                         |    4 | API key (WS)                                 | WS headers apikey/api-key/x-api-key/x-internal-service-key, or query apiKey/api-key/key | n/a                                                 | Legacy v1. Session tenant must match key tenant.                                                                                         |
 | UserDepartmentsController                | `api/v1/admin/users`                                                       |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:User                                         | :id/departments assign/unassign.                                                                                                         |
 | WorkflowSandboxRunController             | `api/v1/admin/workflow-definitions/:definitionId/sandbox-runs`             |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | per-method WorkflowRun Can*                         | Hand-rolled SSE + StreamScope workflow_run.                                                                                              |
 | AdminConsultationController              | `api/v1/admin/consultations`                                               |    3 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:Consultation                                 | Tenant-wide list/aggregate.                                                                                                              |
@@ -183,7 +185,6 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | RateCardAdminController                  | `api/v1/admin/billing/rate-card`                                           |    3 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:AiPriceBook                                  | Mutations SUPER_ADMIN in service.                                                                                                        |
 | ServiceReleaseAdminController            | `api/v1/admin/service-releases`                                            |    3 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | CanAny manage:all \| read:TenantTelemetry           |                                                                                                                                          |
 | StorageAccessKeyController               | `api/v1/admin/tenants/storage/keys`                                        |    3 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | class manage:Tenant; methods Can*:Storage           |                                                                                                                                          |
-| SttCompatController                      | `api/stt (prefix excluded)`                                                |    3 | JWT + API key                                | stt:stream:write                                                                        | @Authorize()                                        | Live paths: POST /api/stt/{start_session,switch,stop_session}.                                                                           |
 | WorkflowRunController                    | `api/v1/admin/workflow-runs`                                               |    3 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read:WorkflowRun                                    | Working-tenant CLS required.                                                                                                             |
 | AiModelDiscoveryController               | `api/v1/admin/ai-models`                                                   |    2 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:all                                          |                                                                                                                                          |
 | MyUsageController                        | `api/v1/tenants/me`                                                        |    2 | JWT + API key                                | `tenant:account:read`                                                                   | read:Tenant                                         | No tenantId override.                                                                                                                    |
@@ -195,7 +196,6 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | SettingsRegistryWriteController          | `api/v1/admin/settings`                                                    |    2 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read/manage:GlobalSetting                           | PUT uses ExpectedVersion, not RequiresIfMatch.                                                                                           |
 | SpeechProxyController                    | `api/v1/speech`                                                            |    2 | JWT + API key                                | tts:speech:write                                                                        | @Authorize()                                        | Synthesize may be SSE or audio bytes.                                                                                                    |
 | TenantFrontendConfigAdminController      | `api/v1/admin/tenant-frontend-config`                                      |    2 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage\|update:Tenant                               |                                                                                                                                          |
-| TextCompatController                     | `api/smr/api/v1 (prefix excluded)`                                         |    2 | JWT + API key                                | consultation:report:write                                                               | @Authorize()                                        | POST /api/smr/api/v1/{summary/sync,presummary}. SSE if body.stream===true.                                                               |
 | UserPreferencesController                | `api/v1/users/me/preferences`                                              |    2 | JWT + API key                                | user:preferences:write                                                                  | @Authorize()                                        | Self CLS user.                                                                                                                           |
 | UserSettingsController                   | `api/v1/users/me/settings`                                                 |    2 | JWT + API key                                | `user:settings:read`                                                                    | @Authorize()                                        |                                                                                                                                          |
 | AdminImpersonationController             | `api/v1/admin/users`                                                       |    1 | JWT only                                     | forbidden                                                                               | manage:all                                          | SUPER_ADMIN impersonation. Throttled.                                                                                                    |
@@ -220,7 +220,7 @@ _HTTP rows in this table: 104; API-count sum: 605. Gateway rows: 3._
 
 ## 4. Per-controller HTTP catalog
 
-Every live HTTP `@Controller` class. Paths include `/api/v1` except prefix-excluded compat routes. Endpoint lines are `METHOD /full/path — auth — apikey — extras`.
+Every live HTTP `@Controller` class. Paths include `/api/v1` (TASK-1004 removed the only prefix-excluded surfaces). Endpoint lines are `METHOD /full/path — auth — apikey — extras`.
 
 ### ConsultationController
 
@@ -1562,20 +1562,6 @@ Provider Reconciliation was removed outright (owner directive 2026-09-04): `admi
 - `POST /api/v1/admin/tenants/storage/keys` — jwt create:Storage — apikey yes — generateKey
 - `DELETE /api/v1/admin/tenants/storage/keys/:id` — jwt delete:Storage — apikey yes — revokeKey
 
-### SttCompatController
-
-- **File:** `src/modules/stt-compat/stt-compat.controller.ts`
-- **Prefix:** `api/stt (prefix excluded)` → `api/stt (prefix excluded)`
-- **api_count:** 3
-- **Auth model:** JWT + API key
-- **API key:** `stt:stream:write`
-- **JWT / other:** @Authorize()
-- **Notes:** Live paths: POST /api/stt/{start_session,switch,stop_session}.
-
-- `POST /api/stt/start_session` — jwt (empty `@Authorize()`) — apikey yes — startSession
-- `POST /api/stt/switch` — jwt (empty `@Authorize()`) — apikey yes — switchSession
-- `POST /api/stt/stop_session` — jwt (empty `@Authorize()`) — apikey yes — stopSession — extras: FileInterceptor
-
 ### WorkflowRunController
 
 - **File:** `src/modules/workflow-run/workflow-run.controller.ts`
@@ -1715,19 +1701,6 @@ Provider Reconciliation was removed outright (owner directive 2026-09-04): `admi
 
 - `GET /api/v1/admin/tenant-frontend-config` — jwt manage\|update:Tenant — apikey yes — get
 - `PUT /api/v1/admin/tenant-frontend-config` — jwt manage\|update:Tenant — upsert — extras: ExpectedVersion (not RequiresIfMatch)
-
-### TextCompatController
-
-- **File:** `src/modules/text-compat/text-compat.controller.ts`
-- **Prefix:** `api/smr/api/v1 (prefix excluded)` → `api/smr/api/v1 (prefix excluded)`
-- **api_count:** 2
-- **Auth model:** JWT + API key
-- **API key:** `consultation:report:write`
-- **JWT / other:** @Authorize()
-- **Notes:** POST /api/smr/api/v1/{summary/sync,presummary}. SSE if body.stream===true.
-
-- `POST /api/smr/api/v1/summary/sync` — jwt (empty `@Authorize()`) — apikey yes (`consultation:report:write`) — summarySync
-- `POST /api/smr/api/v1/presummary` — jwt (empty `@Authorize()`) — apikey yes (`consultation:report:write`) — presummary
 
 ### UserPreferencesController
 
@@ -1933,7 +1906,7 @@ Provider Reconciliation was removed outright (owner directive 2026-09-04): `admi
 
 ## 5. WebSocket gateways
 
-No GraphQL. No `@SubscribeMessage`. All three gateways use native `WsAdapter` + raw `client.on('message')`. Nest `APP_GUARD` / `UnifiedAuthGuard` **do not run**. Paths are **not** under `api/v1`. `handleDisconnect` is teardown and is not counted as an API.
+No GraphQL. No `@SubscribeMessage`. Both gateways use native `WsAdapter` + raw `client.on('message')`. Nest `APP_GUARD` / `UnifiedAuthGuard` **do not run**. Paths are **not** under `api/v1`. `handleDisconnect` is teardown and is not counted as an API.
 
 ### SttWsGateway
 
@@ -1955,16 +1928,6 @@ No GraphQL. No `@SubscribeMessage`. All three gateways use native `WsAdapter` + 
 - **JWT / other:** n/a — APP_GUARD does not run
 - **Notes:** No Redis tenant-binding cross-check. Quota close 4429.
 
-### SttCompatGateway
-
-- **File:** `src/modules/stt-compat/stt-compat.gateway.ts`
-- **Path:** `/stt (no api/v1)`
-- **api_count:** 4 (handshake + inbound protocol types)
-- **Auth model:** API key (WS)
-- **API key:** WS headers `apikey`/`api-key`/`x-api-key`/`x-internal-service-key`, or query `apiKey`/`api-key`/`key`
-- **JWT / other:** n/a
-- **Notes:** Legacy v1. Session tenant must match key tenant.
-
 #### SttWsGateway inbound
 
 **Connect:** `/ws/stt/stream?sessionId=&ticket=`
@@ -1972,7 +1935,7 @@ No GraphQL. No `@SubscribeMessage`. All three gateways use native `WsAdapter` + 
 1. CSWSH: if `Origin` is present and enforcement is on → `IOriginRegistry.has()` (fail-closed). Missing Origin is allowed (non-browser).
 2. Consume single-use `ticket` via `StreamTicketService`.
 3. Scope must be `stt_session:<sessionId>`.
-4. Ticket `tenantId` must match Redis session binding (`StreamSessionTenantBindingService.lookup`). Fail-closed, generic close `4401 Authentication failed`.
+4. Ticket `tenantId` must match Redis session binding (`StreamSessionTenantBindingService.lookupBinding`). Fail-closed, generic close `4401 Authentication failed`.
 
 | Handler                               | Client-facing         | Protocol                         |
 | ------------------------------------- | --------------------- | -------------------------------- |
@@ -2007,22 +1970,6 @@ Upstream hop injects `X-Service-Token`.
 
 Server→client: binary PCM + JSON control. Upstream `{type:'usage'}` is consumed for the ledger and **not** forwarded.
 
-#### SttCompatGateway inbound
-
-**Connect:** `/stt?sessionId=` plus API key in WS headers (`apikey` / `api-key` / `x-api-key` / `x-internal-service-key`) or query (`apiKey` / `api-key` / `key` — query is always allowed on this WS path).
-
-Auth: authenticate raw key → lookup session tenant → reject unless `apiKey.tenantId === boundTenant` and the session exists. Generic `4401`.
-
-| Handler              | Client-facing | Protocol                               |
-| -------------------- | ------------- | -------------------------------------- |
-| `handleConnection`   | yes           | handshake; emits `{type:'connected'}`  |
-| `handleDisconnect`   | no            | `removeSession(..., interrupted:true)` |
-| text `{type:'ping'}` | yes           | `{type:'pong'}`                        |
-| text `{type:'stop'}` | yes           | `finalize` control                     |
-| binary audio frame   | yes           | type-byte `1` + metadata length + PCM  |
-
-Server→client envelope: `{event:'message'\|'error', data, sessionId}` with `transcription` / `status` / `error`.
-
 ---
 
 ## 6. SSE inventory
@@ -2050,8 +1997,6 @@ Nine `@Sse()` handlers (always paired with `@Get`, counted as one HTTP handler e
 | WorkflowsController          | GET    | `/api/v1/workflows/:slug/runs/:runId/stream`                                  | JWT/API-key `workflow:run:read` or ticket `workflow_run:<runId>`    | poll `getRunStatus` every 2s            |
 | WorkflowSandboxRunController | GET    | `/api/v1/admin/workflow-definitions/:definitionId/sandbox-runs/:runId/stream` | JWT admin scope or ticket `workflow_run:<runId>`                    | same poll pattern                       |
 | TextProxyController          | GET    | `/api/v1/text-generations/tasks/:taskId/stream`                               | JWT/ticket `text_task:<taskId>` + class `consultation:report:write` | byte-pipe to text service SSE           |
-| TextCompatController         | POST   | `/api/smr/api/v1/summary/sync`                                                | JWT/API-key `consultation:report:write`                             | SSE iff `body.stream===true`; no ticket |
-| TextCompatController         | POST   | `/api/smr/api/v1/presummary`                                                  | JWT/API-key `consultation:report:write`                             | SSE iff `body.stream===true`; no ticket |
 | SpeechProxyController        | POST   | `/api/v1/speech/synthesize`                                                   | JWT/API-key `tts:speech:write`                                      | may be SSE or audio bytes               |
 
 `POST /api/v1/auth/stream-ticket` (AuthController, JWT, `@ForbidApiKey()`) mints the one-shot tickets used by `@StreamScope` SSE/WS routes. TTL ~30s, Redis GET+DEL.
@@ -2062,29 +2007,27 @@ Nine `@Sse()` handlers (always paired with `@Get`, counted as one HTTP handler e
 
 | Check                                  | Result                                                                                                                                                                                                                                                                                                                                                         |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HTTP `@Controller` classes             | **104**, all present in module `controllers: [...]` arrays                                                                                                                                                                                                                                                                                                     |
-| Live controller files                  | **102** under `apps/api/src`                                                                                                                                                                                                                                                                                                                                   |
+| HTTP `@Controller` classes             | **102**, all present in module `controllers: [...]` arrays                                                                                                                                                                                                                                                                                                     |
+| Live controller files                  | **100** under `apps/api/src`                                                                                                                                                                                                                                                                                                                                   |
 | Dual-class files (do not double-count) | `src/modules/consultation-context-schema/consultation-context-schema.controller.ts` → `ConsultationContextSchemaAdminController` + `MyTenantContextSchemaController` |
 | Unused abstract                        | `BaseProxyController` in `src/shared/base-proxy.controller.ts` — no `@Controller()`, unused by live controllers, not registered                                                                                                                                                                                                                                |
-| HTTP/SSE handler sum                   | **605** (this document’s `api_count` column and per-controller bullets)                                                                                                                                                                                                                                                                                        |
+| HTTP/SSE handler sum                   | **600** (this document’s `api_count` column and per-controller bullets)                                                                                                                                                                                                                                                                                        |
 | `SttInternalController`                | **10** handlers (not 9): transcripts, streaming/usage, jobs start/progress/complete/fail/status, audio-records, media, provider-overrides                                                                                                                                                                                                                      |
 | `ConsentGrantController`               | JWT-only (`@ForbidApiKey()`); **not** API-key reachable                                                                                                                                                                                                                                                                                                        |
-| WebSocket gateways                     | **3**, all registered as module `providers`                                                                                                                                                                                                                                                                                                                    |
+| WebSocket gateways                     | **2**, all registered as module `providers`                                                                                                                                                                                                                                                                                                                    |
 | GraphQL                                | none                                                                                                                                                                                                                                                                                                                                                           |
 | Duplicate class names                  | none. Shared prefixes are intentional splits (different methods)                                                                                                                                                                                                                                                                                               |
 
 ### Global prefix exclusions (`main.ts`)
 
-| Path                           | Method | Controller                      |
-| ------------------------------ | ------ | ------------------------------- |
-| `/metrics`                     | GET    | vendored `PrometheusController` |
-| `/api/smr/api/v1/summary/sync` | POST   | `TextCompatController`          |
-| `/api/smr/api/v1/presummary`   | POST   | `TextCompatController`          |
-| `/api/stt/start_session`       | POST   | `SttCompatController`           |
-| `/api/stt/stop_session`        | POST   | `SttCompatController`           |
-| `/api/stt/switch`              | POST   | `SttCompatController`           |
+TASK-1004 removed the only route-level exclusions (`TextCompatController`'s `/api/smr/api/v1/*`
+and `SttCompatController`'s `/api/stt/*`); the exclude list carries only `/metrics` now.
 
-WebSocket paths (never under `api/v1`): `/ws/stt/stream`, `/ws/tts/stream`, `/stt`.
+| Path        | Method | Controller                      |
+| ----------- | ------ | -------------------------------- |
+| `/metrics`  | GET    | vendored `PrometheusController` |
+
+WebSocket paths (never under `api/v1`): `/ws/stt/stream`, `/ws/tts/stream`.
 
 ### Vendored Prometheus
 
