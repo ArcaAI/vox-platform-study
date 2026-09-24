@@ -571,7 +571,8 @@ export class ConsultationController {
       '`DEPARTMENT_AMBIGUOUS` — the schema resolves departments by NAME and more than one department of this tenant carries that name; ' +
       '`VISIT_TYPE_INVALID` — the stated visit type is not a key or alias of the platform vocabulary; ' +
       '`USER_IDENTITY_INVALID` — the identity value is empty, over-long or carries control characters; ' +
-      '`USER_IDENTITY_DEPARTMENT_UNRESOLVED` — a user had to be provisioned and neither the request nor the tenant setting supplied a department.',
+      '`USER_IDENTITY_DEPARTMENT_UNRESOLVED` — a user had to be provisioned and neither the request nor the tenant setting supplied a department; ' +
+      '`LANGUAGE_MODE_UNKNOWN` — `languageMode` / `language` names no spoken-language mode (the body lists the catalog).',
   })
   @ApiResponse({
     status: 404,
@@ -769,9 +770,19 @@ export class ConsultationController {
     by: ['id'],
   })
   @RequiresIfMatch()
+  // AUTH-NOTE: TASK-1004 (OD-2 (a)) — opened to the MACHINE class with the SAME scope `open` carries,
+  // because the realtime broker that opens a consultation is the caller that must later change its
+  // spoken-language default (`{ languageMode }`) between recordings. API keys reach it through the
+  // class-level `consultation:session:write`. The real WRITE gate stays imperative in
+  // `verifyConsultationOwnership` (owner doctor, or `manage:Consultation`; a service account is
+  // tenant-bound and scope-bound), exactly as for `close`.
+  @RequiredSvcScopes('svc:consultation:session:write')
   @ApiOperation({
     summary: 'Update the safely-mutable fields of a consultation',
     description:
+      "TASK-1004: `{ languageMode }` changes the consultation's declared spoken-language mode (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`), " +
+      'which every LATER live and batch transcription of this consultation inherits when it declares none; an unknown value is ' +
+      '`400 LANGUAGE_MODE_UNKNOWN`. It never chooses the transcription engine and never the note language. ' +
       'Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a ' +
       "Compare-And-Set against the row's `_version`. This closes the last unprotected write on the Consultation " +
       'aggregate — `prime`/`close`/`reopen` and the context/summary sub-resource writes already required it, so a ' +
@@ -785,6 +796,7 @@ export class ConsultationController {
     example: '"7"',
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiResponse({ status: 400, description: '`LANGUAGE_MODE_UNKNOWN` — `languageMode` names no spoken-language mode (the body lists the catalog).' })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })

@@ -138,7 +138,7 @@ import {
   OUTPUT_LANGUAGE_DEFAULT,
   defaultOutputLanguageInstruction,
   platformOutputLanguage,
-  readSummaryLanguage,
+  readSpokenLanguageMode,
   resolveOutputLanguage,
   translateOnlyInstruction,
   type OutputLanguage,
@@ -2153,7 +2153,8 @@ return 0`;
       // TASK-932 §3.7 — freeze the declared SOURCE language off the SAME row read, so the run
       // context's `language` costs no extra I/O on the start path. (TASK-1001: it no longer decides
       // the note's output language — see `operatingFrame`.)
-      session.summaryLanguage = readSummaryLanguage(consultation?.metadata);
+      // TASK-1004 D-3 — the typed `spokenLanguageMode` column first, the legacy marker after it.
+      session.summaryLanguage = readSpokenLanguageMode(consultation);
       // ...and the visit type off the same row, for the same reason. `forConsultation` is pure.
       //
       // TASK-951 D-3 — the RECORDED value wins over the parent link. A client that stated
@@ -7478,7 +7479,8 @@ return 0`;
    * whatever the client had sent.
    */
   private async handoffClinicalContext(consultation: ConsultationEntity): Promise<Record<string, unknown>> {
-    const language = readSummaryLanguage(consultation.metadata);
+    // TASK-1004 D-3 — the same reader the realtime lane uses (column first, legacy marker after).
+    const language = readSpokenLanguageMode(consultation);
     // TASK-1001 (owner decision 2026-09-23) — the OUTPUT language, for `language_name`, resolved for
     // the consultation's own tenant exactly as the realtime lane resolves it for the session.
     const outputLanguage = platformOutputLanguage(await this.resolvePlatformOutputLanguage(consultation.tenantId));

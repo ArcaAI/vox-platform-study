@@ -123,6 +123,18 @@ export function readSummaryLanguage(metadata: unknown): string | null {
 }
 
 /**
+ * TASK-1004 D-3 — the consultation's declared SPOKEN-language mode: the typed column
+ * `Consultation.spokenLanguageMode` first, then (for one release, for rows the backfill could not
+ * normalize) the legacy {@link SUMMARY_LANGUAGE_METADATA_KEY} marker via {@link readSummaryLanguage}.
+ * Every reader of "what language is spoken in this consultation" goes through here.
+ */
+export function readSpokenLanguageMode(consultation: { spokenLanguageMode?: string | null; metadata?: unknown } | null | undefined): string | null {
+  if (!consultation) return null;
+  const column = typeof consultation.spokenLanguageMode === 'string' ? consultation.spokenLanguageMode.trim() : '';
+  return column.length > 0 ? column : readSummaryLanguage(consultation.metadata);
+}
+
+/**
  * Merge the declared language into existing metadata, preserving every other key — the same
  * shape as `withWorkflowSelectionMarker`, for the same reason: client-supplied metadata from
  * `OpenConsultationRequest` must survive untouched.

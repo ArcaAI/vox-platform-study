@@ -34,6 +34,7 @@ import {
 } from '../summary-language';
 import { OpenConsultationRequest } from '../dto/open-consultation.request';
 import { resolveV1LanguageName } from '../../prompt/pre-summary-variables';
+import { requestedLanguageMode } from '../../../../common/language';
 
 describe('SOURCE_LANGUAGE_PATTERN — what is spoken, code-switch modes included', () => {
   it('accepts the code-switch modes ALaaS sends', () => {
@@ -79,12 +80,21 @@ describe('OpenConsultationRequest.language — the SOURCE language, `ml-en` acce
     for (const tag of ['en-ml', 'en', 'ml', 'en-IN']) expect(await languageErrors(tag), tag).toEqual([]);
   });
 
-  it('still rejects a display name or a sentence, with a message that describes the field as the SOURCE language', async () => {
-    const messages = await languageErrors('English');
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain('SOURCE');
-    expect(messages[0]).toContain('ml-en');
-    expect((await languageErrors('please write in english')).length).toBeGreaterThan(0);
+  // TASK-1004 D-1 — the refusal moved from the DTO grammar to the ONE normalizer, which answers
+  // 400 `LANGUAGE_MODE_UNKNOWN` with the field and the catalog (a class-validator message can carry
+  // neither). `ConsultationService.getOrCreate` runs it before any read or write.
+  it('still rejects a display name or a sentence — now as 400 LANGUAGE_MODE_UNKNOWN naming the catalog', () => {
+    for (const language of ['English', 'please write in english']) {
+      let thrown: unknown;
+      try {
+        requestedLanguageMode({ language });
+      } catch (error) {
+        thrown = error;
+      }
+      const body = (thrown as { getResponse(): Record<string, unknown> }).getResponse();
+      expect(body.code, language).toBe('LANGUAGE_MODE_UNKNOWN');
+      expect(String(body.message), language).toContain('ml-en');
+    }
   });
 });
 

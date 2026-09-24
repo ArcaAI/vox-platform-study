@@ -1,7 +1,6 @@
-import { IsString, IsOptional, IsDateString, IsObject, Matches } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsObject, Matches, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
-import { SOURCE_LANGUAGE_PATTERN } from '../summary-language';
 
 /**
  * TASK-933 — the platform's own id GRAMMAR (8-4-4-4-12 hex), NOT `@IsUUID()`.
@@ -88,41 +87,45 @@ export class OpenConsultationRequest {
   workflowDefinitionSlug?: string;
 
   /**
-   * The consultation's SOURCE language — what is spoken and transcribed.
+   * The consultation's SOURCE language — what is spoken and transcribed — as a BCP-47 tag or a
+   * catalog mode id. TASK-1004: normalized at the edge to ONE spoken-language mode (`en-US` → `en`,
+   * `ml-IN` → `ml`, `ml-en`, `auto`) and stored in `Consultation.spokenLanguageMode`; a value that
+   * names no mode is 400 `LANGUAGE_MODE_UNKNOWN` (checked in the service, which answers with the
+   * code and the catalog — a class-validator message cannot carry either). Prefer `languageMode`.
    *
-   * `en`, `ml`, `en-IN`, or an STT CODE-SWITCH mode such as `ml-en` ("Malayalam as the main
-   * language, English mixed" — the value ALaaS sends, `ASR_PARAMETERS.decoding.languageMode`). It is
-   * stored as declared and echoed back on the consultation's `language`.
+   * It does NOT choose the language the notes are WRITTEN in (owner decision 2026-09-23): that is
+   * the tenant's output-language policy, else the platform default (English) — see
+   * `resolveOutputLanguage` in `../summary-language.ts`. Absent means undeclared.
    *
-   * It does NOT choose the language the notes are WRITTEN in (owner decision 2026-09-23: *"The
-   * summarization (both pre-summary and summary) is still in English, by admin configuration OR by
-   * default."*). The output language is the tenant's output-language policy fragment when one is
-   * selected, and otherwise the platform default (`consultation.summary.outputLanguage`, English) —
-   * see `resolveOutputLanguage` in `../summary-language.ts`. Absent means undeclared.
-   *
-   * TASK-1001 L1 briefly REJECTED a code-switch mode here with a 400, on the reading that this field
-   * named the note's language. Under the owner decision it names the source, so `ml-en` is a
-   * legitimate value again; what changed instead is that nothing downstream derives the note's
-   * language from it.
-   *
-   * Declared here because it has to be: the gateway's global pipe runs `forbidNonWhitelisted`,
-   * so an undeclared field REJECTS THE WHOLE OPEN with a 400 rather than being ignored.
-   *
-   * Honoured on `open` and on `revisit`. A re-open of an ALREADY-OPEN consultation keeps the
-   * language it was opened with, exactly as it keeps its governing workflow.
+   * Honoured on `open` and on `revisit`. TASK-1004: re-opening an ALREADY-OPEN consultation with an
+   * explicit, DIFFERENT mode updates the consultation's declaration (audited `ResourceUpdated`);
+   * omitting it keeps the declaration the consultation already has.
    */
   @ApiPropertyOptional({
     description:
-      "BCP-47 tag of the consultation's SOURCE language — what is spoken and transcribed (`en`, `ml`, `en-IN`), or an STT code-switch mode such as `ml-en` (Malayalam-led, English mixed). It does not choose the language the notes are written in: that is the tenant's output-language policy when one is configured, otherwise the platform default (English). Absent means undeclared.",
+      "The consultation's SOURCE (spoken) language: a BCP-47 tag (`en-US`, `ml-IN`) or a spoken-language mode id (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`). Normalized to one mode and inherited by every live and batch transcription of this consultation that declares none. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode. Never the language the notes are written in. Prefer `languageMode`.",
     example: 'ml-en',
   })
   @IsOptional()
   @IsString()
-  @Matches(SOURCE_LANGUAGE_PATTERN, {
-    message:
-      'language must be a BCP-47 language tag for the SOURCE language (e.g. `en`, `ml`, `en-IN`) or an STT code-switch mode (e.g. `ml-en`); it never selects the language the notes are written in',
-  })
+  @MaxLength(64)
   language?: string;
+
+  /**
+   * TASK-1004 — the same declaration as `language`, as a spoken-language MODE id. Preferred: when
+   * both are sent this one wins. Inherited by every live session (`POST
+   * audio/transcription-jobs/stream/session`) and batch job of this consultation that declares no
+   * mode of its own; change it later with `PATCH consultations/:id { languageMode }`.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Spoken-language mode id (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`) — preferred over `language`, and wins when both are sent. Inherited by every live and batch transcription of this consultation that declares none. On an already-open consultation a different value updates its declaration. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.',
+    example: 'ml-en',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  languageMode?: string;
 
   /**
    * TASK-933 §3.2 - the clinician a MACHINE caller is acting for.

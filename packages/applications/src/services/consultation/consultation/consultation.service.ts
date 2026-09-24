@@ -48,7 +48,16 @@ import {
   tenantRoleReaderFor,
   type ClinicalCaller,
 } from '../summary/clinician-attribution';
-import { BaseService, assertEqualTenants, assertParentInScope, assertUserBelongsToTenant, isSuperAdmin } from '../../../common';
+import {
+  BaseService,
+  assertEqualTenants,
+  assertParentInScope,
+  assertUserBelongsToTenant,
+  isSuperAdmin,
+  normalizeLanguageMode,
+  requireLanguageMode,
+  requestedLanguageMode,
+} from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { HarnessAuditService } from '../../harness-audit';
@@ -58,7 +67,7 @@ import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch
 import { governingRunOf, readGoverningEngineMarker } from '../governing-engine';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { withWorkflowSelectionMarker } from './workflow-selection';
-import { withSummaryLanguage } from './summary-language';
+import { readSpokenLanguageMode, withSummaryLanguage } from './summary-language';
 import { type ConsultationVisitTypeKey, readRecordedVisitType, withExternalRefMarker, withVisitTypeMarker } from './open-markers';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import { PolicyEngine } from '../../../authorization/policy.engine';
@@ -137,6 +146,11 @@ function readBindingString(context: Record<string, unknown>, binding: { kindKey:
  *
  * Simplified workflow using natural key (patientId, doctorId, appointmentDate)
  */
+/** A stored declaration compared as a mode — a legacy `en-IN` marker equals a declared `en`. */
+function normalizeStoredMode(value: string | null): string | null {
+  return normalizeLanguageMode(value) ?? value;
+}
+
 @Injectable()
 export class ConsultationService extends BaseService implements IConsultationService {
   private readonly logger = new Logger(ConsultationService.name);
@@ -1074,6 +1088,10 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new BadRequestException('Tenant ID is required');
     }
 
+    // TASK-1004 — the declared spoken-language mode, normalized ONCE and refused here (400
+    // `LANGUAGE_MODE_UNKNOWN`) before any read or write: a pure check, so it costs nothing.
+    const declaredLanguageMode = requestedLanguageMode(request);
+
     // TASK-950 §D-6 / TASK-951 §D-2…D-4 — validate the context payload, MAP everything the
     // tenant's schema declares out of it (department, visit type, external reference), and settle
     // WHO this consultation is for — all BEFORE the tenant guard below and before anything is
@@ -1142,6 +1160,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
         });
       }
 
+      // TASK-1004 — the one thing a re-open DOES change: an explicit, DIFFERENT spoken-language
+      // mode. A clinician who picks another language before recording again means it for every
+      // later step (live, batch, workflow), so the declaration follows them rather than silently
+      // keeping the first one. Same mode (after normalization), or none at all, writes nothing.
+      if (declaredLanguageMode && normalizeStoredMode(readSpokenLanguageMode(existing)) !== declaredLanguageMode) {
+        await this.writeSpokenLanguageMode(existing, declaredLanguageMode, 'open');
+      }
+
       this.broadcastSysEvent(SysEventType.ResourceViewed, {
         resourceId: existing.id,
         data: { action: 'getOrCreate', found: true },
@@ -1191,7 +1217,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // and the finalize prompt read one value rather than each re-deriving one. Applied AFTER the
     // selection marker for the same reason that one merges rather than replaces: client metadata
     // from `OpenConsultationRequest` survives untouched, and the two markers are independent.
-    const withLanguage = request.language ? withSummaryLanguage(withSelection, request.language) : withSelection;
+    //
+    // TASK-1004 D-3 — the NORMALIZED mode now lives in the typed column `spokenLanguageMode`; the
+    // legacy key is still written (same value) for one release so a reader that predates the column
+    // keeps seeing the declaration.
+    const withLanguage = declaredLanguageMode ? withSummaryLanguage(withSelection, declaredLanguageMode) : withSelection;
     // TASK-951 §D-3/D-4 — the two facts the caller STATED through its schema. Applied last, so a
     // schema-declared value wins over the same key hand-posted in `metadata`: this one was
     // validated against the tenant's pinned schema and alias-matched through the visit-type
@@ -1206,6 +1236,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       doctorId: actingClinicianId,
       departmentId: openContext.departmentId,
       metadata: metadata as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'],
+      spokenLanguageMode: declaredLanguageMode,
       createdBy: userId ?? undefined,
     });
 
@@ -1362,7 +1393,8 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // TASK-932 §3.7 — a re-visit is a new consultation, so it declares its own summary language.
     // It is NOT inherited from the parent: a follow-up may legitimately be documented in another
     // language, and inferring one from a visit weeks ago would be a decision nobody made.
-    const revisitMetadata = request.language ? withSummaryLanguage(request.metadata, request.language) : request.metadata;
+    const revisitLanguageMode = requestedLanguageMode(request);
+    const revisitMetadata = revisitLanguageMode ? withSummaryLanguage(request.metadata, revisitLanguageMode) : request.metadata;
 
     const consultation = ConsultationFactory.CreateRevisit({
       tenantId,
@@ -1372,6 +1404,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       departmentId: request.departmentId,
       parentConsultationId,
       metadata: revisitMetadata as Parameters<typeof ConsultationFactory.CreateRevisit>[0]['metadata'],
+      spokenLanguageMode: revisitLanguageMode,
       createdBy: userId ?? undefined,
     });
 
@@ -2124,6 +2157,9 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new BadRequestException('Tenant ID is required');
     }
 
+    // TASK-1004 — refused before the read, like every other edge check that needs no row.
+    const languageMode = requireLanguageMode(request.languageMode, 'languageMode');
+
     const consultation = await this.consultationRepository.findWithRelations(id);
     if (!consultation) {
       throw new NotFoundException('Consultation not found');
@@ -2148,6 +2184,15 @@ export class ConsultationService extends BaseService implements IConsultationSer
       consultation.metadata = { ...currentMeta, ...request.metadata } as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'];
     }
 
+    // TASK-1004 (OD-2 (a)) — the consultation's spoken-language default, column + legacy key
+    // together. Applied AFTER the `metadata` merge so a caller cannot desync the two in one PATCH.
+    if (languageMode) {
+      consultation.spokenLanguageMode = languageMode;
+      consultation.metadata = withSummaryLanguage(consultation.metadata, languageMode) as Parameters<
+        typeof ConsultationFactory.CreateNewVisit
+      >[0]['metadata'];
+    }
+
     if (this.requestUserId) {
       consultation.updatedBy = this.requestUserId;
     }
@@ -2170,6 +2215,27 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // from this response would get an immediate 412. Same fix as
     // `reopenConsultation` above.
     return ConsultationDtoMapper.toResponseWithContext(updated);
+  }
+
+  /**
+   * TASK-1004 — change an EXISTING consultation's declared spoken-language mode from `open`.
+   *
+   * Column and legacy key move together, under the row's own version (the re-open read it a
+   * moment ago), and the change is audited as a `ResourceUpdated` naming both values.
+   */
+  private async writeSpokenLanguageMode(consultation: ConsultationEntity, mode: string, via: 'open'): Promise<void> {
+    const previous = readSpokenLanguageMode(consultation);
+    const expectedVersion = consultation.version;
+    consultation.spokenLanguageMode = mode;
+    consultation.metadata = withSummaryLanguage(consultation.metadata, mode) as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'];
+    if (this.requestUserId) {
+      consultation.updatedBy = this.requestUserId;
+    }
+    const updated = await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedVersion);
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: consultation.id,
+      data: { action: 'updateSpokenLanguageMode', via, previous, next: mode, previousVersion: expectedVersion, newVersion: updated.version },
+    });
   }
 
   // ============================================
