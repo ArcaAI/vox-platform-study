@@ -13,7 +13,6 @@ import type { AgenticClient } from './AgenticClient';
 import { STT_ENDPOINTS } from './constants';
 import type { ISDKLogger } from './logger';
 import type { CreateStreamingSessionRequest, StreamingSessionResponse } from '../types/stt';
-import { classifyHttpError } from '../utils/errorUtils';
 
 /** Direction of a live-session provider switch.*/
 export type ProviderSwitchTarget = 'primary' | 'fallback';
@@ -68,14 +67,6 @@ export class StreamingSessionManager {
   private sessionId: string | null = null;
   private sessionResponse: StreamingSessionResponse | null = null;
   private status: SessionManagerStatus = 'idle';
-  /**
-   * When `true`, `switchProvider` routes through the compat gateway's literal
-   * `/api/stt/switch` shim instead of the
-   * native in-place-switch route. ONLY `@arcaai/vox/compat` turns this on
-   * (via {@link setCompatSwitchEnabled}) — native SDK consumers never do, so
-   * the default is `false` and existing native behavior is untouched.
-   */
-  private compatSwitchEnabled = false;
 
   private sessionCreatedListeners = new Set<(response: StreamingSessionResponse) => void>();
   private sessionClosedListeners = new Set<(sessionId: string) => void>();
@@ -301,27 +292,12 @@ export class StreamingSessionManager {
   }
 
   /**
-   * Enable/disable compat provider-switch routing. ONLY
-   * `@arcaai/vox/compat` calls this — it is how a v1-migrated app opts the
-   * live session into the bidirectional `/api/stt/switch` shim instead of the
-   * native one-way fallback route. Native SDK consumers never call this, so
-   * `switchToFallback()`/`switchProvider('fallback')` keep hitting the native
-   * route by default.
-   */
-  setCompatSwitchEnabled(enabled: boolean): void {
-    this.compatSwitchEnabled = enabled;
-  }
-
-  /**
    * Switch the live streaming session's ASR engine.
-   *   - `target: 'fallback'` — the tenant-admin default provider. In compat
-   *     mode this POSTs `/api/stt/switch`; otherwise it is identical to the
-   * native {@link switchToFallback}.
-   *   - `target: 'primary'` — switch BACK to the SDK-configured pipeline. Now
-   * supported natively: POSTs the native
-   *     `SWITCH_TO_PRIMARY` route, the primary-direction counterpart of the
-   *     one-way fallback switch. In compat mode it still routes through the
-   *     `/api/stt/switch` shim.
+   *   - `target: 'fallback'` — the tenant-admin default provider. Identical to
+   *     {@link switchToFallback}.
+   *   - `target: 'primary'` — switch BACK to the SDK-configured pipeline. POSTs
+   *     the native `SWITCH_TO_PRIMARY` route, the primary-direction counterpart
+   *     of the one-way fallback switch.
    *
    * The backend swaps the ASR engine while the WebSocket, Redis streams, and
    * session identity survive; the client is notified via the
@@ -332,9 +308,6 @@ export class StreamingSessionManager {
    * @throws if no session exists, or with the classified backend error on failure.
    */
   async switchProvider(target: ProviderSwitchTarget): Promise<void> {
-    if (this.compatSwitchEnabled) {
-      return this.postCompatSwitch(target);
-    }
     if (target === 'primary') {
       return this.nativeSwitchToPrimary();
     }
@@ -383,62 +356,6 @@ export class StreamingSessionManager {
       attributes: { sessionId: this.sessionId },
     });
     await this.apiClient.post(STT_ENDPOINTS.SWITCH_TO_PRIMARY(this.sessionId), {});
-  }
-
-  /**
-   * Compat provider-switch transport. The
-   * shim route (`POST /api/stt/switch`) lives OUTSIDE the gateway's
-   * `/api/v1` prefix — same shape as `useText`'s `/api/smr/...` shim calls —
-   * so this derives the origin off `apiClient.getBaseUrl()` and hits `fetch`
-   * directly (never through `apiClient`, which always prefixes `/api/v1`).
-   * Body maps `target` onto the wire vocabulary: `primary` → `pipeline`,
-   * `fallback` → `default`.
-   */
-  private async postCompatSwitch(target: ProviderSwitchTarget): Promise<void> {
-    if (!this.sessionId) {
-      throw new Error(`No active streaming session — cannot switch to ${target}.`);
-    }
-
-    const origin = this.apiClient.getBaseUrl().replace(/\/api\/v1\/?$/, '');
-    const apiKey = this.apiClient.getApiKey();
-    const url = `${origin}/api/stt/switch`;
-    const body = { session_id: this.sessionId, target: target === 'primary' ? 'pipeline' : 'default' };
-
-    this.logger?.debug('Requesting compat provider switch', {
-      operation: 'switchProvider',
-      component: 'StreamingSessionManager',
-      attributes: { sessionId: this.sessionId, target, url },
-    });
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(apiKey ? { 'x-api-key': apiKey } : {}),
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-      const err = new Error(data.error ?? data.message ?? `HTTP ${res.status}`) as Error & { code?: string; status?: number };
-      err.code = classifyHttpError(res.status);
-      err.status = res.status;
-      this.logger?.error('Compat provider switch failed', {
-        operation: 'switchProvider',
-        component: 'StreamingSessionManager',
-        error: err,
-        attributes: { sessionId: this.sessionId, target, status: res.status },
-      });
-      throw err;
-    }
-
-    this.logger?.info('Compat provider switch requested', {
-      operation: 'switchProvider',
-      component: 'StreamingSessionManager',
-      success: true,
-      attributes: { sessionId: this.sessionId, target },
-    });
   }
 
   // ===========================================================================

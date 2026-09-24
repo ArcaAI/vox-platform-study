@@ -77,7 +77,8 @@ const VOX_MARKED = [
   { file: 'src/core/constants.ts', before: 'export const LOCAL_TRANSCRIPTION_ENABLED' },
   { file: 'src/core/constants.ts', before: 'export const PIPELINE_ENDPOINTS' },
   { file: 'src/core/TranscriptionPipeline.ts', before: 'export class TranscriptionPipeline' },
-  { file: 'src/compat/types.ts', before: '  sttPipelineId?: string;' },
+  // `src/compat/types.ts`'s `sttPipelineId?: string;` marker was removed WITH the file
+  // (TASK-1004 D-8: `@arcaai/vox/compat` deleted outright, not merely deprecated further).
   // The three raw hooks are re-exported through their GATED wrappers (TASK-977 D-6),
   // so the marker is anchored on that export and on each wrapper's own declaration.
   { file: 'src/plugins.ts', before: "export { useVAD, useSTT, useNoiseFilter } from './hooks/useGatedClientStages';" },
@@ -102,7 +103,10 @@ describe('@arcaai/vox deprecation set carries the marker (TASK-865 §3.2)', () =
   });
 
   it('every TASK-865 marker in the SDK names its removal release', () => {
-    const files = [...new Set(VOX_MARKED.map((entry) => `packages/agentic-sdk-v2/${entry.file}`)), ...CLIENT_AI_PACKAGES.map((p) => `${p.dir}/${p.hook}`)];
+    const files = [
+      ...new Set(VOX_MARKED.map((entry) => `packages/agentic-sdk-v2/${entry.file}`)),
+      ...CLIENT_AI_PACKAGES.map((p) => `${p.dir}/${p.hook}`),
+    ];
     for (const file of files) {
       for (const line of read(file).split('\n')) {
         if (line.includes('@deprecated TASK-865')) {
@@ -116,10 +120,13 @@ describe('@arcaai/vox deprecation set carries the marker (TASK-865 §3.2)', () =
 describe('the admin console cannot import a client-AI package (ESLint, TASK-865)', () => {
   const preset = read('packages/config-eslint/flat/next.js');
 
-  it.each(['@arcaai/vad', '@arcaai/noise-filter', '@arcaai/med-ner', '@arcaai/vox/plugins/med-ner', '@arcaai/stt'])('bans %s via no-restricted-imports', (name) => {
-    expect(preset).toContain(`name: '${name}'`);
-    expect(preset).toMatch(/TASK-865/);
-  });
+  it.each(['@arcaai/vad', '@arcaai/noise-filter', '@arcaai/med-ner', '@arcaai/vox/plugins/med-ner', '@arcaai/stt'])(
+    'bans %s via no-restricted-imports',
+    (name) => {
+      expect(preset).toContain(`name: '${name}'`);
+      expect(preset).toMatch(/TASK-865/);
+    },
+  );
 
   it('keeps the capture-only helpers of @arcaai/stt reachable (they run no model)', () => {
     // `createAudioCapture` / `float32ToInt16` are PCM plumbing the live-transcription
