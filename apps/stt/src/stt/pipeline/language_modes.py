@@ -340,6 +340,39 @@ def latin_letter_ratio(text: str) -> float:
     return latin / len(letters)
 
 
+#: The Malayalam Unicode block. Used only for the observability classification
+#: below, never for a decode/routing decision.
+_MALAYALAM_BLOCK_START = 0x0D00
+_MALAYALAM_BLOCK_END = 0x0D7F
+
+
+def classify_script_chars(text: str) -> tuple[int, int, int]:
+    """Per-letter script classification of *text*: ``(latin, malayalam, other)`` counts.
+
+    Digits, punctuation and whitespace are excluded, same as `latin_letter_ratio` — they
+    carry no script signal. "Latin" reuses `_is_latin_letter` so a Vietnamese diacritic
+    still counts as Latin, matching that function; Malayalam is the Unicode block
+    U+0D00-U+0D7F; everything else is "other".
+
+    Pure observability (TASK-1003 F-15): a code-switch pair (`language=None`) is
+    UNPINNED, so `is_latin_script_language`/`latin_letter_ratio`'s mismatch check never
+    runs for it — this gives a script breakdown regardless of any pin, so the "answered
+    entirely in one script" pattern is visible without one. The result must never feed
+    back into decoding, engine selection or the published transcript.
+    """
+    latin = malayalam = other = 0
+    for ch in text:
+        if not ch.isalpha():
+            continue
+        if _is_latin_letter(ch):
+            latin += 1
+        elif _MALAYALAM_BLOCK_START <= ord(ch) <= _MALAYALAM_BLOCK_END:
+            malayalam += 1
+        else:
+            other += 1
+    return latin, malayalam, other
+
+
 def _is_pair_prompt_capable(engine: AiModelFormat) -> bool:
     """Whether *engine* takes the BILINGUAL priming prompt (whisper.cpp).
 

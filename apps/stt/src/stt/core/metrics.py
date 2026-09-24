@@ -64,6 +64,20 @@ STT_CLOUD_ASR_ERRORS_TOTAL = Counter(
     ["provider", "class"],
 )
 
+# TASK-1003 F-16 — a realtime duplex vendor `error` frame with `is_fatal: false`
+# (Sarvam: `_dispatch_error`). By design that frame does NOT fail the session — it
+# is emitted to the caller and the connection keeps running — so it never reaches
+# `STT_CLOUD_ASR_ERRORS_TOTAL` above, which is on the FATAL path only
+# (`_fail` -> `_classify`). Without this, a vendor that degrades into a stream of
+# non-fatal errors was invisible. Labeled by the vendor's own `code` only (a
+# small, vendor-defined set) — never the free-text `message` or a session/tenant
+# id, which would be unbounded cardinality.
+STT_CLOUD_ASR_NON_FATAL_ERRORS_TOTAL = Counter(
+    "stt_cloud_asr_non_fatal_errors_total",
+    "Non-fatal vendor error frames on a realtime cloud ASR duplex session, by vendor error code",
+    ["provider", "code"],
+)
+
 # In-session provider switches (primary -> fallback). Emission site lives in the
 # streaming EngineSwitchController (deferred with the switch runtime); defined
 # here so the dashboard/query contract is stable ahead of that wiring.
@@ -646,6 +660,31 @@ def streaming_inference_queue_dropped() -> None:
 def streaming_script_mismatch() -> None:
     """TASK-946: one final came back in a script its pinned language rules out."""
     STREAMING_SCRIPT_MISMATCH_TOTAL.inc()
+
+
+# TASK-1003 F-15 — per-script character volume across streaming FINALS. Unlike
+# `stt_streaming_script_mismatch_total` above, this has no language PIN precondition,
+# so it also covers an unpinned code-switch session (`language=None`) answering
+# entirely in the wrong script — the case the mismatch counter structurally cannot
+# see. Labeled ONLY by script class (bounded: latin | malayalam | other) — no
+# session/tenant label, so Grafana computes whatever ratio it wants over time from
+# raw counts rather than a threshold baked in here. OD-6 (TASK-1003): observability
+# only; nothing reads this back to change decoding, engine choice or the transcript.
+STREAMING_SCRIPT_PROFILE_CHARS_TOTAL = Counter(
+    "stt_streaming_script_profile_chars_total",
+    "Alphabetic characters in streaming FINAL transcripts, by script class",
+    ["script"],
+)
+
+
+def streaming_script_profile_chars(*, latin: int, malayalam: int, other: int) -> None:
+    """TASK-1003 F-15: fold one FINAL's per-script letter counts into the fleet total."""
+    if latin:
+        STREAMING_SCRIPT_PROFILE_CHARS_TOTAL.labels(script="latin").inc(latin)
+    if malayalam:
+        STREAMING_SCRIPT_PROFILE_CHARS_TOTAL.labels(script="malayalam").inc(malayalam)
+    if other:
+        STREAMING_SCRIPT_PROFILE_CHARS_TOTAL.labels(script="other").inc(other)
 
 
 # ---------------------------------------------------------------------------

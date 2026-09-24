@@ -29,12 +29,14 @@ from stt.core.initial_prompt import compose_prompt
 from stt.core.metrics import (
     observe_streaming_inference,
     streaming_script_mismatch,
+    streaming_script_profile_chars,
     track_model_inference,
 )
 from stt.pipeline.dto import InferenceConfig, PostprocessingConfig
 from stt.pipeline.language_modes import (
     SCRIPT_MISMATCH_LATIN_RATIO,
     SCRIPT_MISMATCH_MIN_LETTERS,
+    classify_script_chars,
     is_latin_script_language,
     latin_letter_ratio,
 )
@@ -48,6 +50,14 @@ from stt.streaming.schemas import SegmentResult
 
 logger = structlog.get_logger(__name__)
 _MAX_SEGMENT_TEXT_CHARS = 1200
+
+# TASK-1003 F-15 — this worker has no per-session close/teardown hook of its own
+# (SessionManager owns teardown and only reads attributes off this class, e.g.
+# `cumulative_processing_seconds`), so the cumulative script-profile log below is
+# emitted every N finals instead of once at session end. Logging every final would
+# be unbounded volume for a 30-60 minute consultation; this is a diagnostic cadence,
+# not a business threshold — it never affects decoding, engine choice or routing.
+_SCRIPT_PROFILE_LOG_EVERY_N_FINALS = 20
 
 # TASK-985 §7 — call sites for series the observability lane (D7) defines. Resolved
 # by name so this file never fails to import against a metrics module that has not
@@ -331,6 +341,14 @@ class StreamingInferenceWorker:
         #: know the session went wrong, not to be told again on every utterance for the
         #: next forty minutes. The metric and the log line still fire per occurrence.
         self._script_mismatch_reported: bool = False
+        # TASK-1003 F-15 — cumulative per-session script-class letter counts across
+        # every FINAL, independent of `_expects_latin_script`: the code-switch pairs
+        # this exists for are UNPINNED (`language=None`) and never reach
+        # `_is_script_mismatch`, which requires a Latin-script pin to contradict.
+        self._script_profile_latin_chars: int = 0
+        self._script_profile_malayalam_chars: int = 0
+        self._script_profile_other_chars: int = 0
+        self._script_profile_finals: int = 0
         self._gloss_tasks: set[asyncio.Task[None]] = set()
         self._punctuation_model: Any = None
         self._embedding_service: Any = embedding_service
@@ -591,6 +609,35 @@ class StreamingInferenceWorker:
                 error=str(exc),
             )
 
+    def _record_script_profile(self, session_id: str, text: str) -> None:
+        """TASK-1003 F-15: classify one FINAL's letters and fold them into the
+        running per-session totals.
+
+        Runs for every non-empty FINAL, pinned or not — unlike `_is_script_mismatch`,
+        which stays inert for an unpinned code-switch session (`_expects_latin_script`
+        False), this is exactly the signal that can see one collapsing into a single
+        script. OD-6 (TASK-1003): pure observability — the counts are reported and
+        never read back to change decoding, engine selection or the transcript.
+        """
+        latin, malayalam, other = classify_script_chars(text)
+        self._script_profile_latin_chars += latin
+        self._script_profile_malayalam_chars += malayalam
+        self._script_profile_other_chars += other
+        self._script_profile_finals += 1
+        streaming_script_profile_chars(latin=latin, malayalam=malayalam, other=other)
+        # Bounded cadence, not per-final: see `_SCRIPT_PROFILE_LOG_EVERY_N_FINALS`.
+        if self._script_profile_finals % _SCRIPT_PROFILE_LOG_EVERY_N_FINALS == 0:
+            logger.info(
+                "stt.streaming.script_profile",
+                session_id=session_id,
+                language=self._language,
+                expects_latin_script=self._expects_latin_script,
+                latin_chars=self._script_profile_latin_chars,
+                malayalam_chars=self._script_profile_malayalam_chars,
+                other_chars=self._script_profile_other_chars,
+                finals=self._script_profile_finals,
+            )
+
     def _resolve_uses_cadence_fast(self) -> bool:
         """Does the session's punctuation model resolve to the direct-load
         ``cadence-fast`` option (exact name match)?
@@ -796,6 +843,7 @@ class StreamingInferenceWorker:
                 # they no longer sit next to in time.
                 self._previous_text = ""
             else:
+                self._record_script_profile(session_id, text)
                 script_mismatch = self._is_script_mismatch(text)
                 if script_mismatch:
                     await self._report_script_mismatch(session_id, text, utterance)

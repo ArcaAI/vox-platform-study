@@ -427,10 +427,15 @@ class _CacheCore(Generic[T]):
         if self._estimate_bytes is None:
             return 0
         try:
-            return max(0, int(self._estimate_bytes(key)))
+            raw = self._estimate_bytes(key)
         except Exception:
             logger.warning("%s.estimate_failed key=%s", self._name, key, exc_info=True)
             return 0
+        if raw is None:
+            # No estimate recorded for this key yet (e.g. a dict.get-backed
+            # estimator on a cold key) — absent is not a failure.
+            return 0
+        return max(0, int(raw))
 
     def _resident_bytes(self) -> int:
         return sum(entry.bytes_estimate for entry in self._entries.values())
