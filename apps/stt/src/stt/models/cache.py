@@ -39,6 +39,7 @@ from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError, ModelNotCacheServedError
 from ..core.metrics import build_model_cache_metrics_sink
 from ..pipeline.dto import AiModelConfig, AiModelFormat, InlineModelDef, ModelRef, ModelTaskType
+from ..residency.wiring import stt_cache_residency
 from .azure_foundry_loader import AzureFoundryLoader
 from .azure_speech_loader import AzureSpeechLoader
 from .base_loader import BaseModelLoader, LoadedModel
@@ -301,6 +302,9 @@ class ModelCache(SharedModelCache[LoadedModel]):
             estimate_bytes=self._memory_estimates.get,  # type: ignore[arg-type]
             metrics=build_model_cache_metrics_sink(),
             name="stt_model_cache",
+            # TASK-1005 — measured footprints + residency metrics, in the API AND
+            # the Dramatiq worker (both build this cache). Admission stays off.
+            residency=stt_cache_residency(),
         )
 
         self._cache = _CacheEntryView(self)
