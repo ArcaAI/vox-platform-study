@@ -155,6 +155,9 @@ export class TranscriptionJobController {
     fallbackPipelineId?: string;
     /** TASK-861 — the resolved spec the worker assembles the engine chain from (carries its own fallback). */
     resolvedSpec?: ResolvedAsrSpec;
+    /** TASK-1004 — the effective spoken-language mode + its tier (request > consultation), as kwargs. */
+    languageMode?: string;
+    languageModeSource?: LanguageModeSource;
   }): Promise<void> {
     const service = this.realtimeService as unknown as {
       dispatchDramatiqJob: (args: typeof params) => Promise<void>;
@@ -689,6 +692,8 @@ export class TranscriptionJobController {
     if (!ALLOWED_AUDIO_MIMES.has(file.mimetype)) {
       throw new BadRequestException(`Unsupported audio type: ${file.mimetype}`);
     }
+    // TASK-1004 — the explicit mode, normalized; 400 LANGUAGE_MODE_UNKNOWN before any I/O.
+    const requestedMode = requestedLanguageMode(body);
 
     const tenantId = this.getTenantId();
 
@@ -750,7 +755,7 @@ export class TranscriptionJobController {
       // Block cross-tenant pipeline use before any I/O.
       await this.assertPipelineOwnership(pipelineId);
     } else {
-      resolved = await this.resolveAsrAgent(tenantId, body.agentSlug, body.consultationId);
+      resolved = await this.resolveAsrAgent(tenantId, body.agentSlug, body.consultationId, requestedMode);
       pipelineId = resolved.spec.runtimeKey;
     }
     const mediaId = uuidv7();
@@ -844,6 +849,9 @@ export class TranscriptionJobController {
         storage,
         ...(resolved ? { resolvedSpec: resolved.spec } : {}),
         ...(!resolved && fallbackPipelineId ? { fallbackPipelineId } : {}),
+        // TASK-1004 — request > consultation (off the resolver's own read), as named kwargs. The
+        // positional `language` above is unchanged: the deprecated pipeline path reads only it.
+        ...this.effectiveLanguage(requestedMode, resolved),
       });
     } catch (error) {
       // If upload or dispatch fails, mark the job as failed

@@ -62,6 +62,9 @@ export interface ITranscriptionRealtimeService {
     audioBucketName?: string;
     /** Tenant fallback pipeline the worker re-runs on if the primary ASR fails. */
     fallbackPipelineId?: string;
+    /** TASK-1004 — the effective spoken-language mode and its tier, sent as named kwargs. */
+    languageMode?: string;
+    languageModeSource?: 'request' | 'consultation' | 'agent' | 'default';
   }): Promise<void>;
 
   /**

@@ -11,6 +11,7 @@ import { TranscriptionEvent, TranscriptionEventType } from './dto';
 import { ITranscriptionRealtimeService } from './ITranscriptionRealtimeService';
 import { RedisSubscriberService } from './redisSubscriber.service';
 import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
+import type { LanguageModeSource } from '../../../common/language';
 
 /**
  * Transcription Realtime Service
@@ -364,6 +365,14 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
      * reason `storage` is.
      */
     resolvedSpec?: ResolvedAsrSpec;
+    /**
+     * TASK-1004 D-9 — the job's effective spoken-language mode (request > consultation) and the
+     * tier that declared it. Sent as the NAMED kwargs `language_mode` / `language_mode_source`
+     * (the positional arity never changes, so a message already queued stays valid); omitted when
+     * absent, and STT then applies the agent's own mode.
+     */
+    languageMode?: string;
+    languageModeSource?: LanguageModeSource;
   }): Promise<void> {
     const voiceProfiles = await this.resolveVoiceProfiles(params);
     const messageId = uuidv7();
@@ -400,6 +409,9 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
         // worker treats absence as "diarize generically", and an empty list would say the
         // same thing in a second way.
         ...(voiceProfiles.length > 0 ? { voice_profiles: voiceProfiles } : {}),
+        // TASK-1004 D-9 — the effective mode + who declared it, as kwargs, never positionally.
+        ...(params.languageMode ? { language_mode: params.languageMode } : {}),
+        ...(params.languageMode && params.languageModeSource ? { language_mode_source: params.languageModeSource } : {}),
       },
       options: {
         redis_message_id: redisMessageId,
@@ -457,6 +469,8 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
         ...(params.userId ? { userId: params.userId } : {}),
         ...(params.audioBucketName ? { audioBucketName: params.audioBucketName } : {}),
         ...(params.fallbackPipelineId ? { fallbackPipelineId: params.fallbackPipelineId } : {}),
+        ...(params.languageMode ? { languageMode: params.languageMode } : {}),
+        ...(params.languageMode && params.languageModeSource ? { languageModeSource: params.languageModeSource } : {}),
         hadStorageDescriptor: Boolean(params.storage),
       });
     } catch (error) {
@@ -543,6 +557,8 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
         audioBucketName: envelope.audioBucketName,
         storage,
         ...(envelope.fallbackPipelineId ? { fallbackPipelineId: envelope.fallbackPipelineId } : {}),
+        // TASK-1004 — the SAME mode the first attempt carried; never re-resolved on retry.
+        ...(envelope.languageMode ? { languageMode: envelope.languageMode, languageModeSource: envelope.languageModeSource } : {}),
         // The spec snapshot stays on the ROW (TASK-861) — it is the
         // authoritative, reproducible copy, so the envelope never duplicates it.
         ...(context.resolvedSpec ? { resolvedSpec: context.resolvedSpec as unknown as ResolvedAsrSpec } : {}),

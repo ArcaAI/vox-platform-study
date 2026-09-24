@@ -96,10 +96,30 @@ export class TranscribeFileRequest {
   @IsOptional()
   consultationId?: string;
 
-  @ApiPropertyOptional({ description: 'Override pipeline language (ISO 639-1 code, e.g. en, vi, auto)' })
+  @ApiPropertyOptional({
+    description:
+      'Spoken language as a BCP-47 tag (`en-US`, `ml-IN`) or a mode id — normalized to one spoken-language mode. `languageMode` wins when both are sent. ' +
+      '400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.',
+  })
   @IsString()
   @IsOptional()
+  @MaxLength(64)
   language?: string;
+
+  /**
+   * TASK-1004 — the spoken-language MODE for this recording. Omit it (and `language`) to inherit
+   * the consultation's declared mode (`consultationId`), else the ASR agent's own default. It
+   * configures decoding only; the engine is the agent's.
+   */
+  @ApiPropertyOptional({
+    description:
+      "Spoken-language mode id: 'en', 'ml', 'ml-en', 'vi', 'vi-en', 'auto'. Takes precedence over `language`. Omit both to inherit the consultation's declared mode, " +
+      'else the ASR agent’s own default. Never chooses the engine. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode. The job reports what was applied as `languageResolution`.',
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(64)
+  languageMode?: string;
 
   /**
    * The clinician this recording belongs to.

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
  * They are the exact routes the console's Integration panel points a developer
  * at, and `openapi.json` documented NO body for any of them: their bodies are
  * declared as plain TypeScript interfaces (`AgentInvocationBody`,
- * `AgentSpeechBody`, `AgentTranscriptionBody`), deliberately NOT class-validator
+ * `AgentSpeechBody`; `AgentTranscriptionBody` until TASK-1004), deliberately NOT class-validator
  * DTOs, so the global pipe passes the body through and TIER 3 validation runs
  * against the AGENT's own `inputSchema`. The Nest Swagger plugin only emits a
  * body from a DTO class, so it emitted nothing.
@@ -105,20 +105,31 @@ describe('openapi.json — POST /agents/{slug}/speech', () => {
   });
 });
 
+// TASK-1004 — AMENDED: the transcription body is now a DTO (`AgentTranscriptionRequest`), because
+// unlike `invocations`/`speech` its shape is the GATEWAY's (media, consultation, spoken language),
+// not the agent's own `inputSchema` — so `forbidNonWhitelisted` is exactly right for it, and the
+// pass-through argument above does not apply. It therefore publishes a `$ref`, not an inline schema.
+// Green once `openapi.json` is regenerated (`pnpm api:openapi`) with the TASK-1004 routes.
 describe('openapi.json — POST /agents/{slug}/transcriptions', () => {
   const path = '/api/v1/agents/{slug}/transcriptions';
+  const componentOf = (ref: unknown): Record<string, unknown> => {
+    const name = String(ref).replace('#/components/schemas/', '');
+    const schemas = (document as unknown as { components: { schemas: Record<string, Record<string, unknown>> } }).components.schemas;
+    expect(schemas[name], `component ${name} is missing`).toBeDefined();
+    return schemas[name];
+  };
 
-  it('publishes a required request body, inline', () => {
+  it('publishes a required request body, as the AgentTranscriptionRequest DTO', () => {
     expect(bodyOf(path).required).toBe(true);
-    expect(jsonSchemaOf(path).$ref).toBeUndefined();
+    expect(jsonSchemaOf(path).$ref).toBe('#/components/schemas/AgentTranscriptionRequest');
   });
 
-  it('documents mediaId, consultationId and language', () => {
-    const properties = jsonSchemaOf(path).properties as Record<string, unknown>;
-    expect(Object.keys(properties).sort()).toEqual(['consultationId', 'language', 'mediaId']);
+  it('documents mediaId, consultationId, language and languageMode', () => {
+    const properties = componentOf(jsonSchemaOf(path).$ref).properties as Record<string, unknown>;
+    expect(Object.keys(properties).sort()).toEqual(['consultationId', 'language', 'languageMode', 'mediaId']);
   });
 
   it('marks mediaId as the only required field', () => {
-    expect(jsonSchemaOf(path).required).toEqual(['mediaId']);
+    expect(componentOf(jsonSchemaOf(path).$ref).required).toEqual(['mediaId']);
   });
 });

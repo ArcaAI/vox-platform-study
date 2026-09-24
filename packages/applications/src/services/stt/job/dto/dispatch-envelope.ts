@@ -1,3 +1,4 @@
+import type { LanguageModeSource, LanguageResolution } from '../../../../common/language';
 /**
  * TASK-992 FU-1 — the shape of `TranscriptionJob.dispatchEnvelope`.
  *
@@ -43,4 +44,19 @@ export interface BatchDispatchEnvelope {
   fallbackPipelineId?: string;
   /** Whether a per-tenant `StorageDescriptor` was resolved for this dispatch. */
   hadStorageDescriptor: boolean;
+  /**
+   * TASK-1004 — the job's effective spoken-language mode and the tier that declared it, exactly as
+   * sent (`language_mode` / `language_mode_source` kwargs), so a retry re-publishes the same mode.
+   * Absent when no mode was sent (STT applied the agent's own).
+   */
+  languageMode?: string;
+  languageModeSource?: LanguageModeSource;
+  /**
+   * TASK-1004 — the language RECEIPT the worker reported for the attempt this envelope dispatched
+   * (camelCase), written by the completion callback. A re-dispatch rewrites the envelope and so
+   * drops the previous attempt's receipt — a receipt belongs to one attempt. Kept here because the
+   * `TranscriptionJob` entity surfaces no generic metadata column; `languageResolution` on every
+   * job read is lifted from it.
+   */
+  languageResolution?: LanguageResolution;
 }
