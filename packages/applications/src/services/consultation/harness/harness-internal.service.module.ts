@@ -15,6 +15,7 @@ import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NotificationServiceModule } from '../../notification';
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 import { AiProviderConnectionServiceModule } from '../../ai-provider-connection/ai-provider-connection.service.module';
+import { AiRoutingPolicyServiceModule } from '../../ai-routing-policy/ai-routing-policy.service.module';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 import { ConsultationCompletionTimeoutSchedulerModule } from '../completion-timeout/consultation-completion-timeout.scheduler.module';
 import { ConsultationCompletionTimeoutProcessor } from '../completion-timeout/consultation-completion-timeout.processor';
@@ -74,6 +75,9 @@ import { ConsultationCompletionTimeoutProcessor } from '../completion-timeout/co
     // here is what makes the tenant → SYSTEM cascade actually reachable from a
     // Temporal activity.
     AiProviderConnectionServiceModule,
+    // Supplies `IAiRoutingPolicyService` for `resolveTaskModel` — the worker's route to the
+    // SYSTEM routing election a fixed-task activity (the doc workflow's NER) runs on.
+    AiRoutingPolicyServiceModule,
     // Supplies HarnessProgressService so `persistDraft` can push the terminal
     // harness-progress event on the interpreter's jobId-less finalize (the `notifyProgress`
     // branch is addressed by a ConsultationJob id the interpreter never has).

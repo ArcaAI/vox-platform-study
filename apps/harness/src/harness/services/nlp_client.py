@@ -60,7 +60,7 @@ class NlpClient:
             language=language,
             aggregation_strategy=aggregation_strategy,
         )
-        return [self._to_entity(e) for e in data.get("entities", [])]
+        return self.entities_from(data)
 
     async def classify_tokens_raw(
         self,
@@ -73,6 +73,7 @@ class NlpClient:
         threshold: float | None = None,
         language: str = "en",
         aggregation_strategy: str | None = None,
+        clinical_taxonomy: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """The RAW ``TokenClassificationResponse`` (``entities``, ``model_version``, ``vitals``).
 
@@ -89,6 +90,9 @@ class NlpClient:
         declared labels, else the registry row's ``labelTaxonomy``). Both are omitted when
         absent, so a closed-taxonomy checkpoint — whose labels ARE its own — keeps the body
         it has always received.
+
+        ``clinical_taxonomy`` is the selected row's ``_metadata.clinicalTaxonomy``, forwarded
+        verbatim as the gateway's own clinical NER calls do; omitted when absent.
         """
         if not tenant_id or not tenant_id.strip():
             raise ValueError(
@@ -108,6 +112,8 @@ class NlpClient:
             body["labels"] = labels
         if threshold is not None:
             body["threshold"] = threshold
+        if clinical_taxonomy:
+            body["clinical_taxonomy"] = clinical_taxonomy
         # NLP's ServiceAuthMiddleware requires X-Service-Token whenever NLP_SERVICE_TOKEN
         # is configured — omitted when unset so local dev-bypass keeps working.
         headers: dict[str, str] = {"X-Tenant-Id": tenant_id.strip()}
@@ -154,6 +160,11 @@ class NlpClient:
             except httpx.HTTPError as exc:
                 raise NlpServiceError(f"nlp classify/text failed: {exc}") from exc
             return resp.json()  # type: ignore[no-any-return]
+
+    @classmethod
+    def entities_from(cls, data: dict[str, Any]) -> list[NEREntity]:
+        """Project a raw ``/classify/tokens`` response onto :class:`NEREntity`."""
+        return [cls._to_entity(e) for e in data.get("entities", [])]
 
     @staticmethod
     def _to_entity(raw: dict[str, Any]) -> NEREntity:

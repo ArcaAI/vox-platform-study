@@ -1,6 +1,6 @@
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
-import { SYSTEM_TENANT_ID } from '@arcaai/domains';
+import { SYSTEM_TENANT_ID, type AiModelEntity } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../interfaces';
 import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 
@@ -26,7 +26,7 @@ export interface NerModelInjection {
  * admin's stored value unreachable without saying so. A non-object is dropped
  * because it cannot be spread into a JSON body at all.
  */
-function readClinicalTaxonomy(metadata: unknown): Record<string, unknown> | undefined {
+export function readClinicalTaxonomy(metadata: unknown): Record<string, unknown> | undefined {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
   const candidate = (metadata as Record<string, unknown>)[CLINICAL_TAXONOMY_METADATA_KEY];
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return undefined;
@@ -105,34 +105,54 @@ export async function resolveNerModelInjection(
   cls: ClsService<IActiveUserContext> | undefined,
   logger: Logger,
 ): Promise<NerModelInjection> {
+  const model = await resolveSystemTaskModel(routingPolicies, cls, logger, NLP_NER_TASK_KEY);
+  const clinicalTaxonomy = readClinicalTaxonomy(model.metaData);
+  return {
+    model_name: model.sourceUri,
+    ...(clinicalTaxonomy ? { clinical_taxonomy: clinicalTaxonomy } : {}),
+  };
+}
+
+/**
+ * The catalogue model the SYSTEM election for a platform-only task key names —
+ * the SYSTEM-pinned, fail-closed read behind {@link resolveNerModelInjection},
+ * shared with the harness worker's internal model resolve so both planes select
+ * the same model the same way.
+ *
+ * Only for SUPER_ADMIN-only keys (`isSuperAdminOnlyTaskKey`): the read is
+ * `systemOnly`, so a tenant row is never consulted.
+ *
+ * @throws ServiceUnavailableException naming `taskKey` when it cannot be
+ * resolved to an ENABLED model with a `sourceUri`.
+ */
+export async function resolveSystemTaskModel(
+  routingPolicies: IAiRoutingPolicyService | undefined,
+  cls: ClsService<IActiveUserContext> | undefined,
+  logger: Logger,
+  taskKey: string,
+): Promise<AiModelEntity> {
   if (!routingPolicies) {
-    throw new ServiceUnavailableException(`SYSTEM routing election for '${NLP_NER_TASK_KEY}' is unavailable (AiRoutingPolicyService not wired).`);
+    throw new ServiceUnavailableException(`SYSTEM routing election for '${taskKey}' is unavailable (AiRoutingPolicyService not wired).`);
   }
   if (!cls) {
-    throw new ServiceUnavailableException(
-      `SYSTEM routing election for '${NLP_NER_TASK_KEY}' is unavailable (no CLS scope to pin the SYSTEM-only read to).`,
-    );
+    throw new ServiceUnavailableException(`SYSTEM routing election for '${taskKey}' is unavailable (no CLS scope to pin the SYSTEM-only read to).`);
   }
   try {
     const resolved = await cls.run(async () => {
       cls.set('tenantId', SYSTEM_TENANT_ID);
-      return routingPolicies.resolveDefault(SYSTEM_TENANT_ID, NLP_NER_TASK_KEY, { systemOnly: true });
+      return routingPolicies.resolveDefault(SYSTEM_TENANT_ID, taskKey, { systemOnly: true });
     });
-    const sourceUri = resolved.model?.sourceUri;
-    if (!sourceUri) {
-      throw new ServiceUnavailableException(`SYSTEM routing election for '${NLP_NER_TASK_KEY}' is missing or names no ENABLED model. Run db:seed.`);
+    const model = resolved.model;
+    if (!model?.sourceUri) {
+      throw new ServiceUnavailableException(`SYSTEM routing election for '${taskKey}' is missing or names no ENABLED model. Run db:seed.`);
     }
-    const clinicalTaxonomy = readClinicalTaxonomy(resolved.model?.metaData);
-    return {
-      model_name: sourceUri,
-      ...(clinicalTaxonomy ? { clinical_taxonomy: clinicalTaxonomy } : {}),
-    };
+    return model;
   } catch (error) {
     if (error instanceof ServiceUnavailableException) throw error;
     logger.warn({
-      message: `Routing election '${NLP_NER_TASK_KEY}' resolution failed (fail-closed)`,
+      message: `Routing election '${taskKey}' resolution failed (fail-closed)`,
       error: error instanceof Error ? error.message : String(error),
     });
-    throw new ServiceUnavailableException(`SYSTEM routing election for '${NLP_NER_TASK_KEY}' could not be resolved.`);
+    throw new ServiceUnavailableException(`SYSTEM routing election for '${taskKey}' could not be resolved.`);
   }
 }

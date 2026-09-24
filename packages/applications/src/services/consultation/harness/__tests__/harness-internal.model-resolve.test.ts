@@ -11,10 +11,11 @@
  * only under another tenant resolves nothing and answers 404, exactly like an
  * unknown slug (404-over-403).
  */
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
-import { HarnessInternalService } from '../harness-internal.service';
+import { isSuperAdminOnlyTaskKey } from '../../../ai-routing-policy/constants';
+import { HARNESS_RESOLVABLE_TASK_KEYS, HarnessInternalService } from '../harness-internal.service';
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
 
@@ -47,7 +48,7 @@ function makeRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildService(aiModelRepository: unknown, cls = makeCls().cls) {
+function buildService(aiModelRepository: unknown, cls = makeCls().cls, routingPolicies?: unknown) {
   return new HarnessInternalService(
     {} as never, // contextItemRepository
     {} as never, // consultationRepository
@@ -72,6 +73,10 @@ function buildService(aiModelRepository: unknown, cls = makeCls().cls) {
     undefined as never, // providerConnectionService
     undefined as never, // visitTypes
     aiModelRepository as never, // aiModelRepository
+    undefined as never, // progressService
+    undefined as never, // eventEmitter
+    undefined as never, // completionTimeout
+    routingPolicies as never, // routingPolicies
   );
 }
 
@@ -173,5 +178,93 @@ describe('HarnessInternalService.resolveRegistryModel', () => {
     const service = buildService(undefined);
 
     await expect(service.resolveRegistryModel('gliner2-guardrails-pii-multi', TENANT)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('HarnessInternalService.resolveTaskModel', () => {
+  const CLINICAL_TAXONOMY = { tokenClassifier: { aggregationStrategy: 'simple' }, assertion: { triggers: { ABSENT: ['denies'] } } };
+
+  function nerRow(overrides: Record<string, unknown> = {}) {
+    return makeRow({
+      slug: 'medical-ner',
+      sourceUri: 'blaze999/Medical-NER',
+      libraryName: 'transformers',
+      bucketPrefix: 'nlp/medical-ner/',
+      metaData: { clinicalTaxonomy: CLINICAL_TAXONOMY },
+      ...overrides,
+    });
+  }
+
+  function routingReturning(model: unknown) {
+    return { resolveDefault: vi.fn().mockResolvedValue({ tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.ner', source: 'system', model }) };
+  }
+
+  it('resolves nlp.ner from the SYSTEM election and projects the same shape as a slug resolve', async () => {
+    const { cls, set } = makeCls();
+    const routing = routingReturning(nerRow());
+    const service = buildService(undefined, cls, routing);
+
+    const resolved = await service.resolveTaskModel('nlp.ner', TENANT);
+
+    expect(routing.resolveDefault).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.ner', { systemOnly: true });
+    expect(set).toHaveBeenCalledWith('tenantId', SYSTEM_TENANT_ID);
+    expect(resolved).toMatchObject({
+      slug: 'medical-ner',
+      taskType: 'TOKEN_CLASSIFICATION',
+      tenantId: SYSTEM_TENANT_ID,
+      sourceUri: 'blaze999/Medical-NER',
+      localPath: '/mnt/models-bucket/nlp/medical-ner/',
+      servedBy: 'nlp',
+      format: 'SAFETENSOR',
+      clinicalTaxonomy: CLINICAL_TAXONOMY,
+    });
+    expect(resolved.labelTaxonomy).toBeUndefined();
+  });
+
+  it('forwards a declared labelTaxonomy beside the clinical taxonomy', async () => {
+    const labelTaxonomy = { labels: ['medication', 'dosage'] };
+    const service = buildService(undefined, makeCls().cls, routingReturning(nerRow({ metaData: { labelTaxonomy } })));
+
+    const resolved = await service.resolveTaskModel('nlp.ner', TENANT);
+
+    expect(resolved.labelTaxonomy).toEqual(labelTaxonomy);
+    expect(resolved.clinicalTaxonomy).toBeUndefined();
+  });
+
+  it('refuses a task key the worker may not resolve (400) before any read', async () => {
+    const routing = routingReturning(nerRow());
+    const service = buildService(undefined, makeCls().cls, routing);
+
+    await expect(service.resolveTaskModel('harness.judge', TENANT)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.resolveTaskModel('nlp.nope', TENANT)).rejects.toBeInstanceOf(BadRequestException);
+    expect(routing.resolveDefault).not.toHaveBeenCalled();
+  });
+
+  it('refuses a tenant-less resolve (400)', async () => {
+    const routing = routingReturning(nerRow());
+    const service = buildService(undefined, makeCls().cls, routing);
+
+    await expect(service.resolveTaskModel('nlp.ner', '')).rejects.toBeInstanceOf(BadRequestException);
+    expect(routing.resolveDefault).not.toHaveBeenCalled();
+  });
+
+  it('fails CLOSED with a 503 naming the key when no ENABLED model is elected', async () => {
+    const service = buildService(undefined, makeCls().cls, routingReturning(null));
+
+    await expect(service.resolveTaskModel('nlp.ner', TENANT)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(service.resolveTaskModel('nlp.ner', TENANT)).rejects.toThrow("'nlp.ner'");
+  });
+
+  it('fails CLOSED with a 503 when the routing plane is unwired', async () => {
+    const service = buildService(undefined, makeCls().cls, undefined);
+
+    await expect(service.resolveTaskModel('nlp.ner', TENANT)).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('allow-lists only SYSTEM-only keys — the read never consults a tenant row', () => {
+    expect(HARNESS_RESOLVABLE_TASK_KEYS).toContain('nlp.ner');
+    for (const key of HARNESS_RESOLVABLE_TASK_KEYS) {
+      expect(isSuperAdminOnlyTaskKey(key)).toBe(true);
+    }
   });
 });

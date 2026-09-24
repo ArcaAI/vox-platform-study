@@ -1088,6 +1088,53 @@ class TestResolveAgent:
             await _client(handler).resolve_agent(slug="ghost", tenant_id="tenant-1")
 
 
+class TestResolveTaskModel:
+    """The routing task-key resolve a fixed-task activity (the doc workflow's NER) runs on:
+    ``GET /internal/harness/models/resolve?taskKey=&tenantId=``, the same mount and response
+    shape as the slug resolve. Selection fails closed, so every non-2xx raises."""
+
+    @pytest.mark.asyncio
+    async def test_asks_by_task_key_with_tenant_and_service_token(self):
+        seen: dict[str, httpx.Request] = {}
+        model = {
+            "slug": "medical-ner",
+            "taskType": "TOKEN_CLASSIFICATION",
+            "sourceUri": "blaze999/Medical-NER",
+            "localPath": "/mnt/models-bucket/nlp/medical-ner/",
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["req"] = request
+            return httpx.Response(200, json=model)
+
+        answer = await _client(handler).resolve_task_model("nlp.ner", tenant_id="tenant-1")
+
+        req = seen["req"]
+        assert req.method == "GET"
+        assert req.url.path == "/internal/harness/models/resolve"
+        assert dict(req.url.params) == {"taskKey": "nlp.ner", "tenantId": "tenant-1"}
+        assert req.headers["X-Service-Token"] == "svc-token"
+        assert req.headers["X-Tenant-Id"] == "tenant-1"
+        assert answer == model
+
+    @pytest.mark.asyncio
+    async def test_an_unelected_model_503_raises_retryable(self):
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, json={"message": "SYSTEM routing election for 'nlp.ner'"})
+
+        with pytest.raises(ApiServiceError) as excinfo:
+            await _client(handler).resolve_task_model("nlp.ner", tenant_id="tenant-1")
+        assert not isinstance(excinfo.value, ApiClientError)
+
+    @pytest.mark.asyncio
+    async def test_a_refused_key_400_raises_the_terminal_error(self):
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"message": "cannot be resolved"})
+
+        with pytest.raises(ApiClientError):
+            await _client(handler).resolve_task_model("harness.judge", tenant_id="tenant-1")
+
+
 class TestClientErrorsAreNotRetryable:
     """A 4xx from apps/api is a CONTRACT or STATE error — retrying it cannot change the
     answer, and Temporal's default classification (every exception is retryable) turned one

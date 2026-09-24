@@ -862,4 +862,10 @@ export interface HarnessResolvedModelResponse {
    * a taxonomy is never invented here (rule 00: a label set is configuration).
    */
   labelTaxonomy?: Record<string, unknown>;
+  /**
+   * The row's declared `_metadata.clinicalTaxonomy`, forwarded VERBATIM — the
+   * NER plane's configuration the executor applies (`clinical_taxonomy` on
+   * `/classify/tokens`). Absent when the row declares none.
+   */
+  clinicalTaxonomy?: Record<string, unknown>;
 }

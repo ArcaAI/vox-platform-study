@@ -152,3 +152,53 @@ class TestNlpClient:
         assert ent.snomed_code is None
         assert ent.icd_code is None
         assert ent.loinc_code is None
+
+
+class TestClassifyTokensRawClinicalTaxonomy:
+    """The selected row's ``clinicalTaxonomy`` rides on the body verbatim, as on the gateway's
+    own clinical NER calls; absent, the key is omitted so the body is unchanged."""
+
+    @pytest.mark.asyncio
+    async def test_forwards_the_clinical_taxonomy_with_the_model(self):
+        seen, handler = _capture()
+        client = NlpClient("http://nlp:8864", transport=httpx.MockTransport(handler))
+        taxonomy = {"assertion": {"triggers": {"ABSENT": ["denies"]}}}
+
+        await client.classify_tokens_raw(
+            "note",
+            tenant_id="t-1",
+            model_name="blaze999/Medical-NER",
+            model_path="/mnt/models-bucket/nlp/medical-ner/",
+            clinical_taxonomy=taxonomy,
+        )
+
+        body = json.loads(seen["request"].content)
+        assert body["model_name"] == "blaze999/Medical-NER"
+        assert body["model_path"] == "/mnt/models-bucket/nlp/medical-ner/"
+        assert body["clinical_taxonomy"] == taxonomy
+        assert "aggregation_strategy" not in body
+
+    @pytest.mark.asyncio
+    async def test_omits_the_key_when_absent(self):
+        seen, handler = _capture()
+        client = NlpClient("http://nlp:8864", transport=httpx.MockTransport(handler))
+
+        await client.classify_tokens_raw("note", tenant_id="t-1", model_name="m")
+
+        assert "clinical_taxonomy" not in json.loads(seen["request"].content)
+
+    def test_entities_from_is_the_classify_tokens_projection(self):
+        raw = {
+            "entities": [
+                {
+                    "text": "metformin",
+                    "entity_type": "MEDICATION",
+                    "position": {"start": 3, "end": 12},
+                    "rxnorm_code": "6809",
+                }
+            ]
+        }
+
+        assert NlpClient.entities_from(raw) == [
+            NEREntity(text="metformin", type="MEDICATION", start=3, end=12, rxnorm_code="6809")
+        ]
