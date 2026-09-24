@@ -28,6 +28,8 @@ export * from './tenant-guards';
 export * from './telemetry-scope';
 // The internal service-to-service call contract (X-Service-Token + mandatory X-Tenant-Id).
 export * from './internal-service-headers';
+// TASK-1004 — the one spoken-language normalizer / resolver / receipt projection.
+export * from './language';
 export * from './transcript-provenance';
 export * from './typed-event-emitter';
 export * from './worker-session';
