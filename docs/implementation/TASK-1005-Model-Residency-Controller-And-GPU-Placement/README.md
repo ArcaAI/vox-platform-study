@@ -258,6 +258,15 @@ Gate evidence: TASK-1004 §9.2 (one shared pass).
 
 **Deploy sequencing (deployment repo):** the dev overlay pins the exporter to an all-zero sentinel digest until the first `build-gpu-process-exporter` + `promote-dev` run replaces it, so `hope-gpu-process-exporter` shows `ImagePullBackOff` for that window and nothing else is affected.
 
+### 10.4 Deploy (2026-09-25)
+
+- Shipped with TASK-1004 (pipeline #1330; see TASK-1004 §9.5 for the Argo wedge and its resolution).
+- Migration applied 23:23:56Z; `core."ModelResidencyPolicy"` exists.
+- Exporter DaemonSet running on its built image; after a Prometheus `/-/reload` (Prometheus does not reload Git-changed config by itself — follow-up) `up{job="gpu-process-exporter"}` = 1, `hope_gpu_process_memory_bytes` flowing, 25 scrape jobs = the alert threshold, and `GpuMemoryHeadroomLow` / `ModelThrash` / `ResidencyAdmissionRejections` loaded.
+- Residency live in **shadow**: `model_resident` series from stt, `residency_decisions_total{action="load",mode="shadow"}` = 3 recommendations, no command sent, no controller errors in the gateway log.
+- stt-worker's first boot during the fleet rollout took 74 s (MinIO + s3fs starved) and never opened :9191, so the startup probe restarted it once; the second boot took 0.5 s. Follow-up: widen the worker's startup budget or keep it out of the same wave as LM Studio's model reads.
+- The OD-1 7-day shadow window starts now (2026-09-25).
+
 ### 10.3 Follow-ups (not done here)
 
 1. **Enforce needs a shared lock.** The GPU gate, operation registry, recommendations, LM Studio pins and cool-downs are per gateway process; add a Redis lock/ledger before `residency.enforce=true` with more than one gateway replica.

@@ -380,6 +380,7 @@ Not run: the API Playwright e2e suite (needs the live test stack); the two adapt
 
 | Date | Change |
 |---|---|
+| 2026-09-25 | **Correction:** the three cloudflared alerts (L-TUN) were NOT active after the 2026-09-24 deploy — Prometheus in hope-v2-dev never reloads a Git-changed rule file by itself (plain ConfigMap volume, no reloader). Loaded 2026-09-25 23:34Z via `POST /-/reload` (verified in `/api/v1/rules`); durable fix is a deployment-repo follow-up. |
 | 2026-09-24 | Pushed and deployed: stale-override promotion (tree-identical history rewrite), pipeline #1327 green incl. `verify-dev`; guardrail timeout setting still 10 pending the console write. |
 | 2026-09-24 | Owner **go**: all ODs as recommended; amendments OD-3 (full-stream storage), OD-6 (no routing, agent chain only; verified already true), OD-7 (5 min; verified live). ALaaS lanes merged into one; 8 lanes. |
 | 2026-09-24 | Ticket opened. Incident triaged from Grafana (Loki/Prometheus/Tempo) and Rancher; discovery by six read-only agents (`sonnet`: client SDK, gateway, STT+text/guardrail, harness, cloudflared research, ALaaS broker), findings spot-checked live (DELETE-204 then `teardown_stash_unclaimed`; Traefik client IP; Tempo stop trace). Plan and ODs written; awaiting go. |

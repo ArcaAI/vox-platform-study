@@ -269,6 +269,15 @@ Order keeps every CI gate green at each step:
 - `PATCH consultations/:id` is reachable by service accounts (`svc:consultation:session:write`, TASK-933 OD-2 posture) — and so can change `appointmentDate` / `departmentId` / `metadata`, not only the language. **Owner review point.**
 - Explicit `agentSlug` + a foreign `consultationId` with no language is now 404 (previously unchecked).
 
+### 9.5 Deploy (2026-09-25)
+
+- Pushed deployment `main` (`8861956`), hope-v2 `dev-2.2` (`370bb8132`, pipeline **#1330**) and ALaaS `refactor-hope-integaration` (`a6afbeb`).
+- `build-tts` / `build-harness-worker` failed twice on the runner's registry login (DNS timeout, then GitLab `jwt/auth` 502) and passed on the third run; no code cause.
+- **The deployment push wedged Argo.** The exporter DaemonSet shipped with an all-zero placeholder digest, and the sync operation waited on its health indefinitely, blocking the promotion of #1330 (images + migrations). With owner approval the DaemonSet image was patched to the digest Git already declared at `0c624b8`; the stuck operation finished and auto-sync applied `main` (Synced/Healthy 23:32:19Z). Lesson recorded: never land a manifest whose image does not exist yet.
+- Migrations applied 23:23:56Z; backfill typed 41 existing consultations (`ml-en` 24, `en` 15, `ml` 2; 13 left NULL).
+- `verify-dev` in #1330 timed out during the wedge and was re-run.
+- Live checks: the five compat HTTP routes answer **404** on `api-dev.taphuynh.dev`; the new routes answer 401 unauthenticated (mounted). Language receipts need a tester recording to verify.
+
 ### 9.4 Follow-ups (not done here)
 
 1. Harness Python `_run_transcription` must send `consultation_id` and leave the legacy `pipeline_id` path (TASK-861 TODO); until then workflow batch jobs do not inherit the consultation's mode.
