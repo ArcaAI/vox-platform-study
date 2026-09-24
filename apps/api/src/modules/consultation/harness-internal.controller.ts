@@ -64,7 +64,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiExcludeController, ApiOperation, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery } from '@nestjs/swagger';
+import { ApiExcludeController, ApiOperation, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -596,25 +596,50 @@ export class HarnessInternalController {
    * `core.classify`'s own schema accepts a TEXT_CLASSIFICATION *or*
    * TOKEN_CLASSIFICATION slug, so the row's task rides on the response instead
    * of being pinned by the caller.
+   *
+   * With `taskKey` instead of `slug`, the route answers with the model the
+   * platform's routing election for that task names — for a worker activity
+   * that runs a fixed task (the document workflow's clinical NER, `nlp.ner`)
+   * rather than a node that names a model. Same response shape. Only
+   * platform-only keys the worker is allowed to resolve are served (400
+   * otherwise), and an election that names no enabled model is a 503 naming
+   * the key: selection fails closed.
    */
   @Get('models/resolve')
-  @ApiOperation({ summary: 'Resolve a registry model by slug (tenant BYO → SYSTEM) for the worker core.classify node' })
-  @ApiQuery({ name: 'slug', required: true, description: 'The `AiModel.slug` the node references.' })
+  @ApiOperation({
+    summary: 'Resolve a registry model by slug (tenant BYO → SYSTEM), or the model a routing task key elects, for a harness worker activity',
+  })
+  @ApiQuery({ name: 'slug', required: false, description: 'The `AiModel.slug` the node references. Exactly one of `slug` or `taskKey`.' })
+  @ApiQuery({
+    name: 'taskKey',
+    required: false,
+    description: 'A platform-only routing task key (e.g. `nlp.ner`) whose SYSTEM election to resolve. Exactly one of `slug` or `taskKey`.',
+  })
   @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant the harness is acting on behalf of. Never optional.' })
   @ApiQuery({
     name: 'taskType',
     required: false,
-    description: 'Optional ModelTaskType filter; a mismatch answers 404 rather than a row the caller cannot use.',
+    description: 'Optional ModelTaskType filter for a `slug` resolve; a mismatch answers 404 rather than a row the caller cannot use.',
   })
+  @ApiResponse({ status: 400, description: 'tenantId missing, not exactly one of slug/taskKey, or a taskKey the worker may not resolve.' })
+  @ApiResponse({ status: 404, description: 'The slug is unknown, disabled, foreign to the tenant, or of another task type.' })
+  @ApiResponse({ status: 503, description: 'The task key’s election names no enabled model (selection fails closed).' })
   async resolveRegistryModel(
     @Query('slug') slug?: string,
     @Query('tenantId') tenantId?: string,
     @Query('taskType') taskType?: string,
+    @Query('taskKey') taskKey?: string,
   ): Promise<HarnessResolvedModelResponse> {
-    if (!slug || !tenantId) {
-      throw new BadRequestException('slug and tenantId query parameters are both required');
+    if (!tenantId) {
+      throw new BadRequestException('tenantId query parameter is required');
     }
-    return this.harnessInternalService.resolveRegistryModel(slug, tenantId, taskType);
+    if (Boolean(slug) === Boolean(taskKey)) {
+      throw new BadRequestException('exactly one of the slug or taskKey query parameters is required');
+    }
+    if (taskKey) {
+      return this.harnessInternalService.resolveTaskModel(taskKey, tenantId);
+    }
+    return this.harnessInternalService.resolveRegistryModel(slug as string, tenantId, taskType);
   }
 
   /**

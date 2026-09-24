@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
-import { resolveNerModelInjection, NLP_NER_TASK_KEY } from '../resolveNerModelSelection';
+import { resolveNerModelInjection, resolveSystemTaskModel, NLP_NER_TASK_KEY } from '../resolveNerModelSelection';
 
 // Mirrors the mock ClsService double used across the processor test suites
 // (see ner.processor.test.ts) — a bare passthrough `run()`, with `set`/`get`
@@ -113,5 +113,37 @@ describe('resolveNerModelInjection', () => {
     );
     await expect(resolveNerModelInjection(routingPolicies as any, cls as any, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
     expect(warnSpy).toHaveBeenCalled();
+  });
+});
+
+describe('resolveSystemTaskModel', () => {
+  let logger: Logger;
+
+  beforeEach(() => {
+    logger = new Logger('test');
+    vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+  });
+
+  it('returns the model row the SYSTEM election for the given key names, read under a SYSTEM-pinned scope', async () => {
+    const cls = createMockClsService({ tenantId: 'tenant-real' });
+    const model = { sourceUri: 'blaze999/Medical-NER', slug: 'medical-ner' };
+    const routingPolicies = { resolveDefault: vi.fn().mockResolvedValue({ model }) };
+
+    const result = await resolveSystemTaskModel(routingPolicies as any, cls as any, logger, NLP_NER_TASK_KEY);
+
+    expect(result).toBe(model);
+    expect(routingPolicies.resolveDefault).toHaveBeenCalledWith(SYSTEM_TENANT_ID, NLP_NER_TASK_KEY, { systemOnly: true });
+    expect(cls.setOrder).toContainEqual(['tenantId', SYSTEM_TENANT_ID]);
+  });
+
+  it('names the REQUESTED key when it fails closed', async () => {
+    const cls = createMockClsService();
+    const routingPolicies = { resolveDefault: vi.fn().mockResolvedValue({ model: null }) };
+
+    await expect(resolveSystemTaskModel(routingPolicies as any, cls as any, logger, 'nlp.diagnosis')).rejects.toThrow("'nlp.diagnosis'");
+    await expect(resolveSystemTaskModel(undefined, cls as any, logger, 'nlp.diagnosis')).rejects.toThrow("'nlp.diagnosis'");
+    await expect(resolveSystemTaskModel(routingPolicies as any, undefined, logger, 'nlp.diagnosis')).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
   });
 });

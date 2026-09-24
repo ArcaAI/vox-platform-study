@@ -22,6 +22,7 @@ import {
   TranscriptSegmentRepository,
   McpServerRepository,
   AiModelRepository,
+  type AiModelEntity,
   SYSTEM_TENANT_ID,
   ResourceStatusType,
   NotificationType,
@@ -37,6 +38,9 @@ import { HarnessAuditService } from '../../harness-audit';
 import { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
 import { PROVIDER_SERVICES, isCloudByoProvider, type ProviderService } from '../../ai-provider-connection/constants';
 import { derivedLocalPath } from '../../ai-model/constants';
+import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
+import type { AiTaskKey } from '../../ai-routing-policy/constants';
+import { NLP_NER_TASK_KEY, readClinicalTaxonomy, resolveSystemTaskModel } from '../shared/resolveNerModelSelection';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { HarnessAssuranceService } from './harness-assurance.service';
@@ -77,6 +81,38 @@ import type {
 } from './dto';
 import { HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
 import { ConsultationCompletionTimeoutScheduler } from '../completion-timeout/consultation-completion-timeout.scheduler';
+
+/**
+ * The routing task keys a harness worker may resolve a model for over
+ * `GET internal/harness/models/resolve?taskKey=`. Every entry is platform-only
+ * (SYSTEM election, `resolveSystemTaskModel`), so no tenant row is consulted.
+ */
+export const HARNESS_RESOLVABLE_TASK_KEYS: readonly AiTaskKey[] = [NLP_NER_TASK_KEY];
+
+/** A catalogue row in the wire shape the harness worker consumes. */
+function toResolvedModelResponse(row: AiModelEntity): HarnessResolvedModelResponse {
+  const metaData =
+    row.metaData && typeof row.metaData === 'object' && !Array.isArray(row.metaData) ? (row.metaData as Record<string, unknown>) : null;
+  const taxonomy = metaData?.labelTaxonomy;
+  const labelTaxonomy = taxonomy && typeof taxonomy === 'object' && !Array.isArray(taxonomy) ? (taxonomy as Record<string, unknown>) : undefined;
+  const clinicalTaxonomy = readClinicalTaxonomy(metaData);
+
+  return {
+    slug: row.slug,
+    taskType: String(row.taskType),
+    tenantId: row.tenantId,
+    sourceUri: row.sourceUri,
+    sourceRevision: row.sourceRevision ?? null,
+    localPath: derivedLocalPath(row),
+    wireModelId: row.wireModelId ?? null,
+    servedBy: String(row.servedBy),
+    provider: row.provider ?? null,
+    format: String(row.format),
+    computeType: row.computeType ?? null,
+    ...(labelTaxonomy ? { labelTaxonomy } : {}),
+    ...(clinicalTaxonomy ? { clinicalTaxonomy } : {}),
+  };
+}
 
 /** TASK-946 OD-4 — what the gateway's run-completion watcher reports about a terminal run. */
 export interface FailGovernedRunInput {
@@ -324,6 +360,10 @@ export class HarnessInternalService extends BaseService {
     @Optional()
     @Inject(ConsultationCompletionTimeoutScheduler)
     private readonly completionTimeout?: ConsultationCompletionTimeoutScheduler,
+    // The routing plane, used ONLY by `resolveTaskModel`. Optional + trailing so every
+    // positional fixture keeps its arity; absent => every task-key resolve is a 503
+    // (selection fails closed).
+    @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicies?: IAiRoutingPolicyService,
   ) {
     super(eventEmitter as EventEmitter2, cls, ResourceType.Consultation);
   }
@@ -398,25 +438,32 @@ export class HarnessInternalService extends BaseService {
       throw new NotFoundException(`Model '${slug}' is ${rowTask}, not ${taskType}.`);
     }
 
-    const metaData =
-      row.metaData && typeof row.metaData === 'object' && !Array.isArray(row.metaData) ? (row.metaData as Record<string, unknown>) : null;
-    const taxonomy = metaData?.labelTaxonomy;
-    const labelTaxonomy = taxonomy && typeof taxonomy === 'object' && !Array.isArray(taxonomy) ? (taxonomy as Record<string, unknown>) : undefined;
+    return toResolvedModelResponse(row);
+  }
 
-    return {
-      slug: row.slug,
-      taskType: rowTask,
-      tenantId: row.tenantId,
-      sourceUri: row.sourceUri,
-      sourceRevision: row.sourceRevision ?? null,
-      localPath: derivedLocalPath(row),
-      wireModelId: row.wireModelId ?? null,
-      servedBy: String(row.servedBy),
-      provider: row.provider ?? null,
-      format: String(row.format),
-      computeType: row.computeType ?? null,
-      ...(labelTaxonomy ? { labelTaxonomy } : {}),
-    };
+  /**
+   * Resolve the model a platform-only routing task key elects, for a harness
+   * worker activity that runs a fixed task rather than a node naming a slug —
+   * today the document workflow's clinical NER (`nlp.ner`).
+   *
+   * The SAME read the gateway's own clinical NER callers use
+   * (`resolveSystemTaskModel`): SYSTEM election only, fail-closed. Only keys in
+   * {@link HARNESS_RESOLVABLE_TASK_KEYS} are served; anything else is a 400.
+   * `tenantId` is still REQUIRED, like every internal harness call, so the
+   * request stays attributable even though the read itself is SYSTEM-only.
+   *
+   * @throws BadRequestException for a missing tenant or a key outside the allow-list.
+   * @throws ServiceUnavailableException naming the key when no ENABLED model is elected.
+   */
+  async resolveTaskModel(taskKey: string, tenantId: string): Promise<HarnessResolvedModelResponse> {
+    if (!tenantId || !tenantId.trim()) {
+      throw new BadRequestException('tenantId is required');
+    }
+    if (!(HARNESS_RESOLVABLE_TASK_KEYS as readonly string[]).includes(taskKey)) {
+      throw new BadRequestException(`taskKey '${taskKey}' cannot be resolved by the harness worker.`);
+    }
+    const model = await resolveSystemTaskModel(this.routingPolicies, this.cls, this.logger, taskKey);
+    return toResolvedModelResponse(model);
   }
 
   /**
