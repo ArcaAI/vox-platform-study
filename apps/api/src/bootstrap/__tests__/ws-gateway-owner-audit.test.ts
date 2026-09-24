@@ -18,7 +18,6 @@ import { ModulesContainer } from '@nestjs/core/injector/modules-container';
 import { auditWebSocketGatewayOwnerBinding, WS_OWNER_BOUND_GATEWAYS } from '../ws-gateway-owner-audit';
 import { SttWsGateway } from '../../modules/streaming/stt-ws.gateway';
 import { TtsWsGateway } from '../../modules/speech/tts-ws.gateway';
-import { SttCompatGateway } from '../../modules/stt-compat/stt-compat.gateway';
 
 /**
  * The sibling audits' fake-app helper with ONE deliberate change: the wrapper
@@ -49,8 +48,8 @@ function buildFakeApp(providers: Array<new (...args: never[]) => unknown>): Para
 const REPO_ROOT = resolve(__dirname, '../../../../..');
 
 describe('WebSocket gateway owner-binding audit (G4)', () => {
-  it('passes against the three REAL gateways in the tree', () => {
-    const app = buildFakeApp([SttWsGateway, TtsWsGateway, SttCompatGateway]);
+  it('passes against real gateways in the tree', () => {
+    const app = buildFakeApp([SttWsGateway, TtsWsGateway]);
     expect(() => auditWebSocketGatewayOwnerBinding(app)).not.toThrow();
   });
 
@@ -80,9 +79,9 @@ describe('WebSocket gateway owner-binding audit (G4)', () => {
     expect(() => auditWebSocketGatewayOwnerBinding(app)).toThrow(/AlphaGateway[\s\S]*BetaGateway/);
   });
 
-  it('classifies all four real gateways and nothing else (a stale entry is drift too)', () => {
+  it('classifies all three real gateways and nothing else (a stale entry is drift too)', () => {
     // TASK-864 added `/ws/workflows` (WorkflowWsGateway, `no-owned-session`).
-    expect(Object.keys(WS_OWNER_BOUND_GATEWAYS).sort()).toEqual(['SttCompatGateway', 'SttWsGateway', 'TtsWsGateway', 'WorkflowWsGateway']);
+    expect(Object.keys(WS_OWNER_BOUND_GATEWAYS).sort()).toEqual(['SttWsGateway', 'TtsWsGateway', 'WorkflowWsGateway']);
   });
 
   /**
@@ -94,12 +93,10 @@ describe('WebSocket gateway owner-binding audit (G4)', () => {
    *   - `TtsWsGateway` — `no-owned-session`: there is no server-side resource
    *     to take over; the single-use `tts_session:<id>` ticket IS the whole
    * authorisation, plus the CSWSH origin gate.
-   *   - `SttCompatGateway` — `compat-exempt` per review A3.
- */
+   */
   it('pins each gateway classification', () => {
     expect(WS_OWNER_BOUND_GATEWAYS.SttWsGateway.ownerCheck).toBe('enforced');
     expect(WS_OWNER_BOUND_GATEWAYS.TtsWsGateway.ownerCheck).toBe('no-owned-session');
-    expect(WS_OWNER_BOUND_GATEWAYS.SttCompatGateway.ownerCheck).toBe('compat-exempt');
   });
 
   /**

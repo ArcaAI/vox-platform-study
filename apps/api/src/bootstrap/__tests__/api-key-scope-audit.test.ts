@@ -30,7 +30,7 @@ import {
 } from '../api-key-scope-audit';
 
 describe('boot-time API-key scope audit', () => {
-  it('passes for the real HOPE Node SDK day-1 surface (TextCompatController, ConsultationController, ConsultationJobController)', () => {
+  it('passes for the real HOPE Node SDK day-1 surface (ConsultationController, ConsultationJobController)', () => {
     expect(() => auditApiKeyRequiredScopes()).not.toThrow();
   });
 
@@ -43,9 +43,6 @@ describe('boot-time API-key scope audit', () => {
 
     expect(covered).toEqual(
       [
-        // Stateless v1-compat shims — hope.summarization.*
-        'TextCompatController.presummary',
-        'TextCompatController.summarySync',
         // Consultation-bound generation — hope.consultations.summaries.generate*
         'ConsultationController.generatePreSummary',
         'ConsultationController.generatePreSummaryAsync',
@@ -76,9 +73,7 @@ describe('boot-time API-key scope audit', () => {
       unscoped() {}
     }
 
-    expect(() => auditApiKeyRequiredScopes([{ controller: Orphan, method: 'unscoped' }])).toThrow(
-      /Orphan\.unscoped[\s\S]*no[\s\S]*@RequiredScopes/,
-    );
+    expect(() => auditApiKeyRequiredScopes([{ controller: Orphan, method: 'unscoped' }])).toThrow(/Orphan\.unscoped[\s\S]*no[\s\S]*@RequiredScopes/);
   });
 
   it('throws when a route in the list DOES carry @RequiredScopes(...) metadata (sanity: the pass case is not a false negative)', () => {
@@ -287,7 +282,7 @@ describe('boot-time /internal/* off-API-key-surface audit ', () => {
    * (2) is the load-bearing one: without it, "exempt" would mean "unchecked",
    * and stripping `@RequiredScopes('internal:stt:worker')` would silently put
    * every `/internal/stt/*` route back on the open API-key surface.
- */
+   */
   /**
    * gate G2 (decision D-3) — FREEZE the carve-out at one member.
    *
@@ -306,7 +301,7 @@ describe('boot-time /internal/* off-API-key-surface audit ', () => {
    * but "why can this new controller not present a service token?" — the
    * BUG-013 answer (the STT worker's `X-Internal-Service-Key` carries a raw
    * SERVICE_ACCOUNT ApiKey value) is specific to one caller, not a pattern.
- */
+   */
   it('freezes the reserved-scope carve-out at exactly one member (D-3)', () => {
     expect([...RESERVED_INTERNAL_SCOPE_CONTROLLERS]).toEqual(['SttInternalController']);
     expect(RESERVED_INTERNAL_SCOPE_CONTROLLERS.size).toBe(1);

@@ -5,10 +5,11 @@ import type { Response } from 'express';
  * program-wide deprecation headers (RFC 9745 `Deprecation` + an operator-
  * readable notice + the successor link). ONE literal, shared by every route
  * that still honours `pipelineId` for the window — `POST audio/transcription-jobs/
- * stream/session`, `POST …/transcribe` and the v1-compat `POST api/stt/start_session`
- * — so the three cannot drift. Set per request because each of those routes
- * serves BOTH paths; `@ApiDeprecated` is a per-route marker and would mislabel
- * the agent path. No `Sunset` until the removal tags are named (OD-2).
+ * stream/session` and `POST …/transcribe` (TASK-1004 removed the third,
+ * the v1-compat `POST api/stt/start_session`) — so they cannot drift. Set per
+ * request because each of those routes serves BOTH paths; `@ApiDeprecated` is
+ * a per-route marker and would mislabel the agent path. No `Sunset` until the
+ * removal tags are named (OD-2).
  */
 // ASCII only: Node rejects a non-Latin-1 header value with ERR_INVALID_CHAR (a 500 on every call).
 export function markPipelineIdDeprecated(res?: Response): void {

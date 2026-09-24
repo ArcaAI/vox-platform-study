@@ -56,11 +56,8 @@ import { ModulesContainer } from '@nestjs/core/injector/modules-container';
  *   single-use ticket, minted for one session id and burned on use, IS the
  *   whole authorisation. Adding an "owner check" here would be checking a
  *   field that does not exist.
- * - `compat-exempt` — a frozen legacy surface, deliberately out of scope
- *   (conformance review A3). Not a pass mark: an exemption that has to be
- *   spelled out in a registry is an exemption someone can find.
  */
-export type WsOwnerBinding = 'enforced' | 'no-owned-session' | 'compat-exempt';
+export type WsOwnerBinding = 'enforced' | 'no-owned-session';
 
 export interface WsGatewayOwnerRecord {
   readonly ownerCheck: WsOwnerBinding;
@@ -110,15 +107,6 @@ export const WS_OWNER_BOUND_GATEWAYS: Readonly<Record<string, WsGatewayOwnerReco
       'TICKET tenant — a foreign or unknown run is one generic close, never a frame. The spec pins all three and ' +
       'that a client-supplied runId cannot widen the ticket scope.',
   },
-  SttCompatGateway: {
-    ownerCheck: 'compat-exempt',
-    regressionSpec: 'apps/api/tests/e2e/stt-compat-switch-cross-tenant.spec.ts',
-    note:
-      'The frozen legacy `/stt` surface (conformance review A3). It authenticates each socket with a raw API key ' +
-      'rather than a stream ticket and binds sessions per tenant, so it has no principal to own a session with. ' +
-      'Exempt because the surface is closed to new work, NOT because the question was answered — if it ever reopens, ' +
-      'this entry is what makes that visible.',
-  },
 };
 
 export function auditWebSocketGatewayOwnerBinding(app: INestApplicationContext): void {
@@ -144,10 +132,9 @@ export function auditWebSocketGatewayOwnerBinding(app: INestApplicationContext):
         offenders.push(
           `${name} carries @WebSocketGateway() metadata but is not classified in WS_OWNER_BOUND_GATEWAYS ` +
             `(bootstrap/ws-gateway-owner-audit.ts). Every WS surface must declare how it answers "may THIS caller drive ` +
-            `THIS stream?": 'enforced' when it owns a server-side session a second principal could take over, ` +
-            `'no-owned-session' when the single-use ticket is the whole authorisation and there is no session to adopt, ` +
-            `or 'compat-exempt' for a frozen legacy surface. Add the entry with the spec that proves it — the registry ` +
-            `pins the DECLARATION, the named spec pins the BEHAVIOUR.`,
+            `THIS stream?": 'enforced' when it owns a server-side session a second principal could take over, or ` +
+            `'no-owned-session' when the single-use ticket is the whole authorisation and there is no session to adopt. ` +
+            `Add the entry with the spec that proves it — the registry pins the DECLARATION, the named spec pins the BEHAVIOUR.`,
         );
       }
     }

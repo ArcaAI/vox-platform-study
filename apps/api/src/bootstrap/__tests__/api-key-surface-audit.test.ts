@@ -26,7 +26,6 @@ import { Authorize, ForbidApiKey, Public, RequiredScopes, UnifiedAuthGuard } fro
 import { auditEveryApiKeyReachableRouteDeclaresScopes } from '../api-key-surface-audit';
 import { TranscriptionJobController } from '../../modules/streaming/transcription-job.controller';
 import { SpeechProxyController } from '../../modules/speech/speech-proxy.controller';
-import { SttCompatController } from '../../modules/stt-compat/stt-compat.controller';
 import { MyTenantController } from '../../modules/tenant/my-tenant.controller';
 import { AuthController } from '../../modules/auth/auth.controller';
 
@@ -64,20 +63,14 @@ function buildFakeAppFromRealControllers(
 
 describe('boot-time API-key surface audit ', () => {
   /**
-   * The three surfaces the gateway conformance review named as reachable with
-   * NO authorization check — `transcription-job`, `stt-compat`,
-   * `speech-proxy`), plus one of each closure mechanism. Uses the REAL
-   * production classes: a synthetic controller can only prove the audit's
-   * logic, this proves the tree actually satisfies it.
- */
+   * The surfaces the gateway conformance review named as reachable with
+   * NO authorization check — `transcription-job`, `speech-proxy`), plus one
+   * of each closure mechanism. Uses the REAL production classes: a synthetic
+   * controller can only prove the audit's logic, this proves the tree
+   * actually satisfies it.
+   */
   it('passes against the real controllers this ticket closed', () => {
-    const app = buildFakeAppFromRealControllers([
-      TranscriptionJobController,
-      SttCompatController,
-      SpeechProxyController,
-      MyTenantController,
-      AuthController,
-    ]);
+    const app = buildFakeAppFromRealControllers([TranscriptionJobController, SpeechProxyController, MyTenantController, AuthController]);
 
     expect(() => auditEveryApiKeyReachableRouteDeclaresScopes(app)).not.toThrow();
   });

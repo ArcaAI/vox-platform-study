@@ -115,9 +115,7 @@ describe('main.ts configuration regression guards', () => {
   describe('global prefix', () => {
     it('main.ts wires the global prefix from the shared config, not a literal', () => {
       expect(mainTsSource).toMatch(/const globalPrefix\s*=\s*API_GLOBAL_PREFIX\s*;/);
-      expect(mainTsSource).toContain(
-        "import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from './global-prefix.config';",
-      );
+      expect(mainTsSource).toContain("import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from './global-prefix.config';");
       expect(mainTsSource).toContain('app.setGlobalPrefix(globalPrefix, API_GLOBAL_PREFIX_OPTIONS);');
     });
 
@@ -137,8 +135,8 @@ describe('main.ts configuration regression guards', () => {
     it('should exclude /metrics', () => {
       expect(globalPrefixConfigSource).toContain("'/metrics'");
     });
-    it('should exclude the legacy stop-session route', () => {
-      expect(globalPrefixConfigSource).toContain("'api/stt/stop_session'");
+    it('should not carry any v1-compat exclusion (TASK-1004 removed the compat surface)', () => {
+      expect(globalPrefixConfigSource).not.toMatch(/api\/(smr|stt)\//);
     });
   });
 

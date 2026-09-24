@@ -15,8 +15,11 @@ describe('API Key Scope Registry', () => {
     it('should contain STT scopes', () => {
       expect(API_KEY_SCOPE_REGISTRY['stt:transcription:read']).toBeDefined();
       expect(API_KEY_SCOPE_REGISTRY['stt:transcription:write']).toBeDefined();
-      expect(API_KEY_SCOPE_REGISTRY['stt:stream:write']).toBeDefined();
       expect(API_KEY_SCOPE_REGISTRY['stt:model:read']).toBeDefined();
+    });
+
+    it('no longer contains stt:stream:write — TASK-1004 removed the v1 compat STT surface it gated', () => {
+      expect(API_KEY_SCOPE_REGISTRY['stt:stream:write']).toBeUndefined();
     });
 
     it('should contain consultation scopes', () => {

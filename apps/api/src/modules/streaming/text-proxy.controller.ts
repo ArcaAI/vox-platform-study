@@ -271,14 +271,13 @@ interface ProviderListingEntry {
 @ApiTags('text')
 @ApiBearerAuth()
 @Controller('text-generations')
-// the streaming summarization surface parallel to the already-scoped
-// `TextCompatController` (`/api/smr/api/v1`), which uses this same scope for
-// the identical capability — kept in step deliberately.
+// the standalone summarization/text-generation feature, scoped like the
+// native consultation report-generation surface — `consultation:report:write`
+// is shared across both, one capability, one grant.
 @RequiredScopes('consultation:report:write')
 // the standalone summarization/text-generation feature, reachable by
 // the third credential class. Renamespaced from the `consultation:report:write`
-// above, and deliberately the SAME scope the compat sibling declares: one
-// capability, one grant, whichever door the caller uses.
+// above.
 @RequiredSvcScopes('svc:consultation:report:write')
 export class TextProxyController {
   private readonly logger = new Logger(TextProxyController.name);
@@ -1430,7 +1429,7 @@ export class TextProxyController {
 
       // The ownership check above only proves the referenced report belongs
       // to the caller — it must NOT be the source of the injected text. Route
-      // through the same gated accessor `text-compat` uses
+      // through the gated accessor
       // (`IDnaWritingStyleService.getEffectiveStyleText`): it re-applies the
       // tenant+doctor opt-out gate, resolves the doctor's LATEST report, and
       // decrypts the ciphertext column. Reading `dnaStyle.styleText` directly

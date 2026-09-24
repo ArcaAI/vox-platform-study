@@ -55,28 +55,19 @@ describe('StreamSessionTenantBindingService', () => {
     expect(cache.mock.setex).toHaveBeenCalledWith(key, 600, JSON.stringify({ tenantId: 'tenant-A', userId: 'user-A' }));
   });
 
-  it('lookup() returns the bound tenantId', async () => {
+  it('lookupBinding() returns the bound tenantId', async () => {
     await service.bind('sess-1', 'tenant-B', 'user-B', 600);
 
-    expect(await service.lookup('sess-1')).toBe('tenant-B');
-  });
-
-  it('lookup() returns null for an unbound sessionId (no existence leak)', async () => {
-    expect(await service.lookup('never-bound')).toBeNull();
+    expect((await service.lookupBinding('sess-1'))?.tenantId).toBe('tenant-B');
   });
 
   it('clear() removes the binding', async () => {
     await service.bind('sess-x', 'tenant-X', 'user-X', 600);
-    expect(await service.lookup('sess-x')).toBe('tenant-X');
+    expect((await service.lookupBinding('sess-x'))?.tenantId).toBe('tenant-X');
 
     await service.clear('sess-x');
 
-    expect(await service.lookup('sess-x')).toBeNull();
-  });
-
-  it('lookup() guards against empty / whitespace sessionIds', async () => {
-    expect(await service.lookup('')).toBeNull();
-    expect(await service.lookup('   ')).toBeNull();
+    expect(await service.lookupBinding('sess-x')).toBeNull();
   });
 
   // ===========================================================================
@@ -107,7 +98,6 @@ describe('StreamSessionTenantBindingService', () => {
       cache.store.set(`${STREAM_SESSION_TENANT_KEY_PREFIX}sess-legacy`, 'tenant-legacy');
 
       expect(await service.lookupBinding('sess-legacy')).toEqual({ tenantId: 'tenant-legacy', userId: null });
-      expect(await service.lookup('sess-legacy')).toBe('tenant-legacy');
     });
 
     it('records userId: null when no owner is supplied', async () => {
@@ -122,7 +112,6 @@ describe('StreamSessionTenantBindingService', () => {
 
       expect(await service.lookupBinding('sess-corrupt')).toBeNull();
       expect(await service.lookupBinding('sess-no-tenant')).toBeNull();
-      expect(await service.lookup('sess-corrupt')).toBeNull();
     });
 
     it('lookupBinding() guards against empty / whitespace sessionIds', async () => {

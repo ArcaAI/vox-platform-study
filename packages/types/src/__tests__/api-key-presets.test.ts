@@ -29,7 +29,6 @@ describe('API_KEY_SCOPE_PRESETS', () => {
       'consultation:report:write',
       'stt:transcription:read',
       'stt:transcription:write',
-      'stt:stream:write',
       'stt:model:read',
       'tts:speech:write',
       'tts:voice:read',

@@ -94,11 +94,6 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     category: 'STT',
     implies: [{ action: 'create', subject: 'Consultation' }],
   },
-  'stt:stream:write': {
-    description: 'Stream audio for real-time transcription',
-    category: 'STT',
-    implies: [{ action: 'create', subject: 'Consultation' }],
-  },
   'stt:model:read': { description: 'View available STT models', category: 'STT', implies: [{ action: 'read', subject: 'Consultation' }] },
 
   // TTS Service. The `/speech/*` proxy was one of the surfaces the

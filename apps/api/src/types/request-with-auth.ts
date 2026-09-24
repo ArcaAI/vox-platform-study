@@ -14,12 +14,12 @@ import type { IServiceAccountPrincipal, UserSession } from '@arcaai/applications
  *   - `user` set by the Passport JWT strategy (or by
  *                 `JwtAuthGuard.handleTicketAuth` for stream tickets).
  * `serviceAccount` set by `UnifiedAuthGuard`'s
- * service-account branch. Declared here because
- *                 the v1-compat controllers are EXCLUDED from the `api/v1`
- *                 global prefix, where CLS is not reliably populated — the
- *                 request object is the carrier that always works, and the
- *                 third credential class needs the same fallback the first
- *                 two already have.
+ * service-account branch. Declared here (originally motivated by the
+ *                 v1-compat controllers, EXCLUDED from the `api/v1` global
+ *                 prefix, where CLS was not reliably populated — removed by
+ *                 TASK-1004) because the request object is a carrier that
+ *                 always works, and the third credential class needs the
+ *                 same fallback the first two already have.
  *   - `tenantId` reserved for handlers that need a request-scoped
  *                 tenant override; the canonical tenant lookup is the
  *                 CLS context, not this field.

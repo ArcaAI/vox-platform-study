@@ -31,7 +31,8 @@ const ROOT = resolve(__dirname, '..', '..');
  */
 const TENANT_SCOPED_CALL_SITES = [
   // → apps/text /api/v1/generate (+ /translate, /tasks/:id[/stream])
-  'apps/api/src/modules/text-compat/text-compat.controller.ts',
+  // TASK-1004 removed the v1-compat call site, `text-compat.controller.ts`,
+  // outright, along with the whole v1 compat surface.
   'apps/api/src/modules/streaming/text-proxy.controller.ts',
   'packages/applications/src/services/consultation/live-documentation/live-documentation.service.ts',
   'packages/applications/src/services/consultation/jobs/processors/pre-summary.processor.ts',

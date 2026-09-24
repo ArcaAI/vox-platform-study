@@ -38,12 +38,12 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_SERVICE_ACCOUNT_DEV_SECRETS, SYSTEM_TENA
 
 /** `svc:admin:<area>` → the CASL pairs it implies, mirroring `API_KEY_SCOPE_REGISTRY`. */
 const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [action: string, subject: string]>>> = {
-  // standalone-feature scopes — all three renamespace an API-key scope
-  // whose `implies` is `create:Consultation`.
+  // standalone-feature scopes — both renamespace an API-key scope
+  // whose `implies` is `create:Consultation`. TASK-1004 removed the third,
+  // `svc:stt:stream:write`, with the v1 compat surface it gated.
   'svc:stt:transcription:write': [['create', 'Consultation']],
   // TASK-974 §4.2 — the DNA writing-sample ingest plane, derived from `dna-writing-style:ingest`.
   'svc:dna-writing-style:ingest': [['create', 'DnaWritingStyleReport']],
-  'svc:stt:stream:write': [['create', 'Consultation']],
   'svc:consultation:report:write': [['create', 'Consultation']],
   'svc:admin:user:read': [['read', 'User']],
   // TASK-873 — `manage:UserRoleAssignment` was added to `admin:user:write`'s

@@ -19,7 +19,6 @@ import { SEED_API_KEY_IDS } from '../prisma/db_main/seed/00-constants';
 
 /**
  * The scopes the day-1 SDK surface needs, mirroring the `@RequiredScopes(...)` declared on:
- *  - POST /api/smr/api/v1/{presummary,summary/sync} → consultation:report:write
  *  - POST /consultations/:id/summary[/pre-summary][/async] → consultation:report:write
  *  - GET /consultations/:id/summary{,/latest,/pre-summary/latest} → consultation:report:read
  *  - GET/POST /consultations/jobs/:jobId{,/cancel,/stream} → consultation:session:read
@@ -162,53 +161,48 @@ describe('seeded SDK keys —  business-plane coverage', () => {
 });
 
 /**
- * The COMPAT surface — `@arcaai/vox/compat` (SDK compat) and the frozen v1 wire
- * contract (API compat) — for the two capabilities a migrating v1 app needs on
- * day one: TRANSCRIPTION and SUMMARIZATION.
+ * The native STANDALONE-FEATURE surface — TRANSCRIPTION and SUMMARIZATION —
+ * for the day-1 SDK. Distinct from `DAY_ONE_SDK_SCOPES` above, which only
+ * covers the summarization half. The STT strings below were unpinned by
+ * anything in this file, yet every transcription path dies without them:
  *
- * Distinct from `DAY_ONE_SDK_SCOPES` above, which only covers the summarization
- * half. The STT strings below were unpinned by anything in this file, yet every
- * compat transcription path dies without them:
- *
- *   - `stt:stream:write` → POST /api/stt/{start_session,switch,stop_session}
- *                                 (`SttCompatController`, class-level
- *                                 `@RequiredScopes`) — the frozen v1 session
- *                                 lifecycle the compat audio socket `/stt` rides on.
  *   - `stt:transcription:write` → POST /audio/transcription-jobs/stream/session
  *                                 (+ /refresh-ticket, /switch-to-{primary,fallback}),
  *                                 which mints the `stt_session:<id>` ticket for
  *                                 `/ws/stt/stream`, AND the batch job routes
  *                                 (`POST /audio/transcription-jobs`, `/{id}`).
  *   - `stt:transcription:read` → transcription result reads.
- *   - `consultation:report:write` → POST /api/smr/api/v1/{summary/sync,presummary}
- *                                 (`TextCompatController`) — the API-compat
- *                                 summarization pair `useText()` calls.
+ *   - `consultation:report:write` → POST /consultations/:id/summary[/pre-summary][/async]
+ *                                 (`ConsultationController`) — the summarization pair.
+ *
+ * TASK-1004 removed the v1 compat surface (`stt:stream:write` →
+ * `POST /api/stt/{start_session,switch,stop_session}`, and the
+ * `TextCompatController` route this scope also used to gate) outright.
  *
  * `stt:model:read` (GET /audio/pipelines) is already pinned by the
- * business-plane block above; the compat `PipelinePicker` depends on it too.
+ * business-plane block above.
  */
-const COMPAT_SURFACE_SCOPES: ReadonlyArray<readonly [scope: string, why: string]> = [
-  ['stt:stream:write', 'POST /api/stt/{start_session,switch,stop_session} — the frozen v1 STT session lifecycle'],
+const STANDALONE_FEATURE_SCOPES: ReadonlyArray<readonly [scope: string, why: string]> = [
   ['stt:transcription:write', 'POST /audio/transcription-jobs/stream/session (live ticket mint) and the batch job routes'],
   ['stt:transcription:read', 'transcription result reads'],
-  ['consultation:report:write', 'POST /api/smr/api/v1/{summary/sync,presummary} — v1-compat summarization'],
+  ['consultation:report:write', 'POST /consultations/:id/summary[/pre-summary][/async] — summarization'],
 ];
 
-describe('seeded SDK keys — compat surface (transcription + summarization)', () => {
-  for (const [scope, why] of COMPAT_SURFACE_SCOPES) {
+describe('seeded SDK keys — standalone feature surface (transcription + summarization)', () => {
+  for (const [scope, why] of STANDALONE_FEATURE_SCOPES) {
     it(`the shared SDK scope set carries "${scope}"`, () => {
       expect(SDK_DAY_ONE_SCOPES as readonly string[], why).toContain(scope);
     });
   }
 
-  it('the ArcaAI compat key carries every compat-surface scope', () => {
+  it('the ArcaAI compat key carries every standalone-feature scope', () => {
     const seeded = DEFAULT_API_KEYS.find((k) => k.id === SEED_API_KEY_IDS.SDK_COMPAT_ARCAAI);
 
     expect(seeded, 'no seeded key with id SDK_COMPAT_ARCAAI').toBeDefined();
     const scopes = seeded!.scopes as string[];
-    const missing = COMPAT_SURFACE_SCOPES.map(([scope]) => scope).filter((required) => !scopes.includes(required));
+    const missing = STANDALONE_FEATURE_SCOPES.map(([scope]) => scope).filter((required) => !scopes.includes(required));
 
-    expect(missing, 'missing scope(s) — the compat app will 403 on transcription or summarization').toEqual([]);
+    expect(missing, 'missing scope(s) — the app will 403 on transcription or summarization').toEqual([]);
   });
 
   it('the ArcaAI compat key is ACTIVE, never-expiring, and bound to a user whose ability can be evaluated', () => {

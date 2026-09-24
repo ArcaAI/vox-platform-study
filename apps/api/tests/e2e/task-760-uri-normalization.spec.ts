@@ -10,10 +10,10 @@
  *     arrive at the new path as an empty GET. Asserting "a 3xx" would let that
  *     regression through, so the exact code is asserted.
  *
- *  2. The v1 COMPAT surfaces (`api/smr/api/v1`, `api/stt`, `ws /stt`) are
- *     FENCED OUT of this ticket. They are frozen wire contracts with their own
- *     deprecation ticket. The fence describe below is green today and must
- *     stay green — it is the one block here that must never turn red.
+ *  2. The v1 COMPAT surfaces (`api/smr/api/v1`, `api/stt`, `ws /stt`) were
+ *     removed outright by TASK-1004 (zero traffic, no consumers). The block
+ *     below now asserts the opposite of what it asserted before that ticket:
+ *     each retired path answers 404, not a redirect and not a live route.
  *
  * Every request that probes a redirect sets `maxRedirects: 0`; Playwright
  * follows redirects by default, which would make a shim indistinguishable from
@@ -186,42 +186,29 @@ test.describe('every retired URI answers 308 with a Location', () => {
   });
 });
 
-// ─── Scope fence — must never turn red ───────────────────────────────────
+// ─── Compat removal — TASK-1004 ──────────────────────────────────────────
 
-test.describe(' scope fence — the frozen v1 compat surfaces are untouched', () => {
-  test('POST /api/smr/api/v1/presummary still resolves at its exact path and is NOT redirected', async ({ request }) => {
-    // This fence only proves ROUTING (not 404, not redirected), but the compat
-    // route accepts `{}` and performs a REAL summarization behind it — ~6.5s
-    // idle, and well past the 30s global timeout once the whole suite is
-    // hammering apps/text in parallel. Raised per the house pattern
-    // (`task-709-note-occ.spec.ts:189`, added by for the same cause:
-    // a genuine summarization measured at 34.6s against the 30s default).
-    test.setTimeout(180_000);
-
+test.describe(' the removed v1 compat surfaces answer 404', () => {
+  test('POST /api/smr/api/v1/presummary is gone', async ({ request }) => {
     const response = await request.post('/api/smr/api/v1/presummary', {
       headers: bearer(doctorToken),
       data: {},
       maxRedirects: 0,
     });
-    expect(response.status(), 'the TEXT compat prefix must not 404').not.toBe(404);
-    expect([301, 302, 307, 308]).not.toContain(response.status());
+    expect(response.status()).toBe(404);
   });
 
-  test('POST /api/stt/start_session still resolves at its exact path and is NOT redirected', async ({ request }) => {
+  test('POST /api/stt/start_session is gone', async ({ request }) => {
     const response = await request.post('/api/stt/start_session', {
       headers: bearer(doctorToken),
       data: {},
       maxRedirects: 0,
     });
-    expect(response.status(), 'the STT compat prefix must not 404').not.toBe(404);
-    expect([301, 302, 307, 308]).not.toContain(response.status());
+    expect(response.status()).toBe(404);
   });
 
-  test('the ws /stt handshake path is not shadowed by any HTTP route this ticket added', async ({ request }) => {
-    // A plain GET on the gateway's WS path must NOT be answered by a redirect
-    // shim: `ws /stt` is a frozen handshake, and a 308 there would break a
-    // client that upgrades rather than follows.
+  test('the ws /stt handshake path is gone', async ({ request }) => {
     const response = await request.get('/stt', { maxRedirects: 0 });
-    expect([301, 302, 307, 308]).not.toContain(response.status());
+    expect(response.status()).toBe(404);
   });
 });

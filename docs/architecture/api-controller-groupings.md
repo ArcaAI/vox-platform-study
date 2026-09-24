@@ -1,6 +1,6 @@
 # apps/api controllers — grouped views
 
-Companion to [api-controller-inventory.md](./api-controller-inventory.md). Same verified data (105 HTTP controllers + 3 WebSocket gateways = 108 rows; 605 HTTP/SSE + 15 gateway handlers), regrouped. Every row appears exactly once per view.
+Companion to [api-controller-inventory.md](./api-controller-inventory.md). Same verified data (103 HTTP controllers + 2 WebSocket gateways = 105 rows; 600 HTTP/SSE + 11 gateway handlers — TASK-1004 removed `TextCompatController`, `SttCompatController` and `SttCompatGateway`), regrouped. Every row appears exactly once per view.
 
 **Access scope** merges the inventory's two authorization columns: the API-key scope that reaches the route, and the CASL ability checked for a bearer JWT. Where a decorator understates the real gate (`AUTH-NOTE` cases — super-admin-only, owner-scoped, SYSTEM-vs-tenant), the Notes column says so; read the service before widening one.
 
@@ -12,9 +12,9 @@ The three named capabilities, plus TTS (adjacent), the shared AI runtime all thr
 
 ### STT — Standalone speech-to-text
 
-Audio in, transcript out — batch jobs, live streaming, ASR pipeline config, speaker/voice profiles. Two legacy v1 compat surfaces (`api/stt` HTTP + `/stt` WS) sit outside the `api/v1` prefix.
+Audio in, transcript out — batch jobs, live streaming, ASR pipeline config, speaker/voice profiles. TASK-1004 removed the two legacy v1 compat surfaces (`api/stt` HTTP + `/stt` WS) that used to sit outside the `api/v1` prefix.
 
-_10 controllers · 76 handlers_
+_8 controllers · 69 handlers_
 
 | Controller                          | Prefix                                  | APIs | Auth model    | Access scope                                                                                             | Notes                                                                               |
 | ----------------------------------- | --------------------------------------- | ---- | ------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -24,16 +24,14 @@ _10 controllers · 76 handlers_
 | **TenantSttConfigAdminController**  | `api/v1/admin/stt-config`               | 8    | JWT only      | **API key forbidden** (@ForbidApiKey) jwt: read/manage:TenantSttConfig                                   | Effective + row + credentials test.                                                 |
 | **SttWsGateway**                    | `/ws/stt/stream (no api/v1)`            | 6    | Stream ticket | **no key path** — `?ticket=` scoped `stt_session:<id>` jwt: n/a — Nest APP_GUARD does not run            | Raw ws. Origin check + Redis tenant binding. Binary + JSON audio/stop/resume/close. |
 | **VoiceProfileController**          | `api/v1/voice-profiles`                 | 5    | JWT only      | **API key forbidden** jwt: per-verb UserVoiceProfile                                                     | TenantOwnedResource on mutate/delete.                                               |
-| **SttCompatGateway**                | `/stt (no api/v1)`                      | 4    | API key (WS)  | scope `WS headers apikey/api-key/x-api-key/x-internal-service-key, or query apiKey/api-key/key` jwt: n/a | Legacy v1. Session tenant must match key tenant.                                    |
 | **AdminTranscriptionJobController** | `api/v1/admin/audio/transcription-jobs` | 3    | JWT only      | **API key forbidden** (@ForbidApiKey) jwt: class manage:Tenant; handlers read:AsrPipeline                | Admin usages only, API key should not be here.                                      |
 | **AudioPipelineCatalogController**  | `api/v1/audio/pipelines`                | 3    | JWT + API key | **API key `stt:model:read`** jwt: @Authorize()                                                           | Read-only catalog for clinicians.                                                   |
-| **SttCompatController**             | `api/stt (prefix excluded)`             | 3    | JWT + API key | scope `stt:stream:write` jwt: @Authorize()                                                               | Live paths: POST /api/stt/{start_session,switch,stop_session}.                      |
 
 ### SUM — Standalone summarization / text
 
-Text generation and summarization without a consultation session, plus the prompt and writing-style assets that shape it. `api/smr/api/v1` is the v1 compat path and is prefix-excluded.
+Text generation and summarization without a consultation session, plus the prompt and writing-style assets that shape it. TASK-1004 removed the `api/smr/api/v1` v1 compat path.
 
-_8 controllers · 59 handlers_
+_7 controllers · 57 handlers_
 
 | Controller                             | Prefix                               | APIs | Auth model    | Access scope                                                                                | Notes                                                                                   |
 | -------------------------------------- | ------------------------------------ | ---- | ------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -44,7 +42,6 @@ _8 controllers · 59 handlers_
 | **AiInferenceController**              | `api/v1/text-analyses`               | 5    | JWT + API key | **API key `ai:inference:write`** jwt: @Authorize()                                          | Guardrail + NLP proxy.                                                                  |
 | **PromptTemplateController**           | `api/v1/prompt-templates`            | 5    | JWT + API key | **API key `prompt:template:read`** jwt: read:PromptTemplate (writes owner-gated in service) | Clinician plane — AUTH-NOTE: declared read, ownership in service.                       |
 | **NlpTaskInstructionsAdminController** | `api/v1/admin/nlp-task-instructions` | 2    | JWT only      | **API key forbidden** (@ForbidApiKey) jwt: read/manage:TenantNlpTaskInstructions            | No class @Authorize; per-handler CASL.                                                  |
-| **TextCompatController**               | `api/smr/api/v1 (prefix excluded)`   | 2    | JWT + API key | scope `consultation:report:write` jwt: @Authorize()                                         | POST /api/smr/api/v1/{summary/sync,presummary}. SSE if body.stream===true.              |
 
 ### AGENT — Agentic consultation
 
@@ -276,7 +273,7 @@ _36 controllers · 251 handlers_
 
 Non-`/admin` planes reachable by ordinary authenticated users: consultations, own reports/styles/preferences, own tenant/billing/usage reads.
 
-_26 controllers · 168 handlers_ (`MonitoringController` and the `ApiHealthController` `/services` routes are not on this plane — they were never end-user surfaces; the four public probes are PUBLIC)
+_24 controllers · 163 handlers_ (`MonitoringController` and the `ApiHealthController` `/services` routes are not on this plane — they were never end-user surfaces; the four public probes are PUBLIC)
 
 | Controller                          | Prefix                              | APIs | Auth model    | Access scope                                                                                           | Notes                                                                                                |
 | ----------------------------------- | ----------------------------------- | ---- | ------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
@@ -296,10 +293,8 @@ _26 controllers · 168 handlers_ (`MonitoringController` and the `ApiHealthContr
 | **MyBillingController**             | `api/v1/tenants/me`                 | 3    | JWT + API key | **API key `tenant:account:read`** jwt: read:Tenant                                                     | CLS tenant only. 404-over-403 on foreign invoice.                                                    |
 | **MyTenantController**              | `api/v1/tenants/me`                 | 3    | JWT + API key | **API key `tenant:profile:read`** jwt: @Authorize(); PATCH update:Tenant                               | —                                                                                                    |
 | **PermissionCheckController**       | `api/v1/users/me/permission-checks` | 3    | JWT + API key | **API key `user:profile:read`** jwt: @Authorize(); other-user checks need manage:User                  | —                                                                                                    |
-| **SttCompatController**             | `api/stt (prefix excluded)`         | 3    | JWT + API key | scope `stt:stream:write` jwt: @Authorize()                                                             | Live paths: POST /api/stt/{start_session,switch,stop_session}.                                       |
 | **MyUsageController**               | `api/v1/tenants/me`                 | 2    | JWT + API key | **API key `tenant:account:read`** jwt: read:Tenant                                                     | No tenantId override.                                                                                |
 | **SpeechProxyController**           | `api/v1/speech`                     | 2    | JWT + API key | scope `tts:speech:write` jwt: @Authorize()                                                             | Synthesize may be SSE or audio bytes.                                                                |
-| **TextCompatController**            | `api/smr/api/v1 (prefix excluded)`  | 2    | JWT + API key | scope `consultation:report:write` jwt: @Authorize()                                                    | POST /api/smr/api/v1/{summary/sync,presummary}. SSE if body.stream===true.                           |
 | **UserPreferencesController**       | `api/v1/users/me/preferences`       | 2    | JWT + API key | scope `user:preferences:write` jwt: @Authorize()                                                       | Self CLS user.                                                                                       |
 | **UserSettingsController**          | `api/v1/users/me/settings`          | 2    | JWT + API key | **API key `user:settings:read`** jwt: @Authorize()                                                     | —                                                                                                    |
 | **MyEntitlementsController**        | `api/v1/tenants/me`                 | 1    | JWT + API key | **API key `tenant:account:read`** jwt: read:Tenant                                                     | —                                                                                                    |
@@ -309,9 +304,9 @@ _26 controllers · 168 handlers_ (`MonitoringController` and the `ApiHealthContr
 
 ### MACHINE — service token / worker (no human)
 
-No user JWT. `/internal/*` uses `@Public()` + an `X-Service-Token` guard; `SttInternalController` is the exception on the API-key path; the three gateways run outside `APP_GUARD` entirely.
+No user JWT. `/internal/*` uses `@Public()` + an `X-Service-Token` guard; `SttInternalController` is the exception on the API-key path; the two gateways run outside `APP_GUARD` entirely.
 
-_8 controllers · 47 handlers_
+_7 controllers · 43 handlers_
 
 | Controller                           | Prefix                             | APIs | Auth model    | Access scope                                                                                             | Notes                                                                               |
 | ------------------------------------ | ---------------------------------- | ---- | ------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -319,7 +314,6 @@ _8 controllers · 47 handlers_
 | **SttInternalController**            | `api/v1/internal/stt`              | 10   | JWT + API key | scope `internal:stt:worker (X-Internal-Service-Key)` jwt: @Authorize() — worker rejects JWT in handler   | Exception to /internal Public+token pattern. Tenant pin needs platform key.         |
 | **SttWsGateway**                     | `/ws/stt/stream (no api/v1)`       | 6    | Stream ticket | **no key path** — `?ticket=` scoped `stt_session:<id>` jwt: n/a — Nest APP_GUARD does not run            | Raw ws. Origin check + Redis tenant binding. Binary + JSON audio/stop/resume/close. |
 | **TtsWsGateway**                     | `/ws/tts/stream (no api/v1)`       | 5    | Stream ticket | **no key path** — `?ticket=` scoped `tts_session:<id>` jwt: n/a — APP_GUARD does not run                 | No Redis tenant-binding cross-check. Quota close 4429.                              |
-| **SttCompatGateway**                 | `/stt (no api/v1)`                 | 4    | API key (WS)  | scope `WS headers apikey/api-key/x-api-key/x-internal-service-key, or query apiKey/api-key/key` jwt: n/a | Legacy v1. Session tenant must match key tenant.                                    |
 | **ServiceReleaseInternalController** | `api/v1/internal/service-releases` | 2    | Service token | **no key path** — X-Service-Token (any known service secret) jwt: skipped (@Public)                      | —                                                                                   |
 | **ConsentInternalController**        | `api/v1/internal/consent`          | 1    | Service token | **no key path** — X-Service-Token (HarnessServiceTokenGuard) jwt: skipped (@Public)                      | POST assert.                                                                        |
 | **EffectiveConfigController**        | `api/v1/internal/effective-config` | 1    | Service token | **no key path** — X-Service-Token (InternalServiceTokenGuard) jwt: skipped (@Public)                     | —                                                                                   |
@@ -340,35 +334,15 @@ _5 controllers · 13 handlers_ (incl. `ApiHealthController` 4)
 
 ---
 
-## View C — v1 compat surface (SDK-compat / API-compat)
+## View C — v1 compat surface (SDK-compat / API-compat) — REMOVED (TASK-1004)
 
-Six surfaces are **frozen v1 wire contracts**: five HTTP paths listed in `main.ts`'s `setGlobalPrefix` `exclude` array plus one WebSocket gateway. The exclusion exists so `@Controller('api/smr/api/v1')` yields the _literal_ legacy URL instead of `/api/v1/api/smr/api/v1/…`.
-
-**Status: kept deliberately, no sunset.** Owner decision 704 (`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md:76`) — _"Do NOT touch legacy pre-summarization and summarization — they are STANDALONE features, kept deliberately. They serve SDK-compat and API-compat consumers."_ The internal identifiers were renamed `text`→`text`, but these wire routes are carved out as a published API contract. No removal date exists.
-
-| Surface                  | Method + path                       | Auth / scope                                                                                                                                                               | Modern equivalent                                                                                      | Consumers                                                                              |
-| ------------------------ | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| **TextCompatController** | `POST /api/smr/api/v1/summary/sync` | `@Authorize()` + `consultation:report:write`                                                                                                                               | `POST /api/v1/consultations/:id/summary` (persisted) or `POST /api/v1/text-generations/generate` (raw) | `@arcaai/vox-node`, `@arcaai/vox/compat` |
-| **TextCompatController** | `POST /api/smr/api/v1/presummary`   | `@Authorize()` + `consultation:report:write`                                                                                                                               | `POST /api/v1/consultations/:id/summary/pre-summary`                                                   | same as above                                                                          |
-| **SttCompatController**  | `POST /api/stt/switch`              | `@Authorize()` + class `stt:stream:write`                                                                                                                                  | `.../stream/session/:id/switch-to-fallback` \| `switch-to-primary`                                     | `@arcaai/vox/compat` **only when `setCompatSwitchEnabled(true)`**                      |
-| **SttCompatController**  | `POST /api/stt/start_session`       | `@Authorize()` + class `stt:stream:write`                                                                                                                                  | `POST /api/v1/audio/transcription-jobs/stream/session`                                                 | **none in-repo** — external v1 clients only                                            |
-| **SttCompatController**  | `POST /api/stt/stop_session`        | `@Authorize()` + class `stt:stream:write`; `multipart/form-data`                                                                                                           | `DELETE /api/v1/audio/transcription-jobs/stream/session/:sessionId`                                    | **none in-repo**                                                                       |
-| **SttCompatGateway**     | `ws /stt`                           | API key on handshake (`apikey`/`api-key`/`x-api-key`/`x-internal-service-key`, or `?apiKey=`/`?api-key=`/`?key=`); session tenant must equal key tenant, else close `4401` | `SttWsGateway` `ws /ws/stt/stream` — single-use `?ticket=` (`stt_session:<id>`) + CSWSH origin check   | **none in-repo**                                                                       |
-
-### Consumer matrix
-
-| Consumer                           | Kind    | summary/sync | presummary |  switch   | start_session  | stop_session | ws `/stt` |
-| ---------------------------------- | ------- | :----------: | :--------: | :-------: | :------------: | :----------: | :-------: |
-| `@arcaai/vox-node` (server SDK)    | product |      ✅      |     ✅     |     —     |       —        |      —       |     —     |
-| `@arcaai/vox/compat` (browser SDK) | product |      ✅      |     ✅     | ⚙️ opt-in |       —        |      —       |     —     |
-| e2e specs                          | test    |      ✅      |     ✅     |    ✅     |       —        |      —       |     —     |
-
-⚙️ = reached only when `StreamingSessionManager.setCompatSwitchEnabled(true)`; defaults to `false` so native SDK consumers never hit it.
-
-### Things worth knowing
-
-- **The exempt-path list is duplicated in two places.** `apps/api/src/main.ts` owns it; `packages/vox-node/src/core/url.ts:26` mirrors it as a literal `PREFIX_EXEMPT_PATHS` set. vox-node lists only the **two** TEXT paths — correct, because it has no STT/audio surface at all (`HopeClient` exposes summarization/consultations/jobs only). The file warns that generalizing to "everything under `api/smr/`" would be wrong. Any change to the exclusion array must be made in both.
-- **`stop_session` and the legacy `/stt` gateway have zero in-repo callers** — no SDK path, no demo, no e2e spec (unit tests only). They exist purely for external v1 clients.
-- **`@arcaai/vox/compat` never uses `start_session` or the legacy WS gateway.** Compat session creation collapses onto the native `useArcaSession().open()`, and streaming goes over `/ws/stt/stream`. The in-repo demo that exercised the genuinely-non-SDK v1 client path (`apps/example`) has been removed.
-- **`use_enhanced_format: true` is exempt from the v1 template path** — it is an explicit request for the frozen `EnhancedMedicalSummary` wire contract (`text-compat.controller.ts:358-364`).
-- **A former P0 fail-open here is closed:** `/api/stt` was once reachable by any API key with no scope check because it was not in the audited 14-route list. It now carries the class-level `stt:stream:write`. That was security hardening, not deprecation.
+This view documented six frozen v1 wire-contract surfaces (`TextCompatController`,
+`SttCompatController`, `SttCompatGateway` — `api/smr/api/v1/*`, `api/stt/*`, `ws /stt`).
+Owner decision 2026-09-24 reversed the prior "kept deliberately, no sunset" posture
+(OD-704, `docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md:76`,
+now marked SUPERSEDED there) and the surface was deleted outright — zero traffic in the
+10 days measured before removal, no in-repo consumers. Every route this section used to
+document now answers 404; the scopes that gated it (`stt:stream:write` /
+`svc:stt:stream:write`) were retired from the API-key and service-account scope
+registries in the same change. See
+`docs/implementation/TASK-1004-Language-Selection-End-To-End-And-Compat-Removal/README.md`.

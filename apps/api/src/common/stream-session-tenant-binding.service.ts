@@ -188,16 +188,6 @@ export class StreamSessionTenantBindingService {
   }
 
   /**
-   * Tenant-only view of the binding, kept for callers whose ownership model
-   * is the tenant itself (the v1-compat plane authenticates a MACHINE
-   * identity, so there is no end user to compare against). Anything gating a
-   * per-user session must use {@link lookupBinding}.
-   */
-  async lookup(sessionId: string): Promise<string | null> {
-    return (await this.lookupBinding(sessionId))?.tenantId ?? null;
-  }
-
-  /**
    * Persist session meta (negotiated sampleRate) under a TTL-bounded
    * sibling key. Same lifetime/posture as `bind()`.
    */

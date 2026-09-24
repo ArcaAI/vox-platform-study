@@ -150,7 +150,7 @@ export class SpeechProxyController {
 
   /**
    * TASK-879 — the ONE shared `INTERNAL_ACCESS_TOKEN`; `TTS_SERVICE_TOKEN` is consulted only as
-   * the migration fallback, matching what `text-proxy` / `text-compat` already do. Both lookups
+   * the migration fallback, matching what `text-proxy` already does. Both lookups
    * are the SYNC cache read warmed at bootstrap, so the existing fail-open-on-miss behaviour is
    * unchanged: a deployment that configured only the legacy token keeps working.
    */

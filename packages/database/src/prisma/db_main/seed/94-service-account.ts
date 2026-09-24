@@ -185,13 +185,14 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
 
   // Standalone-feature (business-plane) scopes —. These are what let the
   // account actually EXERCISE speech-to-text and summarization, as opposed to
-  // administering their configuration. All three imply `create:Consultation`,
+  // administering their configuration. Both imply `create:Consultation`,
   // which TENANT_ADMIN holds, so they satisfy this file's derivation rule.
   // Renamespaced from the API-key scopes of the same name; the registry owns the
   // mapping (`STANDALONE_FEATURE_SCOPE_SOURCES`) and the test pins agreement.
+  // TASK-1004 removed the third, `svc:stt:stream:write`, with the v1 compat
+  // /api/stt surface it gated.
   'svc:stt:transcription:write', // → create:Consultation (native STT jobs)
-  'svc:stt:stream:write', // → create:Consultation (compat /api/stt sessions)
-  'svc:consultation:report:write', // → create:Consultation (summarization, native + compat)
+  'svc:consultation:report:write', // → create:Consultation (summarization, native)
   // Speech-to-text plane
   'svc:admin:audio-pipeline:manage', // → manage:AsrPipeline
   'svc:admin:transcription-job:read', // → read:AsrPipeline

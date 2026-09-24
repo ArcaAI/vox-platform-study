@@ -147,7 +147,7 @@ describe('STANDALONE_FEATURE_SVC_SCOPES ', () => {
   });
 
   it('holding one standalone scope never reaches another feature', () => {
-    expect(hasServiceAccountScope(['svc:stt:stream:write'], 'svc:consultation:report:write')).toBe(false);
+    expect(hasServiceAccountScope(['svc:stt:transcription:write'], 'svc:consultation:report:write')).toBe(false);
     expect(hasServiceAccountScope(['svc:consultation:report:write'], 'svc:stt:transcription:write')).toBe(false);
     expect(hasServiceAccountScope(['svc:stt:transcription:write'], 'svc:admin:user:write')).toBe(false);
   });
@@ -235,7 +235,7 @@ describe('ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES (O-1)', () => {
 
   it('holding it reaches no other area', () => {
     expect(hasServiceAccountScope(['svc:webhook:event:write'], 'svc:admin:user:write')).toBe(false);
-    expect(hasServiceAccountScope(['svc:webhook:event:write'], 'svc:stt:stream:write')).toBe(false);
+    expect(hasServiceAccountScope(['svc:webhook:event:write'], 'svc:stt:transcription:write')).toBe(false);
     expect(hasServiceAccountScope(['svc:admin:user:write'], 'svc:webhook:event:write')).toBe(false);
   });
 

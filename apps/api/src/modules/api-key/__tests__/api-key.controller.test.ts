@@ -77,7 +77,6 @@ describe('ApiKeyController', () => {
 
       expect(sttScopes).toContain('stt:transcription:read');
       expect(sttScopes).toContain('stt:transcription:write');
-      expect(sttScopes).toContain('stt:stream:write');
     });
 
     it('should not require any service dependencies', () => {
