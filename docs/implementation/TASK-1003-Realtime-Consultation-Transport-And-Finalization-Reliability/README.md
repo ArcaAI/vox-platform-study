@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — all lanes merged on `task-1003/integration` and gated (§10.2); awaiting merge-target confirmation, push and cluster verification |
+| Status | **In Progress** — merged to `dev-2.2`, pushed and deployed (pipeline #1327 green incl. `verify-dev`, 2026-09-24); awaiting the SYSTEM `text.externalGuardrail.timeoutS` = 75 write and the §9 end-to-end runs |
 | Type | bugfix + infrastructure |
 | Branch | `dev-2.2` (hope-v2) · `main` (hope-v2-deployment) · `refactor-hope-integaration` (ALaaSv3.0) |
 | Repos | `arca/hope-v2`, `arca/hope-v2-deployment`, `ALaaSv3.0` (`apps/audio-stream-svc`) |
@@ -369,9 +369,17 @@ Checked 2026-09-24: `AiRoutingPolicy` `guardrail.validate` has no `configJson` t
 
 Not run: the API Playwright e2e suite (needs the live test stack); the two adapted specs compile (`playwright test --list`). Runtime proof is §9 after deploy.
 
+### 10.3 Push and deploy (2026-09-24)
+
+- hope-v2 `dev-2.2` was rebased onto a peer history rewrite with identical trees (verified tree-equal), then fast-forward pushed; deployment `main` rebased onto 14 newer promotion commits and pushed (L-TUN `b17e4f3`); ALaaS merged `--no-ff` on `refactor-hope-integaration` (`41dc1a7`).
+- `promote-dev` refused the first run through the freshness stamp: the rewrite made the stamped commit an ancestor only by tree, not by hash. Proven tree-identical, then re-run as pipeline **#1327** with `PROMOTE_ALLOW_STALE=true` (recorded in the stamp and the promotion commit subject `[STALE OVERRIDE]`).
+- Pipeline #1327: every build, validate and scan job green; `promote-dev` and `verify-dev` green (22:27–22:36 +10:00).
+- Deploy-time setting still open: SYSTEM `text.externalGuardrail.timeoutS` reads **10** in the cluster DB (checked 2026-09-24 after the deploy); it must go to 75 through the admin console (audited, cache-invalidating), not by SQL.
+
 ## 11. Change history
 
 | Date | Change |
 |---|---|
+| 2026-09-24 | Pushed and deployed: stale-override promotion (tree-identical history rewrite), pipeline #1327 green incl. `verify-dev`; guardrail timeout setting still 10 pending the console write. |
 | 2026-09-24 | Owner **go**: all ODs as recommended; amendments OD-3 (full-stream storage), OD-6 (no routing, agent chain only; verified already true), OD-7 (5 min; verified live). ALaaS lanes merged into one; 8 lanes. |
 | 2026-09-24 | Ticket opened. Incident triaged from Grafana (Loki/Prometheus/Tempo) and Rancher; discovery by six read-only agents (`sonnet`: client SDK, gateway, STT+text/guardrail, harness, cloudflared research, ALaaS broker), findings spot-checked live (DELETE-204 then `teardown_stash_unclaimed`; Traefik client IP; Tempo stop trace). Plan and ODs written; awaiting go. |
