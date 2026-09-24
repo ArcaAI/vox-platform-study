@@ -86,6 +86,41 @@
         "model_ref": "arcaai-whisper-large-ml-en-gguf",
         "load_spec": { "resolved_spec": { "$ref": "resolved-asr-spec.fixture.json#/platformDefault/expected" } }
       }
+    ],
+    "nlp": [
+      {
+        "$comment": "nlp (lane L-AGENT). `model_ref` is the model NAME nlp is handed per request today (the gateway-injected `AiModel.sourceUri`, e.g. a hub id — it may contain `/`, so percent-encode it in the policy path). `load_spec.cache` is the cache the slot lives in — the same value the report's `cache` field shows: `nlp_token_classifier`, `nlp_text_classifier`, `nlp_gliner2_guard`, `nlp_medical_suggester` or `nlp_entailment_scorer`. `model_path` is `AiModel.localPath` (null = resolve by name, exactly as a request without one). The slot is keyed the way the request path keys it, so the next request is a hit. Device is always `cpu` (plan D-10); `bytes` is the process-RSS delta. `ai_model_id` is null on nlp: it is handed names, not ids.",
+        "model_ref": "blaze999/Medical-NER",
+        "load_spec": { "cache": "nlp_token_classifier", "model_path": null }
+      },
+      {
+        "$comment": "The medical suggester runs TWO models, so its slot also names the NER it extracts symptoms with (`ner_model_name` REQUIRED, `ner_model_path` optional).",
+        "model_ref": "shanover/symps_disease_bert_v3_c41",
+        "load_spec": {
+          "cache": "nlp_medical_suggester",
+          "model_path": null,
+          "ner_model_name": "blaze999/Medical-NER",
+          "ner_model_path": null
+        }
+      },
+      {
+        "$comment": "The groundedness scorer never auto-downloads and fails closed without its calibration (`AiModel._metadata.entailment`, camelCase as the guard route takes it): both `model_path` and `calibration` are needed for the load to succeed.",
+        "model_ref": "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF",
+        "load_spec": {
+          "cache": "nlp_entailment_scorer",
+          "model_path": "/models/minicheck/minicheck-flan-t5-large-q6_k.gguf",
+          "calibration": {
+            "adapter": "minicheck-flan-t5",
+            "labelTokenNo": 3,
+            "labelTokenYes": 209,
+            "supportedMin": 0.6,
+            "unsupportedMax": 0.4,
+            "document": "The patient was prescribed metformin 500 mg twice daily for type 2 diabetes.",
+            "supportedClaim": "Metformin was prescribed for diabetes.",
+            "unsupportedClaim": "The patient was started on insulin."
+          }
+        }
+      }
     ]
   }
 }
