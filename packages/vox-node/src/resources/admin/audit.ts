@@ -122,7 +122,8 @@ export class AdminAuditResource extends AdminResource {
           | 'Agent'
           | 'AgentAssignment'
           | 'WorkflowRun'
-          | 'TenantGuardrailPolicy';
+          | 'TenantGuardrailPolicy'
+          | 'ModelResidencyPolicy';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -248,7 +249,8 @@ export class AdminAuditResource extends AdminResource {
           | 'Agent'
           | 'AgentAssignment'
           | 'WorkflowRun'
-          | 'TenantGuardrailPolicy';
+          | 'TenantGuardrailPolicy'
+          | 'ModelResidencyPolicy';
         to?: string;
         userId?: string;
       };
@@ -356,7 +358,8 @@ export class AdminAuditResource extends AdminResource {
           | 'Agent'
           | 'AgentAssignment'
           | 'WorkflowRun'
-          | 'TenantGuardrailPolicy';
+          | 'TenantGuardrailPolicy'
+          | 'ModelResidencyPolicy';
         search?: string;
         searchFields?: string;
         sort?: string;

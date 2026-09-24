@@ -2,106 +2,6 @@
   "globalPrefix": "api/v1",
   "routes": [
     {
-      "controller": "TextCompatController",
-      "handler": "presummary",
-      "method": "POST",
-      "path": "/api/smr/api/v1/presummary",
-      "routePath": "/api/smr/api/v1/presummary",
-      "svcScopes": [
-        "svc:consultation:report:write"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "consultation:report:write"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TextCompatController",
-      "handler": "summarySync",
-      "method": "POST",
-      "path": "/api/smr/api/v1/summary/sync",
-      "routePath": "/api/smr/api/v1/summary/sync",
-      "svcScopes": [
-        "svc:consultation:report:write"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "consultation:report:write"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "SttCompatController",
-      "handler": "startSession",
-      "method": "POST",
-      "path": "/api/stt/start_session",
-      "routePath": "/api/stt/start_session",
-      "svcScopes": [
-        "svc:stt:stream:write"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "stt:stream:write"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "SttCompatController",
-      "handler": "stopSession",
-      "method": "POST",
-      "path": "/api/stt/stop_session",
-      "routePath": "/api/stt/stop_session",
-      "svcScopes": [
-        "svc:stt:stream:write"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "stt:stream:write"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "SttCompatController",
-      "handler": "switchSession",
-      "method": "POST",
-      "path": "/api/stt/switch",
-      "routePath": "/api/stt/switch",
-      "svcScopes": [
-        "svc:stt:stream:write"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "stt:stream:write"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
       "controller": "AgentAssignmentAdminController",
       "handler": "fetchAll",
       "method": "GET",
@@ -4901,6 +4801,213 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ModelResidencyController",
+      "handler": "view",
+      "method": "GET",
+      "path": "/api/v1/admin/model-residency",
+      "routePath": "/admin/model-residency",
+      "svcScopes": [
+        "svc:admin:model-residency:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ModelResidencyPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ModelResidencyController",
+      "handler": "load",
+      "method": "POST",
+      "path": "/api/v1/admin/model-residency/load",
+      "routePath": "/admin/model-residency/load",
+      "svcScopes": [
+        "svc:admin:model-residency:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ModelResidencyPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ModelResidencyController",
+      "handler": "operation",
+      "method": "GET",
+      "path": "/api/v1/admin/model-residency/operations/{operationId}",
+      "routePath": "/admin/model-residency/operations/:operationId",
+      "svcScopes": [
+        "svc:admin:model-residency:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ModelResidencyPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ModelResidencyController",
+      "handler": "pin",
+      "method": "PUT",
+      "path": "/api/v1/admin/model-residency/pins",
+      "routePath": "/admin/model-residency/pins",
+      "svcScopes": [
+        "svc:admin:model-residency:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ModelResidencyPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ModelResidencyController",
+      "handler": "listPolicies",
+      "method": "GET",
+      "path": "/api/v1/admin/model-residency/policies",
+      "routePath": "/admin/model-residency/policies",
+      "svcScopes": [
+        "svc:admin:model-residency:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ModelResidencyPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ModelResidencyController",
+      "handler": "createPolicy",
+      "method": "POST",
+      "path": "/api/v1/admin/model-residency/policies",
+      "routePath": "/admin/model-residency/policies",
+      "svcScopes": [
+        "svc:admin:model-residency:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ModelResidencyPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ModelResidencyController",
+      "handler": "deletePolicy",
+      "method": "DELETE",
+      "path": "/api/v1/admin/model-residency/policies/{id}",
+      "routePath": "/admin/model-residency/policies/:id",
+      "svcScopes": [
+        "svc:admin:model-residency:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ModelResidencyPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ModelResidencyController",
+      "handler": "updatePolicy",
+      "method": "PATCH",
+      "path": "/api/v1/admin/model-residency/policies/{id}",
+      "routePath": "/admin/model-residency/policies/:id",
+      "svcScopes": [
+        "svc:admin:model-residency:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ModelResidencyPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ModelResidencyController",
+      "handler": "unload",
+      "method": "POST",
+      "path": "/api/v1/admin/model-residency/unload",
+      "routePath": "/admin/model-residency/unload",
+      "svcScopes": [
+        "svc:admin:model-residency:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ModelResidencyPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
       "apiExcluded": false
     },
     {
@@ -12274,7 +12381,9 @@
       "method": "PATCH",
       "path": "/api/v1/consultations/{id}",
       "routePath": "/consultations/:id",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
