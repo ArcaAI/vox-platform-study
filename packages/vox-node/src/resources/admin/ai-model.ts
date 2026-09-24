@@ -365,9 +365,9 @@ export class AdminAiModelResource extends AdminResource {
   }
 
   /**
-   * Resolve a serving profile for one model and load it
+   * Load one model on the LM Studio engine (REST v1), or report the instance already holding it
    *
-   * Resolves the profile request -> model row -> platform default (widening only on absence), refuses an incoherent combination with 400, and refuses an over-budget load with 409 unless `force: true`. ⚠️ THE LOAD ITSELF CANNOT BE DISPATCHED ON THIS ENGINE BUILD and the route answers **501 `ENGINE_LOAD_UNSUPPORTED`** after the checks: LM Studio`s REST load endpoint fails for every payload on this deployment and carries no field for KV-cache quantization or GPU placement, and the one working loader speaks the SDK kvConfig websocket over loopback inside the pod at boot. The 501 body carries the same `applied` / `sources` / `estimateBytes` the 202 would, so a console can show the precheck before arming its button, and names the remedy (write the profile, restart the workload). Nothing is dispatched to the broken endpoint — doing so is what left the engine with no model loaded when it was measured.
+   * Resolves `contextLength` / `flashAttention` request -> model row -> platform default (widening only on absence), refuses an incoherent profile with 400 and an over-budget load with 409 `VRAM_BUDGET_EXCEEDED` unless `force: true`, then loads over LM Studio REST v1 with the DOCUMENTED keys only — the engine answers 400 `unrecognized_keys` to anything else (`ttl`, `identifier`, `gpu`), so this body accepts nothing else either. REST load is NOT idempotent (a second load of a loaded key creates `<key>:2`, a second full copy in VRAM), so the gateway lists first and answers `already_loaded` with the existing instance. Loads are serialised per engine: a concurrent one is 409 `LOAD_IN_PROGRESS`. SYNCHRONOUS — the response is sent when the engine has finished (a 5 GB model took ~100 s), with the configuration the engine reports it applied. Decode slots, KV-cache quantization and GPU placement have no REST key; they are the pod`s own boot values.
    *
    * `POST /api/v1/admin/inference-engines/lm-studio/models/{modelKey}/load` — `InferenceEnginesController.load`.
    */

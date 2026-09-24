@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 467 component schemas the generated surface transitively
+ * Only the 489 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -52,6 +52,8 @@ export interface AgentAssignmentResponse {
   /** ISO timestamp */
   updatedAt: string;
   version: number;
+  /** TASK-1004 — advisory: spoken-language modes the SPEECH_TO_TEXT agent’s primary engine serves only partially (`degraded`) or not at all. Never blocks; nothing is re-routed. Absent when there is nothing to report. */
+  warnings?: LanguageCapabilityWarningResponse[];
 }
 
 export interface AgentBundleResponse {
@@ -224,6 +226,8 @@ export interface AgentResponse {
   validationReport?: AgentValidationReportResponse;
   version: number;
   versionNumber: number;
+  /** TASK-1004 — advisory: spoken-language modes the SPEECH_TO_TEXT agent’s primary engine serves only partially (`degraded`) or not at all. Never blocks; nothing is re-routed. Absent when there is nothing to report. */
+  warnings?: LanguageCapabilityWarningResponse[];
 }
 
 export interface AgentSyncResponse {
@@ -1213,7 +1217,7 @@ export interface ConsultationResponse {
   id: string;
   /** Whether this consultation was just created (true) or already existed (false) */
   isNew: boolean;
-  /** BCP-47 tag of the consultation's SOURCE language as declared at open (`en`, `ml`, or a code-switch mode such as `ml-en`). Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared. */
+  /** The consultation's declared SOURCE (spoken) language mode (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`), inherited by every live and batch transcription of this consultation that declares none. Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared. */
   language?: string;
   /** Additional metadata */
   metadata?: Record<string, unknown>;
@@ -1792,6 +1796,21 @@ export interface CreateModelRequest {
     | 'UNKNOWN';
   /** Vendor wire id a CLOUD row is invoked with (`saaras:v4`, `gpt-transcribe`, `MAI-Transcribe-1.5`). Required when `deploymentKind` is CLOUD. */
   wireModelId?: string;
+}
+
+export interface CreateModelResidencyPolicyRequest {
+  /** The catalogue model (`AiModel.id`) this policy governs. */
+  aiModelId: string;
+  class?: 'PINNED' | 'WARM' | 'ON_DEMAND';
+  /** Idle TTL the controller enforces; `null` defers to the service`s own cache TTL. */
+  idleTtlSeconds?: number | null;
+  /** Ceiling on concurrently resident instances. */
+  maxInstances?: number;
+  /** Advisory placement hint (`gpu0`, `gpu1`, `cpu`) — a tie-break, never a guarantee. */
+  preferredDevice?: string | null;
+  /** Higher = more valuable to keep resident. */
+  priority?: number;
+  service: 'stt' | 'stt-worker' | 'nlp' | 'lm-studio' | 'text';
 }
 
 export interface CreatePipelineRequest {
@@ -3171,6 +3190,48 @@ export interface KnowledgeDocumentResponse {
   version: number;
 }
 
+export interface LanguageCapabilityWarningResponse {
+  /** The SPEECH_TO_TEXT agent the warning is about. */
+  agentSlug: string;
+  code: 'LANGUAGE_MODE_DEGRADED' | 'LANGUAGE_MODE_UNSUPPORTED';
+  /** The agent’s PRIMARY engine (`AiModelFormat`). */
+  engine: string;
+  level: 'degraded' | 'unsupported';
+  /** What an operator should know, in one sentence. */
+  message: string;
+  /** The spoken-language mode id. */
+  mode: string;
+}
+
+export interface LanguageResolutionParamsResponse {
+  /** Whether the engine ran in its code-switch mode (e.g. Sarvam `codemix`). */
+  codeSwitching: boolean;
+  /** The language the engine was pinned to; null = unpinned (the engine auto-detects). */
+  language: string | null;
+  /** Whether a priming prompt was actually sent to the decoder. */
+  primed: boolean;
+  /** Whether an English gloss track ran beside the transcript (Whisper-family pairs). */
+  streamingEnglishGloss: boolean;
+}
+
+export interface LanguageResolutionResponse {
+  /** The mode the serving engine applied (`auto` when nothing could be pinned). */
+  appliedMode: string;
+  /** True when the engine serves the mode only partially — the reason says how. Never silent. */
+  degraded: boolean;
+  /** The serving engine (`AiModelFormat`). */
+  engine: string;
+  params: LanguageResolutionParamsResponse;
+  /** The resolved ASR model's provider; null for a self-hosted engine. */
+  provider: string | null;
+  /** Why the receipt is degraded; null when it is not. */
+  reason: 'whisper_cpp_pair_unprimed' | 'gloss_translation_only' | 'engine_auto_detect' | 'fallback_engine_switch' | null;
+  /** The mode the precedence resolved (request > consultation > agent > auto). */
+  requestedMode: string;
+  /** Which tier declared the mode. */
+  source: 'request' | 'consultation' | 'agent' | 'default';
+}
+
 export interface LiveDocEngineConfigResponse {
   /** Effective agentic.context.* knobs the live-documentation loop reads. */
   contextSettings?: Record<string, unknown>;
@@ -3315,6 +3376,23 @@ export interface LmStudioEngineStatusResponse {
   version?: string;
 }
 
+export interface LmStudioLoadConfigResponse {
+  /** `context_length` — the window the engine actually applied. */
+  contextLength?: number;
+  /** `eval_batch_size`. */
+  evalBatchSize?: number;
+  /** `flash_attention`. */
+  flashAttention?: boolean;
+  /** `num_experts`, for a mixture-of-experts model. */
+  numExperts?: number;
+  /** `offload_kv_cache_to_gpu`. */
+  offloadKvCacheToGpu?: boolean;
+  /** `parallel` — decode slots. Not settable over REST; the pod`s `LMS_PARALLEL` decides it. */
+  parallel?: number;
+  /** `physical_batch_size`. */
+  physicalBatchSize?: number;
+}
+
 export interface LmStudioLoadedModelResponse {
   /** What the engine is ACTUALLY running with, read back from the instance rather than from any stored profile. Carries only the fields the HTTP API reports — context window, decode slots and flash attention; KV-cache element types and GPU placement are visible only over the SDK websocket, so they are absent here rather than guessed. */
   effective: Record<string, unknown>;
@@ -3330,6 +3408,47 @@ export interface LmStudioLoadedModelResponse {
   weightsBytes: number;
 }
 
+export interface LmStudioResidencyLoadOptions {
+  /** Context window to load with (`context_length`). */
+  contextLength?: number | null;
+  /** Prompt-processing batch size (`eval_batch_size`). */
+  evalBatchSize?: number | null;
+  /** Flash attention (`flash_attention`). */
+  flashAttention?: boolean | null;
+  /** Active experts for a mixture-of-experts model (`num_experts`). */
+  numExperts?: number | null;
+  /** Keep the KV cache in VRAM (`offload_kv_cache_to_gpu`). */
+  offloadKvCacheToGpu?: boolean | null;
+}
+
+export interface LmStudioResidencyModelResponse {
+  adminPinned: boolean;
+  /** The platform catalogue row that claims this key, when known. */
+  aiModelId: string | null;
+  /** Resident bytes. Always `null` here — LM Studio reports none; the residency controller measures it. */
+  bytes: number | null;
+  bytesSource: 'measured' | 'unknown';
+  /** LM Studio`s model type (`llm`, `embedding`, …). */
+  cache: string;
+  /** `multi`: the daemon splits a model across both cards itself (`LMS_GPU_SPLIT_STRATEGY`). */
+  device: string;
+  /** Requests in flight. Always `null` — LM Studio does not report it. */
+  inFlight: number | null;
+  /** The instance handle an unload takes. */
+  instanceId: string;
+  lastUsedAt: string | null;
+  loadConfig: LmStudioLoadConfigResponse;
+  /** `load_time_seconds` of the load that produced this answer; `null` when it was already loaded. */
+  loadSeconds: number | null;
+  loadedAt: string | null;
+  /** The exact engine model key — `AiModel.wireModelId`. */
+  modelRef: string;
+  pinned: boolean;
+  state: 'loading' | 'loaded' | 'unloading';
+  /** Idle TTL. `null` — REST v1 has no TTL; idle unload is the controller`s job. */
+  ttlSeconds: number | null;
+}
+
 export interface LmStudioRuntimeResponse {
   /** Every visible GPU, device index ascending. Empty when Prometheus has no DCGM data. */
   devices: LmStudioDeviceResponse[];
@@ -3341,21 +3460,39 @@ export interface LmStudioRuntimeResponse {
 }
 
 export interface LoadLmStudioModelRequest {
-  /** Proceed despite the live VRAM budget. Bypasses the 409 `VRAM_BUDGET_EXCEEDED` gate AND ONLY that gate — never the super-admin 403, never the 404 for an unknown model, never a 400 on an incoherent profile. The cards are time-sliced and give no memory isolation, so an over-budget load can take the STT and guardrail workloads down with it. */
+  /** Context window to load with (`context_length`). Omit to use the model row`s `_metadata.serving.contextLength`, else `lmStudio.serving.contextLength`. Must not be narrower than the catalogue`s declared window (400). */
+  contextLength?: number;
+  /** Prompt-processing batch size (`eval_batch_size`). Omit for the engine default. */
+  evalBatchSize?: number;
+  /** Flash attention (`flash_attention`). Omit to use the model row, else `lmStudio.serving.flashAttention`. `false` against a model whose V-cache is quantized is a 400. */
+  flashAttention?: boolean;
+  /** Proceed despite the live VRAM budget. Bypasses the 409 `VRAM_BUDGET_EXCEEDED` gate AND ONLY that gate — never the super-admin 403, never the 404 for an unknown model, never a 400 on an incoherent profile, and never the 409 `LOAD_IN_PROGRESS` serialisation. The cards are time-sliced and give no memory isolation, so an over-budget load can take the STT and guardrail workloads down with it. */
   force?: boolean;
-  /** Serving-profile overrides for THIS load, layered over the model row and then the platform default. Same vocabulary as `AiModel._metadata.serving`: `contextLength`, `parallel`, `flashAttention`, `kvCacheQuant.{k,v}`, `gpuSplit.{strategy,disabledGpus,priority,customRatio}`. Omit to load on the resolved model/platform profile. Any field the vocabulary does not accept is a 400, not a silent drop. */
-  profile?: Record<string, unknown>;
+  /** Active experts for a mixture-of-experts model (`num_experts`). Omit for the model default. */
+  numExperts?: number;
+  /** Keep the KV cache in VRAM (`offload_kv_cache_to_gpu`). Omit for the engine default. */
+  offloadKvCacheToGpu?: boolean;
 }
 
 export interface LoadLmStudioModelResponse {
-  /** The resolved serving profile the engine was asked for: this request over the model row over the platform default. */
-  applied: Record<string, unknown>;
-  /** Expected resident VRAM: the MEASURED weights plus the DERIVED KV cache (`contextLength x parallel`, scaled by the KV element types). An estimate, and the number the 409 budget gate compares against the largest single card. */
-  estimateBytes: number;
-  /** The loaded instance handle — what a later unload takes. */
-  identifier: string;
-  /** Dotted field path -> the tier that supplied it (`request` | `model` | `platform`). A field NO tier declared is absent, which means the engine`s own default applies. */
-  sources: Record<string, unknown>;
+  model: LmStudioResidencyModelResponse;
+  outcome: 'loaded' | 'already_loaded';
+}
+
+export interface LoadModelResidencyRequest {
+  /** Proceed over the memory budget (409 `OVER_BUDGET` otherwise) — REQUIRES a non-empty `reason`, which is audited (owner OD-3). With `replace`, also unloads a model that is serving requests. */
+  force?: boolean;
+  /** The key the service caches the model under: stt = the ASR model slug, nlp = the model name (hub id), lm-studio = the EXACT engine key (`AiModel.wireModelId`). */
+  modelRef: string;
+  options?: LmStudioResidencyLoadOptions;
+  /** Pin the model once loaded (never evicted by TTL or pressure). */
+  pin?: boolean;
+  /** Why — mandatory for a forced load; recorded on the audit event. */
+  reason?: string | null;
+  /** "Apply & reload": unload the resident instance(s) of this model first, then load (with `options`), as ONE operation. Refused 409 `IN_FLIGHT` while the model serves requests unless `force`. */
+  replace?: boolean;
+  /** The serving workload. `stt-worker` has no control API and is read-only. */
+  service: 'stt' | 'nlp' | 'lm-studio';
 }
 
 export interface McpServerListResponse {
@@ -3460,6 +3597,131 @@ export interface ModelInventoryRow {
   detail?: Record<string, unknown>;
   id: string;
   slug: string;
+}
+
+export interface ModelResidencyDevice {
+  freeBytes: number;
+  /** The `residency.headroomPercent` in force. */
+  headroomPercent: number;
+  /** `gpu<N>` = DCGM device N; `cpu:<service>` = that service`s host memory pool. */
+  id: string;
+  kind: 'gpu' | 'cpu';
+  name: string;
+  totalBytes: number;
+  usedBytes: number;
+  /** DCGM `DCGM_FI_DEV_GPU_UTIL`; `null` for a CPU pool. */
+  utilisationPercent: number | null;
+}
+
+export interface ModelResidencyFreshness {
+  /** Age in seconds of the OLDEST service report the view is built from (target ≤ 15 s). */
+  maxAgeSeconds: number;
+  /** Services whose last successful report is older than 30 s (their rows are the last known state). */
+  staleServices: string[];
+}
+
+export interface ModelResidencyLoadResponse {
+  model: ModelResidencyModel;
+  /** Present on `accepted` (202): poll `GET operations/:operationId`. */
+  operationId?: string;
+  outcome: 'accepted' | 'already_loaded';
+}
+
+export interface ModelResidencyModel {
+  /** Pinned by an operator (or by the controller for the live path). */
+  adminPinned: boolean;
+  aiModelId: string | null;
+  aiModelName: string | null;
+  /** MEASURED footprint, never a catalogue estimate. */
+  bytes: number | null;
+  bytesSource: 'measured' | 'unknown';
+  class: 'PINNED' | 'WARM' | 'ON_DEMAND';
+  classSource: 'policy' | 'implicit-live-path' | 'default';
+  /** `gpu<N>`, `multi` (LM Studio spans both cards), `cpu:<service>`, or the service`s own id when it cannot be mapped. */
+  device: string;
+  inFlight: number | null;
+  /** Pod name (stt, nlp, stt-worker) or LM Studio instance id (a `<key>:2` duplicate is its own row). */
+  instance: string;
+  lastUsedAt: string | null;
+  loadSeconds: number | null;
+  loadedAt: string | null;
+  modelRef: string;
+  p50LatencyMs: number | null;
+  /** Never evicted: PINNED class, or pinned by an operator. */
+  pinned: boolean;
+  policyId: string | null;
+  policyVersion: number | null;
+  /** From Prometheus `model_inference_latency_seconds` (5 m rate). */
+  requestsPerMin: number | null;
+  service: 'stt' | 'stt-worker' | 'nlp' | 'lm-studio';
+  state: 'loading' | 'loaded' | 'unloading';
+  ttlSeconds: number | null;
+}
+
+export interface ModelResidencyOperationError {
+  code: string;
+  message: string;
+}
+
+export interface ModelResidencyOperationResponse {
+  action: 'load' | 'replace';
+  error: ModelResidencyOperationError;
+  finishedAt: string | null;
+  id: string;
+  modelRef: string;
+  service: string;
+  startedAt: string;
+  status: 'running' | 'succeeded' | 'failed';
+}
+
+export interface ModelResidencyPinResponse {
+  model: ModelResidencyModel;
+}
+
+export interface ModelResidencyPolicyResponse {
+  /** The OCC version (send it back as `If-Match`). */
+  _version: number;
+  aiModelId: string;
+  class: 'PINNED' | 'WARM' | 'ON_DEMAND';
+  id: string;
+  idleTtlSeconds: number | null;
+  maxInstances: number;
+  preferredDevice: string | null;
+  priority: number;
+  service: string;
+  updatedAt: string;
+  updatedBy: string | null;
+  /** Same value as `_version`; the field the gateway`s ETag interceptor reads. */
+  version: number;
+}
+
+export interface ModelResidencyRecommendation {
+  action: 'load' | 'unload' | 'pin' | 'unpin';
+  /** Whether the command was sent AND succeeded. Always `false` in shadow mode. */
+  applied: boolean;
+  at: string;
+  id: string;
+  mode: 'shadow' | 'enforce';
+  modelRef: string;
+  reason: 'idle_ttl_expired' | 'promotion_rate' | 'live_path_pin' | 'make_room' | 'admission_rejected';
+  service: string;
+}
+
+export interface ModelResidencyUnloadResponse {
+  modelRef: string;
+  outcome: 'unloaded' | 'not_loaded';
+  service: string;
+}
+
+export interface ModelResidencyViewResponse {
+  devices: ModelResidencyDevice[];
+  freshness: ModelResidencyFreshness;
+  /** `shadow` until the SYSTEM setting `residency.enforce` is true. */
+  mode: 'shadow' | 'enforce';
+  models: ModelResidencyModel[];
+  /** Newest first; bounded in-memory log. */
+  recommendations: ModelResidencyRecommendation[];
+  reportedAt: string;
 }
 
 export interface ModelResponse {
@@ -3750,6 +4012,8 @@ export interface NodePromptUpdateResponse {
   /** Optimistic-concurrency version (`_version`). */
   version: number;
   versionNumber: number;
+  /** TASK-1004 — advisory: spoken-language modes the SPEECH_TO_TEXT agent’s primary engine serves only partially (`degraded`) or not at all. Never blocks; nothing is re-routed. Absent when there is nothing to report. */
+  warnings?: LanguageCapabilityWarningResponse[];
 }
 
 export interface NotificationResponse {
@@ -4093,6 +4357,15 @@ export interface PinConsultationContextSchemaVersionRequest {
 export interface PinDocumentTemplateVersionRequest {
   /** The immutable version number to serve. Must already exist. */
   versionNumber: number;
+}
+
+export interface PinModelResidencyRequest {
+  modelRef: string;
+  /** Pin (true) or unpin (false). A pinned model survives its idle TTL and is never evicted. */
+  pinned: boolean;
+  service: 'stt' | 'nlp' | 'lm-studio';
+  /** Idle TTL in seconds; `null` resets to the service default; omitted leaves it as it is. */
+  ttlSeconds?: number | null;
 }
 
 export interface PipelineResponse {
@@ -6021,6 +6294,8 @@ export interface TranscriptionJobResponse {
   id: string;
   /** Job type */
   jobType: 'BATCH' | 'STREAMING';
+  /** TASK-1004 — the language RECEIPT the worker reported for this job: the spoken-language mode requested and who declared it (request > consultation > agent > auto), and what the serving engine applied (`degraded` + `reason` when only partially). `null` = not reported (a running job, or a worker that predates it). */
+  languageResolution?: LanguageResolutionResponse;
   /** Maximum retries */
   maxRetries: number;
   /** Media ID (for batch jobs) */
@@ -6106,6 +6381,15 @@ export interface UnloadLmStudioModelResponse {
   jitReloadPossible: boolean;
   /** Whether the engine accepted the unload. */
   unloaded: boolean;
+}
+
+export interface UnloadModelResidencyRequest {
+  /** Unload even while the model serves requests (409 `IN_FLIGHT` otherwise). */
+  force?: boolean;
+  modelRef: string;
+  /** Why — recorded on the audit event. */
+  reason?: string | null;
+  service: 'stt' | 'nlp' | 'lm-studio';
 }
 
 export interface UnregisteredBucketPrefix {
@@ -6521,6 +6805,16 @@ export interface UpdateModelRequest {
     | 'UNKNOWN';
   /** Vendor wire id for a CLOUD row. Send an empty string to clear. */
   wireModelId?: string;
+}
+
+export interface UpdateModelResidencyPolicyRequest {
+  class?: 'PINNED' | 'WARM' | 'ON_DEMAND';
+  /** Version from the prior read (the `If-Match` header wins when both are sent). */
+  expectedVersion?: number;
+  idleTtlSeconds?: number | null;
+  maxInstances?: number;
+  preferredDevice?: string | null;
+  priority?: number;
 }
 
 export interface UpdateNodePromptRequest {
@@ -7490,6 +7784,8 @@ export interface WorkflowDefinitionResponse {
   /** Optimistic-concurrency version (`_version`). */
   version: number;
   versionNumber: number;
+  /** TASK-1004 — advisory: spoken-language modes the SPEECH_TO_TEXT agent’s primary engine serves only partially (`degraded`) or not at all. Never blocks; nothing is re-routed. Absent when there is nothing to report. */
+  warnings?: LanguageCapabilityWarningResponse[];
 }
 
 export interface WorkflowLineageActiveResponse {

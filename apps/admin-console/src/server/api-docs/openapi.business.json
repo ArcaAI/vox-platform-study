@@ -314,6 +314,13 @@
           },
           "version": {
             "type": "number"
+          },
+          "warnings": {
+            "description": "TASK-1004 — advisory: spoken-language modes the SPEECH_TO_TEXT agent’s primary engine serves only partially (`degraded`) or not at all. Never blocks; nothing is re-routed. Absent when there is nothing to report.",
+            "items": {
+              "$ref": "#/components/schemas/LanguageCapabilityWarningResponse"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -884,6 +891,13 @@
           },
           "versionNumber": {
             "type": "number"
+          },
+          "warnings": {
+            "description": "TASK-1004 — advisory: spoken-language modes the SPEECH_TO_TEXT agent’s primary engine serves only partially (`degraded`) or not at all. Never blocks; nothing is re-routed. Absent when there is nothing to report.",
+            "items": {
+              "$ref": "#/components/schemas/LanguageCapabilityWarningResponse"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -1383,6 +1397,33 @@
           "items",
           "hasMore",
           "limit"
+        ],
+        "type": "object"
+      },
+      "AgentTranscriptionRequest": {
+        "properties": {
+          "consultationId": {
+            "description": "Consultation the transcript belongs to. When the request declares no language, the job inherits this consultation's declared spoken-language mode (an unknown or foreign id is then a 404).",
+            "type": "string"
+          },
+          "language": {
+            "description": "Spoken language as a BCP-47 tag (`en-US`, `ml-IN`) or a mode id — normalized to one spoken-language mode. `languageMode` wins when both are sent. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "languageMode": {
+            "description": "Spoken-language mode id: 'en', 'ml', 'ml-en', 'vi', 'vi-en', 'auto'. Takes precedence over `language`; omit both to inherit the consultation's declared mode, else the agent's own default. It never chooses the engine — the named agent always serves. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.",
+            "example": "ml-en",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "mediaId": {
+            "description": "Id of the uploaded media object to transcribe. Another tenant’s id is a 404, like an unknown one.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mediaId"
         ],
         "type": "object"
       },
@@ -2530,76 +2571,6 @@
           "mediaId",
           "sequenceNumber",
           "createdAt"
-        ],
-        "type": "object"
-      },
-      "AudioSettingsDto": {
-        "properties": {
-          "autoGainControl": {
-            "description": "Enable automatic gain control",
-            "example": false,
-            "type": "boolean"
-          },
-          "bitDepth": {
-            "description": "Bit depth",
-            "enum": [
-              8,
-              16,
-              24,
-              32
-            ],
-            "example": 16,
-            "type": "number"
-          },
-          "channels": {
-            "description": "Number of audio channels",
-            "enum": [
-              1,
-              2
-            ],
-            "example": 1,
-            "type": "number"
-          },
-          "chunkSize": {
-            "description": "Chunk size for real-time processing",
-            "example": 1024,
-            "type": "number"
-          },
-          "echoCancellation": {
-            "description": "Enable echo cancellation",
-            "example": true,
-            "type": "boolean"
-          },
-          "format": {
-            "description": "Audio format",
-            "enum": [
-              "pcm",
-              "wav",
-              "mp3"
-            ],
-            "example": "pcm",
-            "type": "string"
-          },
-          "noiseSuppression": {
-            "description": "Enable noise suppression",
-            "example": true,
-            "type": "boolean"
-          },
-          "sampleRate": {
-            "description": "Sample rate in Hz",
-            "example": 44100,
-            "type": "number"
-          }
-        },
-        "required": [
-          "sampleRate",
-          "format",
-          "channels",
-          "bitDepth",
-          "chunkSize",
-          "noiseSuppression",
-          "echoCancellation",
-          "autoGainControl"
         ],
         "type": "object"
       },
@@ -4804,7 +4775,7 @@
             "type": "boolean"
           },
           "language": {
-            "description": "BCP-47 tag of the consultation's SOURCE language as declared at open (`en`, `ml`, or a code-switch mode such as `ml-en`). Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared.",
+            "description": "The consultation's declared SOURCE (spoken) language mode (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`), inherited by every live and batch transcription of this consultation that declares none. Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared.",
             "example": "ml-en",
             "type": "string"
           },
@@ -5519,43 +5490,6 @@
           "binding",
           "verdict",
           "problems"
-        ],
-        "type": "object"
-      },
-      "ConversationSegmentDto": {
-        "properties": {
-          "confidence": {
-            "description": "ASR confidence 0.0–1.0",
-            "maximum": 1,
-            "minimum": 0,
-            "type": "number"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "description": "Free-form per-segment metadata",
-            "type": "object"
-          },
-          "original_text": {
-            "description": "Original untranslated text, when `text` is a machine translation",
-            "type": "string"
-          },
-          "speaker": {
-            "description": "Speaker label, e.g. \"patient\" / \"provider\"",
-            "type": "string"
-          },
-          "text": {
-            "description": "Spoken text",
-            "type": "string"
-          },
-          "timestamp": {
-            "description": "ISO-8601 timestamp of the turn",
-            "type": "string"
-          }
-        },
-        "required": [
-          "speaker",
-          "text",
-          "timestamp"
         ],
         "type": "object"
       },
@@ -6821,6 +6755,60 @@
         ],
         "type": "object"
       },
+      "CreateModelResidencyPolicyRequest": {
+        "properties": {
+          "aiModelId": {
+            "description": "The catalogue model (`AiModel.id`) this policy governs.",
+            "type": "string"
+          },
+          "class": {
+            "default": "ON_DEMAND",
+            "enum": [
+              "PINNED",
+              "WARM",
+              "ON_DEMAND"
+            ],
+            "type": "string"
+          },
+          "idleTtlSeconds": {
+            "description": "Idle TTL the controller enforces; `null` defers to the service`s own cache TTL.",
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
+          "maxInstances": {
+            "default": 1,
+            "description": "Ceiling on concurrently resident instances.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "preferredDevice": {
+            "description": "Advisory placement hint (`gpu0`, `gpu1`, `cpu`) — a tie-break, never a guarantee.",
+            "nullable": true,
+            "type": "string"
+          },
+          "priority": {
+            "default": 0,
+            "description": "Higher = more valuable to keep resident.",
+            "type": "number"
+          },
+          "service": {
+            "enum": [
+              "stt",
+              "stt-worker",
+              "nlp",
+              "lm-studio",
+              "text"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "aiModelId",
+          "service"
+        ],
+        "type": "object"
+      },
       "CreatePipelineRequest": {
         "properties": {
           "configYaml": {
@@ -7324,11 +7312,13 @@
             "type": "object"
           },
           "language": {
-            "description": "Override pipeline language (ISO 639-1 code, e.g. en, vi, auto)",
+            "description": "Spoken language as a BCP-47 tag (`en-US`, `ml-IN`) or a mode id — normalized to one spoken-language mode. `languageMode` wins when both are sent. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.",
+            "maxLength": 64,
             "type": "string"
           },
           "languageMode": {
-            "description": "End-user language mode id , e.g. 'en', 'ml', 'ml-en' (Malayalam+English code-switch), 'auto'. Resolved by STT against the session engine; a mode no configured engine can serve is rejected (422). Takes precedence over `language`.",
+            "description": "Spoken-language mode id: 'en', 'ml', 'ml-en' (Malayalam+English code-switch), 'vi', 'vi-en', 'auto'. Takes precedence over `language`. Omit both to inherit the consultation's declared mode (`consultationId`), else the ASR agent's own default. It configures decoding only — it never chooses the engine. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode; 422 when no engine in the agent’s chain can serve it. What was applied is echoed as `languageResolution`.",
+            "maxLength": 64,
             "type": "string"
           },
           "pipelineId": {
@@ -11907,6 +11897,144 @@
         ],
         "type": "object"
       },
+      "LanguageCapabilityWarningResponse": {
+        "properties": {
+          "agentSlug": {
+            "description": "The SPEECH_TO_TEXT agent the warning is about.",
+            "type": "string"
+          },
+          "code": {
+            "enum": [
+              "LANGUAGE_MODE_DEGRADED",
+              "LANGUAGE_MODE_UNSUPPORTED"
+            ],
+            "type": "string"
+          },
+          "engine": {
+            "description": "The agent’s PRIMARY engine (`AiModelFormat`).",
+            "example": "WHISPER_CPP",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "degraded",
+              "unsupported"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "description": "What an operator should know, in one sentence.",
+            "type": "string"
+          },
+          "mode": {
+            "description": "The spoken-language mode id.",
+            "example": "ml-en",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "agentSlug",
+          "mode",
+          "engine",
+          "level",
+          "message"
+        ],
+        "type": "object"
+      },
+      "LanguageResolutionParamsResponse": {
+        "properties": {
+          "codeSwitching": {
+            "description": "Whether the engine ran in its code-switch mode (e.g. Sarvam `codemix`).",
+            "type": "boolean"
+          },
+          "language": {
+            "description": "The language the engine was pinned to; null = unpinned (the engine auto-detects).",
+            "example": "ml",
+            "nullable": true,
+            "type": "string"
+          },
+          "primed": {
+            "description": "Whether a priming prompt was actually sent to the decoder.",
+            "type": "boolean"
+          },
+          "streamingEnglishGloss": {
+            "description": "Whether an English gloss track ran beside the transcript (Whisper-family pairs).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "language",
+          "codeSwitching",
+          "streamingEnglishGloss",
+          "primed"
+        ],
+        "type": "object"
+      },
+      "LanguageResolutionResponse": {
+        "properties": {
+          "appliedMode": {
+            "description": "The mode the serving engine applied (`auto` when nothing could be pinned).",
+            "example": "ml-en",
+            "type": "string"
+          },
+          "degraded": {
+            "description": "True when the engine serves the mode only partially — the reason says how. Never silent.",
+            "type": "boolean"
+          },
+          "engine": {
+            "description": "The serving engine (`AiModelFormat`).",
+            "example": "SARVAM",
+            "type": "string"
+          },
+          "params": {
+            "$ref": "#/components/schemas/LanguageResolutionParamsResponse"
+          },
+          "provider": {
+            "description": "The resolved ASR model's provider; null for a self-hosted engine.",
+            "example": "sarvam",
+            "nullable": true,
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the receipt is degraded; null when it is not.",
+            "enum": [
+              "whisper_cpp_pair_unprimed",
+              "gloss_translation_only",
+              "engine_auto_detect",
+              "fallback_engine_switch"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "requestedMode": {
+            "description": "The mode the precedence resolved (request > consultation > agent > auto).",
+            "example": "ml-en",
+            "type": "string"
+          },
+          "source": {
+            "description": "Which tier declared the mode.",
+            "enum": [
+              "request",
+              "consultation",
+              "agent",
+              "default"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestedMode",
+          "source",
+          "appliedMode",
+          "engine",
+          "provider",
+          "params",
+          "degraded",
+          "reason"
+        ],
+        "type": "object"
+      },
       "LiveDocEngineConfigResponse": {
         "properties": {
           "contextSettings": {
@@ -12293,6 +12421,39 @@
         ],
         "type": "object"
       },
+      "LmStudioLoadConfigResponse": {
+        "properties": {
+          "contextLength": {
+            "description": "`context_length` — the window the engine actually applied.",
+            "type": "number"
+          },
+          "evalBatchSize": {
+            "description": "`eval_batch_size`.",
+            "type": "number"
+          },
+          "flashAttention": {
+            "description": "`flash_attention`.",
+            "type": "boolean"
+          },
+          "numExperts": {
+            "description": "`num_experts`, for a mixture-of-experts model.",
+            "type": "number"
+          },
+          "offloadKvCacheToGpu": {
+            "description": "`offload_kv_cache_to_gpu`.",
+            "type": "boolean"
+          },
+          "parallel": {
+            "description": "`parallel` — decode slots. Not settable over REST; the pod`s `LMS_PARALLEL` decides it.",
+            "type": "number"
+          },
+          "physicalBatchSize": {
+            "description": "`physical_batch_size`.",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
       "LmStudioLoadedModelResponse": {
         "properties": {
           "effective": {
@@ -12335,6 +12496,136 @@
         ],
         "type": "object"
       },
+      "LmStudioResidencyLoadOptions": {
+        "properties": {
+          "contextLength": {
+            "description": "Context window to load with (`context_length`).",
+            "maximum": 1048576,
+            "minimum": 512,
+            "nullable": true,
+            "type": "number"
+          },
+          "evalBatchSize": {
+            "description": "Prompt-processing batch size (`eval_batch_size`).",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
+          },
+          "flashAttention": {
+            "description": "Flash attention (`flash_attention`).",
+            "nullable": true,
+            "type": "boolean"
+          },
+          "numExperts": {
+            "description": "Active experts for a mixture-of-experts model (`num_experts`).",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
+          },
+          "offloadKvCacheToGpu": {
+            "description": "Keep the KV cache in VRAM (`offload_kv_cache_to_gpu`).",
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "LmStudioResidencyModelResponse": {
+        "properties": {
+          "adminPinned": {
+            "type": "boolean"
+          },
+          "aiModelId": {
+            "description": "The platform catalogue row that claims this key, when known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "bytes": {
+            "description": "Resident bytes. Always `null` here — LM Studio reports none; the residency controller measures it.",
+            "nullable": true,
+            "type": "number"
+          },
+          "bytesSource": {
+            "enum": [
+              "measured",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "cache": {
+            "description": "LM Studio`s model type (`llm`, `embedding`, …).",
+            "type": "string"
+          },
+          "device": {
+            "description": "`multi`: the daemon splits a model across both cards itself (`LMS_GPU_SPLIT_STRATEGY`).",
+            "type": "string"
+          },
+          "inFlight": {
+            "description": "Requests in flight. Always `null` — LM Studio does not report it.",
+            "nullable": true,
+            "type": "number"
+          },
+          "instanceId": {
+            "description": "The instance handle an unload takes.",
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "loadConfig": {
+            "$ref": "#/components/schemas/LmStudioLoadConfigResponse"
+          },
+          "loadSeconds": {
+            "description": "`load_time_seconds` of the load that produced this answer; `null` when it was already loaded.",
+            "nullable": true,
+            "type": "number"
+          },
+          "loadedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "modelRef": {
+            "description": "The exact engine model key — `AiModel.wireModelId`.",
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "loading",
+              "loaded",
+              "unloading"
+            ],
+            "type": "string"
+          },
+          "ttlSeconds": {
+            "description": "Idle TTL. `null` — REST v1 has no TTL; idle unload is the controller`s job.",
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "modelRef",
+          "aiModelId",
+          "cache",
+          "state",
+          "device",
+          "bytes",
+          "bytesSource",
+          "inFlight",
+          "pinned",
+          "adminPinned",
+          "ttlSeconds",
+          "loadedAt",
+          "lastUsedAt",
+          "loadSeconds",
+          "instanceId",
+          "loadConfig"
+        ],
+        "type": "object"
+      },
       "LmStudioRuntimeResponse": {
         "properties": {
           "devices": {
@@ -12370,44 +12661,106 @@
       },
       "LoadLmStudioModelRequest": {
         "properties": {
-          "force": {
-            "description": "Proceed despite the live VRAM budget. Bypasses the 409 `VRAM_BUDGET_EXCEEDED` gate AND ONLY that gate — never the super-admin 403, never the 404 for an unknown model, never a 400 on an incoherent profile. The cards are time-sliced and give no memory isolation, so an over-budget load can take the STT and guardrail workloads down with it.",
+          "contextLength": {
+            "description": "Context window to load with (`context_length`). Omit to use the model row`s `_metadata.serving.contextLength`, else `lmStudio.serving.contextLength`. Must not be narrower than the catalogue`s declared window (400).",
+            "maximum": 1048576,
+            "minimum": 512,
+            "type": "number"
+          },
+          "evalBatchSize": {
+            "description": "Prompt-processing batch size (`eval_batch_size`). Omit for the engine default.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "flashAttention": {
+            "description": "Flash attention (`flash_attention`). Omit to use the model row, else `lmStudio.serving.flashAttention`. `false` against a model whose V-cache is quantized is a 400.",
             "type": "boolean"
           },
-          "profile": {
-            "additionalProperties": true,
-            "description": "Serving-profile overrides for THIS load, layered over the model row and then the platform default. Same vocabulary as `AiModel._metadata.serving`: `contextLength`, `parallel`, `flashAttention`, `kvCacheQuant.{k,v}`, `gpuSplit.{strategy,disabledGpus,priority,customRatio}`. Omit to load on the resolved model/platform profile. Any field the vocabulary does not accept is a 400, not a silent drop.",
-            "type": "object"
+          "force": {
+            "description": "Proceed despite the live VRAM budget. Bypasses the 409 `VRAM_BUDGET_EXCEEDED` gate AND ONLY that gate — never the super-admin 403, never the 404 for an unknown model, never a 400 on an incoherent profile, and never the 409 `LOAD_IN_PROGRESS` serialisation. The cards are time-sliced and give no memory isolation, so an over-budget load can take the STT and guardrail workloads down with it.",
+            "type": "boolean"
+          },
+          "numExperts": {
+            "description": "Active experts for a mixture-of-experts model (`num_experts`). Omit for the model default.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "offloadKvCacheToGpu": {
+            "description": "Keep the KV cache in VRAM (`offload_kv_cache_to_gpu`). Omit for the engine default.",
+            "type": "boolean"
           }
         },
         "type": "object"
       },
       "LoadLmStudioModelResponse": {
         "properties": {
-          "applied": {
-            "additionalProperties": true,
-            "description": "The resolved serving profile the engine was asked for: this request over the model row over the platform default.",
-            "type": "object"
+          "model": {
+            "$ref": "#/components/schemas/LmStudioResidencyModelResponse"
           },
-          "estimateBytes": {
-            "description": "Expected resident VRAM: the MEASURED weights plus the DERIVED KV cache (`contextLength x parallel`, scaled by the KV element types). An estimate, and the number the 409 budget gate compares against the largest single card.",
-            "type": "number"
-          },
-          "identifier": {
-            "description": "The loaded instance handle — what a later unload takes.",
+          "outcome": {
+            "enum": [
+              "loaded",
+              "already_loaded"
+            ],
             "type": "string"
-          },
-          "sources": {
-            "additionalProperties": true,
-            "description": "Dotted field path -> the tier that supplied it (`request` | `model` | `platform`). A field NO tier declared is absent, which means the engine`s own default applies.",
-            "type": "object"
           }
         },
         "required": [
-          "identifier",
-          "applied",
-          "sources",
-          "estimateBytes"
+          "outcome",
+          "model"
+        ],
+        "type": "object"
+      },
+      "LoadModelResidencyRequest": {
+        "properties": {
+          "force": {
+            "default": false,
+            "description": "Proceed over the memory budget (409 `OVER_BUDGET` otherwise) — REQUIRES a non-empty `reason`, which is audited (owner OD-3). With `replace`, also unloads a model that is serving requests.",
+            "type": "boolean"
+          },
+          "modelRef": {
+            "description": "The key the service caches the model under: stt = the ASR model slug, nlp = the model name (hub id), lm-studio = the EXACT engine key (`AiModel.wireModelId`).",
+            "example": "gemma-4-e4b-it-qat@q4_0",
+            "type": "string"
+          },
+          "options": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LmStudioResidencyLoadOptions"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "pin": {
+            "default": false,
+            "description": "Pin the model once loaded (never evicted by TTL or pressure).",
+            "type": "boolean"
+          },
+          "reason": {
+            "description": "Why — mandatory for a forced load; recorded on the audit event.",
+            "maxLength": 500,
+            "nullable": true,
+            "type": "string"
+          },
+          "replace": {
+            "default": false,
+            "description": "\"Apply & reload\": unload the resident instance(s) of this model first, then load (with `options`), as ONE operation. Refused 409 `IN_FLIGHT` while the model serves requests unless `force`.",
+            "type": "boolean"
+          },
+          "service": {
+            "description": "The serving workload. `stt-worker` has no control API and is read-only.",
+            "enum": [
+              "stt",
+              "nlp",
+              "lm-studio"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "modelRef"
         ],
         "type": "object"
       },
@@ -12992,6 +13345,509 @@
           "id",
           "slug",
           "availability"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyDevice": {
+        "properties": {
+          "freeBytes": {
+            "type": "number"
+          },
+          "headroomPercent": {
+            "description": "The `residency.headroomPercent` in force.",
+            "type": "number"
+          },
+          "id": {
+            "description": "`gpu<N>` = DCGM device N; `cpu:<service>` = that service`s host memory pool.",
+            "example": "gpu0",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "gpu",
+              "cpu"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "example": "NVIDIA RTX 2000 Ada Generation",
+            "type": "string"
+          },
+          "totalBytes": {
+            "type": "number"
+          },
+          "usedBytes": {
+            "type": "number"
+          },
+          "utilisationPercent": {
+            "description": "DCGM `DCGM_FI_DEV_GPU_UTIL`; `null` for a CPU pool.",
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "totalBytes",
+          "usedBytes",
+          "freeBytes",
+          "utilisationPercent",
+          "headroomPercent"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyFreshness": {
+        "properties": {
+          "maxAgeSeconds": {
+            "description": "Age in seconds of the OLDEST service report the view is built from (target ≤ 15 s).",
+            "example": 12,
+            "type": "number"
+          },
+          "staleServices": {
+            "description": "Services whose last successful report is older than 30 s (their rows are the last known state).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "maxAgeSeconds",
+          "staleServices"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyLoadResponse": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelResidencyModel"
+          },
+          "operationId": {
+            "description": "Present on `accepted` (202): poll `GET operations/:operationId`.",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "accepted",
+              "already_loaded"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "model"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyModel": {
+        "properties": {
+          "adminPinned": {
+            "description": "Pinned by an operator (or by the controller for the live path).",
+            "type": "boolean"
+          },
+          "aiModelId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "aiModelName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "bytes": {
+            "description": "MEASURED footprint, never a catalogue estimate.",
+            "nullable": true,
+            "type": "number"
+          },
+          "bytesSource": {
+            "enum": [
+              "measured",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "class": {
+            "enum": [
+              "PINNED",
+              "WARM",
+              "ON_DEMAND"
+            ],
+            "type": "string"
+          },
+          "classSource": {
+            "enum": [
+              "policy",
+              "implicit-live-path",
+              "default"
+            ],
+            "type": "string"
+          },
+          "device": {
+            "description": "`gpu<N>`, `multi` (LM Studio spans both cards), `cpu:<service>`, or the service`s own id when it cannot be mapped.",
+            "type": "string"
+          },
+          "inFlight": {
+            "nullable": true,
+            "type": "number"
+          },
+          "instance": {
+            "description": "Pod name (stt, nlp, stt-worker) or LM Studio instance id (a `<key>:2` duplicate is its own row).",
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "loadSeconds": {
+            "nullable": true,
+            "type": "number"
+          },
+          "loadedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "modelRef": {
+            "type": "string"
+          },
+          "p50LatencyMs": {
+            "nullable": true,
+            "type": "number"
+          },
+          "pinned": {
+            "description": "Never evicted: PINNED class, or pinned by an operator.",
+            "type": "boolean"
+          },
+          "policyId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "policyVersion": {
+            "nullable": true,
+            "type": "number"
+          },
+          "requestsPerMin": {
+            "description": "From Prometheus `model_inference_latency_seconds` (5 m rate).",
+            "nullable": true,
+            "type": "number"
+          },
+          "service": {
+            "enum": [
+              "stt",
+              "stt-worker",
+              "nlp",
+              "lm-studio"
+            ],
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "loading",
+              "loaded",
+              "unloading"
+            ],
+            "type": "string"
+          },
+          "ttlSeconds": {
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "service",
+          "instance",
+          "modelRef",
+          "aiModelId",
+          "aiModelName",
+          "device",
+          "state",
+          "bytes",
+          "bytesSource",
+          "inFlight",
+          "requestsPerMin",
+          "p50LatencyMs",
+          "loadedAt",
+          "lastUsedAt",
+          "loadSeconds",
+          "class",
+          "classSource",
+          "ttlSeconds",
+          "pinned",
+          "adminPinned",
+          "policyId",
+          "policyVersion"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyOperationError": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyOperationResponse": {
+        "properties": {
+          "action": {
+            "enum": [
+              "load",
+              "replace"
+            ],
+            "type": "string"
+          },
+          "error": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModelResidencyOperationError"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "finishedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "modelRef": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "service",
+          "modelRef",
+          "status",
+          "error",
+          "startedAt",
+          "finishedAt"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyPinResponse": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelResidencyModel"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyPolicyResponse": {
+        "properties": {
+          "_version": {
+            "description": "The OCC version (send it back as `If-Match`).",
+            "type": "number"
+          },
+          "aiModelId": {
+            "type": "string"
+          },
+          "class": {
+            "enum": [
+              "PINNED",
+              "WARM",
+              "ON_DEMAND"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "idleTtlSeconds": {
+            "nullable": true,
+            "type": "number"
+          },
+          "maxInstances": {
+            "type": "number"
+          },
+          "preferredDevice": {
+            "nullable": true,
+            "type": "string"
+          },
+          "priority": {
+            "type": "number"
+          },
+          "service": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "updatedBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "description": "Same value as `_version`; the field the gateway`s ETag interceptor reads.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "aiModelId",
+          "service",
+          "class",
+          "idleTtlSeconds",
+          "priority",
+          "maxInstances",
+          "preferredDevice",
+          "_version",
+          "version",
+          "updatedAt",
+          "updatedBy"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyRecommendation": {
+        "properties": {
+          "action": {
+            "enum": [
+              "load",
+              "unload",
+              "pin",
+              "unpin"
+            ],
+            "type": "string"
+          },
+          "applied": {
+            "description": "Whether the command was sent AND succeeded. Always `false` in shadow mode.",
+            "type": "boolean"
+          },
+          "at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "shadow",
+              "enforce"
+            ],
+            "type": "string"
+          },
+          "modelRef": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "idle_ttl_expired",
+              "promotion_rate",
+              "live_path_pin",
+              "make_room",
+              "admission_rejected"
+            ],
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "action",
+          "service",
+          "modelRef",
+          "reason",
+          "mode",
+          "applied"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyUnloadResponse": {
+        "properties": {
+          "modelRef": {
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "unloaded",
+              "not_loaded"
+            ],
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "service",
+          "modelRef"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyViewResponse": {
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyDevice"
+            },
+            "type": "array"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/ModelResidencyFreshness"
+          },
+          "mode": {
+            "description": "`shadow` until the SYSTEM setting `residency.enforce` is true.",
+            "enum": [
+              "shadow",
+              "enforce"
+            ],
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyModel"
+            },
+            "type": "array"
+          },
+          "recommendations": {
+            "description": "Newest first; bounded in-memory log.",
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyRecommendation"
+            },
+            "type": "array"
+          },
+          "reportedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "reportedAt",
+          "freshness",
+          "devices",
+          "models",
+          "recommendations"
         ],
         "type": "object"
       },
@@ -13678,6 +14534,13 @@
           },
           "versionNumber": {
             "type": "number"
+          },
+          "warnings": {
+            "description": "TASK-1004 — advisory: spoken-language modes the SPEECH_TO_TEXT agent’s primary engine serves only partially (`degraded`) or not at all. Never blocks; nothing is re-routed. Absent when there is nothing to report.",
+            "items": {
+              "$ref": "#/components/schemas/LanguageCapabilityWarningResponse"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -13923,7 +14786,12 @@
             "type": "string"
           },
           "language": {
-            "description": "BCP-47 tag of the consultation's SOURCE language — what is spoken and transcribed (`en`, `ml`, `en-IN`), or an STT code-switch mode such as `ml-en` (Malayalam-led, English mixed). It does not choose the language the notes are written in: that is the tenant's output-language policy when one is configured, otherwise the platform default (English). Absent means undeclared.",
+            "description": "The consultation's SOURCE (spoken) language: a BCP-47 tag (`en-US`, `ml-IN`) or a spoken-language mode id (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`). Normalized to one mode and inherited by every live and batch transcription of this consultation that declares none. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode. Never the language the notes are written in. Prefer `languageMode`.",
+            "example": "ml-en",
+            "type": "string"
+          },
+          "languageMode": {
+            "description": "Spoken-language mode id (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`) — preferred over `language`, and wins when both are sent. Inherited by every live and batch transcription of this consultation that declares none. On an already-open consultation a different value updates its declaration. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.",
             "example": "ml-en",
             "type": "string"
           },
@@ -15042,6 +15910,38 @@
         ],
         "type": "object"
       },
+      "PinModelResidencyRequest": {
+        "properties": {
+          "modelRef": {
+            "example": "arcaai-whisper-ml-en-ggml",
+            "type": "string"
+          },
+          "pinned": {
+            "description": "Pin (true) or unpin (false). A pinned model survives its idle TTL and is never evicted.",
+            "type": "boolean"
+          },
+          "service": {
+            "enum": [
+              "stt",
+              "nlp",
+              "lm-studio"
+            ],
+            "type": "string"
+          },
+          "ttlSeconds": {
+            "description": "Idle TTL in seconds; `null` resets to the service default; omitted leaves it as it is.",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "service",
+          "modelRef",
+          "pinned"
+        ],
+        "type": "object"
+      },
       "PipelineResponse": {
         "properties": {
           "configYaml": {
@@ -15828,71 +16728,6 @@
         ],
         "type": "object"
       },
-      "PreSummaryRequest": {
-        "properties": {
-          "age": {
-            "description": "Patient age as a string",
-            "type": "string"
-          },
-          "current_department": {
-            "description": "Current department (null → \"General\")",
-            "type": "string"
-          },
-          "dob": {
-            "description": "Date of birth as a string",
-            "type": "string"
-          },
-          "doctor_id": {
-            "description": "Requesting doctor id . When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the pre-summary. Omit ⇒ department + visit-type only.",
-            "type": "string"
-          },
-          "formatted_previous_visits": {
-            "description": "Prior visits, pre-formatted as text",
-            "type": "string"
-          },
-          "formatted_test_results": {
-            "description": "Recent test results, pre-formatted as text",
-            "type": "string"
-          },
-          "formatted_vitals": {
-            "description": "Recent vitals, pre-formatted as text",
-            "type": "string"
-          },
-          "gender": {
-            "description": "Gender",
-            "type": "string"
-          },
-          "language": {
-            "default": "en",
-            "description": "Output language code (\"en\" / \"ml\"; default \"en\")",
-            "type": "string"
-          },
-          "max_tokens": {
-            "default": 800,
-            "description": "Max output tokens 1–65536 (default 800)",
-            "maximum": 65536,
-            "minimum": 1,
-            "type": "number"
-          },
-          "stream": {
-            "default": false,
-            "description": "true → stream the pre-summary as text/event-stream (delta* + terminal result); default false → single JSON body",
-            "type": "boolean"
-          },
-          "temperature": {
-            "default": 0.2,
-            "description": "Sampling temperature 0.0–2.0 (default 0.2)",
-            "maximum": 2,
-            "minimum": 0,
-            "type": "number"
-          },
-          "visit_type": {
-            "description": "Type of visit (null → \"Medical examination\")",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "PreferredPromptTemplateResponse": {
         "properties": {
           "preferredPromptTemplateId": {
@@ -15901,62 +16736,6 @@
             "type": "string"
           }
         },
-        "type": "object"
-      },
-      "PreviousVisitRecordDto": {
-        "properties": {
-          "chief_complaint": {
-            "description": "Chief complaint",
-            "type": "string"
-          },
-          "diagnosis": {
-            "description": "Diagnosis",
-            "type": "string"
-          },
-          "follow_up_plan": {
-            "description": "Follow-up plan",
-            "type": "string"
-          },
-          "medications_prescribed": {
-            "description": "Medications prescribed",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "provider": {
-            "description": "Provider",
-            "type": "string"
-          },
-          "tests_ordered": {
-            "description": "Tests ordered",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "treatment": {
-            "description": "Treatment",
-            "type": "string"
-          },
-          "visit_date": {
-            "description": "ISO-8601 visit date",
-            "type": "string"
-          },
-          "visit_summary": {
-            "description": "Visit summary",
-            "type": "string"
-          },
-          "visit_type": {
-            "description": "Visit type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "visit_date",
-          "visit_type",
-          "chief_complaint"
-        ],
         "type": "object"
       },
       "PrismaStudioStatusResponse": {
@@ -19452,80 +20231,6 @@
         ],
         "type": "object"
       },
-      "SessionDataDto": {
-        "properties": {
-          "conversation_segments": {
-            "description": "Transcript turns",
-            "items": {
-              "$ref": "#/components/schemas/ConversationSegmentDto"
-            },
-            "type": "array"
-          },
-          "created_at": {
-            "description": "ISO-8601 session creation time",
-            "type": "string"
-          },
-          "patient_id": {
-            "description": "Patient identifier",
-            "type": "string"
-          },
-          "patient_info": {
-            "additionalProperties": true,
-            "description": "Free-form patient info/context",
-            "type": "object"
-          },
-          "pre_summary_text": {
-            "description": "Department-aware pre-summary to fold into context",
-            "type": "string"
-          },
-          "previous_visit_summary": {
-            "type": "object"
-          },
-          "previous_visits": {
-            "description": "Structured prior visits",
-            "items": {
-              "$ref": "#/components/schemas/PreviousVisitRecordDto"
-            },
-            "type": "array"
-          },
-          "previous_visits_text": {
-            "description": "Plain-text alternative for prior visits",
-            "type": "string"
-          },
-          "provider_id": {
-            "description": "Provider identifier",
-            "type": "string"
-          },
-          "session_id": {
-            "description": "Optional session correlation id (echoed back; a `text-…` value is generated when omitted)",
-            "type": "string"
-          },
-          "session_metadata": {
-            "additionalProperties": true,
-            "description": "Free-form session metadata (e.g. { language: \"en\" })",
-            "type": "object"
-          },
-          "session_type": {
-            "description": "Session type",
-            "type": "string"
-          },
-          "test_results": {
-            "description": "Structured test results",
-            "items": {
-              "$ref": "#/components/schemas/TestResultDto"
-            },
-            "type": "array"
-          },
-          "test_results_text": {
-            "description": "Plain-text alternative for test results",
-            "type": "string"
-          }
-        },
-        "required": [
-          "created_at"
-        ],
-        "type": "object"
-      },
       "SessionsResponse": {
         "properties": {
           "refreshedAt": {
@@ -20096,66 +20801,6 @@
         },
         "type": "object"
       },
-      "StartSessionRequest": {
-        "properties": {
-          "agentSlug": {
-            "description": "ASR Agent slug. Omit to use the assigned agent (department → tenant → platform default).",
-            "example": "platform-transcription",
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$",
-            "type": "string"
-          },
-          "audioSettings": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/AudioSettingsDto"
-              }
-            ],
-            "description": "Audio processing settings"
-          },
-          "language": {
-            "description": "Language code for transcription",
-            "example": "en-US",
-            "nullable": true,
-            "type": "string"
-          },
-          "pipelineId": {
-            "deprecated": true,
-            "description": "DEPRECATED (TASK-861, removed in R4): explicit STT pipeline id. Prefer `agentSlug`.",
-            "example": "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
-            "format": "uuid",
-            "type": "string"
-          },
-          "provider": {
-            "default": "azure",
-            "description": "STT provider",
-            "enum": [
-              "azure",
-              "whisper",
-              "sarvam"
-            ],
-            "example": "azure",
-            "type": "string"
-          },
-          "session_id": {
-            "description": "Unique session identifier",
-            "example": "session_123456789",
-            "type": "string"
-          },
-          "startOn": {
-            "description": "Pre-start default-provider selection (C7b). 'pipeline' (≡primary, default) opens the session on the configured pipeline; 'default' (≡fallback) opens directly on the tenant-admin default provider. Fail-closed: 'default' with no configured fallback pipeline → 409.",
-            "enum": [
-              "pipeline",
-              "default"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id",
-          "audioSettings"
-        ],
-        "type": "object"
-      },
       "StopRecordingRequest": {
         "properties": {
           "acceptedProposals": {
@@ -20171,30 +20816,6 @@
             "type": "boolean"
           }
         },
-        "type": "object"
-      },
-      "StopSessionRequest": {
-        "properties": {
-          "bit_depth": {
-            "description": "Audio bit depth",
-            "type": "number"
-          },
-          "channels": {
-            "description": "Number of audio channels",
-            "type": "number"
-          },
-          "sample_rate": {
-            "description": "Audio sample rate in Hz",
-            "type": "number"
-          },
-          "session_id": {
-            "description": "Session identifier",
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id"
-        ],
         "type": "object"
       },
       "StreamSessionResponse": {
@@ -20233,6 +20854,14 @@
           "currentActive": {
             "description": "Currently active sessions",
             "type": "number"
+          },
+          "languageResolution": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LanguageResolutionResponse"
+              }
+            ],
+            "description": "What the session was asked for and what its serving engine applied. Absent against an STT that predates the receipt."
           },
           "maxConcurrent": {
             "description": "Maximum concurrent sessions allowed",
@@ -20664,31 +21293,6 @@
         ],
         "type": "object"
       },
-      "SwitchSessionRequest": {
-        "properties": {
-          "session_id": {
-            "description": "Session identifier to switch",
-            "example": "session_123456789",
-            "type": "string"
-          },
-          "target": {
-            "description": "Target engine. `pipeline`/`primary` = the SDK-configured session pipeline; `default`/`fallback` = the tenant default provider.",
-            "enum": [
-              "pipeline",
-              "default",
-              "primary",
-              "fallback"
-            ],
-            "example": "default",
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id",
-          "target"
-        ],
-        "type": "object"
-      },
       "SyncAgentRequest": {
         "properties": {
           "reason": {
@@ -20752,92 +21356,6 @@
             "type": "string"
           }
         },
-        "type": "object"
-      },
-      "SyncSummaryRequest": {
-        "properties": {
-          "context": {
-            "additionalProperties": true,
-            "description": "Free-form extra context",
-            "type": "object"
-          },
-          "department": {
-            "description": "Explicit department for prompt selection",
-            "type": "string"
-          },
-          "doctor_id": {
-            "description": "Requesting doctor id . When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the summary. Omit ⇒ department + visit-type only.",
-            "type": "string"
-          },
-          "encounter_type": {
-            "description": "Encounter context",
-            "type": "string"
-          },
-          "include_pre_summary_in_context": {
-            "default": false,
-            "description": "Include session_data.pre_summary_text in the summarization context",
-            "type": "boolean"
-          },
-          "include_previous_visit_summary": {
-            "default": true,
-            "description": "DEPRECATED / ignored — use pre_summary_text + include_pre_summary_in_context",
-            "type": "boolean"
-          },
-          "max_tokens": {
-            "description": "Max output tokens 1–32768",
-            "maximum": 32768,
-            "minimum": 1,
-            "type": "number"
-          },
-          "session_data": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SessionDataDto"
-              }
-            ],
-            "description": "The session to summarize"
-          },
-          "specialty": {
-            "description": "Medical specialty",
-            "type": "string"
-          },
-          "stream": {
-            "default": false,
-            "description": "true → stream the summary as text/event-stream (delta* + terminal result); default false → single JSON body",
-            "type": "boolean"
-          },
-          "system_prompt": {
-            "description": "Override the system prompt",
-            "type": "string"
-          },
-          "temperature": {
-            "description": "Sampling temperature 0.0–2.0",
-            "maximum": 2,
-            "minimum": 0,
-            "type": "number"
-          },
-          "translate_to_english": {
-            "default": false,
-            "description": "true → translate the transcript to English via Sarvam BEFORE summarizing . Fail-open: on a translation error the original transcript is summarized. Default false.",
-            "type": "boolean"
-          },
-          "use_enhanced_format": {
-            "default": false,
-            "description": "true → EnhancedMedicalSummary; false → SimplifiedMedicalSummary",
-            "type": "boolean"
-          },
-          "user_prompt_template": {
-            "description": "Override the user prompt template",
-            "type": "string"
-          },
-          "visit_type": {
-            "description": "Explicit visit type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_data"
-        ],
         "type": "object"
       },
       "SyncWorkflowDefinitionRequest": {
@@ -21941,44 +22459,6 @@
         ],
         "type": "object"
       },
-      "TestResultDto": {
-        "properties": {
-          "date": {
-            "description": "ISO-8601 test date",
-            "type": "string"
-          },
-          "ordering_provider": {
-            "description": "Ordering provider",
-            "type": "string"
-          },
-          "reference_range": {
-            "description": "Reference range",
-            "type": "string"
-          },
-          "result": {
-            "description": "Result value/text",
-            "type": "string"
-          },
-          "status": {
-            "description": "Status, e.g. Normal/Abnormal/Critical",
-            "type": "string"
-          },
-          "test_name": {
-            "description": "Test name",
-            "type": "string"
-          },
-          "test_type": {
-            "description": "Test type, e.g. \"lab\" / \"imaging\"",
-            "type": "string"
-          }
-        },
-        "required": [
-          "test_name",
-          "test_type",
-          "result"
-        ],
-        "type": "object"
-      },
       "TimelineEventResponse": {
         "properties": {
           "aiModel": {
@@ -22145,7 +22625,13 @@
             "type": "string"
           },
           "language": {
-            "description": "Override pipeline language (ISO 639-1 code, e.g. en, vi, auto)",
+            "description": "Spoken language as a BCP-47 tag (`en-US`, `ml-IN`) or a mode id — normalized to one spoken-language mode. `languageMode` wins when both are sent. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "languageMode": {
+            "description": "Spoken-language mode id: 'en', 'ml', 'ml-en', 'vi', 'vi-en', 'auto'. Takes precedence over `language`. Omit both to inherit the consultation's declared mode, else the ASR agent’s own default. Never chooses the engine. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode. The job reports what was applied as `languageResolution`.",
+            "maxLength": 64,
             "type": "string"
           },
           "pipelineId": {
@@ -22209,6 +22695,16 @@
               "STREAMING"
             ],
             "type": "string"
+          },
+          "languageResolution": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LanguageResolutionResponse"
+              }
+            ],
+            "description": "TASK-1004 — the language RECEIPT the worker reported for this job: the spoken-language mode requested and who declared it (request > consultation > agent > auto), and what the serving engine applied (`degraded` + `reason` when only partially). `null` = not reported (a running job, or a worker that predates it).",
+            "nullable": true,
+            "type": "object"
           },
           "maxRetries": {
             "description": "Maximum retries",
@@ -22453,6 +22949,38 @@
         "required": [
           "unloaded",
           "jitReloadPossible"
+        ],
+        "type": "object"
+      },
+      "UnloadModelResidencyRequest": {
+        "properties": {
+          "force": {
+            "default": false,
+            "description": "Unload even while the model serves requests (409 `IN_FLIGHT` otherwise).",
+            "type": "boolean"
+          },
+          "modelRef": {
+            "example": "gliner-medical-large",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why — recorded on the audit event.",
+            "maxLength": 500,
+            "nullable": true,
+            "type": "string"
+          },
+          "service": {
+            "enum": [
+              "stt",
+              "nlp",
+              "lm-studio"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "modelRef"
         ],
         "type": "object"
       },
@@ -22830,6 +23358,11 @@
           },
           "departmentId": {
             "description": "Department ID (from Department lookup table)",
+            "type": "string"
+          },
+          "languageMode": {
+            "description": "Spoken-language mode id (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`, or a BCP-47 tag such as `ml-IN`) inherited by every later live and batch transcription of this consultation that declares none. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode.",
+            "example": "ml-en",
             "type": "string"
           },
           "metadata": {
@@ -23634,6 +24167,40 @@
         "required": [
           "expectedVersion"
         ],
+        "type": "object"
+      },
+      "UpdateModelResidencyPolicyRequest": {
+        "properties": {
+          "class": {
+            "enum": [
+              "PINNED",
+              "WARM",
+              "ON_DEMAND"
+            ],
+            "type": "string"
+          },
+          "expectedVersion": {
+            "description": "Version from the prior read (the `If-Match` header wins when both are sent).",
+            "minimum": 1,
+            "type": "number"
+          },
+          "idleTtlSeconds": {
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
+          "maxInstances": {
+            "minimum": 1,
+            "type": "number"
+          },
+          "preferredDevice": {
+            "nullable": true,
+            "type": "string"
+          },
+          "priority": {
+            "type": "number"
+          }
+        },
         "type": "object"
       },
       "UpdateNodePromptRequest": {
@@ -26608,6 +27175,13 @@
           },
           "versionNumber": {
             "type": "number"
+          },
+          "warnings": {
+            "description": "TASK-1004 — advisory: spoken-language modes the SPEECH_TO_TEXT agent’s primary engine serves only partially (`degraded`) or not at all. Never blocks; nothing is re-routed. Absent when there is nothing to report.",
+            "items": {
+              "$ref": "#/components/schemas/LanguageCapabilityWarningResponse"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -27847,286 +28421,6 @@
   },
   "openapi": "3.0.0",
   "paths": {
-    "/api/smr/api/v1/presummary": {
-      "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:write`).\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "TextCompatController_presummary",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PreSummaryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "v1-compatible department-aware pre-summary (stateless shim over TEXT /generate)",
-        "tags": [
-          "text-compat"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "consultation:report:write"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:consultation:report:write"
-        ]
-      }
-    },
-    "/api/smr/api/v1/summary/sync": {
-      "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:write`).\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "TextCompatController_summarySync",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SyncSummaryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "v1-compatible synchronous medical summary (stateless shim over TEXT /generate)",
-        "tags": [
-          "text-compat"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "consultation:report:write"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:consultation:report:write"
-        ]
-      }
-    },
-    "/api/stt/start_session": {
-      "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:stream:write`).\n\n**API key scopes** — `stt:stream:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "SttCompatController_startSession",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StartSessionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "v1-compatible STT session start",
-        "tags": [
-          "stt-compat"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "stt:stream:write"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:stt:stream:write"
-        ]
-      }
-    },
-    "/api/stt/stop_session": {
-      "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:stream:write`).\n\n**API key scopes** — `stt:stream:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "SttCompatController_stopSession",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/StopSessionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "v1-compatible STT session stop",
-        "tags": [
-          "stt-compat"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "stt:stream:write"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:stt:stream:write"
-        ]
-      }
-    },
-    "/api/stt/switch": {
-      "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:stream:write`).\n\n**API key scopes** — `stt:stream:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "SttCompatController_switchSession",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SwitchSessionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Switch requested; the session continues on the target engine."
-          },
-          "404": {
-            "description": "Unknown or foreign session (no existence leak)."
-          },
-          "409": {
-            "description": "No fallback configured, or the session is already on the target engine."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "v1-compatible STT mid-session engine switch",
-        "tags": [
-          "stt-compat"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "stt:stream:write"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:stt:stream:write"
-        ]
-      }
-    },
     "/api/v1/agents": {
       "get": {
         "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:definition:read`).\n\n**API key scopes** — `agent:definition:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -28452,7 +28746,7 @@
     },
     "/api/v1/agents/{slug}/transcriptions": {
       "post": {
-        "description": "Body `{ mediaId, consultationId?, language? }` — the media must already be uploaded. The agent is resolved to a `ResolvedAsrSpec` (TASK-861) the job is keyed to and reproducible from; no pipeline row is involved. Progress streams from the returned `sseUrl`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Body `{ mediaId, consultationId?, language?, languageMode? }` — the media must already be uploaded. The spoken-language mode is the request's (`languageMode` > `language`), else the consultation's declared one, else the agent's own; it never chooses the engine. The agent is resolved to a `ResolvedAsrSpec` (TASK-861) the job is keyed to and reproducible from; no pipeline row is involved. Progress streams from the returned `sseUrl`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AgentController_transcribe",
         "parameters": [
           {
@@ -28468,27 +28762,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "example": {
-                  "mediaId": "019a1f1e-2c3d-7e4f-8a90-1b2c3d4e5f60"
-                },
-                "properties": {
-                  "consultationId": {
-                    "description": "Optional consultation to attach the resulting transcript to.",
-                    "type": "string"
-                  },
-                  "language": {
-                    "description": "Optional language hint forwarded to the ASR worker; omit to use the agent’s own resolved spec.",
-                    "type": "string"
-                  },
-                  "mediaId": {
-                    "description": "Id of the uploaded media object to transcribe. Another tenant’s id is a 404, like an unknown one.",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "mediaId"
-                ],
-                "type": "object"
+                "$ref": "#/components/schemas/AgentTranscriptionRequest"
               }
             }
           },
@@ -28500,7 +28774,7 @@
             "description": "The transcription job."
           },
           "400": {
-            "description": "Missing mediaId, or the agent is not a SPEECH_TO_TEXT agent."
+            "description": "Missing mediaId, the agent is not a SPEECH_TO_TEXT agent, or `LANGUAGE_MODE_UNKNOWN` — `languageMode` / `language` names no spoken-language mode."
           },
           "402": {
             "description": "The tenant has reached the monthly spend limit it set (`monthlySpendLimitMicros`). Refused before anything is spent."
@@ -29011,12 +29285,39 @@
     },
     "/api/v1/audio/transcription-jobs/language-modes": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:transcription:write`).\n\n**API key scopes** — `stt:transcription:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Backend-authoritative catalog (STT owns the capability matrix). TASK-1004: each mode carries `levels` (per engine of the agent’s chain, primary first: `native` | `degraded` | `unsupported`) and `effective` for the chain, plus `agentSlug` / `engines`. `agentSlug` defaults to the caller’s resolved ASR agent; with no agent assigned the catalog-wide payload is returned unchanged. Strong `ETag`; send it back as `If-None-Match` for a 304. Language never chooses the engine.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:transcription:write`).\n\n**API key scopes** — `stt:transcription:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TranscriptionJobController_getLanguageModes",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "ASR agent to judge the catalog against. Default: the caller’s resolved agent.",
+            "in": "query",
+            "name": "agentSlug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Language-mode catalog"
+          },
+          "304": {
+            "description": "Not modified — the `If-None-Match` validator is current."
+          },
+          "400": {
+            "description": "`agentSlug` is not a slug."
+          },
+          "404": {
+            "description": "The named agent is unknown, unpublished, or another tenant’s."
           }
         },
         "security": [
@@ -29030,7 +29331,7 @@
             "service-account": []
           }
         ],
-        "summary": "List selectable STT language modes + per-mode supported engines ",
+        "summary": "List selectable spoken-language modes, judged against an ASR agent’s engine chain",
         "tags": [
           "transcription-jobs"
         ],
@@ -31074,7 +31375,7 @@
             "description": "Creating a ConsultationResponse"
           },
           "400": {
-            "description": "Bad request. `CLINICIAN_REQUIRED` — a service-account caller identified no clinician, by either route; `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied `clinicianUserId`; `CLINICIAN_MISMATCH` — `clinicianUserId` and the context user-identity value name two different clinicians; `CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the effective consultation context schema (every problem listed); `DEPARTMENT_MISMATCH` — `departmentId` and the department named by the context payload are two different departments; `DEPARTMENT_AMBIGUOUS` — the schema resolves departments by NAME and more than one department of this tenant carries that name; `VISIT_TYPE_INVALID` — the stated visit type is not a key or alias of the platform vocabulary; `USER_IDENTITY_INVALID` — the identity value is empty, over-long or carries control characters; `USER_IDENTITY_DEPARTMENT_UNRESOLVED` — a user had to be provisioned and neither the request nor the tenant setting supplied a department."
+            "description": "Bad request. `CLINICIAN_REQUIRED` — a service-account caller identified no clinician, by either route; `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied `clinicianUserId`; `CLINICIAN_MISMATCH` — `clinicianUserId` and the context user-identity value name two different clinicians; `CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the effective consultation context schema (every problem listed); `DEPARTMENT_MISMATCH` — `departmentId` and the department named by the context payload are two different departments; `DEPARTMENT_AMBIGUOUS` — the schema resolves departments by NAME and more than one department of this tenant carries that name; `VISIT_TYPE_INVALID` — the stated visit type is not a key or alias of the platform vocabulary; `USER_IDENTITY_INVALID` — the identity value is empty, over-long or carries control characters; `USER_IDENTITY_DEPARTMENT_UNRESOLVED` — a user had to be provisioned and neither the request nor the tenant setting supplied a department; `LANGUAGE_MODE_UNKNOWN` — `languageMode` / `language` names no spoken-language mode (the body lists the catalog)."
           },
           "404": {
             "description": "The named clinician is not a user of this tenant, or may not own a consultation. Also `DEPARTMENT_UNKNOWN` — no department of this tenant carries the code (or name) the context payload stated; `USER_IDENTITY_UNKNOWN` — no user carries that staff id and this tenant does not auto-provision; and `USER_IDENTITY_NOT_USABLE` — the matching user is not enabled."
@@ -31630,7 +31931,7 @@
         ]
       },
       "patch": {
-        "description": "Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. This closes the last unprotected write on the Consultation aggregate — `prime`/`close`/`reopen` and the context/summary sub-resource writes already required it, so a second open tab could previously clobber an edit here silently. Drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "TASK-1004: `{ languageMode }` changes the consultation's declared spoken-language mode (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`), which every LATER live and batch transcription of this consultation inherits when it declares none; an unknown value is `400 LANGUAGE_MODE_UNKNOWN`. It never chooses the transcription engine and never the note language. Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. This closes the last unprotected write on the Consultation aggregate — `prime`/`close`/`reopen` and the context/summary sub-resource writes already required it, so a second open tab could previously clobber an edit here silently. Drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_update",
         "parameters": [
           {
@@ -31674,6 +31975,9 @@
             },
             "description": "Updating a ConsultationResponse by id"
           },
+          "400": {
+            "description": "`LANGUAGE_MODE_UNKNOWN` — `languageMode` names no spoken-language mode (the body lists the catalog)."
+          },
           "404": {
             "description": "Consultation not found"
           },
@@ -31690,6 +31994,9 @@
           },
           {
             "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Updating a ConsultationResponse by id",
@@ -31702,12 +32009,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": true,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/chain": {
@@ -40383,14 +40693,6 @@
     {
       "description": "Ask whether the caller may perform an action — single, bulk, or \"list everything I can do\".",
       "name": "rbac-permission-check"
-    },
-    {
-      "description": "Legacy v1-compatible summarization paths. Exempt from the /api/v1 prefix; kept for existing integrations.",
-      "name": "text-compat"
-    },
-    {
-      "description": "Legacy v1-compatible STT session paths. Exempt from the /api/v1 prefix; kept for existing integrations.",
-      "name": "stt-compat"
     },
     {
       "description": "Liveness, readiness, and dependency health probes.",

@@ -31,6 +31,7 @@ import { AdminEntitlementResource } from './entitlement';
 import { AdminHarnessResource } from './harness';
 import { AdminKnowledgeResource } from './knowledge';
 import { AdminMcpServerResource } from './mcp-server';
+import { AdminModelResidencyResource } from './model-residency';
 import { AdminNlpTaskInstructionsResource } from './nlp-task-instructions';
 import { AdminNotificationResource } from './notification';
 import { AdminPlatformMetricsResource } from './platform-metrics';
@@ -61,7 +62,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
 
 /**
  * `hope.admin` — every machine-reachable `/api/v1/admin/**` area, one property
- * per `svc:*` scope (49 areas, 435 routes).
+ * per `svc:*` scope (50 areas, 444 routes).
  *
  * Reaching any of it requires a SERVICE ACCOUNT: the admin plane refuses a
  * tenant API key by policy, not by omission. Construct the client with
@@ -129,6 +130,8 @@ export class AdminNamespace {
   readonly knowledge: AdminKnowledgeResource;
   /** `svc:admin:mcp-server:manage` — 5 routes. */
   readonly mcpServer: AdminMcpServerResource;
+  /** `svc:admin:model-residency:manage` — 9 routes. */
+  readonly modelResidency: AdminModelResidencyResource;
   /** `svc:admin:nlp-task-instructions:manage` — 2 routes. */
   readonly nlpTaskInstructions: AdminNlpTaskInstructionsResource;
   /** `svc:admin:notification:manage` — 4 routes. */
@@ -207,6 +210,7 @@ export class AdminNamespace {
     this.harness = new AdminHarnessResource(transport);
     this.knowledge = new AdminKnowledgeResource(transport);
     this.mcpServer = new AdminMcpServerResource(transport);
+    this.modelResidency = new AdminModelResidencyResource(transport);
     this.nlpTaskInstructions = new AdminNlpTaskInstructionsResource(transport);
     this.notification = new AdminNotificationResource(transport);
     this.platformMetrics = new AdminPlatformMetricsResource(transport);
