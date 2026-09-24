@@ -1,6 +1,6 @@
 /**
  * Barrel for `@arcaai/vox-node`'s resource layer — the concrete
- * `HopeClient.summarization` / `.consultations` / `.jobs` / `.admin` surfaces
+ * `HopeClient.consultations` / `.jobs` / `.admin` surfaces
  * built on `core/**`. `src/client.ts` is the intended consumer of this module.
  *
  * The `admin` surface (`./admin`) is a mix of one hand-authored base class and
@@ -11,9 +11,6 @@
  */
 
 export * from './admin';
-
-export type { SummarizationRequestOptions, SummarizationStream } from './summarization';
-export { SummarizationResource } from './summarization';
 
 export type {
   ApproveSummaryOptions,
@@ -26,7 +23,7 @@ export { ConsultationSummariesResource, SYNC_GENERATION_TIMEOUT_MS } from './con
 export type { JobRequestOptions, WaitForOptions } from './jobs';
 export { isTerminalJobStatus, JobsResource } from './jobs';
 
-export type { AddContextOptions, CloseConsultationOptions, ConsultationRequestOptions } from './consultations';
+export type { AddContextOptions, CloseConsultationOptions, ConsultationRequestOptions, UpdateLanguageOptions } from './consultations';
 export { ConsultationsResource } from './consultations';
 
 /** The consultation REALTIME lifecycle (TASK-933): recording, the live SSE planes, and the STT session. */

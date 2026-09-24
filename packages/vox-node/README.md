@@ -1,11 +1,12 @@
 # @arcaai/vox-node — server-side Node SDK for the HOPE gateway
 
 `packages/vox-node`, npm package `@arcaai/vox-node` (version 3.5.0). A typed, non-browser client
-for `apps/api` (port 8868): summarization, the realtime consultation lifecycle
+for `apps/api` (port 8868): the realtime consultation lifecycle
 (`hope.consultations.open` -> `recording` -> live SSE `streams`, with `hope.stt` streaming audio
-over a WebSocket), the workflow and published-agent invocation planes, DNA writing-style ingest,
-and the full administration plane (`hope.admin.*`, 49 areas). For backend engineers calling HOPE
-from a Node service, script, or worker.
+over a WebSocket), consultation-bound summarization (`hope.consultations.summaries.*`), the
+workflow and published-agent invocation planes, DNA writing-style ingest, and the full
+administration plane (`hope.admin.*`, 49 areas). For backend engineers calling HOPE from a Node
+service, script, or worker.
 
 It shares the "vox" brand with `@arcaai/vox` (`packages/agentic-sdk-v2`, the browser consultation
 SDK) but not its runtime: Node >= 22 (also Bun, Deno, most edge runtimes), no React dependency,
@@ -23,15 +24,15 @@ Agent, resolved by the gateway.
 
 ## Layout
 
-| Path                   | What it holds                                                                                                                                                                                               |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`         | The public entry point — the only supported import surface                                                                                                                                                  |
-| `src/client.ts`        | `HopeClient` — constructs the transport and every resource namespace                                                                                                                                        |
-| `src/resources/`       | Hand-authored resources: `summarization`, `consultations`, `consultation-recording`, `consultation-streams`, `consultation-summaries`, `jobs`, `stt`, `tenants`, `workflows`, `agents`, `dna-writing-style` |
-| `src/resources/admin/` | GENERATED `/api/v1/admin/**` surface (49 areas) — only `admin-resource.ts` is hand-authored                                                                                                                 |
-| `src/core/`            | Transport, retry, redact, SSE parsing/subscription, realtime STT socket, run-identity guard, webhook signing, service-account token exchange, errors                                                        |
-| `src/types/`           | Request/response types                                                                                                                                                                                      |
-| `examples/`            | Six runnable examples (`01-summary.ts` through `06-realtime-consultation.ts`), own `examples/README.md`                                                                                                     |
+| Path                   | What it holds                                                                                                                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/index.ts`         | The public entry point — the only supported import surface                                                                                                                                 |
+| `src/client.ts`        | `HopeClient` — constructs the transport and every resource namespace                                                                                                                       |
+| `src/resources/`       | Hand-authored resources: `consultations`, `consultation-recording`, `consultation-streams`, `consultation-summaries`, `jobs`, `stt`, `tenants`, `workflows`, `agents`, `dna-writing-style` |
+| `src/resources/admin/` | GENERATED `/api/v1/admin/**` surface (49 areas) — only `admin-resource.ts` is hand-authored                                                                                                |
+| `src/core/`            | Transport, retry, redact, SSE parsing/subscription, realtime STT socket, run-identity guard, webhook signing, service-account token exchange, errors                                       |
+| `src/types/`           | Request/response types                                                                                                                                                                     |
+| `examples/`            | Seven runnable examples (`03-consultation-async.ts` through `09-completion-signals.ts`), own `examples/README.md`                                                                          |
 
 ## Commands
 
@@ -80,17 +81,16 @@ SDK never sends `X-Tenant-Id` alongside it. Passing top-level `tenantId` togethe
 `UnifiedAuthGuard` checks a `@RequiredScopes(...)` decorator on the API-key auth path (JWT
 callers are unaffected). A key holding `consultation:*` satisfies every scope below.
 
-| SDK method                                                                  | Required scope (API key)     |
-| --------------------------------------------------------------------------- | ---------------------------- |
-| `consultations.open`, `.recording.start/.stop`, `.addContext`, `.streams.*` | `consultation:session:write` |
-| `consultations.get`, `jobs.get/.cancel/.stream/.subscribe/.waitFor`         | `consultation:session:read`  |
-| `stt.createStreamSession`/`.refreshTicket`/`.closeStreamSession`            | `stt:transcription:write`    |
-| `agents.transcribe(slug, { file })` — multipart upload, batch ASR                   | `stt:transcription:write`    |
-| `agents.transcribe(slug, { mediaId })` — media already uploaded                     | `agent:invocation:write`     |
-| `agents.transcriptionJob`/`.subscribeTranscription`/`.waitForTranscription`         | `stt:transcription:write`    |
-| `summarization.preSummary`/`.preSummaryStream`/`.summary`/`.summaryStream`  | `consultation:report:write`  |
-| `consultations.summaries.generate*`, `.update`                              | `consultation:report:write`  |
-| `consultations.summaries.list`/`.latest`/`.latestPreSummary`                | `consultation:report:read`   |
+| SDK method                                                                                     | Required scope (API key)     |
+| ---------------------------------------------------------------------------------------------- | ---------------------------- |
+| `consultations.open`, `.recording.start/.stop`, `.addContext`, `.streams.*`, `.updateLanguage` | `consultation:session:write` |
+| `consultations.get`, `jobs.get/.cancel/.stream/.subscribe/.waitFor`                            | `consultation:session:read`  |
+| `stt.createStreamSession`/`.refreshTicket`/`.closeStreamSession`                               | `stt:transcription:write`    |
+| `agents.transcribe(slug, { file })` — multipart upload, batch ASR                              | `stt:transcription:write`    |
+| `agents.transcribe(slug, { mediaId })` — media already uploaded                                | `agent:invocation:write`     |
+| `agents.transcriptionJob`/`.subscribeTranscription`/`.waitForTranscription`                    | `stt:transcription:write`    |
+| `consultations.summaries.generate*`, `.update`                                                 | `consultation:report:write`  |
+| `consultations.summaries.list`/`.latest`/`.latestPreSummary`                                   | `consultation:report:read`   |
 
 ### Which credential reaches what
 
@@ -130,14 +130,14 @@ query values rather than resolved pagination state. Writes to versioned resource
 `ifMatch` option (the row itself, not a header you capture) — forgetting it is a compile error,
 and a stale precondition throws `VersionConflictError` (412).
 
-### Two summarization families
+### Summarization is consultation-bound
 
-|               | `hope.summarization.*` (stateless)                      | `hope.consultations.summaries.*` (consultation-bound) |
-| ------------- | ------------------------------------------------------- | ----------------------------------------------------- |
-| Prerequisite  | None                                                    | A consultation must exist                             |
-| Persistence   | None                                                    | Persisted, versioned `ContextItemVersion` rows        |
-| Wire contract | v1-compat, frozen `snake_case`                          | v2 native, `camelCase`                                |
-| When to use   | Migrating a v1 integration; one-off/batch summarization | Building against HOPE's own consultation model        |
+`hope.consultations.summaries.*` (`generate`/`generatePreSummary`, their `*Async` job-backed
+siblings, `list`/`latest`/`latestPreSummary`, `update`, `approve`) is the SDK's one summarization
+surface: a consultation must exist first, and every summary/pre-summary is a persisted, versioned
+`ContextItemVersion` row on it, wire contract v2 native (`camelCase`). The stateless, v1-compat
+`hope.summarization.*` (`preSummary`/`preSummaryStream`/`summary`/`summaryStream`, no consultation
+required) was removed outright — TASK-1004, zero production traffic in the ten days before removal.
 
 ### Running workflows and invoking agents
 
@@ -180,9 +180,10 @@ hidden `dna-writing-style-analyst` agent can regenerate a clinician's writing-st
 
 `open<TContext>()` fixes identity for the whole visit: `clinicianUserId` (-> `Consultation.doctorId`),
 `departmentId` (governing workflow + note shape), `parentConsultationId` (present = revisit,
-absent = new visit), `language` (the note's language, independent of the STT language). It is
-GENERIC on `context` — pass the `OpenConsultationContext` type `vox-codegen --tenant` generates
-for your tenant's schema and the payload is checked at the call site, not just at the gateway.
+absent = new visit), `language`/`languageMode` (the SPOKEN language, independent of the note's
+language — never the other way round). It is GENERIC on `context` — pass the
+`OpenConsultationContext` type `vox-codegen --tenant` generates for your tenant's schema and the
+payload is checked at the call site, not just at the gateway.
 Then: open an STT session (`hope.stt.createStreamSession`), start recording with that session id,
 subscribe to `hope.consultations.streams.liveSummary/liveAssist/harnessProgress/loop` (each
 returns `{ close() }`; `onError` is required — a subscription is fire-and-forget), stream PCM16
@@ -197,6 +198,19 @@ absence throws `SocketUnavailableError` rather than silently degrading. Which AS
 `consultationId` — when its governing workflow names a speech-to-text agent — wins, otherwise the
 tenant admin's assignment (department first, then tenant default) decides. The resolved choice is
 echoed on `agentSource`.
+
+**Spoken-language selection (TASK-1004).** `languageMode` (a catalog id like `'en'`/`'ml-en'`;
+`(string & {})`-widened so a newly added mode still type-checks) is accepted by
+`consultations.open`, `stt.createStreamSession` and `agents.transcribe` — omit it and a linked
+consultation's declared mode is inherited, then the resolved agent's own default, then `'auto'`.
+Change a consultation's default mid-visit with
+`consultations.updateLanguage(id, { languageMode }, { ifMatch? })` (OCC `PATCH`; omit `ifMatch` and
+it reads the consultation first to build one). Every resolution — live session create, the STT
+`status`/`ready` socket frames, and a batch transcription job — carries a `languageResolution`
+receipt: which tier won (`requestedMode`/`source`/`appliedMode`), the serving `engine` and
+`provider`, the vendor `params` actually applied, and `degraded`/`reason` when the engine could
+only approximate the requested mode (never a silent downgrade — a mode NO engine in the chain can
+serve at all is refused at create, before any audio is accepted).
 
 `hope.tenants.contextSchema()` returns the tenant's pinned context-schema bundle; pin its
 `contextSchemaVersionId` on every `addContext` call so a mid-run publish never silently changes
@@ -224,13 +238,11 @@ legal from `SIGNED` or `TIMED_OUT` — a `PENDING_REVIEW` consultation must be a
 `close()` answers 409). Both need the row's `version` as `ifMatch`, exactly like every other
 OCC-guarded write in this SDK.
 
-### Streaming and async jobs
+### Async jobs
 
-Stateless summarization streams yield `delta`/`reasoning` events then a terminal `result` event;
-`.result()` collapses the stream — iterate with `for await` or call `.result()`, never both (the
-generator is single-consume). For long transcripts, `generateAsync` + `jobs.waitFor` hands
-generation to a background job; `waitFor` prefers the live SSE stream and falls back to polling if
-the stream drops before a terminal status.
+For long transcripts, `generateAsync` + `jobs.waitFor` hands generation to a background job;
+`waitFor` prefers the live SSE stream and falls back to polling if the stream drops before a
+terminal status.
 
 ### Receiving webhooks
 
@@ -301,7 +313,7 @@ failures, exponential backoff with full jitter, `Retry-After` honored on 429, de
   context schema or a tenant's published agents/workflows.
 - [`@arcaai/vox-node-codegen`](../vox-node-codegen/README.md) — the private generator that
   produces `src/resources/admin/**`.
-- [`examples/`](./examples) — nine runnable examples with their own `examples/README.md`.
+- [`examples/`](./examples) — seven runnable examples with their own `examples/README.md`.
 - [`docs/guides/client-integration-guide.md`](../../docs/guides/client-integration-guide.md) — the
   end-to-end integration guide these examples illustrate.
 - `.claude/rules/08-vox-sdk.md` — SDK architecture and credential-class rules.

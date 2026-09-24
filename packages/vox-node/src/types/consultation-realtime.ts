@@ -27,6 +27,7 @@
  */
 
 import type { GoverningRunSummary } from '@arcaai/types';
+import type { LanguageModeId } from './language';
 
 // -----------------------------------------------------------------------------
 // open
@@ -109,6 +110,15 @@ export interface OpenConsultationRequest<TContext extends Record<string, unknown
    * tenant has none — never in the language declared here.
    */
   language?: string;
+  /**
+   * The same SOURCE language as {@link language}, as a catalog mode id (e.g. `'ml-en'`) rather
+   * than a BCP-47 tag. TASK-1004: preferred over {@link language} — when both are sent this one
+   * wins; the gateway normalizes either into the same stored mode. Every live/batch entry point
+   * this consultation's recordings reach (`hope.stt.createStreamSession`, `hope.agents.transcribe`)
+   * inherits this value when it declares no mode of its own. Change it after open with
+   * {@link ConsultationsResource.updateLanguage}.
+   */
+  languageMode?: LanguageModeId;
   /**
    * The consultation-context payload for this open, `{ [kindKey]: payload }`
    * — the same shape as the agent-invocation `context` (TASK-950). It is
@@ -229,6 +239,18 @@ export interface CloseConsultationRequest {
    * further attribution.
    */
   clinicianUserId?: string;
+}
+
+// -----------------------------------------------------------------------------
+// language (TASK-1004)
+// -----------------------------------------------------------------------------
+
+/**
+ * Body of `PATCH /api/v1/consultations/:id` — the only field this route accepts today. OCC —
+ * requires `If-Match`; see {@link ConsultationsResource.updateLanguage}.
+ */
+export interface UpdateConsultationLanguageRequest {
+  languageMode: LanguageModeId;
 }
 
 // -----------------------------------------------------------------------------

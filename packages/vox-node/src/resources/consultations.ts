@@ -16,7 +16,13 @@ import { encodePathSegment } from '../core/url';
 import { toStrongValidator } from '../core/if-match';
 import type { Transport } from '../core/transport';
 import type { AddContextRequest, ConsultationGetResponse, ContextItemResponse } from '../types/consultation';
-import type { CloseConsultationRequest, ConsultationOpenResponse, DocumentSection, OpenConsultationRequest } from '../types/consultation-realtime';
+import type {
+  CloseConsultationRequest,
+  ConsultationOpenResponse,
+  DocumentSection,
+  OpenConsultationRequest,
+  UpdateConsultationLanguageRequest,
+} from '../types/consultation-realtime';
 import { ConsultationRecordingResource } from './consultation-recording';
 import { ConsultationStreamsResource } from './consultation-streams';
 import { ConsultationSummariesResource } from './consultation-summaries';
@@ -36,6 +42,20 @@ export interface CloseConsultationOptions extends ConsultationRequestOptions {
    * (e.g. `'"7"'`).
    */
   ifMatch: string | number;
+}
+
+/** Options for {@link ConsultationsResource.updateLanguage}. */
+export interface UpdateLanguageOptions extends ConsultationRequestOptions {
+  /**
+   * Sent as `If-Match`. `PATCH :id` carries `@RequiresIfMatch()` on the gateway, so an omitted
+   * header is a guaranteed 428 — same rule as {@link CloseConsultationOptions.ifMatch}.
+   *
+   * **Optional here, unlike `close`'s.** Omit it and {@link ConsultationsResource.updateLanguage}
+   * GETs the consultation first to read its current `version` and builds the header from that —
+   * one extra round trip. Pass the version/ETag you already hold (e.g. from `open()`/`get()`) to
+   * skip it.
+   */
+  ifMatch?: string | number;
 }
 
 /** Options for {@link ConsultationsResource.addContext}. */
@@ -294,6 +314,35 @@ export class ConsultationsResource {
       path: `consultations/${encodePathSegment(consultationId)}/close`,
       body: request,
       headers: { 'If-Match': toStrongValidator(options.ifMatch) },
+      signal: options.signal,
+    });
+  }
+
+  /**
+   * `PATCH /api/v1/consultations/:id` — change the consultation's declared spoken-language mode
+   * after open (TASK-1004 OD-2: a language change made mid-visit updates the CONSULTATION default,
+   * so later recordings, batch jobs and workflow runs on it inherit the new mode; it does not touch
+   * a session already in progress).
+   *
+   * OCC — see {@link UpdateLanguageOptions.ifMatch}: pass the version you already hold, or omit it
+   * and this method reads the consultation first to get one.
+   */
+  async updateLanguage(
+    consultationId: string,
+    request: UpdateConsultationLanguageRequest,
+    options: UpdateLanguageOptions = {},
+  ): Promise<ConsultationGetResponse> {
+    const ifMatch = options.ifMatch ?? (await this.get(consultationId, { signal: options.signal })).version;
+    if (ifMatch === undefined) {
+      throw new TypeError(
+        `updateLanguage: consultation ${consultationId} has no \`version\` to build \`If-Match\` from — pass options.ifMatch explicitly.`,
+      );
+    }
+    return this.transport.request<ConsultationGetResponse>({
+      method: 'PATCH',
+      path: `consultations/${encodePathSegment(consultationId)}`,
+      body: request,
+      headers: { 'If-Match': toStrongValidator(ifMatch) },
       signal: options.signal,
     });
   }

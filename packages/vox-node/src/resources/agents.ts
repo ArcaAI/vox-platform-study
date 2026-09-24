@@ -268,8 +268,8 @@ export class AgentsResource {
    *
    * | Source | Route | Body | API-key scope |
    * |---|---|---|---|
-   * | `{ file }` | `POST /api/v1/audio/transcription-jobs/transcribe` | multipart `file` + `agentSlug` (+ `language`) | `stt:transcription:write` |
-   * | `{ mediaId }` | `POST /api/v1/agents/{slug}/transcriptions` | JSON | `agent:invocation:write` |
+   * | `{ file }` | `POST /api/v1/audio/transcription-jobs/transcribe` | multipart `file` + `agentSlug` (+ `consultationId`, `language`, `languageMode`) | `stt:transcription:write` |
+   * | `{ mediaId }` | `POST /api/v1/agents/{slug}/transcriptions` | JSON `{ mediaId, consultationId?, language?, languageMode? }` | `agent:invocation:write` |
    *
    * TASK-983 — this method used to post the MULTIPART body to the agent route,
    * which accepts JSON only ("the media must already be uploaded") and answered
@@ -278,6 +278,12 @@ export class AgentsResource {
    * (`FileTranscriptionService`); the agent slug travels in the form there
    * rather than in the path, and the response carries `sseUrl` / `audioUri` /
    * `agentVersionId` beside the id and status.
+   *
+   * TASK-1004 — `source.consultationId` used to be silently DROPPED on the JSON route (the type
+   * had no field for it, even though the gateway has always accepted one — see the doc table
+   * above), so linking a batch job to a consultation from this SDK was impossible. Both branches
+   * now forward `consultationId` and the new `languageMode` (an explicit mode id takes precedence
+   * over `language`; omit both and a linked consultation's declared mode is inherited server-side).
    *
    * Realtime transcription is a different plane: a browser opens the stream
    * session through `@arcaai/vox` with the same `agentSlug`, and a server that
@@ -295,7 +301,9 @@ export class AgentsResource {
       // content type — which is why the caller's Blob `type` must survive, untouched, to here.
       form.append('file', source.file, source.filename ?? 'audio');
       form.append('agentSlug', slug);
+      if (source.consultationId) form.append('consultationId', source.consultationId);
       if (source.language) form.append('language', source.language);
+      if (source.languageMode) form.append('languageMode', source.languageMode);
       return this.transport.request<TranscriptionJobHandle>({
         method: 'POST',
         path: BATCH_TRANSCRIBE_PATH,
@@ -307,7 +315,12 @@ export class AgentsResource {
     return this.transport.request<TranscriptionJobHandle>({
       method: 'POST',
       path: `${agentPath(slug)}/transcriptions`,
-      body: { mediaId: source.mediaId, ...(source.language ? { language: source.language } : {}) },
+      body: {
+        mediaId: source.mediaId,
+        ...(source.consultationId ? { consultationId: source.consultationId } : {}),
+        ...(source.language ? { language: source.language } : {}),
+        ...(source.languageMode ? { languageMode: source.languageMode } : {}),
+      },
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

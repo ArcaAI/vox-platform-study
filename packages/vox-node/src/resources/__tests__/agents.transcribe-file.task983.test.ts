@@ -85,6 +85,20 @@ describe('agents.transcribe — a FILE goes to the multipart batch route', () =>
 
     expect((calls[0]!.init.body as FormData).get('language')).toBeNull();
   });
+
+  it('forwards consultationId and languageMode (TASK-1004)', async () => {
+    const { fetch, calls } = stubFetch([() => json(BATCH_ACK, 201)]);
+
+    await client(fetch).agents.transcribe('clinic-asr', {
+      file: new Blob(['x'], { type: 'audio/wav' }),
+      consultationId: 'c1',
+      languageMode: 'ml-en',
+    });
+
+    const form = calls[0]!.init.body as FormData;
+    expect(form.get('consultationId')).toBe('c1');
+    expect(form.get('languageMode')).toBe('ml-en');
+  });
 });
 
 describe('agents.transcribe — a MEDIA ID stays on the agent JSON route', () => {
@@ -96,6 +110,14 @@ describe('agents.transcribe — a MEDIA ID stays on the agent JSON route', () =>
     expect(calls[0]!.url).toBe('http://localhost:8868/api/v1/agents/clinic-asr/transcriptions');
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ mediaId: 'media-9', language: 'en' });
     expect(new Headers(calls[0]!.init.headers).get('Content-Type')).toBe('application/json');
+  });
+
+  it('forwards consultationId and languageMode (TASK-1004) — previously dropped silently', async () => {
+    const { fetch, calls } = stubFetch([() => json({ id: 'job-2', status: 'QUEUED', jobType: 'BATCH' }, 202)]);
+
+    await client(fetch).agents.transcribe('clinic-asr', { mediaId: 'media-9', consultationId: 'c1', languageMode: 'ml-en' });
+
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ mediaId: 'media-9', consultationId: 'c1', languageMode: 'ml-en' });
   });
 });
 

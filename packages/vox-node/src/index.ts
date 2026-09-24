@@ -28,7 +28,6 @@ export {
   isTerminalJobStatus,
   JobsResource,
   SttResource,
-  SummarizationResource,
   TenantsResource,
   WORKFLOW_PLANE_ROUTES,
   WorkflowReviewsResource,
@@ -50,8 +49,7 @@ export type {
   StreamRunOptions,
   SttRequestOptions,
   SttSocketOptions,
-  SummarizationRequestOptions,
-  SummarizationStream,
+  UpdateLanguageOptions,
   UpdateSummaryOptions,
   WaitForIngestJobOptions,
   WaitForOptions,
@@ -166,6 +164,15 @@ export type { HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } f
 
 export { CONTEXT_CONTENT_MAX_LENGTH, CONTEXT_PRIMITIVES, TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
 
+/** The spoken-language selection contract shared with `apps/stt`, `@arcaai/vox`, and ALaaS (TASK-1004). */
+export type {
+  LanguageModeId,
+  LanguageResolution,
+  LanguageResolutionDegradeReason,
+  LanguageResolutionParams,
+  LanguageResolutionSource,
+} from './types';
+
 /**
  * Re-exported from `@arcaai/types` (D-6): the consultation-context refusal-code union
  * and the scope presets the tenant console's create-key dialog offers. Declared once in
@@ -204,6 +211,7 @@ export type {
   SectionProvenance,
   StartRecordingRequest,
   StopRecordingRequest,
+  UpdateConsultationLanguageRequest,
   StreamSessionResponse,
   StreamTicketRefreshResponse,
   StreamingSessionStatus,
@@ -237,27 +245,12 @@ export type {
   ContextKindDeprecation,
   ContextOutputDeclaration,
   ContextPrimitive,
-  ConversationSegment,
   GeneratePreSummaryRequest,
   GenerateSummaryRequest,
   JobStatusResponse,
   JobStatusType,
   JobStreamEvent,
   JobType,
-  PreSummaryRequest,
-  PreSummaryResponse,
-  PreSummarySection,
-  PreSummarySectionItem,
-  PreSummaryStreamEvent,
-  PreviousVisitRecord,
-  SessionData,
-  StructuredPreSummary,
-  SummaryResponse,
-  SummaryResponseMetadata,
-  SummaryStreamEvent,
-  SyncSummaryRequest,
-  TestResult,
-  TokenUsage,
   UpdateSummaryRequest,
   StartWorkflowRunRequest,
   WorkflowReview,
