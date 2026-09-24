@@ -1,15 +1,17 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   Inject,
   Injectable,
   NotFoundException,
-  NotImplementedException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AiModelRepository, ResourceType, SYSTEM_TENANT_ID, SysEventType } from '@arcaai/domains';
-import { type AiModelServingProfile, parseAiModelServingProfile } from '@arcaai/types';
+import type { AiModelServingProfile } from '@arcaai/types';
 import { ClsService } from 'nestjs-cls';
 import { BaseService } from '../../common/base.service';
 import { isSuperAdmin } from '../../common/tenant-guards';
@@ -21,13 +23,12 @@ import { EffectiveSettingsService } from '../settings-registry/effective-setting
 import type {
   LmStudioDeviceResponse,
   LmStudioRuntimeResponse,
-  LmStudioServingProfileSource,
   LoadLmStudioModelRequest,
   LoadLmStudioModelResponse,
   UnloadLmStudioModelResponse,
 } from './dto';
 import type { IInferenceEngineService } from './IInferenceEngineService';
-import { LmStudioEngineClient, type LmStudioSnapshot } from './lmstudio-engine.client';
+import { LmStudioEngineClient, LmStudioEngineError, type LmStudioLoadOptions, type LmStudioSnapshot } from './lmstudio-engine.client';
 import { LM_STUDIO_MODEL_KEY, kvCacheEstimateBytes, loadEstimateBytes } from './vram-estimate';
 
 /**
@@ -46,23 +47,23 @@ import { LM_STUDIO_MODEL_KEY, kvCacheEstimateBytes, loadEstimateBytes } from './
  *   3. Profile coherence (400) — from the SHARED resolver's `problems`, never
  *      re-derived here.
  *   4. Live VRAM budget (409, owner decision D-6) — and this is the ONLY gate
- *      `force: true` bypasses.
+ *      `force: true` bypasses. Skipped when the key is already resident: its
+ *      weights are already on the cards, and the adapter answers
+ *      `already_loaded` without loading anything.
  *
- * ── WHY `load` CANNOT DISPATCH ───────────────────────────────────────────────
+ * ── THE DISPATCH (TASK-1005) ─────────────────────────────────────────────────
  *
- * It refuses with 501 `ENGINE_LOAD_UNSUPPORTED` after running the whole chain.
- * That is not a stub: it is the measured state of this engine build.
- * `POST /api/v1/models/load` fails on this deployment under every payload,
- * including a control carrying only `{model, context_length}` (ticket §2.8),
- * and even where it answered it has no field for KV-cache quantization or GPU
- * placement. The one working loader speaks the `@lmstudio/sdk` kvConfig
- * websocket over LOOPBACK inside the pod, at boot. Calling the broken endpoint
- * to look complete would evict the served model and leave the AI plane with
- * nothing loaded — which is exactly what the §2.8 measurement did.
+ * Over LM Studio REST v1 (`LmStudioEngineClient.load`): documented keys only,
+ * list-before-load, serialised per engine. TASK-996 shipped a 501 here because
+ * the REST load "failed for every payload"; the TASK-1005 Phase 0 spike traced
+ * that to the strict schema (`ttl` / `identifier` / `gpu` answer 400
+ * `unrecognized_keys`) and loaded fine with the documented keys.
  *
- * The 501 body still carries `applied`, `sources` and `estimateBytes`, so the
- * console's "show the precheck before arming the button" step has a real answer
- * today and the shape does not change when a reachable loader lands.
+ * REST v1 carries only the context window and flash attention out of the
+ * serving profile. Decode slots, KV-cache quantization and GPU placement have
+ * no REST key: a gateway load gets the engine's own defaults for them (the pod's
+ * `LMS_PARALLEL` and `LMS_GPU_SPLIT_STRATEGY`), and the response's `loadConfig`
+ * is the engine's own echo of what it applied — never the requested profile.
  */
 @Injectable()
 export class LmStudioServingService extends BaseService implements IInferenceEngineService {
@@ -113,30 +114,27 @@ export class LmStudioServingService extends BaseService implements IInferenceEng
     this.assertPlatformAdmin('load a model');
 
     const entity = await this.requireCatalogueRow(modelKey);
-    const { profile, sources } = this.resolveProfile(entity, await this.platformDefault(), request.profile);
+    const profile = this.resolveProfile(entity, await this.platformDefault(), request);
 
     const snapshot = await this.engine.snapshot();
-    const weightsBytes = snapshot.models.find((model) => model.modelKey === modelKey)?.weightsBytes ?? 0;
-    const estimateBytes = loadEstimateBytes(weightsBytes, profile);
+    const listed = snapshot.models.find((model) => model.modelKey === modelKey);
+    const resident = (listed?.instances.length ?? 0) > 0;
+    if (request.force !== true && !resident) await this.assertFitsOneCard(loadEstimateBytes(listed?.weightsBytes ?? 0, profile));
 
-    if (request.force !== true) await this.assertFitsOneCard(estimateBytes);
-
-    // The honest refusal. See the class doc — nothing is dispatched, and in
-    // particular the engine's own broken REST load is never called.
-    throw new NotImplementedException({
-      code: 'ENGINE_LOAD_UNSUPPORTED',
-      message:
-        'This LM Studio build exposes no loader the gateway can drive: its REST load endpoint fails for every payload on this deployment and ' +
-        'carries no field for KV-cache quantization or GPU placement, and the working kvConfig websocket loader runs inside the pod at boot. ' +
-        'The resolved profile and its VRAM estimate are reported below so the change can be applied through the pod`s own loader.',
-      remedy:
-        'Set the profile on the model row (`AiModel._metadata.serving`) or on the platform tier (`lmStudio.serving.*`), then restart the ' +
-        '`hope-lmstudio` workload so its A-6 preloader applies it.',
-      modelKey,
-      applied: profile,
-      sources,
-      estimateBytes,
+    const result = await this.engine.load(modelKey, this.restOptions(profile, request)).catch((error: unknown) => {
+      throw toHttpException(error);
     });
+    const model = { ...result.model, aiModelId: entity.id };
+
+    if (result.outcome === 'loaded') {
+      // A platform-disruptive action on shared, time-sliced cards has to stay
+      // attributable to the administrator who took it. A no-op (already
+      // resident) changed nothing, so it is not announced as a change.
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        data: { engine: 'lm-studio', action: 'load', modelKey, instanceId: model.instanceId, loadSeconds: model.loadSeconds },
+      });
+    }
+    return { outcome: result.outcome, model };
   }
 
   async unload(identifier: string): Promise<UnloadLmStudioModelResponse> {
@@ -146,7 +144,11 @@ export class LmStudioServingService extends BaseService implements IInferenceEng
     const known = snapshot.models.some((model) => model.instances.some((instance) => instance.identifier === identifier));
     if (!known) throw new NotFoundException(`No LM Studio instance named '${identifier}' is loaded.`);
 
-    await this.engine.unload(identifier);
+    const result = await this.engine.unload(identifier).catch((error: unknown) => {
+      throw toHttpException(error);
+    });
+    if (result.outcome === 'not_loaded') throw new NotFoundException(`No LM Studio instance named '${identifier}' is loaded.`);
+
     // A platform-disruptive action on shared, time-sliced cards has to stay
     // attributable to the administrator who took it.
     this.broadcastSysEvent(SysEventType.ResourceUpdated, { data: { engine: 'lm-studio', action: 'unload', identifier } });
@@ -191,38 +193,36 @@ export class LmStudioServingService extends BaseService implements IInferenceEng
    * layers over its result. Re-implementing the precedence locally is how the
    * console, the API and the loader end up disagreeing about what is in force.
    *
-   * A request field the profile vocabulary REJECTS becomes a problem rather
-   * than a silent drop — see `LoadLmStudioModelRequest`.
+   * The request can only speak for the two profile fields REST v1 carries
+   * (`contextLength`, `flashAttention`); the whole resolved profile is still
+   * checked for coherence and still feeds the VRAM estimate.
    */
   private resolveProfile(
     entity: Parameters<typeof servingProfileOf>[0],
     platformDefault: AiModelServingProfile,
-    requested: Record<string, unknown> | undefined,
-  ): { profile: AiModelServingProfile; sources: Record<string, LmStudioServingProfileSource> } {
+    request: LoadLmStudioModelRequest,
+  ): AiModelServingProfile {
     const declaredContextLength = declaredContextLengthOf(entity);
     const base = resolveServingProfile(servingProfileOf(entity), platformDefault, { declaredContextLength });
 
-    const parsed = requested === undefined ? { profile: {}, rejected: [] as string[] } : parseAiModelServingProfile(requested);
-    if (parsed.rejected.length > 0) {
-      throw new BadRequestException({
-        problems: parsed.rejected.map(
-          (path) =>
-            `'${path}' is not a serving-profile field this engine accepts, or its value is out of range. ` +
-            'Nothing was loaded — an override that is only half applied serves the model on parameters nobody chose.',
-        ),
-      });
-    }
+    const requested: AiModelServingProfile = {};
+    if (request.contextLength !== undefined) requested.contextLength = request.contextLength;
+    if (request.flashAttention !== undefined) requested.flashAttention = request.flashAttention;
 
-    const merged = resolveServingProfile(parsed.profile, base.profile, { declaredContextLength });
+    const merged = resolveServingProfile(requested, base.profile, { declaredContextLength });
     if (merged.problems.length > 0) throw new BadRequestException({ problems: merged.problems });
+    return merged.profile;
+  }
 
-    // `merged.sources` labels the FIRST argument `model`; here that argument is
-    // the REQUEST, and its `platform` means "came from the model/platform pass".
-    const sources: Record<string, LmStudioServingProfileSource> = {};
-    for (const [field, tier] of Object.entries(merged.sources)) {
-      sources[field] = tier === 'model' ? 'request' : (base.sources[field] ?? 'platform');
-    }
-    return { profile: merged.profile, sources };
+  /** The REST v1 load options: the resolved window and flash attention, plus the pass-through REST knobs the caller set. */
+  private restOptions(profile: AiModelServingProfile, request: LoadLmStudioModelRequest): LmStudioLoadOptions {
+    const options: LmStudioLoadOptions = {};
+    if (profile.contextLength !== undefined) options.contextLength = profile.contextLength;
+    if (profile.flashAttention !== undefined) options.flashAttention = profile.flashAttention;
+    if (request.evalBatchSize !== undefined) options.evalBatchSize = request.evalBatchSize;
+    if (request.numExperts !== undefined) options.numExperts = request.numExperts;
+    if (request.offloadKvCacheToGpu !== undefined) options.offloadKvCacheToGpu = request.offloadKvCacheToGpu;
+    return options;
   }
 
   /**
@@ -326,6 +326,29 @@ export class LmStudioServingService extends BaseService implements IInferenceEng
       if (resolved) values[key] = resolved.value;
     }
     return platformServingProfileFrom(values);
+  }
+}
+
+/**
+ * The adapter's typed failures as HTTP. The `code` rides in the body so the
+ * console (and the residency controller's callers) can branch on it.
+ */
+function toHttpException(error: unknown): unknown {
+  if (!(error instanceof LmStudioEngineError)) return error;
+  const body = { code: error.code, message: error.message };
+  switch (error.code) {
+    case 'LOAD_IN_PROGRESS':
+      return new ConflictException(body);
+    case 'MODEL_UNKNOWN':
+      return new NotFoundException(body);
+    case 'ENGINE_NOT_CONFIGURED':
+    case 'ENGINE_UNREACHABLE':
+      return new ServiceUnavailableException(body);
+    case 'LOAD_FAILED':
+    case 'UNLOAD_FAILED':
+      return new BadGatewayException(body);
+    default:
+      return new HttpException(body, 500);
   }
 }
 

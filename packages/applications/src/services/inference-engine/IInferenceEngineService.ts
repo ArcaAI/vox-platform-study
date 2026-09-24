@@ -18,13 +18,13 @@ export interface IInferenceEngineService {
   runtime(): Promise<LmStudioRuntimeResponse>;
 
   /**
-   * Resolve the serving profile for one model and load it.
+   * Resolve the serving profile for one model and load it over LM Studio REST v1.
    *
    * Runs the full gate chain — 403 / 404 / 400 on an incoherent resolved
-   * profile / 409 on the live VRAM budget — and then refuses with 501
-   * `ENGINE_LOAD_UNSUPPORTED`, because this engine build exposes no
-   * gateway-reachable loader that can carry a profile. See
-   * `LoadLmStudioModelResponse`.
+   * profile / 409 on the live VRAM budget — then dispatches with documented
+   * keys only. An already-resident key answers `already_loaded` (REST load is
+   * not idempotent, so nothing is loaded twice); a concurrent load on the same
+   * engine is 409 `LOAD_IN_PROGRESS`. See `LoadLmStudioModelResponse`.
    */
   load(modelKey: string, request: LoadLmStudioModelRequest): Promise<LoadLmStudioModelResponse>;
 

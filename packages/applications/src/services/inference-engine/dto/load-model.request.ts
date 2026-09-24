@@ -1,38 +1,67 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsObject, IsOptional } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
 
 /**
  * `POST admin/inference-engines/lm-studio/models/{modelKey}/load`.
  *
- * `profile` is declared as a plain object rather than a nested validated class
- * ON PURPOSE. Its vocabulary already has ONE owner —
- * `parseAiModelServingProfile` in `@arcaai/types`, the same validator the
- * stored `AiModel._metadata.serving` block and the pod's own loader read
- * through — and a second, decorator-shaped copy of that vocabulary here is how
- * the two drift apart. The global pipe treats an `@IsObject()` field as a leaf,
- * so the object arrives intact and the shared parser judges it.
+ * EXACTLY the options LM Studio's REST v1 load accepts, camelCased (TASK-1005
+ * D-5), plus the gateway's own `force`. The engine's schema is STRICT — `ttl`,
+ * `identifier` and `gpu` each answer 400 `unrecognized_keys` (§10.1) — so this
+ * DTO is the whole surface, and the global pipe's `forbidNonWhitelisted`
+ * rejects anything else before it reaches the adapter.
  *
- * The parser's normal posture is `open-to-default`: a field it cannot read is
- * DROPPED and named. That is right for a STORED row, which must keep serving.
- * It is wrong for this request, which is a one-shot instruction from an
- * administrator: silently ignoring half of what they typed and loading anyway
- * is exactly the "served on parameters nobody chose" failure the ticket calls
- * worse than not starting. So a rejected field here becomes a 400.
+ * Not expressible here, because REST v1 has no key for them: decode slots
+ * (`parallel` — the pod's `LMS_PARALLEL`), KV-cache quantization, GPU placement
+ * (the daemon's `LMS_GPU_SPLIT_STRATEGY`) and an idle TTL (the residency
+ * controller's job). A model's `_metadata.serving` values for those fields are
+ * applied only by the pod's boot preloader.
+ *
+ * `contextLength` and `flashAttention` omitted resolve request -> model row
+ * (`_metadata.serving`) -> platform default (`lmStudio.serving.*`), widening only
+ * on absence — so a load never falls back to the engine's own default window,
+ * which for most models is far larger than the platform serves.
  */
 export class LoadLmStudioModelRequest {
   @ApiPropertyOptional({
-    type: 'object',
-    additionalProperties: true,
     description:
-      'Serving-profile overrides for THIS load, layered over the model row and then the platform default. Same vocabulary as `AiModel._metadata.serving`: `contextLength`, `parallel`, `flashAttention`, `kvCacheQuant.{k,v}`, `gpuSplit.{strategy,disabledGpus,priority,customRatio}`. Omit to load on the resolved model/platform profile. Any field the vocabulary does not accept is a 400, not a silent drop.',
+      'Context window to load with (`context_length`). Omit to use the model row`s `_metadata.serving.contextLength`, else `lmStudio.serving.contextLength`. Must not be narrower than the catalogue`s declared window (400).',
+    minimum: 512,
+    maximum: 1_048_576,
   })
   @IsOptional()
-  @IsObject()
-  profile?: Record<string, unknown>;
+  @IsInt()
+  @Min(512)
+  @Max(1_048_576)
+  contextLength?: number;
+
+  @ApiPropertyOptional({ description: 'Prompt-processing batch size (`eval_batch_size`). Omit for the engine default.', minimum: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  evalBatchSize?: number;
 
   @ApiPropertyOptional({
     description:
-      'Proceed despite the live VRAM budget. Bypasses the 409 `VRAM_BUDGET_EXCEEDED` gate AND ONLY that gate — never the super-admin 403, never the 404 for an unknown model, never a 400 on an incoherent profile. The cards are time-sliced and give no memory isolation, so an over-budget load can take the STT and guardrail workloads down with it.',
+      'Flash attention (`flash_attention`). Omit to use the model row, else `lmStudio.serving.flashAttention`. `false` against a model whose V-cache is quantized is a 400.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  flashAttention?: boolean;
+
+  @ApiPropertyOptional({ description: 'Active experts for a mixture-of-experts model (`num_experts`). Omit for the model default.', minimum: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  numExperts?: number;
+
+  @ApiPropertyOptional({ description: 'Keep the KV cache in VRAM (`offload_kv_cache_to_gpu`). Omit for the engine default.' })
+  @IsOptional()
+  @IsBoolean()
+  offloadKvCacheToGpu?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Proceed despite the live VRAM budget. Bypasses the 409 `VRAM_BUDGET_EXCEEDED` gate AND ONLY that gate — never the super-admin 403, never the 404 for an unknown model, never a 400 on an incoherent profile, and never the 409 `LOAD_IN_PROGRESS` serialisation. The cards are time-sliced and give no memory isolation, so an over-budget load can take the STT and guardrail workloads down with it.',
   })
   @IsOptional()
   @IsBoolean()
