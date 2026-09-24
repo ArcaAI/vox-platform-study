@@ -32,6 +32,7 @@ import { DataNotFoundException } from '@arcaai/exceptions';
 import { readGoverningEngineMarker } from '../../consultation/governing-engine';
 import { readWorkflowSelectionMarker } from '../../consultation/consultation/workflow-selection';
 import { readAgentRef } from '../../consultation/live-documentation/realtime/realtime-node-registry';
+import { consultationDispatchSessionId } from '../../workflow-run/workflow-run.service';
 
 /** The named 409 a workflow-driven ASR selection fails with (owner OD-1 / OD-2). */
 export const WORKFLOW_ASR_AGENT_UNAVAILABLE = 'WORKFLOW_ASR_AGENT_UNAVAILABLE';
@@ -215,7 +216,11 @@ export class GoverningWorkflowAsrReader {
   }
 
   private async readPinnedVersion(tenantId: string, workflowRunId: string): Promise<GoverningWorkflow | null> {
-    const run = await tolerant(() => this.workflowRuns.findById(workflowRunId));
+    // The marker carries the RUN's `runId`, not the WorkflowRun row id: consultation dispatch
+    // keys the row `(tenantId, 'wf-' + runId, runId)`, the same key `WorkflowRunService` reads.
+    const run = await tolerant(() =>
+      this.workflowRuns.findByRunKey(tenantId, consultationDispatchSessionId(workflowRunId), workflowRunId),
+    );
     if (!run || run.tenantId !== tenantId || !run.workflowVersionId) return null;
     const definition = await tolerant(() => this.workflowDefinitions.findById(run.workflowVersionId));
     if (!definition || definition.tenantId !== tenantId || !definition.compiledConfig) return null;

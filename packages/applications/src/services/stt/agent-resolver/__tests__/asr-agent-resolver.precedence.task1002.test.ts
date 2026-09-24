@@ -30,7 +30,7 @@ const DEPT = 'dept-radiology';
 const agents = { resolve: vi.fn() };
 const credentials = { resolve: vi.fn() };
 const consultations = { findById: vi.fn() };
-const runs = { findById: vi.fn() };
+const runs = { findById: vi.fn(), findByRunKey: vi.fn() };
 const definitions = { findById: vi.fn(), findPublishedBySlug: vi.fn() };
 const agentRows = { findPublishedActiveBySlug: vi.fn(), findPublishedVisibleBySlugVersion: vi.fn(), findAllVersionsBySlug: vi.fn() };
 
@@ -85,7 +85,14 @@ beforeEach(() => {
   );
   agentRows.findPublishedVisibleBySlugVersion.mockResolvedValue(null);
   agentRows.findAllVersionsBySlug.mockResolvedValue([]);
-  runs.findById.mockResolvedValue({ id: RUN, tenantId: TENANT, workflowVersionId: 'wf-v3' });
+  // The governing marker carries the RUN's `runId`; the row has its own id and is keyed
+  // `(tenantId, 'wf-' + runId, runId)` by consultation dispatch — exactly as on the cluster.
+  runs.findById.mockResolvedValue(null);
+  runs.findByRunKey.mockImplementation(async (tenantId: string, sessionId: string, runId: string) =>
+    tenantId === TENANT && sessionId === `wf-${RUN}` && runId === RUN
+      ? { id: 'run-row-id', runId: RUN, tenantId: TENANT, workflowVersionId: 'wf-v3' }
+      : null,
+  );
 });
 
 describe('TASK-1002 — tier 1: an explicit slug', () => {
@@ -154,7 +161,7 @@ describe('TASK-1002 — tier 2: the governing workflow', () => {
 
     await make().resolve({ tenantId: TENANT, consultationId: CONSULTATION });
 
-    expect(runs.findById).toHaveBeenCalledWith(RUN);
+    expect(runs.findByRunKey).toHaveBeenCalledWith(TENANT, `wf-${RUN}`, RUN);
     expect(definitions.findById).toHaveBeenCalledWith('wf-v3');
     expect(definitions.findPublishedBySlug).not.toHaveBeenCalled();
     expect(agents.resolve).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: 'saaras-test' }));
@@ -255,7 +262,7 @@ describe('TASK-1002 — tier 3: the assignment cascade under the consultation’
 
     await make().resolve({ tenantId: TENANT, consultationId: CONSULTATION, departmentId: 'ignored-input-dept' });
 
-    expect(runs.findById).not.toHaveBeenCalled();
+    expect(runs.findByRunKey).not.toHaveBeenCalled();
     expect(definitions.findById).not.toHaveBeenCalled();
     expect(definitions.findPublishedBySlug).not.toHaveBeenCalled();
     expect(agents.resolve).toHaveBeenCalledWith({
@@ -274,7 +281,7 @@ describe('TASK-1002 — tier 3: the assignment cascade under the consultation’
 
     const session = await make().resolve({ tenantId: TENANT, consultationId: CONSULTATION });
 
-    expect(runs.findById).not.toHaveBeenCalled();
+    expect(runs.findByRunKey).not.toHaveBeenCalled();
     expect(definitions.findPublishedBySlug).toHaveBeenCalledWith(TENANT, 'arcaai-gen-consultation');
     expect(session.spec.agent.source).toBe('workflow');
     expect(session.workflowDefinitionSlug).toBe('arcaai-gen-consultation');
@@ -303,7 +310,7 @@ describe('TASK-1002 — the consultation is tenant-scoped (404-over-403)', () =>
 
     expect(thrown).toBeInstanceOf(NotFoundException);
     expect((thrown as NotFoundException).message).toBe('Consultation not found');
-    expect(runs.findById).not.toHaveBeenCalled();
+    expect(runs.findByRunKey).not.toHaveBeenCalled();
     expect(agents.resolve).not.toHaveBeenCalled();
   });
 });
