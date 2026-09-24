@@ -79,10 +79,10 @@ export function toServiceAccountScope(apiKeyScope: string): string {
  * machine identity was only ever meant to reach the ADMINISTRATION plane. The
  * owner requirement of 2026-08-18 is different in kind: *"end-user can use
  * service-account/api-key for standalone features: speech-to-text,
- * summarization, via SDK compat and API compat"*. Those are BUSINESS-plane
- * capabilities (`audio/transcription-jobs`, `api/stt`, `text-generations`,
- * `api/smr/api/v1`), and no amount of `admin:*` derivation produces a scope
- * that names them — so a machine identity could reach NOTHING there
+ * summarization"*. Those are BUSINESS-plane capabilities
+ * (`audio/transcription-jobs`, `text-generations`), and no amount of
+ * `admin:*` derivation produces a scope that names them — so a machine
+ * identity could reach NOTHING there
  * (`enforceServiceAccountScopes` denies every route that declares no `svc:*`
  * scope, and no route declared one).
  *
@@ -100,16 +100,17 @@ export function toServiceAccountScope(apiKeyScope: string): string {
  * additionally refuses to start if any registry scope resolves to zero
  * abilities.
  *
- * ─── Why exactly these three ────────────────────────────────────────────────
+ * ─── Why exactly these two ─────────────────────────────────────────────────
  *
- * They are the scopes the four standalone surfaces ALREADY declare for API
+ * They are the scopes the standalone surfaces ALREADY declare for API
  * keys, so the machine class reaches exactly the same routes as the human-
  * delegated class and not one more:
  *
  *   `stt:transcription:write` → `audio/transcription-jobs` (native STT)
- *   `stt:stream:write` → `api/stt` (compat STT)
  *   `consultation:report:write` → `text-generations` (native summarization)
- *                                 AND `api/smr/api/v1` (compat summarization)
+ *
+ * (TASK-1004 removed the third, `stt:stream:write`, with the v1 compat
+ * surface it existed to gate — `api/stt` and `api/smr/api/v1` are gone.)
  *
  * `ai:inference:write` (`safety-checks`, `text-analyses`) and `tts:speech:write`
  * (`speech`) are deliberately ABSENT: they are different standalone features
@@ -117,7 +118,7 @@ export function toServiceAccountScope(apiKeyScope: string): string {
  * does not name, and deny-by-default means silence is a refusal, not an
  * oversight. Adding one is a single line here plus a decorator — see the ticket.
  */
-export const STANDALONE_FEATURE_SCOPE_SOURCES = ['stt:transcription:write', 'stt:stream:write', 'consultation:report:write'] as const;
+export const STANDALONE_FEATURE_SCOPE_SOURCES = ['stt:transcription:write', 'consultation:report:write'] as const;
 
 /** The renamespaced form of {@link STANDALONE_FEATURE_SCOPE_SOURCES}. */
 export const STANDALONE_FEATURE_SVC_SCOPES: readonly string[] = STANDALONE_FEATURE_SCOPE_SOURCES.map(toServiceAccountScope);
@@ -144,7 +145,7 @@ export const STANDALONE_FEATURE_SVC_SCOPES: readonly string[] = STANDALONE_FEATU
  * Adding `webhook:event:write` to {@link STANDALONE_FEATURE_SCOPE_SOURCES}
  * would have been one line, and it would have been the wrong line: that
  * constant means "standalone BUSINESS-plane features an end user drives through
- * the SDK/compat surfaces (STT, summarization)", and `admin/webhooks` is
+ * the SDK (STT, summarization)", and `admin/webhooks` is
  * neither standalone nor business-plane. A constant whose name no longer
  * describes its contents is exactly how the next reader mis-derives the next
  * scope — and the boot audit would then be reconciling against a lie. The
@@ -184,7 +185,7 @@ export const ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES: readonly string[] = ADMIN_PL
  *
  * ─── The gap this closes ────────────────────────────────────────────────────
  *
- * A service account could reach every admin area and three standalone features, but NOT the two
+ * A service account could reach every admin area and two standalone features, but NOT the two
  * planes a machine identity most obviously exists to drive: invoking a published agent
  * (`/agents/**`) and running a published workflow (`/workflows/**`). `AgentController`'s own
  * docblock said so out loud — "service accounts are deliberately not admitted (`svcScopes: []`)"
@@ -194,8 +195,8 @@ export const ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES: readonly string[] = ADMIN_PL
  *
  * The same reason `ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES` exists.
  * {@link STANDALONE_FEATURE_SCOPE_SOURCES} means "standalone BUSINESS-plane features an end user
- * drives through the SDK/compat surfaces (STT, summarization)". Agents and workflows are neither
- * standalone nor compat: they are the platform's own composition plane, published content a
+ * drives through the SDK (STT, summarization)". Agents and workflows are not
+ * standalone: they are the platform's own composition plane, published content a
  * tenant authors and a machine then calls. A constant whose name no longer describes its
  * contents is exactly how the NEXT scope gets mis-derived, and the boot audit would then be
  * reconciling against a lie.
@@ -272,7 +273,7 @@ export const AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES: readonly string[] = AGENT
  *                                   owner decision (see the fourth family's superseded note).
  *
  * `consultation:report:write` is deliberately NOT here: it is already registered by
- * {@link STANDALONE_FEATURE_SCOPE_SOURCES} (native + compat summarization) and one scope belongs
+ * {@link STANDALONE_FEATURE_SCOPE_SOURCES} (native summarization) and one scope belongs
  * to exactly one family. `POST auth/stream-ticket` stays closed to machines — the SSE routes
  * authenticate the `X-Service-Account-Token` header directly and the STT ticket is auto-issued
  * by session create/refresh, so there is nothing a machine needs it for.
