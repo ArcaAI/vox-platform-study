@@ -26,7 +26,9 @@ TERMINAL_JOB_STATUSES = frozenset({"COMPLETED", "FAILED", "CANCELLED", "DEAD"})
 # as a generic `500 DOMAIN.BUSINESS`. Kept only for the rolling-deploy window in
 # which a NEW worker talks to an OLD gateway; registered in
 # `docs/operations/deprecation-register.md`.
-_LEGACY_STATE_REFUSAL = re.compile(r"Cannot (?:start|fail|complete|cancel|reclaim|restart) job in (?P<status>[A-Z_]+) status")
+_LEGACY_STATE_REFUSAL = re.compile(
+    r"Cannot (?:start|fail|complete|cancel|reclaim|restart) job in (?P<status>[A-Z_]+) status"
+)
 
 #: The machine-readable code the TASK-992 gateway answers a refused claim with.
 STATE_TRANSITION_CODE = "DOMAIN.INVALID_STATE_TRANSITION"
@@ -275,6 +277,7 @@ class APIGatewayClient:
         request_bytes: int | None = None,
         response_bytes: int | None = None,
         byte_source: str | None = None,
+        language_resolution: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Mark a transcription job as COMPLETED with results.
 
@@ -323,6 +326,10 @@ class APIGatewayClient:
             payload["responseBytes"] = response_bytes
         if byte_source is not None:
             payload["byteSource"] = byte_source
+        # TASK-1004 — the job's LanguageResolution receipt (snake_case wire form):
+        # which engine produced the result and the language parameters it applied.
+        if language_resolution is not None:
+            payload["languageResolution"] = language_resolution
 
         return await self._request(
             "PATCH",

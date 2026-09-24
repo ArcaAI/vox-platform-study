@@ -738,28 +738,37 @@ def to_ai_model_config(
     )
 
 
-def _language_from_mode(decoding: AsrSpecDecoding) -> tuple[str | None, bool]:
-    """(inference.language, code_switching) for a batch/default run.
+def _chain_language_fields(
+    decoding: AsrSpecDecoding, engine: AiModelFormat
+) -> tuple[str | None, bool, bool]:
+    """``(language, code_switching, streaming_english_gloss)`` for one chain's engine.
 
-    Streaming resolves the mode per ENGINE at load time (``language_modes``);
-    this is the engine-independent reading a batch job — which has no session
-    language-mode resolution — needs. Unknown mode ⇒ auto-detect (tuning, not
-    selection, so it fails open).
+    TASK-1004 G-2 — the agent's mode resolved against THIS chain's engine with
+    :func:`~stt.pipeline.language_modes.resolve_language`, the same call the
+    streaming loader and the batch worker make. It replaced an engine-UNAWARE
+    reading (the pair's primary subtag + ``code_switching=True`` everywhere) that
+    pinned a whisper.cpp pair to Malayalam and never gave Sarvam ``codemix``.
+
+    These are the chain's DEFAULTS: a session or job resolves its effective mode
+    again at load/start. The mapping is eager over every chain, so a chain whose
+    engine cannot serve the agent's mode maps unpinned here rather than raising —
+    whether that chain may serve the job is decided where the mode is applied. A
+    mode with no catalog meaning auto-detects (tuning, not selection: fails open).
     """
-    code_switching = decoding.code_switching
     if not decoding.language_mode:
-        return None, code_switching
-    from .language_modes import get_language_mode
+        return None, decoding.code_switching, False
+    from .language_modes import LanguageModeUnsupportedError, resolve_language
 
     try:
-        mode = get_language_mode(decoding.language_mode)
-    except KeyError:
+        resolved, receipt = resolve_language(decoding.language_mode, engine, source="agent")
+    except LanguageModeUnsupportedError:
+        return None, decoding.code_switching, False
+    if receipt.reason == "engine_auto_detect":
         logger.warning(
             "Unknown language mode in resolved ASR spec; auto-detecting",
             language_mode=decoding.language_mode,
         )
-        return None, code_switching
-    return mode.primary_language, code_switching or mode.kind == "code_switch"
+    return resolved.language, resolved.code_switching, resolved.streaming_english_gloss
 
 
 def _denoise_engine(model: AsrSpecModel | None) -> str | None:
@@ -880,10 +889,13 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
     diarization = DiarizationConfig(**diarization_kwargs)  # type: ignore[arg-type]
 
     decoding = core.decoding
-    language, code_switching = _language_from_mode(decoding)
+    language, code_switching, english_gloss = _chain_language_fields(
+        decoding, model_configs[models.asr.slug].format
+    )
     inference_kwargs: dict[str, object] = {
         "language": language,
         "code_switching": code_switching,
+        "streaming_english_gloss": english_gloss,
     }
     if decoding.beam_size is not None:
         inference_kwargs["beam_size"] = decoding.beam_size

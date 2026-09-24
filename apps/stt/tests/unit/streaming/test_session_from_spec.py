@@ -173,7 +173,9 @@ async def test_each_session_gets_its_own_pipeline_spec_copy() -> None:
     assert first.inference.language == "vi"
     again = await SessionManager._load_pipeline_config(mgr, PRIMARY_KEY, tenant_id="t1")
     assert again is not first
-    assert again.inference.language == "ml"  # the spec's own value, untouched
+    # The spec's own value, untouched — since TASK-1004 G-2 that is the whisper.cpp
+    # pair's engine-aware resolution (unpinned), not the pair's primary subtag.
+    assert again.inference.language is None
 
 
 @pytest.mark.asyncio
