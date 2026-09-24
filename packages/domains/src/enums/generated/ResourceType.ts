@@ -166,4 +166,10 @@ export enum ResourceType {
   // a platform admin changing a customer's safety posture. Parity with
   // audit.prisma; see resourceType.enum-parity.test.ts.
   TenantGuardrailPolicy = 'TenantGuardrailPolicy',
+  // TASK-1005 D-11 — platform infrastructure: a load/unload/pin/TTL decision
+  // over a (model, service) pair, written only by a platform admin. Every
+  // mutation is audited — a residency change can starve or evict a model out
+  // from under a live clinical session. Parity with audit.prisma; see
+  // resourceType.enum-parity.test.ts.
+  ModelResidencyPolicy = 'ModelResidencyPolicy',
 }
