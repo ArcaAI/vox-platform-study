@@ -56,7 +56,7 @@ from stt.core.exceptions import (
     CloudASRQuotaError,
     CloudASRTranscriptionError,
 )
-from stt.core.metrics import STT_CLOUD_ASR_ERRORS_TOTAL
+from stt.core.metrics import STT_CLOUD_ASR_ERRORS_TOTAL, STT_CLOUD_ASR_NON_FATAL_ERRORS_TOTAL
 from stt.models.cloud_asr import (
     CloudRestConfig,
     raise_for_cloud_status,
@@ -626,6 +626,11 @@ class SarvamDuplexSession:
         code = str(body.get("code") or "unknown")
         message = str(body.get("message") or "sarvam realtime error")
         if not bool(body.get("is_fatal", False)):
+            # TASK-1003 F-16 — non-fatal by design: the session keeps running and
+            # only the caller is told. Without this counter that stream of vendor
+            # complaints was invisible; `code` is the only label (bounded, no
+            # message/session).
+            STT_CLOUD_ASR_NON_FATAL_ERRORS_TOTAL.labels(provider=_PROVIDER, code=code).inc()
             self._emit(DuplexError(code=code, message=message, is_fatal=False))
             return False
         self._fail(_error_class(code), f"realtime error {code}: {message}")

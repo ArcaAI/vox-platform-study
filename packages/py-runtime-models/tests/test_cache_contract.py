@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import inspect
+import logging
 import threading
 from collections import Counter
 from typing import Any
@@ -471,6 +472,36 @@ async def test_vram_probe_failure_disables_probe_without_failing_load(kind: str)
 
     assert await cache.get("a") == "instance::a::1"
     assert cache.stats().vram_probe_enabled is False
+
+
+async def test_absent_estimate_is_silent(kind: str, caplog: pytest.LogCaptureFixture) -> None:
+    """A `None` estimate (e.g. a dict.get-backed estimator on a cold key) is an
+    absent value, not a failure — it must not log `estimate_failed`."""
+    clock, factory = FakeClock(), make_factory(kind)
+    estimates: dict[str, int] = {}
+    cache = build_cache(kind, factory, clock=clock, estimate_bytes=estimates.get)
+
+    with caplog.at_level(logging.WARNING):
+        await cache.get("a")
+
+    assert "estimate_failed" not in caplog.text
+
+
+async def test_raising_estimator_still_logs_and_returns_zero(
+    kind: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A genuine exception from the estimator is still a warning, not silence."""
+    clock, factory = FakeClock(), make_factory(kind)
+
+    def exploding_estimate(_key: str) -> int:
+        raise RuntimeError("estimate boom")
+
+    cache = build_cache(kind, factory, clock=clock, estimate_bytes=exploding_estimate)
+
+    with caplog.at_level(logging.WARNING):
+        await cache.get("a")
+
+    assert "estimate_failed" in caplog.text
 
 
 # ── 5. clamp ────────────────────────────────────────────────────────────────
