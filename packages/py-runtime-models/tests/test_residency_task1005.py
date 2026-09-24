@@ -711,3 +711,19 @@ def test_model_identity_describes_a_key_by_default() -> None:
     assert CacheBinding(cache=make_cache()).describe("k", None) == ModelIdentity(
         model_ref="k", ai_model_id=None
     )
+
+
+def test_a_declared_device_is_reported_before_any_cache_exists() -> None:
+    memory = FakeDeviceMemory(total=64 * GIB, free=32 * GIB)
+    agent = ResidencyAgent(
+        service="nlp",
+        instance="hope-nlp-test",
+        bindings=lambda: [],
+        devices=lambda: [Device(id="cpu", kind="cpu", memory=memory.read)],
+    )
+
+    report = agent.report()
+    assert report["models"] == []
+    assert report["devices"] == [
+        {"id": "cpu", "kind": "cpu", "total_bytes": 64 * GIB, "free_bytes": 32 * GIB}
+    ]

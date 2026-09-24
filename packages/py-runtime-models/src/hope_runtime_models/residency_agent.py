@@ -131,12 +131,15 @@ class ResidencyAgent:
         service: str,
         bindings: Callable[[], Iterable[CacheBinding]],
         planner: Planner | None = None,
+        devices: Callable[[], Iterable[Any]] | None = None,
         instance: str | None = None,
         wall_clock: Callable[[], float] = time.time,
     ) -> None:
         self._service = service
         self._bindings = bindings
         self._planner = planner
+        #: Devices to report even while no cache on them exists yet (lazy caches).
+        self._devices = devices
         self._instance = instance or os.environ.get("HOSTNAME") or socket.gethostname()
         self._wall_clock = wall_clock
 
@@ -144,7 +147,9 @@ class ResidencyAgent:
 
     def report(self) -> dict[str, Any]:
         now = self._wall_clock()
-        devices: dict[str, Any] = {}
+        devices: dict[str, Any] = {
+            device.id: device for device in (self._devices() if self._devices else ())
+        }
         models: list[dict[str, Any]] = []
         for binding in self._live_bindings():
             device = binding.cache.residency.device
