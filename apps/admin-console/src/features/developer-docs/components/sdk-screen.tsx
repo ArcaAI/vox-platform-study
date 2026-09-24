@@ -20,7 +20,11 @@ const hope = new HopeClient({
   apiKey: process.env.HOPE_API_KEY,
 });
 
-await hope.summarization.presummary({ /* ... */ });`;
+// hope.agents.* invokes a published Agent directly — the native
+// TEXT_GENERATION path a "summarize this" call belongs on now that the
+// v1-compat hope.summarization.* surface is gone.
+const [writer] = await hope.agents.list({ task: 'TEXT_GENERATION' });
+const { output } = await hope.agents.invoke(writer.slug, { text: transcript });`;
 
 const VOX_NODE_SERVICE_ACCOUNT = `import { HopeClient } from '@arcaai/vox-node';
 
@@ -146,14 +150,14 @@ export function SdkScreen() {
                 <code className="font-mono text-xs">closeStreamSession()</code> round out the lifecycle. Events are{' '}
                 <code className="font-mono text-xs">transcript</code>, <code className="font-mono text-xs">status</code>,{' '}
                 <code className="font-mono text-xs">error</code>, <code className="font-mono text-xs">resumed</code>, and{' '}
-                <code className="font-mono text-xs">close</code>. This is not an inference stack — the package still has zero runtime
-                dependencies and no audio pipeline of its own; the gateway resolves the tenant&apos;s ASR agent and its models, the same as every
-                other selection surface. There is no SSE alternative here — <code className="font-mono text-xs">/ws/stt/stream</code> is a socket
-                protocol, full stop — unlike a workflow run, where SSE stays the default because it is the only lane that resumes on its own.{' '}
+                <code className="font-mono text-xs">close</code>. This is not an inference stack — the package still has zero runtime dependencies and
+                no audio pipeline of its own; the gateway resolves the tenant&apos;s ASR agent and its models, the same as every other selection
+                surface. There is no SSE alternative here — <code className="font-mono text-xs">/ws/stt/stream</code> is a socket protocol, full stop
+                — unlike a workflow run, where SSE stays the default because it is the only lane that resumes on its own.{' '}
                 <code className="font-mono text-xs">globalThis.WebSocket</code> is still a hard floor: Node 22+, Bun, Deno, or an edge runtime, or
-                this throws <code className="font-mono text-xs">SocketUnavailableError</code> rather than importing a polyfill or quietly serving
-                a transport nobody asked for. See the Manual lane on a published SPEECH_TO_TEXT agent&apos;s Integration tab for the
-                session-ticket details.
+                this throws <code className="font-mono text-xs">SocketUnavailableError</code> rather than importing a polyfill or quietly serving a
+                transport nobody asked for. See the Manual lane on a published SPEECH_TO_TEXT agent&apos;s Integration tab for the session-ticket
+                details.
               </p>
             </div>
           </CardContent>
@@ -179,9 +183,9 @@ export function SdkScreen() {
             <div className="flex flex-col gap-2">
               <h2 className="text-sm font-medium">Calling a published agent — with a session JWT</h2>
               <p className="text-muted-foreground text-sm">
-                <code className="font-mono text-xs">baseUrl</code> MUST include the gateway&apos;s{' '}
-                <code className="font-mono text-xs">/api/v1</code> prefix here — the one detail that differs from the{' '}
-                <code className="font-mono text-xs">@arcaai/vox-node</code> examples above, whose client takes the bare origin instead.
+                <code className="font-mono text-xs">baseUrl</code> MUST include the gateway&apos;s <code className="font-mono text-xs">/api/v1</code>{' '}
+                prefix here — the one detail that differs from the <code className="font-mono text-xs">@arcaai/vox-node</code> examples above, whose
+                client takes the bare origin instead.
               </p>
               <CodeBlock label="AgenticProvider and useAgentInvocation example" code={VOX_BROWSER_JWT} />
             </div>
@@ -189,9 +193,9 @@ export function SdkScreen() {
             <div className="flex flex-col gap-2">
               <h2 className="text-sm font-medium">Or with an API key</h2>
               <p className="text-muted-foreground text-sm">
-                Only when a session JWT is not available. An API key baked into a browser bundle is readable by anyone who opens it — mint one
-                scoped to <code className="font-mono text-xs">agent:invocation:write</code> alone, which is mintable on its own, so a compromised
-                key can invoke one agent family and do nothing else.
+                Only when a session JWT is not available. An API key baked into a browser bundle is readable by anyone who opens it — mint one scoped
+                to <code className="font-mono text-xs">agent:invocation:write</code> alone, which is mintable on its own, so a compromised key can
+                invoke one agent family and do nothing else.
               </p>
               <CodeBlock label="API key AgenticProvider example" code={VOX_BROWSER_API_KEY} />
             </div>
@@ -200,8 +204,8 @@ export function SdkScreen() {
               <h2 className="text-sm font-medium">Starting and watching a workflow run</h2>
               <CodeBlock label="useWorkflowRun example" code={VOX_BROWSER_WORKFLOW} />
               <p className="text-muted-foreground text-sm">
-                The browser always starts a run async and then watches it — it never passes <code className="font-mono text-xs">?mode=</code> the
-                way a direct HTTP call or the server SDK can.
+                The browser always starts a run async and then watches it — it never passes <code className="font-mono text-xs">?mode=</code> the way
+                a direct HTTP call or the server SDK can.
               </p>
             </div>
 
@@ -211,14 +215,14 @@ export function SdkScreen() {
               <p className="text-muted-foreground text-sm">
                 The only change from the default lane above is the <code className="font-mono text-xs">transport</code> option — same{' '}
                 <code className="font-mono text-xs">events</code>, same <code className="font-mono text-xs">status</code>, same{' '}
-                <code className="font-mono text-xs">lastEventId</code>, same <code className="font-mono text-xs">stopWatching()</code>. SSE stays
-                the default because it is the only lane that resumes — a dropped connection costs latency, never frames — while a socket&apos;s
-                ticket is single-use, so a drop ends that watch instead; reach for it only when something between the browser and the gateway
-                buffers <code className="font-mono text-xs">text/event-stream</code>, the symptom being a run that looks stalled and then
-                completes all at once. <code className="font-mono text-xs">globalThis.WebSocket</code> is the same hard floor this option relies
-                on as <code className="font-mono text-xs">@arcaai/vox-node</code> above — this SDK throws{' '}
-                <code className="font-mono text-xs">SocketUnavailableError</code> rather than silently falling back to SSE on a runtime that lacks
-                it. See the Manual lane on a published workflow&apos;s Integration tab for the run-scoped ticket route this option mints.
+                <code className="font-mono text-xs">lastEventId</code>, same <code className="font-mono text-xs">stopWatching()</code>. SSE stays the
+                default because it is the only lane that resumes — a dropped connection costs latency, never frames — while a socket&apos;s ticket is
+                single-use, so a drop ends that watch instead; reach for it only when something between the browser and the gateway buffers{' '}
+                <code className="font-mono text-xs">text/event-stream</code>, the symptom being a run that looks stalled and then completes all at
+                once. <code className="font-mono text-xs">globalThis.WebSocket</code> is the same hard floor this option relies on as{' '}
+                <code className="font-mono text-xs">@arcaai/vox-node</code> above — this SDK throws{' '}
+                <code className="font-mono text-xs">SocketUnavailableError</code> rather than silently falling back to SSE on a runtime that lacks it.
+                See the Manual lane on a published workflow&apos;s Integration tab for the run-scoped ticket route this option mints.
               </p>
             </div>
 
@@ -228,8 +232,8 @@ export function SdkScreen() {
               <code className="font-mono text-xs">FileTranscriptionService</code> respectively, not the invocation hooks above.
             </p>
             <p className="text-muted-foreground text-sm">
-              <code className="font-mono text-xs">/ws/tts/stream</code> also exists, but it is voice-selected rather than agent-selected — there
-              is no published TEXT_TO_SPEECH agent whose Integration tab it could sit on, which is why it is documented here and nowhere else.
+              <code className="font-mono text-xs">/ws/tts/stream</code> also exists, but it is voice-selected rather than agent-selected — there is no
+              published TEXT_TO_SPEECH agent whose Integration tab it could sit on, which is why it is documented here and nowhere else.
             </p>
           </CardContent>
         </Card>

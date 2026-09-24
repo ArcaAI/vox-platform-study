@@ -68,3 +68,13 @@ describe('SdkScreen — the socket surface', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+describe('SdkScreen — TASK-1004 compat removal', () => {
+  it('the API-key example calls the native agent-invocation plane, not the retired hope.summarization.* surface', () => {
+    renderWithProviders(<SdkScreen />);
+
+    expect(screen.getByText(/hope\.agents\.list\(\{ task: 'TEXT_GENERATION' \}\)/)).toBeDefined();
+    expect(screen.getByText(/hope\.agents\.invoke\(writer\.slug, \{ text: transcript \}\)/)).toBeDefined();
+    expect(screen.queryByText(/hope\.summarization\.presummary/)).toBeNull();
+  });
+});
