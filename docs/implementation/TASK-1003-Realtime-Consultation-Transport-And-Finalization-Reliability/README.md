@@ -246,7 +246,8 @@ Each finding lists the root cause and its evidence. Code citations come from the
 
 | OD | Answer | What it changes |
 |---|---|---|
-| OD-1, 2, 4, 5, 8, 9 | As recommended | — |
+| OD-1, 2, 5, 8, 9 | As recommended | — |
+| OD-4 | As recommended ("with the p99 check") | **Adjusted by the p99 check.** Loki, 3 days, text access log: judge n≈695, p50 2.9 s, p90 13.6 s, **p99 50.6 s**, max 60 s; guardrail `validate` n≈819, p50 2.6 s, p90 10.1 s, p99 50 s. The proposed 40 s judge / 45 s TEXT budget would cut real p99 calls, so: judge budget stays **60 s** with `maxAttempts` 2 → **1**; TEXT→guardrail `timeoutS` 10 → **75 s**; retries only on connect errors and 502/503/504, **never** on `ReadTimeout`; breaker on the TEXT→guardrail leg. The nesting invariant 75 > 60 × 1 is pinned by a test. These percentiles are inflated by today's retry stacking and should fall once it stops |
 | **OD-3** | Supersede, **and** "ensure the recording (when storing the stream as a file to storage is enabled) … nothing broken, the full stream will be captured and stored properly" | STT stores every session unconditionally: `upload_streaming_raw_chunk` during the session, then `upload_streaming_raw_complete` (WAV), processed WAV, transcript and metadata at finalize (`session_manager.py:6039-6135`, keyed `sessions/{session_id}/`). **Acceptance criteria added (AC-S1…S4, §8.3):** a superseded session is closed through the **normal finalize path** (flush, then upload), never cancelled or discarded; no audio frame is dropped at the head (pre-open buffer), across a reconnect (resume + replay), or at the tail (in-band EOS); and every STT session bound to a consultation stays linked to it (`TranscriptionJob.consultationId`) |
 | **OD-6** | "No routing — strictly follow the model and provider configured in the ASR Agent, and fall back to the default/fallback provider/model set by platform/tenant admin" | **Verified already true:** the chain is the agent's own `role:'fallback'` models or its named `parameters.fallback.agentSlug` agent (`build-resolved-asr-spec.ts:743-751`), and credentials cascade tenant → SYSTEM. So: **no** language routing is added; the script-mismatch signal (S-13) is **telemetry only** and must never trigger an engine switch (pinned by test); non-fatal vendor errors keep not switching (D-5). The ALaaS `HOPE_STT_AGENT_SLUG_BY_MODE` map, when set, is an explicit client selection (TASK-1002 precedence 1); the lane logs it and does not extend it |
 | **OD-7** | "make sure timeout is set to 5m" | **Verified live:** no `GlobalSetting` row exists for `consultation.session.completionTimeoutMinutes` in any tenant (`psql` on `hope-postgres-0`), so the descriptor default of **5** applies everywhere; the gateway logged `timeoutMinutes: 5`. No change; a descriptor test pins the default at 5 (L-LIFECYCLE) |
@@ -297,6 +298,26 @@ Each writer gets its own worktree from the current `dev-2.2` HEAD (after this RE
 | AC-S2 | The stored raw WAV of a session contains every frame the client sent before `stop`, including the frames in flight when the stop arrives (in-band EOS; `frames_dropped_after_finalize == 0`) | L-EOS |
 | AC-S3 | Audio produced before the socket opens and during a reconnect reaches the session (pre-open ring + SDK resume replay); a recreate after a failed resume finalizes the old session first | L-ALS |
 | AC-S4 | The bounded DELETE claim wait (S-10b) never shortens or skips the upload; the upload happens before the summary is claimed | L-EOS |
+
+### 8.4 Deploy-time settings (wave 3, admin API, read back after each write)
+
+| Key | Tier | Live today | Set to | Why |
+|---|---|---|---|---|
+| `text.externalGuardrail.timeoutS` | SYSTEM `GlobalSetting` | **10** (stored row; the seed upsert never overwrites `value`) | **75** | L-GRD stops retrying `ReadTimeout`, so leaving the stored 10 s in place would fail ~10 % of validations closed on the first attempt. **Deploy blocker** |
+| `stt.warmDefaultAsrOnBoot` | SYSTEM | absent (code default off) | `true` | OD-5 |
+| `consultation.session.completionTimeoutMinutes` | — | absent, so default **5** | unchanged | OD-7 (verify only) |
+
+Checked 2026-09-24: `AiRoutingPolicy` `guardrail.validate` has no `configJson` timeout (no per-selection escape from the budget); the SYSTEM `nlp.ner` election row exists (the prerequisite for L-NER).
+
+### 8.5 Follow-ups found in-lane (out of scope, recorded)
+
+- **Inverted budgets one layer up (pre-existing):** apps/nlp → TEXT `ExternalTextConfig` 30 s with retry-on-everything (`apps/nlp/.../core/config.py:678`); harness `TextClient` httpx 120 s (`apps/harness/.../core/config.py:671`); gateway non-streaming TEXT callers at 120–180 s. A generation with both input and output screening can now legitimately take up to 75 s + generation + 75 s. Before this change the same calls failed closed after 30 s.
+- The deployment repo has no CI job that runs `promtool test rules` (`alert-rules.test.yml` is run by hand).
+- `packages/py-runtime-models` has no worktree source guard: from a worktree its tests silently import the primary checkout unless `PYTHONPATH=<wt>/src`.
+- `NlpClient.classify_tokens` (the model-less call) now has no production callers.
+- Gateway `StreamingSessionService.removeSession` DELETE uses a literal 30 s timeout (`streamingSession.service.ts:546`), below STT's governed 65 s tail-wait bound. A sibling finalize running past 30 s can still lose the summary. Govern it above STT's bound.
+- STT `redis_streams._reclaim_pending` (`XAUTOCLAIM`) deliveries do not signal ingest progress, so a finalize right after a consumer takeover waits out the full bound (rare, bounded).
+- Multi-replica gateway: a cross-instance reconnect restarts `binarySeq` at 0 and STT refuses `seq <= last_seq`. That is safe with today's single API replica but breaks full-stream capture (AC-S3) once there is a second one.
 
 ## 9. Verification (after deploy)
 
