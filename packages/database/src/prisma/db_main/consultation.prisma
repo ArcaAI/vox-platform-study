@@ -40,6 +40,18 @@ model Consultation {
   // state-machine.md). Append-only within a session; cleared on SIGNED.
   degradedReasons String[] @default([])
 
+  // TASK-1004 D-3 — the declared SOURCE (spoken) language for this
+  // consultation, as a closed catalog id (`en`, `ml`, `ml-en`, ...; see
+  // `EffectiveLanguageModeResolver`'s normalizer). A typed promotion of the
+  // legacy free-form `metadata.summaryLanguage` (`summary-language.ts`),
+  // which is a misleading name: that key was never the note's OUTPUT
+  // language, only ever what was SPOKEN. Backfilled non-destructively
+  // (`backfill-spoken-language-mode.sql`) — only where the legacy value
+  // normalizes to a catalog id; unresolvable legacy values are left NULL
+  // rather than guessed. NULL means "no declared default" — live/batch
+  // sessions then fall back to the agent's own decoding default.
+  spokenLanguageMode String?
+
   // Resource status + Audit (standard fields)
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?

@@ -158,6 +158,17 @@ model AiModel {
   memorySizeMb Int? // Estimated GPU/CPU memory in MB
   computeType  String? // float32, float16, int8
 
+  // TASK-1005 D-2 — MEASURED footprint, written back by the
+  // ModelResidencyController from the NVML/DCGM free-memory delta observed
+  // around an actual load (never a catalogue estimate — `memorySizeMb` above
+  // is the admin-entered guess, chronically null, that made memory-aware
+  // eviction impossible). `observedAt` is the timestamp of the measurement
+  // that produced both other fields; absence of all three means "never
+  // measured yet", not "zero".
+  observedMemoryMb   Int? // measured resident bytes / (1024*1024) at last load
+  observedLoadSeconds Float? // measured wall-clock load time at last load
+  observedAt          DateTime?
+
   // TASK-890 §3.11 — the four deprecated download-bookkeeping columns
   // (`downloadStatus`, `downloadedAt`, `fileSizeMb`, `localPath`) and the
   // `AiModelDownloadStatus` enum are GONE. `availability` +
@@ -202,6 +213,10 @@ model AiModel {
   // the same reason; these back-relations exist only to satisfy Prisma.
   agents         Agent[]              @relation("AgentModel")
   agentFallbacks AgentModelFallback[] @relation("AgentFallbackModel")
+  // TASK-1005 — `ModelResidencyPolicy.aiModelId` is a real FK for the same
+  // reason (a policy can never name a model that does not exist); this
+  // back-relation exists only to satisfy Prisma.
+  residencyPolicies ModelResidencyPolicy[] @relation("ModelResidencyPolicyModel")
 
   // Indexes
   @@unique([tenantId, slug], name: "AiModel_tenant_slug_unique")

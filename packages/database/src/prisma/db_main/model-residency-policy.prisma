@@ -1,0 +1,132 @@
+// ============================================================================
+// Model Residency Policy — desired load/unload/pin state per (model, service)
+//
+// TASK-1005 §5.2. SYSTEM-only platform configuration (rule 00 "Configuration
+// Principles"): every row is written by a platform admin through the
+// ModelResidencyController's admin routes and always carries
+// `tenantId = 00000000-0000-0000-0000-000000000000` (the reserved SYSTEM
+// tenant). There is no per-tenant override and no tenant → SYSTEM cascade —
+// model residency is platform infrastructure, never a tenant-configurable
+// surface (owner decision D-11: "Platform-admin only; tenants never see this
+// surface"). The column stays (rather than being dropped) so this model keeps
+// the same shape as every other tenant-scoped table and the tenant-scope
+// extension's allow-lists apply to it unchanged (mirrors `AiRoutingPolicy` /
+// `AiModel` registration in `packages/database/src/extensions/tenant-scope.ts`).
+//
+// One row is the DESIRED policy for one (aiModelId, service) PAIR — not for
+// the model alone. `service` names the WORKLOAD the policy applies to
+// (`stt` | `stt-worker` | `nlp` | `lm-studio` | `text`), and the same
+// catalogue model can be resident on more than one service (an embedding
+// model warmed by both `nlp` and `stt`), so the pair is the grain, exactly
+// as `AiRoutingPolicy` grains on (tenant, taskKey) rather than tenant alone.
+//
+// `class` (`ModelResidencyClass`, enums.prisma):
+//   PINNED     always resident, loaded before readiness, never evicted by the
+//              policy engine.
+//   WARM       promoted to resident once demand is sustained; evicted like
+//              ON_DEMAND once idle.
+//   ON_DEMAND  loaded on a request miss, evicted after `idleTtlSeconds` of no
+//              in-flight use — the default when no row exists for a pair.
+//
+// A model backing an assigned ASR agent's primary, or the live-summary LLM,
+// is treated as implicitly PINNED by the controller even with NO row here
+// (§5.2 "Defaults when no row exists"); a row in this table is either an
+// explicit admin override of that default or configuration for a model with
+// no such implicit treatment.
+//
+// This is a typed table, not `_metadata` JSONB on `AiModel`, because the
+// controller QUERIES it on every 10-second decision loop (§5.3) — the same
+// reasoning `AiRoutingPolicy`'s header gives for promoting fields out of JSON.
+// ============================================================================
+
+model ModelResidencyPolicy {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields — ALWAYS the SYSTEM tenant (platform-wide; D-11).
+  // See the file header for why the column still exists on a SYSTEM-only row.
+  tenantId String
+
+  // core (business) fields
+
+  // WHICH catalogue model this policy governs. Real FK — a policy can never
+  // name a model that does not exist, mirroring `AiRoutingPolicy.modelId`.
+  // `Restrict` so a model with a live residency policy cannot be hard-deleted
+  // out from under it; the house rule is soft delete anyway.
+  aiModelId String
+  AiModel   AiModel @relation("ModelResidencyPolicyModel", fields: [aiModelId], references: [id], onDelete: Restrict)
+
+  // WHICH workload the policy applies to. `stt` | `stt-worker` | `nlp` |
+  // `lm-studio` | `text` — the same workload vocabulary as `AiModel.servedBy`
+  // and the `model_resident{service}` metric label. Deliberately a plain
+  // string and not an enum: the list is validated in the entity
+  // (`ModelResidencyPolicyEntity.validate`), not the database, matching how
+  // `AiRoutingPolicy.taskKey` stays a string validated against
+  // `AI_TASK_KEYS` in the application layer.
+  service String
+
+  // Desired residency class; ON_DEMAND is the same default the controller
+  // applies when no row exists at all, so an explicit row that merely sets a
+  // TTL or a priority does not have to also restate the class.
+  class ModelResidencyClass @default(ON_DEMAND)
+
+  // Idle time-to-live before an ON_DEMAND/WARM-but-idle resident is unloaded.
+  // NULL defers to the owning service's own `<svc>.modelCache.ttlSeconds`
+  // default. Meaningless for PINNED (never evicted) but left settable rather
+  // than refused, so switching a row's class back to ON_DEMAND does not lose
+  // a previously-configured TTL.
+  idleTtlSeconds Int?
+
+  // Tie-break / ordering hint the policy engine's cost-aware eviction score
+  // and the admission placement step read (§5.3). Higher priority is
+  // "more valuable to keep resident", mirroring `AiRoutingPolicy.priority`'s
+  // "lower serves first" role as an ordering input the resolver — not the
+  // database — interprets.
+  priority Int @default(0)
+
+  // Ceiling on concurrently-resident instances of this (model, service) pair
+  // across devices — LM Studio's own JIT load can create more than one
+  // instance of a key (§5.1 "not idempotent"), and this bounds how many the
+  // controller will admit.
+  maxInstances Int @default(1)
+
+  // Placement hint for the admission step's device choice (§5.3 step 3) —
+  // e.g. a specific GPU id or `cpu`. NULL lets the controller place by most
+  // free memory. Advisory only: it is a tie-break, never a guarantee, because
+  // Kubernetes time-slice slots are static (rule 09, TASK-1005 D-7).
+  preferredDevice String?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing.
+  //
+  // On `@@unique`, `name:` is the CLIENT-facing compound key and `map:` is
+  // the DATABASE index name (rule 02's drift trap) — both are given
+  // explicitly here so the migration author never has to guess Prisma's
+  // default. One row per (tenant, model, service): a second policy for the
+  // same pair is a conflicting desired state, not a second candidate (unlike
+  // `AiRoutingPolicy`, which deliberately allows many candidate rows per
+  // selection).
+  @@unique([tenantId, aiModelId, service], name: "ModelResidencyPolicy_tenant_model_service_unique", map: "ModelResidencyPolicy_tenant_model_service_key")
+  // Every row carries the same (SYSTEM) tenantId, so a bare `[tenantId]`
+  // index would have cardinality 1 and index nothing useful. The composite
+  // below leads with `tenantId` anyway (serving the plain tenant-scope reads
+  // the extension injects, the `AiRoutingPolicy` precedent) while adding the
+  // real filter the controller's per-service decision loop (§5.3) runs.
+  @@index([tenantId, service], name: "ModelResidencyPolicy_tenantId_service_idx")
+  // Reverse lookup: "which policies name this model?" — also what makes the
+  // FK's Restrict check cheap.
+  @@index([aiModelId], name: "ModelResidencyPolicy_aiModelId_idx")
+  @@schema("core")
+}

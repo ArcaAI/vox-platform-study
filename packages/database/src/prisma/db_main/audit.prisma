@@ -405,5 +405,14 @@ enum ResourceType {
   // `GuardrailAvailabilityService` broadcasts on create and update.
   TenantGuardrailPolicy
 
+  // TASK-1005 D-11 — platform infrastructure: a load/unload/pin/TTL decision
+  // over a (model, service) pair, written ONLY by a platform admin through
+  // the ModelResidencyController's admin routes. Every mutation (create /
+  // update / force-load override / delete) is audited — a residency change
+  // can starve or evict a model out from under a live clinical session, so
+  // who/what/when/before-after belongs in the trail exactly like
+  // `AiRoutingPolicy` above.
+  ModelResidencyPolicy
+
   @@schema("core")
 }
