@@ -19,9 +19,9 @@ import {
   WorkflowDefinitionResponse,
   WorkflowSyncResponse,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Optional, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
-import { IWorkflowExposureService } from '@arcaai/applications';
+import { AsrLanguageCapabilityService, IWorkflowExposureService } from '@arcaai/applications';
 
 /** TASK-864 — the one-time secret payload (declared here: the exposure DTOs carry no class for it). */
 export class WorkflowWebhookSecretResponseDto {
@@ -68,6 +68,9 @@ export class WorkflowDefinitionController {
     // TASK-864 — the webhook secret lives on the exposure plane (it authenticates an invoke).
     @Inject(IWorkflowExposureService)
     private readonly workflowExposureService: IWorkflowExposureService,
+    // TASK-1004 §4.5 — advisory language warnings for the ASR agent a published graph names.
+    // Optional + trailing: absent, the publish response is exactly what it was.
+    @Optional() private readonly languageCapability?: AsrLanguageCapabilityService,
   ) {}
 
   @Post()
@@ -380,7 +383,11 @@ export class WorkflowDefinitionController {
   @ApiResponse({ status: 400, description: 'Row is PUBLISHED/DEPRECATED, or the graph cannot be compiled.' })
   @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
   async publish(@Param('id') id: string, @Body() request: PublishWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
-    return this.workflowDefinitionService.publish(id, request ?? {});
+    const published = await this.workflowDefinitionService.publish(id, request ?? {});
+    // TASK-1004 §4.5 — the node names only the agent; the warnings say what its engine serves.
+    if (!this.languageCapability) return published;
+    const warnings = await this.languageCapability.warningsForWorkflow(published.tenantId, published.compiledConfig);
+    return warnings.length > 0 ? { ...published, warnings } : published;
   }
 
   @Post(':id/activate')

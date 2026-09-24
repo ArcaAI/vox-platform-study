@@ -124,3 +124,24 @@ describe('warningsForAgent — configuration-time, never blocking', () => {
     await expect(make().warningsForAgent('tenant-1', 'x')).resolves.toEqual([]);
   });
 });
+
+describe('warningsForWorkflow — the ASR agent(s) a workflow names', () => {
+  const compiled = (slugs: string[]) => ({
+    stages: [{ nodes: slugs.map((slug, i) => ({ nodeId: `n${i}`, type: 'core.agent', config: { agentRef: { slug } } })) }],
+  });
+
+  it('warns for the SPEECH_TO_TEXT agent a node names; other agents (not ASR) yield nothing', async () => {
+    resolver.resolveChainFormats.mockImplementation(async ({ agentSlug }: { agentSlug: string }) => {
+      if (agentSlug === 'soap-writer') throw new HttpException('not a SPEECH_TO_TEXT agent', 400);
+      return { agentSlug, formats: ['WHISPER_CPP'] };
+    });
+    const warnings = await make().warningsForWorkflow('tenant-1', compiled(['soap-writer', 'platform-transcription', 'platform-transcription']));
+    expect(new Set(warnings.map((w) => w.agentSlug))).toEqual(new Set(['platform-transcription']));
+    expect(warnings.map((w) => w.mode)).toEqual(['ml-en', 'vi-en']);
+  });
+
+  it('a graph that names no agent yields nothing', async () => {
+    expect(await make().warningsForWorkflow('tenant-1', { stages: [] })).toEqual([]);
+    expect(await make().warningsForWorkflow('tenant-1', null)).toEqual([]);
+  });
+});

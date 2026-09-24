@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { HttpException, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { AsrAgentResolverService } from '../agent-resolver/asr-agent-resolver.service';
+import { workflowAgentNodes } from '../agent-resolver/governing-workflow-asr';
 import { StreamingSessionService } from '../streaming/streamingSession.service';
 import type { LanguageCapabilityLevel, SttLanguageModeCatalog } from '../streaming/dto';
 
@@ -111,14 +112,29 @@ export class AsrLanguageCapabilityService {
       }
       return warnings;
     } catch (error) {
-      this.logger.warn({
+      // An HTTP refusal (not an ASR agent, not published) is an expected "nothing to judge"; any
+      // other failure is worth a WARN. Either way the admin write goes ahead without warnings.
+      const payload = {
         message: 'Language capability warnings could not be computed; the write proceeds without them',
         tenantId,
         agentSlug,
         error: error instanceof Error ? error.message : String(error),
-      });
+      };
+      if (error instanceof HttpException) this.logger.debug(payload);
+      else this.logger.warn(payload);
       return [];
     }
+  }
+
+  /**
+   * The warnings for every SPEECH_TO_TEXT agent a compiled workflow graph names on a `core.agent`
+   * node (each agent once). A node naming any other kind of agent resolves to no ASR chain and
+   * contributes nothing. Never throws.
+   */
+  async warningsForWorkflow(tenantId: string, compiledConfig: unknown): Promise<LanguageCapabilityWarning[]> {
+    const slugs = [...new Set(workflowAgentNodes(compiledConfig).map((node) => node.slug))];
+    const perAgent = await Promise.all(slugs.map((slug) => this.warningsForAgent(tenantId, slug)));
+    return perAgent.flat();
   }
 
   /**
