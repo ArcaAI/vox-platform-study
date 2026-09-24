@@ -12,9 +12,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from stt.core.exceptions import SessionManagerDrainingError
+from stt.pipeline.dto import AiModelFormat
 from stt.pipeline.language_modes import (
     LanguageModeUnsupportedError,
     language_mode_catalog_payload,
@@ -79,16 +80,51 @@ def _resolve_active_pipeline(mgr: SessionManager, session: Any) -> tuple[str, st
 
 @router.get(
     "/language-modes",
-    responses={200: {"description": "Language-mode catalog + per-mode supported engines"}},
+    responses={
+        200: {"description": "Language-mode catalog + per-mode supported engines"},
+        422: {"description": "`engines` names a format this service does not know"},
+    },
 )
-async def get_language_modes() -> dict[str, Any]:
+async def get_language_modes(
+    engines: str | None = Query(
+        default=None,
+        description=(
+            "TASK-1004 — a chain's ASR engine formats, primary first, comma-separated "
+            "(e.g. `WHISPER_CPP,SARVAM`). When present each mode also carries `levels` "
+            "({engine: native|degraded|unsupported}) and `effective`, the level that "
+            "chain delivers. Omitted ⇒ the catalog-wide payload, unchanged."
+        ),
+    ),
+) -> dict[str, Any]:
     """Return the closed language-mode catalog and, per mode, the catalog-wide
     set of engines that can serve it.
 
     Backend-authoritative source of truth for the SDK picker — no session
     manager required (the catalog is static).
     """
-    return {"modes": language_mode_catalog_payload()}
+    return {"modes": language_mode_catalog_payload(_parse_engine_chain(engines))}
+
+
+def _parse_engine_chain(raw: str | None) -> list[AiModelFormat] | None:
+    """``engines`` → ordered formats; ``None`` when no engine is named.
+
+    An unknown format is a 422 naming it — never silently dropped, since a
+    dropped primary would report the fallback's level as the chain's.
+    """
+    names = [part.strip() for part in (raw or "").split(",") if part.strip()]
+    if not names:
+        return None
+    unknown = [name for name in names if name not in AiModelFormat.__members__]
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": f"Unknown engine format(s): {', '.join(unknown)}",
+                "unknownEngines": unknown,
+                "knownEngines": [e.value for e in AiModelFormat],
+            },
+        )
+    return [AiModelFormat(name) for name in names]
 
 
 # -------------------------------------------------------------------------
