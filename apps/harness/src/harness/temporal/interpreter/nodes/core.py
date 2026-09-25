@@ -1951,9 +1951,12 @@ async def _run_ner(
         status="SUCCEEDED",
         output={
             "data": {"entities": _ner_entities(response)},
-            # The classified TEXT rides through on `out`, exactly as `core.classify` passes its
-            # own text along, so a node bound downstream still sees the document.
-            "out": text,
+            # The classified TEXT rides through on the `out` SOCKET, so a node bound downstream
+            # still sees the document. TASK-1006 — under the socket's RUNTIME key `text`
+            # (`core.agent`'s `out -> text`, the parity fixture), as the live lane's NER already
+            # publishes it: the key used to be `out`, which no socket reads, so on this lane a
+            # summarizer bound to `n_ner.out` was handed nothing.
+            "text": text,
             "agent": {"slug": resolved.slug, "versionNumber": resolved.version_number},
         },
     )

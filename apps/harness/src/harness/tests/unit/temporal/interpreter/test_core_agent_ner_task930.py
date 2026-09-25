@@ -199,9 +199,11 @@ class TestNerDispatch:
                 {"text": "500mg", "label": "DOSAGE", "start": 21, "end": 26, "score": 0.81},
             ]
         }
-        # `out` is the INPUT text: a downstream node bound to this agent must still see the
-        # document, exactly as `core.classify` passes its text through.
-        assert result.output["out"] == _TEXT
+        # The `out` socket carries the INPUT text: a downstream node bound to this agent must
+        # still see the document. TASK-1006 — under the socket's runtime key `text` (the key
+        # `_resolve_bound_inputs` reads); `out` was a key no socket resolves.
+        assert result.output["text"] == _TEXT
+        assert "out" not in result.output
         assert result.output["agent"]["slug"] == "medical-ner"
 
     @pytest.mark.asyncio
