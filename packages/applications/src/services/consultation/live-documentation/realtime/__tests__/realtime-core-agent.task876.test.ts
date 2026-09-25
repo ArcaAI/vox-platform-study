@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { REALTIME_NODE_HANDLERS, realtimeHandlerFor, type RealtimeCapabilities } from '../realtime-node-registry';
 
 const capabilities = (over: Partial<RealtimeCapabilities> = {}): RealtimeCapabilities => ({
-  transcribe: vi.fn().mockResolvedValue({ transcript: 'raw transcript', pipelineId: null }),
+  transcribe: vi.fn().mockResolvedValue({ transcript: 'raw transcript' }),
   generateDocument: vi.fn().mockResolvedValue({ text: 'note', sections: [], stats: null, repaired: false }),
   extractEntities: vi.fn().mockResolvedValue({ entities: [], vitals: undefined }),
   proposeCorrections: vi.fn().mockResolvedValue({ proposals: [], textSha256: '', rejectedProposals: 0 }),

@@ -198,6 +198,9 @@ describe('the live ASR agent publishes per-utterance timing, not a bare string',
     await service.stop(CID, { persistSnapshot: false });
 
     const output = captureOutput(cache);
+    // TASK-1006 — the capture node reports no pipeline binding (it was always `null`: the session
+    // runs on its resolved ASR agent).
+    expect(output).not.toHaveProperty('pipelineId');
     const segments = output.segments as Array<Record<string, unknown>>;
     expect(segments).toHaveLength(1);
     expect(segments[0]).toMatchObject({
