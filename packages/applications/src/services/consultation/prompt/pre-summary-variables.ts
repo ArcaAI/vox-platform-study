@@ -1,5 +1,5 @@
 /**
- * v1 pre-summary template variables — the VALUE builders, plus the v1-COMPAT-ONLY substituter.
+ * v1 pre-summary template variables — the VALUE builders.
  *
  * ## What TASK-890 changed here, and what it deliberately did not
  *
@@ -9,12 +9,11 @@
  *
  * What moved is the RENDERER. The native Vox v2 consultation path renders through the ONE
  * grammar (`renderTemplate`, §3.2) over the `context.*` namespace the tenant's
- * `consultation_legacy_v1` schema clone declares, so it no longer calls
- * {@link substitutePreSummaryVariables} at all.
+ * `consultation_legacy_v1` schema clone declares.
  *
- * That function's ONE caller was the FROZEN v1-compat plane
+ * The v1 single-brace substituter that used to live here served only the FROZEN v1-compat plane
  * (`apps/api/src/modules/text-compat/summary-prompt.builder.ts`), removed with the v1-compat
- * surface (TASK-1004); it has no production caller left. **Do not add one.**
+ * surface (TASK-1004); with no caller left it was deleted (TASK-1006). **Do not add one back.**
  *
  * The pure pieces live HERE, in `@arcaai/applications`, because `apps/api` depends on this
  * package and not the reverse. Framework-free on purpose (no Nest, no DI).
@@ -128,31 +127,4 @@ export function buildPreSummaryVariables(sources: PreSummaryVariableSources): Re
     formatted_previous_visits: orDefault(sources.previousVisits, ''),
     language_name: resolveV1LanguageName(sources.language),
   };
-}
-
-/** v1's single-brace placeholder syntax. */
-const V1_PLACEHOLDER_PATTERN = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
-
-/**
- * Substitute v1's single-brace placeholders into a pre-summary body.
- *
- * TASK-890 §3.11: this is the LAST single-brace renderer in the monorepo, kept only for the
- * frozen v1-compat body described in the module docstring. Everything else — the consultation
- * assembly path, the prompt test, the agent lanes and the harness — renders `{{ path }}`
- * through `renderTemplate` in `@arcaai/workflow-contract`.
- *
- * ONE pass, OWN keys only:
- *  - a brace sequence appearing inside a substituted value (clinical free text
- *    can contain anything) is never re-interpreted;
- *  - an unknown `{token}` is left as written rather than silently blanked;
- *  - an inherited `Object.prototype` key (`{constructor}`, `{toString}`) is NOT
- *    a variable and is left as written.
- *
- * The replacement is supplied by a callback, so `$&`/`$1` sequences inside a
- * value stay literal text.
- */
-export function substitutePreSummaryVariables(template: string, values: Record<string, string>): string {
-  return template.replace(V1_PLACEHOLDER_PATTERN, (match, name: string) =>
-    Object.prototype.hasOwnProperty.call(values, name) ? values[name] : match,
-  );
 }

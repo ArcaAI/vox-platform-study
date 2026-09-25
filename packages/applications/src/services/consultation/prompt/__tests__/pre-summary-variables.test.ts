@@ -10,12 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  buildPreSummaryVariables,
-  PRE_SUMMARY_TEMPLATE_VARIABLES,
-  resolveV1LanguageName,
-  substitutePreSummaryVariables,
-} from '../pre-summary-variables';
+import { buildPreSummaryVariables, PRE_SUMMARY_TEMPLATE_VARIABLES, resolveV1LanguageName } from '../pre-summary-variables';
 
 describe('PRE_SUMMARY_TEMPLATE_VARIABLES', () => {
   it("declares exactly v1's nine placeholder names, in v1 declaration order", () => {
@@ -114,26 +109,10 @@ describe('buildPreSummaryVariables', () => {
   });
 });
 
-describe('substitutePreSummaryVariables', () => {
-  it('substitutes in ONE pass — a brace sequence inside a value is never re-interpreted', () => {
-    const rendered = substitutePreSummaryVariables('Dept={current_department} Vitals={safe_vitals}', {
-      current_department: '{safe_vitals}',
-      safe_vitals: 'BP 120/80',
-    });
-    expect(rendered).toBe('Dept={safe_vitals} Vitals=BP 120/80');
-  });
-
-  it('leaves an unknown placeholder as written rather than blanking it', () => {
-    expect(substitutePreSummaryVariables('{not_a_v1_variable}', {})).toBe('{not_a_v1_variable}');
-  });
-
-  it('never resolves an inherited Object.prototype key as a value', () => {
-    // `constructor` / `toString` are reachable via `in` but are NOT template
-    // variables; substituting them would inject JS source into a clinical prompt.
-    expect(substitutePreSummaryVariables('{constructor} {toString}', {})).toBe('{constructor} {toString}');
-  });
-
-  it('treats `$&`-style replacement patterns in a value as literal text', () => {
-    expect(substitutePreSummaryVariables('{safe_vitals}', { safe_vitals: 'BP $& 120/80 $1' })).toBe('BP $& 120/80 $1');
+describe('substitutePreSummaryVariables — removed (TASK-1006)', () => {
+  it('is gone: its one caller, the v1-compat summary prompt builder, went with TASK-1004', async () => {
+    // Every prompt renders through `renderTemplate`'s `{{ path }}` grammar now; a second,
+    // single-brace renderer with no caller is how the two grammars drift apart unnoticed.
+    expect(await import('../pre-summary-variables')).not.toHaveProperty('substitutePreSummaryVariables');
   });
 });

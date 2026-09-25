@@ -322,7 +322,7 @@ describe('PromptAssemblyService', () => {
     // A `{token}` that happens to name an inherited Object.prototype member must
     // be left alone like any other unknown placeholder — never resolved to the
     // function itself, which String.replace would stringify as JS source into a
-    // clinical prompt. Mirrors the same guard in substitutePreSummaryVariables.
+    // clinical prompt.
     it('never resolves an inherited Object.prototype key as a value', async () => {
       mockPromptTemplateRepository.findById.mockReset();
       mockPromptTemplateRepository.findById.mockResolvedValue({
