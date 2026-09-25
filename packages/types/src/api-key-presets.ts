@@ -28,7 +28,6 @@ export const API_KEY_SCOPE_PRESETS: readonly ApiKeyScopePreset[] = [
       'consultation:report:write',
       'stt:transcription:read',
       'stt:transcription:write',
-      'stt:model:read',
       'tts:speech:write',
       'tts:voice:read',
       'tenant:context-schema:read',

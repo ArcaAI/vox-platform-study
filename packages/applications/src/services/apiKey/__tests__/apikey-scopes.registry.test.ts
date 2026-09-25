@@ -15,7 +15,13 @@ describe('API Key Scope Registry', () => {
     it('should contain STT scopes', () => {
       expect(API_KEY_SCOPE_REGISTRY['stt:transcription:read']).toBeDefined();
       expect(API_KEY_SCOPE_REGISTRY['stt:transcription:write']).toBeDefined();
-      expect(API_KEY_SCOPE_REGISTRY['stt:model:read']).toBeDefined();
+    });
+
+    it('no longer contains the pipeline / TenantSttConfig admin scopes — TASK-1006 removed the surfaces they gated', () => {
+      expect(API_KEY_SCOPE_REGISTRY['admin:audio-pipeline:manage']).toBeUndefined();
+      expect(API_KEY_SCOPE_REGISTRY['admin:tenant-stt-config:manage']).toBeUndefined();
+      // `stt:model:read` gated only the non-admin `audio/pipelines` catalogue — gone with it.
+      expect(API_KEY_SCOPE_REGISTRY['stt:model:read']).toBeUndefined();
     });
 
     it('no longer contains stt:stream:write — TASK-1004 removed the v1 compat STT surface it gated', () => {
@@ -67,10 +73,10 @@ describe('API Key Scope Registry', () => {
     // that carried conservative `@ForbidApiKey()` default now
     // declare a real scope, so the vocabulary has to exist before the
     // decorators can reference it (`@RequiredScopes` validates at DECORATION
-    // time). Reuse was preferred wherever a scope already fitted:
-    // `stt:model:read` gates the ASR pipeline catalog and the previously
-    // unused `user:profile:read` gates the three `me`-shaped reads, so neither
-    // appears below.
+    // time). Reuse was preferred wherever a scope already fitted: the
+    // previously unused `user:profile:read` gates the three `me`-shaped reads,
+    // so it does not appear below. (`stt:model:read`, reused for the ASR
+    // pipeline catalogue, went with that catalogue — TASK-1006.)
     it('should contain the business-plane scopes policy A1 introduces', () => {
       for (const scope of [
         'ai:inference:write',
@@ -267,9 +273,11 @@ describe('API Key Scope Registry', () => {
     // 53 -> 54 (TASK-890): adds `admin:ai-model:read`, the READ half of the model-registry
     // area, so the tenant catalogue route has a `svc:admin:ai-model:read` twin to declare.
     // 54 -> 55 (TASK-1005): adds `admin:model-residency:manage` for `admin/model-residency`.
-    it('marks all 55 admin: scopes reserved — INCLUDING the admin:* wildcard', () => {
+    // 55 -> 53 (TASK-1006): removes `admin:audio-pipeline:manage` and `admin:tenant-stt-config:manage`
+    // with the `admin/audio/pipelines` and `admin/stt-config` surfaces they gated.
+    it('marks all 53 admin: scopes reserved — INCLUDING the admin:* wildcard', () => {
       const admin = Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => s.startsWith('admin:'));
-      expect(admin.length).toBe(55);
+      expect(admin.length).toBe(53);
       // `admin:*` sits OUTSIDE the contiguous admin block in the source file.
       // Enumerating by line range instead of by KEY would leave the single most
       // dangerous string in the family grantable.
@@ -304,8 +312,10 @@ describe('API Key Scope Registry', () => {
       // `admin:pipeline-policy:manage` retired with `PipelinePolicy` (54 admin + 3 webhook);
       // 57 -> 56 (TASK-888): `admin:tenant-tts-config:manage` retired with `TenantTtsConfig`
       // (53 admin + 3 webhook); 56 -> 57 (TASK-890): `admin:ai-model:read` (54 admin + 3 webhook);
-      // 57 -> 58 (TASK-1005): `admin:model-residency:manage` (55 admin + 3 webhook).
-      expect(reservedKeys().length).toBe(58);
+      // 57 -> 58 (TASK-1005): `admin:model-residency:manage` (55 admin + 3 webhook);
+      // 58 -> 56 (TASK-1006): `admin:audio-pipeline:manage` + `admin:tenant-stt-config:manage`
+      // retired with the pipeline and TenantSttConfig surfaces (53 admin + 3 webhook).
+      expect(reservedKeys().length).toBe(56);
     });
 
     it('isReservedScope answers for members and is false for unknown strings', () => {

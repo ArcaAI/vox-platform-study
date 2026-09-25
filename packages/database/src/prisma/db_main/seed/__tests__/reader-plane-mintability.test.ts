@@ -61,9 +61,7 @@ function abilitiesFor(roleName: string): Set<string> {
 
 /** CASL semantics: `manage` subsumes every action, `all` subsumes every subject. */
 function can(abilities: Set<string>, action: string, subject: string): boolean {
-  return (
-    abilities.has('manage:all') || abilities.has(`manage:${subject}`) || abilities.has(`${action}:all`) || abilities.has(`${action}:${subject}`)
-  );
+  return abilities.has('manage:all') || abilities.has(`manage:${subject}`) || abilities.has(`${action}:all`) || abilities.has(`${action}:${subject}`);
 }
 
 /**
@@ -81,7 +79,6 @@ const OPEN_ROUTE_SCOPES: ReadonlyArray<readonly [scope: string, action: string, 
   ['tenant:profile:read', 'read', 'Tenant'],
   ['tenant:account:read', 'read', 'Tenant'],
   ['prompt:template:read', 'read', 'PromptTemplate'],
-  ['stt:model:read', 'read', 'Consultation'],
 ];
 
 /**

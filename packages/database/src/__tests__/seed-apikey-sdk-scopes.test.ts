@@ -125,7 +125,6 @@ describe('seeded API keys — reserved scopes (policy A2)', () => {
  */
 const SDK_BUSINESS_PLANE_SCOPES: ReadonlyArray<readonly [scope: string, why: string]> = [
   ['prompt:template:read', 'GET /prompt-templates/available — the clinician Pre-Summary/Summary template selector'],
-  ['stt:model:read', 'GET /audio/pipelines — the ASR pipeline catalog'],
   ['tenant:context-schema:read', 'GET /tenant/me/context-schema — without it an integrator cannot build a valid context payload'],
   ['tenant:profile:read', 'GET /tenant/me, GET /tenant/me/config'],
   ['tenant:account:read', 'GET /entitlements/me'],
@@ -179,8 +178,8 @@ describe('seeded SDK keys —  business-plane coverage', () => {
  * `POST /api/stt/{start_session,switch,stop_session}`, and the
  * `TextCompatController` route this scope also used to gate) outright.
  *
- * `stt:model:read` (GET /audio/pipelines) is already pinned by the
- * business-plane block above.
+ * `stt:model:read` (GET /audio/pipelines) went with the ASR pipeline catalogue
+ * it gated — TASK-1006.
  */
 const STANDALONE_FEATURE_SCOPES: ReadonlyArray<readonly [scope: string, why: string]> = [
   ['stt:transcription:write', 'POST /audio/transcription-jobs/stream/session (live ticket mint) and the batch job routes'],

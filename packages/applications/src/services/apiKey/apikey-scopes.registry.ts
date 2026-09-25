@@ -94,7 +94,6 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     category: 'STT',
     implies: [{ action: 'create', subject: 'Consultation' }],
   },
-  'stt:model:read': { description: 'View available STT models', category: 'STT', implies: [{ action: 'read', subject: 'Consultation' }] },
 
   // TTS Service. The `/speech/*` proxy was one of the surfaces the
   // gateway conformance review named as reachable with NO authorization check
@@ -148,9 +147,8 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   // that had DECLARED NOTHING — the classification those `API-KEY-NOTE` blocks
   // explicitly deferred to an owner ruling, not a reversal of one.
   //
-  // Two surfaces are gated by scopes that already existed and needed no new
-  // vocabulary: the ASR pipeline catalog (`AudioPipelinePublicController`)
-  // reuses `stt:model:read`, and the three `me`-shaped reads
+  // One surface is gated by a scope that already existed and needed no new
+  // vocabulary: the three `me`-shaped reads
   // (`PermissionCheckController`, `UserDepartmentsMeController`,
   // `UserRolesController`) reuse `user:profile:read`, which was registered but
   // declared by nothing until now.
@@ -567,12 +565,6 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'Notification' }],
     reserved: true,
   },
-  'admin:audio-pipeline:manage': {
-    description: 'Manage audio pipeline configuration',
-    category: 'Admin',
-    implies: [{ action: 'manage', subject: 'AsrPipeline' }],
-    reserved: true,
-  },
   'admin:platform-metrics:read': {
     description: 'Read platform-wide metrics',
     category: 'Admin',
@@ -691,12 +683,6 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     description: 'Manage tenant identity-provider config (HIGH sensitivity — SSO)',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'TenantIdentityProvider' }],
-    reserved: true,
-  },
-  'admin:tenant-stt-config:manage': {
-    description: 'Manage tenant STT configuration',
-    category: 'Admin',
-    implies: [{ action: 'manage', subject: 'TenantSttConfig' }],
     reserved: true,
   },
   'admin:workflow-run:read': {
