@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — wave 1 merged locally except L-SDK; wave 2 (L-DB, L-CLEAN, L-DOCS) running |
+| Status | **Review** — all lanes merged on `dev-2.2` (local, not pushed); gate pass green apart from pre-existing failures; awaiting backup + push approval |
 | Type | refactor (removal) + feature (ALaaS migration) |
 | Branch | `dev-2.2` (hope-v2) · `main` (hope-v2-deployment) · `refactor-hope-integaration` (ALaaSv3.0) |
 | Opened | 2026-09-25 |
@@ -98,12 +98,45 @@ register rows not yet `removed`, rules `05`/`06`/`08`/`09`; deployment repo `doc
 
 ## 7. Implementation summary
 
-_Pending go._
+### 7.1 What was removed (hope-v2)
+
+| Area | Removed | Lane |
+|---|---|---|
+| Gateway routes (26) | `admin/audio/pipelines/**` (13), `audio/pipelines/**` (3), `admin/stt-config/**` (4), `admin/tenants/:id/pipelines/resync`, `audio/transcription-jobs/fallback`, `consultations/:id/summary`, `…/summary/pre-summary`, `…/summary/comprehensive/async` | L-ASR-GW, L-SUM, L-CLEAN, L-TAIL |
+| Applications | AsrPipeline / TenantSttConfig services, resync cron, pipeline compiler + resolver, `SummaryService.generateSummary`, the async comprehensive-summary job + processor, `maxAsrPipelines` entitlement, `substitutePreSummaryVariables`, the retired scopes | L-ASR-GW, L-SUM, L-CLEAN, L-TAIL |
+| Data (migration `20260925043212_task_1006_drop_asr_pipeline_and_stt_config`) | tables `AsrPipeline`, `AsrPipelineVersion`, `TenantSttConfig`; `TranscriptionJob.pipelineId`; `Plan/TenantEntitlement.maxAsrPipelines`. `ResourceType` members kept as tombstones | L-DB + orchestrator (shadow-DB authored, zero drift after apply) |
+| Seeds / CASL | pipeline rows, resync settings, `default-stt-pipeline`, `SDK_COMPAT_ARCAAI` key; `manage:AsrPipeline` → `manage:TranscriptionJob`; the three admin transcription-job reads now require `read:TranscriptionJob` | L-DB, L-CLEAN |
+| apps/stt | `pipeline_id` readers, the optional DB layer + `asyncpg`/`sqlalchemy`, `DATABASE_ENABLED`/`DATABASE_POOL_SIZE`/`DATABASE_MAX_OVERFLOW`, `/transcribe`, `/pipelines/validate`, `/internal/pipelines/loaded`; the Dramatiq actor keeps its arity | L-ASR-STT, L-TAIL |
+| SDK 4.0.0 (unpublished) | `@arcaai/vad`, `@arcaai/noise-filter`, `@arcaai/med-ner` (packages deleted), `./plugins/med-ner`, `usePipelines` / `useArcaPipelines` / `useSttProviderToggle` / `useLocalVoiceEmbedding` / `useGatedClientStages`, `audio.start({ pipelineId, clientInference })`, batch/file `pipelineId` (now optional `agentSlug`), vox-node sync `summaries.generate` / `generatePreSummary`, `hope.admin.audioPipeline` / `tenantSttConfig` / `tenant.resync` | L-SDK, L-BATCH |
+| Console | `features/audio-pipelines`, the `/ai-configuration` Speech tab, pipeline tiles/fields, `remoteConfig`, `maxAsrPipelines` UI; playgrounds select an ASR agent | L-CONSOLE, L-CLEAN |
+| CI / image / release | vad/noise-filter/med-ner build/test/publish filters, the rnnoise.wasm LFS smudge + guard, their Dockerfile COPYs; `scripts/publish-sdk.sh` + runbook publish the 4.0.0 set (room, stt, vox, vox-codegen, vox-node, pipeline) and state the local-only owner rule | orchestrator |
+| Deployment repo | stt / stt-worker `DATABASE_*` env and their 5432 egress rule; compat-playground / `pipelineId` doc mentions; `hope-gpu-process-exporter` classified for `envfrom-coverage` (main was red since the TASK-1005 push, pipelines #1329/#1331/#1333) | L-DOCS + orchestrator |
+
+### 7.2 What was changed rather than removed
+
+- `POST consultations/:id/summary/comprehensive` keeps its contract but runs on the tenant's `TEXT_GENERATION` agent (department → tenant) through the agent-invocation path; `template`/`options` no longer pick a prompt or model. Not yet exercised on a live stack.
+- Workflow `transcript` ingress (OD-5): a declared `transcript` TEXT kind, `core.data` gains a `text` socket, `n_transcript` feeds `n_ner`. Live rollout needs the schema publish + 11 workflow republishes (admin login, after deploy).
+- ALaaS (`refactor-hope-integaration`, local merge `16c3699`, not pushed): DNA via vox-node with the consultant-id bridge; the medical summary via a HOPE workflow run; the local OpenAI summary path removed.
+
+### 7.3 Gate pass (sibling worktree `hope-v2-task-1006-verify`, real install)
+
+| Step | Result |
+|---|---|
+| db:generate, build:packages, api:build, typecheck, api tsc, lint | PASS (typecheck after `e5e9259a6`) |
+| test:unit | 27,340 passed; 6 failed in `loki-line-contract.test.ts` — **pre-existing** (same in the TASK-1004/1005 gate), passes with `CI=true` |
+| stt unit | 3,982 passed (after `86b2d1665`, `5b7d6be19`, `20e8d6f37`) |
+| harness unit, text, py-runtime-models, console, SDKs (vox, vox-node, stt) | PASS |
+| nlp | 2 failed in `test_metrics_endpoint_task636.py` — **pre-existing** (identical in the previous gate) |
+| lint-py | PASS; mypy: 4 errors in apps/stt streaming — **pre-existing** (identical in the previous gate) |
+| gen:model/entity/factory checks, env:sync --check, sdk exports, openapi/portal/gen:admin checks | PASS |
+
+STT e2e/integration are not CI gates; the integration conftest now skips unless test Redis AND MinIO are up (the ALaaS harness Redis on 6380 fooled the Redis-only gate), and the stale e2e health `database` expectation was removed. The e2e streaming-session DELETE failures are pre-existing.
 
 ## 8. Change history
 
 | Date | Change |
 |---|---|
+| 2026-09-25 | Wave 2 + tail merged: L-DB (`aad0acb1c`), L-DOCS (`cf84dfdee`), L-CLEAN (`74ebbab58`), L-BATCH (`051ff3eda`, taken over from a peer session's plan), L-TAIL (`25cdb5e69`); drop migration `1cff0879f`; lockfiles/env surface `64fabb4a9`; artifacts `11d18950c`; gate fixes `e5e9259a6`, `86b2d1665`, `5b7d6be19`, `20e8d6f37`. Deployment repo `task-1006/docs-deploy` @ `38c08fa` (includes origin/main). Status → Review. |
 | 2026-09-25 | Wave 1 merged into `dev-2.2` locally: L-CONSOLE (`152629226`), L-SUM (`190dbc7d6`), L-ASR-STT (`23f53384b`), L-WF transcript ingress (`b9b556e8f`), L-ASR-GW (`bd6b6a2a5`) + module unregistration (`c4909d688`); TASK-1005 §13 residency lanes rcat/rui merged alongside. L-SDK still running. Wave 2 spawned: L-DB, L-DOCS (sonnet), L-CLEAN (opus). ALaaS lane L-ALS merged locally on `refactor-hope-integaration` (`16c3699`), not pushed. Security: ALaaS `apps/web_ui/.env.example` carried a real OpenAI/Azure key — owner to rotate. |
 | 2026-09-25 | Owner **go** (all of it; push bundled with this release). Wave 1 spawned: L-SUM, L-ASR-GW, L-ASR-STT (opus); L-SDK, L-CONSOLE (sonnet); L-ALS (opus). |
 | 2026-09-25 | Ticket opened from the owner's directive; inventory by a read-only explore agent; OD-1…OD-4 answered as recommended; plan written; awaiting go. |
