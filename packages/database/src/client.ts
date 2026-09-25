@@ -102,12 +102,6 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   'ContextItemVersion',
   'PromptVersion',
   'DnaWritingStyleVersion',
-  // AsrPipelineVersion is an immutable config-snapshot history
-  // table with NO `resourceStatus` column — same shape as the version tables
-  // above. Without this entry the soft-delete extension injected
-  // `resourceStatus: { not: 'DELETED' }` into every read and Prisma rejected it
-  // (PrismaClientValidationError → bare 400 on GET /admin/audio/pipelines/:id/versions).
-  'AsrPipelineVersion',
   'DnaUsageRecord',
   'PromptUsageRecord',
   'AudioRecording',
@@ -125,7 +119,7 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // store — no `resourceStatus` column. Rows are pruned/deleted wholesale rather
   // than soft-deleted, so without this entry the soft-delete extension would
   // inject `resourceStatus: { not: 'DELETED' }` and Prisma would reject every
-  // read (same failure shape as AsrPipelineVersion above).
+  // read (same failure shape as the version tables above).
   'GateEditExemplar',
   // AgentTrajectoryStep is high-volume ordered ops
   // telemetry with HARD RETENTION (a nightly prune job hard-deletes aged rows)
@@ -180,7 +174,7 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   'UserChangelogAcknowledgement',
   // ConsultationContextSchemaVersion is an immutable published
   // snapshot of a tenant's context declaration — the exact shape of
-  // PromptVersion / AsrPipelineVersion above, and with no `resourceStatus`
+  // PromptVersion above, and with no `resourceStatus`
   // column for the same reason. A context item validated against version N
   // must be able to resolve version N forever; retracting a version would
   // orphan already-accepted clinical rows. The MUTABLE head
@@ -217,8 +211,8 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // each migration REVOKEs UPDATE/DELETE from the app role), but they were never
   // listed here. Without the entry the soft-delete extension injects
   // `resourceStatus: { not: 'DELETED' }` into every findMany/findFirst/count/
-  // aggregate/groupBy and Prisma rejects the query — the AsrPipelineVersion
-  // failure above, armed and waiting for the first caller of
+  // aggregate/groupBy and Prisma rejects the query — the same failure shape
+  // as the version tables above, armed and waiting for the first caller of
   // `{Harness,Pipeline}PolicyChangeRepository.listForTenant` (neither has one yet,
   // which is the only reason this has stayed dormant).
   'HarnessPolicyChange',

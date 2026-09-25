@@ -170,7 +170,10 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // +1 (89): TASK-1005 adds `ModelResidencyPolicy` — SYSTEM-only platform
     // residency configuration (every row is the SYSTEM tenant); also a
     // SYSTEM_SHARED_READ_MODEL (see that suite below).
-    expect(TENANT_SCOPED_MODELS.size).toBe(89);
+    // -3 (86): TASK-1006 retires `AsrPipeline`, `AsrPipelineVersion` and
+    // `TenantSttConfig` — the pre-agent ASR pipeline stack; `agentSlug` → the
+    // ASR Agent is the only selector.
+    expect(TENANT_SCOPED_MODELS.size).toBe(86);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -384,7 +387,6 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     expect(found.length).toBeGreaterThan(0);
     expect(found).toContain('Consultation');
     expect(found).toContain('TenantFrontendConfig'); // tenant.prisma (F2)
-    expect(found).toContain('AsrPipelineVersion'); // stt.prisma (F3)
     expect(found).toContain('HarnessAuditEvent'); // harness.prisma
     expect(found).toContain('KnowledgeDocument'); // knowledge.prisma
     expect(found).toContain('KnowledgeChunk'); // knowledge.prisma
@@ -402,7 +404,7 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
 // ---------------------------------------------------------------------------
 
 describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
-  it('contains the platform catalog models + the harness global-default policy + GlobalSetting (AsrPipeline, AiModel, HarnessPolicy, GlobalSetting)', () => {
+  it('contains the platform catalog models + the harness global-default policy + GlobalSetting (AiModel, HarnessPolicy, GlobalSetting)', () => {
     expect(new Set(SYSTEM_SHARED_READ_MODELS)).toEqual(
       // HarnessPolicy's SYSTEM-tenant row is the global
       // default every tenant reads to compute its effective policy.
@@ -420,7 +422,6 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // read DTO carries it. (AiRuntimeProfile used to sit beside it; TASK-862
       // retired that model.) Writes are NOT widened.
       new Set([
-        'AsrPipeline',
         'AiModel',
         // Role's SYSTEM-tenant rows are the platform's built-in roles
         // every tenant reads them directly (list, clone
@@ -432,11 +433,6 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'Role',
         'HarnessPolicy',
         'GlobalSetting',
-        // TenantSttConfig's SYSTEM-tenant row is the per-tenant STT platform
-        // default every tenant's getEffective merges over. This model never
-        // carries a secret — BYO credentials live in the unified
-        // AiProviderConnection plane (service='stt'), never shared cross-tenant.
-        'TenantSttConfig',
         'McpServer',
         // SYSTEM-owned platform facts read under the caller's own
         // tenant CLS. Without widening, /changelog and /releases return nothing
@@ -620,8 +616,8 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
   });
 
   it('isSystemSharedReadModel accepts camelCase and PascalCase', () => {
-    expect(isSystemSharedReadModel('AsrPipeline')).toBe(true);
-    expect(isSystemSharedReadModel('asrPipeline')).toBe(true);
+    expect(isSystemSharedReadModel('AiModel')).toBe(true);
+    expect(isSystemSharedReadModel('aiModel')).toBe(true);
     expect(isSystemSharedReadModel('Consultation')).toBe(false);
   });
 });
@@ -629,18 +625,18 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
 describe('SYSTEM-tenant read inheritance on shared catalog models', () => {
   const READ_OPS = ['findFirst', 'findFirstOrThrow', 'findUnique', 'findUniqueOrThrow', 'findMany', 'count', 'aggregate', 'groupBy'];
 
-  it.each(READ_OPS)('%s widens AsrPipeline tenantId to IN [caller, SYSTEM]', async (op) => {
+  it.each(READ_OPS)('%s widens AiModel tenantId to IN [caller, SYSTEM]', async (op) => {
     const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
     const query = vi.fn().mockResolvedValue(null);
 
     await config.query.$allModels[op]({
-      model: 'AsrPipeline',
-      args: { where: { id: 'pipeline-1' } },
+      model: 'AiModel',
+      args: { where: { id: 'model-1' } },
       query,
     });
 
     expect(query).toHaveBeenCalledWith({
-      where: { id: 'pipeline-1', tenantId: { in: ['tenant-A', SYSTEM_TENANT_ID] } },
+      where: { id: 'model-1', tenantId: { in: ['tenant-A', SYSTEM_TENANT_ID] } },
     });
   });
 
@@ -677,7 +673,7 @@ describe('SYSTEM-tenant read inheritance on shared catalog models', () => {
     const query = vi.fn().mockResolvedValue(null);
 
     await config.query.$allModels.findFirst({
-      model: 'AsrPipeline',
+      model: 'AiModel',
       args: { where: { tenantId: SYSTEM_TENANT_ID } },
       query,
     });
@@ -712,7 +708,7 @@ describe('SYSTEM-tenant read inheritance on shared catalog models', () => {
 
     await expect(
       config.query.$allModels.findFirst({
-        model: 'AsrPipeline',
+        model: 'AiModel',
         args: { where: { tenantId: 'tenant-B' } },
         query: vi.fn(),
       }),
@@ -724,7 +720,7 @@ describe('SYSTEM-tenant read inheritance on shared catalog models', () => {
     const query = vi.fn().mockResolvedValue({});
 
     await config.query.$allModels.create({
-      model: 'AsrPipeline',
+      model: 'AiModel',
       args: { data: { id: 'x' } },
       query,
     });
@@ -737,7 +733,7 @@ describe('SYSTEM-tenant read inheritance on shared catalog models', () => {
     const query = vi.fn().mockResolvedValue({});
 
     await config.query.$allModels.delete({
-      model: 'AsrPipeline',
+      model: 'AiModel',
       args: { where: { id: 'x' } },
       query,
     });
