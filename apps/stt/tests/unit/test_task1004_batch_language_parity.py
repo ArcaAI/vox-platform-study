@@ -318,7 +318,6 @@ async def _run_worker(spec: dict[str, Any], **kwargs: Any) -> tuple[AsyncMock, A
         await _transcribe_file_async(
             job_id="j-1",
             tenant_id="t-1",
-            pipeline_id=spec["runtimeKey"],
             audio_uri="s3://a.wav",
             resolved_spec=spec,
             **kwargs,
@@ -405,7 +404,6 @@ async def test_no_chain_serving_the_mode_fails_the_job_by_code_without_a_retry()
         await _transcribe_file_async(
             job_id="j-1",
             tenant_id="t-1",
-            pipeline_id=spec["runtimeKey"],
             audio_uri="s3://a.wav",
             resolved_spec=spec,
             language_mode="ml",

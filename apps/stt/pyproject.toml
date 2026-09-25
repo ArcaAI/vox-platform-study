@@ -31,9 +31,6 @@ dependencies = [
     "python-multipart>=0.0.22",
     # --- Async support ---
     "aiofiles>=25.1.0",
-    "asyncpg>=0.31.0",
-    # --- Database (read-only) ---
-    "sqlalchemy[asyncio]>=2.0.52",
     # --- Data validation ---
     "pydantic>=2.12.5",
     "pydantic-settings>=2.15.0",

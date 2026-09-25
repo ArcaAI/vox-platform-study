@@ -131,20 +131,6 @@ class EngineSwitchController:
         return self._active
 
     @property
-    def active_pipeline_id(self) -> str | None:
-        """The pipeline id of the engine currently live.
-
-        The session-create/status response uses this rather than the REQUESTED
-        pipeline id, so a session that opened on the fallback (``start_on=
-        'fallback'`` or a create-time primary load failure) never reports
-        ``active_engine: 'fallback'`` beside a ``pipeline_id`` naming the
-        primary.
-        """
-        if self._active == _FALLBACK:
-            return self._fallback_pipeline_id
-        return self._primary_pipeline_id
-
-    @property
     def switched(self) -> bool:
         """True while the fallback engine is the live one."""
         return self._active == _FALLBACK

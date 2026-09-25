@@ -1,15 +1,17 @@
 """Batch fallback dispatch tests.
 
 Verifies ``_transcribe_file_async``:
-- re-dispatches ONCE on the configured fallback pipeline on a retryable cloud
-  ASR / model error, stamping ``usedFallbackPipelineId``;
+- re-dispatches ONCE on the resolved spec's fallback chain on a retryable cloud
+  ASR / model error, stamping ``usedFallbackPipelineId`` with that chain's
+  runtime key;
 - goes straight to the fallback on ``CloudASRAuthError``;
-- is byte-identical to today when NO fallback is configured (regression lock:
+- is byte-identical to today when the spec declares NO fallback (regression lock:
   the error propagates, no second transcribe, job fails).
 
-Only external boundaries are mocked (api client, blob, pipeline reader, batch
-service, publisher, effective-config pull). The fallback branch under test is
-real.
+TASK-1006 — the fallback is the spec's own ``fallback`` chain and nothing else; the
+pre-agent tenant pointer (``fallback_pipeline_id``) and the pipeline reader behind
+it are gone. Only external boundaries are mocked (api client, blob, batch service,
+publisher, effective-config pull). The fallback branch under test is real.
 """
 
 from __future__ import annotations
@@ -20,13 +22,14 @@ import pytest
 
 from stt.core.exceptions import CloudASRAuthError, CloudASRTranscriptionError
 from stt.transcription.dto import TranscriptionResult
-from stt.transcription.workers.transcribe_file import (
-    _transcribe_file_async,
-    transcribe_file,
-)
+from stt.transcription.workers.transcribe_file import _transcribe_file_async
+from tests.helpers.resolved_spec import FALLBACK_KEY, resolved_spec
+
+_PRIMARY_ASR = "arcaai-whisper-large-ml-en-gguf"
+_FALLBACK_ASR = "faster-whisper-large-v3-turbo-int8"
 
 
-def _make_result(text: str = "ok", pipeline_id: str = "p-primary") -> TranscriptionResult:
+def _make_result(text: str = "ok") -> TranscriptionResult:
     return TranscriptionResult(
         text=text,
         language="en",
@@ -36,17 +39,11 @@ def _make_result(text: str = "ok", pipeline_id: str = "p-primary") -> Transcript
         word_timestamps=[],
         sentence_timestamps=[],
         segments=[],
-        metadata={"pipeline_id": pipeline_id},
+        metadata={},
     )
 
 
-def _pipeline_config(name: str) -> MagicMock:
-    pc = MagicMock(name=name)
-    pc.spec.inference.language = None
-    return pc
-
-
-def _harness(*, reader: AsyncMock, batch: AsyncMock, overrides: dict | None = None):
+def _harness(*, batch: AsyncMock, overrides: dict | None = None):
     """Patch every external boundary of the worker; return the patch CMs."""
     api = AsyncMock()
     api.start_job = AsyncMock()
@@ -74,7 +71,6 @@ def _harness(*, reader: AsyncMock, batch: AsyncMock, overrides: dict | None = No
     return (
         patch("stt.transcription.workers.transcribe_file.get_api_client", return_value=api),
         patch("stt.transcription.workers.transcribe_file.get_blob_service", return_value=blob),
-        patch("stt.transcription.workers.transcribe_file.get_pipeline_reader", return_value=reader),
         patch("stt.transcription.workers.transcribe_file.get_batch_service", return_value=batch),
         patch("stt.transcription.workers.transcribe_file.get_settings", return_value=settings),
         patch(
@@ -86,84 +82,66 @@ def _harness(*, reader: AsyncMock, batch: AsyncMock, overrides: dict | None = No
             return_value=publisher,
         ),
         api,
-        batch,
     )
+
+
+def _asr_slug(call) -> str:
+    return call.kwargs["pipeline_config"].spec.models.asr.slug
 
 
 @pytest.mark.asyncio
 async def test_retryable_cloud_error_redispatches_on_fallback():
-    primary_pc = _pipeline_config("primary")
-    fallback_pc = _pipeline_config("fallback")
-    reader = AsyncMock()
-    reader.get_pipeline = AsyncMock(side_effect=[primary_pc, fallback_pc])
-
-    fallback_result = _make_result(text="fallback text", pipeline_id="p-fallback")
+    fallback_result = _make_result(text="fallback text")
     batch = AsyncMock()
     # First (primary) raises retryable; second (fallback) succeeds.
     batch.transcribe = AsyncMock(side_effect=[CloudASRTranscriptionError("5xx"), fallback_result])
 
-    p1, p2, p3, p4, p5, p6, p7, api, _batch = _harness(reader=reader, batch=batch)
-    with p1, p2, p3, p4, p5, p6, p7:
+    p1, p2, p3, p4, p5, p6, api = _harness(batch=batch)
+    with p1, p2, p3, p4, p5, p6:
         await _transcribe_file_async(
-            job_id="j-1",
-            tenant_id="t-1",
-            pipeline_id="p-primary",
-            audio_uri="s3://a.wav",
-            fallback_pipeline_id="p-fallback",
+            job_id="j-1", tenant_id="t-1", audio_uri="s3://a.wav", resolved_spec=resolved_spec()
         )
 
-    # transcribe called twice: primary then fallback.
+    # transcribe called twice: primary then the spec's fallback chain.
     assert batch.transcribe.await_count == 2
-    assert batch.transcribe.await_args_list[1].kwargs["pipeline_config"] is fallback_pc
+    first, second = batch.transcribe.await_args_list
+    assert _asr_slug(first) == _PRIMARY_ASR
+    assert _asr_slug(second) == _FALLBACK_ASR
     # Result stamped with the fallback lineage + job completed on it.
-    assert fallback_result.metadata["usedFallbackPipelineId"] == "p-fallback"
+    assert fallback_result.metadata["usedFallbackPipelineId"] == FALLBACK_KEY
     api.complete_job.assert_awaited_once()
     api.fail_job.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_auth_error_goes_straight_to_fallback():
-    primary_pc = _pipeline_config("primary")
-    fallback_pc = _pipeline_config("fallback")
-    reader = AsyncMock()
-    reader.get_pipeline = AsyncMock(side_effect=[primary_pc, fallback_pc])
-
-    fallback_result = _make_result(pipeline_id="p-fallback")
+    fallback_result = _make_result()
     batch = AsyncMock()
     batch.transcribe = AsyncMock(side_effect=[CloudASRAuthError("401"), fallback_result])
 
-    p1, p2, p3, p4, p5, p6, p7, api, _batch = _harness(reader=reader, batch=batch)
-    with p1, p2, p3, p4, p5, p6, p7:
+    p1, p2, p3, p4, p5, p6, api = _harness(batch=batch)
+    with p1, p2, p3, p4, p5, p6:
         await _transcribe_file_async(
-            job_id="j-2",
-            tenant_id="t-1",
-            pipeline_id="p-primary",
-            audio_uri="s3://a.wav",
-            fallback_pipeline_id="p-fallback",
+            job_id="j-2", tenant_id="t-1", audio_uri="s3://a.wav", resolved_spec=resolved_spec()
         )
 
     assert batch.transcribe.await_count == 2
-    assert fallback_result.metadata["usedFallbackPipelineId"] == "p-fallback"
+    assert fallback_result.metadata["usedFallbackPipelineId"] == FALLBACK_KEY
 
 
 @pytest.mark.asyncio
 async def test_no_fallback_propagates_error_unchanged():
-    primary_pc = _pipeline_config("primary")
-    reader = AsyncMock()
-    reader.get_pipeline = AsyncMock(return_value=primary_pc)
-
     batch = AsyncMock()
     batch.transcribe = AsyncMock(side_effect=CloudASRTranscriptionError("5xx"))
 
-    p1, p2, p3, p4, p5, p6, p7, api, _batch = _harness(reader=reader, batch=batch)
-    with p1, p2, p3, p4, p5, p6, p7:
+    p1, p2, p3, p4, p5, p6, api = _harness(batch=batch)
+    with p1, p2, p3, p4, p5, p6:
         with pytest.raises(CloudASRTranscriptionError):
             await _transcribe_file_async(
                 job_id="j-3",
                 tenant_id="t-1",
-                pipeline_id="p-primary",
                 audio_uri="s3://a.wav",
-                # no fallback_pipeline_id
+                resolved_spec=resolved_spec(fallback=None),
             )
 
     # Regression lock: exactly one transcribe attempt, job failed, no completion.
@@ -174,48 +152,36 @@ async def test_no_fallback_propagates_error_unchanged():
 
 @pytest.mark.asyncio
 async def test_success_path_never_touches_fallback():
-    primary_pc = _pipeline_config("primary")
-    reader = AsyncMock()
-    reader.get_pipeline = AsyncMock(return_value=primary_pc)
-
     batch = AsyncMock()
     batch.transcribe = AsyncMock(return_value=_make_result())
 
-    p1, p2, p3, p4, p5, p6, p7, api, _batch = _harness(reader=reader, batch=batch)
-    with p1, p2, p3, p4, p5, p6, p7:
+    p1, p2, p3, p4, p5, p6, api = _harness(batch=batch)
+    with p1, p2, p3, p4, p5, p6:
         await _transcribe_file_async(
-            job_id="j-4",
-            tenant_id="t-1",
-            pipeline_id="p-primary",
-            audio_uri="s3://a.wav",
-            fallback_pipeline_id="p-fallback",
+            job_id="j-4", tenant_id="t-1", audio_uri="s3://a.wav", resolved_spec=resolved_spec()
         )
 
-    # Fallback configured but never used on the happy path.
+    # Fallback declared but never used on the happy path.
     assert batch.transcribe.await_count == 1
+    assert _asr_slug(batch.transcribe.await_args) == _PRIMARY_ASR
     api.complete_job.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
-# The gateway↔worker wire contract for the fallback.
+# The gateway↔worker wire contract.
 #
-# The tests above call `_transcribe_file_async` directly, so they proved the
-# fallback BRANCH worked while nothing in production ever reached it: the API
-# gateway's Dramatiq dispatch never sent `fallback_pipeline_id` at all.
-#
-# It now rides as a KWARG next to `storage`, with the same 10 positional args
-# as before. This locks that exact shape against the actor's signature — a
-# renamed kwarg or a changed positional count silently disables batch fallback
-# again, which is precisely how it stayed dead originally.
+# The gateway emits the same 10 positional args it always has — TASK-1006 turns the
+# third (the pre-agent `pipeline_id`) into a dead slot it fills with `null` — and
+# rides the spec and the storage descriptor as KWARGS. This locks that exact shape
+# against the actor's signature: the fallback now travels INSIDE `resolved_spec`.
 # ---------------------------------------------------------------------------
 
-# The positional args the gateway emits, in order (transcriptionRealtime.service.ts):
-# job_id, tenant_id, pipeline_id, audio_uri, consultation_id, media_id,
-# language, code_switching, audio_bucket_name, user_id
+# job_id, tenant_id, <dead pipeline_id slot>, audio_uri, consultation_id, media_id,
+# language, <dead code_switching slot>, audio_bucket_name, user_id
 _GATEWAY_POSITIONAL_ARGS = (
     "job-1",
     "tenant-1",
-    "p-primary",
+    None,
     "s3://hope-audio/x.wav",
     None,
     None,
@@ -228,6 +194,8 @@ _GATEWAY_POSITIONAL_ARGS = (
 
 def _invoke_actor(**kwargs):
     """Call the actor body the way Dramatiq does, capturing the forwarded call."""
+    from stt.transcription.workers.transcribe_file import transcribe_file
+
     with (
         # MagicMock, not the AsyncMock `patch` would autospec for an async def:
         # `run_on_worker_loop` is mocked too, so a real coroutine here would be
@@ -243,27 +211,15 @@ def _invoke_actor(**kwargs):
     return inner.call_args.kwargs
 
 
-def test_actor_binds_the_gateway_fallback_kwarg():
-    forwarded = _invoke_actor(fallback_pipeline_id="p-fallback")
+def test_actor_binds_the_spec_and_storage_kwargs_together():
+    spec = resolved_spec()
+    forwarded = _invoke_actor(
+        resolved_spec=spec, storage={"provider": "s3", "bucket": "tenant-bucket"}
+    )
 
-    assert forwarded["fallback_pipeline_id"] == "p-fallback"
+    assert forwarded["resolved_spec"] == spec
+    assert forwarded["storage"] == {"provider": "s3", "bucket": "tenant-bucket"}
     # The positional tail still lands where the signature expects it.
     assert forwarded["audio_bucket_name"] == "hope-audio"
     assert forwarded["user_id"] == "user-1"
-
-
-def test_actor_binds_fallback_and_storage_together():
-    # Both are kwargs; a DEDICATED tenant sends both in the same message.
-    forwarded = _invoke_actor(
-        fallback_pipeline_id="p-fallback",
-        storage={"provider": "s3", "bucket": "tenant-bucket"},
-    )
-
-    assert forwarded["fallback_pipeline_id"] == "p-fallback"
-    assert forwarded["storage"] == {"provider": "s3", "bucket": "tenant-bucket"}
-
-
-def test_actor_defaults_the_fallback_to_none_when_absent():
-    forwarded = _invoke_actor()
-
-    assert forwarded["fallback_pipeline_id"] is None
+    assert "fallback_pipeline_id" not in forwarded

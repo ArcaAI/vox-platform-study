@@ -17,7 +17,6 @@ apps/stt/
 |   |   |-- config/settings.py  # Settings (pydantic-settings, no env_prefix)
 |   |   |-- control_plane.py    # Settings field -> control-plane registry key map
 |   |   |-- middleware/auth.py  # ServiceAuthMiddleware (X-Service-Token)
-|   |   |-- database/           # SQLAlchemy, read-only, OFF by default (STT_DATABASE_ENABLED)
 |   |   |-- messaging/           # Dramatiq broker setup
 |   |   `-- storage/            # MinIO / S3 / Azure Blob client
 |   |-- pipeline/spec.py        # ResolvedAsrSpec — the gateway-resolved runtime contract
@@ -27,7 +26,7 @@ apps/stt/
 |   |-- punctuation/             # Cadence-Fast punctuation restoration (direct transformers loader)
 |   |-- streaming/               # Session manager, engine switch (fallback), Redis Streams transport
 |   |-- transcription/          # Batch service, Dramatiq workers
-|   |-- voice_profile/           # Cross-session speaker identity (Postgres voice profiles)
+|   |-- voice_profile/           # Voice-profile embedding extraction (enrollment, gateway-driven)
 |   `-- models/                 # Model loaders (HF, ONNX, Azure Speech, NeMo, ggml, Azure Foundry)
 |-- tests/{unit,integration,e2e}/
 |-- docker/{Dockerfile,Dockerfile.apple}
@@ -38,10 +37,11 @@ apps/stt/
 > **Speaker identity & persistence.** Diarization is **in-memory and
 > session-scoped**: within a consultation a `SpeakerTracker` assigns and
 > matches speakers with no external vector store. **Cross-session** speaker
-> identity is persisted via **PostgreSQL voice profiles** — at session start
-> `diarization.preseed.preseed_speaker()` loads the doctor's stored voice
-> embedding and registers it. There is no Qdrant-backed speaker store; `stt`
-> has no `core/vectorstore` module by design.
+> identity lives in the gateway's voice profiles: the gateway resolves the
+> user's ENROLLED profiles for the agent's embedding model and pushes them on
+> the session-create body (`voice_profiles`) or the batch message, and
+> `diarization.preseed.seed_voice_profiles()` registers them. This service has
+> no database connection (TASK-1006) and no Qdrant-backed speaker store.
 
 ## Commands
 
@@ -73,22 +73,25 @@ do not upgrade torch past 2.8.x while it is installed.
 
 ## How it works
 
-**Selection arrives from the gateway, this service reads no Postgres for it
-(TASK-861).** Every streaming session and every batch job carries a
+**Selection arrives from the gateway, and nothing else selects (TASK-861,
+TASK-1006).** Every streaming session and every batch job carries a
 `ResolvedAsrSpec` (`src/stt/pipeline/spec.py`, the pydantic mirror of
 `packages/types/src/asr-spec.ts`, parity-pinned against the committed fixture
 `tests/contracts/resolved-asr-spec.fixture.json`) with the ASR/VAD/denoise/
 diarization/embedding models already resolved to a local path, format and
 compute type, plus decoding parameters and the fallback chain
 (`AsrSpecFallback`). `session_manager` and the batch worker build their
-callables from the spec; there is no `AsrPipeline`/`AiModel` SQL lookup on this
-path. The read-only SQLAlchemy connection is therefore **optional and off by
-default** (`STT_DATABASE_ENABLED` — a bare, unprefixed name; `Settings` carries
-no `env_prefix`), used only by the deprecated `pipeline_id` readers and the
-voice-profile / initial-prompt readers.
+callables from the spec; the session is keyed on the spec's `runtimeKey` (the
+ASR Agent version id). A session create or a batch job WITHOUT a spec is refused
+by name (`RESOLVED_SPEC_REQUIRED`): the pre-agent `pipeline_id` path, its
+`PipelineConfigReader` and the optional read-only Postgres connection behind it
+were removed by TASK-1006, so this service has no database connection at all.
+The Dramatiq `transcribe_file` actor keeps its positional arity — the old
+`pipeline_id` / `fallback_pipeline_id` slots are dead and ignored — so a message
+queued before the change still binds and is failed by name.
 
 **`Settings` carries no `env_prefix`.** Every field resolves to its bare
-uppercased name (`PORT`, `HOST`, `DEBUG`, `LOG_LEVEL`, `DATABASE_URL`, ...);
+uppercased name (`PORT`, `HOST`, `DEBUG`, `LOG_LEVEL`, `REDIS_URL`, ...);
 several fields also accept an `STT_`-prefixed alias first (e.g. `STT_PORT`
 before `PORT`). Default port is `8861`.
 
@@ -101,7 +104,7 @@ binds. Their real value is pulled once at boot from the gateway's
 effective-config route (`refresh_settings_from_control_plane`,
 `core/runtime_limits.py`) and kept fresh by a Redis pub/sub invalidation
 listener (`arca:config:invalidate`), not by polling. Bootstrap-only real env
-vars still worth setting locally: `DATABASE_URL`, `REDIS_URL`, `MINIO_*`,
+vars still worth setting locally: `REDIS_URL`, `MINIO_*`,
 `API_GATEWAY_URL`, `API_GATEWAY_KEY`, `INTERNAL_ACCESS_TOKEN`,
 `HUGGINGFACE_CACHE_DIR`.
 
@@ -155,8 +158,7 @@ re-dispatches once onto the fallback within the same Dramatiq attempt.
 (`pyannote/wespeaker-voxceleb-resnet34-LM`, 256-dim, or SpeechBrain
 ECAPA-TDNN, 192-dim, selected by a `speechbrain/*` model id) is the only
 backend: `ResolvedAsrSpec.audioFrontEnd.diarization.backend` accepts `embedding`
-alone, and a spec or legacy pipeline YAML naming anything else is refused, never
-coerced. The self-hosted NeMo Streaming Sortformer backend was retired by
+alone, and a spec naming anything else is refused, never coerced. The self-hosted NeMo Streaming Sortformer backend was retired by
 TASK-980 — its checkpoint was a code literal no agent could select, and the
 production image carries no NeMo to run it.
 
@@ -170,8 +172,10 @@ punctuation restoration rather than an error. Enable/placement/cache-dir are
 control-plane- or agent-owned, not a single global env flag.
 
 ### API endpoints
-Health lives under `/api/v1`; internal, transcription, streaming and
-voice-profile routers mount their own prefixes.
+Health lives under `/api/v1`; internal, streaming and voice-profile routers
+mount their own prefixes. There is no direct transcription route: batch
+transcription is the gateway's agent path onto the Dramatiq worker (TASK-1006
+removed `POST /api/v1/transcribe` and `POST /api/v1/pipelines/validate`).
 
 | Method | Path | Notes |
 |---|---|---|
@@ -179,7 +183,7 @@ voice-profile routers mount their own prefixes.
 | `GET` | `/api/v1/ready` `/api/v1/live` | Aliases |
 | `GET` | `/metrics` | Prometheus metrics |
 | `GET`/`POST` | `/internal/cache/*` | Model cache stats / clear / per-model entry |
-| `GET`/`POST` | `/internal/pipelines/loaded`, `/internal/sessions*`, `/internal/streaming/status` | Runtime inventory (service-token gated) |
+| `GET`/`POST` | `/internal/sessions*`, `/internal/streaming/status` | Runtime inventory (service-token gated) |
 | `GET`/`POST` | `/api/v1/internal/models/resolvable` | Runtime resolvability probe for the gateway readiness sweep |
 | — | `/internal/streaming/*` | Session create/switch (gateway-only) |
 | — | `/internal/voice-profile/*` | Voice profile enrollment (gateway-only) |
@@ -196,9 +200,9 @@ voice-profile routers mount their own prefixes.
   exact string `cadence-fast`) loads the `cadence-punctuation` wrapper, which
   cannot load under the pinned transformers 5.x — text passes through
   unpunctuated with no error surfaced per request.
-- `STT_DATABASE_ENABLED=false` (the default) makes `initialize_database()` a
-  no-op; the deprecated `pipeline_id` readers then fail closed with a named
-  `DatabaseDisabledError` rather than hanging.
+- `DATABASE_ENABLED` / `DATABASE_URL` / `DATABASE_POOL_SIZE` /
+  `DATABASE_MAX_OVERFLOW` are GONE (TASK-1006) — this service reads no database;
+  setting them has no effect.
 - `HUGGINGFACE_TOKEN` and `DIARIZATION_HF_MODEL_ID`-style env vars are GONE —
   setting them has no effect; the values now come from the resolved spec's
   models and the `model-registry:huggingface` `AiProviderConnection`.

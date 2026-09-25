@@ -44,24 +44,6 @@ class TestInternalCacheEndpoints:
 
 
 @pytest.mark.e2e
-class TestInternalPipelineEndpoints:
-    """E2E tests for internal pipeline endpoints."""
-
-    @pytest.mark.asyncio
-    async def test_pipelines_loaded_endpoint(self, configured_app):
-        """Test /internal/pipelines/loaded endpoint."""
-        response = await configured_app.get("/internal/pipelines/loaded")
-
-        assert response.status_code == 200
-        data = response.json()
-
-        assert "total_pipelines" in data
-        assert "ready_pipelines" in data
-        assert "pipelines" in data
-        assert "timestamp" in data
-
-
-@pytest.mark.e2e
 class TestInternalSessionEndpoints:
     """E2E tests for internal session endpoints."""
 

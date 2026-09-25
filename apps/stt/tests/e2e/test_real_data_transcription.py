@@ -71,6 +71,7 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -856,17 +857,6 @@ async def _run_transcription(
         async def close(self) -> None:
             pass
 
-    class _PipelineReaderStub:
-        def __init__(self, config: "PipelineConfig") -> None:
-            self._config = config
-
-        async def get_pipeline(self, pipeline_id: str) -> "PipelineConfig":
-            if pipeline_id != self._config.id:
-                raise ValueError(
-                    f"Pipeline mismatch. expected={self._config.id}, got={pipeline_id}"
-                )
-            return self._config
-
     async def _collect_realtime_events(
         inbound_job_id: str,
         wait_timeout_s: int,
@@ -1011,7 +1001,21 @@ async def _run_transcription(
     # ------------------------------------------------------------------
     gateway_client = _InMemoryGatewayClient()
     gateway_client.create_job(audio_uri=audio_uri)
-    pipeline_reader = _PipelineReaderStub(pipeline_config)
+    # TASK-1006 — the worker selects its engine from the job's `resolved_spec` only.
+    # These YAML-defined, inline-model pipelines have no agent behind them, so the
+    # spec → chain step is stubbed with the chain built above (the role the deleted
+    # pipeline-reader stub played); everything downstream of selection is real.
+    from stt.transcription.workers.transcribe_file import _JobLanguage
+
+    job_language = _JobLanguage(
+        mode=None,
+        source="default",
+        runtime_key=pipeline_config.id,
+        pipeline_config=pipeline_config,
+        receipt=None,
+        fallback_key=None,
+    )
+    spec_bundle = SimpleNamespace(runtime_key=pipeline_config.id, model_configs={})
 
     # ------------------------------------------------------------------
     # Step 3 + 4: Run worker and collect realtime progress/result (SSE)
@@ -1032,16 +1036,20 @@ async def _run_transcription(
                 return_value=gateway_client,
             ),
             patch(
-                "stt.transcription.workers.transcribe_file.get_pipeline_reader",
-                return_value=pipeline_reader,
+                "stt.transcription.workers.transcribe_file.bundle_from_resolved",
+                return_value=spec_bundle,
+            ),
+            patch(
+                "stt.transcription.workers.transcribe_file._plan_job_language",
+                return_value=job_language,
             ),
         ):
             await asyncio.wait_for(
                 _transcribe_file_async(
                     job_id=job_id,
                     tenant_id=effective_tenant_id,
-                    pipeline_id=pipeline_config.id,
                     audio_uri=audio_uri,
+                    resolved_spec={"runtimeKey": pipeline_config.id},
                     consultation_id=consultation_id,
                     media_id=None,
                 ),

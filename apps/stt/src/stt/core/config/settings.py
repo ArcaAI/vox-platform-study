@@ -45,10 +45,9 @@ class Settings(BaseSettings):
     # read; anything that consults `settings.port` gets the wrong answer.
     #
     # The prefixed name is listed FIRST so it wins, and the bare name stays
-    # accepted so existing deployments keep working. Fields that
-    # name genuinely SHARED infrastructure — `DATABASE_URL`, `REDIS_URL`,
-    # `MINIO_*` — are deliberately left bare: one address, one value, every
-    # service.
+    # accepted so existing deployments keep working. Fields that name genuinely
+    # SHARED infrastructure — `REDIS_URL`, `MINIO_*` — are deliberately left
+    # bare: one address, one value, every service.
     # BUILD IDENTITY, not configuration — and therefore not settable from env
     # (rule 09 §Release Versioning: build identity "must never be made settable
     # from a Deployment manifest, an env file, or `turbo.json#globalEnv`"). The
@@ -82,47 +81,10 @@ class Settings(BaseSettings):
     # explicitly rather than inheriting a wildcard nobody chose.
     cors_origins: list[str] = Field(default_factory=list)
 
-    # Database (read-only). TASK-861: OPTIONAL and OFF by default — selection
-    # (ASR agent, models, fallback) arrives from the gateway as a
-    # `ResolvedAsrSpec`; this service reads no selection from Postgres. Turn it
-    # on (`STT_DATABASE_ENABLED=true`) only for the deprecated `pipeline_id`
-    # path and the voice-profile / initial-prompt readers, all removed in R4.
-    database_enabled: bool = Field(
-        default=False,
-        description="Open the read-only Postgres connection (deprecated paths only; TASK-861).",
-    )
-    database_url: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/hope",
-        description="PostgreSQL connection string (read-only access)",
-    )
-    database_pool_size: int = 5
-
-    @field_validator("database_url", mode="before")
-    @classmethod
-    def _normalize_database_url(cls, v: str) -> str:
-        """Normalize Prisma-style postgres:// URLs to asyncpg format.
-
-        Handles two Prisma conventions that are incompatible with SQLAlchemy/asyncpg:
-        1. postgres:// scheme (asyncpg needs postgresql+asyncpg://)
-        2. ?schema=public query param (Prisma-specific, rejected by asyncpg)
-        """
-        if isinstance(v, str):
-            if v.startswith("postgres://"):
-                v = v.replace("postgres://", "postgresql+asyncpg://", 1)
-            elif v.startswith("postgresql://") and "+asyncpg" not in v:
-                v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
-
-            from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
-
-            parsed = urlparse(v)
-            if parsed.query:
-                params = parse_qs(parsed.query)
-                params.pop("schema", None)
-                cleaned_query = urlencode(params, doseq=True)
-                v = urlunparse(parsed._replace(query=cleaned_query))
-        return v
-
-    database_max_overflow: int = 10
+    # TASK-1006 — no database fields. Selection arrives from the gateway as a
+    # `ResolvedAsrSpec`; the read-only Postgres connection (`DATABASE_ENABLED`,
+    # `DATABASE_URL`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`) existed only for
+    # the pre-agent `pipeline_id` path and was removed with it.
 
     # Redis (Dramatiq broker)
     redis_url: str = Field(

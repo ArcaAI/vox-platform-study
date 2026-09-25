@@ -1,14 +1,10 @@
 """Pipeline domain module.
 
-This module handles ASR pipeline configuration reading and parsing.
+The runtime dataclasses an ASR engine chain is built from. Selection arrives as the
+gateway-resolved ``ResolvedAsrSpec`` (``stt.pipeline.spec``); this service reads no
+pipeline or model rows (TASK-861, TASK-1006).
 """
 
-from .config_reader import (
-    ModelRegistryReader,
-    PipelineConfigReader,
-    get_model_reader,
-    get_pipeline_reader,
-)
 from .dto import (
     AiModelConfig,
     AiModelDownloadStatus,
@@ -33,11 +29,6 @@ from .dto import (
 from .yaml_parser import PipelineYamlParser, get_yaml_parser
 
 __all__ = [
-    # Config readers
-    "PipelineConfigReader",
-    "ModelRegistryReader",
-    "get_pipeline_reader",
-    "get_model_reader",
     # YAML parser
     "PipelineYamlParser",
     "get_yaml_parser",

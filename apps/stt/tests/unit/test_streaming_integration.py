@@ -25,6 +25,7 @@ from stt.streaming.schemas import (
 )
 from stt.streaming.session import StreamSession
 from stt.streaming.session_manager import SessionManager
+from tests.helpers.resolved_spec import resolved_spec
 
 # =========================================================================
 # Helpers
@@ -501,7 +502,7 @@ class TestCreateSessionIntegration:
         session = await mgr.create_session(
             session_id="s1",
             tenant_id="t1",
-            pipeline_id="p1",
+            resolved_spec=resolved_spec(primary="p1", fallback=None),
         )
 
         try:
@@ -523,7 +524,7 @@ class TestCreateSessionIntegration:
         session = await mgr.create_session(
             session_id="s2",
             tenant_id="t1",
-            pipeline_id="p1",
+            resolved_spec=resolved_spec(primary="p1", fallback=None),
         )
 
         try:
@@ -545,7 +546,7 @@ class TestCreateSessionIntegration:
         await mgr.create_session(
             session_id="s3",
             tenant_id="t1",
-            pipeline_id="p1",
+            resolved_spec=resolved_spec(primary="p1", fallback=None),
         )
 
         assert "s3" in mgr._preprocessors
@@ -567,8 +568,12 @@ class TestCreateSessionIntegration:
         mgr._load_asr_pipeline = AsyncMock(return_value=(None, None))
         mgr._running = True
 
-        await mgr.create_session("s4", "t1", "p1")
-        await mgr.create_session("s5", "t1", "p1")
+        await mgr.create_session(
+            "s4", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+        )
+        await mgr.create_session(
+            "s5", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+        )
 
         assert len(mgr._preprocessors) == 2
         assert len(mgr._inference_workers) == 2

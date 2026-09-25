@@ -66,7 +66,6 @@ echo -e "\n${YELLOW}Step 4: Starting container...${NC}"
 docker run -d \
     --name $CONTAINER_NAME \
     -p 8001:8001 \
-    -e DATABASE_URL="postgresql+asyncpg://postgres:postgres@host.docker.internal:5432/hope" \
     -e REDIS_URL="redis://host.docker.internal:6379/0" \
     -e DEBUG="true" \
     "${IMAGE_NAME}:${IMAGE_TAG}"

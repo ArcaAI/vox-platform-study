@@ -1,24 +1,20 @@
-"""`AiModelFormat` lives in FOUR places that must stay aligned, or streaming
-session creation 500s with a SQLAlchemy ``LookupError`` while hydrating an
-``AiModelRead`` row (the SARVAM/OPENAI regression):
+"""The runtime model enums stay aligned with the Prisma enums and the seed.
+
+`AiModelFormat` lives in three places that must agree:
 
 1. the Postgres ``core."AiModelFormat"`` enum — authored in ``enums.prisma``;
-2. the SQLAlchemy read-mirror ``AiModelFormatType`` in ``core/database/models.py``
-   bound to ``AiModelRead.format`` — validates EVERY value read from the column;
-3. the runtime ``dto.AiModelFormat`` ``StrEnum`` — the formats the STT process
+2. the runtime ``dto.AiModelFormat`` ``StrEnum`` — the formats the STT process
    actually executes (a deliberate SUBSET; catalog-only formats like MLX/GGUF/
-   CLOUD_API are DB-valid but raise a clear ValueError in ``config_reader``);
-4. the seed data — the concrete ``format`` rows that exist on day one.
+   CLOUD_API are DB-valid but never reach this service);
+3. the seed data — the concrete ``format`` rows that exist on day one.
 
 The containment contract these tests lock:
 
-    seed formats  ⊆  dto.AiModelFormat  ⊆  AiModelFormatType (== Prisma enum)
+    seed formats  ⊆  dto.AiModelFormat  ⊆  Prisma enum
 
-- SQLAlchemy mirror **==** Prisma enum: any Prisma value the mirror lacks crashes
-  hydration on that row (exactly the SARVAM bug); any extra is dead drift.
-- dto **⊆** mirror: every runtime-executable format must be a legal DB value.
-- seed **⊆** dto **⊆** mirror: every day-1 provider row is both hydratable AND
-  executable — no seeded model can 500 or be unrunnable out of the box.
+TASK-1006 — the SQLAlchemy read-mirror that used to sit between (1) and (2) is gone
+with the database layer; the gateway resolves every model into the
+``ResolvedAsrSpec``, so the values this service meets are the ones the spec carries.
 """
 
 from __future__ import annotations
@@ -28,8 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from stt.core.database.models import AiModelFormatType
-from stt.pipeline.dto import AiModelFormat
+from stt.pipeline.dto import AiModelFormat, AiModelSource
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 ENUMS_PRISMA = REPO_ROOT / "packages/database/src/prisma/db_main/enums.prisma"
@@ -44,6 +39,10 @@ requires_monorepo = pytest.mark.skipif(
     not ENUMS_PRISMA.exists(),
     reason="enums.prisma not reachable (src-only checkout); cross-package parity check skipped",
 )
+
+#: The runtime ``AiModelSource`` is a deliberate SUPERSET of Prisma: ``KSERVE`` is
+#: reserved for MLFlow Serve + KServe inference and has no Prisma counterpart.
+AI_MODEL_SOURCE_KNOWN_EXTRAS = {"KSERVE"}
 
 
 def _prisma_enum_values(name: str) -> set[str]:
@@ -72,59 +71,39 @@ def _seed_row_formats() -> set[str]:
     return formats
 
 
-SQLALCHEMY_VALUES = set(AiModelFormatType.enums)
-DTO_VALUES = {member.value for member in AiModelFormat}
+DTO_FORMATS = {member.value for member in AiModelFormat}
 
 
-class TestSqlAlchemyMirrorMatchesPrisma:
-    """The read-mirror must accept exactly what the DB column can hold."""
-
-    @requires_monorepo
-    def test_mirror_equals_prisma_enum(self) -> None:
-        prisma = _prisma_enum_values("AiModelFormat")
-        missing = prisma - SQLALCHEMY_VALUES
-        extra = SQLALCHEMY_VALUES - prisma
-        assert not missing, (
-            "AiModelFormatType (core/database/models.py) is missing values the DB enum "
-            f"has -> hydrating a row with one of these 500s: {sorted(missing)}"
-        )
-        assert not extra, (
-            "AiModelFormatType has values absent from the Prisma enum (dead drift): "
-            f"{sorted(extra)}"
-        )
+@requires_monorepo
+def test_runtime_formats_are_db_valid() -> None:
+    leaked = DTO_FORMATS - _prisma_enum_values("AiModelFormat")
+    assert not leaked, (
+        "dto.AiModelFormat carries runtime formats the Prisma enum does not have "
+        f"(no AiModel row can ever carry them): {sorted(leaked)}"
+    )
 
 
-class TestRuntimeFormatsAreDbValid:
-    def test_dto_is_subset_of_mirror(self) -> None:
-        leaked = DTO_VALUES - SQLALCHEMY_VALUES
-        assert not leaked, (
-            "dto.AiModelFormat carries runtime formats that are not valid DB values "
-            f"(cannot be read back from AiModelRead.format): {sorted(leaked)}"
-        )
-
-    def test_sarvam_and_openai_are_present_everywhere(self) -> None:
-        # Direct regression anchor for the crash.
-        for value in ("SARVAM", "OPENAI"):
-            assert value in SQLALCHEMY_VALUES, f"{value} missing from SQLAlchemy mirror"
-            assert value in DTO_VALUES, f"{value} missing from dto.AiModelFormat"
+@requires_monorepo
+def test_sarvam_and_openai_are_present_everywhere() -> None:
+    prisma = _prisma_enum_values("AiModelFormat")
+    for value in ("SARVAM", "OPENAI"):
+        assert value in prisma, f"{value} missing from the Prisma enum"
+        assert value in DTO_FORMATS, f"{value} missing from dto.AiModelFormat"
 
 
-class TestDay1SeedProvidersAreUsable:
-    """Every provider seeded for day one must both hydrate and execute."""
+def test_seed_formats_are_runtime_executable() -> None:
+    seed = _seed_row_formats()
+    assert seed, "no `format: AiModelFormat.X` seed rows found — parser or paths drifted"
+    unrunnable = seed - DTO_FORMATS
+    assert not unrunnable, (
+        "seed declares day-1 models whose format the STT runtime does not execute "
+        f"(dto.AiModelFormat) -> seeded-but-unusable provider: {sorted(unrunnable)}"
+    )
 
-    def test_seed_formats_are_hydratable(self) -> None:
-        seed = _seed_row_formats()
-        assert seed, "no `format: AiModelFormat.X` seed rows found — parser or paths drifted"
-        unhydratable = seed - SQLALCHEMY_VALUES
-        assert not unhydratable, (
-            "seed declares day-1 models whose format the SQLAlchemy mirror rejects "
-            f"-> streaming session 500 on read: {sorted(unhydratable)}"
-        )
 
-    def test_seed_formats_are_runtime_executable(self) -> None:
-        seed = _seed_row_formats()
-        unrunnable = seed - DTO_VALUES
-        assert not unrunnable, (
-            "seed declares day-1 models whose format the STT runtime does not execute "
-            f"(dto.AiModelFormat) -> seeded-but-unusable provider: {sorted(unrunnable)}"
-        )
+@requires_monorepo
+def test_runtime_model_source_is_the_prisma_enum_plus_known_extras() -> None:
+    prisma = _prisma_enum_values("AiModelSource")
+    runtime = {member.value for member in AiModelSource}
+    assert prisma <= runtime
+    assert runtime - prisma == AI_MODEL_SOURCE_KNOWN_EXTRAS

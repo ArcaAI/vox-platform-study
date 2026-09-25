@@ -12,21 +12,13 @@ class CreateStreamingSessionRequest(BaseModel):
 
     session_id: str = Field(..., description="Unique session identifier (UUID)")
     tenant_id: str = Field(..., description="Tenant identifier")
-    pipeline_id: str = Field(
+    resolved_spec: dict[str, Any] = Field(
         ...,
         description=(
-            "The session's runtime key: `resolved_spec.runtimeKey` (the ASR Agent "
-            "VERSION id) on the agent path, or — DEPRECATED (TASK-861, removed in R4) — "
-            "an AsrPipeline UUID/slug this service still looks up in Postgres."
-        ),
-    )
-    resolved_spec: dict[str, Any] | None = Field(
-        default=None,
-        description=(
-            "TASK-861 — the gateway-resolved ASR runtime contract (ResolvedAsrSpec, "
-            "packages/types asr-spec.ts). When present the engine chain, its models, "
-            "the fallback and the decoder prompt come from it and this service reads "
-            "nothing from Postgres. Absent ⇒ the deprecated pipeline_id path."
+            "The gateway-resolved ASR runtime contract (ResolvedAsrSpec, packages/types "
+            "asr-spec.ts) — REQUIRED and the ONLY selector (TASK-1006). The engine chain, "
+            "its models, the fallback and the decoder prompt come from it; the session is "
+            "keyed on its `runtimeKey` (the ASR Agent VERSION id)."
         ),
     )
     voice_profiles: list[dict[str, Any]] | None = Field(
@@ -87,20 +79,12 @@ class CreateStreamingSessionRequest(BaseModel):
             "logged. Preferred over env creds by the cloud ASR loaders."
         ),
     )
-    fallback_pipeline_id: str | None = Field(
-        default=None,
-        description=(
-            "Optional tenant fallback pipeline. When set, the session "
-            "can swap its live ASR engine to it on create-time load failure, "
-            "classified outage, or a user-initiated switch."
-        ),
-    )
     start_on: str | None = Field(
         default=None,
         description=(
             "'primary' (default) or 'fallback' — open the session directly on the "
-            "tenant fallback engine while keeping the primary switchable. "
-            "When 'fallback' but no fallback is configured, the "
+            "spec's fallback engine while keeping the primary switchable. "
+            "When 'fallback' but the spec declares no fallback, the "
             "session proceeds on the primary (fail-open)."
         ),
     )
@@ -207,9 +191,6 @@ class StreamingSessionResponse(BaseModel):
     reason: str | None = Field(default=None, description="Rejection reason (e.g. 'at_capacity')")
     max_concurrent: int = Field(..., description="Maximum concurrent sessions for this worker")
     current_active: int = Field(..., description="Number of currently active sessions")
-    pipeline_id: str = Field(
-        ..., description="The ASR pipeline id this session is (or was) opened with"
-    )
     active_engine: str = Field(
         ...,
         description=("The engine currently live for this session: 'primary' or 'fallback'"),

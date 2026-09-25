@@ -22,6 +22,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from prometheus_client import REGISTRY
 
+from tests.helpers.resolved_spec import resolved_spec
+
 
 def _metric(name: str, labels: dict[str, str]) -> float:
     return REGISTRY.get_sample_value(name, labels) or 0.0
@@ -247,7 +249,7 @@ class TestBuildTeardownSummary:
         request = CreateStreamingSessionRequest(
             session_id="sess_wire",
             tenant_id="t1",
-            pipeline_id="p1",
+            resolved_spec=resolved_spec(primary="p1"),
             provider_overrides={
                 "azure-speech": {
                     "apiKey": "platform-key",

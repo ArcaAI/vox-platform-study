@@ -412,28 +412,21 @@ class TestBatchTranscriptionService:
         self, service, pipeline_config, model_config, loaded_model
     ):
         """Verify _load_models returns a dict with asr, vad, denoise keys."""
-        with (
-            patch("stt.transcription.batch_service.get_model_cache") as mock_cache,
-            patch("stt.transcription.batch_service.get_model_reader") as mock_reader,
-        ):
+        with (patch("stt.transcription.batch_service.get_model_cache") as mock_cache,):
 
-            mock_model_reader = AsyncMock()
-            mock_model_reader.get_models_for_pipeline = AsyncMock(
-                return_value={
-                    "whisper-test": model_config,
-                    "silero-vad": create_complete_model_config(
-                        slug="silero-vad",
-                        task_type=ModelTaskType.VOICE_ACTIVITY_DETECTION,
-                    ),
-                }
-            )
-            mock_reader.return_value = mock_model_reader
+            model_configs = {
+                "whisper-test": model_config,
+                "silero-vad": create_complete_model_config(
+                    slug="silero-vad",
+                    task_type=ModelTaskType.VOICE_ACTIVITY_DETECTION,
+                ),
+            }
 
             mock_model_cache = AsyncMock()
             mock_model_cache.get_or_load = AsyncMock(return_value=loaded_model)
             mock_cache.return_value = mock_model_cache
 
-            result = await service._load_models(pipeline_config)
+            result = await service._load_models(pipeline_config, model_configs=model_configs)
 
             # Test actual return structure
             assert isinstance(result, dict)
@@ -446,14 +439,11 @@ class TestBatchTranscriptionService:
     @pytest.mark.asyncio
     async def test_load_models_raises_when_required_asr_missing(self, service, pipeline_config):
         """Verify error when required ASR model is not in registry."""
-        with patch("stt.transcription.batch_service.get_model_reader") as mock_reader:
-            mock_model_reader = AsyncMock()
-            # Return empty - no models found
-            mock_model_reader.get_models_for_pipeline = AsyncMock(return_value={})
-            mock_reader.return_value = mock_model_reader
+        with patch("stt.transcription.batch_service.get_model_cache"):
+            model_configs = {}
 
             with pytest.raises(TranscriptionError) as exc_info:
-                await service._load_models(pipeline_config)
+                await service._load_models(pipeline_config, model_configs=model_configs)
 
             # Test error is descriptive
             error_message = str(exc_info.value).lower()
@@ -773,24 +763,17 @@ class TestBatchServiceModelLoadingEdgeCases:
         """Test loading models when only ASR is specified."""
         pipeline_config = create_complete_pipeline_config(vad_model=None)
 
-        with (
-            patch("stt.transcription.batch_service.get_model_cache") as mock_cache,
-            patch("stt.transcription.batch_service.get_model_reader") as mock_reader,
-        ):
+        with (patch("stt.transcription.batch_service.get_model_cache") as mock_cache,):
 
-            mock_model_reader = AsyncMock()
-            mock_model_reader.get_models_for_pipeline = AsyncMock(
-                return_value={
-                    "whisper-test": create_complete_model_config(),
-                }
-            )
-            mock_reader.return_value = mock_model_reader
+            model_configs = {
+                "whisper-test": create_complete_model_config(),
+            }
 
             mock_model_cache = AsyncMock()
             mock_model_cache.get_or_load = AsyncMock(return_value=create_complete_loaded_model())
             mock_cache.return_value = mock_model_cache
 
-            result = await service._load_models(pipeline_config)
+            result = await service._load_models(pipeline_config, model_configs=model_configs)
 
             assert "asr" in result
             assert result["asr"] is not None
@@ -802,27 +785,19 @@ class TestBatchServiceModelLoadingEdgeCases:
         """Test loading when optional VAD model not found."""
         pipeline_config = create_complete_pipeline_config()
 
-        with (
-            patch("stt.transcription.batch_service.get_model_cache") as mock_cache,
-            patch("stt.transcription.batch_service.get_model_reader") as mock_reader,
-        ):
+        with (patch("stt.transcription.batch_service.get_model_cache") as mock_cache,):
 
-            mock_model_reader = AsyncMock()
-            # Only ASR model found, VAD missing
-            mock_model_reader.get_models_for_pipeline = AsyncMock(
-                return_value={
-                    "whisper-test": create_complete_model_config(),
-                    # "silero-vad" is missing
-                }
-            )
-            mock_reader.return_value = mock_model_reader
+            model_configs = {
+                "whisper-test": create_complete_model_config(),
+                # "silero-vad" is missing
+            }
 
             mock_model_cache = AsyncMock()
             mock_model_cache.get_or_load = AsyncMock(return_value=create_complete_loaded_model())
             mock_cache.return_value = mock_model_cache
 
             # Should not raise - VAD is optional
-            result = await service._load_models(pipeline_config)
+            result = await service._load_models(pipeline_config, model_configs=model_configs)
 
             assert result["asr"] is not None
 
@@ -1178,14 +1153,9 @@ class TestBatchServiceInlineModelLoading:
         """Test loading inline ASR model definition."""
         pipeline_config = self.create_inline_pipeline_config()
 
-        with (
-            patch("stt.transcription.batch_service.get_model_cache") as mock_cache,
-            patch("stt.transcription.batch_service.get_model_reader") as mock_reader,
-        ):
+        with (patch("stt.transcription.batch_service.get_model_cache") as mock_cache,):
 
-            mock_model_reader = AsyncMock()
-            mock_model_reader.get_models_for_pipeline = AsyncMock(return_value={})
-            mock_reader.return_value = mock_model_reader
+            model_configs = {}
 
             mock_model_cache = AsyncMock()
             mock_model_cache.get_or_load_inline = AsyncMock(
@@ -1193,7 +1163,7 @@ class TestBatchServiceInlineModelLoading:
             )
             mock_cache.return_value = mock_model_cache
 
-            result = await service._load_models(pipeline_config)
+            result = await service._load_models(pipeline_config, model_configs=model_configs)
 
             # Should have called get_or_load_inline for ASR
             assert mock_model_cache.get_or_load_inline.call_count >= 1
@@ -1231,18 +1201,11 @@ class TestBatchServiceInlineModelLoading:
             updated_at=datetime.utcnow(),
         )
 
-        with (
-            patch("stt.transcription.batch_service.get_model_cache") as mock_cache,
-            patch("stt.transcription.batch_service.get_model_reader") as mock_reader,
-        ):
+        with (patch("stt.transcription.batch_service.get_model_cache") as mock_cache,):
 
-            mock_model_reader = AsyncMock()
-            mock_model_reader.get_models_for_pipeline = AsyncMock(
-                return_value={
-                    "whisper-test": create_complete_model_config(),
-                }
-            )
-            mock_reader.return_value = mock_model_reader
+            model_configs = {
+                "whisper-test": create_complete_model_config(),
+            }
 
             mock_model_cache = AsyncMock()
             mock_model_cache.get_or_load = AsyncMock(return_value=create_complete_loaded_model())
@@ -1252,7 +1215,7 @@ class TestBatchServiceInlineModelLoading:
             mock_cache.return_value = mock_model_cache
 
             # Should not raise - VAD is optional
-            result = await service._load_models(pipeline_config)
+            result = await service._load_models(pipeline_config, model_configs=model_configs)
 
             assert result["asr"] is not None
             assert result["vad"] is None  # Failed to load, set to None
@@ -1281,12 +1244,8 @@ class TestBatchServiceInlineModelLoading:
             updated_at=datetime.utcnow(),
         )
 
-        with (
-            patch("stt.transcription.batch_service.get_model_cache") as mock_cache,
-            patch("stt.transcription.batch_service.get_model_reader") as mock_reader,
-        ):
+        with (patch("stt.transcription.batch_service.get_model_cache") as mock_cache,):
 
-            mock_reader.return_value = AsyncMock()
             mock_cache.return_value = AsyncMock()
 
             with pytest.raises(TranscriptionError, match="ASR model.*required"):

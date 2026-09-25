@@ -1,10 +1,8 @@
-"""BUG-015 — the three worker singletons must be per-event-loop.
+"""BUG-015 — the worker singletons must be per-event-loop.
 
-Each held loop-bound state across the Dramatiq worker's per-message event loops:
+Each held loop-bound state across the Dramatiq worker's per-message event loops
+(TASK-1006 removed the third, the SQLAlchemy engine, with the database layer):
 
-  * ``connection._get_or_create_engine`` — a SQLAlchemy async engine whose pool
-    holds asyncpg connections bound to the creating loop (keyed on ``id(loop)``,
-    which recycles) AND was never disposed, so pools accumulated per job.
   * ``gateway.get_api_client`` — ``@lru_cache``'d, so ONE ``httpx.AsyncClient``
     was shared by every loop in the process.
   * ``effective_config.get_effective_config_client`` — a module global whose
@@ -24,29 +22,6 @@ def _clean_registry():
     reset_loop_locals()
     yield
     reset_loop_locals()
-
-
-class TestDatabaseEngineIsPerLoop:
-    def test_each_loop_gets_its_own_engine(self) -> None:
-        from stt.core.database.connection import _get_or_create_engine
-
-        async def main() -> object:
-            engine, _ = _get_or_create_engine()
-            return engine
-
-        assert asyncio.run(main()) is not asyncio.run(main())
-
-    def test_engines_do_not_accumulate_across_jobs(self) -> None:
-        """The leak that exhausted Postgres `max_connections` after ~24 jobs."""
-        from stt.core.database.connection import _get_or_create_engine, engine_cache_size
-
-        async def main() -> None:
-            _get_or_create_engine()
-
-        for _ in range(8):
-            asyncio.run(main())
-
-        assert engine_cache_size() <= 1
 
 
 class TestApiClientIsPerLoop:

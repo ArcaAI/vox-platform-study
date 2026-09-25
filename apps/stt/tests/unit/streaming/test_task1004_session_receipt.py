@@ -163,7 +163,6 @@ async def _create(mgr: MagicMock, spec: dict[str, Any], **overrides: Any) -> Ses
     kwargs: dict[str, Any] = {
         "session_id": "s1",
         "tenant_id": "t1",
-        "pipeline_id": spec["runtimeKey"],
         "resolved_spec": spec,
     }
     kwargs.update(overrides)
@@ -437,7 +436,7 @@ def api() -> tuple[TestClient, AsyncMock]:
 
 
 def _body(**overrides: Any) -> dict[str, Any]:
-    body = {"session_id": "s1", "tenant_id": "t1", "pipeline_id": "p1"}
+    body = {"session_id": "s1", "tenant_id": "t1", "resolved_spec": _spec()}
     body.update(overrides)
     return body
 

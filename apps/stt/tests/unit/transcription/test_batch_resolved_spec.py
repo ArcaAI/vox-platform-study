@@ -66,7 +66,7 @@ def test_pipeline_config_from_bundle_is_keyed_on_the_runtime_key() -> None:
 
 
 @pytest.mark.asyncio
-async def test_load_models_uses_the_pre_resolved_configs_and_never_the_model_reader() -> None:
+async def test_load_models_uses_the_pre_resolved_configs() -> None:
     bundle = bundle_from_resolved(SPEC)
     pipeline = pipeline_config_from_bundle(bundle, SPEC["runtimeKey"])
     loaded: list[str] = []
@@ -80,10 +80,7 @@ async def test_load_models_uses_the_pre_resolved_configs_and_never_the_model_rea
     cache.get_or_load_inline = AsyncMock(side_effect=_boom)
 
     service = BatchTranscriptionService()
-    with (
-        patch("stt.transcription.batch_service.get_model_cache", return_value=cache),
-        patch("stt.transcription.batch_service.get_model_reader", _boom),
-    ):
+    with patch("stt.transcription.batch_service.get_model_cache", return_value=cache):
         models = await service._load_models(pipeline, model_configs=bundle.model_configs)
 
     assert models["asr"].model_slug == "arcaai-whisper-large-ml-en-gguf"

@@ -18,6 +18,7 @@ import httpx
 import pytest
 
 from stt.core.api_client.gateway import APIGatewayClient
+from tests.helpers.resolved_spec import resolved_spec as make_spec
 
 TENANT = "50000000-0000-0000-0000-000000000001"
 
@@ -157,7 +158,7 @@ class TestActorForwardsTenantId:
         await mod._transcribe_file_async(
             job_id="job-1",
             tenant_id=TENANT,
-            pipeline_id="p-1",
+            resolved_spec=make_spec(),
             audio_uri="s3://bucket/a.wav",
             consultation_id="c-1",
         )
@@ -199,7 +200,7 @@ class TestActorForwardsTenantId:
             await mod._transcribe_file_async(
                 job_id="job-1",
                 tenant_id=TENANT,
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://bucket/a.wav",
             )
 
@@ -228,19 +229,6 @@ def _install_worker_stubs(monkeypatch, mod: Any, api_client: Any) -> None:
 
         async def upload_batch_metadata(self, **kwargs: Any) -> str:
             return "s3://bucket/m.json"
-
-    class FakeInference:
-        language: str | None = None
-
-    class FakeSpec:
-        inference = FakeInference()
-
-    class FakePipelineConfig:
-        spec = FakeSpec()
-
-    class FakePipelineReader:
-        async def get_pipeline(self, pipeline_id: str) -> FakePipelineConfig:
-            return FakePipelineConfig()
 
     class FakeResult:
         text = "hello world"
@@ -290,7 +278,6 @@ def _install_worker_stubs(monkeypatch, mod: Any, api_client: Any) -> None:
     monkeypatch.setattr(mod, "refresh_job_concurrency_limit", _noop_refresh)
     monkeypatch.setattr(mod, "get_api_client", lambda: api_client)
     monkeypatch.setattr(mod, "get_blob_service", lambda: FakeBlobService())
-    monkeypatch.setattr(mod, "get_pipeline_reader", lambda: FakePipelineReader())
     monkeypatch.setattr(mod, "get_batch_service", lambda: FakeBatchService())
     monkeypatch.setattr(mod, "TranscriptionEventPublisher", FakePublisher)
     monkeypatch.setattr(mod, "get_effective_config_client", lambda: FakeEffectiveConfigClient())

@@ -1,41 +1,12 @@
-"""Resolve SYSTEM PromptTemplate content by UUID for Whisper initial_prompt."""
+"""Compose the Whisper ``initial_prompt`` from its parts.
+
+TASK-1006 — the prompt TEXT arrives on the resolved spec
+(``inference.initial_prompt_text``); the by-UUID ``PromptTemplate`` lookup that
+used to live here was a Postgres read for the pre-agent pipeline path and went
+with it.
+"""
 
 from __future__ import annotations
-
-import structlog
-from sqlalchemy import select
-
-from stt.core.database.connection import get_db_session
-from stt.core.database.models import PromptTemplateRead
-
-logger = structlog.get_logger(__name__)
-
-
-async def get_initial_prompt(template_id: str) -> str | None:
-    """Fetch a SYSTEM PromptTemplate by UUID. Returns content or None."""
-    try:
-        async with get_db_session() as session:
-            stmt = select(PromptTemplateRead).where(
-                PromptTemplateRead.id == template_id,
-                PromptTemplateRead.resource_status == "ENABLED",
-                PromptTemplateRead.category == "SYSTEM",
-            )
-            result = await session.execute(stmt)
-            template = result.scalar_one_or_none()
-            if template is None:
-                logger.warning(
-                    "Prompt template not found or inactive",
-                    template_id=template_id,
-                )
-                return None
-            return template.content
-    except Exception:
-        logger.error(
-            "Failed to fetch prompt template",
-            template_id=template_id,
-            exc_info=True,
-        )
-        return None
 
 
 def compose_prompt(

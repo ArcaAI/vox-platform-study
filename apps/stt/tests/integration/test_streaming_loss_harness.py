@@ -52,11 +52,6 @@ ENV VARS
                               ``AgentAssignment`` cascade picks the agent
                               (TASK-865's normal path; the seeded stack resolves
                               to ``realtime-transcription``).
-``STREAM_PIPELINE_ID``        DEPRECATED compatibility only — an ASR pipeline id
-                              the caller OWNS. Unset (the default) omits
-                              ``pipelineId`` from the session body; the retired
-                              pipeline-id path no longer resolves on this stack
-                              (TASK-861/865).
 ``STREAM_WAV_PATH``           16-bit PCM mono WAV (default the committed
                               107 s Malayalam fixture).
 ``STREAM_MAX_SECONDS``        cap on replayed audio (default 30; <=0 = full).
@@ -613,18 +608,14 @@ async def _login(http: Any, api_url: str) -> str | None:
 
 
 async def _create_session(http: Any, api_url: str, token: str) -> dict[str, Any] | tuple[int, str]:
-    # Agent contract (TASK-934/M): default body carries neither key — the
-    # tenant/department AgentAssignment cascade picks the agent. agentSlug is
-    # sent only when STREAM_AGENT_SLUG names a published SPEECH_TO_TEXT agent;
-    # pipelineId is DEPRECATED compatibility, sent only when STREAM_PIPELINE_ID
-    # is set explicitly (no default — the retired pipeline path 404s).
+    # Agent contract (TASK-934/M): the default body names no agent — the
+    # tenant/department AgentAssignment cascade picks it. agentSlug is sent only
+    # when STREAM_AGENT_SLUG names a published SPEECH_TO_TEXT agent. TASK-1006
+    # removed the pipelineId compatibility knob with the pipeline path itself.
     body: dict[str, Any] = {"sampleRate": _SAMPLE_RATE}
     agent_slug = _env("STREAM_AGENT_SLUG", "")
     if agent_slug:
         body["agentSlug"] = agent_slug
-    pipeline_id = _env("STREAM_PIPELINE_ID", "")
-    if pipeline_id:
-        body["pipelineId"] = pipeline_id
     resp = await http.post(
         f"{api_url}/api/v1/audio/transcription-jobs/stream/session",
         headers={"Authorization": f"Bearer {token}"},
@@ -755,11 +746,10 @@ def test_metric_functions_are_correct() -> None:
 async def test_create_session_body_contract(monkeypatch: pytest.MonkeyPatch) -> None:
     """Session bootstrap posts the agent contract (TASK-934/M) — pure, no network.
 
-    Default body carries neither ``pipelineId`` nor ``agentSlug`` — the
-    tenant/department ``AgentAssignment`` cascade picks the agent (TASK-865's
-    normal path). ``agentSlug`` is sent only when ``STREAM_AGENT_SLUG`` is set.
-    ``pipelineId`` is DEPRECATED compatibility with no default — sent only when
-    ``STREAM_PIPELINE_ID`` is set explicitly.
+    Default body carries no ``agentSlug`` — the tenant/department
+    ``AgentAssignment`` cascade picks the agent (TASK-865's normal path).
+    ``agentSlug`` is sent only when ``STREAM_AGENT_SLUG`` is set, and there is no
+    ``pipelineId`` at all (TASK-1006).
     """
 
     class _FakeResponse:
@@ -785,7 +775,6 @@ async def test_create_session_body_contract(monkeypatch: pytest.MonkeyPatch) -> 
             return _FakeResponse()
 
     monkeypatch.delenv("STREAM_AGENT_SLUG", raising=False)
-    monkeypatch.delenv("STREAM_PIPELINE_ID", raising=False)
     await _create_session(_FakeHttp(), "http://localhost:8868", "tok")
     assert captured["body"] == {"sampleRate": _SAMPLE_RATE}
 
@@ -796,13 +785,10 @@ async def test_create_session_body_contract(monkeypatch: pytest.MonkeyPatch) -> 
         "agentSlug": "realtime-transcription",
     }
 
+    # A leftover STREAM_PIPELINE_ID in the environment changes nothing.
     monkeypatch.setenv("STREAM_PIPELINE_ID", "81000000-0000-0000-0001-000000000402")
     await _create_session(_FakeHttp(), "http://localhost:8868", "tok")
-    assert captured["body"] == {
-        "sampleRate": _SAMPLE_RATE,
-        "agentSlug": "realtime-transcription",
-        "pipelineId": "81000000-0000-0000-0001-000000000402",
-    }
+    assert "pipelineId" not in captured["body"]
 
 
 async def test_streaming_loss_latency_harness() -> None:
@@ -855,7 +841,6 @@ async def test_streaming_loss_latency_harness() -> None:
             "api_url": api_url,
             "ws_origin": ws_origin,
             "agent_slug": _env("STREAM_AGENT_SLUG", "") or None,
-            "pipeline_id": _env("STREAM_PIPELINE_ID", "") or None,
             "session_id": session_id,
             "warmed": warmed,
             "session_create_ms": create_ms,

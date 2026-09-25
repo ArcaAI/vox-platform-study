@@ -197,13 +197,11 @@ class TestLifespan:
         mock_app = FastAPI()
 
         with (
-            patch("stt.main.initialize_database", new_callable=AsyncMock) as mock_db,
             patch("stt.main.initialize_redis", new_callable=AsyncMock) as mock_redis,
             patch("stt.main.initialize_minio", new_callable=AsyncMock) as mock_minio,
             patch("stt.main.initialize_streaming", new_callable=AsyncMock),
             patch("stt.main.shutdown_streaming", new_callable=AsyncMock),
             patch("stt.main._configure_torch_threading"),
-            patch("stt.main.close_database", new_callable=AsyncMock) as mock_close_db,
             patch("stt.main.close_redis", new_callable=AsyncMock) as mock_close_redis,
             patch("stt.main.close_minio", new_callable=AsyncMock) as mock_close_minio,
             patch("stt.main.settings") as mock_settings,
@@ -224,11 +222,9 @@ class TestLifespan:
             mock_settings.preload_pipelines = ""
 
             async with lifespan(mock_app):
-                mock_db.assert_called_once()
                 mock_redis.assert_called_once()
                 mock_minio.assert_called_once()
 
-            mock_close_db.assert_called_once()
             mock_close_redis.assert_called_once()
             mock_close_minio.assert_called_once()
 
@@ -256,13 +252,11 @@ class TestLifespanLazyModels:
         mock_get_embedding = MagicMock(return_value=mock_embedding)
 
         with (
-            patch("stt.main.initialize_database", new_callable=AsyncMock),
             patch("stt.main.initialize_redis", new_callable=AsyncMock),
             patch("stt.main.initialize_minio", new_callable=AsyncMock),
             patch("stt.main.initialize_streaming", new_callable=AsyncMock),
             patch("stt.main.shutdown_streaming", new_callable=AsyncMock),
             patch("stt.main._configure_torch_threading"),
-            patch("stt.main.close_database", new_callable=AsyncMock),
             patch("stt.main.close_redis", new_callable=AsyncMock),
             patch("stt.main.close_minio", new_callable=AsyncMock),
             patch("stt.main.settings") as mock_settings,

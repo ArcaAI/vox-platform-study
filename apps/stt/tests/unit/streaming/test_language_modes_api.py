@@ -12,6 +12,7 @@ from stt.pipeline.dto import AiModelFormat
 from stt.pipeline.language_modes import LanguageModeUnsupportedError
 from stt.streaming._runtime import clear_runtime, set_session_manager
 from stt.streaming.api.routes import router
+from tests.helpers.resolved_spec import resolved_spec
 
 
 @pytest.fixture(autouse=True)
@@ -51,7 +52,7 @@ def _create_body(**overrides) -> dict:
     body = {
         "session_id": "sess-587",
         "tenant_id": "tenant-1",
-        "pipeline_id": "pipeline-1",
+        "resolved_spec": resolved_spec(),
     }
     body.update(overrides)
     return body

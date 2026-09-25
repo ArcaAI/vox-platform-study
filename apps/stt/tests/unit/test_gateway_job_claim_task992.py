@@ -35,6 +35,7 @@ from stt.core.exceptions import (
     JobConflictError,
     JobTerminalError,
 )
+from tests.helpers.resolved_spec import resolved_spec as make_spec
 
 JOB_ID = "01a0b94c-637e-78c0-a279-3a83cf8df46b"
 
@@ -210,10 +211,6 @@ def _install_stubs(monkeypatch: pytest.MonkeyPatch, mod: Any, api_client: Any) -
         async def download_audio(self, uri: str, tenant_id: str | None = None) -> bytes:
             raise AssertionError("the job never gets past /start in these tests")
 
-    class FakePipelineReader:
-        async def get_pipeline(self, pipeline_id: str) -> Any:
-            raise AssertionError("the job never gets past /start in these tests")
-
     class FakeBatchService:
         async def transcribe(self, **kwargs: Any) -> Any:
             raise AssertionError("the job never gets past /start in these tests")
@@ -234,7 +231,6 @@ def _install_stubs(monkeypatch: pytest.MonkeyPatch, mod: Any, api_client: Any) -
     monkeypatch.setattr(mod, "refresh_job_concurrency_limit", _noop_refresh)
     monkeypatch.setattr(mod, "get_api_client", lambda: api_client)
     monkeypatch.setattr(mod, "get_blob_service", lambda: FakeBlobService())
-    monkeypatch.setattr(mod, "get_pipeline_reader", lambda: FakePipelineReader())
     monkeypatch.setattr(mod, "get_batch_service", lambda: FakeBatchService())
     monkeypatch.setattr(mod, "TranscriptionEventPublisher", FakePublisher)
     monkeypatch.setattr(mod, "get_effective_config_client", lambda: FakeEffectiveConfigClient())
@@ -273,7 +269,7 @@ class TestWorkerReactionToARefusal:
 
         with pytest.raises(JobConflictError):
             await mod._transcribe_file_async(
-                job_id=JOB_ID, tenant_id=TENANT, pipeline_id="p-1", audio_uri="s3://bucket/consult.wav"
+                job_id=JOB_ID, tenant_id=TENANT, resolved_spec=make_spec(), audio_uri="s3://bucket/consult.wav"
             )
 
         assert failed == [], "a job that can still be completed must never be marked FAILED"
@@ -303,7 +299,7 @@ class TestWorkerReactionToARefusal:
         _install_stubs(monkeypatch, mod, FakeClient())
 
         await mod._transcribe_file_async(
-            job_id=JOB_ID, tenant_id=TENANT, pipeline_id="p-1", audio_uri="s3://bucket/consult.wav"
+            job_id=JOB_ID, tenant_id=TENANT, resolved_spec=make_spec(), audio_uri="s3://bucket/consult.wav"
         )
 
         assert failed == [], "a COMPLETED job must not be overwritten as FAILED"
@@ -332,7 +328,7 @@ class TestWorkerReactionToARefusal:
         monkeypatch.setattr(mod.socket, "gethostname", lambda: "stt-worker-7d4c9")
 
         await mod._transcribe_file_async(
-            job_id=JOB_ID, tenant_id=TENANT, pipeline_id="p-1", audio_uri="s3://bucket/consult.wav"
+            job_id=JOB_ID, tenant_id=TENANT, resolved_spec=make_spec(), audio_uri="s3://bucket/consult.wav"
         )
 
         assert claimed[0].startswith("stt-worker-7d4c9-")

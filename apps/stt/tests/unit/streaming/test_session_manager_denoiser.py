@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers.resolved_spec import resolved_spec
+
 
 class TestSessionManagerDenoiserWiring:
 
@@ -30,6 +32,12 @@ class TestSessionManagerDenoiserWiring:
         mgr._switch_controllers = {}
         mgr._provider_overrides = {}
         mgr._fallback_pipeline_ids = {}
+        # TASK-1006 — the resolved spec is the only selector: register it for real.
+        mgr._session_specs = {}
+        mgr._session_language_modes = {}
+        mgr._register_resolved_spec = lambda *a, **k: SessionManager._register_resolved_spec(
+            mgr, *a, **k
+        )
         # TASK-985 L-SESSION — instance attrs created in `__init__`, so a
         # `MagicMock(spec=SessionManager)` (which specs off the CLASS) does not
         # carry them. `_creating` holds the ids of sessions mid-creation so the
@@ -93,7 +101,7 @@ class TestSessionManagerDenoiserWiring:
                 mgr,
                 session_id="s1",
                 tenant_id="t1",
-                pipeline_id="p1",
+                resolved_spec=resolved_spec(primary="p1", fallback=None),
                 sample_rate=16000,
             )
 
@@ -123,6 +131,12 @@ class TestSessionManagerDenoiserWiring:
         mgr._switch_controllers = {}
         mgr._provider_overrides = {}
         mgr._fallback_pipeline_ids = {}
+        # TASK-1006 — the resolved spec is the only selector: register it for real.
+        mgr._session_specs = {}
+        mgr._session_language_modes = {}
+        mgr._register_resolved_spec = lambda *a, **k: SessionManager._register_resolved_spec(
+            mgr, *a, **k
+        )
         # TASK-985 L-SESSION — instance attrs created in `__init__`, so a
         # `MagicMock(spec=SessionManager)` (which specs off the CLASS) does not
         # carry them. `_creating` holds the ids of sessions mid-creation so the
@@ -187,7 +201,7 @@ class TestSessionManagerDenoiserWiring:
                 mgr,
                 session_id="s1",
                 tenant_id="t1",
-                pipeline_id="p1",
+                resolved_spec=resolved_spec(primary="p1", fallback=None),
                 sample_rate=16000,
             )
 
@@ -217,6 +231,12 @@ class TestSessionManagerDenoiserWiring:
         mgr._switch_controllers = {}
         mgr._provider_overrides = {}
         mgr._fallback_pipeline_ids = {}
+        # TASK-1006 — the resolved spec is the only selector: register it for real.
+        mgr._session_specs = {}
+        mgr._session_language_modes = {}
+        mgr._register_resolved_spec = lambda *a, **k: SessionManager._register_resolved_spec(
+            mgr, *a, **k
+        )
         # TASK-985 L-SESSION — instance attrs created in `__init__`, so a
         # `MagicMock(spec=SessionManager)` (which specs off the CLASS) does not
         # carry them. `_creating` holds the ids of sessions mid-creation so the
@@ -284,7 +304,7 @@ class TestSessionManagerDenoiserWiring:
                     mgr,
                     session_id="s1",
                     tenant_id="t1",
-                    pipeline_id="p1",
+                    resolved_spec=resolved_spec(primary="p1", fallback=None),
                     sample_rate=16000,
                 )
 
@@ -310,6 +330,12 @@ class TestSessionManagerDenoiserWiring:
         mgr._switch_controllers = {}
         mgr._provider_overrides = {}
         mgr._fallback_pipeline_ids = {}
+        # TASK-1006 — the resolved spec is the only selector: register it for real.
+        mgr._session_specs = {}
+        mgr._session_language_modes = {}
+        mgr._register_resolved_spec = lambda *a, **k: SessionManager._register_resolved_spec(
+            mgr, *a, **k
+        )
         # TASK-985 L-SESSION — instance attrs created in `__init__`, so a
         # `MagicMock(spec=SessionManager)` (which specs off the CLASS) does not
         # carry them. `_creating` holds the ids of sessions mid-creation so the
@@ -367,7 +393,7 @@ class TestSessionManagerDenoiserWiring:
                 mgr,
                 session_id="s1",
                 tenant_id="t1",
-                pipeline_id="p1",
+                resolved_spec=resolved_spec(primary="p1", fallback=None),
                 sample_rate=16000,
             )
 
@@ -402,6 +428,12 @@ class TestSessionManagerDenoiserWiring:
         mgr._session_voice_profiles = {}
         mgr._session_voice_profile_seeded = {}  # TASK-991 sibling map
         mgr._fallback_pipeline_ids = {}
+        # TASK-1006 — the resolved spec is the only selector: register it for real.
+        mgr._session_specs = {}
+        mgr._session_language_modes = {}
+        mgr._register_resolved_spec = lambda *a, **k: SessionManager._register_resolved_spec(
+            mgr, *a, **k
+        )
         # TASK-985 L-SESSION — instance attrs created in `__init__`, so a
         # `MagicMock(spec=SessionManager)` (which specs off the CLASS) does not
         # carry them. `_creating` holds the ids of sessions mid-creation so the
@@ -478,7 +510,7 @@ class TestSessionManagerDenoiserWiring:
                 mgr,
                 session_id="s1",
                 tenant_id="t1",
-                pipeline_id="p1",
+                resolved_spec=resolved_spec(primary="p1", fallback=None),
                 consultation_id=None,
                 sample_rate=16000,
                 user_id="user-1",
