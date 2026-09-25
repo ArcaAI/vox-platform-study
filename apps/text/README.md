@@ -131,7 +131,6 @@ These are **live** names, not leftovers to "fix":
 | Redis streams | `text:stream:` (DB 3) |
 | Prometheus metrics | `text_*` (e.g. `text_generation_total`, `text_engine_cache_hit_rate`, `text_provider_bytes_total`) |
 | OTEL service name (image default) | `text` (`TEXT_OTEL_SERVICE_NAME`) |
-| Compat HTTP (gateway) | `/api/smr/api/v1/presummary`, `/api/smr/api/v1/summary/sync` |
 | Vault AppRole | `hope-text` |
 | Release tag prefix | `TEXT-` (image name is `text`) |
 
@@ -143,7 +142,9 @@ Grafana dashboard **files**: `infrastructure/grafana/dashboards/text-overview.js
 | Surface | Location |
 |---|---|
 | Raw LLM proxy | `TextProxyController` — `apps/api/src/modules/streaming/text-proxy.controller.ts` (`@Controller('text-generations')`) |
-| v1 summarization compat | `TextCompatController` — `apps/api/src/modules/text-compat/` (HTTP paths under `/api/smr/...` stay) |
+
+The v1 summarization compat surface (`TextCompatController`, `/api/smr/...`) was removed in
+TASK-1004; summarization runs through the async/workflow plane only.
 
 ## Gotchas
 
