@@ -118,9 +118,6 @@ export const OMITTED_SCALARS_BY_MODEL: Readonly<Record<string, ReadonlySet<strin
  * factory coverage pass. Keyed by Prisma model name.
  */
 export const FACTORY_OMITTED_SCALARS_BY_MODEL: Readonly<Record<string, ReadonlySet<string>>> = {
-  // The per-tenant "default pipeline" flag is flipped by a dedicated
-  // set-default operation; a pipeline is always created `false`.
-  AsrPipeline: new Set<string>(['isDefault']),
   // Nullable bucket FK assigned when the object is placed in a `TenantBucket`,
   // not at media-record creation.
   Media: new Set<string>(['bucketId']),
