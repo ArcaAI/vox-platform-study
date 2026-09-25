@@ -2,10 +2,15 @@
 
 Speech-to-text across all its shapes: live streaming transcription (WS bridge → Redis →
 STT), batch transcription jobs (Dramatiq worker), speaker voice-profile enrollment +
-diarization, and the ASR pipeline registry with its template governance (locked
-template copies, clone-to-customize, SYSTEM-template resync). Migrates legacy matrix rows
-**10**, **11**, **13**, and the **ASR-pipeline half of row 26** (the `AiModel` registry
-half is in [`ai-models-providers.md`](./ai-models-providers.md)).
+diarization. Migrates legacy matrix rows **10**, **11**, **13**, and the
+**ASR-pipeline half of row 26** (the `AiModel` registry half is in
+[`ai-models-providers.md`](./ai-models-providers.md)) — that ASR-pipeline half (R4-R6
+below) was itself RETIRED by TASK-1006 (2026-09-25): the pipeline registry, its
+template-clone/resync governance, and the per-tenant STT fallback/BYOK config all moved
+onto the agent/workflow plane. `agentSlug` selects a published `SPEECH_TO_TEXT` `Agent`
+(department → tenant → SYSTEM cascade when omitted), whose own `AgentModelFallback` chain
+is what a session or batch job now falls back to — see
+[model-and-config-plane.md §8](../architecture/model-and-config-plane.md#8-asr-selection--fallback--removed-the-pipeline-template-plane-task-1006).
 
 Route paths are relative to the global prefix `/api/v1`. Test shorthand is defined in
 [`index.md`](./index.md#test-location-shorthand). `—` means verified-absent.
@@ -23,7 +28,7 @@ back to the gateway on internal service-token callbacks.
 |---|---|
 | App / service | `apps/api` + `apps/stt` (port 8861) + Redis |
 | Key modules | `apps/api/src/modules/streaming` (`stt-ws.gateway.ts`, `transcription-job.controller.ts` stream-session routes, `session-removal-retry.service.ts`); `packages/applications/src/services/stt/streaming` (`streamingSession.service.ts`, `streamingAudioBridge.service.ts`), `packages/applications/src/services/stt/realtime`; `apps/stt/src/stt/streaming` |
-| Prisma models | `TranscriptionJob`, `AsrPipeline` (`db_main/stt.prisma`), `TranscriptSegment` (`db_main/consultation.prisma`) |
+| Prisma models | `TranscriptionJob` (`db_main/stt.prisma`), `TranscriptSegment` (`db_main/consultation.prisma`) |
 | Key API endpoints | `POST /audio/transcription-jobs/stream/session` (open session + ticket), `DELETE /audio/transcription-jobs/stream/session/:sessionId`, `POST /audio/transcription-jobs/stream/session/:sessionId/refresh-ticket`; WS gateway `@WebSocketGateway({ path: '/ws/stt/stream' })` → WS `/ws/stt/stream`; STT internal (`streaming/api/routes.py`, `APIRouter(prefix="/internal/streaming")`) → `POST /internal/streaming/sessions`, `GET /internal/streaming/sessions/active`, `GET/DELETE /internal/streaming/sessions/:session_id`, `POST /internal/streaming/sessions/:session_id/end` |
 | Console | `apps/admin-console` feature `playground-live-transcription` (`live-transcription-screen`, `streaming-tab`); route `/playground/live-transcription` (tier 50–59 playground, nav-gated under `(tenant)`) |
 | Tests | unit(app): `stt/streaming/__tests__/{streamingSession.service,streamingAudioBridge.service,speaker-label}.test.ts`; unit(console): `playground-live-transcription/components/__tests__/{live-transcription-screen,streaming-tab}.test.tsx`, `playground-live-transcription/api/__tests__/{use-live-stt-session.test.tsx,live-transcription-api.test.ts}`; contract: `stt.contract.test.ts` (+ `tests/contracts/stt-transcript-segments/`); e2e: `transcription-job-cross-tenant.spec.ts`; py(stt): `unit/streaming/*` |
@@ -35,7 +40,7 @@ back to the gateway on internal service-token callbacks.
 | App / service | `apps/api` + `apps/stt` (Dramatiq worker `worker.py`) |
 | Key modules | `apps/api/src/modules/streaming` (`transcription-job.controller.ts`, `admin-transcription-job.controller.ts`); `apps/api/src/modules/internal` (`stt-internal.controller.ts` — job callbacks); `packages/applications/src/services/stt/job`; `apps/stt/src/stt/transcription` |
 | Prisma models | `TranscriptionJob` (`db_main/stt.prisma`), `Media` (`db_main/media.prisma`) |
-| Key API endpoints | `@Controller('audio/transcription-jobs')`: `POST ''`, `POST /batch`, `POST /streaming`, `POST /transcribe`, `GET /stats`, `GET /status/:status`, `GET /consultation/:consultationId`, `GET :id`, SSE `GET :id/stream`, `POST :id/cancel`, `POST :id/retry`, `GET ''` (list). `@Controller('admin/audio/transcription-jobs')`: `GET ''`, `GET /stats`, `GET /status/:status`. STT `POST /api/v1/transcribe`; internal callbacks `@Controller('internal/stt')` → `POST /internal/stt/transcripts`, `PATCH /internal/stt/jobs/:id/{start,progress,complete,fail}`, `GET /internal/stt/jobs/:id/status` |
+| Key API endpoints | `@Controller('audio/transcription-jobs')`: `POST ''`, `POST /batch`, `POST /streaming`, `POST /transcribe`, `GET /stats`, `GET /status/:status`, `GET /consultation/:consultationId`, `GET :id`, SSE `GET :id/stream`, `POST :id/cancel`, `POST :id/retry`, `GET ''` (list). `@Controller('admin/audio/transcription-jobs')`: `GET ''`, `GET /stats`, `GET /status/:status`. Internal callbacks `@Controller('internal/stt')` → `POST /internal/stt/transcripts`, `PATCH /internal/stt/jobs/:id/{start,progress,complete,fail}`, `GET /internal/stt/jobs/:id/status`. (STT's own `POST /api/v1/transcribe` and `POST /api/v1/pipelines/validate` were removed by TASK-1006 along with the optional STT database layer.) |
 | Console | `apps/admin-console` feature `transcription-jobs` (`transcription-jobs-screen`); route `/audio/transcription-jobs` (tier 30–49, tenant-scoped) |
 | Tests | unit(app): `stt/job/__tests__/{transcriptionJob.service,transcriptionJob.service.encryption}.test.ts`; unit(console): `transcription-jobs/components/__tests__/transcription-jobs-screen.test.tsx`, `transcription-jobs/api/__tests__/transcription-jobs-api.test.ts`; py(stt): `unit/test_batch_service.py`, `unit/test_broker.py`, `unit/test_job_concurrency.py`, `integration/*` |
 
@@ -50,59 +55,49 @@ back to the gateway on internal service-token callbacks.
 | Console | `apps/admin-console` feature `playground-voice-profiles` (`voice-profiles-screen`); route `/playground/voice-profiles` (tier 50–59 playground) |
 | Tests | unit(api): `voice-profile/__tests__/voice-profile.controller.test.ts`; unit(console): `playground-voice-profiles/components/__tests__/voice-profiles-screen.test.tsx`, `playground-voice-profiles/api/__tests__/voice-profiles-api.test.ts`; e2e: `voice-profile-cross-tenant.spec.ts`; py(stt): `unit/test_diarization.py`, `unit/diarization/*` |
 
-### R4 — ASR pipeline registry (public read + admin CRUD) — legacy row 26 (ASR part)
+### R4/R5/R6 — ASR pipeline registry, template governance, tenant STT fallback/BYOK — RETIRED (TASK-1006)
 
-| Field | Value |
-|---|---|
-| App / service | `apps/api` + `apps/stt` (reads the effective pipeline config) |
-| Key modules | `apps/api/src/modules/pipeline` (`audio-pipeline.controller.ts`, `audio-pipeline-public.controller.ts`); `packages/applications/src/services/stt/pipeline` (`pipeline.service.ts`, `pipeline.dto.mapper.ts`) |
-| Prisma models | `AsrPipeline`, `AsrPipelineVersion` (`db_main/stt.prisma`) |
-| Key API endpoints | `@Controller('audio/pipelines')` (public read): `GET ''`, `GET :id`, `GET /slug/:slug`. `@Controller('admin/audio/pipelines')` (via `@ApiEndpoint`): `POST ''`, `GET ''`, `GET /list`, `GET :id`, `GET /slug/:slug`, `PATCH :id` (`@RequiresIfMatch()` OCC — 412/428), `DELETE :id`, `POST /validate`, `POST :id/assign-tenant`, `POST :id/set-default`, `PATCH :id/toggle`, `GET :id/versions`, `GET :id/versions/:versionNumber` |
-| Console | `apps/admin-console` feature `audio-pipelines` (`audio-pipelines-screen`); route `/audio/pipelines` (tier 30–49, tenant-scoped) |
-| Tests | unit(app): `stt/pipeline/__tests__/{pipeline.service,pipeline.service.task328}.test.ts`; unit(api): `pipeline/__tests__/{audio-pipeline.controller,audio-pipeline-public.controller}.test.ts`; unit(console): `audio-pipelines/components/__tests__/audio-pipelines-screen.test.tsx`, `audio-pipelines/api/__tests__/audio-pipelines-api.test.ts`; py(stt): `unit/test_config_reader.py` |
+These three capabilities — the `AsrPipeline` public/admin registry (legacy row 26 ASR
+half), its SYSTEM-template clone/resync governance, and per-tenant STT fallback +
+BYOK/in-session provider switch via `TenantSttConfig` — were removed outright on
+2026-09-25. Gone: `apps/api/src/modules/pipeline/**`, `apps/api/src/modules/tenant/
+tenant-pipeline-resync.controller.ts`, `apps/api/src/modules/tenant-stt-config/**`, the
+`audio/pipelines` + `admin/audio/pipelines` + `admin/stt-config` + `admin/tenants/:id/
+pipelines/resync` routes, and the console's `audio-pipelines`/`tenant-stt-config`
+features (the latter never shipped past its `⚠️ DESIGN GATE OPEN` state). STT's own
+`pipeline_id`/`fallback_pipeline_id` readers and its optional read-only Postgres
+connection are gone too (`apps/stt` reads no database).
 
-### R5 — Pipeline template governance: clone + SYSTEM-template resync — NEW (post-2026-07-06)
+**Replacement:** a published `SPEECH_TO_TEXT` `Agent` (+ its own `AgentModelFallback`
+chain) is the only unit of ASR configuration now — content, not a per-tenant config row.
+`agentSlug` is the sole client-facing selector (omit it and `AgentAssignment` resolves
+department → tenant → SYSTEM); `AsrAgentResolverService` resolves the winning agent into
+a `ResolvedAsrSpec` the gateway hands `apps/stt` at session-create/batch-dispatch time.
+The `switch-to-fallback` mechanism (`SessionManager`'s `EngineSwitchController`, one-way
+auto / bidirectional manual) still exists and still publishes `status`/`provider_switched`
+over `stt:result:{sessionId}` — it just now switches to the resolved agent's own fallback
+engine instead of a client- or config-row-supplied pipeline id, and
+`POST audio/transcription-jobs/stream/session/:sessionId/switch-to-fallback` trusts the
+runtime (409 when the session has none) rather than pre-checking a `TenantSttConfig` row.
+BYOK is unchanged in kind, moved store: `AiProviderConnection` (`service='stt'`) instead
+of `TenantSttProviderCredential`; `GET /internal/stt/provider-overrides` is still the
+batch-worker credential pull, just resolved from the new store.
 
-Locked SYSTEM-template copies are read-only; a tenant admin **clones** one into an editable
-copy (carrying template provenance), and a super admin **resyncs** a tenant's catalog
-against the SYSTEM templates (missing templates cloned in as locked copies; pristine locked
-copies fast-forwarded; customized/unlocked rows never touched).
-
-| Field | Value |
-|---|---|
-| App / service | `apps/api` |
-| Key modules | `apps/api/src/modules/pipeline` (`audio-pipeline.controller.ts` `:id/clone`); `apps/api/src/modules/tenant` (`tenant-pipeline-resync.controller.ts`); `packages/applications/src/services/stt/pipeline` (`pipeline.service.ts` clone, `pipeline-template-resync.service.ts`, `pipeline-template-resync.cron.service.ts` — nightly sweep OFF by default) |
-| Prisma models | `AsrPipeline` (`templateLocked`, `sourceTemplateSlug` provenance), `AsrPipelineVersion` (fast-forward writes a new version snapshot) |
-| Key API endpoints | `POST /admin/audio/pipelines/:id/clone` (unlock into an editable copy); `POST /admin/tenants/:id/pipelines/resync` (`@CanManage('Tenant')`, `@HttpCode(200)`, returns `{ added, fastForwarded, skipped }`; SYSTEM tenant cannot resync against itself → 400) |
-| Console | `apps/admin-console` feature `audio-pipelines` template-governance surface (`template-governance`) under route `/audio/pipelines` |
-| Tests | unit(app): `stt/pipeline/__tests__/{pipeline.service.task531,pipeline-template-resync.service,pipeline-template-resync.cron.service}.test.ts`; unit(api): `pipeline/__tests__/audio-pipeline.task531.controller.test.ts`; unit(console): `audio-pipelines/components/__tests__/template-governance.test.tsx`; e2e: NONE — `pipeline-clone-resync-cross-tenant.spec.ts` and `pipeline-template-governance.spec.ts` were DELETED once TASK-861 retired the seeded template copies they probed (no fixture left, so they asserted nothing). The unit suites above remain the coverage for this still-live surface until it is removed in R4. |
-
-### R6 — Tenant STT fallback pipeline + BYOK, in-session provider switch — NEW (post-2026-07-06)
-
-A tenant-level fallback pipeline pointer + optional bring-your-own credentials for
-`azure-speech`/`sarvam`/`openai`; streaming credentials are injected into the session-create
-request (in-memory only), batch credentials are pulled by the Dramatiq worker. On a
-classified ASR outage (or a user-triggered manual switch), `SessionManager`'s
-`EngineSwitchController` swaps the live session's ASR engine to the fallback one-way and
-publishes a `status`/`provider_switched` result — the gateway relays it on the existing WS
-`status` frame (zero protocol change). Batch jobs re-dispatch once on the fallback within
-the same Dramatiq attempt.
-
-| Field | Value |
-|---|---|
-| App / service | `apps/api` + `apps/stt` |
-| Key modules | `apps/api/src/modules/tenant-stt-config` (`tenant-stt-config-admin.controller.ts`); `apps/api/src/modules/streaming` (`transcription-job.controller.ts` `switchStreamSessionToFallback`, `streamingSession.service.ts` `switchToFallback`); `apps/api/src/modules/internal` (`stt-internal.controller.ts` `getProviderOverrides`); `packages/applications/src/services/tenant-stt-config` (`tenant-stt-config.service.ts`, DTO mapper, `platform-limits.ts`); `apps/stt/src/stt/streaming/engine_switch.py` (`EngineSwitchController`); `apps/stt/src/stt/streaming/session_manager.py` (create-time/auto/manual triggers); `apps/stt/src/stt/transcription/workers/transcribe_file.py` (batch fallback re-dispatch); `apps/stt/src/stt/core/effective_config.py` (`get_provider_overrides` pull); `apps/stt/src/stt/models/{sarvam_loader,openai_loader,cloud_asr}.py`, `apps/stt/src/stt/streaming/{sarvam_asr,openai_asr}.py` (new cloud engines) |
-| Prisma models | `TenantSttConfig` (`fallbackPipelineId`, `autoSwitchEnabled`), `TenantSttProviderCredential` (`(tenantId, provider)`, `encryptedApiKey`/`keyVersion`) — `db_main/tenant-stt-config.prisma` |
-| Key API endpoints | `@Controller('admin/stt-config')`: `GET ''` (effective), `GET/PUT 'row'` (If-Match OCC), `GET 'fallback-candidates'`, `GET 'credentials'`, `PUT/DELETE 'credentials/:provider'` (If-Match OCC; unknown provider → 400; masked reads only, no reveal route); `POST /audio/transcription-jobs/stream/session/:sessionId/switch-to-fallback` (`@TenantOwnedResource`; 409 no-fallback/already-switched); internal `GET /internal/stt/provider-overrides?tenantId=` (service-token gated, batch pull); STT internal `POST /internal/streaming/sessions/{id}/switch` |
-| Console | `apps/admin-console` feature `tenant-stt-config` (`tenant-stt-config-screen`, `stt-fallback-form`, `stt-credentials-tab`); route `/stt-config` (tier 30–49, tenant-scoped) — **rule-12 design gate OPEN** (no approved Figma frame / recorded owner waiver): omitted from `nav-config.ts`, reachable only by direct URL, both the screen and route carry a `⚠️ DESIGN GATE OPEN` header; must not ship until the gate is satisfied |
-| Tests | unit(app): `tenant-stt-config/__tests__/tenant-stt-config.service.test.ts`; unit(api): `tenant-stt-config/__tests__/tenant-stt-config-admin.controller.test.ts`, `streaming/__tests__/transcription-job.stt-fallback.controller.test.ts`, `internal/__tests__/stt-internal.controller.test.ts` (provider-overrides pull); unit(dom): `TenantSttConfigEntity.test.ts`, `{TenantSttConfig,TenantSttProviderCredential}EntityMapper.test.ts`; unit(console): `tenant-stt-config-screen.test.tsx` (incl. axe, both themes); py(stt): `unit/streaming/test_engine_switch.py`, `unit/test_transcribe_file_fallback_task567.py`, `unit/models/{test_sarvam_loader,test_openai_loader}.py`, `unit/streaming/test_cloud_rest_asr.py`, `unit/test_provider_shorthand_task567.py`; e2e: `stt-fallback-cross-tenant.spec.ts` (authored, run when a live stack is available — not part of the `pnpm test:unit` gate) |
+`AsrPipeline`/`AsrPipelineVersion` and `TenantSttConfig` remain in the schema pending a
+drop migration (TASK-1006 wave 2, D-1) once every reader is confirmed gone; see
+[model-and-config-plane.md §8](../architecture/model-and-config-plane.md#8-asr-selection--fallback--removed-the-pipeline-template-plane-task-1006).
+Every test file this section used to cite for R4/R5/R6 (`pipeline/__tests__/**`,
+`tenant-stt-config/__tests__/**`, `stt/pipeline/__tests__/**`, the console
+`audio-pipelines`/`tenant-stt-config` suites, `stt-fallback-cross-tenant.spec.ts`) was
+deleted with its subject; the `apps/stt` fallback-engine unit suites
+(`test_engine_switch.py`, `test_transcribe_file_fallback_task567.py`) survive, now
+exercising the agent-resolved fallback chain instead of a client-supplied pipeline id.
 
 ## Honest notes / gaps
 
-- **The `AiModel` half of legacy row 26 is NOT here.** The model registry / discovery / task-defaults live in [`ai-models-providers.md`](./ai-models-providers.md); only `AsrPipeline`/`AsrPipelineVersion` and `modules/pipeline` are recorded in this domain.
+- **The `AiModel` half of legacy row 26 is NOT here.** The model registry / discovery / task-defaults live in [`ai-models-providers.md`](./ai-models-providers.md); the `AsrPipeline`/`AsrPipelineVersion`/`modules/pipeline` half that used to be recorded in this domain retired with R4/R5/R6 above (TASK-1006).
 - **`TranscriptSegment` (`db_main/consultation.prisma`) is a transcription-owned model on the consultation schema file.** It is populated by the streaming/batch path here, not by the consultation service.
-- **Nightly resync is off by default.** The `PipelineTemplateResyncCronService` sweep is disabled so a human stays in the loop; `POST /admin/tenants/:id/pipelines/resync` is the primary (admin-triggered) path.
 - **No dedicated live-DB streaming e2e for the WS bridge.** R1 has unit + contract + cross-tenant-job coverage; the full browser-WS live-transcription round-trip is env-gated (playground manual pass), not an `apps/api/tests/e2e` spec.
 - **R6 discovered a real drift, not yet fixed here (Phase H is docs-only)**: a seed change added `openai` to `packages/database/src/prisma/db_main/seed/ai-models/shared.ts`'s `AI_MODEL_PROVIDERS` without the matching addition to the DTO allow-list `AI_MODEL_PROVIDERS` in `packages/applications/src/services/stt/model/dto/create-model.request.ts` — `tests/contracts/ai-model-providers.contract.test.ts` fails as a result (`@IsIn` on the admin `AiModel` create/update routes would reject `provider: 'openai'` today). Confirmed via `git stash` bisection that this is caused by that seed change (the contract test passes on the tree before it), not pre-existing drift.
 
-Last verified: 2026-07-22
+Last verified: 2026-07-22 (R4/R5/R6 updated 2026-09-25 for TASK-1006's removal of the pipeline stack — the rest of this file was not re-verified in that pass)
