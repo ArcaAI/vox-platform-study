@@ -23,7 +23,6 @@ export default defineConfig({
       'highlight.run': resolve(__dirname, './src/__tests__/mocks/highlight.mock.ts'),
       '@opentelemetry/api': resolve(__dirname, './src/__tests__/mocks/otel.mock.ts'),
       eventemitter3: resolve(__dirname, './src/__tests__/mocks/eventemitter3.mock.ts'),
-      '@arcaai/med-ner': resolve(__dirname, './src/__tests__/mocks/med-ner.mock.ts'),
       '@arcaai/room': resolve(__dirname, '../room/src/index.ts'),
     },
   },

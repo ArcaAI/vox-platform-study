@@ -26,7 +26,6 @@ function createMockTranscribeResponse(): TranscriptionJobResponse {
   return {
     id: 'job-file-123',
     jobType: TranscriptionJobType.BATCH,
-    pipelineId: 'whisper-default',
     status: TranscriptionJobStatus.QUEUED,
     progress: 0,
     retryCount: 0,
@@ -95,7 +94,7 @@ describe('FileTranscriptionService', () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockJob));
 
       const result = await service.uploadAndTranscribe(file, {
-        pipelineId: 'whisper-default',
+        agentSlug: 'whisper-default',
       });
 
       expect(result).toEqual(mockJob);
@@ -114,7 +113,7 @@ describe('FileTranscriptionService', () => {
       );
 
       const result = await service.uploadAndTranscribe(file, {
-        pipelineId: 'whisper-default',
+        agentSlug: 'whisper-default',
       });
 
       expect(result.id).toBe('job-batch-999');
@@ -127,7 +126,7 @@ describe('FileTranscriptionService', () => {
 
       await expect(
         service.uploadAndTranscribe(file, {
-          pipelineId: 'whisper-default',
+          agentSlug: 'whisper-default',
         }),
       ).rejects.toThrow('missing job id');
     });
@@ -143,7 +142,7 @@ describe('FileTranscriptionService', () => {
 
       await expect(
         service.uploadAndTranscribe(file, {
-          pipelineId: 'whisper-default',
+          agentSlug: 'whisper-default',
         }),
       ).rejects.toThrow('Invalid transcription response status');
     });
@@ -152,7 +151,7 @@ describe('FileTranscriptionService', () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
-      await service.uploadAndTranscribe(file, { pipelineId: 'default' });
+      await service.uploadAndTranscribe(file, { agentSlug: 'default' });
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
       expect(callUrl).toContain(STT_ENDPOINTS.TRANSCRIBE);
@@ -162,23 +161,23 @@ describe('FileTranscriptionService', () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
-      await service.uploadAndTranscribe(file, { pipelineId: 'default' });
+      await service.uploadAndTranscribe(file, { agentSlug: 'default' });
 
       const callBody = mockFetch.mock.calls[0][1]?.body;
       expect(callBody).toBeInstanceOf(FormData);
       expect((callBody as FormData).get('file')).toBe(file);
     });
 
-    it('should include pipelineId in the form data', async () => {
+    it('should include agentSlug in the form data', async () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, {
-        pipelineId: 'whisper-large-v3',
+        agentSlug: 'whisper-large-v3',
       });
 
       const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
-      expect(callBody.get('pipelineId')).toBe('whisper-large-v3');
+      expect(callBody.get('agentSlug')).toBe('whisper-large-v3');
     });
 
     it('should include optional fields in the form data', async () => {
@@ -186,7 +185,7 @@ describe('FileTranscriptionService', () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, {
-        pipelineId: 'default',
+        agentSlug: 'default',
         consultationId: 'consult-456',
         language: 'th',
         sampleRate: 44100,
@@ -207,7 +206,7 @@ describe('FileTranscriptionService', () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, {
-        pipelineId: 'default',
+        agentSlug: 'default',
         codeSwitching: false,
         diarization: false,
       });
@@ -221,14 +220,14 @@ describe('FileTranscriptionService', () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockErrorResponse(413, 'File too large'));
 
-      await expect(service.uploadAndTranscribe(file, { pipelineId: 'default' })).rejects.toThrow();
+      await expect(service.uploadAndTranscribe(file, { agentSlug: 'default' })).rejects.toThrow();
     });
 
     it('should use POST method', async () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
-      await service.uploadAndTranscribe(file, { pipelineId: 'default' });
+      await service.uploadAndTranscribe(file, { agentSlug: 'default' });
 
       const callMethod = mockFetch.mock.calls[0][1]?.method;
       expect(callMethod).toBe('POST');
@@ -238,7 +237,7 @@ describe('FileTranscriptionService', () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
-      await service.uploadAndTranscribe(file, { pipelineId: 'default' });
+      await service.uploadAndTranscribe(file, { agentSlug: 'default' });
 
       const callHeaders = mockFetch.mock.calls[0][1]?.headers as Record<string, string>;
       expect(callHeaders['X-API-Key']).toBe('test-key');
@@ -248,7 +247,7 @@ describe('FileTranscriptionService', () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
-      await service.uploadAndTranscribe(file, { pipelineId: 'default' });
+      await service.uploadAndTranscribe(file, { agentSlug: 'default' });
 
       const callHeaders = mockFetch.mock.calls[0][1]?.headers as Record<string, string>;
       expect(callHeaders?.['Content-Type']).toBeUndefined();
@@ -258,7 +257,7 @@ describe('FileTranscriptionService', () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
-      await service.uploadAndTranscribe(file, { pipelineId: 'default' });
+      await service.uploadAndTranscribe(file, { agentSlug: 'default' });
 
       const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
       expect(callBody.get('consultationId')).toBeNull();
@@ -273,7 +272,7 @@ describe('FileTranscriptionService', () => {
       mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Server Error'));
 
       try {
-        await service.uploadAndTranscribe(file, { pipelineId: 'default' });
+        await service.uploadAndTranscribe(file, { agentSlug: 'default' });
       } catch {
         // expected
       }
@@ -285,28 +284,30 @@ describe('FileTranscriptionService', () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockErrorResponse(401, 'Unauthorized'));
 
-      await expect(service.uploadAndTranscribe(file, { pipelineId: 'default' })).rejects.toThrow();
+      await expect(service.uploadAndTranscribe(file, { agentSlug: 'default' })).rejects.toThrow();
     });
 
     it('should throw on network error', async () => {
       const file = createMockAudioFile();
       mockFetch.mockRejectedValueOnce(new TypeError('Network request failed'));
 
-      await expect(service.uploadAndTranscribe(file, { pipelineId: 'default' })).rejects.toThrow();
+      await expect(service.uploadAndTranscribe(file, { agentSlug: 'default' })).rejects.toThrow();
     });
   });
 
   // =========================================================================
-  // uploadAndTranscribe — agentSlug replaces pipelineId (TASK-861/991, W2-6)
+  // uploadAndTranscribe — selection is agentSlug only (TASK-861/991,
+  // pipelineId removed TASK-1006).
   //
-  // Mirrors StreamingSessionManager's own agentSlug/pipelineId precedence
-  // suite (`StreamingSessionManager.test.ts`): at most one selector ever
-  // rides the request, agentSlug wins when both are given, and the caller is
-  // warned — never silently — whenever a selector is dropped or deprecated.
+  // Mirrors StreamingSessionManager's own now-agentSlug-only suite
+  // (`StreamingSessionManager.test.ts`): `pipelineId` is no longer a valid
+  // property of `FileTranscribeOptions` at all — not "deprecated but still
+  // sent" — so there is nothing left to prefer or warn about. At most one
+  // selector (`agentSlug`, or none) ever rides the request.
   // =========================================================================
 
-  describe('uploadAndTranscribe — agentSlug replaces pipelineId (TASK-991)', () => {
-    it('sends agentSlug and NO pipelineId key when the caller named an agent only', async () => {
+  describe('uploadAndTranscribe — selection is agentSlug only (pipelineId removed TASK-1006)', () => {
+    it('sends agentSlug when the caller named an agent', async () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
@@ -318,34 +319,7 @@ describe('FileTranscriptionService', () => {
       expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 
-    it('prefers agentSlug when BOTH are passed — pipelineId is dropped from the form data and a warning names the conflict', async () => {
-      const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
-
-      await service.uploadAndTranscribe(file, { agentSlug: 'clinic-asr', pipelineId: 'legacy-pipe' });
-
-      const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
-      expect(callBody.get('agentSlug')).toBe('clinic-asr');
-      expect(callBody.get('pipelineId')).toBeNull();
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/both/i), expect.objectContaining({ operation: 'resolveAgentSelection' }));
-    });
-
-    it('still sends pipelineId alone (deprecated path) and logs a deprecation warning', async () => {
-      const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
-
-      await service.uploadAndTranscribe(file, { pipelineId: 'legacy-pipe' });
-
-      const callBody = mockFetch.mock.calls[0][1]?.body as FormData;
-      expect(callBody.get('pipelineId')).toBe('legacy-pipe');
-      expect(callBody.get('agentSlug')).toBeNull();
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringMatching(/deprecat/i),
-        expect.objectContaining({ operation: 'resolveAgentSelection' }),
-      );
-    });
-
-    it('sends NEITHER when the caller named nothing — the gateway resolves the tenant default agent', async () => {
+    it('sends NEITHER key when the caller named nothing — the gateway resolves the tenant default agent', async () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
@@ -356,11 +330,18 @@ describe('FileTranscriptionService', () => {
       expect(callBody.get('agentSlug')).toBeNull();
       expect(mockLogger.warn).not.toHaveBeenCalled();
     });
+
+    it('FileTranscribeOptions has no pipelineId property at all (type-level pin)', () => {
+      // Compiles only if `pipelineId` is genuinely absent from the type —
+      // TS would otherwise allow assigning it below without error.
+      const options: import('../FileTranscriptionService').FileTranscribeOptions = { agentSlug: 'clinic-asr' };
+      expect('pipelineId' in options).toBe(false);
+    });
   });
 
   // =========================================================================
-  // uploadAndTranscribeWithProgress — same agentSlug/pipelineId precedence
-  // (the two upload methods share `resolveAgentSelection`; this proves the
+  // uploadAndTranscribeWithProgress — same agentSlug-only selection (the two
+  // upload methods share the same form-building shape; this proves the
   // second call site is actually wired to it, not just `uploadAndTranscribe`)
   //
   // This method does NOT go through `fetch`: progress reporting needs upload
@@ -369,13 +350,13 @@ describe('FileTranscriptionService', () => {
   // assertion is made on the FormData handed to that transport instead.
   // =========================================================================
 
-  describe('uploadAndTranscribeWithProgress — agentSlug replaces pipelineId (TASK-991)', () => {
+  describe('uploadAndTranscribeWithProgress — selection is agentSlug only (pipelineId removed TASK-1006)', () => {
     /** The XHR transport the progress path actually posts through. */
     function spyOnUpload() {
       return vi.spyOn(apiClient, 'uploadFormData').mockResolvedValue(createMockTranscribeResponse());
     }
 
-    it('sends agentSlug and NO pipelineId key when the caller named an agent only', async () => {
+    it('sends agentSlug when the caller named an agent', async () => {
       const file = createMockAudioFile();
       const upload = spyOnUpload();
 
@@ -387,16 +368,16 @@ describe('FileTranscriptionService', () => {
       expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 
-    it('prefers agentSlug when BOTH are passed — pipelineId is dropped from the form data and a warning names the conflict', async () => {
+    it('sends NEITHER key when the caller named nothing — the gateway resolves the tenant default agent', async () => {
       const file = createMockAudioFile();
       const upload = spyOnUpload();
 
-      await service.uploadAndTranscribeWithProgress(file, { agentSlug: 'clinic-asr', pipelineId: 'legacy-pipe' });
+      await service.uploadAndTranscribeWithProgress(file, {});
 
       const callBody = upload.mock.calls[0][1];
-      expect(callBody.get('agentSlug')).toBe('clinic-asr');
       expect(callBody.get('pipelineId')).toBeNull();
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/both/i), expect.objectContaining({ operation: 'resolveAgentSelection' }));
+      expect(callBody.get('agentSlug')).toBeNull();
+      expect(mockLogger.warn).not.toHaveBeenCalled();
     });
   });
 
@@ -431,7 +412,7 @@ describe('FileTranscriptionService', () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
-      await service.uploadAndTranscribe(file, { pipelineId: 'default' });
+      await service.uploadAndTranscribe(file, { agentSlug: 'default' });
 
       expect(service.getActiveJobId()).toBe('job-file-123');
     });
@@ -446,7 +427,7 @@ describe('FileTranscriptionService', () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
-      await service.uploadAndTranscribe(file, { pipelineId: 'default' });
+      await service.uploadAndTranscribe(file, { agentSlug: 'default' });
       expect(service.getActiveJobId()).toBe('job-file-123');
 
       service.dispose();

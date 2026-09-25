@@ -87,8 +87,14 @@ export interface BatchQueueItem {
 
 /** Per-upload options. Given as queue defaults and/or per `enqueue`. */
 export interface BatchTranscriptionOptions {
-  /** ASR pipeline id. Required — from the per-enqueue value, else the queue default. */
-  pipelineId?: string;
+  /**
+   * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
+   * transcribe every upload (TASK-861/991). Optional: absent → the gateway
+   * resolves the tenant's assigned agent (department → tenant cascade), same
+   * as `FileTranscribeOptions.agentSlug` (`pipelineId` was removed as an
+   * input entirely in TASK-1006 — the gateway rejects it with a 400).
+   */
+  agentSlug?: string;
   /** ISO 639-1 code, or a language-mode id the pipeline understands. */
   language?: string;
   /** Optional consultation to link every job to. */
@@ -399,11 +405,12 @@ export class BatchTranscriptionQueue {
     const runtime = this.runtimes.get(itemId);
     if (!runtime) return;
 
-    const pipelineId = runtime.options.pipelineId?.trim();
-    if (!pipelineId) {
-      this.failItem(itemId, new Error('No pipelineId for this upload. Pass one to enqueue(files, { pipelineId }) or in the queue options.'));
-      return;
-    }
+    // No local refusal for a missing selector (TASK-1006): `agentSlug` is
+    // optional on the gateway route too — an absent one resolves through the
+    // tenant assignment cascade (department → tenant), the same rule
+    // `FileTranscriptionService` already follows. `pipelineId` is gone as an
+    // input; the global ValidationPipe now 400s a request that still sends it.
+    const agentSlug = runtime.options.agentSlug?.trim();
 
     const service = new FileTranscriptionService(this.config.apiClient, this.config.logger);
     const abort = new AbortController();
@@ -414,7 +421,7 @@ export class BatchTranscriptionQueue {
     let job: TranscriptionJobResponse;
     try {
       job = await service.uploadAndTranscribeWithProgress(runtime.file, {
-        pipelineId,
+        ...(agentSlug ? { agentSlug } : {}),
         ...(runtime.options.language ? { language: runtime.options.language } : {}),
         ...(runtime.options.consultationId ? { consultationId: runtime.options.consultationId } : {}),
         signal: abort.signal,

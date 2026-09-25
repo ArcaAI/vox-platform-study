@@ -98,7 +98,7 @@ beforeEach(() => {
 
 describe('limits', () => {
   it('adopts the gateway-resolved ceilings on mount', async () => {
-    const { result } = renderHook(() => useBatchTranscription({ options: { pipelineId: 'p1' } }));
+    const { result } = renderHook(() => useBatchTranscription({ options: { agentSlug: 'p1' } }));
 
     await waitFor(() => expect(h.instances[0]!.setLimitsCalls.length).toBe(1));
     expect(h.apiClient.get).toHaveBeenCalledWith('/audio/transcription-jobs/limits');
@@ -110,7 +110,7 @@ describe('limits', () => {
     // A settings/network hiccup must not block uploading — the gateway still
     // enforces the real ceiling on every request.
     h.apiClient.get.mockRejectedValue(new Error('offline'));
-    const { result } = renderHook(() => useBatchTranscription({ options: { pipelineId: 'p1' } }));
+    const { result } = renderHook(() => useBatchTranscription({ options: { agentSlug: 'p1' } }));
 
     await waitFor(() => expect(result.current.limitsError).toBeInstanceOf(Error));
     expect(result.current.limits).toMatchObject({ maxFilesPerBatch: 5, maxDurationMinutes: 60 });
@@ -119,7 +119,7 @@ describe('limits', () => {
 
   it('ignores a malformed limits payload rather than adopting garbage ceilings', async () => {
     h.apiClient.get.mockResolvedValue({ maxFilesPerBatch: 'five', maxDurationMinutes: -3 });
-    const { result } = renderHook(() => useBatchTranscription({ options: { pipelineId: 'p1' } }));
+    const { result } = renderHook(() => useBatchTranscription({ options: { agentSlug: 'p1' } }));
 
     await waitFor(() => expect(h.apiClient.get).toHaveBeenCalled());
     expect(h.instances[0]!.setLimitsCalls[0] ?? {}).not.toHaveProperty('maxFilesPerBatch');
@@ -129,29 +129,29 @@ describe('limits', () => {
 
 describe('queue lifecycle', () => {
   it('creates exactly one queue and keeps it across re-renders', async () => {
-    const { rerender } = renderHook((props: { concurrency?: number } = {}) => useBatchTranscription({ options: { pipelineId: 'p1' }, ...props }));
+    const { rerender } = renderHook((props: { concurrency?: number } = {}) => useBatchTranscription({ options: { agentSlug: 'p1' }, ...props }));
     rerender({ concurrency: 4 });
     rerender({ concurrency: 4 });
     expect(h.instances).toHaveLength(1);
   });
 
   it('forwards changed upload defaults to the existing queue', async () => {
-    const { rerender } = renderHook((props: { pipelineId: string }) => useBatchTranscription({ options: { pipelineId: props.pipelineId } }), {
-      initialProps: { pipelineId: 'p1' },
+    const { rerender } = renderHook((props: { agentSlug: string }) => useBatchTranscription({ options: { agentSlug: props.agentSlug } }), {
+      initialProps: { agentSlug: 'p1' },
     });
-    rerender({ pipelineId: 'p2' });
+    rerender({ agentSlug: 'p2' });
     const calls = h.instances[0]!.setDefaultsCalls;
-    expect(calls[calls.length - 1]).toMatchObject({ pipelineId: 'p2' });
+    expect(calls[calls.length - 1]).toMatchObject({ agentSlug: 'p2' });
   });
 
   it('disposes the queue on unmount so no stream outlives the screen', () => {
-    const { unmount } = renderHook(() => useBatchTranscription({ options: { pipelineId: 'p1' } }));
+    const { unmount } = renderHook(() => useBatchTranscription({ options: { agentSlug: 'p1' } }));
     unmount();
     expect(h.instances[0]!.disposed).toBe(true);
   });
 
   it('re-renders when the engine emits new rows', async () => {
-    const { result } = renderHook(() => useBatchTranscription({ options: { pipelineId: 'p1' } }));
+    const { result } = renderHook(() => useBatchTranscription({ options: { agentSlug: 'p1' } }));
     expect(result.current.items).toHaveLength(0);
 
     act(() => h.instances[0]!.push([{ id: 'a', status: 'processing' }]));
@@ -161,7 +161,7 @@ describe('queue lifecycle', () => {
 
 describe('derived state', () => {
   function withItems(items: unknown[]) {
-    const rendered = renderHook(() => useBatchTranscription({ options: { pipelineId: 'p1' } }));
+    const rendered = renderHook(() => useBatchTranscription({ options: { agentSlug: 'p1' } }));
     act(() => h.instances[0]!.push(items));
     return rendered;
   }
@@ -206,7 +206,7 @@ describe('derived state', () => {
 
 describe('queue operations pass through to the engine', () => {
   it('delegates enqueue / cancel / retry / remove / clear', () => {
-    const { result } = renderHook(() => useBatchTranscription({ options: { pipelineId: 'p1' } }));
+    const { result } = renderHook(() => useBatchTranscription({ options: { agentSlug: 'p1' } }));
     const file = new File(['x'], 'a.wav', { type: 'audio/wav' });
 
     act(() => {
