@@ -18,6 +18,18 @@ const FORWARDED_RESPONSE_HEADERS = ['content-type', 'etag', 'cache-control'] as 
 const BODYLESS_METHODS = new Set(['GET', 'HEAD']);
 
 /**
+ * Gateway route prefixes (as path segments) that are platform-wide by
+ * definition and refuse a working tenant (403): the working tenant is never
+ * forwarded to them, so a super admin can use them without clearing the tenant
+ * they are working in. Model residency (TASK-1005 D-11) is the only one.
+ */
+const PLATFORM_WIDE_PREFIXES: readonly (readonly string[])[] = [['admin', 'model-residency']];
+
+function isPlatformWide(path: readonly string[]): boolean {
+  return PLATFORM_WIDE_PREFIXES.some((prefix) => prefix.every((segment, i) => path[i] === segment));
+}
+
+/**
  * Marks a 401 the BFF itself minted because the session is gone, as opposed to
  * a passthrough of the gateway's own 401 — which may be an authorization or
  * step-up failure on a perfectly live session. The client redirects to /login
@@ -30,7 +42,7 @@ function sessionLost(message: string): Response {
   return Response.json({ message }, { status: 401, headers: { 'x-session-expired': '1' } });
 }
 
-function buildHeaders(request: Request, session: SessionPayload): Headers {
+function buildHeaders(request: Request, path: readonly string[], session: SessionPayload): Headers {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
@@ -44,7 +56,7 @@ function buildHeaders(request: Request, session: SessionPayload): Headers {
   // own tenant — the operator's working-tenant pick (selected before
   // impersonating started) must never ride along, or it diverges from the
   // JWT and the gateway 400s every proxied call.
-  if (!session.impersonation && session.workingTenantId && isElevated(session.user)) {
+  if (!session.impersonation && session.workingTenantId && isElevated(session.user) && !isPlatformWide(path)) {
     headers.set('x-tenant-id', session.workingTenantId);
   }
   return headers;
@@ -67,7 +79,7 @@ function encodeGatewayPath(path: string[]): string {
 async function sendToGateway(request: Request, path: string[], search: string, session: SessionPayload, body: ArrayBuffer | null): Promise<Response> {
   return fetch(gatewayUrl(encodeGatewayPath(path), search), {
     method: request.method,
-    headers: buildHeaders(request, session),
+    headers: buildHeaders(request, path, session),
     body: body && body.byteLength > 0 ? body : undefined,
     cache: 'no-store',
     redirect: 'manual',

@@ -154,6 +154,25 @@ describe('handleProxy', () => {
     expect(tenantCalls[0].headers.get('x-tenant-id')).toBeNull();
   });
 
+  // Model residency is platform-wide (TASK-1005 D-11): the gateway refuses it
+  // under a working tenant, so a super admin must not have to clear the tenant
+  // they are working in just to open the screen or reload an LM Studio model.
+  it('never sends the working tenant to the platform-wide model-residency routes', async () => {
+    await seedSession({ ...baseSession, workingTenantId: '50000000-0000-0000-0000-000000000000' });
+    const calls = installFetchMock(() => Response.json({}));
+    await handleProxy(new Request('http://console.local/api/hope/admin/model-residency'), ['admin', 'model-residency']);
+    await handleProxy(new Request('http://console.local/api/hope/admin/model-residency/load', { method: 'POST', body: '{}' }), [
+      'admin',
+      'model-residency',
+      'load',
+    ]);
+    await handleProxy(new Request('http://console.local/api/hope/admin/model-residency-other'), ['admin', 'model-residency-other']);
+    expect(calls[0].headers.get('x-tenant-id')).toBeNull();
+    expect(calls[1].headers.get('x-tenant-id')).toBeNull();
+    // A prefix match on the segment, not the string: a sibling route keeps the tenant.
+    expect(calls[2].headers.get('x-tenant-id')).toBe('50000000-0000-0000-0000-000000000000');
+  });
+
   it('uses the impersonation token while impersonation is active', async () => {
     await seedSession({
       ...baseSession,

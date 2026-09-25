@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { IconPlugConnectedX } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import type { AiModelServingProfile } from '@arcaai/types';
@@ -225,6 +226,14 @@ export function ServingControlTab({ catalogueModelKeys }: ServingControlTabProps
         <p className="text-muted-foreground text-xs">
           Weights are measured. KV cache figures are derived from context × parallel — LM Studio gives every parallel slot the full context — so they
           are an estimate of residency, never a measurement of it.
+        </p>
+        <p className="text-muted-foreground text-xs">
+          This tab covers LM Studio only. To load, unload or pin the models of every service (stt, nlp and LM Studio) and set their residency
+          policies, use{' '}
+          <Link href="/model-residency" className="text-foreground underline underline-offset-4">
+            Model residency
+          </Link>
+          .
         </p>
         {rows.length === 0 ? (
           <p className="text-muted-foreground text-sm">

@@ -143,6 +143,14 @@ describe('ServingControlTab — VRAM, at the granularities that exist', () => {
     expect(screen.getByText(/KV cache \(estimate\)/i)).toBeDefined();
     expect(screen.getByText(/derived from context × parallel/i)).toBeDefined();
   });
+
+  it('points to Model residency, the one screen that controls every service, not just LM Studio', async () => {
+    stubFetch();
+    renderWithProviders(<ServingControlTab catalogueModelKeys={[]} />);
+
+    const link = await screen.findByRole('link', { name: /model residency/i });
+    expect(link.getAttribute('href')).toBe('/model-residency');
+  });
 });
 
 describe('ServingControlTab — the precheck is shown BEFORE the action is armed', () => {
