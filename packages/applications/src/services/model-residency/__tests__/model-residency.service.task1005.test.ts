@@ -160,6 +160,7 @@ function build(opts: { enforce?: boolean } = {}) {
     effectiveSettings as never,
     livePath as never,
     specs as never,
+    { read: vi.fn(async () => new Map()) } as never,
     eventEmitter as never,
     cls as never,
   );
