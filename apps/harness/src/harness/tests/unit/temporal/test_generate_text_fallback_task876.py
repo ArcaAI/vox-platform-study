@@ -119,11 +119,21 @@ def env() -> ActivityEnvironment:
     return environment
 
 
+class _PassThroughRedactor:
+    """PHI egress is not what these tests exercise (see `test_activities_phi_egress.py`);
+    the real redactor needs the spaCy model at build time, which the hermetic CI suite
+    does not install — so every cloud candidate here would be blocked before it ran."""
+
+    def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Any) -> str:
+        return text
+
+
 @pytest.fixture
 def wired(monkeypatch: pytest.MonkeyPatch):
     def _install(text: _Text) -> _Text:
         monkeypatch.setattr(activities, "_text_client", lambda _s: text)
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda _s: _CapTraj())
+        monkeypatch.setattr(activities, "_phi_redactor", lambda: _PassThroughRedactor())
         return text
 
     return _install
