@@ -18,7 +18,6 @@ import { AdminAiProviderResource } from './ai-provider';
 import { AdminAiServiceResource } from './ai-service';
 import { AdminAllowedOriginResource } from './allowed-origin';
 import { AdminApikeyResource } from './apikey';
-import { AdminAudioPipelineResource } from './audio-pipeline';
 import { AdminAuditResource } from './audit';
 import { AdminBillingResource } from './billing';
 import { AdminChangelogResource } from './changelog';
@@ -50,7 +49,6 @@ import { AdminTenantResource } from './tenant';
 import { AdminTenantFrontendConfigResource } from './tenant-frontend-config';
 import { AdminTenantIdpConfigResource } from './tenant-idp-config';
 import { AdminTenantStorageResource } from './tenant-storage';
-import { AdminTenantSttConfigResource } from './tenant-stt-config';
 import { AdminTranscriptionJobResource } from './transcription-job';
 import { AdminUsageResource } from './usage';
 import { AdminUserResource } from './user';
@@ -62,7 +60,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
 
 /**
  * `hope.admin` — every machine-reachable `/api/v1/admin/**` area, one property
- * per `svc:*` scope (50 areas, 444 routes).
+ * per `svc:*` scope (48 areas, 426 routes).
  *
  * Reaching any of it requires a SERVICE ACCOUNT: the admin plane refuses a
  * tenant API key by policy, not by omission. Construct the client with
@@ -104,8 +102,6 @@ export class AdminNamespace {
   readonly allowedOrigin: AdminAllowedOriginResource;
   /** `svc:admin:apikey:write` — 9 routes. */
   readonly apikey: AdminApikeyResource;
-  /** `svc:admin:audio-pipeline:manage` — 14 routes. */
-  readonly audioPipeline: AdminAudioPipelineResource;
   /** `svc:admin:audit:read` — 6 routes. */
   readonly audit: AdminAuditResource;
   /** `svc:admin:billing:manage` — 10 routes. */
@@ -130,7 +126,7 @@ export class AdminNamespace {
   readonly knowledge: AdminKnowledgeResource;
   /** `svc:admin:mcp-server:manage` — 5 routes. */
   readonly mcpServer: AdminMcpServerResource;
-  /** `svc:admin:model-residency:manage` — 9 routes. */
+  /** `svc:admin:model-residency:manage` — 10 routes. */
   readonly modelResidency: AdminModelResidencyResource;
   /** `svc:admin:nlp-task-instructions:manage` — 2 routes. */
   readonly nlpTaskInstructions: AdminNlpTaskInstructionsResource;
@@ -160,7 +156,7 @@ export class AdminNamespace {
   readonly settings: AdminSettingsResource;
   /** `svc:admin:storage-key:manage` — 3 routes. */
   readonly storageKey: AdminStorageKeyResource;
-  /** `svc:admin:tenant:write` — 18 routes. */
+  /** `svc:admin:tenant:write` — 17 routes. */
   readonly tenant: AdminTenantResource;
   /** `svc:admin:tenant-frontend-config:manage` — 2 routes. */
   readonly tenantFrontendConfig: AdminTenantFrontendConfigResource;
@@ -168,8 +164,6 @@ export class AdminNamespace {
   readonly tenantIdpConfig: AdminTenantIdpConfigResource;
   /** `svc:admin:tenant-storage:manage` — 19 routes. */
   readonly tenantStorage: AdminTenantStorageResource;
-  /** `svc:admin:tenant-stt-config:manage` — 4 routes. */
-  readonly tenantSttConfig: AdminTenantSttConfigResource;
   /** `svc:admin:transcription-job:read` — 3 routes. */
   readonly transcriptionJob: AdminTranscriptionJobResource;
   /** `svc:admin:usage:manage` — 4 routes. */
@@ -197,7 +191,6 @@ export class AdminNamespace {
     this.aiService = new AdminAiServiceResource(transport);
     this.allowedOrigin = new AdminAllowedOriginResource(transport);
     this.apikey = new AdminApikeyResource(transport);
-    this.audioPipeline = new AdminAudioPipelineResource(transport);
     this.audit = new AdminAuditResource(transport);
     this.billing = new AdminBillingResource(transport);
     this.changelog = new AdminChangelogResource(transport);
@@ -229,7 +222,6 @@ export class AdminNamespace {
     this.tenantFrontendConfig = new AdminTenantFrontendConfigResource(transport);
     this.tenantIdpConfig = new AdminTenantIdpConfigResource(transport);
     this.tenantStorage = new AdminTenantStorageResource(transport);
-    this.tenantSttConfig = new AdminTenantSttConfigResource(transport);
     this.transcriptionJob = new AdminTranscriptionJobResource(transport);
     this.usage = new AdminUsageResource(transport);
     this.user = new AdminUserResource(transport);

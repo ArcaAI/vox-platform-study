@@ -2414,40 +2414,6 @@
         },
         "type": "object"
       },
-      "AssignTenantRequest": {
-        "properties": {
-          "tenantId": {
-            "description": "Tenant ID to assign the pipeline to",
-            "type": "string"
-          }
-        },
-        "required": [
-          "tenantId"
-        ],
-        "type": "object"
-      },
-      "AssignTenantResponse": {
-        "properties": {
-          "message": {
-            "description": "Human-readable confirmation",
-            "type": "string"
-          },
-          "pipelineId": {
-            "description": "Pipeline ID",
-            "type": "string"
-          },
-          "tenantId": {
-            "description": "Tenant the pipeline was assigned to",
-            "type": "string"
-          }
-        },
-        "required": [
-          "message",
-          "pipelineId",
-          "tenantId"
-        ],
-        "type": "object"
-      },
       "AssignUserDepartmentRequest": {
         "properties": {
           "departmentId": {
@@ -4059,25 +4025,6 @@
         },
         "required": [
           "newSlug"
-        ],
-        "type": "object"
-      },
-      "ClonePipelineRequest": {
-        "properties": {
-          "name": {
-            "description": "Name for the new copy",
-            "example": "Whisper Large V3 Medical (our tuning)",
-            "type": "string"
-          },
-          "slug": {
-            "description": "URL-friendly unique identifier for the new copy (unique within the tenant)",
-            "example": "whisper-large-v3-medical-ours",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "slug"
         ],
         "type": "object"
       },
@@ -5838,11 +5785,11 @@
       "CreateBatchJobRequest": {
         "properties": {
           "agentVersionId": {
-            "description": "TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.",
+            "description": "TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.",
             "type": "string"
           },
           "codeSwitching": {
-            "description": "Enable multilingual code-switching. Overrides the pipeline default.",
+            "description": "Enable multilingual code-switching. Overrides the agent default.",
             "example": false,
             "type": "boolean"
           },
@@ -5851,7 +5798,7 @@
             "type": "string"
           },
           "language": {
-            "description": "Language hint (ISO 639-1 code, e.g. \"en\", \"ml\"). Overrides the pipeline default.",
+            "description": "Language hint (ISO 639-1 code, e.g. \"en\", \"ml\"). Overrides the agent default.",
             "example": "en",
             "type": "string"
           },
@@ -5862,11 +5809,6 @@
           },
           "mediaId": {
             "description": "Media ID for batch transcription",
-            "type": "string"
-          },
-          "pipelineId": {
-            "deprecated": true,
-            "description": "DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Omit on the agent path.",
             "type": "string"
           },
           "resolvedSpec": {
@@ -6299,15 +6241,15 @@
       "CreateJobRequest": {
         "properties": {
           "agentSlug": {
-            "description": "TASK-861 — the published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`). Ignored when `pipelineId` (deprecated) is sent.",
+            "description": "TASK-861 — the published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`).",
             "type": "string"
           },
           "agentVersionId": {
-            "description": "TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.",
+            "description": "TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.",
             "type": "string"
           },
           "codeSwitching": {
-            "description": "Enable multilingual code-switching. When true, the model will attempt to detect and transcribe multiple languages within the same audio. Overrides the pipeline default.",
+            "description": "Enable multilingual code-switching. When true, the model will attempt to detect and transcribe multiple languages within the same audio. Overrides the agent default.",
             "example": false,
             "type": "boolean"
           },
@@ -6326,7 +6268,7 @@
             "type": "string"
           },
           "language": {
-            "description": "Language hint (ISO 639-1 code, e.g. \"en\", \"ml\"). Overrides the pipeline default.",
+            "description": "Language hint (ISO 639-1 code, e.g. \"en\", \"ml\"). Overrides the agent default.",
             "example": "en",
             "type": "string"
           },
@@ -6338,12 +6280,6 @@
           },
           "mediaId": {
             "description": "Media ID for batch transcription (required for BATCH job type)",
-            "example": "01234567-89ab-cdef-0123-456789abcdef",
-            "type": "string"
-          },
-          "pipelineId": {
-            "deprecated": true,
-            "description": "DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Omit on the agent path.",
             "example": "01234567-89ab-cdef-0123-456789abcdef",
             "type": "string"
           },
@@ -6806,48 +6742,6 @@
         "required": [
           "aiModelId",
           "service"
-        ],
-        "type": "object"
-      },
-      "CreatePipelineRequest": {
-        "properties": {
-          "configYaml": {
-            "description": "Pipeline configuration in YAML format",
-            "example": "version: \"1.0\"\nmodels:\n  asr: \"whisper-large-v3\"\n  vad: \"silero-vad-v4\"\npreprocessing:\n  vad:\n    enabled: true\n    threshold: 0.5\ninference:\n  batch_size: 16\n  compute_type: float16",
-            "type": "string"
-          },
-          "description": {
-            "description": "Pipeline description",
-            "example": "Optimized pipeline for medical transcription with VAD and noise reduction",
-            "type": "string"
-          },
-          "name": {
-            "description": "Pipeline name",
-            "example": "Whisper Large V3 Medical",
-            "type": "string"
-          },
-          "slug": {
-            "description": "URL-friendly unique identifier",
-            "example": "whisper-large-v3-medical",
-            "type": "string"
-          },
-          "tags": {
-            "description": "Tags for categorization",
-            "example": [
-              "medical",
-              "high-accuracy",
-              "production"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "name",
-          "slug",
-          "configYaml"
         ],
         "type": "object"
       },
@@ -7321,18 +7215,13 @@
             "maxLength": 64,
             "type": "string"
           },
-          "pipelineId": {
-            "deprecated": true,
-            "description": "DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Prefer `agentSlug`.",
-            "type": "string"
-          },
           "sampleRate": {
             "default": 16000,
             "description": "Audio sample rate in Hz",
             "type": "number"
           },
           "startOn": {
-            "description": "Pre-start default-provider selection (C7). 'fallback' opens the session directly on the tenant-admin default (fallback) engine; 'primary' (default) opens on the configured pipeline. Fail-closed: 'fallback' with no configured fallback pipeline → 409.",
+            "description": "Pre-start default-provider selection (C7). 'fallback' opens the session directly on the ASR agent's fallback engine; 'primary' (default) opens on its primary engine. Fail-closed: 'fallback' when the agent declares no fallback engine → 409.",
             "enum": [
               "primary",
               "fallback"
@@ -7345,11 +7234,11 @@
       "CreateStreamingJobRequest": {
         "properties": {
           "agentVersionId": {
-            "description": "TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.",
+            "description": "TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.",
             "type": "string"
           },
           "codeSwitching": {
-            "description": "Enable multilingual code-switching. Overrides the pipeline default.",
+            "description": "Enable multilingual code-switching. Overrides the agent default.",
             "example": false,
             "type": "boolean"
           },
@@ -7358,7 +7247,7 @@
             "type": "string"
           },
           "language": {
-            "description": "Language hint (ISO 639-1 code, e.g. \"en\", \"ml\"). Overrides the pipeline default.",
+            "description": "Language hint (ISO 639-1 code, e.g. \"en\", \"ml\"). Overrides the agent default.",
             "example": "en",
             "type": "string"
           },
@@ -7366,11 +7255,6 @@
             "default": 3,
             "description": "Maximum number of retries on failure",
             "type": "number"
-          },
-          "pipelineId": {
-            "deprecated": true,
-            "description": "DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Omit on the agent path.",
-            "type": "string"
           },
           "resolvedSpec": {
             "description": "TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.",
@@ -9276,34 +9160,6 @@
           "tier",
           "value",
           "sourceScope"
-        ],
-        "type": "object"
-      },
-      "EffectiveSttConfigResponse": {
-        "properties": {
-          "autoSwitchEnabled": {
-            "description": "Whether the error-triggered auto-switch is enabled",
-            "type": "boolean"
-          },
-          "consecutiveFailureThreshold": {
-            "description": "Consecutive utterance failures before an auto-switch",
-            "type": "number"
-          },
-          "fallbackPipelineId": {
-            "description": "Effective fallback pipeline id (null = no fallback configured)",
-            "nullable": true,
-            "type": "string"
-          },
-          "tenantId": {
-            "description": "Tenant the config was resolved for",
-            "type": "string"
-          }
-        },
-        "required": [
-          "tenantId",
-          "fallbackPipelineId",
-          "autoSwitchEnabled",
-          "consecutiveFailureThreshold"
         ],
         "type": "object"
       },
@@ -11617,7 +11473,6 @@
             "enum": [
               "PRE_SUMMARY",
               "SUMMARY",
-              "COMPREHENSIVE_SUMMARY",
               "NER"
             ],
             "type": "string"
@@ -13348,6 +13203,245 @@
         ],
         "type": "object"
       },
+      "ModelResidencyCatalogueDevice": {
+        "properties": {
+          "freeBytes": {
+            "type": "number"
+          },
+          "headroomPercent": {
+            "description": "The `residency.headroomPercent` in force.",
+            "type": "number"
+          },
+          "id": {
+            "description": "`gpu<N>` = DCGM device N; `cpu:<service>` = that service`s host memory pool.",
+            "example": "gpu0",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "gpu",
+              "cpu"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "example": "GPU 0 — NVIDIA RTX 2000 Ada Generation",
+            "type": "string"
+          },
+          "models": {
+            "description": "The models resident on this device right now.",
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyDeviceModel"
+            },
+            "type": "array"
+          },
+          "totalBytes": {
+            "type": "number"
+          },
+          "usedBytes": {
+            "type": "number"
+          },
+          "utilisationPercent": {
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "totalBytes",
+          "usedBytes",
+          "freeBytes",
+          "utilisationPercent",
+          "headroomPercent",
+          "models"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyCatalogueModel": {
+        "properties": {
+          "actions": {
+            "description": "What the console may offer for this row now.",
+            "items": {
+              "enum": [
+                "load",
+                "unload",
+                "reload",
+                "edit_policy"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "aiModelId": {
+            "description": "`null` only for a resident model the catalogue does not know.",
+            "nullable": true,
+            "type": "string"
+          },
+          "format": {
+            "nullable": true,
+            "type": "string"
+          },
+          "keepPolicy": {
+            "$ref": "#/components/schemas/ModelResidencyKeepPolicy"
+          },
+          "loadSeconds": {
+            "description": "Seconds the last load took (measured).",
+            "nullable": true,
+            "type": "number"
+          },
+          "modelRef": {
+            "description": "The key the service holds it under (stt = slug, nlp = hub id, LM Studio = wire id) — what load / unload take.",
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "residency": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModelResidencyPlacement"
+              }
+            ],
+            "description": "`null` when not loaded.",
+            "nullable": true,
+            "type": "object"
+          },
+          "size": {
+            "$ref": "#/components/schemas/ModelResidencySize"
+          },
+          "slug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "loaded",
+              "loading",
+              "unloading",
+              "not_loaded"
+            ],
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ModelResidencyUsage"
+          }
+        },
+        "required": [
+          "aiModelId",
+          "name",
+          "slug",
+          "modelRef",
+          "format",
+          "status",
+          "size",
+          "loadSeconds",
+          "residency",
+          "usage",
+          "keepPolicy",
+          "actions"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyCatalogueResponse": {
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyCatalogueDevice"
+            },
+            "type": "array"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/ModelResidencyFreshness"
+          },
+          "mode": {
+            "enum": [
+              "shadow",
+              "enforce"
+            ],
+            "type": "string"
+          },
+          "reportedAt": {
+            "type": "string"
+          },
+          "services": {
+            "description": "Always four groups, in this order: stt, stt-worker, lm-studio, nlp.",
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyCatalogueService"
+            },
+            "type": "array"
+          },
+          "suggestions": {
+            "description": "The controller`s recommendations, newest first, one plain sentence each.",
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencySuggestion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "reportedAt",
+          "freshness",
+          "devices",
+          "services",
+          "suggestions"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyCatalogueService": {
+        "properties": {
+          "controllable": {
+            "description": "`false` for stt-worker, which has no control API (observed through Prometheus only).",
+            "type": "boolean"
+          },
+          "label": {
+            "example": "Speech-to-text — live sessions",
+            "type": "string"
+          },
+          "loadedCount": {
+            "type": "number"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyCatalogueModel"
+            },
+            "type": "array"
+          },
+          "reachable": {
+            "description": "The service`s last report is fresh (stt-worker: Prometheus answered).",
+            "type": "boolean"
+          },
+          "runsOn": {
+            "enum": [
+              "gpu",
+              "cpu"
+            ],
+            "type": "string"
+          },
+          "service": {
+            "enum": [
+              "stt",
+              "stt-worker",
+              "lm-studio",
+              "nlp"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "label",
+          "runsOn",
+          "controllable",
+          "reachable",
+          "loadedCount",
+          "models"
+        ],
+        "type": "object"
+      },
       "ModelResidencyDevice": {
         "properties": {
           "freeBytes": {
@@ -13397,6 +13491,38 @@
         ],
         "type": "object"
       },
+      "ModelResidencyDeviceModel": {
+        "properties": {
+          "bytes": {
+            "description": "Bytes this model holds on THIS device; `null` when unknown — always for LM Studio, which splits one model over every card.",
+            "nullable": true,
+            "type": "number"
+          },
+          "modelRef": {
+            "type": "string"
+          },
+          "name": {
+            "description": "Catalogue name, or the modelRef when the catalogue does not know the model.",
+            "type": "string"
+          },
+          "service": {
+            "enum": [
+              "stt",
+              "stt-worker",
+              "lm-studio",
+              "nlp"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "modelRef",
+          "name",
+          "bytes"
+        ],
+        "type": "object"
+      },
       "ModelResidencyFreshness": {
         "properties": {
           "maxAgeSeconds": {
@@ -13415,6 +13541,57 @@
         "required": [
           "maxAgeSeconds",
           "staleServices"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyKeepPolicy": {
+        "properties": {
+          "idleTtlSeconds": {
+            "nullable": true,
+            "type": "number"
+          },
+          "kind": {
+            "description": "PINNED → always, WARM → warm, ON_DEMAND → on_demand.",
+            "enum": [
+              "always",
+              "warm",
+              "on_demand"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "example": "Always loaded",
+            "type": "string"
+          },
+          "policyId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "policyVersion": {
+            "nullable": true,
+            "type": "number"
+          },
+          "reason": {
+            "example": "Used by a live-consultation agent",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "policy",
+              "implicit-live-path",
+              "default"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "reason",
+          "source",
+          "policyId",
+          "policyVersion",
+          "idleTtlSeconds"
         ],
         "type": "object"
       },
@@ -13660,6 +13837,61 @@
         ],
         "type": "object"
       },
+      "ModelResidencyPlacement": {
+        "properties": {
+          "bytes": {
+            "nullable": true,
+            "type": "number"
+          },
+          "bytesSource": {
+            "enum": [
+              "measured",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "device": {
+            "description": "`gpu<N>`, `multi` (LM Studio spans every card), `cpu:<service>`, or the service`s own id when it cannot be mapped.",
+            "type": "string"
+          },
+          "inFlight": {
+            "nullable": true,
+            "type": "number"
+          },
+          "instance": {
+            "description": "Pod name, or the LM Studio instance id.",
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "loadedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "p50LatencyMs": {
+            "nullable": true,
+            "type": "number"
+          },
+          "requestsPerMin": {
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "device",
+          "instance",
+          "bytes",
+          "bytesSource",
+          "inFlight",
+          "requestsPerMin",
+          "p50LatencyMs",
+          "loadedAt",
+          "lastUsedAt"
+        ],
+        "type": "object"
+      },
       "ModelResidencyPolicyResponse": {
         "properties": {
           "_version": {
@@ -13782,6 +14014,71 @@
         ],
         "type": "object"
       },
+      "ModelResidencySize": {
+        "properties": {
+          "bytes": {
+            "nullable": true,
+            "type": "number"
+          },
+          "source": {
+            "description": "`measured` = the resident report or `AiModel.observedMemoryMb`; `catalogue` = the `memorySizeMb` estimate; `unknown` = neither.",
+            "enum": [
+              "measured",
+              "catalogue",
+              "unknown"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "bytes",
+          "source"
+        ],
+        "type": "object"
+      },
+      "ModelResidencySuggestion": {
+        "properties": {
+          "action": {
+            "enum": [
+              "load",
+              "unload",
+              "pin",
+              "unpin"
+            ],
+            "type": "string"
+          },
+          "applied": {
+            "description": "The command was sent AND succeeded. Always `false` in shadow mode.",
+            "type": "boolean"
+          },
+          "at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "modelRef": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "text": {
+            "example": "Unload Medical NER on nlp — idle for 20 minutes and no live agent uses it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "text",
+          "action",
+          "service",
+          "modelRef",
+          "applied"
+        ],
+        "type": "object"
+      },
       "ModelResidencyUnloadResponse": {
         "properties": {
           "modelRef": {
@@ -13802,6 +14099,80 @@
           "outcome",
           "service",
           "modelRef"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyUsage": {
+        "properties": {
+          "agentCount": {
+            "description": "Distinct agents among the primary and fallback uses.",
+            "type": "number"
+          },
+          "liveConsultation": {
+            "description": "Any use is on the live consultation path.",
+            "type": "boolean"
+          },
+          "tenantCount": {
+            "type": "number"
+          },
+          "uses": {
+            "description": "Across ALL tenants; only ACTIVE PUBLISHED agents and ACTIVE routing policies count.",
+            "items": {
+              "$ref": "#/components/schemas/ModelResidencyUse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "agentCount",
+          "tenantCount",
+          "liveConsultation",
+          "uses"
+        ],
+        "type": "object"
+      },
+      "ModelResidencyUse": {
+        "properties": {
+          "agentName": {
+            "description": "The agent`s name; for a routing use, the policy`s display name or its task key.",
+            "type": "string"
+          },
+          "agentSlug": {
+            "description": "`null` for a `routing` use (a routing policy has no agent).",
+            "nullable": true,
+            "type": "string"
+          },
+          "liveConsultation": {
+            "description": "This agent is assigned on the live consultation path and this model is its primary.",
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "primary",
+              "fallback",
+              "routing"
+            ],
+            "type": "string"
+          },
+          "task": {
+            "description": "The agent task (`SPEECH_TO_TEXT`, …) or, for a routing use, the policy`s task key (`nlp.ner`, …).",
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "tenantName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "tenantName",
+          "agentSlug",
+          "agentName",
+          "task",
+          "role",
+          "liveConsultation"
         ],
         "type": "object"
       },
@@ -15193,40 +15564,6 @@
         ],
         "type": "object"
       },
-      "PaginatedPipelineResponse": {
-        "properties": {
-          "data": {
-            "items": {
-              "$ref": "#/components/schemas/PipelineResponse"
-            },
-            "type": "array"
-          },
-          "limit": {
-            "description": "Number of records per page",
-            "type": "number"
-          },
-          "page": {
-            "description": "Current page number",
-            "type": "number"
-          },
-          "total": {
-            "description": "Total number of records",
-            "type": "number"
-          },
-          "totalPages": {
-            "description": "Total number of pages",
-            "type": "number"
-          }
-        },
-        "required": [
-          "data",
-          "total",
-          "page",
-          "limit",
-          "totalPages"
-        ],
-        "type": "object"
-      },
       "PaginatedPolicyResponse": {
         "properties": {
           "data": {
@@ -15942,153 +16279,6 @@
         ],
         "type": "object"
       },
-      "PipelineResponse": {
-        "properties": {
-          "configYaml": {
-            "description": "Pipeline configuration in YAML format",
-            "type": "string"
-          },
-          "createdAt": {
-            "description": "Created at timestamp",
-            "format": "date-time",
-            "type": "string"
-          },
-          "createdBy": {
-            "description": "Created by user ID",
-            "type": "string"
-          },
-          "description": {
-            "description": "Pipeline description",
-            "type": "string"
-          },
-          "id": {
-            "description": "Pipeline ID",
-            "type": "string"
-          },
-          "isDefault": {
-            "description": "Whether this pipeline is the tenant's default",
-            "example": false,
-            "type": "boolean"
-          },
-          "name": {
-            "description": "Pipeline name",
-            "type": "string"
-          },
-          "resourceStatus": {
-            "description": "Resource status",
-            "enum": [
-              "ENABLED",
-              "DISABLED",
-              "SUSPENDED",
-              "ARCHIVED",
-              "DELETED"
-            ],
-            "type": "string"
-          },
-          "slug": {
-            "description": "URL-friendly unique identifier",
-            "type": "string"
-          },
-          "sourceTemplateSlug": {
-            "description": "Slug of the SYSTEM template this pipeline descends from (null when not template-derived)",
-            "example": "production-whisper-large-v3-turbo-gguf",
-            "type": "string"
-          },
-          "tags": {
-            "description": "Tags",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "templateLocked": {
-            "description": "Whether this is a locked template copy (read-only for content edits and delete; clone to customize)",
-            "example": false,
-            "type": "boolean"
-          },
-          "tenantId": {
-            "description": "Tenant ID",
-            "type": "string"
-          },
-          "updatedAt": {
-            "description": "Updated at timestamp",
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedBy": {
-            "description": "Updated by user ID",
-            "type": "string"
-          },
-          "version": {
-            "description": "Row version for optimistic concurrency control. Echo back as `If-Match: \"<version>\"` or `expectedVersion` on PATCH.",
-            "example": 7,
-            "type": "number"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "slug",
-          "configYaml",
-          "resourceStatus",
-          "isDefault",
-          "templateLocked",
-          "tags",
-          "tenantId",
-          "createdAt",
-          "updatedAt",
-          "version"
-        ],
-        "type": "object"
-      },
-      "PipelineVersionResponse": {
-        "properties": {
-          "asrPipelineId": {
-            "description": "Owning pipeline ID",
-            "type": "string"
-          },
-          "changeReason": {
-            "description": "Reason supplied for the change",
-            "type": "string"
-          },
-          "changedBy": {
-            "description": "User ID who made the change",
-            "type": "string"
-          },
-          "configYaml": {
-            "description": "Snapshotted YAML configuration",
-            "type": "string"
-          },
-          "createdAt": {
-            "description": "Snapshot creation timestamp (ISO 8601)",
-            "type": "string"
-          },
-          "description": {
-            "description": "Pipeline description at snapshot time",
-            "type": "string"
-          },
-          "id": {
-            "description": "Version snapshot ID",
-            "type": "string"
-          },
-          "name": {
-            "description": "Pipeline name at snapshot time",
-            "type": "string"
-          },
-          "versionNumber": {
-            "description": "Monotonic version number (1-based)",
-            "type": "number"
-          }
-        },
-        "required": [
-          "id",
-          "asrPipelineId",
-          "versionNumber",
-          "configYaml",
-          "createdAt"
-        ],
-        "type": "object"
-      },
       "PlanEntitlementResponse": {
         "properties": {
           "featurePlatformDefaultCredential": {
@@ -16110,11 +16300,6 @@
           },
           "maxApiKeys": {
             "description": "Max API keys; null = unlimited",
-            "nullable": true,
-            "type": "number"
-          },
-          "maxAsrPipelines": {
-            "description": "Max ASR pipelines; null = unlimited",
             "nullable": true,
             "type": "number"
           },
@@ -18511,35 +18696,6 @@
         ],
         "type": "object"
       },
-      "RemoteConfigResponseDto": {
-        "properties": {
-          "assignedBy": {
-            "description": "How the pipeline was assigned",
-            "enum": [
-              "admin",
-              "tenant-default"
-            ],
-            "type": "string"
-          },
-          "codeSwitchingEnabled": {
-            "description": "Whether code-switching is enabled in the pipeline",
-            "type": "boolean"
-          },
-          "pipelineId": {
-            "description": "Assigned ASR pipeline ID",
-            "type": "string"
-          },
-          "pipelineName": {
-            "description": "Human-readable pipeline name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "pipelineId",
-          "assignedBy"
-        ],
-        "type": "object"
-      },
       "RequestVolumePoint": {
         "properties": {
           "requests": {
@@ -20423,30 +20579,6 @@
         },
         "type": "object"
       },
-      "SetSttFallbackRequest": {
-        "properties": {
-          "autoSwitchEnabled": {
-            "description": "Enable the error-triggered auto-switch to the fallback (default true).",
-            "type": "boolean"
-          },
-          "consecutiveFailureThreshold": {
-            "description": "Consecutive utterance failures before an auto-switch (default 2).",
-            "example": 2,
-            "type": "number"
-          },
-          "expectedVersion": {
-            "description": "OCC token. 0 = create (no row yet); >0 = compare-and-set against the current version (412 on drift). Browser clients drive OCC through the If-Match header (which overrides this field when present); this is the service-to-service fallback for non-header callers.",
-            "example": 0,
-            "type": "number"
-          },
-          "fallbackPipelineId": {
-            "description": "Fallback pipeline id (UUID). Must be tenant-visible, ENABLED, and cloud-engine-backed. null clears it.",
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "SetTenantBucketDefaultsRequest": {
         "properties": {
           "attachmentsBucketId": {
@@ -20866,10 +20998,6 @@
           "maxConcurrent": {
             "description": "Maximum concurrent sessions allowed",
             "type": "number"
-          },
-          "pipelineId": {
-            "description": "The runtime key the session opened with: the ASR Agent VERSION id (agent path) or the resolved AsrPipeline id (deprecated path)",
-            "type": "string"
           },
           "sessionEpochMs": {
             "description": "Epoch ms at session creation; segment times are relative to it",
@@ -21729,11 +21857,6 @@
             "nullable": true,
             "type": "number"
           },
-          "maxAsrPipelines": {
-            "description": "Override max ASR pipelines; null = inherit",
-            "nullable": true,
-            "type": "number"
-          },
           "maxConcurrentSessions": {
             "description": "Override max concurrent STT sessions; null = inherit",
             "nullable": true,
@@ -22182,56 +22305,6 @@
         ],
         "type": "object"
       },
-      "TenantSttConfigResponse": {
-        "properties": {
-          "autoSwitchEnabled": {
-            "description": "Whether the error-triggered auto-switch is enabled",
-            "type": "boolean"
-          },
-          "configJson": {
-            "description": "Persisted config extras (forward-compat)",
-            "nullable": true,
-            "type": "object"
-          },
-          "consecutiveFailureThreshold": {
-            "description": "Consecutive utterance failures before an auto-switch",
-            "nullable": true,
-            "type": "number"
-          },
-          "createdAt": {
-            "description": "Created timestamp (ISO)",
-            "type": "string"
-          },
-          "fallbackPipelineId": {
-            "description": "Tenant-level default fallback pipeline id",
-            "nullable": true,
-            "type": "string"
-          },
-          "resourceStatus": {
-            "description": "Resource status",
-            "type": "string"
-          },
-          "tenantId": {
-            "description": "Owning tenant id",
-            "type": "string"
-          },
-          "updatedAt": {
-            "description": "Updated timestamp (ISO)",
-            "type": "string"
-          },
-          "version": {
-            "description": "OCC version. 0 when no row exists yet (create with expectedVersion=0).",
-            "example": 0,
-            "type": "number"
-          }
-        },
-        "required": [
-          "tenantId",
-          "autoSwitchEnabled",
-          "version"
-        ],
-        "type": "object"
-      },
       "TenantUsageResponse": {
         "properties": {
           "storageQuotaBytes": {
@@ -22255,10 +22328,6 @@
             "description": "Total number of departments",
             "type": "number"
           },
-          "totalPipelines": {
-            "description": "Total number of pipelines",
-            "type": "number"
-          },
           "totalPromptTemplates": {
             "description": "Total number of prompt templates",
             "type": "number"
@@ -22276,7 +22345,6 @@
           "totalUsers",
           "totalDepartments",
           "totalPromptTemplates",
-          "totalPipelines",
           "storageUsedBytes",
           "storageQuotaBytes",
           "transcriptionMinutes",
@@ -22532,19 +22600,6 @@
         ],
         "type": "object"
       },
-      "TogglePipelineRequest": {
-        "properties": {
-          "enabled": {
-            "description": "true → ENABLED, false → DISABLED",
-            "example": true,
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "enabled"
-        ],
-        "type": "object"
-      },
       "ToggleSchedulerRequest": {
         "properties": {
           "enabled": {
@@ -22633,11 +22688,6 @@
             "description": "Spoken-language mode id: 'en', 'ml', 'ml-en', 'vi', 'vi-en', 'auto'. Takes precedence over `language`. Omit both to inherit the consultation's declared mode, else the ASR agent’s own default. Never chooses the engine. 400 `LANGUAGE_MODE_UNKNOWN` when it names no mode. The job reports what was applied as `languageResolution`.",
             "maxLength": 64,
             "type": "string"
-          },
-          "pipelineId": {
-            "deprecated": true,
-            "description": "DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Prefer `agentSlug`.",
-            "type": "string"
           }
         },
         "type": "object"
@@ -22712,21 +22762,6 @@
           },
           "mediaId": {
             "description": "Media ID (for batch jobs)",
-            "type": "string"
-          },
-          "pipeline": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PipelineResponse"
-              }
-            ],
-            "deprecated": true,
-            "description": "DEPRECATED (TASK-861): Pipeline details"
-          },
-          "pipelineId": {
-            "deprecated": true,
-            "description": "DEPRECATED (TASK-861): the AsrPipeline that ran the job; null on agent-keyed jobs",
-            "nullable": true,
             "type": "string"
           },
           "progress": {
@@ -24267,55 +24302,6 @@
         },
         "type": "object"
       },
-      "UpdatePipelineRequest": {
-        "properties": {
-          "changeReason": {
-            "description": "Reason for the change; recorded on the version snapshot when configYaml changes.",
-            "example": "Switched ASR model to whisper-large-v3",
-            "type": "string"
-          },
-          "configYaml": {
-            "description": "Pipeline configuration in YAML format",
-            "type": "string"
-          },
-          "description": {
-            "description": "Pipeline description",
-            "example": "Updated description for medical transcription pipeline",
-            "type": "string"
-          },
-          "expectedVersion": {
-            "description": "Current version of the row (from the prior GET, e.g. via the `ETag` header). The PATCH fails with `412 Precondition Failed` if the version drifted.",
-            "example": 7,
-            "type": "number"
-          },
-          "name": {
-            "description": "Pipeline name",
-            "example": "Whisper Large V3 Medical Updated",
-            "type": "string"
-          },
-          "slug": {
-            "description": "URL-friendly unique identifier",
-            "example": "whisper-large-v3-medical",
-            "type": "string"
-          },
-          "tags": {
-            "description": "Tags for categorization",
-            "example": [
-              "medical",
-              "high-accuracy",
-              "production"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "expectedVersion"
-        ],
-        "type": "object"
-      },
       "UpdatePlanEntitlementRequest": {
         "properties": {
           "expectedVersion": {
@@ -24342,11 +24328,6 @@
           },
           "maxApiKeys": {
             "description": "Max API keys; null = unlimited",
-            "nullable": true,
-            "type": "number"
-          },
-          "maxAsrPipelines": {
-            "description": "Max ASR pipelines; null = unlimited",
             "nullable": true,
             "type": "number"
           },
@@ -25490,11 +25471,6 @@
             "nullable": true,
             "type": "number"
           },
-          "maxAsrPipelines": {
-            "description": "Override max ASR pipelines; null = inherit",
-            "nullable": true,
-            "type": "number"
-          },
           "maxConcurrentSessions": {
             "description": "Override max concurrent STT sessions; null = inherit",
             "nullable": true,
@@ -26214,14 +26190,6 @@
             ],
             "description": "Local workflow model configuration"
           },
-          "remoteConfig": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/RemoteConfigResponseDto"
-              }
-            ],
-            "description": "Read-only remote pipeline configuration (resolved from admin settings)"
-          },
           "transcriptionMode": {
             "description": "Effective transcription mode resolved server-side (read-only)",
             "enum": [
@@ -26609,19 +26577,6 @@
         "required": [
           "rules"
         ],
-        "type": "object"
-      },
-      "ValidateYamlRequest": {
-        "properties": {
-          "configYaml": {
-            "description": "YAML content to validate (SDK canonical field)",
-            "type": "string"
-          },
-          "yaml": {
-            "description": "YAML content to validate (legacy field)",
-            "type": "string"
-          }
-        },
         "type": "object"
       },
       "VersionDiffResponse": {
@@ -33153,920 +33108,9 @@
         ]
       }
     },
-    "/api/v1/admin/audio/pipelines": {
-      "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_fetchAll",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/PaginatedResponse"
-                    },
-                    {
-                      "properties": {
-                        "data": {
-                          "items": {
-                            "$ref": "#/components/schemas/PipelineResponse"
-                          },
-                          "type": "array"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "description": "Retrieving multiple PipelineResponses"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Retrieving multiple PipelineResponses",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      },
-      "post": {
-        "deprecated": true,
-        "description": "DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_create",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreatePipelineRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "Creating a PipelineResponse"
-          },
-          "400": {
-            "description": "Bad request - invalid YAML or duplicate slug"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Creating a PipelineResponse",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/audio/pipelines/list": {
-      "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_list",
-        "parameters": [
-          {
-            "description": "Page number (default: 1)",
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "type": "number"
-            }
-          },
-          {
-            "description": "Items per page (default: 20)",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaginatedPipelineResponse"
-                }
-              }
-            },
-            "description": "Retrieving a single PaginatedPipelineResponse"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Retrieving a single PaginatedPipelineResponse",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/audio/pipelines/slug/{slug}": {
-      "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_fetchBySlug",
-        "parameters": [
-          {
-            "description": "Pipeline slug",
-            "in": "path",
-            "name": "slug",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "Retrieving a single PipelineResponse by slug"
-          },
-          "404": {
-            "description": "Pipeline not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Retrieving a single PipelineResponse by slug",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/audio/pipelines/validate": {
-      "post": {
-        "deprecated": true,
-        "description": "DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_validateYaml",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ValidateYamlRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "YAML validation result\n\nCreating a PipelineResponse"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Creating a PipelineResponse",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/audio/pipelines/{id}": {
-      "delete": {
-        "deprecated": true,
-        "description": "DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_delete",
-        "parameters": [
-          {
-            "description": "Pipeline ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "Deleting a PipelineResponse by id"
-          },
-          "403": {
-            "description": "Template copy is read-only — clone it to customize."
-          },
-          "404": {
-            "description": "Pipeline not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Deleting a PipelineResponse by id",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      },
-      "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_fetchById",
-        "parameters": [
-          {
-            "description": "Pipeline ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "Retrieving a single PipelineResponse by id"
-          },
-          "404": {
-            "description": "Pipeline not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Retrieving a single PipelineResponse by id",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      },
-      "patch": {
-        "deprecated": true,
-        "description": "Updates one AsrPipeline row. Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the row's `_version` column. When the header is present, its value overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_update",
-        "parameters": [
-          {
-            "description": "Pipeline ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "RFC 7232 strong validator carrying the row version the client read (e.g. `\"7\"`).",
-            "in": "header",
-            "name": "If-Match",
-            "required": true,
-            "schema": {
-              "example": "\"7\"",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdatePipelineRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "Updating a PipelineResponse by id"
-          },
-          "400": {
-            "description": "Bad request - invalid YAML or duplicate slug"
-          },
-          "403": {
-            "description": "Template copy is read-only — clone it to customize. Enable/disable and set-default remain available on a locked copy."
-          },
-          "404": {
-            "description": "Pipeline not found"
-          },
-          "412": {
-            "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."
-          },
-          "428": {
-            "description": "If-Match header is required for this operation."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Updating a PipelineResponse by id",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": true,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/audio/pipelines/{id}/assign-tenant": {
-      "post": {
-        "deprecated": true,
-        "description": "DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_assignTenant",
-        "parameters": [
-          {
-            "description": "Pipeline ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AssignTenantRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AssignTenantResponse"
-                }
-              }
-            },
-            "description": "Pipeline assigned"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Assign an ASR pipeline within its tenant",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/audio/pipelines/{id}/clone": {
-      "post": {
-        "deprecated": true,
-        "description": "Creates a NEW pipeline from an existing one. The copy is never `templateLocked`, carries the source `sourceTemplateSlug` forward, and starts with the source's current config as its v1 version snapshot. Counts against the `maxAsrPipelines` plan quota like any other create.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_clone",
-        "parameters": [
-          {
-            "description": "Source pipeline ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ClonePipelineRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "Clone created"
-          },
-          "400": {
-            "description": "Bad request - duplicate slug or invalid name/slug"
-          },
-          "404": {
-            "description": "Source pipeline not found"
-          },
-          "409": {
-            "description": "Plan quota exceeded (maxAsrPipelines)"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Clone a pipeline into a new editable copy",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/audio/pipelines/{id}/set-default": {
-      "post": {
-        "deprecated": true,
-        "description": "DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_setDefault",
-        "parameters": [
-          {
-            "description": "Pipeline ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "Pipeline marked as default"
-          },
-          "404": {
-            "description": "Pipeline not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Set a pipeline as the tenant default",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/audio/pipelines/{id}/toggle": {
-      "patch": {
-        "deprecated": true,
-        "description": "Flips the pipeline `resourceStatus` (ENABLED ⇄ DISABLED). Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and runs a Compare-And-Set against the row `_version`. Drift → `412`, missing header → `428`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_toggle",
-        "parameters": [
-          {
-            "description": "Pipeline ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "RFC 7232 strong validator carrying the row version (e.g. `\"7\"`).",
-            "in": "header",
-            "name": "If-Match",
-            "required": true,
-            "schema": {
-              "example": "\"7\"",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TogglePipelineRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "Pipeline status updated"
-          },
-          "404": {
-            "description": "Pipeline not found"
-          },
-          "412": {
-            "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
-          },
-          "428": {
-            "description": "If-Match header is required for this operation."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Enable/disable a pipeline",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": true,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/audio/pipelines/{id}/versions": {
-      "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_listVersions",
-        "parameters": [
-          {
-            "description": "Pipeline ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/PipelineVersionResponse"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Version snapshots (newest first)"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "List config-version snapshots for a pipeline",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/audio/pipelines/{id}/versions/{versionNumber}": {
-      "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineController_getVersion",
-        "parameters": [
-          {
-            "description": "Pipeline ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Version number (1-based)",
-            "in": "path",
-            "name": "versionNumber",
-            "required": true,
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineVersionResponse"
-                }
-              }
-            },
-            "description": "Version snapshot"
-          },
-          "404": {
-            "description": "Version not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Get one config-version snapshot by version number",
-        "tags": [
-          "admin-audio-pipelines"
-        ],
-        "x-hope-abilities": [
-          "manage:AsrPipeline"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:audio-pipeline:manage"
-        ]
-      }
-    },
     "/api/v1/admin/audio/transcription-jobs": {
       "get": {
-        "description": "Tenant-wide list of transcription jobs. Since TASK-999 this includes realtime sessions (`jobType = STREAMING`) alongside batch jobs; pass `jobType` to restrict to one kind, omit it for both.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:transcription-job:read`).\n\n**Abilities** — `read:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Tenant-wide list of transcription jobs. Since TASK-999 this includes realtime sessions (`jobType = STREAMING`) alongside batch jobs; pass `jobType` to restrict to one kind, omit it for both.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:transcription-job:read`).\n\n**Abilities** — `read:TranscriptionJob`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AdminTranscriptionJobController_list",
         "parameters": [
           {
@@ -34131,7 +33175,7 @@
           "admin-transcription-jobs"
         ],
         "x-hope-abilities": [
-          "read:AsrPipeline"
+          "read:TranscriptionJob"
         ],
         "x-hope-api-key-scopes": [],
         "x-hope-credentials": [
@@ -34148,7 +33192,7 @@
     },
     "/api/v1/admin/audio/transcription-jobs/stats": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:transcription-job:read`).\n\n**Abilities** — `read:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:transcription-job:read`).\n\n**Abilities** — `read:TranscriptionJob`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AdminTranscriptionJobController_getStats",
         "parameters": [],
         "responses": {
@@ -34176,7 +33220,7 @@
           "admin-transcription-jobs"
         ],
         "x-hope-abilities": [
-          "read:AsrPipeline"
+          "read:TranscriptionJob"
         ],
         "x-hope-api-key-scopes": [],
         "x-hope-credentials": [
@@ -34193,7 +33237,7 @@
     },
     "/api/v1/admin/audio/transcription-jobs/status/{status}": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:transcription-job:read`).\n\n**Abilities** — `read:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:transcription-job:read`).\n\n**Abilities** — `read:TranscriptionJob`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AdminTranscriptionJobController_getByStatus",
         "parameters": [
           {
@@ -34234,7 +33278,7 @@
           "admin-transcription-jobs"
         ],
         "x-hope-abilities": [
-          "read:AsrPipeline"
+          "read:TranscriptionJob"
         ],
         "x-hope-api-key-scopes": [],
         "x-hope-credentials": [
@@ -43167,6 +42211,54 @@
           }
         ],
         "summary": "Read live model residency across stt, nlp and LM Studio",
+        "tags": [
+          "admin-model-residency"
+        ],
+        "x-hope-abilities": [
+          "manage:ModelResidencyPolicy"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:model-residency:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/model-residency/catalogue": {
+      "get": {
+        "description": "Catalogue-first residency (TASK-1005 §13): every SELF_HOSTED, non-deleted catalogue model (SYSTEM tier), grouped by the workload that runs it — always four groups, in this order: stt, stt-worker, lm-studio, nlp (cloud models are absent: nothing can load them). Each model carries its status in plain words (`loaded` | `loading` | `unloading` | `not_loaded`), its size (MEASURED first, else the catalogue estimate, with `source` saying which), how long its last load took, where it is resident, who uses it across ALL tenants (`primary` agent model, `fallback`, or `routing` policy — only ACTIVE PUBLISHED agents and ACTIVE policies count; `liveConsultation` marks the live path), its keep policy in plain words with the reason, and the actions the console may offer now. `devices[]` names the models on each card; `suggestions[]` are the controller`s recommendations as one sentence each. The usage index is cached platform-wide for 30 s; everything else is as fresh as `GET admin/model-residency`. A resident model the catalogue does not know is still listed, with `aiModelId: null`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:model-residency:manage`).\n\n**Abilities** — `manage:ModelResidencyPolicy`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ModelResidencyController_catalogue",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelResidencyCatalogueResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a platform administrator, or a working tenant is selected (this surface is platform-wide and tenant-less)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read every loadable model per service, loaded or not, and who uses it",
         "tags": [
           "admin-model-residency"
         ],
@@ -52521,257 +51613,6 @@
         ]
       }
     },
-    "/api/v1/admin/stt-config": {
-      "get": {
-        "deprecated": true,
-        "description": "Merges the tenant row over the SYSTEM-tenant platform default. Read-only; this is what the gateway reads on the session-create path. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `read:TenantSttConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "TenantSttConfigAdminController_getEffective",
-        "parameters": [
-          {
-            "description": "Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.",
-            "in": "query",
-            "name": "tenantId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EffectiveSttConfigResponse"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Resolve the effective STT fallback spec for a tenant (tenant row over the SYSTEM default)",
-        "tags": [
-          "admin-stt"
-        ],
-        "x-hope-abilities": [
-          "read:TenantSttConfig"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:tenant-stt-config:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/stt-config/fallback-candidates": {
-      "get": {
-        "deprecated": true,
-        "description": "The valid targets for the fallback pointer — the picker offers exactly these, so the PUT never rejects a selection. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `read:TenantSttConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "TenantSttConfigAdminController_getFallbackCandidates",
-        "parameters": [
-          {
-            "description": "Platform-admin only: target tenant.",
-            "in": "query",
-            "name": "tenantId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/PipelineResponse"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "List the enabled, cloud-engine-backed pipelines a tenant may set as its fallback",
-        "tags": [
-          "admin-stt"
-        ],
-        "x-hope-abilities": [
-          "read:TenantSttConfig"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:tenant-stt-config:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/stt-config/row": {
-      "get": {
-        "deprecated": true,
-        "description": "Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`). DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `read:TenantSttConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "TenantSttConfigAdminController_getRow",
-        "parameters": [
-          {
-            "description": "Platform-admin only: target tenant.",
-            "in": "query",
-            "name": "tenantId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TenantSttConfigResponse"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Get the raw, editable STT config row for a tenant",
-        "tags": [
-          "admin-stt"
-        ],
-        "x-hope-abilities": [
-          "read:TenantSttConfig"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:tenant-stt-config:manage"
-        ]
-      },
-      "put": {
-        "deprecated": true,
-        "description": "Upserts the fallback pipeline pointer + auto-switch knobs (omit = unchanged; `fallbackPipelineId: null` clears it). `If-Match` (RFC 7232) carries the version read from the prior GET — `\"0\"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). The fallback target is validated (tenant-visible, ENABLED, cloud-engine-backed). DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `manage:TenantSttConfig`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "TenantSttConfigAdminController_updateRow",
-        "parameters": [
-          {
-            "description": "Platform-admin only: target tenant.",
-            "in": "query",
-            "name": "tenantId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "RFC 7232 strong validator carrying the version the client read (e.g. `\"0\"` to create).",
-            "in": "header",
-            "name": "If-Match",
-            "required": true,
-            "schema": {
-              "example": "\"0\"",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetSttFallbackRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TenantSttConfigResponse"
-                }
-              }
-            },
-            "description": ""
-          },
-          "412": {
-            "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
-          },
-          "428": {
-            "description": "If-Match header is required for this operation."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Create or update the tenant STT fallback row under optimistic concurrency",
-        "tags": [
-          "admin-stt"
-        ],
-        "x-hope-abilities": [
-          "manage:TenantSttConfig"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": true,
-        "x-hope-service-account-scopes": [
-          "svc:admin:tenant-stt-config:manage"
-        ]
-      }
-    },
     "/api/v1/admin/tenant-frontend-config": {
       "get": {
         "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-frontend-config:manage`).\n\n**Abilities** — `manage:Tenant` or `update:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -55442,57 +54283,6 @@
           }
         ],
         "summary": "Archive a tenant (recoverable cold state)",
-        "tags": [
-          "admin-tenants"
-        ],
-        "x-hope-abilities": [
-          "manage:Tenant"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:tenant:write"
-        ]
-      }
-    },
-    "/api/v1/admin/tenants/{id}/pipelines/resync": {
-      "post": {
-        "description": "Reconciles one tenant against the SYSTEM template catalog: missing templates are cloned in as locked copies, and pristine locked copies are fast-forwarded to the template's current config (each fast-forward writes a new version snapshot). UNLOCKED rows — customized pipelines, and rows the lineage backfill could not prove pristine — are NEVER touched. Idempotent: re-running returns an all-zero summary.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant:write`).\n\n**Abilities** — `manage:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "TenantPipelineResyncController_resync",
-        "parameters": [
-          {
-            "description": "Target tenant ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Reconciliation summary { added, fastForwarded, skipped }"
-          },
-          "400": {
-            "description": "Bad request — the SYSTEM tenant cannot be resynced against itself"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Resync a tenant's ASR pipeline catalog against the SYSTEM templates",
         "tags": [
           "admin-tenants"
         ],
@@ -62340,175 +61130,6 @@
         ]
       }
     },
-    "/api/v1/audio/pipelines": {
-      "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `stt:model:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineCatalogController_fetchAll",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/PaginatedResponse"
-                    },
-                    {
-                      "properties": {
-                        "data": {
-                          "items": {
-                            "$ref": "#/components/schemas/PipelineResponse"
-                          },
-                          "type": "array"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "description": "Retrieving multiple PipelineResponses"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          }
-        ],
-        "summary": "Retrieving multiple PipelineResponses",
-        "tags": [
-          "audio-pipelines"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "stt:model:read"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
-      }
-    },
-    "/api/v1/audio/pipelines/slug/{slug}": {
-      "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `stt:model:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineCatalogController_fetchBySlug",
-        "parameters": [
-          {
-            "description": "Pipeline slug",
-            "in": "path",
-            "name": "slug",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "Retrieving a single PipelineResponse by slug"
-          },
-          "404": {
-            "description": "Pipeline not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          }
-        ],
-        "summary": "Non-admin read-by-slug (tenant-scoped via `getBySlug`).",
-        "tags": [
-          "audio-pipelines"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "stt:model:read"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
-      }
-    },
-    "/api/v1/audio/pipelines/{id}": {
-      "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `stt:model:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AudioPipelineCatalogController_fetchById",
-        "parameters": [
-          {
-            "description": "Pipeline ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineResponse"
-                }
-              }
-            },
-            "description": "Retrieving a single PipelineResponse by id"
-          },
-          "404": {
-            "description": "Pipeline not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          }
-        ],
-        "summary": "Non-admin read-by-id (tenant-scoped via `getById`).\n\nCross-tenant lookups return 404 (not 403) to avoid existence leaks.",
-        "tags": [
-          "audio-pipelines"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "stt:model:read"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
-      }
-    },
     "/api/v1/audio/transcription-jobs": {
       "get": {
         "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:transcription:write`).\n\n**API key scopes** — `stt:transcription:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -62733,58 +61354,6 @@
           }
         ],
         "summary": "Get transcription jobs by consultation (caller-owned jobs)",
-        "tags": [
-          "transcription-jobs"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "stt:transcription:write"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:stt:transcription:write"
-        ]
-      }
-    },
-    "/api/v1/audio/transcription-jobs/fallback": {
-      "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:transcription:write`).\n\n**API key scopes** — `stt:transcription:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "TranscriptionJobController_getFallbackProvider",
-        "parameters": [
-          {
-            "description": "ASR Agent slug; omit for the assigned agent (department → tenant → platform default)",
-            "in": "query",
-            "name": "agentSlug",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Fallback engine pointer (configured flag + runtime key + display name)"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "The fallback engine of the tenant’s assigned (or the named) ASR agent, for the live provider toggle",
         "tags": [
           "transcription-jobs"
         ],
@@ -63216,7 +61785,7 @@
             "description": "Switch requested; the session continues on the fallback engine."
           },
           "409": {
-            "description": "No fallback configured for the tenant, or the session is already on the fallback."
+            "description": "The session's ASR agent declares no fallback engine, or the session is already on it."
           }
         },
         "security": [
@@ -63230,7 +61799,7 @@
             "service-account": []
           }
         ],
-        "summary": "Switch a live streaming session to the tenant fallback pipeline",
+        "summary": "Switch a live streaming session to its ASR agent's fallback engine",
         "tags": [
           "transcription-jobs"
         ],
@@ -67775,67 +66344,6 @@
         "x-hope-service-account-scopes": [
           "svc:consultation:report:read"
         ]
-      },
-      "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "ConsultationController_generateSummary",
-        "parameters": [
-          {
-            "description": "Consultation ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenerateSummaryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummaryResponse"
-                }
-              }
-            },
-            "description": "Creating a SummaryResponse by id"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          }
-        ],
-        "summary": "Creating a SummaryResponse by id",
-        "tags": [
-          "consultations"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "consultation:report:write"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
       }
     },
     "/api/v1/consultations/{id}/summary/async": {
@@ -67964,69 +66472,6 @@
         "x-hope-service-account-scopes": []
       }
     },
-    "/api/v1/consultations/{id}/summary/comprehensive/async": {
-      "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "ConsultationController_generateComprehensiveSummaryAsync",
-        "parameters": [
-          {
-            "description": "Consultation ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ComprehensiveSummaryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ComprehensiveSummaryResponse"
-                }
-              }
-            },
-            "description": "Creating a ComprehensiveSummaryResponse by id"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          }
-        ],
-        "summary": "Creating a ComprehensiveSummaryResponse by id",
-        "tags": [
-          "consultations"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "consultation:session:write"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
-      }
-    },
     "/api/v1/consultations/{id}/summary/latest": {
       "get": {
         "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:read`).\n\n**API key scopes** — `consultation:report:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -68086,75 +66531,6 @@
         "x-hope-requires-if-match": false,
         "x-hope-service-account-scopes": [
           "svc:consultation:report:read"
-        ]
-      }
-    },
-    "/api/v1/consultations/{id}/summary/pre-summary": {
-      "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:write`).\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "ConsultationController_generatePreSummary",
-        "parameters": [
-          {
-            "description": "Consultation ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GeneratePreSummaryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummaryResponse"
-                }
-              }
-            },
-            "description": "Creating a SummaryResponse by id"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "api-key": []
-          },
-          {
-            "service-account": []
-          }
-        ],
-        "summary": "Creating a SummaryResponse by id",
-        "tags": [
-          "consultations"
-        ],
-        "x-hope-abilities": [],
-        "x-hope-api-key-scopes": [
-          "consultation:report:write"
-        ],
-        "x-hope-credentials": [
-          "user-jwt",
-          "api-key",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "business",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:consultation:report:write"
         ]
       }
     },
@@ -74189,10 +72565,6 @@
       "name": "voice-profile"
     },
     {
-      "description": "The ASR pipeline configurations a caller may select when starting audio capture.",
-      "name": "audio-pipelines"
-    },
-    {
       "description": "Upload, download, and manage tenant-scoped objects.",
       "name": "storage"
     },
@@ -74255,10 +72627,6 @@
     {
       "description": "Mint, scope, rotate, and revoke tenant API keys.",
       "name": "admin-api-keys"
-    },
-    {
-      "description": "Author and manage the ASR pipeline configurations tenants may select.",
-      "name": "admin-audio-pipelines"
     },
     {
       "description": "Query the immutable audit trail.",
@@ -74411,10 +72779,6 @@
     {
       "description": "Bucket and tenant storage configuration, cascading to a SYSTEM default.",
       "name": "admin-storage-config"
-    },
-    {
-      "description": "STT engine configuration and per-tenant overrides.",
-      "name": "admin-stt"
     },
     {
       "description": "Per-tenant OIDC identity-provider configuration.",

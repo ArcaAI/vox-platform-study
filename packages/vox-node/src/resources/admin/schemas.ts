@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 489 component schemas the generated surface transitively
+ * Only the 487 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -602,20 +602,6 @@ export interface AssignPolicyToRoleDto {
   priority?: number;
 }
 
-export interface AssignTenantRequest {
-  /** Tenant ID to assign the pipeline to */
-  tenantId: string;
-}
-
-export interface AssignTenantResponse {
-  /** Human-readable confirmation */
-  message: string;
-  /** Pipeline ID */
-  pipelineId: string;
-  /** Tenant the pipeline was assigned to */
-  tenantId: string;
-}
-
 export interface AssignUserDepartmentRequest {
   /** Department to assign the user to */
   departmentId: string;
@@ -1038,13 +1024,6 @@ export interface CloneAgentRequest {
   tags?: string[];
   /** SUPER_ADMIN only: land the clone in this tenant instead of the caller’s working tenant. A tenant admin that supplies it is refused 403. */
   tenantId?: string;
-}
-
-export interface ClonePipelineRequest {
-  /** Name for the new copy */
-  name: string;
-  /** URL-friendly unique identifier for the new copy (unique within the tenant) */
-  slug: string;
 }
 
 export interface CloneRoleDto {
@@ -1813,19 +1792,6 @@ export interface CreateModelResidencyPolicyRequest {
   service: 'stt' | 'stt-worker' | 'nlp' | 'lm-studio' | 'text';
 }
 
-export interface CreatePipelineRequest {
-  /** Pipeline configuration in YAML format */
-  configYaml: string;
-  /** Pipeline description */
-  description?: string;
-  /** Pipeline name */
-  name: string;
-  /** URL-friendly unique identifier */
-  slug: string;
-  /** Tags for categorization */
-  tags?: string[];
-}
-
 export interface CreatePolicyDto {
   /** Policy description */
   description?: string;
@@ -2477,17 +2443,6 @@ export interface EffectiveSettingResponse {
   value: Record<string, unknown>;
   /** Backing row version (0 = no stored row yet). Registry route only. */
   version?: number;
-}
-
-export interface EffectiveSttConfigResponse {
-  /** Whether the error-triggered auto-switch is enabled */
-  autoSwitchEnabled: boolean;
-  /** Consecutive utterance failures before an auto-switch */
-  consecutiveFailureThreshold: number;
-  /** Effective fallback pipeline id (null = no fallback configured) */
-  fallbackPipelineId: string | null;
-  /** Tenant the config was resolved for */
-  tenantId: string;
 }
 
 export interface EntitlementCapabilitiesResponse {
@@ -3599,6 +3554,64 @@ export interface ModelInventoryRow {
   slug: string;
 }
 
+export interface ModelResidencyCatalogueDevice {
+  freeBytes: number;
+  /** The `residency.headroomPercent` in force. */
+  headroomPercent: number;
+  /** `gpu<N>` = DCGM device N; `cpu:<service>` = that service`s host memory pool. */
+  id: string;
+  kind: 'gpu' | 'cpu';
+  label: string;
+  /** The models resident on this device right now. */
+  models: ModelResidencyDeviceModel[];
+  totalBytes: number;
+  usedBytes: number;
+  utilisationPercent: number | null;
+}
+
+export interface ModelResidencyCatalogueModel {
+  /** What the console may offer for this row now. */
+  actions: Array<'load' | 'unload' | 'reload' | 'edit_policy'>;
+  /** `null` only for a resident model the catalogue does not know. */
+  aiModelId: string | null;
+  format: string | null;
+  keepPolicy: ModelResidencyKeepPolicy;
+  /** Seconds the last load took (measured). */
+  loadSeconds: number | null;
+  /** The key the service holds it under (stt = slug, nlp = hub id, LM Studio = wire id) — what load / unload take. */
+  modelRef: string | null;
+  name: string;
+  /** `null` when not loaded. */
+  residency: ModelResidencyPlacement;
+  size: ModelResidencySize;
+  slug: string | null;
+  status: 'loaded' | 'loading' | 'unloading' | 'not_loaded';
+  usage: ModelResidencyUsage;
+}
+
+export interface ModelResidencyCatalogueResponse {
+  devices: ModelResidencyCatalogueDevice[];
+  freshness: ModelResidencyFreshness;
+  mode: 'shadow' | 'enforce';
+  reportedAt: string;
+  /** Always four groups, in this order: stt, stt-worker, lm-studio, nlp. */
+  services: ModelResidencyCatalogueService[];
+  /** The controller`s recommendations, newest first, one plain sentence each. */
+  suggestions: ModelResidencySuggestion[];
+}
+
+export interface ModelResidencyCatalogueService {
+  /** `false` for stt-worker, which has no control API (observed through Prometheus only). */
+  controllable: boolean;
+  label: string;
+  loadedCount: number;
+  models: ModelResidencyCatalogueModel[];
+  /** The service`s last report is fresh (stt-worker: Prometheus answered). */
+  reachable: boolean;
+  runsOn: 'gpu' | 'cpu';
+  service: 'stt' | 'stt-worker' | 'lm-studio' | 'nlp';
+}
+
 export interface ModelResidencyDevice {
   freeBytes: number;
   /** The `residency.headroomPercent` in force. */
@@ -3613,11 +3626,31 @@ export interface ModelResidencyDevice {
   utilisationPercent: number | null;
 }
 
+export interface ModelResidencyDeviceModel {
+  /** Bytes this model holds on THIS device; `null` when unknown — always for LM Studio, which splits one model over every card. */
+  bytes: number | null;
+  modelRef: string;
+  /** Catalogue name, or the modelRef when the catalogue does not know the model. */
+  name: string;
+  service: 'stt' | 'stt-worker' | 'lm-studio' | 'nlp';
+}
+
 export interface ModelResidencyFreshness {
   /** Age in seconds of the OLDEST service report the view is built from (target ≤ 15 s). */
   maxAgeSeconds: number;
   /** Services whose last successful report is older than 30 s (their rows are the last known state). */
   staleServices: string[];
+}
+
+export interface ModelResidencyKeepPolicy {
+  idleTtlSeconds: number | null;
+  /** PINNED → always, WARM → warm, ON_DEMAND → on_demand. */
+  kind: 'always' | 'warm' | 'on_demand';
+  label: string;
+  policyId: string | null;
+  policyVersion: number | null;
+  reason: string;
+  source: 'policy' | 'implicit-live-path' | 'default';
 }
 
 export interface ModelResidencyLoadResponse {
@@ -3678,6 +3711,20 @@ export interface ModelResidencyPinResponse {
   model: ModelResidencyModel;
 }
 
+export interface ModelResidencyPlacement {
+  bytes: number | null;
+  bytesSource: 'measured' | 'unknown';
+  /** `gpu<N>`, `multi` (LM Studio spans every card), `cpu:<service>`, or the service`s own id when it cannot be mapped. */
+  device: string;
+  inFlight: number | null;
+  /** Pod name, or the LM Studio instance id. */
+  instance: string;
+  lastUsedAt: string | null;
+  loadedAt: string | null;
+  p50LatencyMs: number | null;
+  requestsPerMin: number | null;
+}
+
 export interface ModelResidencyPolicyResponse {
   /** The OCC version (send it back as `If-Match`). */
   _version: number;
@@ -3707,10 +3754,51 @@ export interface ModelResidencyRecommendation {
   service: string;
 }
 
+export interface ModelResidencySize {
+  bytes: number | null;
+  /** `measured` = the resident report or `AiModel.observedMemoryMb`; `catalogue` = the `memorySizeMb` estimate; `unknown` = neither. */
+  source: 'measured' | 'catalogue' | 'unknown';
+}
+
+export interface ModelResidencySuggestion {
+  action: 'load' | 'unload' | 'pin' | 'unpin';
+  /** The command was sent AND succeeded. Always `false` in shadow mode. */
+  applied: boolean;
+  at: string;
+  id: string;
+  modelRef: string;
+  service: string;
+  text: string;
+}
+
 export interface ModelResidencyUnloadResponse {
   modelRef: string;
   outcome: 'unloaded' | 'not_loaded';
   service: string;
+}
+
+export interface ModelResidencyUsage {
+  /** Distinct agents among the primary and fallback uses. */
+  agentCount: number;
+  /** Any use is on the live consultation path. */
+  liveConsultation: boolean;
+  tenantCount: number;
+  /** Across ALL tenants; only ACTIVE PUBLISHED agents and ACTIVE routing policies count. */
+  uses: ModelResidencyUse[];
+}
+
+export interface ModelResidencyUse {
+  /** The agent`s name; for a routing use, the policy`s display name or its task key. */
+  agentName: string;
+  /** `null` for a `routing` use (a routing policy has no agent). */
+  agentSlug: string | null;
+  /** This agent is assigned on the live consultation path and this model is its primary. */
+  liveConsultation: boolean;
+  role: 'primary' | 'fallback' | 'routing';
+  /** The agent task (`SPEECH_TO_TEXT`, …) or, for a routing use, the policy`s task key (`nlp.ner`, …). */
+  task: string;
+  tenantId: string;
+  tenantName: string;
 }
 
 export interface ModelResidencyViewResponse {
@@ -4165,18 +4253,6 @@ export interface PaginatedNotificationResponse {
   page: number;
 }
 
-export interface PaginatedPipelineResponse {
-  data: PipelineResponse[];
-  /** Number of records per page */
-  limit: number;
-  /** Current page number */
-  page: number;
-  /** Total number of records */
-  total: number;
-  /** Total number of pages */
-  totalPages: number;
-}
-
 export interface PaginatedPolicyResponse {
   /** List of policies */
   data: PolicyResponse[];
@@ -4368,62 +4444,6 @@ export interface PinModelResidencyRequest {
   ttlSeconds?: number | null;
 }
 
-export interface PipelineResponse {
-  /** Pipeline configuration in YAML format */
-  configYaml: string;
-  /** Created at timestamp */
-  createdAt: string;
-  /** Created by user ID */
-  createdBy?: string;
-  /** Pipeline description */
-  description?: string;
-  /** Pipeline ID */
-  id: string;
-  /** Whether this pipeline is the tenant's default */
-  isDefault: boolean;
-  /** Pipeline name */
-  name: string;
-  /** Resource status */
-  resourceStatus: 'ENABLED' | 'DISABLED' | 'SUSPENDED' | 'ARCHIVED' | 'DELETED';
-  /** URL-friendly unique identifier */
-  slug: string;
-  /** Slug of the SYSTEM template this pipeline descends from (null when not template-derived) */
-  sourceTemplateSlug?: string;
-  /** Tags */
-  tags: string[];
-  /** Whether this is a locked template copy (read-only for content edits and delete; clone to customize) */
-  templateLocked: boolean;
-  /** Tenant ID */
-  tenantId: string;
-  /** Updated at timestamp */
-  updatedAt: string;
-  /** Updated by user ID */
-  updatedBy?: string;
-  /** Row version for optimistic concurrency control. Echo back as `If-Match: "<version>"` or `expectedVersion` on PATCH. */
-  version: number;
-}
-
-export interface PipelineVersionResponse {
-  /** Owning pipeline ID */
-  asrPipelineId: string;
-  /** Reason supplied for the change */
-  changeReason?: string;
-  /** User ID who made the change */
-  changedBy?: string;
-  /** Snapshotted YAML configuration */
-  configYaml: string;
-  /** Snapshot creation timestamp (ISO 8601) */
-  createdAt: string;
-  /** Pipeline description at snapshot time */
-  description?: string;
-  /** Version snapshot ID */
-  id: string;
-  /** Pipeline name at snapshot time */
-  name?: string;
-  /** Monotonic version number (1-based) */
-  versionNumber: number;
-}
-
 export interface PlanEntitlementResponse {
   /** May this plan's tenants consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when they hold no key of their own? ENFORCED — it decides platform SPEND. false on every plan — the grant is issued per tenant via the tenant-entitlement override. */
   featurePlatformDefaultCredential: boolean;
@@ -4435,8 +4455,6 @@ export interface PlanEntitlementResponse {
   maxAiProviderConnections?: number | null;
   /** Max API keys; null = unlimited */
   maxApiKeys?: number | null;
-  /** Max ASR pipelines; null = unlimited */
-  maxAsrPipelines?: number | null;
   /** Max simultaneous active STT sessions (concurrency); null = unlimited */
   maxConcurrentSessions?: number | null;
   /** Max departments; null = unlimited */
@@ -5648,17 +5666,6 @@ export interface SetRateLimitTierRequest {
   ttl?: number;
 }
 
-export interface SetSttFallbackRequest {
-  /** Enable the error-triggered auto-switch to the fallback (default true). */
-  autoSwitchEnabled?: boolean;
-  /** Consecutive utterance failures before an auto-switch (default 2). */
-  consecutiveFailureThreshold?: number;
-  /** OCC token. 0 = create (no row yet); >0 = compare-and-set against the current version (412 on drift). Browser clients drive OCC through the If-Match header (which overrides this field when present); this is the service-to-service fallback for non-header callers. */
-  expectedVersion?: number;
-  /** Fallback pipeline id (UUID). Must be tenant-visible, ENABLED, and cloud-engine-backed. null clears it. */
-  fallbackPipelineId?: string | null;
-}
-
 export interface SetTenantBucketDefaultsRequest {
   /** Bucket id to use as the default ATTACHMENTS bucket */
   attachmentsBucketId?: string;
@@ -5971,8 +5978,6 @@ export interface TenantEntitlementResponse {
   maxAiProviderConnections?: number | null;
   /** Override max API keys; null = inherit */
   maxApiKeys?: number | null;
-  /** Override max ASR pipelines; null = inherit */
-  maxAsrPipelines?: number | null;
   /** Override max concurrent STT sessions; null = inherit */
   maxConcurrentSessions?: number | null;
   /** Override max departments; null = inherit */
@@ -6131,27 +6136,6 @@ export interface TenantStorageConfigResponse {
   version: number;
 }
 
-export interface TenantSttConfigResponse {
-  /** Whether the error-triggered auto-switch is enabled */
-  autoSwitchEnabled: boolean;
-  /** Persisted config extras (forward-compat) */
-  configJson?: Record<string, unknown> | null;
-  /** Consecutive utterance failures before an auto-switch */
-  consecutiveFailureThreshold?: number | null;
-  /** Created timestamp (ISO) */
-  createdAt?: string;
-  /** Tenant-level default fallback pipeline id */
-  fallbackPipelineId?: string | null;
-  /** Resource status */
-  resourceStatus?: string;
-  /** Owning tenant id */
-  tenantId: string;
-  /** Updated timestamp (ISO) */
-  updatedAt?: string;
-  /** OCC version. 0 when no row exists yet (create with expectedVersion=0). */
-  version: number;
-}
-
 export interface TenantUsageResponse {
   /** Configured storage quota in bytes (SUM of TenantBucket.quotaBytes); null when no bucket has a quota set. */
   storageQuotaBytes: number | null;
@@ -6163,8 +6147,6 @@ export interface TenantUsageResponse {
   totalConsultations: number;
   /** Total number of departments */
   totalDepartments: number;
-  /** Total number of pipelines */
-  totalPipelines: number;
   /** Total number of prompt templates */
   totalPromptTemplates: number;
   /** Total number of users in the tenant */
@@ -6246,11 +6228,6 @@ export interface TestProviderConnectionResponse {
   source: 'request' | 'tenant' | 'platform';
 }
 
-export interface TogglePipelineRequest {
-  /** true → ENABLED, false → DISABLED */
-  enabled: boolean;
-}
-
 export interface ToggleSchedulerRequest {
   /** Enable (true) or disable (false) the dynamic scheduler. */
   enabled: boolean;
@@ -6300,10 +6277,6 @@ export interface TranscriptionJobResponse {
   maxRetries: number;
   /** Media ID (for batch jobs) */
   mediaId?: string;
-  /** DEPRECATED (TASK-861): Pipeline details */
-  pipeline?: PipelineResponse;
-  /** DEPRECATED (TASK-861): the AsrPipeline that ran the job; null on agent-keyed jobs */
-  pipelineId?: string | null;
   /** Progress (0-100) */
   progress: number;
   /** Queued at timestamp */
@@ -6847,23 +6820,6 @@ export interface UpdateNotificationRequest {
   type?: string;
 }
 
-export interface UpdatePipelineRequest {
-  /** Reason for the change; recorded on the version snapshot when configYaml changes. */
-  changeReason?: string;
-  /** Pipeline configuration in YAML format */
-  configYaml?: string;
-  /** Pipeline description */
-  description?: string;
-  /** Current version of the row (from the prior GET, e.g. via the `ETag` header). The PATCH fails with `412 Precondition Failed` if the version drifted. */
-  expectedVersion: number;
-  /** Pipeline name */
-  name?: string;
-  /** URL-friendly unique identifier */
-  slug?: string;
-  /** Tags for categorization */
-  tags?: string[];
-}
-
 export interface UpdatePlanEntitlementRequest {
   /** Current row version (OCC). REQUIRED; the update fails with 412 on drift. */
   expectedVersion: number;
@@ -6877,8 +6833,6 @@ export interface UpdatePlanEntitlementRequest {
   maxAiProviderConnections?: number | null;
   /** Max API keys; null = unlimited */
   maxApiKeys?: number | null;
-  /** Max ASR pipelines; null = unlimited */
-  maxAsrPipelines?: number | null;
   /** Max simultaneous active STT sessions (concurrency); null = unlimited */
   maxConcurrentSessions?: number | null;
   /** Max departments; null = unlimited */
@@ -7266,8 +7220,6 @@ export interface UpsertTenantEntitlementRequest {
   maxAiProviderConnections?: number | null;
   /** Override max API keys; null = inherit */
   maxApiKeys?: number | null;
-  /** Override max ASR pipelines; null = inherit */
-  maxAsrPipelines?: number | null;
   /** Override max concurrent STT sessions; null = inherit */
   maxConcurrentSessions?: number | null;
   /** Override max departments; null = inherit */
@@ -7622,13 +7574,6 @@ export interface UserSettingsResponse {
 export interface ValidatePolicyDto {
   /** Policy rules to validate */
   rules: PolicyRuleDto[];
-}
-
-export interface ValidateYamlRequest {
-  /** YAML content to validate (SDK canonical field) */
-  configYaml?: string;
-  /** YAML content to validate (legacy field) */
-  yaml?: string;
 }
 
 export interface VoiceProfileResponse {

@@ -37,8 +37,8 @@ import type {
  * them and nothing else here. Those methods name their own accepted scopes in a 403;
  * the scope above is the one that reaches EVERY route.
  *
- * Backed by controllers TenantController, TenantPipelineResyncController, TenantProvisionController, TenantReferenceSetController
- * (18 routes). Several controllers sharing one scope share one
+ * Backed by controllers TenantController, TenantProvisionController, TenantReferenceSetController
+ * (17 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -142,22 +142,6 @@ export class AdminTenantResource extends AdminResource {
     return this.request<TenantResponse>({
       method: 'POST',
       path: `admin/tenants/${encodePathSegment(String(id))}/archive`,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Resync a tenant's ASR pipeline catalog against the SYSTEM templates
-   *
-   * Reconciles one tenant against the SYSTEM template catalog: missing templates are cloned in as locked copies, and pristine locked copies are fast-forwarded to the template's current config (each fast-forward writes a new version snapshot). UNLOCKED rows — customized pipelines, and rows the lineage backfill could not prove pristine — are NEVER touched. Idempotent: re-running returns an all-zero summary.
-   *
-   * `POST /api/v1/admin/tenants/{id}/pipelines/resync` — `TenantPipelineResyncController.resync`.
-   */
-  resync(id: string, options: AdminRequestOptions = {}): Promise<unknown> {
-    return this.request<unknown>({
-      method: 'POST',
-      path: `admin/tenants/${encodePathSegment(String(id))}/pipelines/resync`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

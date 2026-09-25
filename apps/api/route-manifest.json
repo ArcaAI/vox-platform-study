@@ -1617,328 +1617,6 @@
       "apiExcluded": false
     },
     {
-      "controller": "AudioPipelineController",
-      "handler": "fetchAll",
-      "method": "GET",
-      "path": "/api/v1/admin/audio/pipelines",
-      "routePath": "/admin/audio/pipelines",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "create",
-      "method": "POST",
-      "path": "/api/v1/admin/audio/pipelines",
-      "routePath": "/admin/audio/pipelines",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "delete",
-      "method": "DELETE",
-      "path": "/api/v1/admin/audio/pipelines/{id}",
-      "routePath": "/admin/audio/pipelines/:id",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "fetchById",
-      "method": "GET",
-      "path": "/api/v1/admin/audio/pipelines/{id}",
-      "routePath": "/admin/audio/pipelines/:id",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "update",
-      "method": "PATCH",
-      "path": "/api/v1/admin/audio/pipelines/{id}",
-      "routePath": "/admin/audio/pipelines/:id",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": true,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "assignTenant",
-      "method": "POST",
-      "path": "/api/v1/admin/audio/pipelines/{id}/assign-tenant",
-      "routePath": "/admin/audio/pipelines/:id/assign-tenant",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "clone",
-      "method": "POST",
-      "path": "/api/v1/admin/audio/pipelines/{id}/clone",
-      "routePath": "/admin/audio/pipelines/:id/clone",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "setDefault",
-      "method": "POST",
-      "path": "/api/v1/admin/audio/pipelines/{id}/set-default",
-      "routePath": "/admin/audio/pipelines/:id/set-default",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "toggle",
-      "method": "PATCH",
-      "path": "/api/v1/admin/audio/pipelines/{id}/toggle",
-      "routePath": "/admin/audio/pipelines/:id/toggle",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": true,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "listVersions",
-      "method": "GET",
-      "path": "/api/v1/admin/audio/pipelines/{id}/versions",
-      "routePath": "/admin/audio/pipelines/:id/versions",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "getVersion",
-      "method": "GET",
-      "path": "/api/v1/admin/audio/pipelines/{id}/versions/{versionNumber}",
-      "routePath": "/admin/audio/pipelines/:id/versions/:versionNumber",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "list",
-      "method": "GET",
-      "path": "/api/v1/admin/audio/pipelines/list",
-      "routePath": "/admin/audio/pipelines/list",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "fetchBySlug",
-      "method": "GET",
-      "path": "/api/v1/admin/audio/pipelines/slug/{slug}",
-      "routePath": "/admin/audio/pipelines/slug/:slug",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineController",
-      "handler": "validateYaml",
-      "method": "POST",
-      "path": "/api/v1/admin/audio/pipelines/validate",
-      "routePath": "/admin/audio/pipelines/validate",
-      "svcScopes": [
-        "svc:admin:audio-pipeline:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "AsrPipeline"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
       "controller": "AdminTranscriptionJobController",
       "handler": "list",
       "method": "GET",
@@ -1953,7 +1631,7 @@
       "requiredPermissions": [
         [
           "read",
-          "AsrPipeline"
+          "TranscriptionJob"
         ]
       ],
       "isPublic": false,
@@ -1976,7 +1654,7 @@
       "requiredPermissions": [
         [
           "read",
-          "AsrPipeline"
+          "TranscriptionJob"
         ]
       ],
       "isPublic": false,
@@ -1999,7 +1677,7 @@
       "requiredPermissions": [
         [
           "read",
-          "AsrPipeline"
+          "TranscriptionJob"
         ]
       ],
       "isPublic": false,
@@ -4809,6 +4487,29 @@
       "method": "GET",
       "path": "/api/v1/admin/model-residency",
       "routePath": "/admin/model-residency",
+      "svcScopes": [
+        "svc:admin:model-residency:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ModelResidencyPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ModelResidencyController",
+      "handler": "catalogue",
+      "method": "GET",
+      "path": "/api/v1/admin/model-residency/catalogue",
+      "routePath": "/admin/model-residency/catalogue",
       "svcScopes": [
         "svc:admin:model-residency:manage"
       ],
@@ -8020,98 +7721,6 @@
       "apiExcluded": false
     },
     {
-      "controller": "TenantSttConfigAdminController",
-      "handler": "getEffective",
-      "method": "GET",
-      "path": "/api/v1/admin/stt-config",
-      "routePath": "/admin/stt-config",
-      "svcScopes": [
-        "svc:admin:tenant-stt-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "read",
-          "TenantSttConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantSttConfigAdminController",
-      "handler": "getFallbackCandidates",
-      "method": "GET",
-      "path": "/api/v1/admin/stt-config/fallback-candidates",
-      "routePath": "/admin/stt-config/fallback-candidates",
-      "svcScopes": [
-        "svc:admin:tenant-stt-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "read",
-          "TenantSttConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantSttConfigAdminController",
-      "handler": "getRow",
-      "method": "GET",
-      "path": "/api/v1/admin/stt-config/row",
-      "routePath": "/admin/stt-config/row",
-      "svcScopes": [
-        "svc:admin:tenant-stt-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "read",
-          "TenantSttConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantSttConfigAdminController",
-      "handler": "updateRow",
-      "method": "PUT",
-      "path": "/api/v1/admin/stt-config/row",
-      "routePath": "/admin/stt-config/row",
-      "svcScopes": [
-        "svc:admin:tenant-stt-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "TenantSttConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": true,
-      "apiExcluded": false
-    },
-    {
       "controller": "TenantFrontendConfigAdminController",
       "handler": "get",
       "method": "GET",
@@ -8492,29 +8101,6 @@
       "method": "POST",
       "path": "/api/v1/admin/tenants/{id}/archive",
       "routePath": "/admin/tenants/:id/archive",
-      "svcScopes": [
-        "svc:admin:tenant:write"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "Tenant"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantPipelineResyncController",
-      "handler": "resync",
-      "method": "POST",
-      "path": "/api/v1/admin/tenants/{id}/pipelines/resync",
-      "routePath": "/admin/tenants/:id/pipelines/resync",
       "svcScopes": [
         "svc:admin:tenant:write"
       ],
@@ -11455,60 +11041,6 @@
       "apiExcluded": true
     },
     {
-      "controller": "AudioPipelineCatalogController",
-      "handler": "fetchAll",
-      "method": "GET",
-      "path": "/api/v1/audio/pipelines",
-      "routePath": "/audio/pipelines",
-      "svcScopes": [],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "stt:model:read"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineCatalogController",
-      "handler": "fetchById",
-      "method": "GET",
-      "path": "/api/v1/audio/pipelines/{id}",
-      "routePath": "/audio/pipelines/:id",
-      "svcScopes": [],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "stt:model:read"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AudioPipelineCatalogController",
-      "handler": "fetchBySlug",
-      "method": "GET",
-      "path": "/api/v1/audio/pipelines/slug/{slug}",
-      "routePath": "/audio/pipelines/slug/:slug",
-      "svcScopes": [],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "stt:model:read"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
       "controller": "TranscriptionJobController",
       "handler": "list",
       "method": "GET",
@@ -11654,26 +11186,6 @@
       "method": "GET",
       "path": "/api/v1/audio/transcription-jobs/consultation/{consultationId}",
       "routePath": "/audio/transcription-jobs/consultation/:consultationId",
-      "svcScopes": [
-        "svc:stt:transcription:write"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "stt:transcription:write"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TranscriptionJobController",
-      "handler": "getFallbackProvider",
-      "method": "GET",
-      "path": "/api/v1/audio/transcription-jobs/fallback",
-      "routePath": "/audio/transcription-jobs/fallback",
       "svcScopes": [
         "svc:stt:transcription:write"
       ],
@@ -12989,24 +12501,6 @@
     },
     {
       "controller": "ConsultationController",
-      "handler": "generateSummary",
-      "method": "POST",
-      "path": "/api/v1/consultations/{id}/summary",
-      "routePath": "/consultations/:id/summary",
-      "svcScopes": [],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "consultation:report:write"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "ConsultationController",
       "handler": "approveSummary",
       "method": "POST",
       "path": "/api/v1/consultations/{id}/summary/{contextItemId}/approve",
@@ -13209,24 +12703,6 @@
     },
     {
       "controller": "ConsultationController",
-      "handler": "generateComprehensiveSummaryAsync",
-      "method": "POST",
-      "path": "/api/v1/consultations/{id}/summary/comprehensive/async",
-      "routePath": "/consultations/:id/summary/comprehensive/async",
-      "svcScopes": [],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "consultation:session:write"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "ConsultationController",
       "handler": "getLatestSummary",
       "method": "GET",
       "path": "/api/v1/consultations/{id}/summary/latest",
@@ -13238,26 +12714,6 @@
       "apiKeyForbidden": false,
       "apiKeyScopes": [
         "consultation:report:read"
-      ],
-      "requiredPermissions": [],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "ConsultationController",
-      "handler": "generatePreSummary",
-      "method": "POST",
-      "path": "/api/v1/consultations/{id}/summary/pre-summary",
-      "routePath": "/consultations/:id/summary/pre-summary",
-      "svcScopes": [
-        "svc:consultation:report:write"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": false,
-      "apiKeyScopes": [
-        "consultation:report:write"
       ],
       "requiredPermissions": [],
       "isPublic": false,

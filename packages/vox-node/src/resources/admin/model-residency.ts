@@ -14,6 +14,7 @@ import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource'
 import type {
   CreateModelResidencyPolicyRequest,
   LoadModelResidencyRequest,
+  ModelResidencyCatalogueResponse,
   ModelResidencyLoadResponse,
   ModelResidencyOperationResponse,
   ModelResidencyPinResponse,
@@ -33,7 +34,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller ModelResidencyController
- * (9 routes). Several controllers sharing one scope share one
+ * (10 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -51,6 +52,22 @@ export class AdminModelResidencyResource extends AdminResource {
     return this.request<ModelResidencyViewResponse>({
       method: 'GET',
       path: 'admin/model-residency',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Read every loadable model per service, loaded or not, and who uses it
+   *
+   * Catalogue-first residency (TASK-1005 §13): every SELF_HOSTED, non-deleted catalogue model (SYSTEM tier), grouped by the workload that runs it — always four groups, in this order: stt, stt-worker, lm-studio, nlp (cloud models are absent: nothing can load them). Each model carries its status in plain words (`loaded` | `loading` | `unloading` | `not_loaded`), its size (MEASURED first, else the catalogue estimate, with `source` saying which), how long its last load took, where it is resident, who uses it across ALL tenants (`primary` agent model, `fallback`, or `routing` policy — only ACTIVE PUBLISHED agents and ACTIVE policies count; `liveConsultation` marks the live path), its keep policy in plain words with the reason, and the actions the console may offer now. `devices[]` names the models on each card; `suggestions[]` are the controller`s recommendations as one sentence each. The usage index is cached platform-wide for 30 s; everything else is as fresh as `GET admin/model-residency`. A resident model the catalogue does not know is still listed, with `aiModelId: null`.
+   *
+   * `GET /api/v1/admin/model-residency/catalogue` — `ModelResidencyController.catalogue`.
+   */
+  catalogue(options: AdminRequestOptions = {}): Promise<ModelResidencyCatalogueResponse> {
+    return this.request<ModelResidencyCatalogueResponse>({
+      method: 'GET',
+      path: 'admin/model-residency/catalogue',
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
