@@ -440,44 +440,10 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     // enforcement; the descriptor now owns it end to end.
     locked: false,
   },
-  // Turn the nightly SYSTEM-template resync sweep ON.
-  //
-  // The sweep's registry descriptor is a KILL-SWITCH, and the settings
-  // registry refuses at assembly to register a kill-switch that defaults ON
-  // (fail-safe governance, `SettingsRegistry.killSwitches()`). So the sweep is
-  // enabled the sanctioned way: the descriptor default stays OFF and this
-  // platform VALUE turns it on. `defaultValue` stays 'false' so a reset
-  // reverts to the fail-safe, and `locked` keeps the flip SUPER_ADMIN-only.
-  //
-  // Safe to run unattended by construction: the reconciler only ever adds
-  // missing templates and fast-forwards copies it can prove are pristine. An
-  // unlocked (customized) pipeline, or a locked copy that drifted from its own
-  // version history, is skipped and logged — never overwritten.
-  {
-    id: SEED_GLOBAL_SETTING_IDS.SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED,
-    tenantId: SYSTEM_TENANT_ID,
-    namespace: 'pipeline',
-    name: 'Enable Pipeline Template Resync',
-    key: 'pipeline.templateResync.enabled',
-    value: 'true',
-    defaultValue: 'false',
-    dataType: ValueType.Boolean,
-    description:
-      "Runs the nightly sweep that reconciles every tenant's ASR pipeline catalog against the SYSTEM templates . Customized pipelines are never touched. Locked — only SUPER_ADMIN may change it.",
-    locked: true,
-  },
-  {
-    id: SEED_GLOBAL_SETTING_IDS.SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON,
-    tenantId: SYSTEM_TENANT_ID,
-    namespace: 'pipeline',
-    name: 'Pipeline Template Resync Schedule',
-    key: 'pipeline.templateResync.cron',
-    value: '0 3 * * *',
-    defaultValue: '0 3 * * *',
-    dataType: ValueType.String,
-    description: 'Cron expression for the nightly SYSTEM-template resync sweep . Locked — only SUPER_ADMIN may change it.',
-    locked: true,
-  },
+  // TASK-1006 — the two `pipeline.templateResync.*` rows that sat here are
+  // GONE: the sweep reconciled a tenant's ASR pipeline catalog against SYSTEM
+  // templates, and that whole catalogue (and its registry descriptor) is
+  // retired — selection is `agentSlug` only.
   // TASK-890 D-2 (owner answer, 2026-09-06) — turn TEXT's input/output moderation ON.
   //
   // `text.externalGuardrail.enabled` gates both halves of the TASK-871 gate. Its descriptor is a
@@ -662,7 +628,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
 // These six keys are replaced by the AiRoutingPolicy table + registry-backed
 // provider listings in this same ticket. `retireSupersededGlobalSettings`
 // sweeps EVERY tenant's copy to resourceStatus DELETED (idempotent; rows stay
-// recoverable). NOTE: `default-stt-pipeline` and all other keys are untouched.
+// recoverable).
 //
 // The three `smr` literals below are DELIBERATELY NOT renamed by D-740-1. They are
 // not identifiers this codebase chooses — they are the namespace/key of rows that
@@ -714,6 +680,11 @@ export const RETIRED_GLOBAL_SETTING_KEYS: ReadonlyArray<{ namespace: string; key
   // this caused is the defect OD-8 closes.
   { namespace: 'platform', key: 'S3_PUBLIC_BUCKET' },
   { namespace: 'platform', key: 'S3_PRIVATE_BUCKET' },
+  // TASK-1006 — `91-user.ts` no longer writes the Global tenant's
+  // `default-stt-pipeline` row: it pointed at a SYSTEM `AsrPipeline` catalogue
+  // entry, and that whole table is retired (`agentSlug` is the only ASR
+  // selector). Sweeps the copy an already-provisioned database still holds.
+  { namespace: 'arcaai-sdk', key: 'default-stt-pipeline' },
 ];
 
 /**

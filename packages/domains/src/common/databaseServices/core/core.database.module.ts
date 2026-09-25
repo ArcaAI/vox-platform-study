@@ -28,8 +28,6 @@ import { BillingInvoiceRepository } from '../../../repositories/generated/core/B
 import { GateEditExemplarRepository } from '../../../repositories/generated/core/GateEditExemplarRepository';
 import { AgentPromotionRepository } from '../../../repositories/generated/core/AgentPromotionRepository';
 import { ApiKeyRepository } from '../../../repositories/generated/core/ApiKeyRepository';
-import { AsrPipelineRepository } from '../../../repositories/generated/core/AsrPipelineRepository';
-import { AsrPipelineVersionRepository } from '../../../repositories/generated/core/AsrPipelineVersionRepository';
 import { AudioRecordingRepository } from '../../../repositories/generated/core/AudioRecordingRepository';
 import { AuditLogRepository } from '../../../repositories/generated/core/AuditLogRepository';
 import { ConsultationRepository } from '../../../repositories/generated/core/ConsultationRepository';
@@ -81,7 +79,6 @@ import { TenantNlpTaskInstructionsRepository } from '../../../repositories/gener
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
 import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
 import { TenantGuardrailPolicyRepository } from '../../../repositories/generated/core/TenantGuardrailPolicyRepository';
-import { TenantSttConfigRepository } from '../../../repositories/generated/core/TenantSttConfigRepository';
 import { TenantUsageMeterRepository } from '../../../repositories/generated/core/TenantUsageMeterRepository';
 import { TranscriptionJobRepository } from '../../../repositories/generated/core/TranscriptionJobRepository';
 import { DocumentSectionRepository } from '../../../repositories/generated/core/DocumentSectionRepository';
@@ -174,9 +171,8 @@ const repositories = [
   UserSettingsRepository,
   WebhookRepository,
   WebhookRunHistoryRepository,
-  // STT domain
-  AsrPipelineRepository,
-  AsrPipelineVersionRepository,
+  // STT domain — the AsrPipeline / AsrPipelineVersion catalogue is retired
+  // (TASK-1006); selection is `agentSlug` only.
   AiModelRepository,
   // Tenant-writable nlp.topic/nlp.intent instruction content —
   // deliberately separate from the routing-policy model-selection governance.
@@ -226,10 +222,9 @@ const repositories = [
   TenantGuardrailPolicyRepository,
   // Voice profile domain
   UserVoiceProfileRepository,
-  // Per-tenant STT configuration (credential rows live in the unified
-  // AiProviderConnection plane, service='stt' — dropped
-  // TenantSttProviderCredential)
-  TenantSttConfigRepository,
+  // Per-tenant STT configuration is retired (TASK-1006): fallback is the ASR
+  // Agent's own `fallback` block; BYO credentials live in the unified
+  // AiProviderConnection plane (service='stt').
   // Per-tenant TTS configuration (credential rows live in the unified
   // AiProviderConnection plane, service='tts' — dropped
   // TenantTtsProviderCredential)

@@ -152,6 +152,10 @@ enum ResourceType {
 
   // STT / AI
 
+  // RETIRED (TASK-1006): the AsrPipeline table is dropped with the whole
+  // pre-agent ASR pipeline stack; a Postgres enum value cannot be dropped in
+  // place, so the member stays for historical AuditLog rows. Same treatment
+  // as AiTaskDefault below.
   AsrPipeline
   AiModel
   TranscriptionJob
@@ -175,6 +179,7 @@ enum ResourceType {
   // declaration order so the schema matches the append-only ADD VALUE
   // migration and Postgres enum sort order.
   Highlight
+  // RETIRED (TASK-1006) with its parent AsrPipeline above.
   AsrPipelineVersion
   UserVoiceProfile
   UserDepartment
@@ -219,8 +224,10 @@ enum ResourceType {
   // Eval run: the eval-gated-promotion runner broadcasts
   // ResourceCreated per persisted EvalRun.
   EvalRun
-  // Per-tenant STT fallback config.
-  // Emitted as audit `resourceType` by TenantSttConfigService.broadcastSysEvent.
+  // RETIRED (TASK-1006): the TenantSttConfig table is dropped — STT
+  // fallback is now the ASR Agent's own `fallback` block; a Postgres enum
+  // value cannot be dropped in place, so the member stays for historical
+  // AuditLog rows. Same treatment as AiTaskDefault below.
   TenantSttConfig
   // HARMLESS-UNUSED: the `TenantSttProviderCredential` table was
   // DROPPED (credential rows now live in the unified `AiProviderConnection`

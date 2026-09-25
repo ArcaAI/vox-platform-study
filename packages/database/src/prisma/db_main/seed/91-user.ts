@@ -813,14 +813,16 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
 ];
 
 /**
- * The `(tenantId, key)` identity of the one `GlobalSetting` row this file
- * writes inline (the Global tenant's `default-stt-pipeline`). Exported only so
- * `seed-global-settings.test.ts` can fold it into the cross-seed
- * `(tenantId, key)` uniqueness pin without duplicating the literal key.
+ * The `(tenantId, key)` identity of every `GlobalSetting` row this file
+ * writes inline. Exported only so `seed-global-settings.test.ts` can fold it
+ * into the cross-seed `(tenantId, key)` uniqueness pin without duplicating
+ * the literal keys.
+ *
+ * TASK-1006 — the Global tenant's `default-stt-pipeline` row that used to sit
+ * here is gone: it pointed at a SYSTEM `AsrPipeline` catalogue entry, and that
+ * whole table is retired (`agentSlug` is the only ASR selector).
  */
-export const USER_GLOBAL_SETTING_IDENTITIES: ReadonlyArray<{ tenantId: string; key: string }> = [
-  { tenantId: SEED_TENANT_ID, key: 'default-stt-pipeline' },
-];
+export const USER_GLOBAL_SETTING_IDENTITIES: ReadonlyArray<{ tenantId: string; key: string }> = [];
 
 export const seedUser = async (client: CorePrismaClient) => {
   console.log('Seeding users...');
@@ -1041,55 +1043,6 @@ export const seedUser = async (client: CorePrismaClient) => {
       },
     });
   }
-
-  // =========================================================================
-  // Tenant-wide Default Pipeline (GlobalSettings)
-  // =========================================================================
-  console.log('Seeding tenant-wide default pipeline setting...');
-
-  // Point the Global tenant's `default-stt-pipeline` at the
-  // Global tenant's OWN pipeline (06-stt GLOBAL_TENANT_ASR_PIPELINES) instead
-  // of the SYSTEM-owned rows. SYSTEM pipelines are not shared-read into
-  // customer tenants, so a SYSTEM value would be unreachable for Global
-  // doctors; the Global-tenant pipeline lives in SEED_TENANT_ID and is both
-  // listable and resolvable for them.
-  //
-  // Points the default at the Global tenant's resolvable
-  // production-whisper-large-v3 pipeline (id …0401), rather than the CT2 int8
-  // pipeline (…0403), whose model carries a non-resolving placeholder
-  // sourceUri; the CT2 pipeline stays registered but must not be the default
-  // until the artifact is published.
-  // Since flipped to the ArcaAI ml-en GGUF fine-tune (…0417) — the generic
-  // whisper-turbo GGUF (…0404) hallucinated on Malayalam when pinned to ml.
-  await client.globalSetting.upsert({
-    where: {
-      GlobalSetting_tenantId_name_key_unique: {
-        tenantId: SEED_TENANT_ID,
-        name: 'stt-pipeline',
-        key: 'default-stt-pipeline',
-      },
-    },
-    update: {
-      // `value` omitted deliberately. This setting selects the
-      // live default ASR pipeline; writing it here force-repointed every
-      // tenant's choice on each seed run. `defaultValue` still tracks the repo,
-      // so the platform's recommendation moves without overriding a human's.
-      defaultValue: '81000000-0000-0000-0001-000000000417',
-      description: 'Default ASR pipeline for all doctors when using remote workflow mode',
-    },
-    create: {
-      id: '82000000-0000-0000-0002-000000000100',
-      tenantId: SEED_TENANT_ID,
-      namespace: 'arcaai-sdk',
-      name: 'stt-pipeline',
-      key: 'default-stt-pipeline',
-      value: '81000000-0000-0000-0001-000000000417',
-      defaultValue: '81000000-0000-0000-0001-000000000417',
-      dataType: ValueType.String,
-      description: 'Default ASR pipeline for all doctors when using remote workflow mode',
-    },
-  });
-  console.log('  Created tenant-wide default pipeline setting');
 
   // =========================================================================
   // SDK User Preferences - Workflow-Oriented Structure

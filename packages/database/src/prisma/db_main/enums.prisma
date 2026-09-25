@@ -988,7 +988,7 @@ enum AiTaskKind {
   // require Azure AI Translator — a separate resource, key and billing. Owner
   // decision OD-8, 2026-09-01.
   TRANSLATION
-  SPEECH_TO_TEXT // AsrPipeline + TenantSttConfig
+  SPEECH_TO_TEXT // the ASR Agent (TASK-1006 retired AsrPipeline + TenantSttConfig)
   TEXT_TO_SPEECH // TenantTtsConfig
 
   // Capabilities that ALREADY exist, named so this taxonomy does not silently

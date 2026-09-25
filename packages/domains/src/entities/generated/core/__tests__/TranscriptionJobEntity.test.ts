@@ -18,7 +18,8 @@ function createTestEntity(overrides: Partial<ITranscriptionJobEntity> = {}): Tra
     consultationId: 'consultation-123',
     contextItemId: null,
     mediaId: 'media-123',
-    pipelineId: 'pipeline-123',
+    agentVersionId: 'agent-v-1',
+    resolvedSpec: { schemaVersion: 1, runtimeKey: 'agent-v-1' },
     status: TranscriptionJobStatus.QUEUED,
     progress: 0,
     queuedAt: new Date('2026-02-02T10:00:00Z'),
@@ -51,7 +52,7 @@ describe('TranscriptionJobEntity', () => {
       expect(entity.id).toBe('job-test-id');
       expect(entity.tenantId).toBe('tenant-123');
       expect(entity.jobType).toBe(TranscriptionJobType.BATCH);
-      expect(entity.pipelineId).toBe('pipeline-123');
+      expect(entity.agentVersionId).toBe('agent-v-1');
       expect(entity.status).toBe(TranscriptionJobStatus.QUEUED);
       expect(entity.progress).toBe(0);
       expect(entity.retryCount).toBe(0);
@@ -433,10 +434,10 @@ describe('TranscriptionJobEntity', () => {
       expect(() => entity.validate()).not.toThrow();
     });
 
-    it('should throw error when the job is keyed to neither a pipeline nor an agent (TASK-861 relaxed pipelineId)', () => {
-      const entity = createTestEntity({ pipelineId: '' });
+    it('should throw error when the job carries no agentVersionId (TASK-1006 — pipelineId is gone)', () => {
+      const entity = createTestEntity({ agentVersionId: null });
 
-      expect(() => entity.validate()).toThrow('Either agentVersionId or pipelineId is required');
+      expect(() => entity.validate()).toThrow('agentVersionId is required');
     });
 
     it('should throw error for invalid progress', () => {
@@ -532,32 +533,26 @@ describe('TranscriptionJobEntity', () => {
   });
 });
 
-// TASK-861 — a job is keyed EITHER to the deprecated pipeline row OR to the ASR
-// Agent version that ran it (+ the resolved spec snapshot). Exactly what the
-// migration `task_861_transcription_job_agent_version` allows.
-describe('TranscriptionJobEntity — agent re-key (TASK-861)', () => {
+// TASK-1006 — a job is attributable to EXACTLY the ASR Agent version that ran
+// it (+ the resolved spec snapshot). The deprecated pipeline-row attribution
+// path (TASK-861 `task_861_transcription_job_agent_version`) is gone.
+describe('TranscriptionJobEntity — agent-keyed attribution', () => {
   const resolvedSpec = { schemaVersion: 1, runtimeKey: 'agent-v-1', models: { asr: { slug: 'whisper' } } };
 
-  it('validates an agent-keyed job with no pipelineId', () => {
-    const entity = createTestEntity({ pipelineId: null, agentVersionId: 'agent-v-1', resolvedSpec });
+  it('validates an agent-keyed job', () => {
+    const entity = createTestEntity({ agentVersionId: 'agent-v-1', resolvedSpec });
     expect(() => entity.validate()).not.toThrow();
     expect(entity.agentVersionId).toBe('agent-v-1');
     expect(entity.resolvedSpec).toEqual(resolvedSpec);
-    expect(entity.pipelineId).toBeNull();
   });
 
-  it('still validates a legacy pipeline-keyed job (history rows stay readable)', () => {
-    const entity = createTestEntity({ pipelineId: 'pipeline-123', agentVersionId: null, resolvedSpec: null });
-    expect(() => entity.validate()).not.toThrow();
-  });
-
-  it('rejects a job keyed to neither — an unattributable job is never persisted', () => {
-    const entity = createTestEntity({ pipelineId: null, agentVersionId: null, resolvedSpec: null });
-    expect(() => entity.validate()).toThrow(/agentVersionId|pipelineId/);
+  it('rejects a job with no agentVersionId — an unattributable job is never persisted', () => {
+    const entity = createTestEntity({ agentVersionId: null, resolvedSpec: null });
+    expect(() => entity.validate()).toThrow(/agentVersionId/);
   });
 
   it('rejects an agentVersionId without its resolvedSpec snapshot (the job must be reproducible from its row)', () => {
-    const entity = createTestEntity({ pipelineId: null, agentVersionId: 'agent-v-1', resolvedSpec: null });
+    const entity = createTestEntity({ agentVersionId: 'agent-v-1', resolvedSpec: null });
     expect(() => entity.validate()).toThrow(/resolvedSpec/);
   });
 

@@ -13,8 +13,7 @@ import { TenantAllowedOrigin } from '../../../models';
  * CORS control plane — one row per (origin, tenant) GRANT.
  *
  * HAND-AUTHORED — `gen:repository` is broken (fails on a bad argument); this
- * follows the `AiProviderConnectionRepository` / `TenantSttConfigRepository`
- * precedent in this folder.
+ * follows the `AiProviderConnectionRepository` precedent in this folder.
  *
  * Single ownership was superseded: an origin does not belong to exactly one
  * tenant, it grants a SET of tenants permission to act on it. Uniqueness is

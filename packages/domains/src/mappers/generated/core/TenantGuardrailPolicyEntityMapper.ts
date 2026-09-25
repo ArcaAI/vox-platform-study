@@ -3,8 +3,8 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 
 // HAND-AUTHORED (the `gen:mapper` generator crashes pre-existingly, stripping
-// this very guard before it dies; see the AiProviderConnectionEntityMapper /
-// TenantSttConfigEntityMapper precedents in this folder).
+// this very guard before it dies; see the AiProviderConnectionEntityMapper
+// precedent in this folder).
 //
 // `_version` is owned by the database and the only legitimate writer is
 // `Repository.updateWithVersion`. Strip it from every write path here so the

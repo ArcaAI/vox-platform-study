@@ -1242,10 +1242,9 @@ const DEFAULT_NAMED_ENTITIES = [
 //     copy of `realtime-transcription`; ArcaAI seeds no ASR agent of its own
 //     and inherits the SYSTEM `realtime-transcription` through the TENANT-scope
 //     assignment (phase 26 clones it). Both ids are deterministic
-//     (`25-agents.ts`), so seed ORDER does not matter.
-//     `pipelineId` is deprecated and NEVER written: `06-stt.ts` seeds no
-//     `AsrPipeline` rows any more, and the column's FK would refuse a dangling
-//     pointer.
+//     (`25-agents.ts`), so seed ORDER does not matter. The deprecated
+//     `pipelineId` column is GONE (TASK-1006) — `agentVersionId` is the only
+//     attribution.
 //   - `consultationId` / `contextItemId` / `mediaId` are soft references (no
 //     DB FK); each points at a seeded row in the SAME tenant.
 //   - `mediaId` is only set where real Media exists (the Global GEN dual-capture

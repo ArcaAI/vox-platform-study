@@ -1,5 +1,5 @@
 /**
- * Retired AI-model slug ledger + pipeline-reference guard.
+ * Retired AI-model slug ledger + agent-reference guard.
  *
  * The 50 slugs of the previous 60-row `DEFAULT_AI_MODELS` catalog that the
  * consolidation retires, PLUS 3 more added by the Ollama model-catalog
@@ -9,11 +9,11 @@
  * decision 2026-08-17), so these slugs are retired because the platform no
  * longer ships an opinion about which Ollama model to run — not because the
  * engine is gone. `retireLegacyAiModels`
- * (06-stt.ts) sweeps EVERY tenant's copy of each slug, guarded by
- * `shouldRetireAiModelSlug`: a slug still referenced by any non-deleted
- * `AsrPipeline.configYaml` (a tenant may have built a custom pipeline on it)
- * is SKIPPED with a loud warning instead of breaking
- * `config_reader._to_model_config` resolution in stt.
+ * (06-ai-models.ts) sweeps EVERY tenant's copy of each slug, guarded by
+ * `shouldRetireAiModelSlug`: a slug still bound by any non-deleted Agent
+ * version's `parameters`/`compiledConfig` (TASK-966) is SKIPPED with a loud
+ * warning instead of turning that agent's resolution into a 409. The former
+ * `AsrPipeline.configYaml` guard input retired with the table (TASK-1006).
  *
  * NEVER remove a slug from this ledger once added — that un-retires it and
  * leaves any tenant's already-materialised copy pointing at a removed engine.

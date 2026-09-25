@@ -10,8 +10,6 @@ import * as Entities from '../../../entities';
 export interface CreateTranscriptionJobProps extends BaseEntityFactoryCreateProps {
   tenantId: ITranscriptionJobEntity['tenantId'];
   jobType: ITranscriptionJobEntity['jobType'];
-  /** @deprecated TASK-861 — removed in R4. Supply `agentVersionId` + `resolvedSpec` instead. */
-  pipelineId?: ITranscriptionJobEntity['pipelineId'];
   /** TASK-861 — the ASR Agent version that will run the job (with its `resolvedSpec` snapshot). */
   agentVersionId?: ITranscriptionJobEntity['agentVersionId'];
   resolvedSpec?: ITranscriptionJobEntity['resolvedSpec'];
@@ -58,7 +56,6 @@ export class TranscriptionJobFactory {
 
       tenantId: props.tenantId,
       jobType: props.jobType,
-      pipelineId: props.pipelineId ?? null,
       agentVersionId: props.agentVersionId ?? null,
       resolvedSpec: props.resolvedSpec ?? null,
       streamSessionId: props.streamSessionId ?? null,

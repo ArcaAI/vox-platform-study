@@ -10,7 +10,6 @@ export interface CreateTenantEntitlementProps extends BaseEntityFactoryCreatePro
   maxUsers?: ITenantEntitlementEntity['maxUsers'];
   maxDepartments?: ITenantEntitlementEntity['maxDepartments'];
   maxPromptTemplates?: ITenantEntitlementEntity['maxPromptTemplates'];
-  maxAsrPipelines?: ITenantEntitlementEntity['maxAsrPipelines'];
   maxApiKeys?: ITenantEntitlementEntity['maxApiKeys'];
   maxWorkflowDefinitions?: ITenantEntitlementEntity['maxWorkflowDefinitions'];
   maxAiProviderConnections?: ITenantEntitlementEntity['maxAiProviderConnections'];
@@ -57,7 +56,6 @@ export class TenantEntitlementFactory {
       maxUsers: props.maxUsers ?? null,
       maxDepartments: props.maxDepartments ?? null,
       maxPromptTemplates: props.maxPromptTemplates ?? null,
-      maxAsrPipelines: props.maxAsrPipelines ?? null,
       maxApiKeys: props.maxApiKeys ?? null,
       maxWorkflowDefinitions: props.maxWorkflowDefinitions ?? null,
       maxAiProviderConnections: props.maxAiProviderConnections ?? null,

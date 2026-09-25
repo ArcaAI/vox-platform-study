@@ -341,21 +341,23 @@ describe('RETIRED_AI_MODEL_SLUGS ledger (TASK-860 extension)', () => {
     expect(RETIRED_AI_MODEL_SLUGS.filter((slug) => live.has(slug))).toEqual([]);
   });
 
-  it('no seeded YAML shields the legacy whisper rows any more (TASK-861 retired the pipeline seed) — only a live tenant-built row can', () => {
-    // `retireLegacyAiModels` feeds the guard every non-deleted `AsrPipeline.configYaml`
-    // it reads from the DB at seed time. `06-stt.ts` seeds none since TASK-861, so on a
-    // fresh DB the two whisper rows the old pipelines referenced retire with the ledger.
+  it('shouldRetireAiModelSlug is a generic reference-string check, no longer fed by AsrPipeline.configYaml (TASK-1006)', () => {
+    // `retireLegacyAiModels` now feeds the guard only non-deleted Agent
+    // `parameters`/`compiledConfig` (TASK-966); the pipeline-YAML source is
+    // gone with the table. The pure function itself stays a generic
+    // "does any of these strings reference this slug" check, so it is
+    // exercised directly here with synthetic reference strings.
     expect(shouldRetireAiModelSlug('whisper-large-v3-turbo-gguf', [])).toBe(true);
     expect(shouldRetireAiModelSlug('whisper-large-v3-turbo', [])).toBe(true);
-    // A tenant-built pipeline that still references a slug keeps it alive — and the
+    // A reference string that still names a slug keeps it alive — and the
     // match is boundary-aware (`…-turbo-gguf` is not a reference to `…-turbo`).
-    const tenantBuilt = 'models:\n  asr: "whisper-large-v3-turbo-gguf"\n';
-    expect(shouldRetireAiModelSlug('whisper-large-v3-turbo-gguf', [tenantBuilt])).toBe(false);
-    expect(shouldRetireAiModelSlug('whisper-large-v3-turbo', [tenantBuilt])).toBe(true);
+    const reference = 'models:\n  asr: "whisper-large-v3-turbo-gguf"\n';
+    expect(shouldRetireAiModelSlug('whisper-large-v3-turbo-gguf', [reference])).toBe(false);
+    expect(shouldRetireAiModelSlug('whisper-large-v3-turbo', [reference])).toBe(true);
     // Nothing references these → retired on the next seed.
-    expect(shouldRetireAiModelSlug('bedrock-claude-3.5-haiku', [tenantBuilt])).toBe(true);
-    expect(shouldRetireAiModelSlug('nlp-doc-type-classifier', [tenantBuilt])).toBe(true);
-    expect(shouldRetireAiModelSlug('indic-f5', [tenantBuilt])).toBe(true);
+    expect(shouldRetireAiModelSlug('bedrock-claude-3.5-haiku', [reference])).toBe(true);
+    expect(shouldRetireAiModelSlug('nlp-doc-type-classifier', [reference])).toBe(true);
+    expect(shouldRetireAiModelSlug('indic-f5', [reference])).toBe(true);
   });
 });
 
@@ -430,10 +432,11 @@ describe('seedAiModels upsert', () => {
 });
 
 describe('retireLegacyAiModels sweep', () => {
-  const makeClient = (activeYamls: string[], activeAgents: Array<{ parameters: unknown; compiledConfig: unknown }> = []) => {
+  // TASK-1006 — the sibling `AsrPipeline.configYaml` guard input is gone with
+  // the table; an Agent binding is the only thing that can keep a slug alive.
+  const makeClient = (activeAgents: Array<{ parameters: unknown; compiledConfig: unknown }> = []) => {
     const updates: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
     const client = {
-      asrPipeline: { findMany: vi.fn(async () => activeYamls.map((configYaml) => ({ configYaml }))) },
       agent: { findMany: vi.fn(async () => activeAgents) },
       aiModel: {
         updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
@@ -446,7 +449,7 @@ describe('retireLegacyAiModels sweep', () => {
   };
 
   it('soft-deletes every unreferenced ledger slug across ALL tenants with stamps + version increment', async () => {
-    const { client, updates } = makeClient([]);
+    const { client, updates } = makeClient();
     const result = await retireLegacyAiModels(client as never);
 
     expect(result.retired).toBe(RETIRED_AI_MODEL_SLUGS.length);
@@ -460,28 +463,17 @@ describe('retireLegacyAiModels sweep', () => {
     });
   });
 
-  it('skips a slug a live pipeline still references and reports it', async () => {
-    const { client, updates } = makeClient(['models:\n  asr: "whisper-large-v3-turbo-gguf"\n']);
-    const result = await retireLegacyAiModels(client as never);
-
-    expect(result.skipped).toEqual(['whisper-large-v3-turbo-gguf']);
-    expect(updates.map((u) => u.where.slug)).not.toContain('whisper-large-v3-turbo-gguf');
-  });
-
   // TASK-966 — a PUBLISHED agent version is immutable, so a slug it binds cannot be migrated by
   // the seed; retiring the row would make every resolution of that agent a 409 in
   // `AgentResolverService`. The sweep must leave such a slug active (an environment seeded
   // before TASK-966 carries `realtime-transcription` rows bound to `cadence-punctuation`).
   it('skips a slug a non-deleted agent version still binds (parameters or compiledConfig) and reports it', async () => {
     const bound = { postProcessing: { punctuation: { enabled: true, modelSlug: 'cadence-punctuation' } } };
-    const { client, updates } = makeClient(
-      [],
-      [
-        { parameters: bound, compiledConfig: { parameters: bound } },
-        // A slug that merely PREFIXES a bound one is not a reference (`whisper-large-v3` vs `-turbo`).
-        { parameters: { audioFrontEnd: { vad: { modelSlug: 'whisper-large-v3-turbo' } } }, compiledConfig: null },
-      ],
-    );
+    const { client, updates } = makeClient([
+      { parameters: bound, compiledConfig: { parameters: bound } },
+      // A slug that merely PREFIXES a bound one is not a reference (`whisper-large-v3` vs `-turbo`).
+      { parameters: { audioFrontEnd: { vad: { modelSlug: 'whisper-large-v3-turbo' } } }, compiledConfig: null },
+    ]);
     const result = await retireLegacyAiModels(client as never);
 
     expect(result.skipped).toEqual(['whisper-large-v3-turbo', 'cadence-punctuation']);

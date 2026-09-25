@@ -92,12 +92,11 @@ model PlanEntitlement {
   maxUsers                 Int?
   maxDepartments           Int?
   maxPromptTemplates       Int?
-  maxAsrPipelines          Int?
   maxApiKeys               Int?
   storageQuotaBytes        BigInt?
   // Quantity ceiling on PUBLISHED WorkflowDefinition slugs a tenant may hold
-  // ( exposure plane), modelled verbatim on `maxAsrPipelines`. Checked
-  // by authoring create path, not this migration's own caller.
+  // ( exposure plane). Checked by authoring create path, not this
+  // migration's own caller.
   maxWorkflowDefinitions   Int?
   // TASK-958 D-8 — how many `AiProviderConnection` rows one tenant may hold
   // (per tenant, all services; NULL = unbounded). A tenant that brings two
@@ -274,7 +273,6 @@ model TenantEntitlement {
   maxUsers                 Int?
   maxDepartments           Int?
   maxPromptTemplates       Int?
-  maxAsrPipelines          Int?
   maxApiKeys               Int?
   storageQuotaBytes        BigInt?
   // Per-tenant override of `PlanEntitlement.maxWorkflowDefinitions` (null =

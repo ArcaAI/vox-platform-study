@@ -12,8 +12,8 @@
  *
  * `applySoftDeleteExtension` injects `resourceStatus: { not: 'DELETED' }` into `findMany` /
  * `findFirst` / `count` / `aggregate` / `groupBy` for every model NOT in that set. Against a table
- * with no such column Prisma raises `PrismaClientValidationError` — the exact failure `client.ts`'s
- * own `AsrPipelineVersion` comment records ("Prisma rejected it ... bare 400 on GET").
+ * with no such column Prisma raises `PrismaClientValidationError` — the same failure shape
+ * `client.ts`'s `MODELS_WITHOUT_SOFT_DELETE` comments record for its other exempt models.
  *
  * It has never fired because the one gated caller, `HarnessPolicyChangeRepository.listForTenant` /
  * `PipelinePolicyChangeRepository.listForTenant`, has no invocation anywhere yet, and the WRITES

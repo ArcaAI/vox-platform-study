@@ -9,8 +9,6 @@ export * from './AiUsageOutboxRepository';
 export * from './AiUsageRollupDailyRepository';
 export * from './AiUsageRollupHourlyRepository';
 export * from './ApiKeyRepository';
-export * from './AsrPipelineRepository';
-export * from './AsrPipelineVersionRepository';
 export * from './AudioRecordingRepository';
 export * from './AuditLogRepository';
 // Sibling that patches AuditLogRepository.prototype with
@@ -112,7 +110,6 @@ export * from './TenantIdentityProviderRepository';
 export * from './TenantIdentityProviderDomainRepository';
 export * from './TenantNlpTaskInstructionsRepository';
 export * from './TenantStorageConfigRepository';
-export * from './TenantSttConfigRepository';
 export * from './TenantRepository';
 export * from './TenantPlanHistoryRepository';
 export * from './TenantUsageMeterRepository';

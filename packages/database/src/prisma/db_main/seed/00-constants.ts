@@ -349,7 +349,6 @@ export const SEED_API_KEY_IDS = {
   SDK_SURGERY: '60000000-0000-0000-0000-000000000007',
   INTEGRATION_ARCAAI: '60000000-0000-0000-0000-000000000008',
   EXPIRED_DOCTOR2: '60000000-0000-0000-0000-000000000009',
-  SDK_COMPAT_ARCAAI: '60000000-0000-0000-0000-00000000000a',
 } as const;
 
 export const SEED_API_KEY_RAW = {
@@ -362,7 +361,6 @@ export const SEED_API_KEY_RAW = {
   SDK_SURGERY: 'hope_sk_test_g2i3k12d10i0093lhj3ik3jjk5_297804',
   INTEGRATION_ARCAAI: 'hope_ig_test_h3j4l23e21j1104mik4jl4kkl6_308915',
   EXPIRED_DOCTOR2: 'hope_sk_test_i4k5m34f32k2215njl5km5llm7_419026',
-  SDK_COMPAT_ARCAAI: 'hope_sk_7548d66e07c25f8d0d079fa4f22e20abad3a0d919a83bd24ce6b0da58074c19a_a619ea',
 } as const;
 
 // =============================================================================
@@ -787,9 +785,12 @@ export const SEED_GLOBAL_SETTING_IDS = {
   // policies `0001`). Read flat-by-key from the AppSettings boot cache.
   SYSTEM_FF_LOCAL_RAW_CAPTURE: '00000000-0000-0000-0002-000000000001',
 
-  // Platform controls for the nightly SYSTEM-template resync sweep.
-  // Same `0002` system-tenant block as the capability flag above; read flat
-  // by key from the AppSettings boot cache.
+  // RETIRED (TASK-1006): the nightly SYSTEM-template resync sweep they
+  // controlled reconciled a tenant's ASR pipeline catalog against SYSTEM
+  // templates — that whole catalogue is gone (`agentSlug` is the only
+  // selector), so the two rows are no longer emitted. Ids stay reserved in
+  // the same `0002` system-tenant block as the capability flag above, like
+  // every other retired block.
   SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED: '00000000-0000-0000-0002-000000000002',
   SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON: '00000000-0000-0000-0002-000000000003',
 

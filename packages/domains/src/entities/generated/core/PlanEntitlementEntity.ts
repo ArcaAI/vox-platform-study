@@ -11,7 +11,6 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   maxUsers?: number | null;
   maxDepartments?: number | null;
   maxPromptTemplates?: number | null;
-  maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
   // Quantity ceiling on PUBLISHED WorkflowDefinition slugs.
   maxWorkflowDefinitions?: number | null;
@@ -57,7 +56,6 @@ export class PlanEntitlementEntity extends BaseEntity {
   private _maxUsers?: IPlanEntitlementEntity['maxUsers'];
   private _maxDepartments?: IPlanEntitlementEntity['maxDepartments'];
   private _maxPromptTemplates?: IPlanEntitlementEntity['maxPromptTemplates'];
-  private _maxAsrPipelines?: IPlanEntitlementEntity['maxAsrPipelines'];
   private _maxApiKeys?: IPlanEntitlementEntity['maxApiKeys'];
   private _maxWorkflowDefinitions?: IPlanEntitlementEntity['maxWorkflowDefinitions'];
   private _maxAiProviderConnections?: IPlanEntitlementEntity['maxAiProviderConnections'];
@@ -88,7 +86,6 @@ export class PlanEntitlementEntity extends BaseEntity {
     this._maxUsers = init.maxUsers;
     this._maxDepartments = init.maxDepartments;
     this._maxPromptTemplates = init.maxPromptTemplates;
-    this._maxAsrPipelines = init.maxAsrPipelines;
     this._maxApiKeys = init.maxApiKeys;
     this._maxWorkflowDefinitions = init.maxWorkflowDefinitions;
     this._maxAiProviderConnections = init.maxAiProviderConnections;
@@ -144,14 +141,6 @@ export class PlanEntitlementEntity extends BaseEntity {
 
   set maxPromptTemplates(value: IPlanEntitlementEntity['maxPromptTemplates']) {
     this.setProperty('maxPromptTemplates', value);
-  }
-
-  get maxAsrPipelines(): IPlanEntitlementEntity['maxAsrPipelines'] {
-    return this._maxAsrPipelines;
-  }
-
-  set maxAsrPipelines(value: IPlanEntitlementEntity['maxAsrPipelines']) {
-    this.setProperty('maxAsrPipelines', value);
   }
 
   get maxApiKeys(): IPlanEntitlementEntity['maxApiKeys'] {

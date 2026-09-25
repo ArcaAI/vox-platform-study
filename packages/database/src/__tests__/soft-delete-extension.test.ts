@@ -145,7 +145,6 @@ describe('modelHasSoftDelete', () => {
       'ContextItemVersion',
       'PromptVersion',
       'DnaWritingStyleVersion',
-      'AsrPipelineVersion',
       'DnaUsageRecord',
       'PromptUsageRecord',
       'AudioRecording',
@@ -191,7 +190,7 @@ describe('modelHasSoftDelete', () => {
       'ChangelogEntry',
       'UserChangelogAcknowledgement',
       // An immutable published snapshot of a tenant's context
-      // declaration (the PromptVersion / AsrPipelineVersion shape). A
+      // declaration (the PromptVersion shape). A
       // ContextItem validated against version N must resolve version N
       // forever, so retraction is not available and the table carries no
       // `resourceStatus` column. The MUTABLE head `ConsultationContextSchema`
@@ -248,7 +247,6 @@ describe('modelHasSoftDelete', () => {
       'contextItemVersion',
       'promptVersion',
       'dnaWritingStyleVersion',
-      'asrPipelineVersion',
       'dnaUsageRecord',
       'promptUsageRecord',
       'audioRecording',
@@ -351,37 +349,3 @@ describe('Extension handler contract', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// AsrPipelineVersion 400 regression
-//
-// AsrPipelineVersion is an immutable version-history table with NO
-// `resourceStatus` column (see prisma db_main/stt.prisma + the
-// 20260602000000 migration). It was missing from MODELS_WITHOUT_SOFT_DELETE,
-// so the soft-delete extension injected `resourceStatus: { not: 'DELETED' }`
-// into every read — an invalid Prisma `where` for a column that does not
-// exist. At runtime that throws PrismaClientValidationError on
-// `GET /admin/audio/pipelines/:id/versions`, which the API exception
-// interceptor collapses to a bare `400 Bad Request`. The model must be
-// soft-delete-exempt, exactly like its sibling version tables
-// (PromptVersion, DnaWritingStyleVersion, ContextItemVersion).
-// ---------------------------------------------------------------------------
-
-describe('AsrPipelineVersion is soft-delete exempt (no resourceStatus column)', () => {
-  it('modelHasSoftDelete returns false for both casings', () => {
-    expect(modelHasSoftDelete('AsrPipelineVersion')).toBe(false);
-    expect(modelHasSoftDelete('asrPipelineVersion')).toBe(false);
-  });
-
-  it('the soft-delete handler does NOT inject resourceStatus for an AsrPipelineVersion read', () => {
-    // Mirrors the production $allModels.findMany handler in client.ts:
-    //   if (modelHasSoftDelete(model)) applySoftDeleteFilter(args)
-    const args: { where?: Record<string, unknown> } = { where: { asrPipelineId: 'pipeline-1' } };
-    if (modelHasSoftDelete('asrPipelineVersion')) {
-      applySoftDeleteFilter(args);
-    }
-    // The query that actually reaches Postgres must stay a valid `where` for a
-    // table with no `resourceStatus` column (the GET /versions 400 root cause).
-    expect(args.where).toEqual({ asrPipelineId: 'pipeline-1' });
-    expect(args.where?.resourceStatus).toBeUndefined();
-  });
-});

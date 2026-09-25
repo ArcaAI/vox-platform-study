@@ -84,9 +84,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // same pre-auth shape that already exempts `TenantEntitlement`.
   // globalSetting.prisma (1)
   'GlobalSetting',
-  // stt.prisma (4)
-  'AsrPipeline',
-  'AsrPipelineVersion', // version-history child of AsrPipeline
+  // stt.prisma (2) — the AsrPipeline / AsrPipelineVersion catalogue was
+  // retired (TASK-1006): `agentSlug` → the ASR Agent is the only selector.
   'AiModel',
   'TranscriptionJob',
   // department.prisma (1)
@@ -130,11 +129,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // once the speech path became agent-first — every field it carried maps onto
   // the TEXT_TO_SPEECH Agent or an AiProviderConnection(service='tts') row,
   // which is also where the earlier TenantTtsProviderCredential rows went.
-  // tenant-stt-config.prisma (1) — per-tenant STT fallback config. The former
-  // per-(tenant,provider) BYO-credential model, TenantSttProviderCredential,
-  // was DROPPED in — those rows now live in the unified
-  // AiProviderConnection plane (service='stt').
-  'TenantSttConfig', // also a SYSTEM-shared read model (platform-default row, below)
+  // tenant-stt-config.prisma is GONE (TASK-1006): TenantSttConfig was retired
+  // once STT fallback became the ASR Agent's own `fallback` block; BYO
+  // provider credentials already live in the unified AiProviderConnection
+  // plane (service='stt').
   // tenant-nlp-task-instructions.prisma (1) — tenant-writable topic/intent
   // instruction content for nlp.topic/nlp.intent. Deliberately NOT
   // a SYSTEM-shared read model — there is no platform default; a plain
@@ -402,14 +400,13 @@ export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 /**
  * Subset of TENANT_SCOPED_MODELS whose SYSTEM-tenant rows are a shared,
  * read-only platform catalog that EVERY tenant is allowed to read (e.g. the
- * seeded production ASR pipelines / AI models in `seed/06-stt.ts`, all owned
+ * seeded AI model catalogue in `seed/06-ai-models.ts`, all owned
  * by `SYSTEM_TENANT_ID`).
  *
  * For these models a READ widens the tenant filter to
  * `tenantId IN [caller, SYSTEM]` so a customer tenant can resolve the shared
- * catalog entry it references (e.g. `POST /audio/transcription-jobs` validates
- * its `pipelineId` against the SYSTEM-owned pipeline before persisting a
- * tenant-owned job).
+ * catalog entry it references (e.g. an ASR Agent binds an `AiModel` slug the
+ * gateway must resolve on behalf of any tenant).
  *
  * SCOPE IS DELIBERATELY NARROW — only platform catalog tables belong here:
  *   - Reads still EXCLUDE every other tenant's rows (the `IN` list is exactly
@@ -420,7 +417,6 @@ export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
  *     are intentionally absent — their cross-tenant 404 contracts must hold.
  */
 export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
-  'AsrPipeline',
   'AiModel',
   // the platform's built-in roles (TENANT_ADMIN, DOCTOR,
   // NURSE, SUPER_ADMIN, ...) are SYSTEM-tenant rows every tenant must read
@@ -444,13 +440,10 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // but never mutate the SYSTEM-owned global default (only a platform admin can,
   // through the dedicated global-default service path).
   'HarnessPolicy',
-  // The per-tenant STT PLATFORM-DEFAULT row is owned by the SYSTEM
-  // tenant and read by every tenant's getEffective (tenant row merged over the
-  // SYSTEM default). READS widen to [caller, SYSTEM]; WRITES are NOT widened
-  // (only a platform admin mutates the SYSTEM default). This model never
-  // carries a secret — BYO credentials live in AiProviderConnection
-  // (service='stt'; see its own CAVEAT below for how ITS widening stays safe).
-  'TenantSttConfig',
+  // TenantSttConfig is GONE (TASK-1006): its SYSTEM-tenant
+  // platform-default row was retired with the model — STT fallback is now the
+  // ASR Agent's own `fallback` block, and BYO credentials live in
+  // AiProviderConnection (service='stt'; see its own CAVEAT below).
   // The provider CONNECTION catalog: the SYSTEM row records where a
   // serving provider lives and (as Vault-Transit ciphertext) how to auth to it.
   // Every tenant's `resolveConnection` cascade (tenant row → SYSTEM row → env)
@@ -527,8 +520,8 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // as McpServer's `authRef`).
   'TenantStorageConfig',
   // Platform infrastructure settings (S3/MinIO endpoint + credentials, STT
-  // pipeline slugs/queues, …) are seeded under the SYSTEM tenant in
-  // `seed/06-stt.ts`, alongside the SYSTEM-owned AsrPipeline/AiModel catalog.
+  // service config, …) are seeded under the SYSTEM tenant in `seed/06-stt.ts`,
+  // alongside the SYSTEM-owned AiModel catalog (`seed/06-ai-models.ts`).
   // `AppSettingsService` builds ONE process-wide, tenant-agnostic settings
   // cache via `globalSettingRepository.findAll({})`; when that load runs under
   // the platform (GLOBAL) tenant context, an exact-match filter drops these

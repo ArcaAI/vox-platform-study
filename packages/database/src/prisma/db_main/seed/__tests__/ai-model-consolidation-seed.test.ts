@@ -254,6 +254,11 @@ describe('companion seed updates', () => {
         'feature-flags/enable-consultation-sharing',
         'platform/S3_PRIVATE_BUCKET',
         'platform/S3_PUBLIC_BUCKET',
+        // TASK-1006 — the Global tenant's `default-stt-pipeline` row (91-user.ts)
+        // pointed at a SYSTEM `AsrPipeline` catalogue entry; that whole table is
+        // retired, so the row is no longer seed-written and this sweep retires
+        // the copy an already-provisioned database still holds.
+        'arcaai-sdk/default-stt-pipeline',
       ].sort(),
     );
   });
@@ -271,15 +276,15 @@ describe('companion seed updates', () => {
     };
     const result = await retireSupersededGlobalSettings!(client as never);
 
-    // 15 = the original six superseded keys, + `smr/smr-azure-deployment`
+    // 16 = the original six superseded keys, + `smr/smr-azure-deployment`
     // (D-740-1 moved that key to the `text` namespace, so the old row must be
     // swept too), + the five advisory `feature-flags` rows TASK-932 R-8
     // removed, + the three TASK-932 wave-4 additions (OD-1's
     // `enable-consultation-sharing`, OD-8's S3_PUBLIC_BUCKET/
-    // S3_PRIVATE_BUCKET).
+    // S3_PRIVATE_BUCKET), + TASK-1006's `arcaai-sdk/default-stt-pipeline`.
     expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(RETIRED_GLOBAL_SETTING_KEYS!.length);
-    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(15);
-    expect(result.retired).toBe(30);
+    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(16);
+    expect(result.retired).toBe(32);
     updates.forEach(({ where, data }) => {
       expect(where.resourceStatus).toEqual({ not: 'DELETED' });
       expect(where.namespace).toBeTypeOf('string');

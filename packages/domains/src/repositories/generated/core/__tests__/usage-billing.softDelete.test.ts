@@ -20,7 +20,7 @@
  * suite ever goes green-by-accident because a model was dropped from that set,
  * the soft-delete `$extends` would start injecting
  * `resourceStatus: { not: 'DELETED' }` into every read and Prisma would reject
- * it — the AsrPipelineVersion / GateEditExemplar failure shape.
+ * it — the GateEditExemplar / ContextItemVersion failure shape.
  *
  * The three MANAGED models keep soft delete: `AiPriceBook` (a mistaken rate-card
  * row is retired, and reads must exclude it), `BillingInvoice` and

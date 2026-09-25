@@ -84,15 +84,15 @@ const PLATFORM_WIDE_KEYS = [
 // the rate-limit block, so they fall outside the per-prefix model and are counted
 // separately.
 //   Locked capability flag for local raw-stream dual-capture.
-//   Locked controls for the nightly SYSTEM-template resync sweep.
 const SYSTEM_WIDE_KEYS = [
   'SYSTEM_FF_LOCAL_RAW_CAPTURE',
-  'SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED',
-  'SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON',
   // The agent golden-library resync sweep's two controls used to sit here.
   // They went with `DepartmentAgent` — the sweep reconciled a
-  // per-department agent catalog that no longer exists. `TOTAL_IDS` is derived
-  // from these arrays, so the count assertion follows on its own.
+  // per-department agent catalog that no longer exists. The nightly
+  // SYSTEM-template resync sweep's two controls
+  // (`SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED` / `_CRON`) went the same way —
+  // TASK-1006 retired the ASR pipeline catalogue they reconciled. `TOTAL_IDS`
+  // is derived from these arrays, so the count assertion follows on its own.
 ] as const;
 
 /**
@@ -119,6 +119,17 @@ const RETIRED_CORE_SUFFIXES = [
   'FF_CONSULTATION_SHARING',
 ] as const;
 
+/**
+ * Same "id stays reserved, row no longer emitted" posture as
+ * {@link RETIRED_CORE_SUFFIXES}, but for the SYSTEM-tenant block — which is
+ * NOT per-tenant, so unlike the core suffixes above these count into
+ * `TOTAL_IDS` exactly once, not once per `SETTING_PREFIXES` entry.
+ *
+ * TASK-1006 retired the nightly SYSTEM-template resync sweep with the ASR
+ * pipeline catalogue it reconciled.
+ */
+const RETIRED_SYSTEM_WIDE_SUFFIXES = ['SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED', 'SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON'] as const;
+
 function suffixesFor(prefix: string) {
   return PREFIXES_WITH_GENERAL.has(prefix) ? [...GENERAL_SUFFIXES, ...CORE_SUFFIXES] : [...CORE_SUFFIXES];
 }
@@ -134,7 +145,8 @@ function settingIdKey(prefix: (typeof SETTING_PREFIXES)[number], suffix: string)
 const TOTAL_IDS =
   SETTING_PREFIXES.reduce((sum, p) => sum + suffixesFor(p).length + RETIRED_CORE_SUFFIXES.length, 0) +
   PLATFORM_WIDE_KEYS.length +
-  SYSTEM_WIDE_KEYS.length;
+  SYSTEM_WIDE_KEYS.length +
+  RETIRED_SYSTEM_WIDE_SUFFIXES.length;
 
 describe('Global Settings Seed Data (11-global-setting)', () => {
   describe('every tenant has all expected setting IDs', () => {
