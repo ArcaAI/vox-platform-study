@@ -15,11 +15,13 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from stt.streaming.schemas import SessionMetadata, SessionStatus
+from tests.helpers.resolved_spec import resolved_spec
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -440,6 +442,7 @@ class TestRecoveryResumeFromStoredId:
             session_id="rec-1",
             tenant_id="t1",
             pipeline_id="p1",
+            resolved_spec_json=json.dumps(resolved_spec(primary="p1", fallback=None)),
             status=SessionStatus.ACTIVE,
             worker_id="test-worker",
             last_stream_id="1718000000000-3",
@@ -466,6 +469,7 @@ class TestRecoveryResumeFromStoredId:
             session_id="rec-2",
             tenant_id="t1",
             pipeline_id="p1",
+            resolved_spec_json=json.dumps(resolved_spec(primary="p1", fallback=None)),
             status=SessionStatus.ACTIVE,
             worker_id="test-worker",
         )
@@ -498,7 +502,9 @@ class TestRecoveryResumeFromStoredId:
         ):
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
-            session = await mgr.create_session("s-new", "t1", "p1")
+            session = await mgr.create_session(
+                "s-new", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+            )
 
         assert session is not None
         # No last_id override — consumer defaults to "0-0" (read from start)

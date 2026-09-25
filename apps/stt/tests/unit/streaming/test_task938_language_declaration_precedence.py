@@ -45,7 +45,6 @@ def _fixture() -> dict[str, Any]:
 
 
 SPEC = _fixture()["platformDefault"]["expected"]
-PRIMARY_KEY = SPEC["runtimeKey"]
 
 
 def _make_manager() -> MagicMock:
@@ -100,7 +99,6 @@ async def _create(mgr: MagicMock, **overrides: Any) -> Any:
     kwargs: dict[str, Any] = {
         "session_id": "s1",
         "tenant_id": "t1",
-        "pipeline_id": PRIMARY_KEY,
         "resolved_spec": SPEC,
     }
     kwargs.update(overrides)

@@ -3,7 +3,7 @@
 Covers the new helper methods added to SessionManager for loading
 VAD and ASR models into streaming sessions:
 
-- ``_load_pipeline_config()`` — loads PipelineSpec from PipelineConfigReader
+- ``_load_pipeline_config()`` — loads the PipelineSpec a registered resolved spec carries
 - ``_load_vad_service()`` — loads Silero VAD via singleton
 - ``_load_asr_pipeline()`` — loads ASR model and creates callable pipeline
 - ``_make_asr_callable()`` — creates async inference closure
@@ -15,6 +15,7 @@ Also covers the ``_check_streaming()`` health helper added to
 """
 
 import asyncio
+import json
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,6 +24,13 @@ import numpy as np
 import pytest
 
 from stt.pipeline.dto import AiModelFormat
+from tests.helpers.resolved_spec import resolved_spec
+
+
+def _spec_json(primary: str) -> str:
+    """TASK-1006 — the persisted spec a recoverable session carries."""
+    return json.dumps(resolved_spec(primary=primary, fallback=None))
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -109,57 +117,23 @@ class TestLoadPipelineConfig:
     """Tests for SessionManager._load_pipeline_config()."""
 
     @pytest.mark.asyncio
-    async def test_returns_spec_when_pipeline_found(self):
+    async def test_returns_a_copy_of_the_registered_spec(self):
         mgr = _make_manager()
-        mock_spec = _make_pipeline_config()
-        mock_pipeline = MagicMock()
-        mock_pipeline.spec = mock_spec
+        bundle = mgr._register_resolved_spec("s-1", resolved_spec(primary="pipe-1"))
 
-        mock_reader = AsyncMock()
-        mock_reader.get_pipeline = AsyncMock(return_value=mock_pipeline)
+        result = await mgr._load_pipeline_config("pipe-1", session_id="s-1")
 
-        with patch(
-            "stt.streaming.session_manager.get_pipeline_reader",
-            return_value=mock_reader,
-            create=True,
-        ):
-            # Patch the import inside the method
-            with patch.dict(
-                "sys.modules",
-                {"stt.pipeline.config_reader": MagicMock(get_pipeline_reader=lambda: mock_reader)},
-            ):
-                result = await mgr._load_pipeline_config("pipe-1")
-
-        assert result is mock_spec
-        # _load_pipeline_config forwards tenant_id (None here) to
-        # the reader so STT can refuse cross-tenant pipeline loads.
-        mock_reader.get_pipeline.assert_awaited_once_with("pipe-1", tenant_id=None)
+        assert result.models.asr.slug == bundle.pipeline_specs["pipe-1"].models.asr.slug
+        # A fresh copy per call: callers mutate `inference.language`.
+        assert result is not bundle.pipeline_specs["pipe-1"]
 
     @pytest.mark.asyncio
-    async def test_raises_when_pipeline_not_found(self):
+    async def test_raises_when_no_spec_carries_the_key(self):
+        from stt.core.exceptions import ResolvedSpecRequiredError
+
         mgr = _make_manager()
-        mock_reader = AsyncMock()
-        mock_reader.get_pipeline = AsyncMock(return_value=None)
-
-        with patch.dict(
-            "sys.modules",
-            {"stt.pipeline.config_reader": MagicMock(get_pipeline_reader=lambda: mock_reader)},
-        ):
-            with pytest.raises(RuntimeError, match="not found"):
-                await mgr._load_pipeline_config("nonexistent")
-
-    @pytest.mark.asyncio
-    async def test_raises_on_exception(self):
-        mgr = _make_manager()
-        mock_reader = AsyncMock()
-        mock_reader.get_pipeline = AsyncMock(side_effect=RuntimeError("DB down"))
-
-        with patch.dict(
-            "sys.modules",
-            {"stt.pipeline.config_reader": MagicMock(get_pipeline_reader=lambda: mock_reader)},
-        ):
-            with pytest.raises(RuntimeError, match="DB down"):
-                await mgr._load_pipeline_config("pipe-err")
+        with pytest.raises(ResolvedSpecRequiredError, match="nonexistent"):
+            await mgr._load_pipeline_config("nonexistent")
 
 
 # ---------------------------------------------------------------------------
@@ -651,7 +625,7 @@ class TestCreateSessionModelWiring:
             session = await mgr.create_session(
                 session_id="s-1",
                 tenant_id="t-1",
-                pipeline_id="pipe-1",
+                resolved_spec=resolved_spec(primary="pipe-1", fallback=None),
             )
 
         assert session is not None
@@ -694,7 +668,7 @@ class TestCreateSessionModelWiring:
             await mgr.create_session(
                 session_id="s-2",
                 tenant_id="t-1",
-                pipeline_id="pipe-1",
+                resolved_spec=resolved_spec(primary="pipe-1", fallback=None),
             )
 
         preprocessor = mgr._preprocessors["s-2"]
@@ -722,7 +696,7 @@ class TestCreateSessionModelWiring:
                 await mgr.create_session(
                     session_id="s-3",
                     tenant_id="t-1",
-                    pipeline_id="nonexistent",
+                    resolved_spec=resolved_spec(primary="nonexistent", fallback=None),
                 )
 
     @pytest.mark.asyncio
@@ -768,7 +742,7 @@ class TestCreateSessionModelWiring:
             await mgr.create_session(
                 session_id="s-4",
                 tenant_id="t-1",
-                pipeline_id="pipe-1",
+                resolved_spec=resolved_spec(primary="pipe-1", fallback=None),
             )
 
         # Verify the ASR loader received pipeline config and session_id
@@ -803,7 +777,7 @@ class TestCreateSessionModelWiring:
             _session = await mgr.create_session(
                 session_id="s-5",
                 tenant_id="t-1",
-                pipeline_id="pipe-1",
+                resolved_spec=resolved_spec(primary="pipe-1", fallback=None),
             )
 
         # Verify all internal maps are populated
@@ -835,6 +809,7 @@ class TestRecoverSessionsModelWiring:
             session_id="recovered-1",
             tenant_id="t-1",
             pipeline_id="pipe-1",
+            resolved_spec_json=_spec_json("pipe-1"),
             status=SessionStatus.ACTIVE,
             worker_id="test-worker",
             sample_rate=16000,
@@ -876,6 +851,7 @@ class TestRecoverSessionsModelWiring:
             session_id="closed-1",
             tenant_id="t-1",
             pipeline_id="pipe-1",
+            resolved_spec_json=_spec_json("pipe-1"),
             status=SessionStatus.CLOSED,
         )
 
@@ -896,6 +872,7 @@ class TestRecoverSessionsModelWiring:
             session_id="recovered-2",
             tenant_id="t-1",
             pipeline_id="pipe-1",
+            resolved_spec_json=_spec_json("pipe-1"),
             status=SessionStatus.ACTIVE,
             worker_id="test-worker",
             sample_rate=16000,
@@ -1819,6 +1796,7 @@ class TestFinalizeSessionPendingSegments:
             session_id="s-drain",
             tenant_id="t1",
             pipeline_id="p1",
+            resolved_spec_json=_spec_json("p1"),
             consultation_id="c1",
             status=SessionStatus.ACTIVE,
             sample_rate=16000,
@@ -1944,6 +1922,7 @@ class TestRecoverSessionsEdgeCases:
             session_id="other-worker-session",
             tenant_id="t-1",
             pipeline_id="pipe-1",
+            resolved_spec_json=_spec_json("pipe-1"),
             status=SessionStatus.ACTIVE,
             worker_id="other-worker-id",  # Different worker
         )
@@ -1968,6 +1947,7 @@ class TestRecoverSessionsEdgeCases:
             session_id="orphaned-session",
             tenant_id="t-1",
             pipeline_id="pipe-1",
+            resolved_spec_json=_spec_json("pipe-1"),
             status=SessionStatus.ACTIVE,
             worker_id="dead-worker",
             sample_rate=16000,
@@ -2070,7 +2050,9 @@ class TestSessionLeakPrevention:
             patch("stt.streaming.session_manager.ResultPublisher"),
         ):
             with pytest.raises(RuntimeError, match="consumer start failed"):
-                await mgr.create_session("s-leak-create", "t1", "p1")
+                await mgr.create_session(
+                    "s-leak-create", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+                )
 
         assert mgr.capacity_guard.active_count == 0
         assert "s-leak-create" not in mgr._sessions
@@ -2088,6 +2070,7 @@ class TestSessionLeakPrevention:
             session_id="s-leak-recover",
             tenant_id="t1",
             pipeline_id="p1",
+            resolved_spec_json=_spec_json("p1"),
             status=SessionStatus.ACTIVE,
             worker_id="dead-worker",
             sample_rate=16000,
@@ -2128,6 +2111,7 @@ class TestSessionLeakPrevention:
             session_id=session_id,
             tenant_id="t1",
             pipeline_id="p1",
+            resolved_spec_json=_spec_json("p1"),
             status=SessionStatus.ACTIVE,
             worker_id="test-worker",
         )
@@ -2214,6 +2198,7 @@ class TestRecoverSessionsWorkerParity:
             session_id="recovered-3",
             tenant_id="t-1",
             pipeline_id="pipe-1",
+            resolved_spec_json=_spec_json("pipe-1"),
             status=SessionStatus.ACTIVE,
             worker_id="test-worker",
             sample_rate=16000,
@@ -2307,39 +2292,42 @@ class TestAssemblyWithRealPipelineSpec:
         assert runtime.effective_diarization is True
 
     @pytest.mark.asyncio
-    async def test_slug_asr_ref_resolves_db_config_for_streaming(self):
-        # Critical: slug-based seed pipelines must resolve
-        # the DB model row on the STREAMING path too (was batch-only).
-        from stt.pipeline.yaml_parser import PipelineYamlParser
+    async def test_slug_asr_ref_resolves_the_spec_row_for_streaming(self):
+        """A slug-referenced ASR model resolves from the session's own spec bundle.
 
-        spec = PipelineYamlParser().parse(
-            'version: "2.0"\nmodels:\n  asr: "whisper-large-v3-turbo"\n'
-        )
+        TASK-1006 — there is no registry fallback any more: a slug the spec does not
+        carry is a hard error, never a database read."""
+        import copy
+
+        from stt.streaming.session_manager import SessionManager
 
         mgr = _make_manager()
-        db_config = MagicMock()
-        mock_reader = MagicMock()
-        mock_reader.get_model_by_slug = AsyncMock(return_value=db_config)
+        bundle = mgr._register_resolved_spec("s-1", resolved_spec(fallback=None))
+        spec = copy.deepcopy(bundle.pipeline_specs[bundle.runtime_key])
+        spec_row = bundle.model_configs[spec.models.asr.slug]
         loaded = MagicMock()
-        loaded.format = AiModelFormat.SAFETENSOR
-        loaded.model_slug = "whisper-large-v3-turbo"
+        loaded.format = spec_row.format
+        loaded.model_slug = spec_row.slug
         # AsyncMock (not MagicMock): the loader also awaits `pin_many` while
         # warming/pinning the pipeline's models.
         mock_cache = AsyncMock()
         mock_cache.get_or_load_from_ref = AsyncMock(return_value=loaded)
         mgr._make_asr_callable = MagicMock(return_value=AsyncMock())
 
-        from stt.streaming.session_manager import SessionManager
-
-        with (
-            patch("stt.models.get_model_cache", return_value=mock_cache),
-            patch(
-                "stt.pipeline.config_reader.get_model_reader",
-                return_value=mock_reader,
-            ),
-        ):
+        with patch("stt.models.get_model_cache", return_value=mock_cache):
             await SessionManager._load_asr_pipeline(mgr, spec, "s-1", tenant_id="t-9")
 
-        mock_reader.get_model_by_slug.assert_awaited_once_with("whisper-large-v3-turbo", "t-9")
-        kwargs = mock_cache.get_or_load_from_ref.call_args.kwargs
-        assert kwargs["db_model_config"] is db_config
+        asr_calls = [
+            c
+            for c in mock_cache.get_or_load_from_ref.call_args_list
+            if c.kwargs["model_ref"] is spec.models.asr
+        ]
+        assert asr_calls[0].kwargs["db_model_config"] is spec_row
+
+        unknown = copy.deepcopy(spec)
+        unknown.models.asr.slug = "not-in-the-spec"
+        with (
+            patch("stt.models.get_model_cache", return_value=mock_cache),
+            pytest.raises(RuntimeError, match="not part of session s-1's resolved spec"),
+        ):
+            await SessionManager._load_asr_pipeline(mgr, unknown, "s-1", tenant_id="t-9")

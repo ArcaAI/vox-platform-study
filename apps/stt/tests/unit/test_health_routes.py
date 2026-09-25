@@ -5,12 +5,12 @@ Covers:
 - ``/api/v1/live`` — liveness probe (simple)
 - ``/api/v1/ready`` — readiness check including streaming component
 - ``_check_streaming()`` — streaming health helper
-- ``_check_database()`` — database health check
 - ``_check_minio()`` — MinIO health check
 - ``_check_redis()`` — Redis health check
 
 Uses FastAPI TestClient with mocked dependencies to avoid requiring
-real database, MinIO, or Redis connections.
+real MinIO or Redis connections. TASK-1006 — the service has no database, so there is
+no database check.
 """
 
 from __future__ import annotations
@@ -57,6 +57,8 @@ class TestHealthEndpoint:
         assert "service" in data
         assert "version" in data
         assert "timestamp" in data
+        # TASK-1006 — no database connection, so no database component.
+        assert "database" not in data["checks"]
 
 
 # ---------------------------------------------------------------------------
@@ -84,11 +86,6 @@ class TestReadinessEndpoint:
     def test_healthy_when_all_deps_ok(self, client):
         from stt.health.api.routes import ComponentHealth, HealthStatus
 
-        mock_db_session = AsyncMock()
-        mock_db_session.__aenter__ = AsyncMock(return_value=AsyncMock())
-        mock_db_session.__aexit__ = AsyncMock(return_value=False)
-        mock_db_session_ctx = MagicMock(return_value=mock_db_session)
-
         mock_minio = MagicMock()
         mock_minio.health_check.return_value = True
 
@@ -99,7 +96,6 @@ class TestReadinessEndpoint:
         )
 
         with (
-            patch("stt.health.api.routes.get_db_session", mock_db_session_ctx),
             patch("stt.health.api.routes.get_minio_client", return_value=mock_minio),
             patch(
                 "stt.health.api.routes._check_redis",
@@ -113,13 +109,10 @@ class TestReadinessEndpoint:
         data = resp.json()
         assert data["status"] == "healthy"
 
-    def test_unhealthy_when_db_down(self, client):
-        with (
-            patch("stt.health.api.routes.get_db_session", side_effect=RuntimeError("DB down")),
-            patch(
-                "stt.health.api.routes.get_minio_client",
-                return_value=MagicMock(health_check=MagicMock(return_value=True)),
-            ),
+    def test_unhealthy_when_minio_down(self, client):
+        with patch(
+            "stt.health.api.routes.get_minio_client",
+            return_value=MagicMock(health_check=MagicMock(return_value=False)),
         ):
             resp = client.get("/api/v1/ready")
 
@@ -128,12 +121,8 @@ class TestReadinessEndpoint:
         assert data["status"] == "unhealthy"
 
     def test_streaming_not_checked_in_readiness(self, client):
-        """Readiness only checks db, minio, redis — not streaming."""
+        """Readiness only checks minio and redis — not streaming."""
         from stt.health.api.routes import ComponentHealth, HealthStatus
-
-        mock_db_session = AsyncMock()
-        mock_db_session.__aenter__ = AsyncMock(return_value=AsyncMock())
-        mock_db_session.__aexit__ = AsyncMock(return_value=False)
 
         redis_ok = ComponentHealth(
             name="redis",
@@ -142,7 +131,6 @@ class TestReadinessEndpoint:
         )
 
         with (
-            patch("stt.health.api.routes.get_db_session", MagicMock(return_value=mock_db_session)),
             patch(
                 "stt.health.api.routes.get_minio_client",
                 return_value=MagicMock(health_check=MagicMock(return_value=True)),
@@ -227,60 +215,6 @@ class TestCheckStreamingUnit:
             result = _check_streaming()
 
         assert result["status"] == "degraded"
-
-
-# ---------------------------------------------------------------------------
-# _check_database (Unit)
-# ---------------------------------------------------------------------------
-
-
-class TestCheckDatabase:
-    """Tests for _check_database()."""
-
-    @pytest.mark.asyncio
-    async def test_healthy_database(self):
-        from stt.health.api.routes import _check_database
-
-        mock_session = AsyncMock()
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_ctx.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("stt.health.api.routes.get_db_session", return_value=mock_ctx):
-            result = await _check_database()
-
-        assert result.name == "database"
-        assert result.status.value == "healthy"
-        assert result.latency_ms >= 0
-
-    @pytest.mark.asyncio
-    async def test_unhealthy_database(self):
-        from stt.health.api.routes import _check_database
-
-        with patch(
-            "stt.health.api.routes.get_db_session", side_effect=RuntimeError("conn refused")
-        ):
-            result = await _check_database()
-
-        assert result.name == "database"
-        assert result.status.value == "unhealthy"
-        assert "conn refused" in (result.message or "")
-
-    @pytest.mark.asyncio
-    async def test_disabled_database_is_not_unhealthy(self):
-        """TASK-861: the read-only connection is OFF by default, so a
-        DatabaseDisabledError is a DECLARED absence, not a fault. Reporting it
-        as unhealthy fails /health/ready forever and keeps a pod out of the
-        Service Endpoints even though nothing on the agent path needs the DB."""
-        from stt.core.database.connection import DatabaseDisabledError
-        from stt.health.api.routes import _check_database
-
-        with patch("stt.health.api.routes.get_db_session", side_effect=DatabaseDisabledError()):
-            result = await _check_database()
-
-        assert result.name == "database"
-        assert result.status.value == "healthy"
-        assert "disabled" in (result.message or "").lower()
 
 
 # ---------------------------------------------------------------------------

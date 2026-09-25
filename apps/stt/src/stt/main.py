@@ -15,7 +15,6 @@ from hope_env.service_registration import start_registration, stop_registration
 from hope_obs import configure_logging, configure_observability, shutdown_observability
 
 from stt.core.config.settings import Settings, get_settings
-from stt.core.database.connection import close_database, initialize_database
 from stt.core.logging import get_logger
 from stt.core.messaging.broker import close_redis, initialize_redis
 from stt.core.storage.minio_client import close_minio, initialize_minio
@@ -29,7 +28,6 @@ from stt.streaming._runtime import (
 )
 from stt.streaming._runtime import initialize_streaming, shutdown_streaming
 from stt.streaming.api.routes import router as streaming_router
-from stt.transcription.api.routes import router as transcription_router
 from stt.voice_profile.api.routes import router as voice_profile_router
 
 settings = get_settings()
@@ -110,9 +108,9 @@ WARM_DEFAULT_ASR_ON_BOOT_KEY = "stt.warmDefaultAsrOnBoot"
 
 #: Where the gateway answers "which ASR spec would a tenant with no opinion
 #: get?". STT resolves NOTHING itself here: since TASK-861 the agent path reads
-#: no selection from Postgres, and its `database_enabled` is off by default, so
-#: the alternative would be re-opening the DB read that ticket deliberately
-#: closed. Absent route ⇒ one WARN and no warm (the key is default-OFF anyway).
+#: no selection from Postgres, and since TASK-1006 this service has no database
+#: connection at all. Absent route ⇒ one WARN and no warm (the key is default-OFF
+#: anyway).
 DEFAULT_ASR_SPEC_PATH = "/internal/stt/default-asr-spec"
 
 
@@ -231,7 +229,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     set_retention_refresher(refresh_model_cache_retention)
 
     # Startup — infrastructure
-    await initialize_database()
     await initialize_redis()
     await initialize_minio()
     await initialize_streaming()
@@ -351,7 +348,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # per-model cache and die with it.
     await close_minio()
     await close_redis()
-    await close_database()
 
     shutdown_observability(app)
 
@@ -433,7 +429,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(model_resolvable_router)
     # TASK-1005 — the model-residency agent the gateway controller drives.
     app.include_router(residency_router())
-    app.include_router(transcription_router, tags=["Transcription"])
     app.include_router(streaming_router, tags=["Streaming"])
     app.include_router(voice_profile_router, tags=["Voice Profile"])
 

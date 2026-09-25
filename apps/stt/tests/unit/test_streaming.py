@@ -27,6 +27,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
+from tests.helpers.resolved_spec import resolved_spec
+
 # ---------------------------------------------------------------------------
 # Schema Tests
 # ---------------------------------------------------------------------------
@@ -1303,7 +1305,7 @@ class TestSessionManager:
         session = await mgr.create_session(
             session_id="s1",
             tenant_id="t1",
-            pipeline_id="p1",
+            resolved_spec=resolved_spec(primary="p1", fallback=None),
         )
         assert session is not None
         assert session.session_id == "s1"
@@ -1317,12 +1319,16 @@ class TestSessionManager:
         # Create up to capacity (5)
         sessions = []
         for i in range(5):
-            s = await mgr.create_session(f"s{i}", "t1", "p1")
+            s = await mgr.create_session(
+                f"s{i}", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+            )
             assert s is not None
             sessions.append(s)
 
         # 6th should be rejected
-        s6 = await mgr.create_session("s5", "t1", "p1")
+        s6 = await mgr.create_session(
+            "s5", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+        )
         assert s6 is None
         assert mgr.active_session_count == 5
 
@@ -1332,14 +1338,18 @@ class TestSessionManager:
 
     async def test_get_session(self):
         mgr = self._make_manager()
-        await mgr.create_session("s1", "t1", "p1")
+        await mgr.create_session(
+            "s1", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+        )
         assert mgr.get_session("s1") is not None
         assert mgr.get_session("nonexistent") is None
         await mgr.remove_session("s1")
 
     async def test_remove_session(self):
         mgr = self._make_manager()
-        await mgr.create_session("s1", "t1", "p1")
+        await mgr.create_session(
+            "s1", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+        )
         assert mgr.active_session_count == 1
         await mgr.remove_session("s1")
         assert mgr.active_session_count == 0
@@ -1347,8 +1357,12 @@ class TestSessionManager:
 
     async def test_list_sessions(self):
         mgr = self._make_manager()
-        await mgr.create_session("s1", "t1", "p1")
-        await mgr.create_session("s2", "t1", "p2")
+        await mgr.create_session(
+            "s1", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+        )
+        await mgr.create_session(
+            "s2", "t1", resolved_spec=resolved_spec(primary="p2", fallback=None)
+        )
         sessions = mgr.list_sessions()
         assert len(sessions) == 2
         session_ids = {s["session_id"] for s in sessions}
@@ -1375,7 +1389,9 @@ class TestSessionManager:
 
     async def test_reap_expired_sessions(self):
         mgr = self._make_manager()
-        s = await mgr.create_session("s1", "t1", "p1")
+        s = await mgr.create_session(
+            "s1", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+        )
 
         # Artificially set last_activity to 120s ago
         old_time = (datetime.utcnow() - timedelta(seconds=120)).isoformat()

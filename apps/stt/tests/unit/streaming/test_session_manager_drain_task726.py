@@ -14,6 +14,7 @@ import pytest
 
 from stt.core.exceptions import SessionManagerDrainingError
 from stt.streaming.session_manager import SessionManager
+from tests.helpers.resolved_spec import resolved_spec
 
 
 class _FakeMgr:
@@ -53,7 +54,10 @@ class TestCreateSessionRejectsWhileDraining:
 
         with pytest.raises(SessionManagerDrainingError):
             await SessionManager.create_session(
-                mgr, session_id="s1", tenant_id="t1", pipeline_id="p1"
+                mgr,
+                session_id="s1",
+                tenant_id="t1",
+                resolved_spec=resolved_spec(primary="p1", fallback=None),
             )
 
     @pytest.mark.asyncio
@@ -72,7 +76,10 @@ class TestCreateSessionRejectsWhileDraining:
 
         with pytest.raises(SessionManagerDrainingError):
             await SessionManager.create_session(
-                mgr, session_id="s1", tenant_id="t1", pipeline_id="p1"
+                mgr,
+                session_id="s1",
+                tenant_id="t1",
+                resolved_spec=resolved_spec(primary="p1", fallback=None),
             )
 
 

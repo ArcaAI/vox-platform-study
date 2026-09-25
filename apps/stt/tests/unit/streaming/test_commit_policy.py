@@ -15,6 +15,7 @@ import pytest
 
 from stt.streaming.commit_policy import LocalAgreementPolicy
 from stt.streaming.schemas import SegmentResult
+from tests.helpers.resolved_spec import resolved_spec
 
 # ---------------------------------------------------------------------------
 # LocalAgreementPolicy — pure policy
@@ -267,7 +268,9 @@ class TestCreateSessionCommitPolicy:
         ):
             mock_consumer.return_value = AsyncMock()
             mock_listener.return_value = AsyncMock()
-            session = await mgr.create_session("s1", "t1", "p1")
+            session = await mgr.create_session(
+                "s1", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+            )
 
         assert session is not None
         assert isinstance(mgr._commit_policies.get("s1"), LocalAgreementPolicy)
@@ -288,7 +291,9 @@ class TestCreateSessionCommitPolicy:
         ):
             mock_consumer.return_value = AsyncMock()
             mock_listener.return_value = AsyncMock()
-            session = await mgr.create_session("s1", "t1", "p1")
+            session = await mgr.create_session(
+                "s1", "t1", resolved_spec=resolved_spec(primary="p1", fallback=None)
+            )
 
         assert session is not None
         assert "s1" not in mgr._commit_policies

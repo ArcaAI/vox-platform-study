@@ -7,16 +7,17 @@ Focus on testing behavior outcomes:
 - NOT just that mocks were called
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from stt.core.exceptions import NotFoundError, TranscriptionError
+from stt.core.exceptions import TranscriptionError
 from stt.transcription.dto import TranscriptionResult
 from stt.transcription.workers.transcribe_file import (
     _fail_job,
     _transcribe_file_async,
 )
+from tests.helpers.resolved_spec import resolved_spec as make_spec
 
 # =============================================================================
 # Test Fixtures for Complete Response Structures
@@ -67,7 +68,6 @@ class TestTranscribeFileWorker:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
             patch("stt.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
         ):
 
@@ -91,12 +91,6 @@ class TestTranscribeFileWorker:
             )
             mock_blob.return_value = mock_blob_service
 
-            mock_pipeline_reader = AsyncMock()
-            mock_pipeline_config = MagicMock()
-            mock_pipeline_config.id = "p-789"
-            mock_pipeline_reader.get_pipeline = AsyncMock(return_value=mock_pipeline_config)
-            mock_reader.return_value = mock_pipeline_reader
-
             mock_batch_service = AsyncMock()
             mock_batch_service.transcribe = AsyncMock(
                 return_value=create_complete_transcription_result(text="Hello world")
@@ -106,7 +100,7 @@ class TestTranscribeFileWorker:
             await _transcribe_file_async(
                 job_id="j-123",
                 tenant_id="t-456",
-                pipeline_id="p-789",
+                resolved_spec=make_spec(),
                 audio_uri="s3://bucket/audio.wav",
                 consultation_id="c-111",
             )
@@ -115,8 +109,8 @@ class TestTranscribeFileWorker:
             assert job_completed, "Job should be marked as completed"
 
     @pytest.mark.asyncio
-    async def test_pipeline_not_found_fails_job_with_correct_error(self):
-        """Verify pipeline not found results in job failure with descriptive error."""
+    async def test_job_without_a_resolved_spec_fails_with_a_named_error(self):
+        """TASK-1006 — no spec, no engine: the job fails by name and is not retried."""
         import dramatiq
 
         captured_error_code = None
@@ -130,7 +124,6 @@ class TestTranscribeFileWorker:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
         ):
 
             mock_api_client = AsyncMock()
@@ -140,25 +133,16 @@ class TestTranscribeFileWorker:
 
             mock_blob.return_value = AsyncMock()
 
-            mock_pipeline_reader = AsyncMock()
-            mock_pipeline_reader.get_pipeline = AsyncMock(
-                side_effect=NotFoundError("Pipeline 'nonexistent' not found")
-            )
-            mock_reader.return_value = mock_pipeline_reader
-
             with pytest.raises(dramatiq.middleware.SkipMessage):
                 await _transcribe_file_async(
                     job_id="j-123",
                     tenant_id="t-456",
-                    pipeline_id="nonexistent",
                     audio_uri="s3://bucket/audio.wav",
+                    resolved_spec=None,
                 )
 
-            # Test actual error handling behavior
-            assert captured_error_code is not None
-            assert (
-                "not found" in captured_error_message.lower() or "PIPELINE" in captured_error_code
-            )
+            assert captured_error_code == "RESOLVED_SPEC_REQUIRED"
+            assert "resolved_spec" in captured_error_message
 
     @pytest.mark.asyncio
     async def test_fail_job_sends_correct_error_details(self):
@@ -222,7 +206,6 @@ class TestTranscribeFileErrorHandling:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
             patch("stt.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
         ):
 
@@ -235,10 +218,6 @@ class TestTranscribeFileErrorHandling:
             mock_blob_service.download_audio = AsyncMock(return_value=b"audio data")
             mock_blob.return_value = mock_blob_service
 
-            mock_pipeline_reader = AsyncMock()
-            mock_pipeline_reader.get_pipeline = AsyncMock(return_value=MagicMock())
-            mock_reader.return_value = mock_pipeline_reader
-
             mock_batch_service = AsyncMock()
             mock_batch_service.transcribe = AsyncMock(
                 side_effect=TranscriptionError("Model inference failed")
@@ -249,7 +228,7 @@ class TestTranscribeFileErrorHandling:
                 await _transcribe_file_async(
                     job_id="j-123",
                     tenant_id="t-456",
-                    pipeline_id="p-789",
+                    resolved_spec=make_spec(),
                     audio_uri="s3://bucket/audio.wav",
                 )
 
@@ -267,7 +246,6 @@ class TestTranscribeFileErrorHandling:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
         ):
 
             mock_api_client = AsyncMock()
@@ -282,15 +260,11 @@ class TestTranscribeFileErrorHandling:
             )
             mock_blob.return_value = mock_blob_service
 
-            mock_pipeline_reader = AsyncMock()
-            mock_pipeline_reader.get_pipeline = AsyncMock(return_value=MagicMock())
-            mock_reader.return_value = mock_pipeline_reader
-
             with pytest.raises(RuntimeError):
                 await _transcribe_file_async(
                     job_id="j-123",
                     tenant_id="t-456",
-                    pipeline_id="p-789",
+                    resolved_spec=make_spec(),
                     audio_uri="s3://bucket/audio.wav",
                 )
 
@@ -309,7 +283,6 @@ class TestTranscribeFileErrorHandling:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
             patch("stt.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
         ):
 
@@ -327,10 +300,6 @@ class TestTranscribeFileErrorHandling:
             )
             mock_blob.return_value = mock_blob_service
 
-            mock_pipeline_reader = AsyncMock()
-            mock_pipeline_reader.get_pipeline = AsyncMock(return_value=MagicMock())
-            mock_reader.return_value = mock_pipeline_reader
-
             mock_batch_service = AsyncMock()
             mock_batch_service.transcribe = AsyncMock(
                 return_value=create_complete_transcription_result()
@@ -340,7 +309,7 @@ class TestTranscribeFileErrorHandling:
             await _transcribe_file_async(
                 job_id="j-123",
                 tenant_id="t-456",
-                pipeline_id="p-789",
+                resolved_spec=make_spec(),
                 audio_uri="s3://bucket/audio.wav",
                 consultation_id=None,  # No consultation
             )
@@ -360,7 +329,6 @@ class TestTranscribeFileErrorHandling:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
             patch("stt.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
         ):
 
@@ -381,10 +349,6 @@ class TestTranscribeFileErrorHandling:
             )
             mock_blob.return_value = mock_blob_service
 
-            mock_pipeline_reader = AsyncMock()
-            mock_pipeline_reader.get_pipeline = AsyncMock(return_value=MagicMock())
-            mock_reader.return_value = mock_pipeline_reader
-
             mock_batch_service = AsyncMock()
             mock_batch_service.transcribe = AsyncMock(
                 return_value=create_complete_transcription_result()
@@ -394,115 +358,10 @@ class TestTranscribeFileErrorHandling:
             await _transcribe_file_async(
                 job_id="j-123",
                 tenant_id="t-456",
-                pipeline_id="p-789",
+                resolved_spec=make_spec(),
                 audio_uri="s3://bucket/audio.wav",
                 consultation_id="c-111",  # Has consultation but creation fails
             )
 
             # Job should still complete despite context item failure
             assert job_completed
-
-
-# =============================================================================
-# Pipeline Config Tests — verify pipeline is the sole source of truth
-# =============================================================================
-
-
-class TestPipelineConfigUsedDirectly:
-    """Tests that transcribe_file worker uses pipeline config directly without overrides.
-
-    Verifies that:
-    - Pipeline inference config (language, code_switching) is used as-is
-    - No per-request overrides are applied
-    """
-
-    def _make_pipeline_config(
-        self,
-        language: str = "en",
-        code_switching: bool = False,
-    ) -> MagicMock:
-        """Create a pipeline config mock with explicit inference defaults."""
-        config = MagicMock()
-        config.id = "p-789"
-        config.spec.inference.language = language
-        config.spec.inference.code_switching = code_switching
-        config.spec.preprocessing.vad.enabled = False
-        config.spec.diarization.enabled = False
-        return config
-
-    async def _run_worker(
-        self,
-        pipeline_config: MagicMock,
-    ) -> None:
-        """Run _transcribe_file_async with all external deps mocked."""
-        with (
-            patch("stt.transcription.workers.transcribe_file.get_settings") as mock_settings,
-            patch(
-                "stt.transcription.workers.transcribe_file.TranscriptionEventPublisher"
-            ) as mock_pub_cls,
-            patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
-            patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
-            patch("stt.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
-        ):
-
-            mock_settings.return_value = MagicMock()
-
-            mock_publisher = AsyncMock()
-            mock_publisher.connect = AsyncMock()
-            mock_publisher.close = AsyncMock()
-            mock_publisher.publish_status = AsyncMock()
-            mock_publisher.publish_progress = AsyncMock()
-            mock_publisher.publish_chunk = AsyncMock()
-            mock_publisher.publish_transcript = AsyncMock()
-            mock_publisher.publish_error = AsyncMock()
-            mock_pub_cls.return_value = mock_publisher
-
-            mock_api_client = AsyncMock()
-            mock_api_client.start_job = AsyncMock()
-            mock_api_client.update_job_progress = AsyncMock()
-            mock_api_client.complete_job = AsyncMock()
-            mock_api_client.create_transcript = AsyncMock(
-                return_value={
-                    "id": "ctx-123",
-                    "contextItemId": "ctx-123",
-                    "type": "TRANSCRIPT",
-                }
-            )
-            mock_api.return_value = mock_api_client
-
-            mock_blob_service = AsyncMock()
-            mock_blob_service.download_audio = AsyncMock(return_value=b"audio data")
-            mock_blob_service.upload_transcript = AsyncMock(return_value="s3://transcript.json")
-            mock_blob.return_value = mock_blob_service
-
-            mock_pipeline_reader = AsyncMock()
-            mock_pipeline_reader.get_pipeline = AsyncMock(return_value=pipeline_config)
-            mock_reader.return_value = mock_pipeline_reader
-
-            mock_batch_service = AsyncMock()
-            mock_batch_service.transcribe = AsyncMock(
-                return_value=create_complete_transcription_result()
-            )
-            mock_batch.return_value = mock_batch_service
-
-            await _transcribe_file_async(
-                job_id="j-1",
-                tenant_id="t-1",
-                pipeline_id="p-789",
-                audio_uri="s3://audio.wav",
-            )
-
-    @pytest.mark.asyncio
-    async def test_pipeline_language_preserved(self):
-        """Verify pipeline language config is used as-is."""
-        cfg = self._make_pipeline_config(language="ml")
-        await self._run_worker(cfg)
-        assert cfg.spec.inference.language == "ml"
-
-    @pytest.mark.asyncio
-    async def test_pipeline_code_switching_preserved(self):
-        """Verify pipeline code_switching config is used as-is."""
-        cfg = self._make_pipeline_config(code_switching=True)
-        await self._run_worker(cfg)
-        assert cfg.spec.inference.code_switching is True

@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from stt.streaming.session_manager import SessionManager
+from tests.helpers.resolved_spec import resolved_spec
 
 
 def _make_manager() -> MagicMock:
@@ -30,6 +31,11 @@ def _make_manager() -> MagicMock:
     mgr._provider_overrides = {}
     mgr._fallback_pipeline_ids = {}
     mgr._session_language_modes = {}
+    # TASK-1006 — the spec is the only selector: register it for real.
+    mgr._session_specs = {}
+    mgr._register_resolved_spec = lambda *a, **k: SessionManager._register_resolved_spec(
+        mgr, *a, **k
+    )
     # TASK-985 L-SESSION — instance attrs created in `__init__`, so a
     # `MagicMock(spec=SessionManager)` (which specs off the CLASS) does not
     # carry them. `_creating` holds the ids of sessions mid-creation so the
@@ -69,8 +75,13 @@ def _make_manager() -> MagicMock:
     return mgr
 
 
-async def _create(mgr, **overrides):
-    kwargs = {"session_id": "s1", "tenant_id": "t1", "pipeline_id": "primary-pipe"}
+async def _create(mgr, fallback_pipeline_id=None, **overrides):
+    """``fallback_pipeline_id`` names the spec's fallback chain (``None`` = no fallback)."""
+    kwargs = {
+        "session_id": "s1",
+        "tenant_id": "t1",
+        "resolved_spec": resolved_spec(primary="primary-pipe", fallback=fallback_pipeline_id),
+    }
     kwargs.update(overrides)
     with (
         patch("stt.streaming.session_manager.StreamSession") as mock_sess_cls,

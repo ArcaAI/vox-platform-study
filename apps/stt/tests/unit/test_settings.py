@@ -21,15 +21,6 @@ class TestSettings:
             assert settings.port == 8861
             assert settings.log_level == "INFO"
 
-    def test_database_defaults(self):
-        """Test database default configuration."""
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings(_env_file=None)
-
-            assert "postgresql" in settings.database_url
-            assert settings.database_pool_size == 5
-            assert settings.database_max_overflow == 10
-
     def test_redis_defaults(self):
         """Test Redis default configuration."""
         with patch.dict(os.environ, {}, clear=True):
@@ -216,17 +207,6 @@ class TestSettings:
             assert settings.host == "127.0.0.1"
             assert settings.port == 9000
             assert settings.log_level == "DEBUG"
-
-    def test_database_url_override(self):
-        """Test database URL override."""
-        env_vars = {
-            "DATABASE_URL": "postgresql+asyncpg://user:pass@db:5432/test",
-        }
-
-        with patch.dict(os.environ, env_vars, clear=True):
-            settings = Settings()
-
-            assert settings.database_url == "postgresql+asyncpg://user:pass@db:5432/test"
 
     def test_redis_url_override(self):
         """Test Redis URL override."""

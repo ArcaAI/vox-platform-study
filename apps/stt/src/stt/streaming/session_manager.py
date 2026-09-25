@@ -37,6 +37,7 @@ from stt.core.exceptions import (
     CloudASRTranscriptionError,
     ModelError,
     ModelNotCacheServedError,
+    ResolvedSpecRequiredError,
     SessionManagerDrainingError,
 )
 from stt.core.metering import BYTE_SOURCE_WIRE, normalize_device
@@ -337,8 +338,8 @@ def _language_state_of(manager: Any, name: str) -> dict[str, Any]:
 def _spec_asr_provider_of(manager: Any, session_id: str, slug: str | None) -> str | None:
     """The ``provider`` the session's spec declares for ASR row *slug* (any chain).
 
-    ``None`` for a self-hosted row, a slug no chain names, or a session without a
-    spec (the deprecated pipeline path carries no provider).
+    ``None`` for a self-hosted row, a slug no chain names, or a session with no
+    registered spec.
     """
     bundle = _spec_bundles_of(manager).get(session_id)
     if bundle is None or not slug:
@@ -1606,7 +1607,8 @@ class SessionManager:
         self,
         session_id: str,
         tenant_id: str,
-        pipeline_id: str,
+        *,
+        resolved_spec: dict[str, Any] | None,
         consultation_id: str | None = None,
         sample_rate: int = 16000,
         audio_bucket_name: str | None = None,
@@ -1614,13 +1616,11 @@ class SessionManager:
         language: str | None = None,
         storage: dict[str, Any] | None = None,
         provider_overrides: dict[str, Any] | None = None,
-        fallback_pipeline_id: str | None = None,
         language_mode: str | None = None,
         start_on: str = "primary",
         auto_switch_enabled: bool | None = None,
         consecutive_failure_threshold: int | None = None,
         channel_count: int = 1,
-        resolved_spec: dict[str, Any] | None = None,
         voice_profiles: list[dict[str, Any]] | None = None,
         language_mode_source: str | None = None,
     ) -> StreamSession | None:
@@ -1632,7 +1632,14 @@ class SessionManager:
         Args:
             session_id: Unique session identifier.
             tenant_id: Tenant identifier.
-            pipeline_id: Pipeline UUID or slug.
+            resolved_spec: The gateway-resolved ``ResolvedAsrSpec`` (wire JSON) — the
+                ONLY selector (TASK-1006). The engine chain, its models, the fallback
+                and the decoder prompt come from it and this method reads NOTHING from
+                Postgres; the session is keyed on its ``runtimeKey`` (primary) and
+                ``fallback.spec.runtimeKey`` (fallback), and the request's
+                ``auto_switch_enabled`` / ``consecutive_failure_threshold`` /
+                ``language_mode`` fill in from it when omitted. ``None`` raises
+                ``ResolvedSpecRequiredError`` before a capacity slot is taken.
             consultation_id: Optional consultation context.
             sample_rate: Audio sample rate in Hz.
             audio_bucket_name: Optional tenant-scoped audio bucket override.
@@ -1646,9 +1653,6 @@ class SessionManager:
                 ``{provider: {api_key, region?, base_url?, model?}}``). Held in
                 memory only; NEVER persisted or logged. Preferred over env creds
                 by the cloud ASR loaders (fail-open per credential).
-            fallback_pipeline_id: Optional tenant fallback pipeline. When set, a
-                per-session ``EngineSwitchController`` can swap the live ASR
-                engine to it (create-time / auto-outage / manual triggers).
             language_mode: Optional end-user language mode id. Resolved
                 against the session's ASR engine at load time into the inference
                 config's language/code_switching/streaming_english_gloss. A mode
@@ -1660,9 +1664,9 @@ class SessionManager:
                 the mode a configured fallback is tried; if none qualifies the
                 create raises ``LanguageModeUnsupportedError`` (mapped to 422).
             start_on: ``'primary'`` (default) or ``'fallback'``.
-                When ``'fallback'`` AND a ``fallback_pipeline_id`` is configured,
+                When ``'fallback'`` AND the spec declares a fallback chain,
                 the runtime is assembled on the fallback pipeline_config from the
-                start while ``primary_pipeline_id`` stays wired, so a later
+                start while the primary stays wired, so a later
                 switch-back to the primary builds it lazily. This is a deliberate
                 user choice (the primary is NOT attempted at create) and is
                 distinct from the load-failure ``created_on_fallback`` path. If
@@ -1675,13 +1679,6 @@ class SessionManager:
             consecutive_failure_threshold: Tenant governance for how many
                 consecutive threshold-class utterance failures arm the auto
                 switch. ``None`` = the controller's default (2).
-            resolved_spec: TASK-861 — the gateway-resolved ``ResolvedAsrSpec``
-                (wire JSON). When present the engine chain, its models, the
-                fallback and the decoder prompt come from it and this method
-                reads NOTHING from Postgres; ``pipeline_id`` /
-                ``fallback_pipeline_id`` become the spec's runtime keys and the
-                request's ``auto_switch_enabled`` / ``consecutive_failure_threshold``
-                / ``language_mode`` fill in from the spec when omitted.
             language_mode_source: TASK-1004 — who declared ``language_mode``
                 (``request`` | ``consultation`` | ``agent`` | ``default``), as the
                 gateway's precedence resolved it; stamped on the session's
@@ -1689,6 +1686,14 @@ class SessionManager:
                 ``request`` for a mode the caller sent, ``agent`` for the spec's own
                 and ``default`` when there is none.
         """
+        # TASK-1006 — the spec is the only selector; refuse before touching
+        # capacity, exactly like the draining refusal below.
+        if resolved_spec is None:
+            raise ResolvedSpecRequiredError(
+                f"session {session_id} carries no resolved_spec; the pre-agent "
+                "pipeline_id path was removed (TASK-1006)"
+            )
+
         # PLANNED scale-down: reject before touching capacity at all. Distinct
         # signal (SessionManagerDrainingError) from the ordinary at-capacity
         # `None` return below, so callers — and streaming/api/routes.py's HTTP
@@ -1722,36 +1727,30 @@ class SessionManager:
         mode_from_spec = False
         language_driven_fallback = False
         try:
-            # TASK-861 — the agent path: register the spec bundle FIRST so every
-            # loader below resolves from it, and let the spec govern the keys.
-            if resolved_spec is not None:
-                bundle = self._register_resolved_spec(session_id, resolved_spec)
-                if pipeline_id != bundle.runtime_key:
-                    logger.warning(
-                        "Session runtime key disagrees with its resolved spec; the spec wins",
-                        session_id=session_id,
-                        requested=pipeline_id,
-                        runtime_key=bundle.runtime_key,
-                    )
-                pipeline_id = bundle.runtime_key
-                fallback_pipeline_id = bundle.fallback_runtime_key
-                if auto_switch_enabled is None:
-                    auto_switch_enabled = bundle.spec.fallback.auto_switch
-                if consecutive_failure_threshold is None:
-                    consecutive_failure_threshold = (
-                        bundle.spec.fallback.switch_after_consecutive_failures
-                    )
-                if not language_mode:
-                    # TASK-938 — the spec backfill must not run over an explicit
-                    # `language`. Promote a declaration that names a catalog mode;
-                    # keep a non-catalog one on `inference.language` below by
-                    # leaving the mode UNSET, which is what stops the resolution in
-                    # `_load_asr_pipeline` from overwriting it. Only a caller who
-                    # declared neither gets the agent's own mode.
-                    language_mode = _language_mode_for_declared_language(language)
-                    if not language_mode and not language:
-                        language_mode = bundle.spec.decoding.language_mode
-                        mode_from_spec = bool(language_mode)
+            # TASK-861 — register the spec bundle FIRST so every loader below
+            # resolves from it. TASK-1006 — its runtime keys ARE the session's keys:
+            # `pipeline_id` below is the primary chain's `runtimeKey` (the ASR
+            # Agent VERSION id), `fallback_pipeline_id` the fallback chain's.
+            bundle = self._register_resolved_spec(session_id, resolved_spec)
+            pipeline_id = bundle.runtime_key
+            fallback_pipeline_id = bundle.fallback_runtime_key
+            if auto_switch_enabled is None:
+                auto_switch_enabled = bundle.spec.fallback.auto_switch
+            if consecutive_failure_threshold is None:
+                consecutive_failure_threshold = (
+                    bundle.spec.fallback.switch_after_consecutive_failures
+                )
+            if not language_mode:
+                # TASK-938 — the spec backfill must not run over an explicit
+                # `language`. Promote a declaration that names a catalog mode;
+                # keep a non-catalog one on `inference.language` below by
+                # leaving the mode UNSET, which is what stops the resolution in
+                # `_load_asr_pipeline` from overwriting it. Only a caller who
+                # declared neither gets the agent's own mode.
+                language_mode = _language_mode_for_declared_language(language)
+                if not language_mode and not language:
+                    language_mode = bundle.spec.decoding.language_mode
+                    mode_from_spec = bool(language_mode)
 
             # Register per-tenant storage routing before any audio I/O. A
             # `storage` descriptor (multi-provider) wins and also pins the audio
@@ -1775,7 +1774,7 @@ class SessionManager:
                 user_id=user_id,
                 # Persisted so crash recovery rebuilds the chain from the spec,
                 # not from a database read (TASK-861).
-                resolved_spec_json=json.dumps(resolved_spec) if resolved_spec is not None else "",
+                resolved_spec_json=json.dumps(resolved_spec),
                 # TASK-891 — persist the effective language mode (the end user's
                 # declaration, or the agent's own when nothing was declared) so a
                 # worker restart resolves the SAME mode. `_session_language_modes`
@@ -2824,17 +2823,14 @@ class SessionManager:
         TASK-861: a key registered by any spec-driven session (runtime keys are
         agent VERSION ids, so two sessions on the same key share the same spec)
         resolves from that bundle — a fresh deep copy per call, because callers
-        mutate ``inference.language`` — and NEVER touches Postgres. Anything
-        else goes to the deprecated pipeline reader (removed in R4; warns on
-        use; fails closed while the DB is disabled).
-
-        Forwards ``tenant_id`` to the deprecated reader so its SQL query rejects
-        pipelines belonging to other tenants (defense in depth).
+        mutate ``inference.language`` — and NEVER touches Postgres. TASK-1006:
+        there is no other source; the pre-agent pipeline reader is gone.
+        ``tenant_id`` is accepted for call-site symmetry only.
 
         Raises
         ------
-        RuntimeError
-            If the pipeline cannot be loaded (missing config, DB error, etc.).
+        ResolvedSpecRequiredError
+            If no registered spec carries ``pipeline_id``.
         """
         bundles = _spec_bundles_of(self)
         # TASK-935 — the requesting session's OWN bundle wins. Runtime keys are agent
@@ -2853,15 +2849,10 @@ class SessionManager:
             if spec is not None:
                 return copy.deepcopy(spec)
 
-        from stt.pipeline.config_reader import get_pipeline_reader
-
-        reader = get_pipeline_reader()
-        pipeline = await reader.get_pipeline(pipeline_id, tenant_id=tenant_id)
-        if pipeline is None:
-            raise RuntimeError(
-                f"Pipeline '{pipeline_id}' not found — cannot create streaming session"
-            )
-        return pipeline.spec
+        raise ResolvedSpecRequiredError(
+            f"No resolved spec carries runtime key '{pipeline_id}' — cannot build its "
+            "engine (the pre-agent pipeline_id path was removed, TASK-1006)"
+        )
 
     async def _load_vad_service(
         self,
@@ -2979,7 +2970,6 @@ class SessionManager:
         real). The gateway lane stops shipping a ref for a disabled stage; this is
         the other half, so neither side has to be trusted alone.
         """
-        from stt.pipeline.config_reader import get_model_reader
         from stt.pipeline.dto import ModelTaskType
 
         model_refs = pipeline_config.models
@@ -3015,11 +3005,8 @@ class SessionManager:
             try:
                 db_cfg = None
                 if not (ref.is_inline and ref.inline) and ref.slug:
-                    # TASK-861 — spec-driven sessions carry every model config;
-                    # only the deprecated pipeline path still reads the registry.
+                    # TASK-861 — the session's spec carries every model config.
                     db_cfg = _spec_model_config_of(self, session_id, ref.slug)
-                    if db_cfg is None and session_id not in _spec_bundles_of(self):
-                        db_cfg = await get_model_reader().get_model_by_slug(ref.slug, tenant_id)
                 loaded = await model_cache.get_or_load_from_ref(
                     model_ref=ref, task_type=task_type, db_model_config=db_cfg
                 )
@@ -3172,26 +3159,15 @@ class SessionManager:
         model_cache = get_model_cache()
         asr_ref = pipeline_config.models.asr
 
-        # The seeded matrix pipelines reference ASR
-        # models by CATALOG SLUG; only batch resolved slugs
-        # before, so streaming raised ModelLoadError on every slug-based
-        # pipeline. Resolve the DB row here (tenant-scoped, mirroring
-        # batch_service._load_models).
+        # A slug-referenced ASR model resolves from the session's spec bundle
+        # (TASK-861); a slug the spec does not carry is a hard error — there is
+        # no registry fallback (TASK-1006).
         db_model_config = None
         if not (asr_ref.is_inline and asr_ref.inline) and asr_ref.slug:
-            # TASK-861 — a spec-driven session resolves the ASR row from its
-            # bundle; a slug the spec does not carry is a hard error (never a
-            # database fallback on the agent path).
             db_model_config = _spec_model_config_of(self, session_id, asr_ref.slug)
-            if db_model_config is None and session_id in _spec_bundles_of(self):
+            if db_model_config is None:
                 raise RuntimeError(
                     f"ASR model '{asr_ref.slug}' is not part of session {session_id}'s resolved spec"
-                )
-            if db_model_config is None:
-                from stt.pipeline.config_reader import get_model_reader
-
-                db_model_config = await get_model_reader().get_model_by_slug(
-                    asr_ref.slug, tenant_id
                 )
 
         # Cloud BYOK: bypass the shared by-slug cache when a per-tenant
@@ -3282,17 +3258,12 @@ class SessionManager:
         else:
             pending[session_id] = receipt
 
-        # TASK-861 — the agent's LITERAL prompt wins; the template-id lookup
-        # (a database read) survives only for the deprecated pipeline path.
+        # TASK-861 — the agent's LITERAL prompt is the only prompt source; the
+        # template-id lookup (a database read) went with the pipeline path (TASK-1006).
         prompt_text = getattr(inference_config, "initial_prompt_text", None)
         initial_prompt: str | None = (
             prompt_text if isinstance(prompt_text, str) and prompt_text else None
         )
-        initial_prompt_id = getattr(inference_config, "initial_prompt", None)
-        if initial_prompt is None and initial_prompt_id:
-            from stt.core.initial_prompt import get_initial_prompt
-
-            initial_prompt = await get_initial_prompt(initial_prompt_id)
         # Prepend the code-switch priming prompt ahead of any
         # template-configured initial prompt; the inference worker further
         # composes this with per-utterance carry-forward text each utterance.
@@ -6636,23 +6607,30 @@ class SessionManager:
                         continue
                     meta = SessionMetadata.from_redis_dict(data)
                     session_id_for_cleanup = meta.session_id
-                    # TASK-861 — a spec-driven session rebuilds from its persisted
-                    # spec; a corrupt one is skipped rather than guessed.
-                    recovered_bundle = None
-                    if isinstance(meta.resolved_spec_json, str) and meta.resolved_spec_json:
-                        try:
-                            recovered_bundle = self._register_resolved_spec(
-                                meta.session_id, json.loads(meta.resolved_spec_json)
-                            )
-                        except (
-                            Exception
-                        ) as spec_exc:  # noqa: BLE001 — recovery must not crash the sweep
-                            logger.warning(
-                                "Cannot recover session — persisted resolved spec is invalid",
-                                session_id=meta.session_id,
-                                error=str(spec_exc),
-                            )
-                            continue
+                    # TASK-861 — a session rebuilds from its persisted spec; a
+                    # corrupt one is skipped rather than guessed. TASK-1006 — so is
+                    # one with NO spec (opened on the removed pre-agent pipeline
+                    # path): there is nothing left to rebuild its engine from.
+                    if not (isinstance(meta.resolved_spec_json, str) and meta.resolved_spec_json):
+                        logger.warning(
+                            "Cannot recover session — it carries no persisted resolved spec",
+                            session_id=meta.session_id,
+                            error_code=ResolvedSpecRequiredError.error_code,
+                        )
+                        continue
+                    try:
+                        recovered_bundle = self._register_resolved_spec(
+                            meta.session_id, json.loads(meta.resolved_spec_json)
+                        )
+                    except (
+                        Exception
+                    ) as spec_exc:  # noqa: BLE001 — recovery must not crash the sweep
+                        logger.warning(
+                            "Cannot recover session — persisted resolved spec is invalid",
+                            session_id=meta.session_id,
+                            error=str(spec_exc),
+                        )
+                        continue
 
                     # Only recover active sessions assigned to this worker (or unassigned).
                     # TASK-935 — a session this sweep does NOT recover must not leave its
@@ -6689,10 +6667,8 @@ class SessionManager:
                     # an `ml-en` pair) instead of the mode the session opened on.
                     # After the ownership/status gates above, so a session this
                     # worker does not claim never leaves an entry behind.
-                    recovered_mode = meta.language_mode or (
-                        recovered_bundle.spec.decoding.language_mode
-                        if recovered_bundle is not None
-                        else None
+                    recovered_mode = (
+                        meta.language_mode or recovered_bundle.spec.decoding.language_mode
                     )
                     if recovered_mode:
                         self._session_language_modes[meta.session_id] = recovered_mode
@@ -6700,20 +6676,14 @@ class SessionManager:
                     # names the same declaration the session opened with.
                     _language_state_of(self, _LANGUAGE_SOURCES)[meta.session_id] = (
                         _recovered_language_source(
-                            meta,
-                            (
-                                recovered_bundle.spec.decoding.language_mode
-                                if recovered_bundle is not None
-                                else None
-                            ),
+                            meta, recovered_bundle.spec.decoding.language_mode
                         )
                     )
 
                     session = StreamSession(metadata=meta, redis=self._redis)
 
-                    # Load pipeline config and models for recovered session.
-                    # Propagate the session's tenant so a
-                    # crash-restart still applies the tenant filter.
+                    # Load pipeline config and models for recovered session — from
+                    # the bundle registered above.
                     pipeline_config = await self._load_pipeline_config(
                         meta.pipeline_id, tenant_id=meta.tenant_id, session_id=meta.session_id
                     )

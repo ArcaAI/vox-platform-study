@@ -7,7 +7,7 @@ Anti-pattern prevention:
 - #1 (Testing mocks): Tests verify actual outcomes (events published,
   job status transitions) not just that mocks were called.
 - #3 (Blind mocking): Only external boundaries are mocked (Redis,
-  API Gateway, MinIO, pipeline reader, batch service). The publisher
+  API Gateway, MinIO, effective-config pull, batch service). The publisher
   itself is real — we inject a mock Redis into it so we can observe
   the actual events it publishes.
 - #4 (Incomplete mocks): Mock objects include complete response
@@ -30,6 +30,7 @@ from stt.transcription.workers.transcribe_file import (
     _fail_job,
     _transcribe_file_async,
 )
+from tests.helpers.resolved_spec import resolved_spec as make_spec
 
 # =============================================================================
 # Realistic fixtures — complete structures matching production data
@@ -68,31 +69,18 @@ def _make_result(
     )
 
 
-def _make_pipeline_config(
-    vad_enabled: bool = False,
-    diarization_enabled: bool = False,
-) -> MagicMock:
-    """Create a pipeline config mock with all necessary nested attributes."""
-    config = MagicMock()
-    config.id = "p-789"
-    config.spec.preprocessing.vad.enabled = vad_enabled
-    config.spec.diarization.enabled = diarization_enabled
-    config.spec.diarization.segment_silence_padding_ms = 100
-    return config
-
-
 def _patch_worker_deps(
     api_client: AsyncMock | None = None,
     blob_service: AsyncMock | None = None,
-    pipeline_reader: AsyncMock | None = None,
     batch_service: AsyncMock | None = None,
-    pipeline_config: MagicMock | None = None,
     result: TranscriptionResult | None = None,
 ):
     """Return a tuple of context managers + mocks for worker dependencies.
 
-    Returns (p1, p2, p3, p4, p5, api, blob, reader, batch) where p1-p5 are
-    patch context managers and api/blob/reader/batch are the mock instances.
+    Returns (p1, p2, p3, p4, p5, api, blob, eff, batch) where p1-p5 are
+    patch context managers and api/blob/eff/batch are the mock instances
+    (``eff`` is the effective-config client the BYO provider overrides are
+    pulled from).
     """
     # --- API Client ---
     _api = api_client if api_client is not None else AsyncMock()
@@ -111,11 +99,9 @@ def _patch_worker_deps(
         _blob.upload_processed_audio = AsyncMock(return_value="s3://t/processed.wav")
         _blob.upload_batch_metadata = AsyncMock(return_value="s3://t/metadata.json")
 
-    # --- Pipeline Reader ---
-    _reader = pipeline_reader if pipeline_reader is not None else AsyncMock()
-    _pc = pipeline_config or _make_pipeline_config()
-    if pipeline_reader is None:
-        _reader.get_pipeline = AsyncMock(return_value=_pc)
+    # --- Effective-config pull (BYO provider overrides) ---
+    _eff = MagicMock()
+    _eff.get_provider_overrides = AsyncMock(return_value={})
 
     # --- Batch Service ---
     _batch = batch_service if batch_service is not None else AsyncMock()
@@ -131,7 +117,8 @@ def _patch_worker_deps(
         patch("stt.transcription.workers.transcribe_file.get_api_client", return_value=_api),
         patch("stt.transcription.workers.transcribe_file.get_blob_service", return_value=_blob),
         patch(
-            "stt.transcription.workers.transcribe_file.get_pipeline_reader", return_value=_reader
+            "stt.transcription.workers.transcribe_file.get_effective_config_client",
+            return_value=_eff,
         ),
         patch("stt.transcription.workers.transcribe_file.get_batch_service", return_value=_batch),
         patch(
@@ -139,7 +126,7 @@ def _patch_worker_deps(
         ),
         _api,
         _blob,
-        _reader,
+        _eff,
         _batch,
     )
 
@@ -237,13 +224,13 @@ class TestWorkerPubSubHappyPath:
     @pytest.mark.asyncio
     async def test_successful_job_publishes_full_event_sequence(self, pubsub_capture):
         """Verify: PROCESSING -> transcript -> COMPLETED events in order."""
-        p1, p2, p3, p4, p5, api, blob, reader, batch = _patch_worker_deps()
+        p1, p2, p3, p4, p5, api, blob, _eff, batch = _patch_worker_deps()
 
         with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-100",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
             )
 
@@ -273,7 +260,7 @@ class TestWorkerPubSubHappyPath:
             await _transcribe_file_async(
                 job_id="j-101",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
             )
 
@@ -297,7 +284,7 @@ class TestWorkerPubSubHappyPath:
             await _transcribe_file_async(
                 job_id="j-102",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
             )
 
@@ -319,7 +306,7 @@ class TestWorkerPubSubHappyPath:
             await _transcribe_file_async(
                 job_id="j-103",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
             )
 
@@ -341,7 +328,7 @@ class TestWorkerPubSubHappyPath:
             await _transcribe_file_async(
                 job_id="j-104",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
             )
 
@@ -377,7 +364,7 @@ class TestWorkerWithConsultation:
             await _transcribe_file_async(
                 job_id="j-200",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
                 consultation_id="c-999",
             )
@@ -413,7 +400,7 @@ class TestWorkerWithConsultation:
             await _transcribe_file_async(
                 job_id="j-usage",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
                 consultation_id="c-usage",
             )
@@ -453,7 +440,7 @@ class TestWorkerWithConsultation:
             await _transcribe_file_async(
                 job_id="j-959",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
                 consultation_id="c-959",
             )
@@ -482,7 +469,7 @@ class TestWorkerWithConsultation:
             await _transcribe_file_async(
                 job_id="j-959b",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
                 consultation_id="c-959b",
             )
@@ -510,7 +497,7 @@ class TestWorkerWithConsultation:
             await _transcribe_file_async(
                 job_id="j-noeng",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
                 consultation_id="c-noeng",
             )
@@ -534,7 +521,7 @@ class TestWorkerWithConsultation:
             await _transcribe_file_async(
                 job_id="j-201",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
                 consultation_id=None,
             )
@@ -561,7 +548,7 @@ class TestWorkerWithConsultation:
             await _transcribe_file_async(
                 job_id="j-202",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
                 consultation_id="c-123",
             )
@@ -586,12 +573,12 @@ class TestWorkerErrorPaths:
         api.start_job = AsyncMock()
         api.fail_job = AsyncMock()
 
-        reader = AsyncMock()
-        reader.get_pipeline = AsyncMock(side_effect=NotFoundError("Pipeline gone"))
+        blob = AsyncMock()
+        blob.download_audio = AsyncMock(side_effect=NotFoundError("Audio gone"))
 
         p1, p2, p3, p4, p5, *_ = _patch_worker_deps(
             api_client=api,
-            pipeline_reader=reader,
+            blob_service=blob,
         )
 
         with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
@@ -599,7 +586,7 @@ class TestWorkerErrorPaths:
                 await _transcribe_file_async(
                     job_id="j-300",
                     tenant_id="t-1",
-                    pipeline_id="p-bad",
+                    resolved_spec=make_spec(),
                     audio_uri="s3://audio.wav",
                 )
 
@@ -607,7 +594,7 @@ class TestWorkerErrorPaths:
         assert len(pubsub_capture.error_events) == 1
         err = pubsub_capture.error_events[0]["data"]
         assert err["errorCode"] == "NOT_FOUND"
-        assert "Pipeline gone" in err["message"]
+        assert "Audio gone" in err["message"]
 
         # FAILED status event published
         failed = [e for e in pubsub_capture.status_events if e["data"]["status"] == "FAILED"]
@@ -637,7 +624,7 @@ class TestWorkerErrorPaths:
                 await _transcribe_file_async(
                     job_id="j-301",
                     tenant_id="t-1",
-                    pipeline_id="p-1",
+                    resolved_spec=make_spec(),
                     audio_uri="s3://audio.wav",
                 )
 
@@ -667,7 +654,7 @@ class TestWorkerErrorPaths:
                 await _transcribe_file_async(
                     job_id="j-302",
                     tenant_id="t-1",
-                    pipeline_id="p-1",
+                    resolved_spec=make_spec(),
                     audio_uri="s3://audio.wav",
                 )
 
@@ -694,7 +681,7 @@ class TestWorkerErrorPaths:
                 await _transcribe_file_async(
                     job_id="j-303",
                     tenant_id="t-1",
-                    pipeline_id="p-1",
+                    resolved_spec=make_spec(),
                     audio_uri="s3://audio.wav",
                 )
 
@@ -751,7 +738,7 @@ class TestWorkerProgressCallback:
             await _transcribe_file_async(
                 job_id="j-400",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
             )
 
@@ -798,7 +785,7 @@ class TestWorkerProgressCallback:
             await _transcribe_file_async(
                 job_id="j-401",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
             )
 
@@ -866,7 +853,7 @@ class TestWorkerChunkCallback:
             await _transcribe_file_async(
                 job_id="j-500",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
             )
 
@@ -1002,7 +989,7 @@ class TestWorkerWithPublisherDisabled:
             await _transcribe_file_async(
                 job_id="j-700",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
             )
 
@@ -1054,7 +1041,7 @@ class TestWorkerWithPublisherDisabled:
             await _transcribe_file_async(
                 job_id="j-701",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
             )
 
@@ -1090,7 +1077,7 @@ class TestWorkerStorageDescriptor:
             await _transcribe_file_async(
                 job_id="j-stg-1",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://c1/audio.wav",
                 storage=descriptor,
             )
@@ -1109,7 +1096,7 @@ class TestWorkerStorageDescriptor:
             await _transcribe_file_async(
                 job_id="j-stg-2",
                 tenant_id="t-1",
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://audio.wav",
                 audio_bucket_name="hope-audio-acme",
             )

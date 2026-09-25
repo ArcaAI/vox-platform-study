@@ -17,10 +17,8 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from hope_env import BuildInfoReader
-from sqlalchemy import text
 
 from stt.core.config.settings import get_settings
-from stt.core.database.connection import get_db_session
 from stt.core.storage.minio_client import get_minio_client
 
 logger = structlog.get_logger(__name__)
@@ -104,13 +102,6 @@ async def health_check() -> dict[str, Any]:
 
     checks: dict[str, dict[str, Any]] = {}
     overall_status = HealthStatus.HEALTHY
-
-    db_health = await _check_database()
-    checks["database"] = _component_to_dict(db_health)
-    if db_health.status == HealthStatus.UNHEALTHY:
-        overall_status = HealthStatus.UNHEALTHY
-    elif db_health.status == HealthStatus.DEGRADED and overall_status != HealthStatus.UNHEALTHY:
-        overall_status = HealthStatus.DEGRADED
 
     minio_health = await _check_minio()
     checks["minio"] = _component_to_dict(minio_health)
@@ -214,7 +205,7 @@ async def readiness_check() -> JSONResponse | dict[str, str]:
     streaming sessions — k8s removes it from the Service Endpoints on the
     next probe failure, no gateway-side routing change needed. See
     """
-    for check_fn in [_check_database, _check_minio, _check_redis]:
+    for check_fn in [_check_minio, _check_redis]:
         result = await check_fn()
         if result.status == HealthStatus.UNHEALTHY:
             return JSONResponse(
@@ -256,45 +247,6 @@ def _component_to_dict(component: ComponentHealth) -> dict[str, Any]:
     if component.message:
         result["message"] = component.message
     return result
-
-
-async def _check_database() -> ComponentHealth:
-    """Check database connectivity.
-
-    TASK-861: the read-only Postgres connection is OFF by default and nothing on
-    the agent path reads it (selection arrives as a gateway-resolved spec), so a
-    ``DatabaseDisabledError`` is a DECLARED absence, not a fault. Reporting it as
-    unhealthy makes ``/health/ready`` fail permanently, which keeps the pod out
-    of the Service Endpoints and stops STT serving at all.
-    """
-    from stt.core.database.connection import DatabaseDisabledError
-
-    start = time.monotonic()
-    try:
-        async with get_db_session() as session:
-            await session.execute(text("SELECT 1"))
-        latency = (time.monotonic() - start) * 1000
-        return ComponentHealth(
-            name="database",
-            status=HealthStatus.HEALTHY,
-            latency_ms=latency,
-        )
-    except DatabaseDisabledError:
-        return ComponentHealth(
-            name="database",
-            status=HealthStatus.HEALTHY,
-            latency_ms=(time.monotonic() - start) * 1000,
-            message="disabled by configuration (STT_DATABASE_ENABLED=false); not on the agent path",
-        )
-    except Exception as e:
-        latency = (time.monotonic() - start) * 1000
-        logger.warning("Database health check failed", error=str(e))
-        return ComponentHealth(
-            name="database",
-            status=HealthStatus.UNHEALTHY,
-            latency_ms=latency,
-            message=str(e)[:200],
-        )
 
 
 async def _check_minio() -> ComponentHealth:
@@ -517,67 +469,6 @@ async def get_cached_model_info(slug: str) -> dict[str, Any]:
         raise
     except Exception as e:
         logger.error("Failed to get model info", slug=slug, error=str(e))
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@internal_router.get("/pipelines/loaded")
-async def get_loaded_pipelines() -> dict[str, Any]:
-    """
-    Get list of pipelines with loaded models.
-
-    Returns pipelines where all required models are currently cached.
-    """
-    try:
-        from stt.models.cache import get_model_cache
-        from stt.pipeline.config_reader import get_pipeline_reader
-
-        cache = get_model_cache()
-        pipeline_reader = get_pipeline_reader()
-
-        # Get cache stats for current model list
-        stats = cache.stats()
-        cached_slugs = {m["slug"] for m in stats.models}
-
-        # Get enabled pipelines. TASK-861: the pipeline table is deprecated and
-        # the DB is off by default — report an empty, explicitly-disabled list
-        # rather than a 500 (this is a readiness aid, not selection).
-        from stt.core.database.connection import DatabaseDisabledError
-
-        try:
-            pipelines = await pipeline_reader.get_enabled_pipelines()
-        except DatabaseDisabledError:
-            return {
-                "total_pipelines": 0,
-                "ready_pipelines": 0,
-                "pipelines": [],
-                "database": "disabled",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-
-        ready_pipelines = []
-        for pipeline in pipelines:
-            required_slugs = set(pipeline.get_required_model_slugs())
-            is_ready = required_slugs.issubset(cached_slugs)
-
-            ready_pipelines.append(
-                {
-                    "id": pipeline.id,
-                    "slug": pipeline.slug,
-                    "name": pipeline.name,
-                    "required_models": list(required_slugs),
-                    "is_ready": is_ready,
-                    "missing_models": list(required_slugs - cached_slugs),
-                }
-            )
-
-        return {
-            "total_pipelines": len(pipelines),
-            "ready_pipelines": sum(1 for p in ready_pipelines if p["is_ready"]),
-            "pipelines": ready_pipelines,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-    except Exception as e:
-        logger.error("Failed to get loaded pipelines", error=str(e))
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

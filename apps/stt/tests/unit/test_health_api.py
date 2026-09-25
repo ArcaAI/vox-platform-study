@@ -10,7 +10,6 @@ import pytest
 from stt.health.api.routes import (
     ComponentHealth,
     HealthStatus,
-    _check_database,
     _check_minio,
     _component_to_dict,
     cleanup_sessions,
@@ -109,7 +108,6 @@ class TestHealthCheckEndpoint:
     async def test_health_check_returns_status(self):
         """Test health check returns overall status with checks."""
         with (
-            patch("stt.health.api.routes._check_database") as mock_db,
             patch("stt.health.api.routes._check_minio") as mock_minio,
             patch("stt.health.api.routes._check_redis") as mock_redis,
             patch("stt.health.api.routes._check_streaming") as mock_streaming,
@@ -124,7 +122,6 @@ class TestHealthCheckEndpoint:
             mock_settings.app_name = "stt"
             mock_settings.app_version = "1.0.0"
 
-            mock_db.return_value = ComponentHealth("database", HealthStatus.HEALTHY, 5.0)
             mock_minio.return_value = ComponentHealth("minio", HealthStatus.HEALTHY, 3.0)
             mock_redis.return_value = ComponentHealth("redis", HealthStatus.HEALTHY, 2.0)
             mock_streaming.return_value = {"status": "degraded", "duration_ms": 0}
@@ -137,6 +134,8 @@ class TestHealthCheckEndpoint:
             assert result["version"] != mock_settings.app_version
             assert "timestamp" in result
             assert "checks" in result
+            # TASK-1006 — the service has no database, so /health reports none.
+            assert "database" not in result["checks"]
 
 
 class TestLivenessCheckEndpoint:
@@ -153,38 +152,6 @@ class TestLivenessCheckEndpoint:
 # =============================================================================
 # Component Health Check Tests
 # =============================================================================
-
-
-class TestDatabaseHealthCheck:
-    """Tests for database health check."""
-
-    @pytest.mark.asyncio
-    async def test_database_healthy(self):
-        """Test database check when healthy."""
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.execute = AsyncMock()
-
-        with patch("stt.health.api.routes.get_db_session", return_value=mock_session):
-            result = await _check_database()
-
-            assert result.status == HealthStatus.HEALTHY
-            assert result.name == "database"
-            assert result.latency_ms >= 0
-
-    @pytest.mark.asyncio
-    async def test_database_unhealthy(self):
-        """Test database check when unhealthy."""
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(side_effect=Exception("Connection failed"))
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("stt.health.api.routes.get_db_session", return_value=mock_session):
-            result = await _check_database()
-
-            assert result.status == HealthStatus.UNHEALTHY
-            assert "Connection failed" in result.message
 
 
 class TestMinioHealthCheck:
@@ -236,12 +203,10 @@ class TestReadinessCheck:
     async def test_readiness_all_healthy(self):
         """Test readiness when all components healthy returns simple healthy dict."""
         with (
-            patch("stt.health.api.routes._check_database") as mock_db,
             patch("stt.health.api.routes._check_minio") as mock_minio,
             patch("stt.health.api.routes._check_redis") as mock_redis,
         ):
 
-            mock_db.return_value = ComponentHealth("database", HealthStatus.HEALTHY, 5.0)
             mock_minio.return_value = ComponentHealth("minio", HealthStatus.HEALTHY, 3.0)
             mock_redis.return_value = ComponentHealth("redis", HealthStatus.HEALTHY, 2.0)
 
@@ -255,15 +220,13 @@ class TestReadinessCheck:
         from fastapi.responses import JSONResponse
 
         with (
-            patch("stt.health.api.routes._check_database") as mock_db,
             patch("stt.health.api.routes._check_minio") as mock_minio,
             patch("stt.health.api.routes._check_redis") as mock_redis,
         ):
 
-            mock_db.return_value = ComponentHealth(
-                "database", HealthStatus.UNHEALTHY, 5.0, "DB error"
+            mock_minio.return_value = ComponentHealth(
+                "minio", HealthStatus.UNHEALTHY, 3.0, "MinIO error"
             )
-            mock_minio.return_value = ComponentHealth("minio", HealthStatus.HEALTHY, 3.0)
             mock_redis.return_value = ComponentHealth("redis", HealthStatus.HEALTHY, 2.0)
 
             result = await readiness_check()
@@ -275,12 +238,10 @@ class TestReadinessCheck:
     async def test_readiness_all_healthy_no_degraded_check(self):
         """Test readiness returns healthy when no components are unhealthy."""
         with (
-            patch("stt.health.api.routes._check_database") as mock_db,
             patch("stt.health.api.routes._check_minio") as mock_minio,
             patch("stt.health.api.routes._check_redis") as mock_redis,
         ):
 
-            mock_db.return_value = ComponentHealth("database", HealthStatus.HEALTHY, 5.0)
             mock_minio.return_value = ComponentHealth("minio", HealthStatus.HEALTHY, 3.0)
             mock_redis.return_value = ComponentHealth("redis", HealthStatus.HEALTHY, 2.0)
 

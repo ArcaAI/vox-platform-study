@@ -43,6 +43,17 @@ class PipelineNotFoundError(ConfigurationError):
     error_code = "PIPELINE_NOT_FOUND"
 
 
+class ResolvedSpecRequiredError(ConfigurationError):
+    """A session or job arrived without the gateway-resolved ``ResolvedAsrSpec``.
+
+    TASK-1006 — the spec is the ONLY selector: the pre-agent ``pipeline_id`` path and
+    the Postgres reader behind it are gone, so there is nothing else to resolve an
+    engine from. Also raised for a runtime key that no registered spec carries.
+    """
+
+    error_code = "RESOLVED_SPEC_REQUIRED"
+
+
 # =============================================================================
 # Audio Processing Errors (no retry)
 # =============================================================================

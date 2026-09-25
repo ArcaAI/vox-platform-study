@@ -78,7 +78,7 @@ class TestStartupProbe:
 
             return _boom
 
-        for name in ("_check_database", "_check_minio", "_check_redis"):
+        for name in ("_check_minio", "_check_redis"):
             monkeypatch.setattr(f"stt.health.api.routes.{name}", _must_not_run(name))
         assert client.get("/api/v1/health/startup").status_code == 200
 

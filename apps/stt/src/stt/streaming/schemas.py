@@ -340,7 +340,8 @@ class SessionMetadata:
     pipeline_config_json: str = ""  # serialized PreprocessingConfig
     # TASK-861 — the gateway-resolved ResolvedAsrSpec (JSON) the session was
     # assembled from, persisted so crash recovery rebuilds the engine chain
-    # WITHOUT a database read. Empty on the deprecated pipeline_id path.
+    # WITHOUT a database read. TASK-1006 — the only source there is: a session
+    # persisted with it empty (the removed pipeline_id path) is not recovered.
     resolved_spec_json: str = ""
     # TASK-891 — the END USER's declared language mode (OD-1: absent means "use
     # the agent's mode", never a default language). Persisted because it is

@@ -20,21 +20,15 @@ class TestWorkerServiceInitialization:
             mock_configure.return_value = MagicMock()
 
             # Now set up the function patches
-            with (
-                patch(
-                    "stt.core.database.connection.initialize_database", new_callable=AsyncMock
-                ) as mock_db,
-                patch(
-                    "stt.core.storage.minio_client.initialize_minio", new_callable=AsyncMock
-                ) as mock_minio,
-            ):
+            with patch(
+                "stt.core.storage.minio_client.initialize_minio", new_callable=AsyncMock
+            ) as mock_minio:
 
                 # Import the function after patches
                 from stt.worker import initialize_services
 
                 await initialize_services()
 
-                mock_db.assert_called_once()
                 mock_minio.assert_called_once()
 
 
@@ -47,42 +41,12 @@ class TestWorkerServiceCleanup:
         with patch("stt.worker.configure_broker") as mock_configure:
             mock_configure.return_value = MagicMock()
 
-            with (
-                patch(
-                    "stt.core.database.connection.close_database", new_callable=AsyncMock
-                ) as mock_close_db,
-                patch(
-                    "stt.core.storage.minio_client.close_minio", new_callable=AsyncMock
-                ) as mock_close_minio,
-            ):
+            with patch(
+                "stt.core.storage.minio_client.close_minio", new_callable=AsyncMock
+            ) as mock_close_minio:
 
                 from stt.worker import cleanup_services
 
-                await cleanup_services()
-
-                mock_close_db.assert_called_once()
-                mock_close_minio.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cleanup_services_handles_db_error(self):
-        """Test cleanup_services handles database close error."""
-        with patch("stt.worker.configure_broker") as mock_configure:
-            mock_configure.return_value = MagicMock()
-
-            with (
-                patch(
-                    "stt.core.database.connection.close_database", new_callable=AsyncMock
-                ) as mock_close_db,
-                patch(
-                    "stt.core.storage.minio_client.close_minio", new_callable=AsyncMock
-                ) as mock_close_minio,
-            ):
-
-                mock_close_db.side_effect = Exception("DB close error")
-
-                from stt.worker import cleanup_services
-
-                # Should not raise - handles error gracefully
                 await cleanup_services()
 
                 mock_close_minio.assert_called_once()
@@ -93,13 +57,14 @@ class TestWorkerServiceCleanup:
         with patch("stt.worker.configure_broker") as mock_configure:
             mock_configure.return_value = MagicMock()
 
+            mock_vad = MagicMock()
+            mock_vad.shutdown = AsyncMock()
+
             with (
-                patch(
-                    "stt.core.database.connection.close_database", new_callable=AsyncMock
-                ) as mock_close_db,
                 patch(
                     "stt.core.storage.minio_client.close_minio", new_callable=AsyncMock
                 ) as mock_close_minio,
+                patch("stt.vad.silero_service.get_vad_service", return_value=mock_vad),
             ):
 
                 mock_close_minio.side_effect = Exception("MinIO close error")
@@ -109,7 +74,8 @@ class TestWorkerServiceCleanup:
                 # Should not raise - handles error gracefully
                 await cleanup_services()
 
-                mock_close_db.assert_called_once()
+                # The cleanup after MinIO still runs.
+                mock_vad.shutdown.assert_awaited_once()
 
 
 class TestWorkerNewServiceInitialization:
@@ -125,7 +91,6 @@ class TestWorkerNewServiceInitialization:
             mock_vad.initialize = AsyncMock()
 
             with (
-                patch("stt.core.database.connection.initialize_database", new_callable=AsyncMock),
                 patch("stt.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
                 patch("stt.vad.silero_service.get_vad_service", return_value=mock_vad),
             ):
@@ -156,7 +121,6 @@ class TestWorkerNewServiceInitialization:
             mock_vad.initialize = AsyncMock()
 
             with (
-                patch("stt.core.database.connection.initialize_database", new_callable=AsyncMock),
                 patch("stt.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
                 patch("stt.vad.silero_service.get_vad_service", return_value=mock_vad),
                 patch("stt.diarization.embedding_service.create_embedding_service") as mock_create,
@@ -177,7 +141,6 @@ class TestWorkerNewServiceInitialization:
             mock_configure.return_value = MagicMock()
 
             with (
-                patch("stt.core.database.connection.initialize_database", new_callable=AsyncMock),
                 patch("stt.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
                 patch(
                     "stt.vad.silero_service.get_vad_service",
@@ -208,10 +171,6 @@ class TestWorkerPunctuationLogging:
 
         with patch("stt.worker.configure_broker", return_value=MagicMock()):
             with (
-                patch(
-                    "stt.core.database.connection.initialize_database",
-                    new_callable=AsyncMock,
-                ),
                 patch(
                     "stt.core.storage.minio_client.initialize_minio",
                     new_callable=AsyncMock,
@@ -258,7 +217,6 @@ class TestWorkerNewServiceCleanup:
             mock_vad.shutdown = AsyncMock()
 
             with (
-                patch("stt.core.database.connection.close_database", new_callable=AsyncMock),
                 patch("stt.core.storage.minio_client.close_minio", new_callable=AsyncMock),
                 patch("stt.vad.silero_service.get_vad_service", return_value=mock_vad),
             ):
@@ -275,15 +233,14 @@ class TestWorkerNewServiceCleanup:
             mock_configure.return_value = MagicMock()
 
             with (
-                patch("stt.core.database.connection.close_database", new_callable=AsyncMock),
                 patch("stt.core.storage.minio_client.close_minio", new_callable=AsyncMock),
+                patch(
+                    "stt.core.storage.minio_client.close_minio", new_callable=AsyncMock
+                ) as mock_close_minio,
                 patch(
                     "stt.vad.silero_service.get_vad_service",
                     side_effect=RuntimeError("VAD error"),
                 ),
-                patch(
-                    "stt.core.database.connection.close_database", new_callable=AsyncMock
-                ) as mock_close_db,
             ):
                 from stt.worker import cleanup_services
 
@@ -292,4 +249,4 @@ class TestWorkerNewServiceCleanup:
                 # Other cleanups should still have been called. TASK-887 — there is no
                 # embedding singleton left to shut down: services live on the SessionManager's
                 # per-model cache and die with it.
-                mock_close_db.assert_awaited()
+                mock_close_minio.assert_awaited()

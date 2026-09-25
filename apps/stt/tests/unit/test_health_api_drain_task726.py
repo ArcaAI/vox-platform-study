@@ -22,12 +22,10 @@ async def test_readiness_returns_503_when_session_manager_draining():
     mock_mgr.is_draining = True
 
     with (
-        patch("stt.health.api.routes._check_database") as mock_db,
         patch("stt.health.api.routes._check_minio") as mock_minio,
         patch("stt.health.api.routes._check_redis") as mock_redis,
         patch("stt.streaming._runtime.get_session_manager", return_value=mock_mgr),
     ):
-        mock_db.return_value = ComponentHealth("database", HealthStatus.HEALTHY, 5.0)
         mock_minio.return_value = ComponentHealth("minio", HealthStatus.HEALTHY, 3.0)
         mock_redis.return_value = ComponentHealth("redis", HealthStatus.HEALTHY, 2.0)
 
@@ -43,12 +41,10 @@ async def test_readiness_stays_healthy_when_session_manager_not_draining():
     mock_mgr.is_draining = False
 
     with (
-        patch("stt.health.api.routes._check_database") as mock_db,
         patch("stt.health.api.routes._check_minio") as mock_minio,
         patch("stt.health.api.routes._check_redis") as mock_redis,
         patch("stt.streaming._runtime.get_session_manager", return_value=mock_mgr),
     ):
-        mock_db.return_value = ComponentHealth("database", HealthStatus.HEALTHY, 5.0)
         mock_minio.return_value = ComponentHealth("minio", HealthStatus.HEALTHY, 3.0)
         mock_redis.return_value = ComponentHealth("redis", HealthStatus.HEALTHY, 2.0)
 
@@ -61,12 +57,10 @@ async def test_readiness_stays_healthy_when_session_manager_not_draining():
 async def test_readiness_healthy_when_streaming_not_initialized():
     """No SessionManager at all (batch-only mode) must not affect readiness."""
     with (
-        patch("stt.health.api.routes._check_database") as mock_db,
         patch("stt.health.api.routes._check_minio") as mock_minio,
         patch("stt.health.api.routes._check_redis") as mock_redis,
         patch("stt.streaming._runtime.get_session_manager", return_value=None),
     ):
-        mock_db.return_value = ComponentHealth("database", HealthStatus.HEALTHY, 5.0)
         mock_minio.return_value = ComponentHealth("minio", HealthStatus.HEALTHY, 3.0)
         mock_redis.return_value = ComponentHealth("redis", HealthStatus.HEALTHY, 2.0)
 

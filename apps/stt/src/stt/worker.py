@@ -328,15 +328,11 @@ async def initialize_services() -> None:
 
     Order matters — infrastructure first, then ML models.
     """
-    from stt.core.database.connection import initialize_database
     from stt.core.storage.minio_client import initialize_minio
 
     logger.info("Initializing worker services...")
 
     # --- Infrastructure ---
-    await initialize_database()
-    logger.info("Database initialized")
-
     await initialize_minio()
     logger.info("MinIO initialized")
 
@@ -366,15 +362,9 @@ async def initialize_services() -> None:
 
 async def cleanup_services() -> None:
     """Cleanup services on shutdown."""
-    from stt.core.database.connection import close_database
     from stt.core.storage.minio_client import close_minio
 
     logger.info("Cleaning up worker services...")
-
-    try:
-        await close_database()
-    except Exception as e:
-        logger.warning(f"Error closing database: {e}")
 
     try:
         await close_minio()
@@ -495,7 +485,7 @@ def main() -> None:
     import dramatiq
     from dramatiq import Worker
 
-    # Initialize services (database, MinIO, etc.) before starting worker
+    # Initialize services (MinIO, etc.) before starting worker
     asyncio.run(initialize_services())
 
     service_release_box = _start_service_release_registration()

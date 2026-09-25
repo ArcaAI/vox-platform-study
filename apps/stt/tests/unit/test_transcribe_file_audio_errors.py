@@ -13,6 +13,7 @@ import pytest
 
 from stt.core.exceptions import NON_RETRYABLE_EXCEPTIONS, AudioCorruptedError
 from stt.core.messaging.broker import should_retry
+from tests.helpers.resolved_spec import resolved_spec as make_spec
 
 pytestmark = pytest.mark.unit
 
@@ -54,7 +55,7 @@ class TestUndecodableAudioJobFailure:
             await mod._transcribe_file_async(
                 job_id="job-607",
                 tenant_id=TENANT,
-                pipeline_id="p-1",
+                resolved_spec=make_spec(),
                 audio_uri="s3://bucket/SDK_ORTHO.mp3",
             )
 
@@ -81,19 +82,6 @@ def _install_worker_stubs(monkeypatch, mod: Any, api_client: Any) -> None:
 
         async def download_audio(self, uri: str, tenant_id: str | None = None) -> bytes:
             return b"not audio at all"
-
-    class FakeInference:
-        language: str | None = None
-
-    class FakeSpec:
-        inference = FakeInference()
-
-    class FakePipelineConfig:
-        spec = FakeSpec()
-
-    class FakePipelineReader:
-        async def get_pipeline(self, pipeline_id: str) -> FakePipelineConfig:
-            return FakePipelineConfig()
 
     class FakeBatchService:
         async def transcribe(self, **kwargs: Any) -> Any:
@@ -122,7 +110,6 @@ def _install_worker_stubs(monkeypatch, mod: Any, api_client: Any) -> None:
     monkeypatch.setattr(mod, "refresh_job_concurrency_limit", _noop_refresh)
     monkeypatch.setattr(mod, "get_api_client", lambda: api_client)
     monkeypatch.setattr(mod, "get_blob_service", lambda: FakeBlobService())
-    monkeypatch.setattr(mod, "get_pipeline_reader", lambda: FakePipelineReader())
     monkeypatch.setattr(mod, "get_batch_service", lambda: FakeBatchService())
     monkeypatch.setattr(mod, "TranscriptionEventPublisher", FakePublisher)
     monkeypatch.setattr(mod, "get_effective_config_client", lambda: FakeEffectiveConfigClient())

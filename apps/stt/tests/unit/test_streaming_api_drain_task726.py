@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from stt.core.exceptions import SessionManagerDrainingError
 from stt.streaming._runtime import clear_runtime, set_session_manager
 from stt.streaming.api.routes import router
+from tests.helpers.resolved_spec import resolved_spec
 
 
 @pytest.fixture(autouse=True)
@@ -71,7 +72,11 @@ class TestCreateSessionRejectedWhileDraining:
 
         resp = client.post(
             "/internal/streaming/sessions",
-            json={"session_id": "sess-drain-1", "tenant_id": "t-001", "pipeline_id": "pipe-001"},
+            json={
+                "session_id": "sess-drain-1",
+                "tenant_id": "t-001",
+                "resolved_spec": resolved_spec(),
+            },
         )
 
         assert resp.status_code == 503

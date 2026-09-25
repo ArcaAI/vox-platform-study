@@ -1,8 +1,9 @@
 """TASK-861 — a streaming session assembled from a gateway-resolved ``ResolvedAsrSpec``.
 
 ``create_session(resolved_spec=...)`` builds the engine chain from the spec and
-reads NOTHING from Postgres: the pipeline reader and the model reader are patched
-to raise, so any DB read fails the test loudly.
+reads NOTHING from Postgres. TASK-1006 removed the pipeline and model readers
+outright, so the spec is the only source there is (see
+``tests/unit/test_task1006_resolved_spec_only.py``).
 """
 
 from __future__ import annotations
@@ -30,10 +31,6 @@ def _fixture() -> dict[str, Any]:
 SPEC = _fixture()["platformDefault"]["expected"]
 PRIMARY_KEY = SPEC["runtimeKey"]
 FALLBACK_KEY = SPEC["fallback"]["spec"]["runtimeKey"]
-
-
-def _boom(*_a: Any, **_k: Any) -> Any:
-    raise AssertionError("apps/stt read the database on the agent path")
 
 
 def _make_manager() -> MagicMock:
@@ -89,7 +86,6 @@ async def _create(mgr: MagicMock, **overrides: Any) -> Any:
     kwargs: dict[str, Any] = {
         "session_id": "s1",
         "tenant_id": "t1",
-        "pipeline_id": PRIMARY_KEY,
         "resolved_spec": SPEC,
     }
     kwargs.update(overrides)
@@ -97,8 +93,6 @@ async def _create(mgr: MagicMock, **overrides: Any) -> Any:
         patch("stt.streaming.session_manager.StreamSession") as mock_sess_cls,
         patch("stt.streaming.session_manager.IngestionConsumer") as mock_ic,
         patch("stt.streaming.session_manager.ControlListener") as mock_cl,
-        patch("stt.pipeline.config_reader.get_pipeline_reader", _boom),
-        patch("stt.pipeline.config_reader.get_model_reader", _boom),
     ):
         mock_sess_cls.return_value.force_persist = AsyncMock()
         mock_ic.return_value.start = AsyncMock()
@@ -143,11 +137,7 @@ async def test_fallback_pipeline_config_comes_from_the_spec_too() -> None:
     """The lazily-built fallback chain resolves from the same bundle — no DB."""
     mgr = _make_manager()
     await _create(mgr)
-    with (
-        patch("stt.pipeline.config_reader.get_pipeline_reader", _boom),
-        patch("stt.pipeline.config_reader.get_model_reader", _boom),
-    ):
-        fb = await SessionManager._load_pipeline_config(mgr, FALLBACK_KEY, tenant_id="t1")
+    fb = await SessionManager._load_pipeline_config(mgr, FALLBACK_KEY, tenant_id="t1")
     assert fb.models.asr.slug == "faster-whisper-large-v3-turbo-int8"
     assert fb.models.vad.slug == "silero-vad"
 
@@ -188,27 +178,9 @@ async def test_the_spec_is_persisted_on_the_session_metadata_for_crash_recovery(
 
 
 @pytest.mark.asyncio
-async def test_a_request_key_that_disagrees_with_the_spec_is_overridden_by_the_spec() -> None:
+async def test_the_session_is_keyed_on_the_spec_runtime_keys() -> None:
+    """TASK-1006 — the spec's runtime keys ARE the session's keys; no request key exists."""
     mgr = _make_manager()
-    await _create(mgr, pipeline_id="stale-pipeline-id")
+    await _create(mgr)
     assert mgr._assemble_session_runtime.await_args.kwargs["active_pipeline_id"] == PRIMARY_KEY
-
-
-@pytest.mark.asyncio
-async def test_legacy_pipeline_id_without_a_spec_still_goes_through_the_deprecated_reader() -> None:
-    mgr = _make_manager()
-    reader = MagicMock()
-    reader.get_pipeline = AsyncMock(return_value=MagicMock())
-    with patch("stt.pipeline.config_reader.get_pipeline_reader", return_value=reader):
-        with (
-            patch("stt.streaming.session_manager.StreamSession") as mock_sess_cls,
-            patch("stt.streaming.session_manager.IngestionConsumer") as mock_ic,
-            patch("stt.streaming.session_manager.ControlListener") as mock_cl,
-        ):
-            mock_sess_cls.return_value.force_persist = AsyncMock()
-            mock_ic.return_value.start = AsyncMock()
-            mock_cl.return_value.start = AsyncMock()
-            await SessionManager.create_session(
-                mgr, session_id="s2", tenant_id="t1", pipeline_id="legacy-pipe"
-            )
-    reader.get_pipeline.assert_awaited_once_with("legacy-pipe", tenant_id="t1")
+    assert mgr._fallback_pipeline_ids["s1"] == FALLBACK_KEY

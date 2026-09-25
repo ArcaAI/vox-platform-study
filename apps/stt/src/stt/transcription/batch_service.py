@@ -39,7 +39,7 @@ from ..core.exceptions import (
     CloudASRTranscriptionError,
     TranscriptionError,
 )
-from ..core.initial_prompt import compose_prompt, get_initial_prompt
+from ..core.initial_prompt import compose_prompt
 from ..core.metering import BYTE_SOURCE_APP, BYTE_SOURCE_WIRE, normalize_device
 from ..core.metrics import (
     record_transcription,
@@ -51,7 +51,6 @@ from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
 from ..models.cloud_asr import resolve_override_key
 from ..models.whisper_kwargs import build_whisper_generate_kwargs
-from ..pipeline.config_reader import get_model_reader
 from ..pipeline.dto import (
     AiModelConfig,
     AiModelFormat,
@@ -400,8 +399,8 @@ class BatchTranscriptionService:
         Transcribe audio file with optional speaker diarization.
 
         TASK-861: ``model_configs`` (slug → ``AiModelConfig``) is the pre-resolved
-        registry the gateway put in ``resolved_spec``; when given, the model
-        registry is NOT read.
+        registry the gateway put in ``resolved_spec``; it is the only source of a
+        slug-referenced model's config (TASK-1006 removed the registry read).
 
         Steps:
         1. Load required models
@@ -506,8 +505,8 @@ class BatchTranscriptionService:
                         # TASK-887 — fail closed. The platform singleton that used to serve
                         # here embedded into a space no agent had chosen, so its matches were
                         # meaningless; `buildResolvedAsrSpec` refuses an agent that enables
-                        # embedding diarization without naming a model, so reaching this is a
-                        # deprecated-pipeline job.
+                        # embedding diarization without naming a model, so reaching this means
+                        # the job's spec does not carry the model it names.
                         raise ValueError("no speaker-embedding model is bound to this job")
                     logger.info("[%s] Using agent diarization model: %s", job_id, hf_model_id)
                     emb_service = create_embedding_service(hf_model_id=hf_model_id)
@@ -558,27 +557,17 @@ class BatchTranscriptionService:
             logger.info(f"[{job_id}] Running ASR inference...")
             inference_start = time.time()
 
-            # TASK-880 — the AGENT's literal prompt wins, and it is the only prompt
-            # channel whisper.cpp has now that the hardcoded consultation line and its
+            # TASK-880 — the AGENT's literal prompt is the only prompt channel
+            # whisper.cpp has now that the hardcoded consultation line and its
             # `stt.whisperCpp.consultationPromptEnabled` flag are gone. The streaming path
             # already preferred it (`session_manager._load_asr_pipeline`); this path did
             # not, so a batch job on an agent with an `instruction.initialPrompt` decoded
-            # with no prior context at all. The template-id lookup (a DB read) survives
-            # only for the deprecated pipeline path.
+            # with no prior context at all. The template-id lookup (a DB read) went with
+            # the pre-agent pipeline path (TASK-1006).
             prompt_text = getattr(spec.inference, "initial_prompt_text", None)
             initial_prompt: str | None = (
                 prompt_text if isinstance(prompt_text, str) and prompt_text else None
             )
-            initial_prompt_id = getattr(spec.inference, "initial_prompt", None)
-            if initial_prompt is None and initial_prompt_id:
-                initial_prompt = await get_initial_prompt(initial_prompt_id)
-                if initial_prompt:
-                    logger.info(
-                        "[%s] Resolved initial_prompt (template=%s, %d chars)",
-                        job_id,
-                        initial_prompt_id,
-                        len(initial_prompt),
-                    )
 
             # TTFW tracker: records wall-clock time when the first
             # transcribed word becomes available (set inside inference).
@@ -1097,7 +1086,8 @@ class BatchTranscriptionService:
     ) -> dict[str, LoadedModel | None]:
         """Load all models required by pipeline.
 
-        Handles both slug references (from database) and inline model definitions.
+        Handles both slug references (resolved from ``model_configs``) and inline model
+        definitions.
 
         ``provider_overrides`` carries per-tenant BYO cloud creds; for
         a cloud ASR engine WITH overrides the ASR load bypasses the shared
@@ -1108,14 +1098,10 @@ class BatchTranscriptionService:
         cache = get_model_cache()
         model_refs = pipeline.spec.models
 
-        # TASK-861 — the agent path hands every model config in; only the
-        # deprecated pipeline path still reads the registry (warns; fails closed
-        # while the DB is disabled).
+        # TASK-861 — the job's resolved spec hands every model config in. TASK-1006 —
+        # there is no registry to fall back on: a slug it does not carry is not found.
         if model_configs is None:
-            slug_refs = model_refs.get_all_slugs()
             model_configs = {}
-            if slug_refs:
-                model_configs = await get_model_reader().get_models_for_pipeline(pipeline)
 
         models: dict[str, LoadedModel | None] = {}
 
@@ -1173,7 +1159,7 @@ class BatchTranscriptionService:
                 asr_ref.inline, ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
             )
         elif asr_ref.slug:
-            # Slug reference from database
+            # Slug reference, resolved from the job's spec
             if asr_ref.slug in model_configs:
                 models["asr"] = await cache.get_or_load(model_configs[asr_ref.slug])
             else:

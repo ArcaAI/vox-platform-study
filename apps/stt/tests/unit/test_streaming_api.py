@@ -19,6 +19,10 @@ from stt.streaming._runtime import (
 )
 from stt.streaming.api.routes import router
 from stt.streaming.schemas import SessionMetadata, SessionStatus
+from tests.helpers.resolved_spec import resolved_spec
+
+#: TASK-1006 — the create body's one required selector.
+SPEC = resolved_spec()
 
 # =========================================================================
 # Fixtures
@@ -195,7 +199,7 @@ class TestCreateSession:
             json={
                 "session_id": "sess-001",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
                 "sample_rate": 16000,
             },
         )
@@ -215,7 +219,7 @@ class TestCreateSession:
             json={
                 "session_id": "sess-002",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
             },
         )
 
@@ -229,7 +233,7 @@ class TestCreateSession:
             json={
                 "session_id": "sess-003",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
             },
         )
 
@@ -244,7 +248,7 @@ class TestCreateSession:
             json={
                 "session_id": "sess-004",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
                 "consultation_id": "c-001",
                 "microphone_id": "mic-doctor",
                 "sample_rate": 48000,
@@ -272,7 +276,7 @@ class TestCreateSession:
             json={
                 "session_id": "sess-bk-1",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
                 "audio_bucket_name": "hope-audio-arcaai",
             },
         )
@@ -292,7 +296,7 @@ class TestCreateSession:
             json={
                 "session_id": "sess-bk-2",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
             },
         )
 
@@ -316,7 +320,7 @@ class TestCreateSession:
             json={
                 "session_id": "sess-stg-1",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
                 "storage": descriptor,
             },
         )
@@ -334,7 +338,7 @@ class TestCreateSession:
             json={
                 "session_id": "sess-stg-2",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
             },
         )
 
@@ -342,11 +346,11 @@ class TestCreateSession:
         kwargs = mock_session_manager.create_session.call_args.kwargs
         assert kwargs["storage"] is None
 
-    def test_create_session_response_includes_pipeline_id(
+    def test_create_session_response_reports_the_engine_and_no_pipeline_id(
         self, client, mock_session_manager, mock_session
     ):
-        """The create response echoes the resolved pipeline_id
-        and active_engine baseline, not just the coarse request echo."""
+        """The create response carries the active_engine baseline; TASK-1006
+        removed the pipeline_id echo (the gateway keys on the spec)."""
         mock_session_manager.create_session = AsyncMock(return_value=mock_session)
 
         resp = client.post(
@@ -354,13 +358,13 @@ class TestCreateSession:
             json={
                 "session_id": "sess-001",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
             },
         )
 
         assert resp.status_code == 201
         data = resp.json()
-        assert data["pipeline_id"] == "pipe-001"
+        assert "pipeline_id" not in data
         assert data["active_engine"] == "primary"
 
     def test_create_session_response_reports_fallback_engine(
@@ -372,7 +376,6 @@ class TestCreateSession:
         mock_session_manager.create_session = AsyncMock(return_value=mock_session)
         fake_controller = MagicMock()
         fake_controller.active_engine = "fallback"
-        fake_controller.active_pipeline_id = "fb-pipe"
         mock_session_manager.get_switch_controller = MagicMock(return_value=fake_controller)
 
         resp = client.post(
@@ -380,67 +383,17 @@ class TestCreateSession:
             json={
                 "session_id": "sess-001",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
             },
         )
 
         assert resp.status_code == 201
         assert resp.json()["active_engine"] == "fallback"
 
-    def test_create_response_pipeline_id_agrees_with_active_engine_on_fallback(
+    def test_create_response_reports_primary_without_a_controller(
         self, client, mock_session_manager, mock_session
     ):
-        """A session used to report ``active_engine:
-        'fallback'`` beside a ``pipeline_id`` naming the PRIMARY — a
-        self-contradictory baseline. The id must name the EFFECTIVE pipeline."""
-        mock_session_manager.create_session = AsyncMock(return_value=mock_session)
-        fake_controller = MagicMock()
-        fake_controller.active_engine = "fallback"
-        fake_controller.active_pipeline_id = "fb-pipe"
-        mock_session_manager.get_switch_controller = MagicMock(return_value=fake_controller)
-
-        resp = client.post(
-            "/internal/streaming/sessions",
-            json={
-                "session_id": "sess-001",
-                "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
-            },
-        )
-
-        assert resp.status_code == 201
-        data = resp.json()
-        assert data["active_engine"] == "fallback"
-        assert data["pipeline_id"] == "fb-pipe"
-
-    def test_create_response_pipeline_id_agrees_with_active_engine_on_primary(
-        self, client, mock_session_manager, mock_session
-    ):
-        mock_session_manager.create_session = AsyncMock(return_value=mock_session)
-        fake_controller = MagicMock()
-        fake_controller.active_engine = "primary"
-        fake_controller.active_pipeline_id = "pipe-001"
-        mock_session_manager.get_switch_controller = MagicMock(return_value=fake_controller)
-
-        resp = client.post(
-            "/internal/streaming/sessions",
-            json={
-                "session_id": "sess-001",
-                "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
-            },
-        )
-
-        assert resp.status_code == 201
-        data = resp.json()
-        assert data["active_engine"] == "primary"
-        assert data["pipeline_id"] == "pipe-001"
-
-    def test_create_response_falls_back_to_the_session_id_without_a_controller(
-        self, client, mock_session_manager, mock_session
-    ):
-        """No controller registered (or an unknown pipeline on it) ⇒ the
-        session's own pipeline_id, exactly as before."""
+        """No controller registered ⇒ the session is on its primary engine."""
         mock_session_manager.create_session = AsyncMock(return_value=mock_session)
         mock_session_manager.get_switch_controller = MagicMock(return_value=None)
 
@@ -449,14 +402,12 @@ class TestCreateSession:
             json={
                 "session_id": "sess-001",
                 "tenant_id": "t-001",
-                "pipeline_id": "pipe-001",
+                "resolved_spec": SPEC,
             },
         )
 
         assert resp.status_code == 201
-        data = resp.json()
-        assert data["pipeline_id"] == "pipe-001"
-        assert data["active_engine"] == "primary"
+        assert resp.json()["active_engine"] == "primary"
 
 
 # =========================================================================
@@ -477,18 +428,18 @@ class TestGetSession:
         assert data["session_id"] == "sess-001"
         assert data["status"] == "active"
 
-    def test_get_session_includes_pipeline_id_and_engine(
+    def test_get_session_reports_the_engine_and_no_pipeline_id(
         self, client, mock_session_manager, mock_session
     ):
-        """StreamingSessionResponse is shared by create + status; both must
-        populate pipeline_id/active_engine now that the field is required."""
+        """StreamingSessionResponse is shared by create + status; both carry
+        active_engine and, since TASK-1006, no pipeline_id."""
         mock_session_manager.get_session = MagicMock(return_value=mock_session)
 
         resp = client.get("/internal/streaming/sessions/sess-001")
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["pipeline_id"] == "pipe-001"
+        assert "pipeline_id" not in data
         assert data["active_engine"] == "primary"
 
     def test_get_session_not_found(self, client, mock_session_manager):
@@ -936,7 +887,7 @@ class TestCreateSessionErrors:
                 json={
                     "session_id": "sess-err",
                     "tenant_id": "t-001",
-                    "pipeline_id": "pipe-001",
+                    "resolved_spec": SPEC,
                 },
             )
 
@@ -953,7 +904,7 @@ class TestCreateSessionErrors:
             json={
                 "session_id": "",
                 "tenant_id": "",
-                "pipeline_id": "",
+                "resolved_spec": SPEC,
             },
         )
         # Should reach the handler and create successfully
@@ -971,7 +922,7 @@ class TestApiSchemas:
     def test_create_request_defaults(self):
         from stt.streaming.api.schemas import CreateStreamingSessionRequest
 
-        req = CreateStreamingSessionRequest(session_id="s1", tenant_id="t1", pipeline_id="p1")
+        req = CreateStreamingSessionRequest(session_id="s1", tenant_id="t1", resolved_spec=SPEC)
         assert req.sample_rate == 16000
         assert req.consultation_id is None
         assert req.microphone_id is None
@@ -985,7 +936,7 @@ class TestApiSchemas:
         req = CreateStreamingSessionRequest(
             session_id="s1",
             tenant_id="t1",
-            pipeline_id="p1",
+            resolved_spec=SPEC,
             storage=descriptor,
         )
         assert req.storage == descriptor
@@ -996,7 +947,7 @@ class TestApiSchemas:
         req = CreateStreamingSessionRequest(
             session_id="s1",
             tenant_id="t1",
-            pipeline_id="p1",
+            resolved_spec=SPEC,
             consultation_id="c1",
             sample_rate=48000,
             microphone_id="mic-1",
@@ -1022,14 +973,13 @@ class TestApiSchemas:
             status="active",
             max_concurrent=10,
             current_active=2,
-            pipeline_id="p1",
             active_engine="primary",
         )
         assert resp.reason is None
 
-    def test_session_response_requires_pipeline_id_and_active_engine(self):
-        """pipeline_id/active_engine are required on the wire — the
-        internal create/status response is the baseline echo."""
+    def test_session_response_requires_active_engine(self):
+        """active_engine is required on the wire — the internal create/status
+        response is the baseline echo."""
         from pydantic import ValidationError
 
         from stt.streaming.api.schemas import StreamingSessionResponse
@@ -1039,7 +989,7 @@ class TestApiSchemas:
                 session_id="s1", status="active", max_concurrent=10, current_active=2
             )
 
-    def test_session_response_carries_pipeline_id_and_active_engine(self):
+    def test_session_response_carries_active_engine(self):
         from stt.streaming.api.schemas import StreamingSessionResponse
 
         resp = StreamingSessionResponse(
@@ -1047,10 +997,8 @@ class TestApiSchemas:
             status="active",
             max_concurrent=10,
             current_active=2,
-            pipeline_id="pipe-001",
             active_engine="fallback",
         )
-        assert resp.pipeline_id == "pipe-001"
         assert resp.active_engine == "fallback"
 
 
