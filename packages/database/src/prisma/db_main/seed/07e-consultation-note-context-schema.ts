@@ -177,6 +177,34 @@ export const NOTE_CONTEXT_PROMPT_KIND: Record<string, unknown> = {
   },
 };
 
+/**
+ * TASK-1006 — the FINISHED transcript of a recording, as a declared TEXT input.
+ *
+ * The consultation graph has two transcript sources and reads whichever arrived: the live
+ * `audio_stream` (transcribed by `n_asr`), or this kind — a client that already holds the
+ * transcript of a queued or uploaded recording sends it here, and `n_transcript` (a `core.data`
+ * node) lifts its `text` onto `n_ner.in`, the socket `n_asr.transcript` feeds on the live path.
+ *
+ * Its own kind rather than `work_note`: a work note is the clinician's OWN writing, and a verbatim
+ * patient/doctor conversation handed to a note generator under that label is a semantic lie the
+ * generator acts on. Shared with `07g-arcaai-two-schemas.ts` by reference, like
+ * {@link NOTE_CONTEXT_PROMPT_KIND}, so the two definitions cannot disagree about the key.
+ * Treat it as frozen: nothing may mutate it in place.
+ */
+export const CONSULTATION_TRANSCRIPT_KIND_KEY = 'transcript';
+
+export const CONSULTATION_TRANSCRIPT_KIND: Record<string, unknown> = {
+  key: CONSULTATION_TRANSCRIPT_KIND_KEY,
+  label: 'Transcript',
+  primitive: 'TEXT',
+  phiClass: 'PHI',
+  cardinality: 'ONE',
+  lifecycle: 'POST',
+  producedBy: ['CLIENT'],
+  description:
+    'The finished verbatim transcript of the consultation recording, `{ text }`, supplied by a client that transcribed it itself (a queued or uploaded recording). The consultation graph reads it where it would otherwise read the live transcript of `audio_stream`.',
+};
+
 export const NOTE_CONTEXT_SCHEMA_DEFINITION: Record<string, unknown> = {
   schemaVersion: '1.0',
   kinds: [
@@ -190,6 +218,7 @@ export const NOTE_CONTEXT_SCHEMA_DEFINITION: Record<string, unknown> = {
       producedBy: ['CLIENT'],
       description: 'The live consultation recording, captured by the STT session.',
     },
+    CONSULTATION_TRANSCRIPT_KIND,
     {
       key: 'work_note',
       label: 'Work Note',

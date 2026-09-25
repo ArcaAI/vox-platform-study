@@ -6,6 +6,7 @@
  * stamps), both PUBLISHED and active, palette `core`, `kinds: ['consultation', 'api']`:
  *
  *   general-medicine-consultation     ① trigger → ② realtime-transcription (realtime, perTurn) →
+ *                                     [or ②' the caller's `transcript` kind via `n_transcript`, TASK-1006] →
  *                                     ③ medical-ner (realtime, perTurn) → ④ general-medicine-summarization
  *                                     (realtime, perTurn) → ⑤ casenote-finalization (durable, onEnd) →
  *                                     ⑥ humanReview clinical_finalization → ⑦ output {case_note, redactions}
@@ -42,7 +43,12 @@
  */
 import type { CorePrismaClient } from '../../../client';
 import { SEED_TENANT_ID, SEED_WORKFLOW_DEFINITION_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
-import { NOTE_CONTEXT_SCHEMA_SLUG, noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
+import {
+  CONSULTATION_TRANSCRIPT_KIND_KEY,
+  NOTE_CONTEXT_SCHEMA_SLUG,
+  noteContextSchemaIdFor,
+  noteContextSchemaVersionIdFor,
+} from './07e-consultation-note-context-schema';
 import { PRE_SUMMARY_AGENT_SLUG } from './25-agents';
 import { REGISTRY_CHECKSUM, WORKFLOW_LIBRARY_GENERATED, type GeneratedWorkflowBlob } from './28-workflow-library.generated';
 
@@ -174,6 +180,24 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
         config: { agentRef: { slug: PRE_SUMMARY_AGENT_SLUG }, execution: REALTIME_ON_START, guardrail: { enabled: true }, onError: 'degrade' },
       },
       { id: 'n_asr', type: 'core.agent', config: { agentRef: { slug: 'realtime-transcription' }, execution: REALTIME_PER_TURN, onError: 'fail' } },
+      {
+        // TASK-1006 — the SECOND transcript source: a finished transcript the caller supplies
+        // on the trigger's `transcript` kind (`{ text }`), for a recording it transcribed itself
+        // (ALaaS's queued / uploaded recordings, on the unbound plane). The trigger's socket is an
+        // object and never widens to `text`, so this deterministic reshape lifts the kind's
+        // `text` onto `core.data`'s `text` socket, which feeds `n_ner.in` exactly where
+        // `n_asr.transcript` does — NER's pass-through `out` then carries it to every summarizer.
+        //
+        // Durable, so the live lane never sees it (`buildRealtimeLane` drops a binding whose
+        // producer is not realtime) and a recorded consultation is untouched. OPTIONAL mapping:
+        // a run without a transcript publishes no `text` and binds nothing. The two sources never
+        // both produce — `n_asr.audio` has no edge on the durable lane, and on a consultation-bound
+        // run `n_ner` belongs to the live lane — and were they ever to, the compiled binding order
+        // (by producer id) makes this one the later write.
+        id: 'n_transcript',
+        type: 'core.data',
+        config: { mappings: [{ from: `in.${CONSULTATION_TRANSCRIPT_KIND_KEY}.text`, to: 'text' }] },
+      },
       { id: 'n_ner', type: 'core.agent', config: { agentRef: { slug: 'medical-ner' }, execution: REALTIME_PER_TURN, onError: 'degrade' } },
       ...summaryNodes,
       {
@@ -271,6 +295,10 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
       // still gates the publish, through the ORDERING edge a review handle is meant to carry.
       ['n_finalize', 'data', 'n_output', 'in'],
       ['n_review', 'next', 'n_output', 'after'],
+      // TASK-1006 — the caller-supplied transcript, into the SAME socket `n_asr.transcript` feeds
+      // (see `n_transcript`). LAST, so every pre-existing edge keeps its id.
+      ['n_trigger', 'out', 'n_transcript', 'in'],
+      ['n_transcript', 'text', 'n_ner', 'in'],
     ]),
   };
 }

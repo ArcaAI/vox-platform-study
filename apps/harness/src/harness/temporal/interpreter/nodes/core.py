@@ -1951,9 +1951,12 @@ async def _run_ner(
         status="SUCCEEDED",
         output={
             "data": {"entities": _ner_entities(response)},
-            # The classified TEXT rides through on `out`, exactly as `core.classify` passes its
-            # own text along, so a node bound downstream still sees the document.
-            "out": text,
+            # The classified TEXT rides through on the `out` SOCKET, so a node bound downstream
+            # still sees the document. TASK-1006 — under the socket's RUNTIME key `text`
+            # (`core.agent`'s `out -> text`, the parity fixture), as the live lane's NER already
+            # publishes it: the key used to be `out`, which no socket reads, so on this lane a
+            # summarizer bound to `n_ner.out` was handed nothing.
+            "text": text,
             "agent": {"slug": resolved.slug, "versionNumber": resolved.version_number},
         },
     )
@@ -2126,6 +2129,15 @@ async def interpreter_core_data(payload: NodeActivityInput) -> NodeActivityResul
             continue
         output[target] = value
 
+    result: dict[str, Any] = {"data": output}
+    # TASK-1006 — the `text` socket: the reshaped `text` field, when it IS text. It is how a
+    # TEXT kind a caller supplies on the trigger (a finished transcript) reaches an agent's
+    # `in: text` — the trigger's own socket is an object. Absent unless there is real text: a
+    # blank or non-text value publishes nothing rather than an empty string downstream.
+    texts = [text for text in _texts(output.get("text")) if text.strip()]
+    if texts:
+        result["text"] = "\n\n".join(texts)
+
     await record_and_flush(payload, status=STATUS_OK, started=started)
     if missing_required:
         return NodeActivityResult(
@@ -2134,9 +2146,9 @@ async def interpreter_core_data(payload: NodeActivityInput) -> NodeActivityResul
                 "core.data: required mapping(s) did not resolve: "
                 f"{', '.join(sorted(missing_required))}"
             ),
-            output={"data": output},
+            output=result,
         )
-    return NodeActivityResult(status="SUCCEEDED", output={"data": output})
+    return NodeActivityResult(status="SUCCEEDED", output=result)
 
 
 @activity.defn(name="interpreter.core_note")
