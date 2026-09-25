@@ -41,8 +41,8 @@ interface ScopedRoute {
 
 /** The HOPE Node SDK's day-1 surface. */
 export const SDK_DAY1_SCOPED_ROUTES: ScopedRoute[] = [
-  { controller: ConsultationController, method: 'generateSummary' },
-  { controller: ConsultationController, method: 'generatePreSummary' },
+  // The synchronous `generateSummary` / `generatePreSummary` routes were removed (TASK-1006 OD-2);
+  // the SDK generates through the async siblings below.
   { controller: ConsultationController, method: 'generateSummaryAsync' },
   { controller: ConsultationController, method: 'generatePreSummaryAsync' },
   { controller: ConsultationController, method: 'getSummaries' },

@@ -43,10 +43,9 @@ describe('boot-time API-key scope audit', () => {
 
     expect(covered).toEqual(
       [
-        // Consultation-bound generation — hope.consultations.summaries.generate*
-        'ConsultationController.generatePreSummary',
+        // Consultation-bound generation — hope.consultations.summaries.generate*Async (the
+        // synchronous pair was removed by TASK-1006 OD-2)
         'ConsultationController.generatePreSummaryAsync',
-        'ConsultationController.generateSummary',
         'ConsultationController.generateSummaryAsync',
         // Consultation-bound reads/writes — hope.consultations.*
         'ConsultationController.getById',

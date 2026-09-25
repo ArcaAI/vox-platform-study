@@ -1,47 +1,26 @@
 /**
- * R-N1/R-N2 end-to-end: ONE agent, live through finalize.
+ * R-N1 end-to-end: the live loop FREEZES one agent for the session.
  *
- * Proves the whole chain over real HTTP against a running stack:
+ * Proves the chain over real HTTP against a running stack:
  *
  *   POST :id/recording/start() → the live loop resolves and FREEZES the
  *                                       session's governing node (R-N1)
  *   GET :id/live-summary/stream → every SSE event carries
  *                                       `metadata.agent` = { id, promptTemplateId,
  *                                       promptVersionNumber, resolvedFrom:'agent' }
- *   POST :id/recording/stop → persists the durable LIVE_SOAP_SNAPSHOT
- *                                       ContextItem carrying `metaData.agent`
- *   POST :id/summary → finalize reads that lineage
- *                                       (`readLiveAgentLineage`), pins the resolver
- *                                       to the SAME agent and stamps it on SummaryMeta (R-N2)
  *
- * Assertions on the resulting `SummaryMeta` row:
- *   - `sessionAgentId` === the agent id the SSE stream reported;
- *   - `sessionAgentPromptVersion` === `<promptTemplateId>@<promptVersionNumber>`
- *     — the IMMUTABLE PromptVersion the LIVE loop served — is PRESENT;
- *   - `promptVersion` — finalize's OWN template version — is PRESENT and
- *     DISTINCT from `sessionAgentPromptVersion`. The two columns naming
- *     different things is the whole point of C5/RF-6: one records the live
- *     prompt, the other the finalize prompt. A test that only asserted
- *     "not null" would pass on a bug that wrote the same string to both.
- *   - tier-0 (doctor-preferred) STILL WINS the finalize template — pinning the
- *     agent must not outrank the clinician's own preference — while the
- *     lineage columns are stamped exactly the same. Both facts together are
- *     what makes "pin the agent" a provenance change, not a policy change.
- *
- * Why a direct DB read: `SummaryMeta.sessionAgentId` /
- * `sessionAgentPromptVersion` / `promptVersion` are NOT projected onto any
- * response DTO (`summary.response.ts`, `summary-provenance.response.ts` —
- * checked), so the columns are only observable through the database. Uses the
- * same `getPlatformAdminPrismaClient_Unscoped()` dynamic-import pattern as
- * `task-615-usage-ledger.spec.ts` (the sanctioned e2e escape hatch), and reads
- * ONLY the rows this spec created.
+ * R-N2 (finalize pins the SAME agent and stamps `SummaryMeta.sessionAgentId` /
+ * `sessionAgentPromptVersion`) used to be proven here through the synchronous
+ * `POST :id/summary`. That route was removed (TASK-1006, owner decision OD-2);
+ * the note is written by the harness (`HarnessInternalService.persistDraft`),
+ * whose lineage stamping is covered by `harness-internal.service.test.ts`.
  *
  * Generation dependency (house pattern, see `task-635-prompt-test-bench.spec.ts`):
- * live flushes and finalize both call TEXT, and the live loop additionally calls
- * NLP. Everything that needs a generated note is gated behind a reachability
- * check with a `console.warn` fallback, so the spec is green — and honest —
- * on a stack without TEXT/NLP. The lineage assertions themselves are NOT
- * softened: when a summary IS produced, they must hold.
+ * live flushes call TEXT, and the live loop additionally calls NLP. Everything
+ * that needs a generated frame is gated behind a reachability check with a
+ * `console.warn` fallback, so the spec is green — and honest — on a stack
+ * without TEXT/NLP. The lineage assertions themselves are NOT softened: when an
+ * agent frame IS observed, they must hold.
  *
  * PRECONDITIONS (this spec cannot create them itself):
  *   1. C2's two migrations applied (`SummaryMeta.sessionAgentId`,
@@ -64,8 +43,6 @@
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { randomUUID } from 'crypto';
-import { join } from 'path';
-import { pathToFileURL } from 'url';
 import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -144,33 +121,6 @@ async function isApprovedTemplate(request: APIRequestContext, token: string, tem
   return (body.data?.status ?? body.status) === 'APPROVED';
 }
 
-interface SummaryMetaRow {
-  id: string;
-  contextItemId: string;
-  sessionAgentId: string | null;
-  sessionAgentPromptVersion: string | null;
-  promptVersion: string | null;
-  promptResolvedFrom: string | null;
-  resolvedPromptId: string | null;
-}
-
-interface DbClient {
-  summaryMeta: {
-    findFirst(args: { where: Record<string, unknown>; orderBy?: Record<string, unknown> }): Promise<SummaryMetaRow | null>;
-  };
-  $disconnect(): Promise<void>;
-}
-
-let dbClient: DbClient | null = null;
-async function getDb(): Promise<DbClient> {
-  if (!dbClient) {
-    const distEntry = pathToFileURL(join(__dirname, '../../../../packages/database/dist/index.js')).href;
-    const mod = (await import(distEntry)) as { getPlatformAdminPrismaClient_Unscoped(): unknown };
-    dbClient = mod.getPlatformAdminPrismaClient_Unscoped() as DbClient;
-  }
-  return dbClient;
-}
-
 interface SseAgent {
   id: string | null;
   name?: string | null;
@@ -193,63 +143,14 @@ interface SseWatchResult {
  *   • `metadata.agent` rides the snapshot frozen at `start()` (RF-6), so it
  *     appears within milliseconds and needs no LLM at all;
  *   • `runningSummary` appears only after a flush actually generated a note —
- *     which is what gets persisted as the LIVE_SOAP_SNAPSHOT that finalize
- *     reads lineage from.
- * Returning on the first agent frame therefore proves R-N1 but leaves R-N2 with
- * no lineage to assert, so this keeps reading for a generated frame and reports
- * which of the two it got.
+ *     which is what gets persisted as the LIVE_SOAP_SNAPSHOT.
+ * R-N1 needs only the first, but this keeps reading for a generated frame and
+ * reports which of the two it got, so a failure says whether TEXT ever ran.
  *
  * The budget MUST stay strictly under the caller's per-test timeout: if the
  * wait outlives the test, the test dies on a timeout instead of reaching its
  * graceful skip.
  */
-/**
- * Read the live-summary plane until a frame carries `closed: true` (the terminal frame a stopped
- * consultation replays to late joiners). Returns false if `timeoutMs` passes first.
- */
-async function waitForLiveSummaryClosed(baseURL: string, consultationId: string, token: string, timeoutMs: number): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(`${new URL(baseURL).origin}/api/v1/consultations/${consultationId}/live-summary/stream`, {
-      headers: { ...bearer(token), Accept: 'text/event-stream' },
-      signal: controller.signal,
-    });
-    if (!res.ok || !res.body) return false;
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return false;
-      buffer += decoder.decode(value, { stream: true });
-      let split = buffer.indexOf('\n\n');
-      while (split !== -1) {
-        const data = buffer
-          .slice(0, split)
-          .split('\n')
-          .filter((line) => line.startsWith('data:'))
-          .map((line) => line.slice(5).trim())
-          .join('');
-        buffer = buffer.slice(split + 2);
-        try {
-          if (data && (JSON.parse(data) as { closed?: boolean }).closed === true) {
-            await reader.cancel().catch(() => undefined);
-            return true;
-          }
-        } catch {
-          /* heartbeat or partial frame */
-        }
-        split = buffer.indexOf('\n\n');
-      }
-    }
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function readFirstAgentFromSse(baseURL: string, consultationId: string, token: string, timeoutMs = 20_000): Promise<SseWatchResult | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -276,9 +177,8 @@ async function readFirstAgentFromSse(baseURL: string, consultationId: string, to
           // Remember the agent as soon as it appears — it rides the FROZEN
           // snapshot resolved at start(), so it arrives long before any
           // generation. But keep reading until a frame carries a non-empty
-          // runningSummary: only a GENERATED note is persisted as the
-          // LIVE_SOAP_SNAPSHOT that finalize reads lineage from, so returning
-          // on the first agent frame leaves R-N2 with nothing to assert.
+          // runningSummary, so the result also says whether a note was
+          // GENERATED (and persisted as the LIVE_SOAP_SNAPSHOT).
           if (payload.metadata?.agent && !seenAgent) seenAgent = payload.metadata.agent;
           if (seenAgent && payload.runningSummary && payload.runningSummary.trim()) {
             await reader.cancel().catch(() => undefined);
@@ -293,7 +193,7 @@ async function readFirstAgentFromSse(baseURL: string, consultationId: string, to
       if (lastBoundary >= 0) buffer = buffer.slice(lastBoundary + 2);
     }
     // Stream ended without a generated frame — still report the agent if the
-    // frozen snapshot reached us, so R-N1 can assert and R-N2 can skip.
+    // frozen snapshot reached us, so R-N1 can still assert.
     return seenAgent ? { agent: seenAgent, generated: false } : null;
   } catch {
     // Budget expired (or the stream broke). Same rule: an agent seen is still
@@ -304,17 +204,14 @@ async function readFirstAgentFromSse(baseURL: string, consultationId: string, to
   }
 }
 
-// SERIAL, and not merely by preference: R-N2 asserts the lineage left behind by
-// the session R-N1 starts, so the order is load-bearing. Running the three tests
-// on parallel workers also re-ran `beforeAll` per worker, and the concurrent
-// agent creations collided on a unique constraint (409, observed 2026-08-08).
-test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)', () => {
+// SERIAL: running the tests on parallel workers re-ran `beforeAll` per worker,
+// and the concurrent agent creations collided on a unique constraint (409,
+// observed 2026-08-08).
+test.describe.serial('Live agent lineage is frozen for the session (R-N1)', () => {
   let token: string;
   let departmentId: string;
   let consultationId: string;
   let sseAgent: SseAgent | null = null;
-  /** True once the live loop actually GENERATED a note (so a snapshot exists to carry lineage). */
-  let liveGenerated = false;
   /** The STT session id whose result stream this spec feeds (see xaddFinalSegments). */
   let sttSessionId: string | null = null;
   /**
@@ -486,7 +383,6 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     // Nothing to tear down on the binding side any more: the spec DISCOVERS a
     // live-bound node rather than creating a row it has to clean up.
     await request.delete(`/api/v1/consultations/${consultationId}`, { headers: bearer(token) }).catch(() => undefined);
-    await dbClient?.$disconnect().catch(() => undefined);
   });
 
   test('SSE live-summary events carry the frozen session agent (R-N1)', async ({ request, baseURL }) => {
@@ -522,7 +418,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     ]);
 
     // A clinician note as well — exercises handleContextAdded alongside the
-    // transcript, and it is what finalize later reads as the transcript.
+    // transcript.
     const context = await request.post(`/api/v1/consultations/${consultationId}/context`, {
       headers: bearer(token),
       data: {
@@ -539,7 +435,6 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
 
     const watch = await ssePromise;
     sseAgent = watch?.agent ?? null;
-    liveGenerated = watch?.generated ?? false;
 
     if (!sseAgent) {
       // With the stream fed, the remaining reasons are environmental: TEXT (and
@@ -575,100 +470,5 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     }
     expect(sseAgent.promptTemplateId, 'the governed live PromptTemplate').toBeTruthy();
     expect(typeof sseAgent.promptVersionNumber, 'the pinned immutable PromptVersion number').toBe('number');
-  });
-
-  test('finalize pins the SAME agent and stamps BOTH prompt versions, distinctly (R-N2)', async ({ request, baseURL }) => {
-    // recording/stop DRAINS the transcript backlog — it loops flush({force:true})
-    // until the cursor catches up — and then finalize runs its own generation.
-    // That is several real LLM round-trips, far past the 30s default.
-    test.setTimeout(300_000);
-    test.skip(!sseAgent, 'no live agent observed on the SSE stream (see previous test)');
-    // Lineage is carried by the LIVE_SOAP_SNAPSHOT ContextItem, which only
-    // exists once a flush GENERATED a note. The frozen agent alone (R-N1) is
-    // not enough — without generation there is no row to stamp.
-    test.skip(!liveGenerated, 'the live loop never generated a note (TEXT unavailable/slow) — no snapshot exists to carry lineage');
-
-    const stopped = await request.post(`/api/v1/consultations/${consultationId}/recording/stop`, {
-      headers: bearer(token),
-      data: { persistSnapshot: true },
-    });
-    expect([200, 201], 'POST recording/stop').toContain(stopped.status());
-    // recording/stop answers once DRAINING; the drain and the LIVE_SOAP_SNAPSHOT write run after it
-    // and end with the plane's terminal `closed: true` (replayed to a late joiner). Finalize reads
-    // that snapshot, so wait for it.
-    expect(await waitForLiveSummaryClosed(baseURL!, consultationId, token, 240_000), 'live-summary never sent `closed: true` after stop').toBe(true);
-
-    const summary = await request.post(`/api/v1/consultations/${consultationId}/summary`, { headers: bearer(token), data: {} });
-    if (![200, 201].includes(summary.status())) {
-      console.warn(`[ C6] finalize returned ${summary.status()} — TEXT unavailable. R-N2 assertions skipped.`);
-      test.skip();
-      return;
-    }
-    const contextItemId =
-      ((await summary.json()) as { id?: string; contextItemId?: string }).contextItemId ?? ((await summary.json()) as { id: string }).id;
-    expect(contextItemId, 'finalize must return the summary ContextItem id').toBeTruthy();
-
-    const db = await getDb();
-    const meta = await db.summaryMeta.findFirst({ where: { contextItemId }, orderBy: { createdAt: 'desc' } });
-    expect(meta, `SummaryMeta row for ContextItem ${contextItemId}`).toBeTruthy();
-
-    // R-N2: the same agent that ran live finalized.
-    expect(meta!.sessionAgentId).toBe(sseAgent!.id);
-    expect(meta!.sessionAgentPromptVersion).toBe(`${sseAgent!.promptTemplateId}@${sseAgent!.promptVersionNumber}`);
-
-    // The lineage columns name the LIVE template, in `<templateId>@<n>` form.
-    expect(meta!.sessionAgentPromptVersion, 'the LIVE template version').toBeTruthy();
-    expect(meta!.sessionAgentPromptVersion).toContain('@');
-
-    // NOTE — this originally also asserted that `promptVersion` (finalize's own
-    // template version) was present and DIFFERENT. Running it proved that wrong:
-    // `SummaryMeta.promptVersion` is only ever written when a caller supplies it
-    // on AddContextRequest (context.service.ts:522); the native finalize path
-    // never populates it, so null here is correct, not a defect. Asserting it
-    // would have locked in an expectation the product does not hold. The claim
-    // that matters — live and finalize are distinct prompts — is already carried
-    // by `sessionAgentPromptVersion` naming the LIVE template while the finalize
-    // template is reported separately via `promptResolvedFrom`/`resolvedPromptId`.
-    expect(meta!.resolvedPromptId, "finalize's own resolved template").toBeTruthy();
-    expect(meta!.resolvedPromptId).not.toBe(sseAgent!.promptTemplateId);
-  });
-
-  test('tier-0 doctor-preferred still wins the finalize template while lineage stays stamped', async ({ request }) => {
-    test.setTimeout(300_000); // another real finalize generation — see the note above
-    test.skip(!sseAgent, 'no live agent observed on the SSE stream (see first test)');
-    test.skip(!liveGenerated, 'the live loop never generated a note — no snapshot exists to carry lineage');
-
-    const templates = await request.get('/api/v1/prompt-templates/available?category=SUMMARY', { headers: bearer(token) });
-    test.skip(!templates.ok(), 'no prompt templates available to the caller');
-    const list = (await templates.json()) as { id: string }[];
-    const preferred = list.find((t) => t.id !== sseAgent!.promptTemplateId);
-    test.skip(!preferred, 'no template distinct from the agent binding to prefer');
-
-    const set = await request.put('/api/v1/prompt-templates/preferred', { headers: bearer(token), data: { templateId: preferred!.id } });
-    expect(set.status(), 'PUT /prompt-templates/preferred').toBe(200);
-
-    try {
-      const summary = await request.post(`/api/v1/consultations/${consultationId}/summary`, { headers: bearer(token), data: {} });
-      if (![200, 201].includes(summary.status())) {
-        console.warn(`[ C6] finalize returned ${summary.status()} — TEXT unavailable. tier-0 assertions skipped.`);
-        test.skip();
-        return;
-      }
-      const body = (await summary.json()) as { id?: string; contextItemId?: string };
-      const contextItemId = body.contextItemId ?? body.id;
-
-      const db = await getDb();
-      const meta = await db.summaryMeta.findFirst({ where: { contextItemId }, orderBy: { createdAt: 'desc' } });
-      expect(meta, 'SummaryMeta row').toBeTruthy();
-
-      // The clinician's own preference outranks the pinned agent …
-      expect(meta!.promptResolvedFrom).toBe('preferred');
-      expect(meta!.resolvedPromptId).toBe(preferred!.id);
-      // … and the session lineage is recorded all the same (provenance, not policy).
-      expect(meta!.sessionAgentId).toBe(sseAgent!.id);
-      expect(meta!.sessionAgentPromptVersion).toBe(`${sseAgent!.promptTemplateId}@${sseAgent!.promptVersionNumber}`);
-    } finally {
-      await request.put('/api/v1/prompt-templates/preferred', { headers: bearer(token), data: { templateId: null } }).catch(() => undefined);
-    }
   });
 });

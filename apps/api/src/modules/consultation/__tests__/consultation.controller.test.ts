@@ -72,7 +72,6 @@ function createMockContextService() {
 
 function createMockSummaryService() {
   return {
-    generateSummary: vi.fn(),
     getSummaries: vi.fn(),
     generatePreSummary: vi.fn(),
     getLatestSummary: vi.fn(),
@@ -802,14 +801,6 @@ describe('ConsultationController', () => {
 
     it('deleteContext should enforce ownership', async () => {
       await expect(controller.deleteContext(CONSULTATION_OWN, 'ctx-1')).rejects.toThrow(ForbiddenException);
-    });
-
-    it('generateSummary should enforce ownership', async () => {
-      await expect(controller.generateSummary(CONSULTATION_OWN, {} as any)).rejects.toThrow(ForbiddenException);
-    });
-
-    it('generatePreSummary should enforce ownership', async () => {
-      await expect(controller.generatePreSummary(CONSULTATION_OWN, {} as any)).rejects.toThrow(ForbiddenException);
     });
 
     it('updateSummary should enforce ownership', async () => {

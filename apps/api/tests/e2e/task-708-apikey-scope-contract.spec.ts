@@ -147,38 +147,6 @@ test.describe('API-key scope contract (locks in current behavior)', () => {
   // ==========================================================================
 
   test.describe('real enforcement — @RequiredScopes routes reject an out-of-scope key and admit an in-scope one', () => {
-    test('ConsultationController.generateSummary (consultation:report:write): out-of-scope key gets 403 with the exact message shape', async ({
-      request,
-    }) => {
-      const key = await createScopedApiKey(request, adminToken, ['consultation:session:read'], 'task-708-nosummary');
-      createdApiKeyIds.push(key.id);
-
-      const response = await request.post('/api/v1/consultations/00000000-0000-0000-0000-000000000000/summary', {
-        headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
-        data: {},
-      });
-
-      expect(response.status()).toBe(403);
-      const body = await response.json();
-      expect(body.message).toContain('API key does not have required scope(s): consultation:report:write');
-    });
-
-    test('ConsultationController.generateSummary (consultation:report:write): in-scope key passes the scope gate (reaches the 404 for a nonexistent consultation, not the scope 403)', async ({
-      request,
-    }) => {
-      const key = await createScopedApiKey(request, adminToken, ['consultation:report:write'], 'task-708-summary');
-      createdApiKeyIds.push(key.id);
-
-      const response = await request.post('/api/v1/consultations/00000000-0000-0000-0000-000000000000/summary', {
-        headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
-        data: {},
-      });
-
-      expect(response.status()).toBe(404);
-      const body = await response.json();
-      expect(body.message).not.toContain('required scope');
-    });
-
     test('ConsultationController.generateSummaryAsync (consultation:report:write): out-of-scope key gets 403 with the exact message shape', async ({
       request,
     }) => {

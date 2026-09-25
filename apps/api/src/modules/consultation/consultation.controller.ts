@@ -1648,19 +1648,11 @@ export class ConsultationController {
   }
 
   // ─── Summary ─────────────────────────────────────────────────────
-
-  @ApiEndpoint({
-    returnedModel: SummaryResponse,
-    method: HttpMethod.POST,
-    path: ':id/summary',
-    by: ['id'],
-  })
-  @ApiParam({ name: 'id', description: 'Consultation ID' })
-  @RequiredScopes('consultation:report:write')
-  async generateSummary(@Param('id') id: string, @Body() request: GenerateSummaryRequest): Promise<SummaryResponse> {
-    await this.verifyConsultationOwnership(id);
-    return this.summaryService.generateSummary(id, request);
-  }
+  //
+  // A note is GENERATED only through the async/workflow plane (`:id/summary/async`,
+  // `:id/summary/pre-summary/async`, workflow runs). The synchronous `POST :id/summary` and
+  // `POST :id/summary/pre-summary`, which called TEXT directly and bypassed the tenant's agents
+  // and workflows, were removed outright (TASK-1006, owner decision OD-2) and answer 404.
 
   @ApiEndpoint({
     returnedModel: SummaryResponse,
@@ -1674,22 +1666,6 @@ export class ConsultationController {
   async getSummaries(@Param('id') id: string): Promise<SummaryResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.summaryService.getSummaries(id);
-  }
-
-  @ApiEndpoint({
-    returnedModel: SummaryResponse,
-    method: HttpMethod.POST,
-    path: ':id/summary/pre-summary',
-    by: ['id'],
-  })
-  @ApiParam({ name: 'id', description: 'Consultation ID' })
-  @RequiredScopes('consultation:report:write')
-  // TASK-933 — `svc:consultation:report:write` already existed (the standalone summarization
-  // family) and was seeded; it simply had no consultation route declaring it.
-  @RequiredSvcScopes('svc:consultation:report:write')
-  async generatePreSummary(@Param('id') id: string, @Body() request: GeneratePreSummaryRequest): Promise<SummaryResponse> {
-    await this.verifyConsultationOwnership(id);
-    return this.summaryService.generatePreSummary(id, request);
   }
 
   @ApiEndpoint({
