@@ -95,8 +95,6 @@ import { AgentTrajectoryModule } from './modules/agent-trajectory/agent-trajecto
 // Phase 3A item 6 — read-only agentic instruction inventory (/admin/agentic/*).
 import { AgenticAdminModule } from './modules/agentic-admin/agentic-admin.module';
 import { McpAdminModule } from './modules/mcp-admin/mcp-admin.module';
-// tenant-scoped STT fallback + BYOK admin surface (/admin/stt-config).
-import { TenantSttConfigModule } from './modules/tenant-stt-config/tenant-stt-config.module';
 // tenant-scoped external identity provider (OIDC) admin surface.
 import { TenantIdpConfigModule } from './modules/tenant-idp-config/tenant-idp-config.module';
 import { HealthModule } from './modules/health/health.module';
@@ -106,7 +104,6 @@ import { MonitoringModule } from './modules/monitoring/monitoring.module';
 // /admin/notifications (read/update/delete over system-emitted rows).
 import { NotificationModule } from './modules/notification/notification.module';
 import { PlatformMetricsModule } from './modules/platform-metrics/platform-metrics.module';
-import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { AiModelModule } from './modules/ai-model/ai-model.module';
 import { InferenceEnginesModule } from './modules/inference-engines/inference-engines.module';
 import { ModelResidencyModule } from './modules/model-residency/model-residency.module';
@@ -537,8 +534,6 @@ const featureModules: any[] = [
   AgenticAdminModule,
   // /admin/mcp-servers/* (MCP external-tools registry; super-admin CRUD + registry read).
   McpAdminModule,
-  // /admin/tts-config (per-tenant TTS spec + BYO provider credentials).
-  TenantSttConfigModule,
   // /admin/tenant-idp-config (tenant-scoped external OIDC identity provider).
   TenantIdpConfigModule,
   QueueAdminModule,
@@ -552,7 +547,6 @@ const featureModules: any[] = [
   StorageAccessKeyModule,
   StreamingModule,
   SpeechModule,
-  PipelineModule,
   AiModelModule,
   TenantModule,
   TenantBucketModule,
