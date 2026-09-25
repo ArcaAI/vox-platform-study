@@ -284,6 +284,41 @@ Gate evidence: TASK-1004 §9.2 (one shared pass).
 - [Triton model management (explicit mode)](https://docs.nvidia.com/deeplearning/triton-inference-server/user-guide/docs/user_guide/model_management.html) · [KServe ModelMesh](https://kserve.github.io/website/latest/modelserving/mms/modelmesh/overview/) · [Ray Serve model multiplexing](https://docs.ray.io/en/latest/serve/model-multiplexing.html) · [vLLM sleep mode](https://docs.vllm.ai/en/latest/features/sleep_mode/)
 - [GPU Operator time-slicing](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-sharing.html) · [dcgm-exporter #521](https://github.com/NVIDIA/dcgm-exporter/issues/521) · [HydraServe cold start (arXiv 2502.15524)](https://arxiv.org/pdf/2502.15524)
 
+## 13. Redesign after owner review (2026-09-25)
+
+> "Model residency is so unfriendly … I don't know which model will be loaded and handled by what service."
+
+### 13.1 What is wrong with the shipped screen (discovery, file:line in the review notes)
+
+- It lists only what is **resident right now** (`getView()` builds rows from agent reports only), so a model that is not
+  loaded never appears and "Load" needs a free-text `modelRef` (`load-model-dialog.tsx:126-135`).
+- Models are raw ids (`modelRef` = slug / HF id / LM Studio key per service), with no link to the catalogue and no
+  "which agents use this".
+- `class` / `classSource` (`PINNED` / `implicit-live-path`), `cpu:<service>` devices and pod-name instances are shown
+  raw with no explanation.
+- The LM Studio branch of the catalogue lookup matches `wireModelId` without checking `servedBy` / `provider`.
+
+### 13.2 Design (owner approved the mockup, 2026-09-25)
+
+- **Catalogue-first, grouped by service.** Every SELF_HOSTED `AiModel` is listed under the workload that runs it
+  (`servedBy`: stt, stt-worker, nlp, lmstudio), loaded or not; cloud rows are excluded (not loadable).
+- **Per model:** human name + slug; status in plain words (Loaded on GPU 0 · 1.6 GB measured / Not loaded · ~size ·
+  loads in N s from `observedLoadSeconds`); **used by** (agents and tenants, primary vs fallback, plus `AiRoutingPolicy`
+  consumers) with a "live consultations" marker; **keep policy** in plain words (Always loaded / Keep warm / Load when
+  needed) with the reason; activity; one action button (Load / Unload / Reload…).
+- **Detail drawer:** the agents and tenants using the model, measured footprint and load history, policy editor.
+- GPU summary on top names the models on each card; suggestions (shadow mode) in plain language.
+- Platform admin only (D-11, reconfirmed 2026-09-25).
+
+### 13.3 Lanes
+
+| Lane | Owns | Tier |
+|---|---|---|
+| L-RCAT | Gateway: `GET admin/model-residency/catalogue` (every loadable model per service merged with residency state), the reverse index model → agents / fallbacks / routing policies / tenants, estimated load time + size, plain-language `keepPolicy` + reason, the LM Studio `servedBy` guard; contract fixture extended first | `opus` |
+| L-RUI | Console: the redesigned screen per the mockup, detail drawer, model picker for Load, legends | `sonnet` |
+
+Runs alongside TASK-1006 wave 1 (file-disjoint: residency modules only).
+
 ## 12. Change history
 
 | Date | Change |
