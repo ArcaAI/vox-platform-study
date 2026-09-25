@@ -82,6 +82,7 @@
       "entitlementKey": null,
       "outputKeys": {
         "out": "data",
+        "text": "text",
         "next": null
       },
       "lane": "durable"

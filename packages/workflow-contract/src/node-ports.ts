@@ -187,7 +187,14 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
   ),
   'core.note': ports([], []),
   'core.output': ports([port('in', 'any', false, true), AFTER], []),
-  'core.data': ports([port('in', 'object', true, true), AFTER], [port('out', 'object', true, true, { outputKey: 'data' }), NEXT]),
+  // TASK-1006 — `text` is the reshaped output's `text` field, published only when that field is
+  // text. It is the ONE way a TEXT kind a caller supplies on the trigger (a finished transcript)
+  // reaches an agent's `in: text`: the trigger's `context<schemaRef>` widens to `object` and
+  // never to `text`. `text` is a lattice root, so the socket can feed nothing narrower.
+  'core.data': ports(
+    [port('in', 'object', true, true), AFTER],
+    [port('out', 'object', true, true, { outputKey: 'data' }), port('text', 'text', false, true, { outputKey: 'text' }), NEXT],
+  ),
   'core.action': ports(
     [
       port('in', 'object', false, true),

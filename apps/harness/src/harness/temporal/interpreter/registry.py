@@ -169,7 +169,8 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=30,
         default_max_attempts=2,
-        output_keys={"out": "data", "next": None},
+        # TASK-1006 — `text` carries the reshaped output's `text` field when it IS text.
+        output_keys={"out": "data", "text": "text", "next": None},
     ),
     "core.action": NodeSpec(
         key="core.action",
