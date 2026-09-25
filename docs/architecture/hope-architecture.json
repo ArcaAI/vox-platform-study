@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "HOPE Clinical AI Platform Architecture",
+    "output": "hope-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/project-hope",
+      "revision": "dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d"
+    },
+    "views": [
+      {
+        "id": "live-consultation",
+        "label": "Live Consultation Pipeline",
+        "focus": ["sdk", "gateway", "redis", "stt", "text"],
+        "note": "PCM audio stream flows via Redis Streams through STT into running SOAP notes."
+      },
+      {
+        "id": "clinical-harness",
+        "label": "Clinical Documentation Harness",
+        "focus": ["harness", "temporal", "nlp", "text"],
+        "note": "Durable Temporal workflow executing sensor-gated clinical note generation."
+      },
+      {
+        "id": "governance-admin",
+        "label": "Governance & System of Record",
+        "focus": ["admin", "gateway", "postgres"],
+        "note": "Next.js BFF administration console managing multi-tenant config and audit state."
+      },
+      {
+        "id": "safety-inference",
+        "label": "AI Safety & Inference",
+        "focus": ["text", "guardrail", "llm"],
+        "note": "Guardrail inspects LLM completions for PII, prompt leaks, and medical validation."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "sdk",
+      "type": "external",
+      "label": "Clinician SDK",
+      "sublabel": "@arcaai/vox",
+      "tag": "React 19 / WebAudio",
+      "pos": [40, 240],
+      "size": [130, 60],
+      "sources": [
+        { "path": "packages/agentic-sdk-v2/package.json", "line": 1, "label": "Vox SDK package" }
+      ]
+    },
+    {
+      "id": "admin",
+      "type": "frontend",
+      "label": "Admin Console",
+      "sublabel": "Next.js 16 :5176",
+      "tag": "BFF Auth / Proxy",
+      "pos": [40, 380],
+      "size": [130, 60],
+      "sources": [
+        { "path": "apps/admin-console/package.json", "line": 1, "label": "Admin Console package" }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "messagebus",
+      "label": "Redis 8",
+      "sublabel": "Streams & Queues",
+      "tag": "Audio / BullMQ",
+      "pos": [270, 120],
+      "size": [140, 60],
+      "sources": [
+        { "path": "infrastructure/docker/docker-compose.yml", "line": 42, "label": "Redis service" }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "API Gateway",
+      "sublabel": "NestJS 11 :8868",
+      "tag": "Auth / WS / BullMQ",
+      "pos": [270, 310],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/api/src/main.ts", "line": 1, "label": "Gateway bootstrap" }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL 18",
+      "sublabel": "TimescaleDB :5432",
+      "tag": "Prisma 7 / pgvector",
+      "pos": [270, 500],
+      "size": [140, 60],
+      "sources": [
+        { "path": "packages/database/src/prisma/db_main/schema.prisma", "line": 1, "label": "Database schema" }
+      ]
+    },
+    {
+      "id": "stt",
+      "type": "backend",
+      "label": "STT Engine",
+      "sublabel": "FastAPI :8861",
+      "tag": "ASR / Diarization",
+      "pos": [510, 120],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/main.py", "line": 1, "label": "STT service" }
+      ]
+    },
+    {
+      "id": "text",
+      "type": "backend",
+      "label": "Text Generation",
+      "sublabel": "FastAPI :8862",
+      "tag": "SOAP Notes / LLM",
+      "pos": [510, 310],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/text/src/text/main.py", "line": 1, "label": "Text service" }
+      ]
+    },
+    {
+      "id": "harness",
+      "type": "backend",
+      "label": "Clinical Harness",
+      "sublabel": "FastAPI :8866",
+      "tag": "Doc Loop / Worker",
+      "pos": [510, 500],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/harness/src/harness/main.py", "line": 1, "label": "Harness service" }
+      ]
+    },
+    {
+      "id": "guardrail",
+      "type": "security",
+      "label": "Guardrail Engine",
+      "sublabel": "FastAPI :8863",
+      "tag": "PII & Safety",
+      "pos": [750, 190],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/guardrail/src/guardrail/main.py", "line": 1, "label": "Guardrail service" }
+      ]
+    },
+    {
+      "id": "nlp",
+      "type": "backend",
+      "label": "Medical NLP",
+      "sublabel": "FastAPI :8864",
+      "tag": "NER & Coding",
+      "pos": [750, 330],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/nlp/src/nlp/main.py", "line": 1, "label": "NLP service" }
+      ]
+    },
+    {
+      "id": "temporal",
+      "type": "cloud",
+      "label": "Temporal Server",
+      "sublabel": "gRPC :7233",
+      "tag": "Durable Workflows",
+      "pos": [750, 500],
+      "size": [140, 60],
+      "sources": [
+        { "path": "infrastructure/docker/docker-compose.yml", "line": 85, "label": "Temporal service" }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM Engines",
+      "sublabel": "LM Studio / Cloud LLM",
+      "tag": "OpenAI-compatible",
+      "pos": [990, 190],
+      "size": [150, 60],
+      "sources": [
+        { "path": "docs/architecture/overview.md", "line": 57, "label": "LLM providers" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Control & Data Plane",
+      "wraps": ["redis", "gateway", "postgres"]
+    },
+    {
+      "kind": "region",
+      "label": "HOPE AI Processing Services",
+      "wraps": ["stt", "text", "harness", "guardrail", "nlp"]
+    }
+  ],
+  "connections": [
+    { "from": "sdk", "to": "gateway", "label": "audio & WS", "variant": "emphasis" },
+    { "from": "admin", "to": "gateway", "label": "BFF proxy", "variant": "emphasis" },
+    { "from": "gateway", "to": "redis", "label": "stream audio", "variant": "dashed", "fromSide": "top", "toSide": "bottom", "labelAt": [340, 245] },
+    { "from": "gateway", "to": "postgres", "label": "Prisma ORM", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "labelAt": [340, 435] },
+    { "from": "redis", "to": "stt", "label": "audio frames" },
+    { "from": "gateway", "to": "text", "label": "summaries" },
+    { "from": "gateway", "to": "harness", "label": "trigger docs" },
+    { "from": "text", "to": "guardrail", "label": "safety check", "variant": "security" },
+    { "from": "harness", "to": "nlp", "label": "NER extraction", "fromSide": "top", "toSide": "bottom" },
+    { "from": "guardrail", "to": "llm", "label": "judge checks" },
+    { "from": "harness", "to": "temporal", "label": "durable tasks", "fromSide": "right", "toSide": "left" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Realtime Consultation",
+      "items": [
+        "Browser SDK streams 16kHz PCM audio over WebSocket with one-time stream tickets",
+        "Redis Streams decouple high-throughput audio ingestion from STT ASR workers",
+        "Live SOAP running notes generated via debounced segment streaming"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Clinical Harness Loop",
+      "items": [
+        "Temporal orchestrates bounded guides-generate-sensors-gate documentation loop",
+        "Medical NLP extracts clinical entities and ontology codes (SNOMED, RxNorm)",
+        "Clinician attestation required before final signed note persistence in PostgreSQL"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Safety & Multi-Tenancy",
+      "items": [
+        "Guardrail engine evaluates LLM outputs for PII, prompt leaks, and medical accuracy",
+        "Strict tenant isolation enforced via tenantId and Prisma query extensions",
+        "Next.js 16 BFF admin console uses encrypted session cookies and stream proxying"
+      ]
+    }
+  ]
+}
