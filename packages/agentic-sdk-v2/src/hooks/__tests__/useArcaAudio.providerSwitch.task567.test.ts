@@ -151,7 +151,7 @@ describe('useArcaAudio — provider switch + connection state', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'azure_speech_transcription' });
+      await result.current.start({ agentSlug: 'azure_speech_transcription' });
     });
 
     expect(mockStoreData.setSttConnectionState).toHaveBeenCalledWith('connected');
@@ -166,13 +166,11 @@ describe('useArcaAudio — provider switch + connection state', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'primary', startOn: 'fallback' });
+      await result.current.start({ agentSlug: 'primary', startOn: 'fallback' });
     });
 
     // Pre-start selection threaded into the streaming transport build.
-    expect(mockStoreData.pluginManager.setRuntimeOptions).toHaveBeenCalledWith(
-      expect.objectContaining({ startOn: 'fallback' }),
-    );
+    expect(mockStoreData.pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ startOn: 'fallback' }));
     // And the durable active-pipeline flag reflects it from frame 1.
     expect(mockStoreData.setActivePipeline).toHaveBeenCalledWith({
       id: 'primary',
@@ -185,12 +183,10 @@ describe('useArcaAudio — provider switch + connection state', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'primary' });
+      await result.current.start({ agentSlug: 'primary' });
     });
 
-    expect(mockStoreData.pluginManager.setRuntimeOptions).toHaveBeenCalledWith(
-      expect.objectContaining({ startOn: undefined }),
-    );
+    expect(mockStoreData.pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ startOn: undefined }));
     expect(mockStoreData.setActivePipeline).toHaveBeenCalledWith({
       id: 'primary',
       name: 'primary',
@@ -211,7 +207,7 @@ describe('useArcaAudio — provider switch + connection state', () => {
   it('maps onSttConnectionState transitions onto the store', async () => {
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'p1' });
+      await result.current.start({ agentSlug: 'p1' });
     });
 
     const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
@@ -227,7 +223,7 @@ describe('useArcaAudio — provider switch + connection state', () => {
   it('maps onProviderSwitched onto switched_fallback + a fallback active pipeline', async () => {
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'primary' });
+      await result.current.start({ agentSlug: 'primary' });
     });
 
     const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
@@ -252,7 +248,7 @@ describe('useArcaAudio — provider switch + connection state', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'requested-pipe' });
+      await result.current.start({ agentSlug: 'requested-pipe' });
       const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
       callbacks.onStreamingSessionCreated?.({ pipelineId: 'resolved-pipe', isFallback: false });
     });
@@ -287,7 +283,7 @@ describe('useArcaAudio — provider switch + connection state', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'requested-pipe' });
+      await result.current.start({ agentSlug: 'requested-pipe' });
       const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
       callbacks.onStreamingSessionCreated?.({ pipelineId: 'tenant-fallback', isFallback: true });
     });
@@ -305,7 +301,7 @@ describe('useArcaAudio — provider switch + connection state', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'requested-pipe' });
+      await result.current.start({ agentSlug: 'requested-pipe' });
     });
 
     expect(mockStoreData.setActivePipeline).toHaveBeenLastCalledWith({
@@ -326,13 +322,11 @@ describe('useArcaAudio — provider switch + connection state', () => {
   it('un-latches on an explicit primary-direction frame', async () => {
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'primary' });
+      await result.current.start({ agentSlug: 'primary' });
     });
     const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
 
-    act(() =>
-      callbacks.onProviderSwitched({ fromPipeline: 'sarvam', toPipeline: 'primary', reason: 'user', active: 'primary', isFallback: false }),
-    );
+    act(() => callbacks.onProviderSwitched({ fromPipeline: 'sarvam', toPipeline: 'primary', reason: 'user', active: 'primary', isFallback: false }));
 
     expect(mockStoreData.setActivePipeline).toHaveBeenLastCalledWith({ id: 'primary', name: 'primary', isFallback: false });
     expect(mockStoreData.setSttConnectionState).toHaveBeenLastCalledWith('connected');
@@ -345,7 +339,7 @@ describe('useArcaAudio — provider switch + connection state', () => {
     // primary, never a fallback. Guessing `true` here is what stuck the toggle.
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'arcaai_ml_en' });
+      await result.current.start({ agentSlug: 'arcaai_ml_en' });
     });
     const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
 
@@ -381,7 +375,7 @@ describe('useArcaAudio — provider switch + connection state', () => {
     ).rejects.toThrow(/no active streaming session/i);
   });
 
-  it('degraded path: a 404 with a fallbackPipelineId rebuilds on the fallback', async () => {
+  it('degraded path: a 404 with a fallbackAgentSlug rebuilds on the fallback', async () => {
     const notFound = Object.assign(new Error('not found'), { code: 'NOT_FOUND' });
     const sessionManager = makeSessionManager({ switchToFallback: vi.fn().mockRejectedValue(notFound) });
     setupStore({}, sessionManager);
@@ -389,7 +383,7 @@ describe('useArcaAudio — provider switch + connection state', () => {
     const { result } = renderHook(() => useArcaAudio());
     // Prime a running session so stop() has something to tear down.
     await act(async () => {
-      await result.current.start({ pipelineId: 'primary' });
+      await result.current.start({ agentSlug: 'primary' });
     });
     const pm = mockStoreData.pluginManager;
     (mockStoreData.setSttConnectionState as any).mockClear();

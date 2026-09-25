@@ -2,38 +2,20 @@
  * @arcaai/vox - Plugin Exports Tests (Stream F)
  *
  * TDD tests for plugin entry point exports.
- * useMedNER has been moved to a separate entry point (@arcaai/vox/plugins/med-ner)
- * to prevent the main plugins module from failing when @arcaai/med-ner is not installed.
+ *
+ * TASK-1006 (following TASK-865): the browser never runs a model.
+ * `useVAD`/`useSTT`/`useNoiseFilter` (gated wrappers), `useSttProviderToggle`,
+ * `createProcessedAudioTap`, and the whole `./plugins/med-ner` entry were
+ * removed — see task1006-removed.test.ts for the pinned absence of those
+ * plus the deleted client-AI packages.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-
-vi.mock('@arcaai/vad', () => ({
-  useVAD: vi.fn(),
-}));
-
-vi.mock('@arcaai/stt', () => ({
-  useSTT: vi.fn(),
-}));
-
-vi.mock('@arcaai/noise-filter', () => ({
-  useNoiseFilter: vi.fn(),
-}));
+import { describe, it, expect } from 'vitest';
 
 describe('Plugin Exports', () => {
-  it('should export useVAD', async () => {
+  it('should export useArcaAudio', async () => {
     const plugins = await import('../../plugins.js');
-    expect(plugins).toHaveProperty('useVAD');
-  });
-
-  it('should export useSTT', async () => {
-    const plugins = await import('../../plugins.js');
-    expect(plugins).toHaveProperty('useSTT');
-  });
-
-  it('should export useNoiseFilter', async () => {
-    const plugins = await import('../../plugins.js');
-    expect(plugins).toHaveProperty('useNoiseFilter');
+    expect(plugins).toHaveProperty('useArcaAudio');
   });
 
   it('should export PluginManager', async () => {
@@ -47,8 +29,13 @@ describe('Plugin Exports', () => {
     expect(plugins).toHaveProperty('KnowledgePipeline');
   });
 
-  it('should NOT export useMedNER (moved to plugins/med-ner)', async () => {
+  it('should NOT export the removed client-inference surfaces', async () => {
     const plugins = await import('../../plugins.js');
+    expect(plugins).not.toHaveProperty('useVAD');
+    expect(plugins).not.toHaveProperty('useSTT');
+    expect(plugins).not.toHaveProperty('useNoiseFilter');
     expect(plugins).not.toHaveProperty('useMedNER');
+    expect(plugins).not.toHaveProperty('useSttProviderToggle');
+    expect(plugins).not.toHaveProperty('createProcessedAudioTap');
   });
 });

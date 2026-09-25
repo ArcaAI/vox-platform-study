@@ -22,8 +22,6 @@ export { useArcaContext } from './useArcaContext';
 export { useArcaSummary } from './useArcaSummary';
 export { useArcaLiveSummary, type UseArcaLiveSummaryReturn, type LiveSummaryStreamStatus } from './useArcaLiveSummary';
 export { useArcaLiveAssist, type UseArcaLiveAssistReturn, type LiveAssistStreamStatus } from './useArcaLiveAssist';
-export { useArcaPipelines } from './useArcaPipelines';
-export type { UseArcaPipelineControl } from './useArcaPipelines';
 
 // Configuration hook
 export { useArcaConfig, type UseArcaConfigReturn } from './useArcaConfig';
@@ -85,15 +83,9 @@ export { useConsultationEvents, type UseConsultationEventsReturn, type Consultat
 // Audio recordings hook (dual-capture X8)
 export { useAudioRecordings, type UseAudioRecordingsReturn } from './useAudioRecordings';
 
-// Pipeline management hook (incl. default/toggle/versions)
-export { usePipelines, type UsePipelinesReturn } from './usePipelines';
-export type { Pipeline, CreatePipelineInput, UpdatePipelineInput, PipelineValidationResult, PipelineVersion } from './usePipelines';
-
 // STT language-mode catalog hook
 export { useArcaSttLanguageModes, type UseArcaSttLanguageModesReturn } from './useArcaSttLanguageModes';
 
-// Native 2-way STT provider toggle — pipeline (primary) ↔ default (fallback)
-export { useSttProviderToggle, type UseSttProviderToggleReturn, type SttFallbackProvider } from './useSttProviderToggle';
 // Batch (pre-recorded file) transcription — up to N recordings, monitored to
 // completion.
 export {
@@ -118,16 +110,6 @@ export {
   type UseVoiceEnrollmentStatusReturn,
   type VoiceEnrollmentChecker,
 } from './useVoiceEnrollmentStatus';
-
-// LOCAL in-browser voice-embedding provider — sits alongside the
-// backend `useVoiceEmbedding`; extracts a WavLM speaker embedding client-side.
-export { useLocalVoiceEmbedding } from './useLocalVoiceEmbedding';
-export type {
-  UseLocalVoiceEmbeddingReturn,
-  UseLocalVoiceEmbeddingOptions,
-  LocalVoiceEmbeddingRecord,
-  LocalVoiceStatus,
-} from './useLocalVoiceEmbedding';
 
 // Policy management hook
 export { usePolicies, type UsePoliciesReturn } from './usePolicies';

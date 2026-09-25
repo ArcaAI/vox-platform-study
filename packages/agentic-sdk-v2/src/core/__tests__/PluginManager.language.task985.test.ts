@@ -23,10 +23,7 @@ import { PluginManager } from '../PluginManager';
 import { createMockLogger } from '../../__tests__/setup';
 import type { AgenticClient } from '../AgenticClient';
 
-vi.mock('@arcaai/noise-filter', () => ({ createNoiseFilter: vi.fn() }));
-vi.mock('@arcaai/vad', () => ({ createVAD: vi.fn() }));
 vi.mock('@arcaai/stt', () => ({ createSTT: vi.fn() }));
-vi.mock('@arcaai/med-ner', () => ({ createMedNER: vi.fn() }));
 
 function makeApiClient(): AgenticClient {
   return {

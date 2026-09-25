@@ -7,29 +7,31 @@ import { defineConfig, type Options } from 'tsup';
  *
  * 1. Main build (index.ts): Full SDK with all plugins bundled
  *    - Imports: @arcaai/vox
- *    - Size: ~5.2MB (includes STT, VAD, noise-filter, room)
  *
  * 2. Core build (core.ts): Lightweight SDK without plugin dependencies
  *    - Imports: @arcaai/vox/core
- *    - Size: ~200KB (providers, hooks, types, utilities)
  *    - Use case: Admin apps, SSR, lazy-loading plugins
  *
  * 3. Plugins build (plugins.ts): Plugin hooks and pipelines only
  *    - Imports: @arcaai/vox/plugins
- *    - Size: ~5MB (STT, VAD, noise-filter bundled)
- *    - Use case: Lazy-loaded audio features
+ *    - Use case: Lazy-loaded audio features (the SDK audio facade + TTS
+ *      playback + the plugin/pipeline managers that drive backend STT)
+ *
+ * TASK-1006 (following TASK-865): the browser never runs a model. The
+ * `@arcaai/vad`, `@arcaai/noise-filter` and `@arcaai/med-ner` client-AI
+ * packages — and the `./plugins/med-ner` entry point that lazy-loaded the
+ * last of them — were removed. What remains bundled is capture + the
+ * backend streaming STT transport.
  *
  * Bundle Structure:
- * - Core (~200KB): Provider, hooks, state management, API client
+ * - Core: providers, hooks, state management, API client
  * - Bundled plugins:
- *   - @arcaai/vad: Silero VAD wrapper (@ricky0123/vad-web + ONNX Runtime Web stay external)
  *   - @arcaai/room: Audio context management
  * - External plugins (own runtime assets via import.meta.url):
- *   - @arcaai/stt: Whisper + HuggingFace Transformers (ships its own Whisper worker)
- *   - @arcaai/noise-filter: RNNoise WASM (ships its own rnnoise.wasm)
+ *   - @arcaai/stt: capture + backend streaming STT transport (ships its own
+ *     worklet)
  *
  * Optional (peer deps - not bundled):
- * - @arcaai/med-ner: Medical NER (~300MB models)
  * - highlight.run: Observability integration
  * - @microsoft/clarity: Behavioural monitoring (non-production only — see ClarityTransport)
  *
@@ -48,15 +50,14 @@ import { defineConfig, type Options } from 'tsup';
 
 // Packages that should be bundled INTO the SDK (workspace dependencies).
 //
-// `@arcaai/stt` and `@arcaai/noise-filter` are NOT in this list — they are in
-// `externalDependencies` below instead. Both resolve runtime assets
-// via `new URL(<relative>, import.meta.url)` — the Whisper worker and the
-// RNNoise WASM — which esbuild breaks when it inlines those ESM sub-packages:
-// `import.meta` is shimmed to `{}`, so `new URL(rel, undefined)` throws
-// "Invalid URL", and the `workers/`/`assets/` files never land in the SDK
-// `dist/`. Keeping them external preserves `import.meta.url` and the
-// co-located worker/wasm assets in each sub-package's own dist.
-const bundledDependencies = ['@arcaai/json-schema-subset', '@arcaai/room', '@arcaai/vad', 'zustand', 'eventemitter3'];
+// `@arcaai/stt` is NOT in this list — it is in `externalDependencies` below
+// instead. It resolves a runtime asset via `new URL(<relative>,
+// import.meta.url)` — the capture worklet — which esbuild breaks when it
+// inlines that ESM sub-package: `import.meta` is shimmed to `{}`, so `new
+// URL(rel, undefined)` throws "Invalid URL", and the `worklets/` file never
+// lands in the SDK `dist/`. Keeping it external preserves `import.meta.url`
+// and the co-located worklet asset in its own dist.
+const bundledDependencies = ['@arcaai/json-schema-subset', '@arcaai/room', 'zustand', 'eventemitter3'];
 
 // Core-only bundled dependencies (no plugin packages).
 //
@@ -72,52 +73,25 @@ const coreBundledDependencies = ['@arcaai/json-schema-subset', 'zustand', 'event
 const externalDependencies = [
   'react',
   'react-dom',
-  '@arcaai/med-ner', // Optional - heavy NER models, consumer opts-in
   'highlight.run', // Optional - observability integration
   '@microsoft/clarity', // Optional - behavioural monitoring integration
   // Node.js-only packages that shouldn't be in browser bundles
   'onnxruntime-node',
   'sharp',
-  // ONNX Runtime Web + Silero VAD engine MUST stay external.
-  //
-  // `@ricky0123/vad-web@0.0.30` is a CJS-only package whose internal modules
-  // do `require("onnxruntime-web")`. If we let tsup inline that CJS source
-  // into vox's ESM bundle, esbuild emits a `__require()` stub for the
-  // externalized `onnxruntime-web` import (sync CJS require → async ESM
-  // import is not a valid transform). The stub throws
-  // `Dynamic require of "onnxruntime-web" is not supported` at runtime in
-  // browsers (where `require` is undefined).
-  //
-  // Solution: keep `@ricky0123/vad-web` external so the consumer's bundler
-  // (Vite via @rollup/plugin-commonjs, webpack via its CJS interop) handles
-  // the CJS→ESM conversion correctly. `onnxruntime-web` and
-  // `onnxruntime-common` are listed explicitly (defensive: they are already
-  // external by default because they live in `dependencies`, but the explicit
-  // listing protects against accidental `noExternal` regressions and
-  // documents the intent for future maintainers).
-  //
-  // ORT-web ships ESM in `onnxruntime-web@1.24.3/dist/esm/` plus WASM glue
-  // `.mjs` files loaded via dynamic `import()`. It MUST stay external —
-  // bundling it produces a 30MB+ artifact AND breaks WASM runtime discovery.
-  '@ricky0123/vad-web',
-  'onnxruntime-web',
-  'onnxruntime-common',
-  // Asset/worker-owning ESM sub-packages MUST stay external (same
-  // class of reason as `@ricky0123/vad-web` above). `@arcaai/noise-filter`
-  // resolves its RNNoise WASM via `new URL('../assets/rnnoise.wasm',
-  // import.meta.url)` and `@arcaai/stt` spawns its Whisper worker via
-  // `new Worker(new URL('./workers/whisper.worker.mjs', import.meta.url))`.
-  // When bundled, esbuild inlines the source under an `import_meta = {}` shim,
-  // so `new URL(rel, undefined)` throws "Invalid URL", and neither the worker
-  // nor the wasm is copied into the SDK `dist/`. External resolution keeps
-  // `import.meta.url` + the co-located assets intact. Both stay in `package.json`
-  // `dependencies` so consumer bundlers (Vite/webpack) resolve them normally.
+  // Asset-owning ESM sub-package MUST stay external (same class of reason as
+  // documented above for `bundledDependencies`). `@arcaai/stt` resolves its
+  // capture worklet via `new URL('../worklets/stt-capture.worklet.js',
+  // import.meta.url)`. When bundled, esbuild inlines the source under an
+  // `import_meta = {}` shim, so `new URL(rel, undefined)` throws "Invalid
+  // URL", and the worklet never lands in the SDK `dist/`. External resolution
+  // keeps `import.meta.url` + the co-located asset intact; it stays in
+  // `package.json` `dependencies` so consumer bundlers (Vite/webpack) resolve
+  // it normally.
   '@arcaai/stt',
-  '@arcaai/noise-filter',
 ];
 
 // Plugin packages - external for core build, bundled for plugins build
-const pluginPackages = ['@arcaai/room', '@arcaai/vad', '@arcaai/stt', '@arcaai/noise-filter'];
+const pluginPackages = ['@arcaai/room', '@arcaai/stt'];
 
 // Shared build options
 const sharedOptions: Partial<Options> = {
@@ -183,19 +157,6 @@ export default defineConfig([
   },
 
   // ==========================================================================
-  // Plugins/med-ner build - Optional NER hook (separate to avoid loading
-  // @arcaai/med-ner when consumers only import @arcaai/vox/plugins)
-  // ==========================================================================
-  {
-    ...sharedOptions,
-    entry: { 'plugins-med-ner': 'src/plugins-med-ner.ts' },
-    format: ['cjs', 'esm'],
-    outDir: 'dist',
-    external: externalDependencies,
-    noExternal: [],
-  },
-
-  // ==========================================================================
   // E2E build - browser fixture for e2e/agentic-sdk.e2e.spec.ts
   //
   // NOT "same as the main build": `e2e/fixtures/index.html` loads this file as a
@@ -207,22 +168,16 @@ export default defineConfig([
   // resolve for itself, `react`/`react-dom` included (see `e2e/fixtures/e2e-entry.ts`).
   //
   // What deliberately stays external, and why it is safe here:
-  //   - `onnxruntime-web`/`-common`: bundling them yields a 30MB+ artifact AND
-  //     breaks their WASM discovery (see the note in `externalDependencies`). The
-  //     only importer is the inlined CJS `@ricky0123/vad-web`, whose
-  //     `require("onnxruntime-web")` esbuild turns into a `__require()` stub —
-  //     no bare import is emitted, so the module still evaluates. The stub throws
-  //     only if VAD is actually instantiated, which this suite never does.
-  //   - `@arcaai/med-ner`, `highlight.run`, `@microsoft/clarity`,
-  //     `onnxruntime-node`, `sharp`: reached only through `import()` on opt-in
-  //     code paths this suite never enters.
+  //   - `highlight.run`, `@microsoft/clarity`, `onnxruntime-node`, `sharp`:
+  //     reached only through `import()` on opt-in code paths this suite never
+  //     enters.
   //
-  // `@arcaai/stt`/`@arcaai/noise-filter` ARE inlined here even though the published
-  // builds keep them external for the `import.meta.url` hazard documented above:
-  // this entry is esm-only, so esbuild leaves `import.meta.url` intact rather than
-  // shimming it to `{}`. Their worker/WASM assets still do not resolve next to the
-  // fixture bundle — irrelevant, because the suite only asserts that `useSTT` /
-  // `useNoiseFilter` are exported, never runs them.
+  // `@arcaai/stt` IS inlined here even though the published build keeps it
+  // external for the `import.meta.url` hazard documented above: this entry is
+  // esm-only, so esbuild leaves `import.meta.url` intact rather than shimming
+  // it to `{}`. Its worklet asset still does not resolve next to the fixture
+  // bundle — irrelevant, because the suite only asserts that `useArcaAudio` is
+  // exported, never drives a live capture through it.
   // ==========================================================================
   {
     ...sharedOptions,
@@ -235,26 +190,10 @@ export default defineConfig([
     // regex because tsup compares plain strings with `===` — `'react-dom'` would
     // not match `'react-dom/client'`, and `'react'` would not match
     // `'react/jsx-runtime'`.
-    noExternal: [
-      ...bundledDependencies,
-      /^react($|\/)/,
-      /^react-dom($|\/)/,
-      '@ricky0123/vad-web',
-      // ORT-web has to come with `@ricky0123/vad-web`: esbuild rewrites that CJS
-      // package's `require("onnxruntime-web")` to a `__require()` stub, and the
-      // stub is hit while the module graph is still INITIALISING ("Dynamic require
-      // of onnxruntime-web is not supported"), not lazily on first VAD use — which
-      // aborts evaluation of the whole bundle just as a bare specifier would.
-      /^onnxruntime-(web|common)($|\/)/,
-      '@arcaai/stt',
-      '@arcaai/noise-filter',
-      'valibot',
-      'deepmerge-ts',
-      'diff',
-    ],
-    // esbuild empties `import.meta` on targets below es2020; `@arcaai/noise-filter`
-    // resolves its WASM through `new URL(..., import.meta.url)`, so an older target
-    // turns that into a "Invalid URL" throw instead of a harmless wrong URL.
+    noExternal: [...bundledDependencies, /^react($|\/)/, /^react-dom($|\/)/, '@arcaai/stt', 'valibot', 'deepmerge-ts', 'diff'],
+    // esbuild empties `import.meta` on targets below es2020; keeping a modern
+    // target avoids that hazard for any future `import.meta.url` use in this
+    // fixture's dependency graph.
     target: 'es2022',
   },
 ]);

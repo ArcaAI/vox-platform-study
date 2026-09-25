@@ -19,8 +19,7 @@
  * stop) so trailing audio is never lost.
  *
  * Uses `@arcaai/room`'s `createWorkletLoader` for blob-URL + registration
- * caching, matching the pattern already used by `@arcaai/vad` and
- * `@arcaai/noise-filter`.
+ * caching.
  */
 
 import { createWorkletLoader } from '@arcaai/room';

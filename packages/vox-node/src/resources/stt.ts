@@ -13,8 +13,11 @@
  * speech-to-text agent wins; otherwise the tenant admin's assignment
  * (department first, then tenant default) decides.
  * {@link StreamSessionResponse.agentSource} reports which rule won. There is
- * no engine, no model id and no pipeline to choose — `pipelineId` survives
- * only as a deprecated alias and is removed in R4.
+ * no engine, no model id and no pipeline to choose — the deprecated
+ * `pipelineId` request alias was removed in R4 (TASK-1006). Response fields
+ * that echo which ASR pipeline actually served a session
+ * ({@link StreamSessionResponse.pipelineId} and the transcript's own) are
+ * unaffected — those report server state, not a client selector.
  *
  * ## Session ownership
  *

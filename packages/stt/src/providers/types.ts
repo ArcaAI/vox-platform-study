@@ -4,7 +4,7 @@
  * Type definitions for STT provider implementations.
  */
 
-import type { TranscriptionResult, STTStats, LocalProviderConfig, RemoteProviderConfig, ProviderConfig } from '../types/index.js';
+import type { TranscriptionResult, STTStats, RemoteProviderConfig, ProviderConfig } from '../types/index.js';
 
 /**
  * Callback for transcription results.
@@ -27,8 +27,11 @@ export interface STTProvider {
 
   /**
    * Provider type.
+   *
+   * @deprecated TASK-1006 — the in-browser Whisper provider was removed;
+   * `'remote'` is the only value (TASK-865: the browser never runs a model).
    */
-  readonly type: 'local' | 'remote';
+  readonly type: 'remote';
 
   /**
    * Check if this provider is supported in the current environment.
@@ -38,12 +41,10 @@ export interface STTProvider {
   /**
    * Initialize the provider with configuration.
    */
-  init(config: ProviderConfig | LocalProviderConfig | RemoteProviderConfig): Promise<void>;
+  init(config: ProviderConfig | RemoteProviderConfig): Promise<void>;
 
   /**
-   * Start processing audio.
-   * For local provider, starts buffering for batch transcription.
-   * For remote provider, starts streaming to server.
+   * Start streaming audio to the backend.
    */
   start(): Promise<void>;
 

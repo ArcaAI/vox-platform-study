@@ -167,7 +167,7 @@ describe('useArcaAudio — second start() joins instead of clobbering', () => {
 
     // First start — the capture hook's call, carrying the drain knobs.
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1', drainTimeoutMs: 60_000, quietWindowMs: 30_000 });
+      await result.current.start({ agentSlug: 'clinic-asr', drainTimeoutMs: 60_000, quietWindowMs: 30_000 });
     });
     expect(pm.setRuntimeOptions).toHaveBeenCalledTimes(1);
     expect(pm.setRuntimeOptions.mock.calls[0][0]).toMatchObject({ drainTimeoutMs: 60_000, quietWindowMs: 30_000 });
@@ -175,7 +175,7 @@ describe('useArcaAudio — second start() joins instead of clobbering', () => {
     // Second start — the STT hook's call, same handler, stale isCapturing
     // closure, and NO drain knobs. Must not replace the first call's options.
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1', language: 'ml' });
+      await result.current.start({ agentSlug: 'clinic-asr', language: 'ml' });
     });
 
     expect(pm.setRuntimeOptions).toHaveBeenCalledTimes(1);

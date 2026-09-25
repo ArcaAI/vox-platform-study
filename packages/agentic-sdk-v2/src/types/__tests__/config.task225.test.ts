@@ -7,7 +7,6 @@
 
 import { describe, it, expect } from 'vitest';
 import type { LocalWorkflowConfig, VoiceEmbeddingLocalConfig, AudioSilenceLocalConfig } from '../config';
-import { DEFAULT_LOCAL_CONFIG } from '../config';
 
 // =============================================================================
 // C1: VoiceEmbeddingLocalConfig type
@@ -87,24 +86,6 @@ describe('LocalWorkflowConfig extension', () => {
   });
 });
 
-// =============================================================================
-// C1: DEFAULT_LOCAL_CONFIG must include the new fields (disabled by default)
-// =============================================================================
-
-describe('DEFAULT_LOCAL_CONFIG includes new fields', () => {
-  it('should have a voiceEmbedding key', () => {
-    expect(DEFAULT_LOCAL_CONFIG).toHaveProperty('voiceEmbedding');
-  });
-
-  it('should have voiceEmbedding disabled by default (empty string modelId)', () => {
-    expect(DEFAULT_LOCAL_CONFIG.voiceEmbedding.modelId).toBe('');
-  });
-
-  it('should have an audioSilence key', () => {
-    expect(DEFAULT_LOCAL_CONFIG).toHaveProperty('audioSilence');
-  });
-
-  it('should have audioSilence disabled by default (empty string modelId)', () => {
-    expect(DEFAULT_LOCAL_CONFIG.audioSilence.modelId).toBe('');
-  });
-});
+// DEFAULT_LOCAL_CONFIG was removed under TASK-1006 (the model pins it carried
+// described client models the runtime no longer loads at all) — see
+// task1006-removed.test.ts for the pinned absence.

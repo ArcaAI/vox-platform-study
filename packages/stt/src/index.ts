@@ -1,11 +1,16 @@
 /**
  * @arcaai/stt
  *
- * Speech-to-text plugin for @arcaai/room with local Whisper and remote processing support.
+ * Capture + backend-streaming speech-to-text transport for @arcaai/room.
+ *
+ * TASK-1006 (following TASK-865): the browser never runs a model. The
+ * in-browser Whisper provider, its engines, worker and React hook were
+ * removed. What remains is audio CAPTURE (`createAudioCapture`,
+ * `float32ToInt16`) and the STREAMING TRANSPORT to the backend — the tenant's
+ * ASR Agent decides VAD/denoise/ASR server-side.
  *
  * Features:
- * - Local Whisper processing via Transformers.js with WebGPU acceleration
- * - Remote processing via WebSocket for server-side processing
+ * - Remote (backend streaming) processing via WebSocket
  * - Event-based transcription results
  * - Integration with @arcaai/room processor pipeline
  *
@@ -57,8 +62,6 @@
 
 export {
   // Model Types
-  type WhisperModelSize,
-  type ComputeDevice,
   type STTProviderType,
 
   // Language Types
@@ -79,9 +82,6 @@ export {
   type STTOptions,
   DEFAULT_STT_OPTIONS,
   generateSessionId,
-
-  // Model Loading
-  type ModelLoadProgress,
 
   // Transcription
   type TranscriptionTimestamp,
@@ -112,14 +112,8 @@ export {
   STTErrorCode,
   STTError,
 
-  // Utility functions
-  isWhisperModelSize,
-  normalizeModelId,
-  parseModelId,
-
   // Provider Config
   type ProviderConfig,
-  type LocalProviderConfig,
   type RemoteProviderConfig,
   type BackendProviderConfig, // Deprecated alias
 } from './types/index.js';
@@ -160,7 +154,6 @@ export {
 
   // Provider Implementations
   BaseSTTProvider,
-  LocalSTTProvider,
   RemoteSTTProvider,
   BackendSTTProvider, // Deprecated alias
 
@@ -173,22 +166,6 @@ export {
   // TASK-985 M-43 — the gateway's `gap` frame (text it discarded on the way down).
   type StreamingGapPayload,
 } from './providers/index.js';
-
-// ============================================================================
-// Engines
-// ============================================================================
-
-export {
-  // Engine Types
-  type STTEngine,
-  type EngineConfig,
-  type TranscribeOptions,
-  type EngineStats,
-
-  // Engine Implementations
-  BaseEngine,
-  WhisperEngine,
-} from './engines/index.js';
 
 // ============================================================================
 // WebSocket
@@ -205,21 +182,12 @@ export {
 } from './websocket/index.js';
 
 // ============================================================================
-// React Hooks
-// ============================================================================
-
-export { useSTT, type UseSTTOptions, type UseSTTReturn } from './hooks/index.js';
-
-// ============================================================================
 // Utilities
 // ============================================================================
 
 export {
   // Browser Detection
   isBrowser,
-  isWebAssemblySupported,
-  isWebGPUSupported,
-  isWebGPUAvailable,
   isAudioWorkletSupported,
   isWebSocketSupported,
   isSharedArrayBufferSupported,
@@ -228,9 +196,6 @@ export {
   isSafari,
   getSafariVersion,
   isSafariVersionSupported,
-  isTransformersJsSupported,
-  getRecommendedDevice,
-  getRecommendedProvider,
   getSTTBrowserSupport,
   isSTTSupported,
   logBrowserSupport,

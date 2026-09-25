@@ -64,8 +64,6 @@ export {
   DEFAULT_SYNC_INTERVAL,
   STORAGE_KEYS,
   // Plugin defaults
-  DEFAULT_NOISE_FILTER_CONFIG,
-  DEFAULT_VAD_CONFIG,
   DEFAULT_STT_CONFIG,
 } from './constants';
 

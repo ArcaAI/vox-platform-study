@@ -32,30 +32,6 @@ import { AgenticProvider } from '../AgenticProvider';
 import { useStoreApi, type AgenticStoreApi } from '../../store/agenticStore';
 import type { AgenticConfig, Consultation } from '../../types';
 
-vi.mock('@arcaai/noise-filter', () => ({
-  createNoiseFilter: vi.fn(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    enable: vi.fn().mockResolvedValue(undefined),
-    disable: vi.fn().mockResolvedValue(undefined),
-    isEnabled: vi.fn().mockReturnValue(true),
-    restart: vi.fn().mockResolvedValue(undefined),
-    destroy: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-  })),
-}));
-
-vi.mock('@arcaai/vad', () => ({
-  createVAD: vi.fn(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    enable: vi.fn().mockResolvedValue(undefined),
-    disable: vi.fn().mockResolvedValue(undefined),
-    isEnabled: vi.fn().mockReturnValue(true),
-    restart: vi.fn().mockResolvedValue(undefined),
-    destroy: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-  })),
-}));
-
 vi.mock('@arcaai/stt', () => ({
   createSTT: vi.fn(() => ({
     init: vi.fn().mockResolvedValue(undefined),

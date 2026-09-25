@@ -17,7 +17,7 @@
  * triage stays) and now ALSO throws a named `AgenticError`
  * ('CAPTURE_OPTIONS_DROPPED') naming every dropped key, so the calling hook's
  * existing catch → setError/onError path surfaces it. A call carrying ONLY
- * options the running session already applies (language, pipelineId) is the
+ * options the running session already applies (language, agentSlug) is the
  * DESIGNED coordinated dual-hook path — that stays a silent `logger.info` +
  * return, not an error (tests (c)/(d) guard against over-throwing that path).
  *
@@ -233,14 +233,14 @@ describe('useArcaAudio — CALL-TIME idempotence guard: dropped capture options 
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it('(c) resolves silently when capture is already active but the call carries ONLY language/pipelineId (coordinated dual-hook path); warn is NOT called', async () => {
+  it('(c) resolves silently when capture is already active but the call carries ONLY language/agentSlug (coordinated dual-hook path); warn is NOT called', async () => {
     const pluginManager = createMockPluginManager({ initialized: true });
     const { logger, warn, info } = makeLoggerDouble();
     setupStore({ pluginManager, logger });
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await expect(result.current.start({ language: 'en', pipelineId: 'pipe-1' })).resolves.toBeUndefined();
+      await expect(result.current.start({ language: 'en', agentSlug: 'clinic-asr' })).resolves.toBeUndefined();
     });
 
     expect(warn).not.toHaveBeenCalled();

@@ -42,11 +42,9 @@ import { TranscriptionJobType, TranscriptionJobStatus, AiModelDownloadStatus, Re
 
 describe('STT types', () => {
   describe('CreateStreamingSessionRequest', () => {
-    it('should accept valid request with required fields only', () => {
-      const req: CreateStreamingSessionRequest = {
-        pipelineId: 'pipe-uuid-123',
-      };
-      expect(req.pipelineId).toBe('pipe-uuid-123');
+    it('should accept a request with no selector — the gateway resolves the ASR agent', () => {
+      const req: CreateStreamingSessionRequest = {};
+      expect(req.agentSlug).toBeUndefined();
       expect(req.consultationId).toBeUndefined();
       expect(req.sampleRate).toBeUndefined();
       expect(req.language).toBeUndefined();
@@ -54,16 +52,16 @@ describe('STT types', () => {
       expect(req.microphoneId).toBeUndefined();
     });
 
-    it('should accept valid request with all optional fields', () => {
+    it('should accept valid request with all optional fields, selecting the ASR agent by agentSlug (pipelineId removed TASK-1006)', () => {
       const req: CreateStreamingSessionRequest = {
-        pipelineId: 'pipe-uuid-123',
+        agentSlug: 'clinic-asr',
         consultationId: 'consult-uuid-456',
         sampleRate: 16000,
         language: 'en',
         codeSwitching: true,
         microphoneId: 'mic-device-1',
       };
-      expect(req.pipelineId).toBe('pipe-uuid-123');
+      expect(req.agentSlug).toBe('clinic-asr');
       expect(req.consultationId).toBe('consult-uuid-456');
       expect(req.sampleRate).toBe(16000);
       expect(req.language).toBe('en');

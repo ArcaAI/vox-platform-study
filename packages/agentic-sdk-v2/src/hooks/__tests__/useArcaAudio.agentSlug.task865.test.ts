@@ -1,14 +1,11 @@
 /**
- * useArcaAudio — `agentSlug` replaces `pipelineId` (TASK-865).
+ * useArcaAudio — `agentSlug` selects the ASR Agent (TASK-865).
  *
  * The client never names a pipeline, an engine, a model or a VAD. It may name
  * the tenant's ASR AGENT by slug (a lineage key, like `workflowDefinitionSlug`
  * at `session.open()`), or name nothing and let the assignment cascade decide.
- *
- *   * `start({ agentSlug })`  → forwarded to the plugin manager, no pipelineId.
- *   * `start({ pipelineId })` → still forwarded (deprecated path) + ONE warning.
- *   * both                    → `agentSlug` wins, `pipelineId` is DROPPED, and the
- *                               conflict is warned about — never both silently.
+ * TASK-1006 removed the deprecated `pipelineId` selector entirely — the client
+ * has exactly one selector now.
  *
  * @vitest-environment jsdom
  */
@@ -119,14 +116,14 @@ function deprecationWarnings() {
 }
 
 describe('useArcaAudio.start — agentSlug', () => {
-  it('forwards agentSlug to the plugin manager and names no pipeline', async () => {
+  it('forwards agentSlug to the plugin manager', async () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
       await result.current.start({ agentSlug: 'clinic-asr' });
     });
 
-    expect(mockStoreData.pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: 'clinic-asr', pipelineId: undefined }));
+    expect(mockStoreData.pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: 'clinic-asr' }));
     expect(deprecationWarnings()).toHaveLength(0);
   });
 
@@ -140,32 +137,7 @@ describe('useArcaAudio.start — agentSlug', () => {
     expect(mockStoreData.setActivePipeline).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'clinic-asr', isFallback: false }));
   });
 
-  it('still forwards a bare pipelineId (deprecated path) and warns once about the deprecation', async () => {
-    const { result } = renderHook(() => useArcaAudio());
-
-    await act(async () => {
-      await result.current.start({ pipelineId: 'legacy-pipe' });
-    });
-
-    expect(mockStoreData.pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'legacy-pipe', agentSlug: undefined }));
-    expect(deprecationWarnings()).toHaveLength(1);
-    expect(String(deprecationWarnings()[0]![0])).toMatch(/agentSlug/);
-  });
-
-  it('when BOTH are passed, agentSlug wins and pipelineId is DROPPED — with a warning, never silently', async () => {
-    const { result } = renderHook(() => useArcaAudio());
-
-    await act(async () => {
-      await result.current.start({ agentSlug: 'clinic-asr', pipelineId: 'legacy-pipe' });
-    });
-
-    const runtime = mockStoreData.pluginManager.setRuntimeOptions.mock.calls[0]![0];
-    expect(runtime.agentSlug).toBe('clinic-asr');
-    expect(runtime.pipelineId).toBeUndefined();
-    expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/both/i), expect.objectContaining({ operation: 'startAudio' }));
-  });
-
-  it('start() with neither names nothing — the tenant assignment cascade decides server-side', async () => {
+  it('start() with no agentSlug names nothing — the tenant assignment cascade decides server-side', async () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
@@ -174,7 +146,6 @@ describe('useArcaAudio.start — agentSlug', () => {
 
     const runtime = mockStoreData.pluginManager.setRuntimeOptions.mock.calls[0]![0];
     expect(runtime.agentSlug).toBeUndefined();
-    expect(runtime.pipelineId).toBeUndefined();
     expect(deprecationWarnings()).toHaveLength(0);
   });
 });

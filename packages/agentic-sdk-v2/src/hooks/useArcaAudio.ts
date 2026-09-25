@@ -315,7 +315,7 @@ export function useArcaAudio() {
       // calling hook's existing catch → setError/onError path surfaces it,
       // instead of an integrator whose STT hook won the start race streaming
       // the default mic with no surfaced error. A call carrying ONLY options
-      // the running session already applies (language, pipelineId) is still
+      // the running session already applies (language, agentSlug) is still
       // the DESIGNED coordinated dual-hook path (compat drives one audio graph
       // through two hooks) — that stays a silent `logger.info` + return, not
       // an error.
@@ -324,7 +324,7 @@ export function useArcaAudio() {
         // dropping it silently is how "the UI shows my external mic selected
         // but the socket carries the built-in one" became a debuggable-only-
         // by-reading-the-source bug. Options the running session already
-        // applies (language, pipelineId) stay at INFO — they are the normal
+        // applies (language, agentSlug) stay at INFO — they are the normal
         // dual-hook path, not a mistake.
         const droppedOptions = (
           ['deviceId', 'secondaryDeviceId', 'additionalDeviceIds', 'sourceStreams', 'sourceGains', 'audioProcessing', 'dynamicSources'] as const
@@ -332,7 +332,6 @@ export function useArcaAudio() {
         const attributes = {
           language: options?.language,
           agentSlug: options?.agentSlug,
-          pipelineId: options?.pipelineId,
           ...(droppedOptions.length ? { droppedOptions } : {}),
         };
         if (droppedOptions.length) {
@@ -362,30 +361,14 @@ export function useArcaAudio() {
       // previous session's engine must never be reported for this one.
       serverPipelineRef.current = null;
 
-      // WHAT transcribes (TASK-865): an ASR Agent slug, or the deprecated
-      // pipeline id, or nothing — the governing workflow's speech-to-text
-      // agent wins when one is named, otherwise the tenant admin's assignment
-      // (department, then tenant default) decides. The two selectors are
-      // never forwarded together — `agentSlug` wins and the conflict is
-      // warned about, never dropped silently.
+      // WHAT transcribes (TASK-865): an ASR Agent slug, or nothing — the
+      // governing workflow's speech-to-text agent wins when one is named,
+      // otherwise the tenant admin's assignment (department, then tenant
+      // default) decides. The client never names a pipeline (TASK-1006
+      // removed `AudioStartOptions.pipelineId`).
       const requestedAgentSlug = options?.agentSlug || undefined;
-      let requestedPipelineId = options?.pipelineId || undefined;
-      if (requestedAgentSlug && requestedPipelineId) {
-        logger?.warn('startAudio received both agentSlug and pipelineId — agentSlug wins, pipelineId dropped', {
-          operation: 'startAudio',
-          component: 'useArcaAudio',
-          attributes: { agentSlug: requestedAgentSlug, droppedPipelineId: requestedPipelineId, deprecation: 'TASK-865' },
-        });
-        requestedPipelineId = undefined;
-      } else if (requestedPipelineId) {
-        logger?.warn('AudioStartOptions.pipelineId is deprecated (TASK-865, removed in R4) — pass agentSlug, or nothing', {
-          operation: 'startAudio',
-          component: 'useArcaAudio',
-          attributes: { pipelineId: requestedPipelineId, deprecation: 'TASK-865' },
-        });
-      }
       // Request-derived selection label until the gateway echoes the resolved one.
-      const requestedSelection = requestedPipelineId ?? requestedAgentSlug;
+      const requestedSelection = requestedAgentSlug;
 
       // A new capture session starts with a clean source registry
       // ids restart at `source-1`, and nothing from the previous session's
@@ -415,9 +398,8 @@ export function useArcaAudio() {
 
       // Forward per-capture options to the plugin manager
       // BEFORE initialize so the streaming transport can be built for the
-      // STT stage when an `agentSlug` (or deprecated `pipelineId`) is provided.
+      // STT stage when an `agentSlug` is provided.
       pluginManager.setRuntimeOptions?.({
-        pipelineId: requestedPipelineId,
         agentSlug: requestedAgentSlug,
         consultationId: consultation?.id,
         // Order-independent language: mirror the `languageMode` store fallback
@@ -431,7 +413,7 @@ export function useArcaAudio() {
         language: options?.language ?? store.audioLanguage,
         // Fall back to the store-held mode so a start triggered WITHOUT a
         // languageMode (e.g. compat `useAudioCapture.startRecording()`, which
-        // only knows the pipelineId) still honours the user's selection
+        // only knows the agentSlug) still honours the user's selection
         // published by `useArcaSpeechToText`. The backend resolves the mode to
         // the actual language, so this alone is sufficient. (compat start-coordination fix.)
         //
@@ -468,7 +450,7 @@ export function useArcaAudio() {
       const timer = logger?.startOperation('startAudio', {
         component: 'useArcaAudio',
         sdk: { consultationId: consultation?.id },
-        attributes: { language: options?.language, agentSlug: requestedAgentSlug, pipelineId: requestedPipelineId },
+        attributes: { language: options?.language, agentSlug: requestedAgentSlug },
       });
 
       try {
@@ -1000,7 +982,7 @@ export function useArcaAudio() {
           //
           //   1. `isFallback` — the backend said so outright.
           //   2. `active` — the backend named the live engine.
-          //   3. the pipeline id — this session asked for `options.pipelineId`,
+          //   3. the pipeline id — this session asked for `options.agentSlug`,
           //      and the frame names what is live now; if they match, this is a
           //      return to the primary, not a fallback.
           //   4. only with none of the above: assume fallback. On a backend old
@@ -1056,7 +1038,7 @@ export function useArcaAudio() {
         //
         // SERVER-derived when the gateway echoed the resolved baseline
         // The REQUEST is silent about a caller that sent no
-        // pipelineId (the gateway resolves one — the session then had a null
+        // agentSlug (the gateway resolves one — the session then had a null
         // `activePipeline` for its whole life), about a session opened on the
         // fallback by `startOn`, and about one opened there because the primary
         // ASR failed to load. `serverPipelineRef` is filled by
@@ -1347,11 +1329,10 @@ export function useArcaAudio() {
    * Derives {@link AudioStartOptions} from `store.preferences` (already populated
    * by PersonalizationManager / useArcaConfig — no new config plumbing):
    *   - `language`            ← `preferences.language`
-   *   - STT provider          ← `preferences.workflowMode` ('remote' → backend,
-   *                             else local). For the backend workflow the
-   *                             admin-assigned `preferences.remoteConfig.pipelineId`
-   *                             is forwarded; local leaves `pipelineId` undefined
-   *                             so the SDK uses the local provider.
+   *   - ASR Agent selection   ← `preferences.remoteConfig.agentSlug`, when the
+   *                             backend names one. Omitted entirely otherwise
+   *                             (TASK-1006: the client never names a pipeline —
+   *                             the gateway resolves the tenant's assignment).
    *   - `deviceId` / `secondaryDeviceId` / `dualCaptureEnabled`
    *                           ← `preferences.custom` (the existing extensible bag).
    */
@@ -1360,22 +1341,11 @@ export function useArcaAudio() {
     const isRemote = prefs.workflowMode === 'remote';
     const custom = (prefs.custom ?? {}) as Record<string, unknown>;
 
-    // TASK-985 M-56 — prefer the ASR AGENT the preferences name over the
-    // deprecated pipeline id (TASK-865: selection is `agentSlug` or nothing).
-    //
-    // CLIENT HALF ONLY, and it cannot be more than that: `RemoteConfigResponse`
-    // has no `agentSlug` field to read, so on today's gateway this branch never
-    // fires and `startFromPreferences` can still only start on a `pipelineId`.
-    // The server contract has to grow the field for this to close — raised as a
-    // cross-lane request. Reading it defensively here means the client half
-    // lands once, and adding the field server-side is then sufficient.
     const agentSlug = isRemote ? (prefs.remoteConfig as { agentSlug?: string } | undefined)?.agentSlug : undefined;
 
     const options: AudioStartOptions = {
       language: prefs.language,
-      // Never both: an agent slug and a pipeline id are alternative selectors,
-      // and `StreamingSessionManager` carries at most one on the session body.
-      ...(agentSlug ? { agentSlug } : { pipelineId: isRemote ? prefs.remoteConfig?.pipelineId : undefined }),
+      ...(agentSlug ? { agentSlug } : {}),
       deviceId: typeof custom.deviceId === 'string' ? custom.deviceId : undefined,
       secondaryDeviceId: typeof custom.secondaryDeviceId === 'string' ? custom.secondaryDeviceId : undefined,
       dualCaptureEnabled: custom.dualCaptureEnabled === true,
@@ -1388,7 +1358,6 @@ export function useArcaAudio() {
         workflowMode: prefs.workflowMode,
         language: options.language,
         hasAgentSlug: !!agentSlug,
-        hasPipeline: !!options.pipelineId,
       },
     });
 
@@ -1601,14 +1570,14 @@ export function useArcaAudio() {
    * callback above, which now un-latches on an explicit primary frame too).
    *
    * Degraded path (fallback direction only): on a backend without the
-   * in-place route (404), if the caller supplies `opts.fallbackPipelineId`
+   * in-place route (404), if the caller supplies `opts.fallbackAgentSlug`
    * the session is rebuilt on it (destroy/recreate) — a reconnect-shaped
    * fallback surfaced honestly as `reconnecting`. Symmetric rebuild support
-   * for the primary direction via `opts.primaryPipelineId`. Without an id to
+   * for the primary direction via `opts.primaryAgentSlug`. Without a slug to
    * rebuild on, the NOT_FOUND error propagates.
    */
   const switchProvider = useCallback(
-    async (target: 'primary' | 'fallback', opts?: { fallbackPipelineId?: string; primaryPipelineId?: string }): Promise<void> => {
+    async (target: 'primary' | 'fallback', opts?: { fallbackAgentSlug?: string; primaryAgentSlug?: string }): Promise<void> => {
       const { pluginManager } = store;
       const logger = getLogger();
       if (!pluginManager) throw new Error('SDK not initialized');
@@ -1636,18 +1605,18 @@ export function useArcaAudio() {
         // status frame; nothing to set optimistically here.
       } catch (err) {
         const code = (err as { code?: string })?.code;
-        const rebuildPipelineId = target === 'fallback' ? opts?.fallbackPipelineId : opts?.primaryPipelineId;
-        if (code === 'NOT_FOUND' && rebuildPipelineId) {
-          logger?.warn('Seamless switch unsupported by backend — rebuilding on the target pipeline', {
+        const rebuildAgentSlug = target === 'fallback' ? opts?.fallbackAgentSlug : opts?.primaryAgentSlug;
+        if (code === 'NOT_FOUND' && rebuildAgentSlug) {
+          logger?.warn('Seamless switch unsupported by backend — rebuilding on the target ASR agent', {
             operation: 'switchProvider',
             component: 'useArcaAudio',
-            attributes: { target, rebuildPipelineId },
+            attributes: { target, rebuildAgentSlug },
           });
           store.setSttConnectionState('reconnecting');
           await stopAudio();
-          await startAudio({ pipelineId: rebuildPipelineId, language: store.audioLanguage });
+          await startAudio({ agentSlug: rebuildAgentSlug, language: store.audioLanguage });
           store.setSttConnectionState(target === 'fallback' ? 'switched_fallback' : 'connected');
-          store.setActivePipeline({ id: rebuildPipelineId, name: rebuildPipelineId, isFallback: target === 'fallback' });
+          store.setActivePipeline({ id: rebuildAgentSlug, name: rebuildAgentSlug, isFallback: target === 'fallback' });
           return;
         }
         store.setSttConnectionState('error');
@@ -1659,11 +1628,11 @@ export function useArcaAudio() {
 
   /**
    * Switch the live streaming session to the tenant fallback pipeline (R4).
-   * Alias for `switchProvider('fallback', { fallbackPipelineId })` — kept for
+   * Alias for `switchProvider('fallback', { fallbackAgentSlug })` — kept for
    * native callers (backward compatibility; zero behavior change).
    */
   const switchToFallback = useCallback(
-    (fallbackPipelineId?: string): Promise<void> => switchProvider('fallback', { fallbackPipelineId }),
+    (fallbackAgentSlug?: string): Promise<void> => switchProvider('fallback', { fallbackAgentSlug }),
     [switchProvider],
   );
 

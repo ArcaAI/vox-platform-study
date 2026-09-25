@@ -84,18 +84,18 @@ describe('ASR-R-05: ApiConfig WebSocket configuration', () => {
 });
 
 // =============================================================================
-// ASR-R-04: STTPluginConfig with sttSocket and pipelineId
+// ASR-R-04: STTPluginConfig with sttSocket and agentSlug
 // =============================================================================
 
 describe('ASR-R-04: STTPluginConfig backend streaming fields', () => {
-  it('should accept pipelineId as an optional field in STTPluginConfig', () => {
+  it('should accept agentSlug as an optional field in STTPluginConfig', () => {
     const config: import('../config').STTPluginConfig = {
       enabled: true,
       provider: 'backend',
-      pipelineId: 'pipeline-uuid-or-slug',
+      agentSlug: 'clinic-asr',
     };
 
-    expect(config.pipelineId).toBe('pipeline-uuid-or-slug');
+    expect(config.agentSlug).toBe('clinic-asr');
   });
 
   it('should accept sttSocket as an optional field in STTPluginConfig', () => {
@@ -108,12 +108,12 @@ describe('ASR-R-04: STTPluginConfig backend streaming fields', () => {
     expect(config.sttSocket).toBe('wss://api.example.com/ws/stt/stream');
   });
 
-  it('should not require pipelineId or sttSocket', () => {
+  it('should not require agentSlug or sttSocket', () => {
     const config: import('../config').STTPluginConfig = {
       enabled: true,
     };
 
-    expect(config.pipelineId).toBeUndefined();
+    expect(config.agentSlug).toBeUndefined();
     expect(config.sttSocket).toBeUndefined();
   });
 
@@ -122,48 +122,13 @@ describe('ASR-R-04: STTPluginConfig backend streaming fields', () => {
       enabled: true,
       provider: 'backend',
       language: 'en',
-      modelId: 'whisper-small',
-      pipelineId: 'default-pipeline',
+      agentSlug: 'default-agent',
       sttSocket: 'wss://stt.example.com/ws',
     };
 
     expect(config.provider).toBe('backend');
     expect(config.language).toBe('en');
-    expect(config.modelId).toBe('whisper-small');
-    expect(config.pipelineId).toBe('default-pipeline');
+    expect(config.agentSlug).toBe('default-agent');
     expect(config.sttSocket).toBe('wss://stt.example.com/ws');
-  });
-});
-
-// =============================================================================
-// ASR-R-04: TranscriptionProcessingConfig.stt should have sttSocket
-// =============================================================================
-
-describe('ASR-R-04: TranscriptionProcessingConfig.stt backend fields', () => {
-  it('should accept sttSocket in stt processing config', () => {
-    const config: import('../config').TranscriptionProcessingConfig = {
-      noiseFilter: { location: 'browser' },
-      vad: { location: 'browser' },
-      stt: {
-        location: 'backend',
-        provider: 'backend',
-        sttSocket: 'wss://api.example.com/ws/stt/stream',
-      },
-    };
-
-    expect(config.stt.sttSocket).toBe('wss://api.example.com/ws/stt/stream');
-  });
-
-  it('should accept pipelineId in stt processing config', () => {
-    const config: import('../config').TranscriptionProcessingConfig = {
-      noiseFilter: { location: 'browser' },
-      vad: { location: 'browser' },
-      stt: {
-        location: 'backend',
-        pipelineId: 'my-pipeline',
-      },
-    };
-
-    expect(config.stt.pipelineId).toBe('my-pipeline');
   });
 });

@@ -41,7 +41,6 @@ export type {
   ConsultationSummaryRequestOptions,
   DnaWritingStyleIngestOptions,
   DnaWritingStyleJobRequestOptions,
-  GenerateSummaryOptions,
   JobRequestOptions,
   LiveSummaryHandlers,
   RecordingRequestOptions,

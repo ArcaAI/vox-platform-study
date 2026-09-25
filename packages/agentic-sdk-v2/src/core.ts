@@ -72,11 +72,8 @@ export {
   useAgentInvocation,
   useConsultationEvents,
   useArcaSttLanguageModes,
-  // Native 2-way STT provider toggle (pipeline ↔ default)
-  useSttProviderToggle,
   // Native batch (pre-recorded file) transcription queue
   useBatchTranscription,
-  usePipelines,
   usePolicies,
   useStorage,
   useUserSettings,
@@ -91,8 +88,6 @@ export type {
   BreakGlassCredentials,
   Bucket,
   CreatePolicyInput,
-  Pipeline,
-  PipelineVersion,
   Policy,
   UpdatePolicyInput,
   UseArcaAudio,
@@ -120,8 +115,6 @@ export type {
   UseConsultationEventsReturn,
   ConsultationEventsStreamStatus,
   UseArcaSttLanguageModesReturn,
-  UseSttProviderToggleReturn,
-  UsePipelinesReturn,
   UsePoliciesReturn,
   UseStorageReturn,
   UseUserSettingsReturn,
@@ -158,10 +151,10 @@ export type {
   ModelDefinition,
   ModelRegistryConfig,
   NERPluginConfig,
-  NoiseFilterPluginConfig,
-  // TASK-865: the client-inference gate + the stage-name union.
+  // The single remaining audio pipeline stage name (TASK-1006 removed
+  // `noiseFilter`/`vad` and the client-inference gate — the browser never
+  // runs a model).
   AudioPluginStageName,
-  ClientInferenceConfig,
   PersonalizationConfig,
   PluginConfig,
   STTPluginConfig,
@@ -170,7 +163,6 @@ export type {
   TenantFeatureFlags,
   TTSPluginConfig,
   UserPreferences,
-  VADPluginConfig,
 } from './types';
 
 // =============================================================================
@@ -545,7 +537,6 @@ export {
   MY_TENANT_ENDPOINTS,
   NLP_ENDPOINTS,
   PERSONALIZATION_ENDPOINTS,
-  PIPELINE_ENDPOINTS,
   POLICY_ENDPOINTS,
   STORAGE_ENDPOINTS,
   STT_ENDPOINTS,
@@ -635,45 +626,6 @@ export { ModelRegistry, type ModelLoadProgressCallback } from './core/ModelRegis
 export { PersonalizationManager, type PreferencesChangeCallback } from './core/PersonalizationManager';
 
 // =============================================================================
-// LOCAL Voice Embedding
-// =============================================================================
-//
-// In-browser speaker-embedding provider (Transformers.js WavLM `*-sv`) that
-// sits ALONGSIDE the backend `useVoiceEmbedding`. Persists via the existing
-// `/voice-profiles/enroll` path; caches the local embedding tenant/user-scoped;
-// "quick test" = cosine similarity vs the enrolled embedding(s).
-
-export { useLocalVoiceEmbedding } from './hooks';
-export type { UseLocalVoiceEmbeddingReturn, UseLocalVoiceEmbeddingOptions, LocalVoiceEmbeddingRecord, LocalVoiceStatus } from './hooks';
-
-export {
-  createLocalVoiceEmbedder,
-  isLocalVoiceEmbeddingSupported,
-  DEFAULT_LOCAL_VOICE_MODEL_ID,
-  LOCAL_VOICE_EMBEDDING_DIM,
-  LOCAL_VOICE_SAMPLE_RATE,
-} from './core/LocalVoiceEmbedder';
-export type {
-  LocalVoiceEmbedder,
-  CreateLocalVoiceEmbedderOptions,
-  LocalVoiceEmbedderProgress,
-  LocalVoiceProgressCallback,
-} from './core/LocalVoiceEmbedder';
-
-export {
-  cosineSimilarity,
-  l2Normalize,
-  averageEmbeddings,
-  bestMatch,
-  isVoiceEnrollmentProvider,
-  resolveVoiceEnrollmentProvider,
-  DEFAULT_VOICE_MATCH_THRESHOLD,
-  VOICE_ENROLLMENT_PROVIDERS,
-  DEFAULT_VOICE_ENROLLMENT_PROVIDER,
-} from './utils/voiceEmbedding';
-export type { VoiceEnrollmentProvider, EnrolledEmbeddingRef, VoiceMatchResult } from './utils/voiceEmbedding';
-
-// =============================================================================
 // STT Streaming Clients
 // =============================================================================
 
@@ -691,7 +643,6 @@ export {
 } from './core/BatchTranscriptionQueue';
 export { probeAudioDurationSeconds, type ProbeAudioDurationOptions } from './core/audioDuration';
 export type { UseBatchTranscriptionProps, UseBatchTranscriptionReturn, BatchTranscriptionLimitsResponse } from './hooks/useBatchTranscription';
-export type { SttFallbackProvider } from './hooks/useSttProviderToggle';
 export { SSEClient, type SSEConnectOptions } from './core/SSEClient';
 
 /**
@@ -748,15 +699,7 @@ export type { AgenticStoreApi } from './store/agenticStore';
 export { selectAudioDropped, selectAudioDegraded } from './store/agenticStore';
 
 // Constants — defaults and plugin configs (endpoints exported above)
-export {
-  DEFAULT_NER_CONFIG,
-  DEFAULT_NOISE_FILTER_CONFIG,
-  DEFAULT_STT_CONFIG,
-  DEFAULT_SYNC_INTERVAL,
-  DEFAULT_TIMEOUT,
-  DEFAULT_VAD_CONFIG,
-  STORAGE_KEYS,
-} from './core/constants';
+export { DEFAULT_NER_CONFIG, DEFAULT_STT_CONFIG, DEFAULT_SYNC_INTERVAL, DEFAULT_TIMEOUT, STORAGE_KEYS } from './core/constants';
 
 // =============================================================================
 // Logging (Advanced Usage)

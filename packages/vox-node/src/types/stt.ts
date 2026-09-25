@@ -41,11 +41,6 @@ export interface CreateStreamSessionRequest {
    */
   agentSlug?: string;
   /**
-   * @deprecated Removed in R4. The gateway still honours it and answers with
-   * `Deprecation` headers. Name {@link agentSlug} instead, or send neither.
-   */
-  pipelineId?: string;
-  /**
    * Link the session to a consultation, so its transcript lands on that
    * record. When {@link agentSlug} is absent, a governing workflow that names
    * a speech-to-text agent decides this session's ASR too — see the

@@ -89,7 +89,7 @@ callers are unaffected). A key holding `consultation:*` satisfies every scope be
 | `agents.transcribe(slug, { file })` — multipart upload, batch ASR                              | `stt:transcription:write`    |
 | `agents.transcribe(slug, { mediaId })` — media already uploaded                                | `agent:invocation:write`     |
 | `agents.transcriptionJob`/`.subscribeTranscription`/`.waitForTranscription`                    | `stt:transcription:write`    |
-| `consultations.summaries.generate*`, `.update`                                                 | `consultation:report:write`  |
+| `consultations.summaries.generateAsync*`, `.update`                                            | `consultation:report:write`  |
 | `consultations.summaries.list`/`.latest`/`.latestPreSummary`                                   | `consultation:report:read`   |
 
 ### Which credential reaches what
@@ -132,10 +132,13 @@ and a stale precondition throws `VersionConflictError` (412).
 
 ### Summarization is consultation-bound
 
-`hope.consultations.summaries.*` (`generate`/`generatePreSummary`, their `*Async` job-backed
-siblings, `list`/`latest`/`latestPreSummary`, `update`, `approve`) is the SDK's one summarization
-surface: a consultation must exist first, and every summary/pre-summary is a persisted, versioned
-`ContextItemVersion` row on it, wire contract v2 native (`camelCase`). The stateless, v1-compat
+`hope.consultations.summaries.*` (`generateAsync`/`generatePreSummaryAsync` — job-backed, pair
+with `hope.jobs.waitFor()` — plus `list`/`latest`/`latestPreSummary`, `update`, `approve`) is the
+SDK's one summarization surface: a consultation must exist first, and every summary/pre-summary is
+a persisted, versioned `ContextItemVersion` row on it, wire contract v2 native (`camelCase`). The
+SYNCHRONOUS `generate`/`generatePreSummary` methods were removed outright in TASK-1006 (their
+gateway routes were retired alongside them) — use the `*Async` methods, which were already the
+recommended path for anything but a trivially short generation. The stateless, v1-compat
 `hope.summarization.*` (`preSummary`/`preSummaryStream`/`summary`/`summaryStream`, no consultation
 required) was removed outright — TASK-1004, zero production traffic in the ten days before removal.
 
@@ -278,8 +281,8 @@ yet wired to any request, so it receives nothing today. Credential headers
 errors never carry response bodies. No on-disk caching. Retries: `408`/`429`/any `5xx`/connection
 failures, exponential backoff with full jitter, `Retry-After` honored on 429, default
 `maxRetries: 2`. Non-idempotent `POST`s are never retried unless an idempotency key was supplied;
-`generateAsync`/`generatePreSummaryAsync` auto-generate one. Synchronous generation calls get a
-180s floor (`SYNC_GENERATION_TIMEOUT_MS`) rather than the transport's 60s default.
+`generateAsync`/`generatePreSummaryAsync` auto-generate one, which also makes them safely
+retryable.
 
 ## Gotchas
 

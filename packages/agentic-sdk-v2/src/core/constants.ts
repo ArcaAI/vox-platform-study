@@ -383,47 +383,6 @@ export const STT_ENDPOINTS = {
 export const transcriptionJobScopeFor = (jobId: string): string => `transcription_job:${jobId}`;
 
 // =============================================================================
-// Pipeline Endpoints (ASR-R-01)
-// =============================================================================
-
-/**
- * ASR Pipeline endpoints
- *
- * Read operations use `/audio/pipelines` (any authenticated user).
- * Write operations use `/admin/audio/pipelines` (admin only).
- *
- * @deprecated TASK-865 — removed in R4 (`AsrPipeline` retires under TASK-861). See {@link AGENT_ENDPOINTS}.
- */
-export const PIPELINE_ENDPOINTS = {
-  /** List ASR pipelines (paginated) */
-  LIST: '/audio/pipelines',
-  /** Get pipeline by ID */
-  GET: (pipelineId: string) => `/audio/pipelines/${encodeURIComponent(pipelineId)}`,
-  /** Get pipeline by slug */
-  GET_BY_SLUG: (slug: string) => `/audio/pipelines/slug/${encodeURIComponent(slug)}`,
-  /** Create a new ASR pipeline */
-  CREATE: '/admin/audio/pipelines',
-  /** Update an ASR pipeline */
-  UPDATE: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}`,
-  /** Delete an ASR pipeline (soft-delete) */
-  DELETE: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}`,
-  /** Validate pipeline YAML configuration */
-  VALIDATE: '/admin/audio/pipelines/validate',
-  /** Assign a pipeline to a tenant */
-  ASSIGN_TENANT: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/assign-tenant`,
-  /** Assign a pipeline to a user */
-  ASSIGN_USER: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/assign-user`,
-  /** Mark a pipeline as the tenant default (POST) */
-  SET_DEFAULT: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/set-default`,
-  /** Enable/disable a pipeline (PATCH, OCC via If-Match) */
-  TOGGLE: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/toggle`,
-  /** List config-version snapshots (newest first) */
-  VERSIONS: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/versions`,
-  /** Get one config-version snapshot by version number */
-  VERSION: (pipelineId: string, versionNumber: number) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/versions/${versionNumber}`,
-} as const;
-
-// =============================================================================
 // NLP Endpoints (NER-R-04)
 // =============================================================================
 
@@ -468,41 +427,6 @@ export const DEFAULT_SYNC_INTERVAL = 60000;
 export const STORAGE_KEYS = {
   SELECTED_MODELS: 'arcaai-selected-models',
 } as const;
-
-// =============================================================================
-// Feature Flags
-// =============================================================================
-
-/**
- * Local (in-browser) transcription kill switch.
- *
- * The owner decided to disable on-device Whisper transcription
- * platform-wide for now — backend-based transcription only. This flag gates
- * only the STT stage's local/offline path.
- *
- * VAD and noise suppression are gated SEPARATELY and are also off: since
- * TASK-865 the browser never runs a model, so `TranscriptionPipeline` drops
- * both client stages from the graph unless the host sets
- * `audio.clientInference: { allow: true }`. (Earlier text here said they
- * "keep running in the browser as preprocessing stages" — that predates
- * TASK-865 and is no longer true; corrected under TASK-977 D-6.)
- *
- * `TranscriptionPipeline.resolveSTTRuntimeProvider()` reads this flag: when
- * `false`, it never resolves the STT provider to `'local'` regardless of
- * config (`transcriptionMode`, `provider`, `location`) — a backend transport
- * (`stt.sttSocket` / `stt.streamingTransport`) resolves to `'remote'`; with no
- * transport it throws `AgenticError('LOCAL_TRANSCRIPTION_DISABLED', ...)`
- * instead of silently falling back to on-device transcription. The local
- * Whisper processor is therefore never constructed while this flag is off (no
- * model-download side effects).
- *
- * TO RE-ENABLE: flip this back to `true`. This is the single, findable
- * switch — no other code path needs to change.
- *
- * @deprecated TASK-865 — removed in R4 together with the local Whisper stage: the constant
- * stays `false` until then and is never flipped. The browser never runs a model.
- */
-export const LOCAL_TRANSCRIPTION_ENABLED = false;
 
 // =============================================================================
 // Additional Endpoint Constants
@@ -652,24 +576,6 @@ export const TEXT_ENDPOINTS = {
 // =============================================================================
 // Plugin Defaults
 // =============================================================================
-
-/**
- * Default noise filter configuration
- */
-export const DEFAULT_NOISE_FILTER_CONFIG = {
-  enabled: true,
-  level: 'medium' as const,
-};
-
-/**
- * Default VAD configuration
- */
-export const DEFAULT_VAD_CONFIG = {
-  enabled: true,
-  sensitivity: 0.5,
-  minSpeechDuration: 250,
-  minSilenceDuration: 500,
-};
 
 /**
  * Default STT configuration

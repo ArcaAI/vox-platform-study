@@ -19,30 +19,6 @@ import { PluginManager } from '../../core/PluginManager';
 import { AgenticClient } from '../../core/AgenticClient';
 
 // Mock external audio dependencies
-vi.mock('@arcaai/noise-filter', () => ({
-  createNoiseFilter: vi.fn(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    enable: vi.fn().mockResolvedValue(undefined),
-    disable: vi.fn().mockResolvedValue(undefined),
-    isEnabled: vi.fn().mockReturnValue(true),
-    restart: vi.fn().mockResolvedValue(undefined),
-    destroy: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-  })),
-}));
-
-vi.mock('@arcaai/vad', () => ({
-  createVAD: vi.fn(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    enable: vi.fn().mockResolvedValue(undefined),
-    disable: vi.fn().mockResolvedValue(undefined),
-    isEnabled: vi.fn().mockReturnValue(true),
-    restart: vi.fn().mockResolvedValue(undefined),
-    destroy: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-  })),
-}));
-
 vi.mock('@arcaai/stt', () => ({
   createSTT: vi.fn(() => ({
     init: vi.fn().mockResolvedValue(undefined),
@@ -73,7 +49,7 @@ describe('AgenticProvider (HOOK-02)', () => {
         delete: vi.fn(),
       } as unknown as AgenticClient;
 
-      const manager = new PluginManager({ noiseFilter: { enabled: true } }, undefined, mockApiClient);
+      const manager = new PluginManager({ stt: { enabled: true } }, undefined, mockApiClient);
 
       expect(manager).toBeDefined();
     });
@@ -96,7 +72,7 @@ describe('AgenticProvider (HOOK-02)', () => {
 
       expect(pipeline).not.toBeNull();
 
-      await expect(pipeline!.triggerNER('Patient has chest pain')).rejects.toThrow('Backend NER is not yet wired in this SDK');
+      await expect(pipeline!.triggerNER('Patient has chest pain')).rejects.toThrow('Backend NER is not wired in KnowledgePipeline');
     });
 
     it('should fail KnowledgePipeline backend NER when apiClient is NOT passed', async () => {
@@ -116,7 +92,7 @@ describe('AgenticProvider (HOOK-02)', () => {
       expect(pipeline).not.toBeNull();
 
       // Without apiClient, backend NER should still fail fast (unsupported via API gateway)
-      await expect(pipeline!.triggerNER('Patient has chest pain')).rejects.toThrow('Backend NER is not yet wired in this SDK');
+      await expect(pipeline!.triggerNER('Patient has chest pain')).rejects.toThrow('Backend NER is not wired in KnowledgePipeline');
     });
   });
 
@@ -138,7 +114,7 @@ describe('AgenticProvider (HOOK-02)', () => {
       const pipeline = manager.getKnowledgePipeline();
       expect(pipeline).not.toBeNull();
 
-      await expect(pipeline!.triggerNER('Patient takes aspirin')).rejects.toThrow('Backend NER is not yet wired in this SDK');
+      await expect(pipeline!.triggerNER('Patient takes aspirin')).rejects.toThrow('Backend NER is not wired in KnowledgePipeline');
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
 

@@ -8,16 +8,13 @@ import {
   CONSULTATION_ENDPOINTS,
   CONTEXT_ENDPOINTS,
   DEFAULT_NER_CONFIG,
-  DEFAULT_NOISE_FILTER_CONFIG,
   DEFAULT_STT_CONFIG,
   DEFAULT_SYNC_INTERVAL,
   DEFAULT_TIMEOUT,
-  DEFAULT_VAD_CONFIG,
   ENTITY_ENDPOINTS,
   MY_TENANT_ENDPOINTS,
   NLP_ENDPOINTS,
   PERSONALIZATION_ENDPOINTS,
-  PIPELINE_ENDPOINTS,
   STORAGE_KEYS,
   STT_ENDPOINTS,
   SUMMARY_ENDPOINTS,
@@ -268,29 +265,6 @@ describe('constants', () => {
     });
   });
 
-  describe('PIPELINE_ENDPOINTS', () => {
-    it('should have LIST endpoint', () => {
-      expect(PIPELINE_ENDPOINTS.LIST).toBe('/audio/pipelines');
-    });
-
-    it('should generate GET endpoint by ID', () => {
-      expect(PIPELINE_ENDPOINTS.GET('pipe-1')).toBe('/audio/pipelines/pipe-1');
-    });
-
-    it('should generate GET_BY_SLUG endpoint', () => {
-      expect(PIPELINE_ENDPOINTS.GET_BY_SLUG('whisper-streaming')).toBe('/audio/pipelines/slug/whisper-streaming');
-    });
-
-    it('should have VALIDATE endpoint', () => {
-      expect(PIPELINE_ENDPOINTS.VALIDATE).toBe('/admin/audio/pipelines/validate');
-    });
-
-    it('should handle UUID pipeline ID', () => {
-      const uuid = '019503c0-d93f-7f41-b782-af9e1a3b5c0d';
-      expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/audio/pipelines/${uuid}`);
-    });
-  });
-
   describe('NLP_ENDPOINTS', () => {
     it('should have CLASSIFY_TOKENS endpoint', () => {
       expect(NLP_ENDPOINTS.CLASSIFY_TOKENS).toBe('/nlp/classify/tokens');
@@ -341,34 +315,6 @@ describe('constants', () => {
   });
 
   describe('Plugin Defaults', () => {
-    describe('DEFAULT_NOISE_FILTER_CONFIG', () => {
-      it('should have enabled true', () => {
-        expect(DEFAULT_NOISE_FILTER_CONFIG.enabled).toBe(true);
-      });
-
-      it('should have level medium', () => {
-        expect(DEFAULT_NOISE_FILTER_CONFIG.level).toBe('medium');
-      });
-    });
-
-    describe('DEFAULT_VAD_CONFIG', () => {
-      it('should have enabled true', () => {
-        expect(DEFAULT_VAD_CONFIG.enabled).toBe(true);
-      });
-
-      it('should have sensitivity 0.5', () => {
-        expect(DEFAULT_VAD_CONFIG.sensitivity).toBe(0.5);
-      });
-
-      it('should have minSpeechDuration 250', () => {
-        expect(DEFAULT_VAD_CONFIG.minSpeechDuration).toBe(250);
-      });
-
-      it('should have minSilenceDuration 500', () => {
-        expect(DEFAULT_VAD_CONFIG.minSilenceDuration).toBe(500);
-      });
-    });
-
     describe('DEFAULT_STT_CONFIG', () => {
       it('should have enabled true', () => {
         expect(DEFAULT_STT_CONFIG.enabled).toBe(true);

@@ -39,7 +39,7 @@ const testConfig: AgenticConfig = {
     // auth where useAuth.login sets the token, not a host-managed prop.
     tenantId: 'test-tenant',
   },
-  audio: { noiseFilter: false, vad: false, stt: false },
+  audio: { stt: false },
   personalization: { storage: 'local', defaults: { language: 'en' } },
   logging: { level: 'error' },
 };

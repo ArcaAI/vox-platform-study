@@ -1,6 +1,6 @@
 # @arcaai/vox — browser SDK for HOPE consultation workflows
 
-`packages/agentic-sdk-v2`, npm package `@arcaai/vox` (version 3.5.0). A browser-only React SDK:
+`packages/agentic-sdk-v2`, npm package `@arcaai/vox` (version 4.0.0). A browser-only React SDK:
 a configuration-driven `AgenticProvider`, a unified `useArca()` hook plus focused domain hooks,
 real-time audio capture streamed to backend transcription, consultation/context/summary
 management against the `apps/api` gateway (port 8868), and multi-tenant-safe browser state
@@ -10,17 +10,16 @@ management against the `apps/api` gateway (port 8868), and multi-tenant-safe bro
 
 ## Layout
 
-| Path                                                                                             | What it holds                                                                                                                                                                                                                                                                                                                |
-| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts` / `core.ts` / `plugins.ts` / `plugins-med-ner.ts` / `compat.ts`                   | The five entry points (see below)                                                                                                                                                                                                                                                                                            |
-| `src/providers/`                                                                                 | `AgenticProvider` — owns one Zustand store instance per mount                                                                                                                                                                                                                                                                |
-| `src/hooks/`                                                                                     | `useArca` + focused domain hooks (business plane only, no admin surface)                                                                                                                                                                                                                                                     |
-| `src/store/`                                                                                     | `createAgenticStore`, `useArcaStore`, `useStoreApi`                                                                                                                                                                                                                                                                          |
-| `src/core/`                                                                                      | `AgenticClient`, `ConfigManager`/`ConfigSchema` (valibot), `PluginManager`, `TranscriptionPipeline`, `KnowledgePipeline`, `SttWebSocketClient`, `SSEClient`, `StreamingSessionManager`, `SharedConnectionManager`/`Worker`, `SimpleCrossTabSync`, `PersonalizationManager`, `ModelRegistry`, `LocalVoiceEmbedder`, `logger/` |
-| `src/types/`                                                                                     | Config, consultation, context, summary, STT types                                                                                                                                                                                                                                                                            |
-| `src/compat/`                                                                                    | v1-compat provider + hooks (entry: `src/compat.ts`)                                                                                                                                                                                                                                                                          |
-| `docs/API-Reference.md`, `docs/Compat-API-Reference.md`, `docs/Batch-Transcription-Reference.md` | Generated/maintained API references                                                                                                                                                                                                                                                                                          |
-| `e2e/`                                                                                           | Playwright specs + fixtures                                                                                                                                                                                                                                                                                                  |
+| Path                                                             | What it holds                                                                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/index.ts` / `core.ts` / `plugins.ts`                        | The three entry points (see below)                                                                                                                                                                                                                                                                     |
+| `src/providers/`                                                 | `AgenticProvider` — owns one Zustand store instance per mount                                                                                                                                                                                                                                          |
+| `src/hooks/`                                                     | `useArca` + focused domain hooks (business plane only, no admin surface)                                                                                                                                                                                                                               |
+| `src/store/`                                                     | `createAgenticStore`, `useArcaStore`, `useStoreApi`                                                                                                                                                                                                                                                    |
+| `src/core/`                                                      | `AgenticClient`, `ConfigManager`/`ConfigSchema` (valibot), `PluginManager`, `TranscriptionPipeline`, `KnowledgePipeline`, `SttWebSocketClient`, `SSEClient`, `StreamingSessionManager`, `SharedConnectionManager`/`Worker`, `SimpleCrossTabSync`, `PersonalizationManager`, `ModelRegistry`, `logger/` |
+| `src/types/`                                                     | Config, consultation, context, summary, STT types                                                                                                                                                                                                                                                      |
+| `docs/API-Reference.md`, `docs/Batch-Transcription-Reference.md` | Generated/maintained API references                                                                                                                                                                                                                                                                    |
+| `e2e/`                                                           | Playwright specs + fixtures                                                                                                                                                                                                                                                                            |
 
 ## Commands
 
@@ -28,7 +27,7 @@ Run from this directory, or `pnpm --filter @arcaai/vox <script>` from the repo r
 
 | Command                                           | Effect                                                                                             |
 | ------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `pnpm build`                                      | tsup build (`build:dts` runs after, `tsc --emitDeclarationOnly`) for all five entries              |
+| `pnpm build`                                      | tsup build (`build:dts` runs after, `tsc --emitDeclarationOnly`) for all three entries             |
 | `pnpm dev`                                        | tsup watch mode                                                                                    |
 | `pnpm test` / `pnpm test:watch` / `pnpm test:cov` | Vitest unit tests                                                                                  |
 | `pnpm test:e2e`                                   | Builds, then Playwright (`e2e/playwright.config.ts`); `:ui`, `:headed`, `:chromium` variants exist |
@@ -38,21 +37,18 @@ Run from this directory, or `pnpm --filter @arcaai/vox <script>` from the repo r
 
 ## How it works
 
-### Entry points (verified against `package.json#exports`, 5 entries)
+### Entry points (verified against `package.json#exports`, 3 entries)
 
-| Import                        | Contents                                                                                                                                                                                                                                              |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@arcaai/vox`                 | Everything: core + audio plugin hooks and pipelines                                                                                                                                                                                                   |
-| `@arcaai/vox/core`            | Provider, hooks, types, client — no audio/ML plugin code. Use for admin/dashboard surfaces that only need API access                                                                                                                                  |
-| `@arcaai/vox/plugins`         | `useArcaAudio`, `useTtsPlayback`/`useTtsStream`, `PluginManager`, `TranscriptionPipeline`, `KnowledgePipeline`. Also re-exports the DEPRECATED `useVAD`, `useSTT`, `useNoiseFilter` (removed in R4)                                                   |
-| `@arcaai/vox/plugins/med-ner` | DEPRECATED (removed in R4) — `useMedNER` only; isolates the optional `@arcaai/med-ner` dependency so importing `/plugins` alone never pulls it in                                                                                                     |
-| `@arcaai/vox/compat`          | v1 (`@arcaai/agentic-sdk`) source-compatible hooks for migrating apps: `useArcaSessionManager`, `useAudioCapture`, `useArcaSpeechToText`, `useText`, `useArcaSttProvider`, `useArcaSttLanguageModes`, plus `ArcaCompatProvider` and `mapV1ConfigToV2` |
+| Import                | Contents                                                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `@arcaai/vox`         | Everything: core + audio plugin hooks and pipelines                                                                  |
+| `@arcaai/vox/core`    | Provider, hooks, types, client — no audio/ML plugin code. Use for admin/dashboard surfaces that only need API access |
+| `@arcaai/vox/plugins` | `useArcaAudio`, `useTtsPlayback`/`useTtsStream`, `PluginManager`, `TranscriptionPipeline`, `KnowledgePipeline`       |
 
-**Entry bundles don't share a React context.** Each entry is a separate tsup bundle
-(`splitting: false`), so a tree rendered under `<ArcaCompatProvider>` (from `/compat`) must
-import every hook it uses — including v2-native ones like `useArcaSttLanguageModes` — from
-`/compat` too. Importing the "same" hook from `/core` in a `/compat`-provided tree throws
-(`useStoreApi()` finds no provider), even though it is re-exported under an identical name.
+The `./compat` entry point (v1-compatible hooks) was removed outright in TASK-1004 (zero
+production traffic). The `./plugins/med-ner`, browser-only `useVAD`/`useSTT`/`useNoiseFilter`
+re-exports from `./plugins`, and `useMedNER` were removed in TASK-1006 (R4) — the browser never
+runs a model, so there is no client-side VAD/noise-filter/NER surface left to entry-split.
 
 ### The browser never runs a model (owner directive, TASK-865)
 
@@ -70,24 +66,19 @@ Selection is by `agentSlug`, never a pipeline/engine/model id: `useSelectableAsr
 `GET /agents?task=SPEECH_TO_TEXT` (`null` = unresolved, `[]` = none published), and
 `audio.start({ agentSlug })` names the tenant's ASR Agent; omit it and the gateway resolves one —
 the active session's governing workflow first, when it names a speech-to-text agent, otherwise the
-tenant admin's assignment (department, then tenant default). `AudioStartOptions.pipelineId` is DEPRECATED (removed in R4):
-still forwarded with a warning, and when both are passed `agentSlug` wins and `pipelineId` is
-dropped with a warning, never silently.
+tenant admin's assignment (department, then tenant default). There is no other way to select an
+ASR engine from the browser SDK — `AudioStartOptions.pipelineId` and `audio.clientInference` were
+removed in TASK-1006 (R4); the gateway may still accept the `pipelineId` field over the wire from
+older clients, but this SDK no longer sends it.
 
-`DEFAULT_AUDIO_CONFIG` and `DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG` declare the `noiseFilter`
-(RNNoise) and `vad` (Silero) client stages OFF, and the runtime ignores `enabled: true` for them
-unless the host also sets `audio.clientInference: { allow: true }` — itself deprecated on
-arrival and retiring with the packages in R4. Local Whisper is gated by
-`LOCAL_TRANSCRIPTION_ENABLED = false`; browser NER lives behind the deprecated
-`/plugins/med-ner` entry; `useLocalVoiceEmbedding` (WavLM) is deprecated in favor of the
-server-side `useVoiceEmbedding`.
-
-Deprecated, removed in R4 (register: `docs/operations/deprecation-register.md` SDK section):
-`@arcaai/vad`, `@arcaai/noise-filter`, `@arcaai/stt`'s in-browser Whisper, `@arcaai/med-ner` +
-`/plugins/med-ner`, `useVAD`/`useSTT`/`useNoiseFilter`, `useLocalVoiceEmbedding`,
-`AudioStartOptions.pipelineId`, `usePipelines`, `useArcaPipelines`, `useSttProviderToggle`, the
-`selectedPipelineId` user setting, `LOCAL_TRANSCRIPTION_ENABLED`, and the compat `sttPipelineId`
-(use `sttAgentSlug`).
+Client-side VAD (Silero), noise filtering (RNNoise), local Whisper transcription, and browser NER
+are gone, not merely gated off — the `@arcaai/vad`, `@arcaai/noise-filter`, and `@arcaai/med-ner`
+packages were deleted, `@arcaai/stt`'s in-browser Whisper worker was removed, and
+`useLocalVoiceEmbedding` (WavLM) was removed in favor of the server-side `useVoiceEmbedding`.
+Removed alongside them: `usePipelines`, `useArcaPipelines`, `useSttProviderToggle`, the
+`selectedPipelineId` user setting, `DEFAULT_LOCAL_CONFIG`, `LOCAL_TRANSCRIPTION_ENABLED`, and the
+compat `sttPipelineId` (use `sttAgentSlug`). Full history:
+`docs/operations/deprecation-register.md` SDK section.
 
 ### Provider and store
 
@@ -181,11 +172,11 @@ every optimized build including staging.
 
 - [`@arcaai/vox-node`](../vox-node/README.md) — the non-browser server sibling; owns the admin
   plane and API-key/service-account credentials.
-- [`@arcaai/room`](../room/README.md), [`@arcaai/stt`](../stt/README.md),
-  [`@arcaai/vad`](../vad/README.md), [`@arcaai/noise-filter`](../noise-filter/README.md),
-  [`@arcaai/med-ner`](../med-ner/README.md) — dependency and deprecated-plugin packages.
+- [`@arcaai/room`](../room/README.md), [`@arcaai/stt`](../stt/README.md) — dependency packages
+  (audio capture + the backend streaming transport). `@arcaai/vad`, `@arcaai/noise-filter`, and
+  `@arcaai/med-ner` were deleted in TASK-1006 — the browser never runs a model.
 - [`docs/guides/client-integration-guide.md`](../../docs/guides/client-integration-guide.md) — the
   end-to-end integration guide; chapter 10 maps every server-side step to its browser equivalent.
-- `docs/API-Reference.md`, `docs/Compat-API-Reference.md` — full generated signatures.
+- `docs/API-Reference.md` — full generated signatures.
 - `.claude/rules/08-vox-sdk.md` — SDK architecture rules; `.claude/rules/07-react-ui.md` — React
   component conventions.

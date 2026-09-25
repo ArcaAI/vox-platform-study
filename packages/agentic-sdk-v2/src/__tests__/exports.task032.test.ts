@@ -21,7 +21,6 @@ describe('hooks/index exports', () => {
     expect(typeof hooks.useStorage).toBe('function');
     expect(typeof hooks.useAuth).toBe('function');
     expect(typeof hooks.useConsultationJob).toBe('function');
-    expect(typeof hooks.usePipelines).toBe('function');
   });
 
   it('should export existing hooks as functions', async () => {
@@ -43,7 +42,6 @@ describe('core.ts exports', () => {
     expect(typeof core.useStorage).toBe('function');
     expect(typeof core.useAuth).toBe('function');
     expect(typeof core.useConsultationJob).toBe('function');
-    expect(typeof core.usePipelines).toBe('function');
   });
 
   it('should export endpoint constants as objects with expected keys from core', async () => {

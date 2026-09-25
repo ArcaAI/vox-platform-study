@@ -20,11 +20,6 @@
       "types": "./dist/plugins.d.ts",
       "import": "./dist/plugins.mjs",
       "require": "./dist/plugins.js"
-    },
-    "./plugins/med-ner": {
-      "types": "./dist/plugins-med-ner.d.ts",
-      "import": "./dist/plugins-med-ner.mjs",
-      "require": "./dist/plugins-med-ner.js"
     }
   },
   "typesVersions": {
@@ -34,9 +29,6 @@
       ],
       "plugins": [
         "./dist/plugins.d.ts"
-      ],
-      "plugins/med-ner": [
-        "./dist/plugins-med-ner.d.ts"
       ]
     }
   },
@@ -66,31 +58,21 @@
   "dependencies": {
     "@arcaai/json-schema-subset": "workspace:*",
     "@arcaai/types": "workspace:*",
-    "@arcaai/noise-filter": "workspace:*",
     "@arcaai/room": "workspace:*",
     "@arcaai/stt": "workspace:*",
-    "@arcaai/vad": "workspace:*",
-    "@huggingface/transformers": "^4.2.0",
-    "@ricky0123/vad-web": "^0.0.30",
     "deepmerge-ts": "^8.0.2",
     "diff": "^9.0.0",
     "eventemitter3": "^5.0.4",
-    "onnxruntime-common": "1.27.0",
-    "onnxruntime-web": "1.27.0",
     "valibot": "^1.4.2",
     "zustand": "^5.0.15"
   },
   "peerDependencies": {
-    "@arcaai/med-ner": "workspace:^",
     "@microsoft/clarity": "^1.0.0",
     "highlight.run": "^9.0.0",
     "react": "^18.3.0 || ^19.0.4",
     "react-dom": "^18.3.0 || ^19.0.4"
   },
   "peerDependenciesMeta": {
-    "@arcaai/med-ner": {
-      "optional": true
-    },
     "@microsoft/clarity": {
       "optional": true
     },
@@ -101,7 +83,6 @@
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
     "@arcaai/config-ts": "workspace:*",
-    "@arcaai/med-ner": "workspace:*",
     "@microsoft/clarity": "^1.0.2",
     "@playwright/test": "^1.63.0",
     "@testing-library/dom": "^10.4.1",

@@ -91,7 +91,8 @@ export interface HopeClientOptions {
  * ```ts
  * const hope = new HopeClient({ baseUrl: process.env.HOPE_API_URL!, apiKey: process.env.HOPE_API_KEY! });
  * const consultation = await hope.consultations.open({ patientId: 'p-1' });
- * const { content } = await hope.consultations.summaries.generate(consultation.id, {});
+ * const { jobId } = await hope.consultations.summaries.generateAsync(consultation.id, {});
+ * const summary = await hope.jobs.waitFor(jobId);
  * ```
  */
 export class HopeClient {

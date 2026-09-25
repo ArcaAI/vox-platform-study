@@ -9,8 +9,13 @@ export type {
   AgenticConfig,
   ApiConfig,
   AudioPluginConfig,
+  // The single remaining audio pipeline stage name (TASK-1006 removed
+  // `noiseFilter`/`vad` and the client-inference gate).
   AudioPluginStageName,
-  ClientInferenceConfig,
+  // The per-stage `*LocalConfig` types + `LocalWorkflowConfig` stay exported
+  // as a wire-compatible shape for `UserPreferences.localConfig` (a backend
+  // response field this SDK does not own) — PluginManager no longer reads
+  // any of them (TASK-1006: the local stages they configured are gone).
   AudioSilenceLocalConfig,
   DiarizationLocalConfig,
   LocalAsrModelInfo,
@@ -30,7 +35,6 @@ export type {
   NERLocalConfig,
   NERPluginConfig,
   NoiseCancellationLocalConfig,
-  NoiseFilterPluginConfig,
   PersonalizationConfig,
   PluginConfig,
   RemoteConfigResponse,
@@ -43,7 +47,6 @@ export type {
   UserPreferences,
   UserPreferencesUpdate,
   VADLocalConfig,
-  VADPluginConfig,
   VoiceEmbeddingLocalConfig,
   WorkflowMode,
 } from './config';
@@ -52,9 +55,7 @@ export {
   DEFAULT_API_TIMEOUT,
   DEFAULT_AUDIO_CONFIG,
   DEFAULT_CROSS_TAB_CONFIG,
-  DEFAULT_LOCAL_CONFIG,
   DEFAULT_PERSONALIZATION_CONFIG,
-  DEFAULT_PROCESSING_CONFIG,
   DEFAULT_SESSION_PERSISTENCE_CONFIG,
   DEFAULT_TENANT_FEATURES,
   parseTenantConfig,
@@ -62,15 +63,7 @@ export {
 } from './config';
 
 // Processing configuration types
-export type {
-  CrossTabConfig,
-  KnowledgeProcessingConfig,
-  ProcessingConfig,
-  ProcessingLocation,
-  SessionPersistenceConfig,
-  TranscriptionProcessingConfig,
-  TriggerMode,
-} from './config';
+export type { CrossTabConfig, SessionPersistenceConfig } from './config';
 
 // Consultation types
 export type {

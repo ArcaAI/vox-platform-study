@@ -235,83 +235,18 @@ export interface ApiConfig {
 // =============================================================================
 
 /**
- * The three audio pipeline stages a host can address by name.
- * (`clientInference` on {@link AudioPluginConfig} is a GATE, not a stage.)
+ * The one audio pipeline stage a host can address by name. `noiseFilter` and
+ * `vad` were removed (TASK-1006, following TASK-865): the browser never runs
+ * a model, and there is no client-inference gate left to open.
  */
-export type AudioPluginStageName = 'noiseFilter' | 'vad' | 'stt';
-
-/**
- * Explicit opt-in for CLIENT-SIDE model inference (TASK-865).
- *
- * The browser captures audio and renders results; it never runs a model. The
- * runtime therefore IGNORES `noiseFilter.enabled: true` / `vad.enabled: true`
- * — logging a deprecation warning once — unless the host ALSO sets
- * `audio.clientInference: { allow: true }`. This switch exists only so a host
- * that genuinely needs in-browser VAD/denoise during the deprecation window
- * can keep it, and it retires with the client packages.
- *
- * @deprecated TASK-865 — removed in R4 with `@arcaai/vad` / `@arcaai/noise-filter`.
- * Server-side VAD/denoise are selected by the tenant's ASR Agent instead.
- */
-export interface ClientInferenceConfig {
-  /** `true` opens the gate for the two client stages. Anything else keeps it closed. */
-  allow: boolean;
-}
+export type AudioPluginStageName = 'stt';
 
 /**
  * Audio Plugin Configuration
- * Each plugin can be enabled with a boolean or configured with options
  */
 export interface AudioPluginConfig {
-  /**
-   * Noise filter (RNNoise, in-browser) configuration.
-   *
-   * @deprecated TASK-865 — removed in R4. `enabled: true` is IGNORED unless
-   * {@link AudioPluginConfig.clientInference} allows it; denoise is a server-side
-   * decision of the tenant's ASR Agent (`audioFrontEnd.denoise`).
-   */
-  noiseFilter?: NoiseFilterPluginConfig | boolean;
-  /**
-   * Voice Activity Detection (Silero, in-browser) configuration.
-   *
-   * @deprecated TASK-865 — removed in R4. `enabled: true` is IGNORED unless
-   * {@link AudioPluginConfig.clientInference} allows it; VAD is a server-side
-   * decision of the tenant's ASR Agent (`audioFrontEnd.vad`).
-   */
-  vad?: VADPluginConfig | boolean;
   /** Speech-to-Text configuration */
   stt?: STTPluginConfig | boolean;
-  /**
-   * Explicit opt-in for client-side model inference. Absent ⇒ closed: the
-   * two client stages never load a model, whatever their `enabled` says.
-   *
-   * @deprecated TASK-865 — removed in R4 (documented as deprecated on arrival).
-   */
-  clientInference?: ClientInferenceConfig;
-}
-
-/**
- * Noise Filter Plugin Configuration
- */
-export interface NoiseFilterPluginConfig {
-  /** Enable noise filter */
-  enabled: boolean;
-  /** Noise cancellation level */
-  level?: 'low' | 'medium' | 'high';
-}
-
-/**
- * VAD Plugin Configuration
- */
-export interface VADPluginConfig {
-  /** Enable VAD */
-  enabled: boolean;
-  /** Speech detection sensitivity (0-1, default: 0.5) */
-  sensitivity?: number;
-  /** Minimum speech duration in ms (default: 250) */
-  minSpeechDuration?: number;
-  /** Minimum silence duration in ms to end speech (default: 500) */
-  minSilenceDuration?: number;
 }
 
 /**
@@ -321,7 +256,7 @@ export interface STTPluginConfig {
   /** Enable STT */
   enabled: boolean;
   /** Provider selection */
-  provider?: 'local' | 'backend' | 'auto';
+  provider?: 'backend' | 'auto';
   /** Language code (e.g., 'en', 'th') */
   language?: string;
   /**
@@ -330,19 +265,6 @@ export interface STTPluginConfig {
    * `audio.start({ languageMode })` overrides it.
    */
   languageMode?: string;
-  /** Model ID from model registry */
-  modelId?: string;
-  /**
-   * Backend ASR pipeline ID or slug.
-   *
-   * @deprecated TASK-865 — removed in R4 (the `AsrPipeline` resource retires
-   * under TASK-861). Name the tenant's ASR Agent with {@link STTPluginConfig.agentSlug}
-   * — or pass `agentSlug` per capture via `audio.start({ agentSlug })` — or
-   * omit both and let the gateway resolve one: the session's governing
-   * workflow first, when it names a speech-to-text agent, otherwise the
-   * tenant admin's assignment (department, then tenant default).
-   */
-  pipelineId?: string;
   /**
    * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
    * transcribe this session. A lineage key, like `workflowDefinitionSlug` at
@@ -366,9 +288,10 @@ export interface STTPluginConfig {
   /** Let model auto-detect language for multilingual/code-switching audio */
   codeSwitching?: boolean;
   /**
-   * Server-resolved EFFECTIVE transcription mode (admin-owned).
-   * Injected by `AgenticProvider` from the UserPreferences cascade; honored by
-   * `TranscriptionPipeline.resolveSTTRuntimeProvider()` ahead of provider/location.
+   * Server-resolved EFFECTIVE transcription mode (admin-owned), injected by
+   * `AgenticProvider` from the `UserPreferences` cascade. A wire-compatible
+   * type only — TASK-1006 removed the local STT stage that used to branch on
+   * it, so `TranscriptionPipeline` no longer reads this field.
    */
   transcriptionMode?: 'LOCAL' | 'BACKEND';
 }
@@ -667,50 +590,13 @@ export interface UserPreferencesUpdate {
 // =============================================================================
 
 /**
- * Default local workflow configuration.
+ * Default audio plugin configuration.
  *
- * @deprecated TASK-865 — removed in R4. The `noiseCancellation` (`rnnoise`), `stt` (`whisper-*`)
- * and `vad` (`silero-vad-v5`) model pins describe CLIENT models the runtime no longer loads;
- * they are kept only so persisted user preferences keep deserialising during the window.
- */
-export const DEFAULT_LOCAL_CONFIG: LocalWorkflowConfig = {
-  noiseCancellation: { modelId: 'rnnoise', level: 'medium' },
-  // Browser-loadable Whisper default. `whisper-large-v3` is NOT browser-loadable
-  // (the onnx-community repo is gated / 401s); local STT runs tiny/base/small.
-  stt: { modelId: 'whisper-base' },
-  vad: { modelId: 'silero-vad-v5', sensitivity: 0.5 },
-  // Optional feature — the model id is retained for opt-in, but auto-extraction
-  // stays OFF by default. Medical NER pulls the ~300MB `@arcaai/med-ner`
-  // peer; it runs only when a consumer explicitly enables `autoExtract`.
-  ner: { modelId: 'biomedical', autoExtract: false },
-  diarization: { enabled: false, autoEnroll: false },
-  voiceEmbedding: { modelId: '' },
-  audioSilence: { modelId: '' },
-  voiceProfile: {
-    autoActivateLatest: true,
-    similarityThreshold: 0.97,
-    useBackendAnchor: true,
-  },
-};
-
-/**
- * Default audio plugin configuration
- */
-/**
- * Optional audio features default OFF.
- *
- * VAD and noise cancellation are opt-in: each pulls a runtime model on the first
- * `audio.start()` (VAD → Silero ONNX + ORT WASM from the jsDelivr CDN; noise →
- * RNNoise WASM). A consumer that never states an audio preference falls through
- * to this default via `AgenticProvider`'s `cfg.audio ?? DEFAULT_AUDIO_CONFIG`, so
- * enabling them here forced an unsolicited CDN fetch on every such app. STT is the
- * core capability, not an optional add-on, so it stays enabled. Opt in per stage
- * with `audio.vad.enabled` / `audio.noiseFilter.enabled` (core) or
- * `audioSettings.voiceActivityDetection` / `noiseSuppression` (compat).
+ * TASK-1006 (following TASK-865): `noiseFilter` and `vad` were removed from
+ * `AudioPluginConfig` — the browser never runs a model. STT is the core
+ * capability, so it stays enabled by default.
  */
 export const DEFAULT_AUDIO_CONFIG: AudioPluginConfig = {
-  noiseFilter: { enabled: false, level: 'medium' },
-  vad: { enabled: false, sensitivity: 0.5 },
   stt: {
     enabled: true,
     provider: 'auto',
@@ -729,7 +615,6 @@ export const DEFAULT_PERSONALIZATION_CONFIG: PersonalizationConfig = {
     // Backend transcription is the sane platform default; local is opt-in.
     workflowMode: 'remote',
     language: 'en',
-    localConfig: { ...DEFAULT_LOCAL_CONFIG },
   },
 };
 
@@ -737,135 +622,6 @@ export const DEFAULT_PERSONALIZATION_CONFIG: PersonalizationConfig = {
  * Default API configuration (timeout only)
  */
 export const DEFAULT_API_TIMEOUT = 30000;
-
-// =============================================================================
-// Processing Location Configuration
-// =============================================================================
-
-/**
- * Processing location options for different tasks.
- */
-export type ProcessingLocation = 'browser' | 'backend' | 'auto' | 'disabled' | 'skip';
-
-/**
- * Trigger mode for pipeline stages.
- */
-export type TriggerMode = 'auto' | 'manual';
-
-/**
- * Processing configuration for pipelines.
- * Allows fine-grained control over where processing happens.
- */
-export interface ProcessingConfig {
-  /** Transcription pipeline processing locations */
-  transcription: TranscriptionProcessingConfig;
-  /** Knowledge pipeline processing locations */
-  knowledge: KnowledgeProcessingConfig;
-}
-
-/**
- * Transcription pipeline processing configuration.
- */
-export interface TranscriptionProcessingConfig {
-  /** Noise filter processing */
-  noiseFilter: {
-    /** Processing location (browser or skip) */
-    location: 'browser' | 'skip';
-    /** Noise cancellation level */
-    level?: 'low' | 'medium' | 'high';
-  };
-  /** VAD processing (always browser) */
-  vad: {
-    /** Processing location (always browser) */
-    location: 'browser';
-    /** Speech detection sensitivity */
-    sensitivity?: number;
-  };
-  /** STT processing */
-  stt: {
-    /** Processing location */
-    location: 'browser' | 'backend' | 'auto';
-    /** Provider type */
-    provider?: 'local' | 'backend' | 'auto';
-    /** Language code */
-    language?: string;
-    /** Model ID for local processing */
-    modelId?: string;
-    /** WebSocket URL for backend STT streaming */
-    sttSocket?: string;
-    /** Backend ASR pipeline ID or slug */
-    pipelineId?: string;
-  };
-}
-
-/**
- * Knowledge pipeline processing configuration.
- */
-export interface KnowledgeProcessingConfig {
-  /** NER processing */
-  ner: {
-    /** Processing location */
-    location: 'browser' | 'backend' | 'auto' | 'disabled';
-    /** Trigger mode */
-    triggerMode: TriggerMode;
-    /** Model ID */
-    model?: string;
-    /** Confidence threshold */
-    threshold?: number;
-  };
-  /** Spell check processing */
-  spellCheck: {
-    /** Processing location */
-    location: 'browser' | 'backend' | 'disabled';
-    /** Trigger mode */
-    triggerMode: TriggerMode;
-  };
-  /** Summarization processing */
-  summarization: {
-    /** Processing location (always backend or disabled) */
-    location: 'backend' | 'disabled';
-    /** Trigger mode (always manual) */
-    triggerMode: 'manual';
-    /** DNA style ID for personalization */
-    dnaStyleId?: string;
-  };
-}
-
-/**
- * Default processing configuration.
- */
-export const DEFAULT_PROCESSING_CONFIG: ProcessingConfig = {
-  transcription: {
-    noiseFilter: {
-      location: 'browser',
-      level: 'high',
-    },
-    vad: {
-      location: 'browser',
-      sensitivity: 0.5,
-    },
-    stt: {
-      location: 'auto',
-      provider: 'auto',
-      language: 'en-US',
-    },
-  },
-  knowledge: {
-    ner: {
-      location: 'browser',
-      triggerMode: 'auto',
-      threshold: 0.6,
-    },
-    spellCheck: {
-      location: 'disabled',
-      triggerMode: 'manual',
-    },
-    summarization: {
-      location: 'backend',
-      triggerMode: 'manual',
-    },
-  },
-};
 
 // =============================================================================
 // Session Configuration

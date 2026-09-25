@@ -38,20 +38,6 @@ export { substitutePromptVariables, extractPromptVariables, validatePromptVariab
 // Idempotency-Key utilities for side-effectful POSTs.
 export { generateIdempotencyKey, withIdempotencyKey } from './idempotency';
 
-// LOCAL voice-embedding math + provider selection.
-export {
-  DEFAULT_VOICE_MATCH_THRESHOLD,
-  VOICE_ENROLLMENT_PROVIDERS,
-  DEFAULT_VOICE_ENROLLMENT_PROVIDER,
-  cosineSimilarity,
-  l2Normalize,
-  averageEmbeddings,
-  bestMatch,
-  isVoiceEnrollmentProvider,
-  resolveVoiceEnrollmentProvider,
-} from './voiceEmbedding';
-export type { VoiceEnrollmentProvider, EnrolledEmbeddingRef, VoiceMatchResult } from './voiceEmbedding';
-
 // Provenance/citations helpers for the review UI.
 export {
   SOAP_SECTIONS,

@@ -10,7 +10,7 @@
  * against every route this lane implements that takes a consultation/summary
  * id, proving none of them ever manufacture a `PermissionError` out of a 404
  * body — whatever the body's message happens to say.
-*/
+ */
 import { describe, expect, it, vi } from 'vitest';
 
 import { NotFoundError, PermissionError } from '../../core/errors';
@@ -50,10 +50,10 @@ describe('404-over-403 — cross-tenant consultation access', () => {
     await assertNotFoundNeverPermission(() => resource.summaries.list('foreign-consultation-id'));
   });
 
-  it('consultations.summaries.generate(foreignId) → NotFoundError', async () => {
+  it('consultations.summaries.generateAsync(foreignId) → NotFoundError', async () => {
     const transport = newTransport(fetchMock(async () => notFound('Consultation not found')));
     const resource = new ConsultationsResource(transport);
-    await assertNotFoundNeverPermission(() => resource.summaries.generate('foreign-consultation-id', {}));
+    await assertNotFoundNeverPermission(() => resource.summaries.generateAsync('foreign-consultation-id', {}));
   });
 
   it('consultations.summaries.update(foreignId, summaryId) → NotFoundError', async () => {

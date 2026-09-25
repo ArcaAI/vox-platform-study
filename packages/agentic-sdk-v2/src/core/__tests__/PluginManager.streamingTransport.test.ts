@@ -3,9 +3,12 @@
  *
  * Verifies that `getTranscriptionPipelineConfig()` builds a
  * `streamingTransport` (StreamingSessionManager + SttWebSocketClient)
- * when a runtime `pipelineId` has been set via `setRuntimeOptions(...)`,
- * and forwards `consultationId` correctly. The legacy path (no pipelineId)
+ * when a runtime `agentSlug` has been set via `setRuntimeOptions(...)`,
+ * and forwards `consultationId` correctly. The legacy path (nothing named)
  * must remain unaffected.
+ *
+ * TASK-1006 — `pipelineId` selection was removed (`AsrPipeline` retired
+ * under TASK-861); `buildStreamingTransport` now takes `(sttConfig, agentSlug?)`.
  *
  * @vitest-environment jsdom
  */
@@ -15,10 +18,7 @@ import { PluginManager } from '../PluginManager';
 import { createMockLogger } from '../../__tests__/setup';
 import type { AgenticClient } from '../AgenticClient';
 
-vi.mock('@arcaai/noise-filter', () => ({ createNoiseFilter: vi.fn() }));
-vi.mock('@arcaai/vad', () => ({ createVAD: vi.fn() }));
 vi.mock('@arcaai/stt', () => ({ createSTT: vi.fn() }));
-vi.mock('@arcaai/med-ner', () => ({ createMedNER: vi.fn() }));
 
 function makeApiClient(): AgenticClient {
   return {
@@ -47,50 +47,44 @@ describe('PluginManager.buildStreamingTransport', () => {
   });
 
   it("returns undefined when nothing is named and the provider is 'auto' (pre-865 resolution kept)", () => {
-    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'auto' }, undefined);
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'auto' });
     expect(transport).toBeUndefined();
   });
 
   it("an EXPLICIT 'backend' provider with nothing named still gets a transport — the gateway resolves the tenant default agent (TASK-865)", () => {
-    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, undefined) as { pipelineId?: string; agentSlug?: string };
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }) as { agentSlug?: string };
     expect(transport).toBeTruthy();
-    expect(transport.pipelineId).toBeUndefined();
     expect(transport.agentSlug).toBeUndefined();
   });
 
   it('a legacy sttSocket consumer that names nothing keeps the RemoteSTTProvider path (no transport)', () => {
-    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend', sttSocket: 'wss://legacy/ws' }, undefined);
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend', sttSocket: 'wss://legacy/ws' });
     expect(transport).toBeUndefined();
   });
 
-  it('returns undefined when apiClient is missing even with a pipelineId', () => {
+  it('returns undefined when apiClient is missing even with an agentSlug', () => {
     const noClient = new PluginManager({ stt: { enabled: true, provider: 'backend' } }, createMockLogger(), undefined, false);
-    const transport = noClient.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'pipe-1');
+    const transport = noClient.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'clinic-asr');
     expect(transport).toBeUndefined();
   });
 
-  it('returns undefined for local providers regardless of pipelineId', () => {
-    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'local', modelId: 'whisper-tiny' }, 'pipe-1');
-    expect(transport).toBeUndefined();
-  });
-
-  it('builds a transport with a sessionManager, wsClient and the pipelineId', () => {
-    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'pipe-1') as {
+  it('builds a transport with a sessionManager, wsClient and the agentSlug', () => {
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'clinic-asr') as {
       sessionManager: unknown;
       wsClient: unknown;
-      pipelineId: string;
+      agentSlug: string;
       consultationId?: string;
     };
 
     expect(transport).toBeTruthy();
-    expect(transport.pipelineId).toBe('pipe-1');
+    expect(transport.agentSlug).toBe('clinic-asr');
     expect(transport.sessionManager).toBeTruthy();
     expect(transport.wsClient).toBeTruthy();
     expect(transport.consultationId).toBeUndefined();
   });
 
   it('passes the tenant claim setting to the streaming client', () => {
-    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend', requireTenantClaim: false }, 'pipe-1') as {
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend', requireTenantClaim: false }, 'clinic-asr') as {
       wsClient: { reconnectOptions: { requireTenantClaim: boolean } };
     };
 
@@ -98,9 +92,9 @@ describe('PluginManager.buildStreamingTransport', () => {
   });
 
   it('forwards consultationId from runtime options when set', () => {
-    manager.setRuntimeOptions({ pipelineId: 'pipe-A', consultationId: 'cons-7' });
-    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'pipe-A') as {
-      pipelineId: string;
+    manager.setRuntimeOptions({ agentSlug: 'clinic-asr', consultationId: 'cons-7' });
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'clinic-asr') as {
+      agentSlug: string;
       consultationId?: string;
     };
 
@@ -124,40 +118,39 @@ describe('PluginManager.getTranscriptionPipelineConfig', () => {
     );
   });
 
-  it('injects streamingTransport on stt config when runtime pipelineId is set', () => {
-    manager.setRuntimeOptions({ pipelineId: 'p-runtime', consultationId: 'cons-9' });
+  it('injects streamingTransport on stt config when runtime agentSlug is set', () => {
+    manager.setRuntimeOptions({ agentSlug: 'clinic-asr', consultationId: 'cons-9' });
 
     const cfg = manager.getTranscriptionPipelineConfig();
 
-    expect(cfg.stt.pipelineId).toBe('p-runtime');
+    expect(cfg.stt.agentSlug).toBe('clinic-asr');
     expect(cfg.stt.streamingTransport).toBeTruthy();
-    const t = cfg.stt.streamingTransport as { pipelineId: string; consultationId?: string };
-    expect(t.pipelineId).toBe('p-runtime');
+    const t = cfg.stt.streamingTransport as { agentSlug: string; consultationId?: string };
+    expect(t.agentSlug).toBe('clinic-asr');
     expect(t.consultationId).toBe('cons-9');
   });
 
   it('injects a selector-less streamingTransport when nothing is named (explicit backend provider; TASK-865)', () => {
     const cfg = manager.getTranscriptionPipelineConfig();
-    const transport = cfg.stt.streamingTransport as { pipelineId?: string; agentSlug?: string } | undefined;
+    const transport = cfg.stt.streamingTransport as { agentSlug?: string } | undefined;
     expect(transport).toBeTruthy();
-    expect(transport?.pipelineId).toBeUndefined();
     expect(transport?.agentSlug).toBeUndefined();
   });
 
   it('runtime language overrides static stt.language', () => {
-    manager.setRuntimeOptions({ pipelineId: 'p', language: 'th' });
+    manager.setRuntimeOptions({ agentSlug: 'clinic-asr', language: 'th' });
     const cfg = manager.getTranscriptionPipelineConfig();
     expect(cfg.stt.language).toBe('th');
   });
 
   it('threads the pre-start startOn runtime option into the stt config', () => {
-    manager.setRuntimeOptions({ pipelineId: 'p', startOn: 'fallback' });
+    manager.setRuntimeOptions({ agentSlug: 'clinic-asr', startOn: 'fallback' });
     const cfg = manager.getTranscriptionPipelineConfig();
     expect((cfg.stt as { startOn?: 'primary' | 'fallback' }).startOn).toBe('fallback');
   });
 
   it('omits startOn from the stt config when no runtime selection is set', () => {
-    manager.setRuntimeOptions({ pipelineId: 'p' });
+    manager.setRuntimeOptions({ agentSlug: 'clinic-asr' });
     const cfg = manager.getTranscriptionPipelineConfig();
     expect((cfg.stt as { startOn?: 'primary' | 'fallback' }).startOn).toBeUndefined();
   });
@@ -175,26 +168,23 @@ describe('PluginManager.getTranscriptionPipelineConfig', () => {
     // decode and the agent's `ml-en` to a pair-primed one, which measured
     // 0.885/0.935/0.918 medical_wer against 0.033/0.048/0.131 (TASK-985 §2.7).
     // The literal was accidentally shielding the clinical scribe from that.
-    manager.setRuntimeOptions({ pipelineId: 'p' });
+    manager.setRuntimeOptions({ agentSlug: 'clinic-asr' });
     const cfg = manager.getTranscriptionPipelineConfig();
     expect(cfg.stt.languageMode).toBeUndefined();
   });
 
   it('a runtime languageMode pick is still honoured', () => {
-    manager.setRuntimeOptions({ pipelineId: 'p', languageMode: 'ml-en' });
+    manager.setRuntimeOptions({ agentSlug: 'clinic-asr', languageMode: 'ml-en' });
     const cfg = manager.getTranscriptionPipelineConfig();
     expect(cfg.stt.languageMode).toBe('ml-en');
   });
 
   it('clearRuntimeOptions() wipes runtime overrides', () => {
-    manager.setRuntimeOptions({ pipelineId: 'p', agentSlug: 'a', consultationId: 'c', language: 'th' });
+    manager.setRuntimeOptions({ agentSlug: 'a', consultationId: 'c', language: 'th' });
     manager.clearRuntimeOptions();
     const cfg = manager.getTranscriptionPipelineConfig();
-    expect(cfg.stt.pipelineId).toBeUndefined();
-    expect(cfg.stt.agentSlug).toBeUndefined();
-    const transport = cfg.stt.streamingTransport as { pipelineId?: string; agentSlug?: string; consultationId?: string } | undefined;
+    const transport = cfg.stt.streamingTransport as { agentSlug?: string; consultationId?: string } | undefined;
     // The explicit backend provider still yields a transport, but a selector-less one.
-    expect(transport?.pipelineId).toBeUndefined();
     expect(transport?.agentSlug).toBeUndefined();
     expect(transport?.consultationId).toBeUndefined();
   });
@@ -202,7 +192,8 @@ describe('PluginManager.getTranscriptionPipelineConfig', () => {
 
 // The server-resolved EFFECTIVE transcription mode (injected
 // by AgenticProvider into resolvedConfig.stt.transcriptionMode) must reach the
-// pipeline config so TranscriptionPipeline.resolveSTTRuntimeProvider() honors it.
+// pipeline config. Wire-compatible only since TASK-1006 (nothing branches on it
+// any more — the local stage it used to select is gone).
 describe('PluginManager — transcriptionMode passthrough', () => {
   it('forwards stt.transcriptionMode into the pipeline config when set', () => {
     const manager = new PluginManager(
@@ -226,23 +217,21 @@ describe('PluginManager — transcriptionMode passthrough', () => {
   });
 });
 
-describe('PluginManager — agentSlug selects the ASR Agent (TASK-865)', () => {
+describe('PluginManager — agentSlug selects the ASR Agent (TASK-865/TASK-1006)', () => {
   let apiClient: AgenticClient;
 
   beforeEach(() => {
     apiClient = makeApiClient();
   });
 
-  it('builds the streaming transport from an agentSlug alone (no pipelineId anywhere)', () => {
+  it('builds the streaming transport from an agentSlug alone', () => {
     const manager = new PluginManager({ stt: { enabled: true, provider: 'backend' } }, createMockLogger(), apiClient, false);
-    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, undefined, 'clinic-asr') as {
-      pipelineId?: string;
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'clinic-asr') as {
       agentSlug?: string;
     };
 
     expect(transport).toBeTruthy();
     expect(transport.agentSlug).toBe('clinic-asr');
-    expect(transport.pipelineId).toBeUndefined();
   });
 
   it('threads the runtime agentSlug into the pipeline config and its transport', () => {
@@ -250,48 +239,37 @@ describe('PluginManager — agentSlug selects the ASR Agent (TASK-865)', () => {
     manager.setRuntimeOptions({ agentSlug: 'clinic-asr', consultationId: 'c-1' });
 
     const cfg = manager.getTranscriptionPipelineConfig();
-    const transport = cfg.stt.streamingTransport as { agentSlug?: string; pipelineId?: string; consultationId?: string };
+    const transport = cfg.stt.streamingTransport as { agentSlug?: string; consultationId?: string };
 
     expect(cfg.stt.agentSlug).toBe('clinic-asr');
-    expect(cfg.stt.pipelineId).toBeUndefined();
     expect(transport.agentSlug).toBe('clinic-asr');
-    expect(transport.pipelineId).toBeUndefined();
     expect(transport.consultationId).toBe('c-1');
   });
 
-  it('a runtime agentSlug WINS over a static stt.pipelineId — the two are never both sent', () => {
-    const manager = new PluginManager({ stt: { enabled: true, provider: 'backend', pipelineId: 'static-pipe' } }, createMockLogger(), apiClient, false);
-    manager.setRuntimeOptions({ agentSlug: 'clinic-asr' });
-
-    const cfg = manager.getTranscriptionPipelineConfig();
-    const transport = cfg.stt.streamingTransport as { agentSlug?: string; pipelineId?: string };
-
-    expect(cfg.stt.agentSlug).toBe('clinic-asr');
-    expect(cfg.stt.pipelineId).toBeUndefined();
-    expect(transport.agentSlug).toBe('clinic-asr');
-    expect(transport.pipelineId).toBeUndefined();
-  });
-
   it('a static stt.agentSlug is honoured when no runtime option names one', () => {
-    const manager = new PluginManager({ stt: { enabled: true, provider: 'backend', agentSlug: 'static-agent' } }, createMockLogger(), apiClient, false);
+    const manager = new PluginManager(
+      { stt: { enabled: true, provider: 'backend', agentSlug: 'static-agent' } },
+      createMockLogger(),
+      apiClient,
+      false,
+    );
 
     const cfg = manager.getTranscriptionPipelineConfig();
     expect(cfg.stt.agentSlug).toBe('static-agent');
     expect((cfg.stt.streamingTransport as { agentSlug?: string }).agentSlug).toBe('static-agent');
   });
 
-  it('a backend provider with an apiClient but NO agent and NO pipeline still gets a transport (the gateway resolves the tenant default)', () => {
+  it('a backend provider with an apiClient but NO agent still gets a transport (the gateway resolves the tenant default)', () => {
     const manager = new PluginManager({ stt: { enabled: true, provider: 'backend' } }, createMockLogger(), apiClient, false);
 
     const cfg = manager.getTranscriptionPipelineConfig();
-    const transport = cfg.stt.streamingTransport as { agentSlug?: string; pipelineId?: string } | undefined;
+    const transport = cfg.stt.streamingTransport as { agentSlug?: string } | undefined;
 
     expect(transport).toBeTruthy();
     expect(transport?.agentSlug).toBeUndefined();
-    expect(transport?.pipelineId).toBeUndefined();
   });
 
-  it("provider 'auto' with neither id keeps the legacy no-transport behaviour (nothing asked for the backend)", () => {
+  it("provider 'auto' with no agentSlug keeps the legacy no-transport behaviour (nothing asked for the backend)", () => {
     const manager = new PluginManager({ stt: { enabled: true, provider: 'auto' } }, createMockLogger(), apiClient, false);
     expect(manager.getTranscriptionPipelineConfig().stt.streamingTransport).toBeUndefined();
   });

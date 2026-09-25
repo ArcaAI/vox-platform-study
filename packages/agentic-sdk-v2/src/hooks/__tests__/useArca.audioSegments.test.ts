@@ -4,7 +4,7 @@
  * Tests that UseArcaAudio exposes:
  * - transcriptSegments: TranscriptSegment[]
  * - language: string
- * And that audio.start() accepts { language?: string, pipelineId?: string }.
+ * And that audio.start() accepts { language?: string, agentSlug?: string }.
  *
  * @vitest-environment jsdom
  */
@@ -209,7 +209,7 @@ describe('B-2: UseArcaAudio exposes transcriptSegments and language', () => {
 // audio.start() with options
 // =============================================================================
 
-describe('B-2: audio.start() accepts language and pipelineId options', () => {
+describe('B-2: audio.start() accepts language and agentSlug options', () => {
   const mockInitialize = vi.fn().mockResolvedValue(undefined);
   const mockSetCallbacks = vi.fn();
   const mockGetStates = vi.fn().mockReturnValue({
@@ -288,21 +288,21 @@ describe('B-2: audio.start() accepts language and pipelineId options', () => {
     expect(currentMockStore.setAudioLanguage).toHaveBeenCalledWith('nl');
   });
 
-  it('should accept start() with pipelineId option', async () => {
+  it('should accept start() with agentSlug option', async () => {
     const { result } = renderHook(() => useArca());
 
     await act(async () => {
-      await result.current.audio.start({ pipelineId: 'pipeline-dutch-v2' });
+      await result.current.audio.start({ agentSlug: 'pipeline-dutch-v2' });
     });
 
     expect(currentMockStore.setIsCapturing).toHaveBeenCalledWith(true);
   });
 
-  it('should accept start() with both language and pipelineId', async () => {
+  it('should accept start() with both language and agentSlug', async () => {
     const { result } = renderHook(() => useArca());
 
     await act(async () => {
-      await result.current.audio.start({ language: 'fr', pipelineId: 'pipeline-french' });
+      await result.current.audio.start({ language: 'fr', agentSlug: 'pipeline-french' });
     });
 
     expect(currentMockStore.setAudioLanguage).toHaveBeenCalledWith('fr');

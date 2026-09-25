@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { PIPELINE_ENDPOINTS, USER_ROLES, USER_SETTINGS_ENDPOINTS, VOICE_EMBEDDING_ENDPOINTS, type UserRole } from '../constants';
+import { USER_ROLES, USER_SETTINGS_ENDPOINTS, VOICE_EMBEDDING_ENDPOINTS, type UserRole } from '../constants';
 
 // ---------------------------------------------------------------------------
 // W0-7 / GAP-02 — voice-profiles (D2)
@@ -46,14 +46,7 @@ describe('VOICE_EMBEDDING_ENDPOINTS targets /voice-profiles API', () => {
     // Extended with activate/deactivate for the SDK control surface, and with
     // `enrollmentTarget` by TASK-887 — diarization is a declared ASR-agent option, so a client
     // must be able to ask which speaker-embedding model a new enrollment would land in.
-    expect(Object.keys(VOICE_EMBEDDING_ENDPOINTS).sort()).toEqual([
-      'activate',
-      'deactivate',
-      'delete',
-      'enroll',
-      'enrollmentTarget',
-      'list',
-    ]);
+    expect(Object.keys(VOICE_EMBEDDING_ENDPOINTS).sort()).toEqual(['activate', 'deactivate', 'delete', 'enroll', 'enrollmentTarget', 'list']);
   });
 
   it('builds the enrollment-target path with and without an explicit agent', () => {
@@ -93,20 +86,8 @@ describe('USER_SETTINGS_ENDPOINTS reduced to list + updateByKey', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// GAP-10 / W0-9 — pipeline validate path (D4)
-// ---------------------------------------------------------------------------
-
-describe('PIPELINE_ENDPOINTS.VALIDATE has no -yaml suffix', () => {
-  it('points at /admin/audio/pipelines/validate exactly', () => {
-    expect(PIPELINE_ENDPOINTS.VALIDATE).toBe('/admin/audio/pipelines/validate');
-  });
-
-  it('does not contain a -yaml suffix anywhere in the path', () => {
-    expect(PIPELINE_ENDPOINTS.VALIDATE).not.toContain('-yaml');
-    expect(PIPELINE_ENDPOINTS.VALIDATE).not.toContain('validate-yaml');
-  });
-});
+// GAP-10 / W0-9 (D4, pipeline validate path) was removed under TASK-1006 along
+// with PIPELINE_ENDPOINTS — see task1006-removed.test.ts.
 
 // ---------------------------------------------------------------------------
 // W0-10 / GAP-04 — typed USER_ROLES tuple
