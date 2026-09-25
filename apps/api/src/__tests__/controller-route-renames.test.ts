@@ -315,16 +315,3 @@ describe(' redirect shims answer 308 on every retired prefix', () => {
     expect(source).toMatch(/DELETE IN ALL-2\.0\.0/);
   });
 });
-
-describe(' class rename — AudioPipelinePublicController lied about @Public()', () => {
-  it('exports AudioPipelineCatalogController, not AudioPipelinePublicController', () => {
-    const source = readController('pipeline/audio-pipeline-catalog.controller.ts');
-    expect(source).toContain('export class AudioPipelineCatalogController');
-    expect(source).not.toContain('AudioPipelinePublicController');
-  });
-
-  it('keeps PATH_METADATA at audio/pipelines — the class rename must not move the path', async () => {
-    const { AudioPipelineCatalogController } = await import('../modules/pipeline/audio-pipeline-catalog.controller');
-    expect(Reflect.getMetadata(PATH_METADATA, AudioPipelineCatalogController)).toBe('audio/pipelines');
-  });
-});

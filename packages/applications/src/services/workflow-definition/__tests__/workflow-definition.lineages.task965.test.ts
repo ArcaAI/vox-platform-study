@@ -34,7 +34,6 @@ const mockRepository = {
 const mockAssignmentRepository = { findAllForTenant: vi.fn(async () => []) };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
 const mockEntitlements = { isEnforcementEnabled: vi.fn(() => false), assertQuantityQuota: vi.fn(), isFeatureEnabled: vi.fn(async () => true) };
-const mockSttPipelineCompiler = { compileAndPublish: vi.fn() };
 
 function entity(overrides: Record<string, unknown> = {}) {
   return {
@@ -109,7 +108,16 @@ function lineage(overrides: Record<string, unknown> = {}) {
 }
 
 function assignment(overrides: Record<string, unknown> = {}) {
-  return { id: 'wa-1', tenantId: TENANT, scope: 'TENANT', scopeId: null, paletteKey: 'core', workflowDefinitionSlug: 'discharge-summary', selectorKey: '', ...overrides };
+  return {
+    id: 'wa-1',
+    tenantId: TENANT,
+    scope: 'TENANT',
+    scopeId: null,
+    paletteKey: 'core',
+    workflowDefinitionSlug: 'discharge-summary',
+    selectorKey: '',
+    ...overrides,
+  };
 }
 
 function makeService() {
@@ -119,7 +127,6 @@ function makeService() {
     mockClsService as never,
     mockDatabaseService as never,
     mockEntitlements as never,
-    mockSttPipelineCompiler as never,
     // 13 optional dependencies sit between the compiler and the assignment repository
     // (workflowValidator, the prompt pair, context schemas, routing policy, the agent/model
     // repositories, document templates, MCP servers, promotion, the eval gate, the policy

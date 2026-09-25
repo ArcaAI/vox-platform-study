@@ -1,10 +1,9 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   UserSettingsRepository,
   UserSettingsFactory,
-  AsrPipelineRepository,
   UserVoiceProfileRepository,
   TenantFrontendConfigRepository,
   TranscriptionMode,
@@ -16,26 +15,8 @@ import { IUserPreferencesService } from './IUserPreferencesService';
 import { UserPreferencesResponse, UpdateUserPreferencesRequest } from './dto';
 import { IActiveUserContext } from '../../../interfaces';
 import { BaseService } from '../../../common';
-import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
 
 const SDK_NAMESPACE = 'arcaai-sdk';
-const ADMIN_NAMESPACE = 'arcaai-admin';
-
-const ADMIN_KEYS = {
-  ASSIGNED_PIPELINE: 'assigned-pipeline',
-} as const;
-
-const GLOBAL_SETTING_KEYS = {
-  DEFAULT_STT_PIPELINE: 'default-stt-pipeline',
-} as const;
-
-/**
- * Reserved SYSTEM tenant that owns the shared, platform-wide ASR pipeline
- * catalog (seed/06-stt.ts DEFAULT_ASR_PIPELINES). Mirrors `SYSTEM_TENANT_ID`
- * in the tenant-scope Prisma extension; duplicated here as a literal so this
- * service carries no dependency on the database package.
- */
-const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 const PREFERENCE_KEYS = {
   WORKFLOW_MODE: 'workflowMode',
@@ -64,12 +45,11 @@ const LEGACY_KEYS = {
  * Storage strategy:
  * - Shared fields (workflowMode, language, dnaStyleId) stored as individual rows
  * - localConfig stored as a single JSON row
- * - remoteConfig is NOT stored -- resolved at read time from admin config
  *
- * Pipeline resolution chain:
- * 1. Per-user admin override (UserSettings, namespace='arcaai-admin', key='assigned-pipeline')
- * 2. Tenant default pipeline (AsrPipeline.isDefault)
- * 3. Tenant-wide default (GlobalSettings, key='default-stt-pipeline')
+ * There is no `remoteConfig`: the ASR engine is not a user preference. The gateway resolves the
+ * session's speech-to-text AGENT (explicit slug → governing workflow → department → tenant
+ * assignment) at session start; the per-user assigned-pipeline cascade this service used to
+ * report retired with `AsrPipeline` (TASK-1006).
  */
 @Injectable()
 export class UserPreferencesService extends BaseService implements IUserPreferencesService {
@@ -77,8 +57,6 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
 
   constructor(
     private readonly userSettingsRepository: UserSettingsRepository,
-    private readonly asrPipelineRepository: AsrPipelineRepository,
-    @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     protected override readonly eventEmitter: EventEmitter2,
     /**
@@ -178,12 +156,8 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
       response.updatedAt = latestUpdate.toISOString();
     }
 
-    // Resolve read-only remoteConfig from admin settings
-    response.remoteConfig = await this.resolveRemoteConfig(userId);
-
     // Resolve the EFFECTIVE transcription mode + lock
-    // server-side (mirrors the remoteConfig cascade). Uses the workflowMode
-    // already aggregated above.
+    // server-side. Uses the workflowMode already aggregated above.
     const effectiveMode = await this.resolveEffectiveTranscriptionMode(response.workflowMode);
     response.transcriptionMode = effectiveMode.transcriptionMode;
     response.transcriptionModeLocked = effectiveMode.transcriptionModeLocked;
@@ -294,105 +268,6 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
         deletedKeys: existingSettings.map((s) => s.key),
       },
     });
-  }
-
-  /**
-   * Resolve the remote pipeline configuration from admin settings.
-   *
-   * Resolution order:
-   *   1. Per-user admin override (UserSettings 'arcaai-admin'/'assigned-pipeline')
-   *   2. Tenant's default pipeline (AsrPipeline.isDefault):
-   *      admins control the per-tenant backend default, which supersedes the
-   *      GlobalSetting slug default below.
-   *   3. Tenant-wide GlobalSetting default ('default-stt-pipeline').
-   *
-   * Steps 2 + 3 both surface as `assignedBy: 'tenant-default'`. Step 2 is
-   * additive and backward-compatible: when the tenant has no isDefault pipeline
-   * we fall through to the existing GlobalSetting behaviour unchanged.
-   */
-  /** @deprecated TASK-861 — removed in R4. The per-user assigned-pipeline preference and the tenant default `AsrPipeline` retire; the ASR Agent assignment cascade (`AgentAssignment`, task `SPEECH_TO_TEXT`) is the replacement. Kept so the SDK's `remoteConfig` shape survives the window. */
-  private async resolveRemoteConfig(userId: string): Promise<UserPreferencesResponse['remoteConfig']> {
-    // 1. Check per-user admin override
-    const adminOverride = await this.userSettingsRepository.findByUserKeyNamespace(userId, ADMIN_KEYS.ASSIGNED_PIPELINE, ADMIN_NAMESPACE);
-
-    if (adminOverride?.value) {
-      const pipeline = await this.resolvePipelineMeta(adminOverride.value);
-
-      // A SYSTEM-catalog pipeline is shared-READ to every tenant (so the lookup
-      // above resolves it via the tenant-scope extension's SYSTEM inheritance)
-      // but is NOT usable for a customer tenant's streaming session: the
-      // streaming guard (pipelineService.getById / assertPipelineOwnership)
-      // rejects any pipeline whose tenantId != caller. Honouring such an
-      // override surfaces a hard "Pipeline … not found" 404 on session start,
-      // so skip it and fall through to the tenant's own default pipeline.
-      const isUnusableSystemPipeline = pipeline?.tenantId === SYSTEM_TENANT_ID && this.tenantId !== SYSTEM_TENANT_ID;
-
-      if (!isUnusableSystemPipeline) {
-        return {
-          pipelineId: adminOverride.value,
-          pipelineName: pipeline?.name,
-          assignedBy: 'admin',
-        };
-      }
-    }
-
-    // 2. Prefer the tenant's default pipeline (AsrPipeline.isDefault).
-    const tenantId = this.tenantId;
-    if (tenantId) {
-      const tenantDefault = await this.resolveTenantDefaultPipeline(tenantId);
-      if (tenantDefault) {
-        return {
-          pipelineId: tenantDefault.id,
-          pipelineName: tenantDefault.name,
-          assignedBy: 'tenant-default',
-        };
-      }
-    }
-
-    // 3. Fall back to the tenant-wide GlobalSetting default
-    const defaultPipelineId = this.appSettingsService.getValueFromCache(GLOBAL_SETTING_KEYS.DEFAULT_STT_PIPELINE);
-
-    if (defaultPipelineId) {
-      const pipeline = await this.resolvePipelineMeta(defaultPipelineId);
-      return {
-        pipelineId: defaultPipelineId,
-        pipelineName: pipeline?.name,
-        assignedBy: 'tenant-default',
-      };
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Resolve the tenant's default ASR pipeline via `AsrPipeline.isDefault`.
-   * Returns `null` (so callers fall back to the GlobalSetting default) when no
-   * default exists or the lookup fails.
-   */
-  private async resolveTenantDefaultPipeline(tenantId: string): Promise<{ id: string; name: string } | null> {
-    try {
-      const pipeline = await this.asrPipelineRepository.findDefault(tenantId);
-      return pipeline ? { id: pipeline.id, name: pipeline.name } : null;
-    } catch {
-      this.logger.warn(`Failed to resolve tenant default pipeline for tenant: ${tenantId}`);
-      return null;
-    }
-  }
-
-  /**
-   * Resolve a pipeline's display name AND owning tenant by id. `tenantId` lets
-   * callers distinguish a SYSTEM-catalog pipeline (shared-read, but not usable
-   * for a customer tenant's streaming session) from one the tenant truly owns.
-   * Returns `null` when the pipeline cannot be resolved (deleted / not found).
-   */
-  private async resolvePipelineMeta(pipelineId: string): Promise<{ name: string; tenantId: string } | null> {
-    try {
-      const pipeline = await this.asrPipelineRepository.findById(pipelineId);
-      return pipeline ? { name: pipeline.name, tenantId: pipeline.tenantId } : null;
-    } catch {
-      this.logger.warn(`Failed to resolve pipeline for ID: ${pipelineId}`);
-      return null;
-    }
   }
 
   /**

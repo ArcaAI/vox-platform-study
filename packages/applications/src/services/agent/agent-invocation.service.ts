@@ -3,7 +3,6 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import type { Readable } from 'node:stream';
-import { AsrPipelineRepository, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import {
   PromptCompositionEmptyError,
@@ -185,7 +184,6 @@ export class AgentInvocationService {
     private readonly configService: ConfigService,
     private readonly textRequestEnrichment: TextRequestEnrichmentService,
     @Optional() private readonly secretsService?: SecretsService,
-    @Optional() private readonly asrPipelineRepository?: AsrPipelineRepository,
     // TASK-950 (D-5) — this service is the ONLY place the agent plane can see WHO is calling,
     // and it needs to: a machine caller resolves the schema's user-identity field and a human
     // one must not. `@Optional()` and TRAILING because the class does not extend `BaseService`
@@ -778,40 +776,6 @@ export class AgentInvocationService {
       model: wireModelIdOf(resolved) ?? resolved.compiledConfig.model.slug,
       ...(ssml ? { ssml: true } : {}),
     };
-  }
-
-  /**
-   * TASK-861 RESOLVED — the gateway-resolved `ResolvedAsrSpec` replaced this: the agent
-   * `transcriptions` route creates the job with `agentVersionId` + `resolvedSpec` and never
-   * looks a pipeline row up. Kept for the deprecation window only. Picks the tenant's (then
-   * SYSTEM's) enabled pipeline whose `models.asr` is the agent's primary model slug, else the
-   * tenant default pipeline; `null` when nothing matches.
-   */
-  /** @deprecated TASK-861 — removed in R4. The agent `transcriptions` route resolves a `ResolvedAsrSpec` through `AsrAgentResolverService` (no pipeline lookup); this helper exists only for the window. */
-  async resolveAsrPipelineId(resolved: ResolvedAgent, tenantId: string): Promise<string | null> {
-    if (resolved.task !== 'SPEECH_TO_TEXT') {
-      throw new BadRequestException(`Agent '${resolved.slug}' is a ${resolved.task} agent; transcriptions apply to SPEECH_TO_TEXT agents only.`);
-    }
-    if (!this.asrPipelineRepository) return null;
-    const slug = resolved.compiledConfig.model.slug;
-    const matcher = new RegExp(`^\\s*asr:\\s*["']?${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']?\\s*$`, 'm');
-    const tenants = tenantId === SYSTEM_TENANT_ID ? [SYSTEM_TENANT_ID] : [tenantId, SYSTEM_TENANT_ID];
-    for (const owner of tenants) {
-      const pipelines = await this.asrPipelineRepository.findEnabledPipelines(owner).catch(() => []);
-      const match = pipelines.find((pipeline) => matcher.test(pipeline.configYaml ?? ''));
-      if (match) return match.id;
-    }
-    const fallback = await this.asrPipelineRepository.findDefault(tenantId).catch(() => null);
-    if (fallback) {
-      this.logger.warn({
-        message: 'No ASR pipeline matches the agent model; using the tenant default pipeline',
-        tenantId,
-        agentSlug: resolved.slug,
-        modelSlug: slug,
-      });
-      return fallback.id;
-    }
-    return null;
   }
 }
 

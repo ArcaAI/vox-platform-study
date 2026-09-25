@@ -52,64 +52,6 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
   ) {}
 
   /**
-   * Create a transcription job and return an SSE Observable.
-   *
-   * Flow:
-   * 1. Create TranscriptionJob in DB (status: QUEUED)
-   * 2. Subscribe to Redis channel stt:transcription:{jobId}
-   * 3. Dispatch Dramatiq message to stt_batch queue via Redis HSET+RPUSH
-   * 4. Emit initial { type: "status", data: { status: "QUEUED" } }
-   * 5. Forward all Redis messages as SSE MessageEvent objects
-   * 6. Complete Observable when terminal status received (COMPLETED/FAILED/CANCELLED/DEAD)
-   */
-  async createAndStream(params: {
-    tenantId: string;
-    pipelineId: string;
-    audioUri: string;
-    consultationId?: string;
-    mediaId?: string;
-    createdBy?: string;
-    language?: string;
-    codeSwitching?: boolean;
-  }): Promise<{ jobId: string; events$: Observable<MessageEvent> }> {
-    // 1. Create the transcription job in DB
-    const jobResponse = await this.transcriptionJobService.createBatchJob({
-      pipelineId: params.pipelineId,
-      mediaId: params.mediaId ?? params.audioUri, // audioUri used as media reference
-      consultationId: params.consultationId,
-    });
-
-    const jobId = jobResponse.id;
-    const channel = `${this.CHANNEL_PREFIX}${jobId}`;
-
-    this.logger.log({
-      message: 'Created transcription job for realtime streaming',
-      jobId,
-      pipelineId: params.pipelineId,
-      channel,
-    });
-
-    // 2. Subscribe to Redis channel BEFORE dispatching (avoid race condition)
-    // Awaited to ensure the Redis SUBSCRIBE command completes before dispatch
-    const redisMessages$ = await this.redisSubscriber.subscribeToChannel(channel);
-
-    // 3. Dispatch Dramatiq message to the stt_batch queue
-    await this.dispatchDramatiqJob({
-      jobId,
-      tenantId: params.tenantId,
-      pipelineId: params.pipelineId,
-      audioUri: params.audioUri,
-      consultationId: params.consultationId,
-      mediaId: params.mediaId,
-    });
-
-    // 4. Assemble SSE Observable
-    const events$ = this.buildSseStream(jobId, channel, redisMessages$);
-
-    return { jobId, events$ };
-  }
-
-  /**
    * Subscribe to an existing job's SSE stream (reconnection).
    *
    * Checks current job status first:
@@ -344,7 +286,6 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
   async dispatchDramatiqJob(params: {
     jobId: string;
     tenantId: string;
-    pipelineId: string;
     audioUri: string;
     consultationId?: string;
     mediaId?: string;
@@ -353,18 +294,11 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     audioBucketName?: string;
     storage?: StorageDescriptor | null;
     /**
-     * @deprecated TASK-861 — removed in R4. Tenant fallback pipeline the worker
-     * re-runs on when the primary ASR fails; superseded by `resolvedSpec.fallback`.
+     * The gateway-resolved ASR spec — the job's ONE selector. The worker assembles the engine
+     * chain (primary AND fallback) from it and reads nothing from Postgres. Sent as a KWARG
+     * (never positional) for the same reason `storage` is.
      */
-    fallbackPipelineId?: string;
-    /**
-     * TASK-861 — the gateway-resolved ASR spec. When present the worker
-     * assembles the engine chain from it (no DB read) and `pipelineId` is the
-     * spec's runtime key; the spec's own `fallback` block replaces
-     * `fallbackPipelineId`. Sent as a KWARG (never positional) for the same
-     * reason `storage` is.
-     */
-    resolvedSpec?: ResolvedAsrSpec;
+    resolvedSpec: ResolvedAsrSpec;
     /**
      * TASK-1004 D-9 — the job's effective spoken-language mode (request > consultation) and the
      * tier that declared it. Sent as the NAMED kwargs `language_mode` / `language_mode_source`
@@ -380,10 +314,13 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     const message = {
       queue_name: 'stt_batch',
       actor_name: 'transcribe_file',
+      // The positional ARITY never changes (10), so a message already queued by an older gateway
+      // stays valid. Index 2 was `pipeline_id`; TASK-1006 retired it and the slot is always
+      // `None` — the job runs on `resolved_spec` alone.
       args: [
         params.jobId,
         params.tenantId,
-        params.pipelineId,
+        null,
         params.audioUri,
         params.consultationId ?? null,
         params.mediaId ?? null,
@@ -400,10 +337,8 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
       kwargs: {
         // Per-tenant storage descriptor — DEDICATED tenants only.
         ...(params.storage ? { storage: params.storage } : {}),
-        // TASK-861 — the resolved spec carries its own fallback; the deprecated
-        // pointer is sent only on the legacy pipeline path.
-        ...(params.resolvedSpec ? { resolved_spec: params.resolvedSpec } : {}),
-        ...(params.fallbackPipelineId && !params.resolvedSpec ? { fallback_pipeline_id: params.fallbackPipelineId } : {}),
+        // The resolved spec carries its own fallback chain; no pipeline pointer rides beside it.
+        resolved_spec: params.resolvedSpec,
         // TASK-887 — the job user's enrolled profiles for THIS agent's embedding model, so
         // the worker can label a matched speaker. Omitted entirely when there are none: the
         // worker treats absence as "diarize generically", and an empty list would say the
@@ -462,13 +397,11 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     try {
       await this.transcriptionJobService.recordDispatchEnvelope(params.jobId, {
         audioUri: params.audioUri,
-        pipelineId: params.pipelineId,
         ...(params.consultationId ? { consultationId: params.consultationId } : {}),
         ...(params.mediaId ? { mediaId: params.mediaId } : {}),
         ...(params.language ? { language: params.language } : {}),
         ...(params.userId ? { userId: params.userId } : {}),
         ...(params.audioBucketName ? { audioBucketName: params.audioBucketName } : {}),
-        ...(params.fallbackPipelineId ? { fallbackPipelineId: params.fallbackPipelineId } : {}),
         ...(params.languageMode ? { languageMode: params.languageMode } : {}),
         ...(params.languageMode && params.languageModeSource ? { languageModeSource: params.languageModeSource } : {}),
         hadStorageDescriptor: Boolean(params.storage),
@@ -525,6 +458,20 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
       });
     }
 
+    // 2b. TASK-1006 — a job is runnable only on its own `resolvedSpec` snapshot. A row with none
+    //     was created on the retired `pipelineId` path; there is no pipeline for the worker to
+    //     read any more, so re-publishing it would queue a job nobody can run. Refused before
+    //     anything is touched, like the envelope check above.
+    const resolvedSpec = context.resolvedSpec as unknown as ResolvedAsrSpec | null | undefined;
+    if (!resolvedSpec) {
+      throw new ConflictException({
+        code: 'RETRY_LEGACY_PIPELINE_JOB',
+        message:
+          `Job ${jobId} cannot be retried: it was created on the retired ASR pipeline path and carries no resolved ASR agent. ` +
+          `Submit the audio again as a new job.`,
+      });
+    }
+
     // 3. Re-resolve the storage descriptor LIVE. It is never snapshotted (it
     //    carries credentials), and resolving it fresh is also what lets a
     //    credential rotate between attempts. If one was in play and we cannot
@@ -548,7 +495,6 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
       await this.dispatchDramatiqJob({
         jobId,
         tenantId: context.tenantId,
-        pipelineId: envelope.pipelineId,
         audioUri: envelope.audioUri,
         consultationId: envelope.consultationId,
         mediaId: envelope.mediaId,
@@ -556,12 +502,11 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
         userId: envelope.userId,
         audioBucketName: envelope.audioBucketName,
         storage,
-        ...(envelope.fallbackPipelineId ? { fallbackPipelineId: envelope.fallbackPipelineId } : {}),
         // TASK-1004 — the SAME mode the first attempt carried; never re-resolved on retry.
         ...(envelope.languageMode ? { languageMode: envelope.languageMode, languageModeSource: envelope.languageModeSource } : {}),
         // The spec snapshot stays on the ROW (TASK-861) — it is the
         // authoritative, reproducible copy, so the envelope never duplicates it.
-        ...(context.resolvedSpec ? { resolvedSpec: context.resolvedSpec as unknown as ResolvedAsrSpec } : {}),
+        resolvedSpec,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

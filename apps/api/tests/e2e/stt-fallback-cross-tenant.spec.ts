@@ -1,60 +1,25 @@
 /**
- * Cross-tenant + secret-hygiene probes against the STT fallback/BYOK
- * surface: `/api/v1/admin/stt-config` (admin) + the streaming switch endpoint.
- * Follows the / / pattern (see
- * `ai-provider-connections-cross-tenant.spec.ts`).
+ * The STT fallback surface after TASK-1006.
  *
- * Authored now, RUN when a live stack is available (`pnpm test:up:api` then
- * `pnpm test:e2e`) — it needs a seeded DB + running gateway, so it is NOT part
- * of the Phase D `pnpm test:unit` gate.
+ * The tenant-wide `TenantSttConfig` (`/api/v1/admin/stt-config/**`) is REMOVED: the fallback is a
+ * property of the resolved ASR agent (`ResolvedAsrSpec.fallback`) and BYO STT keys live under
+ * `admin/providers/stt/:provider` (covered by `ai-provider-connections.spec.ts`). What survives,
+ * and is locked here:
+ *  1. Every retired `admin/stt-config` route answers 404 — removed, not shimmed.
+ *  2. The manual switch endpoint is tenant-owned (a foreign/unknown session 404s).
+ *  3. The internal batch-pull route is service-token gated (no user JWT admits).
  *
- * Locked contracts:
- *  1. SECRET NEVER ECHOED — no response from ANY route contains the key, the
- *     ciphertext, or an `apiKey`/`encryptedApiKey` field at any depth. Asserted
- *     over the full HTTP body, not a typed projection. No reveal route exists.
- *  2. RFC 7232 OCC — a credential/row PUT without `If-Match` → 428; a stale
- *     `If-Match` → 412; `If-Match: "0"` creates.
- *  3. Unknown BYO provider → 400 (not 404 — the provider set is fixed).
- *  4. Cross-tenant — a tenant admin passing a foreign `?tenantId=` never gets
- *     another tenant's data (403/404, never 200 with foreign rows).
- *  5. The manual switch endpoint is tenant-owned (a foreign/unknown session
- *     404s) and fail-closed on selection (no fallback configured → 409).
- *  6. The internal batch-pull route is service-token gated (no user JWT admits).
+ * Authored now, RUN when a live stack is available (`pnpm test:up:api` then `pnpm test:e2e`).
  */
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
-const BASE = '/api/v1/admin/stt-config';
+const RETIRED = '/api/v1/admin/stt-config';
 const STREAM_BASE = '/api/v1/audio/transcription-jobs';
 
-/** Every key name in an object graph — the deep secret scan. */
-function deepKeys(value: unknown, acc: string[] = []): string[] {
-  if (value === null || typeof value !== 'object') return acc;
-  if (Array.isArray(value)) {
-    value.forEach((v) => deepKeys(v, acc));
-    return acc;
-  }
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    acc.push(k);
-    deepKeys(v, acc);
-  }
-  return acc;
-}
-
-function assertNoSecretMaterial(rawBody: string): void {
-  const parsed = JSON.parse(rawBody) as unknown;
-  const keys = deepKeys(parsed).map((k) => k.toLowerCase());
-  for (const forbidden of ['apikey', 'encryptedapikey', 'ciphertext', 'secret', 'plaintext']) {
-    expect(keys, `response must not carry a '${forbidden}' field`).not.toContain(forbidden);
-  }
-  // Vault Transit ciphertext is literally prefixed `vault:vN:`.
-  expect(rawBody).not.toContain('vault:v');
-}
-
-test.describe('STT fallback + BYOK', () => {
+test.describe('STT fallback surface (TASK-1006)', () => {
   let superAdminToken: string;
   let tenantAdminToken: string;
-  let foreignTenantId: string;
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
@@ -64,64 +29,33 @@ test.describe('STT fallback + BYOK', () => {
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
     tenantAdminToken = ta!.token;
-
-    // The SYSTEM/platform-default tenant id — a foreign tenant from the seeded
-    // tenant admin's perspective.
-    const resp = await request.get(BASE, { headers: { Authorization: `Bearer ${superAdminToken}` } });
-    expect(resp.status()).toBe(200);
-    foreignTenantId = ((await resp.json()) as { tenantId: string }).tenantId;
   });
 
-  test('GET effective + GET row never carry key material', async ({ request }) => {
-    for (const path of ['', '/row']) {
-      const resp = await request.get(`${BASE}${path}`, { headers: { Authorization: `Bearer ${tenantAdminToken}` } });
-      expect(resp.status()).toBe(200);
-      assertNoSecretMaterial(await resp.text());
+  test('every retired admin/stt-config route answers 404', async ({ request }) => {
+    for (const token of [superAdminToken, tenantAdminToken]) {
+      const headers = { Authorization: `Bearer ${token}` };
+      for (const resp of [
+        await request.get(RETIRED, { headers }),
+        await request.get(`${RETIRED}/row`, { headers }),
+        await request.get(`${RETIRED}/fallback-candidates`, { headers }),
+        await request.put(`${RETIRED}/row`, { headers: { ...headers, 'If-Match': '"1"' }, data: { fallbackPipelineId: null } }),
+      ]) {
+        expect(resp.status()).toBe(404);
+      }
     }
-  });
-
-  test('GET fallback-candidates returns an array of enabled cloud pipelines, no secrets', async ({ request }) => {
-    const resp = await request.get(`${BASE}/fallback-candidates`, { headers: { Authorization: `Bearer ${tenantAdminToken}` } });
-    expect(resp.status()).toBe(200);
-    const raw = await resp.text();
-    assertNoSecretMaterial(raw);
-    expect(Array.isArray(JSON.parse(raw))).toBe(true);
-  });
-
-  // TASK-862 removed `admin/stt-config/credentials/**` outright (the console hooks were dead):
-  // BYO STT keys live under `admin/providers/stt/:provider` and are covered by
-  // ai-provider-connections.spec.ts. The five credential cases this spec carried went with the routes;
-  // the reveal probe stays because a retired route answering 404 is exactly the contract.
-  test('there is NO reveal route for provider keys', async ({ request }) => {
-    const resp = await request.get(`${BASE}/credentials/sarvam/reveal`, { headers: { Authorization: `Bearer ${tenantAdminToken}` } });
-    expect([404, 405]).toContain(resp.status());
-  });
-
-  test('fallback row PUT without If-Match → 428', async ({ request }) => {
-    const resp = await request.put(`${BASE}/row`, {
-      headers: { Authorization: `Bearer ${tenantAdminToken}` },
-      data: { fallbackPipelineId: null, expectedVersion: 0 },
-    });
-    expect(resp.status()).toBe(428);
-  });
-
-  test('a tenant admin cannot address a foreign tenant', async ({ request }) => {
-    const resp = await request.get(`${BASE}/credentials?tenantId=${foreignTenantId}`, { headers: { Authorization: `Bearer ${tenantAdminToken}` } });
-    expect([403, 404]).toContain(resp.status());
-    if (resp.status() === 200) assertNoSecretMaterial(await resp.text());
   });
 
   test('switch-to-fallback on an unknown/foreign session 404s (tenant-owned)', async ({ request }) => {
     const resp = await request.post(`${STREAM_BASE}/stream/session/00000000-0000-0000-0000-0000000000ff/switch-to-fallback`, {
       headers: { Authorization: `Bearer ${tenantAdminToken}` },
     });
-    // 404 (unknown/foreign session, no existence leak) or 409 (no fallback
-    // configured) — never a 200 for a session the caller does not own.
+    // 404 (unknown/foreign session, no existence leak) or 409 (the agent declares no fallback) —
+    // never a 200 for a session the caller does not own.
     expect([404, 409]).toContain(resp.status());
   });
 
   test('the internal batch-pull route is service-token gated (no user JWT admits)', async ({ request }) => {
-    const resp = await request.get(`/api/v1/internal/stt/provider-overrides?tenantId=${foreignTenantId}`, {
+    const resp = await request.get('/api/v1/internal/stt/provider-overrides?tenantId=00000000-0000-0000-0000-000000000000', {
       headers: { Authorization: `Bearer ${tenantAdminToken}` },
     });
     expect([401, 403]).toContain(resp.status());

@@ -6,8 +6,7 @@
  * Key behaviors tested:
  * - Workflow mode (local/remote) storage and retrieval
  * - localConfig stored as JSON, deep-merged on partial updates
- * - remoteConfig resolved at read time from admin settings (not stored)
- * - Pipeline resolution: per-user admin override > tenant-wide default
+ * - No remoteConfig: the ASR engine is the gateway-resolved agent, not a preference (TASK-1006)
  * - Backward compatibility with legacy flat keys
  */
 
@@ -22,26 +21,6 @@ const mockClsService = {
 
 const mockEventEmitter = {
   emit: vi.fn(),
-};
-
-const mockAppSettingsService = {
-  getFromCache: vi.fn(),
-  getValueFromCache: vi.fn(),
-  getValueWithDefault: vi.fn(),
-  hasSetting: vi.fn(),
-  getAllKeys: vi.fn(),
-  getCacheStats: vi.fn(),
-  cacheAppSettings: vi.fn(),
-  updateCacheAppSettings: vi.fn(),
-  refreshCache: vi.fn(),
-  stopCacheRefresh: vi.fn(),
-  validateSettingValue: vi.fn(),
-};
-
-const mockAsrPipelineRepository = {
-  findById: vi.fn(),
-  findBySlug: vi.fn(),
-  findDefault: vi.fn(),
 };
 
 const mockVoiceProfileRepository = {
@@ -127,11 +106,7 @@ describe('UserPreferencesService', () => {
       return undefined;
     });
 
-    // Default: no admin pipeline override, no tenant isDefault pipeline, no tenant default
     mockUserSettingsRepository.findByUserKeyNamespace.mockResolvedValue(null);
-    mockAppSettingsService.getValueFromCache.mockReturnValue(null);
-    mockAsrPipelineRepository.findById.mockResolvedValue(null);
-    mockAsrPipelineRepository.findDefault.mockResolvedValue(null);
     mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue(null);
     // Default: tenant has no frontend config row → effective mode falls back
     // to the schema default (BACKEND), unlocked.
@@ -139,8 +114,6 @@ describe('UserPreferencesService', () => {
 
     service = new UserPreferencesService(
       mockUserSettingsRepository as any,
-      mockAsrPipelineRepository as any,
-      mockAppSettingsService as any,
       mockClsService as any,
       mockEventEmitter as any,
       mockVoiceProfileRepository as any,
@@ -239,230 +212,21 @@ describe('UserPreferencesService', () => {
     });
   });
 
-  describe('pipeline resolution (remoteConfig)', () => {
-    it('should resolve remoteConfig from per-user admin override', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([createMockEntity({ key: 'workflowMode', value: 'remote' })]);
-
-      // Reset the default mock for findByUserKeyNamespace to handle both calls
-      mockUserSettingsRepository.findByUserKeyNamespace.mockImplementation((_userId: string, key: string, namespace: string) => {
-        if (namespace === 'arcaai-admin' && key === 'assigned-pipeline') {
-          return Promise.resolve(
-            createMockEntity({
-              key: 'assigned-pipeline',
-              value: 'pipeline-123',
-              namespace: 'arcaai-admin',
-            }),
-          );
-        }
-        return Promise.resolve(null);
-      });
-
-      mockAsrPipelineRepository.findById.mockResolvedValue({ name: 'Production Pipeline' });
-
-      const result = await service.getPreferences();
-
-      expect(result.remoteConfig).toEqual({
-        pipelineId: 'pipeline-123',
-        pipelineName: 'Production Pipeline',
-        assignedBy: 'admin',
-      });
-    });
-
-    it('should fall back to tenant-wide default when no admin override', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([createMockEntity({ key: 'workflowMode', value: 'remote' })]);
-
-      mockAppSettingsService.getValueFromCache.mockReturnValue('default-pipeline-456');
-      mockAsrPipelineRepository.findById.mockResolvedValue({ name: 'Default Pipeline' });
-
-      const result = await service.getPreferences();
-
-      expect(result.remoteConfig).toEqual({
-        pipelineId: 'default-pipeline-456',
-        pipelineName: 'Default Pipeline',
-        assignedBy: 'tenant-default',
-      });
-    });
-
-    it('should return undefined remoteConfig when no pipeline is configured', async () => {
+  describe('no remoteConfig (TASK-1006)', () => {
+    it('never reports a remoteConfig — the ASR engine is the gateway-resolved agent, not a user preference', async () => {
+      // Even with the retired per-user admin override row still present in the table.
+      mockUserSettingsRepository.findByUserKeyNamespace.mockResolvedValue(
+        createMockEntity({ key: 'assigned-pipeline', value: 'admin-pipeline-id', namespace: 'arcaai-admin' }),
+      );
       mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
 
       const result = await service.getPreferences();
 
-      expect(result.remoteConfig).toBeUndefined();
-    });
-
-    it('should handle pipeline name resolution failure gracefully', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
-      mockAppSettingsService.getValueFromCache.mockReturnValue('pipeline-789');
-      mockAsrPipelineRepository.findById.mockRejectedValue(new Error('DB error'));
-
-      const result = await service.getPreferences();
-
-      expect(result.remoteConfig).toEqual({
-        pipelineId: 'pipeline-789',
-        pipelineName: undefined,
-        assignedBy: 'tenant-default',
-      });
-    });
-
-    it('should prioritize admin override over tenant default', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
-
-      mockUserSettingsRepository.findByUserKeyNamespace.mockImplementation((_userId: string, key: string, namespace: string) => {
-        if (namespace === 'arcaai-admin' && key === 'assigned-pipeline') {
-          return Promise.resolve(
-            createMockEntity({
-              key: 'assigned-pipeline',
-              value: 'admin-pipeline',
-              namespace: 'arcaai-admin',
-            }),
-          );
-        }
-        return Promise.resolve(null);
-      });
-
-      // Tenant default also exists
-      mockAppSettingsService.getValueFromCache.mockReturnValue('tenant-default-pipeline');
-
-      const result = await service.getPreferences();
-
-      expect(result.remoteConfig?.pipelineId).toBe('admin-pipeline');
-      expect(result.remoteConfig?.assignedBy).toBe('admin');
-    });
-
-    // Bugfix (impersonate doctor2): the admin override pointed at a
-    // SYSTEM-owned catalog pipeline (…0002). SYSTEM pipelines are shared-READ
-    // to every tenant (so findById resolves them), but they are NOT usable
-    // for a customer tenant's streaming session — the streaming guard
-    // (pipelineService.getById) rejects any pipeline whose tenantId != caller.
-    // The resolver must therefore skip such an override and fall through to
-    // the tenant's OWN default so the doctor still gets a working pipeline.
-    it('should ignore a SYSTEM-catalog admin override and fall through to the tenant default', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
-      mockUserSettingsRepository.findByUserKeyNamespace.mockImplementation((_userId: string, key: string, namespace: string) => {
-        if (namespace === 'arcaai-admin' && key === 'assigned-pipeline') {
-          return Promise.resolve(
-            createMockEntity({
-              key: 'assigned-pipeline',
-              value: '81000000-0000-0000-0001-000000000002',
-              namespace: 'arcaai-admin',
-            }),
-          );
-        }
-        return Promise.resolve(null);
-      });
-      // Shared-read resolves the SYSTEM row (tenantId = SYSTEM_TENANT_ID).
-      mockAsrPipelineRepository.findById.mockResolvedValue({
-        name: 'Turbo Pipeline',
-        tenantId: '00000000-0000-0000-0000-000000000000',
-      });
-      // The caller's own tenant HAS a default pipeline.
-      mockAsrPipelineRepository.findDefault.mockResolvedValue({
-        id: '81000000-0000-0000-0001-000000000401',
-        name: 'Global Production Pipeline',
-      });
-
-      const result = await service.getPreferences();
-
-      expect(result.remoteConfig).toEqual({
-        pipelineId: '81000000-0000-0000-0001-000000000401',
-        pipelineName: 'Global Production Pipeline',
-        assignedBy: 'tenant-default',
-      });
+      expect(result).not.toHaveProperty('remoteConfig');
+      expect(mockUserSettingsRepository.findByUserKeyNamespace).not.toHaveBeenCalled();
     });
   });
 
-  // AsrPipeline.isDefault supersedes the GlobalSetting
-  // slug default; admins control the per-tenant backend default. Additive +
-  // backward-compatible: when a tenant has no isDefault pipeline we fall back
-  // to the existing GlobalSetting behaviour, and the per-user admin override
-  // still wins over everything.
-  describe('tenant isDefault pipeline reconciliation', () => {
-    it('should prefer the tenant isDefault pipeline over the GlobalSetting default', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([createMockEntity({ key: 'workflowMode', value: 'remote' })]);
-
-      // Tenant has an isDefault pipeline...
-      mockAsrPipelineRepository.findDefault.mockResolvedValue({
-        id: 'tenant-default-pipeline-id',
-        name: 'ArcaAI Production Pipeline',
-      });
-      // ...and a GlobalSetting default is ALSO configured (should be ignored).
-      mockAppSettingsService.getValueFromCache.mockReturnValue('global-setting-pipeline');
-
-      const result = await service.getPreferences();
-
-      expect(mockAsrPipelineRepository.findDefault).toHaveBeenCalledWith('tenant-1');
-      expect(result.remoteConfig).toEqual({
-        pipelineId: 'tenant-default-pipeline-id',
-        pipelineName: 'ArcaAI Production Pipeline',
-        assignedBy: 'tenant-default',
-      });
-    });
-
-    it('should fall back to the GlobalSetting default when no tenant isDefault pipeline exists', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([createMockEntity({ key: 'workflowMode', value: 'remote' })]);
-
-      mockAsrPipelineRepository.findDefault.mockResolvedValue(null);
-      mockAppSettingsService.getValueFromCache.mockReturnValue('global-setting-pipeline');
-      mockAsrPipelineRepository.findById.mockResolvedValue({ name: 'Global Default Pipeline' });
-
-      const result = await service.getPreferences();
-
-      expect(result.remoteConfig).toEqual({
-        pipelineId: 'global-setting-pipeline',
-        pipelineName: 'Global Default Pipeline',
-        assignedBy: 'tenant-default',
-      });
-    });
-
-    it('should still honor the per-user admin override ahead of the tenant isDefault pipeline', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
-      mockUserSettingsRepository.findByUserKeyNamespace.mockImplementation((_userId: string, key: string, namespace: string) => {
-        if (namespace === 'arcaai-admin' && key === 'assigned-pipeline') {
-          return Promise.resolve(
-            createMockEntity({
-              key: 'assigned-pipeline',
-              value: 'admin-pipeline',
-              namespace: 'arcaai-admin',
-            }),
-          );
-        }
-        return Promise.resolve(null);
-      });
-      mockAsrPipelineRepository.findById.mockResolvedValue({ name: 'Admin Pipeline' });
-      // A tenant isDefault pipeline also exists, but the admin override wins.
-      mockAsrPipelineRepository.findDefault.mockResolvedValue({
-        id: 'tenant-default-pipeline-id',
-        name: 'Tenant Default Pipeline',
-      });
-
-      const result = await service.getPreferences();
-
-      expect(result.remoteConfig?.pipelineId).toBe('admin-pipeline');
-      expect(result.remoteConfig?.assignedBy).toBe('admin');
-      expect(mockAsrPipelineRepository.findDefault).not.toHaveBeenCalled();
-    });
-
-    it('should swallow a tenant-default lookup failure and fall back to the GlobalSetting', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
-      mockAsrPipelineRepository.findDefault.mockRejectedValue(new Error('DB error'));
-      mockAppSettingsService.getValueFromCache.mockReturnValue('global-setting-pipeline');
-      mockAsrPipelineRepository.findById.mockResolvedValue({ name: 'Global Default Pipeline' });
-
-      const result = await service.getPreferences();
-
-      expect(result.remoteConfig).toEqual({
-        pipelineId: 'global-setting-pipeline',
-        pipelineName: 'Global Default Pipeline',
-        assignedBy: 'tenant-default',
-      });
-    });
-  });
-
-  // (A8/A9, A-T6) — the effective transcription mode + lock is
-  // resolved SERVER-SIDE in getPreferences(), mirroring the remoteConfig
-  // cascade. Precedence: locked ⇒ tenant default wins (user ignored); unlocked
-  // ⇒ doctor workflowMode overrides; otherwise fall back to the tenant default.
   describe('effective transcription mode', () => {
     const withWorkflowMode = (mode: 'local' | 'remote') =>
       mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([createMockEntity({ key: 'workflowMode', value: mode })]);
@@ -739,29 +503,14 @@ describe('UserPreferencesService', () => {
   });
 
   describe('updatePreferences — behavioral outcomes', () => {
-    it('should return response with remoteConfig after update', async () => {
-      mockUserSettingsRepository.findByUserKeyNamespace.mockImplementation((_userId: string, key: string, namespace: string) => {
-        if (namespace === 'arcaai-admin' && key === 'assigned-pipeline') {
-          return Promise.resolve(
-            createMockEntity({
-              key: 'assigned-pipeline',
-              value: 'admin-pipeline-id',
-              namespace: 'arcaai-admin',
-            }),
-          );
-        }
-        return Promise.resolve(null);
-      });
-      mockAsrPipelineRepository.findById.mockResolvedValue({ name: 'Admin Pipeline' });
+    it('should return the stored preferences after update, with no remoteConfig', async () => {
       mockUserSettingsRepository.create.mockImplementation((entity: any) => entity);
       mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([createMockEntity({ key: 'workflowMode', value: 'remote' })]);
 
       const result = await service.updatePreferences({ workflowMode: 'remote' });
 
       expect(result.workflowMode).toBe('remote');
-      expect(result.remoteConfig).toBeDefined();
-      expect(result.remoteConfig?.pipelineId).toBe('admin-pipeline-id');
-      expect(result.remoteConfig?.assignedBy).toBe('admin');
+      expect(result).not.toHaveProperty('remoteConfig');
     });
 
     it('should deep merge localConfig when no existing config exists (first write)', async () => {
@@ -956,45 +705,6 @@ describe('UserPreferencesService', () => {
     });
   });
 
-  describe('edge cases — pipeline resolution', () => {
-    it('should return pipelineName as undefined when findById returns null (pipeline deleted)', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
-      mockAppSettingsService.getValueFromCache.mockReturnValue('deleted-pipeline-id');
-      mockAsrPipelineRepository.findById.mockResolvedValue(null);
-
-      const result = await service.getPreferences();
-
-      expect(result.remoteConfig).toEqual({
-        pipelineId: 'deleted-pipeline-id',
-        pipelineName: undefined,
-        assignedBy: 'tenant-default',
-      });
-    });
-
-    it('should skip admin override when value is empty string', async () => {
-      mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
-      mockUserSettingsRepository.findByUserKeyNamespace.mockImplementation((_userId: string, key: string, namespace: string) => {
-        if (namespace === 'arcaai-admin' && key === 'assigned-pipeline') {
-          return Promise.resolve(
-            createMockEntity({
-              key: 'assigned-pipeline',
-              value: '',
-              namespace: 'arcaai-admin',
-            }),
-          );
-        }
-        return Promise.resolve(null);
-      });
-      mockAppSettingsService.getValueFromCache.mockReturnValue('tenant-pipeline');
-      mockAsrPipelineRepository.findById.mockResolvedValue({ name: 'Tenant Pipeline' });
-
-      const result = await service.getPreferences();
-
-      expect(result.remoteConfig?.pipelineId).toBe('tenant-pipeline');
-      expect(result.remoteConfig?.assignedBy).toBe('tenant-default');
-    });
-  });
-
   describe('edge cases — backward compatibility', () => {
     it('should return empty localConfig when only codeSwitching legacy key exists', async () => {
       mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([
@@ -1081,13 +791,7 @@ describe('UserPreferencesService', () => {
     });
 
     it('should return undefined activeVoiceProfile when voice profile repository is not provided', async () => {
-      const serviceWithoutRepo = new UserPreferencesService(
-        mockUserSettingsRepository as any,
-        mockAsrPipelineRepository as any,
-        mockAppSettingsService as any,
-        mockClsService as any,
-        mockEventEmitter as any,
-      );
+      const serviceWithoutRepo = new UserPreferencesService(mockUserSettingsRepository as any, mockClsService as any, mockEventEmitter as any);
       mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
 
       const result = await serviceWithoutRepo.getPreferences();

@@ -166,7 +166,6 @@ describe('DD-11 PATH 1 — edit from within the node', () => {
       mockDatabaseService as never,
       undefined,
       undefined,
-      undefined,
       mockPromptTemplateRepository as never,
       mockPromptVersionRepository as never,
     );
@@ -260,7 +259,6 @@ describe('DD-11 — the "new version available" affordance', () => {
       mockEventEmitter as never,
       mockClsService as never,
       mockDatabaseService as never,
-      undefined,
       undefined,
       undefined,
       mockPromptTemplateRepository as never,
@@ -364,7 +362,6 @@ describe('DD-11 PATH 2 — REGRESSION: an out-of-band edit moves NO node pin', (
       databaseService as never,
       undefined,
       undefined,
-      undefined,
       { findById: vi.fn().mockResolvedValue(templateEntity()) } as never,
       { findMaxVersionNumber: vi.fn().mockResolvedValue(5) } as never,
     );
@@ -436,7 +433,6 @@ describe('DD-11 §7b — an unchanged adopt must not mint a new version', () => 
       mockDatabaseService as never,
       undefined,
       undefined,
-      undefined,
       mockPromptTemplateRepository as never,
       mockPromptVersionRepository as never,
     );
@@ -474,7 +470,11 @@ describe('DD-11 §7b — an unchanged adopt must not mint a new version', () => 
   it('writes NOTHING AT ALL when the node is already pinned to that version — idempotent', async () => {
     mockWorkflowDefinitionRepository.findById.mockResolvedValue(
       definitionEntity({
-        graph: { version: 1, nodes: [{ id: 'n_gen', type: 'generate.text', config: { promptTemplateId: 'tpl-1', promptVersionNumber: 9 } }], edges: [] },
+        graph: {
+          version: 1,
+          nodes: [{ id: 'n_gen', type: 'generate.text', config: { promptTemplateId: 'tpl-1', promptVersionNumber: 9 } }],
+          edges: [],
+        },
       }),
     );
 
@@ -550,7 +550,9 @@ describe('DD-11 §7b — an unchanged adopt must not mint a new version', () => 
   it('still 404s cross-tenant BEFORE the checksum is ever computed', async () => {
     mockPromptTemplateRepository.findById.mockResolvedValue(templateEntity({ tenantId: 'tenant-2', content: LATEST.content }));
 
-    await expect(service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, expectedVersion: 1 })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, expectedVersion: 1 })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(mockPromptVersionRepository.findLatestVersion).not.toHaveBeenCalled();
   });
 });

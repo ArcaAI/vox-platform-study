@@ -67,29 +67,8 @@ const mockPromptTemplateRepository = {
   count: vi.fn(),
 };
 
-// Mock AsrPipelineRepository.
-// `create()` clones EVERY enabled SYSTEM ASR pipeline (+ each one's
-// current version) into each new tenant, so the repo mock exposes the
-// pipeline-clone surface (findEnabledPipelines/isSlugUnique/create/
-// setDefaultForTenant) in addition to the legacy findAll/count.
-const mockAsrPipelineRepository = {
-  findAll: vi.fn(),
-  count: vi.fn(),
-  findEnabledPipelines: vi.fn(),
-  isSlugUnique: vi.fn(),
-  create: vi.fn(),
-  setDefaultForTenant: vi.fn(),
-};
-
-// Mock AsrPipelineVersionRepository — the pipeline clone also
-// copies the source pipeline's current version row into the new tenant.
-const mockAsrPipelineVersionRepository = {
-  findByPipeline: vi.fn(),
-  getNextVersionNumber: vi.fn(),
-  create: vi.fn(),
-};
-
-// Mock AiModelRepository — clone-per-tenant.
+// Mock AiModelRepository — NOT injected (TenantService holds no AiModelRepository since
+// TASK-1006); kept so the "clones NO AiModel row" guard below still reads as a claim.
 const mockAiModelRepository = {
   findAll: vi.fn(),
   isSlugUnique: vi.fn(),
@@ -339,29 +318,6 @@ vi.mock('@arcaai/domains', async () => {
         toObject: vi.fn().mockReturnValue({ ...data }),
       })),
     },
-    // AsrPipeline + version clone-per-tenant (D — extend_clone).
-    AsrPipelineFactory: {
-      CreateAsrPipeline: vi.fn((data) => ({
-        ...data,
-        id: `cloned-pipeline-${data.slug}`,
-        isDefault: false,
-        resourceStatus: (actual as any).ResourceStatusType?.ENABLED ?? 'ENABLED',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        deletedAt: null,
-        toObject: vi.fn().mockReturnValue({ ...data }),
-      })),
-    },
-    AsrPipelineVersionFactory: {
-      CreateAsrPipelineVersion: vi.fn((data) => ({
-        ...data,
-        id: `cloned-version-${data.asrPipelineId}-${data.versionNumber}`,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        deletedAt: null,
-        toObject: vi.fn().mockReturnValue({ ...data }),
-      })),
-    },
   };
 });
 
@@ -407,21 +363,6 @@ describe('TenantService', () => {
     // Default: empty SYSTEM catalog so the model-clone
     // provisioning step is a no-op for the existing create tests. The clone
     // tests below override `findAll` with SYSTEM rows.
-    mockAiModelRepository.findAll.mockResolvedValue([]);
-    mockAiModelRepository.isSlugUnique.mockResolvedValue(true);
-    mockAiModelRepository.create.mockImplementation(async (entity: any) => entity);
-
-    // Default: no SYSTEM pipelines so the pipeline-clone
-    // provisioning step is a no-op for the existing create tests. The
-    // pipeline-clone tests below override `findEnabledPipelines`.
-    mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue([]);
-    mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
-    mockAsrPipelineRepository.create.mockImplementation(async (entity: any) => entity);
-    mockAsrPipelineRepository.setDefaultForTenant.mockResolvedValue(undefined);
-    mockAsrPipelineVersionRepository.findByPipeline.mockResolvedValue([]);
-    mockAsrPipelineVersionRepository.getNextVersionNumber.mockResolvedValue(1);
-    mockAsrPipelineVersionRepository.create.mockImplementation(async (entity: any) => entity);
-
     // Default: empty SYSTEM golden library so the agent-clone
     // provisioning step is a no-op for the existing create tests. The
     // agent-clone tests below override the baseClient reads with golden rows.
@@ -440,13 +381,10 @@ describe('TenantService', () => {
       mockGlobalSettingRepository as any,
       mockDepartmentRepository as any,
       mockPromptTemplateRepository as any,
-      mockAsrPipelineRepository as any,
       mockDatabaseService as any,
       mockTenantBucketService as any,
       mockEventEmitter as any,
       mockClsService as any,
-      mockAiModelRepository as any,
-      mockAsrPipelineVersionRepository as any,
       mockReferenceSetService as any,
       mockBillingService as any,
     );
@@ -621,177 +559,6 @@ describe('TenantService', () => {
       expect(mockAiModelRepository.isSlugUnique).not.toHaveBeenCalled();
     });
 
-    // Full-parity policy — clone EVERY enabled SYSTEM ASR pipeline (+ each
-    // one's current version) into the new tenant, mark the clone of the
-    // SYSTEM default as the tenant default, idempotent per slug,
-    // failure-isolated.
-    describe('create — provisionTenantPipelineCatalog (full parity)', () => {
-      const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
-      const makeSystemPipeline = (over: Record<string, unknown> = {}) => ({
-        id: 'sys-pipeline-ct2',
-        tenantId: SYSTEM_TENANT_ID,
-        name: 'Production Pipeline (Faster-Whisper Turbo CT2 int8)',
-        slug: 'production-faster-whisper-turbo-int8',
-        description: 'system default pipeline',
-        configYaml: 'version: "1.1"\nmodels:\n  asr: {}\n',
-        tags: ['production'],
-        isDefault: false,
-        ...over,
-      });
-      // A realistic SYSTEM catalog: the default (production) + two others.
-      const makeSystemCatalog = () => [
-        makeSystemPipeline({
-          id: 'sys-pipeline-production',
-          slug: 'production-whisper-large-v3',
-          name: 'Full Features',
-          isDefault: true,
-        }),
-        makeSystemPipeline({ id: 'sys-pipeline-turbo', slug: 'turbo-whisper-large-v3', name: 'Turbo' }),
-        makeSystemPipeline(),
-      ];
-
-      it('clones EVERY enabled SYSTEM pipeline into the new tenant and marks the SYSTEM default clone the tenant default', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue(makeSystemCatalog());
-        mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
-
-        await service.create({ key: 'NEW', name: 'New' });
-
-        // Reads the SYSTEM-owned catalog (never a customer tenant).
-        expect(mockAsrPipelineRepository.findEnabledPipelines).toHaveBeenCalledWith(SYSTEM_TENANT_ID);
-        // Clones ALL three SYSTEM pipelines, each bound to the NEW tenant.
-        expect(mockAsrPipelineRepository.create).toHaveBeenCalledTimes(3);
-        const createdSlugs = mockAsrPipelineRepository.create.mock.calls.map((c) => c[0].slug);
-        expect(new Set(createdSlugs)).toEqual(
-          new Set(['production-whisper-large-v3', 'turbo-whisper-large-v3', 'production-faster-whisper-turbo-int8']),
-        );
-        mockAsrPipelineRepository.create.mock.calls.forEach(([created]) => {
-          expect(created.tenantId).toBe('new-tenant-id');
-        });
-        // Exactly one default flip: the clone of the SYSTEM default (production).
-        expect(mockAsrPipelineRepository.setDefaultForTenant).toHaveBeenCalledTimes(1);
-        const defaultCall = mockAsrPipelineRepository.setDefaultForTenant.mock.calls[0];
-        expect(defaultCall[0]).toBe('new-tenant-id');
-        const productionClone = mockAsrPipelineRepository.create.mock.calls.map((c) => c[0]).find((p) => p.slug === 'production-whisper-large-v3');
-        expect(defaultCall[1]).toBe(productionClone.id);
-      });
-
-      // Provisioned clones ARE template copies: they carry the
-      // template's slug as provenance and start locked, so a tenant admin
-      // clones one to customize rather than editing it in place.
-      it('stamps template lineage on every provisioned clone', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue(makeSystemCatalog());
-        mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
-
-        await service.create({ key: 'NEW', name: 'New' });
-
-        expect(mockAsrPipelineRepository.create).toHaveBeenCalledTimes(3);
-        mockAsrPipelineRepository.create.mock.calls.forEach(([created]) => {
-          expect(created.templateLocked).toBe(true);
-          expect(created.sourceTemplateSlug).toBe(created.slug);
-        });
-      });
-
-      it('clones each source pipeline current version (carrying its YAML) as the tenant pipeline v1', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue([makeSystemPipeline({ isDefault: true })]);
-        mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
-        // findByPipeline returns newest-first; [0] is the current version.
-        mockAsrPipelineVersionRepository.findByPipeline.mockResolvedValue([
-          { id: 'sys-v3', asrPipelineId: 'sys-pipeline-ct2', versionNumber: 3, configYaml: 'CURRENT-VERSION-YAML', name: 'n', description: 'd' },
-          { id: 'sys-v2', asrPipelineId: 'sys-pipeline-ct2', versionNumber: 2, configYaml: 'OLD', name: 'n', description: 'd' },
-        ]);
-        mockAsrPipelineVersionRepository.getNextVersionNumber.mockResolvedValue(1);
-
-        await service.create({ key: 'NEW', name: 'New' });
-
-        expect(mockAsrPipelineVersionRepository.findByPipeline).toHaveBeenCalledWith('sys-pipeline-ct2');
-        expect(mockAsrPipelineVersionRepository.create).toHaveBeenCalledTimes(1);
-        const version = mockAsrPipelineVersionRepository.create.mock.calls[0][0];
-        expect(version.tenantId).toBe('new-tenant-id');
-        expect(version.versionNumber).toBe(1);
-        expect(version.configYaml).toBe('CURRENT-VERSION-YAML');
-      });
-
-      it('synthesizes v1 from the pipeline configYaml when the source has no version rows', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue([
-          makeSystemPipeline({ configYaml: 'PIPELINE-LEVEL-YAML', isDefault: true }),
-        ]);
-        mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
-        mockAsrPipelineVersionRepository.findByPipeline.mockResolvedValue([]);
-
-        await service.create({ key: 'NEW', name: 'New' });
-
-        expect(mockAsrPipelineVersionRepository.create).toHaveBeenCalledTimes(1);
-        expect(mockAsrPipelineVersionRepository.create.mock.calls[0][0].configYaml).toBe('PIPELINE-LEVEL-YAML');
-      });
-
-      it('is idempotent per slug — skips the pipelines the tenant already owns, clones the rest', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue(makeSystemCatalog());
-        // Tenant already owns the turbo slug (backfill re-run) → skip only that one.
-        mockAsrPipelineRepository.isSlugUnique.mockImplementation(async (_tenantId: string, slug: string) => slug !== 'turbo-whisper-large-v3');
-
-        await service.create({ key: 'NEW', name: 'New' });
-
-        const createdSlugs = mockAsrPipelineRepository.create.mock.calls.map((c) => c[0].slug);
-        expect(createdSlugs).not.toContain('turbo-whisper-large-v3');
-        expect(mockAsrPipelineRepository.create).toHaveBeenCalledTimes(2);
-      });
-
-      it('no SYSTEM pipelines → clone is a safe no-op', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue([]);
-
-        const result = await service.create({ key: 'NEW', name: 'New' });
-
-        expect(mockAsrPipelineRepository.create).not.toHaveBeenCalled();
-        expect(mockAsrPipelineRepository.setDefaultForTenant).not.toHaveBeenCalled();
-        expect(result.id).toBe('new-tenant-id');
-      });
-
-      it('pipeline-clone failure does not abort tenant creation', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        mockAsrPipelineRepository.findEnabledPipelines.mockRejectedValue(new Error('db down'));
-
-        const result = await service.create({ key: 'NEW', name: 'New' });
-
-        expect(mockAsrPipelineRepository.findEnabledPipelines).toHaveBeenCalled();
-        expect(result.id).toBe('new-tenant-id');
-      });
-
-      it('one pipeline clone failing does not abort the others (per-row isolation)', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue(makeSystemCatalog());
-        mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
-        // The turbo clone throws; production + ct2 still clone.
-        mockAsrPipelineRepository.create.mockImplementation(async (entity: any) => {
-          if (entity.slug === 'turbo-whisper-large-v3') throw new Error('unique violation');
-          return entity;
-        });
-
-        const result = await service.create({ key: 'NEW', name: 'New' });
-
-        expect(result.id).toBe('new-tenant-id');
-        const createdSlugs = mockAsrPipelineRepository.create.mock.calls.map((c) => c[0].slug);
-        expect(createdSlugs).toContain('production-whisper-large-v3');
-        expect(createdSlugs).toContain('production-faster-whisper-turbo-int8');
-        // The default (production) still got flipped despite the sibling failure.
-        expect(mockAsrPipelineRepository.setDefaultForTenant).toHaveBeenCalledTimes(1);
-      });
-    });
-
-    // Clone the SYSTEM agent golden library into the new tenant:
     // a tenant Department copy + APPROVED template snapshot + locked
     // Golden DEPARTMENT catalog. retired the `DepartmentAgent` half of
     // this provisioning step (the agent clone, its APPROVED template snapshot,
@@ -932,9 +699,7 @@ describe('TenantService', () => {
         // catalog (`DEFAULT_DEPARTMENTS` in seed/04-department.ts). Plus the
         // bare GEN `provisionDefaultDepartment` always creates first, that's
         // 9 total candidates against STARTER's seeded `maxDepartments: 8`.
-        mockBaseClient.department.findMany.mockResolvedValue(
-          ['OPD', 'IPD', 'ER', 'PERI', 'RAD', 'LAB', 'BEH', 'PEDS'].map(goldenDept),
-        );
+        mockBaseClient.department.findMany.mockResolvedValue(['OPD', 'IPD', 'ER', 'PERI', 'RAD', 'LAB', 'BEH', 'PEDS'].map(goldenDept));
 
         await service.create({ key: 'NEW', name: 'New' });
 
@@ -954,13 +719,10 @@ describe('TenantService', () => {
           mockGlobalSettingRepository as any,
           mockDepartmentRepository as any,
           mockPromptTemplateRepository as any,
-          mockAsrPipelineRepository as any,
           mockDatabaseService as any,
           mockTenantBucketService as any,
           mockEventEmitter as any,
           mockClsService as any,
-          mockAiModelRepository as any,
-          mockAsrPipelineVersionRepository as any,
           mockReferenceSetService as any,
           mockBillingService as any,
           mockPlanEntitlementRepository as any,
@@ -1720,8 +1482,6 @@ describe('TenantService', () => {
         agent: { deleteMany: deleteManySpy('agent') },
         workflowAssignment: { deleteMany: deleteManySpy('workflowAssignment') },
         workflowDefinition: { deleteMany: deleteManySpy('workflowDefinition') },
-        asrPipelineVersion: { deleteMany: deleteManySpy('asrPipelineVersion') },
-        asrPipeline: { deleteMany: deleteManySpy('asrPipeline') },
         department: { deleteMany: deleteManySpy('department') },
         tenant: {
           delete: vi.fn().mockImplementation(async () => {
@@ -1742,7 +1502,9 @@ describe('TenantService', () => {
     // Block body, NOT a concise arrow: `mockImplementation` returns the mock,
     // and a function returned from a Vitest hook is registered as a teardown.
     const restoreDefaultTx = (): void => {
-      (mockBaseClient.$transaction as any).mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient));
+      (mockBaseClient.$transaction as any).mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) =>
+        callback(mockTxClient),
+      );
     };
     beforeEach(restoreDefaultTx);
     afterEach(restoreDefaultTx);
@@ -1759,7 +1521,7 @@ describe('TenantService', () => {
       expect(mockTenantRepository.softDelete).not.toHaveBeenCalled();
     });
 
-    it('sweeps every reference-set/department/pipeline clone in one transaction, children before parents, tenant row last', async () => {
+    it('sweeps every reference-set/department clone in one transaction, children before parents, tenant row last', async () => {
       const existing = createMockTenantEntity({ id: 'doomed-tenant-id' });
       mockTenantRepository.findById.mockResolvedValue(existing);
       const { tx, callOrder } = buildTxSpy();
@@ -1774,11 +1536,12 @@ describe('TenantService', () => {
       expect(callOrder.indexOf('consultationContextSchemaVersion')).toBeLessThan(callOrder.indexOf('consultationContextSchema'));
       expect(callOrder.indexOf('promptTemplate')).toBeLessThan(callOrder.indexOf('department'));
       expect(callOrder.indexOf('consultationContextSchema')).toBeLessThan(callOrder.indexOf('department'));
-      expect(callOrder.indexOf('asrPipelineVersion')).toBeLessThan(callOrder.indexOf('asrPipeline'));
       expect(callOrder[callOrder.length - 1]).toBe('tenant');
       // Every kind actually swept — the reference-set clone (agents + a
-      // workflow) the bug report named, plus the department and ASR
-      // pipeline catalogs `TenantService.create` also writes.
+      // workflow) the bug report named, plus the department catalog
+      // `TenantService.create` also writes. (No ASR pipeline catalog is cloned
+      // any more — TASK-1006 — and the tx double has no such delegate, so a
+      // stray sweep of one would throw here.)
       expect(callOrder).toEqual(
         expect.arrayContaining([
           'agent',
@@ -1789,8 +1552,6 @@ describe('TenantService', () => {
           'consultationContextSchema',
           'documentTemplate',
           'department',
-          'asrPipeline',
-          'asrPipelineVersion',
         ]),
       );
     });
@@ -1812,9 +1573,7 @@ describe('TenantService', () => {
       const systemTenant = createMockTenantEntity({ id: '00000000-0000-0000-0000-000000000000', key: 'SYSTEM' });
       mockTenantRepository.findById.mockResolvedValue(systemTenant);
 
-      await expect(service.purgeFailedProvisioning('00000000-0000-0000-0000-000000000000')).rejects.toThrow(
-        'The system tenant cannot be purged.',
-      );
+      await expect(service.purgeFailedProvisioning('00000000-0000-0000-0000-000000000000')).rejects.toThrow('The system tenant cannot be purged.');
     });
 
     it('emits a ResourceDeleted sys-event naming why the tenant was purged', async () => {
@@ -2703,7 +2462,6 @@ describe('TenantService', () => {
       mockTenantRepository.findById.mockResolvedValue(createMockTenantEntity({ id: 'tenant-1' }));
       mockDepartmentRepository.count.mockResolvedValue(2);
       mockPromptTemplateRepository.count.mockResolvedValue(3);
-      mockAsrPipelineRepository.count.mockResolvedValue(1);
       mockExtendedClient.userRoleAssignment.findMany.mockResolvedValue([{ userId: 'u-1' }, { userId: 'u-2' }]);
     });
 
@@ -2720,7 +2478,6 @@ describe('TenantService', () => {
         totalUsers: 2,
         totalDepartments: 2,
         totalPromptTemplates: 3,
-        totalPipelines: 1,
         storageUsedBytes: 5_000,
         transcriptionMinutes: 3,
         summaries24h: 7,

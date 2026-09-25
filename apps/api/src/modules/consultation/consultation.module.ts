@@ -36,6 +36,7 @@ import {
   // logic in harness).
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
+  AsrAgentResolverServiceModule,
   EffectiveSettingsModule,
   // TASK-999 Lane B — the read-only per-consultation AI telemetry projection.
   ConsultationTelemetryServiceModule,
@@ -93,6 +94,9 @@ import { ConsentInternalController } from './consent-internal.controller';
     PromptManagementServiceModule,
     TranscriptionJobServiceModule,
     TranscriptionRealtimeServiceModule,
+    // TASK-1006 — resolves a workflow ASR node's agent into the `ResolvedAsrSpec` the harness
+    // batch-trigger route (`POST internal/harness/stt/batch-jobs`) keys its job to.
+    AsrAgentResolverServiceModule,
     // TASK-932 S2-4 — supplies `TenantSettingsService`, which
     // `ConsultationController.isSharingEnabled` resolves the
     // `enable-consultation-sharing` gate through (tenant row -> SYSTEM row ->

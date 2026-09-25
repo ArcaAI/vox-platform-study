@@ -8,7 +8,7 @@
  * - Mock TranscriptionJobService (DB boundary)
  * - Mock RedisSubscriberService (Redis boundary)
  * - Mock IRedisCacheService (Redis boundary for lpush/publish)
- * - Verify orchestration flow: job creation → dispatch → SSE assembly
+ * - Verify the Dramatiq message format and the SSE assembly (`buildSseStream`)
  * - Test reconnection (subscribeToJob) with different job states
  * - Test SSE stream behavior (message forwarding, terminal detection, cleanup)
  */
@@ -47,16 +47,11 @@ describe('TranscriptionRealtimeService', () => {
     };
 
     mockTranscriptionJobService = {
-      createBatchJob: vi.fn().mockResolvedValue({
-        id: 'job-001',
-        status: 'QUEUED',
-        pipelineId: 'pipeline-1',
-      }),
       getById: vi.fn().mockResolvedValue({
         id: 'job-001',
         status: 'PROCESSING',
-        pipelineId: 'pipeline-1',
       }),
+      recordDispatchEnvelope: vi.fn().mockResolvedValue(undefined),
     };
 
     mockCacheService = {
@@ -82,136 +77,23 @@ describe('TranscriptionRealtimeService', () => {
     vi.restoreAllMocks();
   });
 
-  // -----------------------------------------------------------------------
-  // createAndStream
-  // -----------------------------------------------------------------------
+  /** The gateway-resolved ASR spec every dispatch carries — the job's one selector (TASK-1006). */
+  const SPEC = {
+    runtimeKey: 'agent-v-1',
+    agent: { slug: 'platform-transcription', versionId: 'agent-v-1' },
+    models: { asr: { slug: 'whisper-large-v3-turbo' } },
+    audioFrontEnd: { diarization: { enabled: false } },
+  } as never;
 
-  describe('createAndStream', () => {
-    const defaultParams = {
-      tenantId: 'tenant-1',
-      pipelineId: 'pipeline-1',
-      audioUri: 'minio://audio/test.wav',
-      consultationId: 'consult-1',
-      mediaId: 'media-1',
-      createdBy: 'user-1',
-    };
-
-    it('should create a transcription job in DB', async () => {
-      const result = await service.createAndStream(defaultParams);
-
-      expect(mockTranscriptionJobService.createBatchJob).toHaveBeenCalledWith({
-        pipelineId: 'pipeline-1',
-        mediaId: 'media-1',
-        consultationId: 'consult-1',
-      });
-      expect(result.jobId).toBe('job-001');
-    });
-
-    it('should use audioUri as mediaId fallback', async () => {
-      await service.createAndStream({
-        ...defaultParams,
-        mediaId: undefined,
-      });
-
-      expect(mockTranscriptionJobService.createBatchJob).toHaveBeenCalledWith(
-        expect.objectContaining({
-          mediaId: 'minio://audio/test.wav',
-        }),
-      );
-    });
-
-    it('should subscribe to Redis channel before dispatching', async () => {
-      await service.createAndStream(defaultParams);
-
-      expect(mockRedisSubscriber.subscribeToChannel).toHaveBeenCalledWith('stt:transcription:job-001');
-    });
-
-    it('should dispatch Dramatiq job via Redis HSET+RPUSH', async () => {
-      await service.createAndStream(defaultParams);
-
-      // Verify HSET was called to store the message payload
-      expect(mockCacheService.hset).toHaveBeenCalledWith(
-        'dramatiq:stt_batch.msgs',
-        'test-uuid-1234', // message_id from mocked uuidv7
-        expect.any(String),
-      );
-
-      // Verify RPUSH was called with the message ID (not payload)
-      expect(mockCacheService.rpush).toHaveBeenCalledWith('dramatiq:stt_batch', 'test-uuid-1234');
-
-      // Parse the stored message payload
-      const messageJson = (mockCacheService.hset as any).mock.calls[0][2];
-      const message = JSON.parse(messageJson);
-
-      expect(message).toEqual(
-        expect.objectContaining({
-          queue_name: 'stt_batch',
-          actor_name: 'transcribe_file',
-          args: ['job-001', 'tenant-1', 'pipeline-1', 'minio://audio/test.wav', 'consult-1', 'media-1', null, null, 'hope-audio', null],
-          kwargs: {},
-          message_id: 'test-uuid-1234',
-        }),
-      );
-      expect(message.options).toHaveProperty('redis_message_id');
-      expect(message.message_timestamp).toBeTypeOf('number');
-    });
-
-    it('should publish Dramatiq notification event', async () => {
-      await service.createAndStream(defaultParams);
-
-      expect(mockCacheService.publish).toHaveBeenCalledWith('dramatiq:__events__', 'stt_batch');
-    });
-
-    it('should dispatch with null for optional undefined params', async () => {
-      await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
-
-      const messageJson = (mockCacheService.hset as any).mock.calls[0][2];
-      const message = JSON.parse(messageJson);
-
-      expect(message.args[4]).toBeNull(); // consultationId
-      expect(message.args[5]).toBeNull(); // mediaId
-      expect(message.args[9]).toBeNull(); // userId
-    });
-
-    it('should return an Observable that emits SSE events', async () => {
-      const { events$ } = await service.createAndStream(defaultParams);
-
-      const collected: MessageEvent[] = [];
-      const sub = events$.subscribe({
-        next: (event) => collected.push(event),
-      });
-
-      // Simulate Redis publishing a progress event
-      channelSubject.next(
-        JSON.stringify({
-          type: TranscriptionEventType.PROGRESS,
-          data: { jobId: 'job-001', progress: 50, stage: 'inference' },
-        }),
-      );
-
-      expect(collected).toHaveLength(1);
-      const parsed = parseEvent(collected[0]);
-      expect(parsed.type).toBe('progress');
-      expect(parsed.data.progress).toBe(50);
-
-      sub.unsubscribe();
-    });
-
-    it('should propagate dispatch errors from hset', async () => {
-      (mockCacheService.hset as any).mockRejectedValueOnce(new Error('Redis unavailable'));
-
-      await expect(service.createAndStream(defaultParams)).rejects.toThrow('Redis unavailable');
-    });
-
-    it('should propagate dispatch errors from rpush', async () => {
-      (mockCacheService.rpush as any).mockRejectedValueOnce(new Error('Redis write error'));
-
-      await expect(service.createAndStream(defaultParams)).rejects.toThrow('Redis write error');
-    });
+  /**
+   * TASK-1006 — `createAndStream` (create a `pipelineId`-keyed job, dispatch it, stream it) went
+   * with the pipeline path; it had no production caller. The SSE assembly its tests exercised is
+   * the service's own `buildSseStream`, driven here directly over the same Redis subject.
+   */
+  const streamFor = (jobId = 'job-001') => ({
+    events$: (
+      service as unknown as { buildSseStream: (id: string, channel: string, messages: unknown) => import('rxjs').Observable<MessageEvent> }
+    ).buildSseStream(jobId, `stt:transcription:${jobId}`, channelSubject.asObservable()),
   });
 
   // -----------------------------------------------------------------------
@@ -223,8 +105,8 @@ describe('TranscriptionRealtimeService', () => {
       await service.dispatchDramatiqJob({
         jobId: 'job-99',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         audioUri: 's3://hope-audio-arcaai/x.wav',
+        resolvedSpec: SPEC,
         audioBucketName: 'hope-audio-arcaai',
       });
 
@@ -237,8 +119,8 @@ describe('TranscriptionRealtimeService', () => {
       await service.dispatchDramatiqJob({
         jobId: 'job-99',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         audioUri: 's3://hope-audio/x.wav',
+        resolvedSpec: SPEC,
       });
 
       const messageJson = (mockCacheService.hset as any).mock.calls[0][2];
@@ -269,7 +151,6 @@ describe('TranscriptionRealtimeService', () => {
       await svc.dispatchDramatiqJob({
         jobId: 'job-vp',
         tenantId: 'tenant-1',
-        pipelineId: 'agent-version-1',
         audioUri: 's3://hope-audio/x.wav',
         userId,
         resolvedSpec: resolvedSpec as never,
@@ -286,7 +167,11 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('OMITS the kwarg entirely when there is nothing to send — absence is the one encoding', async () => {
-      const kwargs = await dispatch({ listForRuntime: vi.fn().mockResolvedValue([]) }, specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }), 'user-1');
+      const kwargs = await dispatch(
+        { listForRuntime: vi.fn().mockResolvedValue([]) },
+        specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }),
+        'user-1',
+      );
       expect(kwargs).not.toHaveProperty('voice_profiles');
     });
 
@@ -300,55 +185,41 @@ describe('TranscriptionRealtimeService', () => {
   });
 
   // -----------------------------------------------------------------------
-  // dispatchDramatiqJob — fallback pipeline
+  // dispatchDramatiqJob — no pipeline on the wire (TASK-1006)
   //
-  // `transcribe_file` re-runs a failed primary ASR on `fallback_pipeline_id`
-  // within the same Dramatiq attempt, but the argument was never
-  // sent, so batch auto-fallback never ran in production.
-  //
-  // It rides as a KWARG, deliberately. The actor's positional order is
-  // (job_id, tenant_id, pipeline_id, audio_uri, consultation_id, media_id,
-  // language, code_switching, audio_bucket_name, user_id, storage,
-  // fallback_pipeline_id) — appending positionally would mean emitting the
-  // `storage` slot too, and any future insertion upstream silently shifts
-  // every later argument. Kwargs are order-free.
+  // The actor's positional order is (job_id, tenant_id, pipeline_id, audio_uri,
+  // consultation_id, media_id, language, code_switching, audio_bucket_name, user_id,
+  // storage, fallback_pipeline_id). The ARITY is kept (a message already queued stays
+  // valid), but `pipeline_id` is always `None` and `fallback_pipeline_id` is never sent:
+  // the resolved spec — a kwarg — carries the engine chain, fallback included.
   // -----------------------------------------------------------------------
 
-  describe('dispatchDramatiqJob fallbackPipelineId', () => {
+  describe('dispatchDramatiqJob — the spec is the only selector', () => {
     const dispatchAndRead = async (extra: Record<string, unknown>) => {
       await service.dispatchDramatiqJob({
         jobId: 'job-77',
         tenantId: 'tenant-1',
-        pipelineId: 'primary-pipe',
         audioUri: 's3://hope-audio/x.wav',
+        resolvedSpec: SPEC,
         ...extra,
-      } as any);
+      } as never);
       return JSON.parse((mockCacheService.hset as any).mock.calls[0][2]);
     };
 
-    it('passes the fallback pipeline as a kwarg', async () => {
-      const message = await dispatchAndRead({ fallbackPipelineId: 'fallback-pipe' });
-
-      expect(message.kwargs.fallback_pipeline_id).toBe('fallback-pipe');
-      // Positional args must be untouched — the worker signature depends on them.
-      expect(message.args).toHaveLength(10);
-    });
-
-    it('omits the kwarg entirely when no fallback is configured', async () => {
+    it('keeps 10 positional args, `None` in the retired pipeline_id slot, and the spec as a kwarg', async () => {
       const message = await dispatchAndRead({});
 
+      expect(message.args).toHaveLength(10);
+      expect(message.args[2]).toBeNull();
+      expect(message.kwargs.resolved_spec).toEqual(SPEC);
       expect('fallback_pipeline_id' in message.kwargs).toBe(false);
     });
 
-    it('carries the fallback alongside a per-tenant storage descriptor', async () => {
-      // Both are kwargs; adding one must not displace the other.
-      const message = await dispatchAndRead({
-        fallbackPipelineId: 'fallback-pipe',
-        storage: { provider: 's3', bucket: 'tenant-bucket' },
-      });
+    it('carries a per-tenant storage descriptor beside the spec', async () => {
+      const message = await dispatchAndRead({ storage: { provider: 's3', bucket: 'tenant-bucket' } });
 
-      expect(message.kwargs.fallback_pipeline_id).toBe('fallback-pipe');
       expect(message.kwargs.storage).toEqual({ provider: 's3', bucket: 'tenant-bucket' });
+      expect(message.kwargs.resolved_spec).toEqual(SPEC);
     });
   });
 
@@ -498,11 +369,7 @@ describe('TranscriptionRealtimeService', () => {
 
   describe('SSE stream', () => {
     it('should forward chunk events from Redis', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       const collected: MessageEvent[] = [];
       const sub = events$.subscribe({
@@ -532,11 +399,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should include event type and id in MessageEvent', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       const firstEvent = firstValueFrom(events$.pipe(take(1)));
 
@@ -554,11 +417,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should auto-complete when COMPLETED status received', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       const collected: MessageEvent[] = [];
       let completed = false;
@@ -595,11 +454,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should auto-complete when FAILED status received', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       let completed = false;
       events$.subscribe({
@@ -619,11 +474,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should auto-complete when CANCELLED status received', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       let completed = false;
       const collected: MessageEvent[] = [];
@@ -648,11 +499,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should auto-complete when DEAD status received', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       let completed = false;
       const collected: MessageEvent[] = [];
@@ -677,11 +524,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should handle malformed Redis messages gracefully', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       const collected: MessageEvent[] = [];
       const sub = events$.subscribe({
@@ -699,11 +542,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should clean up Redis subscription on stream finalize', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       events$.subscribe();
 
@@ -719,11 +558,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should not complete on non-terminal status events', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       let completed = false;
       const sub = events$.subscribe({
@@ -750,10 +585,11 @@ describe('TranscriptionRealtimeService', () => {
 
   describe('Dramatiq message format', () => {
     it('should use correct queue and actor names', async () => {
-      await service.createAndStream({
+      await service.dispatchDramatiqJob({
+        jobId: 'job-001',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         audioUri: 'minio://audio/test.wav',
+        resolvedSpec: SPEC,
       });
 
       const messageJson = (mockCacheService.hset as any).mock.calls[0][2];
@@ -764,10 +600,11 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should include all required Dramatiq message fields', async () => {
-      await service.createAndStream({
+      await service.dispatchDramatiqJob({
+        jobId: 'job-001',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         audioUri: 'minio://audio/test.wav',
+        resolvedSpec: SPEC,
       });
 
       const messageJson = (mockCacheService.hset as any).mock.calls[0][2];
@@ -784,10 +621,11 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should include redis_message_id in options', async () => {
-      await service.createAndStream({
+      await service.dispatchDramatiqJob({
+        jobId: 'job-001',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         audioUri: 'minio://audio/test.wav',
+        resolvedSpec: SPEC,
       });
 
       const messageJson = (mockCacheService.hset as any).mock.calls[0][2];
@@ -798,12 +636,13 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should pass args in correct order matching Python actor signature', async () => {
-      await service.createAndStream({
+      await service.dispatchDramatiqJob({
+        jobId: 'job-001',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         audioUri: 'minio://audio/test.wav',
         consultationId: 'consult-1',
         mediaId: 'media-1',
+        resolvedSpec: SPEC,
       });
 
       const messageJson = (mockCacheService.hset as any).mock.calls[0][2];
@@ -812,17 +651,18 @@ describe('TranscriptionRealtimeService', () => {
       // Must match: transcribe_file(job_id, tenant_id, pipeline_id, audio_uri, consultation_id, media_id)
       expect(message.args[0]).toBe('job-001'); // job_id
       expect(message.args[1]).toBe('tenant-1'); // tenant_id
-      expect(message.args[2]).toBe('pipeline-1'); // pipeline_id
+      expect(message.args[2]).toBeNull(); // pipeline_id — retired (TASK-1006), always None
       expect(message.args[3]).toBe('minio://audio/test.wav'); // audio_uri
       expect(message.args[4]).toBe('consult-1'); // consultation_id
       expect(message.args[5]).toBe('media-1'); // media_id
     });
 
     it('should use HSET for message storage and RPUSH for queue', async () => {
-      await service.createAndStream({
+      await service.dispatchDramatiqJob({
+        jobId: 'job-001',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         audioUri: 'minio://audio/test.wav',
+        resolvedSpec: SPEC,
       });
 
       // HSET stores payload in the .msgs hash
@@ -843,10 +683,11 @@ describe('TranscriptionRealtimeService', () => {
 
   describe('Dramatiq protocol integration', () => {
     it('should use hset+rpush for queue dispatch and publish only for notification', async () => {
-      await service.createAndStream({
+      await service.dispatchDramatiqJob({
+        jobId: 'job-001',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         audioUri: 'minio://audio/test.wav',
+        resolvedSpec: SPEC,
       });
 
       // hset should be called once to store message payload
@@ -873,10 +714,11 @@ describe('TranscriptionRealtimeService', () => {
       (mockCacheService.publish as any).mockRejectedValueOnce(new Error('Publish notification failed'));
 
       await expect(
-        service.createAndStream({
+        service.dispatchDramatiqJob({
+          jobId: 'job-001',
           tenantId: 'tenant-1',
-          pipelineId: 'pipeline-1',
           audioUri: 'minio://audio/test.wav',
+          resolvedSpec: SPEC,
         }),
       ).rejects.toThrow('Publish notification failed');
 
@@ -885,29 +727,8 @@ describe('TranscriptionRealtimeService', () => {
       expect(mockCacheService.rpush).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle createBatchJob failure', async () => {
-      mockTranscriptionJobService.createBatchJob.mockRejectedValueOnce(new Error('Pipeline not found'));
-
-      await expect(
-        service.createAndStream({
-          tenantId: 'tenant-1',
-          pipelineId: 'invalid-pipeline',
-          audioUri: 'minio://audio/test.wav',
-        }),
-      ).rejects.toThrow('Pipeline not found');
-
-      // Should not attempt to dispatch or subscribe
-      expect(mockRedisSubscriber.subscribeToChannel).not.toHaveBeenCalled();
-      expect(mockCacheService.hset).not.toHaveBeenCalled();
-      expect(mockCacheService.rpush).not.toHaveBeenCalled();
-    });
-
     it('should forward multiple rapid events in order', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       const collected: string[] = [];
       const sub = events$.subscribe({
@@ -955,25 +776,21 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should handle empty string audio URI', async () => {
-      const result = await service.createAndStream({
+      await service.dispatchDramatiqJob({
+        jobId: 'job-001',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         audioUri: '',
+        resolvedSpec: SPEC,
       });
 
       const messageJson = (mockCacheService.hset as any).mock.calls[0][2];
       const message = JSON.parse(messageJson);
 
       expect(message.args[3]).toBe('');
-      expect(result.jobId).toBe('job-001');
     });
 
     it('should not dispatch events after stream completes via FAILED', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       const collected: MessageEvent[] = [];
       let completed = false;
@@ -1044,11 +861,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should handle transcript event (non-terminal) in stream', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       let completed = false;
       const sub = events$.subscribe({
@@ -1083,13 +896,9 @@ describe('TranscriptionRealtimeService', () => {
   // -----------------------------------------------------------------------
 
   describe('subscribe-before-dispatch ordering', () => {
-    it('should subscribe to Redis channel before hset+rpush dispatch', async () => {
+    it('should store (hset), enqueue (rpush) and only then notify (publish)', async () => {
       const callOrder: string[] = [];
 
-      mockRedisSubscriber.subscribeToChannel.mockImplementation(async (channel: string) => {
-        callOrder.push('subscribeToChannel');
-        return channelSubject.asObservable();
-      });
       (mockCacheService.hset as any).mockImplementation(async () => {
         callOrder.push('hset');
       });
@@ -1101,16 +910,14 @@ describe('TranscriptionRealtimeService', () => {
         callOrder.push('publish');
       });
 
-      await service.createAndStream({
+      await service.dispatchDramatiqJob({
+        jobId: 'job-001',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         audioUri: 'minio://audio/test.wav',
+        resolvedSpec: SPEC,
       });
 
-      expect(callOrder[0]).toBe('subscribeToChannel');
-      expect(callOrder[1]).toBe('hset');
-      expect(callOrder[2]).toBe('rpush');
-      expect(callOrder[3]).toBe('publish');
+      expect(callOrder).toEqual(['hset', 'rpush', 'publish']);
     });
   });
 
@@ -1120,11 +927,7 @@ describe('TranscriptionRealtimeService', () => {
 
   describe('SSE stream: malformed message resilience', () => {
     it('should not crash on unparseable JSON in takeWhile check', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       let completed = false;
       const collected: MessageEvent[] = [];
@@ -1156,11 +959,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should handle very long malformed message (tests substring(0,200) in logger)', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       const collected: MessageEvent[] = [];
       const sub = events$.subscribe({
@@ -1266,11 +1065,7 @@ describe('TranscriptionRealtimeService', () => {
 
   describe('full event lifecycle', () => {
     it('should handle complete transcription lifecycle with cleanup', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       const collected: MessageEvent[] = [];
       let completed = false;
@@ -1327,11 +1122,7 @@ describe('TranscriptionRealtimeService', () => {
 
   describe('SSE MessageEvent structure', () => {
     it('should include type and id fields in MessageEvent for valid events', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       const collected: MessageEvent[] = [];
       const sub = events$.subscribe({
@@ -1353,11 +1144,7 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     it('should NOT include type/id fields for malformed messages', async () => {
-      const { events$ } = await service.createAndStream({
-        tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
-        audioUri: 'minio://audio/test.wav',
-      });
+      const { events$ } = streamFor();
 
       const collected: MessageEvent[] = [];
       const sub = events$.subscribe({

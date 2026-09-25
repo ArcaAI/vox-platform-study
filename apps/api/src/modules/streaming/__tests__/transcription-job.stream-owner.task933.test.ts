@@ -44,10 +44,15 @@ function build(cls: ReturnType<typeof clsFor>) {
     cls as any,
     { resolveDescriptor: vi.fn().mockResolvedValue(null) } as any, // blobStorage
     { getBucketByPurpose: vi.fn(), getBucketBySlug: vi.fn() } as any, // tenantBucketService
-    { getById: vi.fn().mockResolvedValue({ id: 'pipe-1', tenantId: TENANT }) } as any, // pipelineService
     streamTicketService as any,
     binding as any,
     { assertConcurrencyQuota: vi.fn().mockResolvedValue(undefined) } as any, // entitlements
+    undefined, // batchLimits
+    {
+      resolve: vi.fn().mockResolvedValue({
+        spec: { runtimeKey: 'agent-v-1', agent: { slug: 'platform-transcription', versionId: 'agent-v-1' }, fallback: { spec: null } },
+      }),
+    } as any, // asrResolver
   );
   return { controller, sessionService, streamTicketService, binding };
 }
@@ -58,7 +63,7 @@ describe('createStreamSession — the session OWNER is the acting principal', ()
   it('a service account owns the session it creates: record, ticket and binding all name it', async () => {
     const { controller, sessionService, streamTicketService, binding } = build(clsFor({ tenantId: TENANT, serviceAccount: { id: SVC_ACCOUNT_ID } }));
 
-    await controller.createStreamSession({ pipelineId: 'pipe-1' } as any);
+    await controller.createStreamSession({} as any);
 
     expect(sessionService.createSession).toHaveBeenCalledWith(expect.objectContaining({ userId: SVC_ACCOUNT_ID }));
     expect(streamTicketService.issueTicket).toHaveBeenCalledWith(expect.objectContaining({ userId: SVC_ACCOUNT_ID }));
@@ -70,7 +75,7 @@ describe('createStreamSession — the session OWNER is the acting principal', ()
       clsFor({ tenantId: TENANT, user: { id: HUMAN_ID, tenantId: TENANT } }),
     );
 
-    await controller.createStreamSession({ pipelineId: 'pipe-1' } as any);
+    await controller.createStreamSession({} as any);
 
     expect(sessionService.createSession).toHaveBeenCalledWith(expect.objectContaining({ userId: HUMAN_ID }));
     expect(streamTicketService.issueTicket).toHaveBeenCalledWith(expect.objectContaining({ userId: HUMAN_ID }));
@@ -83,7 +88,7 @@ describe('createStreamSession — the session OWNER is the acting principal', ()
     // into the binding (the pre-TASK-933 behaviour, which the WS handshake then rejected).
     const { controller, streamTicketService, binding } = build(clsFor({ tenantId: TENANT }));
 
-    await expect(controller.createStreamSession({ pipelineId: 'pipe-1' } as any)).rejects.toThrow();
+    await expect(controller.createStreamSession({} as any)).rejects.toThrow();
     expect(streamTicketService.issueTicket).not.toHaveBeenCalled();
     expect(binding.bind).not.toHaveBeenCalled();
   });

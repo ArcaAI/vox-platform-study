@@ -984,7 +984,7 @@ class TestSttBatchJobs:
         client = _client(handler)
         result = await client.create_stt_batch_job(
             tenant_id="t-1",
-            pipeline_id="pipeline-1",
+            agent_slug="clinic-transcription",
             audio_uri="s3://bucket/key.wav",
             consultation_id="c-1",
             language="en",
@@ -997,7 +997,7 @@ class TestSttBatchJobs:
         body = json.loads(req.content)
         assert body == {
             "tenantId": "t-1",
-            "pipelineId": "pipeline-1",
+            "agentSlug": "clinic-transcription",
             "audioUri": "s3://bucket/key.wav",
             "consultationId": "c-1",
             "language": "en",
@@ -1013,9 +1013,7 @@ class TestSttBatchJobs:
 
         client = _client(handler)
         with pytest.raises(ApiServiceError):
-            await client.create_stt_batch_job(
-                tenant_id="t-1", pipeline_id="p-1", audio_uri="s3://x"
-            )
+            await client.create_stt_batch_job(tenant_id="t-1", agent_slug="a-1", audio_uri="s3://x")
 
     @pytest.mark.asyncio
     async def test_get_stt_batch_job_status_gets_and_parses_response(self):

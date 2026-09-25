@@ -34,7 +34,6 @@ const mockEntitlements = {
   assertQuantityQuota: vi.fn(),
   isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
 };
-const mockSttPipelineCompiler = { compileAndPublish: vi.fn() };
 
 /** TASK-893 — the only vocabulary left is `core`; `noop` and every legacy palette are gone. */
 const VALID_GRAPH = {
@@ -96,7 +95,6 @@ describe(' W1 — server-side paletteKey validation (C-5/D-5)', () => {
       mockClsService as any,
       mockDatabaseService as any,
       mockEntitlements as any,
-      mockSttPipelineCompiler as any,
     );
   });
 
@@ -163,7 +161,6 @@ describe('list() — the typed paletteKey filter', () => {
       mockClsService as any,
       mockDatabaseService as any,
       mockEntitlements as any,
-      mockSttPipelineCompiler as any,
     );
   });
 

@@ -1,6 +1,5 @@
 import { TranscriptionJobEntity } from '@arcaai/domains';
 import { ServedByResponse, TranscriptionJobResponse } from './dto';
-import { PipelineDtoMapper } from '../pipeline/pipeline.dto.mapper';
 import { languageResolutionFromWire } from '../../../common/language';
 
 export class TranscriptionJobDtoMapper {
@@ -8,8 +7,6 @@ export class TranscriptionJobDtoMapper {
     return {
       id: entity.id,
       jobType: entity.jobType,
-      pipelineId: entity.pipelineId ?? null,
-      pipeline: entity.Pipeline ? PipelineDtoMapper.toResponse(entity.Pipeline) : undefined,
       agentVersionId: entity.agentVersionId ?? null,
       resolvedSpec: entity.resolvedSpec ?? null,
       // TASK-999 §3.1 C-2 — the telemetry block. `servedBy` is persisted as the

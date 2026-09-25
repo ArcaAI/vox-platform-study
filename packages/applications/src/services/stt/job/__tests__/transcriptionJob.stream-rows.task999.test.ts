@@ -65,7 +65,7 @@ describe('TASK-999 — streaming rows and the jobType filter', () => {
     pipelineRepository = { findById: vi.fn() };
     eventEmitter = { emit: vi.fn() };
     clsService = { get: vi.fn().mockImplementation((key: string) => (key === 'tenantId' ? 'tenant-1' : null)) };
-    service = new TranscriptionJobService(jobRepository, pipelineRepository, eventEmitter, clsService);
+    service = new TranscriptionJobService(jobRepository, eventEmitter, clsService);
   });
 
   describe('list', () => {

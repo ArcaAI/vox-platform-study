@@ -35,8 +35,9 @@ describe('TASK-885 — a new tenant refers to the SYSTEM template, it does not r
     // The provisioning steps that DO exist, so a future reader can see the gate is not vacuous.
     // (`provisionTenantConfigs` and `provisionTenantModelCatalog` were DELETED by TASK-890
     // OD-P / OD-O — the settings and the catalogue are CONFIG and resolve tenant → SYSTEM at
-    // read time rather than being frozen into a per-tenant copy.)
-    for (const step of ['provisionDefaultDepartment', 'provisionTenantPipelineCatalog', 'referenceSet']) {
+    // read time rather than being frozen into a per-tenant copy. `provisionTenantPipelineCatalog`
+    // went with the `AsrPipeline` catalogue in TASK-1006.)
+    for (const step of ['provisionDefaultDepartment', 'provisionTenantDepartmentCatalog', 'referenceSet']) {
       expect(TENANT_SERVICE_SOURCE).toContain(step);
     }
 

@@ -119,7 +119,6 @@ function extractPrefix(rawKey: string): string {
  * |-----------------------------------|-------------------------------------|-------|
  * | consultation + summarization | consultation / text-compat | `consultation:*` (4) |
  * | live + batch transcription | transcription-job / stt ws | `stt:*` (3) |
- * | `GET /audio/pipelines` | `AudioPipelinePublicController` | `stt:model:read` |
  * | `POST /speech/synthesize`, voices | TTS proxy | `tts:speech:write`, `tts:voice:read` |
  * | `GET /prompt-templates/available` | `PromptTemplateController` | `prompt:template:read` |
  * | `GET /tenant/me`, `/tenant/me/config` | `MyTenantController` | `tenant:profile:read` |

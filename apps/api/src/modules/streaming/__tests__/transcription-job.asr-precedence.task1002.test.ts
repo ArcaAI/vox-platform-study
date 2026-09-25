@@ -51,26 +51,22 @@ const mocks = () => ({
   },
   realtimeService: { dispatchDramatiqJob: vi.fn() },
   sessionService: {
-    createSession: vi
-      .fn()
-      .mockResolvedValue({
-        sessionId: 'sess-1',
-        status: 'active',
-        maxConcurrent: 10,
-        currentActive: 1,
-        pipelineId: 'agent-v-1',
-        activeEngine: 'primary',
-      }),
+    createSession: vi.fn().mockResolvedValue({
+      sessionId: 'sess-1',
+      status: 'active',
+      maxConcurrent: 10,
+      currentActive: 1,
+      pipelineId: 'agent-v-1',
+      activeEngine: 'primary',
+    }),
     switchToFallback: vi.fn().mockResolvedValue(undefined),
   },
   cls: { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : { id: 'user-1', tenantId: 'tenant-1' })) },
   blobStorage: { resolveDescriptor: vi.fn().mockResolvedValue(null), putObject: vi.fn() },
   tenantBucketService: { getBucketBySlug: vi.fn(), getBucketByName: vi.fn(), getBucketByPurpose: vi.fn() },
-  pipelineService: { getById: vi.fn(), getAll: vi.fn().mockResolvedValue([]) },
   streamTicketService: { issueTicket: vi.fn().mockResolvedValue({ ticket: 't', expiresAt: 1 }) },
   binding: { bind: vi.fn(), bindSessionMeta: vi.fn(), clear: vi.fn() },
   entitlements: { assertConcurrencyQuota: vi.fn() },
-  sttConfig: { getEffective: vi.fn().mockResolvedValue({ fallbackPipelineId: null }), resolveProviderOverrides: vi.fn().mockResolvedValue({}) },
   // Stands in for lane L-B's resolver. Its `resolve` result shape is the L-B/L-C contract:
   // `{ spec: { agent: { source } }, workflowDefinitionSlug? }`.
   asrResolver: {
@@ -87,37 +83,33 @@ function build() {
     m.cls as never,
     m.blobStorage as never,
     m.tenantBucketService as never,
-    m.pipelineService as never,
     m.streamTicketService as never,
     m.binding as never,
     m.entitlements as never,
-    m.sttConfig as never,
     undefined,
     m.asrResolver as never,
   );
   return { controller, m };
 }
 
-const res = () => ({ setHeader: vi.fn() });
-
 beforeEach(() => vi.clearAllMocks());
 
 describe('TASK-1002 — createStreamSession forwards consultationId to the ASR resolver', () => {
   it('a consultation-bound session passes consultationId through to the resolver', async () => {
     const { controller, m } = build();
-    await controller.createStreamSession({ consultationId: 'c-1' } as never, res() as never);
+    await controller.createStreamSession({ consultationId: 'c-1' } as never);
     expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null, consultationId: 'c-1' });
   });
 
   it('no consultationId on the request → the resolver is called with consultationId: null', async () => {
     const { controller, m } = build();
-    await controller.createStreamSession({} as never, res() as never);
+    await controller.createStreamSession({} as never);
     expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null, consultationId: null });
   });
 
   it('an explicit agentSlug still passes consultationId alongside it', async () => {
     const { controller, m } = build();
-    await controller.createStreamSession({ agentSlug: 'saaras-test', consultationId: 'c-1' } as never, res() as never);
+    await controller.createStreamSession({ agentSlug: 'saaras-test', consultationId: 'c-1' } as never);
     // TASK-1004 — and, because this request declared no language, asks for the ONE consultation
     // read an explicit slug otherwise skips (the session inherits the consultation's mode).
     expect(m.asrResolver.resolve).toHaveBeenCalledWith({
@@ -131,14 +123,14 @@ describe('TASK-1002 — createStreamSession forwards consultationId to the ASR r
 
   it('the response carries agentSource from the resolved spec', async () => {
     const { controller } = build();
-    const out = await controller.createStreamSession({ consultationId: 'c-1' } as never, res() as never);
+    const out = await controller.createStreamSession({ consultationId: 'c-1' } as never);
     expect(out).toMatchObject({ agentSlug: 'saaras-test', agentVersionId: 'agent-v-1', agentSource: 'workflow' });
   });
 
   it('emits one stt.asr_agent_resolved log line naming the source and the governing workflow', async () => {
     const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const { controller } = build();
-    await controller.createStreamSession({ consultationId: 'c-1' } as never, res() as never);
+    await controller.createStreamSession({ consultationId: 'c-1' } as never);
     expect(logSpy).toHaveBeenCalledWith({
       message: 'stt.asr_agent_resolved',
       consultationId: 'c-1',
@@ -154,20 +146,10 @@ describe('TASK-1002 — createStreamSession forwards consultationId to the ASR r
     const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const { controller, m } = build();
     m.asrResolver.resolve.mockResolvedValueOnce({ spec: { ...spec, agent: { ...spec.agent, source: 'tenant' } } });
-    await controller.createStreamSession({} as never, res() as never);
+    await controller.createStreamSession({} as never);
     expect(logSpy).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'stt.asr_agent_resolved', source: 'tenant', workflowDefinitionSlug: null }),
     );
-    logSpy.mockRestore();
-  });
-
-  it('the deprecated pipelineId path never resolves an agent and logs nothing', async () => {
-    const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    const { controller, m } = build();
-    m.pipelineService.getById.mockResolvedValue({ id: 'pipe-1', tenantId: 'tenant-1', name: 'p' });
-    await controller.createStreamSession({ pipelineId: 'pipe-1' } as never, res() as never);
-    expect(m.asrResolver.resolve).not.toHaveBeenCalled();
-    expect(logSpy).not.toHaveBeenCalledWith(expect.objectContaining({ message: 'stt.asr_agent_resolved' }));
     logSpy.mockRestore();
   });
 });
@@ -177,13 +159,13 @@ describe('TASK-1002 — transcribeFile forwards consultationId to the ASR resolv
 
   it('passes consultationId through to the resolver', async () => {
     const { controller, m } = build();
-    await controller.transcribeFile(file, { consultationId: 'c-2' } as never, res() as never);
+    await controller.transcribeFile(file, { consultationId: 'c-2' } as never);
     expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null, consultationId: 'c-2' });
   });
 
   it('no consultationId on the request → the resolver is called with consultationId: null', async () => {
     const { controller, m } = build();
-    await controller.transcribeFile(file, {} as never, res() as never);
+    await controller.transcribeFile(file, {} as never);
     expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null, consultationId: null });
   });
 });
@@ -200,7 +182,7 @@ describe('TASK-1002 — a WORKFLOW_ASR_AGENT_UNAVAILABLE refusal from the resolv
       }),
     );
     try {
-      await controller.createStreamSession({ consultationId: 'c-1' } as never, res() as never);
+      await controller.createStreamSession({ consultationId: 'c-1' } as never);
       expect.fail('expected the 409 to propagate');
     } catch (err) {
       expect(err).toBeInstanceOf(ConflictException);

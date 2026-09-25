@@ -188,7 +188,7 @@ describe('boot-time /admin/* named-surface audit (collapsed to FORBID)', () => {
    * plus `ConsentGrantController`, which was absent though harmless (it was
    * already forbidden). Their absence is exactly why the derived sweep above
    * exists; listing them here closes the transcription gap as well.
- */
+   */
   // 70 -> 68: deleted `DepartmentAgentController` and
   // `DepartmentAgentResyncController` with the resource they administered.
   // 68 -> 67: TASK-862 deleted `AdminReconciliationController` with the
@@ -199,7 +199,9 @@ describe('boot-time /admin/* named-surface audit (collapsed to FORBID)', () => {
   // 65 -> 64: TASK-881 deleted `AiTaskDefaultAdminController` with the `AiTaskDefault` facade.
   // 64 -> 63: TASK-882 deleted `PipelinePolicyAdminController` with `PipelinePolicy`.
   // 63 -> 62: TASK-888 deleted `TenantTtsConfigAdminController` with `TenantTtsConfig`.
-  it('covers all 62 admin-prefixed controllers, including the three the  list missed', () => {
+  // 63 -> 60 (after TASK-886's +1): TASK-1006 deleted `AudioPipelineController`,
+  // `TenantSttConfigAdminController` and `TenantPipelineResyncController` with the pre-agent ASR stack.
+  it('covers all 60 admin-prefixed controllers, including the three the  list missed', () => {
     const names = ADMIN_SCOPED_CONTROLLERS.map((c) => c.controller.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toContain('KnowledgeController');
@@ -210,7 +212,7 @@ describe('boot-time /admin/* named-surface audit (collapsed to FORBID)', () => {
     // `@ForbidApiKey()`; it declares no service-account scope either, which is
     // a deny-by-default 403 for both machine classes — the correct posture for a
     // surface only a human super administrator may reach.
-    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(63);
+    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(60);
   });
 
   it('throws when a listed controller loses its @ForbidApiKey() metadata', () => {

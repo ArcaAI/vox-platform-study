@@ -32,7 +32,12 @@ const graph = (config: Record<string, unknown>) => ({ version: 1, nodes: [node(c
 /** A `core.agent` tuned with `presencePenalty` — the parameter the seeded generation rows do not support. */
 const TUNED = { agentRef: { slug: 'clinic-summarizer' }, overrides: { generation: { temperature: 0.2, presencePenalty: 0.5 } } };
 
-const publishedAgent = { id: 'agent-1', slug: 'clinic-summarizer', versionNumber: 3, compiledConfig: { model: { id: 'm1', slug: 'lms-gemma-4-e2b-it-qat' } } };
+const publishedAgent = {
+  id: 'agent-1',
+  slug: 'clinic-summarizer',
+  versionNumber: 3,
+  compiledConfig: { model: { id: 'm1', slug: 'lms-gemma-4-e2b-it-qat' } },
+};
 const modelRow = (supported: string[] | undefined) => ({
   id: 'm1',
   slug: 'lms-gemma-4-e2b-it-qat',
@@ -96,7 +101,6 @@ function makeService(): WorkflowDefinitionService {
     undefined,
     undefined,
     undefined,
-    undefined,
     mockRoutingPolicyService as never,
     agentRepository as never,
     aiModelRepository as never,
@@ -105,7 +109,8 @@ function makeService(): WorkflowDefinitionService {
 
 const findingsOf = async (service: WorkflowDefinitionService) => {
   const error = await service.publish('def-1', {}).catch((e: BadRequestException) => e);
-  return ((error as BadRequestException).getResponse() as { findings: { nodeId: string; path: string; message: string; severity: string }[] }).findings;
+  return ((error as BadRequestException).getResponse() as { findings: { nodeId: string; path: string; message: string; severity: string }[] })
+    .findings;
 };
 
 describe('readGenerationBinding — the core.agent shape', () => {
@@ -117,7 +122,9 @@ describe('readGenerationBinding — the core.agent shape', () => {
       agentRef: { slug: 'clinic-summarizer' },
       path: '/config/overrides/generation',
     });
-    expect(readGenerationBinding(node({ agentRef: { slug: 'x', versionNumber: 2 }, overrides: { generation: { topP: 0.9 } } }) as never)).toMatchObject({
+    expect(
+      readGenerationBinding(node({ agentRef: { slug: 'x', versionNumber: 2 }, overrides: { generation: { topP: 0.9 } } }) as never),
+    ).toMatchObject({
       agentRef: { slug: 'x', versionNumber: 2 },
     });
   });
@@ -169,14 +176,18 @@ describe('publish — a core.agent override the bound agent`s provider rejects i
   });
 
   it('resolves the agent for the CALLING tenant and reads the capability set off the agent`s OWN model row — never the routing plane', async () => {
-    await makeService().publish('def-1', {}).catch(() => undefined);
+    await makeService()
+      .publish('def-1', {})
+      .catch(() => undefined);
     expect(agentRepository.findPublishedActiveBySlug).toHaveBeenCalledWith('tenant-1', 'clinic-summarizer');
     expect(aiModelRepository.findById).toHaveBeenCalledWith('m1');
     expect(mockRoutingPolicyService.resolveGenerationCapabilities).not.toHaveBeenCalled();
   });
 
   it('a CONFORMING override publishes clean', async () => {
-    mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity({ graph: graph({ agentRef: { slug: 'clinic-summarizer' }, overrides: { generation: { temperature: 0.3, topP: 0.9 } } }) }));
+    mockWorkflowDefinitionRepository.findById.mockResolvedValue(
+      entity({ graph: graph({ agentRef: { slug: 'clinic-summarizer' }, overrides: { generation: { temperature: 0.3, topP: 0.9 } } }) }),
+    );
     const result = await makeService().publish('def-1', {});
     expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
   });

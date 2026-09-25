@@ -37,7 +37,6 @@ import { MyEntitlementsController } from '../../modules/entitlements/my-entitlem
 import { ChangelogController } from '../../modules/changelog/changelog.controller';
 import { AiInferenceController } from '../../modules/ai-inference/ai-inference.controller';
 import { PromptTemplateController } from '../../modules/prompt-management/prompt-template.controller';
-import { AudioPipelineCatalogController } from '../../modules/pipeline/audio-pipeline-catalog.controller';
 import { PermissionCheckController } from '../../modules/rbac/permission-check.controller';
 import { UserSettingsController } from '../../modules/user/controllers/user-settings.controller';
 import { UserDepartmentsMeController } from '../../modules/user/controllers/user-departments-me.controller';
@@ -79,7 +78,7 @@ describe('business-plane API-key exemption audit (policy A1)', () => {
    * reads a faithful shim as an unexplained hole and refuses the boot, which is
    * exactly what it did. It dies with the shim in `ALL-2.0.0`, taking this entry
    * with it.
- */
+   */
   it('names exactly the reasoned exemptions and their inherited shim', () => {
     expect(BUSINESS_PLANE_KEY_FORBIDDEN).toEqual(
       new Set(['AuthController', 'VoiceProfileController', 'DnaWritingStyleController', 'VoiceProfileRedirectShimController']),
@@ -95,7 +94,7 @@ describe('business-plane API-key exemption audit (policy A1)', () => {
    * rule). The audit must still pass over both WITHOUT any name-based
    * exemption — that is what proves the deletion was safe rather than merely
    * quiet.
- */
+   */
   it('passes over the two former deferrals with no name-based exemption left', () => {
     expect(BUSINESS_PLANE_KEY_FORBIDDEN.has('MonitoringController')).toBe(false);
     expect(BUSINESS_PLANE_KEY_FORBIDDEN.has('ApiHealthController')).toBe(false);
@@ -119,7 +118,6 @@ describe('business-plane API-key exemption audit (policy A1)', () => {
         buildFakeAppFromRealControllers([
           AiInferenceController,
           PromptTemplateController,
-          AudioPipelineCatalogController,
           ChangelogController,
           MyBillingController,
           MyTenantController,
@@ -241,7 +239,6 @@ describe('the converted business controllers declare the scope A1 assigned them'
   const expected: Array<[string, new (...args: never[]) => unknown, string]> = [
     ['AiInferenceController', AiInferenceController, 'ai:inference:write'],
     ['PromptTemplateController', PromptTemplateController, 'prompt:template:read'],
-    ['AudioPipelineCatalogController', AudioPipelineCatalogController, 'stt:model:read'],
     ['ChangelogController', ChangelogController, 'platform:changelog:read'],
     ['MyBillingController', MyBillingController, 'tenant:account:read'],
     ['MyUsageController', MyUsageController, 'tenant:account:read'],

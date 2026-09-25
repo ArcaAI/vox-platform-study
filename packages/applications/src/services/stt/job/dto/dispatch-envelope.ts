@@ -27,8 +27,6 @@ export interface BatchDispatchEnvelope {
    * gone when the request ends and is reconstructable from nothing else.
    */
   audioUri: string;
-  /** The runtime key actually sent — the agent VERSION id, or the deprecated pipeline id. */
-  pipelineId: string;
   consultationId?: string;
   mediaId?: string;
   language?: string;
@@ -40,8 +38,6 @@ export interface BatchDispatchEnvelope {
    */
   userId?: string;
   audioBucketName?: string;
-  /** @deprecated TASK-861 — removed in R4 with the legacy pipeline path. */
-  fallbackPipelineId?: string;
   /** Whether a per-tenant `StorageDescriptor` was resolved for this dispatch. */
   hadStorageDescriptor: boolean;
   /**

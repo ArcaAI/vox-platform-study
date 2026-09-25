@@ -135,11 +135,8 @@ describe('ConsultationWorkflowDispatchService', () => {
         parentConsultationId: 'parent-1',
       });
 
-      // The STT lane only resolves when `sttPipelineResolver` is wired (see the
-      // selection.task813 suite, which wires it and asserts this exact 3-arg call). This
-      // service's own fixture leaves it `@Optional()` and unset, so `resolveSttPipelineId`
-      // short-circuits before calling `resolve` at all — asserted here so a future change that
-      // starts tagging that lane cannot ride in unnoticed.
+      // There is no STT lane any more (TASK-893 retired the palette, TASK-1006 the resolver) —
+      // asserted here so a change that starts tagging one cannot ride in unnoticed.
       expect(deps.assignments.resolve).not.toHaveBeenCalledWith(TENANT, 'stt', DEPARTMENT, expect.anything());
     });
   });

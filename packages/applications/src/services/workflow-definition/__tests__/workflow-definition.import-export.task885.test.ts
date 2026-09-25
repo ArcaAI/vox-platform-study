@@ -111,7 +111,13 @@ const bundle = (overrides: Partial<WorkflowDefinitionBundle> = {}): WorkflowDefi
       paletteKey: 'core',
       graph: {
         version: 1,
-        nodes: [{ id: 'n_gen', type: 'core.action', config: { actionKey: 'prompt.template_ref', action: { promptTemplateRef: { name: 'Discharge Summary Prompt' } } } }],
+        nodes: [
+          {
+            id: 'n_gen',
+            type: 'core.action',
+            config: { actionKey: 'prompt.template_ref', action: { promptTemplateRef: { name: 'Discharge Summary Prompt' } } },
+          },
+        ],
         edges: [],
       },
       references: [{ nodeId: 'n_gen', kind: 'promptTemplate', key: 'Discharge Summary Prompt' }],
@@ -129,7 +135,6 @@ describe('WorkflowDefinitionService — workflow import/export (TASK-885)', () =
       mockClsService as never,
       mockDatabaseService as never,
       mockEntitlements as never,
-      undefined,
       undefined,
       mockPromptTemplateRepository as never,
       undefined,
@@ -259,7 +264,11 @@ describe('WorkflowDefinitionService — workflow import/export (TASK-885)', () =
       withAgent.payload.graph = {
         version: 1,
         nodes: [
-          { id: 'n_gen', type: 'core.action', config: { actionKey: 'prompt.template_ref', action: { promptTemplateRef: { name: 'Discharge Summary Prompt' } } } },
+          {
+            id: 'n_gen',
+            type: 'core.action',
+            config: { actionKey: 'prompt.template_ref', action: { promptTemplateRef: { name: 'Discharge Summary Prompt' } } },
+          },
           { id: 'n_agent', type: 'core.agent', config: { agentRef: { slug: 'soap-writer' } } },
         ],
         edges: [],

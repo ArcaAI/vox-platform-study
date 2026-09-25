@@ -160,7 +160,6 @@ const construct = () =>
     undefined,
     undefined,
     undefined,
-    undefined,
     mockContextSchemaService as never,
     undefined,
     mockAgentRepository as never,

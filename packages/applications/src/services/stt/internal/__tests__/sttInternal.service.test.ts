@@ -908,13 +908,14 @@ describe('SttInternalService', () => {
             requestId: 'job-123',
             attributesJson: expect.objectContaining({
               engine: 'whisper_cpp',
-              pipelineId: 'pipeline-9',
               channelCount: 1,
             }),
           }),
           units: [{ unit: 'AUDIO_SECOND', quantity: 42.5 }],
         });
         expect(input.common.costBasis).toBeUndefined();
+        // TASK-1006 — a legacy row still carrying a `pipelineId` never stamps it on the ledger.
+        expect(input.common.attributesJson).not.toHaveProperty('pipelineId');
       });
 
       it('maps a BYOK-deployed engine to costBasis BYOK_NOTIONAL', async () => {
@@ -1039,7 +1040,6 @@ describe('SttInternalService', () => {
         expect(input.common.attributesJson.trigger).toBe('CONSULTATION');
       });
     });
-
 
     // =========================================================================
     // TASK-959 §3.2/§4.2 — compute and network rows on the SAME batch

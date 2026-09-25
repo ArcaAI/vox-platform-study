@@ -8,7 +8,6 @@ import {
   UserProfileServiceModule,
   UserDepartmentServiceModule,
   VoiceProfileServiceModule,
-  PipelineServiceModule,
   UserPasswordServiceModule,
 } from '@arcaai/applications';
 import { UserController } from './user.controller';
@@ -35,9 +34,6 @@ import { UserExportService } from './user-export.service';
     UserProfileServiceModule,
     UserDepartmentServiceModule,
     VoiceProfileServiceModule,
-    // UserSettingsController uses PipelineService to validate
-    // the `arcaai-sdk:selectedPipelineId` value against the caller's tenant.
-    PipelineServiceModule,
     // Admin reset-password + public completion.
     UserPasswordServiceModule,
   ],

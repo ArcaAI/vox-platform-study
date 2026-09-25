@@ -186,11 +186,6 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
     adminScope: 'admin:notification:manage',
   },
   {
-    file: 'apps/api/src/modules/pipeline/audio-pipeline.controller.ts',
-    controllerClass: 'AudioPipelineController',
-    adminScope: 'admin:audio-pipeline:manage',
-  },
-  {
     file: 'apps/api/src/modules/platform-metrics/platform-metrics.controller.ts',
     controllerClass: 'PlatformMetricsController',
     adminScope: 'admin:platform-metrics:read',
@@ -280,16 +275,6 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
     file: 'apps/api/src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts',
     controllerClass: 'TenantStorageConfigAdminController',
     adminScope: 'admin:tenant-storage:manage',
-  },
-  {
-    file: 'apps/api/src/modules/tenant-stt-config/tenant-stt-config-admin.controller.ts',
-    controllerClass: 'TenantSttConfigAdminController',
-    adminScope: 'admin:tenant-stt-config:manage',
-  },
-  {
-    file: 'apps/api/src/modules/tenant/tenant-pipeline-resync.controller.ts',
-    controllerClass: 'TenantPipelineResyncController',
-    adminScope: 'admin:tenant:write',
   },
   {
     file: 'apps/api/src/modules/tenant/tenant-provision.controller.ts',

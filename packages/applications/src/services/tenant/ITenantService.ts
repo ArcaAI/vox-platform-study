@@ -47,7 +47,6 @@ export interface ITenantService extends IBaseService {
     totalUsers: number;
     totalDepartments: number;
     totalPromptTemplates: number;
-    totalPipelines: number;
     storageUsedBytes: number;
     storageQuotaBytes: number | null;
     transcriptionMinutes: number;

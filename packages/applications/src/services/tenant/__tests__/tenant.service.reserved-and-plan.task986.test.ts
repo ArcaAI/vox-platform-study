@@ -64,13 +64,10 @@ function buildService(): TenantService {
     stub, // globalSettingRepository
     stub, // departmentRepository
     stub, // promptTemplateRepository
-    { findEnabledPipelines: vi.fn().mockResolvedValue([]) } as never, // asrPipelineRepository
     { baseClient: { department: { findMany: vi.fn().mockResolvedValue([]) } } } as never, // databaseService
     mockTenantBucketService as never,
     mockEventEmitter as never,
     mockClsService as never,
-    stub, // _retiredAiModelRepository
-    stub, // asrPipelineVersionRepository
     mockReferenceSetService as never,
     mockBillingService as never,
   );

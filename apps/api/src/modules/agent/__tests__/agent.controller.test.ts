@@ -68,7 +68,6 @@ function make(overrides: Record<string, unknown> = {}) {
       mode === 'stream' ? { stream: new PassThrough() } : { text: 'hello', provider: 'lm-studio', model: 'lms-gemma-4-e2b-it-qat', usage: null },
     ),
     buildSpeechRequest: vi.fn(),
-    resolveAsrPipelineId: vi.fn(async () => 'pipe-1'),
     // TASK-890 §3.14 — the ledger's screening disposition for this call.
     guardrailDisposition: vi.fn(async (decision: { enabled: boolean }): Promise<'screened' | 'opted_out' | 'platform_off'> =>
       decision.enabled ? 'screened' : 'opted_out',
@@ -218,10 +217,9 @@ describe('AgentController — invocations', () => {
 
 describe('AgentController — transcriptions (TASK-861: agent-keyed, no pipeline row)', () => {
   it('resolves the agent to a ResolvedAsrSpec, creates an agent-keyed job and dispatches the spec with the media uri', async () => {
-    const { controller, jobService, realtimeService, asrResolver, invocation } = make();
+    const { controller, jobService, realtimeService, asrResolver } = make();
     const out = await controller.transcribe('platform-transcription', { mediaId: 'media-1', language: 'ml-en' });
     expect(asrResolver.resolve).toHaveBeenCalledWith({ tenantId: TENANT, agentSlug: 'platform-transcription', departmentId: null });
-    expect(invocation.resolveAsrPipelineId).not.toHaveBeenCalled();
     expect(jobService.createBatchJob).toHaveBeenCalledWith(
       expect.objectContaining({
         agentVersionId: 'agent-v-1',
@@ -234,7 +232,6 @@ describe('AgentController — transcriptions (TASK-861: agent-keyed, no pipeline
     expect(realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(
       expect.objectContaining({
         jobId: 'job-1',
-        pipelineId: 'agent-v-1',
         resolvedSpec: expect.objectContaining({ runtimeKey: 'agent-v-1' }),
         audioUri: 's3://bucket/audio.wav',
         language: 'ml-en',
@@ -244,9 +241,10 @@ describe('AgentController — transcriptions (TASK-861: agent-keyed, no pipeline
       id: 'job-1',
       agentSlug: 'platform-transcription',
       agentVersionId: 'agent-v-1',
-      pipelineId: 'agent-v-1',
       sseUrl: '/api/v1/audio/transcription-jobs/job-1/stream',
     });
+    expect(out).not.toHaveProperty('pipelineId');
+    expect((realtimeService.dispatchDramatiqJob.mock.calls[0] as unknown[])[0]).not.toHaveProperty('pipelineId');
   });
 
   it('fails closed (409) when the agent cannot become a runnable spec — the resolver’s verdict propagates untouched', async () => {
@@ -381,7 +379,6 @@ describe('AgentController — speech carries the same activity dimension', () =>
         inputProblems: vi.fn(() => []),
         invokeText: vi.fn(),
         buildSpeechRequest: vi.fn(() => ({ input: 'hello there', voice: 'af_heart' })),
-        resolveAsrPipelineId: vi.fn(),
       },
       resolver: { resolve: vi.fn(async () => ({ ...RESOLVED, task: 'TEXT_TO_SPEECH' })) },
     });

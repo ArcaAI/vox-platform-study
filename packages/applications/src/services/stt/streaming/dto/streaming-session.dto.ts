@@ -20,18 +20,11 @@ export interface CreateStreamingSessionRequest {
   /** Tenant identifier */
   tenantId: string;
   /**
-   * The runtime identity the session is keyed on. With `resolvedSpec` this is
-   * `spec.runtimeKey` (the ASR Agent VERSION id); without it, the deprecated
-   * `AsrPipeline` id/slug `apps/stt` still looks up for the window.
+   * The gateway-resolved ASR runtime contract the session runs on. `apps/stt` assembles the
+   * engine chain — primary AND fallback — from it and reads nothing from Postgres. It is the
+   * session's ONLY selector: there is no pipeline id on this wire (TASK-1006).
    */
-  pipelineId: string;
-  /**
-   * TASK-861 — the gateway-resolved ASR runtime contract. When present,
-   * `apps/stt` assembles the engine chain from it and reads NOTHING from
-   * Postgres; `pipelineId` / `fallbackPipelineId` are then the spec's runtime
-   * keys, sent for the session-identity plumbing that predates the spec.
-   */
-  resolvedSpec?: ResolvedAsrSpec | null;
+  resolvedSpec: ResolvedAsrSpec;
   /** Optional consultation context */
   consultationId?: string;
   /** Audio sample rate in Hz (default 16000) */
@@ -85,13 +78,6 @@ export interface CreateStreamingSessionRequest {
    */
   providerOverrides?: Record<string, { api_key: string; region?: string; base_url?: string; endpoint?: string; model?: string }>;
   /**
-   * The fallback engine's runtime key (`resolvedSpec.fallback.spec.runtimeKey`),
-   * or — deprecated, TASK-861 — the tenant-level fallback `AsrPipeline` id.
-   * Forwarded so the session runtime can swap to the fallback ASR engine on a
-   * classified outage without tearing the WebSocket.
-   */
-  fallbackPipelineId?: string | null;
-  /**
    * Tenant governance for the FAILURE-DRIVEN auto switch. Omitted /
    * `null` ⇒ STT's `EngineSwitchController` default (enabled). Never governs a
    * user-initiated switch — that is an explicit choice, not a policy.
@@ -119,13 +105,6 @@ export interface StreamingSessionStatus {
   maxConcurrent: number;
   /** Number of currently active sessions */
   currentActive: number;
-  /**
-   * The RESOLVED ASR pipeline this session opened with. Differs from
-   * the requested id whenever the caller sent none (STT/gateway resolve one) or
-   * a slug resolved to a different identifier. `undefined` against an STT that
-   * predates the echo.
-   */
-  pipelineId?: string;
   /**
    * The engine actually live at create: `'primary'`, or `'fallback'` when the
    * session opened on the tenant fallback — by choice (`startOn`) or because
@@ -244,6 +223,10 @@ export interface StreamingSessionTeardownSummary {
   tenant_id: string;
   consultation_id: string | null;
   user_id: string | null;
+  /**
+   * The session's runtime key — the resolved ASR agent VERSION id. The wire NAME predates
+   * TASK-1006 and is kept; no `AsrPipeline` stands behind it any more.
+   */
   pipeline_id: string;
   /** ISO-8601 teardown instant — the ledger event's `occurredAt`. */
   closed_at: string;
@@ -392,14 +375,6 @@ export interface StreamingTranscriptMessage {
    * language. Consumers prefer this over the session-configured language/mode.
    */
   detectedLanguage?: string;
-  /**
-   * The ASR pipeline that actually produced THIS utterance,
-   * stamped per-segment by the stt worker (`SegmentResult.pipeline_id`).
-   * Can differ from the session's requested pipeline after a mid-session
-   * engine switch. Absent when the upstream stt worker doesn't set it
-   * (older workers, or the id is not yet known).
-   */
-  pipelineId?: string;
   /** Speaker identifier from diarization, if available */
   speakerId?: string;
   /**

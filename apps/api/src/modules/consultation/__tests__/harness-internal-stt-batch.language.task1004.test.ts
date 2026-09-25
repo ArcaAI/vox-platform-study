@@ -44,13 +44,14 @@ describe('HarnessInternalController — stt/batch-jobs language (TASK-1004)', ()
       jobService as any,
       realtimeService as any,
       consultationService as any,
+      { resolve: vi.fn().mockResolvedValue({ spec: { runtimeKey: 'agent-v-1', agent: { slug: 'a-1', versionId: 'agent-v-1' } } }) } as any, // asrResolver
     );
   });
 
   const dispatched = () => realtimeService.dispatchDramatiqJob.mock.calls[0]![0] as Record<string, unknown>;
 
   it('no language on the request → inherits the consultation’s declared mode (source consultation)', async () => {
-    await controller.createSttBatchJob({ tenantId: 't-1', pipelineId: 'p-1', audioUri: 's3://b/k.wav', consultationId: 'c-1' } as any);
+    await controller.createSttBatchJob({ tenantId: 't-1', agentSlug: 'a-1', audioUri: 's3://b/k.wav', consultationId: 'c-1' } as any);
     expect(consultationService.getById).toHaveBeenCalledWith('c-1');
     expect(dispatched()).toMatchObject({ languageMode: 'ml-en', languageModeSource: 'consultation' });
   });
@@ -58,7 +59,7 @@ describe('HarnessInternalController — stt/batch-jobs language (TASK-1004)', ()
   it('an explicit languageMode wins and the consultation is not read for it', async () => {
     await controller.createSttBatchJob({
       tenantId: 't-1',
-      pipelineId: 'p-1',
+      agentSlug: 'a-1',
       audioUri: 's3://b/k.wav',
       consultationId: 'c-1',
       languageMode: 'en',
@@ -69,14 +70,14 @@ describe('HarnessInternalController — stt/batch-jobs language (TASK-1004)', ()
 
   it('an unknown value is 400 LANGUAGE_MODE_UNKNOWN before any job is created', async () => {
     await expect(
-      controller.createSttBatchJob({ tenantId: 't-1', pipelineId: 'p-1', audioUri: 's3://b/k.wav', languageMode: 'xx' } as any),
+      controller.createSttBatchJob({ tenantId: 't-1', agentSlug: 'a-1', audioUri: 's3://b/k.wav', languageMode: 'xx' } as any),
     ).rejects.toMatchObject({ response: { code: 'LANGUAGE_MODE_UNKNOWN' } });
     expect(realtimeService.dispatchDramatiqJob).not.toHaveBeenCalled();
   });
 
   it('an undeclared consultation sends no mode', async () => {
     consultationService.getById.mockResolvedValue({ id: 'c-1' });
-    await controller.createSttBatchJob({ tenantId: 't-1', pipelineId: 'p-1', audioUri: 's3://b/k.wav', consultationId: 'c-1' } as any);
+    await controller.createSttBatchJob({ tenantId: 't-1', agentSlug: 'a-1', audioUri: 's3://b/k.wav', consultationId: 'c-1' } as any);
     expect(dispatched()).not.toHaveProperty('languageMode');
   });
 });

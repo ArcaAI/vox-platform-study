@@ -143,7 +143,9 @@ export class SttStreamingUsagePushbackRequest {
   @IsOptional()
   user_id?: string | null;
 
-  @ApiProperty({ description: 'Resolved pipeline id (usage attribution).' })
+  // TASK-1006 — the field keeps its wire NAME (renaming it is a separate change) but it no longer
+  // names an `AsrPipeline`: STT reports the session's runtime key, the resolved ASR agent version.
+  @ApiProperty({ description: "The session's runtime key — the resolved ASR agent version id (usage attribution)." })
   @IsString()
   pipeline_id!: string;
 

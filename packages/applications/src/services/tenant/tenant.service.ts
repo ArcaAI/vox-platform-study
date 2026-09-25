@@ -15,11 +15,6 @@ import {
   DepartmentFactory,
   DepartmentEntity,
   PromptTemplateRepository,
-  AsrPipelineRepository,
-  AsrPipelineFactory,
-  AsrPipelineVersionRepository,
-  AsrPipelineVersionFactory,
-  AiModelRepository,
   TenantPlan,
   PlanEntitlementRepository,
   TenantEntitlementRepository,
@@ -75,23 +70,12 @@ export class TenantService extends BaseService implements ITenantService {
     private readonly globalSettingRepository: GlobalSettingRepository,
     private readonly departmentRepository: DepartmentRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
-    private readonly asrPipelineRepository: AsrPipelineRepository,
     @Inject('CORE_DATABASE_SERVICE')
     private readonly databaseService: CoreDatabaseService,
     @Inject(ITenantBucketService)
     private readonly tenantBucketService: ITenantBucketService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // Retained for constructor ARITY only. Its user, `provisionTenantModelCatalog`, was
-    // deleted by TASK-890 L13 (OD-O: the catalogue is CONFIG, stays SYSTEM-shared-read, and is
-    // never cloned). Removing the positional dependency would renumber every argument after it
-    // in six test fixtures for no behavioural gain; it goes with the ASR-pipeline clone under
-    // TASK-901, which owns the two parameters that follow.
-    private readonly _retiredAiModelRepository: AiModelRepository,
-    // Appended last (append-only). Used
-    // to clone the SYSTEM default ASR pipeline's current version into each new
-    // tenant alongside the pipeline itself.
-    private readonly asrPipelineVersionRepository: AsrPipelineVersionRepository,
     /**
      * TASK-890 §3.4 — the SYSTEM reference set. `@Optional()` + trailing, the house convention:
      * production DI supplies it through `TenantServiceModule`; the positional unit fixtures do
@@ -199,16 +183,6 @@ export class TenantService extends BaseService implements ITenantService {
     }
 
     try {
-      await this.provisionTenantPipelineCatalog(tenant.id);
-    } catch (error) {
-      this.logger.warn({
-        message: 'Failed to provision ASR pipeline catalog for new tenant',
-        tenantId: tenant.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    try {
       await this.provisionTenantDepartmentCatalog(tenant.id, tenant.plan);
     } catch (error) {
       this.logger.warn({
@@ -225,7 +199,7 @@ export class TenantService extends BaseService implements ITenantService {
     // provisioned resolves `AGENT_NOT_ASSIGNED` / `PROMPT_DEFAULT_NOT_PROVISIONED` rather than
     // quietly serving the platform's rows.
     //
-    // Best-effort like its six siblings — a copy that fails must not fail the tenant — and the
+    // Best-effort like its siblings — a copy that fails must not fail the tenant — and the
     // summary it returns names every failure. `POST /admin/tenants/:id/reference-set/sync` is
     // the repair, and §4.4 proof #9 is what catches a tenant this step could not complete.
     try {
@@ -248,115 +222,9 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Clones EVERY enabled SYSTEM `AsrPipeline` (plus each one's current
-   * `AsrPipelineVersion`) into the newly created tenant, so a new tenant owns
-   * the SAME pipeline catalog as SYSTEM — full parity by policy. This
-   * generalizes an earlier single-default-only clone. Composes as an
-   * independent provisioning step.
-   *
-   * Behaviour:
-   *  - Reads the SYSTEM-owned ENABLED pipelines (the shared master catalog).
-   *  - Idempotent / backfill-safe per slug: pipelines the new tenant already
-   *    owns (`isSlugUnique` === false) are skipped, so this doubles as the
-   *    existing-tenant backfill and can grow a tenant's catalog on re-run.
-   *  - Builds each clone via `AsrPipelineFactory` bound to the NEW tenant and
-   *    copies the source's *current* version (newest by `versionNumber`) as the
-   *    clone's v1; when a source has no version rows, v1 is synthesized from the
-   *    pipeline-level `configYaml`.
-   *  - Stamps template lineage on every clone — `sourceTemplateSlug`
-   *    (the SYSTEM template it descends from) and `templateLocked: true`, which
-   *    makes the copy read-only for content edits/delete. Tenant admins clone a
-   *    copy to customize it; enable/disable and set-default stay available.
-   *  - Marks the clone of the SYSTEM default (`isDefault`) as the tenant default
-   *    atomically via `setDefaultForTenant` (preserves one-default-per-tenant).
-   *  - Per-row failure-isolated (one bad clone never aborts the others or tenant
-   *    creation); an empty SYSTEM catalog is a safe no-op (logged for operators).
-   */
-  private async provisionTenantPipelineCatalog(newTenantId: string): Promise<void> {
-    const sources = await this.asrPipelineRepository.findEnabledPipelines(SYSTEM_TENANT_ID);
-    if (sources.length === 0) {
-      this.logger.warn({
-        message: 'No SYSTEM ASR pipelines to clone for new tenant',
-        newTenantId,
-        systemTenantId: SYSTEM_TENANT_ID,
-      });
-      return;
-    }
-
-    let defaultCloneId: string | undefined;
-
-    for (const source of sources) {
-      try {
-        // Idempotency: skip the slugs the tenant already owns (backfill-safe).
-        const isUnique = await this.asrPipelineRepository.isSlugUnique(newTenantId, source.slug);
-        if (!isUnique) {
-          continue;
-        }
-
-        const clonedPipeline = AsrPipelineFactory.CreateAsrPipeline({
-          tenantId: newTenantId,
-          name: source.name,
-          slug: source.slug,
-          description: source.description ?? undefined,
-          configYaml: source.configYaml,
-          tags: source.tags,
-          // The clone IS a template copy: it records which SYSTEM
-          // template it descends from and starts LOCKED, so the tenant admin
-          // clones it to customize rather than editing it in place.
-          // `PipelineService.update/delete` enforce the lock.
-          sourceTemplateSlug: source.slug,
-          templateLocked: true,
-          createdBy: this.requestUser?.id,
-        });
-
-        const savedPipeline = await this.asrPipelineRepository.create(clonedPipeline);
-        if (source.isDefault) {
-          defaultCloneId = savedPipeline.id;
-        }
-
-        // Carry the source pipeline's current version YAML (findByPipeline is
-        // newest-first) as the clone's v1; fall back to the pipeline-level
-        // configYaml when the source has no version rows.
-        const sourceVersions = await this.asrPipelineVersionRepository.findByPipeline(source.id);
-        const currentVersionYaml = sourceVersions[0]?.configYaml ?? source.configYaml;
-        const nextVersionNumber = await this.asrPipelineVersionRepository.getNextVersionNumber(savedPipeline.id);
-
-        const clonedVersion = AsrPipelineVersionFactory.CreateAsrPipelineVersion({
-          asrPipelineId: savedPipeline.id,
-          versionNumber: nextVersionNumber,
-          configYaml: currentVersionYaml,
-          name: savedPipeline.name,
-          description: savedPipeline.description ?? undefined,
-          changeReason: 'Cloned from SYSTEM ASR pipeline catalog on tenant provisioning (full parity)',
-          changedBy: this.requestUser?.id,
-          tenantId: newTenantId,
-          createdBy: this.requestUser?.id,
-        });
-
-        await this.asrPipelineVersionRepository.create(clonedVersion);
-      } catch (error) {
-        this.logger.warn({
-          message: 'Failed to clone ASR pipeline for new tenant - continuing',
-          newTenantId,
-          sourcePipelineId: source.id,
-          sourceSlug: source.slug,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    // Tenant-scoped default flip (atomic; unsets any other tenant default first).
-    // Only when the SYSTEM default was actually cloned this run.
-    if (defaultCloneId) {
-      await this.asrPipelineRepository.setDefaultForTenant(newTenantId, defaultCloneId, this.requestUser?.id);
-    }
-  }
-
-  /**
    * Clones the SYSTEM **golden department catalog** into the newly created
    * tenant: every SYSTEM golden department gets a tenant-owned `Department`
-   * copy. This is the department sibling of `provisionTenantPipelineCatalog`
-   * and mirrors its contracts exactly.
+   * copy.
    *
    * ## What this used to also do
    *
@@ -381,7 +249,7 @@ export class TenantService extends BaseService implements ITenantService {
    * (`getUsageStats`, `updateTenantConfigs`). Writes go through the tenant-bound
    * repositories.
    *
-   * Behaviour (mirrors the pipeline catalog):
+   * Behaviour:
    *  - For each golden department: reuses the tenant's same-code department when
    *    it already exists (the bare `GEN` from `provisionDefaultDepartment`, or a
    *    prior run) — else creates the copy. Idempotent / backfill-safe.
@@ -869,8 +737,7 @@ export class TenantService extends BaseService implements ITenantService {
    * `PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION`) — and removes every row
    * `create()` wrote for it: the reference-set clone (agents, prompt
    * templates, workflow definitions, context schemas, document templates —
-   * plus their versions/assignments), the ASR pipeline catalog clone, and
-   * the department catalog clone. None of this cascades at the DB level on
+   * plus their versions/assignments) and the department catalog clone. None of this cascades at the DB level on
    * `tenantId` (rule 02: no FK on that column — by design), so each table is
    * swept explicitly, in an order that respects the REAL FKs that DO exist
    * between them: a version before its parent, and the two kinds that hold
@@ -902,9 +769,6 @@ export class TenantService extends BaseService implements ITenantService {
       await tx.agent.deleteMany({ where: { tenantId } });
       await tx.workflowAssignment.deleteMany({ where: { tenantId } });
       await tx.workflowDefinition.deleteMany({ where: { tenantId } });
-      // ASR pipeline catalog clone.
-      await tx.asrPipelineVersion.deleteMany({ where: { tenantId } });
-      await tx.asrPipeline.deleteMany({ where: { tenantId } });
       // Department catalog clone — last of the content, now that nothing
       // left standing still holds an FK into it.
       await tx.department.deleteMany({ where: { tenantId } });
@@ -1301,7 +1165,6 @@ export class TenantService extends BaseService implements ITenantService {
     totalUsers: number;
     totalDepartments: number;
     totalPromptTemplates: number;
-    totalPipelines: number;
     storageUsedBytes: number;
     storageQuotaBytes: number | null;
     transcriptionMinutes: number;
@@ -1313,31 +1176,21 @@ export class TenantService extends BaseService implements ITenantService {
     const client = this.databaseService.client;
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [
-      distinctUserAssignments,
-      totalDepartments,
-      totalPromptTemplates,
-      totalPipelines,
-      sizeAgg,
-      quotaAgg,
-      durationAgg,
-      summaries24h,
-      totalConsultations,
-    ] = await Promise.all([
-      client.userRoleAssignment.findMany({
-        where: { tenantId },
-        select: { userId: true },
-        distinct: ['userId'],
-      }),
-      this.departmentRepository.count({ where: { tenantId } }),
-      this.promptTemplateRepository.count({ where: { tenantId } }),
-      this.asrPipelineRepository.count({ where: { tenantId } }),
-      client.media.aggregate({ _sum: { size: true }, where: { tenantId } }),
-      client.tenantBucket.aggregate({ _sum: { quotaBytes: true }, where: { tenantId, quotaBytes: { not: null } } }),
-      client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId } }),
-      client.summaryMeta.count({ where: { tenantId, generatedAt: { gte: since24h } } }),
-      client.consultation.count({ where: { tenantId } }),
-    ]);
+    const [distinctUserAssignments, totalDepartments, totalPromptTemplates, sizeAgg, quotaAgg, durationAgg, summaries24h, totalConsultations] =
+      await Promise.all([
+        client.userRoleAssignment.findMany({
+          where: { tenantId },
+          select: { userId: true },
+          distinct: ['userId'],
+        }),
+        this.departmentRepository.count({ where: { tenantId } }),
+        this.promptTemplateRepository.count({ where: { tenantId } }),
+        client.media.aggregate({ _sum: { size: true }, where: { tenantId } }),
+        client.tenantBucket.aggregate({ _sum: { quotaBytes: true }, where: { tenantId, quotaBytes: { not: null } } }),
+        client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId } }),
+        client.summaryMeta.count({ where: { tenantId, generatedAt: { gte: since24h } } }),
+        client.consultation.count({ where: { tenantId } }),
+      ]);
 
     const durationMs = durationAgg._sum.duration ?? 0;
     const quotaSum = quotaAgg._sum.quotaBytes;
@@ -1346,7 +1199,6 @@ export class TenantService extends BaseService implements ITenantService {
       totalUsers: distinctUserAssignments.length,
       totalDepartments,
       totalPromptTemplates,
-      totalPipelines,
       storageUsedBytes: sizeAgg._sum.size ?? 0,
       storageQuotaBytes: quotaSum === null || quotaSum === undefined ? null : Number(quotaSum),
       transcriptionMinutes: Math.round((durationMs / 60000) * 100) / 100,

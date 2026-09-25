@@ -120,8 +120,6 @@ export * from './platform-metrics';
 // requests-per-minute + concurrent streams), fed by the entitlements plane.
 export * from './provider-capacity';
 // Per-tenant TTS configuration (DB-backed spec + BYO provider creds).
-// Per-tenant STT fallback configuration (fallback pipeline pointer + BYO provider creds).
-export * from './tenant-stt-config';
 // Tenant-writable nlp.topic/nlp.intent instruction content — deliberately separate from AiRoutingPolicy's model-selection governance.
 export * from './tenant-nlp-task-instructions';
 // Tenant-scoped external identity provider (OIDC config + per-tenant client resolver + JIT-provisioning login round-trip).

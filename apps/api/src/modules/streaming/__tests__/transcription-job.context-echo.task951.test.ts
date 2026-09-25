@@ -66,7 +66,6 @@ const mocks = (contextSchema?: unknown) => ({
   cls: { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : { id: 'user-1', tenantId: 'tenant-1' })) },
   blobStorage: { resolveDescriptor: vi.fn().mockResolvedValue(null) },
   tenantBucketService: { getBucketBySlug: vi.fn(), getBucketByPurpose: vi.fn() },
-  pipelineService: { getById: vi.fn().mockResolvedValue({ id: 'pipe-1', tenantId: 'tenant-1' }) },
   streamTicketService: { issueTicket: vi.fn().mockResolvedValue({ ticket: 't', expiresAt: 1 }) },
   binding: { bind: vi.fn(), bindSessionMeta: vi.fn(), clear: vi.fn() },
   entitlements: { assertConcurrencyQuota: vi.fn() },
@@ -87,18 +86,14 @@ function build(contextSchema?: unknown) {
     m.cls as never,
     m.blobStorage as never,
     m.tenantBucketService as never,
-    m.pipelineService as never,
     m.streamTicketService as never,
     m.binding as never,
     m.entitlements as never,
-    undefined,
     undefined,
     m.asrResolver as never,
   );
   return { controller, m };
 }
-
-const res = () => ({ setHeader: vi.fn() });
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -107,7 +102,7 @@ describe('createStreamSession — accepting the session context', () => {
     const { controller, m } = build(STREAM_PAYLOAD_SCHEMA);
     const before = Date.now();
 
-    const out = await controller.createStreamSession({ agentSlug: 'realtime-transcription', context: CONTEXT } as never, res() as never);
+    const out = await controller.createStreamSession({ agentSlug: 'realtime-transcription', context: CONTEXT } as never);
 
     // Stored beside the sampleRate on the ONE meta record the WS gateway reads at handshake.
     expect(m.binding.bindSessionMeta).toHaveBeenCalledWith(
@@ -128,7 +123,7 @@ describe('createStreamSession — accepting the session context', () => {
   it('never forwards the context to apps/stt — the echo is a gateway concern end to end', async () => {
     const { controller, m } = build(STREAM_PAYLOAD_SCHEMA);
 
-    await controller.createStreamSession({ agentSlug: 'realtime-transcription', context: CONTEXT } as never, res() as never);
+    await controller.createStreamSession({ agentSlug: 'realtime-transcription', context: CONTEXT } as never);
 
     expect(m.sessionService.createSession.mock.calls[0][0]).not.toHaveProperty('context');
   });
@@ -136,7 +131,7 @@ describe('createStreamSession — accepting the session context', () => {
   it('a session created WITHOUT a context is unchanged — no context stored, none echoed', async () => {
     const { controller, m } = build(STREAM_PAYLOAD_SCHEMA);
 
-    const out = await controller.createStreamSession({ agentSlug: 'realtime-transcription' } as never, res() as never);
+    const out = await controller.createStreamSession({ agentSlug: 'realtime-transcription' } as never);
 
     expect(m.binding.bindSessionMeta.mock.calls[0][1]).not.toHaveProperty('context');
     expect(out.context).toBeUndefined();
@@ -149,9 +144,9 @@ describe('createStreamSession — accepting the session context', () => {
     const { controller, m } = build(STREAM_PAYLOAD_SCHEMA);
     const oversized = { stream: { mic_id: 'm', note: 'x'.repeat(MAX_STREAM_SESSION_CONTEXT_BYTES) } };
 
-    await expect(
-      controller.createStreamSession({ agentSlug: 'realtime-transcription', context: oversized } as never, res() as never),
-    ).rejects.toBeInstanceOf(PayloadTooLargeException);
+    await expect(controller.createStreamSession({ agentSlug: 'realtime-transcription', context: oversized } as never)).rejects.toBeInstanceOf(
+      PayloadTooLargeException,
+    );
 
     // The size gate needs no tenant read, no agent resolution and no upstream round trip, so an
     // oversized body must not consume any of them.
@@ -167,19 +162,19 @@ describe('createStreamSession — accepting the session context', () => {
     const multiByte = { stream: { mic_id: 'm', note: 'മ'.repeat(1500) } };
     expect(JSON.stringify(multiByte).length).toBeLessThan(MAX_STREAM_SESSION_CONTEXT_BYTES);
 
-    await expect(
-      controller.createStreamSession({ agentSlug: 'realtime-transcription', context: multiByte } as never, res() as never),
-    ).rejects.toBeInstanceOf(PayloadTooLargeException);
+    await expect(controller.createStreamSession({ agentSlug: 'realtime-transcription', context: multiByte } as never)).rejects.toBeInstanceOf(
+      PayloadTooLargeException,
+    );
   });
 
   it('refuses a context the bound schema does not admit with 400 CONTEXT_SCHEMA_VIOLATION + the problems', async () => {
     const { controller, m } = build(STREAM_PAYLOAD_SCHEMA);
 
     // `mic_id` is required by the kind's own schema.
-    const promise = controller.createStreamSession(
-      { agentSlug: 'realtime-transcription', context: { stream: { speaker_label: 'Clinician' } } } as never,
-      res() as never,
-    );
+    const promise = controller.createStreamSession({
+      agentSlug: 'realtime-transcription',
+      context: { stream: { speaker_label: 'Clinician' } },
+    } as never);
 
     await expect(promise).rejects.toBeInstanceOf(BadRequestException);
     await promise.catch((err: BadRequestException) => {
@@ -200,28 +195,16 @@ describe('createStreamSession — accepting the session context', () => {
     const { controller } = build(STREAM_PAYLOAD_SCHEMA);
 
     await expect(
-      controller.createStreamSession({ agentSlug: 'realtime-transcription', context: { streem: { mic_id: 'm' } } } as never, res() as never),
+      controller.createStreamSession({ agentSlug: 'realtime-transcription', context: { streem: { mic_id: 'm' } } } as never),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('an agent that binds NO schema accepts any object within the size bound', async () => {
     const { controller, m } = build(/* contextSchema */ undefined);
 
-    const out = await controller.createStreamSession(
-      { agentSlug: 'realtime-transcription', context: { anything: { at: 'all' } } } as never,
-      res() as never,
-    );
+    const out = await controller.createStreamSession({ agentSlug: 'realtime-transcription', context: { anything: { at: 'all' } } } as never);
 
     expect(out.context).toEqual({ anything: { at: 'all' } });
     expect(m.binding.bindSessionMeta).toHaveBeenCalledWith('sess-1', expect.objectContaining({ context: { anything: { at: 'all' } } }));
-  });
-
-  it('the deprecated pipelineId path accepts a context on the size bound alone — it resolves no agent to ask', async () => {
-    const { controller, m } = build(STREAM_PAYLOAD_SCHEMA);
-
-    const out = await controller.createStreamSession({ pipelineId: 'pipe-1', context: { anything: 1 } } as never, res() as never);
-
-    expect(m.asrResolver.resolve).not.toHaveBeenCalled();
-    expect(out.context).toEqual({ anything: 1 });
   });
 });

@@ -56,7 +56,6 @@ function createBehavioralJobEntity(
     consultationId?: string | null;
     contextItemId?: string | null;
     mediaId?: string | null;
-    pipelineId?: string;
     status?: string;
     progress?: number;
     queuedAt?: Date;
@@ -93,7 +92,6 @@ function createBehavioralJobEntity(
     tenantId: overrides.tenantId ?? 'tenant-1',
     jobType: overrides.jobType ?? TranscriptionJobType.BATCH,
     consultationId: 'consultationId' in overrides ? overrides.consultationId : 'consultation-1',
-    pipelineId: overrides.pipelineId ?? 'pipeline-1',
     queuedAt: overrides.queuedAt ?? new Date('2026-02-02T10:00:00Z'),
     createdBy: overrides.createdBy ?? 'user-123',
 
@@ -274,7 +272,6 @@ function createBehavioralJobEntity(
         jobType: entity.jobType,
         status: _status,
         progress: _progress,
-        pipelineId: entity.pipelineId,
       };
     },
   };
@@ -282,18 +279,11 @@ function createBehavioralJobEntity(
   return entity;
 }
 
-/**
- * Creates a behavioral mock pipeline entity
- */
-function createBehavioralPipelineEntity(id: string = 'pipeline-1') {
-  return {
-    id,
-    name: 'Test Pipeline',
-    slug: 'test-pipeline',
-    isEnabled: true,
-    toObject: () => ({ id, name: 'Test Pipeline' }),
-  };
-}
+/** The agent a job is keyed to (TASK-861) — the ONLY selector since TASK-1006. */
+const AGENT_KEY = {
+  agentVersionId: 'agent-v-1',
+  resolvedSpec: { runtimeKey: 'agent-v-1', agent: { slug: 'platform-transcription', versionId: 'agent-v-1' }, models: { asr: { slug: 'whisper' } } },
+};
 
 // ============================================
 // Mock External Boundaries Only
@@ -313,15 +303,10 @@ const mockJobRepository = {
   findAll: vi.fn(),
   findByConsultation: vi.fn(),
   findJobsByStatus: vi.fn(),
-  findWithPipeline: vi.fn(),
   countByStatus: vi.fn(),
   count: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
-};
-
-const mockPipelineRepository = {
-  findById: vi.fn(),
 };
 
 describe('TranscriptionJobService', () => {
@@ -343,17 +328,15 @@ describe('TranscriptionJobService', () => {
       }
     });
 
-    service = new TranscriptionJobService(mockJobRepository as any, mockPipelineRepository as any, mockEventEmitter as any, mockClsService as any);
+    service = new TranscriptionJobService(mockJobRepository as any, mockEventEmitter as any, mockClsService as any);
   });
 
   describe('create', () => {
     it('should create a batch job with correct initial state', async () => {
-      const pipeline = createBehavioralPipelineEntity();
-      mockPipelineRepository.findById.mockResolvedValue(pipeline);
       mockJobRepository.create.mockImplementation(async (entity: any) => entity);
 
       const result = await service.create({
-        pipelineId: 'pipeline-1',
+        ...AGENT_KEY,
         jobType: TranscriptionJobType.BATCH as any,
         mediaId: 'media-123',
         consultationId: 'consultation-1',
@@ -377,31 +360,27 @@ describe('TranscriptionJobService', () => {
 
       await expect(
         service.create({
-          pipelineId: 'pipeline-1',
+          ...AGENT_KEY,
           jobType: TranscriptionJobType.BATCH as any,
           mediaId: 'media-123',
         }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw NotFoundException when pipeline not found', async () => {
-      mockPipelineRepository.findById.mockResolvedValue(null);
-
+    it('should throw BadRequestException when no agent version keys the job (TASK-1006: there is no pipeline path)', async () => {
       await expect(
         service.create({
-          pipelineId: 'non-existent',
           jobType: TranscriptionJobType.BATCH as any,
           mediaId: 'media-123',
         }),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toThrow(BadRequestException);
+      expect(mockJobRepository.create).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException when batch job missing mediaId', async () => {
-      mockPipelineRepository.findById.mockResolvedValue(createBehavioralPipelineEntity());
-
       await expect(
         service.create({
-          pipelineId: 'pipeline-1',
+          ...AGENT_KEY,
           jobType: TranscriptionJobType.BATCH as any,
         }),
       ).rejects.toThrow(BadRequestException);
@@ -649,9 +628,6 @@ describe('TranscriptionJobService', () => {
 
   describe('job lifecycle integration', () => {
     it('should handle complete job lifecycle: create -> start -> progress -> complete', async () => {
-      const pipeline = createBehavioralPipelineEntity();
-      mockPipelineRepository.findById.mockResolvedValue(pipeline);
-
       // Create job
       let job: any;
       mockJobRepository.create.mockImplementation(async (entity: any) => {
@@ -660,7 +636,7 @@ describe('TranscriptionJobService', () => {
       });
 
       await service.create({
-        pipelineId: 'pipeline-1',
+        ...AGENT_KEY,
         jobType: TranscriptionJobType.BATCH as any,
         mediaId: 'media-123',
       });

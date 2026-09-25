@@ -42,17 +42,23 @@ function makeMocks() {
   return {
     consultationRepository,
     departmentRepository: { findById: vi.fn().mockResolvedValue({ id: 'dept-1', tenantId: TENANT }) },
-    userRoleAssignmentRepository: { findFirst: vi.fn().mockResolvedValue({ id: 'ura-1', tenantId: TENANT, resourceStatus: ResourceStatusType.ENABLED }) },
+    userRoleAssignmentRepository: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'ura-1', tenantId: TENANT, resourceStatus: ResourceStatusType.ENABLED }),
+    },
     userDepartmentRepository: { findFirst: vi.fn().mockResolvedValue({ id: 'ud-1', tenantId: TENANT, resourceStatus: ResourceStatusType.ENABLED }) },
     userRepository: { findFirst: vi.fn().mockResolvedValue({ id: 'doctor-1', isServiceAccount: false }) },
     eventEmitter: { emit: vi.fn() },
     clsService,
     workflowDispatchService: {
       assertSelectableForConsultation: vi.fn().mockResolvedValue(undefined),
-      dispatchForConsultation: vi.fn().mockResolvedValue({ dispatched: true, source: 'caller-selected', workflowDefinitionSlug: SLUG, runId: 'run-1', governanceRecorded: true, sttPipelineId: null }),
+      dispatchForConsultation: vi
+        .fn()
+        .mockResolvedValue({ dispatched: true, source: 'caller-selected', workflowDefinitionSlug: SLUG, runId: 'run-1', governanceRecorded: true }),
     },
     workflowDefinitionRepository: {
-      findPublishedBySlug: vi.fn().mockResolvedValue({ slug: SLUG, name: 'Caller Picked', description: 'a graph', paletteKey: 'consultation', versionNumber: 3 }),
+      findPublishedBySlug: vi
+        .fn()
+        .mockResolvedValue({ slug: SLUG, name: 'Caller Picked', description: 'a graph', paletteKey: 'consultation', versionNumber: 3 }),
     },
   };
 }
@@ -120,7 +126,9 @@ describe('ConsultationService.getOrCreate — workflow selection (OD-1)', () => 
   it('refuses BEFORE writing anything when the selection 404s — no consultation row, no meter, no consent', async () => {
     m.workflowDispatchService.assertSelectableForConsultation = vi.fn().mockRejectedValue(new NotFoundException('Workflow definition not found'));
 
-    await expect(makeService(m).getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: 'foreign' } as never, 'doctor-1')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(makeService(m).getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: 'foreign' } as never, 'doctor-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(m.consultationRepository.create).not.toHaveBeenCalled();
     expect(m.workflowDispatchService.dispatchForConsultation).not.toHaveBeenCalled();
   });
@@ -128,7 +136,9 @@ describe('ConsultationService.getOrCreate — workflow selection (OD-1)', () => 
   it('propagates the 403 for a visible-but-unselectable definition, and still writes nothing', async () => {
     m.workflowDispatchService.assertSelectableForConsultation = vi.fn().mockRejectedValue(new ForbiddenException('not selectable'));
 
-    await expect(makeService(m).getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: 'summarizer' } as never, 'doctor-1')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(makeService(m).getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: 'summarizer' } as never, 'doctor-1')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(m.consultationRepository.create).not.toHaveBeenCalled();
   });
 
@@ -136,7 +146,9 @@ describe('ConsultationService.getOrCreate — workflow selection (OD-1)', () => 
     m.consultationRepository.findByUniqueKey = vi.fn().mockResolvedValue({ id: 'existing', patientId: 'p-1' });
     m.workflowDispatchService.assertSelectableForConsultation = vi.fn().mockRejectedValue(new NotFoundException('Workflow definition not found'));
 
-    await expect(makeService(m).getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: 'foreign' } as never, 'doctor-1')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(makeService(m).getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: 'foreign' } as never, 'doctor-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('refuses a selection the deployment cannot honour rather than silently running the default engine', async () => {
@@ -157,7 +169,9 @@ describe('ConsultationService.getOrCreate — workflow selection (OD-1)', () => 
       withoutDispatcher.workflowDefinitionRepository as never,
     );
 
-    await expect(service.getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: SLUG } as never, 'doctor-1')).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(service.getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: SLUG } as never, 'doctor-1')).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
     expect(withoutDispatcher.consultationRepository.create).not.toHaveBeenCalled();
   });
 });
@@ -171,7 +185,9 @@ describe('ConsultationService.getGoverningWorkflow — discovery (D-20)', () => 
   const governedConsultation = {
     id: 'c-1',
     tenantId: TENANT,
-    metadata: { governingEngine: { engine: 'tenant-workflow', workflowRunId: 'run-1', workflowDefinitionSlug: SLUG, decidedAt: '2026-08-29T00:00:00.000Z' } },
+    metadata: {
+      governingEngine: { engine: 'tenant-workflow', workflowRunId: 'run-1', workflowDefinitionSlug: SLUG, decidedAt: '2026-08-29T00:00:00.000Z' },
+    },
   };
 
   it('reports the tenant-authored workflow that governs, with its identity', async () => {
@@ -205,7 +221,9 @@ describe('ConsultationService.getGoverningWorkflow — discovery (D-20)', () => 
   });
 
   it('reads a MALFORMED marker as absent — the fail-safe direction is "the default engine governs"', async () => {
-    m.consultationRepository.findById = vi.fn().mockResolvedValue({ id: 'c-3', tenantId: TENANT, metadata: { governingEngine: { engine: 'tenant-workflow' } } });
+    m.consultationRepository.findById = vi
+      .fn()
+      .mockResolvedValue({ id: 'c-3', tenantId: TENANT, metadata: { governingEngine: { engine: 'tenant-workflow' } } });
     await expect(makeService(m).getGoverningWorkflow('c-3')).resolves.toMatchObject({ governed: false });
   });
 

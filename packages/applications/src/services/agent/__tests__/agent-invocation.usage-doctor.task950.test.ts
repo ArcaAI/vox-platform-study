@@ -52,7 +52,7 @@ const clsFor = (principal: 'machine' | 'human') =>
   }) as never;
 
 function service(principal: 'machine' | 'human' = 'machine'): AgentInvocationService {
-  return new AgentInvocationService(httpService, configService, enrichment, undefined, undefined, clsFor(principal), userIdentity);
+  return new AgentInvocationService(httpService, configService, enrichment, undefined, clsFor(principal), userIdentity);
 }
 
 /** A published TEXT_GENERATION agent with the given `contextSchema` FROZEN onto its compiled config. */

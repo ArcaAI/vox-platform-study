@@ -86,7 +86,6 @@ const usageStats = (o: Record<string, unknown> = {}) => ({
   totalUsers: 0,
   totalDepartments: 0,
   totalPromptTemplates: 0,
-  totalPipelines: 0,
   storageUsedBytes: 0,
   storageQuotaBytes: null,
   transcriptionMinutes: 0,
@@ -238,7 +237,7 @@ describe('EntitlementsService', () => {
      * gated ENTERPRISE quota set for a tenant carrying that plan, rather than
      * silently falling through to `UNGATED_ENTITLEMENTS` (the null-plan Q3
      * default every un-planned seeded tenant — SYSTEM, Global — still gets).
-*/
+     */
     it('resolves an ENTERPRISE-plan tenant (as seeded for ArcaAI) to real gated quotas, never ungated-legacy', async () => {
       tenantRepository.findById.mockResolvedValue({ plan: 'ENTERPRISE', trialEndsAt: null });
       planEntitlementRepository.findByPlan.mockResolvedValue(null);
@@ -450,11 +449,13 @@ describe('EntitlementsService', () => {
      * row reports it. If a future limit genuinely warrants no row, widening
      * this to `| null` is the deliberate act that records that decision.
      */
-    const ROW_KEY_BY_LIMIT: Record<EntitlementLimitKey, string> = {
+    // `null` = a limit with NOTHING left to count, so no capability row. `maxAsrPipelines` is the
+    // one case: TASK-1006 removed the `AsrPipeline` rows it bounded; the knob goes with its column.
+    const ROW_KEY_BY_LIMIT: Record<EntitlementLimitKey, string | null> = {
       maxUsers: 'users',
       maxDepartments: 'departments',
       maxPromptTemplates: 'promptTemplates',
-      maxAsrPipelines: 'asrPipelines',
+      maxAsrPipelines: null,
       maxApiKeys: 'apiKeys',
       maxWorkflowDefinitions: 'workflowDefinitions',
       maxAiProviderConnections: 'aiProviderConnections',
@@ -484,9 +485,11 @@ describe('EntitlementsService', () => {
       const reported = new Set([...caps.quantities, ...caps.meters].map((row) => row.key));
 
       const unreported = Object.entries(ROW_KEY_BY_LIMIT)
-        .filter(([, rowKey]) => !reported.has(rowKey))
+        .filter(([, rowKey]) => rowKey !== null && !reported.has(rowKey))
         .map(([limitKey]) => limitKey);
       expect(unreported).toEqual([]);
+      // ... and the retired one is not reported against a table that no longer exists.
+      expect(reported.has('asrPipelines')).toBe(false);
     });
 
     it('Exposes the six new unit meters (allowance ceiling + live usage) alongside M1–M3', async () => {
@@ -733,7 +736,13 @@ describe('EntitlementsService', () => {
     });
 
     it('clears an override by nulling every field (reversible, never deleted)', async () => {
-      const row = fakeTenantEntity({ maxUsers: 99, rateLimitPerMinute: 300, monthlyLlmTokens: BigInt(1_000_000), maxAiProviderConnections: 2, version: 5 });
+      const row = fakeTenantEntity({
+        maxUsers: 99,
+        rateLimitPerMinute: 300,
+        monthlyLlmTokens: BigInt(1_000_000),
+        maxAiProviderConnections: 2,
+        version: 5,
+      });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(row);
       tenantEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 

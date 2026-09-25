@@ -44,7 +44,6 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     workflowRunService: { recordRunStarted: vi.fn() },
     harnessGateway: { startWorkflowRun: vi.fn() },
     s3Service: { putFile: vi.fn() },
-    sttPipelineResolver: { resolvePipelineId: vi.fn() },
     ...overrides,
   };
 }
@@ -57,7 +56,6 @@ function makeService(deps: ReturnType<typeof makeDeps>) {
     deps.workflowRunService as never,
     deps.harnessGateway as never,
     deps.s3Service as never,
-    deps.sttPipelineResolver as never,
   );
 }
 

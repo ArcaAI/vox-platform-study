@@ -547,10 +547,9 @@ describe('StreamingAudioBridgeService', () => {
       expect('detectedLanguage' in result).toBe(false);
     });
 
-    // The pipeline id that actually produced this utterance
-    // (seam in apps/stt: worker-level `_active_pipeline_id`, stamped
-    // per SegmentResult and published as `pipeline_id`, omitted when unknown).
-    it('surfaces the wire `pipeline_id` as camelCase pipelineId', async () => {
+    // TASK-1006 — an STT that still stamps a per-segment `pipeline_id` is NOT relayed: the
+    // session runs on its resolved spec, and there is no pipeline for a client to label.
+    it('never relays a wire `pipeline_id` (the pipeline stack is retired)', async () => {
       mockXreadgroup
         .mockResolvedValueOnce([
           ['stt:result:s-1', [['1-0', ['text', 'hi', 'start_time', '0', 'end_time', '1', 'is_final', '1', 'pipeline_id', 'sarvam_transcription']]]],
@@ -558,9 +557,9 @@ describe('StreamingAudioBridgeService', () => {
         .mockResolvedValue(null);
 
       const obs = service.subscribeToResults('s-1');
-      const result = (await firstValueFrom(obs.pipe(take(1)))) as { pipelineId?: string };
+      const result = await firstValueFrom(obs.pipe(take(1)));
 
-      expect(result.pipelineId).toBe('sarvam_transcription');
+      expect('pipelineId' in result).toBe(false);
     });
 
     it('omits pipelineId when the wire has no pipeline_id (older stt worker unchanged)', async () => {

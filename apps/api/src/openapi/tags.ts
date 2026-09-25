@@ -135,12 +135,6 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     plane: 'business',
     description: 'Per-user voice profiles for speaker identification and synthesis.',
   },
-  {
-    name: 'audio-pipelines',
-    displayName: 'Audio Pipelines',
-    plane: 'business',
-    description: 'The ASR pipeline configurations a caller may select when starting audio capture.',
-  },
   { name: 'storage', displayName: 'Storage', plane: 'business', description: 'Upload, download, and manage tenant-scoped objects.' },
   { name: 'billing', displayName: 'Billing', plane: 'business', description: "The caller's own invoices and spend." },
   { name: 'usage', displayName: 'Usage', plane: 'business', description: "The caller's own consumption summary and quota burndown." },
@@ -209,12 +203,6 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
   },
   { name: 'admin-allowed-origins', displayName: 'Allowed Origins', plane: 'admin', description: 'Per-tenant CORS origin allow-list.' },
   { name: 'admin-api-keys', displayName: 'API Keys', plane: 'admin', description: 'Mint, scope, rotate, and revoke tenant API keys.' },
-  {
-    name: 'admin-audio-pipelines',
-    displayName: 'Audio Pipelines',
-    plane: 'admin',
-    description: 'Author and manage the ASR pipeline configurations tenants may select.',
-  },
   { name: 'admin-audit-logs', displayName: 'Audit Logs', plane: 'admin', description: 'Query the immutable audit trail.' },
   {
     name: 'admin-billing-invoices',
@@ -366,7 +354,6 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     plane: 'admin',
     description: 'Bucket and tenant storage configuration, cascading to a SYSTEM default.',
   },
-  { name: 'admin-stt', displayName: 'Speech-to-Text', plane: 'admin', description: 'STT engine configuration and per-tenant overrides.' },
   {
     name: 'admin-tenant-idp-config',
     displayName: 'Identity Providers',

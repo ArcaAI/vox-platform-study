@@ -80,7 +80,6 @@ describe('StreamingSessionService', () => {
     const result = await service.createSession({
       sessionId: 's-1',
       tenantId: 'tenant-1',
-      pipelineId: 'pipeline-1',
       sampleRate: 16000,
       userId: 'user-1',
     });
@@ -91,7 +90,6 @@ describe('StreamingSessionService', () => {
       expect.objectContaining({
         session_id: 's-1',
         tenant_id: 'tenant-1',
-        pipeline_id: 'pipeline-1',
         sample_rate: 16000,
         user_id: 'user-1',
       }),
@@ -187,7 +185,6 @@ describe('StreamingSessionService', () => {
     await service.createSession({
       sessionId: 's-3',
       tenantId: 'tenant-1',
-      pipelineId: 'pipeline-1',
       audioBucketName: 'hope-audio-arcaai',
     });
 
@@ -208,7 +205,6 @@ describe('StreamingSessionService', () => {
     await service.createSession({
       sessionId: 's-7',
       tenantId: 'tenant-1',
-      pipelineId: 'pipeline-1',
       languageMode: 'ml-en',
     });
 
@@ -224,7 +220,7 @@ describe('StreamingSessionService', () => {
 
     const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
-    await service.createSession({ sessionId: 's-8', tenantId: 'tenant-1', pipelineId: 'pipeline-1' });
+    await service.createSession({ sessionId: 's-8', tenantId: 'tenant-1' });
 
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions',
@@ -249,7 +245,6 @@ describe('StreamingSessionService', () => {
     await service.createSession({
       sessionId: 's-91',
       tenantId: 'tenant-1',
-      pipelineId: 'runtime-key-1',
       languageMode: 'en',
       resolvedSpec: { models: {}, audioFrontEnd: { diarization: { enabled: false } }, decoding: { languageMode: 'ml-en' } } as never,
     });
@@ -267,7 +262,6 @@ describe('StreamingSessionService', () => {
     await service.createSession({
       sessionId: 's-9',
       tenantId: 'tenant-1',
-      pipelineId: 'pipeline-1',
       startOn: 'fallback',
     });
 
@@ -283,7 +277,7 @@ describe('StreamingSessionService', () => {
 
     const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
-    await service.createSession({ sessionId: 's-10', tenantId: 'tenant-1', pipelineId: 'pipeline-1' });
+    await service.createSession({ sessionId: 's-10', tenantId: 'tenant-1' });
 
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions',
@@ -335,14 +329,14 @@ describe('StreamingSessionService', () => {
   /**
    * The create response is the client's baseline.
    *
-   * STT now echoes the RESOLVED pipeline and the engine it actually opened on
-   * (`pipeline_id` / `active_engine`), which is the only honest source for the
-   * SDK's `activePipeline`: a client that sent no pipelineId, a session opened
-   * on the fallback by choice (`start_on`), and one opened there because the
-   * primary ASR failed to load are all invisible to the request alone.
+   * STT echoes the engine it actually opened on (`active_engine`), which is the
+   * only honest source for the SDK: a session opened on the fallback by choice
+   * (`start_on`) and one opened there because the primary ASR failed to load
+   * are both invisible to the request alone. A `pipeline_id` echo is no longer
+   * read (TASK-1006): the session runs on its resolved spec, not on a pipeline.
    */
-  describe('createSession — server-derived pipeline baseline', () => {
-    it('maps pipeline_id and active_engine from the STT response', async () => {
+  describe('createSession — server-derived engine baseline', () => {
+    it('maps active_engine from the STT response, and never surfaces a pipeline_id echo', async () => {
       httpService.post.mockReturnValue(
         of({
           data: {
@@ -357,20 +351,19 @@ describe('StreamingSessionService', () => {
       );
       const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
-      const result = await service.createSession({ sessionId: 's-10', tenantId: 'tenant-1', pipelineId: 'requested-pipe' });
+      const result = await service.createSession({ sessionId: 's-10', tenantId: 'tenant-1' });
 
-      expect(result?.pipelineId).toBe('resolved-pipe');
+      expect(result).not.toHaveProperty('pipelineId');
       expect(result?.activeEngine).toBe('fallback');
     });
 
-    it('leaves both undefined against an older STT that echoes neither', async () => {
+    it('leaves activeEngine undefined against an older STT that does not echo it', async () => {
       // Mixed-version degrade: a new gateway must not invent a baseline.
       httpService.post.mockReturnValue(of({ data: { session_id: 's-11', status: 'active', max_concurrent: 4, current_active: 1 } }));
       const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
-      const result = await service.createSession({ sessionId: 's-11', tenantId: 'tenant-1', pipelineId: 'requested-pipe' });
+      const result = await service.createSession({ sessionId: 's-11', tenantId: 'tenant-1' });
 
-      expect(result?.pipelineId).toBeUndefined();
       expect(result?.activeEngine).toBeUndefined();
     });
   });
@@ -394,7 +387,6 @@ describe('StreamingSessionService', () => {
       await service.createSession({
         sessionId: 's-9',
         tenantId: 'tenant-1',
-        pipelineId: 'pipeline-1',
         autoSwitchEnabled: false,
         consecutiveFailureThreshold: 4,
       });
@@ -412,7 +404,7 @@ describe('StreamingSessionService', () => {
       httpService.post.mockReturnValue(okResponse());
       const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
-      await service.createSession({ sessionId: 's-9', tenantId: 'tenant-1', pipelineId: 'pipeline-1' });
+      await service.createSession({ sessionId: 's-9', tenantId: 'tenant-1' });
 
       expect(httpService.post).toHaveBeenCalledWith(
         'http://stt.internal:9000/internal/streaming/sessions',
@@ -427,7 +419,7 @@ describe('StreamingSessionService', () => {
       httpService.post.mockReturnValue(okResponse());
       const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
-      await service.createSession({ sessionId: 's-9', tenantId: 'tenant-1', pipelineId: 'pipeline-1', autoSwitchEnabled: true });
+      await service.createSession({ sessionId: 's-9', tenantId: 'tenant-1', autoSwitchEnabled: true });
 
       expect(httpService.post).toHaveBeenCalledWith(
         'http://stt.internal:9000/internal/streaming/sessions',
@@ -907,7 +899,10 @@ describe('StreamingSessionService', () => {
       it('still resolves when the second (INTERNAL-basis) emission throws', async () => {
         httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary({ segments: [cloudLeg] }) }));
         const usageLedgerService = {
-          recordUsage: vi.fn().mockResolvedValueOnce({ outboxIds: ['o-1'], events: 4 }).mockRejectedValueOnce(new Error('ledger boom')),
+          recordUsage: vi
+            .fn()
+            .mockResolvedValueOnce({ outboxIds: ['o-1'], events: 4 })
+            .mockRejectedValueOnce(new Error('ledger boom')),
         };
         const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
 
@@ -953,7 +948,6 @@ describe('StreamingSessionService — voice profiles ride the create body', () =
     await build(voiceProfileService).createSession({
       sessionId: 's-vp',
       tenantId: 'tenant-1',
-      pipelineId: 'agent-version-1',
       userId: 'user-1',
       resolvedSpec: resolvedSpec as never,
     });

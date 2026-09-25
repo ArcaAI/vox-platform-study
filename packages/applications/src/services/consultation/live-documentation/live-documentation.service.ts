@@ -5272,7 +5272,6 @@ return 0`;
               language: msg.detectedLanguage,
               resultType: msg.resultType,
               stableChars: msg.stableChars,
-              pipelineId: msg.pipelineId,
               // `{ word, start, end, confidence }` on the wire; `text` here, matching the segment
               // schema. A null confidence (Whisper reports none) is dropped rather than coerced
               // to 0, which a consumer would read as "certainly wrong".

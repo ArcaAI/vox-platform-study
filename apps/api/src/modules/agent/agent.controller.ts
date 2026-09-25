@@ -126,8 +126,6 @@ export interface AgentTranscriptionResponse {
   status: string;
   agentSlug: string;
   agentVersionId: string;
-  /** @deprecated TASK-861 — removed in R4. Now the spec's runtime key (= `agentVersionId`); read `agentVersionId`. */
-  pipelineId: string;
   sseUrl: string;
 }
 
@@ -826,7 +824,6 @@ export class AgentController {
       await this.realtimeService.dispatchDramatiqJob({
         jobId: job.id,
         tenantId,
-        pipelineId: spec.runtimeKey,
         resolvedSpec: spec,
         audioUri: media.uri,
         consultationId: body.consultationId,
@@ -847,7 +844,6 @@ export class AgentController {
       status: String(job.status),
       agentSlug: spec.agent.slug,
       agentVersionId: spec.agent.versionId,
-      pipelineId: spec.runtimeKey,
       sseUrl: `/api/v1/audio/transcription-jobs/${job.id}/stream`,
     };
   }

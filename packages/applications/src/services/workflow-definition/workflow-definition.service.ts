@@ -79,7 +79,6 @@ import type { IConsultationContextSchemaService as IConsultationContextSchemaSer
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { KNOWN_PALETTE_KEYS } from '../workflow-exposure/exposure-palette-policy';
 import { WorkflowValidatorService } from '../workflow-validator/workflow-validator.service';
-import { SttPipelineCompilerService } from './compilers/stt-pipeline.compiler';
 import {
   CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
@@ -299,11 +298,6 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // Optional() so unit fixtures can construct without it; production DI
     // (EntitlementsServiceModule) always supplies it.
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
-    // optional for the same reason (unit-fixture construction); production DI
-    // (WorkflowDefinitionServiceModule importing PipelineServiceModule) always supplies it. A
-    // publish() of an `stt`-palette workflow with this undefined is a MISCONFIGURATION, not a
-    // silently-skipped feature — see the doc comment on `compileSttPipelineIfNeeded` below.
-    @Optional() private readonly sttPipelineCompiler?: SttPipelineCompilerService,
     // (a) — the rule-row resolver. `@Optional()` for the same reason as the two
     // above (unit-fixture construction); production DI always supplies it via
     // `WorkflowValidatorServiceModule`. When absent, `validateGraph` falls back to the bundled
@@ -1486,9 +1480,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // pointing at it, the dispatcher resolved nothing, and the failure surfaced at RUN time as a
     // missing workflow rather than here, at the moment someone chose it.
     if (entity.isActive) {
-      throw new ConflictException(
-        'This is the ACTIVE published version of its slug — deprecate it (or activate another version) before deleting.',
-      );
+      throw new ConflictException('This is the ACTIVE published version of its slug — deprecate it (or activate another version) before deleting.');
     }
 
     const deleted = await this.workflowDefinitionRepository.softDelete(id, this.requestUserId ?? undefined);
@@ -1685,12 +1677,6 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // records WHICH schema version it was built against instead of a hardcoded null.
     const compiled = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId(), triggerContextSchema);
 
-    // an `stt`-palette publish() ALSO compiles the graph into an
-    // `AsrPipeline`/`AsrPipelineVersion` row ( central design decision). Runs BEFORE
-    // any entity mutation below: a failure here (e.g. no `stt.asrEngine` node) must abort the
-    // publish() with nothing written, exactly like the engine gate above.
-    const asrPipeline = await this.compileSttPipelineIfNeeded(entity, compiled);
-
     // The binding, stamped onto COLUMNS from the SAME resolution the compiler just froze into
     // `compiledConfig`. It is not a second resolution — `triggerContextSchema` is the one above —
     // it is the same answer written where it can be indexed and joined, so a context-schema
@@ -1734,7 +1720,6 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         versionNumber: updated.versionNumber,
         compiledConfigChecksum: updated.compiledConfigChecksum,
         activate,
-        ...(asrPipeline ? { asrPipelineId: asrPipeline.id, asrPipelineSlug: asrPipeline.slug } : {}),
       },
     });
 
@@ -2141,28 +2126,6 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         requested: 1,
       });
     }
-  }
-
-  /**
-   * an `stt`-palette publish() compiles the graph into an `AsrPipeline` +
-   * `AsrPipelineVersion` row ( No-op (`null`) for every other palette. When the
-   * palette IS `stt` but `sttPipelineCompiler` was never wired, this is a deployment
-   * misconfiguration, not a case to skip quietly — `WorkflowDefinitionServiceModule` always
-   * supplies it in production; only unit fixtures construct without it (and none of them
-   * publish() an `stt`-palette graph without also stubbing this).
-   */
-  private async compileSttPipelineIfNeeded(
-    entity: Pick<WorkflowDefinitionEntity, 'id' | 'slug' | 'versionNumber' | 'name' | 'paletteKey'>,
-    compiled: CompiledWorkflowConfig,
-  ): Promise<{ id: string; slug: string } | null> {
-    if (entity.paletteKey !== STT_PALETTE_KEY) return null;
-    if (!this.sttPipelineCompiler) {
-      throw new Error(
-        `Cannot publish stt-palette WorkflowDefinition '${entity.id}': SttPipelineCompilerService is not wired (misconfiguration — see WorkflowDefinitionServiceModule).`,
-      );
-    }
-    const pipeline = await this.sttPipelineCompiler.compileAndPublish(entity, compiled);
-    return { id: pipeline.id, slug: pipeline.slug };
   }
 
   private parseGraphOrThrow(raw: Record<string, unknown>): WorkflowGraph {

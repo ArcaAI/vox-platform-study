@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TranscriptionJobStatus, TranscriptionJobType } from '@arcaai/domains';
 import { JsonValue } from '@arcaai/domains';
-import { PipelineResponse } from '../../pipeline/dto';
 import { LanguageResolutionResponse } from '../../../../common/language/language-resolution.response';
 
 /**
@@ -38,18 +37,6 @@ export class TranscriptionJobResponse {
 
   @ApiProperty({ description: 'Job type', enum: TranscriptionJobType })
   jobType: TranscriptionJobType;
-
-  /** @deprecated TASK-861 — removed in R4. `null` on agent-keyed jobs; read `agentVersionId`. */
-  @ApiPropertyOptional({
-    description: 'DEPRECATED (TASK-861): the AsrPipeline that ran the job; null on agent-keyed jobs',
-    nullable: true,
-    deprecated: true,
-  })
-  pipelineId: string | null;
-
-  /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`. */
-  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861): Pipeline details', deprecated: true })
-  pipeline?: PipelineResponse;
 
   @ApiPropertyOptional({ description: 'TASK-861 — the ASR Agent VERSION that ran the job', nullable: true })
   agentVersionId?: string | null;

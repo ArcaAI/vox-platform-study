@@ -124,7 +124,6 @@ describe('Audit-log version correlation (Stream D Phase) — cross-service contr
       globalSettingRepo,
       { findAll: vi.fn(), count: vi.fn() },
       { findAll: vi.fn(), count: vi.fn() },
-      { findAll: vi.fn(), count: vi.fn() },
       databaseService,
       tenantBucketService,
       eventEmitter,

@@ -17,18 +17,6 @@ export const AUDIO_BUCKET = 'hope-audio';
  */
 export const MAX_UPLOAD_HARD_CEILING = 1024 * 1024 * 1024; // 1 GB
 
-/**
- * `pipelineId` shape validation.
- *
- * Accepts either:
- *   • Slug (lowercase alphanumeric + dashes, must start alphanumeric): `general-consult`, `cardio2`
- *   • UUID v4 (case-insensitive): `f47ac10b-58cc-4372-a567-0e02b2c3d479`
- *
- * Rejects arbitrary strings, paths, SQL fragments, and the bare hyphen
- * `-` (regex requires a leading [A-Za-z0-9]).
- */
-export const PIPELINE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-
 export const ALLOWED_AUDIO_MIMES = new Set([
   'audio/wav',
   'audio/wave',
@@ -46,9 +34,9 @@ export const ALLOWED_AUDIO_MIMES = new Set([
 
 /**
  * `agentSlug` shape: the Agent lineage slug (`WORKFLOW_DEFINITION_SLUG_PATTERN`
- * family — lowercase alphanumerics + dashes). Same shape guard as `pipelineId`,
- * minus the UUID branch (an agent is addressed by slug, never by id, on the
- * business plane).
+ * family — lowercase alphanumerics + dashes, leading alphanumeric). An agent is
+ * addressed by slug, never by id, on the business plane. Rejects arbitrary
+ * strings, paths, SQL fragments and the bare hyphen `-`.
  */
 export const AGENT_SLUG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 
@@ -77,19 +65,6 @@ export class TranscribeFileRequest {
   @IsOptional()
   @Matches(AGENT_SLUG_PATTERN, { message: 'agentSlug must be a slug ([A-Za-z0-9-])' })
   agentSlug?: string;
-
-  /**
-   * @deprecated TASK-861 — removed in R4. The `AsrPipeline` to run on; answers
-   * with `Deprecation` headers. Prefer `agentSlug` (or nothing, for the
-   * assigned agent).
-   */
-  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Prefer `agentSlug`.', deprecated: true })
-  @IsString()
-  @IsOptional()
-  @Matches(PIPELINE_ID_PATTERN, {
-    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
-  })
-  pipelineId?: string;
 
   @ApiPropertyOptional({ description: 'Associated consultation ID' })
   @IsUUID()
@@ -152,26 +127,14 @@ export class TranscribeFileRequest {
 export class CreateStreamSessionRequest {
   /**
    * TASK-861 — the ASR Agent to stream with (lineage slug of a PUBLISHED
-   * `SPEECH_TO_TEXT` agent visible to the tenant). Omit it — and `pipelineId` —
-   * to use the tenant's assigned agent (department → tenant → SYSTEM cascade).
+   * `SPEECH_TO_TEXT` agent visible to the tenant). Omit it to use the tenant's
+   * assigned agent (department → tenant → SYSTEM cascade).
    */
   @ApiPropertyOptional({ description: 'ASR Agent slug. Omit to use the assigned agent (department → tenant → platform default).' })
   @IsString()
   @IsOptional()
   @Matches(AGENT_SLUG_PATTERN, { message: 'agentSlug must be a slug ([A-Za-z0-9-])' })
   agentSlug?: string;
-
-  /**
-   * @deprecated TASK-861 — removed in R4. The `AsrPipeline` to stream on;
-   * answers with `Deprecation` headers. Prefer `agentSlug`.
-   */
-  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Prefer `agentSlug`.', deprecated: true })
-  @IsString()
-  @IsOptional()
-  @Matches(PIPELINE_ID_PATTERN, {
-    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
-  })
-  pipelineId?: string;
 
   @ApiPropertyOptional({ description: 'Associated consultation ID' })
   @IsString()
@@ -207,8 +170,8 @@ export class CreateStreamSessionRequest {
 
   @ApiPropertyOptional({
     description:
-      "Pre-start default-provider selection (C7). 'fallback' opens the session directly on the tenant-admin default (fallback) engine; " +
-      "'primary' (default) opens on the configured pipeline. Fail-closed: 'fallback' with no configured fallback pipeline → 409.",
+      "Pre-start default-provider selection (C7). 'fallback' opens the session directly on the ASR agent's fallback engine; " +
+      "'primary' (default) opens on its primary engine. Fail-closed: 'fallback' when the agent declares no fallback engine → 409.",
     enum: ['primary', 'fallback'],
   })
   @IsIn(['primary', 'fallback'])
@@ -273,21 +236,7 @@ export class StreamSessionResponse {
   @ApiProperty({ description: 'Currently active sessions' })
   currentActive!: number;
 
-  /**
-   * The RESOLVED ASR pipeline the session opened with. Differs from
-   * the requested id whenever the caller sent none. The SDK uses this as its
-   * `activePipeline` baseline instead of echoing back its own request — which
-   * left it null for every session started without an explicit pipeline.
-   * Absent against an STT that predates the echo.
-   */
-  @ApiPropertyOptional({
-    description: 'The runtime key the session opened with: the ASR Agent VERSION id (agent path) or the resolved AsrPipeline id (deprecated path)',
-  })
-  @IsOptional()
-  @IsString()
-  pipelineId?: string;
-
-  /** TASK-861 — the agent the session resolved to (absent on the deprecated pipeline path). */
+  /** TASK-861 — the agent the session resolved to. */
   @ApiPropertyOptional({ description: 'ASR Agent slug the session resolved to' })
   @IsOptional()
   @IsString()
@@ -398,7 +347,7 @@ export class BatchTranscribeResponse {
   @ApiProperty({ description: 'Audio file URI in storage' })
   audioUri!: string;
 
-  /** TASK-861 — the agent the job resolved to (absent on the deprecated pipeline path). */
+  /** TASK-861 — the agent the job resolved to. */
   @ApiPropertyOptional({ description: 'ASR Agent slug the job resolved to' })
   agentSlug?: string;
 

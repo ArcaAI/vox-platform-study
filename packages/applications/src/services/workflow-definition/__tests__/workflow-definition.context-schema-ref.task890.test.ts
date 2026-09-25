@@ -106,7 +106,6 @@ function makeService(): WorkflowDefinitionService {
     undefined,
     undefined,
     undefined,
-    undefined,
     mockContextSchemaService as never,
     undefined,
   );

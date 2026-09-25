@@ -46,6 +46,7 @@ import {
   RecordSessionEndpointResponse,
   TranscriptionJobService,
   TranscriptionRealtimeService,
+  AsrAgentResolverService,
   IConsultationService,
   normalizeLanguageMode,
   requestedLanguageMode,
@@ -94,26 +95,24 @@ import { HarnessServiceTokenGuard } from './harness-service-token.guard';
 /**
  * the harness batch-trigger activity's request/response shapes.
  *
- * The STT palette's central design decision ( is that a published `stt`
- * `WorkflowDefinition` compiles into an `AsrPipeline` id; batch execution dispatches
- * through ONE harness Temporal activity that calls the EXISTING
+ * A workflow's speech-to-text `core.agent` node names the ASR AGENT it runs; batch execution
+ * dispatches through ONE harness Temporal activity that calls the EXISTING
  * `TranscriptionJobService`/`TranscriptionRealtimeService` write path — the SAME two
  * calls `TranscriptionJobController`'s own batch handlers already make
  * (`apps/api/src/modules/streaming/transcription-job.controller.ts`) — never a second,
- * hand-rolled job-processing path. This route is additive and lives OUTSIDE
- * `apps/api/src/modules/streaming/**`, so the realtime-hot-path grep-gate
- * (`task-724-stt-realtime-untouched.grep-gate.test.ts`) stays green.
+ * hand-rolled job-processing path. The gateway resolves the named agent into the
+ * `ResolvedAsrSpec` the job runs on (TASK-1006: there is no pipeline id any more).
  */
-class HarnessCreateSttBatchJobRequest {
+export class HarnessCreateSttBatchJobRequest {
   @ApiProperty({ description: 'Tenant the harness is acting on behalf of.' })
   @IsString()
   @IsNotEmpty()
   tenantId: string;
 
-  @ApiProperty({ description: 'Resolved AsrPipeline id (Task 4 compiler output).' })
+  @ApiProperty({ description: 'The speech-to-text agent the workflow node runs (lineage slug of a published SPEECH_TO_TEXT agent).' })
   @IsString()
   @IsNotEmpty()
-  pipelineId: string;
+  agentSlug: string;
 
   @ApiProperty({ description: 'Storage URI of the already-uploaded batch audio (s3://bucket/key).' })
   @IsString()
@@ -503,6 +502,10 @@ export class HarnessInternalController {
     // that declares none. Optional + TRAILING for the same arity reason as the two above; absent,
     // the job simply carries no mode and STT applies the agent's own.
     @Optional() @Inject(IConsultationService) private readonly consultationService?: IConsultationService,
+    // TASK-1006 — resolves the node's ASR agent into the `ResolvedAsrSpec` the batch job runs on.
+    // Optional + TRAILING for the same arity reason as the three above; absent, the batch route
+    // refuses (400) rather than guessing an engine.
+    @Optional() private readonly asrResolver?: AsrAgentResolverService,
   ) {}
 
   @Get('policy')
@@ -1183,9 +1186,11 @@ export class HarnessInternalController {
    * `TranscriptionJobController`'s own batch/upload handlers already make —
    * `TranscriptionJobService.createBatchJob` then
    * `TranscriptionRealtimeService.dispatchDramatiqJob` — no duplicate
-   * job-processing logic. Idempotent: a retried Temporal activity attempt
-   * (same `consultationId` + `pipelineId`) finds and returns the existing
-   * non-terminal BATCH job instead of dispatching a second one, per the
+   * job-processing logic. The node's `agentSlug` resolves through
+   * `AsrAgentResolverService` (404 for an agent the tenant cannot see) into the
+   * `ResolvedAsrSpec` the job is keyed to. Idempotent: a retried Temporal
+   * activity attempt (same `consultationId` + resolved agent version) finds and
+   * returns the existing non-terminal BATCH job instead of dispatching a second one, per the
    * ticket's own documented fallback — platform-wide
    * envelope, once a caller here threads one through, supersedes this
    * consultation-scoped check without changing the route's shape).
@@ -1194,20 +1199,27 @@ export class HarnessInternalController {
   @HttpCode(201)
   @ApiOperation({ summary: 'Create (or reuse, idempotently) a batch transcription job for a harness activity' })
   async createSttBatchJob(@Body() dto: HarnessCreateSttBatchJobRequest): Promise<HarnessSttBatchJobResponse> {
-    if (!this.transcriptionJobService || !this.transcriptionRealtimeService) {
+    if (!this.transcriptionJobService || !this.transcriptionRealtimeService || !this.asrResolver) {
       throw new BadRequestException('STT batch-transcription services are not wired on this deployment');
     }
     const jobService = this.transcriptionJobService;
     const realtimeService = this.transcriptionRealtimeService;
+    const asrResolver = this.asrResolver;
     // TASK-1004 — the explicit mode, normalized; 400 LANGUAGE_MODE_UNKNOWN before any I/O.
     const requestedMode = requestedLanguageMode(dto);
     return this.cls.run(async () => {
       this.cls.set('tenantId', dto.tenantId);
 
+      // The node NAMED its agent, so this is the explicit tier — the consultation's governing
+      // workflow and the assignment cascade are never consulted. A slug the tenant cannot see is
+      // a 404 before anything is written.
+      const { spec } = await asrResolver.resolve({ tenantId: dto.tenantId, agentSlug: dto.agentSlug, departmentId: null });
+
       if (dto.consultationId) {
         const existing = await jobService.getByConsultation(dto.consultationId);
         const inFlight = existing.find(
-          (job) => job.jobType === TranscriptionJobType.BATCH && job.pipelineId === dto.pipelineId && NON_TERMINAL_JOB_STATUSES.has(job.status),
+          (job) =>
+            job.jobType === TranscriptionJobType.BATCH && job.agentVersionId === spec.agent.versionId && NON_TERMINAL_JOB_STATUSES.has(job.status),
         );
         if (inFlight) {
           return { jobId: inFlight.id, status: inFlight.status };
@@ -1215,14 +1227,15 @@ export class HarnessInternalController {
       }
 
       const job = await jobService.createBatchJob({
-        pipelineId: dto.pipelineId,
+        agentVersionId: spec.agent.versionId,
+        resolvedSpec: spec as unknown as Record<string, unknown>,
         mediaId: dto.mediaId ?? uuidv7(),
         consultationId: dto.consultationId,
       });
       await realtimeService.dispatchDramatiqJob({
         jobId: job.id,
         tenantId: dto.tenantId,
-        pipelineId: dto.pipelineId,
+        resolvedSpec: spec,
         audioUri: dto.audioUri,
         consultationId: dto.consultationId,
         mediaId: job.mediaId ?? undefined,

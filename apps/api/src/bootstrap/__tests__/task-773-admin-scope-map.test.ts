@@ -41,7 +41,10 @@ const repoRoot = cwd.endsWith(join('apps', 'api')) ? join(cwd, '..', '..') : cwd
 // 60 -> 59: TASK-881 deleted `AiTaskDefaultAdminController` (`admin:ai-task-default:manage` retired with it).
 // 59 -> 58: TASK-882 deleted `PipelinePolicyAdminController` (`admin:pipeline-policy:manage` retired with it).
 // 58 -> 57: TASK-888 deleted `TenantTtsConfigAdminController` (`admin:tenant-tts-config:manage` retired with it).
-const EXPECTED_ROW_COUNT = 57;
+// 57 -> 54: TASK-1006 deleted `AudioPipelineController` (`admin:audio-pipeline:manage` retired with it),
+// `TenantSttConfigAdminController` (`admin:tenant-stt-config:manage` retired with it) and
+// `TenantPipelineResyncController` (its `admin:tenant:write` stays — the tenant controllers keep it).
+const EXPECTED_ROW_COUNT = 54;
 
 describe('TASK_773_ADMIN_SCOPE_MAP', () => {
   it('has not silently grown or shrunk', () => {

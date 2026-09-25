@@ -44,7 +44,6 @@ function buildService(withSecrets: boolean) {
 
   const service = new TranscriptionJobService(
     jobRepository as never,
-    pipelineRepository as never,
     eventEmitter as never,
     clsService as never,
     withSecrets ? (secretsService as never) : undefined,
