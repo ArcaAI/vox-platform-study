@@ -337,6 +337,21 @@ describe('GET admin/model-residency/catalogue (TASK-1005 §13)', () => {
     expect(view.mode).toBe('shadow');
   });
 
+  it('every example in the fixture (pinned and added) carries the pinned key sets', () => {
+    const pinnedService = RESPONSE.services[0];
+    const pinnedModel = pinnedService.models[0];
+    for (const service of RESPONSE.services) {
+      expect(keys(service)).toEqual(keys(pinnedService));
+      for (const model of service.models) {
+        expect(keys(model)).toEqual(keys(pinnedModel));
+        expect(keys(model.keepPolicy)).toEqual(keys(pinnedModel.keepPolicy));
+        expect(keys(model.usage)).toEqual(keys(pinnedModel.usage));
+        for (const use of model.usage.uses) expect(keys(use)).toEqual(keys(pinnedModel.usage.uses[0]));
+        if (model.residency) expect(keys(model.residency)).toEqual(keys(pinnedModel.residency));
+      }
+    }
+  });
+
   it('every enum value it emits is one the fixture declares', async () => {
     const view = await h.service.getCatalogue();
     const enums = FIXTURE.enums;
