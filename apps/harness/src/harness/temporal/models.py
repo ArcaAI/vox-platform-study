@@ -748,20 +748,19 @@ class RetrievedContext(BaseModel):
 class DispatchBatchTranscriptionInput(BaseModel):
     """Inputs for the dispatch_batch_transcription activity.
 
-    ``pipeline_id`` is the resolved ``AsrPipeline`` id a published STT
-    `WorkflowDefinition` compiled to ('s
-    ``SttPipelineCompilerService.compileAndPublish`` write path, or
-    ``SttPipelineResolverService.resolvePipelineId`` re-deriving the same id).
-    ``consultation_id`` doubles as the idempotency correlation key: apps/api
-    reuses an existing non-terminal BATCH job for the same
-    (``consultation_id``, ``pipeline_id``) pair instead of dispatching a second
+    ``agent_slug`` is the SPEECH_TO_TEXT agent the workflow's ``core.agent`` node
+    names. apps/api resolves it (``AsrAgentResolverService``) into the
+    ``ResolvedAsrSpec`` the job runs on — TASK-1006 retired the ``AsrPipeline``
+    id this field used to carry. ``consultation_id`` doubles as the idempotency
+    correlation key: apps/api reuses an existing non-terminal BATCH job for the
+    same consultation and resolved agent version instead of dispatching a second
     one, so a retried/re-delivered activity attempt is safe as-is.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: str
-    pipeline_id: str
+    agent_slug: str
     audio_uri: str
     consultation_id: str | None = None
     media_id: str | None = None

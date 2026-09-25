@@ -1679,9 +1679,9 @@ async def _run_transcription(
     result = await dispatch_batch_transcription(
         DispatchBatchTranscriptionInput(
             tenant_id=payload.tenant_id,
-            # TODO(TASK-861): pass the agent's `resolvedSpec` once the batch path accepts one.
-            # Until then the batch dispatcher is keyed by the resolved ASR model's slug.
-            pipeline_id=resolved.model.slug,
+            # The node names its agent; apps/api resolves it into the job's `ResolvedAsrSpec`
+            # (TASK-1006 — there is no pipeline id any more).
+            agent_slug=resolved.slug,
             audio_uri=audio_uri,
             language=language,
             poll_timeout_seconds=int(config.get("timeoutSeconds") or 900),

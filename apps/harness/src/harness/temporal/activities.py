@@ -2131,20 +2131,20 @@ _STT_JOB_NON_TERMINAL_STATUSES = frozenset({"QUEUED", "PROCESSING"})
 async def dispatch_batch_transcription(
     payload: DispatchBatchTranscriptionInput,
 ) -> DispatchBatchTranscriptionOutput:
-    """the STT palette's batch-trigger activity.
+    """the batch-transcription activity a speech-to-text ``core.agent`` node runs.
 
-    Given a resolved `AsrPipeline` id ( central design decision: a
-    published `stt` `WorkflowDefinition` compiles to an `AsrPipeline`, it is never
-    walked node-by-node by this interpreter) and a batch job's audio reference, this
-    is the ONE place harness dispatches STT batch work: it calls apps/api's
+    Given the SPEECH_TO_TEXT agent the node names and a batch job's audio
+    reference, this is the ONE place harness dispatches STT batch work (apps/api
+    resolves the agent into the job's ``ResolvedAsrSpec`` — TASK-1006 retired the
+    ``AsrPipeline`` id this used to carry): it calls apps/api's
     `POST /internal/harness/stt/batch-jobs`, which itself calls the EXACT SAME
     `TranscriptionJobService.createBatchJob` + `TranscriptionRealtimeService.
     dispatchDramatiqJob` calls `TranscriptionJobController`'s own batch handlers
     already make — no duplicate job-processing logic in harness, and no per-frame
     audio or per-node execution inside this (or any) Temporal workflow.
 
-    Idempotent / retriable: apps/api itself dedups on (`consultation_id`,
-    `pipeline_id`) for a non-terminal job, so a Temporal retry of this ENTIRE
+    Idempotent / retriable: apps/api itself dedups on (`consultation_id`, the
+    resolved agent version) for a non-terminal job, so a Temporal retry of this ENTIRE
     activity (worker crash, network blip) re-POSTs safely and gets back the
     already-dispatched job rather than a duplicate. The poll loop is real wall-clock
     `asyncio.sleep` (never Temporal's own clock — this is I/O, not workflow code) and
@@ -2159,7 +2159,7 @@ async def dispatch_batch_transcription(
     try:
         created = await client.create_stt_batch_job(
             tenant_id=payload.tenant_id,
-            pipeline_id=payload.pipeline_id,
+            agent_slug=payload.agent_slug,
             audio_uri=payload.audio_uri,
             consultation_id=payload.consultation_id,
             media_id=payload.media_id,

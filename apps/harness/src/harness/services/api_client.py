@@ -707,7 +707,7 @@ class ApiClient:
         self,
         *,
         tenant_id: str,
-        pipeline_id: str,
+        agent_slug: str,
         audio_uri: str,
         consultation_id: str | None = None,
         media_id: str | None = None,
@@ -717,16 +717,17 @@ class ApiClient:
 
         Dispatches through the EXISTING `TranscriptionJobService` /
         `TranscriptionRealtimeService` write path apps/api's own batch-transcription
-        surface already uses — no second job-processing path in harness. Idempotent
-        on the apps/api side: a retried call with the same ``consultation_id`` +
-        ``pipeline_id`` finds and returns the already-dispatched non-terminal job
-        instead of creating a second one, so this method is safe to call from a
-        retriable Temporal activity as-is.
+        surface already uses — no second job-processing path in harness. apps/api
+        resolves ``agent_slug`` into the job's ``ResolvedAsrSpec`` (404 for an agent
+        the tenant cannot see). Idempotent on the apps/api side: a retried call with
+        the same ``consultation_id`` + resolved agent version finds and returns the
+        already-dispatched non-terminal job instead of creating a second one, so this
+        method is safe to call from a retriable Temporal activity as-is.
         """
         body = _prune(
             {
                 "tenantId": tenant_id,
-                "pipelineId": pipeline_id,
+                "agentSlug": agent_slug,
                 "audioUri": audio_uri,
                 "consultationId": consultation_id,
                 "mediaId": media_id,

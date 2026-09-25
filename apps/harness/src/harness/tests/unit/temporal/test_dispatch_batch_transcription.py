@@ -72,7 +72,7 @@ class TestDispatchBatchTranscription:
             activities.dispatch_batch_transcription,
             DispatchBatchTranscriptionInput(
                 tenant_id="t-1",
-                pipeline_id="pipeline-1",
+                agent_slug="clinic-transcription",
                 audio_uri="s3://bucket/key.wav",
                 consultation_id="c-1",
             ),
@@ -85,7 +85,7 @@ class TestDispatchBatchTranscription:
         assert fake.create_calls == [
             {
                 "tenant_id": "t-1",
-                "pipeline_id": "pipeline-1",
+                "agent_slug": "clinic-transcription",
                 "audio_uri": "s3://bucket/key.wav",
                 "consultation_id": "c-1",
                 "media_id": None,
@@ -110,7 +110,7 @@ class TestDispatchBatchTranscription:
             activities.dispatch_batch_transcription,
             DispatchBatchTranscriptionInput(
                 tenant_id="t-1",
-                pipeline_id="pipeline-1",
+                agent_slug="clinic-transcription",
                 audio_uri="s3://bucket/key.wav",
                 poll_interval_seconds=0.01,
                 poll_timeout_seconds=5,
@@ -140,7 +140,7 @@ class TestDispatchBatchTranscription:
             activities.dispatch_batch_transcription,
             DispatchBatchTranscriptionInput(
                 tenant_id="t-1",
-                pipeline_id="pipeline-1",
+                agent_slug="clinic-transcription",
                 audio_uri="s3://bucket/key.wav",
                 poll_interval_seconds=0.01,
                 poll_timeout_seconds=0.03,
@@ -161,18 +161,20 @@ class TestDispatchBatchTranscription:
             await env.run(
                 activities.dispatch_batch_transcription,
                 DispatchBatchTranscriptionInput(
-                    tenant_id="t-1", pipeline_id="pipeline-1", audio_uri="s3://bucket/key.wav"
+                    tenant_id="t-1",
+                    agent_slug="clinic-transcription",
+                    audio_uri="s3://bucket/key.wav",
                 ),
             )
         assert exc_info.value.type == "SttBatchDispatchFailed"
 
     @pytest.mark.asyncio
-    async def test_idempotent_retry_is_safe_because_apps_api_dedups_on_consultation_and_pipeline(
+    async def test_idempotent_retry_is_safe_because_apps_api_dedups_on_consultation_and_agent(
         self, env, monkeypatch
     ):
         """This activity does not itself track idempotency — apps/api's
         `POST /internal/harness/stt/batch-jobs` reuses the existing non-terminal
-        job for the same (consultation_id, pipeline_id). Two full activity
+        job for the same (consultation_id, resolved agent version). Two full activity
         invocations (simulating a Temporal retry) both call create; the SAME
         fake stands in for apps/api's own dedup by returning the SAME job id
         both times, proving the activity's output is stable across a retry."""
@@ -182,7 +184,7 @@ class TestDispatchBatchTranscription:
 
         payload = DispatchBatchTranscriptionInput(
             tenant_id="t-1",
-            pipeline_id="pipeline-1",
+            agent_slug="clinic-transcription",
             audio_uri="s3://bucket/key.wav",
             consultation_id="c-1",
         )
