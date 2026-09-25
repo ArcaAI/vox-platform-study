@@ -17,13 +17,19 @@
   - `@arcaai/vox-node`: `consultations.updateLanguage(consultationId, { languageMode }, { ifMatch? })` — change a consultation's declared spoken-language mode after open (OCC `PATCH`; omits `ifMatch` and it reads the consultation first to build one). `stt.createStreamSession()`'s response, the STT `status`/`ready` socket frames, and `agents.transcribe()`'s job handle/status now carry `languageResolution`. `agents.transcribe()` also gains `languageMode` on both source shapes, and now correctly forwards `consultationId` on the JSON (`{ mediaId }`) route — previously silently dropped.
   - `@arcaai/vox`: `session.open()` accepts `languageMode` alongside `language`; `stt.createStreamSession()`'s response and the WS `status`/`ready` frames carry `languageResolution`. Corrected the stale TSDoc on `OpenSessionInput.language` — it is the SPOKEN language, not the note's language (TASK-1001 OD-12).
 
+- TASK-1006 — R4: the browser never runs a model (TASK-865 completed). Removes every remaining client-side inference path and pre-agent pipeline selector.
+
+  **Breaking**
+
+  - `@arcaai/vox`: removed `usePipelines`, `useArcaPipelines`, `useSttProviderToggle`, `useLocalVoiceEmbedding`, `useGatedClientStages`, `LocalVoiceEmbedder`, `clientInferenceGate`, `PipelineRegistry`, `ProcessedAudioTap`, and the `selectedPipelineId` user setting. `./plugins` no longer re-exports `useVAD`/`useSTT`/`useNoiseFilter`/`useMedNER`/`createProcessedAudioTap`, and the whole `./plugins/med-ner` entry point is gone (`package.json#exports`/`typesVersions`/tsup entry). `audio.start()` / `PluginManager` runtime options no longer accept `pipelineId` or `clientInference` — ASR selection is `agentSlug` only. `TranscriptionPipeline`/`KnowledgePipeline` lost their local (browser-model) processing stages, `DEFAULT_LOCAL_CONFIG`, and `LOCAL_TRANSCRIPTION_ENABLED`; `KnowledgePipeline`'s NER always runs server-side now. Removed the dead `ProcessingConfig`/`TranscriptionProcessingConfig`/`KnowledgeProcessingConfig`/`DEFAULT_PROCESSING_CONFIG`/`ProcessingLocation` type family from `types/config.ts` (zero consumers — a leftover from the pre-agent local-processing-location model). Dropped the `@arcaai/vad`, `@arcaai/noise-filter`, `@arcaai/med-ner`, `@huggingface/transformers`, `@ricky0123/vad-web`, and `onnxruntime-*` dependencies.
+  - `@arcaai/stt`: dropped every local/in-browser transcription path — the Whisper WebWorker, `LocalSTTProvider`, `LocalSpeakerDiarizer`, `useSTT`, and their model/device/task types. The package now ships only the capture helpers (`createAudioCapture`, `float32ToInt16`) and the backend streaming transport (`STTProcessor`, `StreamingBackendSTTProvider`); `STTProviderType` is `'remote'` only.
+  - `@arcaai/vox-node`: removed `consultations.summaries.generate()` and `.generatePreSummary()` (the synchronous generation routes) along with `SYNC_GENERATION_TIMEOUT_MS` and `GenerateSummaryOptions` — use `generateAsync()`/`generatePreSummaryAsync()` + `hope.jobs.waitFor()`. Removed `CreateStreamSessionRequest.pipelineId` (the deprecated request-side ASR selector) — selection is `agentSlug` only, same rule TASK-865 already applied browser-side. Response fields that echo which ASR pipeline served a session (`StreamSessionResponse.pipelineId`, per-utterance transcript provenance) are unaffected — those report server state, not a client selector.
+  - The `@arcaai/vad`, `@arcaai/noise-filter`, and `@arcaai/med-ner` packages are deleted outright and removed from the Changesets `fixed` version group.
+
 ### Patch Changes
 
-- @arcaai/med-ner@4.0.0
-  - @arcaai/noise-filter@4.0.0
-  - @arcaai/room@4.0.0
+- @arcaai/room@4.0.0
   - @arcaai/stt@4.0.0
-  - @arcaai/vad@4.0.0
 
 ## Unreleased
 

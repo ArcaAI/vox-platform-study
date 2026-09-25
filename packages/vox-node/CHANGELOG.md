@@ -17,6 +17,14 @@
   - `@arcaai/vox-node`: `consultations.updateLanguage(consultationId, { languageMode }, { ifMatch? })` — change a consultation's declared spoken-language mode after open (OCC `PATCH`; omits `ifMatch` and it reads the consultation first to build one). `stt.createStreamSession()`'s response, the STT `status`/`ready` socket frames, and `agents.transcribe()`'s job handle/status now carry `languageResolution`. `agents.transcribe()` also gains `languageMode` on both source shapes, and now correctly forwards `consultationId` on the JSON (`{ mediaId }`) route — previously silently dropped.
   - `@arcaai/vox`: `session.open()` accepts `languageMode` alongside `language`; `stt.createStreamSession()`'s response and the WS `status`/`ready` frames carry `languageResolution`. Corrected the stale TSDoc on `OpenSessionInput.language` — it is the SPOKEN language, not the note's language (TASK-1001 OD-12).
 
+- TASK-1006 — R4: the browser never runs a model (TASK-865 completed). Removes every remaining client-side inference path and pre-agent pipeline selector across the SDK family.
+
+  **Breaking**
+
+  - `@arcaai/vox-node`: removed `consultations.summaries.generate()` and `.generatePreSummary()` (the synchronous generation routes) along with `SYNC_GENERATION_TIMEOUT_MS` and `GenerateSummaryOptions` — use `generateAsync()`/`generatePreSummaryAsync()` + `hope.jobs.waitFor()`. Removed `CreateStreamSessionRequest.pipelineId` (the deprecated request-side ASR selector) — selection is `agentSlug` only, same rule TASK-865 already applied browser-side. Response fields that echo which ASR pipeline served a session (`StreamSessionResponse.pipelineId`, per-utterance transcript provenance) are unaffected — those report server state, not a client selector.
+  - `@arcaai/vox`: removed `usePipelines`, `useArcaPipelines`, `useSttProviderToggle`, `useLocalVoiceEmbedding`, every client-AI hook re-export from `./plugins`, and the whole `./plugins/med-ner` entry point. `audio.start()` no longer accepts `pipelineId` or `clientInference` — ASR selection is `agentSlug` only. See `@arcaai/vox`'s own CHANGELOG entry for the full list.
+  - The `@arcaai/vad`, `@arcaai/noise-filter`, and `@arcaai/med-ner` packages are deleted outright and removed from the Changesets `fixed` version group.
+
 ## Unreleased
 
 ### Minor Changes
