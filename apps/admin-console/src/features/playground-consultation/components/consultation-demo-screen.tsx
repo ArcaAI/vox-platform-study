@@ -169,9 +169,7 @@ export function ConsultationDemoScreen() {
 interface VoxProviderConfig {
   api: { baseUrl: string; wsUrl?: string; tenantId?: string };
   audio?: {
-    noiseFilter?: { enabled: boolean };
-    vad?: { enabled: boolean };
-    stt?: { enabled: boolean; provider: 'local' | 'backend' | 'auto' };
+    stt?: { enabled: boolean; provider: 'backend' | 'auto' };
   };
   autoWireTokenRefresh?: boolean;
 }
