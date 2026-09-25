@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — owner **go** 2026-09-25; wave 1 running (6 lanes, + the 2 TASK-1005 §13 residency lanes) |
+| Status | **In Progress** — wave 1 merged locally except L-SDK; wave 2 (L-DB, L-CLEAN, L-DOCS) running |
 | Type | refactor (removal) + feature (ALaaS migration) |
 | Branch | `dev-2.2` (hope-v2) · `main` (hope-v2-deployment) · `refactor-hope-integaration` (ALaaSv3.0) |
 | Opened | 2026-09-25 |
@@ -93,6 +93,8 @@ register rows not yet `removed`, rules `05`/`06`/`08`/`09`; deployment repo `doc
 | OD-2 | HOPE scope | **Remove both** the sync summary routes and the whole pre-agent ASR pipeline stack; **drop the tables** after a cluster backup. |
 | OD-3 | ALaaS paths bypassing HOPE | **Migrate both** to HOPE: DNA via vox-node with the consultant-id bridge; the medical summary via a HOPE workflow run; local OpenAI summary path removed. |
 | OD-4 | SDK release mechanism | **Local runbook only**, never CI (restated 2026-09-25). |
+| OD-5 | ALaaS sends a finished transcript to the consultation workflow, but the graphs had no ingress for it, so NER was skipped (the note was still produced) | **Fix inside this ticket:** a declared `transcript` TEXT kind at the top level of the run input, `core.data` gains a `text` socket, node `n_transcript` feeds `n_ner`. Live rollout needs a schema publish + republish of the 11 `arcaai-<dept>-consultation` workflows (admin login, after deploy). |
+| OD-6 | Wave-2 leftovers found by the wave-1 lanes | Handled in wave 2: CASL subject `AsrPipeline` → `TranscriptionJob` (seed grants in L-DB, decorators + nav in L-CLEAN); dead `maxAsrPipelines`; `POST :id/summary/comprehensive` moved onto the agent plane or removed (L-CLEAN decides by callers). |
 
 ## 7. Implementation summary
 
@@ -102,5 +104,6 @@ _Pending go._
 
 | Date | Change |
 |---|---|
+| 2026-09-25 | Wave 1 merged into `dev-2.2` locally: L-CONSOLE (`152629226`), L-SUM (`190dbc7d6`), L-ASR-STT (`23f53384b`), L-WF transcript ingress (`b9b556e8f`), L-ASR-GW (`bd6b6a2a5`) + module unregistration (`c4909d688`); TASK-1005 §13 residency lanes rcat/rui merged alongside. L-SDK still running. Wave 2 spawned: L-DB, L-DOCS (sonnet), L-CLEAN (opus). ALaaS lane L-ALS merged locally on `refactor-hope-integaration` (`16c3699`), not pushed. Security: ALaaS `apps/web_ui/.env.example` carried a real OpenAI/Azure key — owner to rotate. |
 | 2026-09-25 | Owner **go** (all of it; push bundled with this release). Wave 1 spawned: L-SUM, L-ASR-GW, L-ASR-STT (opus); L-SDK, L-CONSOLE (sonnet); L-ALS (opus). |
 | 2026-09-25 | Ticket opened from the owner's directive; inventory by a read-only explore agent; OD-1…OD-4 answered as recommended; plan written; awaiting go. |
