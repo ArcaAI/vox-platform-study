@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Pending** — plan written; owner decisions taken 2026-09-25 (§6); awaiting **go** |
+| Status | **In Progress** — owner **go** 2026-09-25; wave 1 running (6 lanes, + the 2 TASK-1005 §13 residency lanes) |
 | Type | refactor (removal) + feature (ALaaS migration) |
 | Branch | `dev-2.2` (hope-v2) · `main` (hope-v2-deployment) · `refactor-hope-integaration` (ALaaSv3.0) |
 | Opened | 2026-09-25 |
@@ -102,4 +102,5 @@ _Pending go._
 
 | Date | Change |
 |---|---|
+| 2026-09-25 | Owner **go** (all of it; push bundled with this release). Wave 1 spawned: L-SUM, L-ASR-GW, L-ASR-STT (opus); L-SDK, L-CONSOLE (sonnet); L-ALS (opus). |
 | 2026-09-25 | Ticket opened from the owner's directive; inventory by a read-only explore agent; OD-1…OD-4 answered as recommended; plan written; awaiting go. |

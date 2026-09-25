@@ -1,11 +1,13 @@
 # Vox SDK Release — publishing `@arcaai/vox` and its family to GitHub Packages
 
-How the `@arcaai/vox` SDK family is versioned and published to GitHub Packages. As of TASK-931
-this is **CI-only**: pushing a protected `SDK-<ver>` or `ALL-<ver>` tag runs the `publish-sdk`
-GitLab CI job (`.gitlab/ci/publish.yml`), which runs `pnpm changeset version` then
-`pnpm changeset publish`, authenticated by a masked `GITHUB_PACKAGES_TOKEN` CI variable. The manual,
-operator's-machine steps below this point are kept as a documented fallback, not the primary path —
-the last several releases (through 3.5.0) were cut via CI.
+How the `@arcaai/vox` SDK family is versioned and published to GitHub Packages.
+
+**Owner rule (2026-09-11, restated 2026-09-25): SDK releases are published LOCALLY by following this runbook —
+never by the CI `publish-sdk` job.** Version on the active branch (`pnpm changeset:version`), commit, then run the
+manual steps below from the operator's machine with the global `~/.npmrc` GitHub Packages token. Only AFTER the
+local publish, push the protected `SDK-<ver>` tag: its `publish-sdk` job is then a no-op (`changeset publish` skips
+versions already on the registry). If a tag pipeline would reach `publish-sdk` before the local publish is done,
+cancel it.
 
 ## Layout
 
@@ -56,7 +58,7 @@ access to.
 
 ## How it works
 
-### The CI path (current)
+### The CI job (backstop only — not the release path)
 
 ```bash
 pnpm changeset               # author a changeset for your change
@@ -79,9 +81,9 @@ version` step do it), push a protected `SDK-<ver>` or `ALL-<ver>` tag (or land o
 
 The `publish` stage runs after `test`, so the full test suite gates every SDK release.
 
-### The manual fallback (operator's machine)
+### The release path (operator's machine)
 
-Use only when CI cannot run. One-time setup: a GitHub PAT (classic) with `write:packages` +
+This is how every release is published (owner rule above). One-time setup: a GitHub PAT (classic) with `write:packages` +
 `read:packages`, write access to `ArcaAI/project-hope`, added to your global `~/.npmrc`:
 
 ```
@@ -158,6 +160,6 @@ to already exist on the registry.
 | Date | Version | How | Notes |
 |---|---|---|---|
 | 2026-09-11 | 3.3.0 | Manual runbook, from `dev-2.2` at `a6e16b075` (versions committed in `9b3183ffc` via `pnpm changeset:version`; the private `@arcaai/vox-node-codegen` aligned by hand in `66c50d8ac`) | Nine packages published in dependency order under the operator's global `~/.npmrc` token. `@arcaai/vox-node-codegen` is `private: true`, so `pnpm publish` refuses it — bumped for alignment only. |
-| 2026-09-25 | 4.0.0 | CI `publish-sdk` job, protected annotated `SDK-4.0.0` tag at `dev-2.2` `370bb8132` (versions committed in `30e94aea7` via `pnpm changeset:version` from the TASK-1004 changeset) | **Major.** Removed `@arcaai/vox/compat` and `hope.summarization.*`; added `LanguageModeId` / `LanguageResolution`, vox-node `consultations.updateLanguage`, `languageMode` on open / stream session / `agents.transcribe` (which now forwards `consultationId`). `@arcaai/vox-node-codegen` joined the `fixed` group and was aligned to 4.0.0 in the follow-up commit (private, not published). |
+| 2026-09-25 | 4.0.0 | **Pending — local runbook release after TASK-1006.** The `SDK-4.0.0` tag was pushed at `370bb8132`; its pipeline #1332 was CANCELLED before `publish-sdk` ran (nothing published by CI). | Major: TASK-1004 removals (compat entry, `hope.summarization.*`) + TASK-1006 legacy removals (pipeline hooks, client-AI packages, sync summary methods). `@arcaai/vox-node-codegen` joined the `fixed` group (private, versioned, never published). |
 | 2026-09-17 | 3.6.0 | CI `publish-sdk` job, protected `SDK-3.6.0` tag (annotated, at `dev-2.2` `7c6ea348f`), versioned locally via `pnpm changeset:version` from one changeset on the fixed group | All nine fixed-group packages at `3.6.0`. Schema-driven consultation context aligned end to end: typed `open<TContext>`, `consultations.listContext`, `governingRun`, `HopeAPIError.problems`, run `degraded` + node counts, `WorkflowSchemaDescription.contextSchema` / `reviewNodes`, `OPEN_REFUSAL_CODES` + `API_KEY_SCOPE_PRESETS` from `@arcaai/types`; codegen `--check`, `OpenConsultationContext`, `@schemaVersion` / `@contextSchema` / `@reviewNodes`; a NEW 400 `WORKFLOW_CONTEXT_INCOMPATIBLE` refusal on `open`. |
 | previous | 3.5.0 | CI `publish-sdk` job, protected `SDK-3.5.0` tag, `pnpm changeset publish` | All nine fixed-group packages at `3.5.0` (`@arcaai/vox-node-codegen` stayed at `3.3.0`, aligned by hand). Fixed alongside this release (TASK-931): `@arcaai/json-schema-subset` and `@arcaai/vox-codegen` were missing from the CI build list; the manual path's registry confusion (a GitLab-targeted `.npmrc` that no publish ever addressed) is resolved. The CI path is now the one actually used to cut a release — treat the manual steps above as the fallback, not the default. |
