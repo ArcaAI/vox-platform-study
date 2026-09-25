@@ -28,6 +28,7 @@
 
   **Added**
 
+  - `@arcaai/vox-node`: the published `index.d.ts` is self-contained. Through 3.6.0 it still said `import { GoverningRunSummary } from '@arcaai/types'` — a package vox-node's manifest does not depend on — so a consumer's compiler saw `any` for `GoverningRunSummary`, `OpenRefusalCode` and the `ApiKeyScopePreset*` types (or a missing-module error without `skipLibCheck`). The declarations are now inlined like the runtime values already were.
   - `@arcaai/vox-node`: `hope.admin.modelResidency.catalogue()` — the catalogue-first residency view (every self-hosted model grouped by the service that runs it, loaded or not, with its consumers, keep policy and allowed actions; TASK-1005).
 
 ## Unreleased

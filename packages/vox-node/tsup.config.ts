@@ -35,7 +35,11 @@ if (name !== '@arcaai/vox-node') {
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['esm', 'cjs'],
-  dts: true,
+  // `resolve` inlines @arcaai/types' DECLARATIONS too. With a bare `dts: true` the bundled
+  // `index.d.ts` kept `import { GoverningRunSummary } from '@arcaai/types'` — a package the
+  // published manifest does not depend on, so a consumer's compiler saw `any` (skipLibCheck)
+  // or a missing-module error. Runtime values were already inlined; now the types are too.
+  dts: { resolve: true },
   sourcemap: true,
   target: 'node22',
   platform: 'node',
