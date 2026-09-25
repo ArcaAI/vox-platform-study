@@ -108,9 +108,8 @@ export class GoldenCasePromotionService {
       throw new BadRequestException(`Exemplar ${params.exemplarId} carries no redacted signed note, so there is no reference note to promote.`);
     }
 
-    // Read the encounter's own transcript. Same assembly the live generation
-    // path uses (`SummaryService.generateSummary`): every TRANSCRIPT context
-    // item, in order, blank-line joined.
+    // Read the encounter's own transcript: every TRANSCRIPT context item, in
+    // order, blank-line joined.
     const transcripts = await this.contextItemRepository.findTranscripts(exemplar.consultationId).catch(() => []);
     const rawTranscript = (transcripts ?? [])
       .map((item) => item.content)

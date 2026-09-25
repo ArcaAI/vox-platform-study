@@ -202,10 +202,10 @@ export class HarnessInternalService extends BaseService {
   // that `persistDraft` creates, so a LATER persist can recognise the harness's
   // OWN prior draft and update it instead of adding a second note.
   //
-  // The marker is what makes the adoption safe. FIVE other production paths create
-  // RAW_SUMMARY rows for the same consultation — `SummaryService.generateSummary`,
-  // `ChainSummaryService.generateComprehensiveSummary`, `ContextService.addRawSummary`,
-  // and the two BullMQ summary processors — none of which coordinate with the harness.
+  // The marker is what makes the adoption safe. Other production paths create
+  // RAW_SUMMARY rows for the same consultation — `ChainSummaryService.generateComprehensiveSummary`,
+  // `ContextService.addRawSummary` and the comprehensive-summary BullMQ processor —
+  // none of which coordinate with the harness.
   // Adopting the newest RAW_SUMMARY unconditionally would let a harness draft
   // OVERWRITE a note this workflow never authored, which is strictly worse than a
   // duplicate. Unmarked rows are therefore never touched: the lookup fails safe to
@@ -1566,9 +1566,8 @@ export class HarnessInternalService extends BaseService {
           redactionApplied: dto.redactionApplied ?? null,
           redactionManifest: (dto.redactionManifest ?? null) as never,
           preSummaryIds: liveSnapshot ? [liveSnapshot.id] : [],
-          // Session-agent lineage, stamped identically to
-          // the synchronous `SummaryService.generateSummary` path. Null for
-          // every summary that no live agent produced.
+          // Session-agent lineage. Null for every summary that no live agent
+          // produced.
           sessionAgentId: liveLineage?.agentId ?? null,
           sessionAgentPromptVersion: formatSessionAgentPromptVersion(liveLineage),
           generatedAt: new Date(),

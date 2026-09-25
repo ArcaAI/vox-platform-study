@@ -13,8 +13,8 @@
  * the pre-summary pipeline. `SummaryService.generatePreSummary` already assembles the pre-summary
  * prompt through the tenant tier (the same v3 body the agent binds), calls TEXT with a FREE-FORM
  * response — a pre-summary is Markdown under five headings, not the note's strict `json_schema` —
- * encrypts the result, persists the `PRE_SUMMARY` context item that `resolveWarmStartPreSummary`
- * and the case-note column read, records `SummaryMeta`, and meters the call. Re-implementing that
+ * encrypts the result, persists the `PRE_SUMMARY` context item the warm-start readers and the
+ * case-note column read, records `SummaryMeta`, and meters the call. Re-implementing that
  * inside the live service would be a second pipeline to keep in step with the first, which is the
  * failure mode `27-document-template-library.ts` and `07e` both carry explicit notes about.
  *
