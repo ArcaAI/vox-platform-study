@@ -706,7 +706,6 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     job: {
       tenantId?: string | null;
       consultationId?: string | null;
-      pipelineId?: string;
       completedAt?: Date | null;
       // TASK-957 F-8 — set ONLY by the agent transcriptions route (TASK-861
       // resolves an ASR Agent and writes `agentVersionId` + `resolvedSpec`), so
@@ -748,7 +747,6 @@ export class SttInternalService extends BaseService implements ISttInternalServi
         requestId: jobId,
         attributesJson: {
           engine: dto.engine!,
-          pipelineId: job.pipelineId ?? null,
           channelCount: 1,
           // TASK-957 F-8 — WHY this transcription happened. Exactly two routes
           // create a BATCH job and the row distinguishes them: an agent-keyed

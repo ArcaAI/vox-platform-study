@@ -11,7 +11,7 @@ import type {
   IProviderConnectionService as IProviderConnectionServicePort,
   ProviderFunding,
 } from '../../ai-provider-connection/IProviderConnectionService';
-import type { SttProviderOverrides } from '../../tenant-stt-config/platform-limits';
+import type { SttProviderOverrides } from '../stt-provider-overrides';
 import { AsrSpecBuildError, asrChainModels, buildResolvedAsrSpec, type AsrConnectionBinding } from './build-resolved-asr-spec';
 import { GoverningWorkflowAsrReader, workflowAsrAgentUnavailable, type ConsultationAsrContext } from './governing-workflow-asr';
 

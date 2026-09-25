@@ -96,33 +96,22 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
   it('registers NO db-secret descriptor — the tier has no read or write lane', () => {
     const dbSecrets = HOPE_SETTINGS_REGISTRY.list().filter((d) => d.tier === 'db-secret');
     expect(dbSecrets.map((d) => d.key)).toEqual([]);
-    for (const key of ['tts.credential.azure', 'tts.credential.sarvam', 'stt.credential.azure-speech', 'stt.credential.sarvam', 'stt.credential.openai']) {
+    for (const key of [
+      'tts.credential.azure',
+      'tts.credential.sarvam',
+      'stt.credential.azure-speech',
+      'stt.credential.sarvam',
+      'stt.credential.openai',
+    ]) {
       expect(HOPE_SETTINGS_REGISTRY.has(key), key).toBe(false);
     }
   });
 
-  // The nightly SYSTEM-template resync sweep. Registering
-  // these makes the sweep discoverable and writable through the admin settings
-  // surface instead of being an unmanageable pair of magic strings read straight
-  // out of AppSettings.
-  it('registers the pipeline template-resync sweep controls', () => {
-    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.templateResync.enabled')).toMatchObject({
-      tier: 'global-kv',
-      dataType: 'boolean',
-      maxScope: 'system',
-      globalOnly: true,
-      killSwitch: true,
-      // Governance: a kill-switch defaults OFF. The sweep is turned ON by a
-      // seeded platform VALUE, not by flipping this fail-safe default.
-      default: false,
-    });
-    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.templateResync.cron')).toMatchObject({
-      tier: 'global-kv',
-      dataType: 'string',
-      maxScope: 'system',
-      globalOnly: true,
-      default: '0 3 * * *',
-    });
+  // TASK-1006 — the nightly SYSTEM-template resync sweep went with the `AsrPipeline` catalogue it
+  // reconciled, and its two controls with it.
+  it('no longer registers the pipeline template-resync sweep controls', () => {
+    expect(HOPE_SETTINGS_REGISTRY.has('pipeline.templateResync.enabled')).toBe(false);
+    expect(HOPE_SETTINGS_REGISTRY.has('pipeline.templateResync.cron')).toBe(false);
   });
 
   it('registers the entitlements kill-switch as a global-only flag', () => {

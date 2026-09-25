@@ -33,13 +33,10 @@ function buildService(): TenantService {
     stub, // globalSettingRepository
     stub, // departmentRepository
     stub, // promptTemplateRepository
-    stub, // asrPipelineRepository
     stub, // databaseService
     stub, // tenantBucketService
     mockEventEmitter as never,
     mockClsService as never,
-    stub, // aiModelRepository
-    stub, // asrPipelineVersionRepository
     stub, // departmentAgentRepository
     stub, // promptVersionRepository
   );

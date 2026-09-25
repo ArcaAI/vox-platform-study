@@ -9,7 +9,6 @@ import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
 import { effectiveTriggerConfig, triggerContextBinding } from '../../workflow-exposure/effective-trigger-schema';
 import { EffectiveTriggerSchemaService } from '../../workflow-exposure/effective-trigger-schema.service';
-import { SttPipelineResolverService } from '../../workflow-definition/resolvers/stt-pipeline-resolver.service';
 import { withGoverningEngineMarker } from '../governing-engine';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import { CORE_PALETTE_KEY } from '@arcaai/workflow-contract';
@@ -43,10 +42,6 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     @Inject(IWorkflowRunService) private readonly workflowRunService: IWorkflowRunService,
     @Inject(HarnessGatewayService) private readonly harnessGateway: HarnessGatewayService,
     @Optional() @Inject(IS3Service) private readonly s3Service?: IS3Service,
-    // the FIRST production injector of this resolver, which found
-    // "exported for a future consumer, injected nowhere". `@Optional()` so unit fixtures still
-    // construct; production DI (WorkflowDefinitionServiceModule) supplies it.
-    @Optional() private readonly sttPipelineResolver?: SttPipelineResolverService,
     // TASK-891 — derives the reserved `visit-type:<key>` selector tag (OD-2/OD-3). Holds no
     // state and no dependency (see the class header on `VisitTypeService`), so `@Optional()`
     // with the shared `DEFAULT_VISIT_TYPE_SERVICE` fallback follows the same pattern every
@@ -173,15 +168,6 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       authoredContext,
     } = input;
 
-    // resolved FIRST, and unconditionally, because the two palettes are separate
-    // assignments: a tenant may assign an `stt` graph and no `consultation` graph. Putting this
-    // after the early return below would silently skip the STT lane for exactly that tenant.
-    //
-    // Deliberately NOT tagged with the visit-type selector below: visit-type/department tags
-    // select a documentation TEMPLATE (OD-2/OD-3), an axis the STT palette — which picks an ASR
-    // pipeline — has no opinion about.
-    const sttPipelineId = await this.resolveSttPipelineId(tenantId, departmentId ?? null);
-
     // point 5 — a caller selection REPLACES the consultation-palette cascade.
     // `assignments.resolve` is not called at all in that case: consulting it and then discarding
     // the answer would put a second, invisible slug in the logs for an operator to mistake for
@@ -198,7 +184,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // No tier assigned anything -> Substrate A keeps the consultation. This is the DEFAULT and
     // must stay the default: a tenant that has authored nothing sees today's behaviour exactly.
     if (!resolved.workflowDefinitionSlug) {
-      return { dispatched: false, source: resolved.source, workflowDefinitionSlug: null, runId: null, governanceRecorded: false, sttPipelineId };
+      return { dispatched: false, source: resolved.source, workflowDefinitionSlug: null, runId: null, governanceRecorded: false };
     }
 
     const notDispatched = (skippedReason: string): ConsultationWorkflowDispatchResult => ({
@@ -208,7 +194,6 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       runId: null,
       governanceRecorded: false,
       skippedReason,
-      sttPipelineId,
     });
 
     try {
@@ -318,7 +303,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
         source: resolved.source,
         governanceRecorded,
       });
-      return { dispatched: true, source: resolved.source, workflowDefinitionSlug: definition.slug, runId, governanceRecorded, sttPipelineId };
+      return { dispatched: true, source: resolved.source, workflowDefinitionSlug: definition.slug, runId, governanceRecorded };
     } catch (error) {
       // Best-effort BY DESIGN: a clinician must be able to open a consultation even when the
       // harness is down. The consultation proceeds under Substrate A and the reason is recorded.
@@ -450,34 +435,6 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       });
       return false;
     }
-  }
-
-  /**
-   * completes the STT lane: assignment -> definition slug ->
-   * compiled `AsrPipeline` id.
-   *
-   * The rest of this lane was already live. Publishing an `stt`-palette graph writes a REAL
-   * `AsrPipeline` + `AsrPipelineVersion` through the production `PipelineService` ,
-   * and that pipeline already shows up in the consultation Listener selector. The only unwired
-   * link was this one — `SttPipelineResolverService` had no injector at all.
-   *
-   * Best-effort, exactly like the dispatch path above: a resolution failure returns `null` ("fall
-   * back to the tenant's existing pipeline resolution"), never an exception, because nothing here
-   * may stop a clinician opening a consultation.
-   *
-   * NOT done here: binding this id into the realtime WS session. That lives under
-   * `apps/api/src/modules/streaming/**`, which grep-gate deliberately fences so a
-   * change there forces an explicit decision rather than riding along in an unrelated diff.
-   */
-  private async resolveSttPipelineId(_tenantId: string, _departmentId: string | null): Promise<string | null> {
-    // TASK-893: the `stt` palette is retired with the rest of the legacy vocabulary, so there is
-    // no `stt` assignment to resolve and no graph that compiles to an `AsrPipeline`. The ASR
-    // binding is the tenant's SPEECH_TO_TEXT Agent, resolved by the gateway at session start
-    // (TASK-861 `ResolvedAsrSpec`); `sttPipelineId` stays on the result for wire compatibility and
-    // is always `null`. Retargeting this read to the `core` palette would ask the pipeline
-    // resolver for a pipeline no `core` graph compiles — a warning per consultation open, for
-    // nothing.
-    return null;
   }
 
   /**

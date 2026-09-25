@@ -5,7 +5,7 @@
  * was open. `ServiceAuthMiddleware` closed that, with a dev bypass while no
  * token is configured and FAIL-CLOSED behaviour once one is. The gateway,
  * however, never presented a token to stt — so the break is invisible locally
- * and every streaming session, voice-profile enrolment and pipeline validation
+ * and every streaming session and voice-profile enrolment
  * 401s the moment `INTERNAL_ACCESS_TOKEN` is set in a deployed environment.
  *
  * These tests pin BOTH halves of the internal-call contract on every
@@ -21,7 +21,6 @@
  */
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PipelineService } from '../pipeline/pipeline.service';
 import { StreamingSessionService } from '../streaming/streamingSession.service';
 import { VoiceProfileService } from '../../user/voiceProfile/voiceProfile.service';
 import { TENANTLESS, isTenantlessMarker } from '../../../common';
@@ -55,7 +54,11 @@ describe('gateway → apps/stt carries the shared token AND the tenant', () => {
     it('createSession sends the token and the session tenant', async () => {
       httpService.post.mockReturnValue(of({ data: { session_id: 's-1', status: 'active' } }));
 
-      await build().createSession({ sessionId: 's-1', tenantId: 'tenant-1', pipelineId: 'p-1' });
+      await build().createSession({
+        sessionId: 's-1',
+        tenantId: 'tenant-1',
+        resolvedSpec: { runtimeKey: 'agent-v-1', models: { asr: { slug: 'whisper' } }, audioFrontEnd: { diarization: { enabled: false } } } as never,
+      });
 
       const headers = headersOf(httpService.post.mock.calls[0]);
       expect(headers['X-Service-Token']).toBe(SHARED_TOKEN);
@@ -131,7 +134,9 @@ describe('gateway → apps/stt carries the shared token AND the tenant', () => {
         findActiveByUserId: vi.fn().mockResolvedValue(null),
         activateById: vi.fn().mockResolvedValue(undefined),
       };
-      const post = vi.fn().mockReturnValue(of({ data: { embedding: new Array(256).fill(0.1), model_id: 'm-1', model_slug: 'wespeaker-voxceleb-resnet34' } }));
+      const post = vi
+        .fn()
+        .mockReturnValue(of({ data: { embedding: new Array(256).fill(0.1), model_id: 'm-1', model_slug: 'wespeaker-voxceleb-resnet34' } }));
       // TASK-887 — enrollment resolves the agent first; the model it names is pushed with the samples.
       const asrResolver = {
         resolve: vi.fn().mockResolvedValue({
@@ -160,35 +165,6 @@ describe('gateway → apps/stt carries the shared token AND the tenant', () => {
       expect(headers['X-Tenant-Id']).toBe('tenant-voice');
       // multipart/form-data: axios must derive the boundary itself.
       expect(headers['Content-Type']).toBeUndefined();
-    });
-  });
-
-  // =========================================================================
-  // PipelineService — /api/v1/pipelines/validate
-  // =========================================================================
-  describe('PipelineService', () => {
-    it('remote YAML validation sends the token and the CLS tenant', async () => {
-      const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-pipe' : undefined)), set: vi.fn() };
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ valid: true }) });
-      vi.stubGlobal('fetch', fetchMock);
-
-      const service = new PipelineService(
-        {} as any,
-        { emit: vi.fn() } as any,
-        cls as any,
-        {} as any,
-        undefined,
-        secretsWithSharedToken() as any,
-      );
-
-      await service.validateYaml('models:\n  asr: whisper::base\n');
-
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      const headers = (fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers;
-      expect(headers['X-Service-Token']).toBe(SHARED_TOKEN);
-      expect(headers['X-Tenant-Id']).toBe('tenant-pipe');
-
-      vi.unstubAllGlobals();
     });
   });
 });

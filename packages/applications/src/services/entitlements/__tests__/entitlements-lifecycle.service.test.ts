@@ -41,7 +41,6 @@ function makeBaseClient(overrides: Record<string, unknown> = {}) {
     },
     department: model(),
     promptTemplate: model(),
-    asrPipeline: model(),
     apiKey: model(),
     ...overrides,
   };

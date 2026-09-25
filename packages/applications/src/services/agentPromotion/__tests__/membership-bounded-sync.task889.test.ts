@@ -230,7 +230,6 @@ describe('the sync data path is membership-bounded, not elevated (TASK-889)', ()
         { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } } as never,
         { isEnforcementEnabled: () => false, assertQuantityQuota: vi.fn(), isFeatureEnabled: async () => true } as never,
         undefined,
-        undefined,
         { findById: vi.fn(async () => null), findByName: vi.fn(async () => null) } as never,
         undefined,
         undefined,

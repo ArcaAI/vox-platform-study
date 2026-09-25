@@ -1,22 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-class RemoteConfigResponseDto {
-  @ApiProperty({ description: 'Assigned ASR pipeline ID' })
-  pipelineId!: string;
-
-  @ApiPropertyOptional({ description: 'Human-readable pipeline name' })
-  pipelineName?: string;
-
-  @ApiProperty({
-    description: 'How the pipeline was assigned',
-    enum: ['admin', 'tenant-default'],
-  })
-  assignedBy!: 'admin' | 'tenant-default';
-
-  @ApiPropertyOptional({ description: 'Whether code-switching is enabled in the pipeline' })
-  codeSwitchingEnabled?: boolean;
-}
-
 class LocalConfigResponseDto {
   @ApiPropertyOptional({ description: 'Noise cancellation configuration' })
   noiseCancellation?: {
@@ -78,8 +61,6 @@ class ActiveVoiceProfileDto {
 /**
  * User preferences response DTO.
  * Matches SDK's UserPreferences interface.
- *
- * remoteConfig is read-only: resolved from admin-assigned pipeline, not stored in user preferences.
  */
 export class UserPreferencesResponse {
   @ApiPropertyOptional({
@@ -99,12 +80,6 @@ export class UserPreferencesResponse {
     type: LocalConfigResponseDto,
   })
   localConfig?: LocalConfigResponseDto;
-
-  @ApiPropertyOptional({
-    description: 'Read-only remote pipeline configuration (resolved from admin settings)',
-    type: RemoteConfigResponseDto,
-  })
-  remoteConfig?: RemoteConfigResponseDto;
 
   @ApiPropertyOptional({
     description: 'Read-only summary of the currently active voice profile (resolved from UserVoiceProfile at read time)',

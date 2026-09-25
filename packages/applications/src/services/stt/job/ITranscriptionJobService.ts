@@ -23,8 +23,6 @@ export interface CreateStreamSessionJobInput {
   /** The STT session id (`stt:session:{id}`) this row mirrors. */
   streamSessionId: string;
   consultationId?: string;
-  /** The deprecated runtime key, mirrored from the session request. */
-  pipelineId?: string | null;
   /** `resolvedSpec.agent.versionId` — the ASR Agent version the session opened on. */
   agentVersionId?: string | null;
   resolvedSpec?: unknown;
@@ -88,11 +86,6 @@ export interface ITranscriptionJobService {
    * Get job by ID
    */
   getById(id: string): Promise<TranscriptionJobResponse | null>;
-
-  /**
-   * Get job by ID with pipeline details
-   */
-  getByIdWithPipeline(id: string): Promise<TranscriptionJobResponse | null>;
 
   /**
    * Get jobs by consultation (tenant-wide — admin surface)

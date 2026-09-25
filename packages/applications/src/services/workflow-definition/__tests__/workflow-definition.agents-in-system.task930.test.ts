@@ -104,7 +104,6 @@ const construct = () =>
     undefined,
     undefined,
     undefined,
-    undefined,
     mockAgentRepository as never,
     undefined,
     undefined,
@@ -212,7 +211,13 @@ describe('WorkflowDefinitionService.promoteToSystem — the graph’s agents mus
           : entity({ id: 'sys-v1', tenantId: SYSTEM_TENANT_ID, versionNumber: 1, isActive: true, graph: noAgentGraph }),
       ),
     );
-    const draft = entity({ id: 'sys-draft-1', tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.DRAFT, isActive: false, graph: noAgentGraph });
+    const draft = entity({
+      id: 'sys-draft-1',
+      tenantId: SYSTEM_TENANT_ID,
+      status: WorkflowDefinitionStatus.DRAFT,
+      isActive: false,
+      graph: noAgentGraph,
+    });
     mockRepository.findById.mockResolvedValue(draft);
     mockAgentPromotion.promote.mockImplementation(async (_dto: unknown, options?: { afterWrite?: (d: unknown) => Promise<void> }) => {
       await options?.afterWrite?.(draft);

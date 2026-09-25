@@ -188,7 +188,7 @@ const CLOSED_VOCABULARIES: Readonly<Record<string, readonly string[]>> = {
  * |----------------|------------------------------------------------------------|
  * | `channelCount` | dual-mic recordings bill 1x (OQ2) but keep the count for repricing |
  * | `engine` | which self-hosted engine served the call (COGS attribution) |
- * | `pipelineId` | STT pipeline-tier rate resolution + provenance |
+ * | `pipelineId` | a streaming session's runtime key — the resolved ASR agent version (provenance; the name predates TASK-1006) |
  * | `languageMode` | `en` / `ml` / `ml-en` — drives pipeline-tier cost |
  * | `serviceTier` | provider service tier (`batch` is ~50% off at every lab) |
  * | `interrupted` | the abort path emitted this row (fairness + reconciliation) |

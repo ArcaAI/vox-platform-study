@@ -1,4 +1,5 @@
 import { MessageEvent } from '@nestjs/common';
+import type { ResolvedAsrSpec } from '@arcaai/types';
 import { Observable } from 'rxjs';
 
 /**
@@ -8,28 +9,6 @@ import { Observable } from 'rxjs';
  * Redis Pub/Sub subscription, and SSE stream assembly.
  */
 export interface ITranscriptionRealtimeService {
-  /**
-   * Create a transcription job and return an SSE Observable.
-   *
-   * Flow:
-   * 1. Create TranscriptionJob in DB (status: QUEUED)
-   * 2. Dispatch Dramatiq message to stt_batch queue via Redis HSET+RPUSH
-   * 3. Subscribe to Redis channel stt:transcription:{jobId}
-   * 4. Emit initial { type: "status", data: { status: "QUEUED" } }
-   * 5. Forward all Redis messages as SSE MessageEvent objects
-   * 6. Complete Observable when terminal status received (COMPLETED/FAILED/CANCELLED/DEAD)
-   */
-  createAndStream(params: {
-    tenantId: string;
-    pipelineId: string;
-    audioUri: string;
-    consultationId?: string;
-    mediaId?: string;
-    createdBy?: string;
-    language?: string;
-    codeSwitching?: boolean;
-  }): Promise<{ jobId: string; events$: Observable<MessageEvent> }>;
-
   /**
    * Subscribe to an existing job's SSE stream (reconnection).
    * Checks current job status first — if already terminal,
@@ -53,15 +32,14 @@ export interface ITranscriptionRealtimeService {
   dispatchDramatiqJob(params: {
     jobId: string;
     tenantId: string;
-    pipelineId: string;
     audioUri: string;
     consultationId?: string;
     mediaId?: string;
     language?: string;
     userId?: string;
     audioBucketName?: string;
-    /** Tenant fallback pipeline the worker re-runs on if the primary ASR fails. */
-    fallbackPipelineId?: string;
+    /** The gateway-resolved ASR spec the worker assembles the engine chain from — the job's one selector. */
+    resolvedSpec: ResolvedAsrSpec;
     /** TASK-1004 — the effective spoken-language mode and its tier, sent as named kwargs. */
     languageMode?: string;
     languageModeSource?: 'request' | 'consultation' | 'agent' | 'default';

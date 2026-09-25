@@ -188,7 +188,6 @@ describe('the live ASR agent publishes per-utterance timing, not a bare string',
         detectedLanguage: 'ml-IN',
         stableChars: 4,
         resultType: 'segment',
-        pipelineId: 'pipeline-7',
         wordTimestamps: [
           { word: 'cough', start: 1.25, end: 1.6, confidence: 0.91 },
           { word: 'since', start: 1.6, end: 1.9, confidence: null },
@@ -214,8 +213,10 @@ describe('the live ASR agent publishes per-utterance timing, not a bare string',
       // What was SPOKEN, not the session's configured mode.
       language: 'ml-IN',
       stableChars: 4,
-      pipelineId: 'pipeline-7',
     });
+    // TASK-1006 — no pipeline provenance rides on a segment any more: the session runs on its
+    // resolved ASR agent, which the node reports as `agent`.
+    expect(segments[0]).not.toHaveProperty('pipelineId');
     // `{ word, ... }` on the wire becomes `{ text, ... }` here; a null confidence (Whisper
     // reports none) is DROPPED, never coerced to 0 — which reads as "certainly wrong".
     expect(segments[0].words).toEqual([

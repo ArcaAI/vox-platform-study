@@ -9,13 +9,14 @@ import { TranscriptionRealtimeService } from '../transcriptionRealtime.service';
 
 vi.mock('uuidv7', () => ({ uuidv7: vi.fn(() => 'test-uuid-1234') }));
 
-const BASE = { jobId: 'job-1', tenantId: 'tenant-1', pipelineId: 'agent-v-1', audioUri: 's3://recordings/a.wav', consultationId: 'c-1' };
+const SPEC = { runtimeKey: 'agent-v-1', models: { asr: { slug: 'whisper' } }, audioFrontEnd: { diarization: { enabled: false } } } as never;
+const BASE = { jobId: 'job-1', tenantId: 'tenant-1', resolvedSpec: SPEC, audioUri: 's3://recordings/a.wav', consultationId: 'c-1' };
 
 function build(envelope: Record<string, unknown> | null = null) {
   const cache = { hset: vi.fn().mockResolvedValue(undefined), rpush: vi.fn().mockResolvedValue(1), publish: vi.fn().mockResolvedValue(undefined) };
   const jobService = {
     recordDispatchEnvelope: vi.fn().mockResolvedValue(undefined),
-    getDispatchContextForOwner: vi.fn().mockResolvedValue({ envelope, resolvedSpec: null, tenantId: 'tenant-1' }),
+    getDispatchContextForOwner: vi.fn().mockResolvedValue({ envelope, resolvedSpec: SPEC, tenantId: 'tenant-1' }),
     retryJobForOwner: vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' }),
     failJob: vi.fn(),
   };
@@ -55,7 +56,6 @@ describe('dispatchDramatiqJob — language_mode kwargs', () => {
   it('a retry re-publishes the mode the first attempt carried', async () => {
     const { service, cache } = build({
       audioUri: BASE.audioUri,
-      pipelineId: 'agent-v-1',
       languageMode: 'ml-en',
       languageModeSource: 'consultation',
       hadStorageDescriptor: false,

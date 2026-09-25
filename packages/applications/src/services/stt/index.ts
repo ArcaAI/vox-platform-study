@@ -1,4 +1,3 @@
-export * from './pipeline';
 export * from './job';
 export * from './internal';
 export * from './realtime';
@@ -9,6 +8,10 @@ export * from './asr-provider';
 // TASK-999 (D-6(a)) — `resolveServedBy` + the `ServedBy` wire shape, shared by the
 // batch completion and the streaming teardown.
 export * from './served-by';
+// TASK-1006 — the decrypted cloud-ASR credential map (the STT wire shape), built from
+// `AiProviderConnection` by `AsrAgentResolverService`. Moved here from the retired
+// `tenant-stt-config` folder, which used to own it.
+export type { SttProviderOverrides } from './stt-provider-overrides';
 // TASK-999 (D-3(a)) — the ONE definition of transcript word/char size, used by
 // every writer so an admin read never has to decrypt PHI to produce a number.
 export * from './transcript-size';

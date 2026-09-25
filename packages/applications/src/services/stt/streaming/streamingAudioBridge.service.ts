@@ -808,9 +808,6 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     // v2 client and the v1-compat gateway read a REAL detection instead of an
     // echo of the requested language/mode.
     const detectedLanguage = data.language || data.detected_language || undefined;
-    // The pipeline that actually produced THIS utterance;
-    // absent when the upstream stt worker doesn't stamp it.
-    const pipelineId = data.pipeline_id || undefined;
 
     // Additive committed-prefix length on partials.
     // Only relayed when present and a valid non-negative integer.
@@ -886,7 +883,6 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       ...(resultType ? { resultType } : {}),
       ...(englishText ? { englishText } : {}),
       ...(detectedLanguage ? { detectedLanguage } : {}),
-      ...(pipelineId ? { pipelineId } : {}),
       ...(speakerId ? { speakerId } : {}),
       ...(speakerLabel ? { speakerLabel } : {}),
       ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),

@@ -33,7 +33,6 @@ const mockEntitlements = {
   assertQuantityQuota: vi.fn(),
   isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
 };
-const mockSttPipelineCompiler = { compileAndPublish: vi.fn() };
 
 /** Stands in for the real `WorkflowValidatorService` at the seam — its own resolution/merge
  *  behaviour is covered by `workflow-validator/__tests__/workflow-validator.service.test.ts`. */
@@ -98,7 +97,6 @@ function build(withValidator: boolean) {
     mockClsService as any,
     mockDatabaseService as any,
     mockEntitlements as any,
-    mockSttPipelineCompiler as any,
     withValidator ? (mockWorkflowValidator as any) : undefined,
   );
 }

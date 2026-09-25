@@ -30,9 +30,9 @@ const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 
 /**
-* the two document templates the graph below binds. `DOC_LIVE` sorts BEFORE
+ * the two document templates the graph below binds. `DOC_LIVE` sorts BEFORE
  *  `DOC_SYNTH` by node id (`n_live` < `n_synth`) while being authored AFTER it, so a derivation
- *  that followed authoring order is distinguishable from one that sorts. 
+ *  that followed authoring order is distinguishable from one that sorts.
  */
 const DOC_SYNTH = 'b2c9a1d4-7e36-4f80-8a15-3c6d9e2f0b47';
 const DOC_LIVE = 'a41b6d0c-2f38-4c77-9a51-6d2e7b0c4f93';
@@ -171,7 +171,6 @@ describe('D-7 — publish populates policyBindings from what the graph and tenan
       mockEventEmitter as never,
       mockClsService as never,
       mockDatabaseService as never,
-      undefined,
       undefined,
       undefined,
       undefined,

@@ -1,5 +1,4 @@
 import {
-  AsrPipelineRepository,
   JsonValue,
   ResourceType,
   SysEventType,
@@ -40,7 +39,6 @@ import { TranscriptionJobDtoMapper } from './transcriptionJob.dto.mapper';
 export class TranscriptionJobService extends BaseService implements ITranscriptionJobService {
   constructor(
     private readonly jobRepository: TranscriptionJobRepository,
-    private readonly pipelineRepository: AsrPipelineRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // Optional + trailing so existing positional fixtures
@@ -83,17 +81,11 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-861 — a job is keyed to the ASR Agent VERSION that runs it (+ the
-    // resolved spec snapshot, so it is reproducible from its own row). The
-    // deprecated `pipelineId` path stays for the window and still verifies
-    // the row exists.
-    if (dto.pipelineId) {
-      const pipeline = await this.pipelineRepository.findById(dto.pipelineId);
-      if (!pipeline) {
-        throw new NotFoundException(`Pipeline ${dto.pipelineId} not found`);
-      }
-    } else if (!dto.agentVersionId) {
-      throw new BadRequestException('Either agentVersionId (with resolvedSpec) or pipelineId is required');
+    // A job is keyed to the ASR Agent VERSION that runs it (+ the resolved spec
+    // snapshot, so it is reproducible from its own row). There is no other
+    // selector: the `pipelineId` path was retired with `AsrPipeline` (TASK-1006).
+    if (!dto.agentVersionId) {
+      throw new BadRequestException('agentVersionId (with resolvedSpec) is required');
     } else if (!dto.resolvedSpec) {
       throw new BadRequestException('resolvedSpec is required when agentVersionId is set');
     }
@@ -119,7 +111,6 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     const job = TranscriptionJobFactory.CreateTranscriptionJob({
       tenantId,
       jobType: dto.jobType,
-      pipelineId: dto.pipelineId ?? null,
       agentVersionId: dto.agentVersionId ?? null,
       resolvedSpec: (dto.resolvedSpec as JsonValue | undefined) ?? null,
       consultationId: dto.consultationId,
@@ -133,7 +124,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
       createdAt: saved.createdAt,
-      data: { jobType: dto.jobType, pipelineId: dto.pipelineId ?? null, agentVersionId: dto.agentVersionId ?? null },
+      data: { jobType: dto.jobType, agentVersionId: dto.agentVersionId ?? null },
     });
 
     return TranscriptionJobDtoMapper.toResponse(saved);
@@ -180,7 +171,6 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
       tenantId: input.tenantId,
       jobType: TranscriptionJobType.STREAMING,
       streamSessionId: input.streamSessionId,
-      pipelineId: input.pipelineId ?? null,
       agentVersionId: input.agentVersionId ?? null,
       resolvedSpec: (input.resolvedSpec as JsonValue | undefined) ?? null,
       consultationId: input.consultationId,
@@ -270,20 +260,6 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
    */
   async getById(id: string): Promise<TranscriptionJobResponse | null> {
     const job = await this.jobRepository.findById(id);
-    if (!job) return null;
-
-    this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      resourceId: job.id,
-    });
-
-    return TranscriptionJobDtoMapper.toResponse(job);
-  }
-
-  /**
-   * Get job by ID with pipeline details
-   */
-  async getByIdWithPipeline(id: string): Promise<TranscriptionJobResponse | null> {
-    const job = await this.jobRepository.findWithPipeline(id);
     if (!job) return null;
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {

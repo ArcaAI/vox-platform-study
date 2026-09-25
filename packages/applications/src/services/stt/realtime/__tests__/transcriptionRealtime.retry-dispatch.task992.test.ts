@@ -15,10 +15,13 @@ import { TranscriptionRealtimeService } from '../transcriptionRealtime.service';
 
 vi.mock('uuidv7', () => ({ uuidv7: vi.fn(() => 'test-uuid-1234') }));
 
+/** The row's own TASK-861 snapshot, which the envelope deliberately does NOT duplicate. */
+const RESOLVED_SPEC = { runtimeKey: 'agent-v-1', models: { embedding: null }, audioFrontEnd: { diarization: { enabled: false } } };
+
 const ORIGINAL_DISPATCH = {
   jobId: 'job-001',
   tenantId: 'tenant-1',
-  pipelineId: 'agent-v-1',
+  resolvedSpec: RESOLVED_SPEC as never,
   audioUri: 's3://recordings/2026/09/jobs/job-001/raw/visit.wav',
   consultationId: 'consult-1',
   mediaId: 'media-1',
@@ -29,13 +32,9 @@ const ORIGINAL_DISPATCH = {
 
 const DESCRIPTOR = { provider: 'aws_s3' as const, bucket: 'recordings', secret_access_key: 'rotates-between-attempts' };
 
-/** The row's own TASK-861 snapshot, which the envelope deliberately does NOT duplicate. */
-const RESOLVED_SPEC = { runtimeKey: 'agent-v-1', models: { embedding: null }, audioFrontEnd: { diarization: { enabled: false } } };
-
 /** What `dispatchDramatiqJob` wrote for the ORIGINAL attempt, read back on retry. */
 const STORED_ENVELOPE = {
   audioUri: ORIGINAL_DISPATCH.audioUri,
-  pipelineId: ORIGINAL_DISPATCH.pipelineId,
   consultationId: ORIGINAL_DISPATCH.consultationId,
   mediaId: ORIGINAL_DISPATCH.mediaId,
   language: ORIGINAL_DISPATCH.language,
@@ -80,7 +79,6 @@ describe('dispatchDramatiqJob — snapshots what it published (TASK-992 FU-1)', 
 
     expect(jobService.recordDispatchEnvelope).toHaveBeenCalledWith('job-001', {
       audioUri: ORIGINAL_DISPATCH.audioUri,
-      pipelineId: 'agent-v-1',
       consultationId: 'consult-1',
       mediaId: 'media-1',
       language: 'en',
@@ -122,7 +120,7 @@ describe('retryAndDispatch (TASK-992 FU-1)', () => {
     expect(message.args).toEqual([
       'job-001',
       'tenant-1',
-      'agent-v-1',
+      null, // the retired pipeline_id slot (TASK-1006) — arity kept, value None
       ORIGINAL_DISPATCH.audioUri,
       'consult-1',
       'media-1',

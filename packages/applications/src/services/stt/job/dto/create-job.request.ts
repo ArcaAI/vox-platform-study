@@ -1,15 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, IsObject, IsUUID, Matches, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, IsObject, IsUUID, Min, Max } from 'class-validator';
 import { TranscriptionJobType } from '@arcaai/domains';
-
-/**
- * Pipeline-id contract: a `pipelineId` is a slug
- * (`general-consult`) OR a UUID-shaped id. The platform's seeded pipelines use
- * deterministic, non-RFC-versioned UUIDs (e.g. `81000000-0000-0000-0001-000000000001`),
- * which a strict `@IsUUID(7)` rejects. Mirror the HTTP-boundary DTOs
- * (apps/api transcription-job.dto.ts) which validate against this same pattern.
- */
-export const PIPELINE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 export class CreateJobRequest {
   @ApiProperty({
@@ -20,22 +11,9 @@ export class CreateJobRequest {
   @IsEnum(TranscriptionJobType)
   jobType: TranscriptionJobType;
 
-  /** @deprecated TASK-861 — removed in R4. Supply `agentVersionId` + `resolvedSpec` (the gateway does) instead. */
-  @ApiPropertyOptional({
-    description: 'DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Omit on the agent path.',
-    example: '01234567-89ab-cdef-0123-456789abcdef',
-    deprecated: true,
-  })
-  @IsString()
-  @IsOptional()
-  @Matches(PIPELINE_ID_PATTERN, {
-    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
-  })
-  pipelineId?: string;
-
   @ApiPropertyOptional({
     description:
-      'TASK-861 — the published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`). Ignored when `pipelineId` (deprecated) is sent.',
+      'TASK-861 — the published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`).',
   })
   @IsString()
   @IsOptional()
@@ -43,8 +21,7 @@ export class CreateJobRequest {
   agentSlug?: string;
 
   @ApiPropertyOptional({
-    description:
-      'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
+    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.',
   })
   @IsString()
   @IsOptional()
@@ -89,7 +66,7 @@ export class CreateJobRequest {
   maxRetries?: number;
 
   @ApiPropertyOptional({
-    description: 'Language hint (ISO 639-1 code, e.g. "en", "ml"). Overrides the pipeline default.',
+    description: 'Language hint (ISO 639-1 code, e.g. "en", "ml"). Overrides the agent default.',
     example: 'en',
   })
   @IsString()
@@ -98,7 +75,7 @@ export class CreateJobRequest {
 
   @ApiPropertyOptional({
     description:
-      'Enable multilingual code-switching. When true, the model will attempt to detect and transcribe multiple languages within the same audio. Overrides the pipeline default.',
+      'Enable multilingual code-switching. When true, the model will attempt to detect and transcribe multiple languages within the same audio. Overrides the agent default.',
     example: false,
   })
   @IsBoolean()
@@ -107,18 +84,8 @@ export class CreateJobRequest {
 }
 
 export class CreateBatchJobRequest {
-  /** @deprecated TASK-861 — removed in R4. Supply `agentVersionId` + `resolvedSpec` instead. */
-  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Omit on the agent path.', deprecated: true })
-  @IsString()
-  @IsOptional()
-  @Matches(PIPELINE_ID_PATTERN, {
-    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
-  })
-  pipelineId?: string;
-
   @ApiPropertyOptional({
-    description:
-      'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
+    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.',
   })
   @IsString()
   @IsOptional()
@@ -160,7 +127,7 @@ export class CreateBatchJobRequest {
   maxRetries?: number;
 
   @ApiPropertyOptional({
-    description: 'Language hint (ISO 639-1 code, e.g. "en", "ml"). Overrides the pipeline default.',
+    description: 'Language hint (ISO 639-1 code, e.g. "en", "ml"). Overrides the agent default.',
     example: 'en',
   })
   @IsString()
@@ -168,7 +135,7 @@ export class CreateBatchJobRequest {
   language?: string;
 
   @ApiPropertyOptional({
-    description: 'Enable multilingual code-switching. Overrides the pipeline default.',
+    description: 'Enable multilingual code-switching. Overrides the agent default.',
     example: false,
   })
   @IsBoolean()
@@ -177,18 +144,8 @@ export class CreateBatchJobRequest {
 }
 
 export class CreateStreamingJobRequest {
-  /** @deprecated TASK-861 — removed in R4. Supply `agentVersionId` + `resolvedSpec` instead. */
-  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Omit on the agent path.', deprecated: true })
-  @IsString()
-  @IsOptional()
-  @Matches(PIPELINE_ID_PATTERN, {
-    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
-  })
-  pipelineId?: string;
-
   @ApiPropertyOptional({
-    description:
-      'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
+    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.',
   })
   @IsString()
   @IsOptional()
@@ -222,7 +179,7 @@ export class CreateStreamingJobRequest {
   maxRetries?: number;
 
   @ApiPropertyOptional({
-    description: 'Language hint (ISO 639-1 code, e.g. "en", "ml"). Overrides the pipeline default.',
+    description: 'Language hint (ISO 639-1 code, e.g. "en", "ml"). Overrides the agent default.',
     example: 'en',
   })
   @IsString()
@@ -230,7 +187,7 @@ export class CreateStreamingJobRequest {
   language?: string;
 
   @ApiPropertyOptional({
-    description: 'Enable multilingual code-switching. Overrides the pipeline default.',
+    description: 'Enable multilingual code-switching. Overrides the agent default.',
     example: false,
   })
   @IsBoolean()

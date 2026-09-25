@@ -15,9 +15,7 @@ import { WorkflowValidatorService } from './workflow-validator.service';
  * validate/compile directly rather than through a speculative port nothing else
  * consumes" — `IWorkflowDefinitionService.ts`). Re-introducing the token for a
  * single in-process consumer would re-add exactly what that ticket removed, so
- * the concrete class is provided and exported instead — the same shape
- * `SttPipelineCompilerService` / `SttPipelineResolverService` already use in the
- * sibling `WorkflowDefinitionServiceModule`.
+ * the concrete class is provided and exported instead.
  */
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],

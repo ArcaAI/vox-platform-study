@@ -38,7 +38,6 @@ const mockGlobalSettingRepository = {
 };
 const mockDepartmentRepository = { findAll: vi.fn(), count: vi.fn() };
 const mockPromptTemplateRepository = { findAll: vi.fn(), count: vi.fn() };
-const mockAsrPipelineRepository = { findAll: vi.fn(), count: vi.fn() };
 // (C.4) — `updateTenantConfigs` wraps writes in
 // `databaseService.baseClient.$transaction(callback)`. The stub invokes the
 // callback with a sentinel tx client so the loop executes.
@@ -145,15 +144,10 @@ describe('Phase 0 Item 2 — TenantService.updateTenantConfigs must NOT apply un
       mockGlobalSettingRepository as any,
       mockDepartmentRepository as any,
       mockPromptTemplateRepository as any,
-      mockAsrPipelineRepository as any,
       mockDatabaseService as any,
       mockTenantBucketService as any,
       mockEventEmitter as any,
       mockClsService as any,
-      // Model-catalog clone repo (unused by this suite).
-      { findAll: async () => [] } as any,
-      // Pipeline-version clone repo (unused by this suite).
-      { create: async () => ({}) } as any,
       // DepartmentAgentRepository + PromptVersionRepository (unused by this suite).
       { create: async () => ({}) } as any,
       { create: async () => ({}) } as any,

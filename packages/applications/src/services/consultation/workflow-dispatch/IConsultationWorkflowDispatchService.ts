@@ -83,15 +83,6 @@ export interface ConsultationWorkflowDispatchResult {
    * failure here must never block a clinician from opening a consultation.
    */
   readonly skippedReason?: string;
-  /**
-   * the `AsrPipeline` id the tenant's assigned `stt`-palette graph
-   * compiled to, or `null` when no `stt` graph is assigned (or it has no compiled pipeline yet).
-   *
-   * INDEPENDENT of `dispatched`: the STT and consultation lanes are separate assignments, so a
-   * tenant may have one, both, or neither. `null` means "fall back to the tenant's existing
-   * pipeline resolution" (`resolveDefaultPipelineId`), never an error.
-   */
-  readonly sttPipelineId: string | null;
 }
 
 export interface DispatchForConsultationInput {

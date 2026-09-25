@@ -46,8 +46,6 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     workflowRunService: { recordRunStarted: vi.fn().mockResolvedValue({}) },
     harnessGateway: { startWorkflowRun: vi.fn().mockResolvedValue({ status: 'RUNNING' }) },
     s3Service: { putFile: vi.fn().mockResolvedValue(undefined) },
-    // Wired here (production DI supplies it) so the independent stt lane is actually exercised.
-    sttPipelineResolver: { resolvePipelineId: vi.fn().mockResolvedValue('asr-pipeline-1') },
     ...overrides,
   };
 }
@@ -60,7 +58,6 @@ function makeService(deps: ReturnType<typeof makeDeps>) {
     deps.workflowRunService as never,
     deps.harnessGateway as never,
     deps.s3Service as never,
-    deps.sttPipelineResolver as never,
   );
 }
 
@@ -111,7 +108,13 @@ describe('dispatchForConsultation — honouring the caller selection over the ca
   });
 
   const dispatch = (workflowDefinitionSlug?: string) =>
-    makeService(deps).dispatchForConsultation({ consultationId: CONSULTATION, tenantId: TENANT, departmentId: DEPARTMENT, userId: USER, workflowDefinitionSlug });
+    makeService(deps).dispatchForConsultation({
+      consultationId: CONSULTATION,
+      tenantId: TENANT,
+      departmentId: DEPARTMENT,
+      userId: USER,
+      workflowDefinitionSlug,
+    });
 
   it('dispatches the CALLER slug, not the cascade slug', async () => {
     const result = await dispatch('caller_picked_v1');
@@ -133,7 +136,7 @@ describe('dispatchForConsultation — honouring the caller selection over the ca
   it('never resolves an `stt` assignment — the palette is retired (TASK-893); the ASR agent is gateway-resolved', async () => {
     const result = await dispatch('caller_picked_v1');
     expect(deps.assignments.resolve).not.toHaveBeenCalledWith(TENANT, 'stt', DEPARTMENT);
-    expect(result.sttPipelineId).toBeNull();
+    expect(result).not.toHaveProperty('sttPipelineId');
   });
 
   it('falls back to the cascade when no selection is supplied — today behaviour, unchanged', async () => {

@@ -144,7 +144,6 @@ function makeService(): WorkflowDefinitionService {
     mockClsService as never,
     mockDatabaseService as never,
     undefined, // entitlements
-    undefined, // sttPipelineCompiler
     undefined, // workflowValidator
     undefined, // promptTemplateRepository
     undefined, // promptVersionRepository

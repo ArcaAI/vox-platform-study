@@ -55,15 +55,6 @@ const mockEntitlements = {
   isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
 };
 
-// `SttPipelineCompilerService` is mocked at the seam; its OWN real behavior
-// (YAML emission, PipelineService create/update wiring) is covered by
-// `compilers/__tests__/stt-pipeline.compiler.test.ts`. Here we only assert that `publish()`
-// calls it for the `stt` palette, threads its result into the sys-event, and propagates its
-// failures as a publish-blocking abort.
-const mockSttPipelineCompiler = {
-  compileAndPublish: vi.fn(),
-};
-
 const STT_GRAPH = {
   version: 1,
   nodes: [
@@ -150,10 +141,6 @@ describe('WorkflowDefinitionService', () => {
       if (key === 'user') return { id: 'admin-1', roles: ['TENANT_ADMIN'] };
       return undefined;
     });
-    // Default resolved value so every pre-existing `paletteKey: 'stt'` test above (none of
-    // which asserted on the compiler) keeps passing without threading a bespoke pipeline
-    // fixture through — the dedicated describe block below overrides/asserts on the mock.
-    mockSttPipelineCompiler.compileAndPublish.mockResolvedValue({ id: 'pipe-1', slug: 'wf-stt-discharge-summary', version: 1 });
     service = new WorkflowDefinitionService(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockWorkflowDefinitionRepository as any,
@@ -161,7 +148,6 @@ describe('WorkflowDefinitionService', () => {
       mockClsService as any,
       mockDatabaseService as any,
       mockEntitlements as any,
-      mockSttPipelineCompiler as any,
     );
   });
 
@@ -225,9 +211,9 @@ describe('WorkflowDefinitionService', () => {
       mockWorkflowDefinitionRepository.count.mockResolvedValue(5);
       mockEntitlements.assertQuantityQuota.mockRejectedValue(new Error('QuotaExceeded'));
 
-      await expect(
-        service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'core', graph: VALID_GRAPH }),
-      ).rejects.toThrow('QuotaExceeded');
+      await expect(service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'core', graph: VALID_GRAPH })).rejects.toThrow(
+        'QuotaExceeded',
+      );
       expect(mockEntitlements.assertQuantityQuota).toHaveBeenCalledWith('tenant-1', 'maxWorkflowDefinitions', 5);
       expect(mockWorkflowDefinitionRepository.create).not.toHaveBeenCalled();
     });
@@ -408,29 +394,26 @@ describe('WorkflowDefinitionService', () => {
 
         // The entitlement gate still runs first (it is the cheaper check) ...
         expect(mockEntitlements.isFeatureEnabled).toHaveBeenCalledWith('tenant-1', 'paletteStt');
-        // ... but every `stt.*` descriptor is `implemented: false`, so the real compile() refuses
-        // the graph before the AsrPipeline compiler or any write is reached.
-        expect(mockSttPipelineCompiler.compileAndPublish).not.toHaveBeenCalled();
+        // ... but the `stt.*` node types are gone, so the real compile() refuses the graph before
+        // any write is reached.
         expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
         expect(entity.status).not.toBe(WorkflowDefinitionStatus.PUBLISHED);
       });
 
-      it('blocks (does not write, does not compile an AsrPipeline) an stt-palette publish when the tenant is NOT entitled', async () => {
+      it('blocks (does not write) an stt-palette publish when the tenant is NOT entitled', async () => {
         const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
         mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
         mockEntitlements.isFeatureEnabled.mockResolvedValue(false);
 
         await expect(service.publish('def-id-1', {})).rejects.toBeInstanceOf(QuotaExceededException);
         expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
-        expect(mockSttPipelineCompiler.compileAndPublish).not.toHaveBeenCalled();
       });
     });
 
-    describe('STT pipeline compilation on publish (Task 4 — unreachable for a real stt graph since TASK-867)', () => {
-      it('never reaches SttPipelineCompilerService: the publish gate refuses every stt.* node first, so nothing is written and no sys-event fires', async () => {
+    describe('a retired stt-palette graph (TASK-893 removed its node types; TASK-1006 removed the AsrPipeline compiler)', () => {
+      it('the publish gate refuses every stt.* node, so nothing is written and no sys-event fires', async () => {
         const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
         mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
-        mockSttPipelineCompiler.compileAndPublish.mockResolvedValue({ id: 'pipe-42', slug: 'wf-stt-discharge-summary', version: 1 });
 
         const error = await service.publish('def-id-1', {}).catch((e: unknown) => e);
 
@@ -443,25 +426,9 @@ describe('WorkflowDefinitionService', () => {
         expect(findings.map((finding) => finding.ruleId)).toEqual(['WF-PUB', 'WF-PUB']);
         expect(findings.map((finding) => finding.code)).toEqual(['PORT_BINDING', 'PORT_BINDING']);
         expect(findings.map((finding) => finding.message).join(' ')).toContain('stt.audioInput');
-        expect(mockSttPipelineCompiler.compileAndPublish).not.toHaveBeenCalled();
         expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
         expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
       });
-
-      it('never calls the STT compiler for a non-stt palette', async () => {
-        const entity = createMockEntity({ paletteKey: 'core' });
-        mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
-        mockWorkflowDefinitionRepository.update.mockImplementation((_id, e) => Promise.resolve(e));
-
-        await service.publish('def-id-1', {});
-
-        expect(mockSttPipelineCompiler.compileAndPublish).not.toHaveBeenCalled();
-      });
-
-      // The former "aborts the publish when the compiler rejects (e.g. a graph missing
-      // stt.asrEngine)" case is subsumed above: the engine gate refuses the graph before
-      // `compileAndPublish` can reject it. `compilers/__tests__/stt-pipeline.compiler.test.ts`
-      // still covers the deprecated compiler's own rejection paths in isolation.
     });
   });
 

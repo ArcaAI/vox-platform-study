@@ -180,7 +180,6 @@ export class StreamingSessionService implements IStreamingSessionService {
         tenantId: dto.tenantId,
         streamSessionId: dto.sessionId,
         consultationId: dto.consultationId,
-        pipelineId: dto.pipelineId ?? null,
         // The agent VERSION the session opened on, read off the spec the gateway
         // already resolved — the same value a BATCH row carries, so both kinds of
         // row answer "which agent ran this" the same way.
@@ -349,7 +348,6 @@ export class StreamingSessionService implements IStreamingSessionService {
           {
             session_id: dto.sessionId,
             tenant_id: dto.tenantId,
-            pipeline_id: dto.pipelineId,
             consultation_id: dto.consultationId,
             sample_rate: dto.sampleRate ?? 16000,
             microphone_id: dto.microphoneId,
@@ -369,24 +367,20 @@ export class StreamingSessionService implements IStreamingSessionService {
             // Per-tenant storage descriptor (DEDICATED tenants only; null/omitted
             // for SHARED). snake_case keys already match the Python worker schema.
             storage: dto.storage ?? null,
-            // Per-tenant BYO provider credentials + fallback pointer.
+            // The chain's cloud credentials, resolved from `AiProviderConnection`.
             // Held by the session runtime in memory only; NEVER logged.
             provider_overrides: dto.providerOverrides ?? null,
-            fallback_pipeline_id: dto.fallbackPipelineId ?? null,
-            // TASK-861 — the gateway-resolved ASR spec. `null` (not absent) on the
-            // deprecated pipeline path so apps/stt can tell the two apart.
-            resolved_spec: dto.resolvedSpec ?? null,
+            // The session's ONE selector: the gateway-resolved ASR spec, which carries
+            // its own fallback chain. No pipeline id rides beside it (TASK-1006).
+            resolved_spec: dto.resolvedSpec,
             // TASK-887 — the end-user's enrolled profiles for THIS agent's embedding model.
             // Resolved here, not in `apps/stt`: the runtime holds no database connection on
             // the agent path, and only the gateway knows the session's user and tenant.
             voice_profiles: voiceProfiles.length > 0 ? voiceProfiles : null,
-            // Tenant governance for the FAILURE-DRIVEN auto switch.
-            // Both are real `TenantSttConfig` settings that were resolved by the
-            // gateway and then dropped here, so STT's EngineSwitchController
-            // always used its own defaults — a tenant that disabled
-            // auto-fallback still got it. `null` means "use the controller
-            // default"; `?? null` (not a truthiness guard) so an explicit
-            // `false` survives.
+            // The agent's governance for the FAILURE-DRIVEN auto switch
+            // (`resolvedSpec.fallback.autoSwitch` / `switchAfterConsecutiveFailures`).
+            // `null` means "use the controller default"; `?? null` (not a
+            // truthiness guard) so an explicit `false` survives.
             auto_switch_enabled: dto.autoSwitchEnabled ?? null,
             consecutive_failure_threshold: dto.consecutiveFailureThreshold ?? null,
             // Dual-/multi-mic source count: STT stores it and
@@ -424,18 +418,15 @@ export class StreamingSessionService implements IStreamingSessionService {
         maxConcurrent: data.maxConcurrent ?? (data as any).max_concurrent,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         currentActive: data.currentActive ?? (data as any).current_active,
-        // The RESOLVED pipeline + the engine STT actually opened on.
-        // This is the client's only honest baseline: the request carries what
-        // was ASKED for, which differs from what runs whenever the caller sent
-        // no pipelineId, chose `startOn: 'fallback'`, or the primary ASR failed
-        // to load at create. Left undefined against an older STT that echoes
-        // neither — a new gateway must not invent a baseline.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        pipelineId: data.pipelineId ?? (data as any).pipeline_id,
+        // The engine STT actually opened on — the client's only honest baseline:
+        // it differs from what was asked for whenever the caller chose
+        // `startOn: 'fallback'` or the primary ASR failed to load at create. Left
+        // undefined against an older STT that does not echo it — a new gateway
+        // must not invent a baseline.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         activeEngine: data.activeEngine ?? (data as any).active_engine,
         // TASK-991 — whether STT actually registered a pushed voice profile. Left
-        // undefined against an older STT that predates the echo, same as pipelineId/
+        // undefined against an older STT that predates the echo, same as
         // activeEngine above.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         voiceProfileSeeded: data.voiceProfileSeeded ?? (data as any).voice_profile_seeded,
@@ -722,6 +713,7 @@ export class StreamingSessionService implements IStreamingSessionService {
           connectionId: segment.connection_id ?? null,
           attributesJson: {
             engine: segment.engine,
+            // The session's runtime key (the resolved ASR agent version) — provenance.
             pipelineId: summary.pipeline_id,
             languageMode: summary.language_mode ?? null,
             // Real dual-/multi-mic signal from the teardown summary;

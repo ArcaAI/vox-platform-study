@@ -48,19 +48,16 @@ const TENANT_SCOPED_CALL_SITES = [
   // concurrent agent held the file; that agent finished, and the
   // 428 it was causing on DNA-report generation is now fixed.
   'packages/applications/src/services/dna-writing-style/dna-writing-style.processor.ts',
-  // → apps/stt /internal/streaming/*, /internal/voice-profile/extract,
-  //   /api/v1/pipelines/validate.
+  // → apps/stt /internal/streaming/*, /internal/voice-profile/extract.
+  //   (`/api/v1/pipelines/validate` and its caller, `pipeline.service.ts`, were
+  //   removed with the AsrPipeline stack — TASK-1006.)
   //
   // Closed 2026-08-18. These were a LATENT deployed-environment break rather
   // than a live one: stt had NO inbound auth at all until `ServiceAuthMiddleware`
   // landed, and its dev bypass (no token configured) hides the gap locally. The
   // moment `INTERNAL_ACCESS_TOKEN` is set in a deployed environment every
-  // streaming session, voice-profile enrolment and pipeline validation 401s.
-  // Note `pipeline.service.ts` additionally carried a comment asserting stt
-  // "carries no service-token middleware" — false since the middleware landed,
-  // and exactly the kind of stale claim that re-introduces the gap.
+  // streaming session and voice-profile enrolment 401s.
   'packages/applications/src/services/stt/streaming/streamingSession.service.ts',
-  'packages/applications/src/services/stt/pipeline/pipeline.service.ts',
   'packages/applications/src/services/user/voiceProfile/voiceProfile.service.ts',
 ];
 

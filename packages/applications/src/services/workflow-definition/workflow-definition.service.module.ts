@@ -8,11 +8,8 @@ import { EvalServiceModule } from '../eval/eval.service.module';
 import { AiRoutingPolicyServiceModule } from '../ai-routing-policy/ai-routing-policy.service.module';
 import { ConsultationContextSchemaServiceModule } from '../consultation-context-schema/consultation-context-schema.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
-import { PipelineServiceModule } from '../stt/pipeline/pipeline.service.module';
 import { WorkflowValidatorServiceModule } from '../workflow-validator/workflow-validator.service.module';
-import { SttPipelineCompilerService } from './compilers/stt-pipeline.compiler';
 import { IWorkflowDefinitionService } from './IWorkflowDefinitionService';
-import { SttPipelineResolverService } from './resolvers/stt-pipeline-resolver.service';
 import { WorkflowDefinitionService } from './workflow-definition.service';
 
 /**
@@ -23,10 +20,6 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
  * - CoreDatabaseModule -> `WorkflowDefinitionRepository`.
  * - EntitlementsServiceModule -> `IEntitlementsService`, the `maxWorkflowDefinitions` quota
  *   precheck on `create()`.
- * PipelineServiceModule -> `PipelineService`, 's `SttPipelineCompilerService`
- *   writes an `stt`-palette publish's compiled graph through it (never a raw repository call);
- *   Task 6's `SttPipelineResolverService` reads it back the same way.
- *
  * WorkflowValidatorServiceModule -> `WorkflowValidatorService` (a). Resolves the
  *   SYSTEM ∪ tenant `WorkflowInvariantRule` rows and applies the one-way-strictness merge, so
  *   `validateGraph()` evaluates the rule set that actually applies to the tenant rather than only
@@ -58,11 +51,6 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
  * `CommonServiceModule` + `CoreDatabaseModule` + `EvalServiceModule` + `AuthorizationModule`,
  * `EvalServiceModule` imports `HarnessGatewayServiceModule` (`ConfigModule` + `HttpModule`) and
  * `AuthorizationModule` imports `ApiKeyServiceModule` — so these imports close no cycle.
- *
- * `SttPipelineResolverService` is exported (not just provided) because its consumer — the
- * session/consultation-open call site that resolves `pipelineId` — is a FUTURE, separate wiring
- * pass ( Task 6; deliberately not diff, proved by
- * `task-724-stt-realtime-untouched.grep-gate.test.ts`), likely from a module outside this one.
  */
 @Module({
   imports: [
@@ -80,13 +68,10 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
     CoreDatabaseModule,
     EntitlementsServiceModule,
     EvalServiceModule,
-    PipelineServiceModule,
     WorkflowValidatorServiceModule,
   ],
   providers: [
     WorkflowDefinitionService,
-    SttPipelineCompilerService,
-    SttPipelineResolverService,
     {
       provide: IWorkflowDefinitionService,
       // useExisting, not useClass — useClass would construct a second
@@ -94,6 +79,6 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
       useExisting: WorkflowDefinitionService,
     },
   ],
-  exports: [IWorkflowDefinitionService, WorkflowDefinitionService, SttPipelineResolverService],
+  exports: [IWorkflowDefinitionService, WorkflowDefinitionService],
 })
 export class WorkflowDefinitionServiceModule {}

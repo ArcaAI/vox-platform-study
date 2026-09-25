@@ -70,7 +70,6 @@ function makeMocks() {
         workflowDefinitionSlug: SLUG,
         runId: 'run-1',
         governanceRecorded: true,
-        sttPipelineId: null,
       }),
     },
     workflowDefinitionRepository: { findPublishedBySlug: vi.fn().mockResolvedValue(null) },
@@ -123,7 +122,6 @@ describe('the authorized workflow selection is persisted on the consultation', (
       runId: null,
       governanceRecorded: false,
       skippedReason: 'harness gateway unreachable',
-      sttPipelineId: null,
     });
 
     await makeService(m).getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: SLUG } as never, 'doctor-1');
@@ -135,10 +133,7 @@ describe('the authorized workflow selection is persisted on the consultation', (
   });
 
   it('preserves caller-supplied metadata alongside it', async () => {
-    await makeService(m).getOrCreate(
-      { patientId: 'p-1', workflowDefinitionSlug: SLUG, metadata: { schedulingRef: 'ext-42' } } as never,
-      'doctor-1',
-    );
+    await makeService(m).getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: SLUG, metadata: { schedulingRef: 'ext-42' } } as never, 'doctor-1');
 
     const metadata = createdMetadata(m);
     expect(metadata).toMatchObject({ schedulingRef: 'ext-42' });

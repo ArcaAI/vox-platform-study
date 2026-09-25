@@ -47,7 +47,6 @@ function makeService(deps: ReturnType<typeof makeDeps>) {
     deps.workflowRunService as never,
     deps.harnessGateway as never,
     deps.s3Service as never,
-    undefined, // sttPipelineResolver
     undefined, // visitTypes
     deps.runCompletion as never,
   );

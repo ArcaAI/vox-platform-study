@@ -36,9 +36,9 @@ describe('TASK-882 — removed keys', () => {
     expect(HOPE_SETTINGS_REGISTRY.has(key)).toBe(false);
   });
 
-  it('the two templateResync keys STAY until the AsrPipeline R4 removal', () => {
+  it('the two templateResync keys are gone too — TASK-1006 removed the AsrPipeline resync they governed', () => {
     for (const key of ['pipeline.templateResync.enabled', 'pipeline.templateResync.cron']) {
-      expect(HOPE_SETTINGS_REGISTRY.has(key), key).toBe(true);
+      expect(HOPE_SETTINGS_REGISTRY.has(key), key).toBe(false);
     }
   });
 });

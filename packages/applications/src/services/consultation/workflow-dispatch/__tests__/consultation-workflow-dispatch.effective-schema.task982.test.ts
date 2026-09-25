@@ -88,7 +88,6 @@ function makeService(deps: ReturnType<typeof makeDeps>) {
     deps.s3Service as never,
     undefined,
     undefined,
-    undefined,
     deps.effectiveTriggerSchema as never,
   );
 }

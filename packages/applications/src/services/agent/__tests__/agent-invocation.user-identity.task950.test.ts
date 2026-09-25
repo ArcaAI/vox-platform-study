@@ -59,7 +59,7 @@ const clsFor = (principal: 'machine' | 'human') =>
   }) as never;
 
 function service(principal: 'machine' | 'human' = 'machine', identity: unknown = userIdentity): AgentInvocationService {
-  return new AgentInvocationService(httpService, configService, enrichment, undefined, undefined, clsFor(principal), identity as never);
+  return new AgentInvocationService(httpService, configService, enrichment, undefined, clsFor(principal), identity as never);
 }
 
 /**
@@ -277,7 +277,12 @@ describe('ordering: after the context gate, before the model', () => {
     // sending bodies it knows will be rejected.
     await expect(
       service('machine').invokeText(
-        agent(frozen({ ...SOLE_KIND_SCHEMA, properties: { context: { type: 'object', properties: {}, additionalProperties: false } } }, { kindKey: 'context', field: 'consultant_id' })),
+        agent(
+          frozen(
+            { ...SOLE_KIND_SCHEMA, properties: { context: { type: 'object', properties: {}, additionalProperties: false } } },
+            { kindKey: 'context', field: 'consultant_id' },
+          ),
+        ),
         TENANT,
         { text: 'summarise', context: { context: { consultant_id: 'DR-4471' } } },
         'blocking',
@@ -288,7 +293,7 @@ describe('ordering: after the context gate, before the model', () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it("a resolver refusal propagates VERBATIM and nothing is spent", async () => {
+  it('a resolver refusal propagates VERBATIM and nothing is spent', async () => {
     resolveOrProvision.mockRejectedValue(new NotFoundException({ message: 'no such staff id', code: 'USER_IDENTITY_UNKNOWN' }));
 
     await expect(
@@ -320,8 +325,8 @@ describe('ordering: after the context gate, before the model', () => {
 
   it('an unwired resolver is IRRELEVANT when the schema declares no marker', async () => {
     // The 503 is about a request that carries an identity, not about the dependency existing.
-    await expect(service('machine', null).invokeText(agent(frozen(SOLE_KIND_SCHEMA)), TENANT, { text: 'summarise' }, 'blocking')).resolves.toMatchObject(
-      { text: 'ok' },
-    );
+    await expect(
+      service('machine', null).invokeText(agent(frozen(SOLE_KIND_SCHEMA)), TENANT, { text: 'summarise' }, 'blocking'),
+    ).resolves.toMatchObject({ text: 'ok' });
   });
 });

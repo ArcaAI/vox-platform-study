@@ -72,7 +72,6 @@ function makeMocks() {
         workflowDefinitionSlug: SLUG,
         runId: 'run-1',
         governanceRecorded: true,
-        sttPipelineId: null,
       }),
     },
     workflowDefinitionRepository: { findPublishedBySlug: vi.fn().mockResolvedValue(null) },
