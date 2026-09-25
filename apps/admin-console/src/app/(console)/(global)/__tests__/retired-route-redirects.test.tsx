@@ -1,8 +1,7 @@
 /**
  * The retired console routes.
  *
- * TASK-861 added `/audio/pipelines` → `/agents?task=SPEECH_TO_TEXT` and
- * `/harness/pipeline-policy` → `/workflow-studio/assignments`.
+ * TASK-861 added `/harness/pipeline-policy` → `/workflow-studio/assignments`.
  *
  * `/prompt-studio` folded into the prompt-template Governance tab, `/pstudio`
  * was renamed `/db-studio`, `/ai-platform` dissolved into `/ai-providers`
@@ -15,12 +14,11 @@
  * TASK-863 REMOVED the `/agents` case: the route is a real screen again (the
  * first-class Agent entity), so it is neither retired nor a redirect.
  *
- * TASK-932 added `/ai-configuration` ("Speech & Voice") → the SAME target
- * `/audio/pipelines` already uses: the ASR Agent is the one authoring surface
- * for both retired bindings. Unlike `/tools-mcp`'s retiering, this one leaves
- * the nav ENTIRELY (not just a tier move), so it needed a redirect stub —
- * see `nav-config.test.ts`'s "keeps the retired per-capability credential
- * screens... out of the rail" for the nav-entry-removal half of this change.
+ * TASK-1006 REMOVED the `/audio/pipelines` and `/ai-configuration` cases (and
+ * `/ai-model-defaults`, which was never covered here): their one-release grace
+ * period had already passed — both redirected to `/agents?task=SPEECH_TO_TEXT`,
+ * the ASR Agent screen that replaced them — and this ticket deletes every
+ * pre-agent compat path outright rather than extending the grace period again.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -66,15 +64,10 @@ const RETIRED_ROUTES: ReadonlyArray<readonly [route: string, modulePath: string,
   // TASK-862 removed Provider Reconciliation outright; the URL forwards to the
   // consumption & cost dashboard for one release.
   ['/ai-operations/reconciliation', '../ai-operations/reconciliation/page', '/ai-operations/consumption'],
-  // TASK-861 retired the two pipeline screens: the ASR Agent replaces `AsrPipeline`
-  // and workflow assignments replace `PipelinePolicy`. Both stubs live in `(tenant)`
-  // (their audience is unchanged; the `(global)` layout would 404 a tenant admin).
-  ['/audio/pipelines', '../../(tenant)/audio/pipelines/page', '/agents?task=SPEECH_TO_TEXT'],
+  // TASK-861 retired the pipeline-policy screen: workflow assignments replace
+  // `PipelinePolicy`. The stub lives in `(tenant)` (its audience is unchanged;
+  // the `(global)` layout would 404 a tenant admin).
   ['/harness/pipeline-policy', '../../(tenant)/harness/pipeline-policy/page', '/workflow-studio/assignments'],
-  // TASK-932: "Speech & Voice" left the rail entirely (not a retier — see
-  // nav-config.test.ts). Same target as `/audio/pipelines`: the ASR Agent
-  // replaces both retired bindings.
-  ['/ai-configuration', '../../(tenant)/ai-configuration/page', '/agents?task=SPEECH_TO_TEXT'],
 ];
 
 describe('retired route redirects', () => {

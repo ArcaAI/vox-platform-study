@@ -135,16 +135,3 @@ export interface UpsertTenantFrontendConfigRequest {
   /** OCC token for updates of an existing row (omit on first upsert). */
   expectedVersion?: number;
 }
-
-/**
- * POST /admin/tenants/:id/pipelines/resync result (super admin only).
- * Reconciliation counts for one run against the SYSTEM pipeline templates.
- */
-export interface PipelineResyncSummary {
-  /** SYSTEM templates the tenant did not have; cloned in as locked copies. */
-  added: number;
-  /** Pristine locked copies advanced to the template's current config. */
-  fastForwarded: number;
-  /** Rows left alone — customized, unlocked, drifted, or already current. */
-  skipped: number;
-}

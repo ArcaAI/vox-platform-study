@@ -151,15 +151,15 @@ function toAcceptedProposalPayload(proposal: CorrectionProposal) {
  * through to `feedback.capture` so it has something to promote over the raw
  * transcript. Omitted from the body entirely when empty (the common case).
  */
-export function stopRecording(consultationId: string, persistSnapshot = true, acceptedProposals: readonly CorrectionProposal[] = []): Promise<RecordingState> {
+export function stopRecording(
+  consultationId: string,
+  persistSnapshot = true,
+  acceptedProposals: readonly CorrectionProposal[] = [],
+): Promise<RecordingState> {
   return postJson(consultationPath(consultationId, 'recording/stop'), {
     persistSnapshot,
     ...(acceptedProposals.length ? { acceptedProposals: acceptedProposals.map(toAcceptedProposalPayload) } : {}),
   });
-}
-
-export function generateSummary(consultationId: string, body: GenerateSummaryRequest = {}): Promise<SummaryResult> {
-  return postJson(consultationPath(consultationId, 'summary'), body);
 }
 
 /** Queues the async job (lowercase states); track via jobs/:jobId + its stream. */
@@ -308,7 +308,11 @@ export async function confirmDocumentSection(
   content: string,
   expectedVersion: number,
 ): Promise<DocumentSectionRecord> {
-  const result = await patchWithEtag<DocumentSectionRecord>(documentSectionPath(consultationId, documentKey, sectionKey), { content, expectedVersion }, `"${expectedVersion}"`);
+  const result = await patchWithEtag<DocumentSectionRecord>(
+    documentSectionPath(consultationId, documentKey, sectionKey),
+    { content, expectedVersion },
+    `"${expectedVersion}"`,
+  );
   return result.data;
 }
 
