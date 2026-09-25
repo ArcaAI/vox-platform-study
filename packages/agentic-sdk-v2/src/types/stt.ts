@@ -640,8 +640,15 @@ export interface TranscriptionJobResponse {
   id: string;
   /** Job type (BATCH or STREAMING) */
   jobType: TranscriptionJobType;
-  /** ASR pipeline ID used for this job */
-  pipelineId: string;
+  /**
+   * ASR pipeline ID used for this job.
+   * @deprecated The gateway's `TranscriptionJobResponse` DTO
+   * (`packages/applications/src/services/stt/job/dto/job.response.ts`) does
+   * not send this field — verified TASK-1006. Kept optional, never read or
+   * set by `FileTranscriptionService`/`BatchTranscriptionQueue` any more, so
+   * an older cached value a consumer still holds does not fail to type-check.
+   */
+  pipelineId?: string;
   /** Job status */
   status: TranscriptionJobStatus;
   /** Progress percentage (0-100) */

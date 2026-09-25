@@ -108,7 +108,7 @@ function makeFile(name = 'consult.wav', sizeBytes = 1024, type = 'audio/wav'): F
 function makeQueue(overrides: Record<string, unknown> = {}) {
   return new BatchTranscriptionQueue({
     apiClient: apiClient as never,
-    options: { pipelineId: 'pipe-1' },
+    options: { agentSlug: 'agent-1' },
     ...overrides,
   });
 }
@@ -221,7 +221,7 @@ describe('caps — up to 5 recordings, 60 minutes each', () => {
 });
 
 describe('upload → monitor → result', () => {
-  it('uploads with the resolved pipeline and forwards upload progress', async () => {
+  it('uploads with the resolved agent and forwards upload progress', async () => {
     const queue = makeQueue();
     const seen: number[] = [];
     queue.subscribe(() => seen.push(queue.getSnapshot()[0]!.uploadProgress));
@@ -229,7 +229,7 @@ describe('upload → monitor → result', () => {
     queue.enqueue([makeFile('a.wav')]);
     await flush();
 
-    expect(h.uploadCalls[0]!.options.pipelineId).toBe('pipe-1');
+    expect(h.uploadCalls[0]!.options.agentSlug).toBe('agent-1');
     // The 50 comes from the transport's onProgress callback; the terminal 100
     // is set by the engine once the upload resolves.
     expect(seen).toContain(50);
@@ -238,17 +238,33 @@ describe('upload → monitor → result', () => {
 
   it('lets a per-enqueue option override the queue default', async () => {
     const queue = makeQueue();
-    queue.enqueue([makeFile('a.wav')], { pipelineId: 'pipe-2', language: 'ml' });
+    queue.enqueue([makeFile('a.wav')], { agentSlug: 'agent-2', language: 'ml' });
     await flush();
-    expect(h.uploadCalls[0]!.options).toMatchObject({ pipelineId: 'pipe-2', language: 'ml' });
+    expect(h.uploadCalls[0]!.options).toMatchObject({ agentSlug: 'agent-2', language: 'ml' });
   });
 
-  it('fails the item (never uploads blindly) when no pipeline is resolvable', async () => {
+  it('uploads even when no agentSlug is given at all — the gateway resolves the tenant assignment cascade (TASK-1006)', async () => {
+    // Previously a missing selector failed the item locally without ever
+    // reaching the network; `pipelineId` is gone as an input, and omitting
+    // agentSlug is a legitimate request the gateway is expected to resolve.
     const queue = new BatchTranscriptionQueue({ apiClient: apiClient as never });
     queue.enqueue([makeFile('a.wav')]);
     await flush();
-    expect(queue.getSnapshot()[0]!.status).toBe('failed');
-    expect(h.uploadCalls).toHaveLength(0);
+    expect(queue.getSnapshot()[0]!.status).toBe('processing');
+    expect(h.uploadCalls).toHaveLength(1);
+    expect('agentSlug' in h.uploadCalls[0]!.options).toBe(false);
+  });
+
+  it('never sends a pipelineId key on the transport options, with or without an agentSlug (TASK-1006)', async () => {
+    const withAgent = makeQueue();
+    withAgent.enqueue([makeFile('a.wav')]);
+    await flush();
+    expect('pipelineId' in h.uploadCalls[0]!.options).toBe(false);
+
+    const withoutAgent = new BatchTranscriptionQueue({ apiClient: apiClient as never });
+    withoutAgent.enqueue([makeFile('b.wav')]);
+    await flush();
+    expect('pipelineId' in h.uploadCalls[1]!.options).toBe(false);
   });
 
   it('opens the result stream with a PER-JOB ticket scope and the 3-arg client', async () => {

@@ -108,6 +108,22 @@ describe('pipeline selection is agentSlug-only — pipelineId removed from every
     const req: import('../types/stt').CreateStreamingSessionRequest = { agentSlug: 'clinic-asr' };
     expect('pipelineId' in req).toBe(false);
   });
+
+  it('BatchTranscriptionOptions and FileTranscribeOptions carry no pipelineId field', async () => {
+    // Same pin, for the batch/file-upload selectors: uploading a file was the
+    // last ASR request-side surface still accepting the deprecated
+    // `pipelineId` (BatchTranscriptionQueue refused to upload at all without
+    // one). `enqueue`/`uploadAndTranscribe` now accept only `agentSlug`, or
+    // neither — the gateway resolves the tenant assignment cascade.
+    const { BatchTranscriptionQueue } = await import('../core/BatchTranscriptionQueue.js');
+    const { FileTranscriptionService } = await import('../core/FileTranscriptionService.js');
+    expect(BatchTranscriptionQueue).toBeDefined();
+    expect(FileTranscriptionService).toBeDefined();
+    const batchOptions: import('../core/BatchTranscriptionQueue').BatchTranscriptionOptions = { agentSlug: 'clinic-asr' };
+    const fileOptions: import('../core/FileTranscriptionService').FileTranscribeOptions = { agentSlug: 'clinic-asr' };
+    expect('pipelineId' in batchOptions).toBe(false);
+    expect('pipelineId' in fileOptions).toBe(false);
+  });
 });
 
 describe('dead pipeline-local-processing types removed from types/config.ts (TASK-1006)', () => {

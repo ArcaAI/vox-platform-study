@@ -7,7 +7,7 @@
  * 60 minutes each, monitor each job, collect each result.
  *
  * ```tsx
- * const batch = useBatchTranscription({ options: { pipelineId } });
+ * const batch = useBatchTranscription({ options: { agentSlug } });
  * <input type="file" multiple accept="audio/*"
  *        onChange={(e) => batch.enqueue(e.target.files ?? [])} />
  * {batch.items.map((item) => (
