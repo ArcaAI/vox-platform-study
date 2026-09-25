@@ -14,8 +14,8 @@
  * implementation leans on — a credential never exceeds its human, and an unwired verifier fails
  * closed rather than accepting an unverified clinician.
  *
- * Every case drives the DEPRECATED `pipelineId` path on purpose: it is the shortest route through
- * the handler that still reaches the dispatch, and the owner resolution is identical on both.
+ * Every case runs on the ASR agent path (TASK-1006: the only path) with a stub resolver — the
+ * owner resolution does not depend on which agent resolved.
  */
 import { BadRequestException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -80,13 +80,17 @@ function build(options: {
     clsFor(options.cls) as any,
     { putObject: vi.fn().mockResolvedValue(undefined), resolveDescriptor: vi.fn().mockResolvedValue(null) } as any, // blobStorage
     { getBucketByPurpose: vi.fn().mockResolvedValue(null), getBucketBySlug: vi.fn().mockResolvedValue(null) } as any, // tenantBucketService
-    { getById: vi.fn().mockImplementation(async (id: string) => ({ id, tenantId: TENANT, name: 'Primary', slug: id })) } as any, // pipelineService
     {} as any, // streamTicketService
     {} as any, // streamSessionTenantBinding
     { assertConcurrencyQuota: vi.fn().mockResolvedValue(undefined) } as any, // entitlements
-    { getEffective: vi.fn().mockResolvedValue({ fallbackPipelineId: null }), resolveProviderOverrides: vi.fn().mockResolvedValue({}) } as any,
     { resolve: vi.fn().mockResolvedValue({ maxFilesPerBatch: 5, maxDurationMinutes: 60, maxFileSizeMb: 250, maxActiveJobsPerUser: 5 }) } as any,
-    undefined, // asrResolver — absent, so `pipelineId` takes the legacy path
+    {
+      resolve: vi
+        .fn()
+        .mockResolvedValue({
+          spec: { runtimeKey: 'agent-v-1', agent: { slug: 'platform-transcription', versionId: 'agent-v-1' }, models: { asr: { slug: 'whisper' } } },
+        }),
+    } as any, // asrResolver
     options.withoutRoleAssignments ? undefined : (roleAssignments as any),
   );
   return { controller, jobService, realtimeService, roleAssignments };
@@ -95,7 +99,7 @@ function build(options: {
 /** The request object the guard would have populated, or `undefined` for a bare JWT call. */
 const apiKeyRequest = (boundUserId: string | null) => ({ apiKey: { id: API_KEY_ID, userId: boundUserId } }) as any;
 
-const body = (clinicianUserId?: string) => ({ pipelineId: 'pipe-1', ...(clinicianUserId ? { clinicianUserId } : {}) }) as any;
+const body = (clinicianUserId?: string) => ({ ...(clinicianUserId ? { clinicianUserId } : {}) }) as any;
 
 describe('transcribe — a HUMAN caller is untouched', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -201,10 +205,10 @@ describe('transcribe — a SERVICE ACCOUNT names the clinician it acts for', () 
     const { controller, realtimeService } = build({ cls: { tenantId: TENANT } });
     const req = { serviceAccount: { id: SVC_ACCOUNT_ID } } as any;
 
-    await expect(controller.transcribeFile(wavFixture(60), body(CLINICIAN), undefined, req)).resolves.toMatchObject({ id: 'job-1' });
+    await expect(controller.transcribeFile(wavFixture(60), body(CLINICIAN), req)).resolves.toMatchObject({ id: 'job-1' });
     expect(realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ userId: CLINICIAN }));
 
-    const err = await controller.transcribeFile(wavFixture(60), body(), undefined, req).catch((e: unknown) => e);
+    const err = await controller.transcribeFile(wavFixture(60), body(), req).catch((e: unknown) => e);
     expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'TRANSCRIBE_CLINICIAN_REQUIRED' });
   });
 
@@ -225,7 +229,7 @@ describe('transcribe — an API KEY never exceeds the human it is bound to', () 
   it('keeps today`s behaviour when it names nobody: the bound human owns the job', async () => {
     const { controller, realtimeService } = build({ cls: keyCls(CLINICIAN) });
 
-    await expect(controller.transcribeFile(wavFixture(60), body(), undefined, apiKeyRequest(CLINICIAN))).resolves.toMatchObject({ id: 'job-1' });
+    await expect(controller.transcribeFile(wavFixture(60), body(), apiKeyRequest(CLINICIAN))).resolves.toMatchObject({ id: 'job-1' });
 
     expect(realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ userId: CLINICIAN }));
   });
@@ -233,7 +237,7 @@ describe('transcribe — an API KEY never exceeds the human it is bound to', () 
   it('may not name a colleague when its human is an ordinary clinician', async () => {
     const { controller, realtimeService } = build({ cls: keyCls(CLINICIAN) });
 
-    const err = await controller.transcribeFile(wavFixture(60), body(OTHER_CLINICIAN), undefined, apiKeyRequest(CLINICIAN)).catch((e: unknown) => e);
+    const err = await controller.transcribeFile(wavFixture(60), body(OTHER_CLINICIAN), apiKeyRequest(CLINICIAN)).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(BadRequestException);
     expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'TRANSCRIBE_CLINICIAN_NOT_ALLOWED' });
@@ -243,7 +247,7 @@ describe('transcribe — an API KEY never exceeds the human it is bound to', () 
   it('may when its human administers THIS tenant', async () => {
     const { controller, realtimeService } = build({ cls: keyCls(CLINICIAN), adminOf: { [CLINICIAN]: TENANT } });
 
-    await expect(controller.transcribeFile(wavFixture(60), body(OTHER_CLINICIAN), undefined, apiKeyRequest(CLINICIAN))).resolves.toMatchObject({
+    await expect(controller.transcribeFile(wavFixture(60), body(OTHER_CLINICIAN), apiKeyRequest(CLINICIAN))).resolves.toMatchObject({
       id: 'job-1',
     });
 
@@ -253,7 +257,7 @@ describe('transcribe — an API KEY never exceeds the human it is bound to', () 
   it('may NOT when its human administers a DIFFERENT tenant — an admin of tenant B is nobody in tenant A', async () => {
     const { controller, realtimeService } = build({ cls: keyCls(CLINICIAN), adminOf: { [CLINICIAN]: 'tenant-2' } });
 
-    const err = await controller.transcribeFile(wavFixture(60), body(OTHER_CLINICIAN), undefined, apiKeyRequest(CLINICIAN)).catch((e: unknown) => e);
+    const err = await controller.transcribeFile(wavFixture(60), body(OTHER_CLINICIAN), apiKeyRequest(CLINICIAN)).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(BadRequestException);
     expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'TRANSCRIBE_CLINICIAN_NOT_ALLOWED' });

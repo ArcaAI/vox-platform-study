@@ -78,7 +78,6 @@ import { McpAdminController } from '../modules/mcp-admin/mcp-admin.controller';
 import { MonitoringController } from '../modules/monitoring/monitoring.controller';
 import { NlpTaskInstructionsAdminController } from '../modules/nlp-task-instructions/nlp-task-instructions-admin.controller';
 import { NotificationController } from '../modules/notification/notification.controller';
-import { AudioPipelineController } from '../modules/pipeline/audio-pipeline.controller';
 import { PlatformMetricsController } from '../modules/platform-metrics/platform-metrics.controller';
 import { PromptManagementController } from '../modules/prompt-management/prompt-management.controller';
 import { PrismaStudioStatusController } from '../modules/pstudio/pstudio-status.controller';
@@ -98,8 +97,6 @@ import { TenantBucketController } from '../modules/tenant-bucket/tenant-bucket.c
 import { TenantFrontendConfigAdminController } from '../modules/tenant-frontend-config/tenant-frontend-config-admin.controller';
 import { TenantIdpConfigAdminController } from '../modules/tenant-idp-config/tenant-idp-config-admin.controller';
 import { TenantStorageConfigAdminController } from '../modules/tenant-storage-config/tenant-storage-config-admin.controller';
-import { TenantSttConfigAdminController } from '../modules/tenant-stt-config/tenant-stt-config-admin.controller';
-import { TenantPipelineResyncController } from '../modules/tenant/tenant-pipeline-resync.controller';
 import { TenantProvisionController } from '../modules/tenant/tenant-provision.controller';
 import { TenantController } from '../modules/tenant/tenant.controller';
 import { UserDepartmentsController } from '../modules/user/controllers/user-departments.controller';
@@ -154,7 +151,6 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: AiModelDiscoveryController, expect: 'FORBID' },
   { controller: AiServiceAdminController, expect: 'FORBID' },
   { controller: ApiKeyController, expect: 'FORBID' },
-  { controller: AudioPipelineController, expect: 'FORBID' },
   { controller: AuditLogController, expect: 'FORBID' },
   { controller: BillingAdminController, expect: 'FORBID' },
   { controller: ChangelogAdminController, expect: 'FORBID' },
@@ -193,10 +189,8 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: TenantController, expect: 'FORBID' },
   { controller: TenantFrontendConfigAdminController, expect: 'FORBID' },
   { controller: TenantIdpConfigAdminController, expect: 'FORBID' },
-  { controller: TenantPipelineResyncController, expect: 'FORBID' },
   { controller: TenantProvisionController, expect: 'FORBID' },
   { controller: TenantStorageConfigAdminController, expect: 'FORBID' },
-  { controller: TenantSttConfigAdminController, expect: 'FORBID' },
   { controller: UserController, expect: 'FORBID' },
   { controller: UserDepartmentsController, expect: 'FORBID' },
   { controller: WebhookController, expect: 'FORBID' },

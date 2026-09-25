@@ -73,7 +73,6 @@ test.describe('business-plane auth model (policy A1)', () => {
     { name: 'MyUsageController (GET /tenants/me/usage-summary)', scope: 'tenant:account:read', path: '/api/v1/tenants/me/usage-summary' },
     { name: 'MyEntitlementsController (GET /tenants/me/entitlements)', scope: 'tenant:account:read', path: '/api/v1/tenants/me/entitlements' },
     { name: 'ChangelogController (GET /changelog)', scope: 'platform:changelog:read', path: '/api/v1/changelog' },
-    { name: 'AudioPipelinePublicController (GET /audio/pipelines)', scope: 'stt:model:read', path: '/api/v1/audio/pipelines' },
     { name: 'PromptTemplateController (GET /prompt-templates/available)', scope: 'prompt:template:read', path: '/api/v1/prompt-templates/available' },
     {
       name: 'MyTenantContextSchemaController (GET /tenants/me/context-schema)',

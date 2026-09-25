@@ -19,7 +19,6 @@ export {
   type StreamSessionBinding,
 } from './stream-session-tenant-binding.service';
 export { redirect308, API_V1_PREFIX } from './redirect-shim';
-export { markPipelineIdDeprecated } from './pipeline-id-deprecation';
 export {
   gatewayKeepAliveAgents,
   createGatewayKeepAliveAgents,

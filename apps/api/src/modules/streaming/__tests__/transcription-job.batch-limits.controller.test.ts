@@ -38,7 +38,22 @@ function wavFile(seconds: number, overrides: Partial<Express.Multer.File> = {}):
   return { buffer: header, size: 44 + dataSize, mimetype: 'audio/wav', originalname: 'consult.wav', ...overrides } as Express.Multer.File;
 }
 
-function build(overrides: { limits?: Partial<Record<string, number>>; counts?: Record<string, number>; fallbackPipelineId?: string | null } = {}) {
+/** The resolved ASR agent's spec; `fallbackRuntimeKey: null` = the agent declares no fallback engine. */
+const specWith = (fallbackRuntimeKey: string | null) => ({
+  runtimeKey: 'agent-v-1',
+  agent: { slug: 'platform-transcription', versionId: 'agent-v-1' },
+  models: { asr: { slug: 'whisper' } },
+  fallback: fallbackRuntimeKey
+    ? {
+        kind: 'model',
+        autoSwitch: true,
+        switchAfterConsecutiveFailures: 2,
+        spec: { runtimeKey: fallbackRuntimeKey, models: { asr: { slug: 'sarvam-saarika' } } },
+      }
+    : { kind: 'none', autoSwitch: true, switchAfterConsecutiveFailures: 2, spec: null },
+});
+
+function build(overrides: { limits?: Partial<Record<string, number>>; counts?: Record<string, number>; fallbackRuntimeKey?: string | null } = {}) {
   const mocks = {
     jobService: {
       createBatchJob: vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' }),
@@ -52,15 +67,15 @@ function build(overrides: { limits?: Partial<Record<string, number>>; counts?: R
     cls: { get: vi.fn().mockReturnValue({ id: 'user-1', tenantId: 'tenant-1' }) },
     blobStorage: { putObject: vi.fn().mockResolvedValue(undefined), resolveDescriptor: vi.fn().mockResolvedValue(null) },
     tenantBucketService: { getBucketByPurpose: vi.fn().mockResolvedValue(null), getBucketBySlug: vi.fn().mockResolvedValue(null) },
-    pipelineService: { getById: vi.fn().mockImplementation(async (id: string) => ({ id, tenantId: 'tenant-1', name: 'Primary', slug: id })) },
     streamTicketService: {},
     binding: {},
     entitlements: { assertConcurrencyQuota: vi.fn().mockResolvedValue(undefined) },
-    sttConfig: {
-      getEffective: vi
+    asrResolver: {
+      resolve: vi
         .fn()
-        .mockResolvedValue({ fallbackPipelineId: overrides.fallbackPipelineId === undefined ? 'fallback-pipe' : overrides.fallbackPipelineId }),
-      resolveProviderOverrides: vi.fn().mockResolvedValue({}),
+        .mockResolvedValue({
+          spec: specWith(overrides.fallbackRuntimeKey === undefined ? 'agent-v-1:fallback:sarvam' : overrides.fallbackRuntimeKey),
+        }),
     },
     batchLimits: {
       resolve: vi
@@ -76,17 +91,16 @@ function build(overrides: { limits?: Partial<Record<string, number>>; counts?: R
     mocks.cls as never,
     mocks.blobStorage as never,
     mocks.tenantBucketService as never,
-    mocks.pipelineService as never,
     mocks.streamTicketService as never,
     mocks.binding as never,
     mocks.entitlements as never,
-    mocks.sttConfig as never,
     mocks.batchLimits as never,
+    mocks.asrResolver as never,
   );
   return { controller, mocks };
 }
 
-const body = { pipelineId: 'primary-pipe' } as never;
+const body = {} as never;
 
 describe('POST transcribe — duration ceiling', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -182,27 +196,26 @@ describe('GET limits', () => {
 describe('GET fallback', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('names the tenant’s configured fallback pipeline', async () => {
-    const { controller } = build({ fallbackPipelineId: 'fallback-pipe' });
-    await expect(controller.getFallbackProvider()).resolves.toEqual({ configured: true, pipelineId: 'fallback-pipe', pipelineName: 'Primary' });
+  it('names the resolved ASR agent’s fallback engine', async () => {
+    const { controller } = build({ fallbackRuntimeKey: 'agent-v-1:fallback:sarvam' });
+    await expect(controller.getFallbackProvider()).resolves.toEqual({
+      configured: true,
+      pipelineId: 'agent-v-1:fallback:sarvam',
+      pipelineName: 'sarvam-saarika',
+      agentSlug: 'platform-transcription',
+    });
   });
 
-  it('reports configured:false rather than throwing when no fallback is set', async () => {
+  it('reports configured:false rather than throwing when the agent declares no fallback', async () => {
     // The live toggle must be able to DISABLE its button instead of discovering
     // the 409 mid-consultation.
-    const { controller } = build({ fallbackPipelineId: null });
-    await expect(controller.getFallbackProvider()).resolves.toEqual({ configured: false, pipelineId: null, pipelineName: null });
+    const { controller } = build({ fallbackRuntimeKey: null });
+    await expect(controller.getFallbackProvider()).resolves.toMatchObject({ configured: false, pipelineId: null, pipelineName: null });
   });
 
-  it('reports configured:false when the pipeline row is gone (stale pointer)', async () => {
-    const { controller, mocks } = build({ fallbackPipelineId: 'deleted-pipe' });
-    mocks.pipelineService.getById.mockResolvedValue(null);
-    await expect(controller.getFallbackProvider()).resolves.toEqual({ configured: false, pipelineId: 'deleted-pipe', pipelineName: null });
-  });
-
-  it('never leaks a settings error to the caller — it degrades to not-configured', async () => {
+  it('never leaks a resolve error to the caller — it degrades to not-configured', async () => {
     const { controller, mocks } = build();
-    mocks.sttConfig.getEffective.mockRejectedValue(new Error('vault down'));
+    mocks.asrResolver.resolve.mockRejectedValue(new Error('vault down'));
     await expect(controller.getFallbackProvider()).resolves.toMatchObject({ configured: false });
   });
 });

@@ -38,7 +38,6 @@ const mocks = () => ({
   cls: { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : { id: 'user-1', tenantId: 'tenant-1' })) },
   blobStorage: { resolveDescriptor: vi.fn().mockResolvedValue(null), putObject: vi.fn() },
   tenantBucketService: { getBucketBySlug: vi.fn(), getBucketByName: vi.fn(), getBucketByPurpose: vi.fn() },
-  pipelineService: { getById: vi.fn(), getAll: vi.fn().mockResolvedValue([]) },
   streamTicketService: { issueTicket: vi.fn().mockResolvedValue({ ticket: 't', expiresAt: 1 }) },
   binding: {
     bind: vi.fn().mockResolvedValue(undefined),
@@ -46,7 +45,6 @@ const mocks = () => ({
     clear: vi.fn().mockResolvedValue(undefined),
   },
   entitlements: { assertConcurrencyQuota: vi.fn() },
-  sttConfig: { getEffective: vi.fn().mockResolvedValue({ fallbackPipelineId: null }), resolveProviderOverrides: vi.fn().mockResolvedValue({}) },
   asrResolver: { resolve: vi.fn().mockResolvedValue({ spec, providerOverrides: {}, fundingTier: 'platform' }) },
 });
 
@@ -59,18 +57,14 @@ function build() {
     m.cls as never,
     m.blobStorage as never,
     m.tenantBucketService as never,
-    m.pipelineService as never,
     m.streamTicketService as never,
     m.binding as never,
     m.entitlements as never,
-    m.sttConfig as never,
     undefined,
     m.asrResolver as never,
   );
   return { controller, m };
 }
-
-const res = () => ({ setHeader: vi.fn() });
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -80,7 +74,7 @@ describe('TASK-985 M-64 — post-create compensation on createStreamSession', ()
     const boom = new Error('ticket mint failed');
     m.streamTicketService.issueTicket.mockRejectedValueOnce(boom);
 
-    await expect(controller.createStreamSession({} as never, res() as never)).rejects.toBe(boom);
+    await expect(controller.createStreamSession({} as never)).rejects.toBe(boom);
 
     // `interrupted: true` is the correct flag — the session was aborted before it served a
     // single frame. It bills nothing: `usageSegments` drops zero-duration segments.
@@ -91,7 +85,7 @@ describe('TASK-985 M-64 — post-create compensation on createStreamSession', ()
     const { controller, m } = build();
     m.binding.bind.mockRejectedValueOnce(new Error('redis blip'));
 
-    await expect(controller.createStreamSession({} as never, res() as never)).rejects.toThrow('redis blip');
+    await expect(controller.createStreamSession({} as never)).rejects.toThrow('redis blip');
 
     expect(m.sessionService.removeSession).toHaveBeenCalledWith('sess-1', true, 'tenant-1');
   });
@@ -100,7 +94,7 @@ describe('TASK-985 M-64 — post-create compensation on createStreamSession', ()
     const { controller, m } = build();
     m.binding.bindSessionMeta.mockRejectedValueOnce(new Error('meta write failed'));
 
-    await expect(controller.createStreamSession({} as never, res() as never)).rejects.toThrow('meta write failed');
+    await expect(controller.createStreamSession({} as never)).rejects.toThrow('meta write failed');
 
     // A half-written binding is a session id that can still mint a stream ticket against an
     // upstream that no longer exists — the false-resume path F-06 exists to close.
@@ -116,13 +110,13 @@ describe('TASK-985 M-64 — post-create compensation on createStreamSession', ()
     m.sessionService.removeSession.mockRejectedValueOnce(new Error('stt unreachable'));
     m.binding.clear.mockRejectedValueOnce(new Error('redis down'));
 
-    await expect(controller.createStreamSession({} as never, res() as never)).rejects.toBe(original);
+    await expect(controller.createStreamSession({} as never)).rejects.toBe(original);
   });
 
   it('the happy path compensates nothing', async () => {
     const { controller, m } = build();
 
-    await controller.createStreamSession({} as never, res() as never);
+    await controller.createStreamSession({} as never);
 
     expect(m.sessionService.removeSession).not.toHaveBeenCalled();
     expect(m.binding.clear).not.toHaveBeenCalled();

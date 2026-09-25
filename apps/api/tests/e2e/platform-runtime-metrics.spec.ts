@@ -71,7 +71,6 @@ interface TenantUsageResponse {
   totalUsers: number;
   totalDepartments: number;
   totalPromptTemplates: number;
-  totalPipelines: number;
   storageUsedBytes: number;
   storageQuotaBytes: number | null;
   transcriptionMinutes: number;
@@ -192,9 +191,11 @@ test.describe('platform runtime metrics (PM1–PM7)', () => {
     expect(res.status(), 'super_admin reads tenant usage').toBe(200);
     const body = (await res.json()) as TenantUsageResponse;
     // Pre-existing inventory counts stay present …
-    for (const k of ['totalUsers', 'totalDepartments', 'totalPromptTemplates', 'totalPipelines'] as const) {
+    for (const k of ['totalUsers', 'totalDepartments', 'totalPromptTemplates'] as const) {
       expect(isNonNegInt(body[k]), `usage.${k} ≥ 0 integer`).toBe(true);
     }
+    // TASK-1006 — the `AsrPipeline` catalogue is gone, and its count with it.
+    expect(body).not.toHaveProperty('totalPipelines');
     // … plus the storage (#5) and clinical (#16) extensions.
     expect(isNonNegNum(body.storageUsedBytes), 'storageUsedBytes ≥ 0 (#5)').toBe(true);
     expect(body.storageQuotaBytes === null || isNonNegNum(body.storageQuotaBytes), 'storageQuotaBytes null or ≥ 0 (#5)').toBe(true);

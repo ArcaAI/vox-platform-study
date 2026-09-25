@@ -1,12 +1,14 @@
 /**
- * TranscriptionJobController — Phase D STT fallback behaviour (items 6, 7).
+ * TranscriptionJobController — the STT fallback surface.
  *
- * Covers ONLY the new fallback surface:
- *  - `createStreamSession` resolves the tenant's effective fallback + decrypted
- *    BYO provider overrides and forwards both to the session payload; a resolve
- *    error is fail-open (session still created, no overrides, no throw).
- *  - `switchStreamSessionToFallback` fail-closed selection guard (409 when no
- *    fallback configured), happy path, and the apps/stt 409 → 409 mapping.
+ * TASK-1006: the fallback is a property of the resolved ASR AGENT (`ResolvedAsrSpec.fallback`),
+ * and the tenant-wide `TenantSttConfig` pointer is gone. Covered here:
+ *  - `createStreamSession` forwards the spec (which carries its own fallback chain), the chain's
+ *    credentials and the agent's auto-switch governance — and NO fallback pointer beside them;
+ *  - the `startOn` pre-start selection, fail-closed when the agent declares no fallback;
+ *  - `switchStreamSessionToFallback` / `switchStreamSessionToPrimary` defer to the runtime and map
+ *    its 409 / 404;
+ *  - the batch job dispatch carries no fallback pointer either.
  *
  * The `@TenantOwnedResource` guard (cross-tenant 404) is exercised by the
  * interceptor + the cross-tenant e2e spec, not here.
@@ -16,14 +18,24 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { TranscriptionJobController } from '../transcription-job.controller';
 import { wavFixture } from './wav-fixture';
 
+const specWith = (fallback: { autoSwitch: boolean; switchAfterConsecutiveFailures: number; spec: unknown }) => ({
+  runtimeKey: 'agent-v-1',
+  agent: { slug: 'clinic-transcription', versionId: 'agent-v-1', source: 'tenant' },
+  models: { asr: { slug: 'whisper' } },
+  audioFrontEnd: {},
+  fallback: { kind: fallback.spec ? 'model' : 'none', ...fallback },
+});
+
+const WITH_FALLBACK = specWith({ autoSwitch: false, switchAfterConsecutiveFailures: 5, spec: { runtimeKey: 'agent-v-1:fallback:sarvam' } });
+const WITHOUT_FALLBACK = specWith({ autoSwitch: true, switchAfterConsecutiveFailures: 2, spec: null });
+
 // `getStatusCountsForOwner` backs the in-flight cap. Zero in flight so
-// these tests exercise pipeline resolution, not the concurrency guard.
+// these tests exercise agent resolution, not the concurrency guard.
 const createMockJobService = () => ({
-  createBatchJob: vi.fn(),
+  createBatchJob: vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' }),
   failJob: vi.fn(),
   getStatusCountsForOwner: vi.fn().mockResolvedValue({ queued: 0, processing: 0, completed: 0, failed: 0, cancelled: 0, dead: 0 }),
 });
-const createMockRealtimeService = () => ({ dispatchDramatiqJob: vi.fn() });
 const createMockSessionService = () => ({
   createSession: vi.fn().mockResolvedValue({ sessionId: 'sess-1', status: 'active', maxConcurrent: 10, currentActive: 1 }),
   removeSession: vi.fn(),
@@ -31,48 +43,28 @@ const createMockSessionService = () => ({
   switchProvider: vi.fn().mockResolvedValue(undefined),
   getLanguageModes: vi.fn().mockResolvedValue({ modes: [] }),
 });
-// Key-AWARE: `getTenantId()` reads the CLS `tenantId` key first and falls back
-// to `user.tenantId`. A mock that returns the user object for EVERY key made
-// `getTenantId()` hand back an object, which stayed invisible while the value
-// was only passed to other mocks.
-const createMockCls = () => ({
-  get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : { id: 'user-1', tenantId: 'tenant-1' })),
-});
-const createMockBlobStorage = () => ({ resolveDescriptor: vi.fn().mockResolvedValue(null), putObject: vi.fn() });
-const createMockTenantBucketService = () => ({ getBucketBySlug: vi.fn(), getBucketByName: vi.fn(), getBucketByPurpose: vi.fn() });
-const createMockPipelineService = () => ({
-  getById: vi.fn().mockImplementation(async (id: string) => ({ id, tenantId: 'tenant-1', name: 'p', slug: id })),
-  getAll: vi.fn().mockResolvedValue([]),
-});
-const createMockStreamTicketService = () => ({
-  issueTicket: vi.fn().mockResolvedValue({ ticket: 'ticket-1', expiresAt: Date.now() + 30_000 }),
-});
-const createMockBinding = () => ({
-  bind: vi.fn().mockResolvedValue(undefined),
-  bindSessionMeta: vi.fn().mockResolvedValue(undefined),
-  clear: vi.fn().mockResolvedValue(undefined),
-});
-const createMockEntitlements = () => ({ assertConcurrencyQuota: vi.fn().mockResolvedValue(undefined) });
-const createMockSttConfig = () => ({
-  getEffective: vi
-    .fn()
-    .mockResolvedValue({ tenantId: 'tenant-1', fallbackPipelineId: 'fallback-pipe', autoSwitchEnabled: true, consecutiveFailureThreshold: 2 }),
-  resolveProviderOverrides: vi.fn().mockResolvedValue({ sarvam: { api_key: 'secret-key' } }),
-});
 
-function build(sttConfig?: ReturnType<typeof createMockSttConfig>) {
+/** `providerOverrides: null` = the resolver bound no credential to the chain (a self-hosted engine). */
+function build(
+  spec: unknown = WITH_FALLBACK,
+  providerOverrides: Record<string, unknown> | null = { sarvam: { api_key: 'secret-key', funding: 'tenant' } },
+) {
   const mocks = {
     jobService: createMockJobService(),
-    realtimeService: createMockRealtimeService(),
+    realtimeService: { dispatchDramatiqJob: vi.fn() },
     sessionService: createMockSessionService(),
-    cls: createMockCls(),
-    blobStorage: createMockBlobStorage(),
-    tenantBucketService: createMockTenantBucketService(),
-    pipelineService: createMockPipelineService(),
-    streamTicketService: createMockStreamTicketService(),
-    binding: createMockBinding(),
-    entitlements: createMockEntitlements(),
-    sttConfig: sttConfig ?? createMockSttConfig(),
+    // Key-AWARE: `getTenantId()` reads the CLS `tenantId` key first and falls back to `user.tenantId`.
+    cls: { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : { id: 'user-1', tenantId: 'tenant-1' })) },
+    blobStorage: { resolveDescriptor: vi.fn().mockResolvedValue(null), putObject: vi.fn() },
+    tenantBucketService: { getBucketBySlug: vi.fn(), getBucketByName: vi.fn(), getBucketByPurpose: vi.fn() },
+    streamTicketService: { issueTicket: vi.fn().mockResolvedValue({ ticket: 'ticket-1', expiresAt: Date.now() + 30_000 }) },
+    binding: {
+      bind: vi.fn().mockResolvedValue(undefined),
+      bindSessionMeta: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    },
+    entitlements: { assertConcurrencyQuota: vi.fn().mockResolvedValue(undefined) },
+    asrResolver: { resolve: vi.fn().mockResolvedValue({ spec, providerOverrides: providerOverrides ?? undefined }) },
   };
   const controller = new TranscriptionJobController(
     mocks.jobService as never,
@@ -81,89 +73,95 @@ function build(sttConfig?: ReturnType<typeof createMockSttConfig>) {
     mocks.cls as never,
     mocks.blobStorage as never,
     mocks.tenantBucketService as never,
-    mocks.pipelineService as never,
     mocks.streamTicketService as never,
     mocks.binding as never,
     mocks.entitlements as never,
-    mocks.sttConfig as never,
+    undefined,
+    mocks.asrResolver as never,
   );
   return { controller, mocks };
 }
 
-describe('TranscriptionJobController.createStreamSession — STT fallback injection', () => {
+const payloadOf = (mocks: ReturnType<typeof build>['mocks']) => mocks.sessionService.createSession.mock.calls[0][0] as Record<string, unknown>;
+
+describe('TranscriptionJobController.createStreamSession — the agent carries the fallback', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('forwards decrypted provider_overrides + fallback_pipeline_id to the session payload', async () => {
+  it('forwards the spec and the chain credentials, and NO fallback pointer beside the spec', async () => {
     const { controller, mocks } = build();
-    await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
-    expect(mocks.sessionService.createSession).toHaveBeenCalledTimes(1);
-    const payload = mocks.sessionService.createSession.mock.calls[0][0];
-    expect(payload.providerOverrides).toEqual({ sarvam: { api_key: 'secret-key' } });
-    expect(payload.fallbackPipelineId).toBe('fallback-pipe');
+    await controller.createStreamSession({} as never);
+    const payload = payloadOf(mocks);
+    expect(payload.resolvedSpec).toEqual(WITH_FALLBACK);
+    expect(payload.providerOverrides).toEqual({ sarvam: { api_key: 'secret-key', funding: 'tenant' } });
+    expect(payload).not.toHaveProperty('fallbackPipelineId');
+    expect(payload).not.toHaveProperty('pipelineId');
   });
 
-  it('omits overrides/fallback when the tenant has none configured', async () => {
-    const sttConfig = createMockSttConfig();
-    sttConfig.getEffective.mockResolvedValue({
-      tenantId: 'tenant-1',
-      fallbackPipelineId: null,
-      autoSwitchEnabled: true,
-      consecutiveFailureThreshold: 2,
-    });
-    sttConfig.resolveProviderOverrides.mockResolvedValue({});
-    const { controller, mocks } = build(sttConfig);
-    await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
-    const payload = mocks.sessionService.createSession.mock.calls[0][0];
-    expect('providerOverrides' in payload).toBe(false);
-    expect('fallbackPipelineId' in payload).toBe(false);
+  it('omits providerOverrides when the chain needs no credential', async () => {
+    const { controller, mocks } = build(WITHOUT_FALLBACK, null);
+    await controller.createStreamSession({} as never);
+    expect('providerOverrides' in payloadOf(mocks)).toBe(false);
   });
 
-  it('is fail-open: a config resolve error still creates the session without overrides', async () => {
-    const sttConfig = createMockSttConfig();
-    sttConfig.resolveProviderOverrides.mockRejectedValue(new Error('vault down'));
-    const { controller, mocks } = build(sttConfig);
-    const result = await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
-    expect(result.sessionId).toBe('sess-1');
-    const payload = mocks.sessionService.createSession.mock.calls[0][0];
-    expect('providerOverrides' in payload).toBe(false);
-    expect('fallbackPipelineId' in payload).toBe(false);
+  it("forwards the AGENT's auto-switch governance (spec.fallback), including an explicit false", async () => {
+    const { controller, mocks } = build();
+    await controller.createStreamSession({} as never);
+    const payload = payloadOf(mocks);
+    expect(payload.autoSwitchEnabled).toBe(false);
+    expect(payload.consecutiveFailureThreshold).toBe(5);
   });
 
   it('forwards the end-user languageMode to the session payload', async () => {
     const { controller, mocks } = build();
-    await controller.createStreamSession({ pipelineId: 'primary-pipe', languageMode: 'ml-en' } as never);
-    const payload = mocks.sessionService.createSession.mock.calls[0][0];
-    expect(payload.languageMode).toBe('ml-en');
+    await controller.createStreamSession({ languageMode: 'ml-en' } as never);
+    expect(payloadOf(mocks).languageMode).toBe('ml-en');
   });
 
   it('forwards startOn into the session payload', async () => {
     const { controller, mocks } = build();
-    await controller.createStreamSession({ pipelineId: 'primary-pipe', startOn: 'fallback' } as never);
-    const payload = mocks.sessionService.createSession.mock.calls[0][0];
-    expect(payload.startOn).toBe('fallback');
+    await controller.createStreamSession({ startOn: 'fallback' } as never);
+    expect(payloadOf(mocks).startOn).toBe('fallback');
   });
 
   it('omits startOn when not requested', async () => {
     const { controller, mocks } = build();
-    await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
-    const payload = mocks.sessionService.createSession.mock.calls[0][0];
-    expect('startOn' in payload).toBe(false);
+    await controller.createStreamSession({} as never);
+    expect('startOn' in payloadOf(mocks)).toBe(false);
   });
 
-  it('is fail-closed: startOn=fallback with no configured fallback → 409', async () => {
-    const sttConfig = createMockSttConfig();
-    sttConfig.getEffective.mockResolvedValue({
-      tenantId: 'tenant-1',
-      fallbackPipelineId: null,
-      autoSwitchEnabled: true,
-      consecutiveFailureThreshold: 2,
-    });
-    sttConfig.resolveProviderOverrides.mockResolvedValue({});
-    const { controller, mocks } = build(sttConfig);
-    await expect(controller.createStreamSession({ pipelineId: 'primary-pipe', startOn: 'fallback' } as never)).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+  it('is fail-closed: startOn=fallback when the agent declares no fallback → 409, nothing forwarded', async () => {
+    const { controller, mocks } = build(WITHOUT_FALLBACK);
+    await expect(controller.createStreamSession({ startOn: 'fallback' } as never)).rejects.toBeInstanceOf(ConflictException);
     expect(mocks.sessionService.createSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('TranscriptionJobController.createStreamSession — the engine baseline echo', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns the activeEngine STT opened on — and never a pipelineId', async () => {
+    const { controller, mocks } = build();
+    mocks.sessionService.createSession.mockResolvedValue({
+      sessionId: 'sess-1',
+      status: 'active',
+      maxConcurrent: 10,
+      currentActive: 1,
+      activeEngine: 'fallback',
+    });
+
+    const result = (await controller.createStreamSession({} as never)) as unknown as Record<string, unknown>;
+
+    expect(result.activeEngine).toBe('fallback');
+    expect('pipelineId' in result).toBe(false);
+    expect(result.agentSlug).toBe('clinic-transcription');
+  });
+
+  it('omits activeEngine against an older STT that does not echo it (mixed-version degrade)', async () => {
+    const { controller } = build();
+
+    const result = (await controller.createStreamSession({} as never)) as unknown as Record<string, unknown>;
+
+    expect('activeEngine' in result).toBe(false);
   });
 });
 
@@ -193,29 +191,23 @@ describe('TranscriptionJobController.getLanguageModes', () => {
 describe('TranscriptionJobController.switchStreamSessionToFallback', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('409s when the tenant has no fallback configured (fail-closed selection)', async () => {
-    const sttConfig = createMockSttConfig();
-    sttConfig.getEffective.mockResolvedValue({
-      tenantId: 'tenant-1',
-      fallbackPipelineId: null,
-      autoSwitchEnabled: true,
-      consecutiveFailureThreshold: 2,
-    });
-    const { controller, mocks } = build(sttConfig);
-    await expect(controller.switchStreamSessionToFallback('sess-1')).rejects.toBeInstanceOf(ConflictException);
-    expect(mocks.sessionService.switchToFallback).not.toHaveBeenCalled();
-  });
-
-  it('requests the switch and returns {switched:true} on the happy path', async () => {
+  it('requests the switch and returns {switched:true} on the happy path — the runtime is the authority', async () => {
     const { controller, mocks } = build();
     await expect(controller.switchStreamSessionToFallback('sess-1')).resolves.toEqual({ switched: true });
     expect(mocks.sessionService.switchToFallback).toHaveBeenCalledWith('sess-1', 'tenant-1');
+    expect(mocks.asrResolver.resolve).not.toHaveBeenCalled();
   });
 
-  it('maps an apps/stt 409 (already switched / no fallback) to a ConflictException', async () => {
+  it('maps an apps/stt 409 (already switched / the agent declares none) to a ConflictException', async () => {
     const { controller, mocks } = build();
     mocks.sessionService.switchToFallback.mockRejectedValue({ response: { status: 409 } });
     await expect(controller.switchStreamSessionToFallback('sess-1')).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('maps an apps/stt 404 (unknown session) to a NotFoundException', async () => {
+    const { controller, mocks } = build();
+    mocks.sessionService.switchToFallback.mockRejectedValue({ response: { status: 404 } });
+    await expect(controller.switchStreamSessionToFallback('sess-1')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
@@ -226,12 +218,6 @@ describe('TranscriptionJobController.switchStreamSessionToPrimary', () => {
     const { controller, mocks } = build();
     await expect(controller.switchStreamSessionToPrimary('sess-1')).resolves.toEqual({ switched: true });
     expect(mocks.sessionService.switchProvider).toHaveBeenCalledWith('sess-1', 'primary', 'tenant-1');
-  });
-
-  it('needs no fallback-config precheck (never reads sttConfig.getEffective)', async () => {
-    const { controller, mocks } = build();
-    await controller.switchStreamSessionToPrimary('sess-1');
-    expect(mocks.sttConfig.getEffective).not.toHaveBeenCalled();
   });
 
   it('maps an apps/stt 409 (already on primary / primary never loaded) to a ConflictException', async () => {
@@ -247,203 +233,20 @@ describe('TranscriptionJobController.switchStreamSessionToPrimary', () => {
   });
 });
 
-/**
- * Batch auto-fallback was never dispatched.
- *
- * `transcribe_file.py:317-336` has implemented the batch fallback since
- * On a cloud-ASR/model failure it re-runs ONCE on
- * `fallback_pipeline_id` within the same Dramatiq attempt and stamps
- * `usedFallbackPipelineId` on the result. But nothing ever SUPPLIED that
- * argument — the gateway's dispatch stops at `userId` and its only kwarg is
- * `storage` — so the whole path was unreachable in production and a failing
- * primary simply failed the job.
- *
- * Streaming sessions have resolved the tenant fallback since
- * (`createStreamSession` above); batch is the half that was missed.
- */
-describe('TranscriptionJobController.transcribeFile — batch fallback dispatch', () => {
+describe('TranscriptionJobController.transcribeFile — batch dispatch carries the spec, not a pointer', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  // A 5-minute WAV: comfortably inside the ceilings, so these tests
-  // still assert pipeline resolution rather than the new duration guard.
+  // A 5-minute WAV: comfortably inside the ceilings.
   const audioFile = () => wavFixture(300);
 
-  it("passes the tenant's fallback pipeline into the batch job", async () => {
+  it('dispatches the resolved spec (fallback included) with no fallbackPipelineId / pipelineId key', async () => {
     const { controller, mocks } = build();
-    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-1', status: 'QUEUED' });
-
-    await controller.transcribeFile(audioFile(), { pipelineId: 'primary-pipe' } as never);
-
-    expect(mocks.realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ fallbackPipelineId: 'fallback-pipe' }));
-  });
-
-  it('omits the key entirely when the tenant has no fallback configured', async () => {
-    const sttConfig = createMockSttConfig();
-    sttConfig.getEffective.mockResolvedValue({ tenantId: 'tenant-1', fallbackPipelineId: null, autoSwitchEnabled: true });
-    const { controller, mocks } = build(sttConfig);
-    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-2', status: 'QUEUED' });
-
-    await controller.transcribeFile(audioFile(), { pipelineId: 'primary-pipe' } as never);
-
-    const params = mocks.realtimeService.dispatchDramatiqJob.mock.calls[0][0];
-    expect('fallbackPipelineId' in params).toBe(false);
-  });
-
-  it('is fail-open: a config resolve error still dispatches the job without a fallback', async () => {
-    // A broken tenant STT config must never block a transcription — same
-    // posture the streaming path already takes.
-    const sttConfig = createMockSttConfig();
-    sttConfig.getEffective.mockRejectedValue(new Error('vault down'));
-    const { controller, mocks } = build(sttConfig);
-    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-3', status: 'QUEUED' });
-
-    await controller.transcribeFile(audioFile(), { pipelineId: 'primary-pipe' } as never);
-
-    expect(mocks.realtimeService.dispatchDramatiqJob).toHaveBeenCalledTimes(1);
-    const params = mocks.realtimeService.dispatchDramatiqJob.mock.calls[0][0];
-    expect('fallbackPipelineId' in params).toBe(false);
-  });
-});
-
-/**
- * The tenant's auto-switch governance reaches the session.
- *
- * `getEffective` has always returned `autoSwitchEnabled` /
- * `consecutiveFailureThreshold`; the controller read the object and used only
- * `fallbackPipelineId`, so the governance never left the gateway and STT's
- * controller silently used its own defaults.
- */
-describe('TranscriptionJobController.createStreamSession — auto-switch governance', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("forwards the tenant's autoSwitchEnabled and consecutiveFailureThreshold", async () => {
-    const sttConfig = createMockSttConfig();
-    sttConfig.getEffective.mockResolvedValue({
-      tenantId: 'tenant-1',
-      fallbackPipelineId: 'fallback-pipe',
-      autoSwitchEnabled: false,
-      consecutiveFailureThreshold: 5,
-    });
-    const { controller, mocks } = build(sttConfig);
-
-    await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
-
-    const payload = mocks.sessionService.createSession.mock.calls[0][0];
-    expect(payload.autoSwitchEnabled).toBe(false);
-    expect(payload.consecutiveFailureThreshold).toBe(5);
-  });
-
-  it('is fail-open: a config resolve error leaves the governance unset rather than blocking the session', async () => {
-    const sttConfig = createMockSttConfig();
-    sttConfig.getEffective.mockRejectedValue(new Error('vault down'));
-    const { controller, mocks } = build(sttConfig);
-
-    await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
-
-    const payload = mocks.sessionService.createSession.mock.calls[0][0];
-    expect(mocks.sessionService.createSession).toHaveBeenCalledTimes(1);
-    expect('autoSwitchEnabled' in payload).toBe(false);
-  });
-});
-
-/**
- * AC-2 — the create response carries the RESOLVED baseline.
- *
- * Until now both create paths returned only what the caller already knew. A
- * client that sent no pipelineId, a session opened on the fallback by choice,
- * and one opened there because the primary ASR failed to load were all
- * indistinguishable from a normal primary session — which is why the SDK's
- * `activePipeline` had to be derived from the request and went null.
- */
-describe('TranscriptionJobController.createStreamSession — resolved pipeline echo', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns the resolved pipelineId and activeEngine from the session service', async () => {
-    const { controller, mocks } = build();
-    mocks.sessionService.createSession.mockResolvedValue({
-      sessionId: 'sess-1',
-      status: 'active',
-      maxConcurrent: 10,
-      currentActive: 1,
-      pipelineId: 'resolved-pipe',
-      activeEngine: 'fallback',
-    });
-
-    const result = (await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never)) as unknown as Record<string, unknown>;
-
-    expect(result.pipelineId).toBe('resolved-pipe');
-    expect(result.activeEngine).toBe('fallback');
-  });
-
-  it('omits both against an older STT that echoes neither (mixed-version degrade)', async () => {
-    const { controller, mocks } = build();
-    mocks.sessionService.createSession.mockResolvedValue({ sessionId: 'sess-1', status: 'active', maxConcurrent: 10, currentActive: 1 });
-
-    const result = (await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never)) as unknown as Record<string, unknown>;
-
-    expect('pipelineId' in result).toBe(false);
-    expect('activeEngine' in result).toBe(false);
-  });
-});
-
-/**
- * D11 — batch can say "use the tenant default".
- *
- * Live sessions have always been able to omit the pipeline (the gateway
- * resolves one), but batch hard-required it all the way down to the SDK queue,
- * so there was no way to express the same intent for an upload.
- */
-describe('TranscriptionJobController.transcribeFile — tenant-default pipeline', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  // A 5-minute WAV: comfortably inside the ceilings, so these tests
-  // still assert pipeline resolution rather than the new duration guard.
-  const audioFile = () => wavFixture(300);
-
-  it("resolves the tenant's default pipeline when the request omits one", async () => {
-    const { controller, mocks } = build();
-    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-d1', status: 'QUEUED' });
-    mocks.pipelineService.getAll = vi.fn().mockResolvedValue([
-      { id: 'other-pipe', isDefault: false, tenantId: 'tenant-1' },
-      { id: 'tenant-default-pipe', isDefault: true, tenantId: 'tenant-1' },
-    ]);
 
     await controller.transcribeFile(audioFile(), {} as never);
 
-    expect(mocks.jobService.createBatchJob).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'tenant-default-pipe' }));
-    expect(mocks.realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'tenant-default-pipe' }));
-  });
-
-  it('falls back to the configured fallback pipeline when no pipeline is marked default', async () => {
-    const { controller, mocks } = build();
-    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-d2', status: 'QUEUED' });
-    mocks.pipelineService.getAll = vi.fn().mockResolvedValue([{ id: 'other-pipe', isDefault: false, tenantId: 'tenant-1' }]);
-
-    await controller.transcribeFile(audioFile(), {} as never);
-
-    expect(mocks.realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'fallback-pipe' }));
-  });
-
-  it('409s with an explicit message when neither a default nor a fallback exists', async () => {
-    // Never guess a pipeline: transcribing a consultation on an arbitrary
-    // engine is worse than refusing.
-    const sttConfig = createMockSttConfig();
-    sttConfig.getEffective.mockResolvedValue({ tenantId: 'tenant-1', fallbackPipelineId: null, autoSwitchEnabled: true });
-    const { controller, mocks } = build(sttConfig);
-    mocks.pipelineService.getAll = vi.fn().mockResolvedValue([{ id: 'other-pipe', isDefault: false, tenantId: 'tenant-1' }]);
-
-    await expect(controller.transcribeFile(audioFile(), {} as never)).rejects.toThrow(/no default .*pipeline/i);
-    expect(mocks.jobService.createBatchJob).not.toHaveBeenCalled();
-  });
-
-  it('still honours an explicit pipelineId (unchanged for every existing caller)', async () => {
-    const { controller, mocks } = build();
-    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-d4', status: 'QUEUED' });
-    mocks.pipelineService.getAll = vi.fn();
-
-    await controller.transcribeFile(audioFile(), { pipelineId: 'explicit-pipe' } as never);
-
-    expect(mocks.pipelineService.getAll).not.toHaveBeenCalled();
-    expect(mocks.realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'explicit-pipe' }));
+    const params = mocks.realtimeService.dispatchDramatiqJob.mock.calls[0][0] as Record<string, unknown>;
+    expect(params.resolvedSpec).toEqual(WITH_FALLBACK);
+    expect('fallbackPipelineId' in params).toBe(false);
+    expect('pipelineId' in params).toBe(false);
   });
 });

@@ -69,14 +69,16 @@ const createMockTenantBucketService = () => ({
   getBucketByPurpose: vi.fn(),
 });
 
-const createMockPipelineService = () => ({
-  // Default: pipeline exists and belongs to caller's tenant.
-  getById: vi.fn().mockImplementation(async (id: string) => ({
-    id,
-    tenantId: 'tenant-1',
-    name: 'Default Pipeline',
-    slug: id,
-  })),
+/** The resolved ASR agent every transcription runs on — the ONLY selector since TASK-1006. */
+const SPEC = {
+  runtimeKey: 'agent-v-1',
+  agent: { slug: 'platform-transcription', versionId: 'agent-v-1', source: 'tenant' },
+  models: { asr: { slug: 'whisper' } },
+  audioFrontEnd: {},
+  fallback: { kind: 'none', autoSwitch: true, switchAfterConsecutiveFailures: 2, spec: null },
+};
+const createMockAsrResolver = () => ({
+  resolve: vi.fn().mockResolvedValue({ spec: SPEC }),
 });
 
 const createMockStreamTicketService = () => ({
@@ -117,7 +119,7 @@ describe('TranscriptionJobController', () => {
   let mockCls: ReturnType<typeof createMockCls>;
   let mockBlobStorage: ReturnType<typeof createMockBlobStorage>;
   let mockTenantBucketService: ReturnType<typeof createMockTenantBucketService>;
-  let mockPipelineService: ReturnType<typeof createMockPipelineService>;
+  let mockAsrResolver: ReturnType<typeof createMockAsrResolver>;
   let mockStreamTicketService: ReturnType<typeof createMockStreamTicketService>;
   let mockStreamSessionTenantBinding: ReturnType<typeof createMockStreamSessionTenantBinding>;
   let mockEntitlements: ReturnType<typeof createMockEntitlements>;
@@ -130,7 +132,7 @@ describe('TranscriptionJobController', () => {
     mockCls = createMockCls();
     mockBlobStorage = createMockBlobStorage();
     mockTenantBucketService = createMockTenantBucketService();
-    mockPipelineService = createMockPipelineService();
+    mockAsrResolver = createMockAsrResolver();
     mockStreamTicketService = createMockStreamTicketService();
     mockStreamSessionTenantBinding = createMockStreamSessionTenantBinding();
     mockEntitlements = createMockEntitlements();
@@ -141,21 +143,22 @@ describe('TranscriptionJobController', () => {
       mockCls as any,
       mockBlobStorage as any,
       mockTenantBucketService as any,
-      mockPipelineService as any,
       mockStreamTicketService as any,
       mockStreamSessionTenantBinding as any,
       mockEntitlements as any,
+      undefined,
+      mockAsrResolver as any,
     );
   });
 
   describe('POST / (create job)', () => {
-    it('should delegate to jobService.create', async () => {
-      const jobResponse = { id: 'job-1', status: 'QUEUED', pipelineId: 'pipe-1' };
+    it('should resolve the assigned ASR agent and delegate to jobService.create keyed to it', async () => {
+      const jobResponse = { id: 'job-1', status: 'QUEUED', agentVersionId: 'agent-v-1' };
       mockJobService.create.mockResolvedValue(jobResponse);
 
-      const result = await controller.create({ jobType: TranscriptionJobType.BATCH, pipelineId: 'pipe-1' });
+      const result = await controller.create({ jobType: TranscriptionJobType.BATCH });
 
-      expect(mockJobService.create).toHaveBeenCalledWith({ jobType: TranscriptionJobType.BATCH, pipelineId: 'pipe-1' });
+      expect(mockJobService.create).toHaveBeenCalledWith({ jobType: TranscriptionJobType.BATCH, agentVersionId: 'agent-v-1', resolvedSpec: SPEC });
       expect(result).toEqual(jobResponse);
     });
   });
@@ -165,9 +168,9 @@ describe('TranscriptionJobController', () => {
       const jobResponse = { id: 'job-2', status: 'QUEUED' };
       mockJobService.createBatchJob.mockResolvedValue(jobResponse);
 
-      const result = await controller.createBatch({ pipelineId: 'pipe-1', mediaId: 'media-1' });
+      const result = await controller.createBatch({ agentVersionId: 'agent-v-1', resolvedSpec: SPEC, mediaId: 'media-1' });
 
-      expect(mockJobService.createBatchJob).toHaveBeenCalledWith({ pipelineId: 'pipe-1', mediaId: 'media-1' });
+      expect(mockJobService.createBatchJob).toHaveBeenCalledWith({ agentVersionId: 'agent-v-1', resolvedSpec: SPEC, mediaId: 'media-1' });
       expect(result).toEqual(jobResponse);
     });
   });
@@ -177,9 +180,9 @@ describe('TranscriptionJobController', () => {
       const jobResponse = { id: 'job-3', status: 'QUEUED' };
       mockJobService.createStreamingJob.mockResolvedValue(jobResponse);
 
-      const result = await controller.createStreaming({ pipelineId: 'pipe-1' });
+      const result = await controller.createStreaming({ agentVersionId: 'agent-v-1', resolvedSpec: SPEC });
 
-      expect(mockJobService.createStreamingJob).toHaveBeenCalledWith({ pipelineId: 'pipe-1' });
+      expect(mockJobService.createStreamingJob).toHaveBeenCalledWith({ agentVersionId: 'agent-v-1', resolvedSpec: SPEC });
       expect(result).toEqual(jobResponse);
     });
   });
@@ -292,13 +295,11 @@ describe('TranscriptionJobController', () => {
       };
       mockSessionService.createSession.mockResolvedValue(sessionStatus);
 
-      const result = await controller.createStreamSession({
-        pipelineId: 'pipe-1',
-      } as any);
+      const result = await controller.createStreamSession({} as any);
 
       expect(mockSessionService.createSession).toHaveBeenCalledWith(
         expect.objectContaining({
-          pipelineId: 'pipe-1',
+          resolvedSpec: SPEC,
           tenantId: 'tenant-1',
           userId: 'user-1',
         }),
@@ -311,10 +312,11 @@ describe('TranscriptionJobController', () => {
       });
     });
 
-    it('throws NotFoundException when pipelineId is not in caller tenant (D-2)', async () => {
-      mockPipelineService.getById.mockResolvedValueOnce(null);
+    it('404s when the named ASR agent is not visible to the caller tenant (404-over-403), forwarding nothing', async () => {
+      const { NotFoundException } = await import('@nestjs/common');
+      mockAsrResolver.resolve.mockRejectedValueOnce(new NotFoundException("Agent 'agent-foreign' not found"));
 
-      await expect(controller.createStreamSession({ pipelineId: 'pipe-foreign' } as any)).rejects.toThrow(/Pipeline pipe-foreign not found/);
+      await expect(controller.createStreamSession({ agentSlug: 'agent-foreign' } as any)).rejects.toBeInstanceOf(NotFoundException);
       expect(mockSessionService.createSession).not.toHaveBeenCalled();
     });
 
@@ -327,7 +329,7 @@ describe('TranscriptionJobController', () => {
         voiceProfileSeeded: true,
       });
 
-      const result = await controller.createStreamSession({ pipelineId: 'pipe-1' } as any);
+      const result = await controller.createStreamSession({} as any);
 
       expect(mockStreamTicketService.issueTicket).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -351,7 +353,7 @@ describe('TranscriptionJobController', () => {
         currentActive: 1,
       });
 
-      await controller.createStreamSession({ pipelineId: 'pipe-1', sampleRate: 48000 } as any);
+      await controller.createStreamSession({ sampleRate: 48000 } as any);
 
       expect(mockStreamSessionTenantBinding.bindSessionMeta).toHaveBeenCalledWith('sess-meta', expect.objectContaining({ sampleRate: 48000 }));
     });
@@ -364,7 +366,7 @@ describe('TranscriptionJobController', () => {
         currentActive: 1,
       });
 
-      await controller.createStreamSession({ pipelineId: 'pipe-1' } as any);
+      await controller.createStreamSession({} as any);
 
       expect(mockStreamSessionTenantBinding.bindSessionMeta).toHaveBeenCalledWith(
         'sess-meta-default',
@@ -385,7 +387,7 @@ describe('TranscriptionJobController', () => {
         currentActive: 1,
       });
 
-      await controller.createStreamSession({ pipelineId: 'pipe-1' });
+      await controller.createStreamSession({});
 
       // The default system slug is now `recordings`.
       expect(mockTenantBucketService.getBucketBySlug).toHaveBeenCalledWith('recordings');
@@ -417,7 +419,7 @@ describe('TranscriptionJobController', () => {
         currentActive: 1,
       });
 
-      await controller.createStreamSession({ pipelineId: 'pipe-1' });
+      await controller.createStreamSession({});
 
       expect(mockTenantBucketService.getBucketByPurpose).toHaveBeenCalled();
       expect(mockTenantBucketService.getBucketBySlug).not.toHaveBeenCalled();
@@ -439,7 +441,7 @@ describe('TranscriptionJobController', () => {
         currentActive: 1,
       });
 
-      await controller.createStreamSession({ pipelineId: 'pipe-1' });
+      await controller.createStreamSession({});
 
       const arg = mockSessionService.createSession.mock.calls[0][0];
       expect(arg.audioBucketName).toBeUndefined();
@@ -448,7 +450,7 @@ describe('TranscriptionJobController', () => {
     it('should throw ServiceUnavailableException when STT at capacity', async () => {
       mockSessionService.createSession.mockResolvedValue(null);
 
-      await expect(controller.createStreamSession({ pipelineId: 'pipe-1' } as any)).rejects.toThrow();
+      await expect(controller.createStreamSession({} as any)).rejects.toThrow();
     });
 
     // The concurrency gate runs on the caller's
@@ -461,7 +463,7 @@ describe('TranscriptionJobController', () => {
         currentActive: 1,
       });
 
-      await controller.createStreamSession({ pipelineId: 'pipe-1' } as any);
+      await controller.createStreamSession({} as any);
 
       expect(mockEntitlements.assertConcurrencyQuota).toHaveBeenCalledWith('tenant-1');
       const gateOrder = mockEntitlements.assertConcurrencyQuota.mock.invocationCallOrder[0];
@@ -483,7 +485,7 @@ describe('TranscriptionJobController', () => {
         }),
       );
 
-      await expect(controller.createStreamSession({ pipelineId: 'pipe-1' } as any)).rejects.toBeInstanceOf(QuotaExceededException);
+      await expect(controller.createStreamSession({} as any)).rejects.toBeInstanceOf(QuotaExceededException);
       expect(mockSessionService.createSession).not.toHaveBeenCalled();
     });
   });
@@ -517,47 +519,38 @@ describe('TranscriptionJobController', () => {
   });
 
   // =========================================================================
-  // pipelineId shape validation
+  // agentSlug shape validation (the only selector since TASK-1006)
   // =========================================================================
-  describe('CreateStreamSessionRequest.pipelineId shape validation (D-19)', () => {
-    const validPipelineIds = [
-      'general-consult',
-      'cardio2',
-      'a',
-      'f47ac10b-58cc-4372-a567-0e02b2c3d479', // UUID
-      'F47AC10B-58CC-4372-A567-0E02B2C3D479', // upper UUID
-      'p-1',
-    ];
-    const invalidPipelineIds = ['../../etc/passwd', 'pipe; DROP TABLE users', "1' OR '1'='1", 'spaces here', '', '-leading-dash'];
+  describe('CreateStreamSessionRequest.agentSlug shape validation', () => {
+    const validSlugs = ['general-consult', 'cardio2', 'a', 'p-1'];
+    const invalidSlugs = ['../../etc/passwd', 'pipe; DROP TABLE users', "1' OR '1'='1", 'spaces here', '', '-leading-dash'];
 
-    for (const id of validPipelineIds) {
-      it(`accepts valid pipelineId ${JSON.stringify(id)}`, async () => {
-        const dto = plainToInstance(CreateStreamSessionRequest, { pipelineId: id });
+    for (const slug of validSlugs) {
+      it(`accepts valid agentSlug ${JSON.stringify(slug)}`, async () => {
+        const dto = plainToInstance(CreateStreamSessionRequest, { agentSlug: slug });
         const errors = await validate(dto);
         expect(errors).toHaveLength(0);
       });
     }
 
-    for (const id of invalidPipelineIds) {
-      it(`rejects invalid pipelineId ${JSON.stringify(id)}`, async () => {
-        const dto = plainToInstance(CreateStreamSessionRequest, { pipelineId: id });
+    for (const slug of invalidSlugs) {
+      it(`rejects invalid agentSlug ${JSON.stringify(slug)}`, async () => {
+        const dto = plainToInstance(CreateStreamSessionRequest, { agentSlug: slug });
         const errors = await validate(dto);
         expect(errors.length).toBeGreaterThan(0);
       });
     }
   });
 
-  describe('TranscribeFileRequest.pipelineId shape validation (D-19)', () => {
-    it('rejects pipelineId with path traversal', async () => {
-      const dto = plainToInstance(TranscribeFileRequest, { pipelineId: '../bad' });
+  describe('TranscribeFileRequest.agentSlug shape validation', () => {
+    it('rejects agentSlug with path traversal', async () => {
+      const dto = plainToInstance(TranscribeFileRequest, { agentSlug: '../bad' });
       const errors = await validate(dto);
       expect(errors.length).toBeGreaterThan(0);
     });
 
-    it('accepts a UUID pipelineId', async () => {
-      const dto = plainToInstance(TranscribeFileRequest, {
-        pipelineId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
-      });
+    it('accepts a lineage-slug agentSlug', async () => {
+      const dto = plainToInstance(TranscribeFileRequest, { agentSlug: 'platform-transcription' });
       const errors = await validate(dto);
       expect(errors).toHaveLength(0);
     });
@@ -691,7 +684,7 @@ describe('TranscriptionJobController', () => {
         currentActive: 1,
       });
 
-      await controller.createStreamSession({ pipelineId: 'pipeline-1' } as CreateStreamSessionRequest);
+      await controller.createStreamSession({} as CreateStreamSessionRequest);
 
       expect(mockStreamSessionTenantBinding.bind).toHaveBeenCalledWith('sess-xyz', 'tenant-1', 'user-1');
     });
@@ -711,52 +704,36 @@ describe('TranscriptionJobController', () => {
   // `createStreaming`) previously accepted `@Body() dto: any`, bypassing the
   // global ValidationPipe. They now bind to typed request DTOs so malformed
   // input (bad enum, malformed ids, missing required fields) is rejected.
-  // Note: `CreateJobRequest.pipelineId` accepts
-  // slug-or-UUID via PIPELINE_ID_PATTERN, so a plain slug is valid input.
+  // TASK-1006 — a job is keyed to an ASR agent version; `pipelineId` is no
+  // longer a field (the global pipe's forbidNonWhitelisted then 400s it —
+  // `transcription-job.pipeline-id-rejected.task1006.test.ts`).
   // These tests lock the validation contract those endpoints rely on.
   // ------------------------------------------------------------------------
   describe('EU-07 — create endpoints use typed, validated request DTOs', () => {
-    const VALID_UUID_V7 = '0188b1f7-7f1a-7e7a-9c0a-2d9b6f3a1c2d';
     const VALID_UUID_V7_B = '0190a2c4-1b2c-7d3e-8f4a-5b6c7d8e9f01';
 
-    it('CreateJobRequest accepts a valid jobType + UUIDv7 pipelineId', async () => {
+    it('CreateJobRequest accepts a valid jobType + agentSlug', async () => {
       const dto = plainToInstance(CreateJobRequest, {
         jobType: 'BATCH',
-        pipelineId: VALID_UUID_V7,
+        agentSlug: 'platform-transcription',
         mediaId: VALID_UUID_V7_B,
       });
       expect(await validate(dto)).toHaveLength(0);
     });
 
-    // Probe must fail BOTH branches of PIPELINE_ID_PATTERN
-    // (slug `[A-Za-z0-9][A-Za-z0-9-]*` or UUID): spaces and '!' do.
-    // The old probe 'not-a-uuid' is a valid slug under this pattern.
-    it('CreateJobRequest rejects an invalid jobType and a non-slug, non-UUID pipelineId', async () => {
-      const dto = plainToInstance(CreateJobRequest, { jobType: 'NOT_A_TYPE', pipelineId: 'not a uuid!' });
+    it('CreateJobRequest rejects an invalid jobType', async () => {
+      const dto = plainToInstance(CreateJobRequest, { jobType: 'NOT_A_TYPE' });
       const errors = await validate(dto);
-      const failedProps = errors.map((e) => e.property);
-      expect(failedProps).toContain('jobType');
-      expect(failedProps).toContain('pipelineId');
+      expect(errors.map((e) => e.property)).toContain('jobType');
     });
 
-    // Pin the widened pipelineId contract itself: a plain
-    // slug pipelineId must keep passing CreateJobRequest validation.
-    it('CreateJobRequest accepts a valid slug pipelineId', async () => {
-      const dto = plainToInstance(CreateJobRequest, {
-        jobType: 'BATCH',
-        pipelineId: 'general-consult',
-        mediaId: VALID_UUID_V7_B,
-      });
-      expect(await validate(dto)).toHaveLength(0);
-    });
-
-    it('CreateBatchJobRequest requires both pipelineId and mediaId', async () => {
-      const missingMedia = plainToInstance(CreateBatchJobRequest, { pipelineId: VALID_UUID_V7 });
+    it('CreateBatchJobRequest requires mediaId', async () => {
+      const missingMedia = plainToInstance(CreateBatchJobRequest, { agentVersionId: 'agent-v-1', resolvedSpec: {} });
       expect((await validate(missingMedia)).map((e) => e.property)).toContain('mediaId');
     });
 
-    it('CreateStreamingJobRequest rejects a path-traversal pipelineId', async () => {
-      const dto = plainToInstance(CreateStreamingJobRequest, { pipelineId: '../../etc/passwd' });
+    it('CreateStreamingJobRequest rejects an empty agentVersionId', async () => {
+      const dto = plainToInstance(CreateStreamingJobRequest, { agentVersionId: '' });
       expect((await validate(dto)).length).toBeGreaterThan(0);
     });
   });
@@ -781,10 +758,11 @@ describe('TranscriptionJobController', () => {
         clsFor(clsStore) as any,
         mockBlobStorage as any,
         mockTenantBucketService as any,
-        mockPipelineService as any,
         mockStreamTicketService as any,
         mockStreamSessionTenantBinding as any,
         mockEntitlements as any,
+        undefined,
+        mockAsrResolver as any,
       );
 
     // A 5-minute WAV — see wav-fixture.ts for why a placeholder buffer no
@@ -798,7 +776,7 @@ describe('TranscriptionJobController', () => {
       mockJobService.createBatchJob.mockResolvedValue({ id: 'job-ga', status: 'QUEUED' });
       const ctrl = buildController(superAdminStore);
 
-      const result = await ctrl.transcribeFile(audioFile(), { pipelineId: 'pipe-1' } as TranscribeFileRequest);
+      const result = await ctrl.transcribeFile(audioFile(), {} as TranscribeFileRequest);
 
       expect(result).toMatchObject({ id: 'job-ga', status: 'QUEUED' });
       expect(mockRealtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-ga', tenantId: 'tenant-1' }));
@@ -813,7 +791,7 @@ describe('TranscriptionJobController', () => {
       });
       const ctrl = buildController(superAdminStore);
 
-      await ctrl.createStreamSession({ pipelineId: 'pipe-1' } as CreateStreamSessionRequest);
+      await ctrl.createStreamSession({} as CreateStreamSessionRequest);
 
       expect(mockEntitlements.assertConcurrencyQuota).toHaveBeenCalledWith('tenant-1');
       expect(mockSessionService.createSession).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
@@ -826,7 +804,7 @@ describe('TranscriptionJobController', () => {
       mockJobService.createBatchJob.mockResolvedValue({ id: 'job-tb', status: 'QUEUED' });
       const ctrl = buildController({ user: { id: 'user-1', tenantId: 'tenant-1' } });
 
-      await ctrl.transcribeFile(audioFile(), { pipelineId: 'pipe-1' } as TranscribeFileRequest);
+      await ctrl.transcribeFile(audioFile(), {} as TranscribeFileRequest);
 
       expect(mockRealtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
     });
@@ -836,9 +814,7 @@ describe('TranscriptionJobController', () => {
     it('transcribeFile still rejects when neither the CLS tenantId nor the JWT tenant is present', async () => {
       const ctrl = buildController({ user: { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] }, tenantId: '' });
 
-      await expect(ctrl.transcribeFile(audioFile(), { pipelineId: 'pipe-1' } as TranscribeFileRequest)).rejects.toThrow(
-        /Tenant context is required/,
-      );
+      await expect(ctrl.transcribeFile(audioFile(), {} as TranscribeFileRequest)).rejects.toThrow(/Tenant context is required/);
       expect(mockJobService.createBatchJob).not.toHaveBeenCalled();
     });
   });

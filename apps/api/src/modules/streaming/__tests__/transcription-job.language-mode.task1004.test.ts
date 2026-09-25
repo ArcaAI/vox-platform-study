@@ -47,11 +47,9 @@ const mocks = () => ({
   cls: { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : { id: 'user-1', tenantId: 'tenant-1' })) },
   blobStorage: { resolveDescriptor: vi.fn().mockResolvedValue(null), putObject: vi.fn() },
   tenantBucketService: { getBucketBySlug: vi.fn(), getBucketByName: vi.fn(), getBucketByPurpose: vi.fn() },
-  pipelineService: { getById: vi.fn(), getAll: vi.fn().mockResolvedValue([]) },
   streamTicketService: { issueTicket: vi.fn().mockResolvedValue({ ticket: 't', expiresAt: 1 }) },
   binding: { bind: vi.fn(), bindSessionMeta: vi.fn(), clear: vi.fn() },
   entitlements: { assertConcurrencyQuota: vi.fn() },
-  sttConfig: { getEffective: vi.fn().mockResolvedValue({ fallbackPipelineId: null }), resolveProviderOverrides: vi.fn().mockResolvedValue({}) },
   asrResolver: { resolve: vi.fn().mockResolvedValue({ spec, consultationLanguageMode: 'ml-en' }) },
 });
 
@@ -64,18 +62,15 @@ function build() {
     m.cls as never,
     m.blobStorage as never,
     m.tenantBucketService as never,
-    m.pipelineService as never,
     m.streamTicketService as never,
     m.binding as never,
     m.entitlements as never,
-    m.sttConfig as never,
     undefined,
     m.asrResolver as never,
   );
   return { controller, m };
 }
 
-const res = () => ({ setHeader: vi.fn() });
 const sessionPayload = (m: ReturnType<typeof mocks>) => m.sessionService.createSession.mock.calls[0]![0] as Record<string, unknown>;
 
 beforeEach(() => vi.clearAllMocks());
@@ -83,7 +78,7 @@ beforeEach(() => vi.clearAllMocks());
 describe('TASK-1004 — stream session language', () => {
   it('only consultationId → inherits the consultation’s mode (source consultation), no extra read requested', async () => {
     const { controller, m } = build();
-    await controller.createStreamSession({ consultationId: 'c-1' } as never, res() as never);
+    await controller.createStreamSession({ consultationId: 'c-1' } as never);
     expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null, consultationId: 'c-1' });
     expect(sessionPayload(m)).toMatchObject({ languageMode: 'ml-en', languageModeSource: 'consultation' });
     expect(sessionPayload(m).language).toBeUndefined();
@@ -91,20 +86,20 @@ describe('TASK-1004 — stream session language', () => {
 
   it('an explicit languageMode wins over the consultation (source request)', async () => {
     const { controller, m } = build();
-    await controller.createStreamSession({ consultationId: 'c-1', languageMode: 'EN' } as never, res() as never);
+    await controller.createStreamSession({ consultationId: 'c-1', languageMode: 'EN' } as never);
     expect(sessionPayload(m)).toMatchObject({ languageMode: 'en', languageModeSource: 'request' });
   });
 
   it('a BCP-47 `language` is normalized to its mode (source request) and the raw tag is not forwarded', async () => {
     const { controller, m } = build();
-    await controller.createStreamSession({ consultationId: 'c-1', language: 'ml-IN' } as never, res() as never);
+    await controller.createStreamSession({ consultationId: 'c-1', language: 'ml-IN' } as never);
     expect(sessionPayload(m)).toMatchObject({ languageMode: 'ml', languageModeSource: 'request' });
     expect(sessionPayload(m).language).toBeUndefined();
   });
 
   it('an explicit agentSlug on a consultation with no declared language asks the resolver for the ONE consultation read', async () => {
     const { controller, m } = build();
-    await controller.createStreamSession({ agentSlug: 'platform-transcription', consultationId: 'c-1' } as never, res() as never);
+    await controller.createStreamSession({ agentSlug: 'platform-transcription', consultationId: 'c-1' } as never);
     expect(m.asrResolver.resolve).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       agentSlug: 'platform-transcription',
@@ -116,7 +111,7 @@ describe('TASK-1004 — stream session language', () => {
 
   it('a request that declares its own mode never asks for the consultation read', async () => {
     const { controller, m } = build();
-    await controller.createStreamSession({ agentSlug: 'platform-transcription', consultationId: 'c-1', languageMode: 'en' } as never, res() as never);
+    await controller.createStreamSession({ agentSlug: 'platform-transcription', consultationId: 'c-1', languageMode: 'en' } as never);
     expect(m.asrResolver.resolve).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       agentSlug: 'platform-transcription',
@@ -128,17 +123,15 @@ describe('TASK-1004 — stream session language', () => {
   it('nothing declared anywhere → no mode is sent; STT applies the agent’s own and stamps the source itself', async () => {
     const { controller, m } = build();
     m.asrResolver.resolve.mockResolvedValue({ spec, consultationLanguageMode: null });
-    await controller.createStreamSession({ consultationId: 'c-1' } as never, res() as never);
+    await controller.createStreamSession({ consultationId: 'c-1' } as never);
     expect(sessionPayload(m).languageMode).toBeUndefined();
     expect(sessionPayload(m).languageModeSource).toBeUndefined();
   });
 
   it('an unknown value is 400 LANGUAGE_MODE_UNKNOWN before quota, resolution or STT', async () => {
     const { controller, m } = build();
-    await expect(controller.createStreamSession({ consultationId: 'c-1', language: 'klingon' } as never, res() as never)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    await expect(controller.createStreamSession({ languageMode: 'fr' } as never, res() as never)).rejects.toMatchObject({
+    await expect(controller.createStreamSession({ consultationId: 'c-1', language: 'klingon' } as never)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(controller.createStreamSession({ languageMode: 'fr' } as never)).rejects.toMatchObject({
       response: { code: 'LANGUAGE_MODE_UNKNOWN' },
     });
     expect(m.entitlements.assertConcurrencyQuota).not.toHaveBeenCalled();
@@ -148,15 +141,15 @@ describe('TASK-1004 — stream session language', () => {
 
   it('returns the receipt on the response and freezes it on the session meta for the WS `ready`', async () => {
     const { controller, m } = build();
-    const out = await controller.createStreamSession({ consultationId: 'c-1' } as never, res() as never);
+    const out = await controller.createStreamSession({ consultationId: 'c-1' } as never);
     expect(out.languageResolution).toEqual(RECEIPT);
     expect(m.binding.bindSessionMeta).toHaveBeenCalledWith('sess-1', expect.objectContaining({ languageResolution: RECEIPT }));
   });
 
   it('the language never changes the agent: two modes, the same resolver call shape', async () => {
     const { controller, m } = build();
-    await controller.createStreamSession({ languageMode: 'ml-en' } as never, res() as never);
-    await controller.createStreamSession({ languageMode: 'en' } as never, res() as never);
+    await controller.createStreamSession({ languageMode: 'ml-en' } as never);
+    await controller.createStreamSession({ languageMode: 'en' } as never);
     expect(m.asrResolver.resolve.mock.calls[0]).toEqual(m.asrResolver.resolve.mock.calls[1]);
   });
 });

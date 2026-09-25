@@ -48,7 +48,6 @@ interface UsageStats {
   totalUsers: number;
   totalDepartments: number;
   totalPromptTemplates?: number;
-  totalPipelines?: number;
 }
 interface SessionsResponse {
   services: Record<string, { active: number }>;

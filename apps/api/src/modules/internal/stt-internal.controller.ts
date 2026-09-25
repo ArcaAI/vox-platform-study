@@ -75,9 +75,9 @@ export class SttInternalController {
     private readonly sttInternalService: SttInternalService,
     // TASK-861 follow-up — the batch-worker credential PULL resolves through
     // `AsrAgentResolverService.resolveProviderOverrides` (TASK-862's
-    // `ProviderCredentialResolver` underneath). Same slot the deprecated
-    // `ITenantSttConfigService` held, so positional test construction is
-    // unchanged; the pull route rejects (400) when unwired.
+    // `ProviderCredentialResolver` over `AiProviderConnection` underneath) —
+    // the only source of a cloud ASR key since `TenantSttConfig` was removed
+    // (TASK-1006). The pull route rejects (400) when unwired.
     @Optional() private readonly asrResolver?: AsrAgentResolverService,
     // Re-establishes a SYSTEM-free CLS tenant context around the tenant-scoped
     // credential read (service-to-service calls carry no user/tenant CLS).

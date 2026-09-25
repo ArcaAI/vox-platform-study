@@ -25,8 +25,6 @@ function build() {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
-    undefined,
     undefined,
     undefined,
     undefined,

@@ -9,13 +9,11 @@ import {
   EntitlementsServiceModule,
   HarnessPolicyServiceModule,
   OriginRegistryServiceModule,
-  PipelineServiceModule,
   PlatformMetricsServiceModule,
   ProviderCapacityServiceModule,
   StreamingSessionServiceModule,
   TenantBucketServiceModule,
   TenantServiceModule,
-  TenantSttConfigServiceModule,
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
   UsageLedgerServiceModule,
@@ -59,7 +57,6 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
     ProviderCapacityServiceModule,
     TenantServiceModule,
     TenantBucketServiceModule,
-    PipelineServiceModule,
     CoreDatabaseModule,
     HarnessPolicyServiceModule, // TEXT-selection resolver for TextProxyController
     // Supplies `IOriginRegistry` to `SttWsGateway`'s CSWSH
@@ -98,9 +95,6 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
     AsrAgentResolverServiceModule,
     // TASK-1004 — per-agent language capability for `GET audio/transcription-jobs/language-modes`.
     AsrLanguageCapabilityServiceModule,
-    // Deprecated (TASK-861, removed in R4): the tenant-wide STT fallback pointer +
-    // BYO provider overrides for the legacy `pipelineId` path only.
-    TenantSttConfigServiceModule,
     // `IUsageLedgerService` for `TextProxyController`'s
     // generate.stream emission AND `StreamingSessionService`'s
     // transcribe.stream emission. Both are constructor-injected at THIS

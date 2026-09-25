@@ -53,17 +53,6 @@ import { DEFAULT_TENANT_KEY, loginUser, SEEDED_USERS } from './e2e.helper';
 export const STREAM_SAMPLE_RATE = 16000;
 
 /**
- * Optional explicit ASR pipeline for streaming e2e — the DEPRECATED path
- * (TASK-861, removed in R4). UNSET by default: `06-stt.ts` seeds no
- * `AsrPipeline` rows any more, so a session is minted with neither `pipelineId`
- * nor `agentSlug` and the gateway resolves it through the caller's assigned ASR
- * agent (`platform-transcription`, seeded by `25-agents.ts`, reached via the
- * SYSTEM assignment cascade). Set `STREAM_E2E_PIPELINE_ID` only to exercise the
- * deprecated `pipelineId` path against a pipeline the caller's tenant owns.
- */
-export const DEFAULT_STREAM_PIPELINE_ID: string | undefined = process.env.STREAM_E2E_PIPELINE_ID?.trim() || undefined;
-
-/**
  * The ASR agent every streaming e2e session names explicitly.
  *
  * `example-transcription` (`25-agents.ts`) is PUBLISHED to the `__GLOBAL__`
@@ -164,31 +153,26 @@ export async function loginStreamUser(
  *
  * Returns `{ ok:false, status, reason }` (never throws) for the two expected
  * "cannot proceed" outcomes so specs can `test.skip(...)` cleanly:
- *   - 404 → pipeline not owned/visible to the caller (or STT unreachable
- *     behind the gateway on the ownership read),
+ *   - 404 → the named ASR agent is not visible to the caller's tenant,
  *   - 503 → STT streaming service at capacity / not initialized.
  */
 export async function createStreamSession(
   request: APIRequestContext,
   opts: {
     token: string;
-    pipelineId?: string;
     agentSlug?: string;
     sampleRate?: number;
     consultationId?: string;
     apiUrl?: string;
   },
 ): Promise<CreateStreamResult> {
-  const pipelineId = opts.pipelineId ?? DEFAULT_STREAM_PIPELINE_ID;
-  // The deprecated `pipelineId` still wins when a caller passes one, so the R4
-  // removal path stays exercisable; otherwise every session names the agent.
-  const agentSlug = pipelineId ? undefined : (opts.agentSlug ?? DEFAULT_STREAM_AGENT_SLUG);
+  // Every session names its ASR agent — the only selector since TASK-1006 removed `pipelineId`.
+  const agentSlug = opts.agentSlug ?? DEFAULT_STREAM_AGENT_SLUG;
   const sampleRate = opts.sampleRate ?? STREAM_SAMPLE_RATE;
 
   const response = await request.post('/api/v1/audio/transcription-jobs/stream/session', {
     headers: { Authorization: `Bearer ${opts.token}` },
     data: {
-      ...(pipelineId ? { pipelineId } : {}),
       ...(agentSlug ? { agentSlug } : {}),
       sampleRate,
       ...(opts.consultationId ? { consultationId: opts.consultationId } : {}),
@@ -201,7 +185,7 @@ export async function createStreamSession(
     return {
       ok: false,
       status,
-      reason: `POST stream/session → ${status}: ${body} (pipeline=${pipelineId ?? 'none'}, agent=${agentSlug ?? 'assigned ASR agent'}; is STT running + the model resolvable/pre-staged for the caller?)`,
+      reason: `POST stream/session → ${status}: ${body} (agent=${agentSlug ?? 'assigned ASR agent'}; is STT running + the model resolvable/pre-staged for the caller?)`,
     };
   }
 

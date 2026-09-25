@@ -10,9 +10,6 @@ export class TenantUsageResponse {
   @ApiProperty({ description: 'Total number of prompt templates' })
   totalPromptTemplates!: number;
 
-  @ApiProperty({ description: 'Total number of pipelines' })
-  totalPipelines!: number;
-
   // Storage roll-ups for the Tenant Detail "Storage" tile.
   @ApiProperty({ description: 'Storage used in bytes (SUM of Media.size).' })
   storageUsedBytes!: number;
