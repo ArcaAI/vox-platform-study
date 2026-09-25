@@ -126,20 +126,20 @@ function makeGenerationService(entitlements?: unknown, enrichment?: unknown) {
 }
 
 describe('SummaryService — the CONSULTATION activity dimension', () => {
-  it('stamps trigger CONSULTATION on the LLM row a summary produced', async () => {
+  it('stamps trigger CONSULTATION on the LLM row a pre-summary produced', async () => {
     const { service, usageLedger } = makeGenerationService();
-    await service.generateSummary('c-1', {} as never);
+    await service.generatePreSummary('c-1', {} as never);
 
     const llm = usageLedger.recordUsage.mock.calls
       .map((call) => call[0] as { common: { operation: string; attributesJson?: Record<string, unknown> } })
-      .find((batch) => batch.common.operation === 'generate');
+      .find((batch) => batch.common.operation === 'presummarize');
     expect(llm).toBeDefined();
     expect(llm!.common.attributesJson).toMatchObject({ trigger: 'CONSULTATION' });
   });
 
   it('stamps it on the guardrail row of the same call too — one activity, every row it produced', async () => {
     const { service, usageLedger } = makeGenerationService();
-    await service.generateSummary('c-1', {} as never);
+    await service.generatePreSummary('c-1', {} as never);
 
     const guard = usageLedger.recordUsage.mock.calls
       .map((call) => call[0] as { common: { operation: string; attributesJson?: Record<string, unknown> } })
@@ -231,11 +231,11 @@ describe('SummaryService — the guardrail disposition on the clinical row', () 
 
   it('stamps the platform disposition on the LLM row', async () => {
     const { service, usageLedger } = makeGenerationService();
-    await service.generateSummary('c-1', {} as never);
+    await service.generatePreSummary('c-1', {} as never);
 
     const llm = usageLedger.recordUsage.mock.calls
       .map((call) => call[0] as { common: { operation: string; attributesJson?: Record<string, unknown> } })
-      .find((batch) => batch.common.operation === 'generate');
+      .find((batch) => batch.common.operation === 'presummarize');
     expect(llm!.common.attributesJson).toMatchObject({ guardrail: 'screened', trigger: 'CONSULTATION' });
   });
 
@@ -245,21 +245,21 @@ describe('SummaryService — the guardrail disposition on the clinical row', () 
       applyTenantProviderOverrides: vi.fn(async (body: unknown) => body),
       guardrailDisposition: vi.fn(async () => 'platform_off'),
     });
-    await service.generateSummary('c-1', {} as never);
+    await service.generatePreSummary('c-1', {} as never);
 
     const llm = usageLedger.recordUsage.mock.calls
       .map((call) => call[0] as { common: { operation: string; attributesJson?: Record<string, unknown> } })
-      .find((batch) => batch.common.operation === 'generate');
+      .find((batch) => batch.common.operation === 'presummarize');
     expect(llm!.common.attributesJson).toMatchObject({ guardrail: 'platform_off' });
   });
 
   it('an unwired enrichment service stamps nothing rather than guessing', async () => {
     const { service, usageLedger } = makeGenerationService(undefined, null);
-    await service.generateSummary('c-1', {} as never);
+    await service.generatePreSummary('c-1', {} as never);
 
     const llm = usageLedger.recordUsage.mock.calls
       .map((call) => call[0] as { common: { operation: string; attributesJson?: Record<string, unknown> } })
-      .find((batch) => batch.common.operation === 'generate');
+      .find((batch) => batch.common.operation === 'presummarize');
     expect(llm!.common.attributesJson?.guardrail).toBeUndefined();
     expect(llm!.common.attributesJson).toMatchObject({ trigger: 'CONSULTATION' });
   });

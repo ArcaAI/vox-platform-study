@@ -21,7 +21,7 @@ function makeService(overrides: { usageLedger?: unknown; unitOfWork?: unknown } 
     findCaseNotes: vi.fn().mockResolvedValue([{ id: 'note-1', content: 'case note text' }]),
     findTranscripts: vi.fn().mockResolvedValue([{ id: 't-1', content: 'transcript text' }]),
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
-  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
+    findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
     create: vi.fn().mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() }),
     encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
   };
@@ -128,11 +128,11 @@ describe('SummaryService — ledger emission on SummaryMeta write', () => {
   });
 
   it('emits LLM token rows in the SAME transaction as the SummaryMeta write', async () => {
-    await harness.service.generateSummary('c-1', {} as never);
+    await harness.service.generatePreSummary('c-1', {} as never);
 
     expect(harness.summaryMetaRepository.create).toHaveBeenCalledWith(expect.anything(), TX);
 
-    const llmCall = harness.usageLedger.recordUsage.mock.calls.find((c) => c[0].common.operation === 'generate');
+    const llmCall = harness.usageLedger.recordUsage.mock.calls.find((c) => c[0].common.operation === 'presummarize');
     expect(llmCall).toBeDefined();
     expect(llmCall![1]).toBe(TX); // the same tx — not a second, independent write
     expect(llmCall![0].common.idempotencyKey).toBe('llm:text-task-1');
@@ -147,7 +147,7 @@ describe('SummaryService — ledger emission on SummaryMeta write', () => {
   });
 
   it('emits guardrail.validate rows from the same response', async () => {
-    await harness.service.generateSummary('c-1', {} as never);
+    await harness.service.generatePreSummary('c-1', {} as never);
 
     const guardrailCall = harness.usageLedger.recordUsage.mock.calls.find((c) => c[0].common.operation === 'guardrail.validate');
     expect(guardrailCall).toBeDefined();
@@ -167,7 +167,7 @@ describe('SummaryService — ledger emission on SummaryMeta write', () => {
   it('still persists the SummaryMeta when the ledger is not wired', async () => {
     const unwired = makeService({ usageLedger: null, unitOfWork: null });
 
-    await expect(unwired.service.generateSummary('c-1', {} as never)).resolves.toBeDefined();
+    await expect(unwired.service.generatePreSummary('c-1', {} as never)).resolves.toBeDefined();
     expect(unwired.summaryMetaRepository.create).toHaveBeenCalled();
   });
 
@@ -179,7 +179,7 @@ describe('SummaryService — ledger emission on SummaryMeta write', () => {
       usageLedger: { recordUsage: vi.fn().mockRejectedValue(new Error('outbox unavailable')) },
     });
 
-    await expect(failing.service.generateSummary('c-1', {} as never)).resolves.toBeDefined();
+    await expect(failing.service.generatePreSummary('c-1', {} as never)).resolves.toBeDefined();
     expect(failing.summaryMetaRepository.create).toHaveBeenCalled();
   });
 
@@ -187,7 +187,7 @@ describe('SummaryService — ledger emission on SummaryMeta write', () => {
     const legacy = makeService();
     legacy.httpService.axiosRef.post.mockResolvedValue({ data: { content: 'the summary', provider: 'openai', model: 'gpt-5' } });
 
-    await legacy.service.generateSummary('c-1', {} as never);
+    await legacy.service.generatePreSummary('c-1', {} as never);
 
     expect(legacy.usageLedger.recordUsage).not.toHaveBeenCalled();
     expect(legacy.summaryMetaRepository.create).toHaveBeenCalled();

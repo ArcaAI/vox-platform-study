@@ -1,7 +1,7 @@
 /**
  * SummaryService — trajectory emitter.
  *
- * Each generate / pre-summary emits ONE LLM_CALL trajectory step via the
+ * Each pre-summary generation emits ONE LLM_CALL trajectory step via the
  * (optional) AgentTrajectoryService: sessionKind=SUMMARY_JOB,
  * sessionId=the generated summary's contextItem id, runId="", seq=0, with the
  * AD-1 stats attached. Fire-and-forget: a trajectory failure never rolls back
@@ -27,7 +27,7 @@ function buildService(trajectoryOverride?: { recordSteps: ReturnType<typeof vi.f
     findCaseNotes: vi.fn().mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]),
     findTranscripts: vi.fn().mockResolvedValue([{ content: 'transcript text' }]),
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
-  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
+    findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
     create: vi.fn(),
     update: vi.fn(),
   };
@@ -82,11 +82,11 @@ function recordedStep(trajectory: { recordSteps: ReturnType<typeof vi.fn> }): Cr
 describe('SummaryService — trajectory emitter', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('emits one SUMMARY_JOB LLM_CALL step on generateSummary', async () => {
+  it('emits one SUMMARY_JOB LLM_CALL step on generatePreSummary', async () => {
     const { service, trajectory, contextItemRepository } = buildService();
     contextItemRepository.create.mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() });
 
-    await service.generateSummary(CID, { dnaStyleId: 's' } as never);
+    await service.generatePreSummary(CID, {} as never);
 
     expect(trajectory.recordSteps).toHaveBeenCalledTimes(1);
     const step = recordedStep(trajectory);
@@ -98,20 +98,10 @@ describe('SummaryService — trajectory emitter', () => {
       runId: '',
       seq: 0,
       stepType: AgentStepType.LLM_CALL,
-      name: 'generate',
+      name: 'pre-summary',
       status: AgentStepStatus.OK,
     });
     expect(step.stats).toMatchObject({ stop_reason: 'length', ttft_ms: 210 });
-  });
-
-  it('emits one SUMMARY_JOB LLM_CALL step on generatePreSummary', async () => {
-    const { service, trajectory, contextItemRepository } = buildService();
-    contextItemRepository.create.mockResolvedValue({ id: 'ctx-pre', content: 'S', createdAt: new Date(), updatedAt: new Date() });
-
-    await service.generatePreSummary(CID, {} as never);
-
-    const step = recordedStep(trajectory);
-    expect(step).toMatchObject({ sessionKind: AgentSessionKind.SUMMARY_JOB, sessionId: 'ctx-pre', name: 'pre-summary', runId: '', seq: 0 });
   });
 
   it('is fire-and-forget: a trajectory failure never rolls back the summary', async () => {
@@ -119,7 +109,7 @@ describe('SummaryService — trajectory emitter', () => {
     const { service, contextItemRepository } = buildService(trajectory);
     contextItemRepository.create.mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() });
 
-    const res = await service.generateSummary(CID, { dnaStyleId: 's' } as never);
+    const res = await service.generatePreSummary(CID, {} as never);
     expect(res).toBeDefined();
     expect(trajectory.recordSteps).toHaveBeenCalled();
   });

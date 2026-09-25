@@ -19,7 +19,6 @@ import {
   UserProfileRepository,
   ContextItemFactory,
   ContextItemVersionFactory,
-  ContextItemEntity,
   SummaryMetaFactory,
   NamedEntityFactory,
   ResourceType,
@@ -44,22 +43,14 @@ import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto'
 import { HarnessAuditService } from '../../harness-audit';
 import { ConfigResolver } from '../../config-resolver';
 import { diffContent } from './content-diff.util';
-import { assembleTranscriptText, readSpeakerId } from './transcript-assembly.util';
 import { assertAttributedClinicianInTenant, resolveAttributedClinician, tenantRoleReaderFor, type ClinicalCaller } from './clinician-attribution';
-import { defaultOutputLanguageInstruction, resolveOutputLanguage, type OutputLanguage } from '../consultation/summary-language';
+import { type OutputLanguage } from '../consultation/summary-language';
 // TASK-1001 (owner decision 2026-09-23) — the platform-default language the note is WRITTEN in.
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { resolvePlatformOutputLanguage } from './platform-output-language';
 import { finalNoteSections, sectionKeysByTitle, splitHeadedNote } from './final-note-sections';
 import { ISummaryService } from './ISummaryService';
-import {
-  GenerateSummaryRequest,
-  GeneratePreSummaryRequest,
-  UpdateSummaryRequest,
-  SummaryResponse,
-  SummaryProvenanceResponse,
-  CitedSegmentResponse,
-} from './dto';
+import { GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse, SummaryProvenanceResponse, CitedSegmentResponse } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
 import { buildTextGeneratePayload, mapTextGenerateResponse, type LegacyTextSummaryResponse } from './text-generate';
 import {
@@ -88,8 +79,6 @@ import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
-import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
-import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
 import { buildNerUsageEvent, nerDevice, nerInferenceMs } from '../shared/nerUsageEvent';
@@ -170,30 +159,11 @@ interface TextCallPayload {
   options?: Record<string, unknown>;
   context?: Record<string, unknown>;
   /**
-   * The session agent's frozen `llmOverrides.finalize`
-   * selection, when it named one. Takes precedence over the tenant's
-   * assigned `TEXT_GENERATION` agent; the A4 fallback retry stays tenant-configured.
-   */
-  agentLlm?: { provider: string; model: string } | null;
-  /**
    * TASK-876 — the consultation's department, so the assigned-agent cascade can start at the
-   * DEPARTMENT tier (`department → tenant → SYSTEM`) instead of always at the tenant's. Both
-   * call sites have the consultation row in hand; `null` when it has no department.
+   * DEPARTMENT tier (`department → tenant → SYSTEM`) instead of always at the tenant's. The
+   * call site has the consultation row in hand; `null` when it has no department.
    */
   departmentId?: string | null;
-}
-
-/**
- * What the warm-start read hands to finalize.
- *
- * `lineage` is present ONLY when the live loop wrote it (C3 stamps
- * `metaData.agent` on the LIVE_SOAP_SNAPSHOT), which is exactly why it is a
- * sound proof that a live agent ran this consultation.
- */
-interface WarmStartPreSummary {
-  text: string | null;
-  lineage: PersistedLiveAgentLineage | null;
-  snapshotId: string | null;
 }
 
 type TextCallResult = LegacyTextSummaryResponse & {
@@ -201,16 +171,6 @@ type TextCallResult = LegacyTextSummaryResponse & {
   usage: TextUsageDetail | null;
   guardrailUsage: TextUsageDetail | null;
 };
-
-/**
- * TASK-1001 (OD-12) — the assembled prompt with the output-language instruction as its LAST line:
- * after the rendered body and every data block assembly appends, because the instruction nearest
- * the generation point is the one a model honours most reliably. `null` (a tenant policy fragment
- * owns the language) returns the prompt unchanged. Nothing else is touched.
- */
-function withOutputLanguageInstruction<T extends { userPrompt: string }>(prompt: T, language: OutputLanguage | null): T {
-  return language ? { ...prompt, userPrompt: `${prompt.userPrompt}\n\n${defaultOutputLanguageInstruction(language.name)}` } : prompt;
-}
 
 @Injectable()
 export class SummaryService extends BaseService implements ISummaryService {
@@ -253,12 +213,9 @@ export class SummaryService extends BaseService implements ISummaryService {
     // existing positional test fixtures keep compiling; production DI
     // (SummaryServiceModule) always supplies it, keeping the path fail-closed.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // Resolve the effective DNA-style decision
-    // (tenant AND doctor) so DNA style is applied at generation only when the
-    // doctor is opted in under an enabling tenant. Optional + trailing so
-    // existing positional test fixtures keep compiling; production DI
-    // (SummaryServiceModule) always supplies it. When unset, DNA gating is a
-    // no-op and behaviour is byte-identical to the pre-Phase-6 path.
+    // UNREAD since TASK-1006. It resolved the effective DNA-style decision (tenant AND doctor)
+    // for the synchronous `generateSummary`, which was removed; the slot stays so the positional
+    // `new SummaryService(...)` fixtures keep their arity.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
     // Optional (append-only DI); enforces the plan
     // `monthlySummaries` meter on generation (kill-switch-gated, → 429 over cap).
@@ -277,7 +234,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // Optional + trailing so existing positional test
     // fixtures keep compiling; absent ⇒ citedSegments: [] (best-effort).
     @Optional() @Inject(TranscriptSegmentRepository) private readonly transcriptSegmentRepository?: TranscriptSegmentRepository,
-    // Shared by two lanes: WS-D (generatePreSummary/generateSummary) records
+    // Shared by two lanes: WS-D (generatePreSummary) records
     // the LLM + guardrail token rows a generation produced; WS-E
     // (extractEntities) records the ner.extract usage row the synchronous
     // NER path produced. Optional + trailing so existing positional test
@@ -297,26 +254,12 @@ export class SummaryService extends BaseService implements ISummaryService {
     // spend limit before an LLM generation incurs more paid overage (→ 402).
     // Absent (or no limit set) ⇒ no-op, so metering/quotas are unaffected.
     @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
-    // The two reads behind the FINALIZE LLM override:
-    // the session agent's `llmOverrides.finalize` slug, and the AiModel catalog
-    // row it names. Optional + trailing so existing positional test fixtures
-    // compile; unwired ⇒ no override is ever applied and the tenant
-    // assigned `TEXT_GENERATION` agent decides exactly as before.
+    // UNREAD. It served the retired per-agent FINALIZE LLM override (`llmOverrides.finalize`);
+    // the slot stays so the positional `new SummaryService(...)` fixtures keep their arity.
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
     // seam. `generatePreSummary` calls `noteGenerationService.generate`
     // (PRE_SUMMARY has no harness equivalent — always a side-effect-free
-    // 'legacy' decision, logged for observability). `generateSummary` is
-    // DIFFERENT and deliberately does NOT call `generate()` here: for
-    // SUMMARY_REGENERATE, `generate()` STARTS the harness workflow as a live
-    // side effect when harnessEnabled=true, and this sync route always still
-    // runs its own legacy body regardless — calling it unconditionally would
-    // silently produce a duplicate draft (one via harness async, one via this
-    // legacy sync call) on every harness-enabled tenant, which is exactly the
-    // "silent sync-behavior change" the ticket's Risk section flags as
-    // HUMAN-GATED. Until a product owner approves short-circuiting this route
-    // to the harness start (mirroring entry #4's async behavior),
-    // `generateSummary` calls the seam's side-effect-free `resolveConfig`
-    // instead, purely to log the resolved pipeline config for observability.
+    // 'legacy' decision, logged for observability).
     // Optional + trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
     // hop 1 — PHI redaction before the synchronous NER call.
@@ -366,11 +309,9 @@ export class SummaryService extends BaseService implements ISummaryService {
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
-    // TASK-932 D-10 — the clinician's OWN writing-style report, so finalize applies it without
-    // the caller having to know its id. Optional + trailing for the same two reasons as every
-    // dependency above it: the 17 positional `new SummaryService(...)` fixtures keep their arity,
-    // and DNA style is enrichment — a deployment without the repository finalizes exactly as it
-    // does today, with no style.
+    // UNREAD since TASK-1006. It auto-resolved the clinician's own writing-style report
+    // (TASK-932 D-10) for the synchronous `generateSummary`, which was removed; the slot stays so
+    // the positional `new SummaryService(...)` fixtures keep their arity.
     @Optional() @Inject(DnaWritingStyleReportRepository) private readonly dnaReportRepository?: DnaWritingStyleReportRepository,
     // TASK-959 §3.1 — which device a SELF-HOSTED engine ran on, the one thing `apps/text`
     // cannot report about itself (it is stateless per call and no request or model row carries
@@ -535,8 +476,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       // SYSTEM default (or a 503).
       tenantId,
       promptType: 'pre-summary',
-      // Native callers resolve the department-free fork;
-      // v1-compat is the ONLY surface that keeps the v1-parity body (RF-1).
+      // The department-free fork. The v1-parity body (the resolver's `'v1'` default) existed for
+      // the v1-compat surface, which is gone (TASK-1004).
       preSummaryVariant: 'dept-free',
       // v1 `{visit_type}`. `parentConsultationId` is the consultation's own follow-up
       // signal; the LABEL comes from the platform's visit types, not from a literal that
@@ -627,298 +568,6 @@ export class SummaryService extends BaseService implements ISummaryService {
       consultationId,
       summaryId: savedContext.id,
       name: 'pre-summary',
-      stats: textResponse.stats,
-      durationMs: textResponse.processingTimeMs,
-    });
-
-    return SummaryDtoMapper.toResponse(savedContext);
-  }
-
-  /**
-   * Generate final consultation summary
-   *
-   * boundary (owner decision,: KEPT,
-   * permanently legacy (see the decision block below) — the "summary" half
-   * of the v1-compat surface named explicitly by the owner. Unlike
-   * `PreSummaryProcessor`/`ComprehensiveSummaryProcessor`, this generator is
-   * NOT non-signable: it produces the consultation's actual clinical note
-   * via `ContextItemFactory.CreateRawSummary`, which satisfies
-   * `ContextItemEntity.isFinalSummary` by design — it must remain signable
-   * through `approveSummary`, exactly like the harness-produced note it
-   * substitutes for on this one permanently-legacy trigger. Confirmed by
-   * `jobs/processors/__tests__/kept-generators-signability.task732.test.ts`.
-   */
-  async generateSummary(consultationId: string, request: GenerateSummaryRequest): Promise<SummaryResponse> {
-    const tenantId = this.tenantId;
-    const userId = this.requestUserId;
-
-    if (!tenantId) {
-      throw new BadRequestException('Tenant ID is required');
-    }
-
-    // DECIDED: this sync route does NOT
-    // call `noteGenerationService.generate` and does not start a harness
-    // workflow, permanently, not just pending sign-off.
-    //
-    // Two independent reasons, either one sufficient on its own:
-    //   1. Duplicate generation. For SUMMARY_REGENERATE, `generate()` STARTS
-    //      the harness workflow as a live side effect when harnessEnabled is
-    //      true, and this route always still runs its own legacy body below
-    //      — calling `generate()` unconditionally would silently produce a
-    //      DUPLICATE draft on every harness-enabled tenant (one via the
-    //      harness async workflow, one via this legacy call).
-    //   2. Response-contract mismatch. Even if the legacy body below were
-    //      skipped on a 'harness' decision (replacing rather than
-    //      supplementing it — the only shape that would avoid (1)),
-    //      `SummaryResponse` requires a real, already-persisted ContextItem
-    //      (`id`, `content`, `version`); the harness workflow produces its
-    //      note asynchronously via `HarnessInternalController`, so there is
-    //      nothing to synchronously return. Two ways to close that gap were
-    //      considered and rejected: (a) turn this endpoint into an
-    //      async-style "started" response — a caller-visible HTTP contract
-    //      change that is exactly the kind of undisclosed migration the
-    //      ticket's risk item flagged for sign-off, not something a Wave-0
-    //      consolidation ticket should ship unilaterally; (b) block the
-    //      request until the Temporal workflow completes — a synchronous
-    //      wait on a durable workflow that deliberately includes sensors /
-    //      groundedness / MCP terminology checks (i.e. designed to NOT be
-    //      instant), risking HTTP timeouts and introducing a blocking-wait
-    //      pattern that exists nowhere else in this codebase.
-    //   Entry point #4 (`POST :id/summary/async`, now
-    //   `ConsultationController.generateSummaryAsync` calling the seam
-    // directly — deleted the `SummaryProcessor` that used to make
-    //   this decision) is already the fully-wired, harness-routing entry
-    //   point for this exact trigger (`SUMMARY_REGENERATE`) — its
-    //   async/job-polling contract is what harness-enabled tenants should
-    //   use for a regenerate that may run through harness. That entry point
-    //   replaces (never supplements) the legacy generator on a 'harness'
-    //   decision, and is now a VISIBLE queued failure — never a silent
-    //   fallback — on any other decision (see its own comment).
-    //
-    // Only the side-effect-free `resolveConfig` read is logged here, for
-    // observability; nothing below is gated on it. If a future ticket
-    // revisits this decision (e.g. as part of the Wave-2 harness-sole-generator
-    // migration, where the sync endpoint's contract itself may change), the
-    // change must still follow the two invariants named in the guidance that
-    // produced this decision: REPLACE the legacy call rather than supplement
-    // it, and gate the routing behind an explicit, revertible switch — this
-    // repo's established shape for that is a `global-kv` kill-switch
-    // descriptor (`killSwitch: true`, `default: false`, resolved per-call via
-    // `TenantSettingsService.resolvePlatform`), exactly as
-    // `consultation-gates.constants.ts` / `consultation-gates.descriptors.ts`
-    // already do for `harness.loop.enabled` / `consultation.ocr.enabled` —
-    // not a new flag mechanism.
-    if (this.noteGenerationService) {
-      try {
-        const config = await this.noteGenerationService.resolveConfig(consultationId);
-        this.logger.log({
-          message: 'sync generateSummary: pipeline config resolved (logging-only — this route never routes to harness)',
-          consultationId,
-          autoSummaryEnabled: config.autoSummaryEnabled,
-        });
-      } catch (error) {
-        this.logger.warn({
-          message: 'NoteGenerationService.resolveConfig failed (best-effort, non-blocking)',
-          consultationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    // A generated summary consumes a monthly meter unit.
-    // Kill-switch-gated (Q9); → 429 once the tenant is over the monthly cap.
-    await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
-
-    // LLM-token allowance pre-flight, BEFORE the (expensive)
-    // TEXT call. Post-hoc debit model (D6): a request's own token count is
-    // unknowable until TEXT responds, so this compares month-to-date rollups
-    // against the allowance rather than predicting this call's usage — same
-    // no-increment call shape as `monthlySummaries` above. A no-op (never
-    // reads the ledger) while the kill-switch is off or the allowance is
-    // null (unlimited — the seeded default for every plan today).
-    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
-
-    // Optional spend-limit gate → 402, as on the summary path.
-    await this.billing?.assertSpendLimit(tenantId);
-
-    // (audit C-1 / C-3) — verify the parent Consultation
-    // belongs to the caller's tenant, then validate every explicit
-    // `contextItemIds` reference. Without the per-id check a cross-tenant
-    // id would be silently filtered into the TEXT transcript and
-    // exfiltrated through the generated summary content.
-    const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
-    await this.assertContextItemsInTenant(tenantId, request.contextItemIds);
-
-    // Get transcriptions if not provided. Adjacent same-speaker fragments are
-    // assembled into real paragraphs (TASK-998) instead of a bare
-    // `.map(item => item.content).join('\n\n')`, which used to hand the LLM
-    // one utterance-level fragment per "paragraph". Items stay in the
-    // caller's own `contextItemIds` order either way (unchanged from before);
-    // `assembleTranscriptFragments` treats a negative `createdAt` gap as "no
-    // reliable signal" and keeps such a run together rather than guess at a
-    // boundary. `findTranscripts` below is always chronological
-    // (`createdAt: 'asc'`), so that path never hits the out-of-order case.
-    let content = request.transcription;
-    if (!content && request.contextItemIds?.length) {
-      const requestedIds = new Set(request.contextItemIds);
-      const contextItems = await Promise.all(request.contextItemIds.map((id) => this.contextItemRepository.findById(id)));
-      const orderedItems = contextItems.filter((item): item is NonNullable<typeof item> => !!item).filter((item) => requestedIds.has(item.id));
-      content = assembleTranscriptText(
-        orderedItems.map((item) => ({ content: item.content, createdAt: item.createdAt, speakerId: readSpeakerId(item) })),
-      );
-    }
-    if (!content) {
-      const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
-      content = assembleTranscriptText(transcripts.map((c) => ({ content: c.content, createdAt: c.createdAt, speakerId: readSpeakerId(c) })));
-    }
-
-    if (!content?.trim()) {
-      throw new BadRequestException('No content available for summary generation');
-    }
-
-    // The warm-start read now also surfaces the live session's
-    // frozen agent lineage and the id of the row it consumed (R-N2 provenance).
-    const warmStart = await this.resolveWarmStartPreSummary(consultationId);
-    const latestPreSummaryText = warmStart.text;
-    // Gate the DNA style on the effective decision
-    // (tenant AND doctor). Drops to `undefined` (no DNA prompt) when the doctor
-    // has opted out or the tenant flag is off. No-op (passes the requested id
-    // through) when ConfigResolver is not wired into this instance.
-    const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation.departmentId, consultation.doctorId, request.dnaStyleId);
-    // The measured readings and prior-visit history the client stated at `open`. The transcript
-    // stays authoritative for what happened today; these are background the note may cite.
-    const client = await this.readClientClinicalContext(consultationId);
-    const outputLanguage = await this.resolveNoteOutputLanguage(tenantId);
-    const assembled = await this.promptAssemblyService.assemble({
-      departmentId: consultation.departmentId ?? undefined,
-      vitals: client.vitals,
-      previousVisits: client.previousVisits,
-      // Tenant-configured visit type ; `parentConsultationId`
-      // remains the follow-up signal, the vocabulary is no longer a literal.
-      promptType: this.visitType(consultation).key,
-      transcript: content,
-      conversationLanguage: outputLanguage.tag,
-      dnaStyleId: effectiveDnaStyleId,
-      preSummaryText: latestPreSummaryText ?? undefined,
-      // The SAME agent that ran live reviews and
-      // finalizes: its lineage makes the prior-draft injection unconditional
-      // (DR-4) and pins the resolver's agent tier to that exact agent, so a
-      // department default re-pointed mid-visit cannot change this prompt.
-      // Both are `undefined` for every non-live consultation ⇒ unchanged.
-      preSummaryLineage: warmStart.lineage ?? undefined,
-      pinnedAgentId: warmStart.lineage?.agentId ?? undefined,
-      explicitTemplate: request.template,
-      preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
-    });
-    // TASK-1001 (OD-12) — the output language reaches the body above only as a VARIABLE, and a
-    // department body that says "write the content in the conversation language" can still win
-    // over a variable. So the note's language is also STATED, by name, as the prompt's last
-    // instruction — the same sentence the live lane's operating frame states, from the one shared
-    // builder. Stated only when no tenant output-language policy fragment owns the language, and
-    // on this surface none can: assembly resolves the agent's PRIMARY template, never its fragment
-    // list, so the policy fragment is never selected here (`resolveOutputLanguage(false, …)`).
-    const assembledPrompt = withOutputLanguageInstruction(assembled, resolveOutputLanguage(false, outputLanguage.tag));
-
-    // Call TEXT service
-    const textResponse = await this.callTextService({
-      assembledPrompt,
-      options: request.options,
-      // there is no per-agent finalize model override any more. It
-      // was `DepartmentAgent.llmOverrides.finalize`, resolved fail-CLOSED so a
-      // named-but-unusable model raised rather than silently finalizing on the
-      // tenant default. Its successor is a per-node `llmBinding`,
-      // which has not landed — so finalize resolves the tenant's assigned
-      // `TEXT_GENERATION` agent (tenant → SYSTEM), which is what every consultation
-      // whose agent named no override already used. Nothing is being failed
-      // open here: there is no longer a selection that can fail.
-      agentLlm: null,
-      departmentId: consultation.departmentId,
-      context: {
-        dnaStyleId: effectiveDnaStyleId,
-        template: request.template,
-        includeNER: request.includeNER,
-        summaryType: 'summary',
-        promptResolvedFrom: assembledPrompt.resolvedFrom,
-        promptHyperparameters: assembledPrompt.hyperparameters,
-      },
-    });
-
-    // Create summary context item
-    const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, textResponse.summary, effectiveDnaStyleId, userId ?? 'system');
-    // TASK-999 (D-3(a)) — measured from the plaintext, before the encrypt below.
-    stampContentCounters(contextItem, textResponse.summary);
-    // Pin the AI draft to v1 so the immutable
-    // `ai_draft_v1` snapshot below IS version 1 and the doctor's first edit
-    // becomes v2 (no `@@unique([contextItemId, versionNumber])` collision).
-    contextItem.currentVersionNumber = 1;
-
-    // Encrypt the generated summary text into `encryptedContent`
-    // before persistence — the plaintext `content` column was dropped by the
-    // PHI field-encryption migration, so an unencrypted create silently loses
-    // the clinical text at rest (mirrors context.service.ts `encryptContent`).
-    await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
-
-    const savedContext = await this.contextItemRepository.create(contextItem);
-
-    // Create summary metadata record
-    const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
-      tenantId,
-      contextItemId: savedContext.id,
-      aiModelId: textResponse.modelName ?? textResponse.llmProvider,
-      processingTimeMs: textResponse.processingTimeMs,
-      inputTokens: textResponse.inputTokens,
-      outputTokens: textResponse.outputTokens,
-      cacheHit: textResponse.cacheHit,
-      qualityScore: textResponse.qualityScore,
-      promptResolvedFrom: assembledPrompt.resolvedFrom,
-      resolvedPromptId: assembledPrompt.promptId,
-      // Session-agent lineage. `sessionAgentPromptVersion`
-      // names the IMMUTABLE PromptVersion the LIVE loop served (distinct from
-      // `promptVersion`, which names finalize's own template version). Both stay
-      // null for a non-live summary — the additive-proof invariant.
-      sessionAgentId: warmStart.lineage?.agentId ?? null,
-      sessionAgentPromptVersion: formatSessionAgentPromptVersion(warmStart.lineage),
-      // Provenance for the consumed snapshot — recorded ONLY on the lineage
-      // path, so the legacy case-notes flow keeps writing nothing (unchanged).
-      preSummaryIds: warmStart.lineage && warmStart.snapshotId ? [warmStart.snapshotId] : [],
-    });
-    // persist the AD-1 GenerationStats headline fields when
-    // TEXT returned them. Set via the entity setters (change-tracked, same path
-    // as `contextItem.currentVersionNumber = 1` above); the factory does not yet
-    // expose these props. Null/absent stats (legacy idempotency-cache hit) leaves
-    // the columns null — never fabricated.
-    if (textResponse.stats) {
-      summaryMeta.stopReason = textResponse.stats.stop_reason ?? null;
-      summaryMeta.ttftMs = textResponse.stats.ttft_ms ?? null;
-      summaryMeta.tokensPerSecond = textResponse.stats.tokens_per_second ?? null;
-    }
-    await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-    await this.persistSummaryMetaWithUsage(summaryMeta, textResponse, 'generate', {
-      tenantId,
-      consultationId,
-      doctorId: consultation.doctorId,
-      departmentId: consultation.departmentId,
-    });
-
-    this.broadcastSysEvent(SysEventType.ResourceCreated, {
-      resourceId: savedContext.id,
-      responsibleEntityId: userId ?? undefined,
-      createdAt: savedContext.createdAt,
-      data: { consultationId, type: 'summary' },
-    });
-
-    // Capture the immutable AI-draft `v1` snapshot for
-    // the DNA edit-capture corpus (draft↔approved learning). Runs
-    // AFTER the draft + meta are committed and is best-effort: a snapshot
-    // failure must never roll back the (delivered) draft.
-    await this.captureAiDraftSnapshot(savedContext);
-
-    // One SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
-    await this.recordSummaryTrajectory({
-      tenantId,
-      consultationId,
-      summaryId: savedContext.id,
-      name: 'generate',
       stats: textResponse.stats,
       durationMs: textResponse.processingTimeMs,
     });
@@ -1031,7 +680,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     tenantId: string;
     consultationId: string;
     summaryId: string;
-    name: 'generate' | 'pre-summary';
+    name: 'pre-summary';
     stats: TextGenerationStats | null;
     durationMs?: number | null;
   }): Promise<void> {
@@ -1992,31 +1641,13 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * (audit C-3) — validate every ContextItem id in the given
-   * list belongs to `tenantId`. Used to scrub `generateSummary`'s
-   * `contextItemIds` array so a cross-tenant id cannot be silently filtered
-   * into the TEXT transcript.
-   *
-   * Sequential `for...of` fails fast on the first cross-tenant id without
-   * spawning unnecessary parallel reads on the hot summary-generate path.
-   */
-  private async assertContextItemsInTenant(tenantId: string, ids?: string[] | null): Promise<void> {
-    if (!ids || ids.length === 0) return;
-    for (const id of ids) {
-      await assertParentInScope(this.contextItemRepository, id, tenantId);
-    }
-  }
-
-  /**
-   * The single TEXT call path for finalize (B-03 / B-04). Resolves the
-   * tenant's effective {provider, model} EXPLICITLY (never relies on
-   * `resolveTextSelection()`'s own CLS fallback — a worker path with
-   * unpopulated CLS must fail loudly, not silently serve the SYSTEM
-   * default), then runs the request with the SAME bounded corrective-JSON
-   * retry as before. On a provider-side failure, retries EXACTLY ONCE
-   * against the tenant's configured `text.finalize.fallback` selection
-   * (mirrors `text-compat.controller.ts#computeSummary`'s fallback shape);
-   * an unconfigured/no-op fallback propagates the ORIGINAL error.
+   * The single TEXT call path for this service's generation (`generatePreSummary`), on the
+   * tenant's `finalize` text selection (B-03 / B-04). Resolves the tenant's effective
+   * {provider, model} EXPLICITLY (never relies on `resolveTextSelection()`'s own CLS fallback — a
+   * worker path with unpopulated CLS must fail loudly, not silently serve the SYSTEM default),
+   * then runs the request with the bounded corrective-JSON retry. On a provider-side failure,
+   * retries EXACTLY ONCE against the tenant's configured `text.finalize.fallback` selection; an
+   * unconfigured/no-op fallback propagates the ORIGINAL error.
    */
   private async callTextService(payload: TextCallPayload): Promise<TextCallResult> {
     let tenantId: string | undefined;
@@ -2030,20 +1661,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     let options = payload.options;
     // TASK-891 — the resolved selection's `generation` block, carried alongside
     // {provider, model} so its reasoning posture can reach `applyTextRuntimeProfile` below.
-    // `payload.agentLlm` (a bare `{provider, model}` pair) never carries an opinion.
     let generation: Record<string, unknown> | undefined;
     if (this.harnessPolicyService && tenantId) {
-      // Precedence: agent `llmOverrides.finalize` (frozen at the
-      // live session's agent) → the assigned `TEXT_GENERATION` agent. The A4
-      // fallback retry below stays TENANT-configured either way — an agent
-      // override names the primary, never the fallback.
-      if (payload.agentLlm) {
-        options = { textProvider: payload.agentLlm.provider, textModel: payload.agentLlm.model, ...payload.options };
-      } else {
-        const selection = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize', payload.departmentId ?? null);
-        options = { textProvider: selection.provider, textModel: selection.model, ...payload.options };
-        generation = selection.generation;
-      }
+      // The assigned `TEXT_GENERATION` agent; the A4 fallback retry below stays
+      // TENANT-configured.
+      const selection = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize', payload.departmentId ?? null);
+      options = { textProvider: selection.provider, textModel: selection.model, ...payload.options };
+      generation = selection.generation;
     }
 
     try {
@@ -2097,7 +1721,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    * `generateJsonWithRepair`/`mapTextGenerateResponse`). NOT eligible when TEXT
    * itself was unreachable (a connect-phase transport error with no
    * response) — retrying a different provider through the same unreachable
-   * gateway cannot help. Mirrors `text-compat.controller.ts#isFallbackEligible`.
+   * gateway cannot help.
    */
   private isTextFallbackEligible(err: unknown): boolean {
     const axiosError = err as AxiosError;
@@ -2117,14 +1741,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     options: Record<string, unknown> | undefined,
     // TASK-891 — the RESOLVED selection's `parameters.generation`, when this attempt was made
     // on behalf of one (primary or fallback). Its `reasoning` block becomes the `extra`
-    // ride-along below. Absent on the `payload.agentLlm` / no-policy-service paths, where there
-    // is no resolved agent to have an opinion.
+    // ride-along below. Absent on the no-policy-service path, where there is no resolved agent
+    // to have an opinion.
     generation?: Record<string, unknown>,
   ): Promise<TextCallResult> {
     const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
-    // (OD-9 exemption: credential injection ONLY) — this is the
-    // FINALIZE path, whose output is the note a clinician signs, and it reached
-    // TEXT with no `provider_overrides` entry at all, so every finalize 503'd
+    // (OD-9 exemption: credential injection ONLY) — this path reached
+    // TEXT with no `provider_overrides` entry at all, so every generation 503'd
     // with PROVIDER_CREDENTIALS_MISSING once lane B (`70eec34d5`)
     // removed TEXT's per-provider env plane. Injected through the ONE shared
     // implementation so the tenant → SYSTEM cascade and the `funding` label
@@ -2139,8 +1762,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
     // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY on this hop — this
-    // is the FINALIZE path, whose output is the note a clinician signs, and it
-    // reached Text with no tenant at all, so the tenant's BYOK provider/credential
+    // path reached Text with no tenant at all, so the tenant's BYOK provider/credential
     // was never resolved and the derived `funding`/`cost_basis` was attributed to
     // the platform tier instead. Both headers are built once, here, by the shared
     // contract rather than a hand-rolled literal.
@@ -2151,11 +1773,9 @@ export class SummaryService extends BaseService implements ISummaryService {
       tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
     });
 
-    // The finalize path now carries the SAME bounded corrective
-    // retry as the live-doc flush. Before this, a structured request
-    // that came back as malformed JSON was persisted VERBATIM as the clinical note
-    // — on the HIGHER-stakes path, since this output is what the clinician signs.
-    // The corrective instruction is APPENDED so the prefix-cache-stable lead-in
+    // The SAME bounded corrective retry as the live-doc flush: without it, a
+    // structured request that came back as malformed JSON was persisted VERBATIM
+    // as the note. The corrective instruction is APPENDED so the prefix-cache-stable lead-in
     // stays byte-identical between the original and the repair call.
     const basePrompt = textPayload.prompt;
     const structuredRequested = textPayload.response_format !== undefined;
@@ -2193,10 +1813,9 @@ export class SummaryService extends BaseService implements ISummaryService {
       // requested AND the text opens a JSON object. Prose (no leading `{`) is
       // the contract on an unstructured request — retrying could never help.
       shouldRepair: (first) => structuredRequested && looksLikeJsonObject(first.text),
-      // TASK-1000 OD-8 — the finalize plane has the SAME truncation exposure as the live flush
-      // and a worse consequence: `parseTolerant` returns the text verbatim, so a cut-off
-      // generation was persisted as the whole clinical note rather than being confined to one
-      // section. Raising here routes it into this method's existing failure handling instead.
+      // TASK-1000 OD-8 — this path has the SAME truncation exposure as the live flush and a
+      // worse consequence: `parseTolerant` returns the text verbatim, so a cut-off generation was
+      // persisted as the whole note rather than being confined to one section. Raising here routes it into this method's existing failure handling instead.
       // `stopReason` was already recorded onto `SummaryMeta` — it is now also acted on.
       // Scoped to a STRUCTURED request for the reason the live flush documents: a truncated
       // prose note is readable text a clinician can finish, while a truncated JSON document is a
@@ -2282,10 +1901,8 @@ export class SummaryService extends BaseService implements ISummaryService {
    * Never throws: a settings-backend failure is logged and the note is written in the code default
    * rather than failing a clinician's summary.
    *
-   * Returns the tag (what assembly binds) AND the name (what `generateSummary` STATES), the name
-   * from `summaryLanguageName` — so a platform default of `hi` is stated as "Hindi", never through
-   * the frozen v1-compat map, which knows only en/ml and would say "English". The one read shared
-   * with the chain-summary and queue paths: `resolvePlatformOutputLanguage`.
+   * Returns the tag (what assembly binds) with its name. The one read shared with the
+   * chain-summary and queue paths: `resolvePlatformOutputLanguage`.
    */
   private resolveNoteOutputLanguage(tenantId: string): Promise<OutputLanguage> {
     return resolvePlatformOutputLanguage(this.effectiveSettings, tenantId, this.logger);
@@ -2310,114 +1927,6 @@ export class SummaryService extends BaseService implements ISummaryService {
         error: error instanceof Error ? error.message : String(error),
       });
       return null;
-    }
-  }
-
-  /**
-   * Warm-start read for `generateSummary` (B-02 / B-06). Prefers the running
-   * LIVE_SOAP_SNAPSHOT (the same live note a warm-started review is meant to
-   * pick up) so a case-notes PRE_SUMMARY created afterwards never shadows it;
-   * falls back to the legacy "latest pre-summary of any kind" lookup when no
-   * snapshot exists, preserving the pre-existing case-notes-only workflow.
-   * Both branches decrypt via `findLatestPreSummaryWithDecryptedContent`
-   * (`encryptedContent` is the only persisted form — the plaintext `content`
-   * column was dropped).
-   */
-  private async resolveWarmStartPreSummary(consultationId: string): Promise<WarmStartPreSummary> {
-    const snapshot = await this.contextItemRepository.findLatestPreSummaryWithDecryptedContent(consultationId, this.secretsService, {
-      subType: 'LIVE_SOAP_SNAPSHOT',
-    });
-    if (snapshot.entity) {
-      return { text: snapshot.plaintext, lineage: readLiveAgentLineage(snapshot.entity), snapshotId: snapshot.entity.id };
-    }
-
-    const legacy = await this.contextItemRepository.findLatestPreSummaryWithDecryptedContent(consultationId, this.secretsService);
-    return { text: legacy.plaintext, lineage: readLiveAgentLineage(legacy.entity), snapshotId: legacy.entity?.id ?? null };
-  }
-
-  /**
-   * Resolve the DNA style id to actually apply at
-   * generation: the requested id when DNA is EFFECTIVE (tenant AND doctor), else
-   * `undefined` (no DNA prompt). When ConfigResolver is not wired (legacy
-   * fixtures) or no id was requested this is a pass-through no-op, so behaviour
-   * is byte-identical to the pre-Phase-6 path. `resolveEffectiveDnaStyleEnabled`
-   * fails closed internally, so a degraded config read drops DNA rather than
-   * applying it.
-   */
-  private async resolveEffectiveDnaStyleId(
-    tenantId: string,
-    departmentId: string | null | undefined,
-    doctorId: string | null | undefined,
-    dnaStyleId?: string,
-  ): Promise<string | undefined> {
-    // TASK-932 D-10 — the CALLER no longer has to name the style.
-    //
-    // TASK-891 OD-5 deleted the writing-style dropdown ("the workflow combines agents including
-    // … DNA writing style redaction … I dont think we need any dropdown"), which left
-    // `request.dnaStyleId` permanently undefined from the console — and this method returned
-    // early on exactly that, so `dna_style_text` was never injected and every finalized note came
-    // back in the model's own voice. The report the clinician was told to author first was read
-    // by nothing.
-    //
-    // Precedence is unchanged where it existed: an EXPLICIT id still wins, and is still gated. The
-    // new tier is the doctor's own latest report, resolved only when no id was supplied.
-    const explicit = dnaStyleId?.trim() || undefined;
-    if (!this.configResolver) {
-      // Legacy composition (no ConfigResolver): pass the explicit id through UNGATED, exactly as
-      // before, and auto-resolve NOTHING. Applying a style whose effective on/off switch cannot
-      // be read would be a new decision made in the dark — and the doctor's own opt-out lives
-      // behind that switch.
-      return explicit;
-    }
-
-    const candidate = explicit ?? (await this.resolveDoctorDnaStyleId(doctorId));
-    if (!candidate) return undefined;
-
-    const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({
-      tenantId,
-      departmentId: departmentId ?? null,
-      doctorId: doctorId ?? null,
-    });
-    return effective ? candidate : undefined;
-  }
-
-  /**
-   * The consultation doctor's LATEST DNA writing-style report id, or `undefined`.
-   *
-   * `findLatestForDoctor` already filters `isLatest` + `ENABLED` and swallows its own errors, so
-   * "the doctor has no report" and "the lookup failed" both arrive here as `null` — which is the
-   * right conflation for this call site, because both mean the same thing to a finalize: no
-   * style. The tenant boundary is not re-asserted here: `consultation.doctorId` was read off a
-   * consultation this method's caller already proved is in the caller's tenant
-   * (`assertParentInScope`), and the report is tenant-scoped by the Prisma extension.
-   */
-  private async resolveDoctorDnaStyleId(doctorId: string | null | undefined): Promise<string | undefined> {
-    if (!doctorId || !this.dnaReportRepository) return undefined;
-    const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
-    return report?.id ?? undefined;
-  }
-
-  /**
-   * Write the immutable AI-draft `v1` snapshot for the
-   * DNA edit-capture corpus. Reuses `ContextItemVersion` with
-   * `changeReason='ai_draft_v1'` / `changeSource='ai_model'` (no schema change).
-   * Best-effort: a snapshot failure is logged and swallowed so it never rolls
-   * back the already-committed draft (mirrors the Slice-5c `signalEdit`
-   * discipline). Idempotency is guarded by `@@unique([contextItemId, versionNumber])`.
-   */
-  private async captureAiDraftSnapshot(savedContext: ContextItemEntity): Promise<void> {
-    try {
-      const snapshot = ContextItemVersionFactory.CreateFromContextItem(savedContext, 1, 'ai_draft_v1', 'system', 'ai_model', 'AI draft v1 snapshot');
-      await this.encryptBestEffort('ContextItemVersion', () =>
-        this.contextItemVersionRepository.encryptFieldsIntoEntity(snapshot, this.secretsService!),
-      );
-      await this.contextItemVersionRepository.create(snapshot);
-    } catch (error) {
-      this.logger.warn({
-        message: 'AI-draft v1 snapshot capture failed (best-effort, draft not rolled back)',
-        contextItemId: savedContext.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
     }
   }
 

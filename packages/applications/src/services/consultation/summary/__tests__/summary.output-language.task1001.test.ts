@@ -1,6 +1,8 @@
 /**
- * TASK-1001 (owner decision 2026-09-23) — the PRE-SUMMARY and FINAL-SUMMARY paths write the note in
- * the platform-default OUTPUT language, never in the consultation's declared (source) language.
+ * TASK-1001 (owner decision 2026-09-23) — the PRE-SUMMARY path writes the note in the
+ * platform-default OUTPUT language, never in the consultation's declared (source) language. (The
+ * synchronous FINAL-SUMMARY path, `generateSummary`, was held to the same rule until TASK-1006
+ * removed it.)
  *
  * ## The defect on this surface
  *
@@ -93,15 +95,7 @@ const assembledWith = (assemble: { mock: { calls: unknown[][] } }): Assembled =>
 const preSummary = async (service: SummaryService, options?: Record<string, unknown>) =>
   expect(service.generatePreSummary(CID, { ...(options ? { options } : {}) } as never)).rejects.toBe(STOP);
 
-const finalSummary = async (service: SummaryService, options?: Record<string, unknown>) =>
-  expect(service.generateSummary(CID, { transcription: 'today the patient reported …', ...(options ? { options } : {}) } as never)).rejects.toBe(
-    STOP,
-  );
-
-describe.each([
-  ['PRE-SUMMARY', preSummary],
-  ['FINAL SUMMARY', finalSummary],
-])('%s — the note is written in the platform-default output language', (_label, run) => {
+describe.each([['PRE-SUMMARY', preSummary]])('%s — the note is written in the platform-default output language', (_label, run) => {
   it.each([
     ['`ml-en` (the code-switch mode that caused the report)', { summaryLanguage: 'ml-en' }],
     ['`ml`', { summaryLanguage: 'ml' }],
@@ -157,7 +151,7 @@ describe.each([
 });
 
 describe('SummaryServiceModule — the settings facade is actually wired', () => {
-  it('resolves EffectiveSettingsService, so a platform admin`s write reaches these two paths', () => {
+  it('resolves EffectiveSettingsService, so a platform admin`s write reaches this path', () => {
     // `@Optional()` means a forgotten import is SILENT: every note would still come out English
     // (the code default), and the setting would be dead on this surface with nothing failing.
     expect(resolvableTokens(SummaryServiceModule).has(EffectiveSettingsService)).toBe(true);

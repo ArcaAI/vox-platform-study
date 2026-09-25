@@ -1,9 +1,9 @@
 /**
  * SummaryService — persist prompt-resolution tier on SummaryMeta.
  *
- * Both `generateSummary` and `generatePreSummary` compute an `assembledPrompt`
- * whose `resolvedFrom` (preferred/department/default) + `promptId` describe which
- * tier produced the summary. Before this slice the tier was only forwarded to TEXT;
+ * `generatePreSummary` computes an `assembledPrompt` whose `resolvedFrom`
+ * (preferred/department/default) + `promptId` describe which tier produced the
+ * summary (the synchronous `generateSummary` did too, until TASK-1006 removed it). Before this slice the tier was only forwarded to TEXT;
  * now it must also be written onto the SummaryMeta record so it can be surfaced.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -94,18 +94,6 @@ const buildService = (promptAssembly: ReturnType<typeof createMockPromptAssembly
 
 describe('SummaryService — persist promptResolvedFrom/resolvedPromptId', () => {
   beforeEach(() => vi.clearAllMocks());
-
-  it('generateSummary creates SummaryMeta carrying the assembled tier + prompt id', async () => {
-    const promptAssembly = createMockPromptAssemblyService('department', 'dept-prompt-id');
-    const { service, meta } = buildService(promptAssembly);
-
-    await service.generateSummary('c-1', { transcription: 'patient transcript' } as never);
-
-    expect(meta.create).toHaveBeenCalledTimes(1);
-    const created = meta.create.mock.calls[0][0];
-    expect(created.promptResolvedFrom).toBe('department');
-    expect(created.resolvedPromptId).toBe('dept-prompt-id');
-  });
 
   it('generatePreSummary creates SummaryMeta carrying the assembled tier + prompt id', async () => {
     const promptAssembly = createMockPromptAssemblyService('preferred', 'preferred-prompt-id');

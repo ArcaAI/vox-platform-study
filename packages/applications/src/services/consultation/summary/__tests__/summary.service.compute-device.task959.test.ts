@@ -154,7 +154,10 @@ function makeService(
   return { service, summaryMetaRepository, usageLedger, computeDevice: computeDevice as { resolve: ReturnType<typeof vi.fn> } };
 }
 
-type Recorded = { common: { operation: string; costBasis?: string }; units: { unit: AiUsageUnit; quantity: unknown; attributesJson?: Record<string, unknown> | null }[] };
+type Recorded = {
+  common: { operation: string; costBasis?: string };
+  units: { unit: AiUsageUnit; quantity: unknown; attributesJson?: Record<string, unknown> | null }[];
+};
 
 const recorded = (ledger: { recordUsage: ReturnType<typeof vi.fn> }, operation: string, costBasis?: string): Recorded[] =>
   ledger.recordUsage.mock.calls
@@ -169,16 +172,16 @@ describe('SummaryService — the resolved compute device reaches the ledger (TAS
   });
 
   it('records a GPU_SECOND row carrying the device the resolver answered for the SERVING provider', async () => {
-    await harness.service.generateSummary('c-1', {} as never);
+    await harness.service.generatePreSummary('c-1', {} as never);
 
     expect(harness.computeDevice.resolve).toHaveBeenCalledWith('tenant-1', 'lm-studio');
-    const [generation] = recorded(harness.usageLedger, 'generate');
+    const [generation] = recorded(harness.usageLedger, 'presummarize');
     const compute = generation.units.find((unit) => unit.unit === AiUsageUnit.GPU_SECOND);
     expect(compute).toEqual({ unit: AiUsageUnit.GPU_SECOND, quantity: '2.500', attributesJson: { device: 'cuda' } });
   });
 
   it('resolves the guardrail call against ITS OWN provider, not the generation`s', async () => {
-    await harness.service.generateSummary('c-1', {} as never);
+    await harness.service.generatePreSummary('c-1', {} as never);
 
     expect(harness.computeDevice.resolve).toHaveBeenCalledWith('tenant-1', 'ollama');
     const [guardrail] = recorded(harness.usageLedger, 'guardrail.validate');
@@ -192,9 +195,9 @@ describe('SummaryService — the resolved compute device reaches the ledger (TAS
   it('keeps the token rows and drops only the compute row when the resolver throws', async () => {
     const failing = makeService({ computeDevice: { resolve: vi.fn().mockRejectedValue(new Error('settings backend down')) } });
 
-    await expect(failing.service.generateSummary('c-1', {} as never)).resolves.toBeDefined();
+    await expect(failing.service.generatePreSummary('c-1', {} as never)).resolves.toBeDefined();
 
-    const [generation] = recorded(failing.usageLedger, 'generate');
+    const [generation] = recorded(failing.usageLedger, 'presummarize');
     expect(generation.units.map((unit) => unit.unit)).toEqual([AiUsageUnit.INPUT_TOKEN, AiUsageUnit.OUTPUT_TOKEN]);
   });
 
@@ -204,12 +207,12 @@ describe('SummaryService — the resolved compute device reaches the ledger (TAS
       guardrailUsage: null,
     });
 
-    await byok.service.generateSummary('c-1', {} as never);
+    await byok.service.generatePreSummary('c-1', {} as never);
 
-    const [tokens] = recorded(byok.usageLedger, 'generate', AiCostBasis.BYOK_NOTIONAL);
+    const [tokens] = recorded(byok.usageLedger, 'presummarize', AiCostBasis.BYOK_NOTIONAL);
     expect(tokens.units.map((unit) => unit.unit)).toEqual([AiUsageUnit.INPUT_TOKEN, AiUsageUnit.OUTPUT_TOKEN]);
 
-    const [platform] = recorded(byok.usageLedger, 'generate', AiCostBasis.INTERNAL);
+    const [platform] = recorded(byok.usageLedger, 'presummarize', AiCostBasis.INTERNAL);
     expect(platform.units).toEqual([{ unit: AiUsageUnit.CPU_SECOND, quantity: '2.500', attributesJson: { device: 'cpu' } }]);
     const platformCall = byok.usageLedger.recordUsage.mock.calls.find((call) => (call[0] as Recorded).common.costBasis === AiCostBasis.INTERNAL);
     expect(platformCall![1]).toBe(TX);

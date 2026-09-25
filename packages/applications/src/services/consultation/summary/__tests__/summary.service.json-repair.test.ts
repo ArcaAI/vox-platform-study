@@ -1,11 +1,12 @@
 /**
- * SummaryService — bounded JSON auto-repair on the FINALIZE path.
+ * SummaryService — bounded JSON auto-repair on its TEXT generation path.
  *
  * The live-doc flush carries a single bounded corrective retry
- * (`live-documentation.service.ts` → `generateJsonWithRepair`). The durable
- * end-of-visit summary — the higher-stakes path, since its output is what the
- * clinician signs — had none: a malformed structured response was stored VERBATIM
- * as the clinical note. These tests pin the same contract on the finalize path.
+ * (`live-documentation.service.ts` → `generateJsonWithRepair`). This service's
+ * generation had none: a malformed structured response was stored VERBATIM as
+ * the note. These tests pin the same contract on `executeTextGenerate`, driven
+ * through `generatePreSummary` — its one remaining caller since the synchronous
+ * `generateSummary` was removed (TASK-1006).
  *
  * Contract (mirrors `live-documentation.repair.test.ts`):
  *   - structured request + malformed JSON  → EXACTLY ONE corrective retry
@@ -45,7 +46,7 @@ const createMockClsService = () => ({
 
 const createMockContextItemRepository = () => ({
   findById: vi.fn(),
-  findCaseNotes: vi.fn().mockResolvedValue([]),
+  findCaseNotes: vi.fn().mockResolvedValue([{ id: 'note-1', content: 'Prior case note.' }]),
   findTranscripts: vi.fn().mockResolvedValue([]),
   findLatestPreSummary: vi.fn().mockResolvedValue(null),
   findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
@@ -120,27 +121,26 @@ const buildService = (responseFormat: unknown, responses: string[]) => {
   return { service, ctx, http };
 };
 
-/** The content of the RAW_SUMMARY entity handed to the repository. */
+/** The content of the PRE_SUMMARY entity handed to the repository. */
 const persistedSummary = (ctx: { create: ReturnType<typeof vi.fn> }): string => (ctx.create.mock.calls[0][0] as { content: string }).content;
 
 const generateBodies = (http: { axiosRef: { post: ReturnType<typeof vi.fn> } }) =>
   http.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate')).map((c: unknown[]) => c[1] as { prompt: string });
 
-describe('SummaryService — bounded JSON auto-repair on the finalize path', () => {
+describe('SummaryService — bounded JSON auto-repair on the generation path', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('repairs a malformed structured response with EXACTLY ONE corrective retry and persists the repaired note', async () => {
     const { service, ctx, http } = buildService(SOAP_RESPONSE_FORMAT, [MALFORMED_SUMMARY_JSON, VALID_SUMMARY_JSON]);
 
-    await service.generateSummary('c-1', {
-      transcription: 'patient transcript',
+    await service.generatePreSummary('c-1', {
       options: { provider: 'lm-studio' },
     } as never);
 
     // Exactly one retry — never more.
     expect(http.generateCalls).toBe(2);
 
-    // The REPAIRED response is what reaches the clinical record, not the truncated blob.
+    // The REPAIRED response is what reaches the record, not the truncated blob.
     expect(persistedSummary(ctx)).toBe(VALID_SUMMARY_JSON);
     expect(persistedSummary(ctx)).not.toBe(MALFORMED_SUMMARY_JSON);
   });
@@ -148,8 +148,7 @@ describe('SummaryService — bounded JSON auto-repair on the finalize path', () 
   it('appends the corrective instruction AFTER the stable prompt (prefix-cache discipline)', async () => {
     const { service, http } = buildService(SOAP_RESPONSE_FORMAT, [MALFORMED_SUMMARY_JSON, VALID_SUMMARY_JSON]);
 
-    await service.generateSummary('c-1', {
-      transcription: 'patient transcript',
+    await service.generatePreSummary('c-1', {
       options: { provider: 'lm-studio' },
     } as never);
 
@@ -163,8 +162,7 @@ describe('SummaryService — bounded JSON auto-repair on the finalize path', () 
   it('does NOT retry when the structured response already parses', async () => {
     const { service, ctx, http } = buildService(SOAP_RESPONSE_FORMAT, [VALID_SUMMARY_JSON]);
 
-    await service.generateSummary('c-1', {
-      transcription: 'patient transcript',
+    await service.generatePreSummary('c-1', {
       options: { provider: 'lm-studio' },
     } as never);
 
@@ -176,8 +174,7 @@ describe('SummaryService — bounded JSON auto-repair on the finalize path', () 
     const prose = 'Subjective: chest tightness. Objective: BP 150/95. Assessment: HTN. Plan: amlodipine.';
     const { service, ctx, http } = buildService(null, [prose]);
 
-    await service.generateSummary('c-1', {
-      transcription: 'patient transcript',
+    await service.generatePreSummary('c-1', {
       options: { provider: 'lm-studio' },
     } as never);
 
@@ -190,8 +187,7 @@ describe('SummaryService — bounded JSON auto-repair on the finalize path', () 
     const prose = 'Subjective: chest tightness. Plan: amlodipine.';
     const { service, ctx, http } = buildService(SOAP_RESPONSE_FORMAT, [prose]);
 
-    await service.generateSummary('c-1', {
-      transcription: 'patient transcript',
+    await service.generatePreSummary('c-1', {
       options: { provider: 'lm-studio' },
     } as never);
 
@@ -203,8 +199,7 @@ describe('SummaryService — bounded JSON auto-repair on the finalize path', () 
     const stillBroken = '{"subjective": "still truncated"';
     const { service, ctx, http } = buildService(SOAP_RESPONSE_FORMAT, [MALFORMED_SUMMARY_JSON, stillBroken]);
 
-    await service.generateSummary('c-1', {
-      transcription: 'patient transcript',
+    await service.generatePreSummary('c-1', {
       options: { provider: 'lm-studio' },
     } as never);
 

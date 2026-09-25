@@ -333,7 +333,7 @@ describe('SummaryService', () => {
   describe('callTextService TEXT selection', () => {
     const primeGenerateMocks = () => {
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
-      mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
+      mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
       mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() });
       mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
@@ -347,7 +347,7 @@ describe('SummaryService', () => {
     it('posts the cascade-resolved provider+model when the request omits a model', async () => {
       primeGenerateMocks();
 
-      await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
+      await service.generatePreSummary('c-1', { dnaStyleId: 'style-1' } as any);
 
       expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalled();
       const body = lastTextBody();
@@ -355,9 +355,9 @@ describe('SummaryService', () => {
       expect(body.model).toBe('resolved-medgemma');
     });
 
-    // GenerateSummary is a one-shot/finalize path: it must
-    // keep resolving the DEFAULT ('finalize') tier, never the live tier, so a
-    // super admin's `text.live` re-point never leaks into final summaries.
+    // This service's generation is a one-shot path: it must keep resolving the
+    // DEFAULT ('finalize') tier, never the live tier, so a super admin's
+    // `text.live` re-point never leaks into it.
     // The tenant id is now resolved EXPLICITLY (never a
     // bare no-arg call trusting the callee's own CLS fallback), so a worker
     // path with unpopulated CLS fails loudly instead of silently serving the
@@ -365,7 +365,7 @@ describe('SummaryService', () => {
     it('resolves the default (finalize) tier with the CLS tenant passed explicitly', async () => {
       primeGenerateMocks();
 
-      await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
+      await service.generatePreSummary('c-1', { dnaStyleId: 'style-1' } as any);
 
       expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize', null);
     });
@@ -373,7 +373,7 @@ describe('SummaryService', () => {
     it('lets a caller-supplied model win over the resolved default', async () => {
       primeGenerateMocks();
 
-      await service.generateSummary('c-1', { options: { model: 'caller-pinned' } } as any);
+      await service.generatePreSummary('c-1', { options: { model: 'caller-pinned' } } as any);
 
       const body = lastTextBody();
       expect(body.model).toBe('caller-pinned');
@@ -382,14 +382,13 @@ describe('SummaryService', () => {
 
   // ── persist the AD-1 GenerationStats headline fields ──
   // The TEXT /generate response now carries a `stats` block (stop_reason,
-  // ttft_ms, tokens_per_second, …). generateSummary/generatePreSummary must
+  // ttft_ms, tokens_per_second, …). generatePreSummary must
   // persist the three headline fields onto SummaryMeta via the factory/entity
   // path. `stats` may be null (legacy idempotency-cache hit) → degrade cleanly.
   describe('generation stats persistence', () => {
     const primeGenerateMocks = (data: Record<string, unknown>) => {
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
-      mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
-      mockContextItemRepository.findLatestPreSummary.mockResolvedValue(null);
+      mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({ data });
       mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() });
       mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
@@ -416,18 +415,6 @@ describe('SummaryService', () => {
       engine_native: null,
     };
 
-    it('persists stopReason/ttftMs/tokensPerSecond from a populated TEXT stats block (generateSummary)', async () => {
-      primeGenerateMocks({ summary: 'S', modelName: 'm', stats: POPULATED_STATS });
-
-      await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
-
-      expect(mockSummaryMetaRepository.create).toHaveBeenCalledTimes(1);
-      const meta = persistedMeta();
-      expect(meta.stopReason).toBe('length');
-      expect(meta.ttftMs).toBe(210);
-      expect(meta.tokensPerSecond).toBe(42.5);
-    });
-
     it('persists stopReason/ttftMs/tokensPerSecond from a populated TEXT stats block (generatePreSummary)', async () => {
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
@@ -446,7 +433,7 @@ describe('SummaryService', () => {
     it('degrades cleanly when TEXT stats is null — no crash, stats fields unset', async () => {
       primeGenerateMocks({ summary: 'S', modelName: 'm', stats: null });
 
-      await expect(service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any)).resolves.toBeDefined();
+      await expect(service.generatePreSummary('c-1', {} as any)).resolves.toBeDefined();
 
       const meta = persistedMeta();
       expect(meta.stopReason ?? null).toBeNull();
@@ -457,7 +444,7 @@ describe('SummaryService', () => {
     it('degrades cleanly when TEXT omits the stats block entirely', async () => {
       primeGenerateMocks({ summary: 'S', modelName: 'm' });
 
-      await expect(service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any)).resolves.toBeDefined();
+      await expect(service.generatePreSummary('c-1', {} as any)).resolves.toBeDefined();
 
       const meta = persistedMeta();
       expect(meta.stopReason ?? null).toBeNull();
@@ -1064,7 +1051,7 @@ describe('SummaryService', () => {
       );
 
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
-      mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
+      mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({
         data: { summary: 'Generated summary', modelName: 'gpt-4o' },
       });
@@ -1076,7 +1063,7 @@ describe('SummaryService', () => {
       });
       mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
 
-      await serviceWithCustomUrl.generateSummary('c-1', {
+      await serviceWithCustomUrl.generatePreSummary('c-1', {
         dnaStyleId: 'style-1',
       } as any);
 
@@ -1213,7 +1200,7 @@ describe('SummaryService', () => {
       );
 
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
-      mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript' }]);
+      mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({
         data: { summary: 'result', modelName: 'test' },
       });
@@ -1225,7 +1212,7 @@ describe('SummaryService', () => {
       });
       mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
 
-      return serviceWithDefaults.generateSummary('c-1', { dnaStyleId: 's' } as any).then(() => {
+      return serviceWithDefaults.generatePreSummary('c-1', { dnaStyleId: 's' } as any).then(() => {
         const calledUrl = mockHttpService.axiosRef.post.mock.calls[0][0] as string;
         expect(calledUrl).toBe('http://localhost:8862/api/v1/generate');
         expect(calledUrl).not.toContain(':8003');
@@ -1387,7 +1374,7 @@ describe('SummaryService', () => {
       );
 
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
-      mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript' }]);
+      mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({
         data: { summary: 'result', modelName: 'test' },
       });
@@ -1399,7 +1386,7 @@ describe('SummaryService', () => {
       });
       mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
 
-      return serviceWithDefaults.generateSummary('c-1', { dnaStyleId: 's' } as any).then(() => {
+      return serviceWithDefaults.generatePreSummary('c-1', { dnaStyleId: 's' } as any).then(() => {
         const calledUrl = mockHttpService.axiosRef.post.mock.calls[0][0] as string;
         expect(calledUrl).toMatch(/^http:\/\/localhost:8862\//);
       });
@@ -1910,21 +1897,6 @@ describe('SummaryService', () => {
         );
 
         await expect(service.generatePreSummary('c-other', {} as any)).rejects.toThrow(NotFoundException);
-        expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
-        expect(mockContextItemRepository.create).not.toHaveBeenCalled();
-      });
-    });
-
-    describe('generateSummary', () => {
-      it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
-        mockConsultationRepository.findById.mockResolvedValue(
-          consultationFixture({
-            id: 'c-other',
-            tenantId: 'tenant-OTHER',
-          }),
-        );
-
-        await expect(service.generateSummary('c-other', { transcription: 'x' } as any)).rejects.toThrow(NotFoundException);
         expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
         expect(mockContextItemRepository.create).not.toHaveBeenCalled();
       });
@@ -2599,9 +2571,8 @@ describe('SummaryService', () => {
   // ── F-031 remainder: every ContextItem.content write lane in this
   // service must encrypt before persist, or clinical text silently vanishes at
   // rest (the plaintext `content` column was dropped; only `encryptedContent`
-  // persists). Covers all 4 lanes: generatePreSummary (create), generateSummary
-  // (create), updateSummary (MODIFIED_SUMMARY edit — update), approveSummary
-  // (final update).
+  // persists). Covers all 3 lanes: generatePreSummary (create), updateSummary
+  // (MODIFIED_SUMMARY edit — update), approveSummary (final update).
   describe('content encryption-at-rest (F-031)', () => {
     const secretsStub = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
 
@@ -2640,31 +2611,6 @@ describe('SummaryService', () => {
       expect(mockContextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
       const [entityArg, secretsArg] = mockContextItemRepository.encryptContentIntoEntity.mock.calls[0];
       expect(entityArg.content).toBe('Pre-summary text');
-      expect(secretsArg).toBe(secretsStub);
-      const encOrder = mockContextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
-      const createOrder = mockContextItemRepository.create.mock.invocationCallOrder[0];
-      expect(encOrder).toBeLessThan(createOrder);
-    });
-
-    it('encrypts the generated summary content before persisting (generateSummary)', async () => {
-      const serviceWithSecrets = buildServiceWithSecrets();
-      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
-      mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
-      mockContextItemRepository.findLatestPreSummary.mockResolvedValue(null);
-      mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Raw summary text', modelName: 'm' } });
-      mockContextItemRepository.create.mockResolvedValue({
-        id: 'ctx-raw-enc',
-        content: 'Raw summary text',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
-
-      await serviceWithSecrets.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
-
-      expect(mockContextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
-      const [entityArg, secretsArg] = mockContextItemRepository.encryptContentIntoEntity.mock.calls[0];
-      expect(entityArg.content).toBe('Raw summary text');
       expect(secretsArg).toBe(secretsStub);
       const encOrder = mockContextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
       const createOrder = mockContextItemRepository.create.mock.invocationCallOrder[0];
@@ -2887,7 +2833,6 @@ describe('SummaryService', () => {
   describe(' NoteGenerationService seam', () => {
     const createMockNoteGenerationService = () => ({
       generate: vi.fn(),
-      resolveConfig: vi.fn(),
     });
 
     const buildServiceWithSeam = (noteGenerationService: ReturnType<typeof createMockNoteGenerationService> | undefined) =>
@@ -2956,60 +2901,6 @@ describe('SummaryService', () => {
       primeGeneratePreSummaryMocks();
 
       await expect(svc.generatePreSummary('c-1', {})).resolves.toBeDefined();
-    });
-
-    // HUMAN-GATED: generateSummary deliberately does NOT
-    // call `generate()` — it would start a real harness workflow as a side
-    // effect on top of the legacy call this route always still runs. Only
-    // the side-effect-free `resolveConfig` read is exercised, for logging.
-    describe('generateSummary (HUMAN-GATED — logging-only, sync semantics unchanged)', () => {
-      const primeGenerateSummaryMocks = () => {
-        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
-        mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
-        mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
-        mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() });
-        mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
-      };
-
-      it('calls resolveConfig (read-only) but NEVER generate() — no live harness-start side effect', async () => {
-        const mockNoteGenerationService = createMockNoteGenerationService();
-        mockNoteGenerationService.resolveConfig.mockResolvedValue({ autoSummaryEnabled: true, autoNerEnabled: true, harnessEnabled: true });
-        const svc = buildServiceWithSeam(mockNoteGenerationService);
-        primeGenerateSummaryMocks();
-
-        await svc.generateSummary('c-1', {});
-
-        expect(mockNoteGenerationService.resolveConfig).toHaveBeenCalledWith('c-1');
-        expect(mockNoteGenerationService.generate).not.toHaveBeenCalled();
-      });
-
-      it('always still runs legacy generation regardless of the resolved harnessEnabled value (sync semantics unchanged)', async () => {
-        const mockNoteGenerationService = createMockNoteGenerationService();
-        mockNoteGenerationService.resolveConfig.mockResolvedValue({ autoSummaryEnabled: true, autoNerEnabled: true, harnessEnabled: true });
-        const svc = buildServiceWithSeam(mockNoteGenerationService);
-        primeGenerateSummaryMocks();
-
-        const result = await svc.generateSummary('c-1', {});
-
-        expect(result).toBeDefined();
-        expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
-      });
-
-      it('generates unaffected when the resolveConfig call itself fails (best-effort, non-blocking)', async () => {
-        const mockNoteGenerationService = createMockNoteGenerationService();
-        mockNoteGenerationService.resolveConfig.mockRejectedValue(new Error('seam unavailable'));
-        const svc = buildServiceWithSeam(mockNoteGenerationService);
-        primeGenerateSummaryMocks();
-
-        await expect(svc.generateSummary('c-1', {})).resolves.toBeDefined();
-      });
-
-      it('generates unaffected when noteGenerationService is not wired (pre-fixtures)', async () => {
-        const svc = buildServiceWithSeam(undefined);
-        primeGenerateSummaryMocks();
-
-        await expect(svc.generateSummary('c-1', {})).resolves.toBeDefined();
-      });
     });
   });
 });
