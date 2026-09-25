@@ -39,7 +39,6 @@ import { resolvePlatformOutputLanguage } from '../../summary/platform-output-lan
 // satisfies `ContextItemEntity.isFinalSummary`, so it structurally cannot
 // reach `SummaryService.approveSummary` — confirmed by
 // `jobs/processors/__tests__/kept-generators-signability.task732.test.ts`.
-// Becomes the "pre-summary" half of a future standalone v1-compat feature.
 // TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
 // ran at bullmq's default of 1 because no `@Processor` passed options; the
 // number, and the Prisma-pool budget it fits inside, live in one table.
@@ -161,8 +160,8 @@ export class PreSummaryProcessor extends WorkerHost {
           // lands on the SYSTEM default (or a 503).
           tenantId: consultation.tenantId,
           promptType: 'pre-summary',
-          // Native callers resolve the department-free fork;
-          // v1-compat is the ONLY surface that keeps the v1-parity body (RF-1).
+          // The department-free fork. The v1-parity body (the resolver's `'v1'`
+          // default) existed for the v1-compat surface, which is gone (TASK-1004).
           preSummaryVariant: 'dept-free',
           preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
         });
@@ -210,8 +209,8 @@ export class PreSummaryProcessor extends WorkerHost {
           // resolution, and that is the one whose body reaches the LLM.
           tenantId: consultation.tenantId,
           promptType: 'pre-summary',
-          // Native callers resolve the department-free fork;
-          // v1-compat is the ONLY surface that keeps the v1-parity body (RF-1).
+          // The department-free fork. The v1-parity body (the resolver's `'v1'`
+          // default) existed for the v1-compat surface, which is gone (TASK-1004).
           preSummaryVariant: 'dept-free',
           // v1 `{visit_type}`. `parentConsultationId` is the consultation's own
           // follow-up signal; the LABEL comes from the platform's visit types.

@@ -59,9 +59,7 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
     // BillingServiceModule supplies IBillingService for the optional
     // spend-limit precheck on LLM generation (402).
     BillingServiceModule,
-    // seam — logging-only for generateSummary/generatePreSummary
-    // (see summary.service.ts for the HUMAN-GATED note on why sync
-    // generateSummary does not short-circuit to harness).
+    // seam — logging-only for generatePreSummary.
     NoteGenerationServiceModule,
     // hop 1 — supplies `IPhiRedactor` for `extractEntities`, which
     // pseudonymizes before posting to the NLP service. SummaryService injects

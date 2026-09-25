@@ -2,10 +2,11 @@
  * The ONE reader of the live session's agent lineage.
  *
  * C3 stamps a {@link PersistedLiveAgentLineage} block onto the durable
- * `LIVE_SOAP_SNAPSHOT` ContextItem's `metaData.agent`. Both finalize paths
- * (`SummaryService.generateSummary` and `HarnessInternalService`) read it
- * through this function so they can never disagree about whether a session had
- * an agent — which is the whole basis of the DR-4 gating decision.
+ * `LIVE_SOAP_SNAPSHOT` ContextItem's `metaData.agent`. The finalize path
+ * (`HarnessInternalService`) reads it through this function — the one reader —
+ * so nothing can disagree about whether a session had an agent, which is the
+ * whole basis of the DR-4 gating decision. (The synchronous
+ * `SummaryService.generateSummary`, its second reader, was removed by TASK-1006.)
  *
  * DEFENSIVE BY DESIGN. `metaData` is untyped JSONB written by another lane, so
  * anything that is not an object carrying a RECOGNIZED `resolvedFrom` tier is

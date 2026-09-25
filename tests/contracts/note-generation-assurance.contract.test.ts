@@ -7,8 +7,9 @@
  * Acceptance Criteria). deleted that legacy path and its floor.
  * This test is the PERMANENT form of the same property: after this ticket
  * there is the harness path, plus the kept helper/rollup generators
- * (`ComprehensiveSummaryProcessor` + its sync twin `ChainSummaryService`,
- * and sync `SummaryService.generateSummary`) which are ALSO signable — only
+ * (`ComprehensiveSummaryProcessor` + its sync twin `ChainSummaryService`)
+ * which are ALSO signable (the sync `SummaryService.generateSummary` was
+ * removed by TASK-1006) — only
  * `PreSummaryProcessor`'s `PRE_SUMMARY` output is structurally non-signable
  * (see `kept-generators-signability.task732.test.ts`) — and EVERY one of
  * them still writes a `SummaryMeta` alongside the `RAW_SUMMARY` `ContextItem` it
@@ -54,10 +55,7 @@ const SUMMARY_META_WRITE = /summaryMetaRepository\.(create|updateWithVersion)\(/
 
 describe(' Phase 4 — note-generation assurance contract', () => {
   it("ContextItemFactory.CreateRawSummary always sets type: RAW_SUMMARY (the premise this contract's file-level check relies on)", () => {
-    const factorySource = readFileSync(
-      resolve(REPO_ROOT, 'packages/domains/src/factories/generated/core/ContextItemFactory.ts'),
-      'utf8',
-    );
+    const factorySource = readFileSync(resolve(REPO_ROOT, 'packages/domains/src/factories/generated/core/ContextItemFactory.ts'), 'utf8');
     const methodMatch = /static CreateRawSummary\([\s\S]*?\n {2}\}/.exec(factorySource);
     expect(methodMatch, 'ContextItemFactory.CreateRawSummary not found — this contract cannot verify its premise').toBeTruthy();
     expect(methodMatch![0]).toMatch(/type:\s*Enums\.ContextItemType\.RAW_SUMMARY/);
@@ -71,11 +69,15 @@ describe(' Phase 4 — note-generation assurance contract', () => {
     // Sanity floor — the known producers as of this pass (and
     // the deletion-manifest's Task 8 record): ContextService (manual save),
     // HarnessInternalService (the harness callback), ComprehensiveSummaryProcessor,
-    // ChainSummaryService, SummaryService (sync generateSummary). A count below
-    // this means a producer this contract doesn't know about disappeared
-    // silently; a count above it is fine (a NEW producer must still pass the
-    // assurance check below — that is the point of a contract test).
-    expect(rawSummaryProducers.length, `RAW_SUMMARY producers found: ${rawSummaryProducers.map((f) => f.slice(APPLICATIONS_SRC.length))}`).toBeGreaterThanOrEqual(5);
+    // ChainSummaryService. (SummaryService left the list with its sync
+    // `generateSummary`, TASK-1006.) A count below this means a producer this
+    // contract doesn't know about disappeared silently; a count above it is fine
+    // (a NEW producer must still pass the assurance check below — that is the
+    // point of a contract test).
+    expect(
+      rawSummaryProducers.length,
+      `RAW_SUMMARY producers found: ${rawSummaryProducers.map((f) => f.slice(APPLICATIONS_SRC.length))}`,
+    ).toBeGreaterThanOrEqual(4);
 
     const violations: string[] = [];
     for (const file of rawSummaryProducers) {
@@ -86,7 +88,9 @@ describe(' Phase 4 — note-generation assurance contract', () => {
         violations.push(`${relativePath}: creates a RAW_SUMMARY ContextItem but never calls SummaryMetaFactory.Create*(...)`);
       }
       if (!SUMMARY_META_WRITE.test(source)) {
-        violations.push(`${relativePath}: creates a RAW_SUMMARY ContextItem but never persists via summaryMetaRepository.create/updateWithVersion(...)`);
+        violations.push(
+          `${relativePath}: creates a RAW_SUMMARY ContextItem but never persists via summaryMetaRepository.create/updateWithVersion(...)`,
+        );
       }
     }
 
@@ -102,5 +106,11 @@ describe(' Phase 4 — note-generation assurance contract', () => {
     const files = listTsFiles(APPLICATIONS_SRC);
     const rawSummaryProducerNames = files.filter((f) => RAW_SUMMARY_CALL.test(readFileSync(f, 'utf8'))).map((f) => f.split('/').pop());
     expect(rawSummaryProducerNames).not.toContain('summary.processor.ts');
+  });
+
+  it('SummaryService no longer produces a RAW_SUMMARY — the synchronous generateSummary is gone (TASK-1006 OD-2)', () => {
+    const source = readFileSync(resolve(APPLICATIONS_SRC, 'services/consultation/summary/summary.service.ts'), 'utf8');
+    expect(source).not.toMatch(RAW_SUMMARY_CALL);
+    expect(source).not.toMatch(/\basync generateSummary\(/);
   });
 });

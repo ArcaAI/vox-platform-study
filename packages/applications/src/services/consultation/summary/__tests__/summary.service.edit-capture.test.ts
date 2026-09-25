@@ -1,10 +1,10 @@
 /**
- * (S4 + S5) — DNA edit-capture on the sync SummaryService path.
+ * (S5) — DNA edit-capture on the SummaryService edit/sign path.
  *
- *  - S4: `generateSummary` writes an immutable AI-draft v1 snapshot
- *    (`ContextItemVersion`, changeReason='ai_draft_v1', changeSource='ai_model')
- *    and pins the item to currentVersionNumber=1 so the first doctor edit becomes
- *    v2 (no version-number collision). The snapshot is best-effort.
+ *  - S4 (the immutable AI-draft v1 snapshot, changeReason='ai_draft_v1') is
+ *    written by the harness draft persist (`HarnessInternalService.persistDraft`)
+ *    and pinned in its own suite; the synchronous `generateSummary` that also
+ *    wrote one was removed (TASK-1006).
  *  - S5: `updateSummary` stamps the edit delta (contentDiff + fieldChanges) onto
  *    the new version; `approveSummary` stamps the cumulative AI-draft→approved
  *    delta onto the signed note (read against the v1 baseline).
@@ -70,7 +70,7 @@ const makeMocks = () => ({
     findById: vi.fn(),
     findTranscripts: vi.fn().mockResolvedValue([{ content: 'transcript' }]),
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
-  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
+    findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
     create: vi.fn(async (e: unknown) => e),
     update: vi.fn(async (_id: string, e: unknown) => e),
     // `updateSummary`/`approveSummary` now write through the
@@ -118,7 +118,7 @@ const makeMocks = () => ({
   harnessPolicy: { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) },
 });
 
-const build = (m: ReturnType<typeof makeMocks>, configResolver?: unknown) =>
+const build = (m: ReturnType<typeof makeMocks>) =>
   new SummaryService(
     m.contextItemRepository as any,
     m.consultationRepository as any,
@@ -135,7 +135,6 @@ const build = (m: ReturnType<typeof makeMocks>, configResolver?: unknown) =>
     m.harnessAudit as any, // harnessAuditService
     undefined, // harnessGatewayService
     m.harnessPolicy as any, // harnessPolicyService
-    configResolver as any, // configResolver
   );
 
 describe('SummaryService — DNA edit-capture (Phase 6)', () => {
@@ -146,58 +145,6 @@ describe('SummaryService — DNA edit-capture (Phase 6)', () => {
     vi.clearAllMocks();
     m = makeMocks();
     service = build(m);
-  });
-
-  describe('generateSummary — AI-draft v1 snapshot (S4)', () => {
-    it('writes exactly one ai_draft_v1 ContextItemVersion (v1, ai_model, draft content) and pins currentVersionNumber=1', async () => {
-      await service.generateSummary('c-1', { transcription: 'transcript' } as any);
-
-      expect(m.contextItemVersionRepository.create).toHaveBeenCalledTimes(1);
-      const version = m.contextItemVersionRepository.create.mock.calls[0][0];
-      expect(version.versionNumber).toBe(1);
-      expect(version.changeReason).toBe('ai_draft_v1');
-      expect(version.changeSource).toBe('ai_model');
-      expect(version.content).toBe('AI DRAFT BODY');
-
-      // The created RAW_SUMMARY is pinned to v1 so the first doctor edit is v2.
-      const createdItem = m.contextItemRepository.create.mock.calls[0][0];
-      expect(createdItem.currentVersionNumber).toBe(1);
-    });
-
-    it('does not roll back the draft when the snapshot write fails (best-effort)', async () => {
-      m.contextItemVersionRepository.create.mockRejectedValueOnce(new Error('db down'));
-
-      const result = await service.generateSummary('c-1', { transcription: 'transcript' } as any);
-
-      // The draft (RAW_SUMMARY + meta) is still committed and returned.
-      expect(result).toBeTruthy();
-      expect(m.summaryMetaRepository.create).toHaveBeenCalledTimes(1);
-      expect(m.eventEmitter.emit).toHaveBeenCalled();
-    });
-  });
-
-  describe('generateSummary — DNA-style application gating (S3, tenant AND doctor)', () => {
-    it('applies the requested DNA style when effective (passes the id to prompt assembly + draft)', async () => {
-      const configResolver = {
-        resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }),
-      };
-      service = build(m, configResolver);
-
-      await service.generateSummary('c-1', { transcription: 'transcript', dnaStyleId: 'dna-1' } as any);
-
-      expect(m.promptAssembly.assemble.mock.calls[0][0].dnaStyleId).toBe('dna-1');
-    });
-
-    it('drops the DNA style when NOT effective (opted out / tenant off) — undefined to prompt assembly', async () => {
-      const configResolver = {
-        resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false }),
-      };
-      service = build(m, configResolver);
-
-      await service.generateSummary('c-1', { transcription: 'transcript', dnaStyleId: 'dna-1' } as any);
-
-      expect(m.promptAssembly.assemble.mock.calls[0][0].dnaStyleId).toBeUndefined();
-    });
   });
 
   describe('updateSummary — edit delta (S5)', () => {

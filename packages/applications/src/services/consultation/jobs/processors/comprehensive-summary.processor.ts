@@ -75,8 +75,8 @@ import { resolvePlatformOutputLanguage } from '../../summary/platform-output-lan
  * stores it as `ContextItem(RAW_SUMMARY)` on the requesting consultation. A
  * clinician who explicitly requests a chain rollup for the consultation they
  * are viewing is choosing to make that rollup this consultation's note — the
- * same product decision `SummaryService.generateSummary` implements for a
- * single consultation. originally assumed comprehensive
+ * same product decision the harness-produced note implements for a single
+ * consultation. originally assumed comprehensive
  * summaries were non-signable "the same way" `PreSummaryProcessor` is,
  * without checking; that assumption was corrected (not the code) once this
  * ticket verified it against `ContextItemEntity.isFinalSummary` — see

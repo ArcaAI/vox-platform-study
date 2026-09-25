@@ -1,12 +1,12 @@
 /**
  * TASK-890 §3.2 — rendering a GOVERNED prompt body: one grammar, one missing-value policy.
  *
- * Two planes assemble a tenant's governed instruction into a clinical prompt — the native
- * `PromptAssemblyService` and the v1-compat pre-summary builder (`apps/api`
- * `text-compat/summary-prompt.builder.ts`) — and they must agree, because they render THE SAME
- * seeded rows. They did not: the v1-compat plane still ran the single-brace substituter, so a
- * body converted to `{{context.x}}` reached the model with the literal placeholder in it while
- * the native plane rendered the value.
+ * Two planes assembled a tenant's governed instruction into a clinical prompt — the native
+ * `PromptAssemblyService` and the v1-compat pre-summary builder (removed with the v1-compat
+ * surface, TASK-1004) — and they had to agree, because they rendered THE SAME seeded rows. They
+ * did not: the v1-compat plane still ran the single-brace substituter, so a body converted to
+ * `{{context.x}}` reached the model with the literal placeholder in it while the native plane
+ * rendered the value.
  *
  * ## The missing-value policy is deliberately not `renderTemplate`'s
  *
@@ -28,9 +28,8 @@ import { PromptTemplateSyntaxError, renderTemplate, templateReferences } from '@
 /**
  * Is this body written in the ONE grammar, or in the retired single-brace one?
  *
- * The discriminator is the CONTENT, never the caller: the v1-compat plane and the native plane
- * assemble THE SAME seeded rows, so a tenant that converts its row must move planes with it and
- * one that has not must be unaffected. `{{` is the whole test — an escape (`{{{{`) and a
+ * The discriminator is the CONTENT, never the caller: a tenant that converts its row must move
+ * grammars with it and one that has not must be unaffected. `{{` is the whole test — an escape (`{{{{`) and a
  * malformed placeholder both belong to the new grammar, and `renderGovernedTemplate` already
  * uses a body that does not parse verbatim, which is exactly what the old substituter did.
  */

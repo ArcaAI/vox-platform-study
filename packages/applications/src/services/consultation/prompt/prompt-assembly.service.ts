@@ -379,9 +379,8 @@ export class PromptAssemblyService {
   private readonly logger = new Logger(PromptAssemblyService.name);
 
   // Warm-start kill-switch. Load-bearing gate: when OFF the
-  // {pre_summary_text} append-fallback below does not fire, so neither the harness
-  // path nor the legacy SummaryService.generateSummary() path injects a prior draft
-  // (the legacy latent no-op is preserved).
+  // {pre_summary_text} append-fallback below does not fire, so the harness path
+  // injects no prior draft.
   //
   // The AUTHORITY is `HarnessPolicy.warmStartEnabled`, resolved PER CALL. It used to be the
   // `HARNESS_WARM_START_ENABLED` env var alone, cached at construction, then the env var as the
@@ -909,9 +908,8 @@ export class PromptAssemblyService {
     // `71000000-…040` — are byte-exact v1 and carry `{current_department}`,
     // `{visit_type}`, `{safe_age}`, `{safe_dob}`, `{safe_gender}`,
     // `{safe_vitals}`, `{formatted_test_results}`, `{formatted_previous_visits}`
-    // and `{language_name}`. The compat shim substitutes them in
-    // `summary-prompt.builder.ts` via the SAME shared functions; without this the
-    // native Vox v2 path would send literal braces to the LLM (OD-2/OD-3).
+    // and `{language_name}`. Without this the native Vox v2 path would send
+    // literal braces to the LLM (OD-2/OD-3).
     //
     // Gated on the resolved body actually referencing them, so a summary
     // template never pays for the department lookup.

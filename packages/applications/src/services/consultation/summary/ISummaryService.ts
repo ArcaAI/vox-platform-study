@@ -1,9 +1,8 @@
-import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse, SummaryProvenanceResponse } from './dto';
+import { GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse, SummaryProvenanceResponse } from './dto';
 import type { ClinicalCaller } from './clinician-attribution';
 
 export abstract class ISummaryService {
   abstract generatePreSummary(consultationId: string, request: GeneratePreSummaryRequest): Promise<SummaryResponse>;
-  abstract generateSummary(consultationId: string, request: GenerateSummaryRequest): Promise<SummaryResponse>;
   /**
    * TASK-972 Lane 1 — `options.caller` is the CREDENTIAL CLASS, resolved by the controller and
    * never read from a body. Absent ⇒ derived from CLS (service account, else human JWT); only

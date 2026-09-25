@@ -10,6 +10,9 @@
  *
  * The REAL `TextRequestEnrichmentService` is used (not a double), for the same reason the live-tier
  * and agent-invocation specs give: the claim under test is about the body THAT service builds.
+ *
+ * Driven through `generatePreSummary`, `callTextService`'s one remaining caller since the
+ * synchronous `generateSummary` was removed (TASK-1006).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SummaryService } from '../summary.service';
@@ -31,7 +34,7 @@ const createMockEventEmitter = () => ({ emit: vi.fn() });
 
 const createMockContextItemRepository = () => ({
   findById: vi.fn(),
-  findCaseNotes: vi.fn(),
+  findCaseNotes: vi.fn().mockResolvedValue([{ id: 'note-1', content: 'Prior case note.' }]),
   findTranscripts: vi.fn().mockResolvedValue([{ content: 'transcript text' }]),
   findSummaries: vi.fn(),
   findLatestModifiedSummary: vi.fn(),
@@ -83,16 +86,15 @@ const createMockPromptAssemblyService = () => ({
 /** The REAL enrichment service — a stubbed one would assert nothing about the body it builds. */
 const enrichment = () => new TextRequestEnrichmentService({ get: vi.fn().mockReturnValue(TENANT) } as never, undefined, undefined);
 
-function buildService(opts: {
-  generation?: Record<string, unknown>;
-  fallbackGeneration?: Record<string, unknown> | null;
-}) {
+function buildService(opts: { generation?: Record<string, unknown>; fallbackGeneration?: Record<string, unknown> | null }) {
   const httpService = { axiosRef: { post: vi.fn() } };
   const harnessPolicyService = {
     resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'primary-provider', model: 'primary-model', generation: opts.generation }),
     resolveTextFallbackSelection: vi
       .fn()
-      .mockResolvedValue(opts.fallbackGeneration ? { provider: 'fallback-provider', model: 'fallback-model', generation: opts.fallbackGeneration } : null),
+      .mockResolvedValue(
+        opts.fallbackGeneration ? { provider: 'fallback-provider', model: 'fallback-model', generation: opts.fallbackGeneration } : null,
+      ),
   };
 
   const service = new SummaryService(
@@ -140,12 +142,12 @@ const providerSideError = () => {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('TASK-891 — SummaryService (finalize) carries the resolved agent`s reasoning posture', () => {
+describe('TASK-891 — SummaryService (finalize selection) carries the resolved agent`s reasoning posture', () => {
   it('an agent that disabled reasoning instructs the engine not to reason', async () => {
     const { service, httpService } = buildService({ generation: { temperature: 0.1, reasoning: { enabled: false } } });
     httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
 
-    await service.generateSummary('c-1', {} as any);
+    await service.generatePreSummary('c-1', {} as any);
 
     expect(lastPostBody(httpService).reasoning).toEqual({ enabled: false });
   });
@@ -154,7 +156,7 @@ describe('TASK-891 — SummaryService (finalize) carries the resolved agent`s re
     const { service, httpService } = buildService({ generation: { reasoning: { enabled: true, effort: 'high' } } });
     httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
 
-    await service.generateSummary('c-1', {} as any);
+    await service.generatePreSummary('c-1', {} as any);
 
     expect(lastPostBody(httpService).reasoning).toEqual({ enabled: true, effort: 'high' });
   });
@@ -163,7 +165,7 @@ describe('TASK-891 — SummaryService (finalize) carries the resolved agent`s re
     const { service, httpService } = buildService({ generation: { temperature: 0.1 } });
     httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
 
-    await service.generateSummary('c-1', {} as any);
+    await service.generatePreSummary('c-1', {} as any);
 
     expect(Object.keys(lastPostBody(httpService))).not.toContain('extra');
   });
@@ -173,9 +175,11 @@ describe('TASK-891 — SummaryService (finalize) carries the resolved agent`s re
       generation: { reasoning: { enabled: true, effort: 'high' } },
       fallbackGeneration: { reasoning: { enabled: false } },
     });
-    httpService.axiosRef.post.mockRejectedValueOnce(providerSideError()).mockResolvedValueOnce({ data: { summary: 'S (fallback)', modelName: 'fb' } });
+    httpService.axiosRef.post
+      .mockRejectedValueOnce(providerSideError())
+      .mockResolvedValueOnce({ data: { summary: 'S (fallback)', modelName: 'fb' } });
 
-    await service.generateSummary('c-1', {} as any);
+    await service.generatePreSummary('c-1', {} as any);
 
     expect(httpService.axiosRef.post).toHaveBeenCalledTimes(2);
     expect(lastPostBody(httpService).reasoning).toEqual({ enabled: false });

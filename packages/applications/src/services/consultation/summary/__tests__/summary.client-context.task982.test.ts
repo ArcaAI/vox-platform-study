@@ -1,9 +1,10 @@
 /**
- * `generatePreSummary` and `generateSummary` hand the CLIENT's context to the prompt.
+ * `generatePreSummary` hands the CLIENT's context to the prompt.
  *
- * Both methods already hold the consultation, and the two kinds the client stated at `open` are
- * rows on it — but neither read them, so every prompt they assembled claimed `Not available` for
- * vitals and an empty prior-visit history for a consultation whose clinic had sent both.
+ * The method already holds the consultation, and the two kinds the client stated at `open` are
+ * rows on it — but it did not read them, so every prompt it assembled claimed `Not available` for
+ * vitals and an empty prior-visit history for a consultation whose clinic had sent both. (The
+ * synchronous `generateSummary` carried the same defect and fix until TASK-1006 removed it.)
  *
  * The pre-summary path carried a second defect of its own: it passed the case-note records as
  * `transcript`. A `transcript` section tells the model "this is what was said in today's
@@ -12,7 +13,7 @@
  * once as a case-note record — which is how a model ends up documenting one history as two.
  *
  * Every assertion below is on what reaches `PromptAssemblyService.assemble`, because that is the
- * seam both native pre-summary entry points and the summary path converge on.
+ * seam both native pre-summary entry points converge on.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -152,19 +153,5 @@ describe('generatePreSummary hands the client context to assembly', () => {
     const params = paramsOf(assemble);
     expect(params.vitals).toBeUndefined();
     expect(params.previousVisits).toBeUndefined();
-  });
-});
-
-describe('generateSummary hands the client context to assembly', () => {
-  it('passes the rendered vitals and prior-visit history beside the transcript', async () => {
-    const { service, assemble } = buildService({ kinds: { vitals: VITALS, previous_case_notes: NOTES } });
-
-    await service.generateSummary(CID, {} as never);
-
-    const params = paramsOf(assemble);
-    expect(params.vitals).toBe('BP 128/82 mmHg · HR 88 bpm · Temp 36.8 °C');
-    expect(params.previousVisits).toContain('PRIOR-NOTE-ALPHA');
-    // The authoritative summary still documents from today's transcript.
-    expect(params.transcript).toContain('chest tightness');
   });
 });

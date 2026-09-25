@@ -4,13 +4,12 @@
  * Owner decision OD-1(b) + refinement RF-1: R-C3 flagged that the
  * pre-summary resolution chain is department-agnostic in SELECTION but the
  * v1-parity prompt BODY still interpolates `{{context.current_department}}`/`{{context.visit_type}}`
- * and its three "(Latest Dept Note)" FORMAT headings. RF-1 forbids stripping
+ * and its three "(Latest Dept Note)" FORMAT headings. RF-1 forbade stripping
  * those out of the shared v1 body: the v1-compat response mapper
- * (`apps/api/src/modules/text-compat/summary-response.mapper.ts`,
- * `PRE_SUMMARY_DISPLAY_TITLES`) title-matches those exact headings, so a
- * dept-free body on the compat surface would return empty
- * `structured_data.sections` to every v1 client. The fix is this NEW,
- * NATIVE-ONLY fork — the v1-parity template (`SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT`,
+ * (`PRE_SUMMARY_DISPLAY_TITLES`, removed with the v1-compat surface by
+ * TASK-1004) title-matched those exact headings, so a dept-free body on the
+ * compat surface would have returned empty `structured_data.sections` to every
+ * v1 client. The fix is this NEW, NATIVE-ONLY fork — the v1-parity template (`SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT`,
  * `07-prompt-template.ts`) and its byte-locked ArcaAI sibling
  * (`PRE_SUMMARY_CONTENT`, `07b-arcaai-clinical-content.ts`) are left untouched.
  *
@@ -25,7 +24,7 @@
  *     note" → "the latest note" (CAPTURE section, 3 occurrences)
  *   - FORMAT headings: "(Latest Department Note)" → "(Latest Note)" (3
  *     occurrences — Investigations, Plan of Care, Medications Prescribed). RF-1
- *     permits this: native does not go through the compat title-matching mapper.
+ *     permitted this: native never went through the compat title-matching mapper.
  *   - Nothing else changed: the FORMAT section order, the five FORMAT items,
  *     the STYLE/INSTRUCTIONS/EXCLUDE blocks, and the remaining seven variables
  *     (`safe_age`, `safe_dob`, `safe_gender`, `safe_vitals`,
@@ -44,7 +43,10 @@
  * `SYSTEM_DEFAULTS.deptFreePreSummaryPromptId`
  * (`prompt-resolution.service.ts`) — never by a tag scan — exactly like the
  * live-summarization SYSTEM default this file's shape is modeled on
- * (`07c-live-agent-defaults.ts`). Its content is locked by
+ * (`07c-live-agent-defaults.ts`). It is the SYSTEM fallback of the `'dept-free'`
+ * surface every pre-summary generation path requests (`SummaryService.generatePreSummary`,
+ * which the live warm start calls, and `PreSummaryProcessor` behind
+ * `POST :id/summary/pre-summary/async`). Its content is locked by
  * `packages/database/src/__tests__/system-dept-free-pre-summary-default-checksum.test.ts`.
  *
  * NOT added to `v1-clinical-prompt-checksums.fixture.ts` (that fixture asserts

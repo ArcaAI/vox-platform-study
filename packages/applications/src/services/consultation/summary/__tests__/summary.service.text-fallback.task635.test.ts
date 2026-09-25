@@ -1,13 +1,13 @@
 /**
- * SummaryService.callTextService — tenant TEXT fallback on finalize
+ * SummaryService.callTextService — tenant TEXT fallback (`text.finalize.fallback`)
  *
- * `resolveTextFallbackSelection` (`text.finalize.fallback`) was configurable in
- * the admin UI but INERT on the native finalize path — only text-compat ever
- * called it. `callTextService` now mirrors compat's provider-failure fallback
- * (`text-compat.controller.ts#computeSummary`): on a provider-side failure,
- * retry EXACTLY ONCE against the tenant's configured fallback selection;
- * propagate the ORIGINAL error when no fallback is configured, the fallback
- * is the same provider as the primary, or the fallback attempt also fails.
+ * `resolveTextFallbackSelection` was configurable in the admin UI but INERT on
+ * this service's TEXT path. `callTextService` now applies it: on a provider-side
+ * failure, retry EXACTLY ONCE against the tenant's configured fallback
+ * selection; propagate the ORIGINAL error when no fallback is configured, the
+ * fallback is the same provider as the primary, or the fallback attempt also
+ * fails. Driven through `generatePreSummary`, the path's one remaining caller
+ * since the synchronous `generateSummary` was removed (TASK-1006).
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -27,7 +27,7 @@ const createMockEventEmitter = () => ({ emit: vi.fn() });
 
 const createMockContextItemRepository = () => ({
   findById: vi.fn(),
-  findCaseNotes: vi.fn(),
+  findCaseNotes: vi.fn().mockResolvedValue([{ id: 'note-1', content: 'Prior case note.' }]),
   findTranscripts: vi.fn().mockResolvedValue([{ content: 'transcript text' }]),
   findSummaries: vi.fn(),
   findLatestModifiedSummary: vi.fn(),
@@ -139,7 +139,7 @@ describe('SummaryService.callTextService — tenant TEXT fallback (B-03)', () =>
     });
     mockHarnessPolicyService.resolveTextFallbackSelection.mockResolvedValue({ provider: 'fallback-provider', model: 'fallback-model' });
 
-    await service.generateSummary('c-1', {} as any);
+    await service.generatePreSummary('c-1', {} as any);
 
     expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(2);
     expect(mockHarnessPolicyService.resolveTextFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize', null);
@@ -151,7 +151,7 @@ describe('SummaryService.callTextService — tenant TEXT fallback (B-03)', () =>
     mockHttpService.axiosRef.post.mockRejectedValue(providerSideError());
     mockHarnessPolicyService.resolveTextFallbackSelection.mockResolvedValue(null);
 
-    await expect(service.generateSummary('c-1', {} as any)).rejects.toThrow(/TEXT provider error/);
+    await expect(service.generatePreSummary('c-1', {} as any)).rejects.toThrow(/TEXT provider error/);
 
     expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1); // no retry attempted
   });
@@ -160,7 +160,7 @@ describe('SummaryService.callTextService — tenant TEXT fallback (B-03)', () =>
     mockHttpService.axiosRef.post.mockRejectedValue(providerSideError());
     mockHarnessPolicyService.resolveTextFallbackSelection.mockResolvedValue({ provider: 'primary-provider', model: 'primary-model' });
 
-    await expect(service.generateSummary('c-1', {} as any)).rejects.toThrow();
+    await expect(service.generatePreSummary('c-1', {} as any)).rejects.toThrow();
 
     expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
   });
@@ -169,7 +169,7 @@ describe('SummaryService.callTextService — tenant TEXT fallback (B-03)', () =>
     mockHttpService.axiosRef.post.mockRejectedValue(connectPhaseError());
     mockHarnessPolicyService.resolveTextFallbackSelection.mockResolvedValue({ provider: 'fallback-provider', model: 'fallback-model' });
 
-    await expect(service.generateSummary('c-1', {} as any)).rejects.toThrow();
+    await expect(service.generatePreSummary('c-1', {} as any)).rejects.toThrow();
 
     expect(mockHarnessPolicyService.resolveTextFallbackSelection).not.toHaveBeenCalled();
     expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
@@ -179,7 +179,7 @@ describe('SummaryService.callTextService — tenant TEXT fallback (B-03)', () =>
     mockHttpService.axiosRef.post.mockRejectedValueOnce(providerSideError()).mockRejectedValueOnce(new Error('fallback provider also down'));
     mockHarnessPolicyService.resolveTextFallbackSelection.mockResolvedValue({ provider: 'fallback-provider', model: 'fallback-model' });
 
-    await expect(service.generateSummary('c-1', {} as any)).rejects.toThrow(/TEXT provider error/);
+    await expect(service.generatePreSummary('c-1', {} as any)).rejects.toThrow(/TEXT provider error/);
 
     expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(2);
   });
@@ -187,7 +187,7 @@ describe('SummaryService.callTextService — tenant TEXT fallback (B-03)', () =>
   it('resolves the primary selection with the CLS tenant + finalize task explicitly', async () => {
     mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
 
-    await service.generateSummary('c-1', {} as any);
+    await service.generatePreSummary('c-1', {} as any);
 
     expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize', null);
   });

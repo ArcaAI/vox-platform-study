@@ -1,10 +1,11 @@
 /**
  * LLM-token quota pre-flight at the summary generation entry
- * points.
+ * point.
  *
  * `assertMeterQuota` (existing 429 semantics, kill-switch-gated, null
- * allowance = unlimited) is wired for `monthlyLlmTokens` at BOTH
- * `generatePreSummary` and `generateSummary`, alongside the pre-existing
+ * allowance = unlimited) is wired for `monthlyLlmTokens` at
+ * `generatePreSummary` (the synchronous `generateSummary` was removed by
+ * TASK-1006), alongside the pre-existing
  * `monthlySummaries` check — same "post-hoc debit" call shape (no caller-
  * supplied increment; the check compares month-to-date rollups against the
  * allowance BEFORE the TEXT call, since a request's own eventual token count
@@ -24,7 +25,7 @@ function makeService(overrides: { entitlements?: unknown } = {}) {
     findCaseNotes: vi.fn().mockResolvedValue([{ id: 'note-1', content: 'case note text' }]),
     findTranscripts: vi.fn().mockResolvedValue([{ id: 't-1', content: 'transcript text' }]),
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
-  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
+    findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
     create: vi.fn().mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() }),
     encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
   };
@@ -125,20 +126,13 @@ describe('SummaryService — LLM-token quota pre-flight', () => {
     harness = makeService();
   });
 
-  it('generateSummary checks BOTH monthlySummaries and monthlyLlmTokens before calling TEXT', async () => {
-    await harness.service.generateSummary('c-1', {} as never);
-
-    const capabilities = harness.entitlements.assertMeterQuota.mock.calls.map((c) => c[1]);
-    expect(capabilities).toEqual(['monthlySummaries', 'monthlyLlmTokens']);
-    expect(harness.entitlements.assertMeterQuota.mock.calls[0][0]).toBe('tenant-1');
-    expect(harness.entitlements.assertMeterQuota.mock.calls[1][0]).toBe('tenant-1');
-  });
-
   it('generatePreSummary checks BOTH monthlySummaries and monthlyLlmTokens before calling TEXT', async () => {
     await harness.service.generatePreSummary('c-1', {} as never);
 
     const capabilities = harness.entitlements.assertMeterQuota.mock.calls.map((c) => c[1]);
     expect(capabilities).toEqual(['monthlySummaries', 'monthlyLlmTokens']);
+    expect(harness.entitlements.assertMeterQuota.mock.calls[0][0]).toBe('tenant-1');
+    expect(harness.entitlements.assertMeterQuota.mock.calls[1][0]).toBe('tenant-1');
   });
 
   it('aborts BEFORE the TEXT call when the LLM-token allowance is exceeded', async () => {
@@ -151,23 +145,23 @@ describe('SummaryService — LLM-token quota pre-flight', () => {
     };
     const blocked = makeService({ entitlements });
 
-    await expect(blocked.service.generateSummary('c-1', {} as never)).rejects.toBeInstanceOf(QuotaExceededException);
+    await expect(blocked.service.generatePreSummary('c-1', {} as never)).rejects.toBeInstanceOf(QuotaExceededException);
     expect(blocked.httpService.axiosRef.post).not.toHaveBeenCalled();
   });
 
   it('still generates when monthlyLlmTokens is within the allowance (no-op kill-switch/null-allowance case)', async () => {
-    await expect(harness.service.generateSummary('c-1', {} as never)).resolves.toBeDefined();
+    await expect(harness.service.generatePreSummary('c-1', {} as never)).resolves.toBeDefined();
     expect(harness.httpService.axiosRef.post).toHaveBeenCalledTimes(1);
   });
 
   it('is a no-op (never throws) when entitlements is not wired — legacy positional fixtures', async () => {
     const unwired = makeService({ entitlements: undefined });
-    await expect(unwired.service.generateSummary('c-1', {} as never)).resolves.toBeDefined();
+    await expect(unwired.service.generatePreSummary('c-1', {} as never)).resolves.toBeDefined();
   });
 
   describe('guardrail exemption (D6/D16) — no quota path ever gates guardrail.validate', () => {
     it('never calls assertMeterQuota with a guardrail-related capability, even though this call also produces guardrail usage', async () => {
-      await harness.service.generateSummary('c-1', {} as never);
+      await harness.service.generatePreSummary('c-1', {} as never);
 
       const capabilities = harness.entitlements.assertMeterQuota.mock.calls.map((c) => c[1]);
       expect(capabilities.some((c) => String(c).toLowerCase().includes('guardrail'))).toBe(false);
@@ -182,18 +176,34 @@ describe('SummaryService — LLM-token quota pre-flight', () => {
         findCaseNotes: vi.fn().mockResolvedValue([{ id: 'note-1', content: 'x' }]),
         findTranscripts: vi.fn().mockResolvedValue([{ id: 't-1', content: 'x' }]),
         findLatestPreSummary: vi.fn().mockResolvedValue(null),
-  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
+        findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
         create: vi.fn().mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() }),
         encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
       };
       const consultationRepository = {
         findById: vi.fn().mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1', doctorId: 'doc-1', departmentId: 'dept-1' }),
       };
-      const summaryMetaRepository = { create: vi.fn().mockResolvedValue({ id: 'meta-1' }), encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined) };
+      const summaryMetaRepository = {
+        create: vi.fn().mockResolvedValue({ id: 'meta-1' }),
+        encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
+      };
       const httpService = harness.httpService;
-      const clsService = { get: vi.fn((k: string) => (k === 'tenantId' ? 'tenant-1' : k === 'user' ? { id: 'user-1' } : null)), set: vi.fn(), run: vi.fn((cb: () => unknown) => cb()) };
+      const clsService = {
+        get: vi.fn((k: string) => (k === 'tenantId' ? 'tenant-1' : k === 'user' ? { id: 'user-1' } : null)),
+        set: vi.fn(),
+        run: vi.fn((cb: () => unknown) => cb()),
+      };
       const promptAssemblyService = {
-        assemble: vi.fn().mockResolvedValue({ userPrompt: 'u', systemPrompt: 's', hyperparameters: {}, responseFormat: null, resolvedFrom: 'default', promptId: 'p-1' }),
+        assemble: vi
+          .fn()
+          .mockResolvedValue({
+            userPrompt: 'u',
+            systemPrompt: 's',
+            hyperparameters: {},
+            responseFormat: null,
+            resolvedFrom: 'default',
+            promptId: 'p-1',
+          }),
       };
       const service = new SummaryService(
         contextItemRepository as never,
@@ -220,7 +230,7 @@ describe('SummaryService — LLM-token quota pre-flight', () => {
         unitOfWork as never,
       );
 
-      await service.generateSummary('c-1', {} as never);
+      await service.generatePreSummary('c-1', {} as never);
 
       const guardrailCall = usageLedger.recordUsage.mock.calls.find((c) => c[0].common.operation === 'guardrail.validate');
       expect(guardrailCall).toBeDefined();

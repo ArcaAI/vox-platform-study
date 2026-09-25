@@ -19,12 +19,11 @@
  *
  * Environment. Requires the test API at `process.env.API_URL` (default
  * `http://localhost:8968`) and a seeded test database — see
- * `tests/setup/playwright.global-setup.ts`. The `PATCH :id/summary` cases
- * additionally require a reachable `apps/text` (TEXT) so `generateSummary`
- * can produce the RAW_SUMMARY row the OCC assertions run against (mirrors
- * the FULL-loop dependency documented in `harness-gate.spec.ts`); the
- * approve cases instead need `HARNESS_SERVICE_TOKEN` — see the
- * banner above that block for why.
+ * `tests/setup/playwright.global-setup.ts`. Both summary blocks need
+ * `HARNESS_SERVICE_TOKEN`: the note they write against is persisted through the
+ * service-token-guarded `internal/harness/consultations/:id/draft` route (the
+ * synchronous `POST :id/summary` generator was removed by TASK-1006 OD-2) — see
+ * the banner above the approve block for why that route and not a real run.
  *
  * this file was authored blind ("treat it as RED until a live run
  * confirms it") and that live run never happened: the summary block's
@@ -155,19 +154,17 @@ test.describe('OCC on PATCH :id/context/:contextId', () => {
   });
 });
 
+const HARNESS_SERVICE_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
+
 test.describe('OCC on PATCH :id/summary/:summaryId', () => {
-  // Requires a reachable apps/text (TEXT) to actually generate a summary —
-  // see the file-level doc comment.
-  //
-  // that requirement was DOCUMENTED but never ENFORCED: the
-  // `beforeAll` hard-asserted `[200,201]` on the generate call, so on any stack
-  // without apps/text (:8862) running it threw there and Playwright charged the
-  // failure to the first test in the block ("GET the generated summary carries
-  // a strong ETag…"), which reads as an OCC regression rather than an absent
-  // service. The gateway reports the real cause plainly — `Failed to call TEXT
-  // service: connect ECONNREFUSED …:8862`, a 400 — so capture it and self-skip
-  // per the probe pattern in `streaming-ticket-refresh.spec.ts`. Every OCC
-  // assertion below is unchanged and still runs whenever TEXT is up.
+  // TASK-1006 — this block used to GENERATE its note through the synchronous
+  // `POST :id/summary`, which is gone. The RAW_SUMMARY row is now written the way
+  // the harness writes one — `internal/harness/consultations/:id/draft` — which
+  // needs no apps/text and no apps/harness process, only the service token. A
+  // draft for a consultation still `OPEN` is persisted with the lifecycle left
+  // alone (`HarnessInternalService.persistDraft`, J5-F7), which is exactly the
+  // editable-but-unsigned note these OCC cases need. Every OCC assertion below
+  // is unchanged; the block self-skips when the token is absent.
   let token: string;
   let consultationId: string;
   let summaryId = '';
@@ -178,15 +175,11 @@ test.describe('OCC on PATCH :id/summary/:summaryId', () => {
     expect(login, 'doctor login failed').toBeTruthy();
     token = login!.token;
 
-    // This hook performs a REAL summarization (apps/text → the configured LLM),
-    // which the 30s global `timeout` in playwright.config.ts does not cover: a
-    // single `POST /api/v1/generate` was observed at 34.6s here (20.8s of model
-    // latency plus queueing behind the other parallel workers), so the hook
-    // timed out and Playwright charged it to the first test in this block —
-    // reading as an OCC regression rather than a slow generator. Same reasoning
-    // and same remedy as the real-generation blocks in
-    // `task-635-live-agent-lineage.spec.ts`.
-    test.setTimeout(180_000);
+    if (!HARNESS_SERVICE_TOKEN) {
+      skipReason = 'HARNESS_SERVICE_TOKEN is not set — cannot persist the note the OCC cases edit';
+      console.warn(`[] ${skipReason}`);
+      return;
+    }
 
     const opened = await request.post('/api/v1/consultations/open', {
       headers: bearer(token),
@@ -195,23 +188,21 @@ test.describe('OCC on PATCH :id/summary/:summaryId', () => {
     expect([200, 201], 'POST /consultations/open').toContain(opened.status());
     consultationId = ((await opened.json()) as { id: string }).id;
 
-    await request.post(`/api/v1/consultations/${consultationId}/context`, {
-      headers: bearer(token),
-      data: { type: 'TRANSCRIPT', content: 'Doctor: How are you feeling? Patient: Better today.' },
+    const tenantId = tenantIdFromToken(token);
+    expect(tenantId, 'could not read tenantId from the doctor JWT').toBeTruthy();
+    const draft = await request.post(`/api/v1/internal/harness/consultations/${consultationId}/draft`, {
+      headers: { 'X-Service-Token': HARNESS_SERVICE_TOKEN },
+      data: { tenantId, content: '{"subjective":"s","objective":"o","assessment":"a","plan":"p"}' },
     });
-
-    const generated = await request.post(`/api/v1/consultations/${consultationId}/summary`, {
-      headers: bearer(token),
-      data: {},
-    });
-
-    if (![200, 201].includes(generated.status())) {
-      skipReason = `POST :id/summary (generate) returned ${generated.status()} — is apps/text (TEXT_URL) running? body: ${await generated.text()}`;
+    if (draft.status() >= 300) {
+      skipReason = `internal harness draft returned ${draft.status()} — no note to edit. body: ${await draft.text()}`;
       console.warn(`[] ${skipReason}`);
       return;
     }
 
-    summaryId = ((await generated.json()) as SummaryBody).id;
+    const latest = await request.get(`/api/v1/consultations/${consultationId}/summary/latest`, { headers: bearer(token) });
+    expect(latest.status(), 'the harness draft must be readable as the latest summary').toBe(200);
+    summaryId = ((await latest.json()) as SummaryBody).id;
   });
 
   test.afterAll(async ({ request }) => {
@@ -288,7 +279,6 @@ test.describe('OCC on PATCH :id/summary/:summaryId', () => {
 // assertions run against. No apps/harness process is involved: that endpoint
 // is the gateway's own inbound half of the adapter.
 // =============================================================================
-const HARNESS_SERVICE_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
 
 test.describe('OCC on POST :id/summary/:contextItemId/approve', () => {
   let token: string;

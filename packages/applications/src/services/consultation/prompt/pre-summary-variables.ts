@@ -12,13 +12,9 @@
  * `consultation_legacy_v1` schema clone declares, so it no longer calls
  * {@link substitutePreSummaryVariables} at all.
  *
- * That function survives for exactly ONE caller: the FROZEN v1-compat plane
- * (`apps/api/src/modules/text-compat/summary-prompt.builder.ts`), whose
- * `V1_PRE_SUMMARY_TEMPLATE` is a byte-exact v1 literal carrying v1's single-brace
- * placeholders and is pinned by a checksum test. It is a compatibility contract, not a
- * templating flavour anyone may reach for: **do not add a new caller.** Retiring it means
- * moving it into the compat module and converting the governed bodies that surface renders
- * — a follow-up outside this lane's ownership.
+ * That function's ONE caller was the FROZEN v1-compat plane
+ * (`apps/api/src/modules/text-compat/summary-prompt.builder.ts`), removed with the v1-compat
+ * surface (TASK-1004); it has no production caller left. **Do not add one.**
  *
  * The pure pieces live HERE, in `@arcaai/applications`, because `apps/api` depends on this
  * package and not the reverse. Framework-free on purpose (no Nest, no DI).

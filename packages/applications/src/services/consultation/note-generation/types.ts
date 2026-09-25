@@ -13,8 +13,11 @@
  * enumerated in the map onto these):
  *
  *   - TRANSCRIPTION_CREATED — entry #1 (auto-pipeline, ConsultationEventHandler)
- *   - SUMMARY_REGENERATE — entry #2 (sync generateSummary) + #4 (async generateSummaryAsync)
- *   - PRE_SUMMARY — entry #3 (sync generatePreSummary) + #5 (async generatePreSummaryAsync)
+ *   - SUMMARY_REGENERATE — entry #4 (async generateSummaryAsync). Entry #2, the sync
+ *     `POST :id/summary`, was removed by TASK-1006 (OD-2).
+ *   - PRE_SUMMARY — entry #5 (async generatePreSummaryAsync) and the live warm-start
+ *     pre-summary (`SummaryService.generatePreSummary`). Entry #3, the sync
+ *     `POST :id/summary/pre-summary`, was removed by TASK-1006 (OD-2).
  *   - COMPREHENSIVE_SUMMARY — entry #6 (sync generateComprehensiveSummary) + #7 (async generateComprehensiveSummaryAsync)
  *
  * PRE_SUMMARY and COMPREHENSIVE_SUMMARY have no harness-side equivalent today

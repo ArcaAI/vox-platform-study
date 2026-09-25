@@ -56,22 +56,20 @@
  * failures, so the pre-summary chain raises rather than substituting a
  * summary-shaped prompt.
  *
- * WHY THE TIER IS STILL CALLED `'agent'`. `ResolvedPromptConfig` is reached by
- * a FROZEN v1-compat wire route (`TextCompatController` ->
- * `TextCompatTemplateService.resolveGovernedInstruction()`), so its field set —
- * `resolvedFrom`, `resolvedAgentId`, `content`, `resolvedVersionNumber` — and
- * the values `resolvedFrom` may take are a published contract. moved
- * the tier's SOURCE from `DepartmentAgent` onto workflow node config and left
- * the contract exactly where it was; `resolvedAgentId` now carries the
- * WORKFLOW NODE ID that supplied the prompt. Renaming either would break a
- * frozen route for a cosmetic gain.
+ * WHY THE TIER IS STILL CALLED `'agent'`. The values `resolvedFrom` may take are
+ * PERSISTED — on `SummaryMeta.promptResolvedFrom`, and on the live snapshot's
+ * `metaData.agent.resolvedFrom`, which `readLiveAgentLineage` only accepts for a
+ * RECOGNIZED tier — so renaming one orphans every row already written. The tier's
+ * SOURCE moved from `DepartmentAgent` onto workflow node config and the field set
+ * stayed exactly where it was; `resolvedAgentId` now carries the WORKFLOW NODE ID
+ * that supplied the prompt. (The field set was also a published contract of the
+ * v1-compat wire route, which TASK-1004 removed.)
  *
  * The chosen tier is reported back on `ResolvedPromptConfig.resolvedFrom`
  * (`'preferred' | 'agent' | 'department' | 'tenant' | 'default'`), and it
  * reflects WHICH TIER PRODUCED THE PROMPT ID — a resolution that fell through
  * to the system default reports `'default'` even when the department supplied
- * the summary template. (Before, such a resolution reported `'department'`,
- * which made the compat shim's `resolvedFrom === 'default'` guard dead code.)
+ * the summary template. (Before, such a resolution reported `'department'`.)
  *
  * DNA resolution is no longer part of this service; DNA style is per-doctor
  * and resolved elsewhere.
@@ -183,8 +181,8 @@ export interface ResolvedPromptConfig {
    *
    * Since that is the WORKFLOW NODE ID of the generation node whose
    * config carried the prompt binding (it was the `DepartmentAgent` row id
-   * before). The FIELD is part of the frozen v1-compat contract and does not
-   * move; only what it names does. Consumers treat it as an opaque lineage
+   * before). The FIELD name does not move (see "WHY THE TIER IS STILL CALLED
+   * `'agent'`" above); only what it names does. Consumers treat it as an opaque lineage
    * token — `SummaryMeta.sessionAgentId`, the live snapshot's `agentId`, and
    * `PromptResolutionParams.pinnedAgentId` all round-trip it without parsing.
    */
@@ -286,9 +284,10 @@ export interface PromptResolutionParams {
    * NOT a compat/native flag (RF-5 forbids that for agent eligibility, which
    * stays derived from the call signature): a NATIVE consultation may
    * legitimately carry no department and must still get the department-free
-   * family, while a COMPAT call with the same signature must get the v1 family.
-   * The two families are discriminated by a surface TAG on the tenant row and
-   * by distinct SYSTEM defaults.
+   * family. The v1 family existed for the v1-compat surface, which TASK-1004
+   * removed; every generation path now asks for `'dept-free'`. The two families
+   * are discriminated by a surface TAG on the tenant row and by distinct SYSTEM
+   * defaults.
    *
    * Defaults to `'v1'`, which is why every existing call site is untouched by
    * C2. Native callers opt in to `'dept-free'` in Lane D2, once the fork is
@@ -926,7 +925,7 @@ export class PromptResolutionService {
     // Tier-2 — the platform default. This is reported as `'default'` EVEN WHEN the
     // department supplied the summary template: the tier names which template
     // is actually being served, so a consumer that special-cases "no
-    // department-specific prompt" (the compat shim) can act on it.
+    // department-specific prompt" can act on it.
     //
     // TASK-890 §3.4 (OD-M) — `SYSTEM_DEFAULTS.promptId` is a POINTER at a platform row, and the
     // row itself is no longer readable from inside a tenant: a prompt is CONTENT, so every
@@ -1018,8 +1017,7 @@ export class PromptResolutionService {
       // `SYSTEM_SHARED_READ_MODELS` and the assignment cascade is department -> tenant -> null,
       // so a tenant reads only its OWN definitions. There is no platform-default consultation
       // graph every tenant inherits, which means a blanket fail-closed would take out pre-summary
-      // for every tenant that has not authored a consultation workflow — the frozen v1-compat
-      // route's whole population included.
+      // for every tenant that has not authored a consultation workflow.
       //
       // The line the ruling actually draws is between an absent opinion and an INCOMPLETE one:
       //
