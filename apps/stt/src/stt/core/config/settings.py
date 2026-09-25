@@ -508,9 +508,13 @@ class Settings(BaseSettings):
     # "DEPRECATED … not used for provider/model/pipeline selection" in its own
     # description while remaining fully settable, which is the worst of both:
     # an operator who set it got no warning and no effect on routing, because
-    # request-time `pipeline_id` + the DB `AsrPipeline` row are the only
-    # authority. Models load lazily on first use; a warm-start knob, if one is
-    # ever wanted again, belongs in the control plane like every other.
+    # request-time `pipeline_id` + the DB `AsrPipeline` row were the only
+    # authority at the time. (Selection has since moved on again — TASK-861
+    # made it a gateway-resolved `ResolvedAsrSpec` carried on the request, and
+    # TASK-1006 dropped the `AsrPipeline` table outright; see the settings
+    # class docstring above.) Models load lazily on first use; a warm-start
+    # knob, if one is ever wanted again, belongs in the control plane like
+    # every other.
 
     # Transcription settings
     transcription_timeout_seconds: int = Field(

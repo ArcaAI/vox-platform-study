@@ -67,13 +67,11 @@ Environment variables:
 ``STT_BASE_URL``          stt HTTP base (default ``http://localhost:8861``)
 ``REDIS_URL``                Redis URL; defaults to the same settings stt
                              loads (``apps/stt/.env`` → ``redis://localhost:6379/0``)
-``DATABASE_URL``             Postgres URL for read-only pipeline discovery;
-                             defaults to stt's own settings.
-``LATENCY_PIPELINE_ID``      explicit pipeline UUID (skips DB discovery)
-``LATENCY_TENANT_ID``        explicit tenant for the session (else looked up
-                             read-only from ``core."AsrPipeline"``)
-``LATENCY_PIPELINE_SLUG``    preferred slug for DB discovery
-                             (default ``best-practice-realtime``)
+``LATENCY_PIPELINE_ID``      explicit pipeline UUID (required — DB discovery
+                             against ``core."AsrPipeline"`` was removed by
+                             TASK-1006, which dropped that table)
+``LATENCY_TENANT_ID``        explicit tenant for the session (required
+                             alongside ``LATENCY_PIPELINE_ID``)
 ``LATENCY_WAV_PATH``         real-speech WAV (16-bit PCM); overrides the
                              synthetic fixture. Strongly recommended for
                              quality-relevant runs — e.g. the committed
@@ -189,18 +187,6 @@ def _resolve_redis_url() -> str:
         return "redis://localhost:6379/0"
 
 
-def _resolve_database_url() -> str | None:
-    explicit = os.environ.get("DATABASE_URL", "").strip()
-    if explicit:
-        return explicit
-    try:
-        from stt.core.config.settings import get_settings
-
-        return get_settings().database_url
-    except Exception:
-        return None
-
-
 def _sanitize_url(url: str | None) -> str | None:
     """Strip password from a URL for the report."""
     if not url:
@@ -256,67 +242,25 @@ def _streaming_unavailable_reason(base_url: str) -> str | None:
         return f"availability probe failed: {exc}"
 
 
-async def _discover_pipeline(database_url: str | None) -> dict[str, str]:
+async def _discover_pipeline() -> dict[str, str]:
     """Resolve a (pipeline_id, tenant_id) pair for session bootstrap.
 
-    Priority: explicit env override → read-only SELECT against the same
-    Postgres stt reads its pipeline configs from (``core."AsrPipeline"``,
-    ``resourceStatus='ENABLED'``), preferring ``LATENCY_PIPELINE_SLUG``.
-    Only ever executes SELECT statements.
+    Explicit env override ONLY — DB discovery against ``core."AsrPipeline"``
+    was removed by TASK-1006, which dropped that table (stt reads no
+    selection from Postgres at all since TASK-861; see
+    ``06-python-services.md`` "apps/stt is on that default since TASK-861").
     """
     env_pipeline = os.environ.get("LATENCY_PIPELINE_ID", "").strip()
     env_tenant = os.environ.get("LATENCY_TENANT_ID", "").strip()
-    preferred_slug = os.environ.get("LATENCY_PIPELINE_SLUG", "").strip() or "best-practice-realtime"
 
-    if env_pipeline and env_tenant:
-        return {"pipeline_id": env_pipeline, "tenant_id": env_tenant, "source": "env"}
-
-    rows: list[tuple[str, str | None, str]] = []
-    if database_url:
-        try:
-            from sqlalchemy import text
-            from sqlalchemy.ext.asyncio import create_async_engine
-
-            engine = create_async_engine(database_url, pool_pre_ping=True)
-            try:
-                async with engine.connect() as conn:
-                    result = await conn.execute(
-                        text(
-                            'SELECT "id", "tenantId", "slug" FROM core."AsrPipeline" '
-                            "WHERE \"resourceStatus\" = 'ENABLED' "
-                            'ORDER BY "tenantId" ASC NULLS FIRST, "slug" ASC'
-                        )
-                    )
-                    rows = [(str(r[0]), r[1], str(r[2])) for r in result.fetchall()]
-            finally:
-                await engine.dispose()
-        except Exception:
-            rows = []
-
-    if env_pipeline:
-        # Pipeline pinned via env but tenant unknown: look it up, else fall
-        # back to "" (empty tenant skips the reader's tenant filter).
-        tenant = next((t for pid, t, _ in rows if pid == env_pipeline), None)
-        return {
-            "pipeline_id": env_pipeline,
-            "tenant_id": tenant or "",
-            "source": "env+db" if tenant else "env (tenant filter disabled)",
-        }
-
-    if not rows:
+    if not env_pipeline or not env_tenant:
         pytest.skip(
             "No pipeline available for session bootstrap: set "
-            "LATENCY_PIPELINE_ID + LATENCY_TENANT_ID, or make the stt "
-            f"Postgres reachable ({_sanitize_url(database_url) or 'DATABASE_URL unset'})."
+            "LATENCY_PIPELINE_ID + LATENCY_TENANT_ID (DB discovery was "
+            "removed by TASK-1006 along with core.\"AsrPipeline\")."
         )
 
-    chosen = next((r for r in rows if r[2] == preferred_slug), rows[0])
-    return {
-        "pipeline_id": chosen[0],
-        "tenant_id": chosen[1] or "",
-        "slug": chosen[2],
-        "source": f"db (preferred slug: {preferred_slug})",
-    }
+    return {"pipeline_id": env_pipeline, "tenant_id": env_tenant, "source": "env"}
 
 
 # ---------------------------------------------------------------------------
@@ -784,7 +728,6 @@ async def test_streaming_latency_replay_harness() -> None:
     )
     base_url = os.environ.get("STT_BASE_URL", "").strip() or "http://localhost:8861"
     redis_url = _resolve_redis_url()
-    database_url = _resolve_database_url()
 
     # --- Reachability gates (clean skips — never break CI) -----------------
     reason = _redis_unreachable_reason(redis_url)
@@ -797,7 +740,7 @@ async def test_streaming_latency_replay_harness() -> None:
     if reason:
         pytest.skip(reason)
 
-    pipeline = await _discover_pipeline(database_url)
+    pipeline = await _discover_pipeline()
     audio = load_replay_audio()
     session_id = f"latency-harness-{uuid.uuid4().hex[:12]}"
 
