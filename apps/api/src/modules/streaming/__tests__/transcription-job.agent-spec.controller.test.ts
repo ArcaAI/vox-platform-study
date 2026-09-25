@@ -207,20 +207,7 @@ describe('transcribeFile — agent path', () => {
   });
 });
 
-describe('fallback surfaces read the resolved agent / the runtime', () => {
-  it('GET fallback reports the resolved agent’s fallback (configured + runtime key + a display name)', async () => {
-    const { controller, m } = build();
-    const out = await controller.getFallbackProvider();
-    expect(m.asrResolver.resolve).toHaveBeenCalledTimes(1);
-    expect(out).toEqual({ configured: true, pipelineId: 'agent-v-1:fallback:fw', pipelineName: 'fw', agentSlug: 'platform-transcription' });
-  });
-
-  it('GET fallback degrades to not-configured on a resolve failure (labelling aid, never a 500)', async () => {
-    const { controller, m } = build();
-    m.asrResolver.resolve.mockRejectedValueOnce(new Error('boom'));
-    await expect(controller.getFallbackProvider()).resolves.toMatchObject({ configured: false });
-  });
-
+describe('the fallback switch reads the runtime', () => {
   it('switch-to-fallback trusts the runtime (STT 409s when the session has none) — no pre-check', async () => {
     const { controller, m } = build();
     await expect(controller.switchStreamSessionToFallback('sess-1')).resolves.toEqual({ switched: true });

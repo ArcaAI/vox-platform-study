@@ -377,26 +377,3 @@ export class BatchTranscriptionLimitsResponse {
   @ApiProperty({ description: 'Accepted audio MIME types', type: [String] })
   allowedMimeTypes!: string[];
 }
-
-/**
- * The tenant's configured STT fallback pipeline, for the live
- * pipeline↔default toggle. Identity only — never credential material.
- * `configured: false` means the toggle should be disabled rather than offered
- * and failed with a 409 mid-consultation.
- */
-export class SttFallbackProviderResponse {
-  @ApiProperty({ description: 'Whether the resolved ASR agent declares a usable fallback engine' })
-  configured!: boolean;
-
-  @ApiProperty({
-    description: 'The fallback engine’s runtime key (TASK-861: `ResolvedAsrSpec.fallback.spec.runtimeKey`; formerly the fallback pipeline id)',
-    nullable: true,
-  })
-  pipelineId!: string | null;
-
-  @ApiProperty({ description: 'Display name of the fallback engine (fallback agent slug, or the fallback model slug)', nullable: true })
-  pipelineName!: string | null;
-
-  @ApiPropertyOptional({ description: 'TASK-861 — the primary ASR agent the fallback belongs to' })
-  agentSlug?: string;
-}

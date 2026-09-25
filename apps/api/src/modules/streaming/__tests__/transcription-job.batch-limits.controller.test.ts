@@ -1,11 +1,11 @@
 /**
- * Batch upload ceilings + the two read surfaces.
+ * Batch upload ceilings + the limits read surface.
  *
  * The requirement is "up to 5 recordings, each at most 60 minutes". Before this
  * ticket the route enforced neither: its only bound was a hardcoded 100 MB,
  * which rejects a legitimate 60-minute WAV (~115 MB) and admits a 3-hour
  * 64 kbps MP3 (~86 MB). These tests pin the enforcement in the units the
- * requirement is written in, and pin the two GETs the SDK reads so it never
+ * requirement is written in, and pin the GET the SDK reads so it never
  * hardcodes the same numbers a second time.
  *
  * Every rejection must happen BEFORE storage I/O and BEFORE the worker dispatch
@@ -38,22 +38,15 @@ function wavFile(seconds: number, overrides: Partial<Express.Multer.File> = {}):
   return { buffer: header, size: 44 + dataSize, mimetype: 'audio/wav', originalname: 'consult.wav', ...overrides } as Express.Multer.File;
 }
 
-/** The resolved ASR agent's spec; `fallbackRuntimeKey: null` = the agent declares no fallback engine. */
-const specWith = (fallbackRuntimeKey: string | null) => ({
+/** The resolved ASR agent's spec the batch route keys its job to. */
+const SPEC = {
   runtimeKey: 'agent-v-1',
   agent: { slug: 'platform-transcription', versionId: 'agent-v-1' },
   models: { asr: { slug: 'whisper' } },
-  fallback: fallbackRuntimeKey
-    ? {
-        kind: 'model',
-        autoSwitch: true,
-        switchAfterConsecutiveFailures: 2,
-        spec: { runtimeKey: fallbackRuntimeKey, models: { asr: { slug: 'sarvam-saarika' } } },
-      }
-    : { kind: 'none', autoSwitch: true, switchAfterConsecutiveFailures: 2, spec: null },
-});
+  fallback: { kind: 'none', autoSwitch: true, switchAfterConsecutiveFailures: 2, spec: null },
+};
 
-function build(overrides: { limits?: Partial<Record<string, number>>; counts?: Record<string, number>; fallbackRuntimeKey?: string | null } = {}) {
+function build(overrides: { limits?: Partial<Record<string, number>>; counts?: Record<string, number> } = {}) {
   const mocks = {
     jobService: {
       createBatchJob: vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' }),
@@ -70,13 +63,7 @@ function build(overrides: { limits?: Partial<Record<string, number>>; counts?: R
     streamTicketService: {},
     binding: {},
     entitlements: { assertConcurrencyQuota: vi.fn().mockResolvedValue(undefined) },
-    asrResolver: {
-      resolve: vi
-        .fn()
-        .mockResolvedValue({
-          spec: specWith(overrides.fallbackRuntimeKey === undefined ? 'agent-v-1:fallback:sarvam' : overrides.fallbackRuntimeKey),
-        }),
-    },
+    asrResolver: { resolve: vi.fn().mockResolvedValue({ spec: SPEC }) },
     batchLimits: {
       resolve: vi
         .fn()
@@ -193,42 +180,21 @@ describe('GET limits', () => {
   });
 });
 
-describe('GET fallback', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('names the resolved ASR agent’s fallback engine', async () => {
-    const { controller } = build({ fallbackRuntimeKey: 'agent-v-1:fallback:sarvam' });
-    await expect(controller.getFallbackProvider()).resolves.toEqual({
-      configured: true,
-      pipelineId: 'agent-v-1:fallback:sarvam',
-      pipelineName: 'sarvam-saarika',
-      agentSlug: 'platform-transcription',
-    });
-  });
-
-  it('reports configured:false rather than throwing when the agent declares no fallback', async () => {
-    // The live toggle must be able to DISABLE its button instead of discovering
-    // the 409 mid-consultation.
-    const { controller } = build({ fallbackRuntimeKey: null });
-    await expect(controller.getFallbackProvider()).resolves.toMatchObject({ configured: false, pipelineId: null, pipelineName: null });
-  });
-
-  it('never leaks a resolve error to the caller — it degrades to not-configured', async () => {
-    const { controller, mocks } = build();
-    mocks.asrResolver.resolve.mockRejectedValue(new Error('vault down'));
-    await expect(controller.getFallbackProvider()).resolves.toMatchObject({ configured: false });
+describe('GET fallback — removed (TASK-1006)', () => {
+  it('is not a route any more: its one consumer, the SDK provider toggle, is retired', () => {
+    // It reported the fallback engine under the retired `pipelineId` / `pipelineName` names for
+    // `useSttProviderToggle`, which the SDK 4.0.0 removes; nothing else read it.
+    expect(Object.getOwnPropertyNames(TranscriptionJobController.prototype)).not.toContain('getFallbackProvider');
   });
 });
 
 describe('route ordering', () => {
   it('declares the literal GETs before the catch-all :id route', () => {
-    // `@Get(':id')` would otherwise swallow `/limits` and `/fallback` and try to
-    // load them as job ids. Nest registers routes in method-declaration order,
-    // which is the order `getOwnPropertyNames` reports.
+    // `@Get(':id')` would otherwise swallow `/limits` and try to load it as a
+    // job id. Nest registers routes in method-declaration order, which is the
+    // order `getOwnPropertyNames` reports.
     const methods = Object.getOwnPropertyNames(TranscriptionJobController.prototype);
     expect(methods).toContain('getBatchLimits');
-    expect(methods).toContain('getFallbackProvider');
     expect(methods.indexOf('getBatchLimits')).toBeLessThan(methods.indexOf('getById'));
-    expect(methods.indexOf('getFallbackProvider')).toBeLessThan(methods.indexOf('getById'));
   });
 });

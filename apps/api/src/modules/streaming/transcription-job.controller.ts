@@ -73,7 +73,6 @@ import {
   CreateStreamSessionRequest,
   MAX_STREAM_SESSION_CONTEXT_BYTES,
   MAX_UPLOAD_HARD_CEILING,
-  SttFallbackProviderResponse,
   StreamSessionResponse,
   TranscribeFileRequest,
 } from './dto';
@@ -820,52 +819,6 @@ export class TranscriptionJobController {
       maxActiveJobsPerUser: limits.maxActiveJobsPerUser,
       allowedMimeTypes: [...ALLOWED_AUDIO_MIMES],
     };
-  }
-
-  /**
-   * The fallback engine of the caller's ASR agent (assigned, or the named one).
-   *
-   * The live primary↔fallback toggle previously had no way to NAME the target
-   * or to know whether one exists — a user only found out by switching
-   * mid-consultation and taking the 409 from `switch-to-fallback`. This is the
-   * read that lets the SDK label the control and disable it up front.
-   *
-   * Degrades to `configured: false` on ANY resolve failure: this is a labelling
-   * aid, and a settings outage must not turn it into a 500 on a live session.
-   * It exposes only the fallback engine's runtime key and name — never
-   * credential material.
-   */
-  @Get('fallback')
-  @ApiOperation({ summary: 'The fallback engine of the tenant’s assigned (or the named) ASR agent, for the live provider toggle' })
-  @ApiQuery({
-    name: 'agentSlug',
-    required: false,
-    description: 'ASR Agent slug; omit for the assigned agent (department → tenant → platform default)',
-  })
-  @ApiResponse({ status: 200, description: 'Fallback engine pointer (configured flag + runtime key + display name)' })
-  async getFallbackProvider(@Query('agentSlug') agentSlug?: string): Promise<SttFallbackProviderResponse> {
-    const notConfigured: SttFallbackProviderResponse = { configured: false, pipelineId: null, pipelineName: null };
-    const tenantId = this.getTenantId();
-
-    // TASK-861 — the fallback is a property of the resolved ASR agent
-    // (`ResolvedAsrSpec.fallback`). The response keeps its original field names so the
-    // SDK toggle label keeps working: `pipelineId` carries the fallback engine's
-    // runtime key and `pipelineName` its display name — there is no pipeline behind
-    // either (TASK-1006).
-    if (!this.asrResolver) return notConfigured;
-    try {
-      const { spec } = await this.asrResolver.resolve({ tenantId, agentSlug: agentSlug ?? null, departmentId: null });
-      const fallback = spec.fallback.spec;
-      if (!fallback) return { ...notConfigured, agentSlug: spec.agent.slug };
-      const pipelineName = spec.fallback.kind === 'agent' ? fallback.agent.slug : fallback.models.asr.slug;
-      return { configured: true, pipelineId: fallback.runtimeKey, pipelineName, agentSlug: spec.agent.slug };
-    } catch (err) {
-      this.logger.warn({
-        message: 'ASR agent fallback lookup failed; reporting not-configured',
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return notConfigured;
-    }
   }
 
   @Get('language-modes')
