@@ -18,10 +18,13 @@ import { resolve } from 'node:path';
 
 const ROOT = resolve(__dirname, '..');
 
-/** Every `packages/applications` production file that authenticates a hop to `apps/text`. */
+/**
+ * Every `packages/applications` production file that authenticates a hop to `apps/text`.
+ * (`chain-summary.service.ts` left this list with TASK-1006: the comprehensive summary now reaches
+ * TEXT through `agent-invocation.service.ts`, which is on it.)
+ */
 const SOURCES = [
   'services/consultation/summary/summary.service.ts',
-  'services/consultation/summary/chain-summary.service.ts',
   'services/consultation/jobs/processors/pre-summary.processor.ts',
   'services/consultation/jobs/processors/comprehensive-summary.processor.ts',
   'services/consultation/live-documentation/live-documentation.service.ts',

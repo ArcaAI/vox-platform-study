@@ -6,7 +6,7 @@
  *   - Linked consultation resolution (chain + same-day strategies)
  *   - Section gathering across multiple consultations
  *   - NER entity aggregation
- *   - TEXT service integration
+ *   - Agent-plane invocation (TASK-1006 — the tenant's TEXT_GENERATION agent, not a direct TEXT call)
  *   - Context item persistence
  *   - Error handling
  */
@@ -85,30 +85,28 @@ const createMockNamedEntityRepository = () => ({
   findByContextItem: vi.fn().mockResolvedValue([]),
 });
 
-const createMockHttpService = () => ({
-  axiosRef: {
-    post: vi.fn(),
-  },
+const AGENT = { slug: 'general-medicine-summarization', task: 'TEXT_GENERATION', agentVersionId: 'agent-v-1' };
+
+const createMockAgentResolver = () => ({
+  resolve: vi.fn().mockResolvedValue(AGENT),
 });
 
-const createMockConfigService = () => ({
-  get: vi.fn().mockImplementation((key: string) => {
-    if (key === 'TEXT_URL') return 'http://text:8862';
-    return null;
-  }),
+/** The shape `AgentInvocationService.invokeText` answers with in blocking mode. */
+const agentResult = (text: string, overrides: Record<string, unknown> = {}) => ({
+  text,
+  provider: null,
+  model: null,
+  usage: null,
+  usageDetail: null,
+  promptFragments: null,
+  ...overrides,
 });
 
-const createMockPromptAssemblyService = () => ({
-  assemble: vi.fn().mockImplementation((params: { transcript?: string }) =>
-    Promise.resolve({
-      userPrompt: params.transcript ?? 'assembled prompt text',
-      systemPrompt: '',
-      hyperparameters: {},
-      responseFormat: null,
-      resolvedFrom: 'default',
-    }),
-  ),
+const createMockAgentInvocation = () => ({
+  invokeText: vi.fn().mockResolvedValue(agentResult('Result.')),
 });
+
+type InvokeInput = { text: string; variables: Record<string, string> };
 
 // ============================================
 // Test Helpers
@@ -150,36 +148,29 @@ const createNamedEntity = (overrides: Record<string, unknown> = {}) => ({
 // Instantiate service with mocks
 // ============================================
 
-function createService() {
+function createService(options: { secretsService?: unknown; noteGenerationService?: unknown } = {}) {
   const contextItemRepo = createMockContextItemRepository();
   const consultationRepo = createMockConsultationRepository();
   const summaryMetaRepo = createMockSummaryMetaRepository();
   const namedEntityRepo = createMockNamedEntityRepository();
-  const httpService = createMockHttpService();
-  const configService = createMockConfigService();
   const eventEmitter = createMockEventEmitter();
   const clsService = createMockClsService();
-  const promptAssemblyService = createMockPromptAssemblyService();
-  const harnessPolicyService = {
-    resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
-  };
-  // Doctor-preferred prompt id resolver. Defaults to null so the
-  // existing fixtures (no doctor preference) are unaffected.
-  const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
+  const agentResolver = createMockAgentResolver();
+  const agentInvocation = createMockAgentInvocation();
 
   const service = new ChainSummaryService(
     contextItemRepo as any,
     consultationRepo as any,
     summaryMetaRepo as any,
     namedEntityRepo as any,
-    httpService as any,
-    configService as any,
     eventEmitter as any,
     clsService as any,
-    promptAssemblyService as any,
-    undefined, // secretsService (@Optional)
-    harnessPolicyService as any, // HarnessPolicyService resolver
-    configResolver as any, // Preferred-prompt resolver
+    agentResolver as any,
+    agentInvocation as any,
+    options.secretsService as any, // secretsService (@Optional)
+    undefined, // usageLedger
+    undefined, // unitOfWork
+    options.noteGenerationService as any, // noteGenerationService
   );
 
   return {
@@ -188,15 +179,15 @@ function createService() {
     consultationRepo,
     summaryMetaRepo,
     namedEntityRepo,
-    httpService,
-    configService,
     eventEmitter,
     clsService,
-    promptAssemblyService,
-    harnessPolicyService,
-    configResolver,
+    agentResolver,
+    agentInvocation,
   };
 }
+
+/** The `input` of the (first) agent invocation. */
+const invokedInput = (mocks: ReturnType<typeof createService>): InvokeInput => mocks.agentInvocation.invokeText.mock.calls[0][2] as InvokeInput;
 
 // ============================================
 // Tests
@@ -208,68 +199,6 @@ describe('ChainSummaryService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks = createService();
-  });
-
-  // ── callTextService passes the cascade-resolved model ──
-  describe('TEXT selection', () => {
-    const primeComprehensive = () => {
-      const consultation = createConsultation();
-      mocks.consultationRepo.findById.mockResolvedValue(consultation);
-      mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
-      mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
-      mocks.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Findings.' })]);
-      mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
-      mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
-      mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Result.' } });
-    };
-
-    it('posts the cascade-resolved provider+model when the request omits a model', async () => {
-      primeComprehensive();
-
-      await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
-
-      expect(mocks.harnessPolicyService.resolveTextSelection).toHaveBeenCalled();
-      const body = mocks.httpService.axiosRef.post.mock.calls[0][1] as { provider?: string; model?: string };
-      expect(body.provider).toBe('lm-studio');
-      expect(body.model).toBe('resolved-medgemma');
-    });
-
-    it('lets a caller-supplied model win over the resolved default', async () => {
-      primeComprehensive();
-
-      await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false, options: { model: 'caller-pinned' } } as any);
-
-      const body = mocks.httpService.axiosRef.post.mock.calls[0][1] as { model?: string };
-      expect(body.model).toBe('caller-pinned');
-    });
-  });
-
-  // ── the sync chain-summary REST path must thread the requesting
-  //    doctor's preferred prompt template id (UserProfile.preferredPromptTemplateId,
-  //    resolved via ConfigResolver off the requesting consultation's doctorId)
-  //    into promptAssemblyService.assemble so Tier-0 prompt selection is honored.
-  describe('preferred-prompt threading', () => {
-    const primeComprehensive = () => {
-      const consultation = createConsultation();
-      mocks.consultationRepo.findById.mockResolvedValue(consultation);
-      mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
-      mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
-      mocks.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Findings.' })]);
-      mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
-      mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
-      mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Result.' } });
-    };
-
-    it('resolves the preferred id off the requesting consultation doctorId and threads it into assemble', async () => {
-      mocks.configResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
-      primeComprehensive();
-
-      await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
-
-      // doctorId for the default consultation fixture is 'doctor-A' (createConsultation).
-      expect(mocks.configResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('doctor-A');
-      expect(mocks.promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }));
-    });
   });
 
   describe('resolveLinkedConsultations', () => {
@@ -616,8 +545,8 @@ describe('ChainSummaryService', () => {
     });
   });
 
-  describe('TEXT input composition', () => {
-    it('should include section headers with department, doctor, type in the text sent to TEXT', async () => {
+  describe('agent input composition', () => {
+    it('should include section headers with department, doctor, type in the text sent to the agent', async () => {
       const consultation = createConsultation();
       mocks.consultationRepo.findById.mockResolvedValue(consultation);
       mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
@@ -627,15 +556,9 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: { summary: 'Result.' },
-      });
-
       await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
 
-      const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
-      const payload = callArgs[1] as Record<string, unknown>;
-      const prompt = payload.prompt as string;
+      const prompt = invokedInput(mocks).text;
 
       expect(prompt).toContain('--- Section 1 ---');
       expect(prompt).toContain('Department: General Medicine');
@@ -662,51 +585,16 @@ describe('ChainSummaryService', () => {
         createNamedEntity({ text: 'Hypertension', className: 'CONDITION' }),
       ]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: { summary: 'Result.' },
-      });
-
       await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: true });
 
-      const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
-      const payload = callArgs[1] as Record<string, unknown>;
-      const prompt = payload.prompt as string;
+      const prompt = invokedInput(mocks).text;
 
       expect(prompt).toContain('--- Named Entities (auto-extracted) ---');
       expect(prompt).toContain('MEDICATION: Aspirin 75mg');
       expect(prompt).toContain('CONDITION: Hypertension');
     });
 
-    it('should set isComprehensiveSummary and sourceConsultationCount in options', async () => {
-      const consultationA = createConsultation({ id: 'A' });
-      const consultationB = createConsultation({ id: 'B', parentConsultationId: 'A', Department: { name: 'Hematology' } });
-
-      mocks.consultationRepo.findById.mockResolvedValue(consultationA);
-      mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultationA, consultationB]);
-      mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultationA, consultationB]);
-
-      mocks.contextItemRepo.findSummaries
-        .mockResolvedValueOnce([createContextItem({ consultationId: 'A', content: 'A.' })])
-        .mockResolvedValueOnce([createContextItem({ consultationId: 'B', content: 'B.' })]);
-      mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
-      mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
-
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: { summary: 'Result.' },
-      });
-
-      await mocks.service.generateComprehensiveSummary('A', { includeNER: false });
-
-      const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
-      const payload = callArgs[1] as Record<string, unknown>;
-      const context = payload.context as Record<string, unknown>;
-
-      expect(context.isComprehensiveSummary).toBe(true);
-      expect(context.sectionCount).toBe(2);
-      expect(context.sourceConsultationCount).toBe(2);
-    });
-
-    it('should default template to comprehensive when not specified', async () => {
+    it('carries only `text` and `variables` — a request`s template / options select nothing on the agent plane', async () => {
       const consultation = createConsultation();
       mocks.consultationRepo.findById.mockResolvedValue(consultation);
       mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
@@ -716,16 +604,15 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: { summary: 'Result.' },
+      await mocks.service.generateComprehensiveSummary('consultation-A', {
+        includeNER: false,
+        template: 'SOAP',
+        options: { textProvider: 'openai', textModel: 'caller-pinned' },
       });
 
-      await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
-
-      const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
-      const payload = callArgs[1] as Record<string, unknown>;
-
-      expect((payload.context as Record<string, unknown>).template).toBe('comprehensive');
+      // The agent owns its instruction and its model; the caller no longer overrides either.
+      expect(Object.keys(invokedInput(mocks)).sort()).toEqual(['text', 'variables']);
+      expect(JSON.stringify(invokedInput(mocks))).not.toContain('caller-pinned');
     });
   });
 
@@ -755,15 +642,12 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findTranscripts.mockResolvedValue([]); // for NER gathering
       mocks.namedEntityRepo.findByContextItem.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: {
-          summary: 'Comprehensive summary spanning General Medicine and Hematology.',
-          modelName: 'gpt-4o',
-          processingTimeMs: 5000,
-          inputTokens: 1500,
-          outputTokens: 500,
-        },
-      });
+      mocks.agentInvocation.invokeText.mockResolvedValue(
+        agentResult('Comprehensive summary spanning General Medicine and Hematology.', {
+          model: 'gpt-4o',
+          usage: { promptTokens: 1500, completionTokens: 500 },
+        }),
+      );
 
       const result = await mocks.service.generateComprehensiveSummary('A', {
         includeNER: true,
@@ -775,19 +659,18 @@ describe('ChainSummaryService', () => {
       expect(result.sectionCount).toBe(2);
       expect(result.structuredData?.modelName).toBe('gpt-4o');
 
-      // Verify TEXT was called
-      expect(mocks.httpService.axiosRef.post).toHaveBeenCalledWith(
-        'http://text:8862/api/v1/generate',
+      // Verify the tenant's agent was resolved and invoked (TASK-1006 — never a direct TEXT call)
+      expect(mocks.agentResolver.resolve).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 'tenant-1', task: 'TEXT_GENERATION', departmentId: 'dept-general' }),
+      );
+      expect(mocks.agentInvocation.invokeText).toHaveBeenCalledWith(
+        AGENT,
+        'tenant-1',
         expect.objectContaining({
-          prompt: expect.stringContaining('--- Section 1 ---'),
-          context: expect.objectContaining({
-            template: 'comprehensive',
-            isComprehensiveSummary: true,
-            sectionCount: 2,
-            sourceConsultationCount: 2,
-          }),
+          text: expect.stringContaining('--- Section 1 ---'),
+          variables: expect.objectContaining({ current_department: 'General Medicine' }),
         }),
-        expect.objectContaining({ timeout: 180000 }),
+        'blocking',
       );
 
       // Verify context item was persisted
@@ -813,25 +696,11 @@ describe('ChainSummaryService', () => {
     });
 
     it('should throw BadRequestException when tenant ID is missing', async () => {
-      mocks.clsService.get.mockImplementation((key: string) => {
-        if (key === 'tenantId') return null;
-        return null;
-      });
-      const service = new ChainSummaryService(
-        mocks.contextItemRepo as any,
-        mocks.consultationRepo as any,
-        mocks.summaryMetaRepo as any,
-        mocks.namedEntityRepo as any,
-        mocks.httpService as any,
-        mocks.configService as any,
-        mocks.eventEmitter as any,
-        mocks.clsService as any,
-        mocks.promptAssemblyService as any,
-      );
-
+      mocks.clsService.get.mockImplementation(() => null);
       mocks.consultationRepo.findById.mockResolvedValue(createConsultation());
 
-      await expect(service.generateComprehensiveSummary('A', {})).rejects.toThrow(BadRequestException);
+      await expect(mocks.service.generateComprehensiveSummary('A', {})).rejects.toThrow(BadRequestException);
+      expect(mocks.agentInvocation.invokeText).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException when no content available', async () => {
@@ -847,6 +716,7 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
 
       await expect(mocks.service.generateComprehensiveSummary('consultation-A', {})).rejects.toThrow(BadRequestException);
+      expect(mocks.agentInvocation.invokeText).not.toHaveBeenCalled();
     });
 
     it('should skip NER gathering when includeNER is false', async () => {
@@ -859,10 +729,6 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: { summary: 'Result.' },
-      });
-
       const result = await mocks.service.generateComprehensiveSummary('consultation-A', {
         includeNER: false,
       });
@@ -871,7 +737,7 @@ describe('ChainSummaryService', () => {
       expect(mocks.namedEntityRepo.findByContextItem).not.toHaveBeenCalled();
     });
 
-    it('should use custom dnaStyleId and template when provided', async () => {
+    it('should throw BadRequestException when the agent invocation fails in transport', async () => {
       const consultation = createConsultation();
       mocks.consultationRepo.findById.mockResolvedValue(consultation);
       mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
@@ -881,41 +747,10 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: { summary: 'Custom result.' },
-      });
-
-      await mocks.service.generateComprehensiveSummary('consultation-A', {
-        dnaStyleId: 'style_hematology',
-        template: 'SOAP',
-        includeNER: false,
-      });
-
-      expect(mocks.httpService.axiosRef.post).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          context: expect.objectContaining({
-            dnaStyleId: 'style_hematology',
-            template: 'SOAP',
-          }),
-        }),
-        expect.any(Object),
-      );
-    });
-
-    it('should throw BadRequestException when TEXT service fails', async () => {
-      const consultation = createConsultation();
-      mocks.consultationRepo.findById.mockResolvedValue(consultation);
-      mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
-      mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
-
-      mocks.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Summary.' })]);
-      mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
-      mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
-
-      mocks.httpService.axiosRef.post.mockRejectedValue(new Error('TEXT timeout'));
+      mocks.agentInvocation.invokeText.mockRejectedValue(new Error('TEXT timeout'));
 
       await expect(mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false })).rejects.toThrow(BadRequestException);
+      expect(mocks.contextItemRepo.create).not.toHaveBeenCalled();
     });
 
     it('should default includeNER to true when not specified', async () => {
@@ -932,10 +767,6 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
       mocks.namedEntityRepo.findByContextItem.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: { summary: 'Result.' },
-      });
-
       // Empty request — includeNER defaults to true (not false)
       const result = await mocks.service.generateComprehensiveSummary('consultation-A', {});
 
@@ -944,7 +775,7 @@ describe('ChainSummaryService', () => {
       expect(mocks.namedEntityRepo.findByContextItem).toHaveBeenCalled();
     });
 
-    it('should use llmProvider as fallback when modelName is undefined', async () => {
+    it('should use the provider as fallback when the model is not reported', async () => {
       const consultation = createConsultation();
       mocks.consultationRepo.findById.mockResolvedValue(consultation);
       mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
@@ -954,14 +785,7 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: {
-          summary: 'Result.',
-          llmProvider: 'anthropic',
-          modelName: undefined,
-          processingTimeMs: 2000,
-        },
-      });
+      mocks.agentInvocation.invokeText.mockResolvedValue(agentResult('Result.', { provider: 'anthropic', model: null }));
 
       const result = await mocks.service.generateComprehensiveSummary('consultation-A', {
         includeNER: false,
@@ -981,15 +805,14 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: {
-          summary: 'Result.',
-          modelName: 'gpt-4o',
-          processingTimeMs: 3500,
-          inputTokens: 800,
-          outputTokens: 200,
-        },
-      });
+      mocks.agentInvocation.invokeText.mockResolvedValue(
+        agentResult('Result.', {
+          model: 'gpt-4o',
+          usage: { promptTokens: 800, completionTokens: 200 },
+          // TEXT's own usage block: the wall clock the summary metadata reports.
+          usageDetail: { task_id: 't-1', provider: 'openai', model: 'gpt-4o', endpoint_kind: 'lmstudio.chat', total_ms: 3500 },
+        }),
+      );
 
       await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
 
@@ -1016,9 +839,7 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: { summary: 'Generated comprehensive.' },
-      });
+      mocks.agentInvocation.invokeText.mockResolvedValue(agentResult('Generated comprehensive.'));
 
       await mocks.service.generateComprehensiveSummary('consultation-A', {
         dnaStyleId: 'my-style',
@@ -1028,7 +849,7 @@ describe('ChainSummaryService', () => {
       expect(ContextItemFactory.CreateRawSummary).toHaveBeenCalledWith(
         'tenant-1', // tenantId
         'consultation-A', // consultationId
-        'Generated comprehensive.', // content from TEXT
+        'Generated comprehensive.', // content from the agent
         'my-style', // dnaStyleId from request
         'doctor-A', // userId from CLS
       );
@@ -1043,10 +864,6 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Summary.' })]);
       mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
-
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: { summary: 'Result.' },
-      });
 
       const result = await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
 
@@ -1103,13 +920,7 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
       mocks.namedEntityRepo.findByContextItem.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockResolvedValue({
-        data: {
-          summary: 'Comprehensive multi-department summary.',
-          modelName: 'gpt-4o',
-          processingTimeMs: 8000,
-        },
-      });
+      mocks.agentInvocation.invokeText.mockResolvedValue(agentResult('Comprehensive multi-department summary.', { model: 'gpt-4o' }));
 
       const result = await mocks.service.generateComprehensiveSummary('A', { includeNER: true });
 
@@ -1135,7 +946,7 @@ describe('ChainSummaryService', () => {
 
       await expect(mocks.service.generateComprehensiveSummary('c-other', {} as any)).rejects.toThrow(NotFoundException);
 
-      expect(mocks.httpService.axiosRef.post).not.toHaveBeenCalled();
+      expect(mocks.agentInvocation.invokeText).not.toHaveBeenCalled();
       expect(mocks.contextItemRepo.create).not.toHaveBeenCalled();
     });
 
@@ -1159,7 +970,7 @@ describe('ChainSummaryService', () => {
 
       await expect(mocks.service.generateComprehensiveSummary('A', {} as any)).rejects.toThrow(NotFoundException);
 
-      expect(mocks.httpService.axiosRef.post).not.toHaveBeenCalled();
+      expect(mocks.agentInvocation.invokeText).not.toHaveBeenCalled();
       expect(mocks.contextItemRepo.create).not.toHaveBeenCalled();
     });
   });
@@ -1170,46 +981,35 @@ describe('ChainSummaryService', () => {
   describe('comprehensive summary content encryption-at-rest (F-031)', () => {
     const secretsStub = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
 
-    const primeComprehensive = () => {
+    const primeComprehensive = (target: ReturnType<typeof createService>) => {
       const consultation = createConsultation();
-      mocks.consultationRepo.findById.mockResolvedValue(consultation);
-      mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
-      mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
-      mocks.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Findings.' })]);
-      mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
-      mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
-      mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Comprehensive result.' } });
+      target.consultationRepo.findById.mockResolvedValue(consultation);
+      target.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+      target.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+      target.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Findings.' })]);
+      target.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+      target.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+      target.agentInvocation.invokeText.mockResolvedValue(agentResult('Comprehensive result.'));
     };
 
     it('encrypts the generated comprehensive-summary content before persisting', async () => {
-      primeComprehensive();
-      const serviceWithSecrets = new ChainSummaryService(
-        mocks.contextItemRepo as any,
-        mocks.consultationRepo as any,
-        mocks.summaryMetaRepo as any,
-        mocks.namedEntityRepo as any,
-        mocks.httpService as any,
-        mocks.configService as any,
-        mocks.eventEmitter as any,
-        mocks.clsService as any,
-        mocks.promptAssemblyService as any,
-        secretsStub as any,
-      );
+      const withSecrets = createService({ secretsService: secretsStub });
+      primeComprehensive(withSecrets);
 
-      await serviceWithSecrets.generateComprehensiveSummary('consultation-A', { includeNER: false } as any);
+      await withSecrets.service.generateComprehensiveSummary('consultation-A', { includeNER: false } as any);
 
-      expect(mocks.contextItemRepo.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
-      const [entityArg, secretsArg] = mocks.contextItemRepo.encryptContentIntoEntity.mock.calls[0];
+      expect(withSecrets.contextItemRepo.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+      const [entityArg, secretsArg] = withSecrets.contextItemRepo.encryptContentIntoEntity.mock.calls[0];
       expect(entityArg.content).toBe('Comprehensive result.');
       expect(secretsArg).toBe(secretsStub);
-      const encOrder = mocks.contextItemRepo.encryptContentIntoEntity.mock.invocationCallOrder[0];
-      const createOrder = mocks.contextItemRepo.create.mock.invocationCallOrder[0];
+      const encOrder = withSecrets.contextItemRepo.encryptContentIntoEntity.mock.invocationCallOrder[0];
+      const createOrder = withSecrets.contextItemRepo.create.mock.invocationCallOrder[0];
       expect(encOrder).toBeLessThan(createOrder);
-      expect(mocks.contextItemRepo.create.mock.calls[0][0]).toBe(entityArg);
+      expect(withSecrets.contextItemRepo.create.mock.calls[0][0]).toBe(entityArg);
     });
 
     it('still persists (without ciphertext) when no SecretsService is wired', async () => {
-      primeComprehensive();
+      primeComprehensive(mocks);
 
       await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false } as any);
 
@@ -1223,55 +1023,22 @@ describe('ChainSummaryService', () => {
   // never blocks/short-circuits generation.
   // ===========================================================================
   describe(' NoteGenerationService seam', () => {
-    const buildServiceWithSeam = (noteGenerationService: { generate: ReturnType<typeof vi.fn> } | undefined) => {
-      const contextItemRepo = createMockContextItemRepository();
-      const consultationRepo = createMockConsultationRepository();
-      const summaryMetaRepo = createMockSummaryMetaRepository();
-      const namedEntityRepo = createMockNamedEntityRepository();
-      const httpService = createMockHttpService();
-      const configService = createMockConfigService();
-      const eventEmitter = createMockEventEmitter();
-      const clsService = createMockClsService();
-      const promptAssemblyService = createMockPromptAssemblyService();
-
-      const service = new ChainSummaryService(
-        contextItemRepo as any,
-        consultationRepo as any,
-        summaryMetaRepo as any,
-        namedEntityRepo as any,
-        httpService as any,
-        configService as any,
-        eventEmitter as any,
-        clsService as any,
-        promptAssemblyService as any,
-        undefined, // secretsService
-        undefined, // harnessPolicyService
-        undefined, // configResolver
-        undefined, // usageLedger
-        undefined, // unitOfWork
-        noteGenerationService as any,
-      );
-
-      return { service, contextItemRepo, consultationRepo, httpService };
-    };
-
-    const primeComprehensive = (mocks: ReturnType<typeof buildServiceWithSeam>) => {
+    const primeComprehensive = (target: ReturnType<typeof createService>) => {
       const consultation = createConsultation();
-      mocks.consultationRepo.findById.mockResolvedValue(consultation);
-      mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
-      mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
-      mocks.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Findings.' })]);
-      mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
-      mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
-      mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Result.' } });
+      target.consultationRepo.findById.mockResolvedValue(consultation);
+      target.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+      target.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+      target.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Findings.' })]);
+      target.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+      target.contextItemRepo.findPreSummaries.mockResolvedValue([]);
     };
 
     it('calls the seam with COMPREHENSIVE_SUMMARY and generates unaffected by the decision', async () => {
       const noteGenerationService = { generate: vi.fn().mockResolvedValue({ generator: 'legacy', reason: 'harness-not-supported-for-trigger' }) };
-      const mocks = buildServiceWithSeam(noteGenerationService);
-      primeComprehensive(mocks);
+      const target = createService({ noteGenerationService });
+      primeComprehensive(target);
 
-      const result = await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
+      const result = await target.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
 
       expect(noteGenerationService.generate).toHaveBeenCalledWith(
         'COMPREHENSIVE_SUMMARY',
@@ -1282,14 +1049,13 @@ describe('ChainSummaryService', () => {
 
     it('still generates when the seam call fails (best-effort, non-blocking)', async () => {
       const noteGenerationService = { generate: vi.fn().mockRejectedValue(new Error('seam unavailable')) };
-      const mocks = buildServiceWithSeam(noteGenerationService);
-      primeComprehensive(mocks);
+      const target = createService({ noteGenerationService });
+      primeComprehensive(target);
 
-      await expect(mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false })).resolves.toBeDefined();
+      await expect(target.service.generateComprehensiveSummary('consultation-A', { includeNER: false })).resolves.toBeDefined();
     });
 
     it('generates unaffected when noteGenerationService is not wired (pre-fixtures)', async () => {
-      const mocks = buildServiceWithSeam(undefined);
       primeComprehensive(mocks);
 
       await expect(mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false })).resolves.toBeDefined();

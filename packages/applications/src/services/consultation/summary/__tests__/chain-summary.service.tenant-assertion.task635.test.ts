@@ -1,13 +1,15 @@
 /**
- * ChainSummaryService.callTextService — explicit tenant assertion
+ * ChainSummaryService — explicit tenant assertion
  *
- * `resolveTextSelection()` used to be called with NO tenantId, relying on
- * `HarnessPolicyService`'s own CLS fallback — a worker/CLS-less caller could
- * silently be served the SYSTEM default model instead of the tenant's. The
- * call site now resolves `this.tenantId` (BaseService CLS getter) EXPLICITLY
- * and throws `BadRequestException('Tenant ID is required')` when absent,
- * rather than ever reaching `resolveTextSelection()` with an implicit/empty
- * tenant.
+ * The text selection used to be resolved with NO tenantId, relying on a CLS
+ * fallback — a worker/CLS-less caller could silently be served the SYSTEM
+ * default model instead of the tenant's. The service resolves `this.tenantId`
+ * (BaseService CLS getter) EXPLICITLY and throws
+ * `BadRequestException('Tenant ID is required')` when absent.
+ *
+ * TASK-1006 — the generation runs on the agent plane now, so the pin is on the
+ * AGENT resolution: it is asked for the tenant that owns the consultation, and
+ * with no tenant it is never asked at all.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -77,8 +79,6 @@ function createService(clsTenantId: string | null) {
   };
   const summaryMetaRepo = { create: vi.fn().mockResolvedValue({ id: 'meta-1' }), encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined) };
   const namedEntityRepo = { findByContextItem: vi.fn().mockResolvedValue([]) };
-  const httpService = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'Result.' } }) } };
-  const configService = { get: vi.fn().mockImplementation((key: string) => (key === 'TEXT_URL' ? 'http://text:8862' : null)) };
   const eventEmitter = { emit: vi.fn() };
   const clsService = {
     get: vi.fn().mockImplementation((key: string) => {
@@ -88,53 +88,44 @@ function createService(clsTenantId: string | null) {
     }),
     set: vi.fn(),
   };
-  const promptAssemblyService = {
-    assemble: vi.fn().mockResolvedValue({
-      userPrompt: 'assembled prompt text',
-      systemPrompt: '',
-      hyperparameters: {},
-      responseFormat: null,
-      resolvedFrom: 'default',
-    }),
-  };
   const secretsService = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
-  const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }) };
-  const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
+  const agentResolver = { resolve: vi.fn().mockResolvedValue({ slug: 'general-medicine-summarization', task: 'TEXT_GENERATION' }) };
+  const agentInvocation = {
+    invokeText: vi.fn().mockResolvedValue({ text: 'Result.', provider: 'lm-studio', model: 'resolved-medgemma', usage: null }),
+  };
 
   const service = new ChainSummaryService(
     contextItemRepo as any,
     consultationRepo as any,
     summaryMetaRepo as any,
     namedEntityRepo as any,
-    httpService as any,
-    configService as any,
     eventEmitter as any,
     clsService as any,
-    promptAssemblyService as any,
+    agentResolver as any,
+    agentInvocation as any,
     secretsService as any,
-    harnessPolicyService as any,
-    configResolver as any,
   );
 
-  return { service, httpService, harnessPolicyService };
+  return { service, agentResolver, agentInvocation };
 }
 
-describe('ChainSummaryService.callTextService — explicit tenant assertion (B-04)', () => {
-  it('resolves the TEXT selection with the CLS tenant + finalize task passed explicitly', async () => {
-    const { service, harnessPolicyService } = createService('tenant-1');
+describe('ChainSummaryService — explicit tenant assertion (B-04)', () => {
+  it('resolves the tenant`s agent for the finalize phase with the tenant passed explicitly', async () => {
+    const { service, agentResolver, agentInvocation } = createService('tenant-1');
 
     await service.generateComprehensiveSummary('consultation-A', { includeNER: false });
 
-    expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+    expect(agentResolver.resolve).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', selectorTags: ['phase:finalize'] }));
+    expect(agentInvocation.invokeText.mock.calls[0][1]).toBe('tenant-1');
   });
 
   it('throws BadRequestException (not a silent SYSTEM default) when CLS has no tenant', async () => {
-    const { service, harnessPolicyService, httpService } = createService(null);
+    const { service, agentResolver, agentInvocation } = createService(null);
 
     await expect(service.generateComprehensiveSummary('consultation-A', { includeNER: false })).rejects.toThrow(BadRequestException);
     await expect(service.generateComprehensiveSummary('consultation-A', { includeNER: false })).rejects.toThrow(/Tenant ID is required/);
 
-    expect(harnessPolicyService.resolveTextSelection).not.toHaveBeenCalled();
-    expect(httpService.axiosRef.post).not.toHaveBeenCalled();
+    expect(agentResolver.resolve).not.toHaveBeenCalled();
+    expect(agentInvocation.invokeText).not.toHaveBeenCalled();
   });
 });

@@ -10,8 +10,12 @@ import '../../../../index';
  * literal `'en'`" — a hardcoded default and a per-call language that is neither admin configuration
  * nor the default. It now reads the SAME setting, through the same helper, as `SummaryService`.
  *
- * Driven through the real `generateComprehensiveSummary`; `assemble` records its input and stops.
+ * TASK-1006 — the chain summary runs on the agent plane, so the resolved language reaches the agent
+ * as its `language_name` variable (the name the seeded bodies state it under).
+ *
+ * Driven through the real `generateComprehensiveSummary`; `invokeText` records its input and stops.
  */
+import { ServiceUnavailableException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ChainSummaryService } from '../chain-summary.service';
@@ -21,7 +25,9 @@ import { CONSULTATION_OUTPUT_LANGUAGE_KEY } from '../../../settings-registry/des
 import { resolvableTokens } from '../../../gate-edit-mining/__tests__/module-graph.helper';
 
 const TENANT = 'tenant-1';
-const STOP = new Error('stop after prompt assembly');
+// An HttpException, so the service passes it through unchanged (a bare Error would be mapped to the
+// route's 400, as a TEXT transport failure is).
+const STOP = new ServiceUnavailableException('stop after the agent invocation');
 
 function build(platformDefault?: unknown) {
   const consultation = {
@@ -32,7 +38,7 @@ function build(platformDefault?: unknown) {
     patientId: 'pat-1',
     metadata: { summaryLanguage: 'ml-en' },
   };
-  const assemble = vi.fn(async (_params: unknown) => {
+  const invokeText = vi.fn(async (..._args: unknown[]) => {
     throw STOP;
   });
   const settings =
@@ -61,60 +67,56 @@ function build(platformDefault?: unknown) {
     } as never,
     { create: vi.fn() } as never,
     { findByContextItem: vi.fn().mockResolvedValue([]) } as never,
-    { axiosRef: { post: vi.fn() } } as never,
-    { get: vi.fn(() => 'http://text') } as never,
     { emit: vi.fn() } as never,
     {
       get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'user-1' } : null)),
       set: vi.fn(),
       run: vi.fn((cb: () => unknown) => cb()),
     } as never,
-    { assemble } as never,
-    undefined, // 9  secretsService
-    undefined, // 10 harnessPolicyService
-    undefined, // 11 configResolver
-    undefined, // 12 usageLedger
-    undefined, // 13 unitOfWork
-    undefined, // 14 noteGenerationService
-    undefined, // 15 textRequestEnrichment
-    undefined, // 16 visitTypes
-    undefined, // 17 computeDevice
-    settings as never, // 18 effectiveSettings
+    { resolve: vi.fn().mockResolvedValue({ slug: 'general-medicine-summarization', task: 'TEXT_GENERATION' }) } as never,
+    { invokeText } as never,
+    undefined, // 8  secretsService
+    undefined, // 9  usageLedger
+    undefined, // 10 unitOfWork
+    undefined, // 11 noteGenerationService
+    undefined, // 12 visitTypes
+    undefined, // 13 computeDevice
+    settings as never, // 14 effectiveSettings
   );
 
-  return { service, assemble, settings };
+  return { service, invokeText, settings };
 }
 
 /** A request that asks for a language per call — which must NOT choose the output. */
 const REQUEST = { includeNER: false, options: { conversationLanguage: 'ml', language: 'ml-en', locale: 'ml-IN' } } as never;
 
-const assembledLanguage = (assemble: { mock: { calls: unknown[][] } }) =>
-  (assemble.mock.calls.at(-1)![0] as { conversationLanguage: string }).conversationLanguage;
+const invokedLanguage = (invokeText: { mock: { calls: unknown[][] } }) =>
+  (invokeText.mock.calls.at(-1)![2] as { variables: { language_name: string } }).variables.language_name;
 
 describe('ChainSummaryService — the platform-default output language', () => {
   it('writes English by default — never the per-request option, never the declared `ml-en`', async () => {
-    const { service, assemble } = build();
+    const { service, invokeText } = build();
 
     await expect(service.generateComprehensiveSummary('c-1', REQUEST)).rejects.toBe(STOP);
 
-    expect(assembledLanguage(assemble)).toBe('en');
+    expect(invokedLanguage(invokeText)).toBe('English');
   });
 
   it('follows the platform default a platform admin sets, read for the consultation`s tenant', async () => {
-    const { service, assemble, settings } = build('ml');
+    const { service, invokeText, settings } = build('ml');
 
     await expect(service.generateComprehensiveSummary('c-1', REQUEST)).rejects.toBe(STOP);
 
     expect(settings!.resolveEffective).toHaveBeenCalledWith(CONSULTATION_OUTPUT_LANGUAGE_KEY, { tenantId: TENANT });
-    expect(assembledLanguage(assemble)).toBe('ml');
+    expect(invokedLanguage(invokeText)).toBe('Malayalam');
   });
 
   it('a settings-backend failure degrades to English rather than failing the summary', async () => {
-    const { service, assemble } = build('throw');
+    const { service, invokeText } = build('throw');
 
     await expect(service.generateComprehensiveSummary('c-1', REQUEST)).rejects.toBe(STOP);
 
-    expect(assembledLanguage(assemble)).toBe('en');
+    expect(invokedLanguage(invokeText)).toBe('English');
   });
 });
 

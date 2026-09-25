@@ -13,17 +13,17 @@ import { LiveDocumentationServiceModule } from '../../consultation/live-document
 import { PreSummaryProcessor } from '../../consultation/jobs/processors/pre-summary.processor';
 import { ComprehensiveSummaryProcessor } from '../../consultation/jobs/processors/comprehensive-summary.processor';
 import { ConsultationJobServiceModule } from '../../consultation/jobs/consultation-job.service.module';
-import { ChainSummaryService } from '../../consultation/summary/chain-summary.service';
-import { ChainSummaryServiceModule } from '../../consultation/summary/chain-summary.service.module';
 import { SummaryService } from '../../consultation/summary/summary.service';
 import { SummaryServiceModule } from '../../consultation/summary/summary.service.module';
 import { DnaWritingStyleProcessor } from '../../dna-writing-style/dna-writing-style.processor';
 import { DnaWritingStyleServiceModule } from '../../dna-writing-style/dna-writing-style.service.module';
 
 /**
- * DI wiring guard for the six repaired TEXT `/generate` callers.
+ * DI wiring guard for the five repaired TEXT `/generate` callers.
+ * (`ChainSummaryService` was a sixth until TASK-1006: it now reaches TEXT through
+ * `AgentInvocationService`, which injects the enrichment itself.)
  *
- * `TextRequestEnrichmentService` is injected `@Optional()` on all six, so a
+ * `TextRequestEnrichmentService` is injected `@Optional()` on all five, so a
  * module that does NOT import `TextRequestServiceModule` resolves it to
  * `undefined`, the `?.` call becomes a silent no-op, and the whole outage comes
  * back with every unit test still green — every existing fixture constructs
@@ -60,7 +60,6 @@ const CALLERS: Array<[name: string, service: unknown, module: unknown]> = [
   ['LiveDocumentationService', LiveDocumentationService, LiveDocumentationServiceModule],
   ['PreSummaryProcessor', PreSummaryProcessor, ConsultationJobServiceModule],
   ['ComprehensiveSummaryProcessor', ComprehensiveSummaryProcessor, ConsultationJobServiceModule],
-  ['ChainSummaryService', ChainSummaryService, ChainSummaryServiceModule],
   ['SummaryService', SummaryService, SummaryServiceModule],
   ['DnaWritingStyleProcessor', DnaWritingStyleProcessor, DnaWritingStyleServiceModule],
 ];

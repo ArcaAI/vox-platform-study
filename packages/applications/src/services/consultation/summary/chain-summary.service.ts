@@ -1,9 +1,8 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
+import { BadRequestException, HttpException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  AgentTask,
   AiDeploymentKind,
   ContextItemRepository,
   ConsultationRepository,
@@ -18,27 +17,29 @@ import {
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
 import { assembleTranscriptFragments, readSpeakerId } from './transcript-assembly.util';
-import { buildTextGeneratePayload, mapTextGenerateResponse } from './text-generate';
 import { buildLlmUsageBatches, parseTextUsageDetail, resolveDeployment, toLedgerProvider, type TextUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import { IComputeDeviceResolver } from '../../usageLedger/compute-device.resolver';
 import type { ComputeAugmentedBatch } from '../../usageLedger/compute-units';
 import type { UsageEventBatchInput } from '../../usageLedger/dto';
 import type { ComputeDevice } from '../../usageLedger/usage-attributes';
-import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
+import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
-import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { clientClinicalContextReaderFor } from '../context/client-clinical-context';
 import { SecretsService } from '../../baseServices/_meta/secrets';
-import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
-import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
-import { ConfigResolver } from '../../config-resolver';
-import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
+import { AgentResolverService } from '../../agent/agent-resolver.service';
+import { AgentInvocationService, type AgentTextInvocationResult } from '../../agent/agent-invocation.service';
+import { textPhaseSelectorTags } from '../../harness-policy/harness-policy.service';
+import { buildPreSummaryVariables } from '../prompt/pre-summary-variables';
+import { readSpokenLanguageMode } from '../consultation/summary-language';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition } from '../visit-type/visit-type.service';
 import { readRecordedVisitType } from '../consultation/open-markers';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { resolvePlatformOutputLanguage } from './platform-output-language';
+
+/** The named-entity aggregate the chain carries, grouped by class. */
+type AggregatedEntities = Record<string, Array<{ text: string; confidence?: number; sourceConsultationId: string }>>;
 
 /**
  * ChainSummaryService — generates comprehensive cross-chain summaries.
@@ -51,36 +52,31 @@ import { resolvePlatformOutputLanguage } from './platform-output-language';
  * 1. Resolve all linked consultation IDs (combined chain + date strategy)
  * 2. For each consultation, gather transcripts, summaries, case notes
  * 3. Optionally gather NER entities from all consultations
- * 4. Compose structured sections for the TEXT service
- * 5. Call TEXT for comprehensive summary generation
+ * 4. Compose the chain as the invocation text, and the requesting consultation's clinical context
+ *    as the agent's variables
+ * 5. Invoke the tenant's published TEXT_GENERATION agent for the finalize phase (TASK-1006 — the
+ *    agent plane; this path used to assemble its own prompt and call TEXT directly)
  * 6. Store result as ContextItem(RAW_SUMMARY) on the requesting consultation
  */
 @Injectable()
 export class ChainSummaryService extends BaseService {
   private readonly logger = new Logger(ChainSummaryService.name);
-  private readonly textServiceUrl: string;
 
   constructor(
     private readonly contextItemRepository: ContextItemRepository,
     private readonly consultationRepository: ConsultationRepository,
     private readonly summaryMetaRepository: SummaryMetaRepository,
     private readonly namedEntityRepository: NamedEntityRepository,
-    private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    private readonly promptAssemblyService: PromptAssemblyService,
+    // TASK-1006 — the agent plane. The tenant's assigned TEXT_GENERATION agent is resolved through
+    // the ONE resolver every runtime call uses (assignment cascade, 404-over-403, hidden-agent
+    // blindness), and run through the SAME invocation the business plane's `POST agents/:slug/
+    // invocations` uses, so its instruction, parameters, credential fold and guardrail decision
+    // apply here exactly as they do there.
+    private readonly agentResolver: AgentResolverService,
+    private readonly agentInvocation: AgentInvocationService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // Resolve the admin-managed TEXT {provider, model} on every
-    // TEXT call (the gateway has no model default). Optional + trailing so
-    // existing positional test fixtures keep compiling; production DI always
-    // supplies it (ChainSummaryServiceModule).
-    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // Resolve the requesting doctor's preferred prompt template id
-    // (UserProfile.preferredPromptTemplateId) so the sync chain-summary path
-    // honors Tier-0 prompt selection. Optional + trailing so existing positional
-    // test fixtures keep compiling; production DI supplies it (ChainSummaryServiceModule).
-    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
     // A chain summary spans several consultations and is one
     // of the most expensive generations the platform runs — leaving it
     // unmetered would understate cost exactly where it is highest. Optional +
@@ -98,29 +94,20 @@ export class ChainSummaryService extends BaseService {
     // the single seam and get the decision logged. Optional + trailing so
     // existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
-    // the SHARED TEXT enrichment path. Since lane B
-    // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
-    // body with no `provider_overrides` entry fails closed with 503
-    // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
-    // fixtures keep their arity.
-    @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
-    // the tenant's VISIT-TYPE catalogue, which replaces the
-    // `parentConsultationId ? 'revisit': 'new-patient'` literal below. Optional
-    // + trailing so existing positional fixtures keep their arity; an unwired
-    // resolver serves the two shipped visit types, whose keys and follow-up rule
-    // are byte-identical to the ternary it replaces.
+    // the tenant's VISIT-TYPE catalogue — the `visit_type` variable the agent reads. Optional
+    // + trailing so existing positional fixtures keep their arity; an unwired resolver serves the
+    // two shipped visit types.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
     // TASK-959 §3.1 — which device a SELF-HOSTED engine ran on. Without it the appender
     // records NO compute row for a self-hosted call rather than guessing one, and this is the
     // most expensive generation the platform runs. Optional + trailing like the ledger above it.
     @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
     // TASK-1001 (OD-12) — resolves `consultation.summary.outputLanguage`, the platform-default
-    // language the chain summary is WRITTEN in. Optional + trailing so the positional fixtures keep
-    // their arity; unwired ⇒ the descriptor's code default (English).
+    // language the chain summary is WRITTEN in (the agent's `language_name`). Optional + trailing;
+    // unwired ⇒ the descriptor's code default (English).
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
-    this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
   /**
@@ -135,8 +122,14 @@ export class ChainSummaryService extends BaseService {
   /**
    * Generate a comprehensive summary spanning all linked consultations.
    *
-   * This is the synchronous endpoint — blocks until TEXT returns.
+   * This is the synchronous endpoint — blocks until the agent returns.
    * For long consultation chains, prefer the async job endpoint.
+   *
+   * TASK-1006 — the generation runs on the AGENT PLANE: the tenant's published TEXT_GENERATION agent
+   * for the finalize phase, invoked through {@link AgentInvocationService}. The agent owns the
+   * instruction, model, parameters and guardrail decision, so the request's `template` and
+   * `options` (prompt-template and model overrides of the retired direct-TEXT path) no longer
+   * select anything; `dnaStyleId` is still recorded on the stored summary.
    */
   async generateComprehensiveSummary(consultationId: string, request: ComprehensiveSummaryRequest): Promise<ComprehensiveSummaryResponse> {
     const tenantId = this.tenantId;
@@ -166,13 +159,6 @@ export class ChainSummaryService extends BaseService {
     // throws `NotFoundException` for both missing and cross-tenant so
     // the response never leaks the existence of a foreign-tenant id.
     const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
-
-    // Resolve the requesting doctor's preferred prompt template id once,
-    // keyed off the consultation the comprehensive artifact is written to, so it can
-    // be threaded into promptAssemblyService.assemble (Tier-0 prompt selection).
-    const preferredPromptTemplateId = this.configResolver
-      ? await this.configResolver.resolvePreferredPromptTemplateId(consultation.doctorId ?? null)
-      : undefined;
 
     // Step 1: Resolve all linked consultations (chain + same-day)
     const linkedConsultations = await this.resolveLinkedConsultations(consultation);
@@ -206,29 +192,27 @@ export class ChainSummaryService extends BaseService {
     }
 
     // Step 3: Optionally gather NER entities
-    let aggregatedEntities:
-      | Record<
-          string,
-          Array<{
-            text: string;
-            confidence?: number;
-            sourceConsultationId: string;
-          }>
-        >
-      | undefined;
+    let aggregatedEntities: AggregatedEntities | undefined;
 
     if (request.includeNER !== false) {
       aggregatedEntities = await this.gatherNamedEntities(allConsultationIds);
     }
 
-    // Step 4: Compose structured input and assemble final prompt for TEXT
-    const textInput = await this.composeTextInput(consultation, sections, aggregatedEntities, request, preferredPromptTemplateId);
-
-    // Step 5: Call TEXT service
-    const textResponse = await this.callTextService(textInput);
+    // Step 4–5: invoke the tenant's agent over the composed chain. The chain entity carries the
+    // Department include the requesting row may not, so the department NAME is read off it.
+    const anchor = linkedConsultations.find((c) => c.id === consultation.id) ?? consultation;
+    const result = await this.invokeAgent(consultation, {
+      text: this.composeChainText(sections, aggregatedEntities),
+      variables: await this.noteContextVariables(consultation, anchor.Department?.name ?? null),
+    });
+    const usage = parseTextUsageDetail(result.usageDetail);
+    const modelName = result.model ?? result.provider ?? undefined;
+    const processingTimeMs = usage?.totalMs ?? undefined;
+    const inputTokens = result.usage?.promptTokens ?? undefined;
+    const outputTokens = result.usage?.completionTokens ?? undefined;
 
     // Step 6: Store as ContextItem(RAW_SUMMARY) on the requesting consultation
-    const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, textResponse.summary, request.dnaStyleId, userId ?? 'system');
+    const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, result.text, request.dnaStyleId, userId ?? 'system');
 
     // Encrypt the generated summary text into `encryptedContent`
     // before persistence — the plaintext `content` column was dropped by the
@@ -242,13 +226,13 @@ export class ChainSummaryService extends BaseService {
     const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
       tenantId,
       contextItemId: savedContext.id,
-      aiModelId: textResponse.modelName ?? textResponse.llmProvider,
-      processingTimeMs: textResponse.processingTimeMs,
-      inputTokens: textResponse.inputTokens,
-      outputTokens: textResponse.outputTokens,
+      aiModelId: modelName,
+      processingTimeMs,
+      inputTokens,
+      outputTokens,
     });
     await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-    await this.persistSummaryMetaWithUsage(summaryMeta, textResponse.usage, {
+    await this.persistSummaryMetaWithUsage(summaryMeta, usage, {
       tenantId,
       consultationId,
       doctorId: consultation.doctorId,
@@ -273,7 +257,7 @@ export class ChainSummaryService extends BaseService {
       contextItemId: savedContext.id,
       sectionCount: sections.length,
       sourceConsultationCount: allConsultationIds.length,
-      processingTimeMs: textResponse.processingTimeMs,
+      processingTimeMs,
     });
 
     return {
@@ -281,12 +265,7 @@ export class ChainSummaryService extends BaseService {
       consultationId: savedContext.consultationId,
       type: savedContext.type,
       content: savedContext.content ?? '',
-      structuredData: {
-        modelName: textResponse.modelName ?? textResponse.llmProvider,
-        processingTimeMs: textResponse.processingTimeMs,
-        inputTokens: textResponse.inputTokens,
-        outputTokens: textResponse.outputTokens,
-      },
+      structuredData: { modelName, processingTimeMs, inputTokens, outputTokens },
       sourceConsultationIds: allConsultationIds,
       sectionCount: sections.length,
       namedEntities: aggregatedEntities,
@@ -574,45 +553,10 @@ export class ChainSummaryService extends BaseService {
   }
 
   /**
-   * Compose structured input for the TEXT service.
-   *
-   * The TEXT service receives:
-   * - sections: array of content blocks with metadata
-   * - namedEntities: aggregated NER entities (optional)
-   * - dnaStyleId/template: prompt configuration
+   * The chain as ONE invocation `text`: a headed block per section, then the aggregated named
+   * entities. This is the agent's user prompt; its instruction is the agent's own.
    */
-  private async composeTextInput(
-    consultation: ConsultationEntity,
-    sections: ChainSectionDto[],
-    namedEntities:
-      | Record<
-          string,
-          Array<{
-            text: string;
-            confidence?: number;
-            sourceConsultationId: string;
-          }>
-        >
-      | undefined,
-    request: ComprehensiveSummaryRequest,
-    // Requesting doctor's preferred prompt template id (Tier-0).
-    preferredPromptTemplateId: string | null | undefined,
-  ): Promise<{
-    assembledPrompt: {
-      userPrompt: string;
-      systemPrompt: string;
-      hyperparameters: Record<string, number>;
-      responseFormat: {
-        type: string;
-        json_schema: Record<string, unknown>;
-        strict: boolean;
-      } | null;
-      resolvedFrom: PromptResolutionTier;
-    };
-    options?: Record<string, unknown>;
-    context: Record<string, unknown>;
-  }> {
-    // Build a structured text from all sections
+  private composeChainText(sections: ChainSectionDto[], namedEntities: AggregatedEntities | undefined): string {
     const sectionTexts = sections.map((section, index) => {
       const header = [
         `--- Section ${index + 1} ---`,
@@ -627,9 +571,6 @@ export class ChainSummaryService extends BaseService {
       return `${header}\n\n${section.content}`;
     });
 
-    const fullText = sectionTexts.join('\n\n');
-
-    // Build NER context if available
     let nerContext = '';
     if (namedEntities && Object.keys(namedEntities).length > 0) {
       const nerLines = Object.entries(namedEntities).map(([className, entities]) => {
@@ -639,125 +580,68 @@ export class ChainSummaryService extends BaseService {
       nerContext = `\n\n--- Named Entities (auto-extracted) ---\n${nerLines.join('\n')}`;
     }
 
-    const transcript = fullText + nerContext;
-    // The measured readings and prior-visit history the client stated at `open` on the
-    // consultation this chain is anchored to. Absent for a consultation that stated neither.
+    return sectionTexts.join('\n\n') + nerContext;
+  }
+
+  /**
+   * The requesting consultation's clinical context, as the agent's `variables`.
+   *
+   * The consultation-note vocabulary the seeded summarization agents bind (`current_department`,
+   * `visit_type`, `safe_*`, `formatted_vitals`, `formatted_previous_visits`, …), valued exactly as
+   * the durable lane's live handoff values them: through the shared `buildPreSummaryVariables`
+   * builder (so an absent field inherits the same declared default), with the measured readings and
+   * prior visits the client stated at `open`. `language` is the SOURCE language the microphone heard;
+   * `language_name` is the note's OUTPUT language, the platform default (TASK-1001) — never the
+   * declared code-switch.
+   *
+   * Supplied as plain strings, which override an agent's `{ path }` bindings of the same names: a
+   * standalone invocation has no workflow trigger for those paths to resolve against.
+   */
+  private async noteContextVariables(consultation: ConsultationEntity, departmentName: string | null): Promise<Record<string, string>> {
     const client = await clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).read(consultation.id);
-    const assembledPrompt = await this.promptAssemblyService.assemble({
-      departmentId: consultation.departmentId ?? undefined,
+    const spokenLanguage = readSpokenLanguageMode(consultation);
+    const outputLanguage = await resolvePlatformOutputLanguage(this.effectiveSettings, consultation.tenantId, this.logger);
+    const shared = buildPreSummaryVariables({
+      currentDepartment: departmentName,
+      visitType: this.visitType(consultation).key,
+      language: spokenLanguage,
       vitals: client.vitals,
       previousVisits: client.previousVisits,
-      // Tenant-configured visit type ; `parentConsultationId`
-      // remains the follow-up signal, the vocabulary is no longer a literal.
-      promptType: this.visitType(consultation).key,
-      transcript,
-      // TASK-1001 (OD-12) — the platform-default OUTPUT language; never a per-request option.
-      conversationLanguage: (await resolvePlatformOutputLanguage(this.effectiveSettings, consultation.tenantId, this.logger)).tag,
-      dnaStyleId: request.dnaStyleId,
-      explicitTemplate: request.template ?? 'comprehensive',
-      // Thread the requesting doctor's preferred prompt template id (Tier-0).
-      preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
     });
-
     return {
-      assembledPrompt,
-      options: request.options,
-      context: {
-        dnaStyleId: request.dnaStyleId,
-        template: request.template ?? 'comprehensive',
-        includeNER: request.includeNER,
-        summaryType: 'summary',
-        promptResolvedFrom: assembledPrompt.resolvedFrom,
-        promptHyperparameters: assembledPrompt.hyperparameters,
-        isComprehensiveSummary: true,
-        sectionCount: sections.length,
-        sourceConsultationCount: new Set(sections.map((s) => s.consultationId)).size,
-      },
+      ...shared,
+      language_name: outputLanguage.name,
+      language: (spokenLanguage ?? '').trim(),
+      chief_complaint: '',
+      formatted_vitals: client.vitals ?? shared.safe_vitals,
     };
   }
 
   /**
-   * Call the TEXT service for comprehensive summary generation.
+   * Resolve the tenant's TEXT_GENERATION agent for the finalize phase (department → tenant) and
+   * invoke it, blocking.
+   *
+   * Every refusal the agent plane raises — no agent assigned (503), an unusable connection (409),
+   * a missing prompt variable (400) — propagates as that plane states it. Only a failure with no
+   * HTTP meaning of its own (the TEXT transport) is mapped, to the route's historical 400.
    */
-  private async callTextService(payload: {
-    assembledPrompt: {
-      userPrompt: string;
-      systemPrompt: string;
-      hyperparameters: Record<string, number>;
-      responseFormat: {
-        type: string;
-        json_schema: Record<string, unknown>;
-        strict: boolean;
-      } | null;
-      resolvedFrom: PromptResolutionTier;
-    };
-    options?: Record<string, unknown>;
-    context: Record<string, unknown>;
-  }): Promise<{
-    summary: string;
-    llmProvider?: string;
-    modelName?: string;
-    processingTimeMs?: number;
-    inputTokens?: number;
-    outputTokens?: number;
-    usage: TextUsageDetail | null;
-  }> {
-    // The tenant id is resolved EXPLICITLY (B-04), OUTSIDE the try/catch
-    // below — never a bare no-arg call trusting `resolveTextSelection`'s own
-    // CLS fallback, so a worker path with unpopulated CLS fails loudly with
-    // a clear message instead of either silently serving the SYSTEM default
-    // model or having that failure masked by the generic TEXT-call catch.
-    if (this.harnessPolicyService && !this.tenantId) {
-      throw new BadRequestException('Tenant ID is required');
-    }
-
+  private async invokeAgent(
+    consultation: ConsultationEntity,
+    input: { text: string; variables: Record<string, string> },
+  ): Promise<AgentTextInvocationResult> {
+    const agent = await this.agentResolver.resolve({
+      tenantId: consultation.tenantId,
+      task: AgentTask.TEXT_GENERATION,
+      departmentId: consultation.departmentId ?? null,
+      selectorTags: textPhaseSelectorTags('finalize'),
+    });
     try {
-      // Resolve the admin-managed {provider, model} (no in-gateway
-      // default) as the base so a caller-supplied model still wins.
-      let options = payload.options;
-      // TASK-891 — the resolved selection's `generation` block, carried alongside
-      // {provider, model} so its reasoning posture can reach `applyTextRuntimeProfile` below.
-      let generation: Record<string, unknown> | undefined;
-      if (this.harnessPolicyService) {
-        const selection = await this.harnessPolicyService.resolveTextSelection(this.tenantId!, 'finalize');
-        options = { textProvider: selection.provider, textModel: selection.model, ...payload.options };
-        generation = selection.generation;
-      }
-      const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
-      // inject the tenant's resolved provider credential through the
-      // ONE shared implementation (tenant → SYSTEM cascade, `funding` label
-      // carried so metering is derived from the supplying row rather than
-      // stamped here). Without it TEXT fails closed with 503
-      // PROVIDER_CREDENTIALS_MISSING — lane B removed its env plane.
-      // layer the platform admin's runtime profile (hyperparameters + engine
-      // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
-      // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
-      // TASK-891 — `generation` carries the resolved agent's reasoning posture (OD-4) onto the
-      // `extra` ride-along; an agent with no opinion injects nothing.
-      await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string }, generation);
-      await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
-      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
-      // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY — the tenant
-      // was null-checked at the top of this method and then DROPPED, so Text
-      // resolved the platform-default provider instead of this tenant's BYOK
-      // credential and derived `funding`/`cost_basis` ran against the
-      // wrong tier. `this.tenantId` is non-null here whenever the policy service
-      // is wired; the declared marker covers the no-policy-service fixture path so
-      // the header is never simply absent.
-      const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
-      const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
-        timeout: 180000,
-        headers: internalServiceHeaders({
-          serviceToken,
-          tenantId: this.tenantId,
-          tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
-        }),
-      });
-      const data = response.data as { usage_detail?: unknown } | null;
-      return { ...mapTextGenerateResponse(response.data), usage: parseTextUsageDetail(data?.usage_detail) };
+      return await this.agentInvocation.invokeText(agent, consultation.tenantId, input, 'blocking');
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error({
-        message: 'TEXT service call failed for comprehensive summary',
+        message: 'Agent invocation failed for comprehensive summary',
+        agentSlug: agent.slug,
         error: error instanceof Error ? error.message : String(error),
       });
       throw new BadRequestException('Failed to generate comprehensive summary from AI service');

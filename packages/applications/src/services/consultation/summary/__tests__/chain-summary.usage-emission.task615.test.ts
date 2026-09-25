@@ -48,12 +48,18 @@ function makeService() {
     create: vi.fn().mockResolvedValue({ id: 'meta-1' }),
     encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
   };
-  const httpService = {
-    axiosRef: {
-      post: vi.fn().mockResolvedValue({
-        data: { content: 'chained summary', provider: 'lm-studio', model: 'medgemma', usage_detail: USAGE_DETAIL },
-      }),
-    },
+  // TASK-1006 — the chain summary runs on the agent plane; the invocation hands back TEXT's own
+  // `usage_detail` verbatim, which is what the ledger rows are built from.
+  const agentResolver = { resolve: vi.fn().mockResolvedValue({ slug: 'general-medicine-summarization', task: 'TEXT_GENERATION' }) };
+  const agentInvocation = {
+    invokeText: vi.fn().mockResolvedValue({
+      text: 'chained summary',
+      provider: 'lm-studio',
+      model: 'medgemma',
+      usage: { promptTokens: 4000, completionTokens: 600 },
+      usageDetail: USAGE_DETAIL,
+      promptFragments: null,
+    }),
   };
   const usageLedger = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
   const unitOfWork = { runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX)) };
@@ -63,29 +69,17 @@ function makeService() {
     consultationRepository as never,
     summaryMetaRepository as never,
     { findByContextItem: vi.fn().mockResolvedValue([]) } as never,
-    httpService as never,
-    { get: vi.fn(() => 'http://text') } as never,
     { emit: vi.fn() } as never,
     {
       get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : key === 'user' ? { id: 'user-1' } : null)),
       set: vi.fn(),
       run: vi.fn((cb: () => unknown) => cb()),
     } as never,
-    {
-      assemble: vi.fn().mockResolvedValue({
-        userPrompt: 'u',
-        systemPrompt: 's',
-        hyperparameters: {},
-        responseFormat: null,
-        resolvedFrom: 'default',
-        promptId: 'p-1',
-      }),
-    } as never,
+    agentResolver as never,
+    agentInvocation as never,
     // `.env.test` sets SECRETS_PROVIDER=vault, under which the PHI guard is
     // fail-closed and refuses to persist without a secrets service.
     { getSecretOptional: vi.fn().mockResolvedValue('') } as never,
-    { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) } as never,
-    undefined, // configResolver
     usageLedger as never,
     unitOfWork as never,
   );
