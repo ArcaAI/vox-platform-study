@@ -93,6 +93,10 @@ export class AgenticInstructionsService extends BaseService {
         // pre-summary template.
         tenantId,
         promptType,
+        // TASK-1006 — report the pre-summary template generation actually uses: every generation
+        // path asks for the department-free family, and the resolver's `'v1'` default served only
+        // the removed v1-compat surface. Ignored for every other prompt type.
+        preSummaryVariant: 'dept-free',
       }),
     ]);
 

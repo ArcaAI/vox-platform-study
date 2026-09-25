@@ -111,6 +111,8 @@ describe('AgenticInstructionsService.getEffectiveInstructions', () => {
       tenantId: 't1',
       departmentId: 'dep-1',
       promptType: 'new-patient',
+      // Ignored by the summary chain; see the pre-summary case below.
+      preSummaryVariant: 'dept-free',
     });
     expect(out.promptTier.template).toBe('SOAP');
     expect(out.promptTier.promptId).toBe('71000000-0000-0000-0000-000000000036');
@@ -127,6 +129,18 @@ describe('AgenticInstructionsService.getEffectiveInstructions', () => {
     const { service, promptResolutionService } = makeService();
     await service.getEffectiveInstructions('t1', { promptType: 'pre-summary' });
     expect(promptResolutionService.resolve).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', promptType: 'pre-summary' }));
+  });
+
+  // TASK-1006 — the inventory reports the pre-summary template GENERATION actually uses. Every
+  // generation path asks for the department-free family; the resolver's `'v1'` default existed for
+  // the v1-compat surface (removed by TASK-1004), so an inventory that omitted the variant reported
+  // a template nothing generates with.
+  it('resolves the pre-summary tier for the department-free family generation uses', async () => {
+    const { service, promptResolutionService } = makeService();
+    await service.getEffectiveInstructions('t1', { promptType: 'pre-summary' });
+    expect(promptResolutionService.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ promptType: 'pre-summary', preSummaryVariant: 'dept-free' }),
+    );
   });
 
   it('exposes the vendored PDSQI judge-prompt pin (read-only, non-editable)', async () => {
