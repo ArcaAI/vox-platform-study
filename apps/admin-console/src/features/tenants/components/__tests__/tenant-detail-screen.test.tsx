@@ -232,6 +232,14 @@ describe('TenantDetailScreen', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/tenants'));
   });
 
+  it('does not render a pipeline-resync action — AsrPipeline is retired (TASK-1006)', async () => {
+    stubDetailFetch();
+    renderWithProviders(<TenantDetailScreen id="t-1" />);
+
+    await screen.findByRole('heading', { level: 1, name: 'Sunrise Medical Group' });
+    expect(screen.queryByRole('button', { name: /resync pipeline templates/i })).toBeNull();
+  });
+
   it('shows usage stat tiles with formatted numbers and bytes', async () => {
     stubDetailFetch();
     renderWithProviders(<TenantDetailScreen id="t-1" />, { searchParams: '?tab=usage' });
