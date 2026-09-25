@@ -136,7 +136,7 @@ describe('M-01 — teardown during async subscription setup releases the Redis c
   it('ConsultationJobService.subscribeToJobUpdates', async () => {
     const redisSubscriber = buildRefcountedSubscriber({ gated: true });
     const cache = cacheStub(JSON.stringify({ jobId: 'j1', status: 'PROCESSING', type: 'PRE_SUMMARY', createdAt: new Date().toISOString() }));
-    const service = new ConsultationJobService(null as never, null as never, cache as never, redisSubscriber as never);
+    const service = new ConsultationJobService(null as never, cache as never, redisSubscriber as never);
     const channel = 'consultation_job_updates:j1';
 
     const sub = service.subscribeToJobUpdates('j1').subscribe();
@@ -153,7 +153,7 @@ describe('M-02 — one viewer leaving must not complete a concurrent viewer’s 
   it('ConsultationJobService.subscribeToJobUpdates keeps the survivor receiving published updates', async () => {
     const redisSubscriber = buildRefcountedSubscriber();
     const cache = cacheStub(JSON.stringify({ jobId: 'j1', status: 'PROCESSING', type: 'PRE_SUMMARY', createdAt: new Date().toISOString() }));
-    const service = new ConsultationJobService(null as never, null as never, cache as never, redisSubscriber as never);
+    const service = new ConsultationJobService(null as never, cache as never, redisSubscriber as never);
     const channel = 'consultation_job_updates:j1';
 
     const survivorEvents: MessageEvent[] = [];

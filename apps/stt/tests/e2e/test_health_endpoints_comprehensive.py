@@ -42,7 +42,8 @@ import pytest
 _VALID_HEALTH_STATUSES = frozenset({"healthy", "degraded", "unhealthy", "not_initialized"})
 
 # Required infrastructure component names from the /ready endpoint
-_REQUIRED_COMPONENTS = frozenset({"database", "minio", "redis"})
+# TASK-1006: apps/stt has no database, so its health report names none.
+_REQUIRED_COMPONENTS = frozenset({"minio", "redis"})
 
 
 # ---------------------------------------------------------------------------
@@ -234,19 +235,13 @@ class TestReadinessEndpointE2E:
 
         Note: The ``configured_app`` fixture uses testcontainers but does NOT
         trigger the FastAPI lifespan (``initialize_minio`` / ``configure_broker``
-        are not called).  MinIO and Redis health checks will therefore report
-        *unhealthy*.  Only the database component is expected to be healthy.
+        are not called), so MinIO and Redis may report *unhealthy* here. The
+        service has no database (TASK-1006), so no ``database`` check exists.
         """
         response = await configured_app.get("/api/v1/health")
         data = response.json()
         assert data["status"] in _VALID_HEALTH_STATUSES
-
-        db_check = data["checks"].get("database")
-        assert db_check is not None, "Expected 'database' check in /health response"
-        assert db_check["status"] == "healthy", (
-            f"Database check should be healthy via testcontainer, "
-            f"got '{db_check['status']}': {db_check.get('message')}"
-        )
+        assert "database" not in data["checks"], "stt has no database (TASK-1006)"
 
     async def test_ready_component_latency_sanity(self, configured_app):
         """Component durations in /health should be positive and under 5 seconds."""

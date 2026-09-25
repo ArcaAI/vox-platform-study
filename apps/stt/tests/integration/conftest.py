@@ -11,7 +11,9 @@ Test Ports (matching monorepo infrastructure):
 - MinIO: 9002 (test) vs 9000 (dev)
 
 apps/stt has no database (TASK-1006), so the suite gates on the infrastructure its
-fixtures actually use — Redis — rather than on Postgres.
+fixtures actually use — Redis AND MinIO — rather than on Postgres. Checking one alone is
+not enough: another stack bound to 6380 (e.g. the ALaaS harness Redis) answers PING, and
+the MinIO-backed tests then fail instead of skipping.
 """
 
 import pytest
@@ -20,6 +22,7 @@ import pytest
 from tests.helpers.infra import (
     get_minio_config,
     get_redis_url,
+    is_minio_healthy,
     wait_for_redis,
 )
 
@@ -31,7 +34,7 @@ from tests.helpers.infra import (
 @pytest.fixture(scope="session", autouse=True)
 def verify_test_environment():
     """Verify test infrastructure is available before running integration tests."""
-    if not wait_for_redis(max_retries=10, interval=1.0):
+    if not (wait_for_redis(max_retries=10, interval=1.0) and is_minio_healthy()):
         pytest.skip(
             "Integration tests require the monorepo test infrastructure.\n"
             "Start with: pnpm docker:test:up (from monorepo root)"

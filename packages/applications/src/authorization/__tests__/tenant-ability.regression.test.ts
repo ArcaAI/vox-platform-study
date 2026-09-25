@@ -133,13 +133,13 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
     // widening `tenant-full-access` with tenant-scoped manage rules for
     // Departments and ASR pipelines. Lock the seed shape so a future edit
     // that drops either rule fails here before reaching production.
-    it('tenant-full-access policy includes manage:Department and manage:AsrPipeline', () => {
+    it('tenant-full-access policy includes manage:Department and manage:TranscriptionJob', () => {
       const policy = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
       expect(policy).toBeDefined();
       expect(policy?.rules).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ action: 'manage', subject: 'Department' }),
-          expect.objectContaining({ action: 'manage', subject: 'AsrPipeline' }),
+          expect.objectContaining({ action: 'manage', subject: 'TranscriptionJob' }),
         ]),
       );
     });
@@ -278,7 +278,7 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
 
       // Widened self-service surfaces (doc-04 F1 nav↔backend gap closed).
       expect(ability.can('manage', 'Department')).toBe(true);
-      expect(ability.can('manage', 'AsrPipeline')).toBe(true);
+      expect(ability.can('manage', 'TranscriptionJob')).toBe(true);
       expect(ability.can('manage', 'Storage')).toBe(true);
       // Own-tenant read/update reaches the relaxed Tenant controllers.
       expect(ability.can('update', 'Tenant')).toBe(true);
