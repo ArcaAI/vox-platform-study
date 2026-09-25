@@ -26,70 +26,6 @@ const SUMMARY = {
   updatedAt: '2026-01-01T00:00:00Z',
 };
 
-describe('ConsultationSummariesResource#generate', () => {
-  it('POSTs /api/v1/consultations/:id/summary', async () => {
-    const fetchImpl = fetchMock(async () => jsonResponse(200, SUMMARY));
-    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
-    const resource = new ConsultationSummariesResource(transport);
-
-    const result = await resource.generate('c1', { transcription: 'hello' });
-
-    const [url, init] = callArgs(fetchImpl);
-    expect(url).toBe('http://localhost:8868/api/v1/consultations/c1/summary');
-    expect(init.method).toBe('POST');
-    expect(result).toEqual(SUMMARY);
-  });
-
-  it('does not auto-generate an idempotencyKey when omitted (sync route ignores it)', async () => {
-    const fetchImpl = fetchMock(async () => jsonResponse(200, SUMMARY));
-    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
-    const resource = new ConsultationSummariesResource(transport);
-
-    await resource.generate('c1', {});
-
-    const [, init] = callArgs(fetchImpl);
-    const body = JSON.parse(init.body as string);
-    expect(body.idempotencyKey).toBeUndefined();
-  });
-
-  it('lets an explicit idempotencyKey option land in the body', async () => {
-    const fetchImpl = fetchMock(async () => jsonResponse(200, SUMMARY));
-    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
-    const resource = new ConsultationSummariesResource(transport);
-
-    await resource.generate('c1', {}, { idempotencyKey: 'key-123' });
-
-    const [, init] = callArgs(fetchImpl);
-    const body = JSON.parse(init.body as string);
-    expect(body.idempotencyKey).toBe('key-123');
-  });
-
-  it('percent-encodes the consultation id in the path', async () => {
-    const fetchImpl = fetchMock(async () => jsonResponse(200, SUMMARY));
-    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
-    const resource = new ConsultationSummariesResource(transport);
-
-    await resource.generate('c/1', {});
-
-    const [url] = callArgs(fetchImpl);
-    expect(url).toBe('http://localhost:8868/api/v1/consultations/c%2F1/summary');
-  });
-});
-
-describe('ConsultationSummariesResource#generatePreSummary', () => {
-  it('POSTs /api/v1/consultations/:id/summary/pre-summary', async () => {
-    const fetchImpl = fetchMock(async () => jsonResponse(200, { ...SUMMARY, type: 'pre_summary' }));
-    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
-    const resource = new ConsultationSummariesResource(transport);
-
-    await resource.generatePreSummary('c1', { caseNoteIds: ['n1'] });
-
-    const [url, init] = callArgs(fetchImpl);
-    expect(url).toBe('http://localhost:8868/api/v1/consultations/c1/summary/pre-summary');
-    expect(init.method).toBe('POST');
-  });
-});
-
 describe('ConsultationSummariesResource#generateAsync', () => {
   const asyncResponse = { jobId: 'job-1', status: 'pending' as const, consultationId: 'c1', createdAt: '2026-01-01T00:00:00Z' };
 
@@ -255,50 +191,6 @@ describe('ConsultationSummariesResource#update', () => {
       status: 412,
       currentVersion: 5,
     });
-  });
-});
-
-describe('ConsultationSummariesResource — synchronous generation timeouts (TASK-946)', () => {
-  // A four-note BREN pre-summary took 46–68 s on the dev box while the transport's 60 s default
-  // gave up first (§5.1 of the ticket): the SYNCHRONOUS generation routes are long by nature, so
-  // they carry their own floor — overridable per call, and never above an integrator's explicit
-  // client-level `timeoutMs`.
-  function spiedResource(config: { timeoutMs?: number } = {}) {
-    const fetchImpl = fetchMock(async () => jsonResponse(200, SUMMARY));
-    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl, ...config });
-    const request = vi.spyOn(transport, 'request');
-    return { resource: new ConsultationSummariesResource(transport), request };
-  }
-
-  it('generatePreSummary defaults to the 180 s generation floor when the client sets no timeout', async () => {
-    const { resource, request } = spiedResource();
-    await resource.generatePreSummary('c1', {});
-    expect(request).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 180_000 }));
-  });
-
-  it('generate (sync summary) carries the same generation floor', async () => {
-    const { resource, request } = spiedResource();
-    await resource.generate('c1', { transcription: 'hello' });
-    expect(request).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 180_000 }));
-  });
-
-  it('an explicit client-level timeoutMs wins over the generation floor', async () => {
-    const { resource, request } = spiedResource({ timeoutMs: 45_000 });
-    await resource.generatePreSummary('c1', {});
-    expect(request).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 45_000 }));
-  });
-
-  it('a per-call timeoutMs wins over both', async () => {
-    const { resource, request } = spiedResource({ timeoutMs: 45_000 });
-    await resource.generatePreSummary('c1', {}, { timeoutMs: 300_000 });
-    expect(request).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 300_000 }));
-  });
-
-  it('the async routes and reads keep the transport default (no floor)', async () => {
-    const { resource, request } = spiedResource();
-    await resource.generatePreSummaryAsync('c1', {});
-    await resource.latestPreSummary('c1');
-    for (const call of request.mock.calls) expect(call[0]).not.toHaveProperty('timeoutMs');
   });
 });
 

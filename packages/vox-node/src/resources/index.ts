@@ -12,13 +12,8 @@
 
 export * from './admin';
 
-export type {
-  ApproveSummaryOptions,
-  ConsultationSummaryRequestOptions,
-  GenerateSummaryOptions,
-  UpdateSummaryOptions,
-} from './consultation-summaries';
-export { ConsultationSummariesResource, SYNC_GENERATION_TIMEOUT_MS } from './consultation-summaries';
+export type { ApproveSummaryOptions, ConsultationSummaryRequestOptions, UpdateSummaryOptions } from './consultation-summaries';
+export { ConsultationSummariesResource } from './consultation-summaries';
 
 export type { JobRequestOptions, WaitForOptions } from './jobs';
 export { isTerminalJobStatus, JobsResource } from './jobs';
