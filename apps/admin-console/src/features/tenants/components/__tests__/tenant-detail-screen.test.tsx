@@ -43,7 +43,6 @@ const USAGE: TenantUsage = {
   totalUsers: 142,
   totalDepartments: 12,
   totalPromptTemplates: 34,
-  totalPipelines: 5,
   storageUsedBytes: 612 * 1024 ** 3,
   storageQuotaBytes: 1024 ** 4,
   transcriptionMinutes: 5231,
@@ -238,6 +237,14 @@ describe('TenantDetailScreen', () => {
 
     await screen.findByRole('heading', { level: 1, name: 'Sunrise Medical Group' });
     expect(screen.queryByRole('button', { name: /resync pipeline templates/i })).toBeNull();
+  });
+
+  it('shows no Pipelines tile — the usage response carries no pipeline count (TASK-1006)', async () => {
+    stubDetailFetch();
+    renderWithProviders(<TenantDetailScreen id="t-1" />, { searchParams: '?tab=usage' });
+
+    expect(await screen.findByText('Prompt templates')).toBeDefined();
+    expect(screen.queryByText('Pipelines')).toBeNull();
   });
 
   it('shows usage stat tiles with formatted numbers and bytes', async () => {

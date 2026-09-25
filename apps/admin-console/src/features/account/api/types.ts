@@ -11,13 +11,6 @@ export interface UserPreferences {
   language?: string;
   dnaStyleId?: string;
   localConfig?: LocalWorkflowConfig;
-  /** Read-only: assigned pipeline info. */
-  remoteConfig?: {
-    pipelineId: string;
-    pipelineName?: string;
-    assignedBy: 'admin' | 'tenant-default';
-    codeSwitchingEnabled?: boolean;
-  };
   /** Read-only: the active voice enrollment. */
   activeVoiceProfile?: { id: string; label?: string; modelId?: string; createdAt: string };
   custom?: Record<string, unknown>;
@@ -35,7 +28,7 @@ export interface LocalWorkflowConfig {
   voiceProfile?: { autoActivateLatest?: boolean; similarityThreshold?: number; useBackendAnchor?: boolean };
 }
 
-/** PATCH /users/me/preferences body (remoteConfig is NOT settable). */
+/** PATCH /users/me/preferences body. */
 export interface UpdateUserPreferencesRequest {
   workflowMode?: WorkflowMode;
   language?: string;

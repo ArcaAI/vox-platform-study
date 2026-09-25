@@ -44,7 +44,6 @@ export function TenantUsageTab({ id }: { id: string }) {
     { label: 'Transcription minutes', value: formatNumber(data.transcriptionMinutes) },
     { label: 'Summaries (24h)', value: formatNumber(data.summaries24h) },
     { label: 'Prompt templates', value: formatNumber(data.totalPromptTemplates) },
-    { label: 'Pipelines', value: formatNumber(data.totalPipelines) },
   ];
   const quota = data.storageQuotaBytes;
   const usedPercent = quota ? (data.storageUsedBytes / quota) * 100 : null;

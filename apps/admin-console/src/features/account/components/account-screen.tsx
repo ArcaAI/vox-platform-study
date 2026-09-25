@@ -324,15 +324,6 @@ export function AccountScreen() {
                     </Badge>
                     {preferences.transcriptionModeLocked ? <Badge variant="outline">Locked by admin</Badge> : null}
                   </ReadOnlyField>
-                  {preferences.remoteConfig ? (
-                    <ReadOnlyField label="Assigned transcription agent">
-                      <span>{preferences.remoteConfig.pipelineName ?? preferences.remoteConfig.pipelineId}</span>
-                      <Badge variant="outline" className="text-muted-foreground font-mono text-xs">
-                        {preferences.remoteConfig.assignedBy}
-                      </Badge>
-                      {preferences.remoteConfig.codeSwitchingEnabled ? <Badge variant="outline">Code-switching</Badge> : null}
-                    </ReadOnlyField>
-                  ) : null}
                   {preferences.activeVoiceProfile ? (
                     <ReadOnlyField label="Active voice profile">
                       <span>{preferences.activeVoiceProfile.label ?? preferences.activeVoiceProfile.id}</span>

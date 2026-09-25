@@ -76,7 +76,6 @@ const DEPARTMENT: UserDepartment = {
 const PREFERENCES: UserPreferences = {
   workflowMode: 'local',
   language: 'sv-SE',
-  remoteConfig: { pipelineId: 'pipe-1', pipelineName: 'Nordic clinical ASR', assignedBy: 'admin', codeSwitchingEnabled: true },
   activeVoiceProfile: { id: 'vp-1', label: 'Clinic mic', modelId: 'm-1', createdAt: '2026-05-20T08:00:00.000Z' },
   transcriptionMode: 'LOCAL',
   transcriptionModeLocked: false,
@@ -179,14 +178,16 @@ describe('AccountScreen', () => {
     await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalled());
   });
 
-  it('renders read-only pipeline info and saving preferences PATCHes the edited fields with a toast', async () => {
+  it('renders read-only preference info and saving preferences PATCHes the edited fields with a toast', async () => {
     const calls = stubFetch(happyHandler());
     renderWithProviders(<AccountScreen />);
 
-    // Read-only assignment info from the preferences payload.
+    // Read-only info from the preferences payload.
     const preferences = await screen.findByRole('region', { name: 'Preferences' });
-    expect(within(preferences).getByText('Nordic clinical ASR')).toBeDefined();
     expect(within(preferences).getByText('Clinic mic')).toBeDefined();
+    // TASK-1006 — the preferences payload carries no `remoteConfig`: the ASR engine is the
+    // gateway-resolved agent, not a user preference, so there is no assignment to show.
+    expect(within(preferences).queryByText('Assigned transcription agent')).toBeNull();
 
     const language = within(preferences).getByLabelText('Language');
     expect((language as HTMLInputElement).value).toBe('sv-SE');
