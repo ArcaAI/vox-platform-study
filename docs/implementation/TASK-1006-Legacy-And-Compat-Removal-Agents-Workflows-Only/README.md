@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — all lanes merged on `dev-2.2` (local, not pushed); gate pass green apart from pre-existing failures; awaiting backup + push approval |
+| Status | **Review** — deployed to dev 2026-09-25 (pipeline #1335, Argo Synced/Healthy); SDK 4.0.0 local release next; transcript-ingress rollout needs an admin login |
 | Type | refactor (removal) + feature (ALaaS migration) |
 | Branch | `dev-2.2` (hope-v2) · `main` (hope-v2-deployment) · `refactor-hope-integaration` (ALaaSv3.0) |
 | Opened | 2026-09-25 |
@@ -130,12 +130,30 @@ register rows not yet `removed`, rules `05`/`06`/`08`/`09`; deployment repo `doc
 | lint-py | PASS; mypy: 4 errors in apps/stt streaming — **pre-existing** (identical in the previous gate) |
 | gen:model/entity/factory checks, env:sync --check, sdk exports, openapi/portal/gen:admin checks | PASS |
 
+### 7.4 Deploy (2026-09-25)
+
+| Step | Evidence |
+|---|---|
+| Pre-deploy backup (owner-approved one-off Job from the `hope-postgres-backup` CronJob) | pgBackRest diff `20260920-023001F_20260925-054212D`, 05:42:12–05:42:19 UTC, database 148.6 MB |
+| Deployment repo | `main` fast-forwarded to `38c08fa` (STT `DATABASE_*` env + 5432 egress removed; `hope-gpu-process-exporter` classified) — pipeline #1334 green incl. `envfrom-coverage`, red on main since #1329. The peer session's local-only commit `443c42f` on the deployment primary checkout was NOT pushed (not reviewed here). |
+| hope-v2 | `dev-2.2` `370bb8132..bfc3b3513`, pipeline #1335 **passed** (39 min, incl. `verify-dev`); promote `e49c0f9` |
+| Migration | `hope-db-migrate`: "Applying migration `20260925043212_task_1006_drop_asr_pipeline_and_stt_config`" … "All migrations have been successfully applied." |
+| Argo | `hope-v2-dev` Synced / Healthy at `e49c0f9e`; only the two self-deleting Jobs listed (permanent, benign) |
+| Routes on `api-dev.taphuynh.dev` | 404: `admin/audio/pipelines`, `audio/pipelines`, `admin/stt-config`, `admin/tenants/:id/pipelines/resync`, `consultations/:id/summary`, `…/pre-summary`, `…/comprehensive/async`; 401 (kept, auth required): `…/summary/comprehensive`, `…/summary/async`, `admin/model-residency/catalogue`, `admin/audio/transcription-jobs`; `GET /health` 200 `0.0.0-dev-2-2.bfc3b351` |
+| Local dev DB | `prisma db push --accept-data-loss` with explicit owner consent; tables and columns gone |
+
+Found while verifying, fixed:
+- **`PROMETHEUS_URL` was never set for the gateway on the cluster** (fell back to `localhost:9090`; every platform-metrics query and the residency catalogue's GPU/usage figures degraded to empty, "fetch failed"). Deployment `b5054e2` sets `http://prometheus:9090` in `base/config/api.env` (owner-approved).
+- **vox-node's `index.d.ts` imported `@arcaai/types`**, a devDependency the published manifest never names, so consumers (ALaaS) typed `GoverningRunSummary` / `OpenRefusalCode` / `ApiKeyScopePreset*` as `any`. `dts.resolve` inlines them (`98b7231e0`; attw + publint green).
+- **`@arcaai/types` was stale on the registry (0.1.0)** while `@arcaai/vox` depends on it. Owner decision: version it at **4.0.0** in lockstep and publish it with the family — it joins the `fixed` group, gains `publishConfig`/`repository`/`files`, and the five private workspace dependents go in the Changesets `ignore` list (plan probe lists exactly the eight family packages).
+
 STT e2e/integration are not CI gates; the integration conftest now skips unless test Redis AND MinIO are up (the ALaaS harness Redis on 6380 fooled the Redis-only gate), and the stale e2e health `database` expectation was removed. The e2e streaming-session DELETE failures are pre-existing.
 
 ## 8. Change history
 
 | Date | Change |
 |---|---|
+| 2026-09-25 | Deployed to dev (backup → deployment `38c08fa` → hope-v2 `bfc3b3513`, #1335 green, migration applied, routes verified). Post-deploy fixes: gateway `PROMETHEUS_URL` (deployment `b5054e2`), vox-node self-contained declarations, `@arcaai/types` 4.0.0 in the SDK family. |
 | 2026-09-25 | Wave 2 + tail merged: L-DB (`aad0acb1c`), L-DOCS (`cf84dfdee`), L-CLEAN (`74ebbab58`), L-BATCH (`051ff3eda`, taken over from a peer session's plan), L-TAIL (`25cdb5e69`); drop migration `1cff0879f`; lockfiles/env surface `64fabb4a9`; artifacts `11d18950c`; gate fixes `e5e9259a6`, `86b2d1665`, `5b7d6be19`, `20e8d6f37`. Deployment repo `task-1006/docs-deploy` @ `38c08fa` (includes origin/main). Status → Review. |
 | 2026-09-25 | Wave 1 merged into `dev-2.2` locally: L-CONSOLE (`152629226`), L-SUM (`190dbc7d6`), L-ASR-STT (`23f53384b`), L-WF transcript ingress (`b9b556e8f`), L-ASR-GW (`bd6b6a2a5`) + module unregistration (`c4909d688`); TASK-1005 §13 residency lanes rcat/rui merged alongside. L-SDK still running. Wave 2 spawned: L-DB, L-DOCS (sonnet), L-CLEAN (opus). ALaaS lane L-ALS merged locally on `refactor-hope-integaration` (`16c3699`), not pushed. Security: ALaaS `apps/web_ui/.env.example` carried a real OpenAI/Azure key — owner to rotate. |
 | 2026-09-25 | Owner **go** (all of it; push bundled with this release). Wave 1 spawned: L-SUM, L-ASR-GW, L-ASR-STT (opus); L-SDK, L-CONSOLE (sonnet); L-ALS (opus). |

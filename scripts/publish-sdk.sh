@@ -70,11 +70,12 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Publish order: dependencies before dependents. `room` has no @arcaai deps;
-# stt peer-depends on room; vox depends on both. vox-codegen, vox-node and
-# pipeline have no @arcaai runtime deps but ship in the same run so they never
-# drift out of lockstep with vox (all are in the Changesets `fixed` group).
-PUBLISH_ORDER=(room stt vox vox-codegen vox-node pipeline)
+# Publish order: dependencies before dependents. `types` and `room` have no
+# @arcaai deps; stt peer-depends on room; vox depends on types, room and stt.
+# vox-codegen, vox-node and pipeline have no @arcaai runtime deps but ship in the
+# same run so they never drift out of lockstep with vox (all are in the
+# Changesets `fixed` group; types joined it at 4.0.0).
+PUBLISH_ORDER=(types room stt vox vox-codegen vox-node pipeline)
 
 # Versioned with the family but NEVER published (`private: true`): the build-time
 # generator of vox-node's hope.admin.* surface. Bumped in step 1 so it cannot
@@ -205,7 +206,7 @@ if [ "$SKIP_BUILD" = true ]; then
     echo -e "${YELLOW}=== Skipping build (--skip-build) ===${NC}"
 else
     echo -e "${CYAN}=== Building ===${NC}"
-    # `--filter=@arcaai/vox...` covers the browser family (room, stt, vox).
+    # `--filter=@arcaai/vox...` covers the browser family (types, room, stt, vox).
     # vox-node, vox-codegen and pipeline have no dependency edge to vox, so
     # that filter does NOT reach them and each needs its own build call.
     pnpm sdk:build

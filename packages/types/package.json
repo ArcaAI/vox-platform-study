@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/types",
-  "version": "0.1.0",
+  "version": "4.0.0",
   "description": "Shared TypeScript types for ArcaAI/HOPE",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,6 +13,10 @@
       "default": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc --build",
     "clean": "rm -rf dist *.tsbuildinfo",
@@ -26,5 +30,13 @@
     "typescript"
   ],
   "author": "ArcaAI Team",
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArcaAI/project-hope.git"
+  }
 }

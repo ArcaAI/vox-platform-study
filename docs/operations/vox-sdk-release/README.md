@@ -14,14 +14,15 @@ cancel it.
 This directory holds only this file.
 
 ### Package inventory
-Seven packages move together in one Changesets `fixed` group (`.changeset/config.json`) — the six
+Eight packages move together in one Changesets `fixed` group (`.changeset/config.json`) — the seven
 published ones below plus the private `@arcaai/vox-node-codegen`. (Through 3.6.0 the group also held
 the client-AI packages `@arcaai/vad`, `@arcaai/noise-filter` and `@arcaai/med-ner`; 4.0.0 deletes them —
 TASK-1006. Their last published versions stay on the registry; nothing new is published for them.)
 
 | Package | Path | Role |
 |---|---|---|
-| `@arcaai/vox` | `packages/agentic-sdk-v2/` | The SDK itself — depends on `room` and `stt` (plus `@arcaai/types` for declarations only; `@arcaai/json-schema-subset` is bundled) |
+| `@arcaai/vox` | `packages/agentic-sdk-v2/` | The SDK itself — depends on `types`, `room` and `stt` (`@arcaai/json-schema-subset` is bundled) |
+| `@arcaai/types` | `packages/types/` | Shared types (and a few constants) vox's declarations import. Joined the group at 4.0.0 — the registry had sat at a stale 0.1.0 |
 | `@arcaai/vox-node` | `packages/vox-node/` | Non-browser server SDK sibling |
 | `@arcaai/vox-codegen` | `packages/vox-codegen/` | Build-time CLI, published alongside the family |
 | `@arcaai/room` | `packages/room/` | Audio capture / `AudioTrack` / processor pipeline |
@@ -36,7 +37,11 @@ publish` skips private packages, so being in the group publishes nothing. Two co
 work: `privatePackages: { version: true, tag: false }` (without it Changesets silently leaves private
 packages out of the plan), and `@arcaai/admin-console` in `ignore` (it depends on `@arcaai/vox`, so the
 setting above would otherwise patch-bump the console on every SDK release). Prove the plan before a
-release with a throwaway changeset and `pnpm changeset status --verbose` — it must list exactly the seven.
+release with a throwaway changeset and `pnpm changeset status --verbose` — it must list exactly the eight.
+The private workspace packages that depend on `@arcaai/types` (`api`, `applications`, `database`,
+`domains`, `utils`) are in `ignore` for the same reason `admin-console` is: without it every SDK
+release would patch-bump them. vox-node INLINES `@arcaai/types` (runtime values and, since 4.0.0,
+declarations via `dts.resolve`), so its published manifest depends on nothing.
 
 All publishable packages carry matching `publishConfig`/`repository` fields:
 
@@ -93,13 +98,14 @@ This is how every release is published (owner rule above). One-time setup: a Git
 # 0. Bump every package in the fixed group to the same version first (see Versioning below),
 #    commit, and confirm the token works: npm whoami --registry=https://npm.pkg.github.com
 
-# 1. Build vox + its workspace deps (room, stt), then the siblings vox does not reach
+# 1. Build vox + its workspace deps (types, room, stt), then the siblings vox does not reach
 pnpm sdk:build
 pnpm sdk-node:build
 pnpm --filter @arcaai/vox-codegen build
 pnpm --filter @arcaai/pipeline build
 
 # 2. Publish the dependencies first — vox won't resolve otherwise
+pnpm --filter @arcaai/types publish --no-git-checks
 pnpm --filter @arcaai/room publish --no-git-checks
 pnpm --filter @arcaai/stt publish --no-git-checks
 
@@ -133,9 +139,7 @@ a workflow gate. Prefer committing first and dropping the flag when the tree is 
 `@arcaai/vox`'s `dependencies`/`peerDependencies` reference the other packages as `workspace:*`.
 `pnpm publish` (and `changeset publish`) rewrites these to the real version being published
 automatically. This means publish order matters in the manual path: a consumer installing
-`@arcaai/vox` needs the referenced versions of `room` and `stt` to already exist on the registry.
-`@arcaai/types` (0.1.0, outside the `fixed` group) is referenced by vox's `.d.ts` files only; if its
-source changed since the registry's 0.1.0, bump and publish it before vox.
+`@arcaai/vox` needs the referenced versions of `types`, `room` and `stt` to already exist on the registry.
 
 ## Gotchas
 
@@ -145,7 +149,7 @@ source changed since the registry's 0.1.0, bump and publish it before vox.
   registry that is never addressed.
 - **`@arcaai/vox-node-codegen` refuses `pnpm publish`** (it is `private: true`) — it is versioned by
   the `fixed` group (and by `scripts/publish-sdk.sh`'s `ALIGN_ONLY`), never published.
-- **Seven packages move together** (six published); publishing a subset out of the `fixed` group risks a version
+- **Eight packages move together** (seven published); publishing a subset out of the `fixed` group risks a version
   skew that breaks `workspace:*` resolution for whichever package didn't move.
 
 ## Related

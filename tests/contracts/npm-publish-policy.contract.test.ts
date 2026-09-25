@@ -49,7 +49,12 @@ const GITHUB_PACKAGES_REGISTRY = 'https://npm.pkg.github.com';
  * three client-side inference packages were deleted outright rather than
  * kept in lockstep with nothing left to ship.
  */
-const VOX_LOCKSTEP_FAMILY = ['@arcaai/vox', '@arcaai/vox-node', '@arcaai/room', '@arcaai/stt'];
+/*
+ * `@arcaai/types` JOINED the family at 4.0.0 (TASK-1006): `@arcaai/vox` depends on it (its
+ * declarations import from it), and the registry copy had sat at a stale 0.1.0 while the source
+ * moved on, so a vox consumer resolved types that no longer matched.
+ */
+const VOX_LOCKSTEP_FAMILY = ['@arcaai/vox', '@arcaai/vox-node', '@arcaai/room', '@arcaai/stt', '@arcaai/types'];
 
 interface PackageManifest {
   path: string;

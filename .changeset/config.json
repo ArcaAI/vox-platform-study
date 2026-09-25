@@ -13,10 +13,20 @@
       "@arcaai/room",
       "@arcaai/stt",
       "@arcaai/pipeline",
+      "@arcaai/types",
       "@arcaai/vox-node-codegen"
     ]
   ],
-  "ignore": ["@arcaai/admin-console", "@arcaai/async-contract", "@arcaai/workflow-contract"],
+  "ignore": [
+    "@arcaai/admin-console",
+    "@arcaai/async-contract",
+    "@arcaai/workflow-contract",
+    "@arcaai/api",
+    "@arcaai/applications",
+    "@arcaai/database",
+    "@arcaai/domains",
+    "@arcaai/utils"
+  ],
   "privatePackages": {
     "version": true,
     "tag": false
