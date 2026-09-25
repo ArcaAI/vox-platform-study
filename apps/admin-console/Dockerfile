@@ -15,9 +15,9 @@ RUN npm install -g pnpm@${PNPM_VERSION} turbo@2
 # package in the app's dependency closure must have its package.json present or
 # `pnpm install` aborts with ERR_PNPM_WORKSPACE_PKG_NOT_FOUND. The app pulls the
 # whole @arcaai/vox audio SDK (playground screens), so beyond @arcaai/ui + the
-# config packages we also need room / stt / vox / vad / noise-filter / med-ner
-# (their transitive workspace closure) and eslint-plugin-arcaai-internal
-# (dep of config-eslint). Their source is copied wholesale in the build stage.
+# config packages we also need room / stt / vox (their transitive workspace
+# closure; vad / noise-filter / med-ner were deleted in SDK 4.0.0, TASK-1006)
+# and eslint-plugin-arcaai-internal (dep of config-eslint). Their source is copied wholesale in the build stage.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.json ./
 COPY apps/admin-console/package.json ./apps/admin-console/
 COPY packages/ui/package.json ./packages/ui/
@@ -37,9 +37,6 @@ COPY packages/vox-node-codegen/package.json ./packages/vox-node-codegen/
 COPY packages/room/package.json ./packages/room/
 COPY packages/stt/package.json ./packages/stt/
 COPY packages/agentic-sdk-v2/package.json ./packages/agentic-sdk-v2/
-COPY packages/vad/package.json ./packages/vad/
-COPY packages/noise-filter/package.json ./packages/noise-filter/
-COPY packages/med-ner/package.json ./packages/med-ner/
 COPY packages/config-eslint/package.json ./packages/config-eslint/
 COPY packages/config-tailwind/package.json ./packages/config-tailwind/
 COPY packages/config-ts/package.json ./packages/config-ts/

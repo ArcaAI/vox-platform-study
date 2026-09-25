@@ -367,9 +367,6 @@
         - packages/agentic-sdk-v2/**/*
         - packages/room/**/*
         - packages/stt/**/*
-        - packages/vad/**/*
-        - packages/noise-filter/**/*
-        - packages/med-ner/**/*
         - packages/pipeline/**/*
         - packages/utils/**/*
         - packages/types/**/*

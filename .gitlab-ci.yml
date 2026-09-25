@@ -6,8 +6,8 @@
 #   TypeScript: api (NestJS)
 #   Python:     stt (FastAPI), text (FastAPI), nlp (FastAPI)
 #   Infra:      database (Prisma migrations)
-#   SDK:        @arcaai/vox, @arcaai/room, @arcaai/stt, @arcaai/vad,
-#               @arcaai/noise-filter, @arcaai/med-ner, @arcaai/pipeline
+#   SDK:        @arcaai/vox, @arcaai/vox-node, @arcaai/vox-codegen,
+#               @arcaai/room, @arcaai/stt, @arcaai/pipeline
 #
 # Branch strategy:
 #   main                 — default branch: validate + test via MR gates, no builds
@@ -151,13 +151,10 @@ variables:
   # 24 MB of that is apps/stt/tests/e2e audio fixtures, which no CI job uses —
   # test-stt runs pytest with --ignore=tests/e2e/.
   #
-  # The jobs that DO need a real LFS blob (the 112 KB
-  # packages/noise-filter/assets/rnnoise.wasm, shipped via package.json
-  # "files") re-enable the smudge with GIT_LFS_SKIP_SMUDGE: "0":
-  #   test-sdk, publish-sdk, build-admin-console.
-  # Without it they would get a ~130-byte pointer stub — test-sdk's
-  # wasmAsset.test.ts asserts size > 10_000, and the build jobs would
-  # SILENTLY ship a broken wasm.
+  # No job needs an LFS blob any more: the one shipped asset
+  # (packages/noise-filter/assets/rnnoise.wasm) left with @arcaai/noise-filter
+  # in SDK 4.0.0 (TASK-1006), and with it the per-job GIT_LFS_SKIP_SMUDGE: "0"
+  # overrides on test-sdk, publish-sdk and build-admin-console.
   GIT_LFS_SKIP_SMUDGE: "1"
   #
   # ── Vault via GitLab OIDC ──────────────────────────────────────────────────

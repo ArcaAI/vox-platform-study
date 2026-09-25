@@ -3,27 +3,22 @@
 # Vox SDK family publisher (manual releases)
 # ============================================================================
 # Version-bumps, builds, and publishes the vox SDK family — the browser SDK
-# (room/vad/noise-filter/stt/med-ner/vox) in dependency order, plus the
-# dependency-free server SDK (vox-node) — all in lockstep at one version.
+# (room/stt/vox) in dependency order, plus vox-codegen, the dependency-free
+# server SDK (vox-node) and pipeline — all in lockstep at one version. (The
+# client-AI packages vad/noise-filter/med-ner were deleted in 4.0.0, TASK-1006.)
 # Replaces the hand-run bump/publish snippet that produced the broken 2.0.6
 # tree (stale `^0.1.0` peers + a vox pinned to a med-ner that was never
 # published).
 #
-# STATUS: SUPERSEDED — break-glass only.
+# STATUS: the scripted form of the LOCAL release path.
 #
-# This existed because the CI `publish-sdk` job called changesets while the repo
-# had no `.changeset/` directory, so that job could not work and manual
-# publishing was the only path that ran. Its own instruction was: "if changesets
-# is ever configured, prefer it and retire this script."
-#
-# Changesets IS configured now (`.changeset/config.json`, `pnpm changeset`), and
-# it enforces the SDK lockstep mechanically via its `fixed` group rather than by
-# you typing the same version eight times. So:
-#
-#   - NORMAL RELEASE: do not use this. Run `pnpm changeset` with your change and
-# let CI version and publish. See docs/operations/release-runbook.md
-#   - BREAK-GLASS: still useful if a changesets publish fails part-way and one
-#     package must be pushed by hand. Run with `--dry-run` first.
+# Owner rule (2026-09-11, restated 2026-09-25): SDK releases are published
+# LOCALLY from the operator's machine per docs/operations/vox-sdk-release/ —
+# never by the CI `publish-sdk` job. Version first with Changesets
+# (`pnpm changeset:version`, which moves the whole `fixed` group together and
+# writes the CHANGELOGs), commit, then run this with that same version: the bump
+# in step 1 is then a no-op and the script builds and publishes in dependency
+# order. Run with `--dry-run` first. Push the `SDK-<ver>` tag only afterwards.
 #
 # Hand-typing a version is what let @arcaai/pipeline sit at 2.0.6 while the rest
 # of the family moved to 3.0.0 — the exact drift the `fixed` group now prevents.
@@ -44,8 +39,8 @@
 #   --yes,-y Skip the confirmation prompt.
 #   --skip-build Reuse existing dist/ (fast re-publish after a partial run).
 #
-# ORDER MATTERS: room ships first because every other package peer-depends on
-# it; vox ships last because it depends on all of them. A consumer installing
+# ORDER MATTERS: room ships first because stt peer-depends on it; vox ships
+# after both because it depends on them. A consumer installing
 # vox before its deps exist gets unresolvable peers. vox-node ships last of
 # all — it has ZERO @arcaai runtime/peer deps (see packages/vox-node/README.md),
 # so its position is arbitrary for peer resolution, but it stays in the same
@@ -76,10 +71,10 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Publish order: dependencies before dependents. `room` has no @arcaai deps;
-# vad/noise-filter/stt/med-ner peer-depend on room; vox depends on all of them.
-# vox-node is a separate, dependency-free package (no browser/audio/ML deps)
-# but ships in the same run so it never drifts out of lockstep with vox.
-PUBLISH_ORDER=(room vad noise-filter stt med-ner vox vox-node)
+# stt peer-depends on room; vox depends on both. vox-codegen, vox-node and
+# pipeline have no @arcaai runtime deps but ship in the same run so they never
+# drift out of lockstep with vox (all are in the Changesets `fixed` group).
+PUBLISH_ORDER=(room stt vox vox-codegen vox-node pipeline)
 
 # Versioned with the family but NEVER published (`private: true`): the build-time
 # generator of vox-node's hope.admin.* surface. Bumped in step 1 so it cannot
@@ -210,12 +205,13 @@ if [ "$SKIP_BUILD" = true ]; then
     echo -e "${YELLOW}=== Skipping build (--skip-build) ===${NC}"
 else
     echo -e "${CYAN}=== Building ===${NC}"
-    # `--filter=@arcaai/vox...` covers the browser family: med-ner is reached as
-    # a devDependency of vox. Verified with `turbo run build --dry-run=json`.
-    # vox-node has no dependency edge to vox (zero @arcaai runtime deps), so it
-    # is NOT reached by that filter and needs its own build call.
+    # `--filter=@arcaai/vox...` covers the browser family (room, stt, vox).
+    # vox-node, vox-codegen and pipeline have no dependency edge to vox, so
+    # that filter does NOT reach them and each needs its own build call.
     pnpm sdk:build
     pnpm sdk-node:build
+    pnpm --filter @arcaai/vox-codegen build
+    pnpm --filter @arcaai/pipeline build
 fi
 
 # ----------------------------------------------------------------------------

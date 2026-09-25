@@ -9,8 +9,9 @@
 #
 # `npm.pkg.github.com`, named by `publishConfig.registry` in every publishable
 # manifest — @arcaai/vox, @arcaai/vox-node, @arcaai/vox-codegen, @arcaai/room,
-# @arcaai/stt, @arcaai/vad, @arcaai/noise-filter, @arcaai/med-ner,
-# @arcaai/pipeline. That is where the 2.0.x and 3.0.x releases went (published by
+# @arcaai/stt, @arcaai/pipeline (the client-AI packages @arcaai/vad,
+# @arcaai/noise-filter and @arcaai/med-ner were deleted in 4.0.0, TASK-1006).
+# That is where the 2.0.x and 3.0.x releases went (published by
 # hand from an operator's machine — see docs/operations/vox-sdk-release/) and
 # where every consumer pulls from.
 #
@@ -70,10 +71,6 @@ publish-sdk:
   variables:
     GIT_STRATEGY: clone
     GIT_DEPTH: 0
-    # Publishes @arcaai/noise-filter, whose package.json "files" ships
-    # assets/rnnoise.wasm (an LFS object). A pointer stub would publish a
-    # broken package — see GIT_LFS_SKIP_SMUDGE in .gitlab-ci.yml.
-    GIT_LFS_SKIP_SMUDGE: "0"
   before_script:
     - corepack enable
     - corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
@@ -117,10 +114,7 @@ publish-sdk:
     - pnpm turbo build --filter=@arcaai/json-schema-subset
     - pnpm turbo build --filter=@arcaai/pipeline
     - pnpm turbo build --filter=@arcaai/room
-    - pnpm turbo build --filter=@arcaai/vad
     - pnpm turbo build --filter=@arcaai/stt
-    - pnpm turbo build --filter=@arcaai/noise-filter
-    - pnpm turbo build --filter=@arcaai/med-ner
     - pnpm turbo build --filter=@arcaai/vox
     - pnpm turbo build --filter=@arcaai/vox-node
     # Publishable by manifest and documented as `npx @arcaai/vox-codegen`, but it was

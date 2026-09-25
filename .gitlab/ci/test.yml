@@ -161,16 +161,12 @@ test-sdk:
       artifacts: false
   variables:
     <<: *test-env-vars
-    # @arcaai/noise-filter's wasmAsset.test.ts asserts the on-disk
-    # assets/rnnoise.wasm is > 10_000 bytes; a ~130-byte LFS pointer stub
-    # fails it — see GIT_LFS_SKIP_SMUDGE in .gitlab-ci.yml.
-    GIT_LFS_SKIP_SMUDGE: "0"
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     # Parallelism is capped by TURBO_CONCURRENCY / VITEST_MAX_WORKERS on
     # `.test-node-base` — an explicit --concurrency flag here would override it.
     - pnpm turbo build --filter=@arcaai/utils
-    - pnpm turbo test --filter=@arcaai/vox --filter=@arcaai/vox-node --filter=@arcaai/room --filter=@arcaai/vad --filter=@arcaai/stt --filter=@arcaai/noise-filter --filter=@arcaai/med-ner --filter=@arcaai/ui
+    - pnpm turbo test --filter=@arcaai/vox --filter=@arcaai/vox-node --filter=@arcaai/room --filter=@arcaai/stt --filter=@arcaai/ui
   rules:
     - if: $SKIP_TESTS == "true"
       when: never
@@ -183,11 +179,8 @@ test-sdk:
         paths:
           - packages/ui/**/*
           - packages/room/**/*
-          - packages/vad/**/*
           - packages/stt/**/*
-          - packages/noise-filter/**/*
           - packages/agentic-sdk-v2/**/*
-          - packages/med-ner/**/*
           - packages/utils/**/*
         compare_to: refs/heads/main
     - if: $PIPELINE_TYPE == "release_sdk"
@@ -196,11 +189,8 @@ test-sdk:
       changes:
         - packages/ui/**/*
         - packages/room/**/*
-        - packages/vad/**/*
         - packages/stt/**/*
-        - packages/noise-filter/**/*
         - packages/agentic-sdk-v2/**/*
-        - packages/med-ner/**/*
 
 # ── Admin Console (Next.js) unit tests ──────────────────────────────────────
 #

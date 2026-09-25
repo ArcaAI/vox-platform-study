@@ -14,19 +14,18 @@ cancel it.
 This directory holds only this file.
 
 ### Package inventory
-Ten packages move together in one Changesets `fixed` group (`.changeset/config.json`) — the nine
-published ones below plus the private `@arcaai/vox-node-codegen`:
+Seven packages move together in one Changesets `fixed` group (`.changeset/config.json`) — the six
+published ones below plus the private `@arcaai/vox-node-codegen`. (Through 3.6.0 the group also held
+the client-AI packages `@arcaai/vad`, `@arcaai/noise-filter` and `@arcaai/med-ner`; 4.0.0 deletes them —
+TASK-1006. Their last published versions stay on the registry; nothing new is published for them.)
 
 | Package | Path | Role |
 |---|---|---|
-| `@arcaai/vox` | `packages/agentic-sdk-v2/` | The SDK itself — depends on all the packages below except `pipeline` |
+| `@arcaai/vox` | `packages/agentic-sdk-v2/` | The SDK itself — depends on `room` and `stt` (plus `@arcaai/types` for declarations only; `@arcaai/json-schema-subset` is bundled) |
 | `@arcaai/vox-node` | `packages/vox-node/` | Non-browser server SDK sibling |
 | `@arcaai/vox-codegen` | `packages/vox-codegen/` | Build-time CLI, published alongside the family |
 | `@arcaai/room` | `packages/room/` | Audio capture / `AudioTrack` / processor pipeline |
-| `@arcaai/stt` | `packages/stt/` | Whisper STT plugin for `@arcaai/room` |
-| `@arcaai/vad` | `packages/vad/` | Silero VAD plugin |
-| `@arcaai/noise-filter` | `packages/noise-filter/` | RNNoise WASM plugin |
-| `@arcaai/med-ner` | `packages/med-ner/` | Optional peer — browser medical NER |
+| `@arcaai/stt` | `packages/stt/` | Audio capture helpers + the backend streaming transport (no in-browser model since 4.0.0) |
 | `@arcaai/pipeline` | `packages/pipeline/` | Sequential/parallel processing primitives — not a `vox` runtime dependency, but versioned with the family |
 
 `@arcaai/vox-node-codegen` (`packages/vox-node-codegen/`, the build-time generator of vox-node's
@@ -37,7 +36,7 @@ publish` skips private packages, so being in the group publishes nothing. Two co
 work: `privatePackages: { version: true, tag: false }` (without it Changesets silently leaves private
 packages out of the plan), and `@arcaai/admin-console` in `ignore` (it depends on `@arcaai/vox`, so the
 setting above would otherwise patch-bump the console on every SDK release). Prove the plan before a
-release with a throwaway changeset and `pnpm changeset status --verbose` — it must list exactly the ten.
+release with a throwaway changeset and `pnpm changeset status --verbose` — it must list exactly the seven.
 
 All publishable packages carry matching `publishConfig`/`repository` fields:
 
@@ -91,27 +90,28 @@ This is how every release is published (owner rule above). One-time setup: a Git
 ```
 
 ```bash
-# Bump every package in the fixed group to the same version first (see Versioning below).
+# 0. Bump every package in the fixed group to the same version first (see Versioning below),
+#    commit, and confirm the token works: npm whoami --registry=https://npm.pkg.github.com
 
-# 1. Build vox + its workspace deps (room, stt, vad, noise-filter, med-ner)
+# 1. Build vox + its workspace deps (room, stt), then the siblings vox does not reach
 pnpm sdk:build
+pnpm sdk-node:build
+pnpm --filter @arcaai/vox-codegen build
+pnpm --filter @arcaai/pipeline build
 
 # 2. Publish the dependencies first — vox won't resolve otherwise
 pnpm --filter @arcaai/room publish --no-git-checks
-pnpm --filter @arcaai/vad publish --no-git-checks
-pnpm --filter @arcaai/noise-filter publish --no-git-checks
 pnpm --filter @arcaai/stt publish --no-git-checks
-pnpm --filter @arcaai/med-ner publish --no-git-checks
 
 # 3. Publish vox and its siblings last
 pnpm --filter @arcaai/vox publish --no-git-checks
 pnpm --filter @arcaai/vox-codegen publish --no-git-checks
 pnpm --filter @arcaai/vox-node publish --no-git-checks
-
-# 4. Pipeline (not a vox dependency, but part of the fixed group)
-pnpm --filter @arcaai/pipeline build
 pnpm --filter @arcaai/pipeline publish --no-git-checks
 ```
+
+`./scripts/publish-sdk.sh <version> [--dry-run]` (`pnpm sdk:publish`) runs exactly these steps in this
+order and stops at the first failure — run it with `--dry-run` first.
 
 `pnpm sdk:build` is `turbo run build --filter=@arcaai/vox...` (root `package.json`) — the `...`
 suffix builds `vox` plus everything it depends on.
@@ -133,20 +133,19 @@ a workflow gate. Prefer committing first and dropping the flag when the tree is 
 `@arcaai/vox`'s `dependencies`/`peerDependencies` reference the other packages as `workspace:*`.
 `pnpm publish` (and `changeset publish`) rewrites these to the real version being published
 automatically. This means publish order matters in the manual path: a consumer installing
-`@arcaai/vox` needs the referenced versions of `room`, `stt`, `vad`, `noise-filter`, and `med-ner`
-to already exist on the registry.
+`@arcaai/vox` needs the referenced versions of `room` and `stt` to already exist on the registry.
+`@arcaai/types` (0.1.0, outside the `fixed` group) is referenced by vox's `.d.ts` files only; if its
+source changed since the registry's 0.1.0, bump and publish it before vox.
 
 ## Gotchas
 
-- **`GIT_LFS_SKIP_SMUDGE` must stay `"0"` for this job.** `@arcaai/noise-filter`'s `files` allowlist
-  ships `assets/rnnoise.wasm`, an LFS object — an LFS pointer stub would publish a broken package.
 - **A GitLab-registry `.npmrc` can never authenticate this publish.** `changeset publish` honors
   each package's own `publishConfig.registry` (`npm.pkg.github.com`), so writing GitLab registry
   credentials into `.npmrc` — an earlier version of this pipeline's mistake — authenticates a
   registry that is never addressed.
 - **`@arcaai/vox-node-codegen` refuses `pnpm publish`** (it is `private: true`) — it is versioned by
   the `fixed` group (and by `scripts/publish-sdk.sh`'s `ALIGN_ONLY`), never published.
-- **Nine packages move together**; publishing a subset out of the `fixed` group risks a version
+- **Seven packages move together** (six published); publishing a subset out of the `fixed` group risks a version
   skew that breaks `workspace:*` resolution for whichever package didn't move.
 
 ## Related
