@@ -1,107 +1,76 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  createResidencyPolicy,
-  deleteResidencyPolicy,
-  getModelResidency,
-  listResidencyPolicies,
-  loadModel,
-  setPin,
-  unloadModel,
-  updateResidencyPolicy,
-} from './client';
+import { loadModelResidency, type LoadModelResidencyRequest } from '@/shared/residency';
+import { createResidencyPolicy, getModelResidencyCatalogue, unloadModel, updateResidencyPolicy } from './client';
 import { modelResidencyKeys } from './keys';
-import type {
-  CreatePolicyRequest,
-  LoadModelRequest,
-  LoadModelResponse,
-  ModelResidencyResponse,
-  SetPinRequest,
-  UnloadModelRequest,
-  UpdatePolicyRequest,
-} from './types';
+import type { ModelResidencyCatalogueResponse, ResidencyPolicyClass, UnloadModelRequest } from './types';
 
-/** Freshness target is <= 15s (§5.5); poll at 10s so the screen never lags the target. */
+/** Freshness target is <= 15s (ticket §5.5); poll at 10s so the screen never lags the target. */
 const REFRESH_MS = 10_000;
 
-export function useModelResidency() {
-  return useQuery<ModelResidencyResponse>({ queryKey: modelResidencyKeys.list(), queryFn: getModelResidency, refetchInterval: REFRESH_MS });
+export function useModelResidencyCatalogue() {
+  return useQuery<ModelResidencyCatalogueResponse>({
+    queryKey: modelResidencyKeys.catalogue(),
+    queryFn: getModelResidencyCatalogue,
+    refetchInterval: REFRESH_MS,
+  });
 }
 
-function useInvalidateModelResidency() {
+function useInvalidateCatalogue() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: modelResidencyKeys.list() });
+  return () => queryClient.invalidateQueries({ queryKey: modelResidencyKeys.catalogue() });
 }
 
 /**
- * Async load (202 + `operationId`) or synchronous `already_loaded` (200).
- * The caller merges `response.model` into the list cache itself (the row must
- * appear — `state: 'loading'` — before the next 10s poll) and starts
- * `useModelResidencyOperation(operationId)` to learn when it settles.
+ * Async load (202 + `operationId`) or synchronous `already_loaded` (200) — the
+ * SAME `admin/model-residency/load` route `features/inference-engines` uses
+ * (`@/shared/residency`). The caller polls the returned `operationId` to a
+ * terminal state and refetches the catalogue itself; nothing here merges a
+ * row, since the target row lives nested under `services[].models[]`.
  */
-export function useLoadModel() {
-  const queryClient = useQueryClient();
-  return useMutation<LoadModelResponse, unknown, LoadModelRequest>({
-    mutationFn: (body) => loadModel(body),
-    onSuccess: (response) => {
-      queryClient.setQueryData<ModelResidencyResponse | undefined>(modelResidencyKeys.list(), (current) => {
-        if (!current) return current;
-        const key = (model: { service: string; instance: string }) => `${model.service}::${model.instance}`;
-        const withoutRow = current.models.filter((model) => key(model) !== key(response.model));
-        return { ...current, models: [...withoutRow, response.model] };
-      });
-    },
+export function useLoadResidencyModel() {
+  const invalidate = useInvalidateCatalogue();
+  return useMutation({
+    mutationFn: (body: LoadModelResidencyRequest) => loadModelResidency(body),
+    onSuccess: invalidate,
   });
 }
 
-export function useUnloadModel() {
-  const invalidate = useInvalidateModelResidency();
+export function useUnloadResidencyModel() {
+  const invalidate = useInvalidateCatalogue();
   return useMutation({ mutationFn: (body: UnloadModelRequest) => unloadModel(body), onSuccess: invalidate });
 }
 
-export function useSetPin() {
-  const invalidate = useInvalidateModelResidency();
-  return useMutation({ mutationFn: (body: SetPinRequest) => setPin(body), onSuccess: invalidate });
+export interface SaveResidencyPolicyInput {
+  aiModelId: string;
+  service: string;
+  /** From the row's `keepPolicy` — present only once an explicit policy row exists. */
+  policyId: string | null;
+  policyVersion: number | null;
+  class: ResidencyPolicyClass;
+  idleTtlSeconds: number | null;
 }
 
-export function useResidencyPolicies() {
-  return useQuery({ queryKey: modelResidencyKeys.policies(), queryFn: listResidencyPolicies });
-}
-
-export function useCreateResidencyPolicy() {
-  const invalidate = useInvalidateModelResidency();
-  const queryClient = useQueryClient();
+/**
+ * The keep-policy editor's one save path (ticket §13.2 — "PATCH with If-Match
+ * or POST when no policy exists"). A row that has never had an explicit
+ * policy (`policyId: null`) is CREATED on first save; one that already has a
+ * row is PATCHed with If-Match built from `policyVersion`, already carried on
+ * the catalogue row — no extra GET needed.
+ */
+export function useSaveResidencyPolicy() {
+  const invalidate = useInvalidateCatalogue();
   return useMutation({
-    mutationFn: (body: CreatePolicyRequest) => createResidencyPolicy(body),
-    onSuccess: () => {
-      invalidate();
-      void queryClient.invalidateQueries({ queryKey: modelResidencyKeys.policies() });
-    },
-  });
-}
-
-export function useUpdateResidencyPolicy() {
-  const invalidate = useInvalidateModelResidency();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, patch, expectedVersion }: { id: string; patch: UpdatePolicyRequest; expectedVersion: number }) =>
-      updateResidencyPolicy(id, patch, expectedVersion),
-    onSuccess: () => {
-      invalidate();
-      void queryClient.invalidateQueries({ queryKey: modelResidencyKeys.policies() });
-    },
-  });
-}
-
-export function useDeleteResidencyPolicy() {
-  const invalidate = useInvalidateModelResidency();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => deleteResidencyPolicy(id),
-    onSuccess: () => {
-      invalidate();
-      void queryClient.invalidateQueries({ queryKey: modelResidencyKeys.policies() });
-    },
+    mutationFn: (input: SaveResidencyPolicyInput) =>
+      input.policyId && input.policyVersion !== null
+        ? updateResidencyPolicy(input.policyId, { class: input.class, idleTtlSeconds: input.idleTtlSeconds }, input.policyVersion)
+        : createResidencyPolicy({
+            aiModelId: input.aiModelId,
+            service: input.service,
+            class: input.class,
+            idleTtlSeconds: input.idleTtlSeconds,
+          }),
+    onSuccess: invalidate,
   });
 }
