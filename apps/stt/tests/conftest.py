@@ -2,18 +2,20 @@
 
 This conftest integrates with the monorepo's centralized test infrastructure.
 
+stt reads NO selection from Postgres — it has had no database since TASK-861
+(see `06-python-services.md` "apps/stt is on that default since TASK-861");
+this suite's infrastructure is Redis + MinIO only.
+
 Infrastructure modes (resolved in this priority order):
-  1. Environment variables — TEST_DATABASE_URL, TEST_REDIS_URL, TEST_MINIO_ENDPOINT
+  1. Environment variables — TEST_REDIS_URL, TEST_MINIO_ENDPOINT
      Set by CI pipelines (GitLab CI, GitHub Actions) for external infrastructure.
   2. Docker Compose test containers — tests/docker-compose.test.yml
      Start: pnpm docker:test:up   Stop: pnpm docker:test:down
 
 External Test Infrastructure (CI):
-  PostgreSQL HA:  10.10.1.250:5000  (HAProxy R/W VIP → vox_dev)
   Redis Dev:      10.10.1.120:6379  (DB 8 reserved for CI tests)
 
 Local Test Ports (matching monorepo's docker-compose.test.yml):
-  PostgreSQL: 5433 (test) vs 5432 (dev)
   Redis:      6380 (test) vs 6379 (dev)
   MinIO:      9002 (test) vs 9000 (dev)
 
@@ -32,7 +34,7 @@ Platform Auto-Detection:
 This conftest provides fixtures that work with:
   1. Monorepo's centralized test infrastructure (docker-compose.test.yml)
   2. GitHub Actions service containers (CI/CD)
-  3. GitLab CI with external HA-Postgres and Redis
+  3. GitLab CI with external Redis
   4. Environment variables (for custom setups)
   5. Automatic hardware-based test selection
 """
@@ -50,32 +52,8 @@ from hope_worktree_guard import assert_source_tree
 assert_source_tree(["stt", "hope_env", "hope_otel", "hope_obs", "hope_runtime_models"], __file__)
 
 # Test infrastructure ports (matching monorepo's tests/docker-compose.test.yml)
-TEST_DB_PORT = 5433
 TEST_REDIS_PORT = 6380
 TEST_MINIO_PORT = 9002
-
-
-def _get_db_url(sync: bool = False) -> str:
-    """Get database URL for tests.
-
-    Priority: TEST_DATABASE_URL env var > local docker-compose defaults.
-    When the env var is set (CI pipelines), normalise the driver prefix
-    so callers always get the correct sync/async URL.
-    """
-    test_url = os.environ.get("TEST_DATABASE_URL")
-    if test_url:
-        if sync:
-            return test_url.replace("postgresql+asyncpg://", "postgresql://").replace(
-                "postgres+asyncpg://", "postgresql://"
-            )
-        if "asyncpg" not in test_url:
-            return test_url.replace("postgresql://", "postgresql+asyncpg://")
-        return test_url
-
-    base_url = f"postgresql://test:test@localhost:{TEST_DB_PORT}/hope_test"
-    if sync:
-        return base_url
-    return base_url.replace("postgresql://", "postgresql+asyncpg://")
 
 
 def _get_redis_url() -> str:
@@ -405,23 +383,6 @@ def platform_info():
 def device_string(platform_type: str) -> str:
     """Get the device string for PyTorch operations."""
     return platform_type
-
-
-# =============================================================================
-# Database Fixtures (using local helpers to avoid import issues in unit tests)
-# =============================================================================
-
-
-@pytest.fixture(scope="session")
-def database_url():
-    """Get database URL for tests."""
-    return _get_db_url(sync=False)  # asyncpg URL
-
-
-@pytest.fixture(scope="session")
-def sync_database_url():
-    """Get sync database URL for tests (psycopg2)."""
-    return _get_db_url(sync=True)
 
 
 @pytest.fixture(scope="session")

@@ -5,7 +5,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 // =============================================================================
 
 export type JobStatusType = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-export type JobType = 'PRE_SUMMARY' | 'SUMMARY' | 'COMPREHENSIVE_SUMMARY' | 'NER';
+export type JobType = 'PRE_SUMMARY' | 'SUMMARY' | 'NER';
 
 // =============================================================================
 // Job Payload Interfaces (Internal - used by processors)
@@ -34,21 +34,6 @@ export interface GenerateSummaryJobPayload {
     template?: string;
     includeNER?: boolean;
     contextItemIds?: string[];
-    options?: Record<string, unknown>;
-  };
-  callbackUrl?: string;
-}
-
-export interface GenerateComprehensiveSummaryJobPayload {
-  jobId: string;
-  consultationId: string;
-  tenantId: string;
-  userId: string;
-  request: {
-    dnaStyleId?: string;
-    template?: string;
-    includeNER?: boolean;
-    includeLabResults?: boolean;
     options?: Record<string, unknown>;
   };
   callbackUrl?: string;
@@ -126,7 +111,7 @@ export class JobStatusResponse {
   @ApiProperty({ description: 'Unique job identifier' })
   jobId: string;
 
-  @ApiProperty({ description: 'Job type', enum: ['PRE_SUMMARY', 'SUMMARY', 'COMPREHENSIVE_SUMMARY', 'NER'] })
+  @ApiProperty({ description: 'Job type', enum: ['PRE_SUMMARY', 'SUMMARY', 'NER'] })
   type: JobType;
 
   @ApiProperty({
@@ -220,23 +205,3 @@ export interface NerJobResult {
   }>;
 }
 
-export interface ComprehensiveSummaryJobResult {
-  contextItemId: string;
-  content: string;
-  sourceConsultationIds: string[];
-  sectionCount: number;
-  summaryMeta?: {
-    aiModelId?: string;
-    processingTimeMs?: number;
-    inputTokens?: number;
-    outputTokens?: number;
-  };
-  namedEntities?: Record<
-    string,
-    Array<{
-      text: string;
-      confidence?: number;
-      sourceConsultationId: string;
-    }>
-  >;
-}

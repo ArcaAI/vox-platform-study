@@ -18,7 +18,8 @@
  *   - PRE_SUMMARY — entry #5 (async generatePreSummaryAsync) and the live warm-start
  *     pre-summary (`SummaryService.generatePreSummary`). Entry #3, the sync
  *     `POST :id/summary/pre-summary`, was removed by TASK-1006 (OD-2).
- *   - COMPREHENSIVE_SUMMARY — entry #6 (sync generateComprehensiveSummary) + #7 (async generateComprehensiveSummaryAsync)
+ *   - COMPREHENSIVE_SUMMARY — entry #6 (sync generateComprehensiveSummary). Entry #7, the async
+ *     `POST :id/summary/comprehensive/async`, was removed by TASK-1006 (agent-plane migration).
  *
  * PRE_SUMMARY and COMPREHENSIVE_SUMMARY have no harness-side equivalent today
  * (confirmed in of the ticket — no Temporal workflow in apps/harness is

@@ -31,10 +31,8 @@ describe('SUM-01: async summary endpoints', () => {
     expect(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('c-1')).toBe('/consultations/c-1/summary/pre-summary/async');
   });
 
-  it('should have COMPREHENSIVE_ASYNC endpoint', () => {
-    expect(typeof SUMMARY_ENDPOINTS.COMPREHENSIVE_ASYNC).toBe('function');
-    expect(SUMMARY_ENDPOINTS.COMPREHENSIVE_ASYNC('c-1')).toBe('/consultations/c-1/summary/comprehensive/async');
-  });
+  // COMPREHENSIVE_ASYNC (`POST :id/summary/comprehensive/async`) was removed by TASK-1006 — the
+  // comprehensive summary now runs synchronously on the agent plane; see COMPREHENSIVE below.
 });
 
 // =============================================================================

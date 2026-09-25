@@ -37,7 +37,6 @@ describe('BullMQ queue concurrency (TASK-993 lane D)', () => {
         JobQueue.SysEvent,
         JobQueue.WebhookDelivery,
         JobQueue.GeneratePreSummary,
-        JobQueue.GenerateComprehensiveSummary,
         JobQueue.GenerateDnaReport,
         JobQueue.IngestKnowledgeDocument,
         JobQueue.MineGateEditExemplar,
@@ -78,16 +77,16 @@ describe('BullMQ queue concurrency (TASK-993 lane D)', () => {
   /*
    * `apps/text` admits 4 concurrent generations per provider on the user lane
    * (`PROVIDER_MAX_CONCURRENT_FLOOR = 4`, `runtime_defaults.py`) and a queued
-   * call waits at most `queue_max_wait_s = 60`. The three LLM-backed queues all
-   * land on that one semaphore, so over-provisioning them does not go faster —
-   * it converts a queue into a 60-second timeout.
+   * call waits at most `queue_max_wait_s = 60`. The two remaining LLM-backed
+   * queues both land on that one semaphore, so over-provisioning them does not
+   * go faster — it converts a queue into a 60-second timeout.
+   * (`GenerateComprehensiveSummary` was a third queue in this lane until
+   * TASK-1006 — the comprehensive summary now runs synchronously on the
+   * agent plane, off this queue entirely.)
    */
-  it('keeps the three LLM-backed queues within one text-service provider lane plus one queued job', () => {
+  it('keeps the two LLM-backed queues within one text-service provider lane plus one queued job', () => {
     const TEXT_USER_LANE_CONCURRENCY = 4;
-    const llm =
-      QUEUE_CONCURRENCY[JobQueue.GeneratePreSummary] +
-      QUEUE_CONCURRENCY[JobQueue.GenerateComprehensiveSummary] +
-      QUEUE_CONCURRENCY[JobQueue.GenerateDnaReport];
+    const llm = QUEUE_CONCURRENCY[JobQueue.GeneratePreSummary] + QUEUE_CONCURRENCY[JobQueue.GenerateDnaReport];
     expect(llm).toBeGreaterThanOrEqual(TEXT_USER_LANE_CONCURRENCY);
     expect(llm).toBeLessThanOrEqual(TEXT_USER_LANE_CONCURRENCY * 2);
   });

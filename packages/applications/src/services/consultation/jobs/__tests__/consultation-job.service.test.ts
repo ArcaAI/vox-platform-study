@@ -41,7 +41,6 @@ const createMockRedisSubscriber = () => ({
 describe('ConsultationJobService', () => {
   let service: ConsultationJobService;
   let mockPreSummaryQueue: ReturnType<typeof createMockQueue>;
-  let mockComprehensiveSummaryQueue: ReturnType<typeof createMockQueue>;
   let mockCacheService: ReturnType<typeof createMockCacheService>;
   let mockRedisSubscriber: ReturnType<typeof createMockRedisSubscriber>;
 
@@ -49,13 +48,11 @@ describe('ConsultationJobService', () => {
     vi.clearAllMocks();
 
     mockPreSummaryQueue = createMockQueue();
-    mockComprehensiveSummaryQueue = createMockQueue();
     mockCacheService = createMockCacheService();
     mockRedisSubscriber = createMockRedisSubscriber();
 
     service = new ConsultationJobService(
       mockPreSummaryQueue as unknown as Queue,
-      mockComprehensiveSummaryQueue as unknown as Queue,
       mockCacheService as any,
       mockRedisSubscriber as any,
     );
@@ -174,139 +171,6 @@ describe('ConsultationJobService', () => {
   // async generator and its NER companion) were deleted along with
   // `summary.processor.ts`/`ner.processor.ts`. Their describe blocks were
   // removed here in the same commit.
-
-  // ===========================================================================
-  // createComprehensiveSummaryJob Tests
-  // ===========================================================================
-
-  describe('createComprehensiveSummaryJob', () => {
-    const validParams = {
-      consultationId: 'consultation-chain-root',
-      tenantId: 'tenant-1',
-      userId: 'doctor-A',
-      request: {
-        dnaStyleId: 'style_DNA_dept_gen',
-        template: 'comprehensive',
-        includeNER: true,
-        includeLabResults: true,
-        options: { maxTokens: 4000 },
-      },
-    };
-
-    it('should create a comprehensive summary job and return JobResponse', async () => {
-      const result = await service.createComprehensiveSummaryJob(
-        validParams.consultationId,
-        validParams.tenantId,
-        validParams.userId,
-        validParams.request,
-      );
-
-      expect(result).toEqual({
-        jobId: 'test-job-id-123',
-        status: 'PENDING',
-        sseUrl: '/api/consultations/jobs/test-job-id-123/sse',
-        estimatedSeconds: 120, // Longer estimate for cross-chain summaries
-      });
-    });
-
-    it('should add job to the GenerateComprehensiveSummary queue (not the pre-summary queue)', async () => {
-      await service.createComprehensiveSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, validParams.request);
-
-      // Must use the comprehensive summary queue, not the pre-summary queue
-      expect(mockComprehensiveSummaryQueue.add).toHaveBeenCalledTimes(1);
-      expect(mockPreSummaryQueue.add).not.toHaveBeenCalled();
-    });
-
-    it('should add job with correct payload structure', async () => {
-      await service.createComprehensiveSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, validParams.request);
-
-      expect(mockComprehensiveSummaryQueue.add).toHaveBeenCalledWith(
-        'generate',
-        expect.objectContaining({
-          jobId: 'test-job-id-123',
-          consultationId: 'consultation-chain-root',
-          tenantId: 'tenant-1',
-          userId: 'doctor-A',
-          request: {
-            dnaStyleId: 'style_DNA_dept_gen',
-            template: 'comprehensive',
-            includeNER: true,
-            includeLabResults: true,
-            options: { maxTokens: 4000 },
-          },
-        }),
-        expect.any(Object),
-      );
-    });
-
-    it('should use 2 attempts (fewer retries than regular summary which uses 3)', async () => {
-      await service.createComprehensiveSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, validParams.request);
-
-      const queueOptions = mockComprehensiveSummaryQueue.add.mock.calls[0][2];
-      expect(queueOptions.attempts).toBe(2);
-    });
-
-    it('should use exponential backoff with 2s delay', async () => {
-      await service.createComprehensiveSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, validParams.request);
-
-      const queueOptions = mockComprehensiveSummaryQueue.add.mock.calls[0][2];
-      expect(queueOptions.backoff).toEqual({ type: 'exponential', delay: 2000 });
-    });
-
-    it('should store initial job status as COMPREHENSIVE_SUMMARY type', async () => {
-      await service.createComprehensiveSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, validParams.request);
-
-      expect(mockCacheService.setex).toHaveBeenCalledWith(
-        'consultation_job:test-job-id-123',
-        86400,
-        expect.stringContaining('"type":"COMPREHENSIVE_SUMMARY"'),
-      );
-    });
-
-    it('should store initial status as PENDING with progress 0', async () => {
-      await service.createComprehensiveSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, validParams.request);
-
-      const storedValue = mockCacheService.setex.mock.calls[0][2];
-      const parsed = JSON.parse(storedValue);
-      expect(parsed.status).toBe('PENDING');
-      expect(parsed.progress).toBe(0);
-      expect(parsed.consultationId).toBe('consultation-chain-root');
-    });
-
-    it('should include callbackUrl when provided', async () => {
-      await service.createComprehensiveSummaryJob(
-        validParams.consultationId,
-        validParams.tenantId,
-        validParams.userId,
-        validParams.request,
-        'https://frontend/callback',
-      );
-
-      expect(mockComprehensiveSummaryQueue.add).toHaveBeenCalledWith(
-        'generate',
-        expect.objectContaining({
-          callbackUrl: 'https://frontend/callback',
-        }),
-        expect.any(Object),
-      );
-    });
-
-    it('should handle empty request object', async () => {
-      const result = await service.createComprehensiveSummaryJob('c1', 't1', 'u1', {});
-
-      expect(result.jobId).toBe('test-job-id-123');
-      expect(result.status).toBe('PENDING');
-
-      const payload = mockComprehensiveSummaryQueue.add.mock.calls[0][1];
-      expect(payload.request).toEqual({});
-    });
-
-    it('should return 120s estimated time (longer than 60s for regular summaries)', async () => {
-      const result = await service.createComprehensiveSummaryJob('c1', 't1', 'u1', {});
-
-      expect(result.estimatedSeconds).toBe(120);
-    });
-  });
 
   // ===========================================================================
   // getJobStatus Tests
@@ -491,29 +355,6 @@ describe('ConsultationJobService', () => {
     // processors were deleted, so `cancelJob` now falls through to the
     // default (not-found) branch for those types — see the "unknown job
     // type" test below, which now also covers 'SUMMARY'/'NER'.
-
-    it('should cancel PENDING COMPREHENSIVE_SUMMARY job successfully', async () => {
-      const storedStatus: ConsultationJobStatus = {
-        jobId: 'job-123',
-        type: 'COMPREHENSIVE_SUMMARY',
-        status: 'PENDING',
-        progress: 0,
-        createdAt: new Date(),
-      };
-      mockCacheService.get.mockResolvedValue(JSON.stringify(storedStatus));
-
-      const mockJob = {
-        getState: vi.fn().mockResolvedValue('waiting'),
-        remove: vi.fn().mockResolvedValue(undefined),
-      };
-      mockComprehensiveSummaryQueue.getJob.mockResolvedValue(mockJob);
-
-      const result = await service.cancelJob('job-123');
-
-      expect(result).toBe(true);
-      expect(mockComprehensiveSummaryQueue.getJob).toHaveBeenCalledWith('job-123');
-      expect(mockJob.remove).toHaveBeenCalled();
-    });
 
     it('should cancel RUNNING job (update status but not remove)', async () => {
       const storedStatus: ConsultationJobStatus = {
@@ -1301,16 +1142,12 @@ describe('ConsultationJobService', () => {
   describe('Edge Cases', () => {
     it('should handle concurrent job creation requests', async () => {
       // Simulate multiple parallel job creations
-      const promises = [
-        service.createPreSummaryJob('c1', 't1', 'u1', {}),
-        service.createComprehensiveSummaryJob('c2', 't1', 'u1', {}),
-      ];
+      const promises = [service.createPreSummaryJob('c1', 't1', 'u1', {}), service.createPreSummaryJob('c2', 't1', 'u1', {})];
 
       const results = await Promise.all(promises);
 
       expect(results).toHaveLength(2);
-      expect(mockPreSummaryQueue.add).toHaveBeenCalledTimes(1);
-      expect(mockComprehensiveSummaryQueue.add).toHaveBeenCalledTimes(1);
+      expect(mockPreSummaryQueue.add).toHaveBeenCalledTimes(2);
     });
 
     it('should handle special characters in consultationId', async () => {
@@ -1331,9 +1168,9 @@ describe('ConsultationJobService', () => {
         largeOptions[`option_${i}`] = `value_${'x'.repeat(100)}`;
       }
 
-      await service.createComprehensiveSummaryJob('consultation-123', 'tenant-1', 'user-1', { options: largeOptions });
+      await service.createPreSummaryJob('consultation-123', 'tenant-1', 'user-1', { options: largeOptions });
 
-      expect(mockComprehensiveSummaryQueue.add).toHaveBeenCalled();
+      expect(mockPreSummaryQueue.add).toHaveBeenCalled();
     });
 
     it('should preserve job order in queue', async () => {
@@ -1400,22 +1237,6 @@ describe('ConsultationJobService', () => {
       expect(idempotencyCall![2]).toBe('test-job-id-123');
     });
 
-    it('createComprehensiveSummaryJob honors the idempotency key the same way', async () => {
-      mockCacheService.get.mockImplementation(async (key: string) => (key.startsWith('idempotency:') ? 'prior-comp-job' : null));
-
-      const result = await service.createComprehensiveSummaryJob(
-        validParams.consultationId,
-        validParams.tenantId,
-        validParams.userId,
-        {},
-        undefined,
-        'idem-comp',
-      );
-
-      expect(result.jobId).toBe('prior-comp-job');
-      expect(mockComprehensiveSummaryQueue.add).not.toHaveBeenCalled();
-    });
-
     it('namespaces the idempotency key by tenant + user so collisions cannot cross-leak', async () => {
       mockCacheService.get.mockResolvedValue(null);
 
@@ -1456,13 +1277,6 @@ describe('ConsultationJobService', () => {
       const payload = stored();
       expect(payload.tenantId).toBe('tenant-A');
       expect(payload.userId).toBe('user-A');
-    });
-
-    it('persists tenantId + userId when storing a COMPREHENSIVE_SUMMARY job status', async () => {
-      await service.createComprehensiveSummaryJob('c-1', 'tenant-C', 'user-C', {});
-      const payload = stored();
-      expect(payload.tenantId).toBe('tenant-C');
-      expect(payload.userId).toBe('user-C');
     });
 
     it('returns tenantId + userId from getJobStatus so interceptors can ownership-check', async () => {

@@ -36,9 +36,9 @@ const TENANT_SCOPED_CALL_SITES = [
   'apps/api/src/modules/streaming/text-proxy.controller.ts',
   'packages/applications/src/services/consultation/live-documentation/live-documentation.service.ts',
   'packages/applications/src/services/consultation/jobs/processors/pre-summary.processor.ts',
-  'packages/applications/src/services/consultation/jobs/processors/comprehensive-summary.processor.ts',
-  // TASK-1006 — the comprehensive summary reaches TEXT through the agent plane now, so the call
-  // site is the invocation service rather than `chain-summary.service.ts`.
+  // TASK-1006 — `comprehensive-summary.processor.ts` was removed outright: the comprehensive
+  // summary now reaches TEXT through the agent plane, so the call site is the invocation
+  // service rather than `chain-summary.service.ts`.
   'packages/applications/src/services/agent/agent-invocation.service.ts',
   'packages/applications/src/services/consultation/summary/summary.service.ts',
   'packages/applications/src/services/prompt-management/prompt-management.service.ts',

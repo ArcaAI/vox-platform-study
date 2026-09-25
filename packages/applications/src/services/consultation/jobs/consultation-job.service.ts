@@ -6,14 +6,7 @@ import { uuidv7 } from 'uuidv7';
 import { JobQueue } from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
-import {
-  GeneratePreSummaryJobPayload,
-  GenerateComprehensiveSummaryJobPayload,
-  ConsultationJobStatus,
-  JobResponse,
-  JobStatusResponse,
-  JobStatusType,
-} from './dto';
+import { GeneratePreSummaryJobPayload, ConsultationJobStatus, JobResponse, JobStatusResponse, JobStatusType } from './dto';
 
 // `createSummaryJob`/`createNerJob` (the legacy `SUMMARY_REGENERATE`
 // async generator and its NER companion) were deleted here along with
@@ -27,16 +20,6 @@ export interface IConsultationJobService {
     tenantId: string,
     userId: string,
     request: GeneratePreSummaryJobPayload['request'],
-    callbackUrl?: string,
-    /** Redis-backed dedupe key for the POST creation. */
-    idempotencyKey?: string,
-  ): Promise<JobResponse>;
-
-  createComprehensiveSummaryJob(
-    consultationId: string,
-    tenantId: string,
-    userId: string,
-    request: GenerateComprehensiveSummaryJobPayload['request'],
     callbackUrl?: string,
     /** Redis-backed dedupe key for the POST creation. */
     idempotencyKey?: string,
@@ -81,7 +64,6 @@ export class ConsultationJobService implements IConsultationJobService {
 
   constructor(
     @InjectQueue(JobQueue.GeneratePreSummary) private preSummaryQueue: Queue,
-    @InjectQueue(JobQueue.GenerateComprehensiveSummary) private comprehensiveSummaryQueue: Queue,
     @Inject(IRedisCacheService) private readonly cacheService: IRedisCacheService,
     private readonly redisSubscriber: RedisSubscriberService,
   ) {
@@ -153,69 +135,6 @@ export class ConsultationJobService implements IConsultationJobService {
   }
 
   /**
-   * Create a comprehensive cross-chain summary generation job
-   */
-  async createComprehensiveSummaryJob(
-    consultationId: string,
-    tenantId: string,
-    userId: string,
-    request: GenerateComprehensiveSummaryJobPayload['request'],
-    callbackUrl?: string,
-    idempotencyKey?: string,
-  ): Promise<JobResponse> {
-    const prior = await this.lookupIdempotentJobId('comprehensive', tenantId, userId, idempotencyKey);
-    if (prior) {
-      return { jobId: prior, status: 'PENDING', sseUrl: `/api/consultations/jobs/${prior}/sse`, estimatedSeconds: 120 };
-    }
-
-    const jobId = uuidv7();
-
-    const payload: GenerateComprehensiveSummaryJobPayload = {
-      jobId,
-      consultationId,
-      tenantId,
-      userId,
-      request,
-      callbackUrl,
-    };
-
-    await this.comprehensiveSummaryQueue.add('generate', payload, {
-      jobId,
-      attempts: 2, // Fewer retries — comprehensive summaries are expensive
-      backoff: { type: 'exponential', delay: 2000 },
-      removeOnComplete: { age: 3600 },
-      removeOnFail: { age: 86400 },
-    });
-
-    await this.storeJobStatus(jobId, {
-      jobId,
-      type: 'COMPREHENSIVE_SUMMARY',
-      status: 'PENDING',
-      consultationId,
-      progress: 0,
-      createdAt: new Date(),
-      tenantId,
-      userId,
-    });
-
-    await this.recordIdempotentJobId('comprehensive', tenantId, userId, idempotencyKey, jobId);
-
-    this.logger.log({
-      message: 'Created comprehensive summary job',
-      jobId,
-      consultationId,
-      tenantId,
-    });
-
-    return {
-      jobId,
-      status: 'PENDING',
-      sseUrl: `/api/consultations/jobs/${jobId}/sse`,
-      estimatedSeconds: 120, // Longer estimate for cross-chain aggregation + AI
-    };
-  }
-
-  /**
    * Publish the status record for a harness-owned note-generation run.
    * See the interface declaration for why this exists.
    */
@@ -273,13 +192,14 @@ export class ConsultationJobService implements IConsultationJobService {
       case 'PRE_SUMMARY':
         queue = this.preSummaryQueue;
         break;
-      case 'COMPREHENSIVE_SUMMARY':
-        queue = this.comprehensiveSummaryQueue;
-        break;
       // 'SUMMARY'/'NER' job types can no longer be cancelled here:
       // their queues (`GenerateSummary`/`ExtractNamedEntities`) and processors
       // were deleted along with `createSummaryJob`/`createNerJob`. A stale
       // status row of either type falls through to the default (not found).
+      // 'COMPREHENSIVE_SUMMARY' likewise: `GenerateComprehensiveSummary` and
+      // `ComprehensiveSummaryProcessor` were deleted by TASK-1006 — the
+      // comprehensive summary now runs synchronously on the agent plane, so
+      // no job of this type is ever created to cancel.
       default:
         return false;
     }

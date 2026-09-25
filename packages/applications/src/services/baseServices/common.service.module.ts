@@ -84,8 +84,10 @@ const imports = [
     // Consultation AI Processing Queues. — `GenerateSummary` /
     // `ExtractNamedEntities` (the legacy signable generator + its NER
     // companion) removed here; `GeneratePreSummary` survives per the R-2
-    // boundary (`GenerateComprehensiveSummary` was never registered on this
-    // global list — only via `ConsultationJobServiceModule`).
+    // boundary. `GenerateComprehensiveSummary` was never registered on this
+    // global list (only via `ConsultationJobServiceModule`) and was removed
+    // outright by TASK-1006 — the comprehensive summary now runs
+    // synchronously on the agent plane.
     JobQueue.GeneratePreSummary,
     // DNA Writing Style Analysis
     JobQueue.GenerateDnaReport,

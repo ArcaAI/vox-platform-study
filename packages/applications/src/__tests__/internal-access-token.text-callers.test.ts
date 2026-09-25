@@ -21,12 +21,12 @@ const ROOT = resolve(__dirname, '..');
 /**
  * Every `packages/applications` production file that authenticates a hop to `apps/text`.
  * (`chain-summary.service.ts` left this list with TASK-1006: the comprehensive summary now reaches
- * TEXT through `agent-invocation.service.ts`, which is on it.)
+ * TEXT through `agent-invocation.service.ts`, which is on it. `comprehensive-summary.processor.ts`
+ * left it the same ticket — it was removed outright, not just rerouted.)
  */
 const SOURCES = [
   'services/consultation/summary/summary.service.ts',
   'services/consultation/jobs/processors/pre-summary.processor.ts',
-  'services/consultation/jobs/processors/comprehensive-summary.processor.ts',
   'services/consultation/live-documentation/live-documentation.service.ts',
   'services/dna-writing-style/dna-writing-style.processor.ts',
   'services/agent/agent-invocation.service.ts',

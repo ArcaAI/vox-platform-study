@@ -3,7 +3,7 @@
  *
  * These tests verify the integration between:
  * - ConsultationJobService (job creation and status management)
- * - Job Processors (pre-summary, comprehensive-summary)
+ * - Job Processors (pre-summary)
  * - Redis/BullMQ (queue operations)
  *
  * NOTE: These are "integration" tests but run with mocked external dependencies
@@ -13,10 +13,13 @@
  * async generator and its NER companion) were deleted along with
  * `summary.processor.ts`/`ner.processor.ts`. The generic job-lifecycle
  * scenarios below (which never cared WHICH job type they exercised) now use
- * `createPreSummaryJob`/`createComprehensiveSummaryJob` — the two surviving
- * job types — as their vehicle; the "Queue Integration" describe block
- * (which specifically asserted per-type queue routing) drops its SUMMARY/NER
- * cases since those queues no longer exist.
+ * `createPreSummaryJob` — the one surviving async job type — as their
+ * vehicle; the "Queue Integration" describe block (which specifically
+ * asserted per-type queue routing) drops its SUMMARY/NER cases since those
+ * queues no longer exist. `createComprehensiveSummaryJob` (and its
+ * `GenerateComprehensiveSummary` queue) was removed by TASK-1006 — the
+ * comprehensive summary now runs synchronously on the agent plane, so
+ * cross-type scenarios that specifically exercised it are gone too.
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
@@ -74,7 +77,6 @@ describe('Consultation Job Queue Integration Tests', () => {
   let mockRedisService: ReturnType<typeof createMockRedisService>;
   let mockRedisSubscriber: ReturnType<typeof createMockRedisSubscriber>;
   let mockPreSummaryQueue: ReturnType<typeof createMockQueue>;
-  let mockComprehensiveSummaryQueue: ReturnType<typeof createMockQueue>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,20 +84,13 @@ describe('Consultation Job Queue Integration Tests', () => {
     mockRedisService = createMockRedisService();
     mockRedisSubscriber = createMockRedisSubscriber();
     mockPreSummaryQueue = createMockQueue();
-    mockComprehensiveSummaryQueue = createMockQueue();
 
-    jobService = new ConsultationJobService(
-      mockPreSummaryQueue as unknown as Queue,
-      mockComprehensiveSummaryQueue as unknown as Queue,
-      mockRedisService as any,
-      mockRedisSubscriber as any,
-    );
+    jobService = new ConsultationJobService(mockPreSummaryQueue as unknown as Queue, mockRedisService as any, mockRedisSubscriber as any);
   });
 
   afterEach(() => {
     mockRedisService._clear();
     mockPreSummaryQueue._clear();
-    mockComprehensiveSummaryQueue._clear();
   });
 
   // ===========================================================================
@@ -147,7 +142,7 @@ describe('Consultation Job Queue Integration Tests', () => {
 
     it('should handle job failure correctly', async () => {
       // Create job
-      const jobResponse = await jobService.createComprehensiveSummaryJob('consultation-456', 'tenant-1', 'user-1', { template: 'soap-note' });
+      const jobResponse = await jobService.createPreSummaryJob('consultation-456', 'tenant-1', 'user-1', { dnaStyleId: 'soap-note' });
       const jobId = jobResponse.jobId;
 
       // Simulate processing starts
@@ -195,7 +190,7 @@ describe('Consultation Job Queue Integration Tests', () => {
     });
 
     it('should not allow cancellation of failed job', async () => {
-      const jobResponse = await jobService.createComprehensiveSummaryJob('consultation-failed', 'tenant-1', 'user-1', {});
+      const jobResponse = await jobService.createPreSummaryJob('consultation-failed', 'tenant-1', 'user-1', {});
       const jobId = jobResponse.jobId;
 
       await jobService.notifyFailed(jobId, 'Some error');
@@ -226,21 +221,6 @@ describe('Consultation Job Queue Integration Tests', () => {
           backoff: { type: 'exponential', delay: 1000 },
         }),
       );
-      expect(mockComprehensiveSummaryQueue.add).not.toHaveBeenCalled();
-    });
-
-    it('should add job to correct queue for COMPREHENSIVE_SUMMARY (not the pre-summary queue)', async () => {
-      await jobService.createComprehensiveSummaryJob('consultation-sum', 'tenant-1', 'user-1', { template: 'discharge', includeLabResults: true });
-
-      expect(mockComprehensiveSummaryQueue.add).toHaveBeenCalledWith(
-        'generate',
-        expect.objectContaining({
-          consultationId: 'consultation-sum',
-          request: { template: 'discharge', includeLabResults: true },
-        }),
-        expect.any(Object),
-      );
-      expect(mockPreSummaryQueue.add).not.toHaveBeenCalled();
     });
 
     it('should include callback URL in job payload when provided', async () => {
@@ -277,7 +257,7 @@ describe('Consultation Job Queue Integration Tests', () => {
     });
 
     it('should publish completion event to Redis channel', async () => {
-      const jobResponse = await jobService.createComprehensiveSummaryJob('consultation-complete-pub', 'tenant-1', 'user-1', {});
+      const jobResponse = await jobService.createPreSummaryJob('consultation-complete-pub', 'tenant-1', 'user-1', {});
       const jobId = jobResponse.jobId;
 
       const result = { contextItemId: 'ctx-1', content: 'Summary' };
@@ -310,23 +290,23 @@ describe('Consultation Job Queue Integration Tests', () => {
 
   describe('Multiple Jobs Integration', () => {
     it('should handle multiple concurrent jobs independently', async () => {
-      // Create two different job types
-      const [preSummaryJob, comprehensiveJob] = await Promise.all([
+      // Create two jobs for different consultations
+      const [job1, job2] = await Promise.all([
         jobService.createPreSummaryJob('c1', 't1', 'u1', {}),
-        jobService.createComprehensiveSummaryJob('c2', 't1', 'u1', {}),
+        jobService.createPreSummaryJob('c2', 't1', 'u1', {}),
       ]);
 
       // Verify all jobs are created with PENDING status
-      const statuses = await Promise.all([jobService.getJobStatus(preSummaryJob.jobId), jobService.getJobStatus(comprehensiveJob.jobId)]);
+      const statuses = await Promise.all([jobService.getJobStatus(job1.jobId), jobService.getJobStatus(job2.jobId)]);
 
       expect(statuses[0]?.type).toBe('PRE_SUMMARY');
-      expect(statuses[1]?.type).toBe('COMPREHENSIVE_SUMMARY');
+      expect(statuses[1]?.type).toBe('PRE_SUMMARY');
       expect(statuses.every((s) => s?.status === 'PENDING')).toBe(true);
     });
 
     it('should update jobs independently', async () => {
       const job1 = await jobService.createPreSummaryJob('c1', 't1', 'u1', {});
-      const job2 = await jobService.createComprehensiveSummaryJob('c2', 't1', 'u1', {});
+      const job2 = await jobService.createPreSummaryJob('c2', 't1', 'u1', {});
 
       // Progress job1 to RUNNING
       await jobService.notifyProgress(job1.jobId, 50, 'Step 1');
@@ -343,29 +323,6 @@ describe('Consultation Job Queue Integration Tests', () => {
 
       expect(status2?.status).toBe('COMPLETED');
       expect(status2?.progress).toBe(100);
-    });
-
-    it('should handle sequential jobs for same consultation', async () => {
-      const consultationId = 'consultation-sequential';
-
-      // Create pre-summary job
-      const preSummaryJob = await jobService.createPreSummaryJob(consultationId, 'tenant-1', 'user-1', {});
-
-      // Complete pre-summary
-      await jobService.notifyComplete(preSummaryJob.jobId, { contextItemId: 'pre-ctx' });
-
-      // Create comprehensive summary job (using pre-summary result)
-      const comprehensiveJob = await jobService.createComprehensiveSummaryJob(consultationId, 'tenant-1', 'user-1', { contextItemIds: ['pre-ctx'] });
-
-      // Complete comprehensive summary
-      await jobService.notifyComplete(comprehensiveJob.jobId, { contextItemId: 'sum-ctx' });
-
-      // Verify both completed
-      const preSummaryStatus = await jobService.getJobStatus(preSummaryJob.jobId);
-      const comprehensiveStatus = await jobService.getJobStatus(comprehensiveJob.jobId);
-
-      expect(preSummaryStatus?.status).toBe('COMPLETED');
-      expect(comprehensiveStatus?.status).toBe('COMPLETED');
     });
   });
 
@@ -554,43 +511,10 @@ describe('Consultation Job Queue Integration Tests', () => {
       expect(finalStatus?.completedAt).toBeDefined();
     });
 
-    it('should handle parallel comprehensive-summary jobs for multiple consultations', async () => {
-      // Simulate: Multiple cross-chain comprehensive summaries requested simultaneously
-
-      const consultationIds = ['consultation-parallel-1', 'consultation-parallel-2', 'consultation-parallel-3'];
-
-      // Create jobs in parallel
-      const jobs = await Promise.all(consultationIds.map((id) => jobService.createComprehensiveSummaryJob(id, 'tenant-1', 'user-1', {})));
-
-      // Verify all jobs were created with correct associations
-      expect(jobs).toHaveLength(3);
-      for (let i = 0; i < jobs.length; i++) {
-        const status = await jobService.getJobStatus(jobs[i].jobId);
-        expect(status?.type).toBe('COMPREHENSIVE_SUMMARY');
-        expect(status?.consultationId).toBe(consultationIds[i]);
-      }
-
-      // Simulate parallel completion with different results
-      const results = [
-        { contextItemId: 'ctx-1', namedEntities: [{ id: 'e1', entityType: 'PERSON', value: 'John' }] },
-        { contextItemId: 'ctx-2', namedEntities: [{ id: 'e2', entityType: 'MEDICATION', value: 'Aspirin' }] },
-        { contextItemId: 'ctx-3', namedEntities: [{ id: 'e3', entityType: 'CONDITION', value: 'Hypertension' }] },
-      ];
-
-      await Promise.all(jobs.map((job, i) => jobService.notifyComplete(job.jobId, results[i])));
-
-      // Verify all completed with correct results
-      for (let i = 0; i < jobs.length; i++) {
-        const status = await jobService.getJobStatus(jobs[i].jobId);
-        expect(status?.status).toBe('COMPLETED');
-        expect((status?.result as any)?.namedEntities).toHaveLength(1);
-      }
-    });
-
     it('should handle job failure recovery scenario', async () => {
       // Simulate: Job starts, fails due to service unavailability, should be trackable
 
-      const job = await jobService.createComprehensiveSummaryJob('consultation-failure', 'tenant-1', 'user-1', { template: 'discharge-summary' });
+      const job = await jobService.createPreSummaryJob('consultation-failure', 'tenant-1', 'user-1', { dnaStyleId: 'discharge-summary' });
 
       // Start processing
       await jobService.notifyProgress(job.jobId, 10, 'Gathering context');
@@ -609,13 +533,12 @@ describe('Consultation Job Queue Integration Tests', () => {
 
       // Verify the job data is still accessible for retry analysis
       expect(status?.consultationId).toBe('consultation-failure');
-      expect(status?.type).toBe('COMPREHENSIVE_SUMMARY');
+      expect(status?.type).toBe('PRE_SUMMARY');
     });
 
     it('should handle long-running job with multiple progress updates', async () => {
-      const job = await jobService.createComprehensiveSummaryJob('consultation-long', 'tenant-1', 'user-1', {
-        includeLabResults: true,
-        contextItemIds: Array(10).fill('ctx-id'),
+      const job = await jobService.createPreSummaryJob('consultation-long', 'tenant-1', 'user-1', {
+        caseNoteIds: Array(10).fill('ctx-id'),
       });
 
       // Simulate realistic progress for processing 10 context items
@@ -644,7 +567,7 @@ describe('Consultation Job Queue Integration Tests', () => {
       // Complete
       await jobService.notifyComplete(job.jobId, {
         contextItemId: 'summary-final',
-        content: 'Comprehensive summary...',
+        content: 'Pre-summary text...',
         namedEntities: Array(25).fill({ id: 'e', entityType: 'ENTITY', value: 'value' }),
       });
 

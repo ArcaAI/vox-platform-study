@@ -203,8 +203,6 @@ export const SUMMARY_ENDPOINTS = {
   GENERATE_ASYNC: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/async`,
   /** Async pre-summary generation (SUM-01) */
   PRE_SUMMARY_ASYNC: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/pre-summary/async`,
-  /** Async comprehensive summary generation (SUM-01) */
-  COMPREHENSIVE_ASYNC: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/comprehensive/async`,
   /** Get version history for a summary context item (WS-3) */
   VERSIONS: (consultationId: string, contextItemId: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/versions`,
@@ -364,12 +362,6 @@ export const STT_ENDPOINTS = {
    * does; fetching them is what keeps "5" and "60" from being hardcoded twice.
    */
   BATCH_LIMITS: '/audio/transcription-jobs/limits',
-  /**
-   * The tenant's configured STT fallback pipeline — lets the live
-   * provider toggle NAME the default and disable itself when none is set,
-   * instead of discovering the 409 mid-consultation.
-   */
-  FALLBACK_PROVIDER: '/audio/transcription-jobs/fallback',
 } as const;
 
 /**
