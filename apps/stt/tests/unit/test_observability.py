@@ -59,7 +59,11 @@ def _reset_logging() -> None:
 
 
 @pytest.fixture(autouse=True)
-def _isolated_logging():
+def _isolated_logging(monkeypatch):
+    # These tests assert on INFO lines (the access log, "still works"). CI sets
+    # LOG_LEVEL=error globally (.gitlab-ci.yml), which silently dropped every one of
+    # them there while the suite stayed green locally — pin the level they test.
+    monkeypatch.setenv("LOG_LEVEL", "info")
     _reset_logging()
     yield
     _reset_logging()
