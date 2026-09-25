@@ -330,9 +330,7 @@ const DEPT = SEED_DEPARTMENT_IDS;
 // TASK-1001 (owner directive 2026-09-23: "all pre-summary and summary must be in english,
 // therefore, prompt instructions and configuration must be set to english"). The language lines of
 // TEXT_SYSTEM_BASE_CONTENT, JSON_ENFORCEMENT_NOTE and CORRECTIVE_RETRY_SUFFIX now name English,
-// whatever language was spoken, where they used to name "the conversation language". The v1-compat
-// surface does not read these rows: it renders its own byte-exact v1 copies
-// (`apps/api/src/modules/text-compat/v1-wrapper`), which are deliberately unchanged.
+// whatever language was spoken, where they used to name "the conversation language".
 const TEXT_SYSTEM_BASE_CONTENT = `You are an expert medical AI assistant specialized in analyzing medical conversations between healthcare providers and patients. Your role is to create clear, accurate, and clinically relevant summaries in structured JSON format with markdown-formatted content.
 
 Key responsibilities:
