@@ -743,7 +743,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     tier: '30-49',
     icon: IconMicrophone,
     required: [
-      ['read', 'AsrPipeline'],
+      ['read', 'TranscriptionJob'],
       ['manage', 'Tenant'],
     ],
     implemented: true,

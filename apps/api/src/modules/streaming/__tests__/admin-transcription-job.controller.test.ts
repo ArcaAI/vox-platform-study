@@ -71,10 +71,9 @@ describe('AdminTranscriptionJobController', () => {
   });
 
   describe('access gate', () => {
-    // `TranscriptionJob` is not a CASL subject in the policy seed, so the
-    // tenant-wide admin view is gated on `manage Tenant` (TENANT_ADMIN /
-    // SUPER_ADMIN). This also satisfies the F6 boot audit, which rejects an
-    // empty @Authorize() on /admin routes.
+    // The class-level gate is `manage Tenant` (TENANT_ADMIN / SUPER_ADMIN).
+    // This also satisfies the F6 boot audit, which rejects an empty
+    // @Authorize() on /admin routes.
     it('is class-gated by @CanManage(Tenant) so plain doctors/users are excluded', () => {
       const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AdminTranscriptionJobController) as
         Array<{ action: string; subject: string }> | undefined;
@@ -83,16 +82,19 @@ describe('AdminTranscriptionJobController', () => {
 
     // The guard resolves permissions with getAllAndOverride, so a
     // class-only `manage Tenant` gate actually EXCLUDED tenant admins (the
-    // seed grants them read/update Tenant, not manage). The design
-    // scopes Audio Processing on AsrPipeline, which `tenant-full-access`
-    // grants — so the reads carry a handler-level `read AsrPipeline` gate,
-    // mirroring TenantBucketController's class-manage + handler-read shape.
+    // seed grants them read/update Tenant, not manage) — so the reads carry a
+    // handler-level `read` gate, mirroring TenantBucketController's
+    // class-manage + handler-read shape.
+    //
+    // TASK-1006 — the subject is the resource these routes actually read,
+    // `TranscriptionJob`. It was `AsrPipeline`, the retired pipeline stack's
+    // subject, which outlived the tables it named.
     it.each(['list', 'getStats', 'getByStatus'] as const)(
-      '%s is handler-gated by read AsrPipeline (tenant admins pass, doctors do not)',
+      '%s is handler-gated by read TranscriptionJob (tenant admins pass, doctors do not)',
       (method) => {
         const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AdminTranscriptionJobController.prototype[method]) as
           Array<{ action: string; subject: string }> | undefined;
-        expect(meta).toEqual([{ action: 'read', subject: 'AsrPipeline' }]);
+        expect(meta).toEqual([{ action: 'read', subject: 'TranscriptionJob' }]);
       },
     );
   });

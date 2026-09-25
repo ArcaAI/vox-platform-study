@@ -649,7 +649,9 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:transcription-job:read': {
     description: 'Read admin transcription job status',
     category: 'Admin',
-    implies: [{ action: 'read', subject: 'AsrPipeline' }],
+    // TASK-1006 — the resource these routes read. It was `read:AsrPipeline`, the retired
+    // pipeline stack's subject.
+    implies: [{ action: 'read', subject: 'TranscriptionJob' }],
     reserved: true,
   },
   'admin:allowed-origin:manage': {

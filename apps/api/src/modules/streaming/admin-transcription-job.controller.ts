@@ -15,18 +15,15 @@ import { CanManage, CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decor
  *   - Class-level `@CanManage('Tenant')` documents the admin plane and keeps
  *     the F6 boot audit satisfied (no empty `@Authorize()` on /admin routes),
  *     exactly like `TenantBucketController`.
- *   - Each read carries a handler-level `@CanRead('AsrPipeline')`
+ *   - Each read carries a handler-level `@CanRead('TranscriptionJob')`
  *     which OVERRIDES the class gate (the guard uses `getAllAndOverride`).
- *     `TranscriptionJob` is not a CASL subject; the audio surface is scoped on
- * `AsrPipeline` per the design permissions, which `tenant-full-access`
- *     grants tenant admins — a class-only `manage Tenant` had locked them out
- *     (the seed gives tenant admins read/update Tenant, not manage).
+ *     A class-only `manage Tenant` had locked tenant admins out (the seed gives
+ *     them read/update Tenant, not manage); the policy seed grants them
+ *     `TranscriptionJob` for exactly these reads.
  *
- * TASK-861: rows are keyed to the ASR Agent version (`agentVersionId` +
- * `resolvedSpec`) — `pipelineId` is the deprecated key and is `null` on
- * agent-keyed jobs. The `read:AsrPipeline` gate below is the deprecated CASL
- * subject the audio surface has always been scoped on; re-scoping it is a
- * permission-model change outside this ticket.
+ * TASK-1006: the subject is the resource these routes read. It was
+ * `AsrPipeline`, the retired pipeline stack's subject, which outlived the
+ * tables it named.
  *
  * Tenant isolation:
  *   - The `tenantScopeFilter` Prisma extension injects `tenantId` into every
@@ -52,7 +49,7 @@ export class AdminTranscriptionJobController {
    * console's existing call is byte-identical.
    */
   @Get()
-  @CanRead('AsrPipeline')
+  @CanRead('TranscriptionJob')
   @ApiOperation({
     summary: 'List ALL transcription jobs in the tenant (paginated)',
     description:
@@ -63,14 +60,14 @@ export class AdminTranscriptionJobController {
   }
 
   @Get('stats')
-  @CanRead('AsrPipeline')
+  @CanRead('TranscriptionJob')
   @ApiOperation({ summary: 'Get tenant-wide transcription job status counts' })
   async getStats() {
     return this.jobService.getStatusCounts();
   }
 
   @Get('status/:status')
-  @CanRead('AsrPipeline')
+  @CanRead('TranscriptionJob')
   @ApiOperation({ summary: 'Get tenant-wide transcription jobs by status' })
   @ApiParam({ name: 'status', description: 'Job status filter' })
   async getByStatus(@Param('status') status: string) {
