@@ -7,9 +7,9 @@
  * Acceptance Criteria). deleted that legacy path and its floor.
  * This test is the PERMANENT form of the same property: after this ticket
  * there is the harness path, plus the kept helper/rollup generators
- * (`ComprehensiveSummaryProcessor` + its sync twin `ChainSummaryService`)
- * which are ALSO signable (the sync `SummaryService.generateSummary` was
- * removed by TASK-1006) — only
+ * (`ChainSummaryService`, whose async twin `ComprehensiveSummaryProcessor` was ALSO removed by
+ * TASK-1006 — the comprehensive summary now runs synchronously on the agent plane) which is ALSO
+ * signable (the sync `SummaryService.generateSummary` was removed by TASK-1006) — only
  * `PreSummaryProcessor`'s `PRE_SUMMARY` output is structurally non-signable
  * (see `kept-generators-signability.task732.test.ts`) — and EVERY one of
  * them still writes a `SummaryMeta` alongside the `RAW_SUMMARY` `ContextItem` it
@@ -68,16 +68,17 @@ describe(' Phase 4 — note-generation assurance contract', () => {
     const rawSummaryProducers = files.filter((f) => RAW_SUMMARY_CALL.test(readFileSync(f, 'utf8')));
     // Sanity floor — the known producers as of this pass (and
     // the deletion-manifest's Task 8 record): ContextService (manual save),
-    // HarnessInternalService (the harness callback), ComprehensiveSummaryProcessor,
-    // ChainSummaryService. (SummaryService left the list with its sync
-    // `generateSummary`, TASK-1006.) A count below this means a producer this
-    // contract doesn't know about disappeared silently; a count above it is fine
-    // (a NEW producer must still pass the assurance check below — that is the
-    // point of a contract test).
+    // HarnessInternalService (the harness callback), ChainSummaryService.
+    // (SummaryService left the list with its sync `generateSummary`, and
+    // `ComprehensiveSummaryProcessor` — ChainSummaryService's async twin —
+    // was removed outright, both TASK-1006.) A count below this means a
+    // producer this contract doesn't know about disappeared silently; a
+    // count above it is fine (a NEW producer must still pass the assurance
+    // check below — that is the point of a contract test).
     expect(
       rawSummaryProducers.length,
       `RAW_SUMMARY producers found: ${rawSummaryProducers.map((f) => f.slice(APPLICATIONS_SRC.length))}`,
-    ).toBeGreaterThanOrEqual(4);
+    ).toBeGreaterThanOrEqual(3);
 
     const violations: string[] = [];
     for (const file of rawSummaryProducers) {

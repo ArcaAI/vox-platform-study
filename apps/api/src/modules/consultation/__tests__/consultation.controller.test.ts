@@ -91,7 +91,6 @@ function createMockJobService() {
   return {
     createSummaryJob: vi.fn(),
     createPreSummaryJob: vi.fn(),
-    createComprehensiveSummaryJob: vi.fn(),
   };
 }
 
@@ -821,10 +820,6 @@ describe('ConsultationController', () => {
 
     it('generateComprehensiveSummary should enforce ownership', async () => {
       await expect(controller.generateComprehensiveSummary(CONSULTATION_OWN, {} as any)).rejects.toThrow(ForbiddenException);
-    });
-
-    it('generateComprehensiveSummaryAsync should enforce ownership', async () => {
-      await expect(controller.generateComprehensiveSummaryAsync(CONSULTATION_OWN, {} as any)).rejects.toThrow(ForbiddenException);
     });
 
     it('approveSummary should enforce ownership', async () => {

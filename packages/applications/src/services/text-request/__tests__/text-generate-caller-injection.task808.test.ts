@@ -19,7 +19,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LiveDocumentationService } from '../../consultation/live-documentation/live-documentation.service';
 import { PreSummaryProcessor } from '../../consultation/jobs/processors/pre-summary.processor';
-import { ComprehensiveSummaryProcessor } from '../../consultation/jobs/processors/comprehensive-summary.processor';
 import { SummaryService } from '../../consultation/summary/summary.service';
 import { DnaWritingStyleProcessor } from '../../dna-writing-style/dna-writing-style.processor';
 
@@ -131,40 +130,6 @@ describe('each TEXT /generate caller posts provider_overrides', () => {
       {},
       TENANT,
     );
-
-    expectOverridesPosted(http.axiosRef.post);
-  });
-
-  it('ComprehensiveSummaryProcessor.callTextService', async () => {
-    const http = httpStub();
-    const enrichment = enrichmentStub();
-    const processor = new ComprehensiveSummaryProcessor(
-      { notifyProgress: vi.fn() } as never,
-      {} as never, // chainSummaryService
-      {} as never, // contextItemRepository
-      {} as never, // consultationRepository
-      {} as never, // summaryMetaRepository
-      {} as never, // namedEntityRepository
-      http as never,
-      configStub,
-      {} as never, // promptResolutionService
-      { assemble: vi.fn().mockResolvedValue(ASSEMBLED) } as never,
-      metricsStub,
-      clsStub(),
-      secretsStub,
-      policyStub,
-      undefined, // configResolver
-      undefined, // usageLedgerService
-      undefined, // unitOfWorkService
-      undefined, // noteGenerationService
-      enrichment as never,
-    );
-
-    await (
-      processor as never as {
-        callTextService(c: unknown, s: unknown, n: unknown, r: unknown, p: unknown, t: string): Promise<unknown>;
-      }
-    ).callTextService({}, [{ consultationId: 'c-1', type: 'note', content: 'body' }], undefined, {}, null, TENANT);
 
     expectOverridesPosted(http.axiosRef.post);
   });

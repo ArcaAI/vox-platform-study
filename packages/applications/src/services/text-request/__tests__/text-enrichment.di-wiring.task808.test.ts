@@ -11,7 +11,6 @@ import { TextRequestServiceModule } from '../text-request.service.module';
 import { LiveDocumentationService } from '../../consultation/live-documentation/live-documentation.service';
 import { LiveDocumentationServiceModule } from '../../consultation/live-documentation/live-documentation.service.module';
 import { PreSummaryProcessor } from '../../consultation/jobs/processors/pre-summary.processor';
-import { ComprehensiveSummaryProcessor } from '../../consultation/jobs/processors/comprehensive-summary.processor';
 import { ConsultationJobServiceModule } from '../../consultation/jobs/consultation-job.service.module';
 import { SummaryService } from '../../consultation/summary/summary.service';
 import { SummaryServiceModule } from '../../consultation/summary/summary.service.module';
@@ -19,11 +18,13 @@ import { DnaWritingStyleProcessor } from '../../dna-writing-style/dna-writing-st
 import { DnaWritingStyleServiceModule } from '../../dna-writing-style/dna-writing-style.service.module';
 
 /**
- * DI wiring guard for the five repaired TEXT `/generate` callers.
- * (`ChainSummaryService` was a sixth until TASK-1006: it now reaches TEXT through
- * `AgentInvocationService`, which injects the enrichment itself.)
+ * DI wiring guard for the four repaired TEXT `/generate` callers.
+ * (`ChainSummaryService` was a fifth until TASK-1006: it now reaches TEXT through
+ * `AgentInvocationService`, which injects the enrichment itself. `ComprehensiveSummaryProcessor`
+ * was a sixth until the same ticket removed it outright — the comprehensive summary now runs
+ * synchronously on the agent plane, through `ChainSummaryService`.)
  *
- * `TextRequestEnrichmentService` is injected `@Optional()` on all five, so a
+ * `TextRequestEnrichmentService` is injected `@Optional()` on all four, so a
  * module that does NOT import `TextRequestServiceModule` resolves it to
  * `undefined`, the `?.` call becomes a silent no-op, and the whole outage comes
  * back with every unit test still green — every existing fixture constructs
@@ -59,7 +60,6 @@ function moduleImports(target: any): unknown[] {
 const CALLERS: Array<[name: string, service: unknown, module: unknown]> = [
   ['LiveDocumentationService', LiveDocumentationService, LiveDocumentationServiceModule],
   ['PreSummaryProcessor', PreSummaryProcessor, ConsultationJobServiceModule],
-  ['ComprehensiveSummaryProcessor', ComprehensiveSummaryProcessor, ConsultationJobServiceModule],
   ['SummaryService', SummaryService, SummaryServiceModule],
   ['DnaWritingStyleProcessor', DnaWritingStyleProcessor, DnaWritingStyleServiceModule],
 ];
