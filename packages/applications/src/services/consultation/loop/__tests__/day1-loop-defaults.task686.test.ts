@@ -54,6 +54,8 @@ describe('The seeded context-schema definition', () => {
     // ONE tenant-cloned schema rather than keeping a second one beside it.
     expect(kinds.map((k) => [k.key, k.primitive])).toEqual([
       ['audio_stream', 'STREAM_AUDIO'],
+      // TASK-1006 — the finished-transcript input the consultation graph's `n_transcript` reads.
+      ['transcript', 'TEXT'],
       ['work_note', 'TEXT'],
       ['case_note', 'TEXT'],
       ['attachment', 'DOCUMENT'],
@@ -170,6 +172,7 @@ describe('LoopConfigService against the seeded rows', () => {
     const result = await service.resolveForConsultation(TENANT_ID, CONSULTATION_ID);
 
     expect(result.subscriptions).toEqual([
+      { kindKey: 'transcript', actions: ['client.emit'] },
       { kindKey: 'work_note', actions: ['client.emit'] },
       { kindKey: 'case_note', actions: ['client.emit'] },
       { kindKey: 'attachment', actions: ['document.extract_text', 'client.emit'] },

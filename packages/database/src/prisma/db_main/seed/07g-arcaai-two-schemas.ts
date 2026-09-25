@@ -46,6 +46,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { SEED_ARCAAI_CONTEXT_SCHEMA_IDS, SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS, SEED_CUSTOMER_TENANT_IDS, SYSTEM_USER_ID } from './00-constants';
 import {
+  CONSULTATION_TRANSCRIPT_KIND,
   NOTE_CONTEXT_PROMPT_KIND,
   NOTE_CONTEXT_SCHEMA_SLUG,
   definitionChecksum,
@@ -193,6 +194,8 @@ export const ARCAAI_CONSULTATION_SCRIBE_DEFINITION: Record<string, unknown> = {
       producedBy: ['CLIENT'],
       description: 'The live consultation recording, captured by the STT session.',
     },
+    // TASK-1006 — the finished-transcript input, shared with `07e` by reference.
+    CONSULTATION_TRANSCRIPT_KIND,
     {
       key: 'encounter',
       label: 'Encounter',

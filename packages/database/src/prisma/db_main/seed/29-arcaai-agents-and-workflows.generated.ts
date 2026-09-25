@@ -10,17 +10,17 @@
  */
 import type { GeneratedWorkflowBlob } from './28-workflow-library.generated';
 
-export const REGISTRY_CHECKSUM: string = "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b";
+export const REGISTRY_CHECKSUM: string = "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d";
 
 export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "ARCAAI:arcaai-gen-consultation": {
-    "graphChecksum": "f19ffe71af293e5d2f896df3129f644a455133e1ea8d695266e17985a29c7b90",
+    "graphChecksum": "354672f9153a366467293dd56a47d3618b60d8e52664bccdae4678aeeb6dbfb3",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -32,7 +32,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -54,6 +54,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -418,6 +421,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -448,6 +479,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -770,17 +806,17 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "1d041a8e15c9662c947b3f5b9b7be091d93a6440977c7396c0605c363f8e82fa"
+      "checksum": "086414d5cf806391a0539cac4fb81f02aafa88e3d3d881587c3ff5a3647f01b8"
     }
   },
   "ARCAAI:arcaai-surg-consultation": {
-    "graphChecksum": "4162557e1f6e073207bfae4331932dfac4a0603748778bf7bd7a1eac3b6b03c6",
+    "graphChecksum": "bda7b9b372d07aab93733ccf50a4c03ec1dd38dad556b98c65019f6a8a3fdbe1",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -792,7 +828,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -814,6 +850,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -1178,6 +1217,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -1208,6 +1275,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -1530,17 +1602,17 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "8b37b2f53e5f7e5208b75bd611155362a89fb1e289e101e0274bd148715c45be"
+      "checksum": "8520a28150c2e177e0fdf6cd9894341acfb7dee92d495223dded251cf3b90a42"
     }
   },
   "ARCAAI:arcaai-rheum-consultation": {
-    "graphChecksum": "b73f36717e6848b1fe794813160e14531eb9f9c137b0bcb550e74490f9148c1a",
+    "graphChecksum": "25a8e3a0b13e3b7ef566323e33e3da047b4046b65fcc37006257d6d72dcffb38",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -1552,7 +1624,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -1574,6 +1646,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -1938,6 +2013,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -1968,6 +2071,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -2290,17 +2398,17 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "5e205426cdf5d5f7fcbd8b5fb34a0f2b425f1ce0d5e754056cb5cd0e86be5058"
+      "checksum": "170d67fe0f2162129d8effea94e92182f6193227096be8a6a4ccaacdaad85eed"
     }
   },
   "ARCAAI:arcaai-neur-consultation": {
-    "graphChecksum": "677ebede5807e4e55907b74c36dd41a5aca3952527d155a90b0acaf9c83d360d",
+    "graphChecksum": "0adfd0c6d085feee68bb3f9b989534984dfc0da7cacd8feede444d9625666beb",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -2312,7 +2420,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -2334,6 +2442,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -2698,6 +2809,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -2728,6 +2867,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -3050,17 +3194,17 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "ef1bc6042503110b6037b3e973ec77ac7be76cdea3f826bd51ae58613d7a2c36"
+      "checksum": "cd5a5a835f2ffac9801e37f4d8fb9f938502a858f1fbe3c2704469536d7a5093"
     }
   },
   "ARCAAI:arcaai-orth-consultation": {
-    "graphChecksum": "dfb5f940a685b4177bd25b6606f72a7fc3b82108a5ac27a308c29f4ebfe4fd51",
+    "graphChecksum": "5a4d1b3ea2b242ba6bc1ec552915dfc05d4346998930c336f7eb390a45622529",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -3072,7 +3216,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -3094,6 +3238,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -3458,6 +3605,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -3488,6 +3663,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -3810,17 +3990,17 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "b6234805fc486e9d983966283faa4a2b5841863d34931843647e9115e49463f7"
+      "checksum": "be38c17acb2efe9220076a213c52407fac2bec1a01bac94c0fab68fd033f76cd"
     }
   },
   "ARCAAI:arcaai-heme-consultation": {
-    "graphChecksum": "ad321a552dd7baa112ac1f42ebcdd5c4f47324012f00ec97d82e1063cff36d34",
+    "graphChecksum": "150aa68b061a299f09187b26c79e68d46b8b15c1414bca38b6fdfd141a3b2047",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -3832,7 +4012,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -3854,6 +4034,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -4218,6 +4401,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -4248,6 +4459,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -4570,17 +4786,17 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "570aedccc8492447bad101862c3bf95ea4d1871b77bd0038f792da4d61a993eb"
+      "checksum": "785c148b6b0bc33f99e56c7e3d77fab487efa17a4acd6cfd2f348c1d2eeabc30"
     }
   },
   "ARCAAI:arcaai-bren-consultation": {
-    "graphChecksum": "049989fbb8c52f6bd9190cfe99cdfd8bfb0c74651f026145ecc06c03c538bea3",
+    "graphChecksum": "fdd855ec4114c0ab7f41cbe4c2e348e2805a3c8da8eb61e8b20ce51b1e48c0cb",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -4592,7 +4808,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -4614,6 +4830,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -4978,6 +5197,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -5008,6 +5255,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -5330,17 +5582,17 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "e5dc7ffa5fd8ffc9fb88724b5e3d802ed0ca4feb832da7e59602ac24e93c072b"
+      "checksum": "4ff85bfedd7ee9919d1882a481940cbf22a6f389a68e206a020529e5eafcc409"
     }
   },
   "ARCAAI:arcaai-derm-consultation": {
-    "graphChecksum": "a59c6e7d1751645abff7b3081d1b42fe4517625835fc9d0265c5bfda71195390",
+    "graphChecksum": "49b3ab99c17f5a95242c528288e81d86eed7120d5e58daae89114edd285b7b29",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -5352,7 +5604,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -5374,6 +5626,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -5738,6 +5993,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -5768,6 +6051,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -6090,17 +6378,17 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "c58275264e783f0090cf6faa90f10b91e083c2950a250448fdf9c99e61fdd510"
+      "checksum": "9d491c3b42b19266c46c0c896e5c8cec4e3324199f704cffded9900010bd8c09"
     }
   },
   "ARCAAI:arcaai-diet-consultation": {
-    "graphChecksum": "5491381398ed8f449e77a63bf5ab75eb352e30efe77efd7d76c9e2b7e32e772b",
+    "graphChecksum": "254e90b66834e437f89022e3783a5acd360e27f3100431a98324680b41b27e1c",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -6112,7 +6400,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -6134,6 +6422,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -6498,6 +6789,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -6528,6 +6847,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -6850,17 +7174,17 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "d64c87489630484daf712ed1df33f5766c7305f9a1b05afc5f771db5368aaaa6"
+      "checksum": "d8c2a70e242835f62d375baed43defaf0fef5eb2012514afd65a5d74a83aebbc"
     }
   },
   "ARCAAI:arcaai-neph-consultation": {
-    "graphChecksum": "b9d7a8276372b9ef688081c8ed1d825d0251efef5b9851ff69e6b20f420a6543",
+    "graphChecksum": "95ee501d36c8df5c03e2c8bc09b1605f1cccee33ec265a2f6d93cc6825d10d1b",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -6872,7 +7196,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -6894,6 +7218,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -7258,6 +7585,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -7288,6 +7643,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -7610,17 +7970,17 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "733e3817c1c0b46cfc25f8fad0b2dbcd17fa97f7bb4a1425610e4816f168eacf"
+      "checksum": "ba22bcacdb4c6c5fc6f93d6b8dd398818cfe304a8a171f85db729a5e519d804c"
     }
   },
   "ARCAAI:arcaai-sonc-consultation": {
-    "graphChecksum": "0bfde0bdf12b074250de8c0a3221572ffb671c602e88621862564fb2e251b1b1",
+    "graphChecksum": "370d81ca31deafc47c475da3077d2df3b96c974a850b4ee0acab36ad113a8409",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -7632,7 +7992,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "1fd34165ccfa9a783d52e3b08285280796fc7a0d3bc615e68741a468d2811a7b",
+      "registryChecksum": "4142d7332f472dc77e65852f0db7165f98a23807190f3fc4303c2cfc0e2ccb6d",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -7654,6 +8014,9 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
+                        "type": "object"
+                      },
+                      "transcript": {
                         "type": "object"
                       },
                       "encounter": {
@@ -8018,6 +8381,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               ],
               "onError": "degrade",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_transcript",
+              "type": "core.data",
+              "activity": "interpreter.core_data",
+              "config": {
+                "mappings": [
+                  {
+                    "from": "in.transcript.text",
+                    "to": "text"
+                  }
+                ]
+              },
+              "timeoutSeconds": 30,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "in"
+                }
+              ],
+              "onError": "fail",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -8048,6 +8439,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 {
                   "fromNodeId": "n_asr",
                   "fromPort": "transcript",
+                  "toPort": "in"
+                },
+                {
+                  "fromNodeId": "n_transcript",
+                  "fromPort": "text",
                   "toPort": "in"
                 }
               ],
@@ -8370,7 +8766,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "036e13c5bfa6f8f6847a7f48106e61145da0fc35ae095ef27cc7e07333f43d7e"
+      "checksum": "0e31cebbac235c6c0886afdfe340b752d359da9fa6a995995124d689049c6bf0"
     }
   }
 };
