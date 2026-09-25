@@ -15,12 +15,13 @@
       "@arcaai/vad",
       "@arcaai/noise-filter",
       "@arcaai/med-ner",
-      "@arcaai/pipeline"
+      "@arcaai/pipeline",
+      "@arcaai/vox-node-codegen"
     ]
   ],
-  "ignore": [
-    "@arcaai/async-contract",
-    "@arcaai/vox-node-codegen",
-    "@arcaai/workflow-contract"
-  ]
+  "ignore": ["@arcaai/admin-console", "@arcaai/async-contract", "@arcaai/workflow-contract"],
+  "privatePackages": {
+    "version": true,
+    "tag": false
+  }
 }

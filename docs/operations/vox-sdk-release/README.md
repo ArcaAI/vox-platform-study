@@ -12,7 +12,8 @@ the last several releases (through 3.5.0) were cut via CI.
 This directory holds only this file.
 
 ### Package inventory
-Nine packages move together in one Changesets `fixed` group (`.changeset/config.json`):
+Ten packages move together in one Changesets `fixed` group (`.changeset/config.json`) — the nine
+published ones below plus the private `@arcaai/vox-node-codegen`:
 
 | Package | Path | Role |
 |---|---|---|
@@ -26,8 +27,15 @@ Nine packages move together in one Changesets `fixed` group (`.changeset/config.
 | `@arcaai/med-ner` | `packages/med-ner/` | Optional peer — browser medical NER |
 | `@arcaai/pipeline` | `packages/pipeline/` | Sequential/parallel processing primitives — not a `vox` runtime dependency, but versioned with the family |
 
-`@arcaai/vox-node-codegen` is `private: true` and is deliberately in the Changesets `ignore` list —
-it is never published, only version-aligned by hand alongside the rest.
+`@arcaai/vox-node-codegen` (`packages/vox-node-codegen/`, the build-time generator of vox-node's
+`hope.admin.*`) is `private: true` and never published, but it is a **member of the same `fixed`
+group** (since 4.0.0), so `pnpm changeset:version` versions it with the family and it can never
+drift (it sat at 3.3.0 through 3.5.0 and 3.6.0 while it was in the `ignore` list). `changeset
+publish` skips private packages, so being in the group publishes nothing. Two config keys make this
+work: `privatePackages: { version: true, tag: false }` (without it Changesets silently leaves private
+packages out of the plan), and `@arcaai/admin-console` in `ignore` (it depends on `@arcaai/vox`, so the
+setting above would otherwise patch-bump the console on every SDK release). Prove the plan before a
+release with a throwaway changeset and `pnpm changeset status --verbose` — it must list exactly the ten.
 
 All publishable packages carry matching `publishConfig`/`repository` fields:
 
@@ -134,8 +142,8 @@ to already exist on the registry.
   each package's own `publishConfig.registry` (`npm.pkg.github.com`), so writing GitLab registry
   credentials into `.npmrc` — an earlier version of this pipeline's mistake — authenticates a
   registry that is never addressed.
-- **`@arcaai/vox-node-codegen` refuses `pnpm publish`** (it is `private: true`) — bump its version
-  for alignment only, never try to publish it.
+- **`@arcaai/vox-node-codegen` refuses `pnpm publish`** (it is `private: true`) — it is versioned by
+  the `fixed` group (and by `scripts/publish-sdk.sh`'s `ALIGN_ONLY`), never published.
 - **Nine packages move together**; publishing a subset out of the `fixed` group risks a version
   skew that breaks `workspace:*` resolution for whichever package didn't move.
 
@@ -150,5 +158,6 @@ to already exist on the registry.
 | Date | Version | How | Notes |
 |---|---|---|---|
 | 2026-09-11 | 3.3.0 | Manual runbook, from `dev-2.2` at `a6e16b075` (versions committed in `9b3183ffc` via `pnpm changeset:version`; the private `@arcaai/vox-node-codegen` aligned by hand in `66c50d8ac`) | Nine packages published in dependency order under the operator's global `~/.npmrc` token. `@arcaai/vox-node-codegen` is `private: true`, so `pnpm publish` refuses it — bumped for alignment only. |
+| 2026-09-25 | 4.0.0 | CI `publish-sdk` job, protected annotated `SDK-4.0.0` tag at `dev-2.2` `370bb8132` (versions committed in `30e94aea7` via `pnpm changeset:version` from the TASK-1004 changeset) | **Major.** Removed `@arcaai/vox/compat` and `hope.summarization.*`; added `LanguageModeId` / `LanguageResolution`, vox-node `consultations.updateLanguage`, `languageMode` on open / stream session / `agents.transcribe` (which now forwards `consultationId`). `@arcaai/vox-node-codegen` joined the `fixed` group and was aligned to 4.0.0 in the follow-up commit (private, not published). |
 | 2026-09-17 | 3.6.0 | CI `publish-sdk` job, protected `SDK-3.6.0` tag (annotated, at `dev-2.2` `7c6ea348f`), versioned locally via `pnpm changeset:version` from one changeset on the fixed group | All nine fixed-group packages at `3.6.0`. Schema-driven consultation context aligned end to end: typed `open<TContext>`, `consultations.listContext`, `governingRun`, `HopeAPIError.problems`, run `degraded` + node counts, `WorkflowSchemaDescription.contextSchema` / `reviewNodes`, `OPEN_REFUSAL_CODES` + `API_KEY_SCOPE_PRESETS` from `@arcaai/types`; codegen `--check`, `OpenConsultationContext`, `@schemaVersion` / `@contextSchema` / `@reviewNodes`; a NEW 400 `WORKFLOW_CONTEXT_INCOMPATIBLE` refusal on `open`. |
 | previous | 3.5.0 | CI `publish-sdk` job, protected `SDK-3.5.0` tag, `pnpm changeset publish` | All nine fixed-group packages at `3.5.0` (`@arcaai/vox-node-codegen` stayed at `3.3.0`, aligned by hand). Fixed alongside this release (TASK-931): `@arcaai/json-schema-subset` and `@arcaai/vox-codegen` were missing from the CI build list; the manual path's registry confusion (a GitLab-targeted `.npmrc` that no publish ever addressed) is resolved. The CI path is now the one actually used to cut a release — treat the manual steps above as the fallback, not the default. |

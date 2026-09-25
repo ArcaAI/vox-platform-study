@@ -81,6 +81,11 @@ NC='\033[0m'
 # but ships in the same run so it never drifts out of lockstep with vox.
 PUBLISH_ORDER=(room vad noise-filter stt med-ner vox vox-node)
 
+# Versioned with the family but NEVER published (`private: true`): the build-time
+# generator of vox-node's hope.admin.* surface. Bumped in step 1 so it cannot
+# drift from the published packages.
+ALIGN_ONLY=(vox-node-codegen)
+
 # Directory name under packages/ for each package (vox is the odd one out).
 pkg_dir() {
     case "$1" in
@@ -180,7 +185,7 @@ fi
 # ----------------------------------------------------------------------------
 echo
 echo -e "${CYAN}=== Bumping to $VERSION ===${NC}"
-for name in "${PUBLISH_ORDER[@]}"; do
+for name in "${PUBLISH_ORDER[@]}" "${ALIGN_ONLY[@]}"; do
     dir="packages/$(pkg_dir "$name")"
     node -e "
         const fs = require('fs');

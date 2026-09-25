@@ -1,6 +1,6 @@
 # @arcaai/vox-node-codegen — admin-surface generator
 
-`packages/vox-node-codegen`, npm package `@arcaai/vox-node-codegen` (version 3.3.0). **Private**
+`packages/vox-node-codegen`, npm package `@arcaai/vox-node-codegen` (version 4.0.0 — versioned in lockstep with the SDK family). **Private**
 (`"private": true`) — never published, never a runtime dependency of `@arcaai/vox-node`, and never
 imported by application code. It is a `devDependency` of `@arcaai/vox-node` only, wired in
 because a generator that reads the filesystem, parses OpenAPI and calls prettier does not belong
