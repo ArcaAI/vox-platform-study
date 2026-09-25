@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 350,
+  "distinctNames": 353,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -2379,7 +2379,7 @@
           "secret": false,
           "dataType": "string",
           "default": "stt",
-          "description": "The prefixed name is listed FIRST so it wins, and the bare name stays accepted so existing deployments keep working. Fields that name genuinely SHARED infrastructure \u2014 `DATABASE_URL`, `REDIS_URL`, `MINIO_*` \u2014 are deliberately left bare: one address, one value, every service. BUILD IDENTITY, not configuration \u2014 and therefore not settable from env (rule 09 \u00a7Release Versioning: build identity \"must never be made settable from a Deployment manifest, an env file, or `turbo.json#globalEnv`\"). The authoritative version is the release tag baked into the image's `build-info.json`, which `hope_env.BuildInfoReader` reads; these two are only the in-process labels used before that file is consulted. They were bare fields, so `APP_VERSION=9.9.9` in the shared env file would have made this service report a version nobody built \u2014 the exact defect that had `apps/api` reporting `0.1.0` in every deployed environment."
+          "description": "The prefixed name is listed FIRST so it wins, and the bare name stays accepted so existing deployments keep working. Fields that name genuinely SHARED infrastructure \u2014 `REDIS_URL`, `MINIO_*` \u2014 are deliberately left bare: one address, one value, every service. BUILD IDENTITY, not configuration \u2014 and therefore not settable from env (rule 09 \u00a7Release Versioning: build identity \"must never be made settable from a Deployment manifest, an env file, or `turbo.json#globalEnv`\"). The authoritative version is the release tag baked into the image's `build-info.json`, which `hope_env.BuildInfoReader` reads; these two are only the in-process labels used before that file is consulted. They were bare fields, so `APP_VERSION=9.9.9` in the shared env file would have made this service report a version nobody built \u2014 the exact defect that had `apps/api` reporting `0.1.0` in every deployed environment."
         },
         {
           "name": "APP_VERSION__MOVED_TO_CONTROL_PLANE",
@@ -2452,54 +2452,6 @@
           "dataType": "list",
           "default": "[]",
           "description": "CORS \u2014 EMPTY by default. stt handles PHI audio, and the browser never talks to :8861 directly (the gateway fronts every route), so there is no origin this service can name for itself. `[\"*\"]` was the shipped default; an operator with a genuine direct-browser need sets CORS_ORIGINS explicitly rather than inheriting a wildcard nobody chose."
-        },
-        {
-          "name": "DATABASE_ENABLED",
-          "aliases": [],
-          "class": "Settings",
-          "field": "database_enabled",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "Open the read-only Postgres connection (deprecated paths only; TASK-861)."
-        },
-        {
-          "name": "DATABASE_MAX_OVERFLOW",
-          "aliases": [],
-          "class": "Settings",
-          "field": "database_max_overflow",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 10,
-          "description": ""
-        },
-        {
-          "name": "DATABASE_POOL_SIZE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "database_pool_size",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 5,
-          "description": ""
-        },
-        {
-          "name": "DATABASE_URL",
-          "aliases": [],
-          "class": "Settings",
-          "field": "database_url",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "postgresql+asyncpg://postgres:postgres@localhost:5432/hope",
-          "description": "PostgreSQL connection string (read-only access)"
         },
         {
           "name": "DIARIZATION_DEVICE__MOVED_TO_CONTROL_PLANE",
@@ -3743,6 +3695,9 @@
     }
   },
   "bareReads": {
+    "DATABASE_URL": [
+      "apps/harness/src/harness/eval/judge/selection.py"
+    ],
     "DEPLOYMENT_ENVIRONMENT": [
       "apps/guardrail/src/guardrail/main.py",
       "apps/harness/src/harness/core/config.py",
@@ -3752,6 +3707,12 @@
       "apps/tts/src/tts/core/config.py",
       "apps/tts/src/tts/core/service_auth.py",
       "packages/py-obs/src/hope_obs/config.py"
+    ],
+    "EXPORTER_INTERVAL_SECONDS": [
+      "infrastructure/gpu-process-exporter/exporter.py"
+    ],
+    "EXPORTER_PORT": [
+      "infrastructure/gpu-process-exporter/exporter.py"
     ],
     "HARNESS_GOLDEN_SET_PATH": [
       "apps/harness/eval/promptfoo/tests.py"
@@ -3798,8 +3759,15 @@
     "HOPE_SECRETS_DIR": [
       "packages/py-env/src/hope_env/settings_sources.py"
     ],
+    "HOPE_STT_APP_DIR": [
+      "apps/stt/scripts/mlen_chunk_sweep.py"
+    ],
     "HOSTNAME": [
-      "packages/py-env/src/hope_env/service_registration.py"
+      "packages/py-env/src/hope_env/service_registration.py",
+      "packages/py-runtime-models/src/hope_runtime_models/residency_agent.py"
+    ],
+    "HOST_PROC": [
+      "infrastructure/gpu-process-exporter/exporter.py"
     ],
     "NLP_MODEL_LOCAL_ROOTS": [
       "apps/nlp/src/nlp/core/guard_model_reference.py"
@@ -3833,6 +3801,12 @@
     ],
     "QDRANT_PORT": [
       "infrastructure/docker/scripts/init-qdrant-collections.py"
+    ],
+    "SARVAM_API_KEY": [
+      "scripts/probe-sarvam-realtime.py"
+    ],
+    "STT_CUDA_ARCHITECTURES": [
+      "apps/stt/docker/cuda-preflight.py"
     ],
     "WHISPER_MLEN_GGUF": [
       "apps/stt/scripts/mlen_scorecard.py"

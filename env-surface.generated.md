@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 111 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
-| Python declared fields | 304 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 350 |
-| `turbo.json#globalEnv` entries | 509 |
+| Python declared fields | 300 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 353 |
+| `turbo.json#globalEnv` entries | 506 |
 
 ## Variables — the TypeScript platform surface
 
@@ -191,10 +191,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `AZURE_STORAGE_CONNECTION_STRING` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `AZURE_STORAGE_ENDPOINT_SUFFIX` | `apps/stt` | no | no | `core.windows.net` | commented | — |
 | `CORS_ORIGINS` | `apps/stt` | no | no | `[]` | commented | — |
-| `DATABASE_ENABLED` | `apps/stt` | no | no | `false` | commented | — |
-| `DATABASE_MAX_OVERFLOW` | `apps/stt` | no | no | `10` | commented | — |
-| `DATABASE_POOL_SIZE` | `apps/stt` | no | no | `5` | commented | — |
-| `DATABASE_URL` | `apps/stt` | no | no | `postgresql+asyncpg://postgres:postgres@localhost:5432/hope` | commented | — |
 | `DIARIZATION_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `auto` | commented | — |
 | `GUARDRAIL_CONFIG_CACHE_TTL_S` | `apps/guardrail` | no | no | `60` | commented | — |
 | `GUARDRAIL_DATABASE_URL` | `apps/guardrail` | no | no | `postgresql+asyncpg://postgres:postgres@localhost:5432/hope` | commented | — |
@@ -493,7 +489,10 @@ promotion into its service’s `BaseSettings`.
 
 | Variable | Read by |
 |---|---|
+| `DATABASE_URL` | `apps/harness/src/harness/eval/judge/selection.py` |
 | `DEPLOYMENT_ENVIRONMENT` | `apps/guardrail/src/guardrail/main.py`, `apps/harness/src/harness/core/config.py`, `apps/stt/src/stt/core/service_auth.py`, `apps/stt/src/stt/main.py`, `apps/stt/src/stt/worker.py`, `apps/tts/src/tts/core/config.py`, `apps/tts/src/tts/core/service_auth.py`, `packages/py-obs/src/hope_obs/config.py` |
+| `EXPORTER_INTERVAL_SECONDS` | `infrastructure/gpu-process-exporter/exporter.py` |
+| `EXPORTER_PORT` | `infrastructure/gpu-process-exporter/exporter.py` |
 | `HARNESS_GOLDEN_SET_PATH` | `apps/harness/eval/promptfoo/tests.py` |
 | `HARNESS_LLM_BACKOFF_BASE_S` | `apps/harness/src/harness/core/llm_concurrency.py` |
 | `HARNESS_LLM_BACKOFF_JITTER_S` | `apps/harness/src/harness/core/llm_concurrency.py` |
@@ -508,7 +507,9 @@ promotion into its service’s `BaseSettings`.
 | `HF_HUB_CACHE` | `packages/py-runtime-models/src/hope_runtime_models/resolvable.py` |
 | `HF_HUB_OFFLINE` | `apps/harness/src/harness/models/source_resolver.py`, `apps/nlp/src/nlp/models/source_resolver.py`, `apps/stt/src/stt/models/source_resolver.py`, `apps/tts/src/tts/models/source_resolver.py` |
 | `HOPE_SECRETS_DIR` | `packages/py-env/src/hope_env/settings_sources.py` |
-| `HOSTNAME` | `packages/py-env/src/hope_env/service_registration.py` |
+| `HOPE_STT_APP_DIR` | `apps/stt/scripts/mlen_chunk_sweep.py` |
+| `HOSTNAME` | `packages/py-env/src/hope_env/service_registration.py`, `packages/py-runtime-models/src/hope_runtime_models/residency_agent.py` |
+| `HOST_PROC` | `infrastructure/gpu-process-exporter/exporter.py` |
 | `NLP_MODEL_LOCAL_ROOTS` | `apps/nlp/src/nlp/core/guard_model_reference.py` |
 | `OMP_NUM_THREADS` | `apps/stt/src/stt/main.py` |
 | `OPENAI_API_KEY` | `apps/harness/eval/promptfoo/provider.py` |
@@ -520,4 +521,6 @@ promotion into its service’s `BaseSettings`.
 | `QDRANT_KNOWLEDGE_COLLECTION` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_KNOWLEDGE_DIM` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_PORT` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
+| `SARVAM_API_KEY` | `scripts/probe-sarvam-realtime.py` |
+| `STT_CUDA_ARCHITECTURES` | `apps/stt/docker/cuda-preflight.py` |
 | `WHISPER_MLEN_GGUF` | `apps/stt/scripts/mlen_scorecard.py` |
