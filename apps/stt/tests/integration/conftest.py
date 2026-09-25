@@ -7,18 +7,20 @@ IMPORTANT: Start test services from monorepo root:
     pnpm docker:test:up
 
 Test Ports (matching monorepo infrastructure):
-- PostgreSQL: 5433 (test) vs 5432 (dev)
 - Redis: 6380 (test) vs 6379 (dev)
 - MinIO: 9002 (test) vs 9000 (dev)
+
+apps/stt has no database (TASK-1006), so the suite gates on the infrastructure its
+fixtures actually use — Redis — rather than on Postgres.
 """
 
 import pytest
 
 # Import centralized test helpers
-from tests.helpers.db import (
+from tests.helpers.infra import (
     get_minio_config,
     get_redis_url,
-    wait_for_database,
+    wait_for_redis,
 )
 
 # =============================================================================
@@ -29,7 +31,7 @@ from tests.helpers.db import (
 @pytest.fixture(scope="session", autouse=True)
 def verify_test_environment():
     """Verify test infrastructure is available before running integration tests."""
-    if not wait_for_database(max_retries=10, interval=1.0):
+    if not wait_for_redis(max_retries=10, interval=1.0):
         pytest.skip(
             "Integration tests require the monorepo test infrastructure.\n"
             "Start with: pnpm docker:test:up (from monorepo root)"
