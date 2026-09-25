@@ -11,7 +11,6 @@ export type { STTProvider, TranscriptionCallback, ErrorCallback } from './types.
 export { BaseSTTProvider } from './BaseSTTProvider.js';
 
 // Implementations
-export { LocalSTTProvider } from './LocalSTTProvider.js';
 export { RemoteSTTProvider } from './BackendSTTProvider.js';
 
 // Pipeline-aware streaming provider.

@@ -7,9 +7,6 @@
 // Browser Support
 export {
   isBrowser,
-  isWebAssemblySupported,
-  isWebGPUSupported,
-  isWebGPUAvailable,
   isAudioWorkletSupported,
   isWebSocketSupported,
   isSharedArrayBufferSupported,
@@ -18,9 +15,6 @@ export {
   isSafari,
   getSafariVersion,
   isSafariVersionSupported,
-  isTransformersJsSupported,
-  getRecommendedDevice,
-  getRecommendedProvider,
   getSTTBrowserSupport,
   isSTTSupported,
   logBrowserSupport,

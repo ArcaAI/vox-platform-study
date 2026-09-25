@@ -2,10 +2,18 @@
  * @arcaai/stt - Types Tests
  *
  * Tests for type definitions, error classes, and constants.
+ *
+ * TASK-1006 — the local (in-browser Whisper) model types and utilities
+ * (`WhisperModelSize`, `ComputeDevice`, `LocalProviderConfig`,
+ * `ModelLoadProgress`, `isWhisperModelSize`, `normalizeModelId`,
+ * `parseModelId`, `resolveLocalWhisperModel`, `DEFAULT_LOCAL_WHISPER_SIZE`)
+ * were removed alongside the local provider: the browser never runs a model
+ * (TASK-865).
+ *
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   STTError,
   STTErrorCode,
@@ -16,15 +24,10 @@ import {
   generateSessionId,
   getLanguageCode,
   getCountryCode,
-  isWhisperModelSize,
-  parseModelId,
-  resolveLocalWhisperModel,
-  DEFAULT_LOCAL_WHISPER_SIZE,
   type STTOptions,
   type TranscriptionResult,
   type STTStats,
   type STTBrowserSupport,
-  type ModelLoadProgress,
   type WSInboundMessage,
   type WSOutboundMessage,
 } from '../types/index.js';
@@ -113,13 +116,16 @@ describe('DEFAULT_AUDIO_CONFIG', () => {
 });
 
 describe('DEFAULT_FEATURE_FLAGS', () => {
-  it('should have all required default values', () => {
+  it('should have all required default values, with no local-only fields', () => {
     expect(DEFAULT_FEATURE_FLAGS.provider).toBe('remote');
     expect(DEFAULT_FEATURE_FLAGS.diarization).toBe(false);
     expect(DEFAULT_FEATURE_FLAGS.numSpeakers).toBe(2);
     expect(DEFAULT_FEATURE_FLAGS.returnTimestamps).toBe(true);
-    expect(DEFAULT_FEATURE_FLAGS.device).toBe('auto');
-    expect(DEFAULT_FEATURE_FLAGS.quantized).toBe(true);
+    expect(DEFAULT_FEATURE_FLAGS).not.toHaveProperty('modelId');
+    expect(DEFAULT_FEATURE_FLAGS).not.toHaveProperty('device');
+    expect(DEFAULT_FEATURE_FLAGS).not.toHaveProperty('quantized');
+    expect(DEFAULT_FEATURE_FLAGS).not.toHaveProperty('task');
+    expect(DEFAULT_FEATURE_FLAGS).not.toHaveProperty('vadGate');
   });
 });
 
@@ -166,80 +172,9 @@ describe('Language utilities', () => {
   });
 });
 
-describe('Model utilities', () => {
-  describe('isWhisperModelSize', () => {
-    it('should return true for valid model sizes', () => {
-      expect(isWhisperModelSize('tiny')).toBe(true);
-      expect(isWhisperModelSize('base')).toBe(true);
-      expect(isWhisperModelSize('small')).toBe(true);
-      expect(isWhisperModelSize('medium')).toBe(true);
-      expect(isWhisperModelSize('large')).toBe(true);
-    });
-
-    it('should return false for invalid model sizes', () => {
-      expect(isWhisperModelSize('custom')).toBe(false);
-      expect(isWhisperModelSize('huggingface/model')).toBe(false);
-    });
-  });
-
-  describe('parseModelId', () => {
-    it('should return model size for valid sizes', () => {
-      expect(parseModelId('tiny')).toBe('tiny');
-      expect(parseModelId('base')).toBe('base');
-    });
-
-    it('should return undefined for custom paths', () => {
-      expect(parseModelId('huggingface/custom-model')).toBeUndefined();
-    });
-  });
-
-  describe('resolveLocalWhisperModel', () => {
-    let warnSpy: ReturnType<typeof vi.spyOn>;
-
-    beforeEach(() => {
-      warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    });
-
-    afterEach(() => {
-      warnSpy.mockRestore();
-    });
-
-    it('maps a browser-viable size (with or without prefix) to that size and no path', () => {
-      expect(resolveLocalWhisperModel('tiny')).toEqual({ model: 'tiny' });
-      expect(resolveLocalWhisperModel('whisper-base')).toEqual({ model: 'base' });
-      expect(resolveLocalWhisperModel('small')).toEqual({ model: 'small' });
-      expect(warnSpy).not.toHaveBeenCalled();
-    });
-
-    it('trusts an explicit namespaced HuggingFace repo id as modelPath', () => {
-      expect(resolveLocalWhisperModel('onnx-community/whisper-base_timestamped')).toEqual({
-        model: DEFAULT_LOCAL_WHISPER_SIZE,
-        modelPath: 'onnx-community/whisper-base_timestamped',
-      });
-      expect(warnSpy).not.toHaveBeenCalled();
-    });
-
-    it('falls back to the default browser size for a non-browser-loadable bare id (the whisper-large-v3 bug)', () => {
-      expect(resolveLocalWhisperModel('whisper-large-v3')).toEqual({ model: DEFAULT_LOCAL_WHISPER_SIZE });
-      expect(warnSpy).toHaveBeenCalled();
-    });
-
-    it('falls back for whisper sizes that have no browser-loadable onnx repo (medium/large)', () => {
-      expect(resolveLocalWhisperModel('medium')).toEqual({ model: DEFAULT_LOCAL_WHISPER_SIZE });
-      expect(resolveLocalWhisperModel('whisper-large')).toEqual({ model: DEFAULT_LOCAL_WHISPER_SIZE });
-      expect(warnSpy).toHaveBeenCalled();
-    });
-
-    it('never returns a bare (non-namespaced) modelPath that would hit huggingface.co/<id>', () => {
-      const result = resolveLocalWhisperModel('whisper-large-v3');
-      expect(result.modelPath).toBeUndefined();
-    });
-  });
-});
-
 describe('Type Definitions', () => {
   describe('STTOptions', () => {
-    it('should allow valid options', () => {
+    it('should allow valid remote options, with no local-only fields', () => {
       const options: STTOptions = {
         sttSocket: 'wss://example.com/ws',
         audio: {
@@ -250,10 +185,7 @@ describe('Type Definitions', () => {
           overlapLengthS: 5,
         },
         features: {
-          provider: 'local',
-          modelId: 'tiny',
-          device: 'webgpu',
-          quantized: true,
+          provider: 'remote',
           returnTimestamps: true,
           diarization: false,
           numSpeakers: 2,
@@ -262,7 +194,9 @@ describe('Type Definitions', () => {
         statsInterval: 1000,
       };
 
-      expect(options.features?.provider).toBe('local');
+      expect(options.features?.provider).toBe('remote');
+      expect(options).not.toHaveProperty('voiceProfile');
+      expect(options).not.toHaveProperty('onModelProgress');
     });
 
     it('should allow partial options', () => {
@@ -289,18 +223,6 @@ describe('Type Definitions', () => {
       };
 
       expect(options.sttSocket).toBe('wss://example.com/ws');
-    });
-
-    it('should allow local-specific options', () => {
-      const options: STTOptions = {
-        features: {
-          provider: 'local',
-          modelId: 'huggingface/custom-model',
-        },
-        onModelProgress: (_progress) => {},
-      };
-
-      expect(options.features?.modelId).toBe('huggingface/custom-model');
     });
   });
 
@@ -349,30 +271,12 @@ describe('Type Definitions', () => {
         transcriptionCount: 15,
         averageLatencyMs: 200,
         bufferSizeS: 2.5,
-        providerType: 'local',
+        providerType: 'remote',
         timestamp: Date.now(),
       };
 
       expect(stats.isActive).toBe(true);
       expect(stats.transcriptionCount).toBe(15);
-    });
-
-    it('should allow optional fields', () => {
-      const stats: STTStats = {
-        isActive: true,
-        isProcessing: true,
-        totalAudioProcessed: 60,
-        transcriptionCount: 5,
-        averageLatencyMs: 180,
-        bufferSizeS: 1.5,
-        providerType: 'local',
-        model: 'tiny',
-        device: 'webgpu',
-        timestamp: Date.now(),
-      };
-
-      expect(stats.model).toBe('tiny');
-      expect(stats.device).toBe('webgpu');
     });
 
     it('should allow remote-specific stats', () => {
@@ -393,84 +297,30 @@ describe('Type Definitions', () => {
   });
 
   describe('STTBrowserSupport', () => {
-    it('should have all required fields', () => {
+    it('should have all required fields, with no local-only fields', () => {
       const support: STTBrowserSupport = {
-        webAssembly: true,
-        webGPU: true,
         audioWorklet: true,
         webSocket: true,
         sharedArrayBuffer: true,
-        transformersJsSupported: true,
-        recommendedDevice: 'webgpu',
-        recommendedProvider: 'local',
-        localSupported: true,
         backendSupported: true,
       };
 
-      expect(support.webAssembly).toBe(true);
-      expect(support.localSupported).toBe(true);
+      expect(support.audioWorklet).toBe(true);
+      expect(support.backendSupported).toBe(true);
+      expect(support).not.toHaveProperty('webGPU');
+      expect(support).not.toHaveProperty('localSupported');
     });
 
     it('should allow unsupportedReason', () => {
       const support: STTBrowserSupport = {
-        webAssembly: false,
-        webGPU: false,
         audioWorklet: false,
         webSocket: false,
         sharedArrayBuffer: false,
-        transformersJsSupported: false,
-        recommendedDevice: 'wasm',
-        recommendedProvider: 'local',
-        localSupported: false,
         backendSupported: false,
-        unsupportedReason: 'WebAssembly is not supported',
+        unsupportedReason: 'WebSocket is not supported',
       };
 
-      expect(support.unsupportedReason).toBe('WebAssembly is not supported');
-    });
-  });
-
-  describe('ModelLoadProgress', () => {
-    it('should support downloading status', () => {
-      const progress: ModelLoadProgress = {
-        status: 'downloading',
-        progress: 0.5,
-        file: 'model.bin',
-        loaded: 50000000,
-        total: 100000000,
-      };
-
-      expect(progress.status).toBe('downloading');
-      expect(progress.progress).toBe(0.5);
-    });
-
-    it('should support loading status', () => {
-      const progress: ModelLoadProgress = {
-        status: 'loading',
-        progress: 0.8,
-      };
-
-      expect(progress.status).toBe('loading');
-    });
-
-    it('should support ready status', () => {
-      const progress: ModelLoadProgress = {
-        status: 'ready',
-        progress: 1,
-      };
-
-      expect(progress.status).toBe('ready');
-    });
-
-    it('should support error status', () => {
-      const progress: ModelLoadProgress = {
-        status: 'error',
-        progress: 0,
-        error: 'Network timeout',
-      };
-
-      expect(progress.status).toBe('error');
-      expect(progress.error).toBe('Network timeout');
+      expect(support.unsupportedReason).toBe('WebSocket is not supported');
     });
   });
 
@@ -579,33 +429,14 @@ describe('Type Definitions', () => {
 });
 
 describe('Type Guards and Validation', () => {
-  it('should validate provider types', () => {
-    const validProviders: Array<'local' | 'remote'> = ['local', 'remote'];
+  it('provider is remote-only (TASK-1006 — local was removed)', () => {
+    const validProviders: Array<'remote'> = ['remote'];
 
     validProviders.forEach((provider) => {
       const options: STTOptions = {
         features: { provider },
       };
       expect(options.features?.provider).toBe(provider);
-    });
-  });
-
-  it('should validate model sizes via isWhisperModelSize', () => {
-    const validModels = ['tiny', 'base', 'small', 'medium', 'large'];
-
-    validModels.forEach((model) => {
-      expect(isWhisperModelSize(model)).toBe(true);
-    });
-  });
-
-  it('should validate compute devices', () => {
-    const validDevices: Array<'webgpu' | 'wasm' | 'auto'> = ['webgpu', 'wasm', 'auto'];
-
-    validDevices.forEach((device) => {
-      const options: STTOptions = {
-        features: { device },
-      };
-      expect(options.features?.device).toBe(device);
     });
   });
 

@@ -13,7 +13,11 @@ import type { STTProvider, TranscriptionCallback, ErrorCallback } from './types.
  */
 export abstract class BaseSTTProvider implements STTProvider {
   abstract readonly name: string;
-  abstract readonly type: 'local' | 'remote';
+  /**
+   * @deprecated TASK-1006 — the in-browser Whisper provider was removed;
+   * `'remote'` is the only value (TASK-865: the browser never runs a model).
+   */
+  abstract readonly type: 'remote';
 
   protected config: ProviderConfig | null = null;
   protected initialized = false;

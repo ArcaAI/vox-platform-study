@@ -4,15 +4,14 @@ import { defineConfig } from 'tsup';
  * @arcaai/stt Build Configuration
  *
  * Build outputs:
- * 1. Main bundle (index.ts): STT processors, hooks, engines
- * 2. Worker bundle (whisper.worker.ts): Runs Whisper in Web Worker
+ * 1. Main bundle (index.ts): audio capture + backend streaming STT transport
  *
- * The worker bundle is a separate ESM file that can be loaded via:
- *   new Worker(new URL('./workers/whisper.worker.js', import.meta.url))
+ * TASK-1006 (following TASK-865): the in-browser Whisper worker bundle was
+ * removed along with the local provider — the browser never runs a model.
  */
 
 export default defineConfig([
-  // Main bundle - includes all STT functionality
+  // Main bundle - capture + backend streaming transport
   {
     entry: ['src/index.ts'],
     format: ['cjs', 'esm'],
@@ -42,28 +41,6 @@ export default defineConfig([
     minify: false,
     outExtension() {
       return { js: '.mjs' };
-    },
-  },
-
-  // Worker bundle - separate file for Web Worker
-  // This gets bundled as a standalone file that can be loaded by WhisperWorkerEngine
-  {
-    entry: {
-      'workers/whisper.worker': 'src/workers/whisper.worker.ts',
-    },
-    format: ['esm'],
-    dts: false,
-    splitting: false,
-    sourcemap: true,
-    clean: false, // Don't clean, main build already cleaned
-    treeshake: true,
-    minify: false,
-    // Workers need all dependencies bundled since they run in isolation
-    noExternal: ['@huggingface/transformers'],
-    esbuildOptions(options) {
-      // Worker runs in a worker context, not browser DOM
-      options.platform = 'browser';
-      options.conditions = ['browser', 'module', 'import', 'default'];
     },
   },
 ]);

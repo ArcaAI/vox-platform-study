@@ -9,37 +9,15 @@
 // ============================================================================
 
 /**
- * Available Whisper model sizes.
- * Smaller models are faster but less accurate.
- */
-export type WhisperModelSize = 'tiny' | 'base' | 'small' | 'medium' | 'large';
-
-/**
- * Compute device for model inference.
- * - 'webgpu': Uses WebGPU for GPU acceleration (fastest, if supported)
- * - 'wasm': Uses WebAssembly (works everywhere)
- * - 'auto': Automatically selects best available option
- */
-export type ComputeDevice = 'webgpu' | 'wasm' | 'auto';
-
-/**
  * STT provider type.
- * - 'local': Process audio locally using Whisper in browser
- * - 'remote': Send audio to backend server via WebSocket
- */
-export type STTProviderType = 'local' | 'remote';
-
-/**
- * Whisper inference task.
  *
- * - `'transcribe'` (default) — return the spoken text in the source language.
- * - `'translate'` — translate from the source language **to English**. The
- *   model itself decides the source language; only the **output** is English.
- *   English-only Whisper checkpoints (model IDs ending with `.en`) cannot
- *   translate and will be rejected with `STTError(NOT_SUPPORTED)` at the
- *   engine layer.
+ * @deprecated TASK-1006 — the browser never runs a model (TASK-865): the
+ * in-browser Whisper provider was removed and `'remote'` (backend streaming
+ * ASR, selected via the tenant's ASR Agent) is the only value. Kept as a
+ * single-member union so `STTFeatureFlags.provider` stays source-compatible
+ * for callers that still pass `{ provider: 'remote' }` explicitly.
  */
-export type WhisperTask = 'transcribe' | 'translate';
+export type STTProviderType = 'remote';
 
 // ============================================================================
 // Language Types
@@ -158,19 +136,13 @@ export const DEFAULT_AUDIO_CONFIG: Required<Omit<AudioSourceConfig, 'languageMod
 export interface STTFeatureFlags {
   /**
    * Provider selection.
-   * - 'local': Process audio locally using Whisper in browser
-   * - 'remote': Send audio to backend server via WebSocket
+   *
+   * @deprecated TASK-1006 — `'remote'` (backend streaming ASR) is the only
+   * value; the in-browser Whisper provider was removed (TASK-865: the
+   * browser never runs a model).
    * @default 'remote'
    */
   provider?: STTProviderType;
-
-  /**
-   * Model ID for local provider.
-   * Required when provider is 'local'.
-   * Can be a Whisper model size ('tiny', 'base', 'small', 'medium', 'large')
-   * or a custom Hugging Face model ID.
-   */
-  modelId?: WhisperModelSize | string;
 
   /**
    * Enable speaker diarization.
@@ -200,53 +172,17 @@ export interface STTFeatureFlags {
    * @default false
    */
   codeSwitching?: boolean;
-
-  /**
-   * If true, disable continuous frame feeding and expect external segment calls
-   * via `transcribeSegment()` (e.g. VAD-gated speech-only processing).
-   * @default false
-   */
-  vadGate?: boolean;
-
-  /**
-   * Compute device for local model inference.
-   * @default 'auto'
-   */
-  device?: ComputeDevice;
-
-  /**
-   * Use quantized models for smaller size and faster loading.
-   * Only applies to local provider.
-   * @default true
-   */
-  quantized?: boolean;
-
-  /**
-   * Whisper inference task.
-   *
-   * - `'transcribe'` (default) — return the spoken text in the source language.
-   * - `'translate'` — translate from the source language to English. Requires
-   *   a multilingual Whisper model. English-only checkpoints (model IDs
-   *   ending with `.en`) reject this with `STTError(NOT_SUPPORTED)`.
-   *
-   * @default 'transcribe'
-   */
-  task?: WhisperTask;
 }
 
 /**
  * Default feature flags.
  */
-export const DEFAULT_FEATURE_FLAGS: Required<Omit<STTFeatureFlags, 'modelId'>> = {
+export const DEFAULT_FEATURE_FLAGS: Required<STTFeatureFlags> = {
   provider: 'remote',
   diarization: false,
   numSpeakers: 2,
   returnTimestamps: true,
   codeSwitching: false,
-  vadGate: false,
-  device: 'auto',
-  quantized: true,
-  task: 'transcribe',
 };
 
 // ============================================================================
@@ -285,25 +221,6 @@ export interface STTOptions {
   prompt?: string;
 
   /**
-   * Optional voice-profile context for the local diarizer.
-   *
-   * `id` is the server-side `UserVoiceProfile.id` (carried for telemetry /
-   * logging). `reservedSpeakerId` pins the first allocated speaker slot in
-   * `LocalSpeakerDiarizer` to a stable doctor label. `similarityThreshold`
-   * tunes the MFCC centroid matching threshold (range `[0, 1]`, lower =
-   * more permissive).
-   *
-   * Set by the SDK from `UserPreferences.activeVoiceProfile` +
-   * `UserPreferences.localConfig.voiceProfile`. All fields are optional so the
-   * SDK can express partial state (e.g. threshold tweak before enrollment).
-   */
-  voiceProfile?: {
-    id?: string;
-    reservedSpeakerId?: string;
-    similarityThreshold?: number;
-  };
-
-  /**
    * Enable debug mode for verbose console logging of configuration and transcripts.
    * @default false
    */
@@ -320,11 +237,6 @@ export interface STTOptions {
    * @default 1000
    */
   statsInterval?: number;
-
-  /**
-   * Callback for model loading progress (local only).
-   */
-  onModelProgress?: (progress: ModelLoadProgress) => void;
 }
 
 /**
@@ -345,45 +257,6 @@ export function generateSessionId(): string {
   const timestamp = Date.now().toString(36);
   const randomPart = Math.random().toString(36).substring(2, 10);
   return `stt-${timestamp}-${randomPart}`;
-}
-
-// ============================================================================
-// Model Loading Types
-// ============================================================================
-
-/**
- * Progress information during model loading.
- */
-export interface ModelLoadProgress {
-  /**
-   * Current loading status.
-   */
-  status: 'downloading' | 'loading' | 'ready' | 'error';
-
-  /**
-   * Download progress (0-1).
-   */
-  progress: number;
-
-  /**
-   * File being downloaded.
-   */
-  file?: string;
-
-  /**
-   * Loaded bytes.
-   */
-  loaded?: number;
-
-  /**
-   * Total bytes.
-   */
-  total?: number;
-
-  /**
-   * Error message if status is 'error'.
-   */
-  error?: string;
 }
 
 // ============================================================================
@@ -614,8 +487,9 @@ export interface STTStats {
 
   /**
    * Compute device in use (local only).
+   * @deprecated TASK-1006 — the in-browser Whisper provider was removed; never set.
    */
-  device?: ComputeDevice;
+  device?: string;
 
   /**
    * WebSocket connection status (remote only).
@@ -679,10 +553,14 @@ export interface STTSpeechEndPayload {
 /**
  * Payload for model loaded event.
  */
+/**
+ * @deprecated TASK-1006 — the in-browser Whisper provider was removed; no
+ * emitter remains (the remote/streaming path never loads a local model).
+ */
 export interface STTModelLoadedPayload {
   type: 'stt-model-loaded';
   model: string;
-  device: ComputeDevice;
+  device: string;
   loadTimeMs: number;
   timestamp: number;
 }
@@ -760,16 +638,6 @@ export type WSInboundMessage =
  */
 export interface STTBrowserSupport {
   /**
-   * Whether WebAssembly is supported.
-   */
-  webAssembly: boolean;
-
-  /**
-   * Whether WebGPU is supported.
-   */
-  webGPU: boolean;
-
-  /**
    * Whether AudioWorklet is supported.
    */
   audioWorklet: boolean;
@@ -785,27 +653,7 @@ export interface STTBrowserSupport {
   sharedArrayBuffer: boolean;
 
   /**
-   * Whether Transformers.js can run in this browser.
-   */
-  transformersJsSupported: boolean;
-
-  /**
-   * Recommended compute device based on capabilities.
-   */
-  recommendedDevice: ComputeDevice;
-
-  /**
-   * Recommended provider based on capabilities.
-   */
-  recommendedProvider: Exclude<STTProviderType, 'auto'>;
-
-  /**
-   * Whether local STT is fully supported.
-   */
-  localSupported: boolean;
-
-  /**
-   * Whether backend STT is supported.
+   * Whether backend (streaming) STT is supported.
    */
   backendSupported: boolean;
 
@@ -938,78 +786,6 @@ export interface ProviderConfig {
 }
 
 /**
- * Configuration specific to local provider.
- */
-export interface LocalProviderConfig extends ProviderConfig {
-  /**
-   * Model ID - can be a Whisper model size or custom model path.
-   */
-  modelId: WhisperModelSize | string;
-
-  /**
-   * Compute device to use.
-   */
-  device: ComputeDevice;
-
-  /**
-   * Whether to use quantized models.
-   */
-  quantized: boolean;
-
-  /**
-   * Initial prompt to guide transcription. Forwarded to Whisper as
-   * `initial_prompt` on every transcribe call — useful for biasing the
-   * model toward domain-specific vocabulary (e.g. medical terminology).
-   */
-  prompt?: string;
-
-  /**
-   * Progress callback.
-   */
-  onProgress?: (progress: ModelLoadProgress) => void;
-
-  /**
-   * Default Whisper task baked into the engine for this provider instance.
-   * Forwarded into `EngineConfig.task` at `LocalSTTProvider.init()` time.
-   * Per-call `TranscribeOptions.task` still wins; this field exists so the
-   * provider pool key can distinguish a transcribe-warm provider from a
-   * translate-warm provider.
-   *
-   * @default 'transcribe'
-   */
-  task?: WhisperTask;
-
-  /**
-   * Optional reserved-speaker slot for the enrolled doctor.
-   *
-   * When `reservedSpeakerId` is set, `LocalSpeakerDiarizer` pins the FIRST
-   * allocated speaker slot to that id instead of the default `speaker-1`.
-   * `similarityThreshold` lets the user tune the cosine-similarity threshold
-   * used by the MFCC centroid matcher; lower means more permissive matching
-   * to the doctor's profile (default `0.97`).
-   *
-   * The 40-d MFCC (local) vs 256-d backend embedding mismatch means the
-   * acoustic anchor itself cannot yet be shared — long-term unification
-   * onto a single ONNX speaker-embedding model is a tracked roadmap item.
-   */
-  voiceProfile?: {
-    /** Server-side voice profile id (UUID). Optional so the SDK can carry a
-     * threshold-only preference even before the doctor enrolls. */
-    id?: string;
-    /** Display name / stable id to pin to the first speaker slot. Optional;
-     * when absent the diarizer keeps its default `speaker-1` slot label. */
-    reservedSpeakerId?: string;
-    /**
-     * Cosine-similarity threshold used by the local MFCC diarizer when
-     * matching an incoming utterance to an existing speaker centroid.
-     * Range `[0, 1]`. Lower values are more permissive.
-     * @default 0.97 (see `LocalSpeakerDiarizer.DEFAULT_SIMILARITY_THRESHOLD`)
-     */
-    similarityThreshold?: number;
-  };
-}
-
-/**
  * Configuration specific to remote provider.
  */
 export interface RemoteProviderConfig extends ProviderConfig {
@@ -1032,95 +808,6 @@ export type BackendProviderConfig = RemoteProviderConfig;
 // ============================================================================
 // Utility Functions
 // ============================================================================
-
-const WHISPER_MODEL_SIZES: readonly string[] = ['tiny', 'base', 'small', 'medium', 'large'];
-
-/**
- * Check if a string is a valid Whisper model size.
- * Accepts both bare names ('tiny') and prefixed names ('whisper-tiny').
- */
-export function isWhisperModelSize(value: string): value is WhisperModelSize {
-  const normalized = value.replace(/^whisper-/, '');
-  return WHISPER_MODEL_SIZES.includes(normalized);
-}
-
-/**
- * Normalize a model ID to a bare Whisper model size if applicable.
- * Strips 'whisper-' prefix if present (e.g. 'whisper-tiny' → 'tiny').
- * Returns the original value if it's not a recognized model size.
- */
-export function normalizeModelId(modelId: string): string {
-  const stripped = modelId.replace(/^whisper-/, '');
-  return WHISPER_MODEL_SIZES.includes(stripped) ? stripped : modelId;
-}
-
-/**
- * Parse a model ID and return the Whisper model size if applicable.
- * Returns undefined if the model ID is a custom path.
- */
-export function parseModelId(modelId: string): WhisperModelSize | undefined {
-  const normalized = normalizeModelId(modelId);
-  return isWhisperModelSize(normalized) ? normalized : undefined;
-}
-
-/**
- * Whisper sizes that are published as browser-loadable `onnx-community` repos
- * and small enough for in-browser inference. The `large`/`medium` checkpoints
- * are NOT loadable in the browser — e.g. `onnx-community/whisper-large-v3` is
- * gated and returns HTTP 401 — so they must never be selected for local STT.
- */
-const BROWSER_LOADABLE_WHISPER_SIZES: readonly WhisperModelSize[] = ['tiny', 'base', 'small'];
-
-/**
- * Default browser-loadable Whisper size, used when a configured local model id
- * is not browser-loadable. `base` (~150 MB) balances size and accuracy.
- */
-export const DEFAULT_LOCAL_WHISPER_SIZE: WhisperModelSize = 'base';
-
-/**
- * Resolve a configured STT model id into a browser-loadable Whisper source for
- * the local pipeline, returning `{ model, modelPath }` for the engine:
- * - `modelPath` set   → load this explicit HuggingFace repo verbatim.
- * - `modelPath` unset → the engine derives `onnx-community/whisper-<model>`.
- *
- * Resolution order:
- * 1. A recognized, browser-loadable Whisper size ("tiny"/"base"/"small", with
- *    or without the "whisper-" prefix) → use that size.
- * 2. A namespaced HuggingFace repo id ("org/name") → trust it as `modelPath`.
- * 3. Anything else — a bare non-namespaced id ("whisper-large-v3"), or a
- *    too-large size ("medium"/"large") with no browser-loadable onnx repo — is
- *    NOT loadable in the browser. Returning it as a bare path makes the worker
- *    request `huggingface.co/<id>` and fail (401/404), so fall back to
- *    {@link DEFAULT_LOCAL_WHISPER_SIZE} and warn instead.
- */
-export function resolveLocalWhisperModel(modelId: string): {
-  model: WhisperModelSize;
-  modelPath?: string;
-} {
-  const normalized = normalizeModelId(modelId);
-
-  if (isWhisperModelSize(normalized)) {
-    const size = normalized as WhisperModelSize;
-    if (BROWSER_LOADABLE_WHISPER_SIZES.includes(size)) {
-      return { model: size };
-    }
-    console.warn(
-      `[stt] Local Whisper size "${size}" is not browser-loadable; falling back to "${DEFAULT_LOCAL_WHISPER_SIZE}". Browser-viable sizes: ${BROWSER_LOADABLE_WHISPER_SIZES.join('/')}.`,
-    );
-    return { model: DEFAULT_LOCAL_WHISPER_SIZE };
-  }
-
-  // A namespaced HuggingFace repo id is an explicit, intentional choice — trust it.
-  if (normalized.includes('/')) {
-    return { model: DEFAULT_LOCAL_WHISPER_SIZE, modelPath: normalized };
-  }
-
-  // Unrecognized bare id (e.g. "whisper-large-v3"): not a loadable browser repo.
-  console.warn(
-    `[stt] Local STT model "${modelId}" is not browser-loadable; falling back to "${DEFAULT_LOCAL_WHISPER_SIZE}". Use a Whisper size (${BROWSER_LOADABLE_WHISPER_SIZES.join('/')}) or a full HF repo id (e.g. "onnx-community/whisper-base").`,
-  );
-  return { model: DEFAULT_LOCAL_WHISPER_SIZE };
-}
 
 /**
  * Get the language code (ISO 639-1) from a locale code.

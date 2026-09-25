@@ -1,8 +1,7 @@
 {
   "name": "@arcaai/stt",
   "version": "4.0.0",
-  "description": "Speech-to-text plugin for @arcaai/room with local Whisper and backend fallback support",
-  "deprecated": "DEPRECATED (TASK-865) — removed in R4, two releases after R2. In-browser Whisper is retired; transcription is backend streaming ASR selected by the tenant's ASR Agent (@arcaai/vox audio.start({ agentSlug })). The browser never runs a model. See docs/operations/deprecation-register.md.",
+  "description": "Audio capture + backend streaming speech-to-text transport for @arcaai/room. The browser never runs a model (TASK-865/TASK-1006) — ASR is selected server-side via the tenant's ASR Agent.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -43,43 +42,27 @@
   "keywords": [
     "speech-to-text",
     "stt",
-    "whisper",
     "transcription",
     "audio",
     "web-audio",
-    "transformers",
-    "onnx",
-    "webgpu",
-    "react"
+    "streaming",
+    "websocket"
   ],
   "author": "ARCAAI",
   "license": "MIT",
   "dependencies": {
-    "@huggingface/transformers": "4.2.0",
-    "eventemitter3": "^5.0.4",
-    "onnxruntime-common": "1.27.0",
-    "onnxruntime-web": "1.27.0"
+    "eventemitter3": "^5.0.4"
   },
   "peerDependencies": {
-    "@arcaai/room": "workspace:^",
-    "react": "^18.3.0 || ^19.0.4"
-  },
-  "peerDependenciesMeta": {
-    "react": {
-      "optional": true
-    }
+    "@arcaai/room": "workspace:^"
   },
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
     "@arcaai/config-ts": "workspace:*",
     "@arcaai/room": "workspace:*",
     "@playwright/test": "^1.63.0",
-    "@testing-library/react": "^16.3.3",
     "@types/node": "^26.5.0",
-    "@types/react": "^19.2.18",
     "http-server": "^14.1.1",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
     "rimraf": "^6.1.3",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",

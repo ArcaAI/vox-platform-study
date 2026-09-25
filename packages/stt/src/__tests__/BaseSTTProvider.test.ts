@@ -12,7 +12,7 @@ import type { TranscriptionResult, STTStats, ProviderConfig } from '../types/ind
 // Concrete implementation for testing
 class TestSTTProvider extends BaseSTTProvider {
   readonly name = 'test-provider';
-  readonly type = 'local' as const;
+  readonly type = 'remote' as const;
 
   isSupported(): boolean {
     return true;
@@ -255,7 +255,7 @@ describe('BaseSTTProvider', () => {
       expect(stats.transcriptionCount).toBe(0);
       expect(stats.averageLatencyMs).toBe(0);
       expect(stats.bufferSizeS).toBe(0);
-      expect(stats.providerType).toBe('local');
+      expect(stats.providerType).toBe('remote');
       expect(stats.timestamp).toBeDefined();
     });
 
@@ -382,7 +382,7 @@ describe('BaseSTTProvider', () => {
     });
 
     it('should have correct type', () => {
-      expect(provider.type).toBe('local');
+      expect(provider.type).toBe('remote');
     });
   });
 
