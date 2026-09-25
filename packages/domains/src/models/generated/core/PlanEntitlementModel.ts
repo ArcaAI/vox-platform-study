@@ -12,7 +12,6 @@ export class PlanEntitlement extends BaseDataModel {
   public maxUsers: number | null;
   public maxDepartments: number | null;
   public maxPromptTemplates: number | null;
-  public maxAsrPipelines: number | null;
   public maxApiKeys: number | null;
   public storageQuotaBytes: bigint | null;
   public maxWorkflowDefinitions: number | null;
@@ -46,7 +45,6 @@ export class PlanEntitlement extends BaseDataModel {
     this.maxUsers = data.maxUsers;
     this.maxDepartments = data.maxDepartments;
     this.maxPromptTemplates = data.maxPromptTemplates;
-    this.maxAsrPipelines = data.maxAsrPipelines;
     this.maxApiKeys = data.maxApiKeys;
     this.storageQuotaBytes = data.storageQuotaBytes;
     this.maxWorkflowDefinitions = data.maxWorkflowDefinitions;

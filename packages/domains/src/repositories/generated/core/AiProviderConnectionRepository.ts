@@ -13,8 +13,7 @@ import { AiProviderConnection } from '../../../models';
  * Provider-connection repository (config-plane core).
  *
  * HAND-AUTHORED — the `gen:repository` generator crashes pre-existingly; this
- * follows the `AiTaskDefaultRepository` / `TenantSttConfigRepository`
- * precedent in this folder.
+ * follows the `AiTaskDefaultRepository` precedent in this folder.
  *
  * TASK-958: identity is `(tenant, service, SLUG)` — enforced by the
  * `AiProviderConnection_tenant_service_slug_key` index — and a second unique,

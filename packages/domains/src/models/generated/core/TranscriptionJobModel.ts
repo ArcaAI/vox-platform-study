@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
+import { BaseTenantDataModel } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
@@ -12,7 +12,6 @@ export class TranscriptionJob extends BaseTenantDataModel {
   public consultationId: string | null;
   public contextItemId: string | null;
   public mediaId: string | null;
-  public pipelineId: string | null;
   public agentVersionId: string | null;
   public resolvedSpec: JsonValue | null;
   public streamSessionId: string | null;
@@ -38,8 +37,6 @@ export class TranscriptionJob extends BaseTenantDataModel {
   public maxRetries: number;
   public reclaimCount: number;
   public workerId: string | null;
-  @VirtualDbProperty()
-  public Pipeline: Models.AsrPipeline | undefined;
 
   constructor(data: TranscriptionJob & BaseTenantDataModel) {
     super(data);
@@ -47,7 +44,6 @@ export class TranscriptionJob extends BaseTenantDataModel {
     this.consultationId = data.consultationId;
     this.contextItemId = data.contextItemId;
     this.mediaId = data.mediaId;
-    this.pipelineId = data.pipelineId;
     this.agentVersionId = data.agentVersionId;
     this.resolvedSpec = data.resolvedSpec;
     this.streamSessionId = data.streamSessionId;
@@ -69,6 +65,5 @@ export class TranscriptionJob extends BaseTenantDataModel {
     this.maxRetries = data.maxRetries;
     this.reclaimCount = data.reclaimCount;
     this.workerId = data.workerId;
-    this.Pipeline = data.Pipeline;
   }
 }

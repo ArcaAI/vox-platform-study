@@ -12,8 +12,6 @@ export interface ITranscriptionJobEntity extends IBaseTenantEntity {
   consultationId?: string | null;
   contextItemId?: string | null;
   mediaId?: string | null;
-  /** @deprecated TASK-861 — removed in R4. The `AsrPipeline` that ran the job; `null` on agent-keyed jobs. */
-  pipelineId?: string | null;
   /** TASK-861 — the ASR Agent VERSION (`Agent.id`, rows are versions) that ran the job. No FK. */
   agentVersionId?: string | null;
   /** TASK-861 — the `ResolvedAsrSpec` snapshot the gateway handed to the worker (never a credential). */
@@ -62,8 +60,6 @@ export interface ITranscriptionJobEntity extends IBaseTenantEntity {
    */
   reclaimCount: number;
   workerId?: string | null;
-  /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`. */
-  Pipeline?: Entities.AsrPipelineEntity | null;
 }
 
 export class TranscriptionJobEntity extends BaseTenantEntity {
@@ -71,7 +67,6 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
   private _consultationId?: ITranscriptionJobEntity['consultationId'];
   private _contextItemId?: ITranscriptionJobEntity['contextItemId'];
   private _mediaId?: ITranscriptionJobEntity['mediaId'];
-  private _pipelineId?: ITranscriptionJobEntity['pipelineId'];
   private _agentVersionId?: ITranscriptionJobEntity['agentVersionId'];
   private _resolvedSpec?: ITranscriptionJobEntity['resolvedSpec'];
   private _streamSessionId?: ITranscriptionJobEntity['streamSessionId'];
@@ -95,7 +90,6 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
   private _maxRetries: ITranscriptionJobEntity['maxRetries'];
   private _reclaimCount: ITranscriptionJobEntity['reclaimCount'];
   private _workerId?: ITranscriptionJobEntity['workerId'];
-  private _Pipeline?: ITranscriptionJobEntity['Pipeline'];
 
   constructor(init: ITranscriptionJobEntity) {
     super(init);
@@ -103,7 +97,6 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this._consultationId = init.consultationId;
     this._contextItemId = init.contextItemId;
     this._mediaId = init.mediaId;
-    this._pipelineId = init.pipelineId;
     this._agentVersionId = init.agentVersionId;
     this._resolvedSpec = init.resolvedSpec;
     this._streamSessionId = init.streamSessionId;
@@ -127,7 +120,6 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this._maxRetries = init.maxRetries;
     this._reclaimCount = init.reclaimCount;
     this._workerId = init.workerId;
-    this._Pipeline = init.Pipeline;
   }
 
   // Getters and Setters
@@ -161,15 +153,6 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
 
   set mediaId(value: ITranscriptionJobEntity['mediaId']) {
     this.setProperty('mediaId', value);
-  }
-
-  /** @deprecated TASK-861 — removed in R4. Read `agentVersionId` / `resolvedSpec` for agent-keyed jobs. */
-  get pipelineId(): ITranscriptionJobEntity['pipelineId'] {
-    return this._pipelineId;
-  }
-
-  set pipelineId(value: ITranscriptionJobEntity['pipelineId']) {
-    this.setProperty('pipelineId', value);
   }
 
   get agentVersionId(): ITranscriptionJobEntity['agentVersionId'] {
@@ -364,14 +347,6 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
 
   set workerId(value: ITranscriptionJobEntity['workerId']) {
     this.setProperty('workerId', value);
-  }
-
-  get Pipeline(): ITranscriptionJobEntity['Pipeline'] {
-    return this._Pipeline;
-  }
-
-  set Pipeline(value: ITranscriptionJobEntity['Pipeline']) {
-    this.setProperty('Pipeline', value);
   }
 
   // ============================================
@@ -679,13 +654,13 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
 
   public override validate(): void {
     super.validate();
-    // TASK-861 — a job is attributable to EXACTLY the thing that ran it: the
-    // agent version (+ its resolved spec, so the job is reproducible from its
-    // own row) or, for the deprecation window, the legacy pipeline row.
-    if (!this._pipelineId && !this._agentVersionId) {
-      throw new BusinessException('Either agentVersionId or pipelineId is required');
+    // TASK-1006 — a job is attributable to EXACTLY the thing that ran it: the
+    // agent version + its resolved spec, so the job is reproducible from its
+    // own row. The deprecated `pipelineId` path is gone.
+    if (!this._agentVersionId) {
+      throw new BusinessException('agentVersionId is required');
     }
-    if (this._agentVersionId && !this._resolvedSpec) {
+    if (!this._resolvedSpec) {
       throw new BusinessException('resolvedSpec is required when agentVersionId is set');
     }
     if (this._progress < 0 || this._progress > 100) {

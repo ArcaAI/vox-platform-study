@@ -136,8 +136,6 @@ export const PHI_MODEL_CIPHERTEXT: Readonly<Record<string, readonly string[]>> =
  */
 export const PHI_MODEL_RELATIONS: Readonly<Record<string, Readonly<Record<string, string>>>> = Object.freeze({
   apiKey: { user: 'user' },
-  asrPipeline: { TranscriptionJobs: 'transcriptionJob', Versions: 'asrPipelineVersion' },
-  asrPipelineVersion: { AsrPipeline: 'asrPipeline' },
   audioRecording: { ContextItem: 'contextItem' },
   consultation: {
     ChildConsultations: 'consultation',
@@ -193,7 +191,6 @@ export const PHI_MODEL_RELATIONS: Readonly<Record<string, Readonly<Record<string
   tenantBucket: { Medias: 'media', StorageAccessKeys: 'storageAccessKey', StorageConfigs: 'tenantStorageConfig' },
   tenantStorageConfig: { Bucket: 'tenantBucket' },
   transcriptSegment: { ContextItem: 'contextItem' },
-  transcriptionJob: { Pipeline: 'asrPipeline' },
   user: {
     ApiKeys: 'apiKey',
     DoctorConsultations: 'consultation',

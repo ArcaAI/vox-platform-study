@@ -10,7 +10,6 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   maxUsers?: number | null;
   maxDepartments?: number | null;
   maxPromptTemplates?: number | null;
-  maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
   // Per-tenant override of PlanEntitlement.maxWorkflowDefinitions.
   maxWorkflowDefinitions?: number | null;
@@ -51,7 +50,6 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
   private _maxUsers?: ITenantEntitlementEntity['maxUsers'];
   private _maxDepartments?: ITenantEntitlementEntity['maxDepartments'];
   private _maxPromptTemplates?: ITenantEntitlementEntity['maxPromptTemplates'];
-  private _maxAsrPipelines?: ITenantEntitlementEntity['maxAsrPipelines'];
   private _maxApiKeys?: ITenantEntitlementEntity['maxApiKeys'];
   private _maxWorkflowDefinitions?: ITenantEntitlementEntity['maxWorkflowDefinitions'];
   private _maxAiProviderConnections?: ITenantEntitlementEntity['maxAiProviderConnections'];
@@ -81,7 +79,6 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
     this._maxUsers = init.maxUsers;
     this._maxDepartments = init.maxDepartments;
     this._maxPromptTemplates = init.maxPromptTemplates;
-    this._maxAsrPipelines = init.maxAsrPipelines;
     this._maxApiKeys = init.maxApiKeys;
     this._maxWorkflowDefinitions = init.maxWorkflowDefinitions;
     this._maxAiProviderConnections = init.maxAiProviderConnections;
@@ -129,14 +126,6 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
 
   set maxPromptTemplates(value: ITenantEntitlementEntity['maxPromptTemplates']) {
     this.setProperty('maxPromptTemplates', value);
-  }
-
-  get maxAsrPipelines(): ITenantEntitlementEntity['maxAsrPipelines'] {
-    return this._maxAsrPipelines;
-  }
-
-  set maxAsrPipelines(value: ITenantEntitlementEntity['maxAsrPipelines']) {
-    this.setProperty('maxAsrPipelines', value);
   }
 
   get maxApiKeys(): ITenantEntitlementEntity['maxApiKeys'] {

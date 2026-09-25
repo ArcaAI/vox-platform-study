@@ -105,24 +105,6 @@ export class TranscriptionJobRepository extends Repository<TranscriptionJobEntit
   }
 
   /**
-   * Find job with pipeline relation
-   */
-  async findWithPipeline(jobId: string): Promise<TranscriptionJobEntity | null> {
-    try {
-      const model = await (this as any).db.findFirst({
-        where: { id: jobId },
-        include: {
-          Pipeline: true,
-        },
-      });
-      if (!model) return null;
-      return (this as any)._mapper.toDomainEntity(model);
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Find recent jobs for a tenant
    */
   async findRecentJobs(tenantId: string, limit: number = 50): Promise<TranscriptionJobEntity[]> {
@@ -133,16 +115,6 @@ export class TranscriptionJobRepository extends Repository<TranscriptionJobEntit
     });
 
     return models.map((model: TranscriptionJob) => (this as any)._mapper.toDomainEntity(model));
-  }
-
-  /**
-   * Find jobs by pipeline
-   */
-  async findByPipeline(pipelineId: string): Promise<TranscriptionJobEntity[]> {
-    return this.findAll({
-      filters: { pipelineId },
-      sort: [{ createdAt: 'desc' }],
-    });
   }
 
   /**
