@@ -2044,43 +2044,6 @@ export class ConsultationController {
     };
   }
 
-  @ApiEndpoint({
-    returnedModel: ComprehensiveSummaryResponseDto,
-    method: HttpMethod.POST,
-    path: ':id/summary/comprehensive/async',
-    by: ['id'],
-  })
-  @ApiParam({ name: 'id', description: 'Consultation ID' })
-  async generateComprehensiveSummaryAsync(
-    @Param('id') consultationId: string,
-    @Body() request: ComprehensiveSummaryRequest,
-  ): Promise<AsyncJobResponseDto> {
-    await this.verifyConsultationOwnership(consultationId);
-    const tenantId = this.cls.get('tenantId') ?? 'unknown';
-    const userId = this.getDoctorId();
-    const job = await this.consultationJobService.createComprehensiveSummaryJob(
-      consultationId,
-      tenantId,
-      userId,
-      {
-        dnaStyleId: request.dnaStyleId,
-        template: request.template,
-        includeNER: request.includeNER,
-        includeLabResults: request.includeLabResults,
-        options: request.options,
-      },
-      undefined,
-      // Forward the SDK-supplied idempotency key.
-      request.idempotencyKey,
-    );
-    return new AsyncJobResponseDto({
-      jobId: job.jobId,
-      status: 'pending',
-      consultationId,
-      createdAt: new Date().toISOString(),
-    });
-  }
-
   // TASK-869 — same 201-vs-200 drift as the state-transition routes: the
   // published contract documents 200 and Nest's POST default is 201.
   @HttpCode(HttpStatus.OK)

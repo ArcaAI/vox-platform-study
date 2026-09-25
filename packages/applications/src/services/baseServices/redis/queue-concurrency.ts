@@ -145,18 +145,18 @@ export const QUEUE_CONCURRENCY: Record<string, number> = {
   [JobQueue.WebhookDelivery]: 10,
 
   /*
-   * The three LLM-backed queues. All three call `apps/text`, which admits
+   * The two remaining LLM-backed queues. Both call `apps/text`, which admits
    * 4 concurrent generations per provider on the user lane
    * (`PROVIDER_MAX_CONCURRENT_FLOOR = 4`, `runtime_defaults.py`) and lets a
    * queued call wait at most `queue_max_wait_s = 60` before it gives up.
    * Over-provisioning past that semaphore does not go faster — it converts a
-   * queue into a 60-second timeout. 3 + 3 + 2 = 8 keeps the lane saturated with
-   * a short standing queue, and splits it by urgency.
+   * queue into a 60-second timeout. 3 + 2 = 5 keeps the lane saturated with
+   * a short standing queue, and splits it by urgency. (`GenerateComprehensiveSummary`
+   * was a third until TASK-1006 — the comprehensive summary now runs
+   * synchronously on the agent plane, off this queue entirely.)
    */
   /** Interactive: the clinician is waiting on the pre-summary. */
   [JobQueue.GeneratePreSummary]: 3,
-  /** Interactive: post-consultation, same share. */
-  [JobQueue.GenerateComprehensiveSummary]: 3,
   /** Background style analysis; smallest share of the shared lane. */
   [JobQueue.GenerateDnaReport]: 2,
 

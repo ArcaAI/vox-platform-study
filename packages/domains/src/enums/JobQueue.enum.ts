@@ -15,7 +15,6 @@ export enum JobQueue {
   // Consultation AI Processing Queues
   GeneratePreSummary = 'GeneratePreSummary',
   GenerateSummary = 'GenerateSummary',
-  GenerateComprehensiveSummary = 'GenerateComprehensiveSummary',
   ExtractNamedEntities = 'ExtractNamedEntities',
 
   // DNA Writing Style Analysis

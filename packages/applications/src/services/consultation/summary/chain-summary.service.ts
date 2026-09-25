@@ -275,7 +275,12 @@ export class ChainSummaryService extends BaseService {
   }
 
   // =========================================================================
-  // Internal methods — exposed for ComprehensiveSummaryProcessor (async path)
+  // Internal methods, used by generateComprehensiveSummary above.
+  //
+  // Public (not private) for historical reasons: `ComprehensiveSummaryProcessor`
+  // (the async BullMQ twin of this service) used to call them directly. That
+  // processor was removed by TASK-1006 — the comprehensive summary now runs
+  // synchronously on the agent plane, so this service is the only caller left.
   // =========================================================================
 
   /**

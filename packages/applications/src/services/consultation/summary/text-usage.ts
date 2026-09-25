@@ -218,13 +218,13 @@ export function buildLlmUsageInput(params: BuildLlmUsageParams): UsageEventBatch
  * `costBasis` lives on `common`, so saying both takes two batches. A caller
  * that records only `batch` loses that one row — never a token, never a byte.
  *
- * {@link buildLlmUsageInput} keeps its single-batch return because its six call
+ * {@link buildLlmUsageInput} keeps its single-batch return because its call
  * sites live in other lanes' files (`summary.service.ts`,
  * `chain-summary.service.ts`, `live-documentation.service.ts`,
- * `comprehensive-summary.processor.ts`, `agent-draft-test.service.ts`,
- * `prompt-management.service.ts`); each migrates here when its lane next opens
- * the file, and until then a BYOK call from that path is metered exactly as it
- * is today plus its byte rows.
+ * `agent-draft-test.service.ts`, `prompt-management.service.ts`); each migrates
+ * here when its lane next opens the file, and until then a BYOK call from that
+ * path is metered exactly as it is today plus its byte rows. (`comprehensive-
+ * summary.processor.ts` was a sixth until TASK-1006 removed it outright.)
  */
 export function buildLlmUsageBatches(params: BuildLlmUsageParams): ComputeAugmentedBatch | null {
   const { usage, tenantId, operation } = params;
