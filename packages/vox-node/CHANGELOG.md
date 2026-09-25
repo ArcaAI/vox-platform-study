@@ -24,6 +24,11 @@
   - `@arcaai/vox-node`: removed `consultations.summaries.generate()` and `.generatePreSummary()` (the synchronous generation routes) along with `SYNC_GENERATION_TIMEOUT_MS` and `GenerateSummaryOptions` — use `generateAsync()`/`generatePreSummaryAsync()` + `hope.jobs.waitFor()`. Removed `CreateStreamSessionRequest.pipelineId` (the deprecated request-side ASR selector) — selection is `agentSlug` only, same rule TASK-865 already applied browser-side. Response fields that echo which ASR pipeline served a session (`StreamSessionResponse.pipelineId`, per-utterance transcript provenance) are unaffected — those report server state, not a client selector.
   - `@arcaai/vox`: removed `usePipelines`, `useArcaPipelines`, `useSttProviderToggle`, `useLocalVoiceEmbedding`, every client-AI hook re-export from `./plugins`, and the whole `./plugins/med-ner` entry point. `audio.start()` no longer accepts `pipelineId` or `clientInference` — ASR selection is `agentSlug` only. See `@arcaai/vox`'s own CHANGELOG entry for the full list.
   - The `@arcaai/vad`, `@arcaai/noise-filter`, and `@arcaai/med-ner` packages are deleted outright and removed from the Changesets `fixed` version group.
+  - `@arcaai/vox-node` `hope.admin.*` (generated): the `audioPipeline` and `tenantSttConfig` areas are removed with their gateway routes (`admin/audio/pipelines/**`, `admin/stt-config/**`), and `hope.admin.tenant.resync()` (`POST admin/tenants/:id/pipelines/resync`) is gone. ASR is configured on agents (`hope.admin.agent.*`) and BYO credentials on provider connections. `hope.admin.*` is now 48 areas.
+
+  **Added**
+
+  - `@arcaai/vox-node`: `hope.admin.modelResidency.catalogue()` — the catalogue-first residency view (every self-hosted model grouped by the service that runs it, loaded or not, with its consumers, keep policy and allowed actions; TASK-1005).
 
 ## Unreleased
 
