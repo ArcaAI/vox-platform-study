@@ -12,9 +12,6 @@
       "@arcaai/vox-codegen",
       "@arcaai/room",
       "@arcaai/stt",
-      "@arcaai/vad",
-      "@arcaai/noise-filter",
-      "@arcaai/med-ner",
       "@arcaai/pipeline",
       "@arcaai/vox-node-codegen"
     ]
