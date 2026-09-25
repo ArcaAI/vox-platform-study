@@ -4,9 +4,10 @@ import { ModelResidencyScreen } from '@/features/model-residency/components/mode
 export const metadata: Metadata = { title: 'Model residency' };
 
 /**
- * Model residency (tier 10-19, platform-admin only — D-11). Load/unload/pin/TTL
- * and policy control over stt, text, nlp and LM Studio, plus the shadow-mode
- * recommendation log (TASK-1005 §5.4).
+ * Model residency (tier 10-19, platform-admin only — D-11, reconfirmed
+ * 2026-09-25). Catalogue-first, grouped by service: every self-hosted model
+ * for stt, stt-worker, LM Studio and nlp, loaded or not, with who uses it,
+ * its keep policy, and load/unload/reload control (TASK-1005 §13).
  */
 export default function ModelResidencyPage() {
   return <ModelResidencyScreen />;
