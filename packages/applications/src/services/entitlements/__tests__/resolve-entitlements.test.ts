@@ -51,7 +51,6 @@ describe('resolveEntitlements', () => {
       // what tenant creation provisions, so a duplicated literal here
       // just breaks whenever the provisioned catalog legitimately changes.
       expect(r.limits.maxDepartments).toBe(d.maxDepartments);
-      expect(r.limits.maxAsrPipelines).toBe(d.maxAsrPipelines);
       expect(r.limits.storageQuotaBytes).toBe(5 * GIB);
       expect(r.limits.maxConcurrentSessions).toBe(5);
       // STARTER = $50/mo bundling 50 consultations.
@@ -73,7 +72,6 @@ describe('resolveEntitlements', () => {
       // budget. Derived from the matrix rather than restated, for the same
       // reason the structural caps above are.
       expect(r.rateLimitPerMinute).toBe(d.rateLimitPerMinute);
-      expect(r.limits.maxAsrPipelines).toBe(d.maxAsrPipelines);
     });
 
     it('TRIAL mirrors PRO exactly', () => {

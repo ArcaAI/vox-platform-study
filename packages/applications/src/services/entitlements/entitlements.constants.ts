@@ -153,8 +153,6 @@ export interface PlanEntitlementValues {
   maxUsers: number | null;
   maxDepartments: number | null;
   maxPromptTemplates: number | null;
-  /** @deprecated TASK-861 — removed in R4. Ceiling on the retired `AsrPipeline` rows; the Agent ceiling (`maxAgents`) is TASK-863's key and this stays its placeholder alias until it lands. */
-  maxAsrPipelines: number | null;
   maxApiKeys: number | null;
   /** Quantity ceiling on PUBLISHED WorkflowDefinition slugs ( exposure plane). */
   maxWorkflowDefinitions: number | null;
@@ -375,7 +373,6 @@ const PRO_VALUES: PlanEntitlementValues = {
   maxUsers: 25,
   maxDepartments: 10,
   maxPromptTemplates: 50,
-  maxAsrPipelines: 5,
   maxApiKeys: 10,
   maxWorkflowDefinitions: 5,
   maxAiProviderConnections: null,
@@ -426,7 +423,6 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     // (50 consultations/month, 5 users) are untouched.
     maxDepartments: 8,
     maxPromptTemplates: 10,
-    maxAsrPipelines: 14,
     maxApiKeys: 2,
     maxWorkflowDefinitions: 1,
     maxAiProviderConnections: null,
@@ -475,7 +471,6 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     maxUsers: 150,
     maxDepartments: 40,
     maxPromptTemplates: 300,
-    maxAsrPipelines: 20,
     maxApiKeys: 50,
     maxWorkflowDefinitions: 20,
     maxAiProviderConnections: null,

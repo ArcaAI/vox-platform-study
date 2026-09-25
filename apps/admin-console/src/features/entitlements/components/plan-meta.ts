@@ -33,7 +33,6 @@ export interface LimitField {
     | 'maxUsers'
     | 'maxDepartments'
     | 'maxPromptTemplates'
-    | 'maxAsrPipelines'
     | 'maxApiKeys'
     | 'maxWorkflowDefinitions'
     | 'maxAiProviderConnections'
@@ -67,8 +66,6 @@ export const LIMIT_FIELDS: LimitField[] = [
   { key: 'maxUsers', label: 'Max users', group: 'quantity' },
   { key: 'maxDepartments', label: 'Max departments', group: 'quantity' },
   { key: 'maxPromptTemplates', label: 'Max prompt templates', group: 'quantity' },
-  // @deprecated TASK-861 — removed in R4 with audio pipelines (the agent ceiling replaces it).
-  { key: 'maxAsrPipelines', label: 'Max ASR pipelines (deprecated)', group: 'quantity' },
   { key: 'maxApiKeys', label: 'Max API keys', group: 'quantity' },
   { key: 'maxWorkflowDefinitions', label: 'Max published workflow definitions', group: 'quantity' },
   { key: 'maxAiProviderConnections', label: 'Max AI provider connections', group: 'quantity' },

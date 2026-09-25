@@ -40,10 +40,6 @@ export class PlanEntitlementResponse {
   @ApiPropertyOptional({ description: 'Max prompt/agent templates; null = unlimited', nullable: true })
   maxPromptTemplates?: number | null;
 
-  @ApiPropertyOptional({ description: 'Max ASR pipelines; null = unlimited', nullable: true })
-  /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; placeholder alias of the agent ceiling (TASK-863). */
-  maxAsrPipelines?: number | null;
-
   @ApiPropertyOptional({ description: 'Max API keys; null = unlimited', nullable: true })
   maxApiKeys?: number | null;
 
@@ -153,13 +149,6 @@ export class UpdatePlanEntitlementRequest {
   @IsInt()
   @Min(0)
   maxPromptTemplates?: number | null;
-
-  @ApiPropertyOptional({ description: 'Max ASR pipelines; null = unlimited', nullable: true })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; placeholder alias of the agent ceiling (TASK-863). */
-  maxAsrPipelines?: number | null;
 
   @ApiPropertyOptional({ description: 'Max API keys; null = unlimited', nullable: true })
   @IsOptional()

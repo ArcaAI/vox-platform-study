@@ -24,7 +24,6 @@ function planEntitlement(overrides: Partial<PlanEntitlement> = {}): PlanEntitlem
     maxUsers: 5,
     maxDepartments: 2,
     maxPromptTemplates: 10,
-    maxAsrPipelines: 1,
     maxApiKeys: 2,
     maxWorkflowDefinitions: 3,
     maxAiProviderConnections: 4,
@@ -92,7 +91,6 @@ const OVERRIDE: TenantEntitlement = {
   maxUsers: 60,
   maxDepartments: null,
   maxPromptTemplates: null,
-  maxAsrPipelines: null,
   maxApiKeys: null,
   maxWorkflowDefinitions: null,
   maxAiProviderConnections: null,
@@ -373,6 +371,8 @@ describe('EntitlementsScreen', () => {
     expect(within(tiers).getByLabelText('Model tier')).toBeDefined();
     // A meter must not also appear among the ceilings.
     expect(within(quantities).queryByLabelText('Monthly LLM tokens')).toBeNull();
+    // TASK-1006 — the ASR-pipeline ceiling went with the pipelines it bounded.
+    expect(within(dialog).queryByLabelText(/ASR pipelines/i)).toBeNull();
   });
 
   it('surfaces the OCC conflict alert when the plan update returns 412', async () => {

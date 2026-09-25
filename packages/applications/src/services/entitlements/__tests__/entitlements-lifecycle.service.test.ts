@@ -54,7 +54,6 @@ function makeService(baseClient: ReturnType<typeof makeBaseClient>, opts: { enfo
         maxUsers: 5,
         maxDepartments: 2,
         maxPromptTemplates: 10,
-        maxAsrPipelines: 1,
         maxApiKeys: 2,
         storageQuotaBytes: null,
         monthlyConsultations: null,

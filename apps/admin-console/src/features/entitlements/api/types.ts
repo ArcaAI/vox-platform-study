@@ -9,8 +9,6 @@ interface EntitlementLimits {
   maxUsers?: number | null;
   maxDepartments?: number | null;
   maxPromptTemplates?: number | null;
-  /** @deprecated TASK-861 — removed in R4 with audio pipelines. */
-  maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
   /** Max PUBLISHED workflow definitions. */
   maxWorkflowDefinitions?: number | null;

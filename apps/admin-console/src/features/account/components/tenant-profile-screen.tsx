@@ -38,7 +38,6 @@ const CAPABILITY_LABELS: Record<string, string> = {
   users: 'Users',
   departments: 'Departments',
   promptTemplates: 'Prompt templates',
-  asrPipelines: 'ASR pipelines',
   apiKeys: 'API keys',
   storageBytes: 'Storage',
   concurrentSessions: 'Concurrent sessions',

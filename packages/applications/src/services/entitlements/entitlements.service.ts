@@ -602,7 +602,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyLimitField(request, 'maxUsers', (v) => (row.maxUsers = v));
     this.applyLimitField(request, 'maxDepartments', (v) => (row.maxDepartments = v));
     this.applyLimitField(request, 'maxPromptTemplates', (v) => (row.maxPromptTemplates = v));
-    this.applyLimitField(request, 'maxAsrPipelines', (v) => (row.maxAsrPipelines = v));
     this.applyLimitField(request, 'maxApiKeys', (v) => (row.maxApiKeys = v));
     this.applyLimitField(request, 'maxWorkflowDefinitions', (v) => (row.maxWorkflowDefinitions = v));
     this.applyLimitField(request, 'maxAiProviderConnections', (v) => (row.maxAiProviderConnections = v));
@@ -691,7 +690,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       maxUsers: request.maxUsers ?? null,
       maxDepartments: request.maxDepartments ?? null,
       maxPromptTemplates: request.maxPromptTemplates ?? null,
-      maxAsrPipelines: request.maxAsrPipelines ?? null,
       maxApiKeys: request.maxApiKeys ?? null,
       maxWorkflowDefinitions: request.maxWorkflowDefinitions ?? null,
       maxAiProviderConnections: request.maxAiProviderConnections ?? null,
@@ -745,7 +743,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     existing.maxUsers = null;
     existing.maxDepartments = null;
     existing.maxPromptTemplates = null;
-    existing.maxAsrPipelines = null;
     existing.maxApiKeys = null;
     existing.maxWorkflowDefinitions = null;
     existing.maxAiProviderConnections = null;
@@ -818,7 +815,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (request.maxUsers !== undefined) entity.maxUsers = request.maxUsers;
     if (request.maxDepartments !== undefined) entity.maxDepartments = request.maxDepartments;
     if (request.maxPromptTemplates !== undefined) entity.maxPromptTemplates = request.maxPromptTemplates;
-    if (request.maxAsrPipelines !== undefined) entity.maxAsrPipelines = request.maxAsrPipelines;
     if (request.maxApiKeys !== undefined) entity.maxApiKeys = request.maxApiKeys;
     if (request.maxWorkflowDefinitions !== undefined) entity.maxWorkflowDefinitions = request.maxWorkflowDefinitions;
     if (request.maxAiProviderConnections !== undefined) entity.maxAiProviderConnections = request.maxAiProviderConnections;
@@ -874,7 +870,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       maxUsers: row.maxUsers ?? null,
       maxDepartments: row.maxDepartments ?? null,
       maxPromptTemplates: row.maxPromptTemplates ?? null,
-      maxAsrPipelines: row.maxAsrPipelines ?? null,
       maxApiKeys: row.maxApiKeys ?? null,
       maxWorkflowDefinitions: row.maxWorkflowDefinitions ?? null,
       maxAiProviderConnections: row.maxAiProviderConnections ?? null,
@@ -907,7 +902,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       maxUsers: row.maxUsers ?? null,
       maxDepartments: row.maxDepartments ?? null,
       maxPromptTemplates: row.maxPromptTemplates ?? null,
-      maxAsrPipelines: row.maxAsrPipelines ?? null,
       maxApiKeys: row.maxApiKeys ?? null,
       maxWorkflowDefinitions: row.maxWorkflowDefinitions ?? null,
       maxAiProviderConnections: row.maxAiProviderConnections ?? null,
