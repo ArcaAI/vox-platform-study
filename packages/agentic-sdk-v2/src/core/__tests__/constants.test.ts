@@ -131,9 +131,8 @@ describe('constants', () => {
       expect(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('123')).toBe('/consultations/123/summary/pre-summary/async');
     });
 
-    it('should generate COMPREHENSIVE_ASYNC endpoint', () => {
-      expect(SUMMARY_ENDPOINTS.COMPREHENSIVE_ASYNC('123')).toBe('/consultations/123/summary/comprehensive/async');
-    });
+    // COMPREHENSIVE_ASYNC was removed by TASK-1006 — the comprehensive summary now runs
+    // synchronously on the agent plane; see the COMPREHENSIVE test above.
   });
 
   describe('ENTITY_ENDPOINTS', () => {

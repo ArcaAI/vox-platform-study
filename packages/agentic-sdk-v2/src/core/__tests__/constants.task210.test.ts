@@ -369,14 +369,16 @@ describe('SDK v2 route standardization', () => {
       expect(Object.keys(PERSONALIZATION_ENDPOINTS)).toHaveLength(2);
     });
 
-    it('STT_ENDPOINTS should have exactly 21 keys', () => {
+    it('STT_ENDPOINTS should have exactly 20 keys', () => {
       // REFRESH_TICKET supports stream-ticket refresh on reconnect;
       // SWITCH_TO_FALLBACK drives the in-place fallback switch
       // LANGUAGE_MODES lists the selectable language modes
       // SWITCH_TO_PRIMARY is the native primary-direction switch
-      // BATCH_LIMITS + FALLBACK_PROVIDER are the batch ceilings and
-      // the fallback-pipeline pointer the native hooks read.
-      expect(Object.keys(STT_ENDPOINTS)).toHaveLength(21);
+      // BATCH_LIMITS is the batch ceilings endpoint. `FALLBACK_PROVIDER`
+      // (the fallback-pipeline pointer) was removed by TASK-1006 — the
+      // gateway route it named, `GET audio/transcription-jobs/fallback`,
+      // was already removed.
+      expect(Object.keys(STT_ENDPOINTS)).toHaveLength(20);
       expect(Object.keys(STT_ENDPOINTS)).toEqual(
         expect.arrayContaining([
           'CREATE_SESSION',
