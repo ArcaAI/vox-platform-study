@@ -162,8 +162,25 @@ async def test_a_runtime_key_no_spec_carries_is_a_named_error_not_a_database_rea
         await SessionManager._load_pipeline_config(mgr, "legacy-pipeline", tenant_id="t-1")
 
 
+@pytest.fixture
+def _isolate_structlog():
+    """`capture_logs()` cannot intercept a logger frozen by an earlier test's
+    `setup_logging` (cache_logger_on_first_use)."""
+    from stt.streaming import session_manager as session_manager_module
+
+    saved_config = structlog.get_config()
+    saved_logger = session_manager_module.logger
+    structlog.reset_defaults()
+    session_manager_module.logger = structlog.get_logger("stt.streaming.session_manager")
+    try:
+        yield
+    finally:
+        session_manager_module.logger = saved_logger
+        structlog.configure(**saved_config)
+
+
 @pytest.mark.asyncio
-async def test_recovery_skips_a_session_persisted_without_a_spec() -> None:
+async def test_recovery_skips_a_session_persisted_without_a_spec(_isolate_structlog) -> None:
     """A session opened on the removed pipeline path cannot be rebuilt: skipped, never
     guessed, and it takes no capacity slot."""
     from stt.streaming.schemas import SessionMetadata, SessionStatus
