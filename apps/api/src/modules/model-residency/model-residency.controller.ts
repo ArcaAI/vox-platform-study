@@ -2,6 +2,7 @@ import {
   CreateModelResidencyPolicyRequest,
   IModelResidencyService,
   LoadModelResidencyRequest,
+  ModelResidencyCatalogueResponse,
   ModelResidencyLoadResponse,
   ModelResidencyOperationResponse,
   ModelResidencyPinResponse,
@@ -27,7 +28,8 @@ const FORBIDDEN = 'Not a platform administrator, or a working tenant is selected
  * what is resident on the shared GPUs and host memory across stt, nlp and LM
  * Studio, the operator's load / unload / pin, the SYSTEM residency policies,
  * and the controller's (shadow-mode) recommendations. Routes and shapes are
- * pinned by `tests/contracts/model-residency-admin.fixture.json`.
+ * pinned by `tests/contracts/model-residency-admin.fixture.json`, and the
+ * catalogue-first `GET catalogue` by `tests/contracts/model-residency-catalogue.fixture.json`.
  *
  * Tenants never see this surface (D-11). `@ForbidApiKey()` keeps the business
  * plane out; a service account needs `svc:admin:model-residency:manage` for every route — one scope,
@@ -70,6 +72,28 @@ export class ModelResidencyController {
   @ApiResponse({ status: 403, description: FORBIDDEN })
   async view(): Promise<ModelResidencyViewResponse> {
     return this.service.getView();
+  }
+
+  // AUTH-NOTE: platform-admin only, imperatively — see the note on `view`.
+  @Get('catalogue')
+  @RequiredSvcScopes(...READ_SCOPES)
+  @ApiOperation({
+    summary: 'Read every loadable model per service, loaded or not, and who uses it',
+    description:
+      'Catalogue-first residency (TASK-1005 §13): every SELF_HOSTED, non-deleted catalogue model (SYSTEM tier), grouped by the workload that ' +
+      'runs it — always four groups, in this order: stt, stt-worker, lm-studio, nlp (cloud models are absent: nothing can load them). Each ' +
+      'model carries its status in plain words (`loaded` | `loading` | `unloading` | `not_loaded`), its size (MEASURED first, else the ' +
+      'catalogue estimate, with `source` saying which), how long its last load took, where it is resident, who uses it across ALL tenants ' +
+      '(`primary` agent model, `fallback`, or `routing` policy — only ACTIVE PUBLISHED agents and ACTIVE policies count; ' +
+      '`liveConsultation` marks the live path), its keep policy in plain words with the reason, and the actions the console may offer now. ' +
+      '`devices[]` names the models on each card; `suggestions[]` are the controller`s recommendations as one sentence each. The usage ' +
+      'index is cached platform-wide for 30 s; everything else is as fresh as `GET admin/model-residency`. A resident model the catalogue ' +
+      'does not know is still listed, with `aiModelId: null`.',
+  })
+  @ApiResponse({ status: 200, type: ModelResidencyCatalogueResponse })
+  @ApiResponse({ status: 403, description: FORBIDDEN })
+  async catalogue(): Promise<ModelResidencyCatalogueResponse> {
+    return this.service.getCatalogue();
   }
 
   // AUTH-NOTE: platform-admin only, imperatively — see the note on `view`.

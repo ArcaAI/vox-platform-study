@@ -67,7 +67,7 @@ const LM_STUDIO_PROVIDERS = new Set(['lm-studio', 'lmstudio']);
 @Injectable()
 export class ImplicitLivePathReader {
   private readonly logger = new Logger(ImplicitLivePathReader.name);
-  private cached: { at: number; models: LivePathModel[] } | null = null;
+  private cached: { at: number; models: LivePathModel[]; agentKeys: ReadonlySet<string> } | null = null;
 
   constructor(
     private readonly assignments: AgentAssignmentRepository,
@@ -77,17 +77,31 @@ export class ImplicitLivePathReader {
 
   /** The implicit live-path set. Never throws: an unreadable set is `[]` (nothing is implicitly pinned) plus a warning. */
   async read(now = Date.now()): Promise<LivePathModel[]> {
-    if (this.cached && now - this.cached.at < CACHE_MS) return this.cached.models;
+    return (await this.current(now)).models;
+  }
+
+  /**
+   * TASK-1005 §13 — EVERY assigned agent (`${tenantId}|${slug}`) whose primary
+   * put a model on the live path, from the same cached read. `read()` keeps one
+   * entry per model (the first agent), which is enough to pin it but not to say
+   * which of a model's consumers is the live one.
+   */
+  async readLiveAgents(now = Date.now()): Promise<ReadonlySet<string>> {
+    return (await this.current(now)).agentKeys;
+  }
+
+  private async current(now: number): Promise<{ models: LivePathModel[]; agentKeys: ReadonlySet<string> }> {
+    if (this.cached && now - this.cached.at < CACHE_MS) return this.cached;
     try {
-      const models = await this.load();
-      this.cached = { at: now, models };
-      return models;
+      const loaded = await this.load();
+      this.cached = { at: now, ...loaded };
+      return loaded;
     } catch (error) {
       this.logger.warn({
         message: 'residency.live_path.read_failed — no model is implicitly pinned until the next read',
         error: error instanceof Error ? error.message : String(error),
       });
-      return this.cached?.models ?? [];
+      return this.cached ?? { models: [], agentKeys: new Set() };
     }
   }
 
@@ -96,14 +110,14 @@ export class ImplicitLivePathReader {
     this.cached = null;
   }
 
-  private async load(): Promise<LivePathModel[]> {
+  private async load(): Promise<{ models: LivePathModel[]; agentKeys: ReadonlySet<string> }> {
     const rows = await this.assignments.findAll({
       filters: {
         task: { in: [AgentTask.SPEECH_TO_TEXT, AgentTask.TEXT_GENERATION] },
         resourceStatus: ResourceStatusType.ENABLED,
       } as never,
     });
-    if (rows.length === 0) return [];
+    if (rows.length === 0) return { models: [], agentKeys: new Set() };
 
     const pairs = new Map<string, { tenantId: string; slug: string; task: AgentTask }>();
     for (const row of rows)
@@ -117,12 +131,13 @@ export class ImplicitLivePathReader {
         resourceStatus: ResourceStatusType.ENABLED,
       } as never,
     });
-    if (agents.length === 0) return [];
+    if (agents.length === 0) return { models: [], agentKeys: new Set() };
 
     const models = await this.aiModels.findAll({ filters: { id: { in: [...new Set(agents.map((a) => a.modelId))] } } as never });
     const byId = new Map(models.map((m) => [m.id, m]));
 
     const out = new Map<string, LivePathModel>();
+    const agentKeys = new Set<string>();
     for (const agent of agents) {
       const model = byId.get(agent.modelId);
       if (!model) continue;
@@ -132,8 +147,10 @@ export class ImplicitLivePathReader {
       } else if (agent.task === AgentTask.TEXT_GENERATION && model.provider && LM_STUDIO_PROVIDERS.has(model.provider) && model.wireModelId) {
         entry = { service: 'lm-studio', modelRef: model.wireModelId, aiModelId: model.id, tenantId: agent.tenantId, agentSlug: agent.slug };
       }
-      if (entry && !out.has(`${entry.service}|${entry.modelRef}`)) out.set(`${entry.service}|${entry.modelRef}`, entry);
+      if (!entry) continue;
+      agentKeys.add(`${agent.tenantId}|${agent.slug}`);
+      if (!out.has(`${entry.service}|${entry.modelRef}`)) out.set(`${entry.service}|${entry.modelRef}`, entry);
     }
-    return [...out.values()];
+    return { models: [...out.values()], agentKeys };
   }
 }

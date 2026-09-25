@@ -67,3 +67,52 @@ export interface ServiceResidencyReport {
 export function residencyKey(service: string, modelRef: string): string {
   return `${service}|${modelRef}`;
 }
+
+/** `AiModel.provider` spellings of LM Studio (the live-path reader recognises the same two). */
+const LM_STUDIO_PROVIDERS: ReadonlySet<string> = new Set(['lm-studio', 'lmstudio']);
+
+/** The catalogue fields that say which workload runs a model. */
+export interface ServingIdentity {
+  servedBy: string;
+  provider?: string | null;
+}
+
+/**
+ * The residency service that runs a catalogue model, from `AiModel.servedBy`
+ * (normalised: `lmstudio` → `lm-studio`), or `null` for a workload the
+ * controller does not govern (`tts`, `tts-worker`, `text`, `gateway-proxy`).
+ * A row whose PROVIDER is LM Studio counts as LM Studio's whatever its
+ * `servedBy` says — it is the engine's key that the service reports.
+ */
+export function residencyServiceOf(model: ServingIdentity): ResidencyServiceName | null {
+  if (model.servedBy === 'lmstudio' || model.servedBy === 'lm-studio' || (model.provider && LM_STUDIO_PROVIDERS.has(model.provider)))
+    return 'lm-studio';
+  if (model.servedBy === 'stt' || model.servedBy === 'stt-worker' || model.servedBy === 'nlp') return model.servedBy;
+  return null;
+}
+
+// ── TASK-1005 §13 — the catalogue-first view (`tests/contracts/model-residency-catalogue.fixture.json` `enums`) ──
+
+/** The catalogue view's service groups, in their FIXED display order. */
+export const CATALOGUE_SERVICES = ['stt', 'stt-worker', 'lm-studio', 'nlp'] as const satisfies readonly ResidencyServiceName[];
+export type CatalogueRunsOn = 'gpu' | 'cpu';
+export type CatalogueModelStatus = ResidencyModelState | 'not_loaded';
+export type CatalogueSizeSource = 'measured' | 'catalogue' | 'unknown';
+export type CatalogueUseRole = 'primary' | 'fallback' | 'routing';
+export type CatalogueKeepPolicyKind = 'always' | 'warm' | 'on_demand';
+export type CatalogueAction = 'load' | 'unload' | 'reload' | 'edit_policy';
+
+/** The catalogue fields a service's cache key is taken from. */
+export interface CatalogueRefFields {
+  slug: string;
+  sourceUri: string;
+  wireModelId?: string | null;
+}
+
+/** The key a service caches a catalogue model under: stt / stt-worker = slug, nlp = sourceUri (hub id), LM Studio = wireModelId. */
+export function refFor(service: string, model: CatalogueRefFields | undefined): string | null {
+  if (!model) return null;
+  if (service === 'lm-studio') return model.wireModelId ?? null;
+  if (service === 'nlp') return model.sourceUri;
+  return model.slug;
+}

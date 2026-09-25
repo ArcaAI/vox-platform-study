@@ -52,6 +52,7 @@ const proto = ModelResidencyController.prototype as unknown as Record<string, (.
 
 const ROUTES: Array<[string, RequestMethod, string, 'read' | 'manage']> = [
   ['view', RequestMethod.GET, '/', 'read'],
+  ['catalogue', RequestMethod.GET, 'catalogue', 'read'],
   ['load', RequestMethod.POST, 'load', 'manage'],
   ['unload', RequestMethod.POST, 'unload', 'manage'],
   ['pin', RequestMethod.PUT, 'pins', 'manage'],
@@ -120,6 +121,19 @@ describe('ModelResidencyController (TASK-1005)', () => {
     expect(res.status).not.toHaveBeenCalled();
     await expect(controller.load({ service: 'stt', modelRef: 'x' }, res as never)).resolves.toMatchObject({ outcome: 'already_loaded' });
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('GET catalogue (§13) delegates to the service`s catalogue-first view and documents it', async () => {
+    const view = { mode: 'shadow', services: [] };
+    const service = { getCatalogue: vi.fn().mockResolvedValue(view) };
+    const controller = new ModelResidencyController(service as never);
+    await expect(controller.catalogue()).resolves.toBe(view);
+    expect(service.getCatalogue).toHaveBeenCalledTimes(1);
+
+    const operation = Reflect.getMetadata(API_OPERATION_METADATA, proto.catalogue) as { summary?: string; description?: string };
+    expect(operation.description).toMatch(/SELF_HOSTED/);
+    const responses = Reflect.getMetadata(API_RESPONSE_METADATA, proto.catalogue) as Record<string, unknown>;
+    expect(Object.keys(responses)).toEqual(expect.arrayContaining(['200', '403']));
   });
 
   it('unload and pin answer 200', () => {

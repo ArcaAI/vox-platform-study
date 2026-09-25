@@ -117,6 +117,48 @@
         ]
       },
       {
+        "service": "stt-worker",
+        "label": "Speech-to-text — batch jobs",
+        "runsOn": "gpu",
+        "controllable": false,
+        "reachable": true,
+        "loadedCount": 1,
+        "models": [
+          {
+            "aiModelId": null,
+            "name": "hand-copied-whisper",
+            "slug": null,
+            "modelRef": "hand-copied-whisper",
+            "format": null,
+            "status": "loaded",
+            "size": { "bytes": 943718400, "source": "measured" },
+            "loadSeconds": null,
+            "residency": {
+              "device": "cuda:0",
+              "instance": "stt-worker",
+              "bytes": 943718400,
+              "bytesSource": "measured",
+              "inFlight": 0,
+              "requestsPerMin": null,
+              "p50LatencyMs": null,
+              "loadedAt": null,
+              "lastUsedAt": null
+            },
+            "usage": { "agentCount": 0, "tenantCount": 0, "liveConsultation": false, "uses": [] },
+            "keepPolicy": {
+              "kind": "on_demand",
+              "label": "Load when needed",
+              "reason": "Default for models no live agent uses",
+              "source": "default",
+              "policyId": null,
+              "policyVersion": null,
+              "idleTtlSeconds": null
+            },
+            "actions": []
+          }
+        ]
+      },
+      {
         "service": "lm-studio",
         "label": "Language models (LM Studio)",
         "runsOn": "gpu",
@@ -124,6 +166,62 @@
         "reachable": true,
         "loadedCount": 0,
         "models": []
+      },
+      {
+        "service": "nlp",
+        "label": "Medical NLP — entities and classification",
+        "runsOn": "cpu",
+        "controllable": true,
+        "reachable": true,
+        "loadedCount": 0,
+        "models": [
+          {
+            "aiModelId": "0199a1b2-0000-7000-8000-000000000003",
+            "name": "Medical NER",
+            "slug": "medical-ner",
+            "modelRef": "blaze999/Medical-NER",
+            "format": "SAFETENSOR",
+            "status": "not_loaded",
+            "size": { "bytes": 734003200, "source": "measured" },
+            "loadSeconds": 3.2,
+            "residency": null,
+            "usage": {
+              "agentCount": 1,
+              "tenantCount": 2,
+              "liveConsultation": false,
+              "uses": [
+                {
+                  "tenantId": "50000000-0000-0000-0000-000000000001",
+                  "tenantName": "ArcaAI",
+                  "agentSlug": "medical-ner",
+                  "agentName": "Medical NER",
+                  "task": "NAMED_ENTITY_RECOGNITION",
+                  "role": "primary",
+                  "liveConsultation": false
+                },
+                {
+                  "tenantId": "00000000-0000-0000-0000-000000000000",
+                  "tenantName": "System",
+                  "agentSlug": null,
+                  "agentName": "Medical NER (platform)",
+                  "task": "nlp.ner",
+                  "role": "routing",
+                  "liveConsultation": false
+                }
+              ]
+            },
+            "keepPolicy": {
+              "kind": "on_demand",
+              "label": "Load when needed",
+              "reason": "Set by a residency policy",
+              "source": "policy",
+              "policyId": "0199a1b2-0000-7000-8000-0000000000f1",
+              "policyVersion": 1,
+              "idleTtlSeconds": 600
+            },
+            "actions": ["load", "edit_policy"]
+          }
+        ]
       }
     ],
     "suggestions": [

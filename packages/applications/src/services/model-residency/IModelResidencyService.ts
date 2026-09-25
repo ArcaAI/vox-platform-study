@@ -1,6 +1,7 @@
 import type {
   CreateModelResidencyPolicyRequest,
   LoadModelResidencyRequest,
+  ModelResidencyCatalogueResponse,
   ModelResidencyLoadResponse,
   ModelResidencyOperationResponse,
   ModelResidencyPinResponse,
@@ -34,6 +35,13 @@ export interface ModelResidencyLoadResult {
 export interface IModelResidencyService {
   /** Devices, resident models (enriched with Prometheus rates), recommendations and freshness. */
   getView(): Promise<ModelResidencyViewResponse>;
+
+  /**
+   * TASK-1005 §13 — catalogue-first: every SELF_HOSTED catalogue model grouped by
+   * the workload that runs it, loaded or not, with who uses it (across all
+   * tenants), its keep policy in plain words, and the suggestions as sentences.
+   */
+  getCatalogue(): Promise<ModelResidencyCatalogueResponse>;
 
   /** Admit a load: 202 + operation (async), 200 `already_loaded`, or 400/404/409. */
   load(request: LoadModelResidencyRequest): Promise<ModelResidencyLoadResult>;

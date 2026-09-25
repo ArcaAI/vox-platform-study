@@ -8,6 +8,7 @@ import { AsrAgentResolverServiceModule } from '../stt/agent-resolver/asr-agent-r
 import { ImplicitLivePathReader } from './implicit-live-path';
 import { IModelResidencyService } from './IModelResidencyService';
 import { ModelResidencyService } from './model-residency.service';
+import { ModelUsageIndexReader } from './model-usage-index';
 import { ResidencyAgentClient } from './residency-agent.client';
 import { ResidencyLoadSpecBuilder } from './residency-load-spec.builder';
 
@@ -23,8 +24,9 @@ import { ResidencyLoadSpecBuilder } from './residency-load-spec.builder';
  *  - `EffectiveSettingsModule` — the `residency.*` SYSTEM knobs.
  *  - `AsrAgentResolverServiceModule` — the one producer of `ResolvedAsrSpec`,
  *    which an stt load sends as its `load_spec`.
- *  - `CoreDatabaseModule` — `ModelResidencyPolicyRepository`, the catalogue and
- *    the agent/assignment reads of the implicit live path.
+ *  - `CoreDatabaseModule` — `ModelResidencyPolicyRepository`, the catalogue,
+ *    the agent/assignment reads of the implicit live path, and the agent /
+ *    fallback / routing-policy / tenant reads of the usage index (§13).
  */
 @Module({
   imports: [
@@ -38,6 +40,7 @@ import { ResidencyLoadSpecBuilder } from './residency-load-spec.builder';
   providers: [
     ResidencyAgentClient,
     ImplicitLivePathReader,
+    ModelUsageIndexReader,
     ResidencyLoadSpecBuilder,
     { provide: IModelResidencyService, useClass: ModelResidencyService },
   ],

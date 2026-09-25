@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  AiDeploymentKind,
   AiModelEntity,
   AiModelRepository,
   ModelResidencyClass,
@@ -38,6 +39,7 @@ import type {
   CreateModelResidencyPolicyRequest,
   LmStudioResidencyLoadOptions,
   LoadModelResidencyRequest,
+  ModelResidencyCatalogueResponse,
   ModelResidencyDevice,
   ModelResidencyModel,
   ModelResidencyOperationResponse,
@@ -52,6 +54,7 @@ import type {
 } from './dto';
 import { ImplicitLivePathReader, type LivePathModel } from './implicit-live-path';
 import type { IModelResidencyService, ModelResidencyLoadResult } from './IModelResidencyService';
+import { ModelUsageIndexReader } from './model-usage-index';
 import {
   type ReportedResidentModel,
   type ResidencyBytesSource,
@@ -63,10 +66,13 @@ import {
   type ResidencyServiceName,
   type ServiceResidencyReport,
   RESIDENCY_CONTROLLED_SERVICES,
+  refFor,
   residencyKey,
+  residencyServiceOf,
 } from './model-residency.types';
 import { PhysicalGpuLoadGate } from './physical-gpu-load-gate';
 import { ResidencyAgentClient, ResidencyAgentError } from './residency-agent.client';
+import { buildResidencyCatalogue } from './residency-catalogue';
 import { ResidencyLoadSpecBuilder, ResidencyLoadSpecError } from './residency-load-spec.builder';
 import { residencyAdmissionRejectionsTotal, residencyDecisionsTotal } from './residency-metrics';
 import { ResidencyOperationRegistry } from './residency-operations';
@@ -284,6 +290,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     private readonly effectiveSettings: EffectiveSettingsService,
     private readonly livePath: ImplicitLivePathReader,
     private readonly specs: ResidencyLoadSpecBuilder,
+    private readonly usage: ModelUsageIndexReader,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
@@ -495,6 +502,61 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       models,
       recommendations: this.recommendations.slice(0, 100).map((r) => ({ ...r })),
     };
+  }
+
+  /**
+   * TASK-1005 §13 — the catalogue-first view: every SELF_HOSTED SYSTEM catalogue
+   * model under the workload that runs it, loaded or not, merged with the SAME
+   * ledger `getView` reads, the reverse usage index (cached platform-wide,
+   * `ModelUsageIndexReader`), the keep policy in plain words, and the
+   * recommendations as sentences. Cost over `getView`: ONE catalogue query per
+   * call, plus the usage index's four queries at most once per 30 s.
+   */
+  async getCatalogue(): Promise<ModelResidencyCatalogueResponse> {
+    this.assertPlatformAdmin('read the model catalogue');
+    const now = Date.now();
+    const [settings, ledger, rows] = await Promise.all([
+      this.readSettings(),
+      this.currentLedger(),
+      // The platform catalogue is the SYSTEM tier (rule 00); a tenant's BYO row is served by the tenant's own connection, not these workloads.
+      this.aiModels.findAll({
+        filters: {
+          tenantId: SYSTEM_TENANT_ID,
+          deploymentKind: AiDeploymentKind.SELF_HOSTED,
+          resourceStatus: { not: ResourceStatusType.DELETED },
+        } as never,
+      }),
+    ]);
+    const catalogue = rows.filter((row) => residencyServiceOf(row) !== null);
+    const usage = await this.usage.read(
+      catalogue.map((row) => row.id),
+      now,
+    );
+
+    const view = buildResidencyCatalogue({
+      now,
+      mode: settings.enforce ? 'enforce' : 'shadow',
+      reportedAt: iso(ledger.at),
+      freshness: { maxAgeSeconds: ledger.maxAgeSeconds, staleServices: ledger.staleServices },
+      headroomPercent: settings.headroomPercent,
+      devices: ledger.devices,
+      staleServices: ledger.staleServices,
+      entries: ledger.entries,
+      loading: this.operations.running().map((op) => ({ service: op.service, modelRef: op.modelRef })),
+      catalogue,
+      modelById: (id) => ledger.catalogue.byId.get(id),
+      usage,
+      classify: (service, modelRef, aiModelId) => this.classify(service, modelRef, aiModelId, ledger),
+      observedBytes: (service, modelRef, model) => this.observedBytes(service, modelRef, model),
+      observedLoadSeconds: (service, modelRef, model) =>
+        (service === 'lm-studio' ? this.lmsFootprint.get(modelRef)?.loadSeconds : undefined) ?? model?.observedLoadSeconds ?? null,
+      recommendations: this.recommendations,
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: { surface: 'model-residency.catalogue', models: view.services.reduce((sum, s) => sum + s.models.length, 0) },
+    });
+    return view;
   }
 
   async load(request: LoadModelResidencyRequest): Promise<ModelResidencyLoadResult> {
@@ -1261,7 +1323,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     return {
       byId,
       modelFor(service: string, modelRef: string): AiModelEntity | undefined {
-        if (service === 'lm-studio') return system.find((r) => r.wireModelId === modelRef);
+        // Only an LM Studio row: a CLOUD or Ollama row may carry the same wire id and is not what LM Studio holds.
+        if (service === 'lm-studio') return system.find((r) => r.wireModelId === modelRef && residencyServiceOf(r) === 'lm-studio');
         if (service === 'nlp') return system.find((r) => r.servedBy === 'nlp' && r.sourceUri === modelRef);
         return system.find((r) => r.slug === modelRef && r.servedBy === 'stt') ?? system.find((r) => r.slug === modelRef);
       },
@@ -1370,7 +1433,12 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const rows = await this.aiModels
       .findAll({ filters: { tenantId: SYSTEM_TENANT_ID, [field]: modelRef } as never })
       .catch(() => [] as AiModelEntity[]);
-    return rows.find((row) => row.tenantId === SYSTEM_TENANT_ID && refFor(service, row) === modelRef);
+    return rows.find(
+      (row) =>
+        row.tenantId === SYSTEM_TENANT_ID &&
+        refFor(service, row) === modelRef &&
+        (service !== 'lm-studio' || residencyServiceOf(row) === 'lm-studio'),
+    );
   }
 
   /** The devices a not-yet-resident model of `service` would occupy (D-7: within the workload's visible devices). */
@@ -1398,7 +1466,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   }
 
   /** A MEASURED footprint for a model, or `undefined`: this process's own LM Studio measurement, else the catalogue's observed size. */
-  private observedBytes(service: string, modelRef: string, model: AiModelEntity | undefined): number | undefined {
+  private observedBytes(service: string, modelRef: string, model: { observedMemoryMb?: number | null } | undefined): number | undefined {
     if (service === 'lm-studio') {
       const footprint = this.lmsFootprint.get(modelRef);
       if (footprint) return footprint.bytes;
@@ -1569,14 +1637,6 @@ function indexModelMetrics(metrics: ModelMetrics): ModelUsageIndex {
       };
     },
   };
-}
-
-/** The key a service caches a catalogue model under: stt = slug, nlp = sourceUri (hub id), LM Studio = wireModelId. */
-function refFor(service: string, model: AiModelEntity | undefined): string | null {
-  if (!model) return null;
-  if (service === 'lm-studio') return model.wireModelId ?? null;
-  if (service === 'nlp') return model.sourceUri;
-  return model.slug;
 }
 
 /** DTO options (nullable) → the adapter's documented REST keys (absent when null). */
