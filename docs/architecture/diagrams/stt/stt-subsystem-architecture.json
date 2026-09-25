@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "STT Engine & Worker Deployment Subsystem",
+    "output": "stt-subsystem-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/vox-platform-study.git",
+      "revision": "dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d"
+    },
+    "views": [
+      {
+        "id": "realtime-streaming",
+        "label": "Realtime Audio Ingress",
+        "focus": ["gateway", "redis_stream", "stt_engine", "vad", "asr"],
+        "note": "Low-latency streaming loop over Redis Streams with VAD speech delimiting."
+      },
+      {
+        "id": "batch-worker-flow",
+        "label": "Dramatiq Batch Processing",
+        "focus": ["gateway", "redis_dramatiq", "stt_worker", "minio", "asr", "diarizer"],
+        "note": "Asynchronous audio transcription pulling multi-channel audio from MinIO storage."
+      },
+      {
+        "id": "diarization-profiles",
+        "label": "Speaker Diarization & Profiles",
+        "focus": ["stt_worker", "diarizer", "postgres"],
+        "note": "PyAnnote in-memory tracking with preseeded cross-session clinician profiles."
+      },
+      {
+        "id": "engine-resilience",
+        "label": "ASR Resilience & Cloud Failover",
+        "focus": ["stt_engine", "asr", "cloud_fallback"],
+        "note": "One-way dynamic failover to Azure Speech cloud ASR on engine outage."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "API Gateway",
+      "sublabel": "NestJS 11 :8868",
+      "tag": "Ingress & Spec",
+      "pos": [40, 270],
+      "size": [130, 60],
+      "sources": [
+        { "path": "apps/api/src/main.ts", "line": 1, "label": "Gateway bootstrap" }
+      ]
+    },
+    {
+      "id": "redis_stream",
+      "type": "messagebus",
+      "label": "Redis Streams",
+      "sublabel": "Audio Buffer (DB 2)",
+      "tag": "stt:audio / result",
+      "pos": [260, 150],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/streaming/redis_streams.py", "line": 1, "label": "Redis streams transport" }
+      ]
+    },
+    {
+      "id": "redis_dramatiq",
+      "type": "messagebus",
+      "label": "Redis Broker",
+      "sublabel": "Dramatiq Queue (DB 5)",
+      "tag": "Queue stt_batch",
+      "pos": [260, 390],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/core/messaging/broker.py", "line": 1, "label": "Dramatiq broker" }
+      ]
+    },
+    {
+      "id": "stt_engine",
+      "type": "backend",
+      "label": "STT Engine",
+      "sublabel": "FastAPI :8861",
+      "tag": "SessionManager",
+      "pos": [490, 150],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/main.py", "line": 1, "label": "STT engine main" }
+      ]
+    },
+    {
+      "id": "stt_worker",
+      "type": "backend",
+      "label": "STT Worker",
+      "sublabel": "Dramatiq Worker",
+      "tag": "Batch Consumer",
+      "pos": [490, 390],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/worker.py", "line": 1, "label": "STT worker entrypoint" }
+      ]
+    },
+    {
+      "id": "vad",
+      "type": "backend",
+      "label": "Silero VAD v5",
+      "sublabel": "ONNX Runtime",
+      "tag": "Speech Delimiting",
+      "pos": [720, 50],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/vad/silero_service.py", "line": 1, "label": "Silero VAD service" }
+      ]
+    },
+    {
+      "id": "asr",
+      "type": "backend",
+      "label": "ASR Engine Pool",
+      "sublabel": "Whisper / NeMo",
+      "tag": "GPU CUDA / C++",
+      "pos": [720, 270],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/processors/registry.py", "line": 1, "label": "ASR engine registry" }
+      ]
+    },
+    {
+      "id": "diarizer",
+      "type": "backend",
+      "label": "Diarization",
+      "sublabel": "PyAnnote 4.x",
+      "tag": "In-Memory Tracker",
+      "pos": [720, 430],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/diarization/speaker_tracker.py", "line": 1, "label": "Diarization tracker" }
+      ]
+    },
+    {
+      "id": "cloud_fallback",
+      "type": "external",
+      "label": "Cloud ASR Fallback",
+      "sublabel": "Azure / Cloud STT",
+      "tag": "BYOK Credential",
+      "pos": [950, 190],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/streaming/azure_asr.py", "line": 1, "label": "Azure ASR client" }
+      ]
+    },
+    {
+      "id": "minio",
+      "type": "cloud",
+      "label": "MinIO Storage",
+      "sublabel": "recordings bucket :9000",
+      "tag": "Raw .wav Files",
+      "pos": [950, 330],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/core/storage/minio_client.py", "line": 1, "label": "MinIO client" }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL 18",
+      "sublabel": "TimescaleDB :5432",
+      "tag": "Doctor Voice DNA",
+      "pos": [950, 470],
+      "size": [140, 60],
+      "sources": [
+        { "path": "apps/stt/src/stt/voice_profile/extraction_service.py", "line": 1, "label": "Voice profile service" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "STT Inference Runtime",
+      "wraps": ["stt_engine", "stt_worker", "vad", "asr", "diarizer"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Async Buffer & Broker",
+      "wraps": ["redis_stream", "redis_dramatiq"]
+    }
+  ],
+  "connections": [
+    { "from": "gateway", "to": "stt_engine", "label": "session init", "variant": "emphasis" },
+    { "from": "gateway", "to": "redis_stream", "label": "stream PCM", "variant": "dashed" },
+    { "from": "gateway", "to": "redis_dramatiq", "label": "enqueue batch", "variant": "dashed" },
+    { "from": "redis_stream", "to": "stt_engine", "label": "read audio" },
+    { "from": "stt_engine", "to": "vad", "label": "speech gate", "fromSide": "top", "toSide": "left" },
+    { "from": "stt_engine", "to": "asr", "label": "decode frames", "fromSide": "right", "toSide": "left" },
+    { "from": "redis_dramatiq", "to": "stt_worker", "label": "dequeue jobs" },
+    { "from": "stt_worker", "to": "minio", "label": "fetch audio", "fromSide": "right", "toSide": "left" },
+    { "from": "stt_worker", "to": "asr", "label": "batch ASR", "fromSide": "top", "toSide": "bottom" },
+    { "from": "stt_worker", "to": "diarizer", "label": "speakers", "fromSide": "right", "toSide": "left" },
+    { "from": "asr", "to": "cloud_fallback", "label": "outage failover", "variant": "dashed", "fromSide": "right", "toSide": "left" },
+    { "from": "diarizer", "to": "postgres", "label": "voice profiles", "variant": "emphasis", "fromSide": "right", "toSide": "left" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Realtime Audio Pipeline",
+      "items": [
+        "Gateway writes 16kHz PCM audio to Redis Stream stt:audio:{id}",
+        "STT Engine runs in-process Silero VAD to detect utterance boundaries",
+        "Whisper / NeMo decodes active segments and writes stt:result:{id}"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Dramatiq Batch Processing",
+      "items": [
+        "Dramatiq workers consume from stt_batch queue across worker threads",
+        "Downloads multi-channel consultation audio directly from MinIO",
+        "Executes PyAnnote speaker diarization and reports progress to Gateway"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Zero-DB Stateless Inference",
+      "items": [
+        "Gateway resolves entire pipeline into immutable ResolvedAsrSpec",
+        "Engine and Worker read zero PostgreSQL tables during inference",
+        "Automatic one-way engine failover to Azure Speech on GPU/model fault"
+      ]
+    }
+  ]
+}

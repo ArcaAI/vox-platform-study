@@ -202,7 +202,9 @@ project-hope/ (dev-2.2)
 │   └── grafana/               # Dashboards and monitoring
 └── docs/
     └── architecture/
-        ├── hope-architecture.html   # Interactive visual architecture diagram (Archify)
-        ├── hope-architecture.json   # Machine-readable architecture IR
+        ├── diagrams/
+        │   ├── platform/            # HOPE Platform Architecture (HTML + JSON + visual checks)
+        │   ├── stt/                 # STT Subsystem Architecture (HTML + JSON + visual checks)
+        │   └── text/                # Text & Summarization Subsystem (HTML + JSON + visual checks)
         └── overview.md              # Authoritative high-level architecture overview
 ```

@@ -2,33 +2,203 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="0; url=architecture/hope-architecture.html">
-  <title>HOPE Architecture Diagram</title>
-  <script>
-    window.location.replace("architecture/hope-architecture.html");
-  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VOX Platform Architecture Showcase</title>
   <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(255, 255, 255, 0.04);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-hover-border: rgba(56, 189, 248, 0.4);
+      --card-hover-bg: rgba(56, 189, 248, 0.06);
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent-blue: #38bdf8;
+      --accent-emerald: #34d399;
+      --accent-purple: #a855f7;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0b0f19;
-      color: #94a3b8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100vh;
-      margin: 0;
+      padding: 2rem 1.5rem;
     }
-    a {
-      color: #38bdf8;
+    .header {
+      text-align: center;
+      max-width: 720px;
+      margin-bottom: 2.5rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--accent-blue);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      margin-bottom: 1rem;
+    }
+    h1 {
+      font-size: 2.25rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.75rem;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p.subtitle {
+      font-size: 1rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+      max-width: 1080px;
+      width: 100%;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 1rem;
+      padding: 1.75rem;
       text-decoration: none;
-      font-weight: 500;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
     }
-    a:hover {
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: var(--card-hover-border);
+      background: var(--card-hover-bg);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+    }
+    .card-tag {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+    .tag-blue { color: var(--accent-blue); }
+    .tag-emerald { color: var(--accent-emerald); }
+    .tag-purple { color: var(--accent-purple); }
+    .card h2 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 1.25rem;
+      flex-grow: 1;
+    }
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.825rem;
+      font-weight: 500;
+      color: var(--accent-blue);
+    }
+    .arrow {
+      font-size: 1.1rem;
+      transition: transform 0.2s ease;
+    }
+    .card:hover .arrow {
+      transform: translateX(4px);
+    }
+    footer {
+      margin-top: 3rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    footer a {
+      color: var(--accent-blue);
+      text-decoration: none;
+    }
+    footer a:hover {
       text-decoration: underline;
     }
   </style>
 </head>
 <body>
-  <p>Loading interactive architecture diagram... If not redirected automatically, <a href="architecture/hope-architecture.html">click here to open HOPE Architecture</a>.</p>
+  <div class="header">
+    <div class="badge">Architecture Study &amp; Visualizers</div>
+    <h1>VOX Platform Architecture</h1>
+    <p class="subtitle">Interactive visual topology, service boundaries, and request pipelines generated from repository revision <code>dev-2.2</code>.</p>
+  </div>
+
+  <div class="grid">
+    <!-- Platform Architecture -->
+    <a class="card" href="architecture/diagrams/platform/hope-architecture.html">
+      <div>
+        <div class="card-tag tag-blue">Whole System Topology</div>
+        <h2>HOPE Core Platform <span class="arrow">&rarr;</span></h2>
+        <p>End-to-end multi-tier architecture spanning API Gateway, Async Worker Engine, RabbitMQ, PostgreSQL, MinIO Storage, and Temporal.</p>
+      </div>
+      <div class="card-footer">
+        <span>Launch Interactive Diagram</span>
+        <span>10 Components</span>
+      </div>
+    </a>
+
+    <!-- STT Subsystem -->
+    <a class="card" href="architecture/diagrams/stt/stt-subsystem-architecture.html">
+      <div>
+        <div class="card-tag tag-emerald">Audio &amp; Speech Engine</div>
+        <h2>STT Subsystem <span class="arrow">&rarr;</span></h2>
+        <p>Speech-to-Text inference pipeline featuring Fast/Slow RabbitMQ queues, dual-mode engine routing (Deepgram / Whisper / Azure), and chunked workers.</p>
+      </div>
+      <div class="card-footer">
+        <span>Launch Interactive Diagram</span>
+        <span>10 Components</span>
+      </div>
+    </a>
+
+    <!-- Text Subsystem -->
+    <a class="card" href="architecture/diagrams/text/text-subsystem-architecture.html">
+      <div>
+        <div class="card-tag tag-purple">Summarization &amp; LLM</div>
+        <h2>Text Subsystem <span class="arrow">&rarr;</span></h2>
+        <p>Clinical SOAP synthesis, multi-provider LLM routing (LM Studio, vLLM, Azure), per-provider circuit breakers, and fail-closed safety guardrails.</p>
+      </div>
+      <div class="card-footer">
+        <span>Launch Interactive Diagram</span>
+        <span>11 Components</span>
+      </div>
+    </a>
+  </div>
+
+  <footer>
+    VOX Platform Architecture &bull; <a href="https://github.com/ArcaAI/vox-platform-study">ArcaAI/vox-platform-study</a>
+  </footer>
 </body>
 </html>

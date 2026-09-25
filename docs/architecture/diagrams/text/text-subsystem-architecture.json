@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Text Generation & Summarization Subsystem",
+    "output": "text-subsystem-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ArcaAI/vox-platform-study.git",
+      "revision": "dacdc311ec1caf811edcd26ad7d1ac2c5df95e9d"
+    },
+    "views": [
+      {
+        "id": "clinical-note-generation",
+        "label": "Clinical Note Generation",
+        "focus": ["gateway", "text_engine", "guardrail_client", "guardrail_svc", "local_llm"],
+        "note": "SOAP clinical note synthesis with pre/post generation safety screening."
+      },
+      {
+        "id": "streaming-tasks",
+        "label": "Task Manager & SSE Streams",
+        "focus": ["gateway", "text_engine", "redis"],
+        "note": "Async generation and live token streaming via Redis task persistence."
+      },
+      {
+        "id": "resilience-circuit-breaker",
+        "label": "Circuit Breakers & Cloud Routing",
+        "focus": ["text_engine", "circuit_breaker", "local_llm", "cloud_llm"],
+        "note": "Multi-provider resilience routing between local engines and cloud backends."
+      },
+      {
+        "id": "harness-evaluation-loop",
+        "label": "Harness Judge & Embeddings",
+        "focus": ["harness", "text_engine", "judge_guard", "tei_embeddings"],
+        "note": "Automated clinical judge checks and batch vector embedding generation."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "API Gateway",
+      "sublabel": "NestJS 11 :8868",
+      "tag": "TextProxyController",
+      "pos": [40, 160],
+      "size": [130, 56],
+      "sources": [
+        { "path": "apps/api/src/main.ts", "line": 1, "label": "Gateway bootstrap" }
+      ]
+    },
+    {
+      "id": "harness",
+      "type": "backend",
+      "label": "Clinical Harness",
+      "sublabel": "FastAPI :8866",
+      "tag": "Temporal Worker",
+      "pos": [40, 330],
+      "size": [130, 56],
+      "sources": [
+        { "path": "apps/harness/src/harness/main.py", "line": 1, "label": "Harness main" }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "messagebus",
+      "label": "Redis 8",
+      "sublabel": "Task Manager (DB 3)",
+      "tag": "SSE Streams",
+      "pos": [260, 80],
+      "size": [140, 56],
+      "sources": [
+        { "path": "infrastructure/docker/docker-compose.yml", "line": 42, "label": "Redis compose" }
+      ]
+    },
+    {
+      "id": "text_engine",
+      "type": "backend",
+      "label": "Text Service",
+      "sublabel": "FastAPI :8862",
+      "tag": "Task & Router Pool",
+      "pos": [260, 240],
+      "size": [140, 56],
+      "sources": [
+        { "path": "apps/text/src/text/main.py", "line": 1, "label": "Text service main" }
+      ]
+    },
+    {
+      "id": "circuit_breaker",
+      "type": "security",
+      "label": "Circuit Breaker",
+      "sublabel": "Pool Health Router",
+      "tag": "Half-Open Trial",
+      "pos": [500, 140],
+      "size": [140, 56],
+      "sources": [
+        { "path": "apps/text/src/text/services/circuit_breaker.py", "line": 1, "label": "Circuit breaker service" }
+      ]
+    },
+    {
+      "id": "guardrail_client",
+      "type": "security",
+      "label": "Guardrail Client",
+      "sublabel": "Fail-Closed Posture",
+      "tag": "PII & Medical Gate",
+      "pos": [500, 260],
+      "size": [140, 56],
+      "sources": [
+        { "path": "apps/text/src/text/services/external_guardrail.py", "line": 1, "label": "Guardrail client" }
+      ]
+    },
+    {
+      "id": "judge_guard",
+      "type": "backend",
+      "label": "Judge Guard",
+      "sublabel": "Output Gate",
+      "tag": "Consistency Sensor",
+      "pos": [500, 380],
+      "size": [140, 56],
+      "sources": [
+        { "path": "apps/text/src/text/services/judge_guard.py", "line": 1, "label": "Judge guard service" }
+      ]
+    },
+    {
+      "id": "guardrail_svc",
+      "type": "security",
+      "label": "Guardrail Service",
+      "sublabel": "FastAPI :8863",
+      "tag": "Content Validation",
+      "pos": [740, 260],
+      "size": [140, 56],
+      "sources": [
+        { "path": "apps/guardrail/src/guardrail/main.py", "line": 1, "label": "Guardrail engine" }
+      ]
+    },
+    {
+      "id": "tei_embeddings",
+      "type": "backend",
+      "label": "TEI Embeddings",
+      "sublabel": "Vector Service",
+      "tag": "BGE Embedding",
+      "pos": [740, 380],
+      "size": [140, 56],
+      "sources": [
+        { "path": "apps/text/src/text/providers/tei_embed.py", "line": 1, "label": "TEI embedding client" }
+      ]
+    },
+    {
+      "id": "local_llm",
+      "type": "cloud",
+      "label": "Local LLM Pool",
+      "sublabel": "LM Studio :1234",
+      "tag": "vLLM / llama.cpp",
+      "pos": [970, 110],
+      "size": [140, 56],
+      "sources": [
+        { "path": "apps/text/src/text/providers/lmstudio.py", "line": 1, "label": "LM Studio provider" }
+      ]
+    },
+    {
+      "id": "cloud_llm",
+      "type": "external",
+      "label": "Cloud LLM Pool",
+      "sublabel": "Azure / Bedrock / Vertex",
+      "tag": "BYOK Credential",
+      "pos": [970, 240],
+      "size": [140, 56],
+      "sources": [
+        { "path": "apps/text/src/text/providers/azure_openai.py", "line": 1, "label": "Azure OpenAI provider" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Text Generation Runtime",
+      "wraps": ["text_engine", "circuit_breaker", "guardrail_client", "judge_guard"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Safety Service Plane",
+      "wraps": ["guardrail_svc"]
+    }
+  ],
+  "connections": [
+    { "from": "gateway", "to": "text_engine", "label": "generate POST", "variant": "emphasis" },
+    { "from": "harness", "to": "text_engine", "label": "doc prompts", "variant": "emphasis" },
+    { "from": "text_engine", "to": "redis", "label": "task state", "fromSide": "top", "toSide": "bottom", "labelAt": [330, 185] },
+    { "from": "text_engine", "to": "circuit_breaker", "label": "health probe", "fromSide": "top", "toSide": "left" },
+    { "from": "text_engine", "to": "guardrail_client", "label": "safety check", "variant": "security", "fromSide": "right", "toSide": "left" },
+    { "from": "text_engine", "to": "judge_guard", "label": "eval scores", "fromSide": "right", "toSide": "left" },
+    { "from": "circuit_breaker", "to": "local_llm", "label": "primary route" },
+    { "from": "circuit_breaker", "to": "cloud_llm", "label": "failover route", "variant": "dashed" },
+    { "from": "guardrail_client", "to": "guardrail_svc", "label": "screen & redact", "variant": "security" },
+    { "from": "judge_guard", "to": "tei_embeddings", "label": "vector check" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Multi-Provider LLM Routing",
+      "items": [
+        "Gateway passes resolved model and provider without hardcoding defaults in env",
+        "Egress supports LM Studio, Ollama, vLLM, Azure OpenAI, Bedrock, and Vertex",
+        "UsageDetail passthrough accurately tracks engine tokens for multi-tenant billing"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Fail-Closed Safety Interception",
+      "items": [
+        "ExternalGuardrailClient screens prompts and completions before final response",
+        "Safety verification strictly enforces PII redaction and clinical truthfulness",
+        "If Guardrail is unreachable, the request fails with 503 rather than leaking raw output"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Per-Provider Circuit Breakers",
+      "items": [
+        "Circuit breakers monitor consecutive failures and trigger OPEN state",
+        "HALF-OPEN state conducts trial calls before safely restoring traffic",
+        "Automatic fallback router shifts traffic to secondary provider on outage"
+      ]
+    }
+  ]
+}
