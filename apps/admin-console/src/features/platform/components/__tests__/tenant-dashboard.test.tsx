@@ -36,7 +36,6 @@ const USAGE = {
   totalUsers: 21,
   totalDepartments: 8,
   totalPromptTemplates: 37,
-  totalPipelines: 0,
   storageUsedBytes: 14_000_000,
   storageQuotaBytes: 5_000_000_000,
   transcriptionMinutes: 9.58,

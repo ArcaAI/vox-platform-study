@@ -19,7 +19,6 @@ import { IGateEditMiningQueue } from '../IGateEditMiningQueue';
 import { IGateEditExemplarRetriever } from '../IGateEditExemplarRetriever';
 import { SummaryService } from '../../consultation/summary/summary.service';
 import { SummaryServiceModule } from '../../consultation/summary/summary.service.module';
-import { ChainSummaryServiceModule } from '../../consultation/summary/chain-summary.service.module';
 import { ConsultationJobServiceModule } from '../../consultation/jobs/consultation-job.service.module';
 import { HarnessInternalServiceModule } from '../../consultation/harness/harness-internal.service.module';
 
@@ -117,7 +116,9 @@ describe('Gate-edit learning loop — NestJS DI wiring', () => {
     });
 
     /**
-     * ALL FOUR modules that provide `PromptAssemblyService` for live generation.
+     * ALL THREE modules that provide `PromptAssemblyService` for live generation.
+     * (`ChainSummaryServiceModule` was a fourth until TASK-1006 moved the comprehensive
+     * summary onto the agent plane; it assembles no prompt of its own any more.)
      *
      * wired the first two and could not reach the other two (they sat
      * outside its ownership boundary), so it pinned their absence as a FAILING-
@@ -129,11 +130,10 @@ describe('Gate-edit learning loop — NestJS DI wiring', () => {
      * reachability.test.ts` DISCOVERS every provider from the
      * filesystem and computes token reachability, so a new one is covered the
      * moment it exists. This list stays as the named, readable statement of
-     * which four they are today.
+     * which three they are today.
  */
     it.each([
       ['SummaryServiceModule', SummaryServiceModule],
-      ['ChainSummaryServiceModule', ChainSummaryServiceModule],
       ['ConsultationJobServiceModule', ConsultationJobServiceModule],
       ['HarnessInternalServiceModule', HarnessInternalServiceModule],
     ])('%s imports GateEditMiningServiceModule', (_name, moduleClass) => {

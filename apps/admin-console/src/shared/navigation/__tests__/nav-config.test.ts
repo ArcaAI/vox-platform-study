@@ -532,7 +532,7 @@ const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
     '30-49',
     2,
     [
-      ['read', 'AsrPipeline'],
+      ['read', 'TranscriptionJob'],
       ['manage', 'Tenant'],
     ],
   ],

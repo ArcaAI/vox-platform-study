@@ -29,8 +29,6 @@ export interface ResolvedLimits {
   maxUsers: number | null;
   maxDepartments: number | null;
   maxPromptTemplates: number | null;
-  /** @deprecated TASK-861 — removed in R4. Ceiling on the retired `AsrPipeline` rows; the Agent ceiling (`maxAgents`) is TASK-863's key and this stays its placeholder alias until it lands. */
-  maxAsrPipelines: number | null;
   maxApiKeys: number | null;
   maxWorkflowDefinitions: number | null;
   /**
@@ -84,8 +82,7 @@ export interface ResolvedFeatures {
    * running its compiled `AsrPipeline` even if this flips off later — "in-flight runs pin their
    * version" per design.md's Data Flow section). Deliberately `true` on every seeded plan
    * ( decision, `contracts/palette.md` gate): STT pipeline authoring is a
-   * core platform capability, not a premium add-on — every plan already gets
-   * `maxAsrPipelines > 0`. No DB column backs this yet (`PlanEntitlementInput`/
+   * core platform capability, not a premium add-on. No DB column backs this yet (`PlanEntitlementInput`/
    * `TenantEntitlementOverrideInput` below simply lack the field) — a follow-up ticket adds one
    * if per-tenant override becomes a real product requirement; until then this always resolves
    * from the seeded default matrix.
@@ -151,8 +148,6 @@ export interface PlanEntitlementInput {
   maxUsers?: number | null;
   maxDepartments?: number | null;
   maxPromptTemplates?: number | null;
-  /** @deprecated TASK-861 — removed in R4 (see `ResolvedLimits.maxAsrPipelines`). */
-  maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
   maxWorkflowDefinitions?: number | null;
   /** TASK-958 D-8 — the tenant's provider-connection ceiling; see `ResolvedLimits.maxAiProviderConnections`. */
@@ -196,8 +191,6 @@ export interface TenantEntitlementOverrideInput {
   maxUsers?: number | null;
   maxDepartments?: number | null;
   maxPromptTemplates?: number | null;
-  /** @deprecated TASK-861 — removed in R4 (see `ResolvedLimits.maxAsrPipelines`). */
-  maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
   maxWorkflowDefinitions?: number | null;
   /** TASK-958 D-8 — per-tenant override of the connection ceiling; see `PlanEntitlementInput.maxAiProviderConnections`. */
@@ -235,7 +228,6 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
     maxUsers: null,
     maxDepartments: null,
     maxPromptTemplates: null,
-    maxAsrPipelines: null,
     maxApiKeys: null,
     maxWorkflowDefinitions: null,
     maxAiProviderConnections: null,
@@ -349,7 +341,6 @@ export function resolveEntitlements(
     maxUsers: pick(planRow?.maxUsers, seeded.maxUsers),
     maxDepartments: pick(planRow?.maxDepartments, seeded.maxDepartments),
     maxPromptTemplates: pick(planRow?.maxPromptTemplates, seeded.maxPromptTemplates),
-    maxAsrPipelines: pick(planRow?.maxAsrPipelines, seeded.maxAsrPipelines),
     maxApiKeys: pick(planRow?.maxApiKeys, seeded.maxApiKeys),
     maxWorkflowDefinitions: pick(planRow?.maxWorkflowDefinitions, seeded.maxWorkflowDefinitions),
     maxAiProviderConnections: pick(planRow?.maxAiProviderConnections, seeded.maxAiProviderConnections),
@@ -382,7 +373,6 @@ export function resolveEntitlements(
       maxUsers: pick(override?.maxUsers, base.maxUsers),
       maxDepartments: pick(override?.maxDepartments, base.maxDepartments),
       maxPromptTemplates: pick(override?.maxPromptTemplates, base.maxPromptTemplates),
-      maxAsrPipelines: pick(override?.maxAsrPipelines, base.maxAsrPipelines),
       maxApiKeys: pick(override?.maxApiKeys, base.maxApiKeys),
       maxWorkflowDefinitions: pick(override?.maxWorkflowDefinitions, base.maxWorkflowDefinitions),
       maxAiProviderConnections: pick(override?.maxAiProviderConnections, base.maxAiProviderConnections),

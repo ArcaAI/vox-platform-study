@@ -123,8 +123,6 @@ export interface RealtimeTranscriptSegment {
   /** Epoch ms at which this lane received the utterance — the consumer end of the speech-to-transcript lag. */
   receivedAtMs?: number;
   inferenceMs?: number;
-  /** Per-utterance provenance: a mid-session engine switch splits one transcript across two bindings. */
-  pipelineId?: string;
   words?: RealtimeTranscriptWord[];
   /**
    * A5 — the CLIENT's own metadata in force over this utterance (TASK-951), verbatim and
@@ -168,8 +166,6 @@ export interface TranscribeResult {
   audio?: RealtimeAudioSync;
   /** The capture-level detected language, when there is one. */
   language?: string;
-  /** The ASR binding this capture ran on, or null on the tenant's default. */
-  pipelineId: string | null;
 }
 
 /**
@@ -391,7 +387,7 @@ class CoreAgentHandler implements RealtimeNodeHandler {
 
     switch (task) {
       case 'SPEECH_TO_TEXT': {
-        const { transcript, segments, audio, language, pipelineId } = await ctx.capabilities.transcribe(ctx.signal);
+        const { transcript, segments, audio, language } = await ctx.capabilities.transcribe(ctx.signal);
         // The SAME split the NER branch makes, for the same reason: `transcript` is the TEXT and
         // goes on the `transcript` socket (a refined TEXT primitive — every node downstream binds
         // it as a string), while the structured half rides the `data` socket. Publishing the
@@ -410,7 +406,6 @@ class CoreAgentHandler implements RealtimeNodeHandler {
             segments: declaredSegments,
             audio: declaredAudio,
             language: language ?? null,
-            pipelineId,
           },
         };
       }

@@ -43,7 +43,6 @@ const OVERRIDE_KEYS = [
   'maxUsers',
   'maxDepartments',
   'maxPromptTemplates',
-  'maxAsrPipelines',
   'maxApiKeys',
   'maxWorkflowDefinitions',
   'maxAiProviderConnections',

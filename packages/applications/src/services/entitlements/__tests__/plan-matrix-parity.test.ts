@@ -44,7 +44,6 @@ const MATRIX_FIELDS = [
   'maxUsers',
   'maxDepartments',
   'maxPromptTemplates',
-  'maxAsrPipelines',
   'maxApiKeys',
   'maxWorkflowDefinitions',
   'maxAiProviderConnections',

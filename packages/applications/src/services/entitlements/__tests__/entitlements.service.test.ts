@@ -100,7 +100,6 @@ const fakePlanEntity = (o: Record<string, unknown> = {}) => ({
   maxUsers: 5,
   maxDepartments: 2,
   maxPromptTemplates: 10,
-  maxAsrPipelines: 1,
   maxApiKeys: 2,
   storageQuotaBytes: null as bigint | null,
   monthlyConsultations: 500,
@@ -125,7 +124,6 @@ const fakeTenantEntity = (o: Record<string, unknown> = {}) => ({
   maxUsers: null,
   maxDepartments: null,
   maxPromptTemplates: null,
-  maxAsrPipelines: null,
   maxApiKeys: null,
   storageQuotaBytes: null as bigint | null,
   monthlyConsultations: null,
@@ -449,13 +447,10 @@ describe('EntitlementsService', () => {
      * row reports it. If a future limit genuinely warrants no row, widening
      * this to `| null` is the deliberate act that records that decision.
      */
-    // `null` = a limit with NOTHING left to count, so no capability row. `maxAsrPipelines` is the
-    // one case: TASK-1006 removed the `AsrPipeline` rows it bounded; the knob goes with its column.
-    const ROW_KEY_BY_LIMIT: Record<EntitlementLimitKey, string | null> = {
+    const ROW_KEY_BY_LIMIT: Record<EntitlementLimitKey, string> = {
       maxUsers: 'users',
       maxDepartments: 'departments',
       maxPromptTemplates: 'promptTemplates',
-      maxAsrPipelines: null,
       maxApiKeys: 'apiKeys',
       maxWorkflowDefinitions: 'workflowDefinitions',
       maxAiProviderConnections: 'aiProviderConnections',
@@ -485,7 +480,7 @@ describe('EntitlementsService', () => {
       const reported = new Set([...caps.quantities, ...caps.meters].map((row) => row.key));
 
       const unreported = Object.entries(ROW_KEY_BY_LIMIT)
-        .filter(([, rowKey]) => rowKey !== null && !reported.has(rowKey))
+        .filter(([, rowKey]) => !reported.has(rowKey))
         .map(([limitKey]) => limitKey);
       expect(unreported).toEqual([]);
       // ... and the retired one is not reported against a table that no longer exists.

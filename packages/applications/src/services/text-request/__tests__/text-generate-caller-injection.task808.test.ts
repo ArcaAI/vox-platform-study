@@ -5,8 +5,9 @@
  * The companion `text-generate-caller-coverage.test.ts` is the STRUCTURAL gate:
  * it scans the source so a NEW caller cannot be added without an injector. This
  * file is the BEHAVIOURAL half — it drives the real payload-building code of
- * each of the six callers repaired and inspects what actually reaches
- * `axiosRef.post`. Both are needed: the scan cannot prove the injector runs on
+ * each of the callers repaired and inspects what actually reaches
+ * `axiosRef.post`. (`ChainSummaryService` left the list with TASK-1006: it reaches
+ * TEXT through `AgentInvocationService` now.) Both are needed: the scan cannot prove the injector runs on
  * the path that posts, and a behavioural test cannot see a caller nobody wrote
  * a test for.
  *
@@ -19,7 +20,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { LiveDocumentationService } from '../../consultation/live-documentation/live-documentation.service';
 import { PreSummaryProcessor } from '../../consultation/jobs/processors/pre-summary.processor';
 import { ComprehensiveSummaryProcessor } from '../../consultation/jobs/processors/comprehensive-summary.processor';
-import { ChainSummaryService } from '../../consultation/summary/chain-summary.service';
 import { SummaryService } from '../../consultation/summary/summary.service';
 import { DnaWritingStyleProcessor } from '../../dna-writing-style/dna-writing-style.processor';
 
@@ -165,37 +165,6 @@ describe('each TEXT /generate caller posts provider_overrides', () => {
         callTextService(c: unknown, s: unknown, n: unknown, r: unknown, p: unknown, t: string): Promise<unknown>;
       }
     ).callTextService({}, [{ consultationId: 'c-1', type: 'note', content: 'body' }], undefined, {}, null, TENANT);
-
-    expectOverridesPosted(http.axiosRef.post);
-  });
-
-  it('ChainSummaryService.callTextService (comprehensive chain)', async () => {
-    const http = httpStub();
-    const enrichment = enrichmentStub();
-    const service = new ChainSummaryService(
-      {} as never, // contextItemRepository
-      {} as never, // consultationRepository
-      {} as never, // summaryMetaRepository
-      {} as never, // namedEntityRepository
-      http as never,
-      configStub,
-      { emit: vi.fn() } as never, // eventEmitter
-      clsStub(),
-      {} as never, // promptAssemblyService
-      secretsStub,
-      policyStub,
-      undefined, // configResolver
-      undefined, // usageLedger
-      undefined, // unitOfWork
-      undefined, // noteGenerationService
-      enrichment as never,
-    );
-
-    await (service as never as { callTextService(p: unknown): Promise<unknown> }).callTextService({
-      assembledPrompt: ASSEMBLED,
-      options: {},
-      context: {},
-    });
 
     expectOverridesPosted(http.axiosRef.post);
   });

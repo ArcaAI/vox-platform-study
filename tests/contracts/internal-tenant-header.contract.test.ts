@@ -37,7 +37,9 @@ const TENANT_SCOPED_CALL_SITES = [
   'packages/applications/src/services/consultation/live-documentation/live-documentation.service.ts',
   'packages/applications/src/services/consultation/jobs/processors/pre-summary.processor.ts',
   'packages/applications/src/services/consultation/jobs/processors/comprehensive-summary.processor.ts',
-  'packages/applications/src/services/consultation/summary/chain-summary.service.ts',
+  // TASK-1006 — the comprehensive summary reaches TEXT through the agent plane now, so the call
+  // site is the invocation service rather than `chain-summary.service.ts`.
+  'packages/applications/src/services/agent/agent-invocation.service.ts',
   'packages/applications/src/services/consultation/summary/summary.service.ts',
   'packages/applications/src/services/prompt-management/prompt-management.service.ts',
   // → apps/guardrail, apps/nlp
@@ -49,8 +51,6 @@ const TENANT_SCOPED_CALL_SITES = [
   // 428 it was causing on DNA-report generation is now fixed.
   'packages/applications/src/services/dna-writing-style/dna-writing-style.processor.ts',
   // → apps/stt /internal/streaming/*, /internal/voice-profile/extract.
-  //   (`/api/v1/pipelines/validate` and its caller, `pipeline.service.ts`, were
-  //   removed with the AsrPipeline stack — TASK-1006.)
   //
   // Closed 2026-08-18. These were a LATENT deployed-environment break rather
   // than a live one: stt had NO inbound auth at all until `ServiceAuthMiddleware`

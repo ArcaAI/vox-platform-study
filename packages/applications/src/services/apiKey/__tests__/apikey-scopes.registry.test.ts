@@ -236,6 +236,14 @@ describe('API Key Scope Registry', () => {
       expect(new Set(resolved).size).toBe(resolved.length);
     });
 
+    // TASK-1006 — the transcription-job admin reads are gated on the resource they read. The
+    // scope used to imply `read:AsrPipeline`, the retired pipeline stack's subject; a machine
+    // credential holding it would then be 403'd by routes that now demand `read:TranscriptionJob`.
+    it('admin:transcription-job:read implies read:TranscriptionJob and nothing on AsrPipeline', () => {
+      const resolved = resolveImpliedPermissions('admin:transcription-job:read').map(key);
+      expect(resolved).toEqual(['read:TranscriptionJob']);
+    });
+
     it('throws for an unknown scope (fail closed — never resolves to "no requirement")', () => {
       expect(() => resolveImpliedPermissions('not:a:scope')).toThrow(/unknown api key scope/i);
     });

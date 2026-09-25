@@ -16,9 +16,9 @@
  * ── WHY REACHABILITY IS COMPUTED, NOT ASSUMED ───────────────────────────────
  *
  * NestJS does not make a grandchild module's exports visible: importing
- * `ChainSummaryServiceModule` (which imports `GateEditMiningServiceModule`) does
- * NOT give you the retriever token, because `ChainSummaryServiceModule` exports
- * only `ChainSummaryService`. The walker below therefore follows a module's
+ * `SummaryServiceModule` (which imports `GateEditMiningServiceModule`) does
+ * NOT give you the retriever token, because `SummaryServiceModule` exports
+ * only `ISummaryService` / `SummaryService`. The walker below therefore follows a module's
  * `exports` — where a re-exported MODULE does propagate — and never its
  * `imports`. Asserting "the module lists GateEditMiningServiceModule" would be a
  * weaker test that a legitimate re-export refactor would falsely fail.
@@ -38,7 +38,7 @@ describe('R7 guard — every live-generation PromptAssemblyService can reach the
 
     // Not a magic number to keep in sync: it asserts the DISCOVERY works at all.
     // If it ever returns 0, every assertion below would vacuously pass.
-    expect(found.length).toBeGreaterThanOrEqual(4);
+    expect(found.length).toBeGreaterThanOrEqual(3);
   });
 
   it('resolves IGateEditExemplarRetriever in EVERY module that provides PromptAssemblyService', async () => {
@@ -52,10 +52,10 @@ describe('R7 guard — every live-generation PromptAssemblyService can reach the
   });
 
   it('the reachability walker does NOT accept a grandchild import as resolution', async () => {
-    // Guards the guard: `ChainSummaryServiceModule` imports `GateEditMiningServiceModule`
-    // but exports only `ChainSummaryService`, so importing IT must not count.
-    const { ChainSummaryServiceModule } = await import('../../consultation/summary/chain-summary.service.module');
+    // Guards the guard: `SummaryServiceModule` imports `GateEditMiningServiceModule`
+    // but exports only `ISummaryService` / `SummaryService`, so importing IT must not count.
+    const { SummaryServiceModule } = await import('../../consultation/summary/summary.service.module');
 
-    expect(exportedTokens(ChainSummaryServiceModule).has(IGateEditExemplarRetriever)).toBe(false);
+    expect(exportedTokens(SummaryServiceModule).has(IGateEditExemplarRetriever)).toBe(false);
   });
 });

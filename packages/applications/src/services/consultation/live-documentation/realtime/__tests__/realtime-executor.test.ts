@@ -16,7 +16,7 @@ const TENANT = 'tenant-811';
 
 function capabilities(overrides: Partial<RealtimeCapabilities> = {}): RealtimeCapabilities {
   return {
-    transcribe: vi.fn().mockResolvedValue({ transcript: 'patient reports cough and takes aspirin', pipelineId: 'pipeline-1' }),
+    transcribe: vi.fn().mockResolvedValue({ transcript: 'patient reports cough and takes aspirin' }),
     generateDocument: vi.fn().mockResolvedValue({ text: 'Assessment: viral URI.', sections: [], stats: null, repaired: false }),
     extractEntities: vi.fn().mockResolvedValue({ entities: [{ text: 'aspirin', type: 'MEDICATION' }], vitals: { systolic: 120 } }),
     ...overrides,
@@ -63,7 +63,7 @@ describe('task 3 — the executor walks the lane in declared order', () => {
     const caps = capabilities({
       transcribe: vi.fn(async () => {
         order.push('capture');
-        return { transcript: 'raw transcript', pipelineId: null };
+        return { transcript: 'raw transcript' };
       }),
       extractEntities: vi.fn(async () => {
         order.push('extract');

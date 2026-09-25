@@ -71,13 +71,12 @@ const HANDROLLED_SHEET_PATH = {
 };
 
 /**
- * TASK-865 — the browser never runs a model. The client-AI packages are
- * deprecated (removed in R4) and the admin console, as the platform's own
- * first-party consumer, may not import them: VAD / denoise / ASR / NER are
+ * TASK-865 — the browser never runs a model. VAD / denoise / ASR / NER are
  * server-side decisions of the tenant's agents, reached through `@arcaai/vox`
- * (`audio.start({ agentSlug })`). `@arcaai/stt` keeps its capture-only helpers
- * reachable (PCM plumbing, no model) for the live-transcription playground;
- * everything else in it is banned.
+ * (`audio.start({ agentSlug })`). The admin console, as the platform's own
+ * first-party consumer, may use `@arcaai/stt` only for its capture-only helpers
+ * (PCM plumbing, no model) for the live-transcription playground; everything
+ * else in it is banned.
  *
  * TASK-985 (M-55) added `createStreamingResampler` to that carve-out. The test is
  * this docstring's own: PCM PLUMBING, NO MODEL. A polyphase sinc resampler is
@@ -95,15 +94,15 @@ const HANDROLLED_SHEET_PATH = {
  *
  * This narrows nothing and widens no capability: if a future entry here is not
  * plumbing by this same test, it does not belong, whatever it is called.
+ *
+ * TASK-1006 — the bans on `@arcaai/vad`, `@arcaai/noise-filter`,
+ * `@arcaai/med-ner` and `@arcaai/vox/plugins/med-ner` went with those packages
+ * and that entry point: there is nothing left to import.
  */
 const CLIENT_AI_MESSAGE =
-  'TASK-865: client-side AI is retired (removed in R4) — the browser never runs a model. Capture with @arcaai/vox useArcaAudio and let the tenant ASR Agent decide VAD/denoise/ASR server-side (audio.start({ agentSlug })). See .claude/rules/08-vox-sdk.md.';
+  'TASK-865: client-side AI is retired — the browser never runs a model. Capture with @arcaai/vox useArcaAudio and let the tenant ASR Agent decide VAD/denoise/ASR server-side (audio.start({ agentSlug })). See .claude/rules/08-vox-sdk.md.';
 
 const CLIENT_AI_PATHS = [
-  { name: '@arcaai/vad', message: CLIENT_AI_MESSAGE },
-  { name: '@arcaai/noise-filter', message: CLIENT_AI_MESSAGE },
-  { name: '@arcaai/med-ner', message: CLIENT_AI_MESSAGE },
-  { name: '@arcaai/vox/plugins/med-ner', message: CLIENT_AI_MESSAGE },
   { name: '@arcaai/stt', allowImportNames: ['createAudioCapture', 'float32ToInt16', 'createStreamingResampler', 'AudioCaptureHandle'], message: CLIENT_AI_MESSAGE },
 ];
 

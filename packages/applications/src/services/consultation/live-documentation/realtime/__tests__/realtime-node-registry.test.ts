@@ -19,7 +19,7 @@ import {
 } from '../realtime-node-registry';
 
 const capabilities = (over: Partial<RealtimeCapabilities> = {}): RealtimeCapabilities => ({
-  transcribe: vi.fn().mockResolvedValue({ transcript: 'raw transcript', pipelineId: 'pipeline-7' }),
+  transcribe: vi.fn().mockResolvedValue({ transcript: 'raw transcript' }),
   generateDocument: vi.fn().mockResolvedValue({ text: 'note', sections: [], stats: null, repaired: false }),
   extractEntities: vi.fn().mockResolvedValue({ entities: [{ text: 'aspirin', type: 'MEDICATION' }], vitals: { systolic: 120 } }),
   proposeCorrections: vi.fn().mockResolvedValue({ proposals: [], textSha256: '', rejectedProposals: 0 }),
@@ -76,7 +76,9 @@ describe('core.agent dispatches on the RESOLVED task (§7.4)', () => {
     // `transcript` stays the TEXT: it is published on a socket typed `transcript`, a refined TEXT
     // primitive, and every node downstream binds it as a string.
     expect(run.output.transcript).toBe('raw transcript');
-    expect(run.output.pipelineId).toBe('pipeline-7');
+    // TASK-1006 — no pipeline binding rides on the capture output: the session runs on its
+    // resolved ASR agent, and a host value here could only ever be a stale pipeline id.
+    expect(run.output).not.toHaveProperty('pipelineId');
     expect(caps.resolveAgent).toHaveBeenCalledWith({ slug: 'realtime-transcription' }, undefined);
     expect(caps.generateDocument).not.toHaveBeenCalled();
   });
@@ -89,7 +91,6 @@ describe('core.agent dispatches on the RESOLVED task (§7.4)', () => {
           transcript: 'cough since monday',
           segments: [{ text: 'cough since monday', start: 1.25, end: 2.5, charStart: 0, charEnd: 18, utteranceIndex: 3, speaker: 'Speaker 0', receivedAtMs: 1_700_000_002_600 }],
           audio: { kind: 'stream', sessionId: 'stt-1', epochMs: 1_700_000_000_000 },
-          pipelineId: 'pipeline-7',
         }),
       },
     );

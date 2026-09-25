@@ -122,7 +122,7 @@ const seededLane = () => buildRealtimeLane(compiled(SEEDED_STAGES))!;
 
 function capabilities(generated: string[]): RealtimeCapabilities {
   return {
-    transcribe: vi.fn().mockResolvedValue({ transcript: 'raw', pipelineId: null }),
+    transcribe: vi.fn().mockResolvedValue({ transcript: 'raw' }),
     extractEntities: vi.fn().mockResolvedValue({ entities: [{ text: 'aspirin', type: 'MEDICATION' }] }),
     generateDocument: vi.fn(async (input) => {
       generated.push(input.agentRef && 'slug' in input.agentRef ? String(input.agentRef.slug) : 'unknown');

@@ -6,11 +6,10 @@
  * generates a note — and that was precisely R7's failure mode: the seam was
  * correct, and two of the four callers could not reach it.
  *
- * There are exactly four modules that provide `PromptAssemblyService` for live
+ * There are exactly three modules that provide `PromptAssemblyService` for live
  * generation, and they are DISCOVERED here rather than listed:
  *
  *   SummaryServiceModule — the legacy synchronous generate/approve path
- *   ChainSummaryServiceModule — the pre-summary / comprehensive chain
  * ConsultationJobServiceModule — the ASYNC job path; since this is the
  *                                   PRIMARY "Generate" route in the console
  *   HarnessInternalServiceModule — the harness gate-adapter path
@@ -24,7 +23,7 @@
  *      into the assembled prompt.
  *
  * (1) is per-path and structural; (2) is behavioural and shared, because the class
- * under test is the same one in all four containers — the only thing that ever
+ * under test is the same one in all three containers — the only thing that ever
  * differed between them was whether the token resolved.
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -69,20 +68,17 @@ function realPromptAssembly(retriever: unknown) {
 }
 
 describe('R7 — an APPROVED_CLEAN exemplar reaches an assembled prompt on every generation path', () => {
-  it('finds the four live-generation providers of PromptAssemblyService', async () => {
+  it('finds the three live-generation providers of PromptAssemblyService', async () => {
     const names = (await modulesProviding(PromptAssemblyService)).map(([name]) => name).sort();
 
-    expect(names).toEqual([
-      'ChainSummaryServiceModule',
-      'ConsultationJobServiceModule',
-      'HarnessInternalServiceModule',
-      'SummaryServiceModule',
-    ]);
+    // TASK-1006 — `ChainSummaryServiceModule` was a fourth: the synchronous comprehensive summary
+    // now runs on the agent plane and assembles no prompt of its own.
+    expect(names).toEqual(['ConsultationJobServiceModule', 'HarnessInternalServiceModule', 'SummaryServiceModule']);
   });
 
   it('every path resolves IGateEditExemplarRetriever to the real GateEditMiningService', async () => {
     const paths = await modulesProviding(PromptAssemblyService);
-    expect(paths.length).toBe(4);
+    expect(paths.length).toBe(3);
 
     for (const [name, moduleClass] of paths) {
       const definition = resolveProviderDefinition(moduleClass, IGateEditExemplarRetriever) as { useExisting?: unknown } | undefined;
@@ -94,7 +90,7 @@ describe('R7 — an APPROVED_CLEAN exemplar reaches an assembled prompt on every
     }
   });
 
-  it('injects the exemplar text into the prompt when the token is wired (all four paths)', async () => {
+  it('injects the exemplar text into the prompt when the token is wired (every path)', async () => {
     const { service, findTopForRetrieval } = realRetrieverOverOneCleanExemplar();
 
     const assembled = await realPromptAssembly(service).assemble({

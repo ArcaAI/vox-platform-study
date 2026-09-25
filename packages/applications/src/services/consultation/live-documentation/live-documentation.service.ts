@@ -591,8 +591,6 @@ export interface LiveTranscriptSegment {
   resultType?: 'segment' | 'gloss';
   stableChars?: number;
   inferenceMs?: number;
-  /** Per-utterance provenance: a mid-session engine switch splits one transcript across two bindings. */
-  pipelineId?: string;
   words?: RealtimeTranscriptWord[];
   /** Epoch ms at which this service received the utterance. Defaulted to `Date.now()` at ingest. */
   receivedAtMs?: number;
@@ -878,17 +876,6 @@ interface LiveSession {
   pendingGraphSegments?: RealtimeTranscriptSegment[];
   /** The capture anchor published beside `pendingGraphSegments`. Rebuilt each flush from the session's own. */
   pendingGraphAudio?: RealtimeAudioSync;
-  /**
-   * The `AsrPipeline` this session's capture is bound to, when known.
-   *
-   * `ConsultationWorkflowDispatchService` already resolves it
-   * (`sttPipelineId` on its result) from the tenant's `stt`-palette assignment;
-   * threading it into `POST :id/recording/start` is a request-DTO change this
-   * ticket does not make, so today it is undefined and the capture node reports
-   * `pipelineId: null`. That is observability, not behaviour: the transcript the
-   * node publishes is the pipeline's output either way.
-   */
-  sttPipelineId?: string | null;
   /**
    * TASK-932 §3.7 — the consultation's declared SOURCE language (`en`, `ml`, `ml-en` …), frozen at
    * `start()`. Published as `trigger.context.language`.
@@ -4001,7 +3988,6 @@ return 0`;
         transcript: session.pendingGraphTranscript ?? '',
         segments: session.pendingGraphSegments ?? [],
         audio: session.pendingGraphAudio ?? {},
-        pipelineId: session.sttPipelineId ?? null,
       }),
 
       // TASK-930 (G-1) — WHICH capability a `core.agent` runs is a property of the AGENT, and a
@@ -5179,7 +5165,6 @@ return 0`;
         ...(meta.stableChars === undefined ? {} : { stableChars: meta.stableChars }),
         ...(meta.language === undefined ? {} : { language: meta.language }),
         ...(meta.inferenceMs === undefined ? {} : { inferenceMs: meta.inferenceMs }),
-        ...(meta.pipelineId === undefined ? {} : { pipelineId: meta.pipelineId }),
         ...(meta.receivedAtMs === undefined ? {} : { receivedAtMs: meta.receivedAtMs }),
         ...(meta.words === undefined ? {} : { words: meta.words }),
         // A5 — mic identity travels with the utterance it labels, so the capture node's published
