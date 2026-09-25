@@ -1601,41 +1601,11 @@ describe('STT Seed Data', () => {
 //   (c) STT → unchanged (CT2 registered; whisper-large-v3-turbo default)
 // =============================================================================
 
-// =============================================================================
-// The nightly SYSTEM-template resync sweep is turned ON by
-// a platform VALUE, not by flipping the registry default.
-//
-// The descriptor is a kill-switch, and the settings registry refuses at
-// assembly to register a kill-switch that defaults ON (fail-safe governance).
-// So the fail-safe default stays `false` and the deployment enables the sweep
-// with a locked platform row — exactly the `enable-local-raw-capture` pattern:
-// `value` is the live setting, `defaultValue` keeps the OFF fallback so a reset
-// reverts to fail-safe, and `locked` restricts the flip to SUPER_ADMIN.
-// =============================================================================
+// The nightly SYSTEM-template resync sweep, and the two `pipeline.templateResync.*`
+// platform rows that used to enable it, are GONE (TASK-1006): the ASR pipeline
+// catalogue it reconciled is retired.
 
-describe('nightly pipeline template resync is enabled by a platform setting', () => {
-  const enabled = () => PLATFORM_SETTINGS.find((s) => s.key === 'pipeline.templateResync.enabled');
-  const cron = () => PLATFORM_SETTINGS.find((s) => s.key === 'pipeline.templateResync.cron');
-
-  it('seeds the sweep ON while keeping the fail-safe default OFF', () => {
-    const row = enabled();
-    expect(row).toBeDefined();
-    expect(row?.value).toBe('true');
-    // A reset must revert to the fail-safe, never to the live value.
-    expect(row?.defaultValue).toBe('false');
-    expect(row?.dataType).toBe('Boolean');
-  });
-
-  it('locks the sweep toggle to SUPER_ADMIN and owns it at the platform tenant', () => {
-    expect(enabled()?.locked).toBe(true);
-    expect(enabled()?.tenantId).toBe(SYSTEM_TENANT_ID);
-  });
-
-  it('seeds the schedule matching the service default (03:00 daily)', () => {
-    expect(cron()?.value).toBe('0 3 * * *');
-    expect(cron()?.tenantId).toBe(SYSTEM_TENANT_ID);
-  });
-
+describe('platform settings (PLATFORM_SETTINGS)', () => {
   it('keys are unique across the platform rows (flat-by-key AppSettings cache)', () => {
     const keys = PLATFORM_SETTINGS.map((s) => s.key);
     expect(new Set(keys).size).toBe(keys.length);
@@ -1649,7 +1619,7 @@ describe('nightly pipeline template resync is enabled by a platform setting', ()
  * Its descriptor is a KILL SWITCH, and the registry refuses at assembly to register one that
  * defaults ON, so the descriptor default stays `false` and NOTHING seeded a value — which meant
  * the TASK-871 gates were inert on every deployment until a super admin flipped one key by hand.
- * D-2 answers that with one platform row, in exactly the `pipeline.templateResync.enabled`
+ * D-2 answers that with one platform row, in exactly the `enable-local-raw-capture`
  * shape: `value` turns it on, `defaultValue` keeps the fail-safe OFF for a reset, `locked`
  * restricts the flip to SUPER_ADMIN, and the seed is CREATE-ONLY so a deliberate flip survives
  * `db:seed`.

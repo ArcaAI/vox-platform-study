@@ -85,7 +85,7 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
   ],
   'svc:admin:agentic:manage': [['manage', 'HarnessPolicy']],
   'svc:admin:agent-trajectory:read': [['read', 'AgentTrajectory']],
-  'svc:admin:transcription-job:read': [['read', 'AsrPipeline']],
+  'svc:admin:transcription-job:read': [['read', 'TranscriptionJob']],
   'svc:admin:ai-provider:manage': [['manage', 'GlobalSetting']],
   'svc:admin:settings:manage': [['manage', 'GlobalSetting']],
   'svc:admin:nlp-task-instructions:manage': [['manage', 'TenantNlpTaskInstructions']],

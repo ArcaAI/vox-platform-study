@@ -150,12 +150,10 @@ interface PlanEntitlementSeed {
   maxUsers: number | null;
   maxDepartments: number | null;
   maxPromptTemplates: number | null;
-  maxAsrPipelines: number | null;
   maxApiKeys: number | null;
   // Quantity ceiling on PUBLISHED WorkflowDefinition slugs ( exposure
-  // plane), modelled verbatim on `maxAsrPipelines`. Kept in sync with
-  // `entitlements.constants.ts`'s `PLAN_ENTITLEMENT_DEFAULTS` by
-  // `plan-matrix-parity.test.ts`.
+  // plane). Kept in sync with `entitlements.constants.ts`'s
+  // `PLAN_ENTITLEMENT_DEFAULTS` by `plan-matrix-parity.test.ts`.
   maxWorkflowDefinitions: number | null;
   // TASK-958 D-8 — how many `AiProviderConnection` rows a tenant on this plan
   // may hold (per tenant, all services; `null` = unbounded, which is every
@@ -261,7 +259,6 @@ const PRO_VALUES = {
   maxUsers: 25,
   maxDepartments: 10,
   maxPromptTemplates: 50,
-  maxAsrPipelines: 5,
   maxApiKeys: 10,
   maxWorkflowDefinitions: 5,
   maxAiProviderConnections: null,
@@ -328,7 +325,6 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     // (50 consultations/month, 5 users) are untouched.
     maxDepartments: 8,
     maxPromptTemplates: 10,
-    maxAsrPipelines: 14,
     maxApiKeys: 2,
     maxWorkflowDefinitions: 1,
     maxAiProviderConnections: null,
@@ -369,7 +365,6 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     maxUsers: 150,
     maxDepartments: 40,
     maxPromptTemplates: 300,
-    maxAsrPipelines: 20,
     maxApiKeys: 50,
     maxWorkflowDefinitions: 20,
     maxAiProviderConnections: null,

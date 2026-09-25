@@ -170,11 +170,15 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'manage', subject: 'Tag', conditions: { tenantId: '${context.tenantId}' } },
       // Storage management
       { action: 'manage', subject: 'Storage', conditions: { tenantId: '${context.tenantId}' } },
-      // Departments & ASR pipelines — close the
+      // Departments & transcription jobs — close the
       // nav↔backend gap: tenant admins self-serve their own tenant's
-      // departments and audio (ASR) pipelines, both tenant-scoped.
+      // departments and transcription (ASR) job history, both tenant-scoped.
+      // TASK-1006 — the dedicated `AsrPipeline` catalogue is retired
+      // (`agentSlug` → the ASR Agent is the only selector); the admin read
+      // surface this grant backs (`admin/audio/transcription-jobs/**`) moved
+      // its handler-level gate from `read:AsrPipeline` to `read:TranscriptionJob`.
       { action: 'manage', subject: 'Department', conditions: { tenantId: '${context.tenantId}' } },
-      { action: 'manage', subject: 'AsrPipeline', conditions: { tenantId: '${context.tenantId}' } },
+      { action: 'manage', subject: 'TranscriptionJob', conditions: { tenantId: '${context.tenantId}' } },
       // DNA writing-style management — tenant admins manage
       // their own tenant's doctor writing-style reports. The service still
       // enforces the PHI/tenant scope guard (`assertReportInScope`); even
@@ -218,13 +222,10 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // rows are writable. `AgentTrajectory` is read-only by design.
       { action: 'manage', subject: 'McpServer', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'read', subject: 'AgentTrajectory', conditions: { tenantId: '${context.tenantId}' } },
-      // Tenant admins manage their own tenant's TTS config + BYO
-      // provider credentials. Tenant-scoped; the controller pins every op to
-      // the caller's tenant. `manage` implies `read` (used by the GET routes).
-      // Tenant admins manage their own tenant's STT fallback config + BYO
-      // provider credentials. Tenant-scoped; the controller pins
-      // every op to the caller's tenant. `manage` implies `read` (GET routes).
-      { action: 'manage', subject: 'TenantSttConfig', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-1006 — the `TenantSttConfig` grant that sat here is gone with the
+      // model and its admin routes; STT fallback is the ASR Agent's own
+      // `fallback` block (`ResolvedAsrSpec.fallback`), and BYO provider
+      // credentials already live under `AiProviderConnection` (service='stt').
       // Tenant admins manage their own tenant's nlp.topic/nlp.intent
       // instruction content — tenant-authored CONTENT, not model selection
       // (selection is the super-admin-only `AiRoutingPolicy` plane;

@@ -21,7 +21,7 @@ import type { AiModelSeed } from './ai-models/shared';
  * older seed left behind.
  *
  * Order inside `seedAiModelRegistry`: upsert the catalogue → retire the ledger
- * slugs (guarded by live pipeline references until TASK-861) → retire every
+ * slugs (guarded by live Agent bindings, TASK-966) → retire every
  * non-SYSTEM row. Idempotent end to end; `db:seed` re-runs write nothing new.
  */
 
@@ -116,30 +116,23 @@ export const seedAiModels = async (client: CorePrismaClient) => {
  * Idempotent: rows already `DELETED` are excluded by the filter, so re-running
  * `db:seed` writes nothing. Soft-delete only — rows stay recoverable.
  *
- * Safety guard: a slug still referenced by ANY non-deleted
- * `AsrPipeline.configYaml` (a tenant may have built a custom pipeline on it)
- * is SKIPPED with a loud warning instead of breaking stt's
- * `config_reader._to_model_config` slug resolution. The decision itself is the
- * pure helper `shouldRetireAiModelSlug` (seed/ai-models/retired.ts). The guard
- * retires with the pipeline surface (TASK-861).
- *
- * TASK-966 — the same guard also reads every non-deleted `Agent`'s `parameters`
+ * TASK-966 — the guard reads every non-deleted `Agent`'s `parameters`
  * and `compiledConfig`: a PUBLISHED agent version is immutable (DB trigger), so a
  * slug it binds (e.g. `postProcessing.punctuation.modelSlug`) cannot be migrated
  * by this seed, and retiring the row would turn every resolution of that agent
  * into `AgentResolverService`'s 409 ("references … model, which is not visible").
  * Such a slug stays active until an admin publishes a version that no longer
- * names it; a fresh database never creates the row in the first place.
+ * names it; a fresh database never creates the row in the first place. The
+ * pure decision is `shouldRetireAiModelSlug` (seed/ai-models/retired.ts).
+ *
+ * TASK-1006 — the sibling `AsrPipeline.configYaml` guard input is GONE with
+ * the table: the pipeline surface that could hold a custom-built reference to
+ * one of these slugs no longer exists, so an agent binding is the only thing
+ * that can still keep a slug alive.
  */
 export const retireLegacyAiModels = async (client: CorePrismaClient): Promise<{ retired: number; skipped: string[] }> => {
   console.log('Retiring legacy AI models (catalogue ledger)...');
 
-  // Guard input: every non-deleted pipeline's YAML, ANY tenant.
-  const activePipelines = await client.asrPipeline.findMany({
-    where: { resourceStatus: { not: ResourceStatusType.DELETED } },
-    select: { configYaml: true },
-  });
-  const activeYamls = activePipelines.map((p) => p.configYaml);
   // Guard input: every non-deleted agent version's bound configuration, ANY tenant (TASK-966).
   // Serialised JSON is a valid input for the slug-boundary regex: a bound slug sits between
   // quotes, which are outside `SLUG_BOUNDARY_CHARSET`.
@@ -147,11 +140,10 @@ export const retireLegacyAiModels = async (client: CorePrismaClient): Promise<{ 
     where: { resourceStatus: { not: ResourceStatusType.DELETED } },
     select: { parameters: true, compiledConfig: true },
   });
-  const activeAgentConfigs = activeAgents
+  const activeReferences = activeAgents
     .flatMap((agent) => [agent.parameters, agent.compiledConfig])
     .filter((value) => value != null)
     .map((value) => JSON.stringify(value));
-  const activeReferences = [...activeYamls, ...activeAgentConfigs];
 
   let retired = 0;
   const skipped: string[] = [];
@@ -159,8 +151,8 @@ export const retireLegacyAiModels = async (client: CorePrismaClient): Promise<{ 
     if (!shouldRetireAiModelSlug(slug, activeReferences)) {
       console.warn(
         `  ⚠️  RETIREMENT SKIPPED: AiModel "${slug}" is still referenced by a ` +
-          'non-deleted AsrPipeline configYaml or a non-deleted Agent version — leaving it active. ' +
-          'Migrate the pipeline / publish an agent version off this model, then re-run db:seed.',
+          'non-deleted Agent version — leaving it active. ' +
+          'Publish an agent version off this model, then re-run db:seed.',
       );
       skipped.push(slug);
       continue;
@@ -220,8 +212,7 @@ export const retireCustomerTenantAiModels = async (client: CorePrismaClient): Pr
 
 /**
  * Main seed function for the model registry: upsert → ledger retirement →
- * non-SYSTEM sweep. Called from `seed/index.ts` BEFORE `seedStt` (pipelines
- * still reference models by slug until TASK-861).
+ * non-SYSTEM sweep. Called from `seed/index.ts` BEFORE `seedStt`.
  */
 export const seedAiModelRegistry = async (client: CorePrismaClient) => {
   console.log('Starting AI Model Registry seeding...\n');

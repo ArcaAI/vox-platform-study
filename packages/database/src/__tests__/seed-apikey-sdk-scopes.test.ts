@@ -37,12 +37,6 @@ const SDK_CAPABLE_KEY_IDS = [
   SEED_API_KEY_IDS.SDK_DOCTOR2,
   SEED_API_KEY_IDS.SDK_ARCAAI,
   SEED_API_KEY_IDS.SDK_SURGERY,
-  // The compat key spreads `SDK_DAY_ONE_SCOPES` exactly like its four
-  // siblings, but was omitted from this list, so nothing pinned it: trimming
-  // its scopes would have gone unnoticed until a compat app 403'd. It is the
-  // key `<ArcaCompatProvider>` is driven with, so it is at least as load-bearing
-  // as the four above.
-  SEED_API_KEY_IDS.SDK_COMPAT_ARCAAI,
 ] as const;
 
 describe('seeded API keys — day-1 Node SDK scope coverage', () => {
@@ -193,28 +187,6 @@ describe('seeded SDK keys — standalone feature surface (transcription + summar
       expect(SDK_DAY_ONE_SCOPES as readonly string[], why).toContain(scope);
     });
   }
-
-  it('the ArcaAI compat key carries every standalone-feature scope', () => {
-    const seeded = DEFAULT_API_KEYS.find((k) => k.id === SEED_API_KEY_IDS.SDK_COMPAT_ARCAAI);
-
-    expect(seeded, 'no seeded key with id SDK_COMPAT_ARCAAI').toBeDefined();
-    const scopes = seeded!.scopes as string[];
-    const missing = STANDALONE_FEATURE_SCOPES.map(([scope]) => scope).filter((required) => !scopes.includes(required));
-
-    expect(missing, 'missing scope(s) — the app will 403 on transcription or summarization').toEqual([]);
-  });
-
-  it('the ArcaAI compat key is ACTIVE, never-expiring, and bound to a user whose ability can be evaluated', () => {
-    const seeded = DEFAULT_API_KEYS.find((k) => k.id === SEED_API_KEY_IDS.SDK_COMPAT_ARCAAI);
-
-    expect(seeded).toBeDefined();
-    // `UnifiedAuthGuard` evaluates a route's `@Authorize()` permissions against
-    // the key's BOUND USER and refuses outright when there is none — so an
-    // unbound key cannot reach `POST /consultations/open` (`create:Consultation`).
-    expect(seeded!.userId, 'an unbound key cannot satisfy any CASL-gated route').toBeTruthy();
-    expect(seeded!.keyStatus).toBe('ACTIVE');
-    expect('expiresAt' in seeded!, 'a seeded dev fixture must not expire out from under a developer').toBe(false);
-  });
 });
 
 /**

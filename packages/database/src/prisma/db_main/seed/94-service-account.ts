@@ -194,8 +194,9 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:stt:transcription:write', // → create:Consultation (native STT jobs)
   'svc:consultation:report:write', // → create:Consultation (summarization, native)
   // Speech-to-text plane. TASK-1006 retired `svc:admin:audio-pipeline:manage` and
-  // `svc:admin:tenant-stt-config:manage` with the surfaces they gated.
-  'svc:admin:transcription-job:read', // → read:AsrPipeline
+  // `svc:admin:tenant-stt-config:manage` with the surfaces they gated, and moved
+  // this route's handler-level gate from `read:AsrPipeline` to `read:TranscriptionJob`.
+  'svc:admin:transcription-job:read', // → read:TranscriptionJob
   // Speech synthesis
   // Model + provider selection (tenant tier only — `ai-model`/`ai-service`/
   // `ai-runtime-profile` all imply `manage:all` and are excluded)
