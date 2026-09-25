@@ -1,131 +1,13 @@
 // =============================================================================
 // STT SERVICE DOMAIN MODELS
-// Speech-to-Text service data models for ASR pipelines, AI models, and jobs
+// Speech-to-Text service data models for AI models and transcription jobs.
+//
+// TASK-1006 — the `AsrPipeline` / `AsrPipelineVersion` catalogue (the
+// pre-agent pipeline stack, deprecated by TASK-861) is RETIRED: selection is
+// `agentSlug` only, resolved by the gateway (`AsrAgentResolverService`) into a
+// `ResolvedAsrSpec` handed to `apps/stt`. See `TranscriptionJob.agentVersionId`
+// / `resolvedSpec` below.
 // =============================================================================
-
-// =============================================================================
-// ASR PIPELINE DEFINITION
-// Stores ASR pipeline configurations managed by administrators
-// Models are referenced by slug in configYaml, no FK relationships to AiModel
-// =============================================================================
-
-/// @deprecated TASK-861 — removed in R4. The ASR Agent (`Agent`, task
-/// `SPEECH_TO_TEXT`, TASK-863) + the gateway-resolved `ResolvedAsrSpec`
-/// replace the pipeline row: `apps/stt` no longer reads this table. Kept for
-/// the deprecation window (`docs/operations/deprecation-register.md`); no new
-/// columns, no new rows from seeds (`06-stt.ts` pipeline half retires in a
-/// follow-up), write routes carry `Deprecation` headers.
-model AsrPipeline {
-  // Meta fields (BaseEntity pattern)
-  metaData Json?  @map("_metadata") @db.JsonB
-  version  Int    @default(1) @map("_version")
-  id       String @id @default(uuid(7))
-
-  // Multi-tenant (system-wide or tenant-specific)
-  tenantId String
-
-  // Core fields
-  name        String // e.g., "whisper-large-v3-medical"
-  slug        String // URL-friendly unique identifier
-  description String?
-
-  // Pipeline configuration (YAML stored as text, validated on write)
-  // Contains model references by slug: models.asr, models.vad, models.denoise
-  configYaml String @db.Text
-
-  // Per-tenant default backend pipeline assignment
-  isDefault Boolean @default(false)
-
-  // this row's place in the canonical task taxonomy. CONSTANT for
-  // the table: every ASR pipeline is, by construction, a speech-to-text
-  // binding. It is therefore NOT NULL with the correct default rather than
-  // nullable-and-backfilled (the shape `AiRoutingPolicy.taskKind` needs, where
-  // the value is derived per row from `taskKey`) — a new row cannot be wrong,
-  // and `db push` fills every existing row correctly with no data step.
-  //
-  // Redundant today, and deliberately so: it is the migration SEAM.
-  // folds AsrPipeline / TenantSttConfig / TenantTtsConfig into the unified
-  // selection table, and a uniform `taskKind` on all five sources makes that a
-  // single UNION rather than three bespoke per-table mappings. This table is
-  // NOT retired here — Phase 1 is additive so a mistake stays recoverable.
-  taskKind AiTaskKind @default(SPEECH_TO_TEXT)
-
-  // Template lineage. The SYSTEM-tenant catalog rows ARE the
-  // templates: they carry `sourceTemplateSlug = null` and `templateLocked = false`.
-  // A tenant copy cloned from a template records the template's slug here
-  // (provenance survives clone chains) and is `templateLocked = true`, which the
-  // application layer treats as read-only for content edits + delete — tenant
-  // admins clone it to customize. `templateLocked` is deliberately absent from
-  // every request DTO, so the gateway's whitelist pipe rejects attempts to flip
-  // it over the API. No FK: pipelines already reference each other by slug.
-  sourceTemplateSlug String?
-  templateLocked     Boolean @default(false)
-
-  // Resource status + Audit
-  resourceStatus          ResourceStatusType @default(ENABLED)
-  resourceStatusUpdatedAt DateTime?
-  resourceStatusUpdatedBy String?
-  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
-  updatedBy               String?
-  createdAt               DateTime           @default(now())
-  updatedAt               DateTime           @updatedAt
-
-  // Tags
-  tags String[] @default([])
-
-  // Relations (only TranscriptionJob references pipeline)
-  TranscriptionJobs TranscriptionJob[]
-  Versions          AsrPipelineVersion[]
-
-  // Indexes
-  @@unique([tenantId, slug], name: "AsrPipeline_tenant_slug_unique")
-  @@index([tenantId], name: "AsrPipeline_tenantId_idx")
-  @@index([resourceStatus], name: "AsrPipeline_status_idx")
-  // Resync/backfill scan predicate (per-tenant locked-copy sweep).
-  @@index([tenantId, templateLocked], name: "AsrPipeline_tenant_locked_idx")
-  @@schema("core")
-}
-
-// =============================================================================
-// ASR PIPELINE VERSION
-// Immutable history of an AsrPipeline's configYaml for rollback/diff.
-// =============================================================================
-
-/// @deprecated TASK-861 — removed in R4 with its parent `AsrPipeline`;
-/// the `Agent` entity's rows-are-versions model (TASK-863) replaces it.
-model AsrPipelineVersion {
-  // Meta fields
-  metaData Json?  @map("_metadata") @db.JsonB
-  version  Int    @default(1) @map("_version")
-  id       String @id @default(uuid(7))
-
-  // Multi-tenant
-  tenantId String
-
-  // Parent pipeline
-  asrPipelineId String
-  AsrPipeline   AsrPipeline @relation(fields: [asrPipelineId], references: [id])
-
-  // Version snapshot
-  versionNumber Int
-  configYaml    String  @db.Text
-  name          String?
-  description   String?
-
-  // Change tracking
-  changeReason String?
-  changedBy    String?
-
-  // Timestamps
-  createdAt DateTime @default(now())
-
-  // Constraints
-  @@unique([asrPipelineId, versionNumber])
-  // Indexes
-  @@index([tenantId], name: "AsrPipelineVersion_tenantId_idx")
-  @@index([asrPipelineId], name: "AsrPipelineVersion_asrPipelineId_idx")
-  @@schema("core")
-}
 
 // =============================================================================
 // TRANSCRIPTION JOB
@@ -149,16 +31,10 @@ model TranscriptionJob {
   contextItemId  String? // Created ContextItem (after completion)
   mediaId        String? // Source audio file (for batch)
 
-  /// @deprecated TASK-861 — removed in R4. The pipeline that ran the job;
-  /// NULLABLE since TASK-861 because a job created through the ASR Agent path
-  /// carries `agentVersionId` + `resolvedSpec` instead. History rows keep
-  /// their pointer read-only (owner question Q3). No new rows write it.
-  pipelineId String?
-  Pipeline   AsrPipeline? @relation(fields: [pipelineId], references: [id])
-
   // TASK-861 — the ASR Agent VERSION that ran this job (`Agent.id`; rows are
   // versions). No FK: the agent row may be deprecated/archived after the job,
-  // and the job must stay readable as operational history.
+  // and the job must stay readable as operational history. TASK-1006 made
+  // this the ONLY attribution: the deprecated `pipelineId` column is gone.
   agentVersionId String?
   // TASK-861 — the exact `ResolvedAsrSpec` (packages/types `asr-spec.ts`) the
   // gateway resolved for this job and handed to the worker. Snapshot, never
@@ -252,7 +128,6 @@ model TranscriptionJob {
   // Indexes
   @@index([tenantId], name: "TranscriptionJob_tenantId_idx")
   @@index([status], name: "TranscriptionJob_status_idx")
-  @@index([pipelineId], name: "TranscriptionJob_pipelineId_idx")
   @@index([agentVersionId], name: "TranscriptionJob_agentVersionId_idx")
   @@index([consultationId], name: "TranscriptionJob_consultationId_idx")
   @@index([createdAt], name: "TranscriptionJob_createdAt_idx")
