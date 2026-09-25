@@ -77,14 +77,6 @@ export enum ResourceStatus {
  */
 export interface CreateStreamingSessionRequest {
   /**
-   * Pipeline UUID or slug.
-   * @deprecated TASK-865 — removed in R4 (`AsrPipeline` retires under TASK-861).
-   * Name the ASR Agent with {@link CreateStreamingSessionRequest.agentSlug}, or
-   * send neither and let the tenant assignment cascade decide. When both are
-   * present the SDK sends ONLY `agentSlug` and warns.
-   */
-  pipelineId?: string;
-  /**
    * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
    * transcribe this session (TASK-865). Optional: absent ⇒ the gateway
    * resolves one in order — if `consultationId` is present, the speech-to-text

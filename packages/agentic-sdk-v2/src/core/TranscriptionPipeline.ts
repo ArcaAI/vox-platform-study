@@ -1,18 +1,20 @@
 /**
  * @arcaai/vox - TranscriptionPipeline
  *
- * Sequential pipeline for audio processing: NoiseFilter -> VAD -> STT.
- * Wraps existing processor plugins into pipeline stages.
+ * Hosts the backend/remote STT stage over the streaming transport.
+ *
+ * TASK-1006 (following TASK-865): the browser never runs a model. The
+ * `noiseFilter` and `vad` client stages, the `clientInference` gate, and the
+ * local STT provider were removed. The pipeline now has a single stage:
+ * capture -> backend STT over the streaming transport.
  */
 
 import { EventEmitter } from 'eventemitter3';
 import type { BaseProcessor } from '@arcaai/room';
-import { ProcessorEvent, debugLogConfig, debugLogTranscript, type DebugTranscriptEntry } from '@arcaai/room';
+import { ProcessorEvent, debugLogConfig } from '@arcaai/room';
 import type { TranscriptionPipelineConfig, TranscriptionPipelineInput, PipelineStateInfo, TranscriptionPipelineEvents } from '../types/pipeline';
-import type { TranscriptionResult, VADEvent } from '../types/audio';
+import type { TranscriptionResult } from '../types/audio';
 import { DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG } from '../types/pipeline';
-import { AgenticError } from '../types';
-import { LOCAL_TRANSCRIPTION_ENABLED } from './constants';
 import type { ISDKLogger } from './logger';
 
 /**
@@ -26,23 +28,11 @@ interface ProcessorStage {
   factory: () => Promise<BaseProcessor>;
 }
 
-type STTRuntimeProvider = 'local' | 'remote';
-
 /**
  * TranscriptionPipeline manages the audio processing chain.
  *
- * The pipeline consists of three sequential stages:
- * 1. NoiseFilter: Removes background noise (optional)
- * 2. VAD: Detects voice activity and segments speech
- * 3. STT: Transcribes speech segments to text
- *
- * The browser never runs a model (TASK-865): the `noiseFilter` and `vad`
- * stages are DEPRECATED client-side models and are constructed only behind the
- * explicit `clientInference: { allow: true }` gate. The default — and the only
- * supported — shape is a backend STT stage over the streaming transport.
- *
- * @deprecated TASK-865 — removed in R4: the local stages (`noiseFilter`, `vad`, the local `stt`
- * factory) and their model pins. The class itself stays as the backend STT stage host.
+ * The browser never runs a model (TASK-865/TASK-1006): the pipeline hosts
+ * exactly one stage — backend STT over the streaming transport.
  *
  * @example
  * ```typescript
@@ -76,13 +66,6 @@ export class TranscriptionPipeline {
   private currentInput: TranscriptionPipelineInput | null = null;
   private initialized = false;
 
-  /**
-   * Client stages the host asked to enable but the gate refused (TASK-865).
-   * Filled by `setupStageFactories`, reported ONCE by `start()`.
-   */
-  private ignoredClientStages: Array<'noiseFilter' | 'vad'> = [];
-  private clientInferenceWarned = false;
-
   constructor(config?: Partial<TranscriptionPipelineConfig>, logger?: ISDKLogger) {
     this.config = { ...DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG, ...config };
     this.logger = logger;
@@ -113,18 +96,18 @@ export class TranscriptionPipeline {
   }
 
   /**
-   * Get the selected STT provider ('local', 'backend', or 'auto').
+   * Get the selected STT provider (`'backend'` or `'auto'` — local was removed).
    * ASR-L-03: Exposes which provider was configured so callers can report the selection.
    */
-  get selectedProvider(): 'local' | 'backend' | 'auto' {
+  get selectedProvider(): 'backend' | 'auto' {
     return this.config.stt.provider ?? 'auto';
   }
 
   /**
-   * Get the STT processing location ('browser', 'backend', or 'auto').
+   * Get the STT processing location (`'backend'`, `'auto'`, or `'skip'`).
    * ASR-L-03: Companion to selectedProvider — reports where STT processing happens.
    */
-  get sttLocation(): 'browser' | 'backend' | 'auto' | 'skip' {
+  get sttLocation(): 'backend' | 'auto' | 'skip' {
     return this.config.stt.location;
   }
 
@@ -132,55 +115,7 @@ export class TranscriptionPipeline {
    * Set up the stage factories for lazy loading processors.
    */
   private setupStageFactories(): void {
-    // TASK-865 hard-off gate: an `enabled: true` on either CLIENT stage is
-    // honoured only behind the explicit `clientInference.allow`. Without it the
-    // stage is left out of the graph (so `@arcaai/noise-filter` / `@arcaai/vad`
-    // are never imported and no model is fetched) and `start()` warns once.
-    const clientInferenceAllowed = this.config.clientInference?.allow === true;
-    this.ignoredClientStages = [];
-    const gate = (stage: 'noiseFilter' | 'vad', requested: boolean): boolean => {
-      if (!requested) return false;
-      if (clientInferenceAllowed) return true;
-      this.ignoredClientStages.push(stage);
-      return false;
-    };
-
-    // NoiseFilter stage — DEPRECATED client model (TASK-865, removed in R4).
-    this.stages.set('noiseFilter', {
-      name: 'noiseFilter',
-      enabled: gate('noiseFilter', this.config.noiseFilter.enabled),
-      priority: 10,
-      processor: null,
-      factory: async () => {
-        const { createNoiseFilter } = await import('@arcaai/noise-filter');
-        return createNoiseFilter({
-          noiseCancellation: true,
-          noiseCancellationLevel: this.config.noiseFilter.level || 'high',
-          debugMode: this.config.debugMode,
-        });
-      },
-    });
-
-    // VAD stage — DEPRECATED client model (TASK-865, removed in R4).
-    this.stages.set('vad', {
-      name: 'vad',
-      enabled: gate('vad', this.config.vad.enabled),
-      priority: 20,
-      processor: null,
-      factory: async () => {
-        const { createVAD } = await import('@arcaai/vad');
-        const positiveThreshold = this.config.vad.sensitivity ?? 0.5;
-        return createVAD({
-          positiveSpeechThreshold: positiveThreshold,
-          negativeSpeechThreshold: this.getVADNegativeThreshold(positiveThreshold),
-          minSpeechMs: this.config.vad.minSpeechDuration ?? 250,
-          redemptionMs: this.config.vad.minSilenceDuration ?? 500,
-          debugMode: this.config.debugMode,
-        });
-      },
-    });
-
-    // STT stage
+    // STT stage — the only stage the pipeline hosts.
     this.stages.set('stt', {
       name: 'stt',
       enabled: this.config.stt.enabled,
@@ -188,58 +123,37 @@ export class TranscriptionPipeline {
       processor: null,
       factory: async () => {
         const { createSTT } = await import('@arcaai/stt');
-        const runtimeProvider = this.resolveSTTRuntimeProvider();
         const sttSocket = this.config.stt.sttSocket;
         const streamingTransport = this.config.stt.streamingTransport as import('@arcaai/stt').STTStreamingTransport | undefined;
-        const useVadGate = runtimeProvider === 'local' && this.config.vad.enabled;
 
         // The streaming transport carries its own WebSocket
         // URL via `StreamingSessionManager.getWebSocketUrl()`; only require
         // `sttSocket` for the legacy `RemoteSTTProvider` path.
-        if (runtimeProvider === 'remote' && !sttSocket && !streamingTransport) {
-          throw new Error('stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote');
+        if (!sttSocket && !streamingTransport) {
+          throw new Error('stt.sttSocket or stt.streamingTransport is required to transcribe');
         }
 
-        // Forward the voice-profile and Whisper task that
-        // `PluginManager.getTranscriptionPipelineConfig()` resolved from the
-        // user's preferences. These are local-only; the remote path ignores
-        // them (`STTProcessor.initializeRemoteProvider` does not read either).
-        const voiceProfile = this.config.stt.voiceProfile;
-        const sttTask = this.config.stt.task;
         const processor = createSTT({
-          ...(runtimeProvider === 'remote' && sttSocket ? { sttSocket } : {}),
+          ...(sttSocket ? { sttSocket } : {}),
           audio: {
             language: this.getSTTLanguage(),
-            // End-user language mode — the backend resolves it per
-            // engine; the local path ignores it.
+            // End-user language mode — the backend resolves it per engine.
             ...(this.config.stt.languageMode ? { languageMode: this.config.stt.languageMode } : {}),
             // Pre-start engine selection — the backend opens the
-            // session on the fallback engine when 'fallback'; local path ignores it.
+            // session on the fallback engine when 'fallback'.
             ...(this.config.stt.startOn ? { startOn: this.config.stt.startOn } : {}),
           },
           features: {
-            provider: runtimeProvider,
-            ...(runtimeProvider === 'local' ? { modelId: this.getSTTModelId() } : {}),
+            provider: 'remote',
             diarization: this.config.stt.diarization ?? false,
             numSpeakers: this.config.stt.numSpeakers ?? 2,
             returnTimestamps: this.config.stt.returnTimestamps ?? 'word',
             codeSwitching: this.config.stt.codeSwitching ?? false,
-            vadGate: useVadGate,
-            ...(sttTask ? { task: sttTask } : {}),
           },
-          ...(voiceProfile && (voiceProfile.id || typeof voiceProfile.similarityThreshold === 'number')
-            ? {
-                voiceProfile: {
-                  ...(voiceProfile.id ? { id: voiceProfile.id } : {}),
-                  ...(voiceProfile.reservedSpeakerId ? { reservedSpeakerId: voiceProfile.reservedSpeakerId } : {}),
-                  ...(typeof voiceProfile.similarityThreshold === 'number' ? { similarityThreshold: voiceProfile.similarityThreshold } : {}),
-                },
-              }
-            : {}),
           debugMode: this.config.debugMode,
         });
 
-        if (runtimeProvider === 'remote' && streamingTransport) {
+        if (streamingTransport) {
           processor.setStreamingTransport(streamingTransport);
         }
 
@@ -262,8 +176,6 @@ export class TranscriptionPipeline {
 
     this.currentInput = input;
     this.updateState({ status: 'RUNNING', currentStage: 'initializing', progress: 0 });
-
-    this.warnIgnoredClientStagesOnce();
 
     const timer = this.logger?.startOperation('startTranscriptionPipeline', {
       component: 'TranscriptionPipeline',
@@ -320,19 +232,9 @@ export class TranscriptionPipeline {
 
       if (this.config.debugMode) {
         debugLogConfig('TranscriptionPipeline', {
-          noiseFilter: {
-            enabled: this.config.noiseFilter.enabled,
-            level: this.config.noiseFilter.level ?? 'high',
-          },
-          vad: {
-            enabled: this.config.vad.enabled,
-            sensitivity: this.config.vad.sensitivity ?? 0.5,
-            minSpeechMs: this.config.vad.minSpeechDuration ?? 250,
-          },
           stt: {
             enabled: this.config.stt.enabled,
             provider: this.config.stt.provider ?? 'auto',
-            model: this.config.stt.modelId ?? 'default',
             language: this.config.stt.language ?? 'en-US',
             diarization: this.config.stt.diarization ?? false,
             codeSwitching: this.config.stt.codeSwitching ?? false,
@@ -486,21 +388,8 @@ export class TranscriptionPipeline {
     this.config = {
       ...this.config,
       ...config,
-      noiseFilter: { ...this.config.noiseFilter, ...config.noiseFilter },
-      vad: { ...this.config.vad, ...config.vad },
       stt: { ...this.config.stt, ...config.stt },
     };
-
-    // Update stage enabled states
-    const noiseFilterStage = this.stages.get('noiseFilter');
-    if (noiseFilterStage) {
-      noiseFilterStage.enabled = this.config.noiseFilter.enabled;
-    }
-
-    const vadStage = this.stages.get('vad');
-    if (vadStage) {
-      vadStage.enabled = this.config.vad.enabled;
-    }
 
     const sttStage = this.stages.get('stt');
     if (sttStage) {
@@ -514,26 +403,14 @@ export class TranscriptionPipeline {
   }
 
   /**
-   * Toggle a specific stage.
+   * Toggle the STT stage.
    */
-  async toggleStage(stageName: 'noiseFilter' | 'vad' | 'stt', enabled: boolean): Promise<void> {
+  async toggleStage(stageName: 'stt', enabled: boolean): Promise<void> {
     const stage = this.stages.get(stageName);
     if (!stage) return;
 
     stage.enabled = enabled;
-
-    // Update config
-    switch (stageName) {
-      case 'noiseFilter':
-        this.config.noiseFilter.enabled = enabled;
-        break;
-      case 'vad':
-        this.config.vad.enabled = enabled;
-        break;
-      case 'stt':
-        this.config.stt.enabled = enabled;
-        break;
-    }
+    this.config.stt.enabled = enabled;
 
     // If running, enable/disable the processor
     if (stage.processor) {
@@ -583,9 +460,8 @@ export class TranscriptionPipeline {
 
   /**
    * Cumulative outbound audio bytes sent by the streaming STT stage since the
-   * session started (0 for local STT — no wire). Polled by `useArcaAudio` to
-   * derive a live uplink bitrate from the delta. Guarded so a processor/mock
-   * without the getter is a no-op.
+   * session started. Polled by `useArcaAudio` to derive a live uplink bitrate
+   * from the delta. Guarded so a processor/mock without the getter is a no-op.
    */
   getUplinkBytesSent(): number {
     const sttProcessor = this.stages.get('stt')?.processor as unknown as { getUplinkBytesSent?: () => number } | undefined;
@@ -593,8 +469,8 @@ export class TranscriptionPipeline {
   }
 
   /**
-   * The streaming session manager backing the STT stage, or `null` for local
-   * STT / no streaming transport. `useArcaAudio` reaches it to read the live
+   * The streaming session manager backing the STT stage, or `null` when no
+   * streaming transport is set. `useArcaAudio` reaches it to read the live
    * session id and drive an on-the-fly provider switch. Duck-typed
    * (the concrete `StreamingSessionManager` lives in vox; the stage processor is
    * `@arcaai/stt`) and guarded so a processor/mock without the getter is a no-op.
@@ -645,127 +521,11 @@ export class TranscriptionPipeline {
   // Private Methods
   // =========================================================================
 
-  private resolveSTTRuntimeProvider(): STTRuntimeProvider {
-    // Local (in-browser) transcription is disabled
-    // platform-wide by default. When the flag is off, the resolution below
-    // (transcriptionMode / provider / location cascade) never runs — a
-    // backend transport resolves to 'remote'; with none, we fail loud instead
-    // of silently transcribing on-device.
-    if (!LOCAL_TRANSCRIPTION_ENABLED) {
-      return this.resolveSTTRuntimeProviderLocalDisabled();
-    }
-
-    // The server-resolved EFFECTIVE transcription mode is
-    // authoritative (admin-owned, with the tenant lock + workflowMode cascade
-    // already applied upstream). It wins over provider/location/sttSocket.
-    const transcriptionMode = this.config.stt.transcriptionMode;
-    if (transcriptionMode === 'LOCAL') {
-      return 'local';
-    }
-    if (transcriptionMode === 'BACKEND') {
-      return 'remote';
-    }
-
-    const configuredProvider = this.config.stt.provider ?? 'auto';
-    if (configuredProvider === 'local') {
-      return 'local';
-    }
-    if (configuredProvider === 'backend') {
-      return 'remote';
-    }
-
-    if (this.config.stt.location === 'backend') {
-      return 'remote';
-    }
-    if (this.config.stt.location === 'browser') {
-      return 'local';
-    }
-
-    // Default to backend/remote whenever a backend transport exists.
-    // The backend workflow injects a pipeline-aware `streamingTransport` (its own
-    // WebSocket URL) but no legacy `sttSocket`; treating only `sttSocket` as the
-    // backend signal wrongly resolved those consumers to LOCAL when the server
-    // left `transcriptionMode` unset, dragging them into the local Whisper path.
-    // A bare config with neither transport stays local (offline-capable default;
-    // local must then be opted into via provider/location/transcriptionMode).
-    return this.config.stt.sttSocket || this.config.stt.streamingTransport ? 'remote' : 'local';
-  }
-
-  /**
-   * Resolution path used while `LOCAL_TRANSCRIPTION_ENABLED` is
-   * `false`. Never returns `'local'`: a configured backend transport
-   * (`sttSocket`/`streamingTransport`) resolves to `'remote'` regardless of
-   * what `transcriptionMode`/`provider`/`location` say; with no transport it
-   * throws instead of silently transcribing on-device. Any signal that
-   * explicitly asked for local (server `transcriptionMode: LOCAL`, `provider:
-   * 'local'`, or `location: 'browser'`) is logged as a warning first so the
-   * mismatch is visible, then treated the same as no preference at all.
-   */
-  private resolveSTTRuntimeProviderLocalDisabled(): STTRuntimeProvider {
-    const transcriptionMode = this.config.stt.transcriptionMode;
-    const configuredProvider = this.config.stt.provider ?? 'auto';
-    const location = this.config.stt.location;
-
-    // Explicit backend/remote requests still resolve directly — they were
-    // never asking for local, so there is nothing to warn about here (a
-    // missing transport is reported by the STT stage factory's own
-    // sttSocket/streamingTransport check).
-    if (transcriptionMode === 'BACKEND' || configuredProvider === 'backend' || location === 'backend') {
-      return 'remote';
-    }
-
-    const requestedLocal = transcriptionMode === 'LOCAL' || configuredProvider === 'local' || location === 'browser';
-    if (requestedLocal) {
-      this.logger?.warn('Local transcription was requested but is disabled platform-wide; resolving to backend-only', {
-        operation: 'resolveSTTRuntimeProvider',
-        component: 'TranscriptionPipeline',
-        attributes: { transcriptionMode, configuredProvider, location },
-      });
-    }
-
-    if (this.config.stt.sttSocket || this.config.stt.streamingTransport) {
-      return 'remote';
-    }
-
-    throw new AgenticError(
-      'LOCAL_TRANSCRIPTION_DISABLED',
-      'Local (in-browser) transcription is disabled platform-wide. Configure a backend ASR pipeline (stt.sttSocket or stt.streamingTransport) to use speech-to-text.',
-    );
-  }
-
-  /**
-   * Report — once per pipeline — the client stages the TASK-865 gate refused.
-   * A host that shipped `vad.enabled: true` before the directive must SEE that
-   * nothing loaded, rather than silently getting a different graph.
-   */
-  private warnIgnoredClientStagesOnce(): void {
-    if (this.clientInferenceWarned || this.ignoredClientStages.length === 0) return;
-    this.clientInferenceWarned = true;
-    this.logger?.warn(
-      'Client-side inference is deprecated and OFF: the enabled noiseFilter/vad stages were ignored (no model is loaded in the browser). ' +
-        'VAD and denoise are selected server-side by the tenant ASR Agent. To keep them in the browser during the deprecation window, ' +
-        'set audio.clientInference: { allow: true } (itself deprecated; removed in R4).',
-      {
-        operation: 'setupStageFactories',
-        component: 'TranscriptionPipeline',
-        attributes: { ignoredStages: [...this.ignoredClientStages], deprecation: 'TASK-865' },
-      },
-    );
-  }
-
   private getSTTLanguage(): string {
     if (this.config.stt.codeSwitching) {
       return 'auto';
     }
     return this.config.stt.language ?? 'en-US';
-  }
-
-  private getSTTModelId(): string {
-    return this.config.stt.modelId ?? 'tiny';
-  }
-
-  private getVADNegativeThreshold(positiveThreshold: number): number {
-    return Math.max(0.1, Math.min(0.95, positiveThreshold - 0.15));
   }
 
   /**
@@ -786,13 +546,8 @@ export class TranscriptionPipeline {
     stage.processor.on(ProcessorEvent.Data, (rawPayload) => {
       const payload = rawPayload as { type: string; data: unknown; timestamp: number };
 
-      switch (stage.name) {
-        case 'vad':
-          this.handleVADEvent(payload);
-          break;
-        case 'stt':
-          this.handleSTTEvent(payload);
-          break;
+      if (stage.name === 'stt') {
+        this.handleSTTEvent(payload);
       }
     });
 
@@ -816,73 +571,6 @@ export class TranscriptionPipeline {
   }
 
   /**
-   * Handle VAD events.
-   */
-  private handleVADEvent(payload: { type: string; data: unknown; timestamp: number }): void {
-    if (payload.type === 'vad-speech-start') {
-      const vadEvent: VADEvent = {
-        type: 'speech-start',
-        timestamp: payload.timestamp,
-      };
-      this.emit('vadEvent', vadEvent);
-    } else if (payload.type === 'vad-speech-end') {
-      const data = payload.data as {
-        audio?: Float32Array;
-        segmentNumber?: number;
-        streamStartSec?: number;
-        streamEndSec?: number;
-        durationSec?: number;
-      };
-      const vadEvent: VADEvent = {
-        type: 'speech-end',
-        timestamp: payload.timestamp,
-        audioData: data.audio,
-        segmentNumber: data.segmentNumber,
-        streamStartSec: data.streamStartSec,
-        streamEndSec: data.streamEndSec,
-        durationSec: data.durationSec,
-      };
-      this.emit('vadEvent', vadEvent);
-
-      const sttStage = this.stages.get('stt');
-      const sttProcessor = sttStage?.processor as {
-        getProviderType?: () => 'local' | 'remote';
-        transcribeSegment?: (audio: Float32Array) => Promise<TranscriptionResult>;
-      } | null;
-      const supportsSegmentTranscription = sttProcessor?.getProviderType?.() === 'local' && typeof sttProcessor?.transcribeSegment === 'function';
-
-      if (supportsSegmentTranscription && data.audio && data.audio.length > 0 && sttProcessor?.transcribeSegment) {
-        sttProcessor
-          .transcribeSegment(data.audio)
-          .then((result) => {
-            const enriched: TranscriptionResult = {
-              ...result,
-              vadSegmentNumber: data.segmentNumber,
-              vadStreamStartSec: data.streamStartSec,
-              vadStreamEndSec: data.streamEndSec,
-              vadDurationSec: data.durationSec,
-            };
-
-            if (this.config.debugMode && enriched.isFinal) {
-              this.logDebugTranscript(enriched);
-            }
-
-            this.emit('transcription', enriched);
-          })
-          .catch((error) => {
-            this.emit('error', { error: error as Error, stage: 'stt' });
-          });
-      }
-    } else if (payload.type === 'vad-misfire') {
-      const vadEvent: VADEvent = {
-        type: 'misfire',
-        timestamp: payload.timestamp,
-      };
-      this.emit('vadEvent', vadEvent);
-    }
-  }
-
-  /**
    * Handle STT events.
    */
   private handleSTTEvent(payload: { type: string; data: unknown; timestamp: number }): void {
@@ -894,36 +582,6 @@ export class TranscriptionPipeline {
         this.emit('partialTranscription', result);
       }
     }
-  }
-
-  /**
-   * Log a structured debug transcript entry using VAD + STT metadata.
-   * Uses stream-relative start/end from VAD and word timestamps from Whisper.
-   */
-  private logDebugTranscript(result: TranscriptionResult): void {
-    const start = result.vadStreamStartSec ?? 0;
-    const end = result.vadStreamEndSec ?? start + (result.duration ?? 0);
-
-    const entry: DebugTranscriptEntry = {
-      segment: result.vadSegmentNumber ?? 0,
-      speaker: result.speakerId ?? 'speaker-1',
-      start,
-      end,
-      duration: result.vadDurationSec ?? end - start,
-      inference: (result.latencyMs ?? 0) / 1000,
-    };
-
-    const timestamps = result.timestamps ?? result.segments;
-    if (timestamps && timestamps.length > 0) {
-      entry.words = timestamps.map((ts) => ({
-        word: ts.text,
-        confidence: result.confidence ?? 0,
-        start: ts.start,
-        end: ts.end,
-      }));
-    }
-
-    debugLogTranscript('Pipeline', entry);
   }
 
   /**

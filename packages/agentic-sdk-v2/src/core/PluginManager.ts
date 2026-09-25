@@ -3,14 +3,17 @@
  *
  * Configuration-driven plugin management with comprehensive logging.
  * Delegates to TranscriptionPipeline and KnowledgePipeline for processing.
+ *
+ * TASK-1006 (following TASK-865): the browser never runs a model. The
+ * `noiseFilter` / `vad` client stages, the `clientInference` gate, the
+ * deprecated `pipelineId` selector, and the in-browser NER init path
+ * (`@arcaai/med-ner`) were removed.
  */
 
 import type { BaseProcessor } from '@arcaai/room';
 import type {
   AudioPluginConfig,
   AudioPluginStageName,
-  NoiseFilterPluginConfig,
-  VADPluginConfig,
   STTPluginConfig,
   NERPluginConfig,
   AudioPluginStates,
@@ -22,7 +25,7 @@ import type {
 } from '../types';
 import type { SttConnectionState, ProviderSwitchInfo } from '../types/audio';
 import type { WsGapMessage } from '../types/stt';
-import { DEFAULT_NOISE_FILTER_CONFIG, DEFAULT_VAD_CONFIG, DEFAULT_STT_CONFIG, DEFAULT_NER_CONFIG } from './constants';
+import { DEFAULT_STT_CONFIG, DEFAULT_NER_CONFIG } from './constants';
 import type { ISDKLogger } from './logger';
 import { TranscriptionPipeline, createTranscriptionPipeline } from './TranscriptionPipeline';
 import { KnowledgePipeline, createKnowledgePipeline } from './KnowledgePipeline';
@@ -33,19 +36,14 @@ import { SttWebSocketClient } from './SttWebSocketClient';
 /**
  * Runtime audio start options forwarded by `useArcaAudio.startAudio(...)`.
  *
- * The SDK consumer chooses `pipelineId` (and the active
+ * The SDK consumer chooses `agentSlug` (and the active
  * consultation) per-capture rather than statically in `AudioPluginConfig`.
  * `PluginManager.setRuntimeOptions` stores these so the next call to
  * `initialize(track, audioContext)` can build the streaming transport for
  * the STT stage.
  */
 export interface PluginManagerRuntimeOptions {
-  /**
-   * Backend ASR pipeline UUID or slug. Triggers the streaming-aware path.
-   * @deprecated TASK-865 — removed in R4. Use `agentSlug`; ignored when `agentSlug` is set.
-   */
-  pipelineId?: string;
-  /** Slug of the published ASR Agent to transcribe with (TASK-865). Wins over `pipelineId`. */
+  /** Slug of the published ASR Agent to transcribe with (TASK-865). */
   agentSlug?: string;
   /** Optional consultation id to associate with the streaming session. */
   consultationId?: string;
@@ -150,26 +148,6 @@ export interface PluginEventCallbacks {
 }
 
 /**
- * NER processor interface — replaces inline `unknown` casts.
- */
-export interface INERProcessor {
-  init(): Promise<void>;
-  extract(text: string): Promise<{
-    text: string;
-    entities: Array<{
-      text: string;
-      type: string;
-      start: number;
-      end: number;
-      score: number;
-    }>;
-    processingTime: number;
-    timestamp: number;
-  }>;
-  destroy?(): Promise<void>;
-}
-
-/**
  * Plugin manager state
  */
 export interface PluginManagerState {
@@ -183,8 +161,8 @@ export interface PluginManagerState {
  * Delegates to TranscriptionPipeline and KnowledgePipeline for processing.
  * Handles processor lifecycle and provides unified state.
  *
- * The browser never runs a model (TASK-865): `noiseFilter` / `vad` are
- * deprecated client stages, ignored unless `clientInference: { allow: true }`.
+ * The browser never runs a model (TASK-865/TASK-1006): the pipeline hosts a
+ * single stage — backend STT over the streaming transport.
  *
  * @example
  * ```typescript
@@ -213,9 +191,9 @@ export class PluginManager {
 
   // Latest UserPreferences snapshot
   // injected from `PersonalizationManager`. Read at `getTranscriptionPipelineConfig`
-  // time to override the static `AudioPluginConfig` (so local-workflow settings
-  // persist end-to-end) and, when the pipeline is already running, to propagate
-  // live deltas via `propagateUserPreferenceDelta`.
+  // time to override the static `AudioPluginConfig` (so persisted language
+  // preferences propagate end-to-end) and, when the pipeline is already
+  // running, to propagate live deltas via `propagateUserPreferenceDelta`.
   private userPreferences?: UserPreferences;
 
   constructor(config: AudioPluginConfig = {}, logger?: ISDKLogger, apiClient?: AgenticClient, debugMode?: boolean) {
@@ -228,8 +206,6 @@ export class PluginManager {
       operation: 'constructor',
       component: 'PluginManager',
       attributes: {
-        noiseFilterEnabled: this.isEnabled('noiseFilter'),
-        vadEnabled: this.isEnabled('vad'),
         sttEnabled: this.isEnabled('stt'),
       },
     });
@@ -283,7 +259,6 @@ export class PluginManager {
       component: 'PluginManager',
       attributes: {
         hasPreferences: !!prefs,
-        hasLocalConfig: !!prefs?.localConfig,
         hasActiveVoiceProfile: !!prefs?.activeVoiceProfile,
       },
     });
@@ -307,12 +282,14 @@ export class PluginManager {
     return this.knowledgePipeline;
   }
 
-  private nerProcessor: INERProcessor | null = null;
   private nerConfig: NERPluginConfig | null = null;
   private sttIsProcessing = false;
 
   /**
-   * Set NER plugin configuration
+   * Set NER plugin configuration. Folded into `KnowledgePipeline`'s own
+   * config by `buildKnowledgePipelineConfig` at `initializeKnowledgePipeline()`
+   * time — see that pipeline's own TASK-1006 note: client-side NER
+   * (`@arcaai/med-ner`) was removed, so `location: 'browser'` throws.
    */
   setNERConfig(config: NERPluginConfig | undefined): void {
     this.nerConfig = config && config.enabled ? config : null;
@@ -325,133 +302,6 @@ export class PluginManager {
         model: this.nerConfig?.model,
       },
     });
-  }
-
-  /**
-   * Initialize NER processor (separate from audio plugins)
-   */
-  async initializeNER(): Promise<void> {
-    if (!this.nerConfig?.enabled) {
-      return;
-    }
-
-    const pluginTimer = this.logger?.startOperation('initNER', {
-      component: 'PluginManager',
-    });
-
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @arcaai/med-ner is an OPTIONAL peer dependency (08-vox-sdk.md); casting avoids a hard type dependency on a package that may not be installed in every consumer
-      const { createMedNER } = (await import('@arcaai/med-ner')) as any;
-
-      const processor = createMedNER({
-        model: this.nerConfig.model ?? DEFAULT_NER_CONFIG.model,
-        threshold: this.nerConfig.threshold ?? DEFAULT_NER_CONFIG.threshold,
-        entityTypes: this.nerConfig.entityTypes as unknown[],
-        dtype: this.nerConfig.dtype ?? DEFAULT_NER_CONFIG.dtype,
-        onEntitiesExtracted: (result: {
-          entities: Array<{ text: string; type: string; start: number; end: number; score: number }>;
-          text: string;
-          processingTime: number;
-          timestamp: number;
-        }) => {
-          this.logger?.debug('NER extraction complete', {
-            operation: 'nerExtraction',
-            component: 'PluginManager',
-            attributes: {
-              entityCount: result.entities.length,
-              processingTime: result.processingTime,
-            },
-          });
-          this.callbacks.onNERExtraction?.({
-            text: result.text,
-            entities: result.entities.map((e: { text: string; type: string; start: number; end: number; score: number }) => ({
-              text: e.text,
-              type: e.type,
-              start: e.start,
-              end: e.end,
-              score: e.score,
-            })),
-            processingTime: result.processingTime,
-            timestamp: result.timestamp,
-          });
-        },
-        onError: (error: Error) => {
-          this.logger?.error('NER processing error', {
-            operation: 'nerExtraction',
-            component: 'PluginManager',
-            error: error as Error,
-          });
-          this.callbacks.onError?.(error as Error, 'ner');
-        },
-      });
-
-      await processor.init();
-      this.nerProcessor = processor as INERProcessor;
-
-      pluginTimer?.end(true, {
-        attributes: {
-          model: this.nerConfig.model ?? 'default',
-          threshold: this.nerConfig.threshold ?? DEFAULT_NER_CONFIG.threshold,
-        },
-      });
-
-      this.logger?.info('NER processor initialized', {
-        operation: 'initNER',
-        component: 'PluginManager',
-        success: true,
-      });
-    } catch (error) {
-      pluginTimer?.error(error as Error);
-      this.logger?.error('Failed to initialize NER plugin', {
-        operation: 'initNER',
-        component: 'PluginManager',
-        error: error as Error,
-      });
-      this.callbacks.onError?.(error as Error, 'ner');
-    }
-  }
-
-  /**
-   * Extract entities from text using NER processor
-   */
-  async extractEntities(text: string): Promise<NERExtractionResult | null> {
-    if (!this.nerProcessor) {
-      this.logger?.warn('NER processor not initialized', {
-        operation: 'extractEntities',
-        component: 'PluginManager',
-      });
-      return null;
-    }
-
-    try {
-      const result = await this.nerProcessor.extract(text);
-      return {
-        text: result.text,
-        entities: result.entities.map((e) => ({
-          text: e.text,
-          type: e.type,
-          start: e.start,
-          end: e.end,
-          score: e.score,
-        })),
-        processingTime: result.processingTime,
-        timestamp: result.timestamp,
-      };
-    } catch (error) {
-      this.logger?.error('Entity extraction failed', {
-        operation: 'extractEntities',
-        component: 'PluginManager',
-        error: error as Error,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Check if NER is available
-   */
-  isNERAvailable(): boolean {
-    return this.nerProcessor !== null;
   }
 
   /**
@@ -497,17 +347,7 @@ export class PluginManager {
       // Start the pipeline
       await this.transcriptionPipeline.start({ track, audioContext });
 
-      // Store processor references for backward compatibility
-      const noiseFilterProcessor = this.transcriptionPipeline.getProcessor('noiseFilter');
-      if (noiseFilterProcessor) {
-        this.processors.set('noiseFilter', noiseFilterProcessor);
-      }
-
-      const vadProcessor = this.transcriptionPipeline.getProcessor('vad');
-      if (vadProcessor) {
-        this.processors.set('vad', vadProcessor);
-      }
-
+      // Store processor reference for backward compatibility
       const sttProcessor = this.transcriptionPipeline.getProcessor('stt');
       if (sttProcessor) {
         this.processors.set('stt', sttProcessor);
@@ -596,73 +436,31 @@ export class PluginManager {
    * Public to allow inspection (e.g., for testing or advanced configuration).
    *
    * When `setUserPreferences()` has been called, the user's
-   * persisted `UserPreferences.localConfig` and `activeVoiceProfile` override
-   * the static `AudioPluginConfig`. Precedence (highest → lowest):
+   * persisted `UserPreferences.language` overrides the static `AudioPluginConfig`.
+   * Precedence (highest → lowest):
    *
    *   runtimeOptions > userPreferences > AudioPluginConfig > package defaults
    *
    * Runtime options stay highest because they reflect per-capture choices
-   * (`startAudio({pipelineId, language})`); user preferences sit one tier
+   * (`startAudio({agentSlug, language})`); user preferences sit one tier
    * below because they reflect the doctor's persisted settings.
    */
   getTranscriptionPipelineConfig(): TranscriptionPipelineConfig {
-    const noiseFilterConfig = this.getConfig<NoiseFilterPluginConfig>('noiseFilter');
-    const vadConfig = this.getConfig<VADPluginConfig>('vad');
     const sttConfig = this.getConfig<STTPluginConfig>('stt');
 
     // Selection of WHAT transcribes (TASK-865): the runtime option wins over
-    // the static plugin config, and an ASR Agent slug wins over the deprecated
-    // pipeline id — the two are never carried together.
+    // the static plugin config.
     const effectiveAgentSlug = this.runtimeOptions.agentSlug ?? sttConfig.agentSlug;
-    const effectivePipelineId = effectiveAgentSlug ? undefined : (this.runtimeOptions.pipelineId ?? sttConfig.pipelineId);
-    const streamingTransport = this.buildStreamingTransport(sttConfig, effectivePipelineId, effectiveAgentSlug);
+    const streamingTransport = this.buildStreamingTransport(sttConfig, effectiveAgentSlug);
 
     // Pull user-persisted overrides.
     const prefs = this.userPreferences;
-    const localConfig = prefs?.localConfig;
-    const activeVoiceProfile = prefs?.activeVoiceProfile;
-    const voiceProfilePrefs = localConfig?.voiceProfile;
-
-    // Compose the STT `voiceProfile` payload. Each field is independently
-    // optional so we can carry partial state — e.g. threshold tweak before
-    // the doctor has enrolled, or activated profile without custom threshold.
-    //
-    // Resolve the reserved-speaker id from the profile's
-    // user-supplied label when present (e.g. "Dr. Alice") and fall back to a
-    // display-friendly "Doctor" instead of the lowercase magic constant — the
-    // value flows through `LocalSpeakerDiarizer` straight to the transcript UI
-    // badge, so a humane string matters.
-    const hasVoiceProfileData = !!activeVoiceProfile?.id || typeof voiceProfilePrefs?.similarityThreshold === 'number';
-    const resolvedReservedSpeakerId = PluginManager.resolveReservedSpeakerId(activeVoiceProfile?.label);
-    const voiceProfile = hasVoiceProfileData
-      ? {
-          ...(activeVoiceProfile?.id ? { id: activeVoiceProfile.id, reservedSpeakerId: resolvedReservedSpeakerId } : {}),
-          ...(typeof voiceProfilePrefs?.similarityThreshold === 'number' ? { similarityThreshold: voiceProfilePrefs.similarityThreshold } : {}),
-        }
-      : undefined;
 
     return {
       debugMode: this._debugMode,
-      // TASK-865: the client-inference gate travels with the config. Absent ⇒
-      // the pipeline refuses to construct the two client stages whatever their
-      // `enabled` flags say. Spread only when stated, so the pipeline's own
-      // "no opinion" stays `undefined`.
-      ...(this.config.clientInference ? { clientInference: { allow: this.config.clientInference.allow === true } } : {}),
-      noiseFilter: {
-        enabled: noiseFilterConfig.enabled ?? false,
-        location: noiseFilterConfig.enabled ? 'browser' : 'skip',
-        level: localConfig?.noiseCancellation?.level ?? noiseFilterConfig.level ?? DEFAULT_NOISE_FILTER_CONFIG.level,
-      },
-      vad: {
-        enabled: vadConfig.enabled ?? false,
-        location: 'browser',
-        sensitivity: localConfig?.vad?.sensitivity ?? vadConfig.sensitivity ?? DEFAULT_VAD_CONFIG.sensitivity,
-        minSpeechDuration: vadConfig.minSpeechDuration ?? DEFAULT_VAD_CONFIG.minSpeechDuration,
-        minSilenceDuration: vadConfig.minSilenceDuration ?? DEFAULT_VAD_CONFIG.minSilenceDuration,
-      },
       stt: {
         enabled: sttConfig.enabled ?? false,
-        location: sttConfig.provider === 'local' ? 'browser' : sttConfig.provider === 'backend' ? 'backend' : 'auto',
+        location: sttConfig.provider === 'backend' ? 'backend' : 'auto',
         provider: sttConfig.provider ?? DEFAULT_STT_CONFIG.provider,
         // TASK-985 QW-2 / M-02 — NO trailing default on either field.
         //
@@ -683,80 +481,31 @@ export class PluginManager {
         // Pre-start engine selection. Start-time only — there is no
         // static sttConfig.startOn — so it comes solely from the runtime option.
         ...(this.runtimeOptions.startOn ? { startOn: this.runtimeOptions.startOn } : {}),
-        modelId: localConfig?.stt?.modelId ?? sttConfig.modelId,
         sttSocket: sttConfig.sttSocket,
-        pipelineId: effectivePipelineId,
         ...(effectiveAgentSlug ? { agentSlug: effectiveAgentSlug } : {}),
-        diarization: localConfig?.diarization?.enabled ?? sttConfig.diarization ?? false,
+        diarization: sttConfig.diarization ?? false,
         numSpeakers: sttConfig.numSpeakers ?? 2,
         returnTimestamps: sttConfig.returnTimestamps ?? 'word',
         codeSwitching: sttConfig.codeSwitching ?? false,
         // Carry the server-resolved EFFECTIVE transcription
-        // mode through to the pipeline so resolveSTTRuntimeProvider() honors it.
-        // Omitted when absent to preserve today's provider/location behavior.
+        // mode through to the pipeline. Wire-compatible only — TASK-1006
+        // removed the local stage that used to branch on it.
         ...(sttConfig.transcriptionMode ? { transcriptionMode: sttConfig.transcriptionMode } : {}),
         ...(streamingTransport ? { streamingTransport } : {}),
-        ...(voiceProfile ? { voiceProfile } : {}),
       },
     };
   }
 
   /**
-   * Propagate user-preference deltas to the live
-   * pipeline. Only fields whose runtime processor supports a live `updateOptions`
-   * / `setLanguage` / `setReservedSpeakerId` hop are dispatched; fields that
-   * require a full re-init (e.g. STT modelId, diarization toggle) are left to
-   * the next `initialize()` call so we do not surprise the caller mid-capture.
-   *
-   * The implementation is defensive — every processor lookup is guarded and
-   * every dispatch is wrapped, because the pipeline can be in any of its
-   * transient states (initializing, running, stopping) when a preference
-   * change lands.
+   * Propagate user-preference deltas to the live pipeline. Only the language
+   * field has a live `setLanguage` hop; every other preference change is left
+   * to the next `initialize()` call. (Noise level, VAD sensitivity, and
+   * voice-profile reserved-speaker deltas were removed under TASK-1006 —
+   * their local stages no longer exist.)
    */
   private async propagateUserPreferenceDelta(previous: UserPreferences | undefined, next: UserPreferences | undefined): Promise<void> {
     const pipeline = this.transcriptionPipeline;
     if (!pipeline) return;
-
-    const prevLocal = previous?.localConfig;
-    const nextLocal = next?.localConfig;
-
-    // Noise cancellation level → NoiseFilterProcessor.updateOptions
-    const nextLevel = nextLocal?.noiseCancellation?.level;
-    const prevLevel = prevLocal?.noiseCancellation?.level;
-    if (nextLevel && nextLevel !== prevLevel) {
-      const proc = pipeline.getProcessor('noiseFilter') as {
-        updateOptions?: (opts: { noiseCancellationLevel: 'low' | 'medium' | 'high' }) => Promise<void> | void;
-      } | null;
-      try {
-        await proc?.updateOptions?.({ noiseCancellationLevel: nextLevel });
-      } catch (error) {
-        this.logger?.warn('Failed to propagate noise level delta', {
-          operation: 'propagateUserPreferenceDelta',
-          component: 'PluginManager',
-          error: error as Error,
-        });
-      }
-    }
-
-    // VAD sensitivity → VADProcessor.updateThresholds
-    const nextSensitivity = nextLocal?.vad?.sensitivity;
-    const prevSensitivity = prevLocal?.vad?.sensitivity;
-    if (typeof nextSensitivity === 'number' && nextSensitivity !== prevSensitivity) {
-      const proc = pipeline.getProcessor('vad') as {
-        updateThresholds?: (opts: { positiveSpeechThreshold: number; negativeSpeechThreshold: number }) => void | Promise<void>;
-      } | null;
-      try {
-        // Mirror TranscriptionPipeline.getVADNegativeThreshold: 0.7× the positive threshold.
-        const negative = Math.max(0, nextSensitivity * 0.7);
-        await proc?.updateThresholds?.({ positiveSpeechThreshold: nextSensitivity, negativeSpeechThreshold: negative });
-      } catch (error) {
-        this.logger?.warn('Failed to propagate VAD sensitivity delta', {
-          operation: 'propagateUserPreferenceDelta',
-          component: 'PluginManager',
-          error: error as Error,
-        });
-      }
-    }
 
     // Top-level language → STTProcessor.setLanguage
     const nextLanguage = next?.language;
@@ -773,51 +522,16 @@ export class PluginManager {
         });
       }
     }
-
-    // Active voice profile → STT LocalSpeakerDiarizer.setReservedSpeakerId (best
-    // effort: the diarizer only honours this before the first segment, but the
-    // call is still safe to fire on every change).
-    // route via the same label-resolution helper used by the static config path
-    // so the live delta and the next pipeline build agree on the speaker label.
-    const nextProfileId = next?.activeVoiceProfile?.id;
-    const prevProfileId = previous?.activeVoiceProfile?.id;
-    if (nextProfileId && nextProfileId !== prevProfileId) {
-      const proc = pipeline.getProcessor('stt') as { setReservedSpeakerId?: (id: string | undefined) => void } | null;
-      try {
-        proc?.setReservedSpeakerId?.(PluginManager.resolveReservedSpeakerId(next?.activeVoiceProfile?.label));
-      } catch (error) {
-        this.logger?.warn('Failed to propagate voice profile delta', {
-          operation: 'propagateUserPreferenceDelta',
-          component: 'PluginManager',
-          error: error as Error,
-        });
-      }
-    }
-  }
-
-  /**
-   * Resolve the speaker label that the local diarizer
-   * pins to its first slot. The user-supplied `UserVoiceProfile.label` wins
-   * when non-empty (e.g. "Dr. Alice"); otherwise we fall back to a
-   * display-friendly "Doctor" so the transcript UI badge reads naturally.
-   *
-   * Kept as a static helper to keep the resolution rule in one place — both
-   * the pipeline-config path (`getTranscriptionPipelineConfig`) and the live
-   * delta path (`propagateUserPreferenceDelta`) call through here.
-   */
-  private static resolveReservedSpeakerId(label: string | undefined): string {
-    const trimmed = typeof label === 'string' ? label.trim() : '';
-    return trimmed.length > 0 ? trimmed : 'Doctor';
   }
 
   /**
    * Build the streaming transport (StreamingSessionManager
    * + SttWebSocketClient) for the backend STT path.
    *
-   * Built when the capture names an ASR Agent (`agentSlug`) or a deprecated
-   * `pipelineId`, or when the provider is explicitly `'backend'` with neither
-   * (TASK-865: the gateway then resolves the tenant's default agent). A
-   * legacy `sttSocket` consumer that names nothing keeps its `RemoteSTTProvider`.
+   * Built when the capture names an ASR Agent (`agentSlug`), or when the
+   * provider is explicitly `'backend'` with none (TASK-865: the gateway then
+   * resolves the tenant's default agent). A legacy `sttSocket` consumer that
+   * names nothing keeps its `RemoteSTTProvider`.
    *
    * The transport is `unknown` in `TranscriptionPipelineConfig.stt` to keep
    * `@arcaai/vox/types/pipeline.ts` free of an `@arcaai/stt` dependency;
@@ -826,12 +540,9 @@ export class PluginManager {
    * Visible (public, not private) so the surrounding hook tests can assert
    * the wiring without dipping into private state.
    */
-  buildStreamingTransport(sttConfig: STTPluginConfig, pipelineId: string | undefined, agentSlug?: string): unknown {
+  buildStreamingTransport(sttConfig: STTPluginConfig, agentSlug?: string): unknown {
     const provider = sttConfig.provider ?? DEFAULT_STT_CONFIG.provider;
-    if (provider === 'local') {
-      return undefined;
-    }
-    const named = Boolean(pipelineId || agentSlug);
+    const named = Boolean(agentSlug);
     // Nothing named: only an EXPLICIT backend provider opens a session on the
     // tenant default. 'auto' keeps its pre-865 resolution, and a legacy
     // `sttSocket` keeps the RemoteSTTProvider path.
@@ -876,7 +587,7 @@ export class PluginManager {
     // The gateway echoes the RESOLVED pipeline + the engine actually opened on
     // Route it out so the store's `activePipeline` is server-derived
     // rather than an echo of what the client asked for — the request is silent
-    // about a caller that sent no pipelineId, a session opened on the fallback
+    // about a caller that sent no agentSlug, a session opened on the fallback
     // by choice, and one opened there because the primary ASR failed to load.
     sessionManager.onSessionCreated((response) => {
       if (!response.pipelineId) return; // older gateway — consumer keeps its request-derived value
@@ -906,10 +617,7 @@ export class PluginManager {
     return {
       sessionManager,
       wsClient,
-      // At most one of the two selectors rides the transport (see
-      // `getTranscriptionPipelineConfig`); the provider POSTs whichever is set.
       ...(agentSlug ? { agentSlug } : {}),
-      ...(pipelineId ? { pipelineId } : {}),
       consultationId: this.runtimeOptions.consultationId,
       // Per-capture stop-drain ceiling. Spread only
       // when positive so the provider keeps seeing `undefined` — and therefore
@@ -939,7 +647,9 @@ export class PluginManager {
     return {
       ner: {
         enabled: nerConfig?.enabled ?? config?.ner?.enabled ?? false,
-        location: config?.ner?.location ?? 'browser',
+        // TASK-1006: no client-side NER runtime exists any more
+        // (@arcaai/med-ner deleted) — 'disabled' is the only working default.
+        location: config?.ner?.location ?? 'disabled',
         triggerMode: nerConfig?.autoExtract ? 'auto' : (config?.ner?.triggerMode ?? 'auto'),
         model: nerConfig?.model ?? config?.ner?.model ?? DEFAULT_NER_CONFIG.model,
         threshold: nerConfig?.threshold ?? config?.ner?.threshold ?? DEFAULT_NER_CONFIG.threshold,
@@ -971,10 +681,6 @@ export class PluginManager {
     this.transcriptionPipeline.on('partialTranscription', (result) => {
       // Also forward partial transcriptions
       this.callbacks.onTranscription?.(result);
-    });
-
-    this.transcriptionPipeline.on('vadEvent', (event) => {
-      this.callbacks.onVADEvent?.(event);
     });
 
     // Forward outbound-audio backpressure drops so the hook/store can
@@ -1023,22 +729,19 @@ export class PluginManager {
   }
 
   /**
-   * Get current plugin states
+   * Get current plugin states.
+   *
+   * `noiseFilter` / `vad` are reported permanently inactive/unsupported
+   * (TASK-1006 — the browser never runs a model) rather than removed from
+   * the shape, so existing readers of `audio.plugins.noiseFilter` /
+   * `.vad` keep compiling and simply see "off".
    */
   getStates(): AudioPluginStates {
-    const noiseFilter = this.processors.get('noiseFilter');
-    const vad = this.processors.get('vad');
     const stt = this.processors.get('stt');
 
     return {
-      noiseFilter: {
-        isActive: noiseFilter?.isEnabled() ?? false,
-        isSupported: this.isEnabled('noiseFilter'),
-      },
-      vad: {
-        isActive: vad?.isEnabled() ?? false,
-        isSupported: this.isEnabled('vad'),
-      },
+      noiseFilter: { isActive: false, isSupported: false },
+      vad: { isActive: false, isSupported: false },
       stt: {
         isActive: stt?.isEnabled() ?? false,
         isSupported: this.isEnabled('stt'),
@@ -1131,8 +834,8 @@ export class PluginManager {
     return newState;
   }
 
-  private isPipelineStageName(name: string): name is 'noiseFilter' | 'vad' | 'stt' {
-    return name === 'noiseFilter' || name === 'vad' || name === 'stt';
+  private isPipelineStageName(name: string): name is 'stt' {
+    return name === 'stt';
   }
 
   /**
@@ -1212,11 +915,6 @@ export class PluginManager {
       this.processors.clear();
       this._initialized = false;
 
-      if (this.nerProcessor) {
-        await this.nerProcessor.destroy?.();
-        this.nerProcessor = null;
-      }
-
       this.callbacks = {};
 
       timer?.end(true, { attributes: { destroyedPlugins: processorNames } });
@@ -1239,8 +937,6 @@ export class PluginManager {
       operation: 'updateConfig',
       component: 'PluginManager',
       attributes: {
-        noiseFilterChanged: 'noiseFilter' in config,
-        vadChanged: 'vad' in config,
         sttChanged: 'stt' in config,
       },
     });

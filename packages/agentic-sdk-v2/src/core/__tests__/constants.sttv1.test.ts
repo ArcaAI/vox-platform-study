@@ -27,8 +27,6 @@ describe('Legacy STT v1 Cleanup (ASR-R-11)', () => {
     expect(constants.STT_ENDPOINTS.WS_STREAM).not.toContain('/stt?');
   });
 
-  it('PIPELINE_ENDPOINTS should exist for ASR pipeline discovery', () => {
-    expect(constants.PIPELINE_ENDPOINTS).toBeDefined();
-    expect(constants.PIPELINE_ENDPOINTS.LIST).toBe('/audio/pipelines');
-  });
+  // PIPELINE_ENDPOINTS (ASR pipeline discovery) was removed under TASK-1006 —
+  // see task1006-removed.test.ts.
 });

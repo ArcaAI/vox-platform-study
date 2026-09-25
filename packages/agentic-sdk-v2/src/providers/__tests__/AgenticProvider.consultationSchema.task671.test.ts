@@ -24,30 +24,6 @@ import { AgenticProvider } from '../AgenticProvider';
 import { useStoreApi, type AgenticStoreApi } from '../../store/agenticStore';
 import type { AgenticConfig } from '../../types';
 
-vi.mock('@arcaai/noise-filter', () => ({
-  createNoiseFilter: vi.fn(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    enable: vi.fn().mockResolvedValue(undefined),
-    disable: vi.fn().mockResolvedValue(undefined),
-    isEnabled: vi.fn().mockReturnValue(true),
-    restart: vi.fn().mockResolvedValue(undefined),
-    destroy: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-  })),
-}));
-
-vi.mock('@arcaai/vad', () => ({
-  createVAD: vi.fn(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    enable: vi.fn().mockResolvedValue(undefined),
-    disable: vi.fn().mockResolvedValue(undefined),
-    isEnabled: vi.fn().mockReturnValue(true),
-    restart: vi.fn().mockResolvedValue(undefined),
-    destroy: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-  })),
-}));
-
 vi.mock('@arcaai/stt', () => ({
   createSTT: vi.fn(() => ({
     init: vi.fn().mockResolvedValue(undefined),
@@ -139,10 +115,7 @@ function renderProvider() {
  * for the department-scoped vs. tenant-scoped bundle so tests can assert
  * which one won.
  */
-function handlerFor(
-  me: { id?: string; tenantId?: string; departmentId?: string },
-  versions: { tenant?: string; department?: string },
-): FetchHandler {
+function handlerFor(me: { id?: string; tenantId?: string; departmentId?: string }, versions: { tenant?: string; department?: string }): FetchHandler {
   return async (url) => {
     if (url.endsWith('/auth/me')) return jsonResponse(me);
     if (url.includes('/tenants/me/context-schema')) {
@@ -168,10 +141,7 @@ function handlerFor(
 
 describe('AgenticProvider — department-scoped consultation context schema discovery', () => {
   it('prefers the DEPARTMENT-scoped bundle when a department is known at mount', async () => {
-    handler = handlerFor(
-      { id: USER_A, tenantId: TENANT_A, departmentId: DEPT_A },
-      { tenant: 'tenant-version', department: 'department-version' },
-    );
+    handler = handlerFor({ id: USER_A, tenantId: TENANT_A, departmentId: DEPT_A }, { tenant: 'tenant-version', department: 'department-version' });
 
     const store = renderProvider();
     await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });

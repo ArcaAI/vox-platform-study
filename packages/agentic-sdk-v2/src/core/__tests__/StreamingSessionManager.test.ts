@@ -56,43 +56,20 @@ describe('StreamingSessionManager', () => {
   // createSession
   // ===========================================================================
 
-  describe('createSession — agentSlug replaces pipelineId (TASK-865)', () => {
+  describe('createSession — selection is agentSlug only (TASK-865, pipelineId removed TASK-1006)', () => {
     const response: StreamingSessionResponse = { sessionId: 's-1', status: 'active', maxConcurrent: 5, currentActive: 1, wsUrl: '/ws/stt/stream' };
 
-    it('POSTs agentSlug and sends NO pipelineId key when the caller named an agent only', async () => {
+    it('POSTs agentSlug when the caller named an agent', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(response));
 
       await manager.createSession({ agentSlug: 'clinic-asr', language: 'en' });
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
       expect(body.agentSlug).toBe('clinic-asr');
-      expect('pipelineId' in body).toBe(false);
       expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 
-    it('prefers agentSlug when BOTH are passed — pipelineId is dropped from the body and a warning names the conflict', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse(response));
-
-      await manager.createSession({ agentSlug: 'clinic-asr', pipelineId: 'legacy-pipe' });
-
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
-      expect(body.agentSlug).toBe('clinic-asr');
-      expect('pipelineId' in body).toBe(false);
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/both/i), expect.objectContaining({ operation: 'createSession' }));
-    });
-
-    it('still sends pipelineId alone (deprecated path) and logs a deprecation warning', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse(response));
-
-      await manager.createSession({ pipelineId: 'legacy-pipe' });
-
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
-      expect(body.pipelineId).toBe('legacy-pipe');
-      expect('agentSlug' in body).toBe(false);
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/deprecat/i), expect.objectContaining({ operation: 'createSession' }));
-    });
-
-    it('sends NEITHER when the caller named nothing — the gateway resolves the tenant default agent', async () => {
+    it('sends NEITHER key when the caller named nothing — the gateway resolves the tenant default agent', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(response));
 
       await manager.createSession({ language: 'en' });
@@ -117,7 +94,7 @@ describe('StreamingSessionManager', () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
 
       const request: CreateStreamingSessionRequest = {
-        pipelineId: 'default-pipeline',
+        agentSlug: 'default-pipeline',
         consultationId: 'consultation-123',
         sampleRate: 16000,
         language: 'en',
@@ -133,7 +110,7 @@ describe('StreamingSessionManager', () => {
     it('should store the sessionId after creation', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
 
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       expect(manager.getSessionId()).toBe('session-abc-123');
     });
@@ -141,7 +118,7 @@ describe('StreamingSessionManager', () => {
     it('should update status to session_created after creation', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
 
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       expect(manager.getStatus()).toBe('session_created');
     });
@@ -149,7 +126,7 @@ describe('StreamingSessionManager', () => {
     it('should call the correct endpoint', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
 
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const callUrl = mockFetch.mock.calls[0][0] as string;
@@ -160,7 +137,7 @@ describe('StreamingSessionManager', () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
 
       const request: CreateStreamingSessionRequest = {
-        pipelineId: 'whisper-pipeline',
+        agentSlug: 'whisper-pipeline',
         consultationId: 'consult-456',
         sampleRate: 44100,
         language: 'th',
@@ -170,7 +147,7 @@ describe('StreamingSessionManager', () => {
       await manager.createSession(request);
 
       const callBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
-      expect(callBody.pipelineId).toBe('whisper-pipeline');
+      expect(callBody.agentSlug).toBe('whisper-pipeline');
       expect(callBody.consultationId).toBe('consult-456');
       expect(callBody.sampleRate).toBe(44100);
       expect(callBody.language).toBe('th');
@@ -190,7 +167,7 @@ describe('StreamingSessionManager', () => {
       };
       mockFetch.mockResolvedValueOnce(createMockResponse({ ...mockSessionResponse, languageResolution: resolution }));
 
-      const result = await manager.createSession({ pipelineId: 'default-pipeline', languageMode: 'ml-en' });
+      const result = await manager.createSession({ agentSlug: 'default-pipeline', languageMode: 'ml-en' });
 
       const callBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
       expect(callBody.languageMode).toBe('ml-en');
@@ -200,14 +177,14 @@ describe('StreamingSessionManager', () => {
     it('should throw on API error', async () => {
       mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Internal Server Error'));
 
-      await expect(manager.createSession({ pipelineId: 'default' })).rejects.toThrow();
+      await expect(manager.createSession({ agentSlug: 'default' })).rejects.toThrow();
     });
 
     it('should set status to error on failure', async () => {
       mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Internal Server Error'));
 
       try {
-        await manager.createSession({ pipelineId: 'default' });
+        await manager.createSession({ agentSlug: 'default' });
       } catch {
         // expected
       }
@@ -218,26 +195,26 @@ describe('StreamingSessionManager', () => {
     it('should handle network errors (fetch rejection)', async () => {
       mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
-      await expect(manager.createSession({ pipelineId: 'default' })).rejects.toThrow();
+      await expect(manager.createSession({ agentSlug: 'default' })).rejects.toThrow();
       expect(manager.getStatus()).toBe('error');
     });
 
     it('should not allow creating a session when one already exists', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
-      await expect(manager.createSession({ pipelineId: 'other' })).rejects.toThrow(/session already exists/i);
+      await expect(manager.createSession({ agentSlug: 'other' })).rejects.toThrow(/session already exists/i);
     });
 
     it('should fire onError callback on duplicate session attempt', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       const onError = vi.fn();
       manager.onError(onError);
 
       try {
-        await manager.createSession({ pipelineId: 'other' });
+        await manager.createSession({ agentSlug: 'other' });
       } catch {
         // expected
       }
@@ -256,7 +233,7 @@ describe('StreamingSessionManager', () => {
         return createMockResponse(mockSessionResponse);
       });
 
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       expect(statusDuringCall).toBe('creating');
       expect(manager.getStatus()).toBe('session_created');
@@ -278,7 +255,7 @@ describe('StreamingSessionManager', () => {
 
     it('should build the full WebSocket URL with sessionId (no token in URL)', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       const wsUrl = manager.getWebSocketUrl('my-jwt-token');
 
@@ -294,7 +271,7 @@ describe('StreamingSessionManager', () => {
 
     it('should use the wsUrl from ApiConfig as the base', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       const wsUrl = manager.getWebSocketUrl('token');
 
@@ -305,7 +282,7 @@ describe('StreamingSessionManager', () => {
       const httpClient = new AgenticClient({ baseUrl: 'http://localhost:8868/api/v1', apiKey: 'key' }, mockLogger);
       const httpManager = new StreamingSessionManager(httpClient, mockLogger);
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await httpManager.createSession({ pipelineId: 'default' });
+      await httpManager.createSession({ agentSlug: 'default' });
 
       const wsUrl = httpManager.getWebSocketUrl('tok');
 
@@ -324,7 +301,7 @@ describe('StreamingSessionManager', () => {
       const bffClient = new AgenticClient({ baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'http://localhost:8868' }, mockLogger);
       const bffManager = new StreamingSessionManager(bffClient, mockLogger);
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await bffManager.createSession({ pipelineId: 'default' });
+      await bffManager.createSession({ agentSlug: 'default' });
 
       const wsUrl = bffManager.getWebSocketUrl();
 
@@ -337,13 +314,13 @@ describe('StreamingSessionManager', () => {
       const httpsClient = new AgenticClient({ baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'https://gateway.example.com' }, mockLogger);
       const httpsManager = new StreamingSessionManager(httpsClient, mockLogger);
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await httpsManager.createSession({ pipelineId: 'default' });
+      await httpsManager.createSession({ agentSlug: 'default' });
       expect(httpsManager.getWebSocketUrl()).toMatch(/^wss:\/\/gateway\.example\.com\/ws\/stt\/stream/);
 
       const wssClient = new AgenticClient({ baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'wss://gateway.example.com' }, mockLogger);
       const wssManager = new StreamingSessionManager(wssClient, mockLogger);
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await wssManager.createSession({ pipelineId: 'default' });
+      await wssManager.createSession({ agentSlug: 'default' });
       expect(wssManager.getWebSocketUrl()).toMatch(/^wss:\/\/gateway\.example\.com\/ws\/stt\/stream/);
     });
 
@@ -353,7 +330,7 @@ describe('StreamingSessionManager', () => {
         wsUrl: '',
       };
       mockFetch.mockResolvedValueOnce(createMockResponse(emptyWsUrlResponse));
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       const wsUrl = manager.getWebSocketUrl('token');
 
@@ -362,7 +339,7 @@ describe('StreamingSessionManager', () => {
 
     it('should not include token in URL even with special characters', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       const wsUrl = manager.getWebSocketUrl('token=with&special chars');
 
@@ -372,7 +349,7 @@ describe('StreamingSessionManager', () => {
 
     it('SEC-01: should NOT include JWT token in the WebSocket URL query string', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       const wsUrl = manager.getWebSocketUrl('secret-jwt-token');
 
@@ -393,7 +370,7 @@ describe('StreamingSessionManager', () => {
       it('appends the active tenantId so the default-on WS guard can resolve a claim', async () => {
         apiClient.updateTenantId('tenant-xyz');
         mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-        await manager.createSession({ pipelineId: 'default' });
+        await manager.createSession({ agentSlug: 'default' });
 
         const wsUrl = manager.getWebSocketUrl('token');
 
@@ -404,7 +381,7 @@ describe('StreamingSessionManager', () => {
       it('URL-encodes a tenantId that contains special characters', async () => {
         apiClient.updateTenantId('tenant/with space');
         mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-        await manager.createSession({ pipelineId: 'default' });
+        await manager.createSession({ agentSlug: 'default' });
 
         const wsUrl = manager.getWebSocketUrl('token');
 
@@ -416,7 +393,7 @@ describe('StreamingSessionManager', () => {
       it('omits tenantId when no tenant is set (guard then fails closed, per AC-10)', async () => {
         // apiClient has no tenantId (constructor config omits it).
         mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-        await manager.createSession({ pipelineId: 'default' });
+        await manager.createSession({ agentSlug: 'default' });
 
         const wsUrl = manager.getWebSocketUrl('token');
 
@@ -440,7 +417,7 @@ describe('StreamingSessionManager', () => {
 
     it('should reset sessionId and status after closing', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
       expect(manager.getSessionId()).toBe('session-close-test');
 
       mockFetch.mockResolvedValueOnce(createMockResponse({ success: true }));
@@ -466,7 +443,7 @@ describe('StreamingSessionManager', () => {
 
     it('should allow creating a new session after closing', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
       mockFetch.mockResolvedValueOnce(createMockResponse({ success: true }));
       await manager.closeSession();
 
@@ -476,7 +453,7 @@ describe('StreamingSessionManager', () => {
       };
       mockFetch.mockResolvedValueOnce(createMockResponse(newResponse));
 
-      const result = await manager.createSession({ pipelineId: 'other' });
+      const result = await manager.createSession({ agentSlug: 'other' });
       expect(result.sessionId).toBe('session-new-123');
       expect(manager.getSessionId()).toBe('session-new-123');
     });
@@ -500,7 +477,7 @@ describe('StreamingSessionManager', () => {
       const onCreated = vi.fn();
       manager.onSessionCreated(onCreated);
 
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       expect(onCreated).toHaveBeenCalledWith(mockSessionResponse);
     });
@@ -518,7 +495,7 @@ describe('StreamingSessionManager', () => {
       const onClosed = vi.fn();
       manager.onSessionClosed(onClosed);
 
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
       mockFetch.mockResolvedValueOnce(createMockResponse({ success: true }));
       await manager.closeSession();
 
@@ -532,7 +509,7 @@ describe('StreamingSessionManager', () => {
       manager.onError(onError);
 
       try {
-        await manager.createSession({ pipelineId: 'default' });
+        await manager.createSession({ agentSlug: 'default' });
       } catch {
         // expected
       }
@@ -557,7 +534,7 @@ describe('StreamingSessionManager', () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
 
       await manager.createSession({
-        pipelineId: 'default',
+        agentSlug: 'default',
         consultationId: 'consult-789',
       });
 
@@ -590,7 +567,7 @@ describe('StreamingSessionManager', () => {
       };
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
 
-      await manager.createSession({ pipelineId: 'default' });
+      await manager.createSession({ agentSlug: 'default' });
 
       expect(manager.getState().voiceProfileSeeded).toBe(true);
     });
@@ -613,7 +590,7 @@ describe('StreamingSessionManager', () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(sessionResponse));
 
       await manager.createSession({
-        pipelineId: 'default',
+        agentSlug: 'default',
         consultationId: 'consult-cleanup',
       });
 
@@ -641,7 +618,7 @@ describe('StreamingSessionManager', () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(sessionResponse));
 
       await manager.createSession({
-        pipelineId: 'default',
+        agentSlug: 'default',
         consultationId: 'consult-fail',
       });
 
@@ -676,7 +653,7 @@ describe('StreamingSessionManager', () => {
       );
 
       await manager.createSession({
-        pipelineId: 'default',
+        agentSlug: 'default',
         consultationId: 'consult-multi',
       });
 
@@ -702,7 +679,7 @@ describe('StreamingSessionManager', () => {
       );
 
       await manager.createSession({
-        pipelineId: 'default',
+        agentSlug: 'default',
         consultationId: 'consult-unsub',
       });
 
@@ -719,7 +696,7 @@ describe('StreamingSessionManager', () => {
       mockFetch.mockResolvedValueOnce(
         createMockResponse({ sessionId: 'sess-switch', wsUrl: '/ws/stt/stream', status: 'active', maxConcurrent: 5, currentActive: 1 }),
       );
-      await manager.createSession({ pipelineId: 'primary' });
+      await manager.createSession({ agentSlug: 'primary' });
     }
 
     it('POSTs the switch-to-fallback endpoint for the live session', async () => {
@@ -756,7 +733,7 @@ describe('StreamingSessionManager', () => {
       mockFetch.mockResolvedValueOnce(
         createMockResponse({ sessionId: 'sess-switch', wsUrl: '/ws/stt/stream', status: 'active', maxConcurrent: 5, currentActive: 1 }),
       );
-      await manager.createSession({ pipelineId: 'primary' });
+      await manager.createSession({ agentSlug: 'primary' });
     }
 
     it('no longer throws in native mode — POSTs the switch-to-primary endpoint', async () => {

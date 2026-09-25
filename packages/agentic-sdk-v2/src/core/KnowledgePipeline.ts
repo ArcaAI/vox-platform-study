@@ -20,26 +20,6 @@ import type { AgenticClient } from './AgenticClient';
 import { SUMMARY_ENDPOINTS } from './constants';
 
 /**
- * Derive a STABLE, deterministic entity id from the entity's
- * content + span. Browser auto-NER re-extracts over overlapping/rolling text,
- * so a random id per run never dedups and identical clinical entities pile up
- * as duplicate rows. Hashing `entityType|text|startOffset|endOffset` keeps the
- * same entity's identity across re-extractions (so the store's id-keyed dedup
- * collapses it) while genuinely distinct entities keep distinct ids. FNV-1a
- * 32-bit is used over the raw composite so the id carries no PHI (entity text
- * can surface in logs/telemetry) — only an opaque, reproducible digest.
- */
-function stableEntityId(entityType: string, text: string, startOffset: number, endOffset: number): string {
-  const key = `${entityType}|${text}|${startOffset}|${endOffset}`;
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < key.length; i++) {
-    hash ^= key.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `ner-${(hash >>> 0).toString(16).padStart(8, '0')}`;
-}
-
-/**
  * Trigger mode for pipeline stages.
  */
 export type TriggerMode = 'auto' | 'manual';
@@ -57,31 +37,13 @@ interface KnowledgeStage {
 }
 
 /**
- * Raw NER entity from @arcaai/med-ner processor.
- */
-interface RawNEREntity {
-  text: string;
-  type: string;
-  start: number;
-  end: number;
-  score: number;
-}
-
-/**
- * NER extraction result from @arcaai/med-ner processor.
- */
-interface NERResult {
-  text: string;
-  entities: RawNEREntity[];
-  processingTime: number;
-  timestamp: number;
-}
-
-/**
  * KnowledgePipeline manages text processing for knowledge extraction.
  *
  * The pipeline consists of three parallel stages:
- * 1. NER: Extracts medical entities from text
+ * 1. NER: Extracts medical entities from text — DISABLED by default (TASK-1006):
+ *    `@arcaai/med-ner` (in-browser NER) was deleted, so `location: 'browser'`
+ *    throws. Server-side NER is an agent task (`useAgentInvocation` with a
+ *    `NAMED_ENTITY_RECOGNITION` agent) — see `.claude/rules/08-vox-sdk.md`.
  * 2. SpellCheck: Corrects spelling errors
  * 3. Summarization: Generates conversation summaries
  *
@@ -90,14 +52,10 @@ interface NERResult {
  * @example
  * ```typescript
  * const pipeline = new KnowledgePipeline({
- *   ner: { enabled: true, location: 'browser', triggerMode: 'auto' },
+ *   ner: { enabled: false, location: 'disabled', triggerMode: 'auto' },
  *   spellCheck: { enabled: false, location: 'disabled', triggerMode: 'manual' },
  *   summarization: { enabled: true, location: 'backend', triggerMode: 'manual' },
  * }, apiClient);
- *
- * pipeline.on('nerComplete', ({ entities }) => {
- *   console.log('Entities:', entities);
- * });
  *
  * // Process text (auto stages run immediately)
  * const result = await pipeline.process({ text: 'Patient has diabetes...' });
@@ -114,13 +72,6 @@ export class KnowledgePipeline {
   private emitter = new EventEmitter();
   private logger?: ISDKLogger;
   private apiClient?: AgenticClient;
-
-  // NER processor (lazy loaded)
-  private nerProcessor: {
-    extract: (text: string) => Promise<NERResult>;
-    init: () => Promise<void>;
-    isInitialized: () => boolean;
-  } | null = null;
 
   // State
   private _state: PipelineStateInfo = {
@@ -178,13 +129,14 @@ export class KnowledgePipeline {
   }
 
   /**
-   * Initialize the pipeline (lazy load NER if browser-based).
+   * Initialize the pipeline.
+   *
+   * TASK-1006 (following TASK-865): the browser never runs a model —
+   * `@arcaai/med-ner` was deleted, so there is no browser NER to lazy-load
+   * any more. `executeNER()` throws if a host configures `ner.location:
+   * 'browser'` explicitly.
    */
   async init(): Promise<void> {
-    if (this.config.ner.enabled && this.config.ner.location === 'browser') {
-      await this.initNERProcessor();
-    }
-
     this.updateState({ isReady: true });
 
     this.logger?.info('KnowledgePipeline initialized', {
@@ -192,58 +144,6 @@ export class KnowledgePipeline {
       component: 'KnowledgePipeline',
       success: true,
     });
-  }
-
-  /**
-   * Initialize the browser-based NER processor.
-   */
-  private async initNERProcessor(): Promise<void> {
-    if (this.nerProcessor?.isInitialized()) {
-      return;
-    }
-
-    const timer = this.logger?.startOperation('initNERProcessor', {
-      component: 'KnowledgePipeline',
-    });
-
-    try {
-      const { createMedNER } = await import('@arcaai/med-ner');
-
-      const processor = createMedNER({
-        model: this.config.ner.model ?? 'biomedical',
-        threshold: this.config.ner.threshold ?? 0.6,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Med-NER entity type list from config.
-        entityTypes: this.config.ner.entityTypes as any,
-      });
-
-      await processor.init();
-
-      this.nerProcessor = {
-        extract: async (text: string) => processor.extract(text),
-        init: async () => processor.init(),
-        isInitialized: () => processor.isInitialized(),
-      };
-
-      timer?.end(true, {
-        attributes: {
-          model: this.config.ner.model ?? 'biomedical',
-        },
-      });
-
-      this.logger?.info('NER processor initialized', {
-        operation: 'initNERProcessor',
-        component: 'KnowledgePipeline',
-        success: true,
-      });
-    } catch (error) {
-      timer?.error(error as Error);
-      this.logger?.error('Failed to initialize NER processor', {
-        operation: 'initNERProcessor',
-        component: 'KnowledgePipeline',
-        error: error as Error,
-      });
-      throw error;
-    }
   }
 
   /**
@@ -420,7 +320,6 @@ export class KnowledgePipeline {
    * Destroy the pipeline and release resources.
    */
   async destroy(): Promise<void> {
-    this.nerProcessor = null;
     this.results.clear();
     this.lastInput = null;
     this.stages.clear();
@@ -439,6 +338,12 @@ export class KnowledgePipeline {
 
   /**
    * Execute NER extraction.
+   *
+   * TASK-1006 (following TASK-865): the browser never runs a model.
+   * `@arcaai/med-ner` (in-browser NER) was deleted, so `location: 'browser'`
+   * and `'auto'` now throw instead of loading a client model. Entity
+   * extraction is a server-side agent task — invoke a `NAMED_ENTITY_RECOGNITION`
+   * agent via `useAgentInvocation` instead (see `.claude/rules/08-vox-sdk.md`).
    */
   private async executeNER(text: string): Promise<MedicalEntity[]> {
     const stage = this.stages.get('ner')!;
@@ -446,68 +351,20 @@ export class KnowledgePipeline {
       return [];
     }
 
-    // Phase 0 (0.8) — the API gateway DOES expose NER now
-    // (`POST /api/v1/text-analyses/entities`, AiInferenceController);
-    // this KnowledgePipeline just hasn't been wired to call it yet. Fail fast
-    // with that accurate limitation rather than the previous (now false)
-    // claim that no such gateway endpoint exists.
     if (stage.location === 'backend') {
       throw new Error(
-        'Backend NER is not yet wired in this SDK (the API gateway does expose ' +
-          'POST /api/v1/text-analyses/entities). Set KnowledgePipeline ner.location to ' +
-          '"browser" (recommended) or disable NER.',
+        'Backend NER is not wired in KnowledgePipeline. Invoke a published NAMED_ENTITY_RECOGNITION ' +
+          'agent via useAgentInvocation() instead, or disable NER.',
       );
     }
 
-    stage.processing = true;
-    const startTime = performance.now();
-
-    try {
-      let entities: MedicalEntity[];
-
-      // Prefer browser execution for both explicit browser mode and "auto" mode.
-      if (stage.location === 'browser' || stage.location === 'auto') {
-        // Browser-based NER
-        if (!this.nerProcessor) {
-          await this.initNERProcessor();
-        }
-
-        const result = await this.nerProcessor!.extract(text);
-        entities = result.entities.map((e) => ({
-          // Stable, content/offset-derived id so re-extractions
-          // of the same entity dedup instead of accumulating (was randomUUID()).
-          id: stableEntityId(e.type, e.text, e.start, e.end),
-          text: e.text,
-          entityType: e.type as MedicalEntity['entityType'],
-          confidence: e.score,
-          startOffset: e.start,
-          endOffset: e.end,
-        }));
-      } else {
-        // Defensive: should be unreachable due to the early backend guard above.
-        throw new Error(`Unsupported NER location: ${stage.location}`);
-      }
-
-      const processingTime = performance.now() - startTime;
-
-      this.emit('nerComplete', { entities, processingTime });
-
-      this.logger?.debug('NER extraction complete', {
-        operation: 'executeNER',
-        component: 'KnowledgePipeline',
-        attributes: {
-          entityCount: entities.length,
-          processingTime,
-        },
-      });
-
-      return entities;
-    } catch (error) {
-      this.emit('error', { error: error as Error, stage: 'ner' });
-      throw error;
-    } finally {
-      stage.processing = false;
-    }
+    // 'browser' / 'auto': the in-browser processor (@arcaai/med-ner) was
+    // deleted (TASK-1006) — the browser never runs a model.
+    throw new Error(
+      'Client-side NER is disabled: @arcaai/med-ner was removed (TASK-1006). Entity extraction runs ' +
+        'server-side — invoke a published NAMED_ENTITY_RECOGNITION agent via useAgentInvocation(), or ' +
+        'set KnowledgePipeline ner.location to "disabled".',
+    );
   }
 
   /**

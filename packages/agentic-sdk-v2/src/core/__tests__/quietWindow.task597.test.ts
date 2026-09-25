@@ -24,10 +24,7 @@ import { SttWebSocketClient } from '../SttWebSocketClient';
 import { createMockLogger } from '../../__tests__/setup';
 import type { AgenticClient } from '../AgenticClient';
 
-vi.mock('@arcaai/noise-filter', () => ({ createNoiseFilter: vi.fn() }));
-vi.mock('@arcaai/vad', () => ({ createVAD: vi.fn() }));
 vi.mock('@arcaai/stt', () => ({ createSTT: vi.fn() }));
-vi.mock('@arcaai/med-ner', () => ({ createMedNER: vi.fn() }));
 
 function makeApiClient(): AgenticClient {
   return {
@@ -50,7 +47,7 @@ describe('PluginManager — quietWindowMs reaches the streaming transport', () =
   });
 
   function transportFor(runtime: Record<string, unknown>) {
-    manager.setRuntimeOptions({ pipelineId: 'pipe-1', ...runtime });
+    manager.setRuntimeOptions({ agentSlug: 'clinic-asr', ...runtime });
     return manager.getTranscriptionPipelineConfig().stt.streamingTransport as { quietWindowMs?: number } | undefined;
   }
 
@@ -106,10 +103,7 @@ describe('SttWebSocketClient.stopAndDrain — per-call quietWindowMs', () => {
   beforeEach(() => {
     sockets = [];
     vi.useFakeTimers();
-    vi.stubGlobal(
-      'WebSocket',
-      Object.assign(MockSocket, { OPEN: 1, CONNECTING: 0, CLOSING: 2, CLOSED: 3 }) as unknown as typeof WebSocket,
-    );
+    vi.stubGlobal('WebSocket', Object.assign(MockSocket, { OPEN: 1, CONNECTING: 0, CLOSING: 2, CLOSED: 3 }) as unknown as typeof WebSocket);
   });
 
   afterEach(() => {

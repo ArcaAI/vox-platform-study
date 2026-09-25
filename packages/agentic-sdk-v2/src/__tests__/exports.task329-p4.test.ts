@@ -1,40 +1,34 @@
 /**
  * SDK Exports Verification — LOCAL voice embedding.
  *
- * Pins the new in-browser voice-embedding surface to the package barrels so
- * external consumers (`@arcaai/vox` / `@arcaai/vox/core`) can import the local
- * provider hook, the embedder factory, and the cosine/provider helpers.
+ * TASK-1006 (following TASK-865): the in-browser (WavLM) voice-embedding
+ * provider was removed — the browser never runs a model. This pins the
+ * absence from the core barrel and that the BACKEND voice provider
+ * (`useVoiceEmbedding`) is untouched. See task1006-removed.test.ts for the
+ * consolidated removed-surface pins.
  *
  * @vitest-environment jsdom
  */
 
 import { describe, it, expect } from 'vitest';
 
-describe('local voice-embedding exports (core barrel)', () => {
-  it('exports the LOCAL provider hook', async () => {
+describe('local voice-embedding is removed (core barrel, TASK-1006)', () => {
+  it('does not export the LOCAL provider hook or its helpers', async () => {
     const core = await import('../core.js');
-    expect(typeof core.useLocalVoiceEmbedding).toBe('function');
-  });
-
-  it('exports the embedder factory + capability check + model constants', async () => {
-    const core = await import('../core.js');
-    expect(typeof core.createLocalVoiceEmbedder).toBe('function');
-    expect(typeof core.isLocalVoiceEmbeddingSupported).toBe('function');
-    expect(core.DEFAULT_LOCAL_VOICE_MODEL_ID).toBe('Xenova/wavlm-base-plus-sv');
-    expect(core.LOCAL_VOICE_EMBEDDING_DIM).toBe(512);
-    expect(core.LOCAL_VOICE_SAMPLE_RATE).toBe(16_000);
-  });
-
-  it('exports the cosine-similarity + provider-selection helpers', async () => {
-    const core = await import('../core.js');
-    expect(typeof core.cosineSimilarity).toBe('function');
-    expect(typeof core.bestMatch).toBe('function');
-    expect(typeof core.averageEmbeddings).toBe('function');
-    expect(typeof core.resolveVoiceEnrollmentProvider).toBe('function');
-    expect(typeof core.isVoiceEnrollmentProvider).toBe('function');
-    expect(core.VOICE_ENROLLMENT_PROVIDERS).toEqual(['backend', 'local']);
-    expect(core.DEFAULT_VOICE_ENROLLMENT_PROVIDER).toBe('backend');
-    expect(typeof core.DEFAULT_VOICE_MATCH_THRESHOLD).toBe('number');
+    expect(core).not.toHaveProperty('useLocalVoiceEmbedding');
+    expect(core).not.toHaveProperty('createLocalVoiceEmbedder');
+    expect(core).not.toHaveProperty('isLocalVoiceEmbeddingSupported');
+    expect(core).not.toHaveProperty('DEFAULT_LOCAL_VOICE_MODEL_ID');
+    expect(core).not.toHaveProperty('LOCAL_VOICE_EMBEDDING_DIM');
+    expect(core).not.toHaveProperty('LOCAL_VOICE_SAMPLE_RATE');
+    expect(core).not.toHaveProperty('cosineSimilarity');
+    expect(core).not.toHaveProperty('bestMatch');
+    expect(core).not.toHaveProperty('averageEmbeddings');
+    expect(core).not.toHaveProperty('resolveVoiceEnrollmentProvider');
+    expect(core).not.toHaveProperty('isVoiceEnrollmentProvider');
+    expect(core).not.toHaveProperty('VOICE_ENROLLMENT_PROVIDERS');
+    expect(core).not.toHaveProperty('DEFAULT_VOICE_ENROLLMENT_PROVIDER');
+    expect(core).not.toHaveProperty('DEFAULT_VOICE_MATCH_THRESHOLD');
   });
 
   it('keeps the existing backend voice provider intact (not replaced)', async () => {

@@ -30,8 +30,6 @@ describe('AgenticProvider NER config placement', () => {
       apiKey: 'test-api-key',
     },
     audio: {
-      noiseFilter: false,
-      vad: false,
       stt: false,
     },
     personalization: {

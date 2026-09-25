@@ -388,10 +388,10 @@ describe('useArcaAudio — drainTimeoutMs', () => {
 
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1', drainTimeoutMs: 800 });
+      await result.current.start({ agentSlug: 'clinic-asr', drainTimeoutMs: 800 });
     });
 
-    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'pipe-1', drainTimeoutMs: 800 }));
+    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: 'clinic-asr', drainTimeoutMs: 800 }));
   });
 
   it.each([0, -1, Number.NaN])('IGNORES a non-positive drainTimeoutMs (%p) rather than forwarding it', async (value) => {
@@ -400,7 +400,7 @@ describe('useArcaAudio — drainTimeoutMs', () => {
 
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1', drainTimeoutMs: value });
+      await result.current.start({ agentSlug: 'clinic-asr', drainTimeoutMs: value });
     });
 
     // `0` must not read as "close instantly" and NaN must not reach a setTimeout.
@@ -413,7 +413,7 @@ describe('useArcaAudio — drainTimeoutMs', () => {
 
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1' });
+      await result.current.start({ agentSlug: 'clinic-asr' });
     });
 
     expect(pluginManager.setRuntimeOptions.mock.calls[0][0]).not.toHaveProperty('drainTimeoutMs');
@@ -435,7 +435,7 @@ describe('useArcaAudio — quietWindowMs', () => {
 
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1', quietWindowMs: 0 });
+      await result.current.start({ agentSlug: 'clinic-asr', quietWindowMs: 0 });
     });
 
     expect(pluginManager.setRuntimeOptions.mock.calls[0][0]).toHaveProperty('quietWindowMs', 0);
@@ -447,7 +447,7 @@ describe('useArcaAudio — quietWindowMs', () => {
 
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1', quietWindowMs: 2000 });
+      await result.current.start({ agentSlug: 'clinic-asr', quietWindowMs: 2000 });
     });
 
     expect(pluginManager.setRuntimeOptions.mock.calls[0][0]).toHaveProperty('quietWindowMs', 2000);
@@ -459,7 +459,7 @@ describe('useArcaAudio — quietWindowMs', () => {
 
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1', quietWindowMs: value });
+      await result.current.start({ agentSlug: 'clinic-asr', quietWindowMs: value });
     });
 
     expect(pluginManager.setRuntimeOptions.mock.calls[0][0]).not.toHaveProperty('quietWindowMs');
@@ -471,7 +471,7 @@ describe('useArcaAudio — quietWindowMs', () => {
 
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1' });
+      await result.current.start({ agentSlug: 'clinic-asr' });
     });
 
     expect(pluginManager.setRuntimeOptions.mock.calls[0][0]).not.toHaveProperty('quietWindowMs');

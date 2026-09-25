@@ -31,43 +31,9 @@ const sttMocks = vi.hoisted(() => {
   return { onBackpressureDrop, processor };
 });
 
-vi.mock('@arcaai/noise-filter', () => ({
-  createNoiseFilter: vi.fn(() => ({
-    init: vi.fn(),
-    destroy: vi.fn(),
-    on: vi.fn(),
-    processedTrack: null,
-    isEnabled: () => true,
-    enable: vi.fn(),
-    disable: vi.fn(),
-  })),
-}));
-
-vi.mock('@arcaai/vad', () => ({
-  createVAD: vi.fn(() => ({
-    init: vi.fn(),
-    destroy: vi.fn(),
-    on: vi.fn(),
-    processedTrack: null,
-    isEnabled: () => true,
-    enable: vi.fn(),
-    disable: vi.fn(),
-  })),
-}));
-
 vi.mock('@arcaai/stt', () => ({
   createSTT: vi.fn(() => sttMocks.processor),
 }));
-
-// Local (in-browser) transcription is disabled platform-wide
-// default (`LOCAL_TRANSCRIPTION_ENABLED = false` in `../constants`). This
-// test only cares that an STT stage initializes and wires its backpressure
-// push channel — irrespective of local/remote — so force the flag back on
-// rather than adding an unrelated backend transport to the fixture.
-vi.mock('../constants', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../constants')>();
-  return { ...actual, LOCAL_TRANSCRIPTION_ENABLED: true };
-});
 
 describe('TranscriptionPipeline: audio-drop wiring', () => {
   beforeEach(() => {
@@ -76,9 +42,7 @@ describe('TranscriptionPipeline: audio-drop wiring', () => {
 
   function buildSttOnlyPipeline() {
     return new TranscriptionPipeline({
-      noiseFilter: { enabled: false, location: 'skip' },
-      vad: { enabled: false, location: 'browser' },
-      stt: { enabled: true, location: 'browser', provider: 'local' },
+      stt: { enabled: true, location: 'backend', provider: 'backend', sttSocket: 'wss://api.test/ws/stt' },
     });
   }
 

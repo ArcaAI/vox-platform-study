@@ -10,10 +10,10 @@
  * `voiceEnrollment` / `diarization`) and the four `configJson` knobs that tuned
  * them. Owner directive 2026-09-04: the browser never runs a model — VAD,
  * denoise, diarization and ASR selection are decisions the tenant's published
- * Agents make server-side. This is orthogonal to the SDK's hard-off gate
- * (`DEFAULT_AUDIO_CONFIG` + `audio.clientInference`), which is untouched: that
- * gate refuses to RUN a local stage, this removes the tenant-level switch that
- * could ask for one.
+ * Agents make server-side. TASK-1006 finished the job on the SDK side: the
+ * local `noiseFilter`/`vad` stages and the `clientInference` gate this note
+ * used to describe as orthogonal are themselves removed — there is no local
+ * stage left to ask for.
  */
 
 /**

@@ -73,19 +73,6 @@ export type AgenticErrorCode =
   | 'MODEL_LOAD_ERROR'
   | 'STORAGE_ERROR'
   | 'CONFIG_NOT_READY'
-  // `TranscriptionPipeline.resolveSTTRuntimeProvider()` throws this
-  // instead of silently falling back to on-device transcription when local
-  // transcription is disabled (`LOCAL_TRANSCRIPTION_ENABLED = false` in
-  // `core/constants.ts`) and no backend transport is configured.
-  | 'LOCAL_TRANSCRIPTION_DISABLED'
-  // The caller asked for an in-browser MODEL on a surface that sits outside
-  // `TranscriptionPipeline` — `useLocalVoiceEmbedding` (WavLM speaker
-  // verification) or the raw `useVAD` / `useSTT({ provider: 'local' })` /
-  // `useNoiseFilter` re-exports on `@arcaai/vox/plugins` — while the host has
-  // not set `audio.clientInference: { allow: true }`. The browser never runs a
-  // model unless the host explicitly opted in, so the call is refused rather
-  // than served: no weights are fetched and no processor is attached.
-  | 'CLIENT_INFERENCE_DISABLED'
   // `useArcaAudio.startAudio` / `addSource` throw this instead of
   // silently streaming zeros when a caller-injected `MediaStream`
   // (`AudioStartOptions.sourceStreams`, or `addSource({ stream })`) has no
@@ -97,7 +84,7 @@ export type AgenticErrorCode =
   // ...) when a call lands while capture is already active — e.g. the
   // compat layer's two coordinating hooks racing to start the mic. A call
   // carrying only options the running session already applies (language,
-  // pipelineId) is unaffected — that stays a silent, designed no-op.
+  // agentSlug) is unaffected — that stays a silent, designed no-op.
   | 'CAPTURE_OPTIONS_DROPPED'
   // A provider switch was requested but this capture session cannot
   // serve one — capture has not started, or it is running on local (browser)

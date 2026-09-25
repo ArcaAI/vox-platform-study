@@ -361,15 +361,6 @@ export interface AudioStartOptions {
    */
   startOn?: 'primary' | 'fallback';
   /**
-   * Backend ASR pipeline UUID or slug.
-   *
-   * @deprecated TASK-865 — removed in R4 (the `AsrPipeline` resource retires
-   * under TASK-861). Pass {@link AudioStartOptions.agentSlug} instead, or
-   * nothing. Still forwarded for now, with a deprecation warning; when BOTH are
-   * passed, `agentSlug` wins and this value is dropped (warned, never silent).
-   */
-  pipelineId?: string;
-  /**
    * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
    * transcribe this capture — a lineage key, like `workflowDefinitionSlug` at
    * `session.open()`. Omit it and the gateway resolves one: the active

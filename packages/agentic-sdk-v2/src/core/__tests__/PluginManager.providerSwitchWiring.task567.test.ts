@@ -11,10 +11,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.mock('@arcaai/noise-filter', () => ({ createNoiseFilter: vi.fn() }));
-vi.mock('@arcaai/vad', () => ({ createVAD: vi.fn() }));
 vi.mock('@arcaai/stt', () => ({ createSTT: vi.fn() }));
-vi.mock('@arcaai/med-ner', () => ({ createMedNER: vi.fn() }));
 
 // Capture the callbacks the PluginManager registers on the ws client so we can
 // drive them and assert they reach the plugin callback bus.

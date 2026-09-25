@@ -188,14 +188,12 @@ describe('useArcaAudio — ignored start carrying source options', () => {
     // streams while the UI shows the external selection, no surfaced error).
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
-      await result.current.start({ pipelineId: 'p1' });
+      await result.current.start({ agentSlug: 'clinic-asr' });
     });
 
     let caught: unknown;
     await act(async () => {
-      caught = await result.current
-        .start({ deviceId: 'external-array', audioProcessing: { autoGainControl: false } })
-        .catch((err: unknown) => err);
+      caught = await result.current.start({ deviceId: 'external-array', audioProcessing: { autoGainControl: false } }).catch((err: unknown) => err);
     });
     expect(caught).toBeInstanceOf(AgenticError);
     expect((caught as InstanceType<typeof AgenticError>).code).toBe('CAPTURE_OPTIONS_DROPPED');

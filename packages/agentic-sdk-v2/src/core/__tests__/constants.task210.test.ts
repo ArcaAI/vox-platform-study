@@ -25,7 +25,6 @@ import {
   MY_TENANT_ENDPOINTS,
   NLP_ENDPOINTS,
   PERSONALIZATION_ENDPOINTS,
-  PIPELINE_ENDPOINTS,
   STORAGE_ENDPOINTS,
   STT_ENDPOINTS,
   SUMMARY_ENDPOINTS,
@@ -142,33 +141,6 @@ describe('SDK v2 route standardization', () => {
   });
 
   // ===========================================================================
-  // PIPELINE_ENDPOINTS: /api/v1/pipelines -> /admin/audio/pipelines
-  // ===========================================================================
-
-  describe('PIPELINE_ENDPOINTS (read: /audio/pipelines, write: /admin/audio/pipelines)', () => {
-    it('should use /audio/pipelines for LIST', () => {
-      expect(PIPELINE_ENDPOINTS.LIST).toBe('/audio/pipelines');
-    });
-
-    it('should use /audio/pipelines/:id for GET', () => {
-      expect(PIPELINE_ENDPOINTS.GET('pipe-1')).toBe('/audio/pipelines/pipe-1');
-    });
-
-    it('should use /audio/pipelines/slug/:slug for GET_BY_SLUG', () => {
-      expect(PIPELINE_ENDPOINTS.GET_BY_SLUG('whisper-streaming')).toBe('/audio/pipelines/slug/whisper-streaming');
-    });
-
-    it('should use /admin/audio/pipelines/validate for VALIDATE', () => {
-      expect(PIPELINE_ENDPOINTS.VALIDATE).toBe('/admin/audio/pipelines/validate');
-    });
-
-    it('should NOT contain /api/v1/ prefix', () => {
-      const all = [PIPELINE_ENDPOINTS.LIST, PIPELINE_ENDPOINTS.VALIDATE, PIPELINE_ENDPOINTS.GET('x'), PIPELINE_ENDPOINTS.GET_BY_SLUG('x')];
-      all.forEach((ep) => expect(ep).not.toContain('/api/v1/'));
-    });
-  });
-
-  // ===========================================================================
   // USER_SETTINGS_ENDPOINTS: /user-settings -> /users/me/settings
   // ===========================================================================
 
@@ -270,8 +242,6 @@ describe('SDK v2 route standardization', () => {
         STT_ENDPOINTS.TRANSCRIBE,
         STT_ENDPOINTS.LIST_JOBS,
         STT_ENDPOINTS.JOB_STATS,
-        PIPELINE_ENDPOINTS.LIST,
-        PIPELINE_ENDPOINTS.VALIDATE,
         USER_SETTINGS_ENDPOINTS.list,
       ];
       statics.forEach((ep) => {
@@ -289,8 +259,6 @@ describe('SDK v2 route standardization', () => {
         STT_ENDPOINTS.CANCEL_JOB('x'),
         STT_ENDPOINTS.RETRY_JOB('x'),
         STT_ENDPOINTS.CLOSE_SESSION('x'),
-        PIPELINE_ENDPOINTS.GET('x'),
-        PIPELINE_ENDPOINTS.GET_BY_SLUG('x'),
         USER_SETTINGS_ENDPOINTS.updateByKey('x', 'y'),
       ];
       dynamics.forEach((ep) => {
@@ -318,11 +286,6 @@ describe('SDK v2 route standardization', () => {
       expect(STT_ENDPOINTS.RETRY_JOB(dangerous)).toContain(encoded);
     });
 
-    it('PIPELINE_ENDPOINTS should encode special chars', () => {
-      expect(PIPELINE_ENDPOINTS.GET(dangerous)).toContain(encoded);
-      expect(PIPELINE_ENDPOINTS.GET_BY_SLUG(dangerous)).toContain(encoded);
-    });
-
     it('USER_SETTINGS_ENDPOINTS should encode special chars (reduced surface)', () => {
       const path = USER_SETTINGS_ENDPOINTS.updateByKey(dangerous, dangerous);
       expect(path.split(encoded).length - 1).toBe(2);
@@ -343,10 +306,6 @@ describe('SDK v2 route standardization', () => {
       expect(STT_ENDPOINTS.JOB_STREAM(uuid)).toBe(`/audio/transcription-jobs/${uuid}/stream`);
       expect(STT_ENDPOINTS.CLOSE_SESSION(uuid)).toBe(`/audio/transcription-jobs/stream/session/${uuid}`);
     });
-
-    it('PIPELINE_ENDPOINTS should handle UUID IDs', () => {
-      expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/audio/pipelines/${uuid}`);
-    });
   });
 
   // ===========================================================================
@@ -356,7 +315,6 @@ describe('SDK v2 route standardization', () => {
   describe('empty string parameters on changed endpoints', () => {
     it('should not throw for empty string IDs', () => {
       expect(() => STT_ENDPOINTS.GET_JOB('')).not.toThrow();
-      expect(() => PIPELINE_ENDPOINTS.GET('')).not.toThrow();
       expect(() => USER_SETTINGS_ENDPOINTS.updateByKey('', '')).not.toThrow();
     });
   });
@@ -377,8 +335,6 @@ describe('SDK v2 route standardization', () => {
         STT_ENDPOINTS.TRANSCRIBE,
         STT_ENDPOINTS.LIST_JOBS,
         STT_ENDPOINTS.JOB_STATS,
-        PIPELINE_ENDPOINTS.LIST,
-        PIPELINE_ENDPOINTS.VALIDATE,
         USER_SETTINGS_ENDPOINTS.list,
       ];
       statics.forEach((ep) => {
@@ -396,8 +352,6 @@ describe('SDK v2 route standardization', () => {
         STT_ENDPOINTS.RETRY_JOB(id),
         STT_ENDPOINTS.JOBS_BY_CONSULTATION(id),
         STT_ENDPOINTS.JOBS_BY_STATUS(id),
-        PIPELINE_ENDPOINTS.GET(id),
-        PIPELINE_ENDPOINTS.GET_BY_SLUG(id),
         USER_SETTINGS_ENDPOINTS.updateByKey(id, id),
       ];
       dynamics.forEach((ep) => {
@@ -446,12 +400,6 @@ describe('SDK v2 route standardization', () => {
           'SWITCH_TO_PRIMARY',
         ]),
       );
-    });
-
-    it('PIPELINE_ENDPOINTS should have exactly 13 keys', () => {
-      // SET_DEFAULT, TOGGLE, VERSIONS, VERSION bring the count to 13.
-      expect(Object.keys(PIPELINE_ENDPOINTS)).toHaveLength(13);
-      expect(Object.keys(PIPELINE_ENDPOINTS)).toEqual(expect.arrayContaining(['SET_DEFAULT', 'TOGGLE', 'VERSIONS', 'VERSION']));
     });
 
     it('USER_SETTINGS_ENDPOINTS should have exactly 2 keys (reduction)', () => {
@@ -536,7 +484,6 @@ describe('SDK v2 route standardization', () => {
         'PERSONALIZATION_ENDPOINTS',
         'HEALTH_ENDPOINTS',
         'STT_ENDPOINTS',
-        'PIPELINE_ENDPOINTS',
         'NLP_ENDPOINTS',
         'AUTH_ENDPOINTS',
         'USER_SETTINGS_ENDPOINTS',
@@ -563,10 +510,6 @@ describe('SDK v2 route standardization', () => {
   describe('backend route alignment', () => {
     it('audio domain endpoints should use /audio/ prefix (matching audio/* controllers)', () => {
       expect(STT_ENDPOINTS.CREATE_JOB).toMatch(/^\/audio\//);
-    });
-
-    it('admin endpoints should use /admin/ prefix (matching admin/* controllers)', () => {
-      expect(PIPELINE_ENDPOINTS.CREATE).toMatch(/^\/admin\//);
     });
 
     it('user self-service endpoints should use /users/me/ prefix', () => {

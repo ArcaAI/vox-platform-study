@@ -241,14 +241,14 @@ describe('useArcaAudio — F3/Q5 startFromPreferences()', () => {
     expect(typeof result.current.startFromPreferences).toBe('function');
   });
 
-  it('derives options from prefs/config (remote workflow → backend pipeline) and starts', async () => {
+  it('derives options from prefs/config (remote workflow → ASR agent) and starts', async () => {
     const pluginManager = createMockPluginManager();
     setupStore({
       pluginManager,
       preferences: {
         language: 'th',
         workflowMode: 'remote',
-        remoteConfig: { pipelineId: 'pipe-xyz', assignedBy: 'admin' },
+        remoteConfig: { agentSlug: 'clinic-asr', assignedBy: 'admin' },
         custom: { deviceId: 'mic-A' },
       },
     });
@@ -263,18 +263,18 @@ describe('useArcaAudio — F3/Q5 startFromPreferences()', () => {
     expect(mockStoreData.setAudioLanguage).toHaveBeenCalledWith('th');
     // Device derived from prefs.custom.
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-A' } } });
-    // Backend STT provider chosen → pipelineId forwarded to the plugin manager.
-    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'pipe-xyz', language: 'th' }));
+    // Remote workflow → the named ASR agent forwarded to the plugin manager.
+    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: 'clinic-asr', language: 'th' }));
   });
 
-  it('omits the backend pipeline when workflow is local (local STT provider)', async () => {
+  it('omits the agentSlug when workflow is local (no ASR agent named)', async () => {
     const pluginManager = createMockPluginManager();
     setupStore({
       pluginManager,
       preferences: {
         language: 'en',
         workflowMode: 'local',
-        remoteConfig: { pipelineId: 'pipe-should-not-be-used', assignedBy: 'admin' },
+        remoteConfig: { agentSlug: 'agent-should-not-be-used', assignedBy: 'admin' },
       },
     });
 
@@ -284,7 +284,7 @@ describe('useArcaAudio — F3/Q5 startFromPreferences()', () => {
       await result.current.startFromPreferences();
     });
 
-    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: undefined }));
+    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: undefined }));
   });
 });
 

@@ -60,59 +60,35 @@ export interface TranscriptionPipelineOutput {
 
 /**
  * Configuration for the transcription pipeline.
+ *
+ * TASK-1006 (following TASK-865): the `noiseFilter` and `vad` client stages,
+ * the `clientInference` gate, and the local STT provider (`modelId`, Whisper
+ * `task`) were removed — the browser never runs a model. The pipeline now
+ * hosts a single stage: backend/remote STT over the streaming transport.
  */
 export interface TranscriptionPipelineConfig {
   /** Enable debug mode for verbose console logging of configuration and transcripts */
   debugMode?: boolean;
-  /**
-   * Explicit opt-in for CLIENT-SIDE model inference (TASK-865). Absent ⇒ the
-   * `noiseFilter` and `vad` stages are NOT constructed even when `enabled` —
-   * the pipeline logs a deprecation warning once and skips them. Only
-   * `{ allow: true }` lets the two client models load.
-   *
-   * @deprecated TASK-865 — removed in R4 with the client stages.
-   */
-  clientInference?: { allow: boolean };
   /**
    * Whether the pipeline owns the AudioContext passed to start().
    * - 'borrowed': pipeline does NOT close the context on stop (default, safe for shared contexts)
    * - 'owned': pipeline closes the context on stop
    */
   contextOwnership?: 'owned' | 'borrowed';
-  /** Noise filter configuration */
-  noiseFilter: {
-    /** Whether to enable noise filtering */
-    enabled: boolean;
-    /** Processing location */
-    location: 'browser' | 'skip';
-    /** Noise cancellation level */
-    level?: 'low' | 'medium' | 'high';
-  };
-  /** VAD configuration */
-  vad: {
-    /** Whether to enable VAD */
-    enabled: boolean;
-    /** Processing location (always browser) */
-    location: 'browser';
-    /** Speech detection sensitivity */
-    sensitivity?: number;
-    /** Minimum speech duration in ms */
-    minSpeechDuration?: number;
-    /** Minimum silence duration in ms */
-    minSilenceDuration?: number;
-  };
   /** STT configuration */
   stt: {
     /** Whether to enable STT */
     enabled: boolean;
     /** Processing location */
-    location: 'browser' | 'backend' | 'auto' | 'skip';
+    location: 'backend' | 'auto' | 'skip';
     /** Provider type */
-    provider?: 'local' | 'backend' | 'auto';
+    provider?: 'backend' | 'auto';
     /**
-     * Server-resolved EFFECTIVE transcription mode. When set,
-     * it is authoritative and `resolveSTTRuntimeProvider()` honors it ahead of
-     * `provider`/`location`/`sttSocket` (LOCAL → browser, BACKEND → remote).
+     * Server-resolved EFFECTIVE transcription mode, forwarded verbatim from
+     * `STTPluginConfig.transcriptionMode` (a wire-compatible type — the
+     * backend/`UserPreferences` contract is unchanged by this SDK). No longer
+     * read by this pipeline: with the local stage removed there is nothing
+     * left to branch on.
      */
     transcriptionMode?: 'LOCAL' | 'BACKEND';
     /** Language */
@@ -121,15 +97,8 @@ export interface TranscriptionPipelineConfig {
     languageMode?: string;
     /** Pre-start STT engine selection; forwarded to the backend STT session.*/
     startOn?: 'primary' | 'fallback';
-    /** Model ID for local processing */
-    modelId?: string;
     /** WebSocket URL for remote processing */
     sttSocket?: string;
-    /**
-     * Backend ASR pipeline ID/slug (for backend mode orchestration).
-     * @deprecated TASK-865 — removed in R4. Use `agentSlug`.
-     */
-    pipelineId?: string;
     /** Slug of the published ASR Agent that should transcribe this session (TASK-865). */
     agentSlug?: string;
     /** Enable speaker diarization in STT output */
@@ -142,59 +111,20 @@ export interface TranscriptionPipelineConfig {
     codeSwitching?: boolean;
     /**
      * Pipeline-aware streaming transport injected by the SDK
-     * (PluginManager builds it when a remote `pipelineId` is set, then passes
+     * (PluginManager builds it when a remote `agentSlug` is set, then passes
      * it through to the STT stage factory). The transport is `unknown` here
      * to keep this file free of a hard dependency on `@arcaai/stt` types;
      * `TranscriptionPipeline` narrows it to `STTStreamingTransport` at use.
      */
     streamingTransport?: unknown;
-    /**
-     * Voice-profile context resolved from
-     * `UserPreferences.activeVoiceProfile` + `UserPreferences.localConfig.voiceProfile`.
-     *
-     * `id` is the server-side `UserVoiceProfile.id`; `reservedSpeakerId` is the
-     * stable label pinned to the diarizer's first slot. `similarityThreshold`
-     * tunes the MFCC centroid matcher (range `[0, 1]`, lower = more permissive).
-     *
-     * The fields are individually optional so the SDK can express partial state
-     * (e.g. doctor tuned the threshold but has not enrolled yet).
-     */
-    voiceProfile?: {
-      id?: string;
-      reservedSpeakerId?: string;
-      similarityThreshold?: number;
-    };
-    /**
-     * Whisper task selector for the local engine
-     * (`'transcribe' | 'translate'`). The local STT processor includes this
-     * in its provider cache key.
-     */
-    task?: 'transcribe' | 'translate';
   };
 }
 
 /**
  * Default transcription pipeline configuration.
  */
-/**
- * Pipeline-level fallback. Both client stages are OFF here too (TASK-865): a
- * `new TranscriptionPipeline({ stt })` that names neither stage must not
- * inherit a Silero/RNNoise download from the pipeline's own defaults.
- */
 export const DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG: TranscriptionPipelineConfig = {
   contextOwnership: 'borrowed',
-  noiseFilter: {
-    enabled: false,
-    location: 'skip',
-    level: 'high',
-  },
-  vad: {
-    enabled: false,
-    location: 'browser',
-    sensitivity: 0.5,
-    minSpeechDuration: 250,
-    minSilenceDuration: 300,
-  },
   stt: {
     enabled: true,
     location: 'auto',
@@ -282,9 +212,12 @@ export interface KnowledgePipelineConfig {
  * Default knowledge pipeline configuration.
  */
 export const DEFAULT_KNOWLEDGE_PIPELINE_CONFIG: KnowledgePipelineConfig = {
+  // TASK-1006 (following TASK-865): the browser never runs a model.
+  // `@arcaai/med-ner` (in-browser NER) was deleted, so `location: 'browser'`
+  // now throws if a host opts back in — disabled is the only working default.
   ner: {
-    enabled: true,
-    location: 'browser',
+    enabled: false,
+    location: 'disabled',
     triggerMode: 'auto',
     threshold: 0.6,
   },
@@ -364,7 +297,7 @@ export interface TranscriptionPipelineActions {
   /** Update configuration */
   updateConfig: (config: Partial<TranscriptionPipelineConfig>) => void;
   /** Toggle a specific stage */
-  toggleStage: (stage: 'noiseFilter' | 'vad' | 'stt', enabled: boolean) => Promise<void>;
+  toggleStage: (stage: 'stt', enabled: boolean) => Promise<void>;
 }
 
 /**
