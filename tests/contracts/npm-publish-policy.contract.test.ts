@@ -43,16 +43,13 @@ const GITHUB_PACKAGES_REGISTRY = 'https://npm.pkg.github.com';
  * `@arcaai/pipeline` is deliberately EXCLUDED: it is not a `vox` dependency and
  * the release runbook publishes it separately, which is why it legitimately
  * trails at a different version.
+ *
+ * `@arcaai/vad`, `@arcaai/noise-filter`, and `@arcaai/med-ner` were REMOVED
+ * from the family (TASK-1006, R4) — the browser never runs a model, so those
+ * three client-side inference packages were deleted outright rather than
+ * kept in lockstep with nothing left to ship.
  */
-const VOX_LOCKSTEP_FAMILY = [
-  '@arcaai/vox',
-  '@arcaai/vox-node',
-  '@arcaai/room',
-  '@arcaai/stt',
-  '@arcaai/vad',
-  '@arcaai/noise-filter',
-  '@arcaai/med-ner',
-];
+const VOX_LOCKSTEP_FAMILY = ['@arcaai/vox', '@arcaai/vox-node', '@arcaai/room', '@arcaai/stt'];
 
 interface PackageManifest {
   path: string;
