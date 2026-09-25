@@ -18,6 +18,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 from stt.core.config.settings import Settings
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -124,14 +126,19 @@ class TestModelS3AliasCollapsed:
 
 
 class TestNoCredentialHasARealCodeDefault:
-    def test_minio_credentials_default_to_empty(self) -> None:
+    def test_minio_credentials_default_to_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """`SecretStr("minio_admin")` was a working credential compiled in.
 
         Rule 00: "a credential … is NOT a literal in code". A credential default
         that authenticates against the dev stack is also the reason nobody
         notices when the real one fails to load — the service keeps working on
         the built-in one, right up until the environment where it does not.
+
+        This asserts the CODE default, so the process env is cleared first: an
+        earlier test in a local run may have loaded `.env.dev` into os.environ.
         """
+        monkeypatch.delenv("MINIO_ACCESS_KEY", raising=False)
+        monkeypatch.delenv("MINIO_SECRET_KEY", raising=False)
         settings = Settings(_env_file=None)
         assert settings.minio_access_key.get_secret_value() == ""
         assert settings.minio_secret_key.get_secret_value() == ""
