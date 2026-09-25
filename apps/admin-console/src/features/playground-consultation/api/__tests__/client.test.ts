@@ -2,8 +2,8 @@
  * Frames 50 + 50.1 — playground consultation REST plane (matrix row 34).
  * fetch is stubbed at the network boundary; every call is asserted as an
  * exact "METHOD /api/hope/<path>" string against ConsultationController /
- * ConsultationJobController / AudioPipelinePublicController. This is the
- * END-USER plane (no `admin/` prefix — the admin read grid is row 33).
+ * ConsultationJobController. This is the END-USER plane (no `admin/` prefix —
+ * the admin read grid is row 33).
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -12,7 +12,6 @@ import {
   cancelConsultationJob,
   confirmDocumentSection,
   consultationJobStreamPath,
-  generateSummary,
   generateSummaryAsync,
   getConsultationJob,
   getDocumentSection,
@@ -157,25 +156,24 @@ describe('playground consultation client', () => {
     expect(calls[0].body).toEqual({
       persistSnapshot: true,
       acceptedProposals: [
-        { proposalId: 'p-1', start: 10, end: 16, original: 'Toprovol', proposed: 'Toprol', category: 'drugName', confidence: 0.92, status: 'ACCEPTED' },
+        {
+          proposalId: 'p-1',
+          start: 10,
+          end: 16,
+          original: 'Toprovol',
+          proposed: 'Toprol',
+          category: 'drugName',
+          confidence: 0.92,
+          status: 'ACCEPTED',
+        },
       ],
     });
   });
 
   it('omits acceptedProposals from the body when none were accepted', async () => {
-    const calls = installFetchMock(() =>
-      Response.json({ consultationId: 'c-1', status: 'OPEN', recording: false, sseUrl: '/x', updatedAt: 't' }),
-    );
+    const calls = installFetchMock(() => Response.json({ consultationId: 'c-1', status: 'OPEN', recording: false, sseUrl: '/x', updatedAt: 't' }));
     await stopRecording('c-1', true, []);
     expect(calls[0].body).toEqual({ persistSnapshot: true });
-  });
-
-  it('generates a summary synchronously', async () => {
-    const calls = installFetchMock(() => Response.json({ id: 'ctx-9', consultationId: 'c-1', type: 'summary', content: 'S …' }));
-    const summary = await generateSummary('c-1');
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/consultations/c-1/summary']);
-    expect(calls[0].body).toEqual({});
-    expect(summary.id).toBe('ctx-9');
   });
 
   it('queues an async summary job and manages its lifecycle', async () => {
@@ -360,13 +358,13 @@ describe('the previously-unsent request shapes', () => {
     expect(calls[0].body).toEqual({});
   });
 
-  it('generateSummary carries dnaStyleId when one is selected (W2)', async () => {
+  it('generateSummaryAsync carries dnaStyleId when one is selected (W2)', async () => {
     const calls = installHeaderAwareFetch();
 
-    await generateSummary('c-1', { dnaStyleId: 'dna-42' });
+    await generateSummaryAsync('c-1', { dnaStyleId: 'dna-42' });
 
     expect(calls[0].method).toBe('POST');
-    expect(calls[0].url).toBe('/api/hope/consultations/c-1/summary');
+    expect(calls[0].url).toBe('/api/hope/consultations/c-1/summary/async');
     expect(calls[0].body).toEqual({ dnaStyleId: 'dna-42' });
   });
 
@@ -382,8 +380,34 @@ describe('the previously-unsent request shapes', () => {
   it('listAllDocumentSections GETs the AGGREGATE view — no documentKey in the path', async () => {
     const calls = installHeaderAwareFetch(() =>
       Response.json([
-        { id: 's-1', consultationId: 'c-1', documentKey: 'discharge_summary', sectionKey: 'plan', title: 'Plan', idx: 0, state: 'provisional', revision: 1, version: 1, content: 'x', createdAt: 't', updatedAt: 't' },
-        { id: 's-2', consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'plan', title: 'Plan', idx: 0, state: 'provisional', revision: 2, version: 2, content: 'y', createdAt: 't', updatedAt: 't' },
+        {
+          id: 's-1',
+          consultationId: 'c-1',
+          documentKey: 'discharge_summary',
+          sectionKey: 'plan',
+          title: 'Plan',
+          idx: 0,
+          state: 'provisional',
+          revision: 1,
+          version: 1,
+          content: 'x',
+          createdAt: 't',
+          updatedAt: 't',
+        },
+        {
+          id: 's-2',
+          consultationId: 'c-1',
+          documentKey: 'soap_note',
+          sectionKey: 'plan',
+          title: 'Plan',
+          idx: 0,
+          state: 'provisional',
+          revision: 2,
+          version: 2,
+          content: 'y',
+          createdAt: 't',
+          updatedAt: 't',
+        },
       ]),
     );
 
@@ -397,7 +421,10 @@ describe('the previously-unsent request shapes', () => {
 
   it('getDocumentSection captures the response ETag as the read version', async () => {
     const calls = installHeaderAwareFetch(
-      () => new Response(JSON.stringify({ id: 's-1', consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'plan', content: 'x' }), { headers: { ETag: '"4"' } }),
+      () =>
+        new Response(JSON.stringify({ id: 's-1', consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'plan', content: 'x' }), {
+          headers: { ETag: '"4"' },
+        }),
     );
 
     const read = await getDocumentSection('c-1', 'soap_note', 'plan');
@@ -410,7 +437,14 @@ describe('the previously-unsent request shapes', () => {
 
   it('confirmDocumentSection PATCHes the section under If-Match with its own content', async () => {
     const calls = installHeaderAwareFetch(() =>
-      Response.json({ id: 's-1', consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'plan', state: 'confirmed', content: 'Discharge home.' }),
+      Response.json({
+        id: 's-1',
+        consultationId: 'c-1',
+        documentKey: 'soap_note',
+        sectionKey: 'plan',
+        state: 'confirmed',
+        content: 'Discharge home.',
+      }),
     );
 
     await confirmDocumentSection('c-1', 'soap_note', 'plan', 'Discharge home.', 4);
