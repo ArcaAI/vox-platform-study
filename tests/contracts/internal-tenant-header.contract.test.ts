@@ -51,8 +51,6 @@ const TENANT_SCOPED_CALL_SITES = [
   // 428 it was causing on DNA-report generation is now fixed.
   'packages/applications/src/services/dna-writing-style/dna-writing-style.processor.ts',
   // → apps/stt /internal/streaming/*, /internal/voice-profile/extract.
-  //   (`/api/v1/pipelines/validate` and its caller, `pipeline.service.ts`, were
-  //   removed with the AsrPipeline stack — TASK-1006.)
   //
   // Closed 2026-08-18. These were a LATENT deployed-environment break rather
   // than a live one: stt had NO inbound auth at all until `ServiceAuthMiddleware`
