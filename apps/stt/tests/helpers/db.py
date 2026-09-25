@@ -1,17 +1,9 @@
-"""Database test helpers for STT.
+"""Test-infrastructure helpers for STT.
 
-This module mirrors the monorepo's TypeScript test helpers (tests/helpers/db.helper.ts)
-for Python services. It integrates with the centralized test infrastructure.
-
-Usage:
-    # In conftest.py
-    from tests.helpers.db import setup_test_database, teardown_test_database
-
-    @pytest.fixture(scope="session", autouse=True)
-    def setup_database():
-        setup_test_database()
-        yield
-        teardown_test_database()
+URLs and readiness probes for the monorepo's centralized test infrastructure
+(tests/docker-compose.test.yml). TASK-1006 — apps/stt has no database of its own,
+so the schema setup / reset helpers that served its SQLAlchemy read models were
+removed with them; only the readiness probe the integration suite gates on remains.
 
 Environment:
     Uses the monorepo's test infrastructure ports:
@@ -170,113 +162,6 @@ def is_minio_healthy() -> bool:
         return False
 
 
-def setup_test_database() -> None:
-    """Setup the test database.
-
-    This mirrors the TypeScript helper's setupTestDatabase function.
-    It should be called before running integration/E2E tests.
-
-    Flow:
-    1. Wait for database to be ready
-    2. Push schema (create tables)
-    3. Seed database with test data (optional)
-    """
-    print("\n📦 Setting up test database for STT...\n")
-
-    # Step 1: Wait for database
-    if not wait_for_database():
-        raise RuntimeError(
-            f"Database at localhost:{TEST_DB_PORT} is not accessible.\n"
-            "Please start test infrastructure: pnpm docker:test:up (from monorepo root)"
-        )
-    print("✅ Database is ready\n")
-
-    # Step 2: Create schema if needed
-    # Note: The monorepo's TypeScript tests handle schema with Prisma
-    # For Python services, we can use SQLAlchemy's create_all
-    try:
-        _create_schema()
-        print("✅ Schema created\n")
-    except Exception as e:
-        print(f"⚠️ Schema creation warning: {e}\n")
-
-    print("✅ Test database setup complete!\n")
-
-
-def _create_schema() -> None:
-    """Create database schema using SQLAlchemy models."""
-    try:
-        from sqlalchemy import create_engine, text
-
-        from stt.core.database.models import Base
-
-        engine = create_engine(get_db_url(sync=True), echo=False)
-
-        with engine.connect() as conn:
-            # Create core schema if it doesn't exist
-            conn.execute(text("CREATE SCHEMA IF NOT EXISTS core"))
-            conn.commit()
-
-        # Create all tables
-        Base.metadata.create_all(engine)
-        engine.dispose()
-    except ImportError:
-        print("  Note: SQLAlchemy models not available, skipping schema creation")
-
-
-def reset_database() -> None:
-    """Reset the database by truncating all tables.
-
-    WARNING: This will delete all data in the database.
-
-    This mirrors the TypeScript helper's resetDatabase function.
-    """
-    try:
-        from sqlalchemy import create_engine, text
-
-        engine = create_engine(get_db_url(sync=True), echo=False)
-
-        with engine.connect() as conn:
-            # Get all tables from public and core schemas
-            result = conn.execute(text("""
-                SELECT schemaname, tablename
-                FROM pg_tables
-                WHERE schemaname IN ('public', 'core')
-                AND tablename != '_prisma_migrations'
-            """))
-            tables = result.fetchall()
-
-            if not tables:
-                return
-
-            # Disable foreign key checks
-            conn.execute(text("SET session_replication_role = 'replica'"))
-
-            # Truncate all tables
-            for schema, table in tables:
-                try:
-                    conn.execute(text(f'TRUNCATE TABLE "{schema}"."{table}" CASCADE'))
-                except Exception as e:
-                    print(f"  Warning: Could not truncate {schema}.{table}: {e}")
-
-            # Re-enable foreign key checks
-            conn.execute(text("SET session_replication_role = 'origin'"))
-            conn.commit()
-
-        engine.dispose()
-    except Exception as e:
-        print(f"  Warning: Database reset failed: {e}")
-
-
-def teardown_test_database() -> None:
-    """Cleanup after tests.
-
-    Currently just logs completion - tables are left for inspection.
-    Use reset_database() if you need a clean slate between test runs.
-    """
-    print("\n✅ Test database teardown complete\n")
-
-
 # Async versions for use in async test fixtures
 async def async_wait_for_database(max_retries: int = 30, interval: float = 1.0) -> bool:
     """Async version of wait_for_database."""
@@ -290,10 +175,3 @@ async def async_wait_for_database(max_retries: int = 30, interval: float = 1.0) 
         await asyncio.sleep(interval)
 
     return False
-
-
-async def async_reset_database() -> None:
-    """Async version of reset_database."""
-    # Run sync reset in executor to not block event loop
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, reset_database)

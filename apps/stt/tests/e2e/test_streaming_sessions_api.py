@@ -41,6 +41,7 @@ from stt.streaming.api.schemas import (
 )
 from stt.streaming.capacity_guard import CapacityGuard
 from stt.streaming.schemas import SessionStatus
+from tests.helpers.resolved_spec import resolved_spec
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,7 +56,6 @@ def _random_session_id() -> str:
 def _build_create_payload(
     session_id: str | None = None,
     tenant_id: str = "t-test",
-    pipeline_id: str | None = None,
     sample_rate: int = 16000,
     consultation_id: str | None = None,
     microphone_id: str | None = None,
@@ -69,7 +69,7 @@ def _build_create_payload(
     payload: dict = {
         "session_id": session_id or _random_session_id(),
         "tenant_id": tenant_id,
-        "pipeline_id": pipeline_id or str(uuid.uuid4()),
+        "resolved_spec": resolved_spec(),
         "sample_rate": sample_rate,
     }
     if consultation_id is not None:
@@ -89,19 +89,17 @@ class _FakeStreamSession:
     anti-pattern #4 (incomplete mock hides typos in production code).
     """
 
-    __slots__ = ("session_id", "status", "tenant_id", "pipeline_id")
+    __slots__ = ("session_id", "status", "tenant_id")
 
     def __init__(
         self,
         session_id: str,
         status: SessionStatus = SessionStatus.ACTIVE,
         tenant_id: str = "",
-        pipeline_id: str = "",
     ) -> None:
         self.session_id = session_id
         self.status = status
         self.tenant_id = tenant_id
-        self.pipeline_id = pipeline_id
 
 
 def _make_mock_session_manager(
@@ -128,18 +126,13 @@ def _make_mock_session_manager(
     async def _create_session(
         session_id: str,
         tenant_id: str,
-        pipeline_id: str,
-        consultation_id: str | None = None,
-        sample_rate: int = 16000,
-        audio_bucket_name: str | None = None,
-        user_id: str | None = None,
-        language: str | None = None,
-        storage: dict | None = None,
-        provider_overrides: dict | None = None,
-        fallback_pipeline_id: str | None = None,
-        language_mode: str | None = None,
-        start_on: str = "primary",
+        *,
+        resolved_spec: dict,
+        **_request_fields: object,
     ) -> _FakeStreamSession | None:
+        # TASK-1006 — the spec is the only selector; the rest of the request is
+        # forwarded verbatim and irrelevant to slot accounting.
+        assert resolved_spec, "the route must forward the resolved spec"
         acquired = await guard.try_acquire(session_id)
         if not acquired:
             return None  # at capacity — routes.py raises 503
@@ -147,12 +140,15 @@ def _make_mock_session_manager(
             session_id=session_id,
             status=SessionStatus.ACTIVE,
             tenant_id=tenant_id,
-            pipeline_id=pipeline_id,
         )
         sessions[session_id] = session
         return session
 
     mock_mgr.create_session = AsyncMock(side_effect=_create_session)
+    # Synchronous accessors the create/status routes answer from.
+    mock_mgr.get_switch_controller = MagicMock(return_value=None)
+    mock_mgr.get_voice_profile_seeded = MagicMock(return_value=False)
+    mock_mgr.get_language_resolution = MagicMock(return_value=None)
 
     def _get_session(session_id: str) -> _FakeStreamSession | None:
         return sessions.get(session_id)
@@ -299,7 +295,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
         """Missing ``session_id`` field returns 422."""
         payload = {
             "tenant_id": "t-test",
-            "pipeline_id": str(uuid.uuid4()),
+            "resolved_spec": resolved_spec(),
         }
         response = await configured_app.post("/internal/streaming/sessions", json=payload)
         assert response.status_code == 422
@@ -311,7 +307,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
         """Missing ``tenant_id`` field returns 422."""
         payload = {
             "session_id": _random_session_id(),
-            "pipeline_id": str(uuid.uuid4()),
+            "resolved_spec": resolved_spec(),
         }
         response = await configured_app.post("/internal/streaming/sessions", json=payload)
         assert response.status_code == 422
@@ -319,8 +315,8 @@ class TestCreateStreamingSessionNotInitializedE2E:
         field_names = [e["loc"][-1] for e in errors]
         assert "tenant_id" in field_names
 
-    async def test_create_session_missing_pipeline_id_returns_422(self, configured_app):
-        """Missing ``pipeline_id`` field returns 422."""
+    async def test_create_session_missing_resolved_spec_returns_422(self, configured_app):
+        """Missing ``resolved_spec`` returns 422 naming it (TASK-1006: the only selector)."""
         payload = {
             "session_id": _random_session_id(),
             "tenant_id": "t-test",
@@ -329,7 +325,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
         assert response.status_code == 422
         errors = response.json()["detail"]
         field_names = [e["loc"][-1] for e in errors]
-        assert "pipeline_id" in field_names
+        assert "resolved_spec" in field_names
 
     async def test_create_session_invalid_json_returns_422(self, configured_app):
         """Non-JSON body should return 422."""
@@ -345,7 +341,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
         payload = {
             "session_id": _random_session_id(),
             "tenant_id": "t-test",
-            "pipeline_id": str(uuid.uuid4()),
+            "resolved_spec": resolved_spec(),
             "sample_rate": "not-a-number",
         }
         response = await configured_app.post("/internal/streaming/sessions", json=payload)

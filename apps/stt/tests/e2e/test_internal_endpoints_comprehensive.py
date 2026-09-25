@@ -7,7 +7,6 @@ Endpoints under test:
   GET  /internal/cache/stats           — Model cache statistics
   POST /internal/cache/clear           — Clear the model cache
   GET  /internal/cache/model/{slug}    — Get cached model info
-  GET  /internal/pipelines/loaded      — List pipelines with loaded models
   GET  /internal/sessions              — Active streaming sessions
   POST /internal/sessions/cleanup      — Clean up expired sessions
   GET  /internal/streaming/status      — Streaming module status
@@ -296,114 +295,6 @@ class TestCacheModelLookupE2E:
 
 
 # ============================================================================
-# C4: Pipelines Loaded Endpoint — GET /internal/pipelines/loaded
-# ============================================================================
-
-
-@pytest.mark.e2e
-class TestPipelinesLoadedE2E:
-    """Comprehensive tests for GET /internal/pipelines/loaded."""
-
-    async def test_pipelines_loaded_returns_200_with_json(self, configured_app):
-        """Pipelines loaded must return 200 with JSON content-type."""
-        response = await configured_app.get("/internal/pipelines/loaded")
-        assert response.status_code == 200
-        _assert_json_content_type(response)
-
-    async def test_pipelines_loaded_top_level_schema(self, configured_app):
-        """Response must have all top-level required fields."""
-        response = await configured_app.get("/internal/pipelines/loaded")
-        data = response.json()
-
-        for field in ("total_pipelines", "ready_pipelines", "pipelines", "timestamp"):
-            assert field in data, f"Missing top-level field: {field}"
-
-    async def test_pipelines_loaded_top_level_types(self, configured_app):
-        """Verify types of top-level fields."""
-        response = await configured_app.get("/internal/pipelines/loaded")
-        data = response.json()
-
-        assert isinstance(data["total_pipelines"], int)
-        assert isinstance(data["ready_pipelines"], int)
-        assert isinstance(data["pipelines"], list)
-        assert isinstance(data["timestamp"], str)
-
-    async def test_pipelines_ready_lte_total_invariant(self, configured_app):
-        """ready_pipelines must be <= total_pipelines (invariant)."""
-        response = await configured_app.get("/internal/pipelines/loaded")
-        data = response.json()
-        assert (
-            data["ready_pipelines"] <= data["total_pipelines"]
-        ), f"ready ({data['ready_pipelines']}) > total ({data['total_pipelines']})"
-
-    async def test_pipelines_list_length_matches_total(self, configured_app):
-        """len(pipelines) must equal total_pipelines."""
-        response = await configured_app.get("/internal/pipelines/loaded")
-        data = response.json()
-        assert len(data["pipelines"]) == data["total_pipelines"], (
-            f"pipelines list length ({len(data['pipelines'])}) != "
-            f"total_pipelines ({data['total_pipelines']})"
-        )
-
-    async def test_pipelines_ready_count_matches_is_ready_flags(self, configured_app):
-        """ready_pipelines must equal count of entries where is_ready=True."""
-        response = await configured_app.get("/internal/pipelines/loaded")
-        data = response.json()
-        counted_ready = sum(1 for p in data["pipelines"] if p.get("is_ready"))
-        assert data["ready_pipelines"] == counted_ready, (
-            f"ready_pipelines ({data['ready_pipelines']}) != "
-            f"counted is_ready=True ({counted_ready})"
-        )
-
-    async def test_pipelines_entry_required_fields(self, configured_app):
-        """Each pipeline entry must have all required fields with correct types."""
-        response = await configured_app.get("/internal/pipelines/loaded")
-        data = response.json()
-
-        for i, pipeline in enumerate(data["pipelines"]):
-            ctx = f"Pipeline[{i}]"
-            assert isinstance(pipeline.get("id"), str), f"{ctx}: 'id' must be str"
-            assert isinstance(pipeline.get("slug"), str), f"{ctx}: 'slug' must be str"
-            assert isinstance(pipeline.get("name"), str), f"{ctx}: 'name' must be str"
-            assert isinstance(
-                pipeline.get("required_models"), list
-            ), f"{ctx}: 'required_models' must be list"
-            assert isinstance(pipeline.get("is_ready"), bool), f"{ctx}: 'is_ready' must be bool"
-            assert isinstance(
-                pipeline.get("missing_models"), list
-            ), f"{ctx}: 'missing_models' must be list"
-
-    async def test_pipelines_entry_missing_models_consistency(self, configured_app):
-        """
-        If is_ready=True then missing_models must be empty.
-        If is_ready=False then missing_models must be non-empty.
-        """
-        response = await configured_app.get("/internal/pipelines/loaded")
-        data = response.json()
-
-        for i, p in enumerate(data["pipelines"]):
-            ctx = f"Pipeline[{i}] ({p.get('slug', '?')})"
-            if p["is_ready"]:
-                assert (
-                    p["missing_models"] == []
-                ), f"{ctx}: is_ready=True but missing_models={p['missing_models']}"
-            else:
-                assert (
-                    len(p["missing_models"]) > 0
-                ), f"{ctx}: is_ready=False but missing_models is empty"
-
-    async def test_pipelines_loaded_timestamp_is_valid(self, configured_app):
-        """Timestamp must be valid ISO 8601."""
-        response = await configured_app.get("/internal/pipelines/loaded")
-        _assert_iso8601_timestamp(response.json()["timestamp"])
-
-    async def test_pipelines_loaded_wrong_method_returns_405(self, configured_app):
-        """POST to pipelines/loaded should return 405."""
-        response = await configured_app.post("/internal/pipelines/loaded")
-        assert response.status_code == 405
-
-
-# ============================================================================
 # C5: Sessions Endpoint — GET /internal/sessions
 # ============================================================================
 
@@ -677,23 +568,6 @@ class TestInternalEndpointConsistencyE2E:
             stats["models"] == []
         ), f"Expected empty models list after clear, got {len(stats['models'])} items"
 
-    async def test_pipelines_total_matches_list_and_ready_is_subset(self, configured_app):
-        """
-        Verify three invariants at once from /internal/pipelines/loaded:
-        1. total_pipelines == len(pipelines)
-        2. ready_pipelines == count(is_ready=True)
-        3. ready_pipelines <= total_pipelines
-        """
-        data = (await configured_app.get("/internal/pipelines/loaded")).json()
-
-        total = data["total_pipelines"]
-        ready = data["ready_pipelines"]
-        pipeline_list = data["pipelines"]
-
-        assert len(pipeline_list) == total
-        assert sum(1 for p in pipeline_list if p["is_ready"]) == ready
-        assert ready <= total
-
     async def test_cleanup_max_age_echoed_for_multiple_values(self, configured_app):
         """
         Verify that different max_age_seconds values are correctly echoed
@@ -715,7 +589,6 @@ class TestInternalEndpointConsistencyE2E:
         """
         get_endpoints = [
             "/internal/cache/stats",
-            "/internal/pipelines/loaded",
             "/internal/sessions",
             "/internal/streaming/status",
         ]

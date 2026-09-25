@@ -16,7 +16,6 @@ import pytest
 
 # Import centralized test helpers
 from tests.helpers.db import (
-    get_db_url,
     get_minio_config,
     get_redis_url,
     wait_for_database,
@@ -36,91 +35,6 @@ def verify_test_environment():
             "Start with: pnpm docker:test:up (from monorepo root)"
         )
     print("\n✅ Test infrastructure is ready")
-
-
-# =============================================================================
-# Database Fixtures (using centralized helpers)
-# =============================================================================
-
-
-@pytest.fixture(scope="session")
-def database_url():
-    """Get database URL from centralized helper."""
-    return get_db_url(sync=False)  # asyncpg URL
-
-
-@pytest.fixture(scope="function")
-async def db_engine(database_url):
-    """Create database engine for tests."""
-    from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import create_async_engine
-
-    from stt.core.database.models import Base
-
-    engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
-
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("CREATE SCHEMA IF NOT EXISTS core"))
-            enum_defs = [
-                ("ResourceStatusType", ["ENABLED", "DISABLED", "DELETED", "PENDING", "ARCHIVED"]),
-                ("AiModelSource", ["HUGGINGFACE", "GITHUB", "MLFLOW", "LOCAL"]),
-                ("AiModelFormat", ["SAFETENSOR", "ONNX", "NEMO", "PYTORCH"]),
-                (
-                    "AiModelDownloadStatus",
-                    ["NOT_DOWNLOADED", "DOWNLOADING", "DOWNLOADED", "DOWNLOAD_FAILED"],
-                ),
-                ("ModelCategory", ["AUDIO", "TEXT", "VISION", "MULTIMODAL"]),
-                (
-                    "ModelTaskType",
-                    [
-                        "AUTOMATIC_SPEECH_RECOGNITION",
-                        "VOICE_ACTIVITY_DETECTION",
-                        "AUDIO_DENOISING",
-                        "SPEAKER_DIARIZATION",
-                        "TEXT_TO_SPEECH",
-                        "LANGUAGE_MODEL",
-                        "TRANSLATION",
-                        "SUMMARIZATION",
-                        "TEXT_CLASSIFICATION",
-                        "NAMED_ENTITY_RECOGNITION",
-                        "IMAGE_CLASSIFICATION",
-                        "OBJECT_DETECTION",
-                    ],
-                ),
-                ("ModelType", ["BASE_MODEL", "FINETUNED_MODEL", "QUANTIZED_MODEL", "UNKNOWN"]),
-            ]
-            for enum_name, values in enum_defs:
-                values_str = ", ".join(f"'{v}'" for v in values)
-                await conn.execute(text(f"""
-                    DO $$ BEGIN
-                        CREATE TYPE core."{enum_name}" AS ENUM ({values_str});
-                    EXCEPTION
-                        WHEN duplicate_object THEN null;
-                    END $$;
-                """))
-            await conn.run_sync(Base.metadata.create_all)
-
-        yield engine
-
-        # No teardown needed: db_session rolls back each test's transaction,
-        # so seed data from Prisma (pnpm test:db:seed) stays intact for
-        # other test suites (e2e ML tests, etc.) that share port 5433.
-    finally:
-        await engine.dispose()
-
-
-@pytest.fixture(scope="function")
-async def db_session(db_engine):
-    """Create database session for tests."""
-    from sqlalchemy.ext.asyncio import AsyncSession
-    from sqlalchemy.orm import sessionmaker
-
-    async_session = sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
-
-    async with async_session() as session:
-        yield session
-        await session.rollback()
 
 
 # =============================================================================
