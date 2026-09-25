@@ -13,13 +13,13 @@ no Prisma access and no domain rules of its own.
 |---|---|
 | `src/main.ts` | Bootstrap: env load, global prefix, validation pipe, ETag interceptor, session cookie, security headers, and the boot-time audits (below) |
 | `src/app.module.ts` | Root module — global guards/interceptors/filters, and the import list for all feature modules |
-| `src/modules/` | 71 feature module directories (one per business/admin surface), each `<name>.controller.ts` + `<name>.module.ts` |
+| `src/modules/` | 70 feature module directories (one per business/admin surface), each `<name>.controller.ts` + `<name>.module.ts` |
 | `src/bootstrap/` | The boot-time audit functions `main.ts` runs (route-permission, API-key/service-account scope, consent coverage, OCC coverage, CASL-enforce reachability, WS gateway ownership) |
 | `src/guards/` | `JwtAuthGuard`, `OidcAuthGuard`, `OriginTenantBindingGuard`, `PatientConsentGuard` |
 | `src/interceptors/` | `ContextInterceptor`, `ExceptionInterceptor`, `MaintenanceInterceptor`, `ImpersonationAuditInterceptor`, `MetricsInterceptor`, `ETagInterceptor` |
 | `src/filters/` | `HttpExceptionEnvelopeFilter`, `DataNotFoundExceptionFilter`, `ConsentExceptionFilter` |
 | `src/decorators/` | `@RequiresIfMatch()`/`@ExpectedVersion()` (OCC), `@ApiEndpoint(...)`, `@ApiDeprecated()` |
-| `src/common/` | `TenantOwnedResourceSseGuard`/interceptor/decorator (404-over-403 for `@Sse()` routes), the `pipelineId` deprecation shim |
+| `src/common/` | `TenantOwnedResourceSseGuard`/interceptor/decorator (404-over-403 for `@Sse()` routes), `redirect-shim.ts` (the 308 permanent-redirect helper for retired business-plane URIs) |
 | `src/openapi/` | `tags.ts` (the `@ApiTags` taxonomy), `api-exclude-metadata.ts`, `operation-security.ts` |
 | `src/scripts/` | `emit-openapi.ts`, `emit-route-manifest.ts` — the offline generators behind `pnpm api:openapi`/`api:route-manifest` |
 | `src/config/` | `env.schema.ts`/`env.descriptors.ts` — the zod-validated env surface read via `apiEnv()` |
@@ -53,9 +53,10 @@ no Prisma access and no domain rules of its own.
 ## How it works
 
 **Global prefix.** `API_GLOBAL_PREFIX = 'api/v1'` (`src/global-prefix.config.ts`). Excluded from
-it: `/metrics`, and five literal v1-compat paths that must keep their pre-gateway shape —
-`api/smr/api/v1/summary/sync`, `api/smr/api/v1/presummary` (`TextCompatModule`), and
-`api/stt/start_session` / `api/stt/stop_session` / `api/stt/switch` (`SttCompatModule`).
+it: `/metrics` only. The v1-compat surface (`TextCompatModule`, `SttCompatModule`, and the
+literal `api/smr/*` / `api/stt/*` paths they served) was removed in TASK-1004; a controller
+declaring an `api/stt` or `api/smr` route anywhere in the tree now fails
+`apps/api/src/__tests__/compat-removed.test.ts`.
 
 **Guard pipeline, in declaration order** (`app.module.ts`) — order is load-bearing, each guard
 depends on state the one before it resolved:

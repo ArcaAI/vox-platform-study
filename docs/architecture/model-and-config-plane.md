@@ -30,7 +30,7 @@ endpoint for its own service-level knobs.
 | Model registry + discovery    | `AiModel` (+ live server enumeration)                | `AiModelDiscoveryService` (merge view)              | admin registration, pipeline / task references           |
 | Model source resolution       | `AiModel.sourceUri` / `localPath`                    | each service's `resolve_model_dir`                  | stt, guardrail, nlp, harness                             |
 | Model lifecycle / retention   | `global-kv` settings keys                            | internal effective-config route                     | in-process model caches (all services)                   |
-| Pipeline governance           | `AsrPipeline` (template lineage)                     | pipeline service (clone / resync)                   | stt pipeline reader                                      |
+| ASR selection / fallback (TASK-1006, replaces `AsrPipeline`) | the `Agent` (`task=SPEECH_TO_TEXT`) + `AgentModelFallback` chain | `AgentAssignment` cascade / `AsrAgentResolverService` → `ResolvedAsrSpec` | apps/stt (session-create, batch dispatch) |
 | External identity             | `TenantIdentityProvider` (+ federation)              | `idp-resolver`                                      | auth (OIDC login)                                        |
 | External tools                | `McpServer`                                          | harness at call time                                | harness MCP transport                                    |
 
@@ -320,27 +320,34 @@ under the `tts` prefix — both spellings are load-bearing. The operator runbook
 
 ---
 
-## 8. Pipeline template governance (`AsrPipeline`)
+## 8. ASR selection / fallback — REMOVED the pipeline-template plane (TASK-1006)
 
-The nine SYSTEM-tenant `AsrPipeline` rows are **templates**
-(`sourceTemplateSlug = null`, `templateLocked = false`). At tenant provisioning
-each template is **cloned into the tenant**; every copy records the template's
-slug in `sourceTemplateSlug` (provenance survives clone chains) and is
-`templateLocked = true`.
+This section documented the `AsrPipeline` template-clone-lineage plane: nine
+SYSTEM-tenant templates cloned per tenant at provisioning, `templateLocked`
+copies read-only for content edits (403 _"clone to customize"_), `POST
+/api/v1/admin/audio/pipelines/:id/clone`, and `POST
+/api/v1/admin/tenants/:id/pipelines/resync` (`TenantPipelineResyncController`)
+fast-forwarding pristine locked copies. TASK-1006 removed the whole stack —
+`AudioPipelineController`, `AudioPipelineCatalogController`,
+`TenantSttConfigAdminController`, `TenantPipelineResyncController`, and the
+`pipeline`/`tenant-stt-config` gateway modules — because it predated the
+agent/workflow plane and duplicated what an `Agent` already expresses.
 
-A `templateLocked` copy is **read-only for content edits and delete** — the
-application layer returns 403 _"clone to customize"_ — while enable/disable and
-set-default remain available. `templateLocked` is absent from every request DTO,
-so the gateway's whitelist pipe rejects any attempt to flip it over the API.
-
-- **Clone** (`POST /api/v1/admin/audio/pipelines/:id/clone`) makes a new,
-  unlocked, editable copy that keeps the source's template provenance.
-- **Resync** (`POST /api/v1/admin/tenants/:id/pipelines/resync`, the
-  `TenantPipelineResyncController`) fast-forwards _pristine_ locked copies to the
-  template's current config and never touches unlocked rows; it reports
-  `{ added, fastForwarded, skipped }`.
-
-The `[tenantId, templateLocked]` index backs the per-tenant locked-copy sweep.
+**Replacement:** ASR selection and fallback are content, not configuration —
+see the "ASR selection / fallback" row in §1. A published `SPEECH_TO_TEXT`
+`Agent` carries its own `AgentModelFallback` chain; `AgentAssignment` resolves
+department → tenant → SYSTEM exactly like every other agent task;
+`AsrAgentResolverService` resolves the winning agent into a `ResolvedAsrSpec`
+(ASR/VAD/denoise/diarization models, decoding params, fallback chain) that the
+gateway hands `apps/stt` at session-create and batch-dispatch time. The
+client-facing selector is `agentSlug` alone — omit it and the assignment
+cascade picks one, echoed back as `agentSource`
+(`'explicit' | 'workflow' | 'department' | 'tenant'`). There is no clone, no
+template lock, no resync: an agent's fallback chain is simply edited in place,
+the way any other agent's `AgentModelFallback` rows are. The `AsrPipeline` /
+`AsrPipelineVersion` tables, and `TenantSttConfig`'s now-deprecated
+`fallbackPipelineId`/`autoSwitchEnabled` fallback pointer, are scheduled for a
+drop migration once every reader has moved off them (TASK-1006 wave 2).
 
 ---
 
