@@ -1,35 +1,33 @@
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 
-/** Mirrors the residency screen: header, device/recommendation cards, table rows (rule 10). */
+/** Mirrors the catalogue-first residency screen (ticket §13): header, GPU
+ *  summary cards, and one card per service with a couple of row placeholders
+ *  (rule 10). Matches `CatalogueSkeleton` in `model-residency-screen.tsx`,
+ *  which covers the same loading state on a client refetch. */
 export default function ModelResidencyLoading() {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" aria-hidden>
       <div className="flex flex-col gap-2">
         <Skeleton className="h-8 w-52" />
         <Skeleton className="h-4 w-80" />
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="flex flex-col gap-2 rounded-md border p-4">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-full" />
-        </div>
-        <div className="flex flex-col gap-2 rounded-md border p-4">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-3/4" />
-        </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 2 }, (_, index) => (
+          <div key={index} className="flex flex-col gap-2 rounded-md border p-4">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-2 w-full" />
+          </div>
+        ))}
       </div>
-      <div className="flex flex-col overflow-hidden rounded-md border">
-        <div className="bg-muted/50 border-b p-3">
-          <Skeleton className="h-4 w-2/3" />
-        </div>
-        <div className="flex flex-col gap-4 p-4">
-          {Array.from({ length: 8 }, (_, index) => (
-            <Skeleton key={index} className="h-5 w-full" />
+      {Array.from({ length: 3 }, (_, index) => (
+        <div key={index} className="flex flex-col gap-3 rounded-md border p-4">
+          <Skeleton className="h-4 w-56" />
+          {Array.from({ length: 2 }, (__, row) => (
+            <Skeleton key={row} className="h-8 w-full" />
           ))}
         </div>
-      </div>
+      ))}
     </div>
   );
 }
