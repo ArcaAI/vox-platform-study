@@ -318,6 +318,33 @@ describe('R2 — register from hub', () => {
     });
   });
 
+  it('a repo with no pipeline tag: the task the admin chose decides servedBy and category', async () => {
+    const hub = {
+      getRepoInfo: vi.fn().mockResolvedValue({ sha: 'c0ffee', gated: false, license: null, pipelineTag: null, libraryName: 'transformers', languages: [] }),
+      listRepoFiles: vi.fn().mockResolvedValue([{ path: 'config.json', size: 1 }, { path: 'model.safetensors', size: 2 }]),
+    };
+    const { svc, aiModelService } = build({ hub });
+    await svc.registerFromHub({ repoId: 'o/tiny-bert', taskType: ModelTaskType.TOKEN_CLASSIFICATION });
+    expect(aiModelService.create.mock.calls[0][0]).toMatchObject({
+      taskType: ModelTaskType.TOKEN_CLASSIFICATION,
+      category: ModelCategory.NLP,
+      servedBy: 'nlp',
+    });
+  });
+
+  it('no servedBy given and none inferable → a named 400 SERVED_BY_REQUIRED, nothing created or enqueued', async () => {
+    const hub = {
+      getRepoInfo: vi.fn().mockResolvedValue({ sha: 'c0ffee', gated: false, license: null, pipelineTag: null, libraryName: 'transformers', languages: [] }),
+      listRepoFiles: vi.fn().mockResolvedValue([{ path: 'config.json', size: 1 }, { path: 'model.safetensors', size: 2 }]),
+    };
+    const { svc, aiModelService, queue } = build({ hub });
+    const error = await svc.registerFromHub({ repoId: 'o/tiny-bert' }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'SERVED_BY_REQUIRED' });
+    expect(aiModelService.create).not.toHaveBeenCalled();
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
   it('a slug collision → 409 and nothing is created or enqueued', async () => {
     const { svc, aiModelService, queue } = build({ bySlug: modelRow() });
     const error = await svc.registerFromHub({ repoId: 'blaze999/Medical-NER' }).catch((e: unknown) => e);

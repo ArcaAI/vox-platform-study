@@ -58,7 +58,7 @@ import { claimAndEnqueueDownload, enqueuePublisherJob } from '../publish/ai-mode
 import type { UnregisterAiModelJobPayload } from '../publish/publisher-job.contract';
 import { mergeUnregisterMeta } from '../publish/model-download-meta.util';
 import { effectiveStaleAfterMs, readModelDownloadSettings, type DownloadSettingsSource } from './model-download-settings';
-import { buildHubPreview } from './hub-preview.util';
+import { buildHubPreview, categoryOf, providerFor, servedByFor } from './hub-preview.util';
 import { isUnregistering, publishStatusOf } from './model-lifecycle.derive';
 import { ModelUsageReader } from './model-usage.reader';
 import { assertPlatformRegistryAdmin } from './platform-admin';
@@ -134,27 +134,42 @@ export class ModelRegistryOperationsService extends BaseService {
     const format = request.format ?? preview.suggestedFormat;
     if (!format) throw new BadRequestException(`The artifact format of '${request.repoId}' could not be inferred from its files; pass 'format'.`);
 
+    // A repo with no Hub pipeline tag suggests no task, so the preview's own
+    // suggestions are empty; the task the admin CHOSE is then what decides the
+    // serving workload, category and provider.
+    const taskType = request.taskType ?? preview.taskType ?? null;
+    const libraryName = request.libraryName ?? s.libraryName ?? null;
+    const servedBy = request.servedBy ?? s.servedBy ?? servedByFor(taskType, libraryName);
+    if (!servedBy) {
+      throw new BadRequestException({
+        code: 'SERVED_BY_REQUIRED',
+        message: `Which service serves '${request.repoId}' could not be inferred from its task; choose 'servedBy'.`,
+      });
+    }
+    const category = request.category ?? s.category ?? categoryOf(taskType);
+    const provider = request.provider ?? s.provider ?? providerFor(servedBy);
+
     // The SAME create path and validation as `POST admin/ai-models`: the DTO is
     // validated with the pipe's own options, then `AiModelService.create` runs.
     const createDto = plainToInstance(CreateModelRequest, {
       name: request.name ?? preview.suggestedName,
       slug,
       ...(request.description !== undefined ? { description: request.description } : {}),
-      category: request.category ?? s.category ?? ModelCategory.UNKNOWN,
-      taskType: request.taskType ?? preview.taskType ?? ModelTaskType.UNKNOWN,
+      category: category ?? ModelCategory.UNKNOWN,
+      taskType: taskType ?? ModelTaskType.UNKNOWN,
       modelType: request.modelType ?? s.modelType ?? ModelType.UNKNOWN,
       source: AiModelSource.HUGGINGFACE,
       sourceUri: preview.sourceUri,
       sourceRevision: preview.commitSha,
       format,
-      libraryName: request.libraryName ?? s.libraryName ?? undefined,
-      servedBy: request.servedBy ?? s.servedBy ?? undefined,
+      libraryName: libraryName ?? undefined,
+      servedBy,
       deploymentKind: AiDeploymentKind.SELF_HOSTED,
       ...(preview.license ? { license: preview.license } : {}),
       gated: preview.gated,
       ...(preview.baseModel ? { baseModel: preview.baseModel } : {}),
       languages: preview.languages,
-      ...((request.provider ?? s.provider) ? { provider: request.provider ?? s.provider } : {}),
+      ...(provider ? { provider } : {}),
       ...(request.architecture !== undefined ? { architecture: request.architecture } : {}),
       ...(request.computeType !== undefined ? { computeType: request.computeType } : {}),
       ...(request.memorySizeMb !== undefined ? { memorySizeMb: request.memorySizeMb } : {}),

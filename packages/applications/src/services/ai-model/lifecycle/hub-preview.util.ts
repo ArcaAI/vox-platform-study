@@ -147,7 +147,7 @@ function formatFor(library: string | null, files: HuggingFaceFileEntry[]): AiMod
   return null;
 }
 
-function servedByFor(task: ModelTaskType | null, library: string | null): string | null {
+export function servedByFor(task: ModelTaskType | null, library: string | null): string | null {
   if (!task) return null;
   if (task === ModelTaskType.TEXT_GENERATION && library === 'llama.cpp') return 'lmstudio';
   if (STT_TASKS.has(task)) return 'stt';
@@ -165,6 +165,11 @@ function servedByFor(task: ModelTaskType | null, library: string | null): string
  * is published as one (`hf-cache`), everything else as a flat, content-addressed
  * `<slug>/<version>/` prefix.
  */
+/** The provider a built-in serving workload implies (LM Studio has its own; every other engine is `built-in`). */
+export function providerFor(servedBy: string | null): string | null {
+  return servedBy === 'lmstudio' ? 'lm-studio' : servedBy ? 'built-in' : null;
+}
+
 export function buildHubPreview(input: {
   repoId: string;
   revision: string;
@@ -203,7 +208,7 @@ export function buildHubPreview(input: {
       modelType: quantized ? ModelType.QUANTIZED_MODEL : null,
       libraryName,
       servedBy,
-      provider: servedBy === 'lmstudio' ? 'lm-studio' : servedBy ? 'built-in' : null,
+      provider: providerFor(servedBy),
     },
   };
 }
