@@ -48,6 +48,7 @@ from stt.core.metrics import (
     streaming_session_finished,
     streaming_session_started,
 )
+from stt.models.vllm_loader import is_vllm_served
 from stt.models.whisper_kwargs import build_whisper_generate_kwargs
 from stt.pipeline.dto import AiModelConfig, AiModelFormat, DualCaptureConfig, EndpointConfig
 from stt.pipeline.language_modes import (
@@ -199,6 +200,9 @@ _CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
         AiModelFormat.AZURE_FOUNDRY,
         AiModelFormat.SARVAM,
         AiModelFormat.OPENAI,
+        # TASK-1021 — not a vendor key, but the `vllm` connection entry (WHERE to
+        # call, per tenant connection) reaches the loader only on this path.
+        AiModelFormat.VLLM,
     }
 )
 
@@ -3139,7 +3143,12 @@ class SessionManager:
         else:
             raise RuntimeError("Cloud ASR ref has neither an inline definition nor a DB config")
 
-        loader = model_cache._get_loader(model_config.format)
+        # TASK-1021 — a vLLM row is selected by its library, not its artifact format.
+        loader = (
+            model_cache.loader_for(model_config)
+            if is_vllm_served(model_config)
+            else model_cache._get_loader(model_config.format)
+        )
         if loader is None:
             return await model_cache.get_or_load_from_ref(
                 model_ref=asr_ref,
@@ -3212,6 +3221,9 @@ class SessionManager:
             asr_format = asr_ref.inline.engine
         elif db_model_config is not None:
             asr_format = getattr(db_model_config, "format", None)
+            # TASK-1021 — a vLLM row keeps its artifact format; its engine is its library.
+            if is_vllm_served(db_model_config):
+                asr_format = AiModelFormat.VLLM
 
         if provider_overrides and asr_format in _CLOUD_ASR_OVERRIDE_FORMATS:
             asr_model = await self._load_cloud_asr_uncached(

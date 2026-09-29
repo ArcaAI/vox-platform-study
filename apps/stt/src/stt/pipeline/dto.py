@@ -59,6 +59,12 @@ class AiModelFormat(StrEnum):
     # not a DB `format` value, so no Prisma enum migration is implied.
     SARVAM = "SARVAM"  # Sarvam AI speech-to-text (saaras family)
     OPENAI = "OPENAI"  # OpenAI speech-to-text (gpt-4o-transcribe family)
+    # TASK-1021 (contract C-5) — Whisper served by the in-cluster `vllm` service
+    # (`apps/vllm`, OpenAI transcription schema). An stt-side SUPERSET value like
+    # KSERVE on AiModelSource: set by `VllmLoader` on `LoadedModel.format`, never a
+    # Prisma value — a vLLM row keeps its artifact format (SAFETENSOR) and selects
+    # this engine through `libraryName = vllm`. Lowercase by contract.
+    VLLM = "vllm"
 
 
 class AiModelDownloadStatus(StrEnum):
