@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { BillingServiceModule, SellRateCardServiceModule } from '@arcaai/applications';
 
 import { BillingAdminController } from './billing-admin.controller';
-import { MyBillingRedirectShimController } from './my-billing-redirect.shim.controller';
 import { MyBillingController } from './my-billing.controller';
 import { RateCardAdminController } from './rate-card-admin.controller';
 
@@ -13,6 +12,6 @@ import { RateCardAdminController } from './rate-card-admin.controller';
  */
 @Module({
   imports: [BillingServiceModule, SellRateCardServiceModule],
-  controllers: [RateCardAdminController, BillingAdminController, MyBillingController, MyBillingRedirectShimController],
+  controllers: [RateCardAdminController, BillingAdminController, MyBillingController],
 })
 export class BillingApiModule {}

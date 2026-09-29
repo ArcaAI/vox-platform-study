@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { PATH_METADATA } from '@nestjs/common/constants';
 
@@ -11,6 +11,15 @@ const MODULES = join(__dirname, '..', 'modules');
 
 function readController(relativePath: string): string {
   return readFileSync(join(MODULES, relativePath), 'utf-8');
+}
+
+/** Every `*.controller.ts` under `dir`, recursively (tests excluded). */
+function controllerFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === '__tests__' ? [] : controllerFiles(full);
+    return entry.name.endsWith('.controller.ts') ? [full] : [];
+  });
 }
 
 function extractControllerPath(source: string): string | null {
@@ -285,8 +294,11 @@ describe(' business-plane route renames', () => {
   });
 });
 
-describe(' redirect shims answer 308 on every retired prefix', () => {
-  const shims: [string, string][] = [
+// TASK-1012 D-3 — the 308 shims (`DELETE IN ALL-2.0.0`) are gone: a retired prefix is now a plain
+// 404. This pins the ABSENCE, so a shim cannot quietly come back — and no live controller may
+// re-mount a retired prefix either.
+describe('TASK-1012 — the retired prefixes are gone, not redirected', () => {
+  const retired: [string, string][] = [
     ['user/controllers/user-me-redirect.shim.controller.ts', 'user/me'],
     ['tenant/my-tenant-redirect.shim.controller.ts', 'tenant'],
     ['billing/my-billing-redirect.shim.controller.ts', 'billing'],
@@ -299,19 +311,16 @@ describe(' redirect shims answer 308 on every retired prefix', () => {
     ['streaming/text-proxy-redirect.shim.controller.ts', 'text'],
   ];
 
-  it.each(shims)('%s keeps the retired prefix "%s"', (file, expectedPath) => {
-    const source = readController(file);
-    expect(extractControllerPath(source)).toBe(expectedPath);
+  it.each(retired)('%s is deleted', (file) => {
+    expect(existsSync(join(MODULES, file))).toBe(false);
   });
 
-  it.each(shims)('%s redirects with 308 only (never 301/302/307)', (file) => {
-    const source = readController(file);
-    expect(source).toContain('redirect308');
-    expect(source).not.toMatch(/\b30[127]\b/);
+  it.each(retired)('no controller mounts the retired prefix "%s"', (_file, prefix) => {
+    const mounted = controllerFiles(MODULES).filter((file) => extractControllerPath(readFileSync(file, 'utf-8')) === prefix);
+    expect(mounted).toEqual([]);
   });
 
-  it.each(shims)('%s names the release that deletes it', (file) => {
-    const source = readController(file);
-    expect(source).toMatch(/DELETE IN ALL-2\.0\.0/);
+  it('the 308 helper went with them', () => {
+    expect(existsSync(join(__dirname, '..', 'common', 'redirect-shim.ts'))).toBe(false);
   });
 });
