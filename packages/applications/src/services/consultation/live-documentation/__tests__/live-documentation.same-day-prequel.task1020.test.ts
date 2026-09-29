@@ -34,6 +34,8 @@ interface Wiring {
   parent?: Record<string, unknown> | null;
   parentNotes?: Partial<Record<ContextItemType, Array<{ content: string; createdAt: Date }>>>;
   investigations?: unknown;
+  /** The tenant's `consultation.appointmentDay.timeZone`, served by a stub EffectiveSettingsService. */
+  timeZone?: string;
 }
 
 function buildService(wiring: Wiring = {}) {
@@ -104,6 +106,11 @@ function buildService(wiring: Wiring = {}) {
   };
   args[3] = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
   args[5] = contextItemRepository;
+  if (wiring.timeZone !== undefined) {
+    args[9] = {
+      resolveEffective: vi.fn(async (key: string) => ({ value: key === 'consultation.appointmentDay.timeZone' ? wiring.timeZone : undefined })),
+    };
+  }
   args[15] = consultationRepository;
   args[28] = { findById: vi.fn(async () => ({ id: 'dept-1', name: 'Haematology' })) };
 
@@ -149,6 +156,14 @@ describe('TASK-1020 — realtimeRunContext exposes the prequel to agents and fra
 
     expect(context.same_day_prequel).toBe(true);
     expect(context.same_day_prequel_summary).toBe(PREQUEL);
+  });
+
+  it('states the earlier visit`s time in the TENANT`s day zone (live-replay D3: an IST clinic read UTC)', async () => {
+    const { service } = buildService({ parentNotes: MORNING, timeZone: 'Asia/Kolkata' });
+
+    const context = await startedContext(service);
+
+    expect(context.same_day_prequel_summary).toBe('### Earlier visit today (09:45 IST, status SIGNED)\nMORNING-SIGNED plan: CBC, LFT');
   });
 
   it('publishes same_day_prequel = false (a boolean, never absent) for a first visit', async () => {

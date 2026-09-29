@@ -9,6 +9,7 @@ import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.servi
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { ConsultationJobServiceModule } from '../jobs/consultation-job.service.module';
 import { ConfigResolverModule } from '../../config-resolver';
+import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { RedisCacheModule } from '../../baseServices/redis';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger';
@@ -44,6 +45,10 @@ import { ConsultationCompletionTimeoutProcessor } from '../completion-timeout/co
     // Supplies ConfigResolver so assemble can thread the
     // doctor's preferred prompt id (Tier-0) through the async/harness path.
     ConfigResolverModule,
+    // TASK-1020 — supplies the @Optional EffectiveSettingsService the same-day prequel reads the
+    // tenant's day zone (`consultation.appointmentDay.timeZone`) from. No cycle: the module imports
+    // only CommonService, GlobalSetting and CoreDatabase.
+    EffectiveSettingsModule,
     // Supplies IRedisCacheService so the WORM/draft callbacks
     // dedup on the harness Idempotency-Key (best-effort; @Optional in the service).
     RedisCacheModule.register(),
