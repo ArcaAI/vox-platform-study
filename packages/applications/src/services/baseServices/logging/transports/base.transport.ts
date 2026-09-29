@@ -4,6 +4,9 @@
 
 import { type BaseTransportConfig, type ILogTransport, type LogEntry, type LogLevel, type TransportState, shouldLogLevel } from './types';
 
+/** Matches the redactor's cause-walk bound. */
+const MAX_CAUSE_DEPTH = 5;
+
 /**
  * Abstract base class for log transports
  * Provides common functionality like level filtering and state management
@@ -85,16 +88,28 @@ export abstract class BaseTransport implements ILogTransport {
   /**
    * Format error for logging
    */
-  protected formatError(error: unknown): Record<string, unknown> | undefined {
+  protected formatError(error: unknown, depth = 0): Record<string, unknown> | undefined {
     if (!error) return undefined;
 
     if (error instanceof Error) {
+      // `code` (a Prisma `P2002`, a Node `ECONNRESET`, a domain error code) and
+      // the HTTP status are what separate one 5xx from another on a line.
+      // This only ever renders the entry `dispatch()` already redacted, cause
+      // chain included; the depth bound stops a self-referencing cause.
+      const { code, status, statusCode, cause } = error as Error & {
+        code?: unknown;
+        status?: unknown;
+        statusCode?: unknown;
+        cause?: unknown;
+      };
+      const resolvedStatus = status ?? statusCode;
       return {
         name: error.name,
         message: error.message,
+        ...(code !== undefined && code !== null && { code }),
+        ...(resolvedStatus !== undefined && resolvedStatus !== null && { status: resolvedStatus }),
         stack: error.stack,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ...((error as any).cause && { cause: this.formatError((error as any).cause) }),
+        ...(cause !== undefined && cause !== null && depth < MAX_CAUSE_DEPTH && { cause: this.formatError(cause, depth + 1) }),
       };
     }
 
@@ -134,6 +149,7 @@ export abstract class BaseTransport implements ILogTransport {
     if (entry.requestId) log.requestId = entry.requestId;
     if (entry.userId) log.userId = entry.userId;
     if (entry.tenantId) log.tenantId = entry.tenantId;
+    if (entry.credentialClass) log.credentialClass = entry.credentialClass;
     if (entry.serviceName) log.service = entry.serviceName;
     if (entry.serviceVersion) log.version = entry.serviceVersion;
     if (entry.environment) log.env = entry.environment;

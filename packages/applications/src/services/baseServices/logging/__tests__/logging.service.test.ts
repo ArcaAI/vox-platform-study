@@ -178,6 +178,8 @@ describe('LoggingService', () => {
     });
 
     it('should log debug messages', () => {
+      // The level gate is real: below the default `info`, output needs the level opened.
+      service.setLevel('debug');
       service.debug('Debug message', 'TestContext');
 
       expect(mockTransport.logs).toHaveLength(1);
@@ -185,6 +187,7 @@ describe('LoggingService', () => {
     });
 
     it('should log verbose messages as trace', () => {
+      service.setLevel('trace');
       service.verbose('Verbose message', 'TestContext');
 
       expect(mockTransport.logs).toHaveLength(1);
@@ -612,6 +615,7 @@ describe('LoggingService', () => {
       const service = new LoggingService();
       const mockTransport = new MockTransport();
       service.addTransport(mockTransport);
+      service.setLevel('trace');
 
       service.testLogging();
 
