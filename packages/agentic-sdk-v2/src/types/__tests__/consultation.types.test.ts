@@ -292,7 +292,9 @@ describe('isRevisit()', () => {
   });
 
   it('should prefer the top-level parentConsultationId over a stale metadata marker', () => {
-    expect(isRevisit(makeConsultation({ parentConsultationId: null, visitType: 'new-visit', metadata: { parentConsultationId: 'old' } }))).toBe(false);
+    expect(isRevisit(makeConsultation({ parentConsultationId: null, visitType: 'new-visit', metadata: { parentConsultationId: 'old' } }))).toBe(
+      false,
+    );
   });
 
   it('should return true when metadata has parentConsultationId', () => {

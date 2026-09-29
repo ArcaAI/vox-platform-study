@@ -1338,7 +1338,10 @@ export class ConsultationService extends BaseService implements IConsultationSer
     } catch (error) {
       // TASK-1020 D-2 — two opens racing on the same encounter: the partial unique index lets one
       // insert win; the loser returns the winner's row exactly as a re-open would.
-      const winner = externalRef && isUniqueViolation(error) ? await this.findEncounterMatch(tenantId, request, appointmentDate, actingClinicianId, externalRef) : null;
+      const winner =
+        externalRef && isUniqueViolation(error)
+          ? await this.findEncounterMatch(tenantId, request, appointmentDate, actingClinicianId, externalRef)
+          : null;
       if (!winner) throw error;
       const withRelations = await this.consultationRepository.findWithRelations(winner.id);
       return ConsultationDtoMapper.toResponse(withRelations ?? winner, false);
