@@ -700,7 +700,10 @@ export function buildAsrSpecCore(
   // builds every chain (primary, model-level fallback, fallback agent), so all three are covered.
   assertDiarizationBackendSupported(agent, parameters);
   const front = audioFrontEnd(parameters);
-  const models: AsrSpecModels = { asr: toSpecModel(asrModel, 'asr', profile, specModelMetadata(profile, partialWindowSec)), ...auxModels(agent, front) };
+  const models: AsrSpecModels = {
+    asr: toSpecModel(asrModel, 'asr', profile, specModelMetadata(profile, partialWindowSec)),
+    ...auxModels(agent, front),
+  };
   assertVadRunnable(agent, front, models.vad);
   assertDiarizationRunnable(agent, front, models.embedding);
   const decodingBlock = decoding(parameters, profile, sources);

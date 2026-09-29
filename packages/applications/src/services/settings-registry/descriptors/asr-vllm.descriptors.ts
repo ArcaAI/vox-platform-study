@@ -88,7 +88,8 @@ export const ASR_VLLM_SETTINGS: SettingDescriptor[] = [
     key: 'asrVllm.engine.enforceEager',
     dataType: 'boolean',
     label: 'ASR vLLM: skip CUDA-graph capture',
-    description: 'ON skips CUDA-graph capture: a faster cold start (engine load) at the cost of slower steady-state decode. Applies at the next engine build.',
+    description:
+      'ON skips CUDA-graph capture: a faster cold start (engine load) at the cost of slower steady-state decode. Applies at the next engine build.',
     default: ASR_VLLM_DEFAULTS['asrVllm.engine.enforceEager'],
   },
   {
