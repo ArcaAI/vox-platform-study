@@ -118,6 +118,8 @@ class _Resident:
     load_seconds: float
     inflight: int = 0
     last_used: float = 0.0
+    #: The one shutdown of this engine, shared by every caller (release, close).
+    shutdown_task: asyncio.Task[None] | None = None
 
 
 class EnginePool:
@@ -181,22 +183,44 @@ class EnginePool:
     async def refresh_pins(self, resolve: Callable[[str], Awaitable[ResolvedServingSpec]]) -> None:
         """Re-resolve the pool's pinned SLUGS and load what they resolve to now.
 
-        ``resolve`` maps a slug to its spec for the SYSTEM tenant (the caller binds it). The
-        pinned set is replaced BEFORE anything loads, so a key a slug no longer resolves to
-        (an edited row, or a slug dropped from ``pins``) is evictable to make room for the
-        new one. Raises on the first failure; the slugs resolved so far stay pinned.
+        ``resolve`` maps a slug to its spec for the SYSTEM tenant (the caller binds it). Each
+        slug is resolved INDEPENDENTLY: one that fails (its row deleted, disabled or
+        unpublished; a gateway fault) keeps its PREVIOUS spec if it had one — the engine in
+        force keeps serving — and is dropped otherwise, while every other slug moves on. The
+        pinned set is then replaced BEFORE anything loads, so a key a slug no longer resolves
+        to (an edited row, or a slug dropped from ``pins``) is evictable to make room for the
+        new one. Every pin is then warmed, each independently.
+
+        Raises the FIRST failure (resolve or warm) only after all of that is done, so the
+        startup warm-up still fails closed while a refresh never lets one bad pin strand the
+        others.
         """
+        failures: list[Exception] = []
         resolved: dict[str, ResolvedServingSpec] = {}
         for slug in self._pool_config().pins:
-            resolved[slug] = await resolve(slug)
+            try:
+                resolved[slug] = await resolve(slug)
+            except Exception as exc:  # noqa: BLE001 — collected, re-raised at the end
+                failures.append(exc)
+                logger.warning("vllm.pins.resolve_failed", slug=slug, error_type=type(exc).__name__)
+                previous = self._pin_specs.get(slug)
+                if previous is not None:
+                    resolved[slug] = previous
         released = self._pinned - {spec.runtime_key for spec in resolved.values()}
         self._pin_specs = resolved
         for key in sorted(released):
             logger.info("vllm.engine.unpinned", runtime_key=key)
         for slug, spec in resolved.items():
-            _, already = await self.warm(spec)
+            try:
+                _, already = await self.warm(spec)
+            except Exception as exc:  # noqa: BLE001 — collected, re-raised at the end
+                failures.append(exc)
+                logger.warning("vllm.pins.warm_failed", slug=slug, error_type=type(exc).__name__)
+                continue
             if not already:
                 logger.info("vllm.engine.pinned", slug=slug, runtime_key=spec.runtime_key)
+        if failures:
+            raise failures[0]
 
     def inflight(self, runtime_key: str) -> int:
         """Leases currently held on ``runtime_key`` (0 when not resident)."""
@@ -434,6 +458,14 @@ class EnginePool:
         return resident
 
     async def _shutdown(self, resident: _Resident) -> None:
+        """Shut ``resident`` down ONCE. A second caller (``close()`` after a release it
+        cancelled) awaits the same attempt; the attempt itself is shielded, so a cancelled
+        caller never leaves an engine half shut down and retried."""
+        if resident.shutdown_task is None:
+            resident.shutdown_task = asyncio.create_task(self._shutdown_once(resident))
+        await asyncio.shield(resident.shutdown_task)
+
+    async def _shutdown_once(self, resident: _Resident) -> None:
         try:
             await resident.engine.shutdown()
         except Exception as exc:  # noqa: BLE001 — a failed shutdown must not fail a request

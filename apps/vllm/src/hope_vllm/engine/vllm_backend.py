@@ -215,6 +215,7 @@ class VllmWhisperEngine:
         self._spec = spec
         self._count_tokens = count_tokens
         self._max_model_len = max_model_len
+        self._shutdown_task: asyncio.Future[None] | None = None
 
     async def transcribe(self, request: DecodeRequest) -> DecodeResult:
         api = self._api
@@ -259,7 +260,11 @@ class VllmWhisperEngine:
         )
 
     async def shutdown(self) -> None:
-        await asyncio.to_thread(self._engine.shutdown)
+        """Idempotent: every caller awaits the ONE shutdown (the thread cannot be cancelled
+        anyway, so a second call would only shut a stopping engine down again)."""
+        if self._shutdown_task is None:
+            self._shutdown_task = asyncio.ensure_future(asyncio.to_thread(self._engine.shutdown))
+        await asyncio.shield(self._shutdown_task)
 
 
 def _engine_queue_ms(output: Any) -> float | None:

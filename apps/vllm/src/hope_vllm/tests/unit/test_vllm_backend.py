@@ -413,3 +413,12 @@ async def test_shutdown_stops_the_engine(fake_vllm, factory) -> None:  # type: i
     engine = await factory.build(make_spec())
     await engine.shutdown()
     assert fake_vllm.created[0].shutdown_called is True
+
+
+async def test_engine_shutdown_is_idempotent(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+    calls: list[int] = []
+    engine = await factory.build(make_spec())
+    fake_vllm.created[0].shutdown = lambda: calls.append(1)
+    await asyncio.gather(engine.shutdown(), engine.shutdown())
+    await engine.shutdown()
+    assert calls == [1]
