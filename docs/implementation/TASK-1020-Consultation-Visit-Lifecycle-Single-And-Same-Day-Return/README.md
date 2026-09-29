@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — owner answered all ODs as recommended and said **go** (2026-09-29) |
+| Status | **Review** — merged locally on `dev-2.2` and ALaaS `refactor-hope-integaration`, NOT pushed; gates green; lifecycle proven live; the audio replay with prompt capture is pending the rollout steps in §9.4 |
 | Type | feature + bugfix (lifecycle correctness) |
 | Branch | `dev-2.2` (hope-v2) · `refactor-hope-integaration` (ALaaSv3.0) |
 | Repos | `arca/hope-v2` (DB, domains, applications, api, vox-node, vox, seeds), `ALaaSv3.0` (`apps/audio-stream-svc`, `apps/web_ui`) |
@@ -245,16 +245,77 @@ These are TDD lanes. Each lane runs only its own RED→GREEN files; the one gate
 - **OD-10 governed resume re-finalise.**
 - **SYSTEM reference workflow `general-medicine-consultation`** has no visit split and no `documentTemplateSlug`, so every non-ArcaAI tenant gets the 4-section fail-open shape for revisits.
 - **Governing-engine re-finalise bypass** (`harness-gateway.service.ts:403-416`) for governed consultations.
-- **`persistDraft` adopting a RAW_SUMMARY with no approval check** (`harness-internal.service.ts:1478-1549`). The harness side is unverified; L-OPEN proves or refutes it with one test and records the result.
 - **ALaaS store.** A Redis-backed session store and horizontal scale (integration plan §3.3).
 
 ## 9. Implementation summary
 
-_Not started — awaiting go._
+### 9.1 What changed, per lane
+
+| Lane (tier) | Repo · merge | Delivered |
+|---|---|---|
+| L-OPEN (opus) | hope-v2 `b1af8ef92` | `Consultation.externalRef` column + `Consultation_encounterKey_idx`; `findByExternalRef`; legacy lookup newest-first, no longer swallows errors; open keyed on the encounter (same ref = same row, new ref = new consultation, `EXTERNAL_REF_CONFLICT` across patients); legacy key + `parentConsultationId === match` creates a child; OD-4 derived same-day parent for `revisit`; `PARENT_PATIENT_MISMATCH`; `recording.start` bypass kept for `OPEN` only, otherwise 409 `CONSULTATION_NOT_RECORDABLE`; illegal transitions carry `CONSULTATION_TRANSITION_ILLEGAL`; `ConsultationResponse` gains `recordable`, `visitType`, `externalRef`; setting `consultation.appointmentDay.timeZone`; dead `createRevisit` removed |
+| L-CARRY (opus) | hope-v2 `81ffc5275` | `same-day-prequel.ts` (walks the parent chain, same patient and day, signed > modified > raw, 6000-char blocks); `same_day_prequel_summary` and `formatted_test_results` (from `investigations`) wired into the live lane, harness assemble, prompt assembly and pre-summary; `trigger.context.same_day_prequel` on the live scope and the handoff; **`persistDraft` no longer overwrites a signed note** (the probe found a real defect: an approved RAW_SUMMARY was rewritten on re-delivery; now skipped with a warn log) |
+| L-CONTENT (sonnet) | hope-v2 `309d310f3` | `investigations` kind on `arcaai_consultation_scribe`; fragment `same_day_return` (tag `arcaai-same-day-return`, `when: has(trigger.context.same_day_prequel) && trigger.context.same_day_prequel == true`) bound to the 11 revisit agents only, between `clinical_note` and the language policy; `29-*.generated.ts` regenerated |
+| L-SDK (sonnet) | hope-v2 `e6c50fd25` | vox-node: typed `ConsultationOpenResponse` (status union, `visitType`, `externalRef`, `recordable`, `parentConsultationId?`), `ConflictError` (+ `QuotaExceededError extends ConflictError`, quota code only), `waitForFinalNote` with `FinalNoteUnavailableError` / `FinalNoteTimeoutError`, `chain()`, doc fixes. vox: real 12-value `ConsultationStatus` (+ `LegacyConsultationStatus`), `OpenSessionInput.parentConsultationId/context/metadata`, memo keeps `isNew/version/language/parent/status/visitType/recordable/externalRef`, `isRevisit` fixed. Changeset: minor (4.1.0) |
+| Orchestrator | hope-v2 `62ebde1a0`, `93b84ce7b`, `0681017da` | Migration `20260929153857_task_1020_consultation_external_ref` (column, legacy-marker backfill keeping the newest per key, lookup index, partial unique index); racing-open recovery (the loser of the unique index returns the winner row); vox-node `parentConsultationId` optional (the gateway omits it for a first visit); admin-console playground treats SIGNED / CLOSED_COMPLETE / CLOSED_INCOMPLETE as closed; openapi, portal specs and vox-node admin schemas regenerated; prettier |
+| L-ALS (opus) | ALaaS `0e6b773` | `buildExternalRef` = `eventId` (`ENCOUNTER_ID_REQUIRED` without one); no `appointmentDate`; admin-plane parent search removed (HOPE derives it); identity frame carries `consultationStatus`, `recordable`, `parentConsultationId`, `isNew`; `recordable:false` means no STT session and no recording, emitting `CONSULTATION_NOT_RECORDABLE`; `waitForFinalNote({ since })` replaces the unbaselined poll; `visit.prequel` downlink + web_ui "Return visit" chip and read-only earlier-note panel; `investigations` pass-through (no EMR source exists today); EMR copy on a signed consultation compares content first, storing `emr_updated_after_signoff` rather than `closed`, and the single-flight is keyed by content; `ALAAS_DETACH_GRACE_MS` (90 s); resume replays frames after `lastSeq`; error copy for `SESSION_LOST` / `CONSULTATION_NOT_RECORDABLE` / `ENCOUNTER_ID_REQUIRED` / `EXTERNAL_REF_CONFLICT` / `PARENT_PATIENT_MISMATCH` |
+
+Deviations accepted by the orchestrator:
+- **Consent on re-open (D-6) dropped.** `ensureConsultationConsent` GRANTS rather than checks, so calling it on re-open would undo a patient's revocation. Re-open stays consent-silent and a test pins that.
+- **D-10 replaced.** The prequel is produced from the parent chain unconditionally; the graphs' `carryForward` stays off, because turning it on would inject the morning note twice.
+- **Fragment key** is `same_day_return`, because keys cannot contain hyphens.
+
+### 9.2 Gates (one pass after the full merge)
+
+| Package | test | typecheck | lint |
+|---|---|---|---|
+| `@arcaai/database` | 107 files / 1982 tests ✓ | ✓ | (no lint script) |
+| `@arcaai/domains` | 178 files / 2003 tests ✓ | ✓ | ✓ |
+| `@arcaai/applications` | 1000 files / 15379 tests ✓ | ✓ | ✓ |
+| `@arcaai/api` | 356 files / 4657 tests ✓ | ✓ | ✓ |
+| `@arcaai/vox-node` | 41 files / 605 tests ✓ | ✓ | ✓ |
+| `@arcaai/vox` | 216 files / 3298 tests ✓ | ✓ | ✓ |
+| `@arcaai/admin-console` | — | ✓ | — |
+
+- `gen:model` / `gen:entity` / `gen:factory` checks: no drift, and schema coverage is OK.
+- The shadow-DB `migrate diff` after the migration prints an empty migration.
+- No new lint warning sits on a TASK-1020 line: every flagged line blames to an earlier commit.
+- Three files the lanes touched were already prettier-dirty before this ticket; they are left as they were.
+
+ALaaS, run in the worktree against the built vox-node:
+- `tsc` is clean.
+- `jest src/consultation src/medical_summary`: 643/643.
+  - `consultation.gateway.spec` "re-attaches … with resume" is flaky. It failed 1 of 3 runs on the pre-merge base `c8bbeca` and 0 of 3 on the merge.
+- `web_ui` `node --test`: 503/515. The 12 failures are the known pre-existing department-code and prior-case-notes tests.
+
+### 9.3 Runtime proof (dev stack, real gateway + Postgres, vox-node 4.1.0 build, ArcaAI service account)
+
+```
+1 morning open E1       {"isNew":true,"status":"OPEN","visitType":"new-visit","externalRef":"E1","recordable":true,"parent":null,"date":"2026-09-29"}
+2 re-open E1 (retry)    {"id":<same as 1>,"isNew":false, ...}
+3 afternoon open E2     {"isNew":true,"visitType":"revisit","externalRef":"E2","parent":<id of 1>}   ← new consultation, server-derived parent
+4 racing opens E3       [{"id":X,"isNew":true},{"id":X,"isNew":false}]                              ← one row
+5 chain(E2)             [morning, afternoon]
+   (morning row set to SIGNED directly in the DB — my own proof row)
+6 re-open signed E1     {"status":"SIGNED","recordable":false}
+7 recording.start SIGNED: ConflictError 409 CONSULTATION_NOT_RECORDABLE   (kill-switch OFF; status stays SIGNED)
+```
+
+Side effect: the first attempt provisioned a dev clinician `auto_6a0b79169f3dec35` with staff id `arcaai_doctor`. That is TASK-950 find-or-provision, working as designed. It was reused for the proof and left in place.
+
+### 9.4 Still open (rollout, needs the owner)
+
+1. **Content rollout.** Republish the 11 ArcaAI revisit agents per tenant so the new fragment is frozen into their published versions (publish freezes fragments; TASK-1001 precedent). Do this on the dev cluster, and locally with a reseed. Then run the two-visit **audio** replay with a prompt capture (§7.3 wave 3, steps 1–3); that is the remaining verification.
+2. **Tenant setting.** Write `consultation.appointmentDay.timeZone = Asia/Kolkata` on the ArcaAI tenant through the admin API, and read it back.
+3. **SDK release.** Publish SDK 4.1.0 locally per the runbook (`changeset version` → publish → tag `SDK-4.1.0`).
+4. **ALaaS dependency bump.** Bump `@arcaai/vox-node` / `@arcaai/vox-codegen` to 4.1.0 with its lockfile in one commit, then re-run `vox-codegen --tenant` so the generated types include `investigations`. Until then the ALaaS primary does not build: it still has 4.0.0, which lacks `waitForFinalNote`.
+5. **Pushes (OD-12).** Push `dev-2.2` (CI promotes to dev) and push ALaaS `refactor-hope-integaration`.
+6. **Stale ALaaS doc.** `docs/hope-integration/02-vox-node-adapter.md` still describes `findLatestConsultation`.
 
 ## 10. Change history
 
 | Date | Change |
 |---|---|
+| 2026-09-29 | Wave 1 + 2 merged (hope-v2 `b1af8ef92`…`0681017da`, ALaaS `0e6b773`), migration authored on the shadow DB, gate pass green, lifecycle proven live (§9.3). Status → Review. Deviations recorded in §9.1. |
 | 2026-09-29 | Owner: all ODs as recommended, TASK-1020 confirmed, go. Wave 1 lanes L-OPEN, L-CARRY, L-CONTENT, L-SDK spawned in sibling worktrees `../hope-v2-task-1020-<lane>`. |
 | 2026-09-29 | Plan written from a four-lane read-only discovery: HOPE lifecycle, SDKs, ALaaS broker/web_ui, content. Deciding facts re-verified by the orchestrator: `consultation.service.ts:1143-1177`, `:2296-2330`; `ConsultationEntity.ts:39-78`; `consultation-event.handler.ts:132-170, 470-495`; `visit-type.catalogue.ts:1-30`. |
