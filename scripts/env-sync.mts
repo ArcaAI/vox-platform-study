@@ -27,7 +27,7 @@
  *   • `apps/api/.env.sample` the platform contract beyond the floor
  *   • `apps/admin-console/.env.sample` the console's own contract
  *   • `packages/tools/.env.sample` the generator knob
- *   • `apps/{stt,text,guardrail,nlp,harness,tts}/.env.sample`
+ *   • `apps/{stt,text,guardrail,nlp,harness,tts,asr-vllm}/.env.sample`
  *                                          the six Python services, generated
  *                                          from their pydantic-settings
  * declarations
@@ -139,7 +139,7 @@ const PYTHON_MANIFEST_PATH = 'scripts/generated/python-env-surface.json';
 const pythonManifest: PythonManifest = JSON.parse(readFileSync(join(ROOT, PYTHON_MANIFEST_PATH), 'utf8'));
 
 /** Fixed rendering order, so the consolidated file is stable across runs. */
-const PYTHON_SERVICES = ['guardrail', 'harness', 'nlp', 'stt', 'text', 'tts'] as const;
+const PYTHON_SERVICES = ['asr-vllm', 'guardrail', 'harness', 'nlp', 'stt', 'text', 'tts'] as const;
 
 /**
  * Local-dev values that are NOT the code default — the only hand-owned data in
@@ -264,6 +264,7 @@ const SERVICE_PREFIX: ReadonlyArray<readonly [string, string]> = [
     ['NLP_', 'apps/nlp'],
     ['HARNESS_', 'apps/harness'],
     ['TTS_', 'apps/tts'],
+    ['ASR_VLLM_', 'apps/asr-vllm'],
     ['TEMPORAL_', 'apps/harness'],
 ];
 

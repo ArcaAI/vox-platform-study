@@ -52,6 +52,7 @@ const RUNNABLE_DOCKERFILES: DockerfileCase[] = [
   { path: 'apps/nlp/Dockerfile', label: 'nlp' },
   { path: 'apps/guardrail/Dockerfile', label: 'guardrail' },
   { path: 'apps/tts/Dockerfile', label: 'tts' },
+  { path: 'apps/asr-vllm/Dockerfile', label: 'asr-vllm' },
   { path: 'apps/harness/Dockerfile', label: 'harness + harness-worker' },
   { path: 'apps/stt/docker/Dockerfile', label: 'stt-ml-runtime + stt-worker' },
   { path: 'packages/database/Dockerfile', label: 'database' },

@@ -1,7 +1,97 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 353,
+  "distinctNames": 363,
   "services": {
+    "asr-vllm": {
+      "port": 8867,
+      "title": "Whisper decode on vLLM",
+      "fields": [
+        {
+          "name": "ASR_VLLM_ENFORCE_EAGER",
+          "aliases": [],
+          "class": "Settings",
+          "field": "enforce_eager",
+          "prefix": "ASR_VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "boolean",
+          "default": "false",
+          "description": "Skip CUDA-graph capture (faster cold start, slower steady state)."
+        },
+        {
+          "name": "ASR_VLLM_GPU_MEMORY_UTILIZATION",
+          "aliases": [],
+          "class": "Settings",
+          "field": "gpu_memory_utilization",
+          "prefix": "ASR_VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 0.5,
+          "description": "vLLM engine tuning \u2014 SPIKE DEVIATION (see module docstring) Fraction of the WHOLE GPU's memory each engine may claim (weights + KV/encoder cache). A time-sliced GPU has no memory isolation, so on a shared card this is the service's budget share, not \"how much is free\". 0.5 of a 16 GB RTX 2000 Ada holds Whisper-turbo fp16 (~1.6 GB) with cache room for ~64 sequences."
+        },
+        {
+          "name": "ASR_VLLM_MAX_NUM_SEQS",
+          "aliases": [],
+          "class": "Settings",
+          "field": "max_num_seqs",
+          "prefix": "ASR_VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 64,
+          "description": "vLLM's running-batch cap \u2014 the ceiling on concurrent windows in one engine."
+        },
+        {
+          "name": "ASR_VLLM_MAX_RESIDENT_ENGINES",
+          "aliases": [],
+          "class": "Settings",
+          "field": "max_resident_engines",
+          "prefix": "ASR_VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 1,
+          "description": "Engines resident at once (one per runtime key). Each claims `gpu_memory_utilization`, so the product must fit one card (validated below)."
+        },
+        {
+          "name": "ASR_VLLM_TRUNCATION_MIN_CHARS_PER_VOICED_SECOND",
+          "aliases": [],
+          "class": "Settings",
+          "field": "truncation_min_chars_per_voiced_second",
+          "prefix": "ASR_VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 3.0,
+          "description": "Truncation heuristic (vllm#53144 hook) \u2014 SPIKE DEVIATION"
+        },
+        {
+          "name": "ASR_VLLM_TRUNCATION_VOICED_DBFS",
+          "aliases": [],
+          "class": "Settings",
+          "field": "truncation_voiced_dbfs",
+          "prefix": "ASR_VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": -40.0,
+          "description": ""
+        },
+        {
+          "name": "INTERNAL_ACCESS_TOKEN",
+          "aliases": [],
+          "class": "Settings",
+          "field": "internal_access_token",
+          "prefix": "ASR_VLLM_",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "Inbound credential (owner decision D-D): the ONE shared internal token, accepted as `X-Service-Token`. Unprefixed on purpose \u2014 it belongs to no single service. Empty \u21d2 auth bypassed, but only when running locally (core/service_auth)."
+        }
+      ]
+    },
     "guardrail": {
       "port": 8863,
       "title": "Safety Engine",
@@ -2466,6 +2556,54 @@
           "description": "Device for pyannote inference (auto, cuda, cpu)"
         },
         {
+          "name": "FASTER_WHISPER_BATCH_ENABLED__MOVED_TO_CONTROL_PLANE",
+          "aliases": [],
+          "class": "Settings",
+          "field": "faster_whisper_batch_enabled",
+          "prefix": "",
+          "required": false,
+          "secret": false,
+          "dataType": "boolean",
+          "default": "false",
+          "description": "Decode windows from concurrent streaming sessions on one faster-whisper model as one batch. Applies to sessions started after the change."
+        },
+        {
+          "name": "FASTER_WHISPER_BATCH_MAX_BATCH_SIZE__MOVED_TO_CONTROL_PLANE",
+          "aliases": [],
+          "class": "Settings",
+          "field": "faster_whisper_batch_max_batch_size",
+          "prefix": "",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 8,
+          "description": "Most windows one cross-stream batch decodes at once."
+        },
+        {
+          "name": "FASTER_WHISPER_BATCH_MAX_QUEUE__MOVED_TO_CONTROL_PLANE",
+          "aliases": [],
+          "class": "Settings",
+          "field": "faster_whisper_batch_max_queue",
+          "prefix": "",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 256,
+          "description": "Windows allowed to wait per model; beyond it a decode fails fast."
+        },
+        {
+          "name": "FASTER_WHISPER_BATCH_MAX_WAIT_MS__MOVED_TO_CONTROL_PLANE",
+          "aliases": [],
+          "class": "Settings",
+          "field": "faster_whisper_batch_max_wait_ms",
+          "prefix": "",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 25,
+          "description": "Longest a window waits for batch-mates before a partial batch decodes."
+        },
+        {
           "name": "HUGGINGFACE_CACHE_DIR",
           "aliases": [],
           "class": "Settings",
@@ -3699,6 +3837,7 @@
       "apps/harness/src/harness/eval/judge/selection.py"
     ],
     "DEPLOYMENT_ENVIRONMENT": [
+      "apps/asr-vllm/src/asr_vllm/core/service_auth.py",
       "apps/guardrail/src/guardrail/main.py",
       "apps/harness/src/harness/core/config.py",
       "apps/stt/src/stt/core/service_auth.py",

@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 111 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
-| Python declared fields | 300 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 353 |
-| `turbo.json#globalEnv` entries | 506 |
+| Python declared fields | 311 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 363 |
+| `turbo.json#globalEnv` entries | 516 |
 
 ## Variables — the TypeScript platform surface
 
@@ -186,12 +186,22 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `API_GATEWAY_URL` | `apps/stt` | no | no | `http://localhost:8868/api/v1` | commented | — |
 | `APP_NAME__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `stt` | commented | — |
 | `APP_VERSION__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `2.0.0` | commented | — |
+| `ASR_VLLM_ENFORCE_EAGER` | `apps/asr-vllm` | no | no | `false` | commented | — |
+| `ASR_VLLM_GPU_MEMORY_UTILIZATION` | `apps/asr-vllm` | no | no | `0.5` | commented | — |
+| `ASR_VLLM_MAX_NUM_SEQS` | `apps/asr-vllm` | no | no | `64` | commented | — |
+| `ASR_VLLM_MAX_RESIDENT_ENGINES` | `apps/asr-vllm` | no | no | `1` | commented | — |
+| `ASR_VLLM_TRUNCATION_MIN_CHARS_PER_VOICED_SECOND` | `apps/asr-vllm` | no | no | `3` | commented | — |
+| `ASR_VLLM_TRUNCATION_VOICED_DBFS` | `apps/asr-vllm` | no | no | `-40` | commented | — |
 | `AZURE_STORAGE_ACCOUNT` | `apps/stt` | no | no | `` | commented | — |
 | `AZURE_STORAGE_ACCOUNT_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `AZURE_STORAGE_CONNECTION_STRING` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `AZURE_STORAGE_ENDPOINT_SUFFIX` | `apps/stt` | no | no | `core.windows.net` | commented | — |
 | `CORS_ORIGINS` | `apps/stt` | no | no | `[]` | commented | — |
 | `DIARIZATION_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `auto` | commented | — |
+| `FASTER_WHISPER_BATCH_ENABLED__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `false` | commented | — |
+| `FASTER_WHISPER_BATCH_MAX_BATCH_SIZE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `8` | commented | — |
+| `FASTER_WHISPER_BATCH_MAX_QUEUE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `256` | commented | — |
+| `FASTER_WHISPER_BATCH_MAX_WAIT_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `25` | commented | — |
 | `GUARDRAIL_CONFIG_CACHE_TTL_S` | `apps/guardrail` | no | no | `60` | commented | — |
 | `GUARDRAIL_DATABASE_URL` | `apps/guardrail` | no | no | `postgresql+asyncpg://postgres:postgres@localhost:5432/hope` | commented | — |
 | `GUARDRAIL_MAX_OVERFLOW` | `apps/guardrail` | no | no | `10` | commented | — |
@@ -322,6 +332,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_TEXT_TIMEOUT_S` | `apps/harness` | no | no | `120` | commented | — |
 | `HF_HOME` | `apps/nlp` | no | no | `` | live | `NLP_HF_HOME` |
 | `HUGGINGFACE_CACHE_DIR` | `apps/stt` | no | no | `<home>/.cache/huggingface/hub` | commented | — |
+| `INTERNAL_ACCESS_TOKEN` | `apps/asr-vllm` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/guardrail` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/nlp` | no | yes | `CHANGE_ME` | live | `NLP_INTERNAL_ACCESS_TOKEN` |
@@ -490,7 +501,7 @@ promotion into its service’s `BaseSettings`.
 | Variable | Read by |
 |---|---|
 | `DATABASE_URL` | `apps/harness/src/harness/eval/judge/selection.py` |
-| `DEPLOYMENT_ENVIRONMENT` | `apps/guardrail/src/guardrail/main.py`, `apps/harness/src/harness/core/config.py`, `apps/stt/src/stt/core/service_auth.py`, `apps/stt/src/stt/main.py`, `apps/stt/src/stt/worker.py`, `apps/tts/src/tts/core/config.py`, `apps/tts/src/tts/core/service_auth.py`, `packages/py-obs/src/hope_obs/config.py` |
+| `DEPLOYMENT_ENVIRONMENT` | `apps/asr-vllm/src/asr_vllm/core/service_auth.py`, `apps/guardrail/src/guardrail/main.py`, `apps/harness/src/harness/core/config.py`, `apps/stt/src/stt/core/service_auth.py`, `apps/stt/src/stt/main.py`, `apps/stt/src/stt/worker.py`, `apps/tts/src/tts/core/config.py`, `apps/tts/src/tts/core/service_auth.py`, `packages/py-obs/src/hope_obs/config.py` |
 | `EXPORTER_INTERVAL_SECONDS` | `infrastructure/gpu-process-exporter/exporter.py` |
 | `EXPORTER_PORT` | `infrastructure/gpu-process-exporter/exporter.py` |
 | `HARNESS_GOLDEN_SET_PATH` | `apps/harness/eval/promptfoo/tests.py` |
