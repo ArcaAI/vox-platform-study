@@ -67,6 +67,45 @@ describe('ProviderConnectionProbe — the platform key never leaves for a tenant
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  // Final review C2: `apiKey: null` (IsOptional skips null) and a whitespace key
+  // (passes MinLength) both CLEAN to "no key", so the platform key would be used —
+  // the endpoint lock must follow the cleaned key, not `=== undefined`.
+  for (const [label, apiKey] of [
+    ['null', null],
+    ['whitespace', '   '],
+    ['tab-only', '\t'],
+  ] as const) {
+    it(`S1c: a ${label} apiKey does not unlock the endpoint — 400, no decrypt, no fetch`, async () => {
+      const fetchSpy = vi.fn(async () => ({ ok: true, status: 200 }));
+      vi.stubGlobal('fetch', fetchSpy);
+      const probe = new ProviderConnectionProbe(
+        connections({ [SYSTEM_TENANT_ID]: platformRow('llm', 'openai', 'https://api.openai.com/v1') }) as any,
+        secrets as any,
+      );
+
+      const call = probe.test('llm', 'openai', TENANT, { apiKey: apiKey as any, baseUrl: 'https://attacker.example' });
+
+      await expect(call).rejects.toMatchObject({ response: { code: CONNECTION_ERROR_CODES.PLATFORM_KEY_ENDPOINT_LOCKED } });
+      expect(secrets.decrypt).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+  }
+
+  it('S1d: a null apiKey restating the platform endpoint probes on the platform key — and says so (source: platform)', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    const probe = new ProviderConnectionProbe(
+      connections({ [SYSTEM_TENANT_ID]: platformRow('llm', 'openai', 'https://api.openai.com/v1') }) as any,
+      secrets as any,
+    );
+
+    const res = await probe.test('llm', 'openai', TENANT, { apiKey: null as any, baseUrl: 'https://api.openai.com/v1' });
+
+    expect(secrets.decrypt).toHaveBeenCalledTimes(1);
+    expect(String((fetchSpy.mock.calls[0] as any)[0])).toBe('https://api.openai.com/v1/models');
+    expect(res.source).toBe('platform');
+  });
+
   it('S2: tenant, no own row, no endpoint in the body → probes the STORED platform endpoint', async () => {
     const fetchSpy = vi.fn(async () => ({ ok: true, status: 200 }));
     vi.stubGlobal('fetch', fetchSpy);
