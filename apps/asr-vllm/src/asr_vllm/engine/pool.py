@@ -104,7 +104,7 @@ class EnginePool:
             "loaded": [
                 {
                     "runtime_key": key,
-                    "slug": r.spec.slug,
+                    "slug": r.spec.model.slug,
                     "inflight": r.inflight,
                     "load_seconds": round(r.load_seconds, 3),
                 }
@@ -160,7 +160,7 @@ class EnginePool:
     async def _load(self, spec: ResolvedVllmAsrSpec) -> _Resident:
         key = spec.runtime_key
         started = self._clock()
-        logger.info("asr_vllm.engine.load_started", runtime_key=key, slug=spec.slug)
+        logger.info("asr_vllm.engine.load_started", runtime_key=key, slug=spec.model.slug)
         try:
             if self._before_build is not None:
                 await self._before_build()

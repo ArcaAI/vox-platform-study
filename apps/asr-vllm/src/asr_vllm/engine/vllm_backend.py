@@ -67,12 +67,25 @@ def resolve_max_tokens(requested: int | None, *, max_model_len: int, prompt_toke
     return budget if requested is None else min(requested, budget)
 
 
+def _load_target(spec: ResolvedVllmAsrSpec) -> tuple[str, str | None]:
+    """The published directory, else the HF repo id at the row's pinned revision."""
+    model = spec.model
+    if model.local_path:
+        return model.local_path, None
+    uri = model.source_uri.strip()
+    for prefix in ("hf://", "huggingface://"):
+        if uri.startswith(prefix):
+            return uri[len(prefix) :], model.source_revision
+    return uri, model.source_revision
+
+
 def _hf_token_counter(spec: ResolvedVllmAsrSpec) -> Callable[[str], int]:
     """Count decoder-prompt tokens with the checkpoint's own tokenizer (``transformers``
     ships with vLLM). Special tokens written in the text resolve to their single ids."""
     from transformers import AutoTokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(spec.load_target, revision=spec.load_revision)
+    target, revision = _load_target(spec)
+    tokenizer = AutoTokenizer.from_pretrained(target, revision=revision)
 
     def count(text: str) -> int:
         return len(tokenizer(text, add_special_tokens=False)["input_ids"])
@@ -192,19 +205,21 @@ class VllmEngineFactory:
         from vllm.v1.engine.async_llm import AsyncLLM
 
         settings = self._settings
+        model = spec.model
+        target, revision = _load_target(spec)
         args = AsyncEngineArgs(
-            model=spec.load_target,
-            revision=spec.load_revision,
-            dtype=spec.compute_type or "auto",
-            quantization=spec.quantization,
-            max_model_len=spec.max_model_len,
+            model=target,
+            revision=revision,
+            dtype=model.compute_type or "auto",
+            quantization=model.quantization,
+            max_model_len=model.max_model_len,
             gpu_memory_utilization=settings.gpu_memory_utilization,
             max_num_seqs=settings.max_num_seqs,
             enforce_eager=settings.enforce_eager,
             limit_mm_per_prompt={"audio": 1},
         )
         engine = AsyncLLM.from_engine_args(args)
-        max_model_len = spec.max_model_len or int(engine.model_config.max_model_len)
+        max_model_len = model.max_model_len or int(engine.model_config.max_model_len)
         logger.info(
             "asr_vllm.vllm.engine_started",
             runtime_key=spec.runtime_key,

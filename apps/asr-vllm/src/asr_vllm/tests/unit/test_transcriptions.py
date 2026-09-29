@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from asr_vllm.core.config import Settings
 from asr_vllm.main import create_app
 from asr_vllm.tests.conftest import (
+    DROP,
     TENANT_ID,
     pcm16_b64,
     spec_payload,
@@ -81,7 +82,10 @@ async def test_malformed_audio_is_refused_by_name(client) -> None:  # type: igno
         {"format": "WHISPER_CPP"},  # a GGUF row cannot load in vLLM — fail closed
         {"format": "FASTER_WHISPER"},
         {"runtimeKey": ""},
-        {"unexpectedField": 1},  # contract drift is an error, never a silent drop
+        # The registry identity must be present — a body without it is not a resolver's.
+        {"runtimeKey": DROP},
+        {"tenantId": DROP},
+        {"checksum": DROP},
     ],
 )
 async def test_a_spec_this_engine_cannot_serve_is_refused(client, factory, override) -> None:  # type: ignore[no-untyped-def]
