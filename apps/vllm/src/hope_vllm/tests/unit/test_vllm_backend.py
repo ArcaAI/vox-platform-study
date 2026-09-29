@@ -29,8 +29,8 @@ from hope_vllm.engine.vllm_backend import (
     build_decoder_prompt,
     resolve_max_tokens,
 )
-from hope_vllm.spec import AsrModelSlice, ResolvedVllmAsrSpec
-from hope_vllm.tests.conftest import spec_payload
+from hope_vllm.spec import ResolvedServingSpec
+from hope_vllm.tests.conftest import serving_spec_payload
 
 
 class FakeAsyncLLM:
@@ -116,9 +116,9 @@ class FakeResolver:
     """Records what the factory asks to resolve; returns a local directory (OD-7)."""
 
     def __init__(self) -> None:
-        self.calls: list[AsrModelSlice] = []
+        self.calls: list[ResolvedServingSpec] = []
 
-    async def resolve(self, model: AsrModelSlice) -> Path:
+    async def resolve(self, model: ResolvedServingSpec) -> Path:
         self.calls.append(model)
         return RESOLVED_DIR
 
@@ -162,8 +162,8 @@ def factory(
     )
 
 
-def make_spec(**overrides: object) -> ResolvedVllmAsrSpec:
-    return ResolvedVllmAsrSpec.model_validate(spec_payload(**overrides))
+def make_spec(**overrides: object) -> ResolvedServingSpec:
+    return ResolvedServingSpec.model_validate(serving_spec_payload(**overrides))
 
 
 def decode_request(**overrides: Any) -> DecodeRequest:
@@ -235,7 +235,7 @@ async def test_build_passes_the_resolved_spec_and_engine_tuning(  # type: ignore
     spec = make_spec(quantization="fp8", maxModelLen=448, computeType="bfloat16")
     await factory.build(spec)
 
-    assert resolver.calls == [spec.model]
+    assert resolver.calls == [spec]
     (engine,) = fake_vllm.created
     kwargs = engine.args.kwargs
     assert kwargs["model"] == str(RESOLVED_DIR)  # the resolved LOCAL directory

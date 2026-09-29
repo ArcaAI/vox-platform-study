@@ -18,8 +18,8 @@ from pydantic import SecretStr
 
 from hope_vllm.core.model_credentials import CredentialOutcome, ModelRegistryCredential
 from hope_vllm.models.source_resolver import ModelSourceError, ModelSourceResolver
-from hope_vllm.spec import AsrModelSlice, ResolvedVllmAsrSpec
-from hope_vllm.tests.conftest import spec_payload
+from hope_vllm.spec import ResolvedServingSpec
+from hope_vllm.tests.conftest import serving_spec_payload
 
 OWNER = "50000000-0000-0000-0000-000000000000"
 REPO = "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16"
@@ -61,8 +61,8 @@ DENIED = ModelRegistryCredential(outcome=CredentialOutcome.DENIED, reason="vetoe
 UNAVAILABLE = ModelRegistryCredential.unavailable("gateway down")
 
 
-def model(**overrides: object) -> AsrModelSlice:
-    return ResolvedVllmAsrSpec.model_validate(spec_payload(**overrides)).model
+def model(**overrides: object) -> ResolvedServingSpec:
+    return ResolvedServingSpec.model_validate(serving_spec_payload(**overrides))
 
 
 def resolver(

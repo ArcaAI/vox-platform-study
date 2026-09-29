@@ -50,7 +50,7 @@ from hope_vllm.core.model_credentials import (
     owner_tenant_of,
 )
 from hope_vllm.engine.base import EngineBuildRefused
-from hope_vllm.spec import AsrModelSlice
+from hope_vllm.spec import ResolvedServingSpec
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from hope_vllm.core.config import Settings
@@ -119,7 +119,7 @@ class ModelSourceResolver:
             cache_dir=settings.weights_cache_dir,
         )
 
-    async def resolve(self, model: AsrModelSlice) -> Path:
+    async def resolve(self, model: ResolvedServingSpec) -> Path:
         """``model`` → the LOCAL directory vLLM loads. Raises :class:`ModelSourceError`."""
         if model.local_path:
             path = Path(model.local_path)
@@ -202,7 +202,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def verify_checksum(directory: Path, model: AsrModelSlice) -> None:
+def verify_checksum(directory: Path, model: ResolvedServingSpec) -> None:
     """Verify ``model.checksum`` where the published manifest says which file it describes."""
     if not model.checksum:
         return

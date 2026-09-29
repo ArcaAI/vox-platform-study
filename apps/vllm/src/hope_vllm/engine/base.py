@@ -13,7 +13,7 @@ from typing import Protocol
 import numpy as np
 import numpy.typing as npt
 
-from hope_vllm.spec import ResolvedVllmAsrSpec
+from hope_vllm.spec import ResolvedServingSpec
 
 
 class DecoderBudgetError(ValueError):
@@ -67,4 +67,4 @@ class EngineFactory(Protocol):
         """``None`` when this process can build engines, else the reason it cannot."""
         ...
 
-    async def build(self, spec: ResolvedVllmAsrSpec) -> WhisperEngine: ...
+    async def build(self, spec: ResolvedServingSpec) -> WhisperEngine: ...

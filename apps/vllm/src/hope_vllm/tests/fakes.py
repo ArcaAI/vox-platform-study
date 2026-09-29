@@ -6,14 +6,14 @@ import asyncio
 from dataclasses import dataclass, field
 
 from hope_vllm.engine.base import DecodeRequest, DecodeResult
-from hope_vllm.spec import ResolvedVllmAsrSpec
+from hope_vllm.spec import ResolvedServingSpec
 
 
 @dataclass
 class FakeEngine:
     """Records every decode; optional delay lets tests hold requests in flight."""
 
-    spec: ResolvedVllmAsrSpec
+    spec: ResolvedServingSpec
     text: str = "hello world from the fake engine"
     finish_reason: str | None = "stop"
     delay_s: float = 0.0
@@ -59,7 +59,7 @@ class FakeEngineFactory:
     def availability(self) -> str | None:
         return self.unavailable_reason
 
-    async def build(self, spec: ResolvedVllmAsrSpec) -> FakeEngine:
+    async def build(self, spec: ResolvedServingSpec) -> FakeEngine:
         self.builds.append(spec.runtime_key)
         if self.build_delay_s:
             await asyncio.sleep(self.build_delay_s)

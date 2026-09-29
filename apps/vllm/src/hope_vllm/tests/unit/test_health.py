@@ -7,7 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from hope_vllm.core.config import Settings
 from hope_vllm.main import create_app
-from hope_vllm.tests.conftest import TENANT_ID, spec_payload
+from hope_vllm.tests.conftest import TENANT_ID, serving_spec_payload
 from hope_vllm.tests.fakes import FakeEngineFactory
 
 
@@ -38,7 +38,7 @@ async def test_liveness_answers_while_an_engine_is_loading(settings: Settings) -
             warm = asyncio.create_task(
                 client.post(
                     "/api/v1/engines/warm",
-                    json={"spec": spec_payload()},
+                    json={"spec": serving_spec_payload()},
                     headers={"X-Tenant-Id": TENANT_ID},
                 )
             )
@@ -86,11 +86,13 @@ async def test_ready_reports_no_engine_yet_as_degraded_but_ready(client) -> None
 
 async def test_ready_lists_loaded_engines(client) -> None:  # type: ignore[no-untyped-def]
     await client.post(
-        "/api/v1/engines/warm", json={"spec": spec_payload()}, headers={"X-Tenant-Id": TENANT_ID}
+        "/api/v1/engines/warm",
+        json={"spec": serving_spec_payload()},
+        headers={"X-Tenant-Id": TENANT_ID},
     )
     body = (await client.get("/api/v1/health/ready")).json()
     assert body["status"] == "healthy"
-    assert [e["runtime_key"] for e in body["engines"]["loaded"]] == ["agent-version-0001"]
+    assert [e["runtime_key"] for e in body["engines"]["loaded"]] == ["model-0001:v1"]
 
 
 def test_create_app_configures_observability_through_hope_obs(

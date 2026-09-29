@@ -42,7 +42,7 @@ from hope_vllm.engine.pool import (
     EnginePool,
     RuntimeKeySpecMismatchError,
 )
-from hope_vllm.spec import ResolvedVllmAsrSpec
+from hope_vllm.spec import ResolvedServingSpec
 from hope_vllm.truncation import assess_truncation
 
 router = APIRouter(tags=["transcriptions"])
@@ -58,7 +58,7 @@ _CAPACITY_RETRY_AFTER_S = "1"
 class TranscriptionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    spec: ResolvedVllmAsrSpec
+    spec: ResolvedServingSpec
     #: PCM16 little-endian, mono, 16 kHz, base64 — at most 30 s.
     audio_b64: str
     sample_rate: Literal[16000] = 16000
@@ -100,7 +100,7 @@ class TranscriptionResponse(BaseModel):
 class WarmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    spec: ResolvedVllmAsrSpec
+    spec: ResolvedServingSpec
 
 
 class WarmResponse(BaseModel):

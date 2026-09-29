@@ -35,7 +35,7 @@ from hope_obs import get_logger
 
 from hope_vllm.core import metrics
 from hope_vllm.engine.base import EngineBuildRefused, EngineFactory, WhisperEngine
-from hope_vllm.spec import ResolvedVllmAsrSpec
+from hope_vllm.spec import ResolvedServingSpec
 
 logger = get_logger(__name__)
 
@@ -63,7 +63,7 @@ class RuntimeKeySpecMismatchError(RuntimeError):
 @dataclass
 class _Resident:
     engine: WhisperEngine
-    spec: ResolvedVllmAsrSpec
+    spec: ResolvedServingSpec
     load_seconds: float
     inflight: int = 0
     last_used: float = 0.0
@@ -87,12 +87,12 @@ class EnginePool:
         self._lock = asyncio.Lock()
         self._resident: dict[str, _Resident] = {}
         self._loading: dict[str, asyncio.Task[_Resident]] = {}
-        self._loading_specs: dict[str, ResolvedVllmAsrSpec] = {}
+        self._loading_specs: dict[str, ResolvedServingSpec] = {}
 
     # ── public ──────────────────────────────────────────────────────────────
 
     @asynccontextmanager
-    async def lease(self, spec: ResolvedVllmAsrSpec) -> AsyncIterator[WhisperEngine]:
+    async def lease(self, spec: ResolvedServingSpec) -> AsyncIterator[WhisperEngine]:
         """Hold the engine for ``spec`` for one decode; it cannot be evicted meanwhile."""
         resident = await self._acquire(spec)
         try:
@@ -101,7 +101,7 @@ class EnginePool:
             resident.inflight -= 1
             resident.last_used = self._clock()
 
-    async def warm(self, spec: ResolvedVllmAsrSpec) -> tuple[float, bool]:
+    async def warm(self, spec: ResolvedServingSpec) -> tuple[float, bool]:
         """Load ``spec`` if needed; returns ``(load_seconds, already_resident)``."""
         already = spec.runtime_key in self._resident
         async with self.lease(spec):
@@ -114,7 +114,7 @@ class EnginePool:
             "loaded": [
                 {
                     "runtime_key": key,
-                    "slug": r.spec.model.slug,
+                    "slug": r.spec.slug,
                     "inflight": r.inflight,
                     "load_seconds": round(r.load_seconds, 3),
                 }
@@ -133,7 +133,7 @@ class EnginePool:
 
     # ── internals ───────────────────────────────────────────────────────────
 
-    async def _acquire(self, spec: ResolvedVllmAsrSpec) -> _Resident:
+    async def _acquire(self, spec: ResolvedServingSpec) -> _Resident:
         key = spec.runtime_key
         while True:
             victim: _Resident | None = None
@@ -168,10 +168,10 @@ class EnginePool:
                 raise EngineLoadError(str(exc), code=code) from exc
             # Loop: pick the now-resident engine up under the lock (and re-check the spec).
 
-    async def _load(self, spec: ResolvedVllmAsrSpec) -> _Resident:
+    async def _load(self, spec: ResolvedServingSpec) -> _Resident:
         key = spec.runtime_key
         started = self._clock()
-        logger.info("vllm.engine.load_started", runtime_key=key, slug=spec.model.slug)
+        logger.info("vllm.engine.load_started", runtime_key=key, slug=spec.slug)
         try:
             if self._before_build is not None:
                 await self._before_build()

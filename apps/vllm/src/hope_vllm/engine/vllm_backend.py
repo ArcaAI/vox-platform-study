@@ -62,7 +62,7 @@ from hope_vllm.engine.base import (
     EngineBuildRefused,
 )
 from hope_vllm.models.source_resolver import ModelSourceResolver
-from hope_vllm.spec import AsrModelSlice, ResolvedVllmAsrSpec
+from hope_vllm.spec import ResolvedServingSpec
 
 logger = get_logger(__name__)
 
@@ -88,10 +88,10 @@ FP8_MIN_CAPABILITY = (8, 9)
 
 
 class SourceResolver(Protocol):
-    async def resolve(self, model: AsrModelSlice) -> Path: ...
+    async def resolve(self, model: ResolvedServingSpec) -> Path: ...
 
 
-def vllm_quantization(model: AsrModelSlice, capability: CudaCapability) -> str | None:
+def vllm_quantization(model: ResolvedServingSpec, capability: CudaCapability) -> str | None:
     """The vLLM ``quantization=`` for ``model``, or a named refusal (before any pull)."""
     if model.quantization is None:
         return None
@@ -176,7 +176,7 @@ class VllmWhisperEngine:
         *,
         api: _VllmApi,
         engine: Any,
-        spec: ResolvedVllmAsrSpec,
+        spec: ResolvedServingSpec,
         count_tokens: Callable[[str], int],
         max_model_len: int,
     ) -> None:
@@ -271,20 +271,20 @@ class VllmEngineFactory:
             found = False
         return None if found else "vllm is not installed in this image (Linux + CUDA only)"
 
-    async def build(self, spec: ResolvedVllmAsrSpec) -> VllmWhisperEngine:
-        quantization = vllm_quantization(spec.model, self._cuda_capability)
-        model_dir = await self._source_resolver.resolve(spec.model)
+    async def build(self, spec: ResolvedServingSpec) -> VllmWhisperEngine:
+        quantization = vllm_quantization(spec, self._cuda_capability)
+        model_dir = await self._source_resolver.resolve(spec)
         return await asyncio.to_thread(self._build_sync, spec, str(model_dir), quantization)
 
     def _build_sync(
-        self, spec: ResolvedVllmAsrSpec, model_dir: str, quantization: str | None
+        self, spec: ResolvedServingSpec, model_dir: str, quantization: str | None
     ) -> VllmWhisperEngine:
         from vllm import AsyncEngineArgs, SamplingParams
         from vllm.inputs import ExplicitEncoderDecoderPrompt, TextPrompt
         from vllm.v1.engine.async_llm import AsyncLLM
 
         settings = self._settings
-        model = spec.model
+        model = spec
         args = AsyncEngineArgs(
             model=model_dir,
             dtype=model.compute_type or "auto",

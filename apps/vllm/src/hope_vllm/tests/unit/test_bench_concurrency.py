@@ -220,7 +220,7 @@ def test_parse_ladder(bench) -> None:  # type: ignore[no-untyped-def]
 async def test_the_bench_body_is_accepted_by_the_real_endpoint(bench, settings) -> None:  # type: ignore[no-untyped-def]
     """Bench ↔ service contract: the same app the tests build, with a fake engine."""
     from hope_vllm.main import create_app
-    from hope_vllm.tests.conftest import TENANT_ID, spec_payload
+    from hope_vllm.tests.conftest import TENANT_ID, serving_spec_payload
     from hope_vllm.tests.fakes import FakeEngineFactory
 
     app = create_app(settings, engine_factory=FakeEngineFactory())
@@ -230,7 +230,7 @@ async def test_the_bench_body_is_accepted_by_the_real_endpoint(bench, settings) 
             transport=httpx.ASGITransport(app=app), base_url="http://svc"
         ) as client:
             cold = await bench.warm_engine(
-                client, spec=spec_payload(), headers={"X-Tenant-Id": TENANT_ID}
+                client, spec=serving_spec_payload(), headers={"X-Tenant-Id": TENANT_ID}
             )
             summary = await bench.run_step(
                 client,
@@ -239,7 +239,11 @@ async def test_the_bench_body_is_accepted_by_the_real_endpoint(bench, settings) 
                 window_s=0.5,
                 hop_s=0.01,
                 pcm=pcm,
-                request_template={"spec": spec_payload(), "language": "ml", "temperature": 0.0},
+                request_template={
+                    "spec": serving_spec_payload(),
+                    "language": "ml",
+                    "temperature": 0.0,
+                },
                 headers={"X-Tenant-Id": TENANT_ID},
                 commit_bar_s=15.0,
             )
@@ -277,12 +281,15 @@ def test_selection_is_a_spec_file_and_no_option_names_a_model(bench) -> None:  #
     assert forbidden.isdisjoint(options)
 
 
-def test_the_spec_file_must_be_a_resolved_asr_spec(bench, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
-    from hope_vllm.tests.conftest import spec_payload
+def _legacy_asr_spec() -> dict[str, Any]:
+    """The spike's `ResolvedAsrSpec` shape the bench's `--spec-file` still validates."""
+    return {"runtimeKey": "model-0001:v1", "models": {"asr": {"slug": "x", "format": "SAFETENSOR"}}}
 
+
+def test_the_spec_file_must_be_a_resolved_asr_spec(bench, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     good = tmp_path / "spec.json"
-    good.write_text(json.dumps(spec_payload()))
-    assert bench.load_spec(good)["runtimeKey"] == "agent-version-0001"
+    good.write_text(json.dumps(_legacy_asr_spec()))
+    assert bench.load_spec(good)["runtimeKey"] == "model-0001:v1"
 
     # The pre-phase-B flat slice (model fields at the top level) is refused up front,
     # instead of as a 422 on every window of every step.
@@ -302,14 +309,12 @@ def test_the_spec_file_must_be_a_resolved_asr_spec(bench, tmp_path: Path) -> Non
 
 
 async def test_agent_slug_fetches_the_gateway_resolved_spec(bench) -> None:  # type: ignore[no-untyped-def]
-    from hope_vllm.tests.conftest import spec_payload
-
     seen: dict[str, Any] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["url"] = str(request.url)
         seen["headers"] = dict(request.headers)
-        return httpx.Response(200, json=spec_payload())
+        return httpx.Response(200, json=_legacy_asr_spec())
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         spec = await bench.fetch_spec(
@@ -319,7 +324,7 @@ async def test_agent_slug_fetches_the_gateway_resolved_spec(bench) -> None:  # t
             tenant_id="50000000-0000-0000-0000-000000000000",
             token="tok",
         )
-    assert spec["runtimeKey"] == "agent-version-0001"
+    assert spec["runtimeKey"] == "model-0001:v1"
     url = httpx.URL(seen["url"])
     assert url.path == "/api/v1/internal/agents/asr-spec"
     assert url.params["service"] == "vllm"

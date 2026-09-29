@@ -15,7 +15,7 @@ from hope_vllm.tests.conftest import (
     DROP,
     TENANT_ID,
     pcm16_b64,
-    spec_payload,
+    serving_spec_payload,
     transcription_body,
 )
 from hope_vllm.tests.fakes import FakeEngineFactory
@@ -32,7 +32,7 @@ async def test_returns_text_language_timings_and_runtime_key(client, factory) ->
     body = response.json()
     assert body["text"] == "hello world from the fake engine"
     assert body["language"] == "ml"
-    assert body["runtime_key"] == "agent-version-0001"
+    assert body["runtime_key"] == "model-0001:v1"
     assert body["audio_seconds"] == pytest.approx(7.0)
     assert body["finish_reason"] == "stop"
     assert set(body["timings"]) == {"queue_ms", "decode_ms", "engine_queue_ms"}
@@ -48,7 +48,7 @@ async def test_hands_the_engine_float32_audio_and_the_decode_params(client, fact
         await client.post("/api/v1/transcriptions", json=body, headers=HEADERS)
     ).status_code == 200
 
-    (request,) = factory.engines["agent-version-0001"].requests
+    (request,) = factory.engines["model-0001:v1"].requests
     assert request.audio.dtype == np.float32 and request.audio.shape == (7 * 16_000,)
     assert request.language == "en"
     assert request.prompt == "previous words"
@@ -90,17 +90,10 @@ async def test_malformed_audio_is_refused_by_name(client) -> None:  # type: igno
     ],
 )
 async def test_a_spec_this_engine_cannot_serve_is_refused(client, factory, override) -> None:  # type: ignore[no-untyped-def]
-    body = transcription_body(spec=spec_payload(**override))
+    body = transcription_body(spec=serving_spec_payload(**override))
     response = await client.post("/api/v1/transcriptions", json=body, headers=HEADERS)
     assert response.status_code == 422
     assert factory.builds == []
-
-
-async def test_spec_without_local_path_or_source_is_refused(client) -> None:  # type: ignore[no-untyped-def]
-    body = transcription_body(spec=spec_payload(localPath=None, sourceUri=""))
-    assert (
-        await client.post("/api/v1/transcriptions", json=body, headers=HEADERS)
-    ).status_code == 422
 
 
 async def test_non_16khz_audio_is_refused(client) -> None:  # type: ignore[no-untyped-def]
@@ -136,7 +129,7 @@ async def test_runtime_key_reused_for_a_different_model_is_409(client) -> None: 
     assert (
         await client.post("/api/v1/transcriptions", json=transcription_body(), headers=HEADERS)
     ).status_code == 200
-    drifted = transcription_body(spec=spec_payload(localPath="/some/other/weights"))
+    drifted = transcription_body(spec=serving_spec_payload(localPath="/some/other/weights"))
     response = await client.post("/api/v1/transcriptions", json=drifted, headers=HEADERS)
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "RUNTIME_KEY_SPEC_MISMATCH"
@@ -151,7 +144,9 @@ async def test_all_resident_engines_busy_is_503_with_retry_after(settings: Setti
                 client.post("/api/v1/transcriptions", json=transcription_body(), headers=HEADERS)
             )
             await asyncio.sleep(0.05)
-            other = transcription_body(spec=spec_payload(runtimeKey="another-agent-version"))
+            other = transcription_body(
+                spec=serving_spec_payload(runtimeKey="another-agent-version")
+            )
             response = await client.post("/api/v1/transcriptions", json=other, headers=HEADERS)
             assert (await busy).status_code == 200
     assert response.status_code == 503
@@ -174,8 +169,8 @@ async def test_concurrent_requests_reach_the_engine_concurrently(settings: Setti
                 )
             )
     assert all(r.status_code == 200 for r in responses)
-    assert factory.builds == ["agent-version-0001"]
-    assert factory.engines["agent-version-0001"].max_inflight == 25
+    assert factory.builds == ["model-0001:v1"]
+    assert factory.engines["model-0001:v1"].max_inflight == 25
 
 
 async def test_short_output_on_voiced_audio_is_flagged_as_suspected_truncation(
@@ -196,23 +191,25 @@ async def test_short_output_on_voiced_audio_is_flagged_as_suspected_truncation(
 
 async def test_warm_loads_the_engine_and_reports_load_time(client, factory) -> None:  # type: ignore[no-untyped-def]
     response = await client.post(
-        "/api/v1/engines/warm", json={"spec": spec_payload()}, headers=HEADERS
+        "/api/v1/engines/warm", json={"spec": serving_spec_payload()}, headers=HEADERS
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["runtime_key"] == "agent-version-0001"
+    assert body["runtime_key"] == "model-0001:v1"
     assert body["already_resident"] is False
     assert body["load_seconds"] >= 0
 
     again = (
-        await client.post("/api/v1/engines/warm", json={"spec": spec_payload()}, headers=HEADERS)
+        await client.post(
+            "/api/v1/engines/warm", json={"spec": serving_spec_payload()}, headers=HEADERS
+        )
     ).json()
     assert again["already_resident"] is True
-    assert factory.builds == ["agent-version-0001"]
+    assert factory.builds == ["model-0001:v1"]
 
 
 async def test_warm_requires_the_tenant_header(client) -> None:  # type: ignore[no-untyped-def]
-    response = await client.post("/api/v1/engines/warm", json={"spec": spec_payload()})
+    response = await client.post("/api/v1/engines/warm", json={"spec": serving_spec_payload()})
     assert response.status_code == 400
 
 
@@ -236,7 +233,7 @@ async def test_a_named_build_refusal_is_a_503_carrying_its_reason(
                 "/api/v1/transcriptions", json=transcription_body(), headers=HEADERS
             )
             warm = await client.post(
-                "/api/v1/engines/warm", json={"spec": spec_payload()}, headers=HEADERS
+                "/api/v1/engines/warm", json={"spec": serving_spec_payload()}, headers=HEADERS
             )
     for response in (window, warm):
         assert response.status_code == 503

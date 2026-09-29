@@ -12,13 +12,13 @@ from hope_vllm.engine.pool import (
     EnginePool,
     RuntimeKeySpecMismatchError,
 )
-from hope_vllm.spec import ResolvedVllmAsrSpec
-from hope_vllm.tests.conftest import spec_payload
+from hope_vllm.spec import ResolvedServingSpec
+from hope_vllm.tests.conftest import serving_spec_payload
 from hope_vllm.tests.fakes import FakeEngineFactory
 
 
-def make_spec(**overrides: object) -> ResolvedVllmAsrSpec:
-    return ResolvedVllmAsrSpec.model_validate(spec_payload(**overrides))
+def make_spec(**overrides: object) -> ResolvedServingSpec:
+    return ResolvedServingSpec.model_validate(serving_spec_payload(**overrides))
 
 
 async def test_builds_lazily_and_reuses_the_engine_for_the_same_runtime_key() -> None:
@@ -31,7 +31,7 @@ async def test_builds_lazily_and_reuses_the_engine_for_the_same_runtime_key() ->
     async with pool.lease(make_spec()) as second:
         pass
 
-    assert factory.builds == ["agent-version-0001"]
+    assert factory.builds == ["model-0001:v1"]
     assert first is second
 
 
@@ -45,7 +45,7 @@ async def test_concurrent_first_requests_share_one_load() -> None:
 
     engines = await asyncio.gather(*(use() for _ in range(10)))
 
-    assert factory.builds == ["agent-version-0001"]
+    assert factory.builds == ["model-0001:v1"]
     assert len({id(e) for e in engines}) == 1
 
 
@@ -55,13 +55,13 @@ async def test_snapshot_reports_loading_then_loaded_engines() -> None:
 
     task = asyncio.create_task(pool.warm(make_spec()))
     await asyncio.sleep(0.01)
-    assert pool.snapshot()["loading"] == ["agent-version-0001"]
+    assert pool.snapshot()["loading"] == ["model-0001:v1"]
     assert pool.snapshot()["loaded"] == []
 
     await task
     snap = pool.snapshot()
     assert snap["loading"] == []
-    assert [e["runtime_key"] for e in snap["loaded"]] == ["agent-version-0001"]
+    assert [e["runtime_key"] for e in snap["loaded"]] == ["model-0001:v1"]
     assert snap["max_resident"] == 1
 
 
@@ -109,7 +109,7 @@ async def test_a_failed_load_is_reported_and_not_cached() -> None:
 
     factory.fail_with = None
     await pool.warm(make_spec())
-    assert factory.builds == ["agent-version-0001", "agent-version-0001"]
+    assert factory.builds == ["model-0001:v1", "model-0001:v1"]
 
 
 async def test_inflight_count_tracks_leases() -> None:

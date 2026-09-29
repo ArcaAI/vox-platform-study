@@ -42,75 +42,47 @@ SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 #: Pass as an override value to REMOVE that key from the payload ("missing", not null).
 DROP = object()
 
-#: Overrides that land on the spec itself; every other override lands on `models.asr`.
-_TOP_LEVEL_KEYS = frozenset({"runtimeKey", "schemaVersion"})
+#: Overrides that land on `engine`; every other override lands on the spec itself.
+_ENGINE_KEYS = frozenset({"vramGiB", "maxNumSeqs", "enforceEager"})
+
+#: The default runtime key of :func:`serving_spec_payload`.
+RUNTIME_KEY = "model-0001:v1"
 
 
-def asr_model_payload(**overrides: object) -> dict[str, object]:
-    """One `AsrSpecModel` (the `models.asr` row) as the gateway emits it."""
-    model: dict[str, object] = {
-        "role": "asr",
+def serving_spec_payload(**overrides: object) -> dict[str, object]:
+    """A `ResolvedServingSpec` as the gateway emits it (camelCase, C-1) — every key present.
+
+    ``vramGiB`` / ``maxNumSeqs`` / ``enforceEager`` overrides land on ``engine``; every other
+    override lands on the spec; ``DROP`` removes a key.
+    """
+    engine: dict[str, object] = {"vramGiB": 3, "maxNumSeqs": 64, "enforceEager": None}
+    payload: dict[str, object] = {
         "slug": "arcaai-whisper-large-ml-en-vllm",
-        "taskType": "AUTOMATIC_SPEECH_RECOGNITION",
-        "format": "SAFETENSOR",
-        "libraryName": "transformers",
+        "kind": "asr",
+        "runtimeKey": RUNTIME_KEY,
+        "tenantId": SYSTEM_TENANT_ID,
+        "localPath": "/mnt/models-bucket/hf/whisper-turbo-ml-en-fp16",
         "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16",
         "sourceRevision": "main",
-        "localPath": "/mnt/models-bucket/hf/whisper-turbo-ml-en-fp16",
         "checksum": None,
+        "format": "SAFETENSOR",
         "computeType": "float16",
-        "provider": None,
-        "tenantId": SYSTEM_TENANT_ID,
-        "metadata": {"maxDecodeWindowSec": 7},
+        "quantization": None,
+        "maxModelLen": None,
+        "engine": engine,
     }
     for key, value in overrides.items():
+        target = engine if key in _ENGINE_KEYS else payload
         if value is DROP:
-            model.pop(key, None)
+            target.pop(key, None)
         else:
-            model[key] = value
-    return model
-
-
-def spec_payload(**overrides: object) -> dict[str, object]:
-    """A `ResolvedAsrSpec` as the gateway emits it (camelCase), trimmed but real-shaped.
-
-    ``runtimeKey`` / ``schemaVersion`` overrides land on the spec; every other override
-    lands on ``models.asr``; ``DROP`` removes a key. The blocks this service ignores
-    (`agent`, `audioFrontEnd`, `fallback`, …) are present so every test also proves they
-    are tolerated.
-    """
-    model_overrides = {k: v for k, v in overrides.items() if k not in _TOP_LEVEL_KEYS}
-    payload: dict[str, object] = {
-        "schemaVersion": 1,
-        "runtimeKey": "agent-version-0001",
-        "agent": {
-            "slug": "ml-en-transcription",
-            "versionId": "agent-version-0001",
-            "versionNumber": 1,
-            "tenantId": "50000000-0000-0000-0000-000000000000",
-            "source": "tenant",
-        },
-        "models": {"asr": asr_model_payload(**model_overrides)},
-        "audioFrontEnd": {
-            "vad": {"enabled": False, "threshold": None, "minSpeechMs": None, "minSilenceMs": None},
-            "denoise": {"enabled": False, "level": "off"},
-            "diarization": {"enabled": False, "backend": "embedding", "maxSpeakers": None},
-            "resample": True,
-            "normalize": True,
-        },
-        "fallback": {"kind": "none", "autoSwitch": False, "chain": [], "spec": None},
-    }
-    for key in _TOP_LEVEL_KEYS & overrides.keys():
-        if overrides[key] is DROP:
-            payload.pop(key, None)
-        else:
-            payload[key] = overrides[key]
+            target[key] = value
     return payload
 
 
 def transcription_body(**overrides: object) -> dict[str, object]:
     body: dict[str, object] = {
-        "spec": spec_payload(),
+        "spec": serving_spec_payload(),
         "audio_b64": pcm16_b64(7.0),
         "language": "ml",
     }
