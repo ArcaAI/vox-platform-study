@@ -317,7 +317,7 @@
     "build": "turbo run build",
     "build:apps": "turbo run build --filter=./apps/*",
     "build:packages": "turbo run build --filter=./packages/*",
-    "build:core": "turbo run build --filter=@arcaai/logger --filter=@arcaai/exceptions --filter=@arcaai/database --filter=@arcaai/domains --filter=@arcaai/applications",
+    "build:core": "turbo run build --filter=@arcaai/exceptions --filter=@arcaai/database --filter=@arcaai/domains --filter=@arcaai/applications",
     "── TEST — aggregate suites ───────────────────────": "",
     "test": "turbo run test",
     "test:unit": "dotenv -e .env.test -- vitest run --exclude '**/integration/**' --exclude '**/e2e/**' && pnpm --filter @arcaai/vox --filter @arcaai/admin-console test",

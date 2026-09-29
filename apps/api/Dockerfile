@@ -35,7 +35,6 @@ COPY packages/json-schema-subset/package.json ./packages/json-schema-subset/
 COPY packages/database/package.json ./packages/database/
 COPY packages/domains/package.json ./packages/domains/
 COPY packages/exceptions/package.json ./packages/exceptions/
-COPY packages/logger/package.json ./packages/logger/
 COPY packages/tools/package.json ./packages/tools/
 COPY packages/utils/package.json ./packages/utils/
 COPY packages/config-eslint/package.json ./packages/config-eslint/
@@ -134,7 +133,6 @@ COPY packages/json-schema-subset/package.json ./packages/json-schema-subset/
 COPY packages/database/package.json ./packages/database/
 COPY packages/domains/package.json ./packages/domains/
 COPY packages/exceptions/package.json ./packages/exceptions/
-COPY packages/logger/package.json ./packages/logger/
 COPY packages/tools/package.json ./packages/tools/
 COPY packages/utils/package.json ./packages/utils/
 COPY packages/config-eslint/package.json ./packages/config-eslint/
@@ -167,8 +165,6 @@ COPY --from=builder --chown=api:hope /app/packages/domains/dist ./packages/domai
 COPY --from=builder --chown=api:hope /app/packages/domains/package.json ./packages/domains/package.json
 COPY --from=builder --chown=api:hope /app/packages/exceptions/dist ./packages/exceptions/dist
 COPY --from=builder --chown=api:hope /app/packages/exceptions/package.json ./packages/exceptions/package.json
-COPY --from=builder --chown=api:hope /app/packages/logger/dist ./packages/logger/dist
-COPY --from=builder --chown=api:hope /app/packages/logger/package.json ./packages/logger/package.json
 # @arcaai/types ships a runtime enum (StorageProvider) that the compiled storage
 # providers require() at boot, so its dist must be present like the other deps.
 COPY --from=builder --chown=api:hope /app/packages/types/dist ./packages/types/dist

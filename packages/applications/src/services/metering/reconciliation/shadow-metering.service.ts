@@ -39,7 +39,7 @@ function toNumberSafe(value: unknown): number {
  * Read-only, self-scheduling, OFF by default — see
  * `shadow-metering.constants.ts` for the full design rationale. Structured
  * logging on every run (the `structlog`-equivalent this monorepo's TS side
- * uses is `@arcaai/logger`'s Nest `Logger` with an object payload); a
+ * uses is Nest's `Logger`, routed into `LoggingService`, with an object payload); a
  * `SHADOW_METERING_DRIFT_DETECTED_EVENT` fires per tenant whose report
  * contains at least one breach so a future subscriber can persist an audit
  * row (this lane does not own `sysEvent.service.ts` — wiring a handler there

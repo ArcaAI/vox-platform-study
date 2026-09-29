@@ -20,7 +20,6 @@
   "peerDependencies": {
     "@arcaai/domains": "workspace:*",
     "@arcaai/exceptions": "workspace:*",
-    "@arcaai/logger": "workspace:*",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/bullmq": "^11.0.5",
     "@nestjs/common": "^11.2.1",
@@ -44,7 +43,6 @@
     "@arcaai/domains": "workspace:*",
     "@arcaai/exceptions": "workspace:*",
     "@arcaai/json-schema-subset": "workspace:*",
-    "@arcaai/logger": "workspace:*",
     "@arcaai/types": "workspace:*",
     "@arcaai/utils": "workspace:*",
     "@arcaai/workflow-contract": "workspace:*",

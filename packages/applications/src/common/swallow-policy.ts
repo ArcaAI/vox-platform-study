@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { DataNotFoundException } from '@arcaai/exceptions';
 
-/** Minimal logger surface (Nest `Logger` and `@arcaai/logger` both satisfy it). */
+/** Minimal logger surface (Nest `Logger` and `ILoggingService` both satisfy it). */
 /** A legitimate "the row is not there" answer: the repository's or a service's 404. */
 export function isNotFoundError(error: unknown): boolean {
   return error instanceof DataNotFoundException || error instanceof NotFoundException;

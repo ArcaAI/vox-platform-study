@@ -92,7 +92,6 @@
         "packages/domains/**",
         "packages/applications/**",
         "packages/exceptions/**",
-        "packages/logger/**",
         "packages/tools/**",
         "packages/types/**",
         "packages/utils/**",
