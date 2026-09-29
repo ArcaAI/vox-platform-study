@@ -34,6 +34,7 @@ const mockUserRepository = {
   create: vi.fn(),
   update: vi.fn(),
   softDelete: vi.fn(),
+  findByUsername: vi.fn(async () => null),
 };
 
 // Membership deps added to the UserService constructor.

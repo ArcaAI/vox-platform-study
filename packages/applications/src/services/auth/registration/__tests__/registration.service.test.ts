@@ -5,7 +5,7 @@ import { ResourceStatusType } from '@arcaai/domains';
 const mockClsService = { get: vi.fn(), set: vi.fn(), run: vi.fn((cb: () => unknown) => cb()) };
 const mockEventEmitter = { emit: vi.fn() };
 
-const mockUserRepository = { findFirst: vi.fn() };
+const mockUserRepository = { findByUsername: vi.fn() };
 
 const mockPasswordResetTokenRepository = {
   create: vi.fn(),
@@ -51,7 +51,7 @@ describe('RegistrationService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUserRepository.findFirst.mockResolvedValue(undefined);
+    mockUserRepository.findByUsername.mockResolvedValue(null);
     mockUserService.create.mockResolvedValue(createMockUser());
     mockMailer.sendResetLink.mockResolvedValue(true);
 
@@ -88,10 +88,12 @@ describe('RegistrationService', () => {
     });
 
     it('is a silent no-op for an email that already has an account (anti-enumeration)', async () => {
-      mockUserRepository.findFirst.mockResolvedValue(createMockUser({ id: 'existing-id' }));
+      mockUserRepository.findByUsername.mockResolvedValue(createMockUser({ id: 'existing-id' }));
 
-      await expect(service.register({ email: 'existing@example.com', password: 'S3cret!Pass', tenantName: 'Acme Health' })).resolves.toBeUndefined();
+      await expect(service.register({ email: 'Existing@Example.com', password: 'S3cret!Pass', tenantName: 'Acme Health' })).resolves.toBeUndefined();
 
+      // The lookup is case-insensitive (in the repository) and gets the normalised email.
+      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('existing@example.com');
       expect(mockUserService.create).not.toHaveBeenCalled();
       expect(mockPasswordResetTokenRepository.create).not.toHaveBeenCalled();
       expect(mockMailer.sendResetLink).not.toHaveBeenCalled();

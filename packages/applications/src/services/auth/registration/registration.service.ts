@@ -2,15 +2,7 @@ import { Inject, Injectable, Logger, Optional, BadRequestException, InternalServ
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, randomBytes } from 'crypto';
-import { DataNotFoundException } from '@arcaai/exceptions';
-import {
-  PasswordResetTokenFactory,
-  PasswordResetTokenRepository,
-  ResourceStatusType,
-  ResourceType,
-  UserEntity,
-  UserRepository,
-} from '@arcaai/domains';
+import { PasswordResetTokenFactory, PasswordResetTokenRepository, ResourceStatusType, ResourceType, UserRepository } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IUserService } from '../../user/user/IUserService';
@@ -63,7 +55,7 @@ export class RegistrationService extends BaseService implements IRegistrationSer
   async register(request: RegisterRequest): Promise<void> {
     const email = request.email.trim().toLowerCase();
 
-    const existing = await this.findByUsername(email);
+    const existing = await this.userRepository.findByUsername(email);
     if (existing) {
       return;
     }
@@ -123,17 +115,6 @@ export class RegistrationService extends BaseService implements IRegistrationSer
     await this.passwordResetTokenRepository.update(record.id, record);
 
     return new RegisterVerifyResponse({ userId: record.userId, tenantId: provisioned.tenant.id, tenantKey: provisioned.tenantKey });
-  }
-
-  private async findByUsername(username: string): Promise<UserEntity | null> {
-    try {
-      return await this.userRepository.findFirst({ where: { username } });
-    } catch (error) {
-      if (error instanceof DataNotFoundException) {
-        return null;
-      }
-      throw error;
-    }
   }
 
   private static hashToken(raw: string): string {

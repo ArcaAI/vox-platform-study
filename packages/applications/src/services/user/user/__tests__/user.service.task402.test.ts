@@ -29,7 +29,7 @@ const STRONG_PW = 'Password123!';
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 
-const mockUserRepository = { create: vi.fn(), findById: vi.fn(), update: vi.fn() };
+const mockUserRepository = { create: vi.fn(), findById: vi.fn(), update: vi.fn(), findByUsername: vi.fn(async () => null) };
 const mockUserRoleAssignmentRepository = { create: vi.fn() };
 const mockUserDepartmentRepository = { create: vi.fn() };
 const TX = { __txSentinel: true };
