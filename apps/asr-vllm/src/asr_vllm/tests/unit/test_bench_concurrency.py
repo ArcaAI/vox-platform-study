@@ -13,6 +13,7 @@ import sys
 import wave
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import httpx
 import numpy as np
@@ -252,8 +253,14 @@ async def test_the_bench_body_is_accepted_by_the_real_endpoint(bench, settings) 
 def test_selection_is_a_spec_file_and_no_option_names_a_model(bench) -> None:  # type: ignore[no-untyped-def]
     parser = bench._build_parser()
     options = {opt for action in parser._actions for opt in action.option_strings}
-    spec_file = next(a for a in parser._actions if "--spec-file" in a.option_strings)
-    assert spec_file.required is True
+    # Exactly one spec source: a captured spec file, or an ASR Agent the gateway resolves.
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--base-url", "http://x", "--tenant-id", "t", "--wav", "a.wav"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            ["--base-url", "http://x", "--tenant-id", "t", "--wav", "a.wav"]
+            + ["--spec-file", "s.json", "--agent-slug", "a"]
+        )
     forbidden = {
         "--model",
         "--model-slug",
@@ -289,3 +296,51 @@ def test_the_spec_file_must_be_a_resolved_asr_spec(bench, tmp_path: Path) -> Non
         bad.write_text(body)
         with pytest.raises(bench.BenchInputError):
             bench.load_spec(bad)
+
+
+# ── OD-12: --agent-slug resolves the spec through the gateway's ASR resolver ──
+
+
+async def test_agent_slug_fetches_the_gateway_resolved_spec(bench) -> None:  # type: ignore[no-untyped-def]
+    from asr_vllm.tests.conftest import spec_payload
+
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["headers"] = dict(request.headers)
+        return httpx.Response(200, json=spec_payload())
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        spec = await bench.fetch_spec(
+            client,
+            gateway_url="http://gw:8868/api/v1/",
+            agent_slug="realtime-transcription-vllm-spike",
+            tenant_id="50000000-0000-0000-0000-000000000000",
+            token="tok",
+        )
+    assert spec["runtimeKey"] == "agent-version-0001"
+    url = httpx.URL(seen["url"])
+    assert url.path == "/api/v1/internal/agents/asr-spec"
+    assert url.params["service"] == "asr-vllm"
+    assert url.params["agentSlug"] == "realtime-transcription-vllm-spike"
+    assert seen["headers"]["x-service-token"] == "tok"
+    assert seen["headers"]["x-tenant-id"] == "50000000-0000-0000-0000-000000000000"
+
+
+async def test_agent_slug_refuses_a_gateway_error_or_a_non_spec(bench) -> None:  # type: ignore[no-untyped-def]
+    for response in (
+        httpx.Response(503, json={"code": "AGENT_NOT_ASSIGNED"}),
+        httpx.Response(200, json={"models": []}),
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _r, r=response: r)
+        ) as client:
+            with pytest.raises(bench.BenchInputError):
+                await bench.fetch_spec(
+                    client,
+                    gateway_url="http://gw/api/v1",
+                    agent_slug="a",
+                    tenant_id="t",
+                    token="tok",
+                )

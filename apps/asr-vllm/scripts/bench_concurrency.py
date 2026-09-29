@@ -24,7 +24,8 @@ replica, e.g.::
     python apps/asr-vllm/scripts/bench_concurrency.py \\
         --base-url https://asr-vllm.example/ \\
         --tenant-id 50000000-0000-0000-0000-000000000000 \\
-        --spec-file spec.json \\
+        --gateway-url https://api.example/api/v1 \\
+        --agent-slug realtime-transcription-vllm-spike \\
         --wav "/Users/taphuynh/Desktop/lab/Woodman-2/output_aligned/Probiotic_Foods_Dr_Manoj_Johnson/0001_0.86_12.58/audio.wav" \\
         --language ml --output results.json
 
@@ -39,14 +40,11 @@ Agent resolved to registry rows. The bench sends it verbatim and has no option t
 names a model, a path, an engine or a quantization — those are facts of the registry
 row the agent binds.
 
-Where ``spec.json`` comes from (TASK-1010 OD-12). The approved plan was to fetch it with
-``--agent-slug`` from ``GET /api/v1/internal/agents/resolve``. That route returns a
-``ResolvedAgent`` (the harness's contract: ``agentVersionId`` + ``models[]`` rows), NOT a
-``ResolvedAsrSpec`` — ``buildResolvedAsrSpec`` runs only inside the STT session / batch
-paths and no route hands its output back. So the bench keeps ``--spec-file`` until a
-dev-only internal route returns the built spec; capture the ``resolved_spec`` the gateway
-sends STT (``POST /streaming/sessions``) for a session on the agent under test, rather
-than writing one by hand.
+Where the spec comes from (TASK-1010 OD-12). ``--agent-slug`` (with ``--gateway-url``) asks
+the gateway's ``GET /internal/agents/asr-spec`` for the ``ResolvedAsrSpec`` a live session on
+that ASR Agent would get — the same ``AsrAgentResolverService``, so agent → registered model
+is exercised exactly as in production (the token is the same ``INTERNAL_ACCESS_TOKEN``).
+``--spec-file`` replays a spec captured earlier. Exactly one of the two is required.
 """
 
 from __future__ import annotations
@@ -93,25 +91,53 @@ def read_wav_pcm16(path: Path) -> bytes:
         return w.readframes(w.getnframes())
 
 
-def load_spec(path: Path) -> dict[str, Any]:
-    """The ``ResolvedAsrSpec`` in ``path`` — refused up front if it is not one.
+def validate_spec(spec: Any, source: str) -> dict[str, Any]:
+    """``spec`` if it is a ``ResolvedAsrSpec`` — refused up front otherwise.
 
     Checked here, not left to the server, because a wrong shape would otherwise surface
     as a 422 on every window of every ladder step. Only the slice asr-vllm reads is
     checked; the server validates it properly.
     """
-    try:
-        spec = json.loads(path.read_text())
-    except (OSError, ValueError) as exc:
-        raise BenchInputError(f"{path}: not readable JSON ({exc})") from exc
     models = spec.get("models") if isinstance(spec, dict) else None
     asr = models.get("asr") if isinstance(models, dict) else None
     if not isinstance(spec, dict) or not spec.get("runtimeKey") or not isinstance(asr, dict):
         raise BenchInputError(
-            f"{path}: not a ResolvedAsrSpec — it needs a runtimeKey and a models.asr row "
+            f"{source}: not a ResolvedAsrSpec — it needs a runtimeKey and a models.asr row "
             "(the gateway's resolved ASR Agent, not a hand-written model slice)"
         )
     return spec
+
+
+def load_spec(path: Path) -> dict[str, Any]:
+    """The ``ResolvedAsrSpec`` captured in ``path``."""
+    try:
+        spec = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise BenchInputError(f"{path}: not readable JSON ({exc})") from exc
+    return validate_spec(spec, str(path))
+
+
+async def fetch_spec(
+    client: httpx.AsyncClient,
+    *,
+    gateway_url: str,
+    agent_slug: str,
+    tenant_id: str,
+    token: str,
+) -> dict[str, Any]:
+    """The ``ResolvedAsrSpec`` the gateway resolves for ``agent_slug`` in ``tenant_id``."""
+    url = f"{gateway_url.rstrip('/')}/internal/agents/asr-spec"
+    response = await client.get(
+        url,
+        params={"service": "asr-vllm", "agentSlug": agent_slug, "tenantId": tenant_id},
+        headers={"X-Service-Token": token, "X-Tenant-Id": tenant_id},
+    )
+    if response.status_code != 200:
+        raise BenchInputError(
+            f"{url}: gateway answered {response.status_code} for agent '{agent_slug}': "
+            f"{response.text[:300]}"
+        )
+    return validate_spec(response.json(), f"{url} (agent '{agent_slug}')")
 
 
 def cut_windows(
@@ -351,11 +377,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--base-url", required=True, help="asr-vllm base URL (scheme://host[:port])")
     p.add_argument("--tenant-id", required=True, help="sent as X-Tenant-Id")
-    p.add_argument(
+    source = p.add_mutually_exclusive_group(required=True)
+    source.add_argument(
+        "--agent-slug",
+        help="ASR Agent under test; its spec is resolved by the gateway (needs --gateway-url)",
+    )
+    source.add_argument(
         "--spec-file",
-        required=True,
         type=Path,
-        help="the gateway's ResolvedAsrSpec JSON for the ASR Agent under test",
+        help="a ResolvedAsrSpec captured earlier from the gateway",
+    )
+    p.add_argument(
+        "--gateway-url",
+        default=None,
+        help="gateway API base for --agent-slug, e.g. https://api.example/api/v1",
     )
     p.add_argument("--wav", required=True, type=Path, help="16 kHz mono PCM16 WAV")
     p.add_argument("--language", default="ml", help="Whisper language token (default ml)")
@@ -394,7 +429,21 @@ async def _main_async(args: argparse.Namespace) -> int:
     headers = {"X-Tenant-Id": args.tenant_id}
     if token:
         headers["X-Service-Token"] = token
-    spec = load_spec(args.spec_file)
+    if args.agent_slug:
+        if not args.gateway_url:
+            raise BenchInputError("--agent-slug needs --gateway-url")
+        if not token:
+            raise BenchInputError(f"--agent-slug needs a service token in {TOKEN_ENV_VARS}")
+        async with httpx.AsyncClient(timeout=args.timeout_s) as gateway:
+            spec = await fetch_spec(
+                gateway,
+                gateway_url=args.gateway_url,
+                agent_slug=args.agent_slug,
+                tenant_id=args.tenant_id,
+                token=token,
+            )
+    else:
+        spec = load_spec(args.spec_file)
     pcm = read_wav_pcm16(args.wav)
     hop_s = args.hop_s or args.window_s
     windows_per_stream = max(1, int(args.duration_s // hop_s))
