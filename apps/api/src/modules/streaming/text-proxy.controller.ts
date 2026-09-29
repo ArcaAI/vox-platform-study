@@ -69,7 +69,7 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
 import type { Readable } from 'node:stream';
 
@@ -1207,6 +1207,12 @@ export class TextProxyController {
   @Post('generate/assembled')
   @Authorize()
   @ApiOperation({ summary: 'Generate text with server-side prompt assembly (debug mode)' })
+  @ApiResponse({
+    status: 400,
+    description:
+      '`MODEL_PINNING_NOT_ALLOWED` — `provider` / `model` were sent: the model is selected through a TEXT_GENERATION agent ' +
+      '(`agentSlug`, or the tenant`s assignment). Also a malformed assembly request (type, context source, or visit type).',
+  })
   // `@Res({ passthrough: true })` for the same reason as `generate()` above.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generateAssembled(@Body() body: AssembledGenerateRequest, @Res({ passthrough: true }) res?: Response): Promise<any> {

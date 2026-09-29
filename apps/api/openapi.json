@@ -5800,12 +5800,13 @@
       },
       "CreateBatchJobRequest": {
         "properties": {
-          "agentVersionId": {
-            "description": "TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.",
+          "agentSlug": {
+            "description": "The published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`).",
             "type": "string"
           },
           "codeSwitching": {
-            "description": "Enable multilingual code-switching. Overrides the agent default.",
+            "deprecated": true,
+            "description": "Ignored — code-switching is the resolved ASR agent`s language mode, not a per-job flag.",
             "example": false,
             "type": "boolean"
           },
@@ -5826,10 +5827,6 @@
           "mediaId": {
             "description": "Media ID for batch transcription",
             "type": "string"
-          },
-          "resolvedSpec": {
-            "description": "TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.",
-            "type": "object"
           }
         },
         "required": [
@@ -6257,15 +6254,12 @@
       "CreateJobRequest": {
         "properties": {
           "agentSlug": {
-            "description": "TASK-861 — the published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`).",
-            "type": "string"
-          },
-          "agentVersionId": {
-            "description": "TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.",
+            "description": "The published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`).",
             "type": "string"
           },
           "codeSwitching": {
-            "description": "Enable multilingual code-switching. When true, the model will attempt to detect and transcribe multiple languages within the same audio. Overrides the agent default.",
+            "deprecated": true,
+            "description": "Ignored — code-switching is the resolved ASR agent`s language mode, not a per-job flag.",
             "example": false,
             "type": "boolean"
           },
@@ -6298,10 +6292,6 @@
             "description": "Media ID for batch transcription (required for BATCH job type)",
             "example": "01234567-89ab-cdef-0123-456789abcdef",
             "type": "string"
-          },
-          "resolvedSpec": {
-            "description": "TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.",
-            "type": "object"
           }
         },
         "required": [
@@ -7250,12 +7240,13 @@
       },
       "CreateStreamingJobRequest": {
         "properties": {
-          "agentVersionId": {
-            "description": "TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.",
+          "agentSlug": {
+            "description": "The published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`).",
             "type": "string"
           },
           "codeSwitching": {
-            "description": "Enable multilingual code-switching. Overrides the agent default.",
+            "deprecated": true,
+            "description": "Ignored — code-switching is the resolved ASR agent`s language mode, not a per-job flag.",
             "example": false,
             "type": "boolean"
           },
@@ -7272,10 +7263,6 @@
             "default": 3,
             "description": "Maximum number of retries on failure",
             "type": "number"
-          },
-          "resolvedSpec": {
-            "description": "TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.",
-            "type": "object"
           }
         },
         "type": "object"
@@ -9627,11 +9614,6 @@
             "maxLength": 32,
             "type": "string"
           },
-          "modelName": {
-            "description": "Explicit HF model id overriding the tenant nlp.ner default (forwarded as model_name). The weight path is taken from the matched registry row, never from the request.",
-            "maxLength": 256,
-            "type": "string"
-          },
           "text": {
             "description": "Text to extract medical entities from.",
             "maxLength": 20000,
@@ -10124,7 +10106,7 @@
             "type": "string"
           },
           "options": {
-            "description": "Additional options for pre-summarization",
+            "description": "Additional options for pre-summarization. Engine-selecting keys (`provider`, `textProvider`, `model`, `textModel`) are ignored — the model is the tenant`s TEXT_GENERATION agent.",
             "type": "object"
           }
         },
@@ -14659,7 +14641,8 @@
             "type": "boolean"
           },
           "modelId": {
-            "description": "NER model ID",
+            "deprecated": true,
+            "description": "Ignored — a client-side NER model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.",
             "type": "string"
           }
         },
@@ -14968,7 +14951,8 @@
             "type": "string"
           },
           "modelId": {
-            "description": "Noise cancellation model ID from the model registry",
+            "deprecated": true,
+            "description": "Ignored — a client-side noise-cancellation model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.",
             "type": "string"
           }
         },
@@ -17404,7 +17388,7 @@
           },
           "streamUrl": {
             "description": "Gateway-relative SSE path for the generation stream (stream mode only)",
-            "example": "text/tasks/0f1c…/stream",
+            "example": "text-generations/tasks/0f1c…/stream",
             "type": "string"
           },
           "taskId": {
@@ -19481,7 +19465,8 @@
       "STTConfigDto": {
         "properties": {
           "modelId": {
-            "description": "STT model ID (e.g. whisper-large-v3)",
+            "deprecated": true,
+            "description": "Ignored — a client-side speech-to-text model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.",
             "type": "string"
           }
         },
@@ -26571,7 +26556,8 @@
       "VADConfigDto": {
         "properties": {
           "modelId": {
-            "description": "VAD model ID (e.g. silero-vad-v5)",
+            "deprecated": true,
+            "description": "Ignored — a client-side voice-activity-detection model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.",
             "type": "string"
           },
           "sensitivity": {
@@ -49161,6 +49147,60 @@
         ]
       }
     },
+    "/api/v1/admin/text-generations/generate": {
+      "post": {
+        "description": "The platform LLM playground path: the same text-generation pipeline as `POST text-generations/generate` (sync or streaming), with the caller-pinned `provider` and `model` forwarded untouched. The business route refuses both fields (`MODEL_PINNING_NOT_ALLOWED`) because a business caller selects a model only through an Agent. Omitting `model` resolves the working tenant's TEXT_GENERATION agent. Platform administrators only.",
+        "operationId": "TextGenerationAdminController_generate",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The generation result, or the streaming acknowledgement carrying the task stream URL."
+          },
+          "403": {
+            "description": "The caller is not a platform administrator."
+          },
+          "429": {
+            "description": "The tenant is over its monthly LLM-token allowance, or the provider is rate limiting."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Generate text on a pinned provider and model (platform LLM playground)",
+        "tags": [
+          "admin-ai-models"
+        ]
+      }
+    },
+    "/api/v1/admin/text-generations/generate/assembled": {
+      "post": {
+        "description": "The platform LLM playground path of `POST text-generations/generate/assembled`: server-side prompt assembly (context items or a message, prompt template, DNA writing style) with the caller-pinned `provider` and `model` forwarded untouched. Platform administrators only.",
+        "operationId": "TextGenerationAdminController_generateAssembled",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The generation result (with `_debug` assembly meta when requested)."
+          },
+          "400": {
+            "description": "The assembly request is malformed (type, context source, or visit type)."
+          },
+          "403": {
+            "description": "The caller is not a platform administrator."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Generate text with server-side prompt assembly on a pinned provider and model (platform LLM playground)",
+        "tags": [
+          "admin-ai-models"
+        ]
+      }
+    },
     "/api/v1/admin/usage/cost-per-encounter": {
       "get": {
         "operationId": "AdminUsageController_costPerEncounter",
@@ -61616,6 +61656,9 @@
               }
             },
             "description": ""
+          },
+          "400": {
+            "description": "`MODEL_PINNING_NOT_ALLOWED` — `provider` / `model` were sent: the model is selected through a TEXT_GENERATION agent (`agentSlug`, or the tenant`s assignment). Also a malformed assembly request (type, context source, or visit type)."
           }
         },
         "security": [

@@ -8931,6 +8931,48 @@
       "apiExcluded": false
     },
     {
+      "controller": "TextGenerationAdminController",
+      "handler": "generate",
+      "method": "POST",
+      "path": "/api/v1/admin/text-generations/generate",
+      "routePath": "/admin/text-generations/generate",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TextGenerationAdminController",
+      "handler": "generateAssembled",
+      "method": "POST",
+      "path": "/api/v1/admin/text-generations/generate/assembled",
+      "routePath": "/admin/text-generations/generate/assembled",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AdminUsageController",
       "handler": "costPerEncounter",
       "method": "GET",
