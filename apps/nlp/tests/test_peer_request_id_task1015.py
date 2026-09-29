@@ -7,10 +7,26 @@ import asyncio
 import httpx
 import pytest
 from hope_obs import bind_request_context, clear_request_context
-from structlog.testing import capture_logs
 
 from nlp.core.config import ExternalTextConfig
 from nlp.services.external_text_client import ExternalTextClient, ExternalTextUnavailableError
+
+
+class _RecordingLogger:
+    """Stands in for the module logger. `structlog.testing.capture_logs` misses
+    loggers that an earlier test already cached (`cache_logger_on_first_use`)."""
+
+    def __init__(self) -> None:
+        self.lines: list[dict] = []
+
+    def bind(self, **_kw: object) -> _RecordingLogger:
+        return self
+
+    def __getattr__(self, level: str):
+        def _log(event: str, *_args: object, **kw: object) -> None:
+            self.lines.append({"event": event, "log_level": level, **kw})
+
+        return _log
 
 
 def _client(handler) -> ExternalTextClient:
@@ -39,17 +55,17 @@ def test_request_id_header_is_forwarded() -> None:
     assert seen["x-tenant-id"] == "t-1"
 
 
-def test_failure_is_structured_chained_and_message_free() -> None:
+def test_failure_is_structured_chained_and_message_free(monkeypatch: pytest.MonkeyPatch) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("secret-host-detail")
 
-    with capture_logs() as logs:
-        with pytest.raises(ExternalTextUnavailableError) as info:
-            asyncio.run(
-                _client(handler).generate_label(
-                    "p", tenant_id="t-1", provider="lm-studio", model="m-1"
-                )
-            )
+    recorder = _RecordingLogger()
+    monkeypatch.setattr("nlp.services.external_text_client.logger", recorder)
+    logs = recorder.lines
+    with pytest.raises(ExternalTextUnavailableError) as info:
+        asyncio.run(
+            _client(handler).generate_label("p", tenant_id="t-1", provider="lm-studio", model="m-1")
+        )
 
     assert isinstance(info.value.__cause__, httpx.ConnectError)
     events = {entry["event"]: entry for entry in logs}

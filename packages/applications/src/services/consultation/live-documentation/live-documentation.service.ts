@@ -149,6 +149,7 @@ import { readRecordedVisitType } from '../consultation/open-markers';
 // TASK-951 D-7 — the SAME cap the carried prior-visit summary is bounded by, applied here so a
 // client-supplied history is a bounded prompt input rather than an unbounded one.
 import { clientClinicalContextReaderFor, type ClientClinicalContext } from '../context/client-clinical-context';
+import { resolveSameDayPrequel, type SameDayPrequel, type SameDayPrequelSubject } from '../harness/same-day-prequel';
 // TASK-932 — the visit type the realtime lane's `core.condition` guards branch on. The SHARED
 // instance rather than an injected one: since TASK-882 `VisitTypeService` holds no state, takes
 // no dependency and derives the answer from the consultation's own parent link, so the facade
@@ -928,6 +929,13 @@ interface LiveSession {
   clientContextPromise?: Promise<LiveClientContext>;
   clientContext?: LiveClientContext;
   /**
+   * TASK-1020 — the same-day prequel (the patient's EARLIER visits today) and the client's lab
+   * results, resolved ONCE at session start off the SAME consultation row `ensureSubstrateResolved`
+   * reads, so the substrate read stays one `findById` per session. Never rejects. Absent on a session
+   * that never went through start: the lane then publishes "no prequel" rather than inventing one.
+   */
+  carryContextPromise?: Promise<LiveCarryContext>;
+  /**
    * TASK-932 R-16a — the live lane's LAST SUCCESSFUL output per node id, accumulated across
    * flushes and handed to the durable interpreter at `stop()`.
    *
@@ -1041,6 +1049,17 @@ function formatVitalsForPrompt(vitals?: LiveSummaryVitalsDto): string | undefine
  * one CONSUMER of that module, not its owner.
  */
 type LiveClientContext = ClientClinicalContext;
+
+/** TASK-1020 — what the live lane carries into a return visit beside the client's own context. */
+interface LiveCarryContext {
+  sameDayPrequel: SameDayPrequel;
+  testResults: string;
+}
+
+const NO_CARRY_CONTEXT: LiveCarryContext = Object.freeze({
+  sameDayPrequel: Object.freeze({ summary: '', hasSameDayPrequel: false }),
+  testResults: '',
+});
 
 /** Read a numeric env override, treating unset/blank/non-numeric as "no override". */
 function readNumericEnv(configService: ConfigService, key: string): number | undefined {
@@ -2157,6 +2176,9 @@ return 0`;
       // `current_department`, and resolving it from anywhere else would be a second read of a row
       // this line already has in hand.
       session.departmentId = consultation?.departmentId ?? null;
+      // TASK-1020 — the prequel and lab results, off this same row. Fire-and-forget like the other
+      // start-time resolutions: the flush awaits the memoised promise, which never rejects.
+      session.carryContextPromise = this.loadCarryContext(session.consultationId, consultation);
     } catch (error) {
       this.logger.warn({
         message: 'Governing-engine marker could not be read — this engine keeps the consultation so it is still documented',
@@ -3215,6 +3237,9 @@ return 0`;
     // What the client sent at `open`, resolved once for the session (the read is memoised, so
     // asking for it here costs nothing the run context below was not going to pay anyway).
     const clientContext = await this.resolveClientContext(session);
+    // TASK-1020 — the same-day prequel and lab results, resolved once at start (memoised, never rejects).
+    const carry = await (session.carryContextPromise ?? NO_CARRY_CONTEXT);
+    const carryBlocks = { sameDayPrequel: carry.sameDayPrequel.summary, testResults: carry.testResults };
     // TASK-1001 (owner decision 2026-09-23) — the platform-default OUTPUT language, frozen on the
     // session. Resolved here, before either prompt is built, so both branches state the same one.
     const platformOutputLanguageTag = await this.sessionPlatformOutputLanguage(session);
@@ -3234,6 +3259,7 @@ return 0`;
       turnInstruction(template.compiled),
       clientContext.vitals,
       clientContext.previousVisits,
+      carryBlocks,
     );
     // TASK-943 — the run's expression/prompt context, built ONCE per flush. The lane evaluates its
     // guards against it and every `core.agent` renders its instruction from its `trigger` root, so
@@ -3336,6 +3362,7 @@ return 0`;
               turnInstruction(template.compiled),
               clientContext.vitals,
               clientContext.previousVisits,
+              carryBlocks,
             ),
           agent,
           template,
@@ -4543,6 +4570,8 @@ return 0`;
   private async realtimeRunContext(session: LiveSession): Promise<Record<string, ExpressionValue>> {
     const client = await this.resolveClientContext(session);
     const clientVitals = client.vitals;
+    // TASK-1020 — the same-day prequel and the client's lab results (see `carryContextPromise`).
+    const carry = await (session.carryContextPromise ?? NO_CARRY_CONTEXT);
     // TASK-1001 (owner decision 2026-09-23) — the note's OUTPUT language, for `language_name`.
     const outputLanguage = platformOutputLanguage(await this.sessionPlatformOutputLanguage(session));
 
@@ -4556,6 +4585,8 @@ return 0`;
       // instead of a second copy of them, and an empty client history still reads as `''`.
       vitals: clientVitals,
       previousVisits: client.previousVisits,
+      // TASK-1020 — v1's ninth name finally has a source; through the builder, so `''` stays its default.
+      testResults: carry.testResults,
     });
 
     const context: Record<string, ExpressionValue> = {
@@ -4576,9 +4607,34 @@ return 0`;
       language: (session.summaryLanguage ?? '').trim(),
       chief_complaint: '',
       formatted_vitals: clientVitals ?? formatVitalsForPrompt(session.lastPayload?.vitals) ?? shared.safe_vitals,
+      // TASK-1020 — the same-day prequel, readable by every `core.agent` (`{{trigger.context.
+      // same_day_prequel_summary}}`) and by every prompt fragment's `when` (`trigger.context.
+      // same_day_prequel`). ALWAYS a boolean on this lane — a first visit is `false`, never absent.
+      same_day_prequel: carry.sameDayPrequel.hasSameDayPrequel,
+      same_day_prequel_summary: carry.sameDayPrequel.summary,
     };
 
     return { trigger: { context }, vars: {}, nodes: {} };
+  }
+
+  /**
+   * TASK-1020 — the same-day prequel and the client's lab results for one consultation row. Shared
+   * by the realtime lane (resolved once at start) and the handoff (resolved from the row after
+   * `stop()`), so both lanes read one fact the same way. Never rejects.
+   */
+  private async loadCarryContext(consultationId: string, consultation: SameDayPrequelSubject | null | undefined): Promise<LiveCarryContext> {
+    try {
+      const [sameDayPrequel, testResults] = await Promise.all([
+        resolveSameDayPrequel(
+          { consultationRepository: this.consultationRepository, contextItemRepository: this.contextItemRepository },
+          consultation,
+        ),
+        clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).readTestResults(consultationId),
+      ]);
+      return { sameDayPrequel, testResults };
+    } catch {
+      return NO_CARRY_CONTEXT;
+    }
   }
 
   /**
@@ -5921,6 +5977,9 @@ return 0`;
     // prompt.
     clientVitals?: string,
     clientPreviousVisits?: string,
+    // TASK-1020 — the same-day prequel and the client's lab results. Trailing and optional for the
+    // same reason as the two above: absent or blank ⇒ a byte-identical prompt.
+    carry?: { sameDayPrequel?: string; testResults?: string },
   ): string {
     const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
     const hasPriorNote = priorNote.trim().length > 0;
@@ -5975,6 +6034,10 @@ return 0`;
     // them most reliably.
     const clientVitalsBlock = clientVitals?.trim() ? `\n\nRecent Vitals:\n${clientVitals.trim()}` : '';
     const clientPreviousVisitsBlock = clientPreviousVisits?.trim() ? `\n\nPREVIOUS CASE NOTES SUMMARY:\n${clientPreviousVisits.trim()}` : '';
+    // TASK-1020 — appended the same way, after the prior case notes: the client's lab results, then
+    // the patient's EARLIER visits today (dated, attributed blocks from `same-day-prequel.ts`).
+    const testResultsBlock = carry?.testResults?.trim() ? `\n\nTEST RESULTS:\n${carry.testResults.trim()}` : '';
+    const sameDayPrequelBlock = carry?.sameDayPrequel?.trim() ? `\n\nSAME-DAY EARLIER VISIT(S):\n${carry.sameDayPrequel.trim()}` : '';
 
     return (
       stablePrefix +
@@ -5985,6 +6048,8 @@ return 0`;
       notesBlock +
       clientVitalsBlock +
       clientPreviousVisitsBlock +
+      testResultsBlock +
+      sameDayPrequelBlock +
       operatingFrame +
       turnContract
     );
@@ -7469,6 +7534,8 @@ return 0`;
     // the consultation's own tenant exactly as the realtime lane resolves it for the session.
     const outputLanguage = platformOutputLanguage(await this.resolvePlatformOutputLanguage(consultation.tenantId));
     const client = await clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).read(consultation.id);
+    // TASK-1020 — the same read the realtime lane made at start, re-made from the row (the session is gone).
+    const carry = await this.loadCarryContext(consultation.id, consultation);
     const shared = buildPreSummaryVariables({
       currentDepartment: await this.departmentNameOf(consultation.departmentId ?? null),
       // Derived exactly as `ensureSubstrateResolved` derives the session's own copy — TASK-951 D-3
@@ -7484,6 +7551,7 @@ return 0`;
       // two lanes cannot disagree about what an absent value means.
       vitals: client.vitals,
       previousVisits: client.previousVisits,
+      testResults: carry.testResults,
     });
     return {
       ...shared,
@@ -7494,6 +7562,13 @@ return 0`;
       // The general-medicine templates' own name for the reading line the pre-summary list spells
       // `safe_vitals`; the realtime lane publishes both under the same rule.
       formatted_vitals: client.vitals ?? shared.safe_vitals,
+      // TASK-1020 — the flag a prompt fragment's `when` reads on the durable finalize, published
+      // whenever the row HAS a chain (the only case a same-day predecessor can exist). A first visit
+      // publishes neither key — the handoff's pinned first-visit shape — and a fragment conditioned
+      // on the flag is then excluded (`condition_error`), which selects exactly what `false` would.
+      ...(consultation.parentConsultationId
+        ? { same_day_prequel: carry.sameDayPrequel.hasSameDayPrequel, same_day_prequel_summary: carry.sameDayPrequel.summary }
+        : {}),
     };
   }
 

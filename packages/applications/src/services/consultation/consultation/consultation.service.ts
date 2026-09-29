@@ -68,11 +68,23 @@ import { governingRunOf, readGoverningEngineMarker } from '../governing-engine';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { withWorkflowSelectionMarker } from './workflow-selection';
 import { readSpokenLanguageMode, withSummaryLanguage } from './summary-language';
-import { type ConsultationVisitTypeKey, readRecordedVisitType, withExternalRefMarker, withVisitTypeMarker } from './open-markers';
+import {
+  type ConsultationVisitTypeKey,
+  readExternalRef,
+  readRecordedVisitType,
+  resolveVisitTypeKey,
+  withExternalRefMarker,
+  withVisitTypeMarker,
+} from './open-markers';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import { PolicyEngine } from '../../../authorization/policy.engine';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
+import {
+  CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT,
+  CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY,
+  isValidTimeZone,
+} from '../../settings-registry/descriptors/consultation-appointment-day.descriptors';
 // TASK-950 — the two collaborators the schema-typed `context` on `open` needs. The
 // context-schema symbols come from their own files rather than that package's barrel, which
 // re-exports the service, the module and the DTO surface for the three symbols wanted here.
@@ -96,6 +108,29 @@ import { ConsultationCompletionTimeoutScheduler } from '../completion-timeout/co
  * apps/stt). Body: `{ code, message, sttSessionId, sttSessionStatus }` plus the gateway envelope.
  */
 export const STT_SESSION_NOT_ACTIVE_CODE = 'STT_SESSION_NOT_ACTIVE';
+
+/**
+ * TASK-1020 D-4 — `recording/start` on a consultation the state machine cannot move to RECORDING
+ * (SIGNED, CLOSED_COMPLETE, TIMED_OUT, REOPENED, …): signed documentation is never recorded over.
+ * Refused whatever the `requirePrimedBeforeRecording` kill-switch says; the switch-OFF bypass is
+ * kept for `OPEN` alone. A same-day return visit is a NEW consultation (`open` with a new
+ * `externalRef`, or `parentConsultationId`), never a second recording on a signed row.
+ */
+export const CONSULTATION_NOT_RECORDABLE_CODE = 'CONSULTATION_NOT_RECORDABLE';
+
+/** TASK-1020 §7.1 — the code on every 409 the transition matrix answers (`applyTransition`). */
+export const CONSULTATION_TRANSITION_ILLEGAL_CODE = 'CONSULTATION_TRANSITION_ILLEGAL';
+
+/** TASK-1020 D-5 — `parentConsultationId` names a consultation of another patient (400). */
+export const PARENT_PATIENT_MISMATCH_CODE = 'PARENT_PATIENT_MISMATCH';
+
+/** TASK-1020 D-2 — the `externalRef` is already this tenant's encounter id for another patient (409). */
+export const EXTERNAL_REF_CONFLICT_CODE = 'EXTERNAL_REF_CONFLICT';
+
+/** Prisma's unique-constraint violation — the encounter-key partial unique index (TASK-1020 D-2). */
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002';
+}
 
 /**
  * TASK-951 — everything `open` learned from the caller's `context`, in one value.
@@ -149,6 +184,14 @@ function readBindingString(context: Record<string, unknown>, binding: { kindKey:
 /** A stored declaration compared as a mode — a legacy `en-IN` marker equals a declared `en`. */
 function normalizeStoredMode(value: string | null): string | null {
   return normalizeLanguageMode(value) ?? value;
+}
+
+/**
+ * TASK-1020 BP-5 — the calendar day (`YYYY-MM-DD`) `now` falls on in `timeZone`. `en-CA` formats a
+ * date as ISO `YYYY-MM-DD`, so the formatter's own output is the answer; no offset arithmetic.
+ */
+export function calendarDayIn(now: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
 
 @Injectable()
@@ -262,7 +305,8 @@ export class ConsultationService extends BaseService implements IConsultationSer
    *   - `departmentId` — Department row must be tenant-scoped to
    *                            `tenantId` (defense vs. audit C-2).
    *   - `parentConsultationId` — Parent Consultation must live in the same
-   *                              tenant (defense vs. audit C-4 / B-3).
+   *                              tenant (defense vs. audit C-4 / B-3) AND
+   *                              belong to the same patient (TASK-1020 D-5).
    *
    * All helpers route failures through `NotFoundException` to avoid leaking
    * the existence of a cross-tenant resource. SUPER_ADMIN is intentionally
@@ -274,6 +318,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     tenantId: string,
     refs: {
       doctorId: string;
+      patientId: string;
       departmentId?: string | null;
       parentConsultationId?: string | null;
     },
@@ -285,7 +330,18 @@ export class ConsultationService extends BaseService implements IConsultationSer
     }
 
     if (refs.parentConsultationId) {
-      await assertParentInScope(this.consultationRepository, refs.parentConsultationId, tenantId);
+      const parent = await assertParentInScope(this.consultationRepository, refs.parentConsultationId, tenantId);
+      // TASK-1020 D-5 — tenancy is not enough. A parent is the visit this one FOLLOWS, and the
+      // chain, the timeline and the same-day prequel all read through it: a parent of another
+      // patient would put that patient's note into this one's prompt. A 400, not a 404 — the
+      // row is in the caller's tenant, so its existence is not the secret; the request is wrong.
+      if (parent.patientId !== refs.patientId) {
+        throw new BadRequestException({
+          message:
+            '`parentConsultationId` names a consultation of a different patient. A follow-up must belong to the same patient as the visit it follows.',
+          code: PARENT_PATIENT_MISMATCH_CODE,
+        });
+      }
     }
   }
 
@@ -1068,10 +1124,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
-   * Get or create consultation for (patientId, doctorId, appointmentDate)
+   * Get or create the consultation for one ENCOUNTER — the only entry (TASK-1020 D-1).
    *
-   * - If consultation exists: returns existing
-   * - If not: creates new consultation
+   * - The key: `(patientId, doctorId, externalRef)` when the caller sends an encounter id, else the
+   *   legacy `(patientId, appointmentDate, doctorId)` — see `findEncounterMatch`.
+   * - A match is returned, terminal or not; the response's `recordable` says whether it can still
+   *   be recorded. Consent is recorded on CREATE only (see the re-open branch for why).
+   * - No match creates a new consultation, chained to its parent: the caller's, or for a same-day
+   *   `revisit` the latest same-day visit of the patient (OD-4).
    *
    * `doctorId` is the clinician the CALLER resolves to: the authenticated human, or the user a
    * service account named with `clinicianUserId`. TASK-950 adds a third possibility — a machine
@@ -1110,6 +1170,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       // other. (`findByCode` is already tenant-scoped, so this can only ever agree — which is the
       // point: nothing reaches the factory without having passed the same guard.)
       departmentId: openContext.departmentId,
+      patientId: request.patientId,
       parentConsultationId: request.parentConsultationId,
     });
 
@@ -1136,66 +1197,13 @@ export class ConsultationService extends BaseService implements IConsultationSer
     //     happens to already exist. Otherwise the status code itself reports that.
     await this.assertWorkflowSelectionAllowed(tenantId, request.workflowDefinitionSlug);
 
-    // Use today's date if not provided
-    const appointmentDate = request.appointmentDate ? new Date(request.appointmentDate) : new Date(new Date().toISOString().split('T')[0]); // Today, no time
+    // TASK-1020 BP-5 — a caller-supplied date wins; otherwise TODAY in the TENANT's time zone
+    // (`consultation.appointmentDay.timeZone`), never the server's UTC date.
+    const appointmentDate = new Date(request.appointmentDate ?? this.tenantToday(tenantId));
 
-    // Try to find existing consultation (first one if multiple exist)
-    const existing = await this.consultationRepository.findByUniqueKey(tenantId, request.patientId, appointmentDate, actingClinicianId);
-
-    if (existing) {
-      // TASK-951 §D-5/D-6 — nothing is persisted or dispatched on this branch, for the same
-      // reason the selection below is ignored: this consultation was already opened, with its own
-      // context, and re-opening it must not append a second copy of the client's PRE items or
-      // start a second governing run. The mappings above still ran, so a payload the schema does
-      // not admit is still a 400 here rather than a silent 200.
-      //
-      // The selection was authorized above, but consultation-open dispatch fires on CREATE only,
-      // so there is no dispatch left to steer. Say so rather than let the caller believe their
-      // pick took effect — `GET /consultations/:id/workflow` reports what actually governs.
-      if (request.workflowDefinitionSlug) {
-        this.logger.log({
-          message: 'Workflow selection ignored — this consultation is already open and its governing engine was decided at its own open',
-          consultationId: existing.id,
-          requestedWorkflowDefinitionSlug: request.workflowDefinitionSlug,
-        });
-      }
-
-      // TASK-1004 — the one thing a re-open DOES change: an explicit, DIFFERENT spoken-language
-      // mode. A clinician who picks another language before recording again means it for every
-      // later step (live, batch, workflow), so the declaration follows them rather than silently
-      // keeping the first one. Same mode (after normalization), or none at all, writes nothing.
-      if (declaredLanguageMode && normalizeStoredMode(readSpokenLanguageMode(existing)) !== declaredLanguageMode) {
-        await this.reopenWithSpokenLanguageMode(existing, declaredLanguageMode);
-      }
-
-      this.broadcastSysEvent(SysEventType.ResourceViewed, {
-        resourceId: existing.id,
-        data: { action: 'getOrCreate', found: true },
-      });
-      const withRelations = await this.consultationRepository.findWithRelations(existing.id);
-      return ConsultationDtoMapper.toResponse(withRelations ?? existing, false);
-    }
-
-    // The LAST refusal before anything is written: would the workflow that is about to govern
-    // this consultation actually accept the context the caller sent?
+    // Create-path metadata, composed BEFORE the lookup because it is what decides the key: the
+    // encounter id `open` matches on is the `externalRef` marker exactly as it will be written.
     //
-    // `assertContextConformsToSchema` above already checked the payload against the tenant's
-    // CURRENT pinned schema. That is a different question: a governing workflow whose trigger the
-    // author PINNED carries the schema it was published with, frozen with
-    // `additionalProperties: false`, and `interpreter_core_trigger` validates against exactly
-    // those bytes. So a tenant that publishes a new kind gets a 201 here and a run that dies on
-    // its first node — after the meter unit, the row and the PHI context items are written.
-    //
-    // Placed on the CREATE path only (the re-open branch returned above) and only where the
-    // answer is CONCLUSIVE — see `assertGoverningWorkflowAcceptsContext`.
-    await this.assertGoverningWorkflowAcceptsContext(tenantId, request, openContext);
-
-    // A genuinely NEW consultation consumes a monthly
-    // meter unit. Only the create branch is metered (returning an existing
-    // consultation does not). Kill-switch-gated; → 429 when over the cap.
-    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
-
-    // Create new consultation
     // lane A — record the AUTHORIZED selection on the row itself, here, before dispatch
     // is even attempted.
     //
@@ -1228,7 +1236,83 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // catalogue, and that one was neither. See `open-markers.ts` for why neither is stripped.
     const withVisitType = openContext.visitTypeKey ? withVisitTypeMarker(withLanguage, openContext.visitTypeKey) : withLanguage;
     const metadata = openContext.externalRef ? withExternalRefMarker(withVisitType, openContext.externalRef) : withVisitType;
+    // TASK-1020 D-2 — the resolved encounter id: the schema-declared value, else one hand-posted
+    // under the same marker key. `null` ⇒ the legacy key applies.
+    const externalRef = readExternalRef(metadata);
 
+    const existing = await this.findEncounterMatch(tenantId, request, appointmentDate, actingClinicianId, externalRef);
+
+    if (existing) {
+      // TASK-951 §D-5/D-6 — nothing is persisted or dispatched on this branch, for the same
+      // reason the selection below is ignored: this consultation was already opened, with its own
+      // context, and re-opening it must not append a second copy of the client's PRE items or
+      // start a second governing run. The mappings above still ran, so a payload the schema does
+      // not admit is still a 400 here rather than a silent 200.
+      //
+      // The selection was authorized above, but consultation-open dispatch fires on CREATE only,
+      // so there is no dispatch left to steer. Say so rather than let the caller believe their
+      // pick took effect — `GET /consultations/:id/workflow` reports what actually governs.
+      if (request.workflowDefinitionSlug) {
+        this.logger.log({
+          message: 'Workflow selection ignored — this consultation is already open and its governing engine was decided at its own open',
+          consultationId: existing.id,
+          requestedWorkflowDefinitionSlug: request.workflowDefinitionSlug,
+        });
+      }
+
+      // TASK-1004 — the one thing a re-open DOES change: an explicit, DIFFERENT spoken-language
+      // mode. A clinician who picks another language before recording again means it for every
+      // later step (live, batch, workflow), so the declaration follows them rather than silently
+      // keeping the first one. Same mode (after normalization), or none at all, writes nothing.
+      if (declaredLanguageMode && normalizeStoredMode(readSpokenLanguageMode(existing)) !== declaredLanguageMode) {
+        await this.reopenWithSpokenLanguageMode(existing, declaredLanguageMode);
+      }
+
+      // TASK-1020 D-6 — consent is deliberately NOT (re-)recorded here.
+      // `ensureConsultationConsent` GRANTS every purpose that has no active grant (it is the act of
+      // opening a NEW encounter, see `consent-grant.service.ts`), so calling it on a re-open would
+      // silently undo a revocation recorded since the first open — on every retry and reconnect.
+      // Leaving it out is what honours that revocation: PatientConsentGuard refuses the gated
+      // calls. A new encounter (a new `externalRef`, or a follow-up) takes the create path and
+      // records consent there.
+
+      this.broadcastSysEvent(SysEventType.ResourceViewed, {
+        resourceId: existing.id,
+        data: { action: 'getOrCreate', found: true },
+      });
+      const withRelations = await this.consultationRepository.findWithRelations(existing.id);
+      return ConsultationDtoMapper.toResponse(withRelations ?? existing, false);
+    }
+
+    // The LAST refusal before anything is written: would the workflow that is about to govern
+    // this consultation actually accept the context the caller sent?
+    //
+    // `assertContextConformsToSchema` above already checked the payload against the tenant's
+    // CURRENT pinned schema. That is a different question: a governing workflow whose trigger the
+    // author PINNED carries the schema it was published with, frozen with
+    // `additionalProperties: false`, and `interpreter_core_trigger` validates against exactly
+    // those bytes. So a tenant that publishes a new kind gets a 201 here and a run that dies on
+    // its first node — after the meter unit, the row and the PHI context items are written.
+    //
+    // Placed on the CREATE path only (the re-open branch returned above) and only where the
+    // answer is CONCLUSIVE — see `assertGoverningWorkflowAcceptsContext`.
+    await this.assertGoverningWorkflowAcceptsContext(tenantId, request, openContext);
+
+    // A genuinely NEW consultation consumes a monthly
+    // meter unit. Only the create branch is metered (returning an existing
+    // consultation does not). Kill-switch-gated; → 429 when over the cap.
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
+
+    // TASK-1020 OD-4 — the parent: the caller's, when it named one (always wins); otherwise, for a
+    // consultation whose visit type resolves to `revisit`, the latest same-patient consultation of
+    // the same (tenant-local) day, ANY clinician — the morning visit a same-day return follows.
+    const parentConsultationId =
+      request.parentConsultationId ??
+      (resolveVisitTypeKey(this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE, tenantId, metadata, null) === 'revisit'
+        ? await this.deriveSameDayParent(tenantId, request.patientId, appointmentDate)
+        : null);
+
+    // Create new consultation
     const consultation = ConsultationFactory.CreateNewVisit({
       tenantId,
       patientId: request.patientId,
@@ -1236,16 +1320,29 @@ export class ConsultationService extends BaseService implements IConsultationSer
       doctorId: actingClinicianId,
       departmentId: openContext.departmentId,
       metadata: metadata as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'],
+      // TASK-1020 D-2 — the encounter key, in its column. The metadata marker above is still
+      // written for every reader that predates the column.
+      externalRef,
       spokenLanguageMode: declaredLanguageMode,
       createdBy: userId ?? undefined,
     });
 
-    // If parentConsultationId provided, set it (for re-visits/referrals)
-    if (request.parentConsultationId) {
-      consultation.parentConsultationId = request.parentConsultationId;
+    // If a parent was named or derived, set it (for re-visits/referrals)
+    if (parentConsultationId) {
+      consultation.parentConsultationId = parentConsultationId;
     }
 
-    const saved = await this.consultationRepository.create(consultation);
+    let saved: ConsultationEntity;
+    try {
+      saved = await this.consultationRepository.create(consultation);
+    } catch (error) {
+      // TASK-1020 D-2 — two opens racing on the same encounter: the partial unique index lets one
+      // insert win; the loser returns the winner's row exactly as a re-open would.
+      const winner = externalRef && isUniqueViolation(error) ? await this.findEncounterMatch(tenantId, request, appointmentDate, actingClinicianId, externalRef) : null;
+      if (!winner) throw error;
+      const withRelations = await this.consultationRepository.findWithRelations(winner.id);
+      return ConsultationDtoMapper.toResponse(withRelations ?? winner, false);
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
@@ -1352,71 +1449,80 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
-   * Create a re-visit/follow-up consultation
+   * TASK-1020 D-2/D-3 — the consultation an `open` resolves to, or `null` to CREATE.
+   *
+   * WITH an encounter id (`externalRef`): match on `(tenant, patient, doctor, externalRef)`. The
+   * same ref is the same encounter (a retry, a reconnect, a broker restart); a NEW ref is a new
+   * encounter even when a same-day row exists — that is the same-day return visit. A ref this
+   * tenant already used for ANOTHER patient is 409 `EXTERNAL_REF_CONFLICT`: one EMR event is one
+   * patient's encounter, and silently opening a second row under it would split its documentation.
+   *
+   * WITHOUT one: the legacy `(tenant, patient, appointmentDate, doctor)` key, newest match — except
+   * that a caller naming a `parentConsultationId` is explicitly following a visit up. Naming the
+   * match itself, or a row that is neither the match nor the match's own parent, creates a child;
+   * naming the match's own parent is a retry of that follow-up's open and returns it. A TERMINAL
+   * match is returned as it is (`recordable: false` on the response, OD-3 (a)) — never forked,
+   * because a retry after sign-off must not spawn a spurious visit.
    */
-  async createRevisit(request: OpenConsultationRequest, doctorId: string, parentConsultationId: string): Promise<ConsultationResponse> {
-    const tenantId = this.tenantId;
-    const userId = this.requestUserId;
-
-    if (!tenantId) {
-      throw new BadRequestException('Tenant ID is required');
+  private async findEncounterMatch(
+    tenantId: string,
+    request: OpenConsultationRequest,
+    appointmentDate: Date,
+    doctorId: string,
+    externalRef: string | null,
+  ): Promise<ConsultationEntity | null> {
+    if (externalRef) {
+      const sameRef = await this.consultationRepository.findByExternalRef(tenantId, externalRef);
+      const own = sameRef.find((row) => row.patientId === request.patientId && row.doctorId === doctorId);
+      if (own) return own;
+      if (sameRef.some((row) => row.patientId !== request.patientId)) {
+        throw new ConflictException({
+          code: EXTERNAL_REF_CONFLICT_CODE,
+          message: `externalRef '${externalRef}' already identifies an encounter of a different patient in this tenant. An encounter id belongs to exactly one patient; send this visit's own id.`,
+        });
+      }
+      return null;
     }
 
-    // Verify all cross-aggregate refs (parent, department,
-    // doctor) live in the caller's tenant before any factory call. The
-    // helper throws NotFoundException on miss / cross-tenant to keep this
-    // behaviour indistinguishable from "resource does not exist".
-    await this.assertCrossAggregateRefsInTenant(tenantId, {
-      doctorId,
-      departmentId: request.departmentId,
-      parentConsultationId,
-    });
+    const match = await this.consultationRepository.findByUniqueKey(tenantId, request.patientId, appointmentDate, doctorId);
+    if (!match) return null;
 
-    // a re-visit does not dispatch a consultation workflow at all (only `getOrCreate`
-    // stamps `trigger: 'consultation open'`), so a selector here has nothing to steer. Logged
-    // rather than silently dropped; the DTO field documents that `open` is the only route that
-    // honours it.
-    if (request.workflowDefinitionSlug) {
-      this.logger.log({
-        message: 'Workflow selection ignored — a re-visit dispatches no consultation workflow',
-        parentConsultationId,
-        requestedWorkflowDefinitionSlug: request.workflowDefinitionSlug,
+    const namedParent = request.parentConsultationId;
+    if (namedParent === match.id) return null;
+    if (namedParent && namedParent !== match.parentConsultationId) return null;
+    return match;
+  }
+
+  /**
+   * TASK-1020 OD-4 — the visit a same-day `revisit` follows when the caller named none: the LATEST
+   * consultation of the same tenant, patient and (tenant-local) appointment day, by any clinician.
+   * Called before the new row exists, so it can never be its own parent. `null` when the patient
+   * has no earlier visit that day — a stated revisit with nothing to follow stays parentless.
+   */
+  private async deriveSameDayParent(tenantId: string, patientId: string, appointmentDate: Date): Promise<string | null> {
+    const sameDay = await this.consultationRepository.findByPatientAndDate(tenantId, patientId, appointmentDate);
+    return sameDay.length > 0 ? sameDay[sameDay.length - 1].id : null;
+  }
+
+  /**
+   * TASK-1020 BP-5 — today, as `YYYY-MM-DD`, in the tenant's `consultation.appointmentDay.timeZone`
+   * (tenant → SYSTEM → `UTC`). A value that is not a zone this runtime resolves reads as the
+   * default — the descriptor validates on write, so reaching that branch means a row was planted
+   * around the write lane, which is logged rather than allowed to fail an open.
+   */
+  private tenantToday(tenantId: string): string {
+    const configured = this.tenantSettings?.resolve<unknown>(CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY, tenantId).value;
+    let timeZone = CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT;
+    if (isValidTimeZone(configured)) {
+      timeZone = configured;
+    } else if (configured !== undefined && configured !== null) {
+      this.logger.warn({
+        message: 'consultation.appointmentDay.timeZone is not a valid time zone — dating the consultation in UTC',
+        tenantId,
+        configured: String(configured),
       });
     }
-
-    const appointmentDate = request.appointmentDate ? new Date(request.appointmentDate) : new Date(new Date().toISOString().split('T')[0]);
-
-    // A re-visit is also a new consultation for meter
-    // purposes. Kill-switch-gated; → 429 when over the rolling-monthly cap.
-    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
-
-    // TASK-932 §3.7 — a re-visit is a new consultation, so it declares its own summary language.
-    // It is NOT inherited from the parent: a follow-up may legitimately be documented in another
-    // language, and inferring one from a visit weeks ago would be a decision nobody made.
-    const revisitLanguageMode = requestedLanguageMode(request);
-    const revisitMetadata = revisitLanguageMode ? withSummaryLanguage(request.metadata, revisitLanguageMode) : request.metadata;
-
-    const consultation = ConsultationFactory.CreateRevisit({
-      tenantId,
-      patientId: request.patientId,
-      appointmentDate,
-      doctorId,
-      departmentId: request.departmentId,
-      parentConsultationId,
-      metadata: revisitMetadata as Parameters<typeof ConsultationFactory.CreateRevisit>[0]['metadata'],
-      spokenLanguageMode: revisitLanguageMode,
-      createdBy: userId ?? undefined,
-    });
-
-    const saved = await this.consultationRepository.create(consultation);
-
-    this.broadcastSysEvent(SysEventType.ResourceCreated, {
-      resourceId: saved.id,
-      createdAt: saved.createdAt,
-      data: { action: 'createRevisit', parentId: parentConsultationId },
-    });
-
-    return ConsultationDtoMapper.toResponse(saved, true);
+    return calendarDayIn(new Date(), timeZone);
   }
 
   /**
@@ -1887,7 +1993,8 @@ export class ConsultationService extends BaseService implements IConsultationSer
       return entity.transitionTo(next, actor, reason);
     } catch (err) {
       if (err instanceof BusinessException) {
-        throw new ConflictException(err.message);
+        // TASK-1020 §7.1 — coded, so a client can branch on the refusal rather than parse prose.
+        throw new ConflictException({ code: CONSULTATION_TRANSITION_ILLEGAL_CODE, message: err.message, from: entity.status, to: next });
       }
       throw err;
     }
@@ -2299,6 +2406,18 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
     const actor = this.requestUserId ?? 'system';
     const requirePrimed = this.tenantSettings?.resolvePlatform<boolean>(CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY).value === true;
+
+    // TASK-1020 D-4 — signed (or otherwise closed-to-recording) documentation is never recorded
+    // over, whatever the kill-switch says: SIGNED / CLOSED_COMPLETE / TIMED_OUT / REOPENED have no
+    // edge to RECORDING, and the switch-OFF bypass below used to write RECORDING onto them anyway.
+    // The bypass now covers exactly the legacy case it exists for: `OPEN` with no prior `prime`.
+    if (consultation.status !== ConsultationStatus.OPEN && !consultation.canTransitionTo(ConsultationStatus.RECORDING)) {
+      throw new ConflictException({
+        code: CONSULTATION_NOT_RECORDABLE_CODE,
+        message: `Consultation ${id} is ${consultation.status} and cannot be recorded. Open a new consultation for a new visit (a new externalRef, or parentConsultationId naming this one).`,
+        status: consultation.status,
+      });
+    }
 
     if (!requirePrimed && !consultation.canTransitionTo(ConsultationStatus.RECORDING)) {
       // grep-gate NOTE — Kill-switch OFF: this is the ONE matrix

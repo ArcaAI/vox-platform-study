@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import type { AcceptedCorrectionProposal } from '../endpoint/dto/endpoint.request';
+import { requestIdHeader } from '../../../common/internal-service-headers';
 
 /**
  * Context for starting a durable harness document workflow. `tenantId` is
@@ -676,6 +677,7 @@ export class HarnessGatewayService {
       'Content-Type': 'application/json',
       'X-Service-Token': token,
       ...(tenantId === undefined ? {} : { 'X-Tenant-Id': tenantId }),
+      ...requestIdHeader(),
     };
   }
 }

@@ -1508,15 +1508,13 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const known = ledger.catalogue.modelFor(service, modelRef);
     if (known) return known;
     const field = service === 'lm-studio' ? 'wireModelId' : service === 'nlp' ? 'sourceUri' : 'slug';
-    const rows = await this.aiModels
-      .findAll({ filters: { tenantId: SYSTEM_TENANT_ID, [field]: modelRef } as never })
-      .catch(
-        warnAndFallback([] as AiModelEntity[], {
-          logger: this.logger,
-          message: 'Residency catalogue model lookup failed',
-          meta: { service, modelRef },
-        }),
-      );
+    const rows = await this.aiModels.findAll({ filters: { tenantId: SYSTEM_TENANT_ID, [field]: modelRef } as never }).catch(
+      warnAndFallback([] as AiModelEntity[], {
+        logger: this.logger,
+        message: 'Residency catalogue model lookup failed',
+        meta: { service, modelRef },
+      }),
+    );
     return rows.find(
       (row) =>
         row.tenantId === SYSTEM_TENANT_ID &&

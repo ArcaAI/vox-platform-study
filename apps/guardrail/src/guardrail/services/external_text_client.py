@@ -29,6 +29,8 @@ import json
 import time
 from typing import Any, cast
 
+from hope_obs import outbound_context_headers
+
 from guardrail.core.breaker import BreakerOpenError, CircuitBreaker
 from guardrail.core.config import JudgePolicy
 from guardrail.core.errors import (
@@ -203,6 +205,7 @@ class TextJudgeClient:
         headers = {"Content-Type": "application/json", "X-Tenant-Id": self.tenant_id}
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
+        headers.update(outbound_context_headers())
         return headers
 
     async def _judge(self, prompt: str, system_prompt: str) -> dict[str, Any]:

@@ -157,16 +157,19 @@ describe('the FRAGMENT every department summary agent attaches', () => {
 });
 
 describe('the 22 department summary agents', () => {
-  it('each compose exactly two fragments: the department body, then the policy', () => {
+  it('each compose the department body, then (revisit only, TASK-1020) the same-day-return fragment, then the policy LAST', () => {
     expect(ARCAAI_DEPARTMENT_AGENT_SPECS).toHaveLength(22);
 
     for (const spec of ARCAAI_DEPARTMENT_AGENT_SPECS) {
       const fragments = fragmentsOf(spec);
-      expect(fragments, spec.slug).toHaveLength(2);
+      // TASK-1020 OD-5(a): the 11 revisit agents carry ONE extra, conditional fragment between the
+      // body and the policy; the 11 new-visit agents are unchanged at two.
+      expect(fragments, spec.slug).toHaveLength(spec.slug.endsWith('-summary-revisit') ? 3 : 2);
       // ORDER: the policy is LAST, nearest the generation point, which is where a model honours
       // an instruction most reliably — and winning is this fragment's entire job.
-      expect(fragments[1]!.key, spec.slug).toBe(ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
-      expect(fragments[1]!.promptTemplateId, spec.slug).toBe(ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID);
+      const last = fragments[fragments.length - 1]!;
+      expect(last.key, spec.slug).toBe(ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
+      expect(last.promptTemplateId, spec.slug).toBe(ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID);
     }
   });
 
@@ -206,7 +209,8 @@ describe('the 22 department summary agents', () => {
   });
 
   it('all reference the SAME policy row — that is what makes it one edit for the whole tenant', () => {
-    const referenced = new Set(ARCAAI_DEPARTMENT_AGENT_SPECS.map((spec) => fragmentsOf(spec)[1]!.promptTemplateId));
+    // The policy is the LAST fragment on every agent (TASK-1020 added a third on the revisit ones).
+    const referenced = new Set(ARCAAI_DEPARTMENT_AGENT_SPECS.map((spec) => fragmentsOf(spec).at(-1)!.promptTemplateId));
     expect(referenced.size).toBe(1);
   });
 });

@@ -1,7 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import { HttpException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SecretsService, resolveInternalAccessToken } from '@arcaai/applications';
+import { SecretsService, resolveInternalAccessToken, requestIdHeader } from '@arcaai/applications';
 import { isAxiosError } from 'axios';
 
 import { describeCauseForOperator } from '../../filters/downstream-error';
@@ -167,6 +167,7 @@ export class HarnessOpsClient {
     return {
       'Content-Type': 'application/json',
       'X-Service-Token': token,
+      ...requestIdHeader(),
     };
   }
 

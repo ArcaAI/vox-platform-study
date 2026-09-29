@@ -37,16 +37,12 @@ export interface StartRecordingOptions {
  */
 export abstract class IConsultationService {
   /**
-   * Get or create consultation for (patientId, doctorId, appointmentDate)
-   * If exists: returns existing consultation
-   * If not: creates new consultation
+   * Get or create the consultation for one ENCOUNTER (TASK-1020): keyed on
+   * `(patientId, doctorId, externalRef)` when the caller sends an encounter id, else on the legacy
+   * `(patientId, appointmentDate, doctorId)`. The only entry — a follow-up is an `open` that names
+   * a new `externalRef` or a `parentConsultationId`.
    */
   abstract getOrCreate(request: OpenConsultationRequest, doctorId: string): Promise<ConsultationResponse>;
-
-  /**
-   * Create a re-visit/follow-up consultation
-   */
-  abstract createRevisit(request: OpenConsultationRequest, doctorId: string, parentConsultationId: string): Promise<ConsultationResponse>;
 
   /**
    * Get consultation by ID with context

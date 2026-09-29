@@ -173,6 +173,11 @@ export const ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION: Record<string, unknown> =
  * it has to have named properties. Every property is optional — a client sends what it has, and
  * the mapping from its own vocabulary is the client's job.
  *
+ * `investigations` (TASK-1020 OD-6) is modelled exactly like `vitals`: STRUCTURED, optional,
+ * persisted as a PRE item, no marker and no `materializeAs`. It is the channel a client uses to
+ * hand HOPE the lab results available at the encounter; the runtime formats them into the
+ * `formatted_test_results` prompt variable.
+ *
  * `previous_case_notes` carries `materializeAs: 'CASE_NOTE'`, so each entry additionally becomes
  * one `CASE_NOTE` context item and the existing warm-start read (`findCaseNotes()`) sees it
  * without the client having to POST the notes a second time.
@@ -249,6 +254,40 @@ export const ARCAAI_CONSULTATION_SCRIBE_DEFINITION: Record<string, unknown> = {
           recordedAt: { type: 'string', description: 'ISO-8601 timestamp of the observation set.' },
           notes: { type: 'string' },
         },
+      },
+    },
+    {
+      key: 'investigations',
+      label: 'Investigations',
+      primitive: 'STRUCTURED',
+      phiClass: 'PHI',
+      cardinality: 'ONE',
+      lifecycle: 'PRE',
+      producedBy: ['CLIENT'],
+      description:
+        'Lab / investigation results available at this encounter (TASK-1020 OD-6). Optional: send what the EMR has. Feeds `formatted_test_results`; without it, results come from what is dictated.',
+      fields: {
+        type: 'object',
+        properties: {
+          results: {
+            type: 'array',
+            maxItems: 100,
+            items: {
+              type: 'object',
+              required: ['name', 'value'],
+              properties: {
+                name: { type: 'string', maxLength: 200 },
+                value: { type: ['string', 'number'] },
+                unit: { type: 'string', maxLength: 40 },
+                refRange: { type: 'string', maxLength: 80 },
+                collectedAt: { type: 'string', maxLength: 40 },
+                flag: { type: 'string', maxLength: 20 },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        additionalProperties: false,
       },
     },
     {

@@ -4,6 +4,7 @@ import { SEED_CUSTOMER_TENANT_IDS } from '../00-constants';
 import {
   ARCAAI_CLINICAL_TEMPLATES,
   ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+  ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID,
   seedArcaaiClinicalTemplates,
 } from '../07b-arcaai-clinical-templates';
 
@@ -49,7 +50,8 @@ describe('ArcaAI clinical template department references', () => {
     // is deliberately NOT a member of `ARCAAI_CLINICAL_TEMPLATES`: that set is pinned at 22+1
     // rows each carrying v1/v2/v3, and the policy is a single row with a single version. It is
     // seeded here because it is ArcaAI tenant content that the department agents point at.
-    expect(createdTemplates).toHaveLength(ARCAAI_CLINICAL_TEMPLATES.length + 1);
+    // TASK-1020 adds a SECOND shared row beside the corpus: the conditional same-day-return fragment.
+    expect(createdTemplates).toHaveLength(ARCAAI_CLINICAL_TEMPLATES.length + 2);
     expect(createdTemplates.slice(0, 2).every((template) => template.departmentId === departmentIds.SURG)).toBe(true);
 
     const policy = createdTemplates.find((template) => template.id === ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID);
@@ -58,8 +60,12 @@ describe('ArcaAI clinical template department references', () => {
     // changes its note language by editing ONE row rather than 22.
     expect(policy!.departmentId).toBeNull();
 
+    const sameDay = createdTemplates.find((template) => template.id === ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID);
+    expect(sameDay, 'the shared same-day-return row is not seeded').toBeDefined();
+    expect(sameDay!.departmentId).toBeNull();
+
     // The pre-summary row is department-less too, and remains so.
     const preSummary = createdTemplates.filter((template) => template.departmentId === null);
-    expect(preSummary.length, 'exactly two department-less rows: the pre-summary and the policy').toBe(2);
+    expect(preSummary.length, 'exactly three department-less rows: the pre-summary, the policy and the same-day return').toBe(3);
   });
 });

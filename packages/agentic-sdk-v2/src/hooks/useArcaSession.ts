@@ -356,12 +356,15 @@ export function useArcaSession(): UseArcaSessionReturn {
   const prime = useCallback((): Promise<Consultation> => transitionState('prime', CONSULTATION_ENDPOINTS.PRIME), [transitionState]);
 
   /**
-   * Close the current consultation (transition status to CLOSED).
+   * Close the current consultation. Legal from `SIGNED` (→ `CLOSED_COMPLETE`) or `TIMED_OUT`
+   * (→ `CLOSED_INCOMPLETE`); an already-closed consultation is returned unchanged and any other
+   * state is a 409.
    */
   const close = useCallback((): Promise<Consultation> => transitionState('close', CONSULTATION_ENDPOINTS.CLOSE), [transitionState]);
 
   /**
-   * Reopen a previously closed consultation (transition status to OPEN).
+   * Reopen a previously signed or closed consultation (transition status to `REOPENED`). A reopened
+   * consultation is not recordable — start a return visit by opening with a new `externalRef`.
    */
   const reopen = useCallback((): Promise<Consultation> => transitionState('reopen', CONSULTATION_ENDPOINTS.REOPEN), [transitionState]);
 
@@ -397,6 +400,13 @@ export function useArcaSession(): UseArcaSessionReturn {
       appointmentDate: store.consultation.appointmentDate,
       department: store.consultation.department,
       status: store.consultation.status,
+      language: store.consultation.language,
+      isNew: store.consultation.isNew,
+      version: store.consultation.version,
+      parentConsultationId: store.consultation.parentConsultationId,
+      visitType: store.consultation.visitType,
+      recordable: store.consultation.recordable,
+      externalRef: store.consultation.externalRef,
       metadata: store.consultation.metadata,
       createdAt: store.consultation.createdAt,
       updatedAt: store.consultation.updatedAt,

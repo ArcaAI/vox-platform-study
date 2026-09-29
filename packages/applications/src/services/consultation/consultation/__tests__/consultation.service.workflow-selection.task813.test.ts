@@ -109,7 +109,7 @@ describe('ConsultationService.getOrCreate — workflow selection (OD-1)', () => 
   // would change its failure profile.
   describe('TASK-891 — threading the parent link into dispatch for visit-type selection', () => {
     it('passes the parent link through when the consultation is a revisit', async () => {
-      m.consultationRepository.findById.mockResolvedValue({ id: 'parent-1', tenantId: TENANT });
+      m.consultationRepository.findById.mockResolvedValue({ id: 'parent-1', tenantId: TENANT, patientId: 'p-1' });
 
       await makeService(m).getOrCreate({ patientId: 'p-1', parentConsultationId: 'parent-1' } as never, 'doctor-1');
 

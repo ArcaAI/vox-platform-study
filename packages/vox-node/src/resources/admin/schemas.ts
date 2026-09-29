@@ -1194,6 +1194,8 @@ export interface ConsultationResponse {
   doctor?: DoctorInfo;
   /** Doctor identifier */
   doctorId: string;
+  /** The caller's own encounter id this consultation is keyed on, or null. A later `open` with the same ref (same patient and clinician) returns this consultation; a new ref opens a new one. */
+  externalRef: string | null;
   /** The tenant-authored workflow run governing this consultation, or null when the default loop does. Always present. `status` is the PERSISTED vocabulary (RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT) — never the interpreter's SUCCEEDED/DEGRADED; `degraded` is a flag on a COMPLETED run. */
   governingRun?: Record<string, unknown> | null;
   /** Consultation ID */
@@ -1208,6 +1210,8 @@ export interface ConsultationResponse {
   parentConsultationId?: string;
   /** Patient identifier */
   patientId: string;
+  /** Whether this consultation can still be recorded. false for SIGNED, CLOSED_COMPLETE, TIMED_OUT, REOPENED and CLOSED — `recording/start` answers 409 `CONSULTATION_NOT_RECORDABLE` for them. To start a new visit, open with a new `externalRef` or with `parentConsultationId` naming this consultation. */
+  recordable: boolean;
   /** Clinical lifecycle status — the single-sourced ConsultationStatus column (session state machine). */
   status?:
     | 'OPEN'
@@ -1226,6 +1230,8 @@ export interface ConsultationResponse {
   updatedAt: string;
   /** Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`"<version>"`) required by the state-machine transition routes (POST :id/prime|close|reopen — ). `ETagInterceptor` also mirrors this value onto the response `ETag` header. */
   version?: number;
+  /** The consultation's visit type: the recorded (schema-stated) value when it matches the platform vocabulary, otherwise `revisit` when a parent consultation is linked, otherwise `new-visit`. */
+  visitType: 'new-visit' | 'revisit';
 }
 
 export interface ConsultationTelemetryResponse {

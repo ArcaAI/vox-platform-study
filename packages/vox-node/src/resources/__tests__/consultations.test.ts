@@ -429,3 +429,45 @@ describe('ConsultationsResource#open — languageMode', () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ patientId: 'p1', languageMode: 'ml-en' });
   });
 });
+
+// -----------------------------------------------------------------------------
+// open — the TASK-1020 typed response (status / visitType / externalRef / recordable)
+// -----------------------------------------------------------------------------
+
+describe('ConsultationsResource#open — TASK-1020 response contract', () => {
+  it('surfaces the typed visit fields the gateway returns', async () => {
+    const body = {
+      id: 'c2',
+      patientId: 'p1',
+      doctorId: 'd1',
+      appointmentDate: '2026-09-29',
+      parentConsultationId: 'c1',
+      status: 'OPEN',
+      visitType: 'revisit',
+      externalRef: 'evt-2',
+      recordable: true,
+      createdAt: '2026-09-29T12:00:00Z',
+      updatedAt: '2026-09-29T12:00:00Z',
+      governingRun: null,
+    };
+    const fetchImpl = fetchMock(async () => jsonResponse(200, body));
+    const resource = new ConsultationsResource(new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl }));
+
+    const result = await resource.open({ patientId: 'p1' });
+    // Compile-time: these must be the narrow types, not string / boolean | undefined.
+    const status: import('../../types/consultation').ConsultationStatus = result.status;
+    const visitType: 'new-visit' | 'revisit' = result.visitType;
+    const externalRef: string | null = result.externalRef;
+    const recordable: boolean = result.recordable;
+    const parent: string | null | undefined = result.parentConsultationId;
+    expect([status, visitType, externalRef, recordable, parent]).toEqual(['OPEN', 'revisit', 'evt-2', true, 'c1']);
+  });
+
+  it('raises ConflictError (with the code) on a 409 that is not a quota', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(409, { message: 'bound elsewhere', code: 'EXTERNAL_REF_CONFLICT' }));
+    const resource = new ConsultationsResource(new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl }));
+    const err = await resource.open({ patientId: 'p1' }).catch((e: unknown) => e);
+    expect((err as { code?: string }).code).toBe('EXTERNAL_REF_CONFLICT');
+    expect((err as Error).constructor.name).toBe('ConflictError');
+  });
+});

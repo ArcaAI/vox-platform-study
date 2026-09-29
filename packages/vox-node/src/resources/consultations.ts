@@ -1,21 +1,31 @@
 /**
  * `hope.consultations.*` — opening a consultation, driving its recording,
- * reading its live planes, and writing context items into it.
+ * reading its live planes, writing context items into it, and taking it to a
+ * signed note.
  *
  * Backed by `apps/api/src/modules/consultation/consultation.controller.ts`.
  *
- * TASK-933 grew this from a minimal READ (id validation for the summarization
- * flow) into the realtime LIFECYCLE a machine integration actually needs:
- * `open` → `recording.start` → `streams.*` → `recording.stop` →
- * `summaries.latest`. What it is still NOT is consultation CRUD — there is no
- * update, no delete, and no listing here, because none of those is part of
- * running a consultation.
+ * TASK-933 grew this from a minimal READ into the realtime LIFECYCLE a machine
+ * integration runs: `open` → `recording.start` → `streams.*` →
+ * `recording.stop` → `waitForFinalNote` / `summaries.latest` →
+ * `summaries.approve` → `close`. Also here: `get`, `chain` (the visit chain
+ * this consultation belongs to), `listContext`, `documentSections`,
+ * `addContext` and `updateLanguage`. What it is still NOT is consultation
+ * CRUD — there is no delete and no listing, because neither is part of running
+ * a consultation.
  */
 
+import { FinalNoteTimeoutError, FinalNoteUnavailableError, NotFoundError } from '../core/errors';
 import { encodePathSegment } from '../core/url';
 import { toStrongValidator } from '../core/if-match';
 import type { Transport } from '../core/transport';
-import type { AddContextRequest, ConsultationGetResponse, ContextItemResponse } from '../types/consultation';
+import type {
+  AddContextRequest,
+  ConsultationGetResponse,
+  ConsultationStatus,
+  ConsultationSummaryResponse,
+  ContextItemResponse,
+} from '../types/consultation';
 import type {
   CloseConsultationRequest,
   ConsultationOpenResponse,
@@ -31,6 +41,70 @@ import { ConsultationWorkflowsResource } from './workflows';
 /** Per-call options for {@link ConsultationsResource.get}. */
 export interface ConsultationRequestOptions {
   signal?: AbortSignal;
+}
+
+/** Options for {@link ConsultationsResource.waitForFinalNote}. */
+export interface WaitForFinalNoteOptions {
+  /**
+   * The moment the caller stopped recording. Only a note whose `updatedAt` (else `createdAt`) is
+   * AFTER this counts — the morning's signed note on the same consultation chain, or a note left
+   * by an earlier recording, must never be returned as this visit's final note.
+   *
+   * Compared against SERVER timestamps, so prefer a server-derived value where you have one (the
+   * `updatedAt` of the {@link ConsultationRecordingResource.stop} response) over `new Date()` when
+   * the caller's clock may skew from the gateway's.
+   */
+  since: Date | string;
+  /** Give up with {@link FinalNoteTimeoutError} after this long. Default `180000` (3 min). */
+  timeoutMs?: number;
+  /** Delay between polls. Default `5000`. */
+  pollIntervalMs?: number;
+  signal?: AbortSignal;
+}
+
+/** Statuses at which the finalize run has produced a note the caller may read. */
+const NOTE_READY_STATUSES: ReadonlySet<ConsultationStatus> = new Set<ConsultationStatus>([
+  'PENDING_REVIEW',
+  'DRAFT_PENDING_SENSORS',
+  'SIGNED',
+  'CLOSED_COMPLETE',
+  'TIMED_OUT',
+]);
+
+function parseSince(since: Date | string): number {
+  const ms = since instanceof Date ? since.getTime() : Date.parse(since);
+  if (Number.isNaN(ms)) {
+    throw new TypeError('waitForFinalNote: `since` must be a Date or an ISO-8601 timestamp — it is the baseline a fresh note is measured against.');
+  }
+  return ms;
+}
+
+function noteTime(note: ConsultationSummaryResponse): number {
+  const ms = Date.parse(note.updatedAt ?? note.createdAt);
+  return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms;
+}
+
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException('The operation was aborted.', 'AbortError');
+}
+
+/** Sleep that a caller's `AbortSignal` can cut short (rejects with the signal's reason). */
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortReason(signal));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortReason(signal as AbortSignal));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 /** Options for {@link ConsultationsResource.close}. */
@@ -118,12 +192,22 @@ export class ConsultationsResource {
   }
 
   /**
-   * `POST /api/v1/consultations/open` — GET-OR-CREATE the consultation for
-   * `(patientId, clinician, appointmentDate)`.
+   * `POST /api/v1/consultations/open` — GET-OR-CREATE the consultation for one
+   * VISIT.
+   *
+   * **The visit key.** With an `externalRef` (the value of the schema's
+   * `externalRef`-marked context field, e.g. an EMR encounter/event id) the
+   * key is that ref: the same ref returns the same consultation, a NEW ref
+   * creates a new one — including a second visit for the same patient on the
+   * same day. Without one, the legacy key `(patientId, clinician,
+   * appointmentDate)` applies. A `revisit` open that names no
+   * `parentConsultationId` gets a server-derived same-day parent.
    *
    * Read {@link ConsultationOpenResponse.isNew} to tell which happened; calling
    * this twice for the same visit is the intended way to re-attach to a
-   * consultation you already opened, not an error.
+   * consultation you already opened, not an error. **Then read
+   * {@link ConsultationOpenResponse.recordable}** before recording: a row that
+   * is already signed or closed is returned as-is with `recordable: false`.
    *
    * **A service-account caller MUST name the clinician — either
    * `clinicianUserId`, or the schema's user-identity field inside `context`
@@ -136,8 +220,8 @@ export class ConsultationsResource {
    *
    * The other three identity details all matter at open and only at open:
    * `departmentId` selects the governing workflow and the department's SOAP
-   * shape, `parentConsultationId` IS the visit-type signal (absent = new visit,
-   * present = revisit), and `language` declares what is SPOKEN (a code-switch
+   * shape, `parentConsultationId` (or a server-derived same-day parent) IS the
+   * visit-type signal (none = new visit, present = revisit), and `language` declares what is SPOKEN (a code-switch
    * mode such as `ml-en` is accepted) — it does not choose the note's language,
    * which is the tenant's configured output language or the platform default.
    * None of them can be supplied later.
@@ -146,6 +230,10 @@ export class ConsultationsResource {
    * makes a retry harmless in principle — but `core/retry.ts` does not retry a
    * bare POST, and this method does not special-case itself out of that rule.
    *
+   * @throws ConflictError — 409 `EXTERNAL_REF_CONFLICT` when the `externalRef`
+   * is already bound to a different patient.
+   * @throws BadRequestError — 400 `PARENT_PATIENT_MISMATCH` when
+   * `parentConsultationId` belongs to another patient.
    * @throws TypeError — locally, before any request is issued, for an empty
    * `patientId`. The gateway answers that with a 400; it is a programming
    * error, not a server condition.
@@ -177,6 +265,74 @@ export class ConsultationsResource {
       path: `consultations/${encodePathSegment(id)}`,
       signal: options.signal,
     });
+  }
+
+  /**
+   * `GET /api/v1/consultations/:id/chain` — the visit chain this consultation belongs to: the
+   * consultation, its ancestors and its children (a same-day return visit is a child of the
+   * morning visit), in the order the gateway returns them, tenant-filtered.
+   *
+   * Gated by the `HISTORY_RETRIEVAL` consent purpose. A service account needs
+   * `svc:consultation:session:read`. A missing id and another tenant's id are both a 404.
+   */
+  async chain(id: string, options: ConsultationRequestOptions = {}): Promise<ConsultationGetResponse[]> {
+    return this.transport.request<ConsultationGetResponse[]>({
+      path: `consultations/${encodePathSegment(id)}/chain`,
+      signal: options.signal,
+    });
+  }
+
+  /**
+   * Wait for the FINAL note of a recording you just stopped — one written after `since`.
+   *
+   * Polls `summaries.latest` and `get` together. Resolves with the latest summary only when it is
+   * NEWER than {@link WaitForFinalNoteOptions.since} **and** the consultation status is one of
+   * `PENDING_REVIEW`, `DRAFT_PENDING_SENSORS`, `SIGNED`, `CLOSED_COMPLETE` or `TIMED_OUT`. That
+   * baseline is the point: on a consultation that already carries a note (a re-recorded visit), a
+   * bare `summaries.latest` poll returns the OLD note immediately and the caller ships stale
+   * content as if it were the new one.
+   *
+   * A 404 from `summaries.latest` means "no note yet" and keeps polling.
+   *
+   * Requires `consultation:report:read` (service account: `svc:consultation:report:read`) for
+   * `summaries.latest` and `consultation:session:read` for `get`.
+   *
+   * @throws FinalNoteUnavailableError — the consultation reached `CLOSED_INCOMPLETE` without a
+   * note newer than `since`; nothing further will be written.
+   * @throws FinalNoteTimeoutError — no fresh note within `timeoutMs`. The note may still land;
+   * call again or read `summaries.latest` later.
+   * @throws TypeError — locally, for an unparseable `since`.
+   * @throws The signal's reason (an `AbortError` by default) when `signal` aborts.
+   */
+  async waitForFinalNote(id: string, options: WaitForFinalNoteOptions): Promise<ConsultationSummaryResponse> {
+    const sinceMs = parseSince(options.since);
+    const timeoutMs = options.timeoutMs ?? 180_000;
+    const pollIntervalMs = options.pollIntervalMs ?? 5_000;
+    const { signal } = options;
+    const deadline = Date.now() + timeoutMs;
+
+    for (;;) {
+      if (signal?.aborted) throw abortReason(signal);
+
+      const [latest, consultation] = await Promise.all([
+        this.summaries.latest(id, { signal }).catch((error: unknown) => {
+          if (error instanceof NotFoundError) return null;
+          throw error;
+        }),
+        this.get(id, { signal }),
+      ]);
+
+      const status = consultation.status;
+      const fresh = latest !== null && latest !== undefined && noteTime(latest) > sinceMs;
+      if (fresh && status !== undefined && (NOTE_READY_STATUSES.has(status) || status === 'CLOSED_INCOMPLETE')) {
+        return latest;
+      }
+      if (status === 'CLOSED_INCOMPLETE') throw new FinalNoteUnavailableError(id, status);
+
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new FinalNoteTimeoutError(id, timeoutMs);
+      await abortableSleep(Math.min(pollIntervalMs, remaining), signal);
+    }
   }
 
   /**

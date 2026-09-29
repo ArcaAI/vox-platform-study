@@ -107,6 +107,16 @@ platform-default` assignment cascade for that one consultation; discover valid s
    Use `generateSummaryAsync` + `useConsultationJob` to track the job yourself.
 5. `audio.stop()`, then `useArcaSession().close()` (or `reopen()`).
 
+`session.open(input)` accepts `parentConsultationId`, `context` and `metadata`, and the returned
+`consultation` carries `status` (the 12-value `ConsultationStatus`), `visitType`, `externalRef`,
+`parentConsultationId`, `isNew`, `version`, `language` and **`recordable`**. Check `recordable`
+before `audio.start()`: a signed or closed consultation comes back with `recordable: false` (a
+recording on it is a 409 `CONSULTATION_NOT_RECORDABLE`). A return visit is a NEW consultation —
+open again with a new encounter id in `context` (the schema's `externalRef` field), and it is
+chained to the earlier visit. `isRevisit(consultation)` reads `visitType`, then the top-level
+`parentConsultationId`. `close()` ends at `CLOSED_COMPLETE` / `CLOSED_INCOMPLETE`; `reopen()`
+moves to `REOPENED`.
+
 `useArcaSession().consultation.governingRun` and `useConsultationWorkflow().governingRun` read
 the consultation's governing workflow run — `GoverningRunSummary | null` (`@arcaai/types`),
 derived server-side from the persisted marker, never a live harness call. `useWorkflowRun().status`

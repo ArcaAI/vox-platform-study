@@ -142,6 +142,60 @@ describe('useArcaSession', () => {
       });
     });
 
+    it('keeps the TASK-1020 visit fields the memo used to drop (isNew, version, language, parent, status, visitType, recordable, externalRef)', () => {
+      mockStore.consultation = {
+        id: 'cons-2',
+        patientId: 'p1',
+        doctorId: 'd1',
+        appointmentDate: '2026-09-29',
+        createdAt: '2026-09-29T12:00:00Z',
+        updatedAt: '2026-09-29T12:00:00Z',
+        isNew: true,
+        version: 3,
+        language: 'ml-en',
+        parentConsultationId: 'cons-1',
+        status: 'OPEN',
+        visitType: 'revisit',
+        recordable: true,
+        externalRef: 'evt-2',
+      };
+      (useAgenticStore as any).mockReturnValue(mockStore);
+
+      const { result } = renderHook(() => useArcaSession());
+      expect(result.current.consultation).toMatchObject({
+        isNew: true,
+        version: 3,
+        language: 'ml-en',
+        parentConsultationId: 'cons-1',
+        status: 'OPEN',
+        visitType: 'revisit',
+        recordable: true,
+        externalRef: 'evt-2',
+      });
+    });
+
+    it('preserves recordable: false and a null externalRef (a signed consultation returned by open)', () => {
+      mockStore.consultation = {
+        id: 'cons-1',
+        patientId: 'p1',
+        doctorId: 'd1',
+        appointmentDate: '2026-09-29',
+        createdAt: '2026-09-29T08:00:00Z',
+        updatedAt: '2026-09-29T09:00:00Z',
+        status: 'SIGNED',
+        visitType: 'new-visit',
+        recordable: false,
+        externalRef: null,
+        parentConsultationId: null,
+      };
+      (useAgenticStore as any).mockReturnValue(mockStore);
+
+      const { result } = renderHook(() => useArcaSession());
+      expect(result.current.consultation?.recordable).toBe(false);
+      expect(result.current.consultation?.externalRef).toBeNull();
+      expect(result.current.consultation?.status).toBe('SIGNED');
+    });
+
     it('maps governingRun from store — derived from the persisted marker, never a live call', () => {
       mockStore.consultation = {
         id: 'cons-1',

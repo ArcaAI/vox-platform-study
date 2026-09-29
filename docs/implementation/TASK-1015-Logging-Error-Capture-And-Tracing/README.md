@@ -1,6 +1,6 @@
 # TASK-1015: Logging, error capture and end-to-end correlation
 
-**Status:** Pending — plan written, owner decisions resolved, awaiting go
+**Status:** Review — merged to `dev-2.2`, full gate and live proof run, awaiting owner sign-off
 **Type:** refactor + bugfix (observability, PHI hardening)
 **Branch:** `dev-2.2` (lanes in worktrees, merged into `dev-2.2` by the orchestrator)
 **Base commit at planning:** `818fe7ddf`
@@ -186,10 +186,94 @@ snake_case aliases one release after this lands; the NodeSDK OTLP log exporter (
 
 ## Implementation Summary
 
-_Not started._
+Six lanes in worktrees (A, B on Opus; C, D, E, F on Sonnet), merged into `dev-2.2` in the order
+C → B → A → F → D → E with no cross-lane file conflicts; the three Python files TASK-1016 also touched
+merged cleanly. All six worktrees and branches were removed after the merge was verified.
+
+### What changed, by root cause
+
+| RC | Change | Where |
+|---|---|---|
+| R1 | One request id per request: `cls.getId()` from a valid inbound `x-request-id` (`^[A-Za-z0-9._-]{1,64}$`) or uuidv7; echoed as `X-Request-Id` on every response (incl. guard rejections), exposed via CORS, = the error body's `correlationId`; forwarded on internal hops (`internalServiceHeaders()` + `requestIdHeader()` for the nine hand-built clients); the BFF forwards/originates it and `traceparent`/`tracestate`. `x-correlation-id` retired in the proxy | `apps/api/src/request-id.ts`, `packages/applications/src/common/internal-service-headers.ts`, `apps/admin-console/src/server/hope-proxy.ts` |
+| R2 | `LoggingService` fills `traceId`/`spanId` from the active span and `requestId`/`tenantId`/`userId`/`credentialClass` from CLS; the live log level now gates every transport (root + children); `child()` no longer rebuilds transports; bounded `flush()` | `packages/applications/src/services/baseServices/logging/**` |
+| R3 | Catch-all filter; ONE failure line per failed request from the terminal filter (`failure-log.ts`) — 5xx `error` with the Error, 4xx `warn`, expired-JWT 401 `debug`; guards/interceptors attach context to the exception instead of logging; validation lines list `{property, constraints}` never values; 429s logged with limiter/tier/retryAfter; route template, never the raw URL; WS failures via `logWsFailure`; crash handlers first in `main.ts` | `apps/api/src/filters/**`, `interceptors/**`, `unified-auth.guard.ts`, `crash-handlers.ts` |
+| R4 | Application exceptions take `{cause, metadata}`; `toJSON()` emits `cause` as `{name, message}` outside production only; `findFirst` miss names model + filter KEYS; OCC metadata carries `tenantId`; `findByIdOrNull` | `packages/exceptions/**`, `packages/domains/src/common/repository.ts` |
+| R5 | ~45 high-risk swallow sites: not-found keeps its fallback, anything else is logged and rethrown (documented best-effort sites warn-only); login lookup outage → 503 (401 bodies unchanged); `no-silent-catch` lint rule at `warn` (148 pre-existing violations remain) | lane F files, `packages/eslint-plugin-arcaai-internal/rules/no-silent-catch.js` |
+| R6 | Redactor walks and keeps `error.cause`; value scrubbing for email/JWT/bearer; `patientId`/`externalPatientId`/`consultationId` hashed with `redactId` (byte-identical to `hope_obs.phi.redact_id`); MRN/doctorId stay `[REDACTED]`; consent 403 body drops `externalPatientId`; Prisma logs carry code/model, never the invocation; Python: shared PHI-safe 422 (no `input`/`ctx`), guardrail generic `detail`, `redact_id` on raw ids | logger, `exception.interceptor.ts`, `packages/py-obs/src/hope_obs/validation.py`, guardrail/nlp/stt/harness |
+| R7 | BullMQ `_trace` + `runJobInContext` (10 processors); Dramatiq `options.hope_trace`; TTS bridge carries `traceparent`/`X-Request-Id`/`X-Tenant-Id`; `AuditLog.traceId` (+ index); Temporal `TracingInterceptor` on the endpoint-only gate (replay-compat green); Python peers forward `X-Request-Id`; WS scopes bind context | `job-context.ts`, `audit.prisma` + migration `20260929144326_task_1015_audit_log_trace_id`, `apps/harness/.../temporal/client.py` |
+| OD-2 | Python log keys camelCase (`requestId`, `tenantId`) + snake_case aliases for one release | `hope_obs/logging.py` |
+| OD-7 | `@arcaai/logger` deleted (package, deps, Dockerfile COPYs, CI filters/rules, vitest/tsconfig entries); docs/rules name `LoggingService` | commit `899dd1664` |
+
+### Commits (first-parent on `dev-2.2`)
+
+Merges `3854dffd9` (C) · `ec08043f2` (B) · `a9b925767` (A) · `f3dc3f5d4` (F) · `447f51f27` (D) · `7770c5d0e` (E);
+then `74470d343` migration · `899dd1664` logger removal · `5a3a90b07` modelTierFor fails closed (owner) ·
+`ff4226a3d` + `329244110` gate fixes · `f218ade3a` cross-tenant processors (live-proof finding) ·
+`0b2b6152f` + `9f370dcb6` request id on hand-built clients (live-proof findings) · `afebd5ef8` recovered lane C test.
+
+### Verification — the single post-merge gate (HEAD `ff4226a3d`, re-checked after later fixes)
+
+| Check | Result |
+|---|---|
+| build exceptions / domains / applications / api / admin-console | all rc=0 |
+| typecheck exceptions / domains / applications / api / admin-console | all 0 errors |
+| unit: exceptions / domains / applications / api / admin-console | 25 · 1995 (+2 skip, 9 todo) · 15295 (+4 skip) · 4656 (+5 skip) · 3764 — all passed |
+| lint exceptions / domains / applications / api / admin-console | 0 errors (warnings pre-existing; applications 335 → 300) |
+| `no-silent-catch` RuleTester | pass |
+| py-obs · parity contract | 96 · 59 passed |
+| text · guardrail · harness · tts | 2006 · 569 · 2840 · 483 passed; all Python lints clean |
+| stt · nlp | 4127 · 751 passed; remaining failures are PRE-EXISTING (below) |
+| migration | shadow DB replay + `migrate diff` → empty migration; `gen:model/entity/factory:check` no drift + coverage OK |
+
+Pre-existing failures, reproduced on the pre-merge commit `cfae6d715` (out of scope): stt
+`e2e/test_streaming_sessions_api.py` ×8 (fail with or without `.env.dev`); stt
+`test_initialize_creates_session_manager` and nlp `test_metrics_endpoint_task636.py` ×2 fail only when the
+local `.env.dev` is present (they reach the running stack's effective-config / read `OTEL_METRICS_ENABLED`).
+CI loads no env file.
+
+### Live proof (dev stack: api, text, guardrail, nlp, admin)
+
+- `X-Request-Id: proof-1015-health` echoed; guard 401 → header = body `correlationId`; malformed id replaced.
+- Validation 400: ONE `warn` line, `violations=[{property:"extra",constraints:["whitelistValidation"]},{property:"username",constraints:["minLength","isString"]}]`; the submitted value appears nowhere.
+- 429: `status=429, limiter=tiered, tier=default, retryAfter, limit=5, windowMs=60000` — previously unlogged.
+- End to end `proof-1015-final`: 200 through gateway → text → guardrail → text judge; the same `requestId`
+  on 1 gateway line, 11 text lines (incl. the guardrail→text judge hop) and 8 guardrail lines.
+- `traceId` absent on dev lines by design: `.env.dev` leaves `OTEL_EXPORTER_OTLP_ENDPOINT` empty, the only
+  enable signal. Log↔trace linking is unit-tested; live proof needs a collector (cluster).
+
+Defects the live proof found that no unit test had (all fixed, each with a test):
+1. Lane D wrapped two CROSS-TENANT processors in a tenant-less CLS scope → the tenant-scope extension
+   refused every query and the usage-outbox drain failed on each run (`f218ade3a`).
+2. Nine gateway→service clients assemble headers by hand, so the request id stopped at the gateway (`0b2b6152f`).
+3. Guardrail's text-judge client did not forward the id (`9f370dcb6`).
+
+### Owner decisions taken during implementation
+
+| # | Decision |
+|---|---|
+| OD-10 | `modelTierFor` fails CLOSED: an unreadable tenant plan propagates the error instead of granting the full catalogue tier (owner, 2026-09-29) |
+| — | Lane C's repository-level Prisma wrapping was REVERTED before merge: `tenant-allowed-origin`, `context-user-identity` and `usage-outbox.drainer` duck-type raw `P2002`; raw Prisma errors keep propagating |
+| — | Accepted as proposed: login lookup outage → 503; STT session-binding lookup outage → 5xx (not 404) |
+
+### Follow-ups (not in this ticket)
+
+- MRN / EMR-number hashing: `redactId` is unsalted, so a short numeric id is brute-forceable. MRN stays
+  `[REDACTED]`; `externalPatientId` is hashed — confirm what it holds, or introduce a keyed hash.
+- Python tracebacks rendered via `exc_info` still end with the exception message (possible PHI): a PHI-aware
+  exception renderer in `hope_obs`.
+- Full swallowed-error sweep: 148 `no-silent-catch` violations (TS) + ~145 Python `except: pass`.
+- nlp guard routes `HTTPException(detail=str(exc))`, nlp `websocket_manager` f-string logs, remaining stt bare excepts.
+- Harness Temporal activities send no `X-Request-Id` (none bound in an activity) — carry it in workflow input.
+- Control-plane fetches (`effective_config`, `model_credentials`) don't forward the request id (cached, not request-scoped).
+- Remove the snake_case log aliases one release after this lands; move dashboards/alerts to camelCase.
+- Deployment repo: confirm the Loki derived field on `traceId`, add a `requestId` link; verify log↔trace live.
+- The NodeSDK OTLP log exporter (TRC-12) once the collector `logs` pipeline is confirmed unused; `X-Correlation-ID`
+  still accepted in CORS request headers (lane A left it to avoid breaking preflight).
+- Browser/BFF OpenTelemetry (OD-8).
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-29 | Ticket created. Four-lens review (logger, API error capture, service error capture, correlation/tracing); root causes R1–R7; OD-1..9 resolved by the owner; lane plan A–F. |
+| 2026-09-29 | Lanes A–F implemented and merged; lane C's Prisma wrapping reverted pre-merge; migration, `@arcaai/logger` removal; OD-10 (`modelTierFor` fails closed); post-merge gate fixes; live proof found and fixed three integration defects (cross-tenant CLS scope, hand-built headers ×9, guardrail judge client); lane C's uncommitted test recovered. Status → Review. |

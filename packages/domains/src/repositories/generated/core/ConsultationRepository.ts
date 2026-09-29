@@ -6,6 +6,7 @@ import { ConsultationEntity } from '../../../entities';
 import { Consultation } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { ConsultationStatus, ResourceStatusType } from '../../../enums';
+import { DataNotFoundException } from '@arcaai/exceptions';
 
 @Injectable()
 export class ConsultationRepository extends Repository<ConsultationEntity, Consultation> {
@@ -52,7 +53,11 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   }
 
   /**
-   * Find consultation by unique constraint
+   * The LEGACY open key `(tenantId, patientId, appointmentDate, doctorId)` — the newest match, or
+   * `null`. TASK-1020 D-6: sorted newest first (a day may hold several rows for one doctor, and
+   * "whichever Postgres returned first" is not an answer), and only a genuine MISS reads as `null`
+   * — every other failure propagates, because swallowing an outage here turned it into a silently
+   * duplicated consultation.
    */
   async findByUniqueKey(tenantId: string, patientId: string, appointmentDate: Date, doctorId: string): Promise<ConsultationEntity | null> {
     try {
@@ -64,10 +69,29 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
           doctorId,
           resourceStatus: ResourceStatusType.ENABLED,
         },
+        sort: [{ createdAt: 'desc' }],
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof DataNotFoundException) return null;
+      throw error;
     }
+  }
+
+  /**
+   * TASK-1020 D-2 — every ENABLED consultation of the tenant carrying the caller's encounter id,
+   * newest first. Deliberately NOT narrowed by patient or doctor: `open` matches its own
+   * `(patient, doctor)` row out of this set, and must also SEE a same-ref row that belongs to
+   * another patient in order to refuse it (409 `EXTERNAL_REF_CONFLICT`).
+   */
+  async findByExternalRef(tenantId: string, externalRef: string): Promise<ConsultationEntity[]> {
+    return this.findAll({
+      filters: {
+        tenantId,
+        externalRef,
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      sort: [{ createdAt: 'desc' }],
+    });
   }
 
   /**

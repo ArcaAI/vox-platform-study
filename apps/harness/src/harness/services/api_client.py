@@ -17,8 +17,8 @@ from collections.abc import Sequence
 from typing import Any, Protocol, cast
 
 import httpx
-from hope_obs import outbound_context_headers
 import structlog
+from hope_obs import outbound_context_headers
 from pydantic import BaseModel, ConfigDict, Field
 
 from harness.core.provider_credentials import ProviderCredential

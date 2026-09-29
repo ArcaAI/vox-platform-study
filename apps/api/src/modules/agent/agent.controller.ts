@@ -34,6 +34,7 @@ import {
   toLedgerProvider,
   withUsageAttributes,
   withUsageTrigger,
+  requestIdHeader,
 } from '@arcaai/applications';
 import type {
   AgentNerEntity,
@@ -598,7 +599,11 @@ export class AgentController {
     // TASK-957 F-4 — the ceiling, before the synthesis request leaves the gateway.
     await this.billing?.assertSpendLimit(tenantId);
 
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/octet-stream, text/event-stream' };
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/octet-stream, text/event-stream',
+      ...requestIdHeader(),
+    };
     // The ONE shared `INTERNAL_ACCESS_TOKEN` (the `TTS_SERVICE_TOKEN` fallback was retired with its descriptor, TASK-879/880).
     const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
     if (serviceToken) headers['X-Service-Token'] = serviceToken;

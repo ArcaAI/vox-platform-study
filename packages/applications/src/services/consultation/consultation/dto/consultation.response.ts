@@ -72,6 +72,46 @@ export class ConsultationResponse {
   status?: ConsultationStatus;
 
   /**
+   * TASK-1020 D-7 — whether `recording/start` can still record this consultation. `false` for
+   * SIGNED, CLOSED_COMPLETE, TIMED_OUT, REOPENED and CLOSED: signed documentation is never
+   * recorded over (409 `CONSULTATION_NOT_RECORDABLE`). An `open` that lands on such a row RETURNS
+   * it with `recordable: false`; a client starting a new visit opens with a new `externalRef` (or a
+   * `parentConsultationId` naming this row) instead.
+   */
+  @ApiProperty({
+    description:
+      'Whether this consultation can still be recorded. false for SIGNED, CLOSED_COMPLETE, TIMED_OUT, REOPENED and CLOSED — `recording/start` answers 409 `CONSULTATION_NOT_RECORDABLE` for them. To start a new visit, open with a new `externalRef` or with `parentConsultationId` naming this consultation.',
+    example: true,
+  })
+  recordable: boolean;
+
+  /**
+   * TASK-1020 D-7 — the CANONICAL visit type key: the recorded (schema-stated) visit type when it
+   * matches the vocabulary, else `revisit` when a parent is linked, else `new-visit`. The same
+   * resolution every prompt/workflow reader uses.
+   */
+  @ApiProperty({
+    description:
+      "The consultation's visit type: the recorded (schema-stated) value when it matches the platform vocabulary, otherwise `revisit` when a parent consultation is linked, otherwise `new-visit`.",
+    enum: ['new-visit', 'revisit'],
+    example: 'new-visit',
+  })
+  visitType: 'new-visit' | 'revisit';
+
+  /**
+   * TASK-1020 D-2 — the caller's own encounter id (EMR event id) this consultation is keyed on, or
+   * `null`. Same ref on a later `open` returns this consultation; a new ref opens a new one.
+   */
+  @ApiProperty({
+    description:
+      "The caller's own encounter id this consultation is keyed on, or null. A later `open` with the same ref (same patient and clinician) returns this consultation; a new ref opens a new one.",
+    type: String,
+    nullable: true,
+    example: 'EVT-88213',
+  })
+  externalRef: string | null;
+
+  /**
    * TASK-932 §3.7 / TASK-1001 / TASK-1004 — the consultation's declared SOURCE (spoken) language:
    * the normalized spoken-language mode stored in `Consultation.spokenLanguageMode` (`en`, `ml`,
    * `ml-en`, `auto`, …), or — for one release, on a row the backfill could not normalize — the

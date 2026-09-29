@@ -1,6 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { HttpException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
-import { IConfigService, SecretsService } from '@arcaai/applications';
+import { IConfigService, SecretsService, requestIdHeader } from '@arcaai/applications';
 import { isAxiosError } from 'axios';
 
 import { describeCauseForOperator } from '../../filters/downstream-error';
@@ -103,7 +103,7 @@ export class AiServiceProxyClient {
    * silently issuing an unauthenticated internal call.
    */
   private async buildHeaders(secretKey: 'GUARDRAIL_SERVICE_TOKEN' | 'NLP_SERVICE_TOKEN'): Promise<Record<string, string>> {
-    return { 'X-Service-Token': (await this.secretsService?.getSecretOptional(secretKey)) ?? '' };
+    return { 'X-Service-Token': (await this.secretsService?.getSecretOptional(secretKey)) ?? '', ...requestIdHeader() };
   }
 
   private async get(baseUrl: string, path: string, secretKey: 'GUARDRAIL_SERVICE_TOKEN' | 'NLP_SERVICE_TOKEN'): Promise<Record<string, unknown>> {

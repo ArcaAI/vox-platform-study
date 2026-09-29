@@ -13,31 +13,57 @@ import type { LanguageModeId } from './language';
 // =============================================================================
 
 /**
- * Consultation lifecycle status.
+ * Consultation lifecycle status — the gateway's `ConsultationStatus` column, all 12 values.
  *
- * Extended lifecycle statuses track where a consultation is in the
- * recording → transcription → summarization pipeline. The backend may
- * still return the legacy values ('active', 'completed', 'cancelled')
- * which map to OPEN, CLOSED, and CANCELLED respectively.
+ * - live: `OPEN` → `PRIMED` → `RECORDING` → `DRAINING` (a stop drains the tail; it does not revert)
+ * - note produced: `DRAFT_PENDING_SENSORS`, `PENDING_REVIEW`, `TIMED_OUT`
+ * - signed / closed: `SIGNED`, `CLOSED_COMPLETE` (closed after sign-off), `CLOSED_INCOMPLETE`
+ *   (closed unsigned), `CLOSED` (legacy)
+ * - `REOPENED` — a signed/closed consultation re-opened for amendment
+ *
+ * Replaced in 4.1.0: the invented `TRANSCRIBING` / `SUMMARIZING` / `REVIEW` / `CANCELLED` values
+ * and the lower-case legacy strings are gone from this union. Only `OPEN`, `PRIMED`, `RECORDING`
+ * and `DRAINING` can take a recording — read {@link Consultation.recordable}.
  */
 export type ConsultationStatus =
-  'OPEN' | 'RECORDING' | 'TRANSCRIBING' | 'SUMMARIZING' | 'REVIEW' | 'CLOSED' | 'CANCELLED' | 'active' | 'completed' | 'cancelled';
+  | 'OPEN'
+  | 'PRIMED'
+  | 'RECORDING'
+  | 'DRAINING'
+  | 'DRAFT_PENDING_SENSORS'
+  | 'PENDING_REVIEW'
+  | 'SIGNED'
+  | 'TIMED_OUT'
+  | 'REOPENED'
+  | 'CLOSED_COMPLETE'
+  | 'CLOSED_INCOMPLETE'
+  | 'CLOSED';
+
+/** Lower-case values a pre-lifecycle backend returned; accepted by {@link normalizeConsultationStatus} only. */
+export type LegacyConsultationStatus = 'active' | 'completed' | 'cancelled';
 
 /**
- * Ordered lifecycle phases for progress display.
- * Does not include terminal states (CLOSED, CANCELLED) or legacy values.
+ * Ordered lifecycle phases for progress display, from open to signed.
+ * Does not include the closed states, `REOPENED`, `TIMED_OUT` or `DRAFT_PENDING_SENSORS`.
  */
-export const CONSULTATION_STATUS_ORDER: readonly ConsultationStatus[] = ['OPEN', 'RECORDING', 'TRANSCRIBING', 'SUMMARIZING', 'REVIEW'] as const;
+export const CONSULTATION_STATUS_ORDER: readonly ConsultationStatus[] = [
+  'OPEN',
+  'PRIMED',
+  'RECORDING',
+  'DRAINING',
+  'PENDING_REVIEW',
+  'SIGNED',
+] as const;
 
-/** Map legacy backend values to canonical status. */
-export function normalizeConsultationStatus(status: ConsultationStatus): ConsultationStatus {
+/** Map legacy backend values to canonical status; real statuses pass through unchanged. */
+export function normalizeConsultationStatus(status: ConsultationStatus | LegacyConsultationStatus): ConsultationStatus {
   switch (status) {
     case 'active':
       return 'OPEN';
     case 'completed':
       return 'CLOSED';
     case 'cancelled':
-      return 'CANCELLED';
+      return 'CLOSED_INCOMPLETE';
     default:
       return status;
   }
@@ -85,6 +111,21 @@ export interface Consultation {
   updatedAt: string;
   /** Whether this consultation was just created (from getOrCreate) */
   isNew?: boolean;
+  /** The parent visit — the explicit one, or the server-derived same-day predecessor; `null`/absent for a first visit. */
+  parentConsultationId?: string | null;
+  /** `'revisit'` when the visit has a parent, else `'new-visit'`. Present on `open()`'s response. */
+  visitType?: 'new-visit' | 'revisit';
+  /**
+   * The encounter/event id that keyed this open (the schema's `externalRef`-marked context field);
+   * `null` when none was supplied. Present on `open()`'s response.
+   */
+  externalRef?: string | null;
+  /**
+   * Whether recording can start on this consultation (`open()`'s response). `false` for a signed
+   * or closed consultation — do not start a recording there (it is a 409
+   * `CONSULTATION_NOT_RECORDABLE`); open again with a new `externalRef` to start a return visit.
+   */
+  recordable?: boolean;
   /**
    * Row `_version` — the RFC 7232 strong validator the gateway renders as
    * `ETag: "<version>"`.
@@ -189,6 +230,20 @@ export interface OpenSessionInput {
    * wins; the gateway normalizes either into the same stored mode.
    */
   languageMode?: LanguageModeId;
+  /**
+   * The PRIOR consultation when this visit is a revisit. An explicit parent always wins; a
+   * `revisit` open that names none gets a server-derived same-day parent. It must belong to the
+   * same patient (400 `PARENT_PATIENT_MISMATCH` otherwise).
+   */
+  parentConsultationId?: string;
+  /**
+   * The consultation-context payload for this open, `{ [kindKey]: payload }`, validated per kind
+   * against the department-effective schema. Visit type and encounter identity travel here as
+   * schema-marked fields (for ArcaAI, `context.encounter.event_id` is the `externalRef`): the same
+   * encounter id returns the same consultation, a new one creates a new consultation — including a
+   * second same-day visit for the same patient.
+   */
+  context?: Record<string, unknown>;
   /** Custom metadata */
   metadata?: Record<string, unknown>;
 }
@@ -310,9 +365,9 @@ export interface SessionActions {
    * checkpoint. Optimistically concurrent (`If-Match`), like close/reopen.
    */
   prime: () => Promise<Consultation>;
-  /** Close the current consultation (sets status to CLOSED) */
+  /** Close the current consultation (→ `CLOSED_COMPLETE` once signed, `CLOSED_INCOMPLETE` from `TIMED_OUT`) */
   close: () => Promise<Consultation>;
-  /** Reopen a previously closed consultation (sets status to OPEN) */
+  /** Reopen a previously closed consultation (→ `REOPENED`) */
   reopen: () => Promise<Consultation>;
 }
 
@@ -328,11 +383,15 @@ export function isNewVisit(consultation: Consultation | null): boolean {
 }
 
 /**
- * Check if a consultation is a revisit (has parent chain).
- * Revisits have metadata indicating a parent consultation.
+ * Check if a consultation is a revisit (a follow-up visit chained to a parent).
+ *
+ * Reads the gateway's `visitType` when present, else the top-level `parentConsultationId`, and
+ * only then the legacy `metadata.parentConsultationId` marker.
  */
 export function isRevisit(consultation: Consultation | null): boolean {
   if (!consultation) return false;
+  if (consultation.visitType !== undefined) return consultation.visitType === 'revisit';
+  if (consultation.parentConsultationId !== undefined) return !!consultation.parentConsultationId;
   return !!consultation.metadata?.parentConsultationId;
 }
 

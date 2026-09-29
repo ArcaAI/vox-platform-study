@@ -8,6 +8,7 @@ import {
   TtsAgentResolverService,
   UsageIdempotencyKey,
   appendComputeAndByteUnits,
+  requestIdHeader,
 } from '@arcaai/applications';
 import type { ResolvedTtsSpec, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
@@ -159,7 +160,7 @@ export class SpeechProxyController {
    * unchanged: a deployment that configured only the legacy token keeps working.
    */
   private getForwardHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...requestIdHeader() };
     // The ONE shared `INTERNAL_ACCESS_TOKEN` (the `TTS_SERVICE_TOKEN` fallback was retired with its descriptor, TASK-879/880).
     const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
     if (serviceToken) {

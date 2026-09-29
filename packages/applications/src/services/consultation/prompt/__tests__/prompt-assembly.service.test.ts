@@ -405,10 +405,10 @@ describe('PromptAssemblyService', () => {
       expect(result.userPrompt).not.toContain('{{context.pre_summary_text}}');
     });
 
-    // Replaced the `sameDayPrequelSummary` case: that param and
-    // its {same_day_prequel_summary} variable had zero producers and were
-    // removed in favour of the real re-visit carry-forward below. Full
-    // behaviour (safety preamble, spotlighting, truncation) lives in
+    // `sameDayPrequelSummary` was once removed here as dead (zero producers). TASK-1020 gave it a
+    // producer (`harness/same-day-prequel.ts`) and it is its OWN variable again, independent of the
+    // re-visit carry-forward below — pinned in prompt-assembly.same-day-prequel.task1020.test.ts.
+    // Full carry-forward behaviour (safety preamble, spotlighting, truncation) lives in
     // prompt-assembly.prior-visit.test.ts.
     it('should include priorVisitSummary when provided', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue(

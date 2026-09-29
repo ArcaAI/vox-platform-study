@@ -4,6 +4,9 @@ import {
   APIConnectionError,
   APITimeoutError,
   AuthenticationError,
+  ConflictError,
+  FinalNoteTimeoutError,
+  FinalNoteUnavailableError,
   HopeAPIError,
   NotFoundError,
   PermissionError,
@@ -43,9 +46,30 @@ describe('fromResponse — status → class mapping', () => {
     expect(err.status).toBe(404);
   });
 
-  it('maps 409 to QuotaExceededError', () => {
-    const err = fromResponse(jsonResponse(409, { message: 'Quota exceeded' }), { message: 'Quota exceeded' });
+  it('maps a bare 409 to ConflictError, not QuotaExceededError', () => {
+    const err = fromResponse(jsonResponse(409, { message: 'Conflict' }), { message: 'Conflict' });
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err).not.toBeInstanceOf(QuotaExceededError);
+    expect(err.status).toBe(409);
+  });
+
+  it.each(['CONSULTATION_NOT_RECORDABLE', 'CONSULTATION_TRANSITION_ILLEGAL', 'EXTERNAL_REF_CONFLICT', 'STT_SESSION_NOT_ACTIVE'])(
+    'maps a 409 with code %s to ConflictError carrying the code',
+    (code) => {
+      const body = { message: 'nope', code };
+      const err = fromResponse(jsonResponse(409, body), body);
+      expect(err).toBeInstanceOf(ConflictError);
+      expect(err).not.toBeInstanceOf(QuotaExceededError);
+      expect(err.code).toBe(code);
+      expect(err.status).toBe(409);
+    },
+  );
+
+  it('maps a 409 with the quota code to QuotaExceededError (which is still a ConflictError)', () => {
+    const body = { message: 'Quota exceeded', code: 'DOMAIN.QUOTA_EXCEEDED' };
+    const err = fromResponse(jsonResponse(409, body), body);
     expect(err).toBeInstanceOf(QuotaExceededError);
+    expect(err).toBeInstanceOf(ConflictError);
     expect(err.status).toBe(409);
   });
 
@@ -206,5 +230,23 @@ describe('APIConnectionError / APITimeoutError', () => {
     const err = new APITimeoutError({});
     expect(err).toBeInstanceOf(APIConnectionError);
     expect(err.message.toLowerCase()).toContain('timed out');
+  });
+});
+
+describe('final-note errors', () => {
+  it('FinalNoteUnavailableError carries the consultation id and last status', () => {
+    const err = new FinalNoteUnavailableError('c1', 'CLOSED_INCOMPLETE');
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe('FinalNoteUnavailableError');
+    expect(err.consultationId).toBe('c1');
+    expect(err.status).toBe('CLOSED_INCOMPLETE');
+  });
+
+  it('FinalNoteTimeoutError carries the consultation id and timeout', () => {
+    const err = new FinalNoteTimeoutError('c1', 180000);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe('FinalNoteTimeoutError');
+    expect(err.consultationId).toBe('c1');
+    expect(err.timeoutMs).toBe(180000);
   });
 });

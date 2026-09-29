@@ -100,7 +100,8 @@
 
 - This SDK maps **every** HTTP 409 to `QuotaExceededError`, and the new refusal is no exception.
   Match on `error.status === 409 && error.code === 'STT_SESSION_NOT_ACTIVE'`, never on the class
-  name.
+  name. *(Superseded in 4.1.0 — TASK-1020: a 409 is now a `ConflictError` carrying its `code`, and
+  `QuotaExceededError` is raised only for `DOMAIN.QUOTA_EXCEEDED`. Matching on `status` + `code` still works.)*
 - A renderer that switches over `SectionAnnotationKind` exhaustively needs a `duplicate` branch.
   A renderer that ignores unknown kinds keeps working and simply shows no flag.
 

@@ -13,6 +13,7 @@ import { AI_READINESS_SETTINGS } from './descriptors/ai-readiness.descriptors';
 import { ASR_VLLM_SETTINGS } from './descriptors/asr-vllm.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
+import { CONSULTATION_APPOINTMENT_DAY_SETTINGS } from './descriptors/consultation-appointment-day.descriptors';
 import { CONSULTATION_COMPLETION_TIMEOUT_SETTINGS } from './descriptors/consultation-completion.descriptors';
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { CONSULTATION_OUTPUT_LANGUAGE_SETTINGS } from './descriptors/consultation-output-language.descriptors';
@@ -223,6 +224,9 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // (recording stopped, final note generated) waits for the clinician's approval before it is closed
   // unsigned. Tenant-editable; the platform value is the fallback. Enforced by the harness clinician gate.
   ...CONSULTATION_COMPLETION_TIMEOUT_SETTINGS,
+  // TASK-1020 (OD-8) — the IANA zone a consultation DAY is read in: `open`'s default
+  // appointmentDate, and the day same-day visits are matched and chained on. Tenant → SYSTEM; UTC default.
+  ...CONSULTATION_APPOINTMENT_DAY_SETTINGS,
   // `consultation.endpoint.actions` was here. TASK-882 moved the stage onto the assigned graph
   // (endpoint nodes, presence + `enabled`, in edge order).
 
