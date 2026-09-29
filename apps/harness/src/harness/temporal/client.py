@@ -11,13 +11,14 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 
 from harness.core.config import Settings, get_settings
 from harness.core.logging import get_logger
+from harness.core.observability import build_observability_config
 from harness.temporal.metrics import build_runtime
 
 logger = get_logger(__name__)
 
 
 def _tracing_interceptors(settings: Settings) -> list[Interceptor]:
-    """The Temporal SDK's OTel tracing interceptor, gated the same as HTTP tracing.
+    """The Temporal SDK's OTel tracing interceptor, gated exactly as HTTP tracing is.
 
     ``TracingInterceptor`` (from
     ``temporalio.contrib.opentelemetry``) applies to BOTH client calls
@@ -28,11 +29,16 @@ def _tracing_interceptors(settings: Settings) -> list[Interceptor]:
     single interceptor here covers ``temporal/worker.py`` too; no separate
     wiring is needed there.
 
+    The gate is the one ``hope_obs`` uses (an OTLP endpoint is the only enable
+    signal; a deprecated ``HARNESS_OTEL_ENABLED=false`` only vetoes), read from
+    ``build_observability_config`` so the interceptor and the tracer provider
+    cannot disagree.
+
     Empty (not just a disabled interceptor) when tracing is off, matching
     the default-off posture — and never raises: a construction
     failure degrades to an untraced client rather than a failed connect.
     """
-    if not settings.otel_tracing_enabled:
+    if not build_observability_config(settings).tracing_enabled:
         return []
     try:
         from temporalio.contrib.opentelemetry import TracingInterceptor

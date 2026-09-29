@@ -31,6 +31,7 @@ transport/HTTP failure raises ``GuardrailServiceError``, exactly like ``analyze(
 from __future__ import annotations
 
 import httpx
+from hope_obs import outbound_context_headers
 from pydantic import BaseModel, ConfigDict, Field
 
 #: Path prefix apps/guardrail mounts its analyze/redact routes under. Both call sites here
@@ -167,6 +168,7 @@ class GuardrailClient:
             "X-Service-Token": self._service_token,
             # mandatory on every tenant-scoped internal service call.
             "X-Tenant-Id": tenant_id,
+            **outbound_context_headers(),
         }
         try:
             async with httpx.AsyncClient(
@@ -211,6 +213,7 @@ class GuardrailClient:
             # mandatory on every tenant-scoped internal service call. Guardrail
             # answers 428 without it — a screening decision must be attributable.
             "X-Tenant-Id": tenant_id,
+            **outbound_context_headers(),
         }
         try:
             async with httpx.AsyncClient(
@@ -242,6 +245,7 @@ class GuardrailClient:
             "X-Service-Token": self._service_token,
             # mandatory on every tenant-scoped internal service call.
             "X-Tenant-Id": tenant_id,
+            **outbound_context_headers(),
         }
         try:
             async with httpx.AsyncClient(

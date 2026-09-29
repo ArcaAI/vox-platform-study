@@ -251,7 +251,6 @@ async def resolve_judge_timeout_s(app_state: Any) -> float:
     except Exception as exc:  # noqa: BLE001 — a config refresh never breaks the judge
         logger.warning(
             "guardrail.judge.timeout_refresh_failed",
-            error=str(exc),
             error_type=type(exc).__name__,
         )
         return DEFAULT_JUDGE_TIMEOUT_S
@@ -747,7 +746,6 @@ async def _groundedness_gate(app_state: Any) -> GroundednessConfig:
     except Exception as exc:  # noqa: BLE001 — config refresh may never break the gate
         logger.warning(
             "guardrail.groundedness.config_refresh_failed",
-            error=str(exc),
             error_type=type(exc).__name__,
         )
         return gate

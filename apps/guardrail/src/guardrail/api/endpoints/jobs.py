@@ -9,7 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 
 from guardrail.core.dependencies import get_job_processor, require_tenant_id
+from guardrail.core.logging import get_logger
 from guardrail.services.job_processor import JobProcessor
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -67,9 +70,10 @@ async def get_job_status(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("guardrail.jobs.status_failed", error_type=type(e).__name__)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve job status: {str(e)}",
+            detail="Failed to retrieve job status",
         ) from e
 
 
@@ -93,9 +97,10 @@ async def list_jobs(
         return JobList(**jobs_data)
 
     except Exception as e:
+        logger.exception("guardrail.jobs.list_failed", error_type=type(e).__name__)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to list jobs: {str(e)}",
+            detail="Failed to list jobs",
         ) from e
 
 
@@ -124,9 +129,10 @@ async def cancel_job(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("guardrail.jobs.cancel_failed", error_type=type(e).__name__)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to cancel job: {str(e)}",
+            detail="Failed to cancel job",
         ) from e
 
 
@@ -163,9 +169,10 @@ async def get_job_result(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("guardrail.jobs.result_failed", error_type=type(e).__name__)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve job result: {str(e)}",
+            detail="Failed to retrieve job result",
         ) from e
 
 
@@ -184,7 +191,8 @@ async def get_job_stats(
         }
 
     except Exception as e:
+        logger.exception("guardrail.jobs.stats_failed", error_type=type(e).__name__)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve job statistics: {str(e)}",
+            detail="Failed to retrieve job statistics",
         ) from e

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from opentelemetry import trace
 from opentelemetry.trace import StatusCode
 
+from text.core.logging import get_logger
 from text.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
@@ -24,6 +25,8 @@ from text.core.exceptions import (
     ShutdownError,
     TextError,
 )
+
+logger = get_logger(__name__)
 
 _STATUS_MAP: dict[type, int] = {
     InputValidationError: 422,
@@ -93,6 +96,18 @@ ERROR_RESPONSE_CLASS = JSONResponse
 async def text_exception_handler(request: Request, exc: TextError) -> JSONResponse:
     status = _get_status_code(exc)
     headers = _get_headers(exc)
+
+    # `exc.message` is deliberately not logged: a provider or validation
+    # message can carry prompt or clinical content, and a rendered traceback
+    # repeats it, so there is no `exc_info` either. Code, type and status are
+    # the stable, searchable part.
+    log = logger.error if status >= 500 else logger.warning
+    log(
+        "text.error",
+        error_code=exc.error_code,
+        error_type=type(exc).__name__,
+        status_code=status,
+    )
 
     span = trace.get_current_span()
     if span.is_recording():

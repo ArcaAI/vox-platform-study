@@ -96,7 +96,7 @@ class OutputCheckRequest(BaseModel):
 
 def _unavailable(what: str, exc: Exception) -> HTTPException:
     """503 for derivations. The transcript is untouched, and the body says so."""
-    logger.error(f"guardrail.realtime.{what}.unavailable error={type(exc).__name__}")
+    logger.error("guardrail.realtime.unavailable", what=what, error_type=type(exc).__name__)
     return HTTPException(
         status_code=503,
         detail={

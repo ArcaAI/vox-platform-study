@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from hope_obs import outbound_context_headers
 
 from guardrail.core.breaker import BreakerOpenError, CircuitBreaker
 from guardrail.core.errors import REASON_ENGINE_ERROR, GuardrailUndeterminedError
@@ -198,6 +199,7 @@ class NlpGuardClient:
         headers = {"X-Tenant-Id": self._tenant_id}
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
+        headers.update(outbound_context_headers())
         return headers
 
     async def _post(self, path: str, payload: dict[str, Any], what: str) -> dict[str, Any]:

@@ -28,5 +28,5 @@ async def correct_text(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Correction failed: {str(e)}")
+        logger.error("nlp.correct.failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Correction failed") from e

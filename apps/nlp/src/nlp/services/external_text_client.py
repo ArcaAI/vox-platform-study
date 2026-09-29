@@ -27,6 +27,7 @@ from typing import Any
 import httpx
 
 from nlp.core.config import ExternalTextConfig
+from hope_obs import outbound_context_headers
 from nlp.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -151,6 +152,7 @@ class ExternalTextClient:
                 "'tenantless:<reason>'. An absent tenant is a caller defect."
             )
         headers["X-Tenant-Id"] = resolved_tenant
+        headers.update(outbound_context_headers())
 
         resolved_provider = (provider or "").strip()
         resolved_model = (model or "").strip()
@@ -176,6 +178,7 @@ class ExternalTextClient:
         # exhausts the budget and raises below.
         attempts = self.settings.max_retries + 1
         last_error = ""
+        last_exc: Exception | None = None
         for attempt in range(attempts):
             try:
                 response = await self.http_client.post(
@@ -199,15 +202,16 @@ class ExternalTextClient:
             except ExternalTextUnavailableError:
                 raise
             except Exception as exc:
-                last_error = str(exc)
+                last_error = type(exc).__name__
+                last_exc = exc
                 is_last = attempt + 1 >= attempts
                 logger.warning(
-                    "external_text.attempt_failed attempt=%d/%d error=%s base_url=%s will_retry=%s",
-                    attempt + 1,
-                    attempts,
-                    last_error,
-                    self.base_url,
-                    not is_last,
+                    "nlp.external_text.attempt_failed",
+                    attempt=attempt + 1,
+                    attempts=attempts,
+                    error_type=type(exc).__name__,
+                    base_url=self.base_url,
+                    will_retry=not is_last,
                 )
                 if is_last:
                     break
@@ -216,14 +220,14 @@ class ExternalTextClient:
                     await asyncio.sleep(backoff_s)
 
         logger.error(
-            "external_text.exhausted attempts=%d error=%s base_url=%s",
-            attempts,
-            last_error,
-            self.base_url,
+            "nlp.external_text.exhausted",
+            attempts=attempts,
+            error_type=last_error,
+            base_url=self.base_url,
         )
         raise ExternalTextUnavailableError(
             f"text unreachable after {attempts} attempt(s): {last_error}"
-        )
+        ) from last_exc
 
 
 def _usage_block(value: Any) -> dict[str, Any] | None:

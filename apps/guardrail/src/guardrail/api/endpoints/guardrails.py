@@ -111,7 +111,7 @@ async def analyze_content(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         # FAIL-CLOSED backstop. PHI-safe: log the error TYPE, never the analysed text.
-        logger.error("guardrail.analyze.failed", error=type(exc).__name__)
+        logger.exception("guardrail.analyze.failed", error_type=type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail="guardrail analysis failed — refusing to report 'safe'",
@@ -159,7 +159,7 @@ async def analyze_batch(
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        logger.error("guardrail.analyze_batch.failed", error=type(exc).__name__)
+        logger.exception("guardrail.analyze_batch.failed", error_type=type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail="guardrail batch analysis failed — refusing to report 'safe'",
@@ -171,7 +171,7 @@ async def analyze_batch(
     responses = []
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            logger.error("guardrail.analyze_batch.item_undetermined", error=type(result).__name__)
+            logger.error("guardrail.analyze_batch.item_undetermined", error_type=type(result).__name__)
             responses.append(
                 GuardrailResponse(
                     safe=False,  # FAIL-CLOSED: no verdict is not a pass
@@ -180,7 +180,7 @@ async def analyze_batch(
                     processing_time_ms=per_item_ms,
                     request_id=f"{request.request_id or 'batch'}_{i}",
                     timestamp=datetime.now(UTC).isoformat(),
-                    error=str(result),
+                    error=type(result).__name__,
                 )
             )
         else:
@@ -229,9 +229,10 @@ async def analyze_content_async(
         }
 
     except Exception as e:
+        logger.exception("guardrail.jobs.submit_failed", error_type=type(e).__name__)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to submit guardrail analysis job: {str(e)}",
+            detail="Failed to submit guardrail analysis job",
         ) from e
 
 

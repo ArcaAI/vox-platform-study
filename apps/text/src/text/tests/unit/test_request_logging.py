@@ -193,7 +193,7 @@ class TestRequestFailedLogged:
         assert log["method"] == "GET"
         assert log["path"] == "/api/v1/_test_explode"
         assert "duration_ms" in log
-        assert log["error"] == "boom"
+        assert "error" not in log  # never str(exc): it can carry PHI
         assert log["error_type"] == "RuntimeError"
 
 
@@ -239,7 +239,7 @@ class TestLoggingIncludesRequestId:
                 )
 
         assert resp.status_code == 200
-        assert captured_ctx.get("request_id") == "trace-abc-789"
+        assert captured_ctx.get("requestId") == "trace-abc-789"
 
         start_logs = [log_line for log_line in cap_logs if log_line.get("event") == "request.start"]
         assert len(start_logs) >= 1

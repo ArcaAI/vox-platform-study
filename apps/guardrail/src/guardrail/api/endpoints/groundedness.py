@@ -122,7 +122,7 @@ async def ground_summary(
                 # branches. PHI-safe: never log the summary/transcript text.
                 logger.warning(
                     "guardrail.groundedness.verify_crashed",
-                    error=type(exc).__name__,
+                    error_type=type(exc).__name__,
                 )
                 spans = split_segments(request.summary)
                 result = GroundednessResult(

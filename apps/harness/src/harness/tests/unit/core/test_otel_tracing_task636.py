@@ -44,28 +44,6 @@ def _enabled_settings(**overrides: Any) -> Settings:
     )
 
 
-# -- (a)/(b) the OLD gate — Settings.otel_tracing_enabled, unchanged, still read
-# -- by temporal/client.py's TracingInterceptor wiring (deliberately untouched) ---
-
-
-class TestOtelTracingEnabledGate:
-    def test_off_by_default(self) -> None:
-        assert Settings().otel_enabled is False
-        assert Settings().otel_tracing_enabled is False
-
-    def test_flag_alone_without_endpoint_stays_off(self) -> None:
-        """Flipping the switch with no collector configured is a no-op."""
-        settings = Settings(otel_enabled=True, otel_exporter_endpoint="")
-        assert settings.otel_tracing_enabled is False
-
-    def test_endpoint_alone_without_flag_stays_off(self) -> None:
-        settings = Settings(otel_enabled=False, otel_exporter_endpoint="http://localhost:4317")
-        assert settings.otel_tracing_enabled is False
-
-    def test_flag_and_endpoint_together_enable_tracing(self) -> None:
-        assert _enabled_settings().otel_tracing_enabled is True
-
-
 # -- build_observability_config — the new R-2 mapping ----------------------------------
 
 
@@ -231,6 +209,26 @@ class TestCreateAppObservabilityWiring:
 class TestTemporalTracingInterceptors:
     def test_empty_when_tracing_disabled(self) -> None:
         assert _tracing_interceptors(Settings()) == []
+
+    def test_endpoint_alone_enables_the_interceptor(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Same enable signal as `hope_obs`: an endpoint, no `otel_enabled` flag."""
+        monkeypatch.delenv(OTEL_ENABLED_ENV_VAR, raising=False)
+        settings = Settings(otel_enabled=False, otel_exporter_endpoint="http://localhost:4317")
+
+        interceptors = _tracing_interceptors(settings)
+
+        assert len(interceptors) == 1
+        assert isinstance(interceptors[0], TracingInterceptor)
+
+    def test_the_deprecated_flag_set_false_still_vetoes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(OTEL_ENABLED_ENV_VAR, "false")
+        settings = Settings(otel_enabled=False, otel_exporter_endpoint="http://localhost:4317")
+
+        assert _tracing_interceptors(settings) == []
 
     def test_tracing_interceptor_present_when_enabled(self) -> None:
         interceptors = _tracing_interceptors(_enabled_settings())

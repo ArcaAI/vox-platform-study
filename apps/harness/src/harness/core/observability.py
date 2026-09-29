@@ -23,17 +23,9 @@ harness's own ``Settings`` into an ``hope_obs.ObservabilityConfig``:
   ``true`` is a no-op under R-2 (the endpoint alone already enables tracing),
   and either spelling being present at all logs one deprecation line.
 
-Left DELIBERATELY unchanged by this module, per the TASK-987 lane G brief:
-``temporal/client.py``'s ``_tracing_interceptors`` still gates the Temporal
-``TracingInterceptor`` on ``Settings.otel_tracing_enabled`` — the pre-R-2 AND
-of ``otel_enabled`` and ``otel_exporter_endpoint``. In the live `dev` overlay
-both conditions already agree (TASK-987 lane D1 set both), so this is a
-transitional divergence between the FastAPI/worker tracer (R-2 gated) and the
-Temporal interceptor (old AND-gated), not a regression. Migrating
-``client.py`` to the same R-2 gate is out of this lane's scope — determinism
-and replay compatibility live in Temporal-adjacent code this ticket does not
-touch, and the brief was explicit: "keep `TracingInterceptor` wiring in
-`temporal/client.py` exactly as it is".
+``temporal/client.py``'s ``_tracing_interceptors`` reads the SAME config (its
+``tracing_enabled``), so the Temporal ``TracingInterceptor`` and the tracer
+provider are enabled by one signal — the endpoint — and cannot diverge.
 """
 
 from __future__ import annotations
