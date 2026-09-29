@@ -186,7 +186,19 @@ export const CONTEXT_ENDPOINTS = {
  * Summary endpoints
  */
 export const SUMMARY_ENDPOINTS = {
+  /**
+   * @deprecated TASK-1012 — there is no `POST` on this path any more: the synchronous
+   * generate route was removed by TASK-1006 (a note is generated only on the async plane).
+   * Use {@link SUMMARY_ENDPOINTS.GENERATE_ASYNC} to start one and
+   * {@link SUMMARY_ENDPOINTS.LATEST} to read it; `GET` on this path is {@link SUMMARY_ENDPOINTS.LIST}.
+   * Removed in 5.0.0.
+   */
   GENERATE: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary`,
+  /**
+   * @deprecated TASK-1012 — the route does not exist (removed by TASK-1006). Use
+   * {@link SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC} and {@link SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY}.
+   * Removed in 5.0.0.
+   */
   PRE_SUMMARY: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/pre-summary`,
   LATEST: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/latest`,
   /** Get latest pre-summary (SUM-03) */

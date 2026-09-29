@@ -21,6 +21,20 @@ import { KnowledgePipeline, createKnowledgePipeline } from '../KnowledgePipeline
 import type { KnowledgePipelineConfig } from '../../types/pipeline';
 import type { AgenticClient } from '../AgenticClient';
 
+/**
+ * TASK-1012 (L-2): summarization runs on the async plane — POST `…/summary/async`, poll
+ * `GET /consultations/jobs/:jobId`, then read `…/summary/latest`. The synchronous
+ * `POST …/summary` was removed by TASK-1006.
+ */
+function mockNoteJob(client: Partial<AgenticClient>, consultationId: string, content: string): void {
+  (client.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ jobId: 'job-1', status: 'pending', consultationId, createdAt: '' });
+  (client.get as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
+    if (url === '/consultations/jobs/job-1') return { jobId: 'job-1', status: 'COMPLETED', progress: 100 };
+    if (url === `/consultations/${consultationId}/summary/latest`) return { id: 's-1', content };
+    throw new Error(`unexpected GET ${url}`);
+  });
+}
+
 describe('KnowledgePipeline', () => {
   let mockLogger: ReturnType<typeof createMockLogger>;
   let mockApiClient: Partial<AgenticClient>;
@@ -231,9 +245,7 @@ describe('KnowledgePipeline', () => {
 
   describe('triggerSummarization', () => {
     it('should manually trigger summarization', async () => {
-      (mockApiClient.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        content: 'Patient presented with symptoms...',
-      });
+      mockNoteJob(mockApiClient, 'consultation-123', 'Patient presented with symptoms...');
 
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
@@ -244,7 +256,7 @@ describe('KnowledgePipeline', () => {
       const summary = await pipeline.triggerSummarization('consultation-123');
 
       expect(summary).toBe('Patient presented with symptoms...');
-      expect(mockApiClient.post).toHaveBeenCalledWith('/consultations/consultation-123/summary', expect.any(Object));
+      expect(mockApiClient.post).toHaveBeenCalledWith('/consultations/consultation-123/summary/async', {});
     });
 
     it('should throw if API client not available', async () => {
@@ -254,9 +266,7 @@ describe('KnowledgePipeline', () => {
     });
 
     it('should emit summaryComplete event', async () => {
-      (mockApiClient.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        content: 'Summary text',
-      });
+      mockNoteJob(mockApiClient, 'consultation-123', 'Summary text');
 
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
@@ -394,10 +404,23 @@ describe('KnowledgePipeline', () => {
   });
 
   describe('SUM-05: summarization uses correct endpoint', () => {
-    it('should call /consultations/:id/summary (singular, no /api prefix)', async () => {
-      (mockApiClient.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        content: 'Summary text',
-      });
+    it('should call /consultations/:id/summary/async (no /api prefix) with the configured DNA style', async () => {
+      mockNoteJob(mockApiClient, 'consultation-123', 'Summary text');
+
+      const pipeline = new KnowledgePipeline(
+        { summarization: { enabled: true, location: 'backend', triggerMode: 'manual', dnaStyleId: 'dna-1' } },
+        mockApiClient as AgenticClient,
+        mockLogger,
+      );
+
+      await pipeline.triggerSummarization('consultation-123');
+
+      // `type` is not a field of the gateway's GenerateSummaryRequest (forbidNonWhitelisted → 400).
+      expect(mockApiClient.post).toHaveBeenCalledWith('/consultations/consultation-123/summary/async', { dnaStyleId: 'dna-1' });
+    });
+
+    it('should NOT call the removed synchronous POST /consultations/:id/summary (TASK-1012)', async () => {
+      mockNoteJob(mockApiClient, 'consultation-123', 'Summary text');
 
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
@@ -407,13 +430,11 @@ describe('KnowledgePipeline', () => {
 
       await pipeline.triggerSummarization('consultation-123');
 
-      expect(mockApiClient.post).toHaveBeenCalledWith('/consultations/consultation-123/summary', expect.any(Object));
+      expect(mockApiClient.post).not.toHaveBeenCalledWith('/consultations/consultation-123/summary', expect.anything());
     });
 
     it('should NOT call the old /api/consultations/.../summaries endpoint', async () => {
-      (mockApiClient.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        content: 'Summary text',
-      });
+      mockNoteJob(mockApiClient, 'consultation-123', 'Summary text');
 
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
@@ -427,9 +448,7 @@ describe('KnowledgePipeline', () => {
     });
 
     it('should correctly interpolate contextId with special characters into the URL', async () => {
-      (mockApiClient.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        content: 'Summary for UUID',
-      });
+      mockNoteJob(mockApiClient, 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'Summary for UUID');
 
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
@@ -439,7 +458,7 @@ describe('KnowledgePipeline', () => {
 
       await pipeline.triggerSummarization('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
 
-      expect(mockApiClient.post).toHaveBeenCalledWith('/consultations/a1b2c3d4-e5f6-7890-abcd-ef1234567890/summary', expect.any(Object));
+      expect(mockApiClient.post).toHaveBeenCalledWith('/consultations/a1b2c3d4-e5f6-7890-abcd-ef1234567890/summary/async', {});
     });
 
     it('should propagate summarization API errors and emit error event', async () => {

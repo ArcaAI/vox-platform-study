@@ -11,13 +11,16 @@
  * Also covers that the comprehensive-summary signature is wide enough to
  * carry `template` and `includeLabResults` to the backend.
  *
+ * TASK-1012 (L-2): `generateSummary` / `generatePreSummary` POST the ASYNC routes (the
+ * synchronous ones were removed by TASK-1006), poll the job and resolve the persisted note.
+ *
  * @vitest-environment jsdom
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useArcaSummary } from '../useArcaSummary';
-import { SUMMARY_ENDPOINTS } from '../../core/constants';
+import { SUMMARY_ENDPOINTS, CONSULTATION_JOB_ENDPOINTS } from '../../core/constants';
 
 const mockPost = vi.fn();
 const mockGet = vi.fn();
@@ -63,9 +66,21 @@ describe('useArcaSummary maps legacy SDK options to backend DTO field names', ()
     createdAt: '',
   };
 
+  const job = { jobId: 'job-1', status: 'pending', consultationId: 'c-001', createdAt: '' };
+  const preResp = { id: 'ps-1', contextItemId: 'ctx-1', content: 'pre', type: 'pre_summary', llmProvider: 'o', modelName: 'g', createdAt: '' };
+
+  beforeEach(() => {
+    mockGet.mockImplementation(async (url: string) => {
+      if (url === CONSULTATION_JOB_ENDPOINTS.GET('job-1')) return { jobId: 'job-1', status: 'COMPLETED', progress: 100 };
+      if (url === SUMMARY_ENDPOINTS.LATEST('c-001')) return summaryResp;
+      if (url === SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY('c-001')) return preResp;
+      throw new Error(`unexpected GET ${url}`);
+    });
+  });
+
   describe('generateSummary', () => {
     it('maps `transcript` → `transcription` and strips the legacy field', async () => {
-      mockPost.mockResolvedValue(summaryResp);
+      mockPost.mockResolvedValue(job);
       const { result } = renderHook(() => useArcaSummary());
 
       await act(async () => {
@@ -73,13 +88,13 @@ describe('useArcaSummary maps legacy SDK options to backend DTO field names', ()
       });
 
       const [url, body] = mockPost.mock.calls[0];
-      expect(url).toBe(SUMMARY_ENDPOINTS.GENERATE('c-001'));
+      expect(url).toBe(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'));
       expect(body).toMatchObject({ transcription: 'hello world' });
       expect(body).not.toHaveProperty('transcript');
     });
 
     it('maps `promptTemplateId` → `template` and strips the legacy field', async () => {
-      mockPost.mockResolvedValue(summaryResp);
+      mockPost.mockResolvedValue(job);
       const { result } = renderHook(() => useArcaSummary());
 
       await act(async () => {
@@ -92,7 +107,7 @@ describe('useArcaSummary maps legacy SDK options to backend DTO field names', ()
     });
 
     it('tucks `departmentId` under `options.departmentId`', async () => {
-      mockPost.mockResolvedValue(summaryResp);
+      mockPost.mockResolvedValue(job);
       const { result } = renderHook(() => useArcaSummary());
 
       await act(async () => {
@@ -105,7 +120,7 @@ describe('useArcaSummary maps legacy SDK options to backend DTO field names', ()
     });
 
     it('preserves caller-supplied `options` alongside `departmentId`', async () => {
-      mockPost.mockResolvedValue(summaryResp);
+      mockPost.mockResolvedValue(job);
       const { result } = renderHook(() => useArcaSummary());
 
       await act(async () => {
@@ -120,7 +135,7 @@ describe('useArcaSummary maps legacy SDK options to backend DTO field names', ()
     });
 
     it('prefers canonical `transcription`/`template` when both forms are supplied', async () => {
-      mockPost.mockResolvedValue(summaryResp);
+      mockPost.mockResolvedValue(job);
       const { result } = renderHook(() => useArcaSummary());
 
       await act(async () => {
@@ -140,7 +155,7 @@ describe('useArcaSummary maps legacy SDK options to backend DTO field names', ()
     });
 
     it('forwards all canonical fields together', async () => {
-      mockPost.mockResolvedValue(summaryResp);
+      mockPost.mockResolvedValue(job);
       const { result } = renderHook(() => useArcaSummary());
 
       await act(async () => {
@@ -155,7 +170,7 @@ describe('useArcaSummary maps legacy SDK options to backend DTO field names', ()
       });
 
       const [url, body] = mockPost.mock.calls[0];
-      expect(url).toBe(SUMMARY_ENDPOINTS.GENERATE('c-001'));
+      expect(url).toBe(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'));
       expect(body).toMatchObject({
         dnaStyleId: 'dna-1',
         includeNER: true,
@@ -169,30 +184,31 @@ describe('useArcaSummary maps legacy SDK options to backend DTO field names', ()
       expect(body.idempotencyKey.length).toBeGreaterThan(0);
     });
 
-    it('passes `undefined` body when no options supplied', async () => {
-      mockPost.mockResolvedValue(summaryResp);
+    it('posts an idempotency-keyed body to the async route and resolves the summary when no options are supplied', async () => {
+      mockPost.mockResolvedValue(job);
       const { result } = renderHook(() => useArcaSummary());
 
+      let resolved: unknown;
       await act(async () => {
-        await result.current.generateSummary();
+        resolved = await result.current.generateSummary();
       });
 
-      // No body means no idempotency-key injection either
-      // (back-compat: this is the legacy "no options" path).
-      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE('c-001'), undefined);
+      const [url, body] = mockPost.mock.calls[0];
+      expect(url).toBe(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'));
+      expect(typeof body.idempotencyKey).toBe('string');
+      expect(resolved).toEqual(summaryResp);
+      expect(currentStore.addSummary).toHaveBeenCalledWith(summaryResp);
     });
   });
 
   describe('generatePreSummary / async POSTs', () => {
-    const preResp = { id: 'ps-1', contextItemId: 'ctx-1', content: 'pre', type: 'pre_summary', llmProvider: 'o', modelName: 'g', createdAt: '' };
-    const job = { jobId: 'job-1', status: 'pending', consultationId: 'c-001', createdAt: '' };
-
     it('generatePreSummary maps legacy fields', async () => {
-      mockPost.mockResolvedValue(preResp);
+      mockPost.mockResolvedValue(job);
       const { result } = renderHook(() => useArcaSummary());
 
+      let resolved: unknown;
       await act(async () => {
-        await result.current.generatePreSummary({
+        resolved = await result.current.generatePreSummary({
           dnaStyleId: 'dna-1',
           transcript: 'tx',
           promptTemplateId: 'pt',
@@ -201,13 +217,14 @@ describe('useArcaSummary maps legacy SDK options to backend DTO field names', ()
       });
 
       const [url, body] = mockPost.mock.calls[0];
-      expect(url).toBe(SUMMARY_ENDPOINTS.PRE_SUMMARY('c-001'));
+      expect(url).toBe(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('c-001'));
       expect(body).toMatchObject({
         dnaStyleId: 'dna-1',
         transcription: 'tx',
         template: 'pt',
         options: { departmentId: 'dept' },
       });
+      expect(resolved).toEqual(preResp);
     });
 
     it('generateSummaryAsync maps legacy fields', async () => {
