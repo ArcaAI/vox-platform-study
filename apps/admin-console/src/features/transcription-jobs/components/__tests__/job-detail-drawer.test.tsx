@@ -17,7 +17,6 @@ function job(overrides: Partial<TranscriptionJob> = {}): TranscriptionJob {
   return {
     id: 'job-drawer-1',
     jobType: 'BATCH',
-    pipelineId: null,
     agentVersionId: 'av-1',
     resolvedSpec: null,
     consultationId: null,

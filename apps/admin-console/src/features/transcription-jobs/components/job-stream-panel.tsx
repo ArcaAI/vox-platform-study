@@ -57,10 +57,10 @@ function JobDetail({ job }: { job: TranscriptionJob }) {
       <dd className="truncate font-mono text-xs" title={job.id}>
         {job.id}
       </dd>
-      {/* TASK-861 — jobs are keyed to the ASR Agent VERSION; `pipelineId` is the deprecated key (null on agent-keyed rows). */}
-      <dt className="text-muted-foreground text-xs">{job.agentVersionId ? 'Agent version' : 'Pipeline (deprecated)'}</dt>
-      <dd className="truncate font-mono text-xs" title={job.agentVersionId ?? job.pipelineId ?? undefined}>
-        {job.agentVersionId ?? job.pipelineId ?? '—'}
+      {/* TASK-861 — jobs are keyed to the ASR Agent VERSION that ran them. */}
+      <dt className="text-muted-foreground text-xs">Agent version</dt>
+      <dd className="truncate font-mono text-xs" title={job.agentVersionId ?? undefined}>
+        {job.agentVersionId ?? '—'}
       </dd>
       <dt className="text-muted-foreground text-xs">Type</dt>
       <dd className="font-mono text-xs">{job.jobType}</dd>

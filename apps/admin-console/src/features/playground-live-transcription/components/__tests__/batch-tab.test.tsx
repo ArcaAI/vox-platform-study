@@ -73,7 +73,6 @@ function job(overrides: Partial<PlaygroundTranscriptionJob> = {}): PlaygroundTra
   return {
     id: 'j-run',
     jobType: 'BATCH',
-    pipelineId: 'p-default',
     status: 'COMPLETED',
     progress: 100,
     queuedAt: '2026-08-03T06:00:00.000Z',
