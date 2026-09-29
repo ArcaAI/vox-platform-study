@@ -10,6 +10,7 @@ import { AGENTIC_CONTEXT_SETTINGS } from './descriptors/agentic-context.descript
 import { AGENTIC_EVAL_SETTINGS } from './descriptors/agentic-eval.descriptors';
 import { AGENTIC_FEWSHOT_SETTINGS } from './descriptors/agentic-fewshot.descriptors';
 import { AI_READINESS_SETTINGS } from './descriptors/ai-readiness.descriptors';
+import { ASR_VLLM_SETTINGS } from './descriptors/asr-vllm.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
 import { CONSULTATION_COMPLETION_TIMEOUT_SETTINGS } from './descriptors/consultation-completion.descriptors';
@@ -289,6 +290,13 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // and `stt.warmDefaultAsrOnBoot`, which STT has read off its effective-config
   // pull since TASK-985 with no descriptor behind it.
   ...MODEL_RESIDENCY_SETTINGS,
+
+  // ── ASR vLLM decode backend ──────────────────────────────────────────────
+  // TASK-1010 phase B (OD-6) — `apps/asr-vllm`'s engine capacity and truncation-heuristic knobs,
+  // moved off `ASR_VLLM_*` env onto the platform tier and served on its effective-config pull.
+  // Platform-only: they size a GPU pool every tenant shares. No model selection here — the model
+  // arrives per request in the agent-resolved spec.
+  ...ASR_VLLM_SETTINGS,
 ]);
 
 // TASK-969 WS-1 — the one CROSS-descriptor invariant, run once the whole catalog
