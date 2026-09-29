@@ -139,9 +139,13 @@ export class TenantOnboardingService extends BaseService implements ITenantOnboa
     admin: Extract<ProvisionTenantWithAdminInput['admin'], { kind: 'new-local' }>,
     genDepartmentId: string,
   ): Promise<string> {
+    // Login compares `username` exactly, so the email-derived default must be
+    // normalised the way `RegistrationService.register` does (trim + lowercase).
+    // An explicit username is the operator's choice: trimmed, case kept.
+    const email = admin.email.trim().toLowerCase();
     const created = await this.userService.create({
-      username: admin.username ?? admin.email,
-      email: admin.email,
+      username: admin.username?.trim() || email,
+      email,
       password: admin.password,
       roleId: TENANT_ADMIN_ROLE_ID,
       departmentId: genDepartmentId,

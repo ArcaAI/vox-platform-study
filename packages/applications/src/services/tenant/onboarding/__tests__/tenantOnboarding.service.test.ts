@@ -185,6 +185,34 @@ describe('TenantOnboardingService', () => {
 
       expect(mockUserService.create).toHaveBeenCalledWith(expect.objectContaining({ username: 'admin@acme.test' }));
     });
+
+    // Login matches `username` exactly (case-sensitive). The email-derived
+    // default must be normalised the way self-service registration does it
+    // (`RegistrationService.register` lowercases), or an admin typing their
+    // email in another case gets a uniform 401.
+    it('lowercases and trims the email, and derives the default username from the normalised email', async () => {
+      mockUserService.create.mockResolvedValue({ id: 'new-local-admin-id' });
+
+      await service.provisionTenantWithAdmin({
+        tenantName: 'Acme Health',
+        admin: { kind: 'new-local', email: '  Admin@Acme.Test ', password: 'S3cret!Pass' },
+        actor,
+      });
+
+      expect(mockUserService.create).toHaveBeenCalledWith(expect.objectContaining({ email: 'admin@acme.test', username: 'admin@acme.test' }));
+    });
+
+    it('trims an explicit username but keeps its case', async () => {
+      mockUserService.create.mockResolvedValue({ id: 'new-local-admin-id' });
+
+      await service.provisionTenantWithAdmin({
+        tenantName: 'Acme Health',
+        admin: { kind: 'new-local', email: 'admin@acme.test', username: '  Acme_Admin ', password: 'S3cret!Pass' },
+        actor,
+      });
+
+      expect(mockUserService.create).toHaveBeenCalledWith(expect.objectContaining({ username: 'Acme_Admin' }));
+    });
   });
 
   describe('guardrail — never adminless', () => {
