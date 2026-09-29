@@ -177,7 +177,7 @@ describe('TASK-951 — schema 1, the standalone transcription contract (R2)', ()
 });
 
 describe('TASK-951 — schema 2, the consultation scribe (R1/R3)', () => {
-  it('declares the nine kinds, with the platform prompt context REFERENCED from 07e, not retyped', () => {
+  it('declares the ten kinds, with the platform prompt context REFERENCED from 07e, not retyped', () => {
     // `case_note` stays (orchestrator fixup at merge): the note-context clone declared it, and a client that
     // names `kindKey: 'case_note'` must keep validating against the scribe. TASK-1006 added `transcript`
     // (the finished-transcript input, shared with 07e by reference).
@@ -186,6 +186,7 @@ describe('TASK-951 — schema 2, the consultation scribe (R1/R3)', () => {
       'transcript',
       'encounter',
       'vitals',
+      'investigations',
       'previous_case_notes',
       'work_note',
       'case_note',
