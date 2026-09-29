@@ -1,7 +1,8 @@
 """Health-check contract parity gate (TASK-990, lane PY-HEALTH).
 
-Hermetic, static-inspection guard that keeps the six Python services
-(``stt``, ``text``, ``guardrail``, ``nlp``, ``harness``, ``tts``) on the SAME
+Hermetic, static-inspection guard that keeps the Python services
+(``stt``, ``text``, ``guardrail``, ``nlp``, ``harness``, ``tts``, and — since
+TASK-1010 — ``asr-vllm``) on the SAME
 health contract the gateway implements
 (``apps/api/src/modules/health/health.controller.ts``). Nothing here boots an
 app, opens a socket, or imports a service package (several load ML weights at
@@ -140,6 +141,16 @@ SERVICES: dict[str, ServiceHealth] = {
         health_module="apps/tts/src/tts/api/endpoints/health.py",
         prefixes=("/api/v1",),
         auth_middleware="apps/tts/src/tts/api/middleware/auth.py",
+        retired_version_literal="0.1.0",
+    ),
+    "asr-vllm": ServiceHealth(
+        # Folder `apps/asr-vllm`, package `asr_vllm` — the paths below are the package's.
+        health_module="apps/asr-vllm/src/asr_vllm/api/endpoints/health.py",
+        prefixes=("/api/v1",),
+        auth_middleware="apps/asr-vllm/src/asr_vllm/api/middleware/auth.py",
+        # asr-vllm never reported a source literal; this pins the one a hardcode would
+        # be — the value `create_app(version=...)` and its pyproject carry — so the F6
+        # regression is guarded by name here too.
         retired_version_literal="0.1.0",
     ),
 }
@@ -481,10 +492,10 @@ def test_health_module_exists_where_the_table_says(service: str) -> None:
 
 
 def test_every_python_service_is_covered() -> None:
-    """The six services this repo runs, and no fewer.
+    """The seven Python services this repo runs, and no fewer.
 
     Mirrors ``test_observability_parity.py``'s SERVICES tuple: a seventh Python
     service must be added to BOTH gates deliberately, not discovered later by an
     incident.
     """
-    assert sorted(SERVICES) == ["guardrail", "harness", "nlp", "stt", "text", "tts"]
+    assert sorted(SERVICES) == ["asr-vllm", "guardrail", "harness", "nlp", "stt", "text", "tts"]

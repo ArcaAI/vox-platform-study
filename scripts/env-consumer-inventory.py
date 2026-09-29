@@ -54,7 +54,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PY_SERVICES = ["stt", "text", "guardrail", "nlp", "harness", "tts"]
+PY_SERVICES = ["stt", "text", "guardrail", "nlp", "harness", "tts", "asr-vllm"]
 CONDA_PY = Path.home() / "miniconda3/envs/arcaenv/bin/python"
 
 # Extraction runs INSIDE each service's own interpreter/import path, so it is a
@@ -63,6 +63,7 @@ _EXTRACT = r"""
 import sys, importlib, inspect, json
 from pydantic_settings import BaseSettings
 from pydantic_settings.sources import EnvSettingsSource
+sys.path.insert(0, sys.argv[2])
 try:
     mod = importlib.import_module(sys.argv[1])
 except Exception as e:
@@ -98,8 +99,18 @@ def python_service_keys(svc: str) -> set[str]:
     if not CONDA_PY.exists():
         print(f"  ! conda env python not found at {CONDA_PY}", file=sys.stderr)
         return set()
+    # `svc` is the FOLDER under apps/; the importable package differs only where the
+    # folder has a hyphen (`asr-vllm` -> `asr_vllm`). asr-vllm is deliberately outside
+    # the root uv workspace (TASK-1010 OD-5), so unlike the other six it is not an
+    # editable install in `arcaenv` — its `src/` has to be put on the path explicitly.
     res = subprocess.run(
-        [str(CONDA_PY), "-c", _EXTRACT, f"{svc}.core.config"],
+        [
+            str(CONDA_PY),
+            "-c",
+            _EXTRACT,
+            f"{svc.replace('-', '_')}.core.config",
+            str(REPO / "apps" / svc / "src"),
+        ],
         cwd=REPO / "apps" / svc,
         capture_output=True,
         text=True,

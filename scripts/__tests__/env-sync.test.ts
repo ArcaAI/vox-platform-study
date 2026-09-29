@@ -70,6 +70,7 @@ describe('env:sync — managed artifacts', () => {
         '.env.sample',
         'apps/admin-console/.env.sample',
         'apps/api/.env.sample',
+        'apps/asr-vllm/.env.sample',
         // the six Python samples are GENERATED now, not
         // inlined verbatim. That inlining is why 243 of 297 Python env vars were
         // invisible to this gate — the generator could not validate what it only

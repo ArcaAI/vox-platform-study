@@ -81,9 +81,15 @@ class ServiceSpec:
     """Modules to import; every `BaseSettings` subclass DEFINED in one is walked."""
 
 
-# The six Python services. A module is listed here because it DEFINES settings
+# The Python services. A module is listed here because it DEFINES settings
 # classes (`grep -rln BaseSettings apps/*/src`), not because it is important.
 SERVICES: tuple[ServiceSpec, ...] = (
+    # `name` is the FOLDER under `apps/` (`asr-vllm`); the importable package is
+    # `asr_vllm`, so it is `modules` — not `name` — that carries the underscore.
+    # asr-vllm is deliberately outside the root uv workspace (TASK-1010 OD-5), so it
+    # is not an editable install in `arcaenv`; `build()` puts `apps/<name>/src` on
+    # `sys.path`, which is what makes its module importable here.
+    ServiceSpec("asr-vllm", 8867, "Whisper decode on vLLM", ("asr_vllm.core.config",)),
     ServiceSpec("guardrail", 8863, "Safety Engine", ("guardrail.core.config",)),
     ServiceSpec(
         "harness",
@@ -199,7 +205,9 @@ def _field_comments(cls: type) -> dict[str, str]:
             stripped = lines[index].strip()
             if not stripped.startswith("#"):
                 break
-            text = stripped.lstrip("#").strip()
+            # `#:` is the attribute-doc-comment form (Sphinx / `apps/text`,
+            # `apps/asr-vllm`): the colon is markup, not prose.
+            text = stripped.lstrip("#").lstrip(":").strip()
             # A bare rule (`# ────────────`) separates groups and says nothing;
             # a titled rule (`# ── Model weight cache root ────`) is the group's
             # NAME and is the only description some fields have — keep the title,
