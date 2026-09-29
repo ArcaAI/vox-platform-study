@@ -10,7 +10,7 @@ What these tests pin, in order of how much they matter:
    an opinion. `unavailable` means the gateway could not answer, and there is
    nothing to fall back to, so it must raise.
 3. **The secret never leaks through repr, logs or a cache key.**
-4. **`X-Tenant-Id` and `X-Internal-Service-Key` are both sent on every call**
+4. **`X-Tenant-Id`, `X-Service-Token` and `?service=nlp` are sent on every call**
    (00-project-context.md: mandatory on internal service-to-service calls
    carrying tenant-scoped work) — this is where nlp's client differs from
    stt's own, which sends the tenant only as a query parameter.
@@ -40,7 +40,7 @@ TENANT = "11111111-1111-1111-1111-111111111111"
 def make_client(handler, ttl_s: int = 60) -> ModelRegistryCredentialClient:
     return ModelRegistryCredentialClient(
         base_url="http://gateway.test",
-        api_key="internal-key",
+        service_token="internal-key",
         ttl_s=ttl_s,
         transport=httpx.MockTransport(handler),
     )
@@ -210,7 +210,7 @@ class TestSingleFlight:
 
         client = ModelRegistryCredentialClient(
             base_url="http://gateway.test",
-            api_key="k",
+            service_token="k",
             transport=httpx.MockTransport(slow),
         )
         await asyncio.gather(*(client.resolve("s3", SYSTEM_TENANT_ID) for _ in range(5)))
@@ -234,16 +234,37 @@ class TestTransportShape:
         await client.resolve("s3", SYSTEM_TENANT_ID)
         assert seen_paths == ["/internal/model-registry-credential"]
 
-    async def test_x_internal_service_key_is_sent(self):
-        seen_headers: list[str | None] = []
+    async def test_the_service_query_param_names_this_service(self):
+        """`InternalServiceTokenGuard` 401s any request without `?service=` and
+        binds the presented token to the service it names — the gateway half of
+        this contract is pinned by `internal-service-token.guard.test.ts`."""
+        seen: list[str | None] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            seen_headers.append(request.headers.get("x-internal-service-key"))
+            seen.append(request.url.params.get("service"))
             return httpx.Response(200, json=resolved())
 
         client = make_client(handler)
         await client.resolve("s3", SYSTEM_TENANT_ID)
-        assert seen_headers == ["internal-key"]
+        assert seen == ["nlp"]
+
+    async def test_x_service_token_is_sent_not_the_stt_only_header(self):
+        """The guard reads `X-Internal-Service-Key` for `service=stt` ONLY; every
+        other service must present `X-Service-Token`, or the call is a 401."""
+        seen: list[tuple[str | None, str | None]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(
+                (
+                    request.headers.get("x-service-token"),
+                    request.headers.get("x-internal-service-key"),
+                )
+            )
+            return httpx.Response(200, json=resolved())
+
+        client = make_client(handler)
+        await client.resolve("s3", SYSTEM_TENANT_ID)
+        assert seen == [("internal-key", None)]
 
     async def test_x_tenant_id_is_always_sent_alongside_the_query_param(self):
         """00-project-context.md: mandatory on every internal call carrying
@@ -289,7 +310,7 @@ class TestResolveS3Credentials:
             "get_model_credential_client",
             lambda: ModelRegistryCredentialClient(
                 base_url="http://gateway.test",
-                api_key="k",
+                service_token="k",
                 transport=httpx.MockTransport(handler),
             ),
         )
@@ -307,7 +328,7 @@ class TestResolveS3Credentials:
             "get_model_credential_client",
             lambda: ModelRegistryCredentialClient(
                 base_url="http://gateway.test",
-                api_key="k",
+                service_token="k",
                 transport=httpx.MockTransport(
                     lambda _r: httpx.Response(200, json={"outcome": "denied", "reason": "no"})
                 ),
@@ -316,3 +337,44 @@ class TestResolveS3Credentials:
 
         with pytest.raises(CredentialUnavailable):
             await model_credentials.resolve_s3_credentials(None)
+
+
+# ---------------------------------------------------------------------------
+# 7. The process client — which credential the singleton actually presents
+# ---------------------------------------------------------------------------
+
+
+class TestProcessClient:
+    async def test_presents_the_shared_internal_access_token_as_the_nlp_service(self, monkeypatch):
+        """The singleton must present what the guard accepts for `service=nlp`:
+        the ONE shared `INTERNAL_ACCESS_TOKEN` (nlp's per-service
+        `NLP_SERVICE_TOKEN` is retired on nlp's side) — never `API_GATEWAY_KEY`,
+        which the guard admits for `service=stt` alone."""
+        from pydantic import SecretStr
+
+        from nlp.core import model_credentials
+        from nlp.core.config import settings
+
+        monkeypatch.setattr(settings.service, "gateway_url", "http://gateway.test/api/v1")
+        monkeypatch.setattr(settings.service, "internal_access_token", SecretStr("shared-token"))
+        model_credentials.reset_model_credential_client()
+        seen: list[tuple[str, str | None, str | None]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(
+                (
+                    request.url.path,
+                    request.url.params.get("service"),
+                    request.headers.get("x-service-token"),
+                )
+            )
+            return httpx.Response(200, json=resolved())
+
+        try:
+            client = model_credentials.get_model_credential_client()
+            client._transport = httpx.MockTransport(handler)
+            await client.resolve("s3", SYSTEM_TENANT_ID)
+        finally:
+            model_credentials.reset_model_credential_client()
+
+        assert seen == [("/api/v1/internal/model-registry-credential", "nlp", "shared-token")]

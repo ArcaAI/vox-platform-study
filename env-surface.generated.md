@@ -179,9 +179,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 
 | Variable | Service | Required | Secret | Default | In file | Also accepted |
 |---|---|---|---|---|---|---|
-| `API_GATEWAY_KEY` | `apps/nlp` | no | yes | `CHANGE_ME` | live | `NLP_API_GATEWAY_KEY` |
 | `API_GATEWAY_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
-| `API_GATEWAY_KEY` | `apps/tts` | no | yes | `CHANGE_ME` | live | — |
 | `API_GATEWAY_TIMEOUT__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `30` | commented | — |
 | `API_GATEWAY_URL` | `apps/stt` | no | no | `http://localhost:8868/api/v1` | commented | — |
 | `APP_NAME__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `stt` | commented | — |

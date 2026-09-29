@@ -97,9 +97,9 @@ builds the `FastAPI` instance with `lifespan` from `lifespan.py`, adds
 | `ExternalTextConfig` | `NLP_EXTERNAL_TEXT_` | Peer-call timeout/retry to `apps/text`; the base URL itself is the repo-wide `TEXT_URL`, not a second `NLP_EXTERNAL_TEXT_BASE_URL` |
 
 The internal service credential (`INTERNAL_ACCESS_TOKEN`, unprefixed,
-accepted as inbound `X-Service-Token` and presented on outbound peer calls)
-and `API_GATEWAY_KEY` (presented as `X-Internal-Service-Key` on gateway
-`/internal/*` calls) are the same shared credentials every HOPE service uses
+accepted as inbound `X-Service-Token` and presented on outbound peer calls,
+including `service=nlp` gateway `/internal/*` calls such as
+`/internal/model-registry-credential`) is the same shared credential every HOPE service uses
 — see `00-project-context.md` §Environment Files.
 
 **Inference is two lanes, not one queue.** A BULK lane
