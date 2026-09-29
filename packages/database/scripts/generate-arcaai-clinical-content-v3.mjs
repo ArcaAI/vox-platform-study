@@ -189,13 +189,12 @@ const header = `/**
  * {formatted_test_results}, {formatted_previous_visits}, {language_name}) - the
  * source markdown escapes them as \`{current\\_department}\`, and extraction strips
  * those escapes, asserting all nine survive and no tenth appears. They are
- * substituted at ASSEMBLY time by \`renderPreSummaryTemplate\`
- * (apps/api .../text-compat/summary-prompt.builder.ts), never here.
+ * substituted at ASSEMBLY time, never here (v1 did it with \`renderPreSummaryTemplate\`,
+ * removed with the v1-compat surface by TASK-1004).
  *
  * The FORMAT block's five section titles are unchanged and are asserted present
- * at extraction: they are title-matched by \`PRE_SUMMARY_DISPLAY_TITLES\`
- * (apps/api .../text-compat/summary-response.mapper.ts), and editing one without
- * the other returns an EMPTY structured_data.sections.
+ * at extraction (v1 title-matched them with \`PRE_SUMMARY_DISPLAY_TITLES\` in the v1-compat
+ * response mapper, removed by TASK-1004).
  *
  * Strings are JSON-encoded so backticks / \${...} in the source need no escaping.
  */

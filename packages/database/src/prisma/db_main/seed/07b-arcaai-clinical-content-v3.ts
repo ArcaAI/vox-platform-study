@@ -77,9 +77,8 @@
  * (`PromptAssemblyService`), never here.
  *
  * The FORMAT block's five section titles are unchanged and are asserted present
- * at extraction: they are title-matched by `PRE_SUMMARY_DISPLAY_TITLES`
- * (apps/api .../text-compat/summary-response.mapper.ts), and editing one without
- * the other returns an EMPTY structured_data.sections.
+ * at extraction (v1 title-matched them with `PRE_SUMMARY_DISPLAY_TITLES` in the v1-compat
+ * response mapper, removed by TASK-1004).
  *
  * Strings are JSON-encoded so backticks / ${...} in the source need no escaping.
  */

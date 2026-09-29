@@ -117,7 +117,7 @@ function extractPrefix(rawKey: string): string {
  *
  * | SDK call | Controller | Scope |
  * |-----------------------------------|-------------------------------------|-------|
- * | consultation + summarization | consultation / text-compat | `consultation:*` (4) |
+ * | consultation + summarization | consultation | `consultation:*` (4) |
  * | live + batch transcription | transcription-job / stt ws | `stt:*` (3) |
  * | `POST /speech/synthesize`, voices | TTS proxy | `tts:speech:write`, `tts:voice:read` |
  * | `GET /prompt-templates/available` | `PromptTemplateController` | `prompt:template:read` |

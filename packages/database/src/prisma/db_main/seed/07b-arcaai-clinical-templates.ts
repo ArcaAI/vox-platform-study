@@ -217,11 +217,10 @@ interface ClinicalTemplateSpec {
 /**
  * The nine v1 pre-summary placeholders, in the order they first appear in the
  * body. Declared here (not imported) because `packages/database` must not depend
- * on `apps/api`; the runtime substituter that consumes them is
- * `renderPreSummaryTemplate` / `PRE_SUMMARY_TEMPLATE_VARIABLES` in
- * apps/api/src/modules/text-compat/summary-prompt.builder.ts. A test there asserts
- * the declared set equals the placeholders actually present in the body, so the
- * two lists cannot silently diverge.
+ * on `apps/api`. (The v1 runtime substituter that consumed this list —
+ * `renderPreSummaryTemplate` / `PRE_SUMMARY_TEMPLATE_VARIABLES` in the v1-compat
+ * `text-compat` module — was removed by TASK-1004; the seed's own tests now guard
+ * the list against the placeholders present in the body.)
  */
 const PRE_SUMMARY_VARIABLES = [
   'current_department',
@@ -704,7 +703,8 @@ export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_SEEDED_VERSIONS.flatMap(
  * The first states the output language. The second NAMES the conflict it overrides: the clinical
  * corpus says "the section content MUST be in the conversation language" in ~40 places, and a
  * generic "write in English" loses to that specific in-template instruction — the 2026-08-10
- * lesson recorded on the v1-compat summary (`summary-prompt.builder.ts`). (The v3 HEME bodies
+ * lesson recorded on the v1-compat summary prompt builder (`summary-prompt.builder.ts`, removed
+ * by TASK-1004). (The v3 HEME bodies
  * already say the note is written entirely in English — the historical Malayalam came from the old
  * generated line — but other departments' bodies and the older corpus versions still carry the
  * conversation-language clause.) The third — "Keep the section keys and headings exactly as given,
