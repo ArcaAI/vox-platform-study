@@ -1,11 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-  DataConflictException,
   DataNotFoundException,
-  DatabaseConnectionException,
   OptimisticConcurrencyException,
-  QueryFailedException,
 } from '@arcaai/exceptions';
 
 // Same cycle-break as the sibling repository tests.
@@ -84,66 +81,27 @@ describe('Repository.updateWithVersion error capture', () => {
     expect(err.metadata).toEqual({ expectedVersion: 7, currentVersion: 9 });
   });
 
-  it('wraps an unknown Prisma error from updateMany with the original as cause', async () => {
-    const original = prismaError('P9999');
-    h.db.updateMany.mockRejectedValueOnce(original);
-
-    const err: any = await h.repo.updateWithVersion('e-1', { changes: { a: 1 } }, 7).catch((e: unknown) => e);
-
-    expect(err).toBeInstanceOf(QueryFailedException);
-    expect(err.cause).toBe(original);
-  });
 });
 
-describe('Repository Prisma error mapping', () => {
-  let h: Awaited<ReturnType<typeof buildHarness>>;
-  beforeEach(async () => {
-    h = await buildHarness();
-  });
-
-  it('maps P2002 to DataConflictException with cause', async () => {
-    const original = prismaError('P2002');
+describe('Repository raw error propagation', () => {
+  it('lets a raw Prisma error from create reach the caller as the same object', async () => {
+    const h = await buildHarness();
+    const original = Object.assign(new Error('unique'), { code: 'P2002', meta: { target: ['idempotencyKey'] } });
     h.db.create.mockRejectedValueOnce(original);
-    const err: any = await h.repo.create({ id: 'x' }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(DataConflictException);
-    expect(err.cause).toBe(original);
-  });
-
-  it('maps P2025 to DataNotFoundException with cause', async () => {
-    const original = prismaError('P2025');
-    h.db.update.mockRejectedValueOnce(original);
-    const err: any = await h.repo.update('e-1', { changes: {} }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(DataNotFoundException);
-    expect(err.cause).toBe(original);
-  });
-
-  it.each(['P1001', 'P1002', 'P1017'])('maps %s to DatabaseConnectionException with cause', async (code) => {
-    const original = prismaError(code);
-    h.db.findUnique.mockRejectedValueOnce(original);
-    const err: any = await h.repo.findById('e-1').catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(DatabaseConnectionException);
-    expect(err.cause).toBe(original);
-  });
-
-  it('maps any other Prisma code to QueryFailedException with cause', async () => {
-    const original = prismaError('P2003');
-    h.db.findMany.mockRejectedValueOnce(original);
-    const err: any = await h.repo.findAll({}).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(QueryFailedException);
-    expect(err.cause).toBe(original);
-  });
-
-  it('rethrows a non-Prisma error untouched', async () => {
-    const original = new Error('boom');
-    h.db.findMany.mockRejectedValueOnce(original);
-    const err = await h.repo.findAll({}).catch((e: unknown) => e);
+    const err = await h.repo.create({ id: 'x' }).catch((e: unknown) => e);
     expect(err).toBe(original);
   });
 
-  it('does not re-wrap an already-domain exception', async () => {
-    const original = new DataNotFoundException('TestModel', 'e-1');
-    h.db.findUnique.mockRejectedValueOnce(original);
-    const err = await h.repo.findById('e-1').catch((e: unknown) => e);
+  it.each([
+    ['update', (r: any) => r.update('e-1', { changes: {} }), 'update'],
+    ['findById', (r: any) => r.findById('e-1'), 'findUnique'],
+    ['findAll', (r: any) => r.findAll({}), 'findMany'],
+    ['updateWithVersion', (r: any) => r.updateWithVersion('e-1', { changes: { a: 1 } }, 7), 'updateMany'],
+  ])('%s propagates the raw error unchanged', async (_n, call, method) => {
+    const h = await buildHarness();
+    const original = prismaError('P2025');
+    h.db[method as string].mockRejectedValueOnce(original);
+    const err = await call(h.repo).catch((e: unknown) => e);
     expect(err).toBe(original);
   });
 });
@@ -165,7 +123,8 @@ describe('Repository.findByIdOrNull', () => {
   });
 
   it('rethrows anything other than DataNotFoundException', async () => {
-    h.db.findUnique.mockRejectedValueOnce(prismaError('P1001'));
-    await expect(h.repo.findByIdOrNull('e-1')).rejects.toBeInstanceOf(DatabaseConnectionException);
+    const original = prismaError('P1001');
+    h.db.findUnique.mockRejectedValueOnce(original);
+    await expect(h.repo.findByIdOrNull('e-1')).rejects.toBe(original);
   });
 });
