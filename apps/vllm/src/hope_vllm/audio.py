@@ -22,6 +22,9 @@ import numpy.typing as npt
 
 SAMPLE_RATE = 16_000
 MAX_WINDOW_SECONDS = 30.0
+#: The highest source rate accepted (48 kHz covers every capture path in the fleet). It
+#: bounds the largest legal upload, so the route can refuse a bigger one unread.
+MAX_SAMPLE_RATE = 48_000
 _BYTES_PER_SAMPLE = 2
 _VOICED_FRAME_MS = 30
 
@@ -77,6 +80,10 @@ def decode_wav(data: bytes) -> tuple[npt.NDArray[np.float32], float]:
         )
     if frames == 0 or rate <= 0 or not raw:
         raise AudioError("unsupported_audio", "file has no audio frames")
+    if rate > MAX_SAMPLE_RATE:
+        raise AudioError(
+            "unsupported_audio", f"sample rate {rate} Hz is above the {MAX_SAMPLE_RATE} Hz maximum"
+        )
     duration = frames / rate
     if duration > MAX_WINDOW_SECONDS:
         raise AudioError(

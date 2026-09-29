@@ -570,3 +570,33 @@ def test_no_error_body_is_ever_the_fastapi_default_on_v1() -> None:
     assert json.loads(openai_error_body("m", "t", "p", "c")) == {
         "error": {"message": "m", "type": "t", "param": "p", "code": "c"}
     }
+
+
+# ── fix round 1 · M2: the upload is capped before it is read ────────────────
+
+
+async def test_an_upload_larger_than_any_30s_wav_is_refused_unread(client, factory) -> None:  # type: ignore[no-untyped-def]
+    from hope_vllm.api.endpoints.openai_transcriptions import MAX_UPLOAD_BYTES
+    from hope_vllm.audio import MAX_SAMPLE_RATE
+
+    assert MAX_UPLOAD_BYTES >= 30 * MAX_SAMPLE_RATE * 2  # a legal 30 s file always fits
+    response = await post(client, audio=b"RIFF" + b"\0" * MAX_UPLOAD_BYTES)
+    assert response.status_code == 400
+    error = openai_error(response)
+    assert (error["code"], error["param"]) == ("audio_too_long", "file")
+    assert factory.builds == []
+
+
+async def test_a_legal_30s_wav_at_the_highest_accepted_rate_is_accepted(client) -> None:  # type: ignore[no-untyped-def]
+    from hope_vllm.audio import MAX_SAMPLE_RATE
+
+    response = await post(client, audio=wav_bytes(30.0, rate=MAX_SAMPLE_RATE))
+    assert response.status_code == 200
+
+
+async def test_a_sample_rate_above_the_maximum_is_unsupported(client) -> None:  # type: ignore[no-untyped-def]
+    from hope_vllm.audio import MAX_SAMPLE_RATE
+
+    response = await post(client, audio=wav_bytes(0.5, rate=MAX_SAMPLE_RATE * 2))
+    assert response.status_code == 400
+    assert openai_error(response)["code"] == "unsupported_audio"

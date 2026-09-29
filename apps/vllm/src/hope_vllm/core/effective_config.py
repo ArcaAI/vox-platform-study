@@ -278,6 +278,14 @@ async def refresh_control_plane(app_state: Any) -> None:
     try:
         snapshot = await client.get()
         apply_control_plane(settings, snapshot.raw)
+        if snapshot is not getattr(app_state, "control_plane_snapshot_seen", None):
+            # A REAL fetch (not the TTL-cached snapshot): let the app react once — the pool
+            # re-resolves its pinned slugs (`hope_vllm.main`), since a pinned row's runtime
+            # key moves with every edit and `vllm.pools` may have changed the pins.
+            app_state.control_plane_snapshot_seen = snapshot
+            hook = getattr(app_state, "on_control_plane_refreshed", None)
+            if callable(hook):
+                hook()
     except Exception as exc:  # noqa: BLE001 — a config refresh may never break a decode
         logger.warning(
             "vllm.effective_config.apply_error",

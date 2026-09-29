@@ -45,6 +45,9 @@ logger = get_logger(__name__)
 SERVICE_NAME = "vllm"
 POSITIVE_TTL_S = 60.0
 NEGATIVE_TTL_S = 10.0
+#: The cache bound: `(tenant, slug)` pairs are caller-driven, so the map must not grow
+#: without limit. Expired entries are pruned on every insert; past the cap the oldest go.
+MAX_CACHE_ENTRIES = 1024
 DEFAULT_TIMEOUT_S = 5.0
 
 
@@ -90,7 +93,9 @@ class ServingSpecClient:
         timeout_s: float = DEFAULT_TIMEOUT_S,
         transport: httpx.AsyncBaseTransport | None = None,
         time_func: Callable[[], float] | None = None,
+        max_entries: int = MAX_CACHE_ENTRIES,
     ) -> None:
+        self._max_entries = max_entries
         self._base_url = base_url.strip().rstrip("/")
         self._token = token
         self._positive_ttl_s = positive_ttl_s
@@ -123,6 +128,19 @@ class ServingSpecClient:
     def clear_cache(self) -> None:
         self._cache.clear()
 
+    def cache_size(self) -> int:
+        return len(self._cache)
+
+    def _store(self, key: tuple[str, str], outcome: _Outcome, ttl: float) -> None:
+        """Insert ``outcome`` (newest last), pruning expired entries, then the oldest."""
+        now = self._time()
+        for stale in [k for k, (_, expires) in self._cache.items() if expires <= now]:
+            del self._cache[stale]
+        self._cache.pop(key, None)
+        while len(self._cache) >= self._max_entries:
+            del self._cache[next(iter(self._cache))]
+        self._cache[key] = (outcome, now + ttl)
+
     def _forget(self, key: tuple[str, str], _task: object) -> None:
         self._inflight.pop(key, None)
 
@@ -133,7 +151,7 @@ class ServingSpecClient:
             if isinstance(outcome, ResolvedServingSpec)
             else self._negative_ttl_s
         )
-        self._cache[key] = (outcome, self._time() + ttl)
+        self._store(key, outcome, ttl)
         return outcome
 
     async def _fetch(self, tenant_id: str, slug: str) -> _Outcome:

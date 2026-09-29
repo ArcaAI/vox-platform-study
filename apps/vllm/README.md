@@ -36,7 +36,7 @@ token = dev bypass only when running locally; fail closed when deployed. `/v1/*`
 
 | Field | |
 |---|---|
-| `file` | WAV, PCM16, mono, any rate (resampled to 16 kHz), ≤ 30 s |
+| `file` | WAV, PCM16, mono, any rate ≤ 48 kHz (resampled to 16 kHz), ≤ 30 s; an upload larger than any such file is refused `audio_too_long` unread |
 | `model` | registered slug, required |
 | `language` | ISO-639-1, **required** (deviates from OpenAI: Whisper-on-vLLM needs the language token) |
 | `prompt` | optional previous text → `<|startofprev|>` (TASK-994: omit it for the ml-en fine-tune) |
@@ -119,8 +119,13 @@ This process serves ONE entry of the platform setting `vllm.pools`, named by `VL
   ≤ `maxResidentEngines`; otherwise the least-recently-used idle, unpinned engines are
   evicted, and only if that makes room; else 503 `engine_capacity`. A model bigger than the
   whole budget → 503 `VRAM_BUDGET_EXCEEDED`.
-* **Pins** — resolved against the SYSTEM tenant and loaded in the background at startup;
-  never evicted; `/health/startup` stays 503 until they are resident.
+* **Pins are SLUGS** — resolved against the SYSTEM tenant and loaded in the background at
+  startup; never evicted; `/health/startup` stays 503 until they are resident. A row edit
+  changes its runtime key, so every control-plane refresh (a real fetch, ~60 s, or an
+  `arca:config:invalidate`) re-resolves each pinned slug: the new key is warmed and pinned,
+  the old key becomes an ordinary evictable engine. A change to `pins` applies the same way.
+* **Release before build** — an evicted engine is shut down before the next one builds
+  (vLLM checks free GPU memory at startup), and counts against the budget until it has.
 * **Engine sizing** comes from the MODEL ROW (`AiModel._metadata.serving`, D-11):
   `gpu_memory_utilization = round(vramGiB / device total GiB, 3)` (device total from NVML,
   no CUDA context), `max_num_seqs = maxNumSeqs ?? 64`, `enforce_eager = enforceEager ?? false`.
@@ -167,6 +172,15 @@ fails on; name the Services otherwise.
 that drops this pod's pool, is refused whole), `vllm.truncation.minCharsPerVoicedSecond`
 (3.0) and `vllm.truncation.voicedDbfs` (−40), read per request. A build awaits the pull; a
 request never does.
+
+## Runbook — a pin that fails to load at startup
+
+A failed pin warm-up (the gateway could not resolve the slug, the model is not published,
+the build failed) is **not retried in-process**: `/health/startup` stays 503 and the
+kubelet's startup probe restarting the pod is the recovery. Fix the row or the pool, then
+let the restart happen (or delete the pod). Once started, a pin that fails to re-resolve on
+a refresh keeps the engine in force and is retried on the next refresh
+(`vllm.pins.refresh_failed` in the log).
 
 ## Metrics
 

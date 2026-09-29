@@ -18,9 +18,16 @@ platform-admin change applies without a restart.
   refused (``EngineCapacityError`` → 503 + Retry-After) — never an eviction mid-decode, and
   never an eviction for an ask that fails anyway. A spec larger than the whole budget is
   refused by name (``VRAM_BUDGET_EXCEEDED``).
-* **Pins.** ``warm_pins`` resolves the pool's pinned slugs against the SYSTEM tenant (a pin
-  is platform configuration, never a customer's row) and loads them; a pinned runtime key
-  is never evicted.
+* **Pins are SLUGS.** ``warm_pins`` / ``refresh_pins`` resolve the pool's pinned slugs
+  against the SYSTEM tenant (a pin is platform configuration, never a customer's row) and
+  load them; the pinned set is the runtime keys those slugs resolve to NOW. A row edit
+  changes its runtime key (``<id>:v<version>``), so every refresh re-resolves: the new key
+  is warmed and pinned, the old one becomes an ordinary evictable engine. A pinned runtime
+  key is never evicted.
+* **Release before build.** Evicted engines are shut down INSIDE the (shielded) load task,
+  before the new engine builds: vLLM checks free GPU memory at startup, and the evicted
+  engine-core holds its share until shutdown returns. Until then the victims still count
+  against the budget, and a caller that goes away cannot interrupt the release.
 * **Lazy + single-flight.** Everything else loads on first use; concurrent first requests
   share ONE load, shielded so a client disconnect never cancels a load others wait on.
 * **Fresh at build.** ``before_build`` (the control-plane pull) is awaited before every build.
@@ -130,7 +137,9 @@ class EnginePool:
         self._resident: dict[str, _Resident] = {}
         self._loading: dict[str, asyncio.Task[_Resident]] = {}
         self._loading_specs: dict[str, ResolvedServingSpec] = {}
-        self._pinned: set[str] = set()
+        #: Evicted engines whose shutdown has not completed — still on the GPU.
+        self._releasing: dict[str, _Resident] = {}
+        #: pinned slug → the spec it resolves to NOW (SYSTEM tenant).
         self._pin_specs: dict[str, ResolvedServingSpec] = {}
 
     # ── public ──────────────────────────────────────────────────────────────
@@ -161,17 +170,33 @@ class EnginePool:
             resident = self._resident[spec.runtime_key]
         return resident.load_seconds, already
 
-    async def warm_pins(self, resolve: Callable[[str], Awaitable[ResolvedServingSpec]]) -> None:
-        """Resolve and load every pin of this pool, in order. Raises on the first failure.
+    @property
+    def _pinned(self) -> set[str]:
+        return {spec.runtime_key for spec in self._pin_specs.values()}
 
-        ``resolve`` maps a slug to its spec for the SYSTEM tenant (the caller binds it).
+    async def warm_pins(self, resolve: Callable[[str], Awaitable[ResolvedServingSpec]]) -> None:
+        """Startup: resolve and load every pin. Raises on the first failure."""
+        await self.refresh_pins(resolve)
+
+    async def refresh_pins(self, resolve: Callable[[str], Awaitable[ResolvedServingSpec]]) -> None:
+        """Re-resolve the pool's pinned SLUGS and load what they resolve to now.
+
+        ``resolve`` maps a slug to its spec for the SYSTEM tenant (the caller binds it). The
+        pinned set is replaced BEFORE anything loads, so a key a slug no longer resolves to
+        (an edited row, or a slug dropped from ``pins``) is evictable to make room for the
+        new one. Raises on the first failure; the slugs resolved so far stay pinned.
         """
+        resolved: dict[str, ResolvedServingSpec] = {}
         for slug in self._pool_config().pins:
-            spec = await resolve(slug)
-            self._pinned.add(spec.runtime_key)
-            self._pin_specs[spec.runtime_key] = spec
-            await self.warm(spec)
-            logger.info("vllm.engine.pinned", slug=slug, runtime_key=spec.runtime_key)
+            resolved[slug] = await resolve(slug)
+        released = self._pinned - {spec.runtime_key for spec in resolved.values()}
+        self._pin_specs = resolved
+        for key in sorted(released):
+            logger.info("vllm.engine.unpinned", runtime_key=key)
+        for slug, spec in resolved.items():
+            _, already = await self.warm(spec)
+            if not already:
+                logger.info("vllm.engine.pinned", slug=slug, runtime_key=spec.runtime_key)
 
     def inflight(self, runtime_key: str) -> int:
         """Leases currently held on ``runtime_key`` (0 when not resident)."""
@@ -182,8 +207,8 @@ class EnginePool:
         """``(slug, kind)`` of every pin resolved but not (yet) resident."""
         return [
             (spec.slug, spec.kind)
-            for key, spec in self._pin_specs.items()
-            if key not in self._resident
+            for spec in self._pin_specs.values()
+            if spec.runtime_key not in self._resident
         ]
 
     def resident_specs(self) -> list[tuple[ResolvedServingSpec, bool]]:
@@ -217,9 +242,13 @@ class EnginePool:
         return all(r.inflight == 0 for r in self._resident.values())
 
     async def close(self) -> None:
-        for task in list(self._loading.values()):
+        tasks = list(self._loading.values())
+        for task in tasks:
             task.cancel()
-        residents = list(self._resident.values())
+        await asyncio.gather(*tasks, return_exceptions=True)
+        # Anything a cancelled load task had not finished releasing.
+        residents = [*self._releasing.values(), *self._resident.values()]
+        self._releasing.clear()
         self._resident.clear()
         for resident in residents:
             self._publish_residency(resident.spec.slug)
@@ -238,14 +267,16 @@ class EnginePool:
         ).set(claimed * 2**30)
 
     def _committed_gib(self) -> float:
-        return sum(r.spec.engine.vram_gib for r in self._resident.values()) + sum(
-            s.engine.vram_gib for s in self._loading_specs.values()
+        """GiB the GPU is holding or about to hold: resident, being released, loading."""
+        return (
+            sum(r.spec.engine.vram_gib for r in self._resident.values())
+            + sum(r.spec.engine.vram_gib for r in self._releasing.values())
+            + sum(s.engine.vram_gib for s in self._loading_specs.values())
         )
 
     async def _acquire(self, spec: ResolvedServingSpec, enforce_saturation: bool) -> _Resident:
         key = spec.runtime_key
         while True:
-            victims: list[_Resident] = []
             async with self._lock:
                 config = self._pool_config()
                 if spec.kind not in config.accepted_kinds:
@@ -270,14 +301,11 @@ class EnginePool:
                 task = self._loading.get(key)
                 if task is None:
                     victims = self._admit(spec, config)
-                    task = asyncio.create_task(self._load(spec))
+                    task = asyncio.create_task(self._load(spec, victims))
                     self._loading[key] = task
                     self._loading_specs[key] = spec
                 elif weights_identity(self._loading_specs[key]) != weights_identity(spec):
                     raise RuntimeKeySpecMismatchError(key)
-            for victim in victims:
-                self._publish_residency(victim.spec.slug)
-                await self._shutdown(victim)
             queued = metrics.QUEUE_DEPTH.labels(model=spec.slug)
             queued.inc()
             try:
@@ -308,7 +336,7 @@ class EnginePool:
                 f"{config.vram_budget_gib:g} GiB",
             )
         committed = self._committed_gib()
-        count = len(self._resident) + len(self._loading)
+        count = len(self._resident) + len(self._releasing) + len(self._loading)
 
         def fits(gib: float, engines: int) -> bool:
             return gib + need <= config.vram_budget_gib and engines + 1 <= config.max_resident
@@ -332,6 +360,9 @@ class EnginePool:
             metrics.REJECTIONS_TOTAL.labels(reason="engine_capacity").inc()
             raise EngineCapacityError(spec.runtime_key)
         victims = [self._resident.pop(key) for key in plan]
+        for victim in victims:
+            # Still on the GPU until `_load` has shut it down.
+            self._releasing[victim.spec.runtime_key] = victim
         metrics.RESIDENT_GIB.set(self._committed_gib() + need)
         for victim in victims:
             metrics.ENGINE_EVICTIONS_TOTAL.inc()
@@ -343,7 +374,17 @@ class EnginePool:
             )
         return victims
 
-    async def _load(self, spec: ResolvedServingSpec) -> _Resident:
+    async def _release(self, victims: list[_Resident]) -> None:
+        """Shut the victims down, THEN stop counting them (even if a shutdown failed —
+        the attempt is over and ``_shutdown`` logged it)."""
+        for victim in victims:
+            await self._shutdown(victim)
+            async with self._lock:
+                self._releasing.pop(victim.spec.runtime_key, None)
+                self._publish_residency(victim.spec.slug)
+                metrics.RESIDENT_GIB.set(self._committed_gib())
+
+    async def _load(self, spec: ResolvedServingSpec, victims: list[_Resident]) -> _Resident:
         key = spec.runtime_key
         started = self._clock()
         logger.info(
@@ -354,6 +395,8 @@ class EnginePool:
             vram_gib=spec.engine.vram_gib,
         )
         try:
+            await self._release(victims)
+            started = self._clock()  # the load proper, not the release before it
             if self._before_build is not None:
                 await self._before_build()
             engine = await self._factory.build(spec)

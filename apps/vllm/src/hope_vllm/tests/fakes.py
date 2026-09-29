@@ -29,6 +29,9 @@ class FakeEngine:
     max_inflight: int = 0
     shut_down: bool = False
     aborted: list[str] = field(default_factory=list)
+    shutdown_delay_s: float = 0.0
+    #: Shared with the factory: `(event, runtime_key)` in the order things happened.
+    events: list[tuple[str, str]] = field(default_factory=list)
 
     async def transcribe(self, request: DecodeRequest) -> DecodeResult:
         self.requests.append(request)
@@ -51,7 +54,11 @@ class FakeEngine:
         )
 
     async def shutdown(self) -> None:
+        self.events.append(("shutdown_started", self.spec.runtime_key))
+        if self.shutdown_delay_s:
+            await asyncio.sleep(self.shutdown_delay_s)
         self.shut_down = True
+        self.events.append(("shutdown_done", self.spec.runtime_key))
 
 
 @dataclass
@@ -66,14 +73,17 @@ class FakeEngineFactory:
     engine_text: str = "hello world from the fake engine"
     engine_finish_reason: str | None = "stop"
     engine_queue_ms: float | None = None
+    shutdown_delay_s: float = 0.0
     builds: list[str] = field(default_factory=list)
     engines: dict[str, FakeEngine] = field(default_factory=dict)
+    events: list[tuple[str, str]] = field(default_factory=list)
 
     def availability(self) -> str | None:
         return self.unavailable_reason
 
     async def build(self, spec: ResolvedServingSpec) -> FakeEngine:
         self.builds.append(spec.runtime_key)
+        self.events.append(("build", spec.runtime_key))
         if self.build_delay_s:
             await asyncio.sleep(self.build_delay_s)
         if self.fail_with is not None:
@@ -84,6 +94,8 @@ class FakeEngineFactory:
             finish_reason=self.engine_finish_reason,
             delay_s=self.engine_delay_s,
             engine_queue_ms=self.engine_queue_ms,
+            shutdown_delay_s=self.shutdown_delay_s,
+            events=self.events,
         )
         self.engines[spec.runtime_key] = engine
         return engine

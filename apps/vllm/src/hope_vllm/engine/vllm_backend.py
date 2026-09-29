@@ -321,6 +321,8 @@ class VllmEngineFactory:
         enforce_eager = bool(sizing.enforce_eager)
         args = AsyncEngineArgs(
             model=model_dir,
+            # vLLM's `model_name` metric label: the slug, never a models-bucket path.
+            served_model_name=spec.slug,
             dtype=spec.compute_type or "auto",
             quantization=quantization,
             max_model_len=spec.max_model_len,

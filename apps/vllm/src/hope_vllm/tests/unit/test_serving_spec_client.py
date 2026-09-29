@@ -252,3 +252,41 @@ async def test_same_slug_for_two_tenants_yields_two_runtime_keys_and_two_engines
     assert factory.builds == ["byo-a-row:v1", "system-row:v1"]
     assert engine_a.spec.tenant_id == TENANT_A  # type: ignore[attr-defined]
     await pool.close()
+
+
+# ── fix round 1 · M3: the cache is bounded ──────────────────────────────────
+
+
+async def test_expired_entries_are_pruned_on_insert() -> None:
+    gateway, clock = Gateway(), Clock()
+    client = make_client(gateway, clock)
+    for i in range(5):
+        await client.resolve(SLUG, f"tenant-{i}")
+    clock.now += 61  # all five expired
+    await client.resolve(SLUG, "tenant-new")
+    assert client.cache_size() == 1
+
+
+async def test_the_cache_holds_at_most_max_entries_evicting_the_oldest() -> None:
+    gateway, clock = Gateway(), Clock()
+    client = ServingSpecClient(
+        base_url=GATEWAY,
+        token="t",
+        transport=httpx.MockTransport(gateway.handler),
+        time_func=clock,
+        max_entries=3,
+    )
+    for i in range(5):
+        await client.resolve(SLUG, f"tenant-{i}")
+    assert client.cache_size() == 3
+    before = len(gateway.requests)
+    await client.resolve(SLUG, "tenant-4")  # newest: still cached
+    assert len(gateway.requests) == before
+    await client.resolve(SLUG, "tenant-0")  # oldest: evicted, fetched again
+    assert len(gateway.requests) == before + 1
+
+
+def test_the_default_bound_is_1024() -> None:
+    from hope_vllm.core.serving_spec_client import MAX_CACHE_ENTRIES
+
+    assert MAX_CACHE_ENTRIES == 1024

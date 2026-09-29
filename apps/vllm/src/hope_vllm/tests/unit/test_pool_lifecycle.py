@@ -189,3 +189,50 @@ async def test_liveness_answers_within_100ms_while_the_real_backend_blocks_2s(
             assert live.status_code == 200
             assert elapsed < 0.1, f"/health/live took {elapsed * 1000:.0f} ms during a load"
             await load
+
+
+# ── fix round 1 · I2: a control-plane refresh re-resolves pinned SLUGS ──────
+
+
+async def test_a_control_plane_refresh_moves_the_pin_to_the_rows_new_runtime_key(
+    settings: Settings,
+) -> None:
+    import httpx
+
+    from hope_vllm.core.effective_config import EffectiveConfigClient, refresh_control_plane
+
+    pool = {"acceptedKinds": ["asr"], "pins": ["pin"], "vramBudgetGiB": 3, "maxResidentEngines": 1}
+
+    async def gateway(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"settings": {"vllm.pools": {"value": {"default": pool}}}})
+
+    now = {"t": 1000.0}
+    client = EffectiveConfigClient(
+        base_url="http://gw.test/api/v1",
+        token="t",
+        transport=httpx.MockTransport(gateway),
+        time_func=lambda: now["t"],
+    )
+    from hope_vllm.tests.fakes import FakeSpecResolver as SharedResolver
+
+    resolver = SharedResolver()
+    resolver.specs["pin"] = serving_spec_payload(slug="pin", runtimeKey="pin:v1", vramGiB=3)
+    factory = FakeEngineFactory()
+    app = create_app(
+        settings,
+        engine_factory=factory,
+        serving_spec_client=resolver,
+        effective_config_client=client,
+    )
+    async with app.router.lifespan_context(app):
+        await app.state.pins_task
+        assert factory.builds == ["pin:v1"]
+
+        resolver.specs["pin"] = serving_spec_payload(slug="pin", runtimeKey="pin:v2", vramGiB=3)
+        now["t"] += 120  # the snapshot is stale: the next refresh really fetches
+        await refresh_control_plane(app.state)
+        await app.state.pins_refresh
+
+        snapshot = app.state.engine_pool.snapshot()
+        assert [(e["runtime_key"], e["pinned"]) for e in snapshot["loaded"]] == [("pin:v2", True)]
+        assert factory.engines["pin:v1"].shut_down is True

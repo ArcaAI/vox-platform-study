@@ -61,6 +61,8 @@ from hope_vllm.spec import ResolvedServingSpec
 
 logger = get_logger(__name__)
 
+_UNSET = object()
+
 #: How long the shutdown waits for in-flight decodes before closing the pool. Below the
 #: k8s default terminationGracePeriodSeconds (30 s); a 30 s window decodes in well under it.
 DRAIN_TIMEOUT_S = 25.0
@@ -112,15 +114,10 @@ class SpecResolver(Protocol):
 
 
 async def _warm_pins(app: FastAPI) -> None:
-    """Load every pin, then set the startup marker. A failure keeps startup at 503."""
-    resolver: SpecResolver = app.state.serving_spec_client
-
-    async def resolve_for_platform(slug: str) -> ResolvedServingSpec:
-        # A pin is platform configuration: it names a SYSTEM row, never a customer's.
-        return await resolver.resolve(slug, SYSTEM_TENANT_ID)
-
+    """Load every pin, then set the startup marker. A failure keeps startup at 503 — it is
+    NOT retried in-process; the startup probe restarting the pod is the recovery."""
     try:
-        await app.state.engine_pool.warm_pins(resolve_for_platform)
+        await app.state.engine_pool.warm_pins(_platform_resolver(app))
     except Exception as exc:  # noqa: BLE001 — reported by /health/startup staying 503
         logger.error(
             "vllm.pins.warm_failed",
@@ -134,6 +131,42 @@ async def _warm_pins(app: FastAPI) -> None:
     # PRESENCE is what `/health/startup` reads.
     app.state.service_release_task = None
     logger.info("vllm.started", pool=app.state.settings.pool)
+
+
+def _platform_resolver(app: FastAPI) -> Any:
+    resolver: SpecResolver = app.state.serving_spec_client
+
+    async def resolve_for_platform(slug: str) -> ResolvedServingSpec:
+        # A pin is platform configuration: it names a SYSTEM row, never a customer's.
+        return await resolver.resolve(slug, SYSTEM_TENANT_ID)
+
+    return resolve_for_platform
+
+
+async def _refresh_pins(app: FastAPI) -> None:
+    """Re-resolve the pinned SLUGS after a control-plane refresh. Never raises."""
+    try:
+        await app.state.engine_pool.refresh_pins(_platform_resolver(app))
+    except Exception as exc:  # noqa: BLE001 — the pins in force keep serving
+        logger.warning(
+            "vllm.pins.refresh_failed",
+            pool=app.state.settings.pool,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
+
+def _schedule_pin_refresh(app: FastAPI) -> None:
+    """``on_control_plane_refreshed``: one background re-resolve at a time, and only once
+    the startup warm-up is done (it is what resolves the pins the first time)."""
+    if getattr(app.state, "draining", False):
+        return
+    if getattr(app.state, "service_release_task", _UNSET) is _UNSET:
+        return
+    running = getattr(app.state, "pins_refresh", None)
+    if running is not None and not running.done():
+        return
+    app.state.pins_refresh = asyncio.create_task(_refresh_pins(app))
 
 
 @asynccontextmanager
@@ -168,11 +201,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         signal.signal(signal.SIGTERM, previous_sigterm)
     if not await _wait_drained(app, DRAIN_TIMEOUT_S):
         logger.warning("vllm.drain.timed_out", timeout_s=DRAIN_TIMEOUT_S)
-    pins_task = app.state.pins_task
-    if pins_task is not None and not pins_task.done():
-        pins_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await pins_task
+    for pending in (app.state.pins_task, getattr(app.state, "pins_refresh", None)):
+        if pending is not None and not pending.done():
+            pending.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await pending
     await close_control_plane(app.state)
     await app.state.engine_pool.close()
     shutdown_observability(app)
@@ -228,6 +261,8 @@ def create_app(
     app.state.config_invalidation_redis = None
     app.state.draining = False
     app.state.active_requests = 0
+    app.state.pins_refresh = None
+    app.state.on_control_plane_refreshed = lambda: _schedule_pin_refresh(app)
     # Construction performs NO I/O. With no gateway every resolve is a named 503.
     app.state.serving_spec_client = serving_spec_client or ServingSpecClient(
         base_url=gateway_url, token=settings.peer_service_token()

@@ -36,7 +36,13 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from hope_obs import get_logger
 
 from hope_vllm.api.openai_errors import OpenAIError, openai_error
-from hope_vllm.audio import AudioError, decode_wav, voiced_seconds
+from hope_vllm.audio import (
+    MAX_SAMPLE_RATE,
+    MAX_WINDOW_SECONDS,
+    AudioError,
+    decode_wav,
+    voiced_seconds,
+)
 from hope_vllm.core import metrics
 from hope_vllm.core.config import Settings
 from hope_vllm.core.effective_config import schedule_control_plane_refresh
@@ -67,6 +73,10 @@ logger = get_logger(__name__)
 
 #: Seconds a client should wait before retrying a capacity / saturation refusal.
 RETRY_AFTER_S = "1"
+#: The largest legal upload: 30 s of 16-bit mono at the highest accepted rate, plus slack
+#: for the RIFF header and optional chunks (LIST/INFO …). Anything bigger is refused
+#: `audio_too_long` without being read into memory.
+MAX_UPLOAD_BYTES = int(MAX_WINDOW_SECONDS * MAX_SAMPLE_RATE * 2) + 64 * 1024
 #: How often a running decode checks whether its client is still there.
 _DISCONNECT_POLL_S = 0.25
 _LANGUAGE = re.compile(r"^[a-z]{2,3}$")
@@ -255,7 +265,18 @@ async def _transcribe(
     # BACKGROUND so this request never waits on the gateway.
     schedule_control_plane_refresh(request.app.state)
 
-    data = await file.read()
+    too_long = openai_error(
+        400,
+        "audio_too_long",
+        f"file is larger than any {MAX_WINDOW_SECONDS:.0f} s PCM16 mono WAV "
+        f"({MAX_UPLOAD_BYTES} bytes)",
+        param="file",
+    )
+    if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+        raise too_long
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise too_long
     try:
         # Off the event loop: liveness must never wait behind request work.
         samples, duration, voiced = await asyncio.to_thread(

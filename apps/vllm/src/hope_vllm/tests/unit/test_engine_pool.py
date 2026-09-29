@@ -371,3 +371,135 @@ async def test_no_pins_is_a_no_op() -> None:
 
     await pool.warm_pins(resolve)
     assert factory.builds == []
+
+
+# ── fix round 1 · I1: an evicted engine releases its GPU BEFORE the next one builds ──
+
+
+async def test_the_build_starts_only_after_every_victim_has_shut_down() -> None:
+    factory, clock = FakeEngineFactory(shutdown_delay_s=0.1), Clock()
+    pool = make_pool(factory, clock, budget=6.0)
+    for key in ("a", "b"):
+        await pool.warm(make_spec(runtimeKey=key, vramGiB=3))
+        clock.now += 1
+
+    await pool.warm(make_spec(runtimeKey="c", vramGiB=6))
+
+    build_c = factory.events.index(("build", "c"))
+    assert factory.events.index(("shutdown_done", "a")) < build_c
+    assert factory.events.index(("shutdown_done", "b")) < build_c
+    assert loaded(pool) == ["c"]
+
+
+async def test_victims_still_count_against_the_budget_until_their_shutdown_completes() -> None:
+    factory = FakeEngineFactory(shutdown_delay_s=0.2)
+    pool = make_pool(factory, budget=6.0)
+    await pool.warm(make_spec(runtimeKey="a", vramGiB=6))
+    load = asyncio.create_task(pool.warm(make_spec(runtimeKey="b", vramGiB=6)))
+    await asyncio.sleep(0.05)  # `a` is shutting down; `b` has not started building
+    assert "b" not in factory.builds
+    assert pool.snapshot()["resident_gib"] == 12.0  # the GPU still holds `a`
+    with pytest.raises(EngineCapacityError):  # nothing else may be admitted meanwhile
+        await pool.warm(make_spec(runtimeKey="c", vramGiB=1))
+    await load
+    assert pool.snapshot()["resident_gib"] == 6.0
+
+
+async def test_cancelling_the_leasing_request_mid_eviction_still_releases_the_victim() -> None:
+    factory = FakeEngineFactory(shutdown_delay_s=0.2)
+    pool = make_pool(factory, budget=6.0)
+    await pool.warm(make_spec(runtimeKey="a", vramGiB=6))
+
+    async def use() -> None:
+        async with pool.lease(make_spec(runtimeKey="b", vramGiB=6)):
+            pass
+
+    request = asyncio.create_task(use())
+    await asyncio.sleep(0.05)  # mid-shutdown of `a`
+    request.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await request
+    for _ in range(100):  # the shielded load task carries on
+        if loaded(pool) == ["b"]:
+            break
+        await asyncio.sleep(0.01)
+    assert factory.engines["a"].shut_down is True
+    assert loaded(pool) == ["b"]
+    assert pool.snapshot()["resident_gib"] == 6.0
+    assert pool.inflight("b") == 0
+
+
+async def test_a_failed_victim_shutdown_is_logged_and_released_after_the_attempt() -> None:
+    factory = FakeEngineFactory()
+    pool = make_pool(factory, budget=6.0)
+    await pool.warm(make_spec(runtimeKey="a", vramGiB=6))
+
+    async def boom() -> None:
+        factory.events.append(("shutdown_started", "a"))
+        raise RuntimeError("engine core already gone")
+
+    factory.engines["a"].shutdown = boom  # type: ignore[method-assign]
+    await pool.warm(make_spec(runtimeKey="b", vramGiB=6))
+    assert factory.events.index(("shutdown_started", "a")) < factory.events.index(("build", "b"))
+    assert pool.snapshot()["resident_gib"] == 6.0
+
+
+# ── fix round 1 · I2: pins are SLUGS, re-resolved on every refresh ──────────
+
+
+class PinResolver:
+    def __init__(self) -> None:
+        self.keys: dict[str, str] = {}
+
+    async def __call__(self, slug: str) -> ResolvedServingSpec:
+        return make_spec(slug=slug, runtimeKey=self.keys.get(slug, f"{slug}:v1"), vramGiB=3)
+
+
+async def test_a_pinned_rows_new_runtime_key_is_warmed_and_pinned_and_the_old_one_released() -> (
+    None
+):
+    """runtimeKey embeds the row version: an edit must not strand the pool on the old key."""
+    factory = FakeEngineFactory()
+    current = {"value": config(budget=3.0, max_resident=1, pins=("pin",))}
+    pool = EnginePool(factory, pool_config=lambda: current["value"])
+    resolve = PinResolver()
+    await pool.warm_pins(resolve)
+    assert loaded(pool) == ["pin:v1"]
+
+    resolve.keys["pin"] = "pin:v2"  # the row was edited
+    await pool.refresh_pins(resolve)
+
+    assert loaded(pool) == ["pin:v2"]
+    assert factory.engines["pin:v1"].shut_down is True
+    (entry,) = pool.snapshot()["loaded"]
+    assert entry["pinned"] is True
+
+
+async def test_removing_a_slug_from_pins_unpins_it() -> None:
+    factory = FakeEngineFactory()
+    current = {"value": config(budget=3.0, max_resident=1, pins=("pin",))}
+    pool = EnginePool(factory, pool_config=lambda: current["value"])
+    resolve = PinResolver()
+    await pool.warm_pins(resolve)
+
+    current["value"] = config(budget=3.0, max_resident=1, pins=())
+    await pool.refresh_pins(resolve)
+    assert pool.snapshot()["loaded"][0]["pinned"] is False
+    assert pool.pending_pins() == []
+
+    await pool.warm(make_spec(runtimeKey="other", vramGiB=3))  # the old pin is evictable now
+    assert loaded(pool) == ["other"]
+
+
+async def test_adding_a_slug_to_pins_warms_it() -> None:
+    factory = FakeEngineFactory()
+    current = {"value": config(budget=6.0, max_resident=2, pins=())}
+    pool = EnginePool(factory, pool_config=lambda: current["value"])
+    resolve = PinResolver()
+    await pool.warm_pins(resolve)
+    assert factory.builds == []
+
+    current["value"] = config(budget=6.0, max_resident=2, pins=("new-pin",))
+    await pool.refresh_pins(resolve)
+    assert loaded(pool) == ["new-pin:v1"]
+    assert pool.snapshot()["loaded"][0]["pinned"] is True
