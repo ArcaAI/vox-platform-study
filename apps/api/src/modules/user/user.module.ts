@@ -17,7 +17,6 @@ import { UserSettingsController } from './controllers/user-settings.controller';
 import { UserDepartmentsController } from './controllers/user-departments.controller';
 import { UserDepartmentsMeController } from './controllers/user-departments-me.controller';
 import { PasswordResetController } from './controllers/password-reset.controller';
-import { UserMeRedirectShimController } from './controllers/user-me-redirect.shim.controller';
 // Public self-service forgot-password (mounted under auth/).
 import { ForgotPasswordController } from './controllers/forgot-password.controller';
 import { UserExportService } from './user-export.service';
@@ -55,7 +54,6 @@ import { UserExportService } from './user-export.service';
     UserRolesController,
     UserDepartmentsController,
     ForgotPasswordController,
-    UserMeRedirectShimController,
   ],
   // Export serialization (exceljs/pdfkit) consumed by UserController.
   providers: [UserExportService],

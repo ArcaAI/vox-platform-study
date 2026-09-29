@@ -3,7 +3,6 @@ import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { AiInferenceClient } from './ai-inference.client';
 import { AiInferenceController } from './ai-inference.controller';
-import { AiInferenceRedirectShimController } from './ai-inference-redirect.shim.controller';
 import { SafetyCheckController } from './safety-check.controller';
 
 /**
@@ -28,7 +27,7 @@ import { SafetyCheckController } from './safety-check.controller';
  */
 @Module({
   imports: [HttpModule, AiRoutingPolicyServiceModule, UsageLedgerServiceModule, TenantNlpTaskInstructionsServiceModule],
-  controllers: [AiInferenceController, SafetyCheckController, AiInferenceRedirectShimController],
+  controllers: [AiInferenceController, SafetyCheckController],
   providers: [AiInferenceClient],
 })
 export class AiInferenceModule {}

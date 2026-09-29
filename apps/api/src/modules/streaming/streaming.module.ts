@@ -29,7 +29,6 @@ import { AdminTranscriptionJobController } from './admin-transcription-job.contr
 import { SessionRemovalRetryService } from './session-removal-retry.service';
 import { TextGenerationAdminController } from './text-generation-admin.controller';
 import { TextProxyController } from './text-proxy.controller';
-import { TextProxyRedirectShimController } from './text-proxy-redirect.shim.controller';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
 import { WorkflowWsGateway } from './workflow-ws.gateway';
@@ -122,13 +121,7 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
   ],
   // TextGenerationAdminController reaches TextProxyController's shared pipeline through
   // `ModuleRef` — both MUST stay registered in this module (TASK-1012 D-1).
-  controllers: [
-    TranscriptionJobController,
-    AdminTranscriptionJobController,
-    TextProxyController,
-    TextGenerationAdminController,
-    TextProxyRedirectShimController,
-  ],
+  controllers: [TranscriptionJobController, AdminTranscriptionJobController, TextProxyController, TextGenerationAdminController],
   // SessionRemovalRetryService resolves
   // `StreamingSessionService` from StreamingSessionServiceModule above and
   // `IRedisCacheService` from the @Global() RedisCacheModule registration.

@@ -76,10 +76,10 @@ export class PermissionCheckController {
  * rule is UNCHANGED: checking anyone other than yourself still requires
  * `manage:User`, evaluated against the caller (and, under an API key, against
  * the key's bound user). Behaviour is byte-identical to the retired routes —
- * the body's optional `userId` still wins when present, which is what lets the
- * 308 shim redirect an old `POST /rbac/check` (whose target user lived in the
- * body, not the path) to `users/<caller>/permission-checks` without changing
- * which user gets checked.
+ * the body's optional `userId` still wins when present, which is what let the
+ * 308 shim (deleted by TASK-1012) redirect an old `POST /rbac/check` (whose target
+ * user lived in the body, not the path) to `users/<caller>/permission-checks`
+ * without changing which user gets checked.
  */
 @ApiTags('rbac-permission-check')
 @ApiBearerAuth()
