@@ -1,5 +1,5 @@
 import {
-  AiModelDownloadServiceModule,
+  AiModelDownloadProducerModule,
   AiModelServiceModule,
   AiProviderConnectionServiceModule,
   CommonServiceModule,
@@ -23,16 +23,19 @@ import { AiModelDiscoveryService } from './ai-model-discovery.service';
  * `AiProviderConnectionServiceModule` so discovery can ask the ONE cascade which
  * engine each provider means for the calling tenant (see the service header).
  *
- * `AiModelDownloadServiceModule` wires the download/publish action
- * lane L3): the `DownloadAiModel` BullMQ queue, the trigger/status-poll
- * service `AiModelAdminController` injects, and the fetch/verify/publish
- * worker. `ModelInventoryServiceModule` (TASK-860) wires the on-demand
- * bucket inventory + its settings-gated cron.
+ * `AiModelDownloadProducerModule` wires the PRODUCER half of the
+ * download/publish action: the `DownloadAiModel` BullMQ queue and the
+ * trigger/status-poll service `AiModelAdminController` injects. The consumer
+ * (fetch/stage/publish + unregister) is NOT here — since TASK-1019 it runs only
+ * in the model-publisher worker (`model-publisher.main.ts`), the one process
+ * holding the `hope-models` write/delete credential.
+ * `ModelInventoryServiceModule` (TASK-860) wires the on-demand bucket
+ * inventory + its settings-gated cron.
  */
 @Module({
   imports: [
     AiModelServiceModule,
-    AiModelDownloadServiceModule,
+    AiModelDownloadProducerModule,
     ModelInventoryServiceModule,
     AiProviderConnectionServiceModule,
     CommonServiceModule,

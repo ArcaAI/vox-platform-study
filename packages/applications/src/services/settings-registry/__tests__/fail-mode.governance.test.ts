@@ -192,6 +192,8 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'minio.secretKey': 'MINIO_SECRET_KEY',
     's3.accessKey': 'S3_ACCESS_KEY',
     's3.secretKey': 'S3_SECRET_KEY',
+    'modelStore.publisher.accessKeyId': 'MODEL_STORE_PUBLISHER_ACCESS_KEY_ID',
+    'modelStore.publisher.secretKey': 'MODEL_STORE_PUBLISHER_SECRET_KEY',
     // azure.speechKey / textAzure.apiKey / textOpenai.apiKey /
     // textAnthropic.apiKey / ttsSarvam.apiKey were removed from the registry — the
     // STT/TTS/TEXT cloud credentials are BYOK-only (db-secret / AiProviderConnection),

@@ -18,7 +18,7 @@
 # model pairing below); anything you export in your shell still wins.
 #
 # USAGE:
-#   ./scripts/dev-service.sh <stt|stt-worker|text|nlp|guardrail|harness|tts|asr-vllm|worker> [--watch] [--print]
+#   ./scripts/dev-service.sh <stt|stt-worker|text|nlp|guardrail|harness|tts|asr-vllm|worker|publisher> [--watch] [--print]
 #   ./scripts/dev-service.sh --check-stt-key      # preflight only (used by dev:doctor)
 #
 # FLAGS:
@@ -44,6 +44,14 @@
 #                the container command (apps/stt/docker/Dockerfile stage
 #                `worker`), scaled down to one process for a laptop.
 #   worker       harness Temporal worker on task queue `harness-task-queue`.
+#   publisher    the model-publisher worker (TASK-1019) — a NODE process, the
+#                only consumer of the `DownloadAiModel` BullMQ queue (model
+#                downloads + unregister/purge into `hope-models`). Runs the
+#                gateway's TypeScript source through ts-node, so it never
+#                touches apps/api/dist that `pnpm api:dev` rebuilds. Needs the
+#                publisher key pair (MODEL_STORE_PUBLISHER_ACCESS_KEY_ID /
+#                MODEL_STORE_PUBLISHER_SECRET_KEY) in .env.dev or Vault; stages
+#                to MODEL_PUBLISHER_STAGING_DIR (default: the OS temp dir).
 #
 # MACHINE-SPECIFIC MODEL:
 #   LM_STUDIO_MODEL (default: gemma-4-e2b-it-qat — the catalogue's platform default) feeds both the TEXT default
@@ -65,7 +73,7 @@ NC='\033[0m'
 CONDA_ENV="${CONDA_ENV:-arcaenv}"
 
 usage() {
-    sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,59p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # ----------------------------------------------------------------------------
@@ -151,7 +159,7 @@ for arg in "$@"; do
         --watch) WATCH=1 ;;
         --print) PRINT=1 ;;
         --help|-h) usage; exit 0 ;;
-        stt|stt-worker|text|nlp|guardrail|harness|tts|asr-vllm|worker) SERVICE="$arg" ;;
+        stt|stt-worker|text|nlp|guardrail|harness|tts|asr-vllm|worker|publisher) SERVICE="$arg" ;;
         *) echo -e "${RED}Unknown argument: $arg${NC}" >&2; usage >&2; exit 2 ;;
     esac
 done
@@ -159,6 +167,30 @@ done
 if [ -z "$SERVICE" ]; then
     usage >&2
     exit 2
+fi
+
+# ----------------------------------------------------------------------------
+# publisher — the one NODE target (TASK-1019). No conda, no PYTHONPATH: it
+# execs before the Python-only machinery below. Configuration comes from the
+# gateway's own loader (host env > .env.<NODE_ENV>), like every other target.
+# ----------------------------------------------------------------------------
+if [ "$SERVICE" = "publisher" ]; then
+    : "${NODE_ENV:=development}"
+    export NODE_ENV
+    if [ "$WATCH" = "1" ]; then
+        echo -e "${YELLOW}--watch is not supported for the model publisher worker (a restart would abandon an in-flight download); ignoring.${NC}" >&2
+    fi
+    PUBLISHER_CMD=(pnpm --filter @arcaai/api exec ts-node --transpile-only src/model-publisher.main.ts)
+    if [ "$PRINT" = "1" ]; then
+        echo "service: publisher"
+        echo "  NODE_ENV=$NODE_ENV"
+        echo "  MODEL_PUBLISHER_STAGING_DIR=${MODEL_PUBLISHER_STAGING_DIR:-<OS temp dir>}"
+        echo "command:"
+        printf '  %s\n' "${PUBLISHER_CMD[*]}"
+        exit 0
+    fi
+    echo -e "${GREEN}Starting publisher →${NC} ${PUBLISHER_CMD[*]}"
+    exec "${PUBLISHER_CMD[@]}"
 fi
 
 # ----------------------------------------------------------------------------
