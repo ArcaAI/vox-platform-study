@@ -14,6 +14,7 @@ import { MsGraphDirectoryProvider } from './ms-graph-directory.provider';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { directoryAvailabilityKey, isDirectorySyncEnabled } from './directory-availability';
 import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
+import { runJobInContext } from '../baseServices/observability/job-context';
 
 export interface SyncTenantDirectoryUsersJobPayload {
   jobId?: string;
@@ -74,7 +75,7 @@ export class DirectorySyncProcessor extends WorkerHost {
       throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
     }
 
-    return this.cls.run(async () => {
+    return runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ tenantId, kind: 'directory-sync' }));
 

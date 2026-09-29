@@ -2,6 +2,7 @@ import { ConflictException, Inject, Injectable, Logger, MessageEvent, Optional, 
 import { Observable, finalize, map, takeWhile } from 'rxjs';
 import type { ResolvedAsrSpec } from '@arcaai/types';
 import { uuidv7 } from 'uuidv7';
+import { buildJobTrace } from '../../baseServices/observability/job-context';
 import { IRedisCacheService } from '../../baseServices/redis/redis-cache.service';
 import { StorageDescriptor } from '../../baseServices/storage/providers/IBlobStorageProvider';
 import { IBlobStorageService } from '../../baseServices/storage/IBlobStorageService';
@@ -311,6 +312,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     const voiceProfiles = await this.resolveVoiceProfiles(params);
     const messageId = uuidv7();
     const redisMessageId = uuidv7(); // Required by Dramatiq protocol
+    const hopeTrace = buildJobTrace();
     const message = {
       queue_name: 'stt_batch',
       actor_name: 'transcribe_file',
@@ -350,6 +352,8 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
       },
       options: {
         redis_message_id: redisMessageId,
+        // Trace + request id for the worker: `{ traceparent?, tracestate?, requestId? }`.
+        ...(hopeTrace ? { hope_trace: hopeTrace } : {}),
       },
       message_id: messageId,
       message_timestamp: Date.now(),

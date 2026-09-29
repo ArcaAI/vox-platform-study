@@ -42,6 +42,8 @@ export interface AuditLogJob {
   metadata?: JsonValue;
   /** Correlation ID for distributed tracing across the request lifecycle */
   correlationId?: string;
+  /** OpenTelemetry trace id (32 hex) captured at enqueue */
+  traceId?: string;
   /** Tenant ID for multi-tenancy audit log isolation */
   tenantId?: EntityId;
 }

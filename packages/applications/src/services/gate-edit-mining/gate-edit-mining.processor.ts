@@ -12,6 +12,7 @@ import { ConfigResolver } from '../config-resolver/config-resolver.service';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../consultation/visit-type/visit-type.service';
 import { readRecordedVisitType } from '../consultation/consultation/open-markers';
 import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
+import { runJobInContext } from '../baseServices/observability/job-context';
 
 /**
  * The enqueue half of the gate-edit learning loop.
@@ -144,7 +145,7 @@ export class GateEditMiningProcessor extends WorkerHost {
 
     // Rebind CLS so the tenant-scope Prisma extension sees the right context —
     // the queue worker has no request context of its own.
-    return this.cls.run(async () => {
+    return runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ tenantId, kind: 'gate-edit-mining' }));
 
