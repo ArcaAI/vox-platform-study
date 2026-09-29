@@ -280,6 +280,29 @@ intent "I was charged twice, please give my money back."       201  request_refu
 The ARCAAI dev tenant now has an `nlp.intent` instructions row
 (`request_refund`, `reschedule_visit`, `request_records`), created for this proof.
 
+### No retry on a deterministic 4xx (owner request, 2026-09-29, `218e4a87e`)
+
+`ExternalTextClient` used to retry every failure, so a 4xx from text (a guardrail content
+block, an invalid body, a bad service token) went out `max_retries + 1` times and then surfaced as
+an opaque 503. Now:
+
+| text answers | NLP client | `/classify/topic`, `/intent` answer |
+|---|---|---|
+| 4xx except 408/429 | ONE attempt, raises `ExternalTextRejectedError(status_code, error_code)`; text's free-text `detail` is not carried | 422 → **422** `"<Task> classification refused by text (<code>)"`; any other 4xx → **502** (an integration defect; a peer's 401 is never passed through as the user's) |
+| 408, 429, 5xx, transport error | bounded retry, unchanged | 503 once exhausted, unchanged |
+
+Tests: `TestNoRetryOnDeterministicRefusal` (400/401/404/422 → exactly 1 call; 408/429 → retried
+and recovered; 503 → 3 calls) and `TestRouteSurfacesTheRefusal` (422 → 422 naming the code, 400 →
+502), topic + intent. NLP suite 92 passed. `ruff`, `black` and `mypy` are clean. The same commit
+applies ruff's I001 import order to `external_text_client.py`, which the TASK-1015 merge
+`7770c5d0e` had left failing `pnpm nlp:lint`.
+
+Live (NLP restarted on `218e4a87e`, called directly with `text_provider: "no-such-provider"`):
+text answered **404 `PROVIDER_NOT_FOUND` once** (one `/api/v1/generate` 4xx in text's log at
+14:53:42). NLP logged one `nlp.external_text.rejected` and no `attempt_failed`, and answered
+**502 "text rejected the request (PROVIDER_NOT_FOUND)" in 2.0 s**. The gateway happy path was
+unchanged (3/3 topics correct).
+
 ### Follow-ups (not in this ticket)
 
 - `ExternalTextClient` retries **every** exception, including a deterministic 4xx from text. With
@@ -288,10 +311,6 @@ The ARCAAI dev tenant now has an `nlp.intent` instructions row
 - `apps/api/tests/e2e/task-729-nlp-task-expansion.spec.ts` still posts to `/api/v1/ai/nlp/topic`, a
   redirect shim TASK-1012 D-3 deleted. The live route is `/api/v1/text-analyses/topic`, so that
   spec now meets a 404 its `[200, 503]` expectation does not allow.
-- `apps/nlp/src/nlp/services/external_text_client.py` fails `ruff` I001 (import order), introduced
-  by the TASK-1015 merge `7770c5d0e` (`hope_obs` import placed after `nlp.core.config`). Left for
-  that ticket's owner; `pnpm nlp:lint` is red on `dev-2.2` until then.
-- `ExternalTextClient` still retries a deterministic 4xx from text 3× and surfaces an opaque 503.
 - Dev Vault: re-key the remaining self-hosted SYSTEM connections, or reseed from a reset, when
   their providers are needed.
 - Vision extraction (OD-2) → TASK-1017.
@@ -304,3 +323,4 @@ The ARCAAI dev tenant now has an `nlp.intent` instructions row
 | 2026-09-29 | Owner: OD-1 → (a), OD-2 → separate ticket (TASK-1017), go. Gateway half implemented (routing keys + seed elections + injection), artifacts regenerated, merged into `dev-2.2`. |
 | 2026-09-29 | Owner: "reseed the dev db and prove topic live". Non-destructive `RUN_SEED=safe` reseed created the two elections. The live run found and fixed the NLP `/generate` path (404) and the missing connection injection (503 PROVIDER_CREDENTIALS_MISSING), both merged. Re-keyed the dev SYSTEM `lm-studio` connection after a Vault restart. Topic proven live: 3/3 correct labels on gemma via the SYSTEM connection. Medical-relevance guardrail refusal of non-clinical text recorded as an owner decision. |
 | 2026-09-29 | Owner: "opt topic/intent out of the medical guardrail". `guardrail_policy.require_medical=false` pushed on the delegation (screening and output gate kept). Live: non-clinical billing question → `billing`; `/intent` → `request_refund`. |
+| 2026-09-29 | Owner: "fix the retry on 4xx in the nlp client". Non-retryable 4xx → one attempt, `ExternalTextRejectedError`, route 422/502 instead of an opaque 503. Live-proven with a real text 404. Fixed the inherited ruff I001 in the same file. |
