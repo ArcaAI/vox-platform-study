@@ -511,21 +511,31 @@ export class S3Service implements IS3Service, OnModuleInit {
     const s3 = await this.ensureInitialized();
 
     try {
-      const response = await s3.send(
-        new ListObjectsV2Command({
-          Bucket: bucketName,
-          Prefix: path,
-        }),
-      );
+      // ListObjectsV2 returns at most 1000 keys per page. Every page is
+      // followed (TASK-1019): stopping at the first one made the model
+      // inventory report a >1000-key bucket prefix as MISSING.
+      const files: Array<{ key: string; size: number; lastModified?: Date; etag?: string }> = [];
+      let continuationToken: string | undefined;
+      do {
+        const response = await s3.send(
+          new ListObjectsV2Command({
+            Bucket: bucketName,
+            Prefix: path,
+            ...(continuationToken ? { ContinuationToken: continuationToken } : {}),
+          }),
+        );
+        for (const item of response.Contents ?? []) {
+          files.push({
+            key: item.Key ?? 'No Key', // Safety check for undefined keys
+            size: item.Size ?? 0, // Safety check for undefined sizes
+            lastModified: item.LastModified,
+            etag: item.ETag,
+          });
+        }
+        continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+      } while (continuationToken);
 
-      if (response.Contents) {
-        const files = response.Contents.map((item) => ({
-          key: item.Key ?? 'No Key', // Safety check for undefined keys
-          size: item.Size ?? 0, // Safety check for undefined sizes
-          lastModified: item.LastModified,
-          etag: item.ETag,
-        }));
-
+      if (files.length > 0) {
         this.logger.debug({
           message: 'Listed files from S3',
           bucket: bucketName,

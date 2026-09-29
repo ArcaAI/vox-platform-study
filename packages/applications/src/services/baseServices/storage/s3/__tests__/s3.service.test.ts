@@ -412,6 +412,22 @@ describe('S3Service', () => {
 
       await expect(service.listFiles('test-bucket', 'folder/')).rejects.toThrow('List failed');
     });
+
+    // TASK-1019 — ListObjectsV2 returns at most 1000 keys per page. Stopping at
+    // page one made the model inventory report a >1000-key bucket as MISSING.
+    it('follows NextContinuationToken until the listing is no longer truncated', async () => {
+      mockS3Client.send
+        .mockResolvedValueOnce({ Contents: [{ Key: 'p/a', Size: 1 }], IsTruncated: true, NextContinuationToken: 't1' })
+        .mockResolvedValueOnce({ Contents: [{ Key: 'p/b', Size: 2 }], IsTruncated: true, NextContinuationToken: 't2' })
+        .mockResolvedValueOnce({ Contents: [{ Key: 'p/c', Size: 3 }], IsTruncated: false });
+
+      const result = await service.listFiles('test-bucket', 'p/');
+
+      expect(result.map((f: { key: string }) => f.key)).toEqual(['p/a', 'p/b', 'p/c']);
+      expect(ListObjectsV2Command).toHaveBeenCalledTimes(3);
+      expect(ListObjectsV2Command).toHaveBeenNthCalledWith(2, { Bucket: 'test-bucket', Prefix: 'p/', ContinuationToken: 't1' });
+      expect(ListObjectsV2Command).toHaveBeenNthCalledWith(3, { Bucket: 'test-bucket', Prefix: 'p/', ContinuationToken: 't2' });
+    });
   });
 
   describe('copyFile', () => {
