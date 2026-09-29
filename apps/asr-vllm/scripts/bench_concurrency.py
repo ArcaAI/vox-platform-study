@@ -29,10 +29,24 @@ replica, e.g.::
         --language ml --output results.json
 
 ``--wav`` example: a TASK-994 ml-en fixture (real clinician audio, held OUTSIDE git — read
-by absolute path, never copied into the repo). ``spec.json`` is the resolved model slice
-(``asr_vllm.spec.ResolvedVllmAsrSpec``, camelCase). Before the ladder the script calls
+by absolute path, never copied into the repo). Before the ladder the script calls
 ``POST /api/v1/engines/warm`` once and records the cold start separately (``--no-warm``
 to include it in the first step instead).
+
+SELECTION IS AN AGENT, NEVER A MODEL. ``spec.json`` is the gateway's ``ResolvedAsrSpec``
+(camelCase, exactly as ``buildResolvedAsrSpec`` emits it and STT forwards it): the ASR
+Agent resolved to registry rows. The bench sends it verbatim and has no option that
+names a model, a path, an engine or a quantization — those are facts of the registry
+row the agent binds.
+
+Where ``spec.json`` comes from (TASK-1010 OD-12). The approved plan was to fetch it with
+``--agent-slug`` from ``GET /api/v1/internal/agents/resolve``. That route returns a
+``ResolvedAgent`` (the harness's contract: ``agentVersionId`` + ``models[]`` rows), NOT a
+``ResolvedAsrSpec`` — ``buildResolvedAsrSpec`` runs only inside the STT session / batch
+paths and no route hands its output back. So the bench keeps ``--spec-file`` until a
+dev-only internal route returns the built spec; capture the ``resolved_spec`` the gateway
+sends STT (``POST /streaming/sessions``) for a session on the agent under test, rather
+than writing one by hand.
 """
 
 from __future__ import annotations
@@ -77,6 +91,27 @@ def read_wav_pcm16(path: Path) -> bytes:
                 "(ffmpeg -i in.wav -ar 16000 -ac 1 -sample_fmt s16 out.wav)"
             )
         return w.readframes(w.getnframes())
+
+
+def load_spec(path: Path) -> dict[str, Any]:
+    """The ``ResolvedAsrSpec`` in ``path`` — refused up front if it is not one.
+
+    Checked here, not left to the server, because a wrong shape would otherwise surface
+    as a 422 on every window of every ladder step. Only the slice asr-vllm reads is
+    checked; the server validates it properly.
+    """
+    try:
+        spec = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise BenchInputError(f"{path}: not readable JSON ({exc})") from exc
+    models = spec.get("models") if isinstance(spec, dict) else None
+    asr = models.get("asr") if isinstance(models, dict) else None
+    if not isinstance(spec, dict) or not spec.get("runtimeKey") or not isinstance(asr, dict):
+        raise BenchInputError(
+            f"{path}: not a ResolvedAsrSpec — it needs a runtimeKey and a models.asr row "
+            "(the gateway's resolved ASR Agent, not a hand-written model slice)"
+        )
+    return spec
 
 
 def cut_windows(
@@ -316,7 +351,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--base-url", required=True, help="asr-vllm base URL (scheme://host[:port])")
     p.add_argument("--tenant-id", required=True, help="sent as X-Tenant-Id")
-    p.add_argument("--spec-file", required=True, type=Path, help="resolved model spec JSON")
+    p.add_argument(
+        "--spec-file",
+        required=True,
+        type=Path,
+        help="the gateway's ResolvedAsrSpec JSON for the ASR Agent under test",
+    )
     p.add_argument("--wav", required=True, type=Path, help="16 kHz mono PCM16 WAV")
     p.add_argument("--language", default="ml", help="Whisper language token (default ml)")
     p.add_argument("--ladder", type=parse_ladder, default=DEFAULT_LADDER, help="e.g. 1,2,4,8")
@@ -354,7 +394,7 @@ async def _main_async(args: argparse.Namespace) -> int:
     headers = {"X-Tenant-Id": args.tenant_id}
     if token:
         headers["X-Service-Token"] = token
-    spec = json.loads(args.spec_file.read_text())
+    spec = load_spec(args.spec_file)
     pcm = read_wav_pcm16(args.wav)
     hop_s = args.hop_s or args.window_s
     windows_per_stream = max(1, int(args.duration_s // hop_s))
