@@ -14,7 +14,6 @@ from stt.core.exceptions import (
     CloudASRTranscriptionError,
     ConfigurationError,
     DatabaseConnectionError,
-    InvalidPipelineError,
     JobCancelledError,
     JobError,
     JobNotFoundError,
@@ -25,7 +24,6 @@ from stt.core.exceptions import (
     ModelLoadError,
     ModelNotFoundError,
     ModelOutOfMemoryError,
-    PipelineNotFoundError,
     RedisConnectionError,
     StorageError,
     STTServiceError,
@@ -70,23 +68,10 @@ class TestConfigurationErrors:
         assert error.error_code == "CONFIG_ERROR"
         assert isinstance(error, STTServiceError)
 
-    def test_invalid_pipeline_error(self):
-        """Test InvalidPipelineError."""
-        error = InvalidPipelineError("Invalid pipeline", details={"pipeline_id": "p-123"})
-        assert error.error_code == "INVALID_PIPELINE"
-        assert isinstance(error, ConfigurationError)
-        assert error.details["pipeline_id"] == "p-123"
-
     def test_model_not_found_error(self):
         """Test ModelNotFoundError."""
         error = ModelNotFoundError("Model not found", details={"model_slug": "whisper"})
         assert error.error_code == "MODEL_NOT_FOUND"
-        assert isinstance(error, ConfigurationError)
-
-    def test_pipeline_not_found_error(self):
-        """Test PipelineNotFoundError."""
-        error = PipelineNotFoundError("Pipeline not found")
-        assert error.error_code == "PIPELINE_NOT_FOUND"
         assert isinstance(error, ConfigurationError)
 
 
@@ -298,8 +283,8 @@ class TestExceptionGroups:
 
     def test_child_classes_in_groups(self):
         """Test that child classes work with isinstance."""
-        # InvalidPipelineError is child of ConfigurationError
-        err = InvalidPipelineError("test")
+        # ModelNotFoundError is child of ConfigurationError
+        err = ModelNotFoundError("test")
         assert isinstance(err, NON_RETRYABLE_EXCEPTIONS)
 
         # StorageError is child of TransientError

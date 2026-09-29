@@ -25,22 +25,10 @@ class ConfigurationError(STTServiceError):
     error_code = "CONFIG_ERROR"
 
 
-class InvalidPipelineError(ConfigurationError):
-    """Invalid pipeline configuration."""
-
-    error_code = "INVALID_PIPELINE"
-
-
 class ModelNotFoundError(ConfigurationError):
     """Requested model not found in registry."""
 
     error_code = "MODEL_NOT_FOUND"
-
-
-class PipelineNotFoundError(ConfigurationError):
-    """Requested pipeline not found."""
-
-    error_code = "PIPELINE_NOT_FOUND"
 
 
 class ResolvedSpecRequiredError(ConfigurationError):

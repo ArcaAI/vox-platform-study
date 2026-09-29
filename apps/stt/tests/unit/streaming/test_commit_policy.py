@@ -44,6 +44,23 @@ class TestLocalAgreementPolicy:
         assert committed == "hello world how"
         assert tentative == "are"
 
+    def test_committed_length_is_a_valid_stable_chars_index(self):
+        """``stable_chars = len(committed)`` must index the published partial text.
+
+        The SDK/UI split the settled prefix from the tentative tail at that integer, so it
+        has to stay inside the text and be non-zero once two hypotheses agree.
+        """
+        policy = LocalAgreementPolicy()
+        text1 = "the patient reports"
+        committed1, _ = policy.update(text1)
+        assert 0 <= len(committed1) <= len(text1)
+
+        text2 = "the patient reports chest pain"
+        committed2, _ = policy.update(text2)
+        stable_chars = len(committed2)
+        assert 0 < stable_chars <= len(text2)
+        assert text2[:stable_chars] == committed2
+
     def test_contradiction_rolls_back_commit_never_substitutes(self):
         # Once a token position is committed, its surface text must be frozen
         # or explicitly rolled back — never silently substituted from a
