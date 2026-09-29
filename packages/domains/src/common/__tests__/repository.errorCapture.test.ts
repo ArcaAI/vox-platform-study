@@ -1,9 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-  DataNotFoundException,
-  OptimisticConcurrencyException,
-} from '@arcaai/exceptions';
+import { DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 
 // Same cycle-break as the sibling repository tests.
 vi.mock('../databaseServices/core/core.database.module', () => ({
@@ -80,7 +77,6 @@ describe('Repository.updateWithVersion error capture', () => {
 
     expect(err.metadata).toEqual({ expectedVersion: 7, currentVersion: 9 });
   });
-
 });
 
 describe('Repository raw error propagation', () => {

@@ -309,7 +309,9 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
     const tenantId = this.requireTenant();
     const department = await this.departmentRepository
       .findById(scopeId)
-      .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Assignment department lookup failed', meta: { departmentId: scopeId, tenantId } }));
+      .catch(
+        fallbackOnNotFound(null, { logger: this.logger, message: 'Assignment department lookup failed', meta: { departmentId: scopeId, tenantId } }),
+      );
     if (!department || department.tenantId !== tenantId) {
       throw new NotFoundException('Department not found');
     }

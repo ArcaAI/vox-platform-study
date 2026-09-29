@@ -48,7 +48,9 @@ describe('handleProxy correlation headers', () => {
   it('D7: forwards x-request-id, traceparent and tracestate and returns x-request-id', async () => {
     const gateway = installFetch();
     const response = await handleProxy(
-      new Request('http://console.local/api/hope/admin/tenants', { headers: { 'x-request-id': 'req-123', traceparent: TRACEPARENT, tracestate: 'a=b' } }),
+      new Request('http://console.local/api/hope/admin/tenants', {
+        headers: { 'x-request-id': 'req-123', traceparent: TRACEPARENT, tracestate: 'a=b' },
+      }),
       ['admin', 'tenants'],
     );
     expect(gateway.headers().get('x-request-id')).toBe('req-123');
@@ -68,7 +70,10 @@ describe('handleProxy correlation headers', () => {
 
   it('D7: replaces a malformed inbound id instead of forwarding it', async () => {
     const gateway = installFetch();
-    await handleProxy(new Request('http://console.local/api/hope/admin/tenants', { headers: { 'x-request-id': 'x'.repeat(65) } }), ['admin', 'tenants']);
+    await handleProxy(new Request('http://console.local/api/hope/admin/tenants', { headers: { 'x-request-id': 'x'.repeat(65) } }), [
+      'admin',
+      'tenants',
+    ]);
     expect(gateway.headers().get('x-request-id')).not.toBe('x'.repeat(65));
     expect(gateway.headers().get('x-request-id')).toMatch(/^[0-9a-f-]{36}$/);
   });

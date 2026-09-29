@@ -815,11 +815,23 @@ export class AiModelService extends BaseService implements IAiModelService {
       // `findRow(service, provider, …)` meant before a provider named a GROUP of rows.
       // `findRow` is by SLUG now, and a slug that happens to equal a provider id is a
       // coincidence this must not depend on.
-      port.findDefaultRow(service, provider, tenantId).catch(warnAndFallback(null, { logger: this.logger, message: 'Default connection row read failed', meta: { service, provider, tenantId } })),
+      port
+        .findDefaultRow(service, provider, tenantId)
+        .catch(warnAndFallback(null, { logger: this.logger, message: 'Default connection row read failed', meta: { service, provider, tenantId } })),
       tenantId === SYSTEM_TENANT_ID
         ? Promise.resolve(null)
-        : port.findDefaultRow(service, provider, SYSTEM_TENANT_ID).catch(warnAndFallback(null, { logger: this.logger, message: 'Default connection row read failed', meta: { service, provider, tenantId: SYSTEM_TENANT_ID } })),
-      port.resolveConnection(service, provider, tenantId).catch(warnAndFallback(null, { logger: this.logger, message: 'Connection resolution failed', meta: { service, provider, tenantId } })),
+        : port
+            .findDefaultRow(service, provider, SYSTEM_TENANT_ID)
+            .catch(
+              warnAndFallback(null, {
+                logger: this.logger,
+                message: 'Default connection row read failed',
+                meta: { service, provider, tenantId: SYSTEM_TENANT_ID },
+              }),
+            ),
+      port
+        .resolveConnection(service, provider, tenantId)
+        .catch(warnAndFallback(null, { logger: this.logger, message: 'Connection resolution failed', meta: { service, provider, tenantId } })),
     ]);
 
     const facts: ConnectionFacts = {

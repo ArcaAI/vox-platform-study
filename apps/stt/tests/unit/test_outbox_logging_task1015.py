@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from hope_obs import redact_id
-from structlog.testing import capture_logs
 
 from stt.core.exceptions import APIGatewayError
 from tests.unit.test_streaming_recording import _make_manager
@@ -15,6 +14,24 @@ from tests.unit.test_streaming_recording import _make_manager
 OUTBOX_KEY = "stt:transcript_outbox"
 CONSULTATION = "consultation-99887-john-smith"
 SECRET = "raw-persist-failure-detail"
+
+
+class _RecordingLogger:
+    """Stands in for the module logger. `structlog.testing.capture_logs` misses
+    loggers that an earlier test already cached (`cache_logger_on_first_use`), so
+    these assertions read the calls directly instead."""
+
+    def __init__(self) -> None:
+        self.lines: list[dict] = []
+
+    def bind(self, **_kw: object) -> _RecordingLogger:
+        return self
+
+    def __getattr__(self, level: str):
+        def _log(event: str, *_args: object, **kw: object) -> None:
+            self.lines.append({"event": event, "log_level": level, **kw})
+
+        return _log
 
 
 def _entry() -> dict:
@@ -30,7 +47,9 @@ def _entry() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_permanent_drop_logs_hashed_ids_and_error_type_only() -> None:
+async def test_permanent_drop_logs_hashed_ids_and_error_type_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     mgr = _make_manager()
     mgr._redis.hgetall = AsyncMock(return_value={"k": json.dumps(_entry())})
     mgr._redis.hset = AsyncMock()
@@ -41,8 +60,10 @@ async def test_permanent_drop_logs_hashed_ids_and_error_type_only() -> None:
     )
     mgr._get_api_client = MagicMock(return_value=gateway)
 
-    with capture_logs() as logs:
-        await mgr._drain_transcript_outbox()
+    recorder = _RecordingLogger()
+    monkeypatch.setattr("stt.streaming.session_manager.logger", recorder)
+    await mgr._drain_transcript_outbox()
+    logs = recorder.lines
 
     (line,) = [e for e in logs if e["event"] == "stt.transcript.outbox_permanent_drop"]
     assert line["consultation"] == redact_id(CONSULTATION)
@@ -52,7 +73,9 @@ async def test_permanent_drop_logs_hashed_ids_and_error_type_only() -> None:
 
 
 @pytest.mark.asyncio
-async def test_failed_outbox_delete_is_logged_not_swallowed() -> None:
+async def test_failed_outbox_delete_is_logged_not_swallowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     mgr = _make_manager()
     mgr._redis.hgetall = AsyncMock(return_value={"k": json.dumps(_entry())})
     mgr._redis.hset = AsyncMock()
@@ -63,8 +86,10 @@ async def test_failed_outbox_delete_is_logged_not_swallowed() -> None:
     )
     mgr._get_api_client = MagicMock(return_value=gateway)
 
-    with capture_logs() as logs:
-        await mgr._drain_transcript_outbox()
+    recorder = _RecordingLogger()
+    monkeypatch.setattr("stt.streaming.session_manager.logger", recorder)
+    await mgr._drain_transcript_outbox()
+    logs = recorder.lines
 
     (line,) = [e for e in logs if e["event"] == "stt.transcript.outbox_delete_failed"]
     assert line["log_level"] == "debug"

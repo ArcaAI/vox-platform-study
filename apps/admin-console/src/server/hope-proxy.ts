@@ -87,7 +87,14 @@ function encodeGatewayPath(path: string[]): string {
   return path.map(encodeURIComponent).join('/');
 }
 
-async function sendToGateway(request: Request, path: string[], search: string, session: SessionPayload, body: ArrayBuffer | null, requestId: string): Promise<Response> {
+async function sendToGateway(
+  request: Request,
+  path: string[],
+  search: string,
+  session: SessionPayload,
+  body: ArrayBuffer | null,
+  requestId: string,
+): Promise<Response> {
   return fetch(gatewayUrl(encodeGatewayPath(path), search), {
     method: request.method,
     headers: buildHeaders(request, path, session, requestId),

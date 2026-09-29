@@ -56,8 +56,13 @@ describe('TtsWsGateway correlation', () => {
   });
 
   it('D5: upstream handshake headers carry traceparent, X-Request-Id and X-Tenant-Id', async () => {
-    vi.spyOn(context, 'active').mockReturnValue(trace.setSpanContext(ROOT_CONTEXT, { traceId: TRACE_ID, spanId: SPAN_ID, traceFlags: TraceFlags.SAMPLED }));
-    await gateway.handleConnection(makeSocket() as never, { url: '/ws/tts/stream?sessionId=sess-1&ticket=t', headers: { 'x-request-id': 'req-abc' } } as never);
+    vi.spyOn(context, 'active').mockReturnValue(
+      trace.setSpanContext(ROOT_CONTEXT, { traceId: TRACE_ID, spanId: SPAN_ID, traceFlags: TraceFlags.SAMPLED }),
+    );
+    await gateway.handleConnection(
+      makeSocket() as never,
+      { url: '/ws/tts/stream?sessionId=sess-1&ticket=t', headers: { 'x-request-id': 'req-abc' } } as never,
+    );
     expect(gateway.createUpstreamSocket).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ traceparent: `00-${TRACE_ID}-${SPAN_ID}-01`, 'X-Request-Id': 'req-abc', 'X-Tenant-Id': 't1' }),
@@ -65,7 +70,10 @@ describe('TtsWsGateway correlation', () => {
   });
 
   it('D5: a malformed inbound request id falls back to the session id', async () => {
-    await gateway.handleConnection(makeSocket() as never, { url: '/ws/tts/stream?sessionId=sess-1&ticket=t', headers: { 'x-request-id': 'bad id\n' } } as never);
+    await gateway.handleConnection(
+      makeSocket() as never,
+      { url: '/ws/tts/stream?sessionId=sess-1&ticket=t', headers: { 'x-request-id': 'bad id\n' } } as never,
+    );
     expect(gateway.createUpstreamSocket).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ 'X-Request-Id': 'sess-1' }));
   });
 

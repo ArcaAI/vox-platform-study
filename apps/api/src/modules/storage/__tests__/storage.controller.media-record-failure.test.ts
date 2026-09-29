@@ -9,7 +9,9 @@ import { StorageController } from '../storage.controller';
 
 const build = (mediaCreate: ReturnType<typeof vi.fn>) => {
   const blobStorage = { putObject: vi.fn().mockResolvedValue(undefined) };
-  const tenantBucketService = { getBucketByName: vi.fn().mockResolvedValue({ id: 'b1', tenantId: 'tenant-1', name: 'attachments', slug: 'attachments' }) };
+  const tenantBucketService = {
+    getBucketByName: vi.fn().mockResolvedValue({ id: 'b1', tenantId: 'tenant-1', name: 'attachments', slug: 'attachments' }),
+  };
   const controller = new StorageController(
     blobStorage as any,
     {} as any,
@@ -23,7 +25,13 @@ const build = (mediaCreate: ReturnType<typeof vi.fn>) => {
   return { controller, logger };
 };
 
-const file = { fieldname: 'file', originalname: 'note.txt', mimetype: 'text/plain', size: 4, buffer: Buffer.from('note') } as unknown as Express.Multer.File;
+const file = {
+  fieldname: 'file',
+  originalname: 'note.txt',
+  mimetype: 'text/plain',
+  size: 4,
+  buffer: Buffer.from('note'),
+} as unknown as Express.Multer.File;
 
 describe('StorageController.uploadFile — media record failure', () => {
   it('still answers the upload, without a mediaId, and logs a warn carrying the Error object and the object key', async () => {

@@ -986,7 +986,7 @@ describe('SttWsGateway', () => {
       await gateway.handleMessage(client as any, Buffer.from([0x01]) as any, true);
       await new Promise((resolve) => setImmediate(resolve));
 
-      const frames = client.send.mock.calls.map((c: unknown[]) => String(c[0])).filter((f: string) => f.includes('BRIDGE_ERROR'));
+      const frames = (client.send as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => String(c[0])).filter((f: string) => f.includes('BRIDGE_ERROR'));
       const frame = JSON.parse(frames[0]);
       expect(typeof frame.correlationId).toBe('string');
       const line = errorSpy.mock.calls.map((c: unknown[]) => c[0] as Record<string, unknown>).find((f) => f.correlationId === frame.correlationId);

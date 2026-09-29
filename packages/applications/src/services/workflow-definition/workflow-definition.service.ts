@@ -524,7 +524,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     if (dto.parentVersionId) {
       const parent = await this.workflowDefinitionRepository
         .findById(dto.parentVersionId)
-        .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Parent workflow version lookup failed', meta: { parentVersionId: dto.parentVersionId, tenantId } }));
+        .catch(
+          fallbackOnNotFound(null, {
+            logger: this.logger,
+            message: 'Parent workflow version lookup failed',
+            meta: { parentVersionId: dto.parentVersionId, tenantId },
+          }),
+        );
       if (!parent || parent.tenantId !== tenantId || parent.slug !== dto.slug) {
         throw new BadRequestException(`Unknown parentVersionId '${dto.parentVersionId}' for slug '${dto.slug}'.`);
       }
@@ -732,7 +738,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       if (existing > 0) {
         const rows = await this.workflowDefinitionRepository
           .findAllVersionsBySlug(targetTenantId, slug)
-          .catch(fallbackOnNotFound([] as never[], { logger: this.logger, message: 'Workflow version listing failed', meta: { slug, tenantId: targetTenantId } }));
+          .catch(
+            fallbackOnNotFound([] as never[], {
+              logger: this.logger,
+              message: 'Workflow version listing failed',
+              meta: { slug, tenantId: targetTenantId },
+            }),
+          );
         return { definitionId: rows[0]?.id ?? '', created: false };
       }
       const created = await this.clone(
@@ -1860,7 +1872,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     const template = await this.promptTemplateRepository
       .findById(binding.promptTemplateId)
-      .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Prompt template lookup failed', meta: { promptTemplateId: binding.promptTemplateId } }));
+      .catch(
+        fallbackOnNotFound(null, {
+          logger: this.logger,
+          message: 'Prompt template lookup failed',
+          meta: { promptTemplateId: binding.promptTemplateId },
+        }),
+      );
     if (!template || template.tenantId !== entity.tenantId) {
       // A node pinned to a template this tenant does not own is a broken graph,
       // not an authorization decision to explain — 404-over-403.
@@ -2035,9 +2053,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     return Promise.all(
       bindings.map(async (binding) => {
-        const template = await this.promptTemplateRepository!
-          .findById(binding.promptTemplateId)
-          .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Prompt template lookup failed', meta: { promptTemplateId: binding.promptTemplateId } }));
+        const template = await this.promptTemplateRepository!.findById(binding.promptTemplateId).catch(
+          fallbackOnNotFound(null, {
+            logger: this.logger,
+            message: 'Prompt template lookup failed',
+            meta: { promptTemplateId: binding.promptTemplateId },
+          }),
+        );
         const owned = template && template.tenantId === entity.tenantId ? template : null;
         const latestVersionNumber = owned ? await this.promptVersionRepository!.findMaxVersionNumber(owned.id) : null;
 
@@ -2331,7 +2353,11 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         // A resolution failure is an UNKNOWN capability set, never a failed publish() — the
         // service already contracts not to throw, and this is the belt to that suspenders.
         capabilities: await this.generationCapabilitiesFor(binding, tenantId).catch(
-          warnAndFallback(undefined, { logger: this.logger, message: 'Generation capability resolution failed', meta: { nodeId: binding.nodeId, tenantId } }),
+          warnAndFallback(undefined, {
+            logger: this.logger,
+            message: 'Generation capability resolution failed',
+            meta: { nodeId: binding.nodeId, tenantId },
+          }),
         ),
       })),
     );

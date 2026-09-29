@@ -15,7 +15,9 @@ const build = (repos: { assignmentRepository?: unknown; departmentRepository?: u
 
 describe('AgentAssignmentService.loadOwned', () => {
   it('a missing assignment is still a 404', async () => {
-    const { service, logger } = build({ assignmentRepository: { findById: vi.fn().mockRejectedValue(new DataNotFoundException('AgentAssignment', 'a1')) } });
+    const { service, logger } = build({
+      assignmentRepository: { findById: vi.fn().mockRejectedValue(new DataNotFoundException('AgentAssignment', 'a1')) },
+    });
 
     await expect(service.loadOwned('a1')).rejects.toBeInstanceOf(NotFoundException);
     expect(logger.error).not.toHaveBeenCalled();

@@ -19,7 +19,11 @@ const request = { ip: '203.0.113.7', headers: { 'user-agent': 'test-agent' } };
 function build(overrides: Record<string, any> = {}) {
   const emitter = { emit: vi.fn() };
   const jwtRevocationService = overrides.jwtRevocationService ?? { revoke: vi.fn().mockResolvedValue(undefined), isRevoked: vi.fn() };
-  const refreshTokenService = overrides.refreshTokenService ?? { consume: vi.fn(), revokeFamily: vi.fn().mockResolvedValue(undefined), issue: vi.fn() };
+  const refreshTokenService = overrides.refreshTokenService ?? {
+    consume: vi.fn(),
+    revokeFamily: vi.fn().mockResolvedValue(undefined),
+    issue: vi.fn(),
+  };
   const authService = overrides.authService ?? { trackAuthentication: vi.fn().mockResolvedValue(undefined) };
   const controller = new AuthController(
     {} as any,
@@ -53,7 +57,9 @@ describe('login user lookup', () => {
   const credentials = { username: 'ghost', password: 'x', tenantKey: 'k' } as any;
 
   it('an unknown user is still the uniform 401 with the same audit reason', async () => {
-    const { controller, emitter, logger } = build({ userRepository: { findByUsername: vi.fn().mockRejectedValue(new DataNotFoundException('User', 'ghost')) } });
+    const { controller, emitter, logger } = build({
+      userRepository: { findByUsername: vi.fn().mockRejectedValue(new DataNotFoundException('User', 'ghost')) },
+    });
 
     await expect(controller.login(credentials, request)).rejects.toThrow(UnauthorizedException);
     expect(failureReasons(emitter)).toEqual(['unknown_or_disabled_user']);

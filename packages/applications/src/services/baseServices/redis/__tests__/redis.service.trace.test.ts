@@ -39,7 +39,9 @@ describe('RedisService.addJob trace carrier', () => {
   });
 
   it('D1: queue.add payload carries _trace with the active traceparent and request id', async () => {
-    const spy = vi.spyOn(context, 'active').mockReturnValue(trace.setSpanContext(ROOT_CONTEXT, { traceId: TRACE_ID, spanId: SPAN_ID, traceFlags: TraceFlags.SAMPLED }));
+    const spy = vi
+      .spyOn(context, 'active')
+      .mockReturnValue(trace.setSpanContext(ROOT_CONTEXT, { traceId: TRACE_ID, spanId: SPAN_ID, traceFlags: TraceFlags.SAMPLED }));
     await cls.run(async () => {
       (cls as ClsService<Record<symbol, unknown>>).set(CLS_ID, 'req-77');
       await service.addJob({ queueName: 'q', jobType: 'x', data: { id: 1 } });

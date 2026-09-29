@@ -492,7 +492,7 @@ async def _transcribe_file_impl(
 
         # Step 5b: Upload job metadata
         try:
-            metadata_uri = await blob_service.upload_batch_metadata(
+            await blob_service.upload_batch_metadata(
                 metadata_data=json.dumps(result.to_dict(), indent=2),
                 tenant_id=tenant_id,
                 job_id=job_id,

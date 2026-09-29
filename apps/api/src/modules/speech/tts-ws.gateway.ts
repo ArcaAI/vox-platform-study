@@ -457,7 +457,11 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         error: err,
       });
       // The browser gets a quotable id for this failure, never the upstream's message.
-      this.safeSend(client, Buffer.from(JSON.stringify({ type: 'error', code: 'upstream_error', message: 'TTS upstream error', correlationId: requestId })), false);
+      this.safeSend(
+        client,
+        Buffer.from(JSON.stringify({ type: 'error', code: 'upstream_error', message: 'TTS upstream error', correlationId: requestId })),
+        false,
+      );
       this.closeClientAndTeardown(client, TTS_WS_CLOSE_CODES.UPSTREAM_ERROR);
     });
 

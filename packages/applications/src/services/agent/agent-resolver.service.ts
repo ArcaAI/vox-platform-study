@@ -473,13 +473,24 @@ export class AgentResolverService {
   }
 
   private async modelBySlug(slug: string, tenantId: string): Promise<AiModelEntity | null> {
-    const own = tenantId === SYSTEM_TENANT_ID ? null : await this.aiModelRepository
-          .findBySlug(tenantId, slug)
-          .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Agent model lookup by slug failed', meta: { modelSlug: slug, tenantId } }));
+    const own =
+      tenantId === SYSTEM_TENANT_ID
+        ? null
+        : await this.aiModelRepository
+            .findBySlug(tenantId, slug)
+            .catch(
+              fallbackOnNotFound(null, { logger: this.logger, message: 'Agent model lookup by slug failed', meta: { modelSlug: slug, tenantId } }),
+            );
     if (own) return own;
     return this.aiModelRepository
       .findBySlug(SYSTEM_TENANT_ID, slug)
-      .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Agent model lookup by slug failed', meta: { modelSlug: slug, tenantId: SYSTEM_TENANT_ID } }));
+      .catch(
+        fallbackOnNotFound(null, {
+          logger: this.logger,
+          message: 'Agent model lookup by slug failed',
+          meta: { modelSlug: slug, tenantId: SYSTEM_TENANT_ID },
+        }),
+      );
   }
 }
 

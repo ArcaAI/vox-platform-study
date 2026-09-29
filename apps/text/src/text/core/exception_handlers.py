@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 from opentelemetry import trace
 from opentelemetry.trace import StatusCode
 
-from text.core.logging import get_logger
 from text.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
@@ -25,6 +24,7 @@ from text.core.exceptions import (
     ShutdownError,
     TextError,
 )
+from text.core.logging import get_logger
 
 logger = get_logger(__name__)
 

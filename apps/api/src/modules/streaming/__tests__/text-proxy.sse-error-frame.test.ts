@@ -100,6 +100,8 @@ describe('TextProxyController.extractAttachmentText — media lookup (documented
     const { ctrl, logger } = build({ mediaFindById: { findById: vi.fn().mockRejectedValue(outage) } });
 
     await expect((ctrl as any).extractAttachmentText('m1')).resolves.toBeNull();
-    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ message: 'Attachment media lookup failed; skipping', error: outage, mediaId: 'm1' }));
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Attachment media lookup failed; skipping', error: outage, mediaId: 'm1' }),
+    );
   });
 });

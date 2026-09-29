@@ -33,7 +33,9 @@ describe('dispatchDramatiqJob trace options', () => {
       extract: (ctx) => ctx,
       fields: () => ['traceparent'],
     });
-    vi.spyOn(context, 'active').mockReturnValue(trace.setSpanContext(ROOT_CONTEXT, { traceId: TRACE_ID, spanId: SPAN_ID, traceFlags: TraceFlags.SAMPLED }));
+    vi.spyOn(context, 'active').mockReturnValue(
+      trace.setSpanContext(ROOT_CONTEXT, { traceId: TRACE_ID, spanId: SPAN_ID, traceFlags: TraceFlags.SAMPLED }),
+    );
     const cls = new ClsService(new AsyncLocalStorage() as never);
     (ClsServiceManager as unknown as { clsService: ClsService }).clsService = cls;
     const { service, cache } = build();

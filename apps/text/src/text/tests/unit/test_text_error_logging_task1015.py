@@ -6,16 +6,35 @@ import asyncio
 from unittest.mock import MagicMock
 
 import pytest
-from structlog.testing import capture_logs
 
 from text.core.exception_handlers import text_exception_handler
 from text.core.exceptions import ProviderError, QueueFullError, TextError
 
 
+class _RecordingLogger:
+    """Stands in for the module logger. `structlog.testing.capture_logs` misses
+    loggers that an earlier test already cached (`cache_logger_on_first_use`), so
+    these assertions read the calls directly instead."""
+
+    def __init__(self) -> None:
+        self.lines: list[dict] = []
+
+    def bind(self, **_kw: object) -> _RecordingLogger:
+        return self
+
+    def __getattr__(self, level: str):
+        def _log(event: str, *_args: object, **kw: object) -> None:
+            self.lines.append({"event": event, "log_level": level, **kw})
+
+        return _log
+
+
 def _run(exc: TextError) -> tuple[int, list[dict]]:
-    with capture_logs() as logs:
+    recorder = _RecordingLogger()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("text.core.exception_handlers.logger", recorder)
         response = asyncio.run(text_exception_handler(MagicMock(), exc))
-    return response.status_code, logs
+    return response.status_code, recorder.lines
 
 
 def test_5xx_is_logged_at_error_with_code_and_status() -> None:

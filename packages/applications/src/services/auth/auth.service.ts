@@ -31,9 +31,9 @@ export class AuthService implements IAuthService {
    */
   public async getOrCreateOidcUser(request: CreateOAuthUserRequest): Promise<OAuthUserResponse> {
     // Attempt to fetch the user by their external ID
-    let user = await this.userService.fetchByExternalId(request.externalId).catch(
-      fallbackOnNotFound(null, { logger: this.logger, message: 'OIDC user lookup by external id failed' }),
-    );
+    let user = await this.userService
+      .fetchByExternalId(request.externalId)
+      .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'OIDC user lookup by external id failed' }));
 
     // If the user does not exist, create a new user
     if (!user) {

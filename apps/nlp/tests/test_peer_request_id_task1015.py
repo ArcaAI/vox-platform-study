@@ -29,7 +29,9 @@ def test_request_id_header_is_forwarded() -> None:
 
     bind_request_context(requestId="rid-nlp-1")
     try:
-        asyncio.run(_client(handler).generate_label("p", tenant_id="t-1"))
+        asyncio.run(
+            _client(handler).generate_label("p", tenant_id="t-1", provider="lm-studio", model="m-1")
+        )
     finally:
         clear_request_context()
 
@@ -43,7 +45,11 @@ def test_failure_is_structured_chained_and_message_free() -> None:
 
     with capture_logs() as logs:
         with pytest.raises(ExternalTextUnavailableError) as info:
-            asyncio.run(_client(handler).generate_label("p", tenant_id="t-1"))
+            asyncio.run(
+                _client(handler).generate_label(
+                    "p", tenant_id="t-1", provider="lm-studio", model="m-1"
+                )
+            )
 
     assert isinstance(info.value.__cause__, httpx.ConnectError)
     events = {entry["event"]: entry for entry in logs}

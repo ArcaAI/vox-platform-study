@@ -72,9 +72,7 @@ describe('LoggingService level gating', () => {
     service.setLevel('debug');
     service.debug('after');
 
-    const printed = [...write.mock.calls, ...consoleLog.mock.calls, ...consoleDebug.mock.calls]
-      .map((c) => String(c[0]))
-      .join('\n');
+    const printed = [...write.mock.calls, ...consoleLog.mock.calls, ...consoleDebug.mock.calls].map((c) => String(c[0])).join('\n');
     expect(printed).toContain('after');
     expect(printed).not.toContain('before');
   });
@@ -96,7 +94,7 @@ describe('LoggingService level gating', () => {
     expect(child.getLevel()).toBe('debug');
   });
 
-  it("setLogLevels (Nest adapter path) gates output too", () => {
+  it('setLogLevels (Nest adapter path) gates output too', () => {
     const service = new LoggingService();
     const t = new RecordingTransport();
     service.addTransport(t);

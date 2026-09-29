@@ -940,7 +940,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   }
 
   private async readGpuUsed(): Promise<Map<string, number> | null> {
-    const samples = await this.prometheus.instantVector(PROMQL.fbUsed).catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU used-memory metric read failed' }));
+    const samples = await this.prometheus
+      .instantVector(PROMQL.fbUsed)
+      .catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU used-memory metric read failed' }));
     if (samples.length === 0) return null;
     return new Map(samples.map((s) => [`gpu${s.metric.gpu}`, s.value * MiB]));
   }
@@ -949,7 +951,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   private async readGpuUsedAfter(sinceMs: number): Promise<Map<string, number> | null> {
     const deadline = Date.now() + this.measurementMaxWaitMs;
     for (;;) {
-      const stamps = await this.prometheus.instantVector(PROMQL.fbUsedAt).catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU sample-time metric read failed' }));
+      const stamps = await this.prometheus
+        .instantVector(PROMQL.fbUsedAt)
+        .catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU sample-time metric read failed' }));
       if (stamps.length > 0 && stamps.every((s) => s.value * 1000 >= sinceMs)) return this.readGpuUsed();
       if (Date.now() >= deadline) return null;
       await new Promise((resolve) => setTimeout(resolve, this.measurementPollMs));
@@ -1258,7 +1262,10 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   }
 
   private async readGpus(): Promise<GpuReading[]> {
-    const query = (q: string) => this.prometheus.instantVector(q).catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU metric read failed', meta: { query: q } }));
+    const query = (q: string) =>
+      this.prometheus
+        .instantVector(q)
+        .catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU metric read failed', meta: { query: q } }));
     const [used, free, reserved, util] = await Promise.all([
       query(PROMQL.fbUsed),
       query(PROMQL.fbFree),
@@ -1289,7 +1296,10 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   }
 
   private async readModelMetrics(): Promise<ModelMetrics> {
-    const query = (q: string) => this.prometheus.instantVector(q).catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'Model metric read failed', meta: { query: q } }));
+    const query = (q: string) =>
+      this.prometheus
+        .instantVector(q)
+        .catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'Model metric read failed', meta: { query: q } }));
     const [running, rate, p50, workerResident, workerBytes] = await Promise.all([
       query(PROMQL.running),
       query(PROMQL.ratePerMin),
@@ -1322,10 +1332,12 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     if (refs.wireModelId.size) or.push({ tenantId: SYSTEM_TENANT_ID, wireModelId: { in: [...refs.wireModelId] } });
     if (ids.size) or.push({ id: { in: [...ids] } });
 
-    const rows = or.length > 0 ? await this.aiModels
-          .findAll({ filters: { OR: or } as never })
-          .catch(warnAndFallback([] as AiModelEntity[], { logger: this.logger, message: 'Residency catalogue read failed' }))
-      : [];
+    const rows =
+      or.length > 0
+        ? await this.aiModels
+            .findAll({ filters: { OR: or } as never })
+            .catch(warnAndFallback([] as AiModelEntity[], { logger: this.logger, message: 'Residency catalogue read failed' }))
+        : [];
     const byId = new Map(rows.map((row) => [row.id, row]));
     const system = rows.filter((row) => row.tenantId === SYSTEM_TENANT_ID);
     return {
@@ -1440,7 +1452,13 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const field = service === 'lm-studio' ? 'wireModelId' : service === 'nlp' ? 'sourceUri' : 'slug';
     const rows = await this.aiModels
       .findAll({ filters: { tenantId: SYSTEM_TENANT_ID, [field]: modelRef } as never })
-      .catch(warnAndFallback([] as AiModelEntity[], { logger: this.logger, message: 'Residency catalogue model lookup failed', meta: { service, modelRef } }));
+      .catch(
+        warnAndFallback([] as AiModelEntity[], {
+          logger: this.logger,
+          message: 'Residency catalogue model lookup failed',
+          meta: { service, modelRef },
+        }),
+      );
     return rows.find(
       (row) =>
         row.tenantId === SYSTEM_TENANT_ID &&

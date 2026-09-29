@@ -41,7 +41,9 @@ describe('SysEventService audit trace capture', () => {
   const auditJob = (): AuditLogJob => addJob.mock.calls.map((c) => c[0]).find((c) => c.data && 'action' in c.data).data as AuditLogJob;
 
   it('D3: audit job carries traceId from the active span and correlationId from the CLS id when the event has none', async () => {
-    const spy = vi.spyOn(context, 'active').mockReturnValue(trace.setSpanContext(ROOT_CONTEXT, { traceId: TRACE_ID, spanId: SPAN_ID, traceFlags: TraceFlags.SAMPLED }));
+    const spy = vi
+      .spyOn(context, 'active')
+      .mockReturnValue(trace.setSpanContext(ROOT_CONTEXT, { traceId: TRACE_ID, spanId: SPAN_ID, traceFlags: TraceFlags.SAMPLED }));
     await cls.run(async () => {
       (cls as ClsService<Record<symbol, unknown>>).set(CLS_ID, 'req-5');
       await service.handleResourceCreatedEvent(event());

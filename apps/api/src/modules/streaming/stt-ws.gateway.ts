@@ -2492,7 +2492,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   /** One failure line with the session's identity (`logWsFailure`); returns its correlation id. */
   private logSessionFailure(
     session: SessionInfo,
-    ctx: Omit<WsFailureContext, 'sessionId' | 'tenantId' | 'userId' | 'clientIp' | 'origin'>,
+    ctx: Pick<WsFailureContext, 'message'> & Partial<Pick<WsFailureContext, 'closeCode' | 'correlationId' | 'level'>> & Record<string, unknown>,
     err: unknown,
   ): string {
     return logWsFailure(

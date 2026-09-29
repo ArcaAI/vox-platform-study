@@ -33,7 +33,9 @@ describe('WorkflowDefinitionService.resolveImportReference (unresolvable is the 
   const reference = { kind: 'promptTemplate', key: 'soap' };
 
   it('a missing row is unresolved, silently', async () => {
-    const { service, logger } = build({ promptTemplateRepository: { findByName: vi.fn().mockRejectedValue(new DataNotFoundException('PromptTemplate', 'soap')) } });
+    const { service, logger } = build({
+      promptTemplateRepository: { findByName: vi.fn().mockRejectedValue(new DataNotFoundException('PromptTemplate', 'soap')) },
+    });
 
     await expect(service.resolveImportReference(reference, 'tenant-1')).resolves.toBeNull();
     expect(logger.warn).not.toHaveBeenCalled();

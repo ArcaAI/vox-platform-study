@@ -49,7 +49,9 @@ function isSwallowingHandler(fn) {
   if (fn.body.type !== 'BlockStatement') return isEmptyValue(fn.body);
   const statements = fn.body.body;
   if (statements.length === 0) return true;
-  return statements.length === 1 && statements[0].type === 'ReturnStatement' && (statements[0].argument === null || isEmptyValue(statements[0].argument));
+  return (
+    statements.length === 1 && statements[0].type === 'ReturnStatement' && (statements[0].argument === null || isEmptyValue(statements[0].argument))
+  );
 }
 
 module.exports = {
@@ -73,7 +75,9 @@ module.exports = {
     const sourceCode = context.sourceCode ?? context.getSourceCode();
 
     function hasMarker(firstLine, lastLine) {
-      return sourceCode.getAllComments().some((comment) => MARKER.test(comment.value) && comment.loc.start.line >= firstLine && comment.loc.end.line <= lastLine);
+      return sourceCode
+        .getAllComments()
+        .some((comment) => MARKER.test(comment.value) && comment.loc.start.line >= firstLine && comment.loc.end.line <= lastLine);
     }
 
     return {

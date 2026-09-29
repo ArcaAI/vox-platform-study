@@ -62,9 +62,7 @@ describe('formatError on the JSON line', () => {
     const err = new Error('loop') as Error & { cause?: unknown };
     err.cause = err;
 
-    expect(() =>
-      transport.log({ level: 'error', levelNumber: 50, message: 'x', timestamp: 't', timestampMs: 0, error: err }),
-    ).not.toThrow();
+    expect(() => transport.log({ level: 'error', levelNumber: 50, message: 'x', timestamp: 't', timestampMs: 0, error: err })).not.toThrow();
   });
 
   it('through the service, a PHI-bearing cause never reaches the line un-redacted', () => {

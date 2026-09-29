@@ -78,9 +78,7 @@ describe('LoggingService ambient correlation', () => {
   });
 
   it('drops an invalid (all-zero) span context rather than emitting zeros', () => {
-    vi.spyOn(trace, 'getActiveSpan').mockReturnValue(
-      fakeSpan({ traceId: '0'.repeat(32), spanId: '0'.repeat(16), traceFlags: 0 }),
-    );
+    vi.spyOn(trace, 'getActiveSpan').mockReturnValue(fakeSpan({ traceId: '0'.repeat(32), spanId: '0'.repeat(16), traceFlags: 0 }));
 
     service.info('noop span');
 
