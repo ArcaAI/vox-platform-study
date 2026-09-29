@@ -57,5 +57,10 @@ export const CORS_ALLOWED_HEADERS: readonly string[] = [
  * PATCH would send no validator — which `RequiresIfMatchGuard` answers with
  * 428. The OCC round trip is therefore broken cross-origin unless `ETag` is
  * exposed, however correct the server side is.
+ *
+ * `X-Request-Id` is the request's id (equal to an error body's
+ * `correlationId`), on every response — successes included, which carry no
+ * body field to read it from. A browser client can only quote it to support if
+ * it is exposed here.
  */
-export const CORS_EXPOSED_HEADERS: readonly string[] = ['ETag'];
+export const CORS_EXPOSED_HEADERS: readonly string[] = ['ETag', 'X-Request-Id'];

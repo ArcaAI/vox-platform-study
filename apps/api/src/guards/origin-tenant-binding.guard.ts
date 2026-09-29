@@ -80,6 +80,7 @@ import { CanActivate, ExecutionContext, Inject, Injectable, Logger, NotFoundExce
 import { ClsService } from 'nestjs-cls';
 import { IOriginRegistry } from '@arcaai/applications';
 import { isOriginEnforcementEnabled } from '../cors.config';
+import { attachFailureLogContext, routeOf } from '../filters/failure-log';
 
 /**
  * Deliberately generic. A cross-tenant caller learns nothing from it — same
@@ -179,7 +180,7 @@ export class OriginTenantBindingGuard implements CanActivate {
         message: 'Origin is not registered in the origin registry — passing through (no grant ⇒ no tenant binding to enforce)',
         origin,
         tenantId,
-        path: this.readPath(context),
+        route: routeOf(context.switchToHttp().getRequest()),
       });
       return true;
     }
@@ -191,13 +192,13 @@ export class OriginTenantBindingGuard implements CanActivate {
       return true;
     }
 
-    this.logger.warn({
-      message: 'Cross-tenant origin binding violation — rejecting with 404',
+    // No line here: the violation rides the 404 onto the request's single
+    // failure line, written by the terminal exception filter.
+    throw attachFailureLogContext(new NotFoundException(RESOURCE_NOT_FOUND), {
+      reason: 'origin_tenant_binding_violation',
       origin,
       requestTenantId: tenantId,
-      path: this.readPath(context),
     });
-    throw new NotFoundException(RESOURCE_NOT_FOUND);
   }
 
   /**
@@ -218,10 +219,6 @@ export class OriginTenantBindingGuard implements CanActivate {
     }
     const trimmed = raw.trim();
     return trimmed.length > 0 ? trimmed : null;
-  }
-
-  private readPath(context: ExecutionContext): string | undefined {
-    return context.switchToHttp().getRequest<{ url?: string } | undefined>()?.url;
   }
 
   /**

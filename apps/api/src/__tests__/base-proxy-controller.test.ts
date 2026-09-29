@@ -367,7 +367,7 @@ describe('Request ID correlation with ContextInterceptor', () => {
     expect(req.headers['x-request-id'].length).toBeGreaterThan(0);
   });
 
-  it('should set x-correlation-id header matching x-request-id', async () => {
+  it('no longer sets the retired x-correlation-id header', async () => {
     const { BaseProxyController } = await import('../shared/base-proxy.controller');
 
     class TestController extends BaseProxyController {
@@ -380,22 +380,44 @@ describe('Request ID correlation with ContextInterceptor', () => {
     }
 
     const controller = new TestController();
-    const interceptorId = '0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b';
-    const req: any = {
-      method: 'GET',
-      url: '/test',
-      headers: {},
-      requestId: interceptorId,
-    };
-    const res: any = {
-      headersSent: false,
-      status: vi.fn().mockReturnThis(),
-      json: vi.fn().mockReturnThis(),
-    };
+    const req: any = { method: 'GET', url: '/test', headers: {}, requestId: '0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b' };
+    const res: any = { headersSent: false, status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() };
 
     controller.proxyRequest(req, res);
-    expect(req.headers['x-correlation-id']).toBe(interceptorId);
-    expect(req.headers['x-correlation-id']).toBe(req.headers['x-request-id']);
+    expect(req.headers['x-correlation-id']).toBeUndefined();
+  });
+
+  it('forwards cls.getId() when a CLS context is active', async () => {
+    const { ClsServiceManager, CLS_ID } = await import('nestjs-cls');
+    const { BaseProxyController } = await import('../shared/base-proxy.controller');
+
+    class TestController extends BaseProxyController {
+      readonly config = { serviceName: 'test', serviceUrl: 'http://localhost:9999', pathRewriteFrom: '^/test', pathRewriteTo: '/' };
+    }
+
+    const cls = ClsServiceManager.getClsService();
+    const req: any = { method: 'GET', url: '/test', headers: { 'x-request-id': 'header-id' }, requestId: 'alias-id' };
+    const res: any = { headersSent: false, status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() };
+
+    cls.run(() => {
+      cls.set(CLS_ID as any, 'cls-id-7');
+      new TestController().proxyRequest(req, res);
+    });
+    expect(req.headers['x-request-id']).toBe('cls-id-7');
+  });
+
+  it('never forwards an unsafe inbound x-request-id; mints a uuidv7 instead of Math.random()', async () => {
+    const { BaseProxyController } = await import('../shared/base-proxy.controller');
+
+    class TestController extends BaseProxyController {
+      readonly config = { serviceName: 'test', serviceUrl: 'http://localhost:9999', pathRewriteFrom: '^/test', pathRewriteTo: '/' };
+    }
+
+    const req: any = { method: 'GET', url: '/test', headers: { 'x-request-id': 'evil\ninjected' } };
+    const res: any = { headersSent: false, status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() };
+
+    new TestController().proxyRequest(req, res);
+    expect(req.headers['x-request-id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 
   it('should prefer request.requestId over x-request-id header', async () => {
@@ -463,7 +485,7 @@ describe('Request ID uniqueness (fallback path)', () => {
     expect(unique.size).toBe(5);
   });
 
-  it('fallback request ID should be alphanumeric (base-36)', async () => {
+  it('fallback request ID is a uuidv7 (the contract id format), not a base-36 random', async () => {
     const { BaseProxyController } = await import('../shared/base-proxy.controller');
 
     class TestController extends BaseProxyController {
@@ -484,7 +506,7 @@ describe('Request ID uniqueness (fallback path)', () => {
     };
     controller.proxyRequest(req, res);
 
-    expect(req.headers['x-request-id']).toMatch(/^[a-z0-9]+$/);
+    expect(req.headers['x-request-id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 });
 

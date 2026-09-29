@@ -1,5 +1,5 @@
 import { BuildInfoService, ILoggingService, IServiceReleaseService, loadEnv, SecretsService } from '@arcaai/applications';
-import { LogLevel, ValidationPipe } from '@nestjs/common';
+import { LogLevel } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { SwaggerModule } from '@nestjs/swagger';
@@ -22,6 +22,8 @@ import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholde
 // still have a working import.
 import { apiEnv } from './config';
 import { buildCorsOptions, isOriginAllowed } from './cors.config';
+import { registerCrashHandlers } from './crash-handlers';
+import { createGlobalValidationPipe } from './filters/validation-violations';
 import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from './global-prefix.config';
 import { flushOtel } from './instrumentation';
 import { ETagInterceptor } from './interceptors';
@@ -35,6 +37,14 @@ import { createHopeOpenApiDocument } from './swagger.config';
 import session = require('express-session');
 
 export { isOriginAllowed };
+
+// Crash handlers FIRST — before loadEnv() and NestFactory.create(). A crash
+// while the module graph is being constructed (a secret that fails to warm, a
+// provider that throws) used to happen before any handler existed and died
+// without a line. Until the logging service exists a crash is written to
+// stderr as one JSON line; `attachLogger` below routes it through the logging
+// service from then on. Both paths flush the logger and OpenTelemetry, bounded.
+const crashHandlers = registerCrashHandlers(undefined, { flushOtel });
 
 async function bootstrap() {
   // Read the env file for this NODE_ENV BEFORE anything in bootstrap() touches
@@ -113,9 +123,8 @@ async function bootstrap() {
   const loggingService = app.get(ILoggingService);
   app.useLogger(loggingService);
 
-  // Register crash handlers so uncaught exceptions/rejections are logged and flushed
-  const { registerCrashHandlers } = await import('./crash-handlers');
-  registerCrashHandlers(loggingService);
+  // From here on a crash goes through the logging service (see the top of this file).
+  crashHandlers.attachLogger(loggingService);
 
   // Count EVERY response, including the ones no handler ever saw.
   //
@@ -186,15 +195,11 @@ async function bootstrap() {
   // Strict input validation: whitelist + forbidNonWhitelisted + forbidUnknownValues
   // closes the JWT_SECRET_KEY mass-assignment exploit chain at the HTTP
   // boundary by rejecting any DTO key not declared on the target class.
-  // Paired with the explicit-allowlist refactor in TenantService.
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      forbidUnknownValues: true,
-    }),
-  );
+  // Paired with the explicit-allowlist refactor in TenantService. The pipe's
+  // client behaviour is the stock one; it additionally hands the failure line
+  // a structured `violations` list (property path + constraint names, never
+  // the submitted value) — see `filters/validation-violations.ts`.
+  app.useGlobalPipes(createGlobalValidationPipe());
 
   // Disable Express's default auto-generated ETag. Left on, it stamps a WEAK
   // content-hash validator (`W/"<len>-<hash>"`) on every JSON GET, including

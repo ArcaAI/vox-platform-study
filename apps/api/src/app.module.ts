@@ -43,8 +43,8 @@ import { RequiresIfMatchGuard } from './decorators/requiresIfMatch.guard';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ClsGuard, ClsModule } from 'nestjs-cls';
-import { uuidv7 } from 'uuidv7';
-import { ConsentExceptionFilter, DataNotFoundExceptionFilter, HttpExceptionEnvelopeFilter } from './filters';
+import { GLOBAL_EXCEPTION_FILTERS } from './filters/global-filters';
+import { CLS_MODULE_OPTIONS } from './request-id';
 import { JwtAuthGuard, OriginTenantBindingGuard, PatientConsentGuard } from './guards';
 import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor, MetricsInterceptor } from './interceptors';
 import { TenantOwnedResourceModule, TenantOwnedResourceSseGuard } from './common';
@@ -245,45 +245,26 @@ const guards = [
   },
 ];
 
-// Global exception filter that maps `DataNotFoundException` (thrown by
-// `Repository<T>.findById` and friends) to a generic
-// `404 { message: "Resource not found" }` response, dropping the model
-// name + row id from the body. Scoped ONLY to `DataNotFoundException` —
-// service-layer guards elsewhere already throw
-// `NotFoundException("Resource not found")` directly with the right
-// message and need no filter wrapping.
-const filters = [
-  // REST review H-2 — the catch-all envelope normalizer. Registered FIRST
-  // deliberately: with several `APP_FILTER` providers Nest gives precedence to
-  // the LAST-registered matching filter, so the two specific filters below must
-  // come after it. (It also `@Catch(HttpException)` rather than `@Catch()`, so
-  // it is not even a candidate for the domain exceptions those two handle —
-  // belt and braces, verified empirically against the live 404 + consent
-  // bodies rather than reasoned about.)
-  //
-  // What it fixes: guards run BEFORE interceptors, so `UnifiedAuthGuard`'s
-  // 401/403 — the highest-volume error class on this gateway — never reached
-  // `ExceptionInterceptor` and still shipped the bare Nest body with no `code`
-  // and no `correlationId`.
-  {
-    provide: APP_FILTER,
-    useClass: HttpExceptionEnvelopeFilter,
-  },
-  {
-    provide: APP_FILTER,
-    useClass: DataNotFoundExceptionFilter,
-  },
-  // Consent & ABAC. `assertConsent` is called from
-  // `PatientConsentGuard` — a guard, not a handler — so `ExceptionInterceptor`
-  // never sees the throw (guards run before interceptors). This filter is
-  // what actually turns `ConsentDeniedException`/`ConsentUnavailableException`
-  // into 403/503 for that call site; see `ConsentExceptionFilter`'s own doc
-  // comment.
-  {
-    provide: APP_FILTER,
-    useClass: ConsentExceptionFilter,
-  },
-];
+// Global exception filters — the terminal stage of the error pipeline. Each
+// exception lands on exactly ONE of them, and that filter writes both the
+// response body (the unified `{statusCode, code, message, correlationId}`
+// envelope) and the request's single failure line (`filters/failure-log.ts`).
+//
+// ORDER IS LOAD-BEARING: with several `APP_FILTER` providers Nest consults the
+// LAST-registered matching filter first, so `GLOBAL_EXCEPTION_FILTERS` runs from
+// the widest net to the narrowest:
+//   1. `AllExceptionsFilter` (`@Catch()`) — anything nothing else claims: a
+//      TypeError in a handler, a non-HTTP error from a guard. Generic 500
+//      `INTERNAL.UNEXPECTED`; the detail goes to the log, never the body.
+//   2. `HttpExceptionEnvelopeFilter` (`@Catch(HttpException)`) — every
+//      HttpException, including the guards' 401/403/429 (guards run BEFORE
+//      interceptors, so `ExceptionInterceptor` never sees those) and every
+//      error `ExceptionInterceptor` mapped to an HttpException.
+//   3. `DataNotFoundExceptionFilter` — the generic 404 that withholds the model
+//      name and row id.
+//   4. `ConsentExceptionFilter` — `PatientConsentGuard`'s verdicts (403/503),
+//      thrown from a guard and therefore also invisible to the interceptor.
+const filters = GLOBAL_EXCEPTION_FILTERS.map((useClass) => ({ provide: APP_FILTER, useClass }));
 
 // Define all queue names to be used in the application
 const queueNames = Object.values(JobQueue);
@@ -327,15 +308,11 @@ const common = [
   LoggingServiceModule, // Add the logger service
   GracefulShutdownModule, // Graceful shutdown coordination
   ConfigModule.forRoot(),
-  ClsModule.forRoot({
-    global: true,
-    middleware: {
-      mount: true,
-      generateId: true,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      idGenerator: (req: any) => req.headers['X-Request-Id'] ?? uuidv7(),
-    },
-  }),
+  // The request id: ONE value per request, `cls.getId()`, taken from a safe
+  // inbound `x-request-id` or minted as a uuidv7; the middleware's `setup`
+  // aliases it onto `request.requestId`, the CLS `correlationId` key and the
+  // `X-Request-Id` response header before any guard runs. See `request-id.ts`.
+  ClsModule.forRoot(CLS_MODULE_OPTIONS),
   // Registers the global ThrottlerModule (named throttlers + Redis/
   // in-memory storage) and exports TieredThrottlerGuard so the APP_GUARD wired
   // in `guards[]` below can be constructed via DI. Placed early so the guard's

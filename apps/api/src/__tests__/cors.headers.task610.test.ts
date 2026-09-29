@@ -17,8 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { CORS_ALLOWED_HEADERS, CORS_EXPOSED_HEADERS } from '../cors.headers';
 
 /** RFC 7230: field names are case-insensitive, so compare case-folded. */
-const includesHeader = (list: readonly string[], name: string): boolean =>
-  list.some((h) => h.toLowerCase() === name.toLowerCase());
+const includesHeader = (list: readonly string[], name: string): boolean => list.some((h) => h.toLowerCase() === name.toLowerCase());
 
 describe('CORS header lists', () => {
   describe('D-4 — allowed request headers', () => {
@@ -38,6 +37,10 @@ describe('CORS header lists', () => {
   describe('D-5 — exposed response headers', () => {
     it('exposes ETag, without which getWithEtag reads undefined and the PATCH 428s', () => {
       expect(includesHeader(CORS_EXPOSED_HEADERS, 'ETag')).toBe(true);
+    });
+
+    it('exposes X-Request-Id, so a browser client can quote the id support will search for', () => {
+      expect(includesHeader(CORS_EXPOSED_HEADERS, 'X-Request-Id')).toBe(true);
     });
 
     it('does not use a wildcard, which is illegal alongside credentials: true', () => {

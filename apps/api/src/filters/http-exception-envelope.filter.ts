@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { ClsService } from 'nestjs-cls';
 
 import { toUnifiedErrorBody } from './error-envelope';
+import { logRequestFailure, writeErrorBody } from './failure-log';
 
 /**
  * Normalizes EVERY `HttpException` that reaches the filter chain into the one
@@ -60,9 +61,13 @@ export class HttpExceptionEnvelopeFilter implements ExceptionFilter<HttpExceptio
         ? toUnifiedErrorBody(original as Record<string, unknown>, { status, correlationId })
         : toUnifiedErrorBody({ message: String(original) }, { status, correlationId });
 
+    // The single failure line for this request (level by status; whatever the
+    // throwing guard / interceptor attached rides along).
+    logRequestFailure(this.logger, { request, status, code: typeof body['code'] === 'string' ? body['code'] : undefined, exception });
+
     // Headers already written by an upstream layer (notably `Retry-After` on a
     // 503) survive — `.status().json()` does not clear them.
-    response.status(status).json(body);
+    writeErrorBody(response, status, body);
   }
 
   /**
@@ -75,8 +80,7 @@ export class HttpExceptionEnvelopeFilter implements ExceptionFilter<HttpExceptio
       const id = this.clsService?.getId();
       if (id) return id;
     } catch {
-      // CLS context unavailable (guard rejected before the CLS guard ran).
-      this.logger.debug({ message: 'CLS unavailable while enveloping an HttpException' });
+      // CLS context unavailable (guard rejected before the CLS middleware ran).
     }
     return (request as unknown as { requestId?: string } | undefined)?.requestId;
   }

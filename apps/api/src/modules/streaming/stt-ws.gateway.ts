@@ -44,6 +44,7 @@ import { type StreamSessionBinding, StreamSessionTenantBindingService } from '..
 import { isOriginEnforcementEnabled } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
+import { logWsFailure, wsClientIp, type WsFailureContext } from './ws-failure-log';
 
 /**
  * STT WebSocket handshake-rejection close codes.
@@ -264,6 +265,10 @@ interface SessionInfo {
   userId: string;
   /** Tenant id from the consumed stream ticket. */
   tenantId: string | null;
+  /** Client address at the handshake (trusted-proxy aware), for failure lines only. */
+  clientIp?: string;
+  /** Browser `Origin` at the handshake, for failure lines only. */
+  origin?: string;
   /**
    * Session-negotiated audio sample rate, read from the session meta bound
    * by `createStreamSession`. Defaults to 16000.
@@ -1050,6 +1055,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       resumeBuffer: [],
       userId: stored.userId,
       tenantId: stored.tenantId,
+      clientIp: wsClientIp(req),
+      ...(typeof origin === 'string' && origin.length > 0 ? { origin } : {}),
       sampleRate,
       ...(streamContext ? { streamContext } : {}),
       ...(sessionEpochMs != null ? { sessionEpochMs } : {}),
@@ -1189,12 +1196,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
           this.relayResult(session.client, session, msg as unknown as { type: string; isFinal?: boolean; [key: string]: unknown });
         },
         error: (err) => {
-          this.logger.warn({
-            message: 'Result stream error',
-            sessionId: session.sessionId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-          this.sendError(session.client, 'STREAM_ERROR', 'Result stream encountered an error');
+          const correlationId = this.logSessionFailure(session, { message: 'Result stream error', level: 'warn' }, err);
+          this.sendError(session.client, 'STREAM_ERROR', 'Result stream encountered an error', correlationId);
         },
         complete: () => {
           // The synthesized closing frame goes out FIRST: the client learns the stream is over
@@ -1305,11 +1308,12 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     });
     client.on('message', (data: Buffer, isBinary: boolean) => {
       this.handleMessage(client, data, isBinary).catch((err) => {
-        this.logger.error({
-          message: 'Unhandled error in message handler',
-          sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        });
+        const session = this.sessions.get(client);
+        if (session) {
+          this.logSessionFailure(session, { message: 'Unhandled error in message handler' }, err);
+        } else {
+          logWsFailure(this.logger, { message: 'Unhandled error in message handler', sessionId }, err);
+        }
       });
     });
   }
@@ -2049,13 +2053,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
           this.sendError(client, 'UNKNOWN_TYPE', `Unknown message type: ${type}`);
       }
     } catch (err) {
-      this.logger.error({
-        message: 'Error handling WebSocket message',
-        sessionId: session.sessionId,
-        type,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      this.sendError(client, 'INTERNAL_ERROR', 'Failed to process message');
+      const correlationId = this.logSessionFailure(session, { message: 'Error handling WebSocket message', type }, err);
+      this.sendError(client, 'INTERNAL_ERROR', 'Failed to process message', correlationId);
     }
   }
 
@@ -2109,14 +2108,12 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       // log line, so a Redis blip that silently discarded a minute of a consultation's audio
       // was invisible to every dashboard.
       sttGatewayAudioIngestDroppedTotal.inc();
-      this.logger.error({
-        message: 'Error forwarding audio frame',
-        sessionId: session.sessionId,
-        seq,
-        droppedAudioFrames: session.droppedAudioFrames,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      this.sendError(session.client, 'BRIDGE_ERROR', 'Failed to forward audio frame');
+      const correlationId = this.logSessionFailure(
+        session,
+        { message: 'Error forwarding audio frame', seq, droppedAudioFrames: session.droppedAudioFrames },
+        err,
+      );
+      this.sendError(session.client, 'BRIDGE_ERROR', 'Failed to forward audio frame', correlationId);
     });
   }
 
@@ -2482,9 +2479,33 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     }
   }
 
-  private sendError(client: WebSocket, code: string, message: string): void {
+  /**
+   * An `error` frame. `correlationId`, when given, is the id the matching
+   * failure line was logged under — the handle a client quotes to support.
+   */
+  private sendError(client: WebSocket, code: string, message: string, correlationId?: string): void {
     if (client.readyState === client.OPEN) {
-      client.send(JSON.stringify({ type: 'error', code, message }));
+      client.send(JSON.stringify({ type: 'error', code, message, ...(correlationId ? { correlationId } : {}) }));
     }
+  }
+
+  /** One failure line with the session's identity (`logWsFailure`); returns its correlation id. */
+  private logSessionFailure(
+    session: SessionInfo,
+    ctx: Omit<WsFailureContext, 'sessionId' | 'tenantId' | 'userId' | 'clientIp' | 'origin'>,
+    err: unknown,
+  ): string {
+    return logWsFailure(
+      this.logger,
+      {
+        ...ctx,
+        sessionId: session.sessionId,
+        tenantId: session.tenantId,
+        userId: session.userId,
+        clientIp: session.clientIp,
+        origin: session.origin,
+      },
+      err,
+    );
   }
 }

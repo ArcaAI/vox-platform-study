@@ -66,21 +66,38 @@ describe('ConsentExceptionFilter', () => {
     expect(body.code).toBe('DOMAIN.CONSENT_UNAVAILABLE');
   });
 
-  it('logs a genuine denial at debug and an unavailability verdict at error — different alerting posture (R4)', () => {
-    const debugSpy = vi.spyOn((filter as any).logger, 'debug').mockImplementation(() => undefined);
+  it('logs a genuine denial at warn and an unavailability verdict at error — different alerting posture (R4)', () => {
+    const warnSpy = vi.spyOn((filter as any).logger, 'warn').mockImplementation(() => undefined);
     const errorSpy = vi.spyOn((filter as any).logger, 'error').mockImplementation(() => undefined);
 
     filter.catch(
       new ConsentDeniedException('denied', { tenantId: 't-1', externalPatientId: 'p', purpose: 'AI_DOCUMENTATION', reason: 'no_grant' }),
       makeArgumentsHost().host,
     );
-    expect(debugSpy).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy).not.toHaveBeenCalled();
 
     filter.catch(
-      new ConsentUnavailableException('unavailable', { tenantId: 't-1', externalPatientId: 'p', purpose: 'AI_DOCUMENTATION', cause: 'grant_lookup_failed' }),
+      new ConsentUnavailableException('unavailable', {
+        tenantId: 't-1',
+        externalPatientId: 'p',
+        purpose: 'AI_DOCUMENTATION',
+        cause: 'grant_lookup_failed',
+      }),
       makeArgumentsHost().host,
     );
-    expect(errorSpy).toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('never echoes externalPatientId (or a stack) in the client body', () => {
+    const { host, jsonSpy } = makeArgumentsHost();
+    filter.catch(
+      new ConsentDeniedException('denied', { tenantId: 't-1', externalPatientId: 'EXT-9', purpose: 'AI_DOCUMENTATION', reason: 'no_grant' }),
+      host,
+    );
+    const body = jsonSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(JSON.stringify(body)).not.toContain('EXT-9');
+    expect(body).not.toHaveProperty('stack');
+    expect((body.metadata as Record<string, unknown>).reason).toBe('no_grant');
   });
 });

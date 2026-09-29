@@ -22,6 +22,32 @@ import { serviceAccountPolicyRules } from '../services/serviceAccount/service-ac
 // that now owns the primitive (TASK-993 lane J).
 import { resolveAttributedClientIp } from '../common/client-ip';
 
+/**
+ * The gateway writes ONE failure line per failed request, from its terminal
+ * exception filter (`apps/api/src/filters/failure-log.ts`). This guard
+ * therefore does not log its rejections; it attaches the reason to the
+ * exception it throws, under the same global-registry symbol the filter reads
+ * (so neither package imports the other). Non-enumerable: never serialized.
+ */
+const FAILURE_LOG_CONTEXT = Symbol.for('hope.failureLogContext');
+
+function withFailureLog<E>(err: E, ctx: Record<string, unknown>): E {
+  if (err !== null && typeof err === 'object') {
+    const previous = (err as Record<symbol, Record<string, unknown> | undefined>)[FAILURE_LOG_CONTEXT] ?? {};
+    Object.defineProperty(err, FAILURE_LOG_CONTEXT, { value: { ...previous, ...ctx }, enumerable: false, configurable: true, writable: true });
+  }
+  return err;
+}
+
+/** The route TEMPLATE, never the URL (which carries the query string and raw ids). */
+function routeOf(request: { route?: { path?: unknown } } | undefined): string {
+  const path = request?.route?.path;
+  return typeof path === 'string' && path.length > 0 ? path : '<unmatched>';
+}
+
+/** The CLS `credentialClass` key the logger reads. */
+export type CredentialClass = 'jwt' | 'apiKey' | 'serviceAccount' | 'anonymous';
+
 export const API_KEY_REQUIRED_SCOPES = 'apiKeyRequiredScopes';
 
 /**
@@ -397,12 +423,13 @@ export class UnifiedAuthGuard implements CanActivate {
     const isPublic = skipAuth || this.reflector.getAllAndOverride<boolean>('isPublic', [context.getHandler(), context.getClass()]);
 
     if (isPublic) {
+      this.publishIdentity('anonymous');
       return true;
     }
 
     const request = context.switchToHttp().getRequest();
     const method = request?.method;
-    const path = request?.url;
+    const path = routeOf(request);
     const ipAddress = this.getClientIp(request);
 
     const rawApiKey = this.apiKeyService.extractApiKeyFromRequest(request);
@@ -416,8 +443,10 @@ export class UnifiedAuthGuard implements CanActivate {
     // happened to prefer. Checked BEFORE either branch runs, so neither
     // credential is even validated.
     if (rawApiKey && serviceAccountToken) {
-      this.logger.warn({ message: 'Authentication failed', reason: 'multiple_credential_classes_presented', method, path, ip: ipAddress });
-      throw new UnauthorizedException('Present exactly one credential: an API key or a service-account token, not both');
+      throw withFailureLog(new UnauthorizedException('Present exactly one credential: an API key or a service-account token, not both'), {
+        reason: 'multiple_credential_classes_presented',
+        clientIp: ipAddress,
+      });
     }
 
     // Ordered AFTER @Public() and BEFORE the API-key branch.
@@ -426,14 +455,11 @@ export class UnifiedAuthGuard implements CanActivate {
         return await this.handleServiceAccountAuth(context, request, serviceAccountToken, ipAddress, method, path);
       } catch (error) {
         if (error instanceof HttpException) throw error;
-        this.logger.warn({
-          message: 'Service-account authentication error',
-          reason: error instanceof Error ? error.message : String(error),
-          method,
-          path,
-          ip: ipAddress,
+        throw withFailureLog(new UnauthorizedException('Invalid service-account token'), {
+          reason: 'service_account_auth_error',
+          clientIp: ipAddress,
+          error,
         });
-        throw new UnauthorizedException('Invalid service-account token');
       }
     }
 
@@ -442,14 +468,11 @@ export class UnifiedAuthGuard implements CanActivate {
         return await this.handleApiKeyAuth(context, request, rawApiKey, ipAddress, method, path);
       } catch (error) {
         if (error instanceof HttpException) throw error;
-        this.logger.warn({
-          message: 'API key authentication error',
-          reason: error instanceof Error ? error.message : String(error),
-          method,
-          path,
-          ip: ipAddress,
+        throw withFailureLog(new UnauthorizedException('Invalid API key'), {
+          reason: 'api_key_auth_error',
+          clientIp: ipAddress,
+          error,
         });
-        throw new UnauthorizedException('Invalid API key');
       }
     }
 
@@ -468,6 +491,8 @@ export class UnifiedAuthGuard implements CanActivate {
     // clients already mint tickets and no consumer sends `?token=`.
     // Do not reintroduce a query-parameter credential path.
 
+    // Why the JWT path failed, if it did — carried onto the 401 below.
+    let jwtFailure: Record<string, unknown> | undefined;
     if (this.jwtAuthGuard) {
       try {
         const jwtResult = await this.jwtAuthGuard.canActivate(context);
@@ -480,28 +505,23 @@ export class UnifiedAuthGuard implements CanActivate {
           return this.handleJwtPostAuth(context, request, method, path);
         }
       } catch (error) {
-        // Log the underlying failure (was silently swallowed). The
-        // client still receives the generic 401 thrown below; this is purely
-        // server-side diagnostics. Expected auth failures (bad/expired token,
-        // already-consumed stream ticket) are debug noise; anything else is a
-        // real signal worth a warn.
-        const reason = error instanceof Error ? error.message : String(error);
-        if (error instanceof UnauthorizedException) {
-          this.logger.debug({ message: 'JWT/ticket auth failed; falling through to 401', reason, method, path });
-        } else {
-          this.logger.warn({ message: 'Unexpected error during JWT auth', reason, method, path });
-        }
+        // The underlying failure rides the generic 401 below onto the single
+        // failure line (it was once silently swallowed). An expected auth
+        // failure (bad/expired token, already-consumed stream ticket) stays
+        // `debug` — it is the most common line this gateway would otherwise
+        // write; anything else keeps its Error and the default level.
+        const jwtReason = error instanceof Error ? error.message : String(error);
+        jwtFailure =
+          error instanceof UnauthorizedException
+            ? { level: 'debug', reason: 'jwt_rejected', jwtReason }
+            : { reason: 'jwt_auth_error', jwtReason, error };
       }
     }
 
-    this.logger.warn({
-      message: 'Authentication failed',
-      reason: 'no_valid_credentials',
-      method,
-      path,
-      ip: ipAddress,
+    throw withFailureLog(new UnauthorizedException('Authentication required. Provide a valid JWT (Authorization: Bearer) or API key (X-API-Key).'), {
+      ...(jwtFailure ?? { reason: 'no_valid_credentials' }),
+      clientIp: ipAddress,
     });
-    throw new UnauthorizedException('Authentication required. Provide a valid JWT (Authorization: Bearer) or API key (X-API-Key).');
   }
 
   // ─── Service-Account Auth Path ──────────────────────────
@@ -512,6 +532,22 @@ export class UnifiedAuthGuard implements CanActivate {
   // evaluates abilities against the key's BOUND HUMAN; this path evaluates
   // them against the ACCOUNT ITSELF, so a machine's authority is
   // independently grantable and revocable.
+
+  /**
+   * Publish the authenticated identity on the CLS keys the logger reads:
+   * `credentialClass` always, `userId` when a human is behind the credential
+   * (a JWT user, or the user an API key is bound to — never a service account).
+   * Best-effort: a context with no CLS (a WS upgrade) simply publishes nothing.
+   */
+  private publishIdentity(credentialClass: CredentialClass, userId?: string | null): void {
+    try {
+      const cls = this.cls as unknown as { set: (key: string, value: unknown) => void };
+      cls.set('credentialClass', credentialClass);
+      if (userId) cls.set('userId', userId);
+    } catch {
+      // No active CLS context.
+    }
+  }
 
   private extractServiceAccountToken(request: { headers?: Record<string, unknown> } | undefined): string | null {
     const raw = request?.headers?.[SERVICE_ACCOUNT_TOKEN_HEADER];
@@ -532,24 +568,29 @@ export class UnifiedAuthGuard implements CanActivate {
   ): Promise<boolean> {
     if (!this.serviceAccounts) {
       // Nothing can validate the token, so nothing may be trusted. Fail closed.
-      throw new UnauthorizedException('Service-account authentication is not available');
+      throw withFailureLog(new UnauthorizedException('Service-account authentication is not available'), {
+        reason: 'service_account_auth_unavailable',
+      });
     }
 
     // `@ForbidServiceAccount()` is checked BEFORE the token is even resolved:
     // a forbidden route has no scope and no principal that could rescue it.
     const forbidden = this.reflector.getAllAndOverride<boolean>(SERVICE_ACCOUNT_FORBIDDEN, [context.getHandler(), context.getClass()]);
     if (forbidden === true) {
-      this.logger.warn({ message: 'Service account denied', reason: 'forbid_service_account', method, path });
-      throw new ForbiddenException(SERVICE_ACCOUNT_ROUTE_DENIED_MESSAGE);
+      throw withFailureLog(new ForbiddenException(SERVICE_ACCOUNT_ROUTE_DENIED_MESSAGE), { reason: 'forbid_service_account' });
     }
 
     const principal = await this.serviceAccounts.authenticateByToken(token);
     if (!principal) {
-      this.logger.warn({ message: 'Service-account authentication failed', reason: 'unknown_or_expired_token', method, path, ip: ipAddress });
-      throw new UnauthorizedException('Invalid or expired service-account token');
+      throw withFailureLog(new UnauthorizedException('Invalid or expired service-account token'), {
+        reason: 'unknown_or_expired_token',
+        clientIp: ipAddress,
+      });
     }
 
-    this.enforceServiceAccountScopes(context, principal, method, path);
+    this.publishIdentity('serviceAccount');
+
+    this.enforceServiceAccountScopes(context, principal);
 
     // The principal goes on its OWN CLS key. Never on `user`: every
     // `requestUser?.id` read in the codebase — including
@@ -564,7 +605,7 @@ export class UnifiedAuthGuard implements CanActivate {
     }
     request['serviceAccount'] = principal;
 
-    await this.enforceServiceAccountAbilities(context, principal, method, path);
+    await this.enforceServiceAccountAbilities(context, principal);
 
     this.logger.debug({
       message: 'Service account authenticated',
@@ -572,7 +613,7 @@ export class UnifiedAuthGuard implements CanActivate {
       clientId: principal.clientId,
       tenantId: principal.workingTenantId,
       method,
-      path,
+      route: path,
     });
 
     return true;
@@ -584,24 +625,23 @@ export class UnifiedAuthGuard implements CanActivate {
    * `@RequiredSvcScopes(...)`. No declaration means "not a service-account
    * surface", and the request is refused rather than falling through to CASL.
    */
-  private enforceServiceAccountScopes(context: ExecutionContext, principal: ServiceAccountPrincipalLike, method: string, path: string): void {
+  private enforceServiceAccountScopes(context: ExecutionContext, principal: ServiceAccountPrincipalLike): void {
     const required = this.reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [context.getHandler(), context.getClass()]);
 
     if (!required || required.length === 0) {
-      this.logger.warn({ message: 'Service account denied', reason: 'no_svc_scopes_declared', serviceAccountId: principal.id, method, path });
-      throw new ForbiddenException(SERVICE_ACCOUNT_ROUTE_DENIED_MESSAGE);
+      throw withFailureLog(new ForbiddenException(SERVICE_ACCOUNT_ROUTE_DENIED_MESSAGE), {
+        reason: 'no_svc_scopes_declared',
+        serviceAccountId: principal.id,
+      });
     }
 
     if (!required.some((scope) => this.serviceAccounts!.hasScope(principal, scope))) {
-      this.logger.warn({
-        message: 'Service account scope insufficient',
+      throw withFailureLog(new ForbiddenException(`Service account does not have required scope(s): ${required.join(', ')}`), {
+        reason: 'svc_scope_insufficient',
         serviceAccountId: principal.id,
         requiredScopes: required,
         heldScopes: principal.scopes,
-        method,
-        path,
       });
-      throw new ForbiddenException(`Service account does not have required scope(s): ${required.join(', ')}`);
     }
   }
 
@@ -612,12 +652,7 @@ export class UnifiedAuthGuard implements CanActivate {
    * a human. A held scope NEVER substitutes for a missing ability and vice
    * versa, in both directions.
    */
-  private async enforceServiceAccountAbilities(
-    context: ExecutionContext,
-    principal: ServiceAccountPrincipalLike,
-    method: string,
-    path: string,
-  ): Promise<void> {
+  private async enforceServiceAccountAbilities(context: ExecutionContext, principal: ServiceAccountPrincipalLike): Promise<void> {
     const required = this.reflector.getAllAndOverride<RequiredPermission[]>(REQUIRED_PERMISSIONS_KEY, [context.getHandler(), context.getClass()]);
     if (!required || required.length === 0) {
       return;
@@ -629,28 +664,23 @@ export class UnifiedAuthGuard implements CanActivate {
     try {
       ability = this.policyEngine.buildAbilityFromRules(serviceAccountPolicyRules(principal.scopes));
     } catch (error) {
-      this.logger.error({
-        message: 'Service-account ability build failed',
+      // An infrastructure failure answered as 403: logged at `error`, with the Error.
+      throw withFailureLog(new ForbiddenException('Authorization failed'), {
+        level: 'error',
+        reason: 'service_account_ability_build_failed',
         serviceAccountId: principal.id,
-        method,
-        path,
-        error: error instanceof Error ? error.message : String(error),
+        error,
       });
-      throw new ForbiddenException('Authorization failed');
     }
 
     const verdict = evaluatePermissions(ability, required, mode);
     if (!verdict.allowed) {
-      this.logger.warn({
-        message: 'Access denied',
+      throw withFailureLog(new ForbiddenException(verdict.message), {
         reason: 'service_account_lacks_permission',
         serviceAccountId: principal.id,
-        method,
-        path,
         mode,
         deniedPermissions: verdict.missing,
       });
-      throw new ForbiddenException(verdict.message);
     }
   }
 
@@ -666,20 +696,29 @@ export class UnifiedAuthGuard implements CanActivate {
     path: string,
   ): Promise<boolean> {
     const apiKeyEntity = await this.apiKeyService.authenticateByRawKey(rawApiKey, ipAddress);
+    this.publishIdentity('apiKey', apiKeyEntity.userId);
 
     this.enforceApiKeyNotForbidden(context);
 
     if (apiKeyEntity.rateLimit && apiKeyEntity.rateLimit > 0 && this.rateLimiter) {
       const result = await this.rateLimiter.checkRateLimit(apiKeyEntity.id, apiKeyEntity.tenantId, apiKeyEntity.rateLimit);
       if (!result.allowed) {
-        throw new HttpException(
+        throw withFailureLog(
+          new HttpException(
+            {
+              statusCode: 429,
+              message: 'Rate limit exceeded',
+              remaining: result.remaining,
+              resetAt: result.resetAt,
+            },
+            429,
+          ),
           {
-            statusCode: 429,
-            message: 'Rate limit exceeded',
-            remaining: result.remaining,
-            resetAt: result.resetAt,
+            limiter: 'apiKey',
+            apiKeyId: apiKeyEntity.id,
+            limit: result.limit,
+            retryAfter: Math.max(1, Math.ceil((new Date(result.resetAt).getTime() - Date.now()) / 1000)),
           },
-          429,
         );
       }
     }
@@ -698,7 +737,7 @@ export class UnifiedAuthGuard implements CanActivate {
       this.cls.set('tenantId', apiKeyEntity.tenantId);
     }
 
-    await this.enforceApiKeyAbilities(context, request, apiKeyEntity, method, path);
+    await this.enforceApiKeyAbilities(context, request, apiKeyEntity);
 
     this.logger.debug({
       message: 'API key authenticated',
@@ -706,7 +745,7 @@ export class UnifiedAuthGuard implements CanActivate {
       keyName: apiKeyEntity.keyName,
       tenantId: apiKeyEntity.tenantId,
       method,
-      path,
+      route: path,
     });
 
     return true;
@@ -721,8 +760,7 @@ export class UnifiedAuthGuard implements CanActivate {
   private enforceApiKeyNotForbidden(context: ExecutionContext): void {
     const forbidden = this.reflector.getAllAndOverride<boolean>(API_KEY_FORBIDDEN, [context.getHandler(), context.getClass()]);
     if (forbidden === true) {
-      this.logger.warn({ message: 'API key denied', reason: 'forbid_api_key' });
-      throw new ForbiddenException(API_KEY_ROUTE_DENIED_MESSAGE);
+      throw withFailureLog(new ForbiddenException(API_KEY_ROUTE_DENIED_MESSAGE), { reason: 'forbid_api_key' });
     }
   }
 
@@ -750,25 +788,23 @@ export class UnifiedAuthGuard implements CanActivate {
     const requiredScopes = this.reflector.getAllAndOverride<string[]>(API_KEY_REQUIRED_SCOPES, [context.getHandler(), context.getClass()]);
 
     if (!requiredScopes || requiredScopes.length === 0) {
-      this.logger.warn({
-        message: 'API key denied',
+      throw withFailureLog(new ForbiddenException(API_KEY_ROUTE_DENIED_MESSAGE), {
         reason: 'no_scopes_declared',
-        keyId: apiKeyEntity?.id,
+        apiKeyId: apiKeyEntity?.id,
         tenantId: apiKeyEntity?.tenantId,
       });
-      throw new ForbiddenException(API_KEY_ROUTE_DENIED_MESSAGE);
     }
 
     const hasRequiredScope = requiredScopes.some((scope) => this.apiKeyService.hasScope(apiKeyEntity, scope));
 
     if (!hasRequiredScope) {
-      this.logger.warn({
-        message: 'API key scope insufficient',
-        keyId: apiKeyEntity.id,
+      throw withFailureLog(new ForbiddenException(`API key does not have required scope(s): ${requiredScopes.join(', ')}`), {
+        reason: 'api_key_scope_insufficient',
+        apiKeyId: apiKeyEntity.id,
+        tenantId: apiKeyEntity.tenantId,
         requiredScopes,
         keyScopes: apiKeyEntity.scopes,
       });
-      throw new ForbiddenException(`API key does not have required scope(s): ${requiredScopes.join(', ')}`);
     }
   }
 
@@ -804,8 +840,6 @@ export class UnifiedAuthGuard implements CanActivate {
     request: any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ApiKeyEntity is consumed structurally here; matches this file's existing apiKeyEntity: any convention.
     apiKeyEntity: any,
-    method: string,
-    path: string,
   ): Promise<void> {
     const required = this.reflector.getAllAndOverride<RequiredPermission[]>(REQUIRED_PERMISSIONS_KEY, [context.getHandler(), context.getClass()]);
 
@@ -814,14 +848,13 @@ export class UnifiedAuthGuard implements CanActivate {
     }
 
     if (!apiKeyEntity?.userId) {
-      this.logger.warn({
-        message: 'API key denied',
-        reason: 'key_not_linked_to_user',
-        keyId: apiKeyEntity?.id,
-        method,
-        path,
-      });
-      throw new ForbiddenException('This API key is not linked to a user, so the permissions this route requires cannot be evaluated');
+      throw withFailureLog(
+        new ForbiddenException('This API key is not linked to a user, so the permissions this route requires cannot be evaluated'),
+        {
+          reason: 'key_not_linked_to_user',
+          apiKeyId: apiKeyEntity?.id,
+        },
+      );
     }
 
     const mode = this.reflector.getAllAndOverride<PermissionMode>(PERMISSION_MODE_KEY, [context.getHandler(), context.getClass()]) || 'AND';
@@ -834,30 +867,23 @@ export class UnifiedAuthGuard implements CanActivate {
         params: request?.params,
       });
     } catch (error) {
-      this.logger.error({
-        message: 'Ability build failed',
-        keyId: apiKeyEntity.id,
-        userId: apiKeyEntity.userId,
-        method,
-        path,
-        error: error instanceof Error ? error.message : String(error),
+      // An infrastructure failure answered as 403: logged at `error`, with the Error.
+      throw withFailureLog(new ForbiddenException('Authorization failed'), {
+        level: 'error',
+        reason: 'ability_build_failed',
+        apiKeyId: apiKeyEntity.id,
+        error,
       });
-      throw new ForbiddenException('Authorization failed');
     }
 
     const verdict = evaluatePermissions(ability, required, mode);
     if (!verdict.allowed) {
-      this.logger.warn({
-        message: 'Access denied',
+      throw withFailureLog(new ForbiddenException(verdict.message), {
         reason: 'api_key_principal_lacks_permission',
-        keyId: apiKeyEntity.id,
-        userId: apiKeyEntity.userId,
-        method,
-        path,
+        apiKeyId: apiKeyEntity.id,
         mode,
         deniedPermissions: verdict.missing,
       });
-      throw new ForbiddenException(verdict.message);
     }
   }
 
@@ -868,6 +894,7 @@ export class UnifiedAuthGuard implements CanActivate {
     const user = request.user || this.cls.get('user');
 
     if (user) {
+      this.publishIdentity('jwt', user.id);
       if (!this.cls.get('user')) {
         this.cls.set('user', user);
       }
@@ -883,7 +910,7 @@ export class UnifiedAuthGuard implements CanActivate {
     }
 
     if (!user) {
-      throw new ForbiddenException('Authentication required');
+      throw withFailureLog(new ForbiddenException('Authentication required'), { reason: 'no_user_on_request' });
     }
 
     const mode = this.reflector.getAllAndOverride<PermissionMode>(PERMISSION_MODE_KEY, [context.getHandler(), context.getClass()]) || 'AND';
@@ -896,14 +923,12 @@ export class UnifiedAuthGuard implements CanActivate {
         params: request.params,
       });
     } catch (error) {
-      this.logger.error({
-        message: 'Ability build failed',
-        userId: user.id,
-        method,
-        path,
-        error: error instanceof Error ? error.message : String(error),
+      // An infrastructure failure answered as 403: logged at `error`, with the Error.
+      throw withFailureLog(new ForbiddenException('Authorization failed'), {
+        level: 'error',
+        reason: 'ability_build_failed',
+        error,
       });
-      throw new ForbiddenException('Authorization failed');
     }
 
     request.ability = ability;
@@ -922,31 +947,25 @@ export class UnifiedAuthGuard implements CanActivate {
     if (verdict.allowed && enforcedDenials.length > 0) {
       const denied = enforcedDenials.map((d) => `${d.action}:${d.subject}`).join(', ');
       for (const d of enforcedDenials) {
-        this.policyEngine.recordEnforceDenial(d.action, d.subject, { method, path });
+        this.policyEngine.recordEnforceDenial(d.action, d.subject, { method, route: path });
       }
-      this.logger.warn({
-        message: 'Access denied by enforced CASL conditions',
-        userId: user.id,
-        method,
-        path,
-        deniedPermissions: denied,
-      });
       // A PRIVILEGE denial (403) — the caller may act on this resource TYPE
       // but not on THIS row. Cross-tenant reads stay 404 via
       // `@TenantOwnedResource`; this is a different boundary.
-      throw new ForbiddenException(`Missing permissions: ${denied}`);
+      throw withFailureLog(new ForbiddenException(`Missing permissions: ${denied}`), {
+        reason: 'casl_conditions_denied',
+        route: path,
+        deniedPermissions: denied,
+      });
     }
 
     if (!verdict.allowed) {
-      this.logger.warn({
-        message: 'Access denied',
-        userId: user.id,
-        method,
-        path,
+      throw withFailureLog(new ForbiddenException(verdict.message), {
+        reason: 'missing_permissions',
+        route: path,
         mode,
         deniedPermissions: verdict.missing,
       });
-      throw new ForbiddenException(verdict.message);
     }
 
     return true;
@@ -1042,10 +1061,10 @@ export class UnifiedAuthGuard implements CanActivate {
               action: permission.action,
               subject: permission.subject,
               method,
-              path,
+              route: path,
             });
             if (verdict.diverged) {
-              this.policyEngine.recordShadowDivergence(permission.action, permission.subject, verdict, { method, path });
+              this.policyEngine.recordShadowDivergence(permission.action, permission.subject, verdict, { method, route: path });
             }
             continue;
           }
@@ -1061,7 +1080,7 @@ export class UnifiedAuthGuard implements CanActivate {
         }
 
         if (verdict.diverged) {
-          this.policyEngine.recordShadowDivergence(permission.action, permission.subject, verdict, { method, path });
+          this.policyEngine.recordShadowDivergence(permission.action, permission.subject, verdict, { method, route: path });
         }
       } catch (error) {
         // Shadow-mode failures are diagnostics-only and must never affect
@@ -1071,7 +1090,7 @@ export class UnifiedAuthGuard implements CanActivate {
           action: permission.action,
           subject: permission.subject,
           method,
-          path,
+          route: path,
           error: error instanceof Error ? error.message : String(error),
         });
       }

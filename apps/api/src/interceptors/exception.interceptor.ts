@@ -5,10 +5,13 @@ import {
   BaseException,
   ConsentDeniedException,
   ConsentUnavailableException,
+  DatabaseConnectionException,
+  DataConflictException,
   DataNotFoundException,
   InvalidStateTransitionException,
   OptimisticConcurrencyException,
   ProviderCredentialVetoedException,
+  QueryFailedException,
   QuotaExceededException,
   SpendLimitExceededException,
 } from '@arcaai/exceptions';
@@ -17,6 +20,7 @@ import { ClsService } from 'nestjs-cls';
 import { Observable, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
+import { consentClientBody } from '../filters/consent.filter';
 import {
   DOWNSTREAM_RETRY_AFTER_SECONDS,
   buildDownstreamErrorBody,
@@ -26,8 +30,18 @@ import {
   downstreamStatusFor,
 } from '../filters/downstream-error';
 import { VALIDATION_ERROR_CODE, httpCodeForStatus, toUnifiedErrorBody } from '../filters/error-envelope';
+import { attachFailureLogContext, readFailureLogContext, type FailureLogContext } from '../filters/failure-log';
 import { optimisticLockConflictTotal, routeLabel } from '../observability/metrics';
 
+/**
+ * Maps every error a handler throws onto the gateway's HTTP contract.
+ *
+ * It MAPS; it does not log the failure. Each branch attaches what it knows
+ * (the original error, the domain metadata, the Prisma code) to the exception
+ * it rethrows, and the terminal filter that writes the response writes the
+ * request's single failure line with it (`filters/failure-log.ts`). Logging
+ * here as well is what used to produce two or three lines per failed request.
+ */
 @Injectable()
 export class ExceptionInterceptor implements NestInterceptor {
   private readonly logger = new Logger(ExceptionInterceptor.name);
@@ -39,114 +53,52 @@ export class ExceptionInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
     let requestId: string | undefined;
-    let userId: string | undefined;
-    let tenantId: string | undefined;
     try {
       requestId = this.clsService.getId();
-      userId = this.clsService.get('user')?.id;
-      tenantId = this.clsService.get('tenantId');
     } catch {
       // CLS context unavailable (e.g. /metrics served outside CLS middleware)
     }
 
     return next.handle().pipe(
       catchError((err) => {
-        const errorType = err?.constructor?.name || typeof err;
-        const method = request?.method;
         const path = request?.url;
-
-        // Build base context for all error logs
-        const baseContext = {
-          requestId,
-          userId,
-          tenantId,
-          method,
-          path,
-        };
+        const mapped = <T>(exception: T, ctx: FailureLogContext): Observable<never> => throwError(() => attachFailureLogContext(exception, ctx));
 
         if (err instanceof PrismaClientKnownRequestError) {
-          // The full Prisma error detail (code + meta + raw message) stays
-          // in the server-side log so SREs can debug, but the public
-          // response body collapses to {statusCode, error, correlationId}
-          // only — Prisma's meta and raw message leak column names,
-          // constraint names, and row ids.
-          this.logger.error({
-            message: 'Prisma database error',
-            ...baseContext,
-            errorCode: err.code,
-            errorMeta: err.meta,
-            errorMessage: err.message,
-            stack: err.stack,
-          });
-
           // Map Prisma codes to RFC-correct HTTP statuses at the interceptor
           // — the single registered handler for Prisma errors (there is no
-          // separate Prisma exception filter; removed the
-          // unwired, dead `PrismaClientExceptionFilter` in favor of this
-          // one mechanism) — so clients can distinguish a duplicate (409)
-          // from a missing row (404) from a generic validation failure
-          // (400). Sanitisation is preserved: only the label changes per
-          // code; `err.meta` and raw `err.message` never reach the client.
-          const { status, label, code } = mapPrismaCodeToHttp(err.code);
-          return throwError(
-            () =>
-              new HttpException(
-                {
-                  statusCode: status,
-                  code,
-                  // The label is the ONLY text that reaches the client. It is a
-                  // fixed string from the table below — never `err.message` and
-                  // never `err.meta`, both of which leak column names,
-                  // constraint names and row ids.
-                  message: label,
-                  error: label,
-                  correlationId: requestId,
-                },
-                status,
-              ),
-          );
+          // separate Prisma exception filter; the unwired, dead
+          // `PrismaClientExceptionFilter` was removed in favor of this one
+          // mechanism) — so clients can distinguish a duplicate (409) from a
+          // missing row (404) from a generic validation failure (400).
+          // Sanitisation is preserved: only the label changes per code;
+          // `err.meta` and raw `err.message` never reach the client, and the
+          // log carries the code, the model and the FIRST line of the message
+          // with the query invocation block removed — never the query itself.
+          const { status, label, code, known } = mapPrismaCodeToHttp(err.code);
+          return mapped(prismaHttpException(status, code, label, requestId), {
+            ...prismaLogFields(err),
+            // An unmapped code is a server-side failure however it is answered.
+            ...(known ? {} : { level: 'error' as const }),
+          });
         }
 
         if (err instanceof PrismaClientValidationError) {
-          this.logger.error({
-            message: 'Prisma validation error',
-            ...baseContext,
-            validationMessage: err.message,
-            stack: err.stack,
+          // Same sanitisation: no Prisma message in the public body. The client
+          // gets a 400, but a malformed query is OUR bug, so the line is `error`.
+          return mapped(prismaHttpException(HttpStatus.BAD_REQUEST, PRISMA_QUERY_INVALID_CODE, 'Bad Request', requestId), {
+            ...prismaLogFields(err),
+            level: 'error',
           });
-
-          // Same sanitisation: no Prisma message in the public body.
-          return throwError(
-            () =>
-              new HttpException(
-                {
-                  statusCode: HttpStatus.BAD_REQUEST,
-                  code: PRISMA_QUERY_INVALID_CODE,
-                  // Fixed string; the Prisma validation message never reaches
-                  // the client (it echoes the generated query).
-                  message: 'Bad Request',
-                  error: 'Bad Request',
-                  correlationId: requestId,
-                },
-                HttpStatus.BAD_REQUEST,
-              ),
-          );
         }
 
         if (err.status >= 400 && err.status < 500) {
-          // Client errors - log at debug level
-          this.logger.debug({
-            message: 'Client error',
-            ...baseContext,
-            status: err.status,
-            errorType,
-          });
-
           const isClassValidatorError = Array.isArray(err?.response?.message) && typeof err?.response?.error === 'string' && err.status === 400;
 
           // Transforming class-validator errors to a different format
           if (isClassValidatorError) {
             const subErrors: string[] = err?.response?.message;
+            const violations = readFailureLogContext(err);
             err = new BadRequestException({
               ...new ApiErrorResponse({
                 statusCode: err.status,
@@ -162,6 +114,9 @@ export class ExceptionInterceptor implements NestInterceptor {
               code: VALIDATION_ERROR_CODE,
               details: subErrors,
             });
+            // The pipe's structured `violations` (property + constraint names)
+            // ride on to the failure line; the messages above stay client-only.
+            if (violations) attachFailureLogContext(err, violations);
           }
         }
 
@@ -173,17 +128,7 @@ export class ExceptionInterceptor implements NestInterceptor {
         // `metadata: { expectedVersion, currentVersion }` — both consumed by
         // the SDK's conflict handler and the UI's conflict modal.
         if (err instanceof OptimisticConcurrencyException) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const metadata = err.metadata as { expectedVersion?: number; currentVersion?: number } | undefined;
-          this.logger.debug({
-            message: 'Optimistic concurrency conflict',
-            ...baseContext,
-            correlationId: err.correlationId,
-            model: err.model,
-            entityId: err.entityId,
-            expectedVersion: metadata?.expectedVersion,
-            currentVersion: metadata?.currentVersion,
-          });
 
           // Increment the OCC conflict counter BEFORE rethrowing as 412.
           // Model + route labels are bounded
@@ -199,9 +144,13 @@ export class ExceptionInterceptor implements NestInterceptor {
             });
           }
 
-          return throwError(
-            () => new HttpException(unifiedDomainBody(err, HttpStatus.PRECONDITION_FAILED, requestId), HttpStatus.PRECONDITION_FAILED),
-          );
+          return mapped(new HttpException(unifiedDomainBody(err, HttpStatus.PRECONDITION_FAILED, requestId), HttpStatus.PRECONDITION_FAILED), {
+            error: err,
+            model: err.model,
+            entityId: err.entityId,
+            expectedVersion: metadata?.expectedVersion,
+            currentVersion: metadata?.currentVersion,
+          });
         }
 
         // `DataNotFoundException` (thrown by `Repository<T>.findById` and
@@ -216,13 +165,35 @@ export class ExceptionInterceptor implements NestInterceptor {
         // generic `BaseException` branch (which OCC also pre-empts for
         // the same reason).
         if (err instanceof DataNotFoundException) {
-          this.logger.debug({
-            message: 'DataNotFoundException — passing through to global filter',
-            ...baseContext,
-            correlationId: err.correlationId,
-            exceptionMessage: err.message,
-          });
           return throwError(() => err);
+        }
+
+        // Persistence exceptions raised by non-repository code. Each keeps the
+        // status and body its raw-Prisma equivalent gets above, so the class a
+        // caller happened to wrap an error in never changes the HTTP contract.
+        // MUST run before the generic `BaseException` branch, which would
+        // otherwise answer all three with a 500.
+        if (err instanceof DataConflictException) {
+          const { status, label, code } = mapPrismaCodeToHttp('P2002');
+          return mapped(prismaHttpException(status, code, label, requestId), persistenceLogFields(err));
+        }
+
+        if (err instanceof DatabaseConnectionException) {
+          setRetryAfter(response);
+          const status = HttpStatus.SERVICE_UNAVAILABLE;
+          return mapped(
+            new HttpException({ statusCode: status, code: err.code, message: 'Service temporarily unavailable', correlationId: requestId }, status),
+            persistenceLogFields(err),
+          );
+        }
+
+        if (err instanceof QueryFailedException) {
+          const causeCode = (err.cause as { code?: unknown } | undefined)?.code;
+          const { status, label, code, known } = mapPrismaCodeToHttp(typeof causeCode === 'string' ? causeCode : '');
+          return mapped(prismaHttpException(status, code, label, requestId), {
+            ...persistenceLogFields(err),
+            ...(known ? {} : { level: 'error' as const }),
+          });
         }
 
         // Entitlements quota blocks map to precise client statuses instead of
@@ -235,14 +206,7 @@ export class ExceptionInterceptor implements NestInterceptor {
         if (err instanceof QuotaExceededException) {
           const capability = (err.metadata as { capability?: string } | undefined)?.capability;
           const status = mapQuotaCapabilityToHttp(capability);
-          this.logger.debug({
-            message: 'Entitlements quota block',
-            ...baseContext,
-            correlationId: err.correlationId,
-            capability,
-            status,
-          });
-          return throwError(() => new HttpException(unifiedDomainBody(err, status, requestId), status));
+          return mapped(new HttpException(unifiedDomainBody(err, status, requestId), status), { error: err, capability });
         }
 
         // The caller's OWN tenant forbids this provider: its
@@ -255,13 +219,10 @@ export class ExceptionInterceptor implements NestInterceptor {
         // `metadata: { service, provider, tenantId }`). MUST run before the
         // generic BaseException branch, like the others.
         if (err instanceof ProviderCredentialVetoedException) {
-          this.logger.debug({
-            message: 'Provider credential vetoed by tenant configuration',
-            ...baseContext,
-            correlationId: err.correlationId,
+          return mapped(new HttpException(unifiedDomainBody(err, HttpStatus.CONFLICT, requestId), HttpStatus.CONFLICT), {
+            error: err,
             metadata: err.metadata,
           });
-          return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.CONFLICT, requestId), HttpStatus.CONFLICT));
         }
 
         // Consent & ABAC. `assertConsent` denied the call — no
@@ -270,18 +231,16 @@ export class ExceptionInterceptor implements NestInterceptor {
         // cross-tenant posture (a cross-tenant externalPatientId is a 404
         // from the caller's own lookup path, never reaching this branch).
         // Wired live: `PatientConsentGuard` (apps/api/src/guards/) throws
-        // this on every route carrying `@RequiresConsent(...)`. Body is
-        // `err.toJSON()` (`code: 'DOMAIN.CONSENT_DENIED'` +
-        // `metadata: { tenantId, externalPatientId, purpose, reason, grantId? }`).
+        // this on every route carrying `@RequiresConsent(...)`. Body is the
+        // same `consentClientBody` the consent filter writes — `toJSON()`
+        // minus the patient identifier. The metadata (externalPatientId
+        // included, hashed by the logger) rides the failure line.
         // MUST run before the generic BaseException branch, like the others.
         if (err instanceof ConsentDeniedException) {
-          this.logger.debug({
-            message: 'Consent denied',
-            ...baseContext,
-            correlationId: err.correlationId,
-            metadata: err.metadata,
+          return mapped(new HttpException(consentClientBody(err, HttpStatus.FORBIDDEN, requestId), HttpStatus.FORBIDDEN), {
+            error: err,
+            ...((err.metadata ?? {}) as Record<string, unknown>),
           });
-          return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.FORBIDDEN, requestId), HttpStatus.FORBIDDEN));
         }
 
         // Consent & ABAC, R4. `assertConsent` could NOT determine
@@ -293,15 +252,10 @@ export class ExceptionInterceptor implements NestInterceptor {
         // gateway hiccup read as a compliance event (or vice versa) in
         // alerting. MUST run before the generic BaseException branch.
         if (err instanceof ConsentUnavailableException) {
-          this.logger.error({
-            message: 'Consent could not be determined — grant lookup failed',
-            ...baseContext,
-            correlationId: err.correlationId,
-            metadata: err.metadata,
+          return mapped(new HttpException(consentClientBody(err, HttpStatus.SERVICE_UNAVAILABLE, requestId), HttpStatus.SERVICE_UNAVAILABLE), {
+            error: err,
+            ...((err.metadata ?? {}) as Record<string, unknown>),
           });
-          return throwError(
-            () => new HttpException(unifiedDomainBody(err, HttpStatus.SERVICE_UNAVAILABLE, requestId), HttpStatus.SERVICE_UNAVAILABLE),
-          );
         }
 
         // The tenant hit its optional monthly SPEND limit (D12).
@@ -311,12 +265,9 @@ export class ExceptionInterceptor implements NestInterceptor {
         // `metadata: { tenantId, period, spendLimitMicros, overageSpendMicros }`).
         // MUST run before the generic BaseException branch, like the others.
         if (err instanceof SpendLimitExceededException) {
-          this.logger.debug({
-            message: 'Spend-limit block',
-            ...baseContext,
-            correlationId: err.correlationId,
+          return mapped(new HttpException(unifiedDomainBody(err, HttpStatus.PAYMENT_REQUIRED, requestId), HttpStatus.PAYMENT_REQUIRED), {
+            error: err,
           });
-          return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.PAYMENT_REQUIRED, requestId), HttpStatus.PAYMENT_REQUIRED));
         }
 
         // Services signal invalid input with
@@ -329,13 +280,7 @@ export class ExceptionInterceptor implements NestInterceptor {
         // the OCC/quota branches' shape. MUST run before the generic
         // BaseException branch for the same ordering reason they do.
         if (err instanceof ArgumentInvalidException) {
-          this.logger.debug({
-            message: 'Invalid argument',
-            ...baseContext,
-            correlationId: err.correlationId,
-            errorMessage: err.message,
-          });
-          return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.BAD_REQUEST, requestId), HttpStatus.BAD_REQUEST));
+          return mapped(new HttpException(unifiedDomainBody(err, HttpStatus.BAD_REQUEST, requestId), HttpStatus.BAD_REQUEST), { error: err });
         }
 
         // TASK-992 — an aggregate's state machine refused a transition because
@@ -358,28 +303,19 @@ export class ExceptionInterceptor implements NestInterceptor {
         // OCC / quota / consent branches: it extends BaseException, so the
         // generic branch would otherwise claim it and answer 500 again.
         if (err instanceof InvalidStateTransitionException) {
-          this.logger.debug({
-            message: 'Invalid state transition',
-            ...baseContext,
-            correlationId: err.correlationId,
+          return mapped(new HttpException(unifiedDomainBody(err, HttpStatus.CONFLICT, requestId), HttpStatus.CONFLICT), {
+            error: err,
             metadata: err.metadata,
           });
-          return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.CONFLICT, requestId), HttpStatus.CONFLICT));
         }
 
+        // Anything else from the domain is an unexpected server failure: 500,
+        // logged at `error` with the original exception (its cause chain
+        // intact) — while the client body carries neither `cause` nor `stack`.
         if (err instanceof BaseException) {
-          this.logger.warn({
-            message: 'Application exception',
-            ...baseContext,
-            correlationId: err.correlationId,
-            exceptionType: err.constructor.name,
-            errorMessage: err.message,
-            stack: err.stack,
+          return mapped(new HttpException(unifiedDomainBody(err, HttpStatus.INTERNAL_SERVER_ERROR, requestId), HttpStatus.INTERNAL_SERVER_ERROR), {
+            error: err,
           });
-
-          return throwError(
-            () => new HttpException(unifiedDomainBody(err, HttpStatus.INTERNAL_SERVER_ERROR, requestId), HttpStatus.INTERNAL_SERVER_ERROR),
-          );
         }
 
         // a failed call to a downstream Python service (text, stt,
@@ -405,25 +341,21 @@ export class ExceptionInterceptor implements NestInterceptor {
             const status = downstreamStatusFor(kind, err?.response?.status);
             const capability = capabilityForPath(path);
 
-            // The operator half of the contract: host, port, errno, upstream
-            // status and the whole cause fan-out, keyed by the SAME
-            // correlationId the client is handed below. Never the upstream
-            // response body — it can echo the assembled clinical prompt.
-            this.logger.error({
-              message: 'Downstream service call failed',
-              ...baseContext,
-              correlationId: requestId,
-              downstreamFailureKind: kind,
-              capability,
-              status,
-              ...describeCauseForOperator(err),
-            });
-
             if (status === HttpStatus.SERVICE_UNAVAILABLE) {
               setRetryAfter(response);
             }
 
-            return throwError(() => new HttpException(buildDownstreamErrorBody({ status, capability, correlationId: requestId }), status));
+            // The operator half of the contract: host, port, errno, upstream
+            // status and the whole cause fan-out, keyed by the SAME
+            // correlationId the client is handed. Never the upstream response
+            // body — it can echo the assembled clinical prompt — and never the
+            // client error object itself, whose request config carries headers.
+            return mapped(new HttpException(buildDownstreamErrorBody({ status, capability, correlationId: requestId }), status), {
+              errorName: err?.name ?? err?.constructor?.name,
+              downstreamFailureKind: kind,
+              capability,
+              ...describeCauseForOperator(err),
+            });
           }
         }
 
@@ -436,7 +368,7 @@ export class ExceptionInterceptor implements NestInterceptor {
         }
 
         // Ensure correlationId is set
-        if (!err.correlationId) {
+        if (err && typeof err === 'object' && !err.correlationId) {
           err.correlationId = requestId;
         }
 
@@ -448,7 +380,7 @@ export class ExceptionInterceptor implements NestInterceptor {
         // HttpException — `AiInferenceClient.toHttpError`, which deliberately
         // redacts PHI-bearing upstream bodies down to a plain string — had its
         // honest 503/4xx rewritten into an opaque 500.
-        if (err.response !== null && typeof err.response === 'object') {
+        if (err?.response !== null && typeof err?.response === 'object') {
           err.response.correlationId = err.correlationId;
           // H-2: every body leaving the gateway carries a machine-readable
           // `code`. Plain `HttpException`s (a guard's 401, a service's
@@ -460,19 +392,10 @@ export class ExceptionInterceptor implements NestInterceptor {
           }
         }
 
-        // Log unexpected errors
-        if (!err.status || err.status >= 500) {
-          this.logger.error({
-            message: 'Unexpected server error',
-            ...baseContext,
-            status: err.status || 500,
-            errorType,
-            errorMessage: err.message,
-            stack: err.stack,
-          });
-        }
-
-        return throwError(err);
+        // Unmapped HttpExceptions go on to the envelope filter; anything else
+        // (a TypeError, a raw Error) to the catch-all filter. Either one writes
+        // the failure line.
+        return throwError(() => err);
       }),
     );
   }
@@ -539,13 +462,86 @@ export const PRISMA_QUERY_INVALID_CODE = 'PERSISTENCE.QUERY_INVALID';
  * every field `toJSON()` already produced is preserved verbatim.
  */
 function unifiedDomainBody(err: BaseException, status: HttpStatus, correlationId?: string): Record<string, unknown> {
-  return toUnifiedErrorBody(err.toJSON() as unknown as Record<string, unknown>, { status, correlationId });
+  // `stack` and `cause` are server-side detail: they go to the failure line,
+  // never into a client body, in any environment.
+  const { stack: _stack, cause: _cause, ...json } = err.toJSON() as unknown as Record<string, unknown>;
+  return toUnifiedErrorBody(json, { status, correlationId });
 }
 
-function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string; code: string } {
+/** The sanitised client body every Prisma-derived failure gets: a fixed label, never `err.message` / `err.meta`. */
+function prismaHttpException(status: HttpStatus, code: string, label: string, correlationId: string | undefined): HttpException {
+  return new HttpException(
+    {
+      statusCode: status,
+      code,
+      // The label is the ONLY text that reaches the client. It is a fixed
+      // string from the table below — never `err.message` and never
+      // `err.meta`, both of which leak column names, constraint names and
+      // row ids.
+      message: label,
+      error: label,
+      correlationId,
+    },
+    status,
+  );
+}
+
+const PRISMA_MESSAGE_MAX = 200;
+
+/**
+ * The first meaningful line of a Prisma error message, capped at 200 chars,
+ * with the "Invalid `prisma.x.y()` invocation" block removed. That block
+ * reprints the query — `where` values, `data` payloads — and a query is where
+ * patient identifiers live. What survives is the trailing summary line
+ * ("Unique constraint failed on the fields: (`email`)").
+ */
+export function sanitizePrismaMessage(message: unknown): string {
+  let text = typeof message === 'string' ? message : '';
+  const invocation = text.search(/Invalid `prisma\./);
+  if (invocation >= 0) {
+    const paragraphs = text.slice(invocation).split(/\n\s*\n/);
+    text = paragraphs.length > 1 ? paragraphs[paragraphs.length - 1] : '';
+  }
+  const first = text
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return (first ?? '').slice(0, PRISMA_MESSAGE_MAX);
+}
+
+/**
+ * Log fields for a Prisma error. The error OBJECT is deliberately withheld
+ * (named, not passed): its message and stack embed the invocation block.
+ */
+function prismaLogFields(err: unknown): FailureLogContext {
+  const e = err as { name?: string; code?: unknown; meta?: { modelName?: unknown; target?: unknown }; message?: unknown } | undefined;
+  return {
+    errorName: e?.name ?? 'PrismaError',
+    prismaCode: typeof e?.code === 'string' ? e.code : undefined,
+    modelName: e?.meta?.modelName,
+    target: e?.meta?.target,
+    prismaMessage: sanitizePrismaMessage(e?.message),
+  };
+}
+
+/** Log fields for a persistence exception: its own name/message, and its Prisma cause the sanitised way. */
+function persistenceLogFields(err: BaseException): FailureLogContext {
+  const cause = prismaLogFields(err.cause);
+  return {
+    errorName: err.name,
+    errorMessage: err.message,
+    causeName: err.cause ? cause.errorName : undefined,
+    prismaCode: cause.prismaCode,
+    modelName: cause.modelName,
+    target: cause.target,
+    prismaMessage: err.cause ? cause.prismaMessage : undefined,
+  };
+}
+
+function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string; code: string; known: boolean } {
   switch (code) {
     case 'P2002':
-      return { status: HttpStatus.CONFLICT, label: 'Unique constraint violation', code: 'PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION' };
+      return { status: HttpStatus.CONFLICT, label: 'Unique constraint violation', code: 'PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION', known: true };
     // NOT structurally dead. `Repository.updateWithVersion`
     // (the OCC path most PATCH routes use) issues `updateMany`, which never
     // throws P2025 on zero matched rows — and most services `findById` first,
@@ -559,13 +555,13 @@ function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string;
     // the row before this write lands. Kept as defense-in-depth for that
     // race window, not deleted.
     case 'P2025':
-      return { status: HttpStatus.NOT_FOUND, label: 'Not found', code: 'PERSISTENCE.RECORD_NOT_FOUND' };
+      return { status: HttpStatus.NOT_FOUND, label: 'Not found', code: 'PERSISTENCE.RECORD_NOT_FOUND', known: true };
     case 'P2003':
-      return { status: HttpStatus.BAD_REQUEST, label: 'Foreign key constraint violation', code: 'PERSISTENCE.FOREIGN_KEY_VIOLATION' };
+      return { status: HttpStatus.BAD_REQUEST, label: 'Foreign key constraint violation', code: 'PERSISTENCE.FOREIGN_KEY_VIOLATION', known: true };
     case 'P2014':
-      return { status: HttpStatus.BAD_REQUEST, label: 'Required relation violation', code: 'PERSISTENCE.REQUIRED_RELATION_VIOLATION' };
+      return { status: HttpStatus.BAD_REQUEST, label: 'Required relation violation', code: 'PERSISTENCE.REQUIRED_RELATION_VIOLATION', known: true };
     default:
-      return { status: HttpStatus.BAD_REQUEST, label: 'Bad Request', code: PRISMA_QUERY_INVALID_CODE };
+      return { status: HttpStatus.BAD_REQUEST, label: 'Bad Request', code: PRISMA_QUERY_INVALID_CODE, known: false };
   }
 }
 

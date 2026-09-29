@@ -208,6 +208,48 @@ describe('OriginTenantBindingGuard (many-to-many)', () => {
       }
     });
 
+    it('a binding violation writes no line of its own; origin and tenant ride the 404', () => {
+      const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_B }), registry);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const warnSpy = vi.spyOn((guard as any).logger, 'warn').mockImplementation(() => undefined);
+
+      let caught: unknown;
+      try {
+        guard.canActivate(createContext({ origin: 'https://a.example' }));
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(NotFoundException);
+      expect((caught as Record<symbol, unknown>)[Symbol.for('hope.failureLogContext')]).toMatchObject({
+        reason: 'origin_tenant_binding_violation',
+        origin: 'https://a.example',
+        requestTenantId: TENANT_B,
+      });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('an unregistered origin logs the route template, never the URL with its query string', () => {
+      const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_A }), registry);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const warnSpy = vi.spyOn((guard as any).logger, 'warn').mockImplementation(() => undefined);
+      const request = {
+        headers: { origin: 'https://unknown.example' },
+        url: '/api/v1/items/1?secret=hunter2',
+        route: { path: '/api/v1/items/:id' },
+        method: 'GET',
+      };
+      const context = {
+        getType: () => 'http',
+        switchToHttp: () => ({ getRequest: () => request }),
+        getHandler: () => 'handlerRef',
+        getClass: () => 'classRef',
+      } as unknown as ExecutionContext;
+
+      expect(guard.canActivate(context)).toBe(true);
+      expect(warnSpy).toHaveBeenCalledWith(expect.objectContaining({ route: '/api/v1/items/:id' }));
+      expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('hunter2');
+    });
+
     it('resolves the tenant from the CLS user when `tenantId` is not set directly', () => {
       const guard = new OriginTenantBindingGuard(createCls({ user: { tenantId: TENANT_B } }), registry);
 

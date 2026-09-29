@@ -51,14 +51,17 @@ describe('ContextInterceptor', () => {
       interceptor = new ContextInterceptor(mockClsService);
     });
 
-    it('should set correlationId in CLS context', async () => {
+    it('reads the request id from CLS and never writes its own correlationId', async () => {
       const context = createMockContext();
       const handler = createMockHandler();
 
       const result$ = interceptor.intercept(context, handler);
       await firstValueFrom(result$);
 
-      expect(mockClsService.set).toHaveBeenCalledWith('correlationId', expect.any(String));
+      // The CLS middleware (`request-id.ts`) owns the id and the CLS
+      // `correlationId` key; this interceptor only aliases it.
+      expect(context.switchToHttp().getRequest().requestId).toBe('test-request-id');
+      expect(mockClsService.set).not.toHaveBeenCalledWith('correlationId', expect.anything());
     });
 
     it('should set requestIp in CLS context', async () => {
@@ -71,27 +74,17 @@ describe('ContextInterceptor', () => {
       expect(mockClsService.set).toHaveBeenCalledWith('requestIp', '10.0.0.1');
     });
 
-    it('logs the per-field reasons of a validation 400 on the "Request failed" line', async () => {
+    it('writes NO failure line of its own — the terminal exception filter owns it', async () => {
       const errorSpy = vi.spyOn(interceptor['logger'], 'error');
-      const reasons = ['taskType must be one of the following values: TEXT_GENERATION, ...'];
-      const handler: CallHandler = {
-        handle: () => throwError(() => new BadRequestException({ statusCode: 400, message: 'Validation error', subErrors: reasons })),
-      };
-
-      await expect(firstValueFrom(interceptor.intercept(createMockContext({ method: 'POST' }), handler))).rejects.toThrow();
-
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Request failed', statusCode: 400, validationErrors: reasons }),
-      );
-    });
-
-    it('omits validationErrors when the failure carries none', async () => {
-      const errorSpy = vi.spyOn(interceptor['logger'], 'error');
+      const warnSpy = vi.spyOn(interceptor['logger'], 'warn');
+      const logSpy = vi.spyOn(interceptor['logger'], 'log');
       const handler: CallHandler = { handle: () => throwError(() => new BadRequestException('nope')) };
 
       await expect(firstValueFrom(interceptor.intercept(createMockContext(), handler))).rejects.toThrow();
 
-      expect(errorSpy.mock.calls[0][0]).not.toHaveProperty('validationErrors');
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalledWith(expect.objectContaining({ message: 'Request completed' }));
     });
 
     it('should pass through the handler response', async () => {
@@ -534,15 +527,12 @@ describe('ContextInterceptor', () => {
   });
 
   /**
-   * requestId must come from the `x-request-id` header, never from the
-   * client-controlled JSON body — reading `request?.body?.requestId` would
-   * let any client pin its own correlation id by simply POSTing
-   * `{ "requestId": "..." }`, polluting CLS / logs and letting two
-   * unrelated requests share a correlation id. The value sources from the
-   * standard header a load balancer / CDN would already set, falling back
-   * to uuidv7().
+   * The id itself is resolved ONCE, by the CLS middleware (`request-id.ts`,
+   * pinned by `__tests__/request-id.test.ts`). The interceptor must neither
+   * re-read the header nor mint its own: it uses whatever the middleware put
+   * on `request.requestId`, else `cls.getId()`.
    */
-  describe('requestId precedence', () => {
+  describe('requestId source', () => {
     beforeEach(async () => {
       vi.clearAllMocks();
       vi.resetModules();
@@ -550,70 +540,22 @@ describe('ContextInterceptor', () => {
       mockClsService = {
         get: vi.fn().mockReturnValue(undefined),
         set: vi.fn(),
-        getId: vi.fn().mockReturnValue('test-request-id'),
+        getId: vi.fn().mockReturnValue('cls-id-1'),
       };
       const { ContextInterceptor } = await import('../context.interceptor');
       interceptor = new ContextInterceptor(mockClsService);
     });
 
-    it('uses the x-request-id header verbatim when present', async () => {
-      const context = createMockContext({
-        headers: { 'x-request-id': 'header-correlation-id-123' },
-      });
-      const handler = createMockHandler();
-
-      const result$ = interceptor.intercept(context, handler);
-      await firstValueFrom(result$);
-
-      const request = context.switchToHttp().getRequest();
-      expect(request.requestId).toBe('header-correlation-id-123');
-      expect(mockClsService.set).toHaveBeenCalledWith('correlationId', 'header-correlation-id-123');
+    it('keeps the alias the CLS middleware already set', async () => {
+      const context = createMockContext({ requestId: 'middleware-id', headers: { 'x-request-id': 'other' } });
+      await firstValueFrom(interceptor.intercept(context, createMockHandler()));
+      expect(context.switchToHttp().getRequest().requestId).toBe('middleware-id');
     });
 
-    it('IGNORES request.body.requestId (no longer client-controlled)', async () => {
-      const context = createMockContext({
-        body: { requestId: 'attacker-controlled-id' },
-      });
-      const handler = createMockHandler();
-
-      const result$ = interceptor.intercept(context, handler);
-      await firstValueFrom(result$);
-
-      const request = context.switchToHttp().getRequest();
-      expect(request.requestId).not.toBe('attacker-controlled-id');
-      const correlationIdCalls = mockClsService.set.mock.calls.filter((call: unknown[]) => call[0] === 'correlationId');
-      expect(correlationIdCalls).toHaveLength(1);
-      expect(correlationIdCalls[0][1]).not.toBe('attacker-controlled-id');
-    });
-
-    it('prefers the x-request-id header over the body field even when both are set', async () => {
-      const context = createMockContext({
-        headers: { 'x-request-id': 'header-wins' },
-        body: { requestId: 'body-loses' },
-      });
-      const handler = createMockHandler();
-
-      const result$ = interceptor.intercept(context, handler);
-      await firstValueFrom(result$);
-
-      const request = context.switchToHttp().getRequest();
-      expect(request.requestId).toBe('header-wins');
-    });
-
-    it('falls back to a generated uuidv7 when neither header nor body is set', async () => {
-      const context = createMockContext({ headers: {}, body: {} });
-      const handler = createMockHandler();
-
-      const result$ = interceptor.intercept(context, handler);
-      await firstValueFrom(result$);
-
-      const request = context.switchToHttp().getRequest();
-      // uuidv7 -> 36 chars, dashes at the expected positions, version
-      // nibble '7' at the 15th char (index 14). This pins "generated"
-      // without coupling to a specific value.
-      expect(typeof request.requestId).toBe('string');
-      expect(request.requestId).toHaveLength(36);
-      expect(request.requestId[14]).toBe('7');
+    it('ignores the x-request-id header and the body — cls.getId() is the only fallback', async () => {
+      const context = createMockContext({ headers: { 'x-request-id': 'header-id' }, body: { requestId: 'body-id' } });
+      await firstValueFrom(interceptor.intercept(context, createMockHandler()));
+      expect(context.switchToHttp().getRequest().requestId).toBe('cls-id-1');
     });
   });
 

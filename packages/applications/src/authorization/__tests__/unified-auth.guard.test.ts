@@ -769,46 +769,35 @@ describe('UnifiedAuthGuard', () => {
 
   // ─── 15. Swallowed JWT error is now logged ─────────────
   describe('swallowed-error diagnostics', () => {
-    it('logs a swallowed UnauthorizedException at DEBUG while the client still gets the generic 401', async () => {
+    // The guard no longer writes these lines itself: the reason rides the 401
+    // (`Symbol.for('hope.failureLogContext')`) onto the gateway's single
+    // failure line, written by the terminal exception filter.
+    const contextOf = (err: unknown) => (err as Record<symbol, Record<string, unknown>>)[Symbol.for('hope.failureLogContext')];
+
+    it('marks a swallowed UnauthorizedException for DEBUG while the client still gets the generic 401', async () => {
       const context = createMockContext();
       apiKeyService.extractApiKeyFromRequest.mockReturnValue(null);
       jwtAuthGuard.canActivate.mockRejectedValue(new UnauthorizedException('jwt expired'));
 
-      const debugSpy = vi.spyOn((guard as any).logger, 'debug').mockImplementation(() => undefined);
-      const warnSpy = vi.spyOn((guard as any).logger, 'warn').mockImplementation(() => undefined);
+      const err = await guard.canActivate(context).catch((e) => e);
+      expect(err).toBeInstanceOf(UnauthorizedException);
+      expect((err as Error).message).toBe('Authentication required. Provide a valid JWT (Authorization: Bearer) or API key (X-API-Key).');
 
-      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
-      await expect(guard.canActivate(context)).rejects.toThrow(
-        'Authentication required. Provide a valid JWT (Authorization: Bearer) or API key (X-API-Key).',
-      );
-
-      // The underlying reason is logged (was previously swallowed by `catch {}`).
-      expect(debugSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: 'JWT/ticket auth failed; falling through to 401',
-          reason: 'jwt expired',
-        }),
-      );
-      // An expected auth failure is debug noise — NOT escalated to the
-      // "unexpected error" warn branch.
-      expect(warnSpy).not.toHaveBeenCalledWith(expect.objectContaining({ message: 'Unexpected error during JWT auth' }));
+      // The underlying reason is kept (was previously swallowed by `catch {}`),
+      // and an expected auth failure stays debug noise.
+      expect(contextOf(err)).toMatchObject({ level: 'debug', reason: 'jwt_rejected', jwtReason: 'jwt expired' });
     });
 
-    it('logs an unexpected (non-UnauthorizedException) JWT error at WARN', async () => {
+    it('keeps an unexpected (non-UnauthorizedException) JWT error, with the Error, at the default level', async () => {
       const context = createMockContext();
       apiKeyService.extractApiKeyFromRequest.mockReturnValue(null);
-      jwtAuthGuard.canActivate.mockRejectedValue(new Error('redis down'));
+      const boom = new Error('redis down');
+      jwtAuthGuard.canActivate.mockRejectedValue(boom);
 
-      const warnSpy = vi.spyOn((guard as any).logger, 'warn').mockImplementation(() => undefined);
-
-      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
-
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: 'Unexpected error during JWT auth',
-          reason: 'redis down',
-        }),
-      );
+      const err = await guard.canActivate(context).catch((e) => e);
+      expect(err).toBeInstanceOf(UnauthorizedException);
+      expect(contextOf(err)).toMatchObject({ reason: 'jwt_auth_error', jwtReason: 'redis down', error: boom });
+      expect(contextOf(err).level).toBeUndefined();
     });
   });
 

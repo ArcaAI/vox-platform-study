@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { DataNotFoundException } from '@arcaai/exceptions';
 
 import { httpCodeForStatus } from './error-envelope';
+import { logRequestFailure, requestIdOf, writeErrorBody } from './failure-log';
 
 /**
  * Maps `DataNotFoundException` (thrown by `Repository<T>.findById` /
@@ -54,26 +55,17 @@ export class DataNotFoundExceptionFilter implements ExceptionFilter<DataNotFound
     const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
 
-    // Observability — log the rich exception detail server-side so SOC
-    // can still distinguish enumeration-pattern requests, while the
-    // client gets only the generic body.
-    this.logger.debug({
-      message: 'DataNotFoundException mapped to 404',
-      // The native message carries the model + id; safe to log server-side.
-      exceptionMessage: exception.message,
-      exceptionCode: exception.code,
-      correlationId: exception.correlationId,
-      method: request?.method,
-      path: request?.url,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      requestId: (request as any)?.requestId,
-    });
+    // The single failure line (warn — a 404 is a client outcome). The native
+    // message names the model and id; it stays server-side while the client
+    // gets only the generic body.
+    const code = httpCodeForStatus(HttpStatus.NOT_FOUND);
+    logRequestFailure(this.logger, { request, status: HttpStatus.NOT_FOUND, code, exception });
 
-    response.status(HttpStatus.NOT_FOUND).json({
+    writeErrorBody(response, HttpStatus.NOT_FOUND, {
       statusCode: HttpStatus.NOT_FOUND,
-      code: httpCodeForStatus(HttpStatus.NOT_FOUND),
+      code,
       message: 'Resource not found',
-      correlationId: exception.correlationId ?? (request as unknown as { requestId?: string })?.requestId,
+      correlationId: exception.correlationId ?? requestIdOf(request),
     });
   }
 }
