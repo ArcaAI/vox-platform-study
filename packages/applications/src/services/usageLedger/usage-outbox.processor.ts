@@ -1,6 +1,5 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
-import { ClsService } from 'nestjs-cls';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Job, Queue } from 'bullmq';
 
@@ -29,16 +28,15 @@ import { runJobInContext } from '../baseServices/observability/job-context';
 export class UsageOutboxProcessor extends WorkerHost {
   private readonly logger = new Logger(UsageOutboxProcessor.name);
 
-  constructor(
-    private readonly drainer: UsageOutboxDrainer,
-    @Optional() private readonly cls?: ClsService,
-  ) {
+  constructor(private readonly drainer: UsageOutboxDrainer) {
     super();
   }
 
   async process(job: Job): Promise<DrainReport> {
     this.logger.debug(`Draining usage outbox (job ${job.id})`);
-    return runJobInContext(this.cls, job, () => this.drainer.drainBatch());
+    // Cross-tenant system job: restore the trace but open NO CLS scope. The tenant-scope
+    // extension passes a query through only outside a CLS scope; a tenant-less scope makes it refuse.
+    return runJobInContext(undefined, job, () => this.drainer.drainBatch());
   }
 }
 

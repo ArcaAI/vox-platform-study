@@ -1,5 +1,4 @@
-import { Logger, Optional } from '@nestjs/common';
-import { ClsService } from 'nestjs-cls';
+import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { JobQueue } from '@arcaai/domains';
@@ -17,10 +16,7 @@ import type { ConsultationCompletionTimeoutJob } from './consultation-completion
 export class ConsultationCompletionTimeoutProcessor extends WorkerHost {
   private readonly logger = new Logger(ConsultationCompletionTimeoutProcessor.name);
 
-  constructor(
-    private readonly harnessInternal: HarnessInternalService,
-    @Optional() private readonly cls?: ClsService,
-  ) {
+  constructor(private readonly harnessInternal: HarnessInternalService) {
     super();
   }
 
@@ -30,6 +26,8 @@ export class ConsultationCompletionTimeoutProcessor extends WorkerHost {
       this.logger.error({ message: 'Completion-timeout job without tenantId/consultationId — dropped', jobId: job.id });
       return;
     }
-    await runJobInContext(this.cls, job, () => this.harnessInternal.closeOnCompletionTimeout(consultationId, tenantId));
+    // Cross-tenant system job: restore the trace but open NO CLS scope. The tenant-scope
+    // extension passes a query through only outside a CLS scope; a tenant-less scope makes it refuse.
+    await runJobInContext(undefined, job, () => this.harnessInternal.closeOnCompletionTimeout(consultationId, tenantId));
   }
 }
