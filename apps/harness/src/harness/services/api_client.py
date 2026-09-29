@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from typing import Any, Protocol, cast
 
 import httpx
+from hope_obs import outbound_context_headers
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -412,6 +413,7 @@ class ApiClient:
         # double-writing the WORM audit / draft. Omitted (None) => header absent.
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
+        headers.update(outbound_context_headers())
         return headers
 
     async def _post(

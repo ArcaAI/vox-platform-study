@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
+from hope_obs import outbound_context_headers
 from pydantic import BaseModel, ConfigDict, Field
 
 from harness.core.llm_concurrency import LlmCallTimeout, governed_request
@@ -319,6 +320,7 @@ class TextClient:
         # MANDATORY tenant identity. Unconditional by construction
         # the guard above already rejected a blank value.
         headers["X-Tenant-Id"] = tenant_id.strip()
+        headers.update(outbound_context_headers())
 
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
 

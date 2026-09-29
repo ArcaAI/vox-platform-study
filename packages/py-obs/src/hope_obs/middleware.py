@@ -21,6 +21,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from hope_obs.logging import bind_request_context, clear_request_context, get_logger
+from hope_obs.propagation import valid_request_id
 
 if TYPE_CHECKING:  # pragma: no cover - typing only; never imported at runtime
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -72,12 +73,13 @@ def _header(scope: Scope, name: bytes) -> str | None:
 
 
 class RequestContextMiddleware:
-    """Bind ``request_id`` (and ``tenant_id``, when sent) for one request.
+    """Bind ``requestId`` (and ``tenantId``, when sent) for one request.
 
-    ``request_id`` is the inbound ``X-Request-ID`` or a fresh uuid4, and is
-    echoed on the response so a caller can quote it in a bug report.
+    Binds for ``http`` AND ``websocket`` scopes (a socket's handshake headers
+    carry the same ids). ``requestId`` is the inbound ``X-Request-ID`` when it
+    matches ``[A-Za-z0-9._-]{1,64}``, else a fresh uuid4, and is echoed on the response so a caller can quote it in a bug report.
 
-    ``tenant_id`` is bound ONLY when ``X-Tenant-Id`` is present. Absent is
+    ``tenantId`` is bound ONLY when ``X-Tenant-Id`` is present. Absent is
     absent: this middleware never invents a tenant and never defaults to one
     (``.claude/rules/00-project-context.md`` — a "default tenant" knob is the
     exact failure mode that rule exists to catch). Finding F-07 is that no
@@ -93,11 +95,12 @@ class RequestContextMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        if scope["type"] not in ("http", "websocket"):
             await self.app(scope, receive, send)
             return
 
-        request_id = _header(scope, REQUEST_ID_HEADER) or str(uuid.uuid4())
+        inbound = _header(scope, REQUEST_ID_HEADER)
+        request_id = valid_request_id(inbound) or str(uuid.uuid4())
         tenant_id = _header(scope, TENANT_ID_HEADER)
         raw_request_id = request_id.encode("latin-1")
 
@@ -119,12 +122,14 @@ class RequestContextMiddleware:
                 }
             await send(message)
 
-        context: dict[str, str] = {"request_id": request_id}
+        context: dict[str, str] = {"requestId": request_id}
         if tenant_id:
-            context["tenant_id"] = tenant_id
+            context["tenantId"] = tenant_id
 
         bind_request_context(**context)
         try:
+            # A websocket has no `http.response.start`; the handshake ids stay
+            # bound for the life of the connection and nothing is echoed.
             await self.app(scope, receive, send_with_header)
         finally:
             clear_request_context()
@@ -140,7 +145,7 @@ class AccessLogMiddleware:
     one (``apps/text/src/text/api/middleware/logging.py``).
 
     Install it INSIDE ``RequestContextMiddleware`` so every line it writes
-    already carries ``request_id`` and ``tenant_id``.
+    already carries ``requestId`` and ``tenantId``.
 
     ``exclude_paths`` (TASK-985 M-44) skips ALL logging — ``request.start``,
     ``request.complete`` AND ``request.failed`` — for an exact ``scope["path"]``
@@ -192,17 +197,15 @@ class AccessLogMiddleware:
         try:
             await self.app(scope, receive, send_and_log)
         except Exception as exc:
-            # `error` carries the exception's STRING form, which for a handler
-            # that formatted clinical content into its message would be PHI.
-            # Services raise exceptions with PHI-free messages; the type is the
-            # part that is always safe, and the only part the collector's
-            # allow-list would let through on a span anyway.
+            # Never `str(exc)`: a handler that formatted clinical content into
+            # its message would put PHI on the line. The type is always safe and
+            # `exc_info` renders the stack (frames, not values).
             logger.error(
                 "request.failed",
                 method=method,
                 path=path,
                 duration_ms=elapsed_ms(),
                 error_type=type(exc).__name__,
-                error=str(exc),
+                exc_info=True,
             )
             raise

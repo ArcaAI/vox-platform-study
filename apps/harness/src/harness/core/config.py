@@ -710,22 +710,6 @@ class Settings(BaseSettings):
         """
         return self.service_token
 
-    @property
-    def otel_tracing_enabled(self) -> bool:
-        """The pre-TASK-987 gate: the master switch AND a configured collector endpoint.
-
-        ``otel_enabled`` alone is not enough — flipping it on with no endpoint
-        set must stay a no-op (never require a reachable collector to
-        start). ``temporal/client.py`` still reads this property for its
-        ``TracingInterceptor`` wiring, deliberately left untouched by TASK-987.
-        The FastAPI app and the worker no longer do: since TASK-987, both build
-        their ``hope_obs.ObservabilityConfig`` from ``otel_exporter_endpoint``
-        directly (endpoint presence alone is the enable signal — R-2), with
-        ``otel_enabled=False`` honoured for one release as a deprecated VETO —
-        see ``core/observability.py::build_observability_config``.
-        """
-        return self.otel_enabled and bool(self.otel_exporter_endpoint)
-
     # Observability — traces. Prometheus metrics + the
     # trajectory spine cover most of the observability need, but neither one
     # replaces distributed tracing across FastAPI request handling and the
@@ -736,7 +720,7 @@ class Settings(BaseSettings):
     #
     # Default OFF and requires an explicit endpoint (not just the flag) — a
     # bare ``HARNESS_OTEL_ENABLED=true`` with no collector configured must not
-    # change startup behaviour. See ``otel_tracing_enabled`` below.
+    # change startup behaviour (`core/observability.py::build_observability_config`).
     otel_enabled: bool = False
     otel_exporter_endpoint: str = ""
     otel_service_name: str = "harness"

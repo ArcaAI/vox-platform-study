@@ -216,22 +216,14 @@ class TransformerTokenClassifier(TokenClassifier):
                 device=self._device,
             )
 
-        except Exception as e:
-            print(f"Error in token classification: {str(e)}")
-            # tokens = text.split()
-            # labels = ["O"] * len(tokens)
-            # confidences = [0.0] * len(tokens)
-            entities = []
-
-            return TokenClassificationResponse(
-                # tokens=tokens,
-                # labels=labels,
-                # confidences=confidences,
-                entities=entities,
-                inference_ms=round(timing.elapsed_ms) if timing is not None else 0,
-                device=self._device,
-                model_version=self.version,
-            )
+        except Exception as exc:
+            # Never an empty success: a caller cannot tell "no entities found"
+            # from "the model failed", and a clinical note built on the latter
+            # silently drops every entity. Raise; the endpoint maps it to a
+            # generic 5xx. `error_type` only in the fields, the traceback via
+            # `exc_info` (never `str(exc)` — the request text is PHI).
+            logger.exception("nlp.token_classification_failed", error_type=type(exc).__name__)
+            raise
 
     def _record_usage_metrics(self, entities: list[Entity]) -> None:
         """Entities-by-type (dual OTel+Prometheus write via

@@ -49,12 +49,17 @@ writeup of each):
   `docker build` could tell. See ``test_dockerfile_copies_py_obs`` and
   ``test_pyproject_declares_hope_obs`` /
   ``test_conftest_names_hope_obs_in_source_tree_guard``.
-* **F-19** — harness's Temporal client still gates its ``TracingInterceptor``
-  on the pre-R-2 ``otel_enabled AND bool(otel_exporter_endpoint)`` form, a
-  documented, NOT-fixed-here follow-up. This file asserts the general
-  anti-pattern is absent everywhere ELSE, and separately *pins* F-19's known
-  instance so a silent fix (or a silent new instance elsewhere) both go red
-  — see ``test_f19_known_exception_still_has_its_documented_shape``.
+* **F-19** — harness's Temporal client used to gate its ``TracingInterceptor`` on
+  the pre-R-2 ``otel_enabled AND bool(otel_exporter_endpoint)`` form. It now reads
+  the same ``build_observability_config(...).tracing_enabled`` as the tracer
+  provider (TASK-1015), so the AND-gate is gone and the general anti-pattern
+  assertion below has no exemption — see
+  ``test_no_paired_otel_enable_gates_anywhere``.
+* **Request-context keys** — ``hope_obs`` binds ``requestId``/``tenantId``
+  (camelCase, like ``traceId``) and emits the snake_case names as aliases for one
+  release. A service that reads the snake_case key back out of the bound
+  contextvars breaks the day the aliases go — see
+  ``test_no_service_reads_snake_case_request_context_keys``.
 
 Deliberate, single, NAMED exception: ``apps/nlp`` keeps its own OTel
 ``MeterProvider`` (seven live instruments; ``hope_obs`` has no metrics path by
@@ -124,16 +129,6 @@ _HOPE_OBS_SOURCE_OVERRIDES: dict[str, dict[str, object]] = {
 #: how someone silences this gate. Any addition needs the same orchestrator
 #: decision nlp's did.
 _METER_PROVIDER_EXCEPTIONS: frozenset[str] = frozenset({"nlp"})
-
-#: F-19's known, deliberately-not-fixed-here instance (see module docstring
-#: and `docs/implementation/TASK-987-Python-Logging-And-Tracing-Standard/README.md`
-#: finding F-19). `test_no_paired_otel_enable_gates_outside_known_exception`
-#: excludes exactly this (file, function) pair; the sibling test
-#: `test_f19_known_exception_still_has_its_documented_shape` pins that it is
-#: still there, so a fix removes BOTH the exclusion and that pin, never one
-#: silently.
-_F19_EXCEPTION_FILE = "apps/harness/src/harness/core/config.py"
-_F19_EXCEPTION_FUNC = "otel_tracing_enabled"
 
 _ENABLED_WORD_RE = re.compile(r"enabled", re.IGNORECASE)
 _ENDPOINT_WORD_RE = re.compile(r"endpoint|otlp", re.IGNORECASE)
@@ -630,60 +625,45 @@ def _rel(path: Path) -> str:
     return path.relative_to(REPO_ROOT).as_posix()
 
 
-def test_no_paired_otel_enable_gates_outside_known_exception() -> None:
+def test_no_paired_otel_enable_gates_anywhere() -> None:
     """F-01/F-02/F-19: no service's export decision may depend on TWO
     independently-settable variables (an `*_enabled` flag ANDed with an
     endpoint/otlp expression). Under R-2, endpoint presence alone is the
     enable signal; a deprecated flag may only VETO (`if not flag: endpoint =
     None`, letting `configure_observability` still run and no-op), never be
-    a co-equal, required-true condition.
-
-    F-19 (harness's `otel_tracing_enabled` property, still read by
-    `temporal/client.py`) is the one documented, deliberately-not-fixed-here
-    exception — see `test_f19_known_exception_still_has_its_documented_shape`,
-    which pins that it still exists so a silent fix does not just widen this
-    exclusion forever.
+    a co-equal, required-true condition. There is no exemption: harness's
+    Temporal client (the last instance, F-19) reads the same gate as the tracer.
     """
     violations: list[str] = []
     for svc in SERVICES:
         for path, lineno, func_name, expr in _find_paired_gate_boolops(svc):
-            if _rel(path) == _F19_EXCEPTION_FILE and func_name == _F19_EXCEPTION_FUNC:
-                continue
             violations.append(f"{_rel(path)}:{lineno} in `{func_name}()`: `{expr}`")
 
     assert violations == [], (
         "F-01/F-02/F-19: found an OTel export-enable decision that ANDs an '*_enabled' flag "
-        "with an endpoint/otlp expression, outside the one documented F-19 exception "
-        f"({_F19_EXCEPTION_FILE}::{_F19_EXCEPTION_FUNC}). Under R-2 this makes export silently "
+        "with an endpoint/otlp expression. Under R-2 this makes export silently "
         "depend on the flag being true, exactly the failure mode F-01/F-02 documented:\n"
         + "\n".join(violations)
     )
 
 
-def test_f19_known_exception_still_has_its_documented_shape() -> None:
-    """F-19 (documented follow-up, deliberately NOT fixed by this ticket):
-    harness's `otel_tracing_enabled` property still gates
-    `temporal/client.py`'s `TracingInterceptor` on the pre-R-2 AND-form
-    (`otel_enabled and bool(otel_exporter_endpoint)`), while the FastAPI app
-    and worker correctly read `otel_exporter_endpoint` directly.
-
-    This test does not license the pattern generally — the sibling test
-    above fails on any OTHER instance of it. It exists so that the day
-    someone fixes F-19 (or renames/moves the property), THIS assertion goes
-    red and forces them to also update the exclusion above and the README's
-    F-19 status, rather than the exclusion quietly outliving the bug it was
-    carved out for.
-    """
-    hits = _find_paired_gate_boolops("harness")
-    matching = [
-        hit for hit in hits if _rel(hit[0]) == _F19_EXCEPTION_FILE and hit[2] == _F19_EXCEPTION_FUNC
-    ]
-    assert matching, (
-        f"F-19: expected {_F19_EXCEPTION_FILE}::{_F19_EXCEPTION_FUNC} to still contain the "
-        "documented `otel_enabled and bool(otel_exporter_endpoint)` AND-gate, and it no longer "
-        "does. If F-19 was fixed: remove its exclusion from "
-        "`test_no_paired_otel_enable_gates_outside_known_exception`, delete this test, and "
-        "update the README's F-19 entry to 'fixed'."
+def test_no_service_reads_snake_case_request_context_keys() -> None:
+    """The bound context is camelCase (`requestId`, `tenantId`); the snake_case names
+    are log-line aliases that go away after one release. Reading them back out of
+    `structlog.contextvars.get_contextvars()` would silently return nothing then."""
+    offenders: list[str] = []
+    for svc in SERVICES:
+        for path in _service_src_root(svc).rglob("*.py"):
+            if "tests" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "get_contextvars" not in text:
+                continue
+            if re.search(r"""\[?\.?(?:get\()?\s*["'](?:request_id|tenant_id)["']""", text):
+                offenders.append(_rel(path))
+    assert offenders == [], (
+        "read the camelCase keys ('requestId'/'tenantId') from the bound contextvars: "
+        + ", ".join(offenders)
     )
 
 

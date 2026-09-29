@@ -88,7 +88,7 @@ class TestRequestIDMiddleware:
 
     @pytest.mark.asyncio
     async def test_request_id_bound_to_structlog(self, app):
-        """During request processing, structlog contextvars contains request_id."""
+        """During request processing, structlog contextvars contains requestId."""
         captured_ctx: dict = {}
 
         @app.get("/api/v1/_test_ctx")
@@ -101,7 +101,7 @@ class TestRequestIDMiddleware:
             resp = await c.get("/api/v1/_test_ctx", headers={"X-Request-ID": "ctx-test-id"})
 
         assert resp.status_code == 200
-        assert captured_ctx.get("request_id") == "ctx-test-id"
+        assert captured_ctx.get("requestId") == "ctx-test-id"
 
     @pytest.mark.asyncio
     async def test_request_id_cleared_after_request(self, app):

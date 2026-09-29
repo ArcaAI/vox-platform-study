@@ -228,7 +228,7 @@ async def _run_judge(
     provider_name = request_body.provider
     model = request_body.model
     ctx = structlog.contextvars.get_contextvars()
-    request_id = ctx.get("request_id")
+    request_id = ctx.get("requestId")
 
     # Rebuilt as a GenerateRequest because that is the provider-adapter contract
     # (`LLMProvider.generate`). `retry_config` is pinned to zero retries: the

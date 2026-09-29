@@ -57,8 +57,8 @@ class TestRequestContextMiddleware:
         scope = _scope([(b"x-request-id", b"req-42"), (b"x-tenant-id", b"tenant-7")])
         asyncio.run(middleware(scope, _receive, _collect([])))
 
-        assert seen["request_id"] == "req-42"
-        assert seen["tenant_id"] == "tenant-7"
+        assert seen["requestId"] == "req-42"
+        assert seen["tenantId"] == "tenant-7"
 
     def test_generates_a_uuid4_when_no_header_is_sent(self) -> None:
         seen: dict[str, Any] = {}
@@ -69,8 +69,8 @@ class TestRequestContextMiddleware:
 
         asyncio.run(RequestContextMiddleware(app)(_scope(), _receive, _collect([])))
 
-        assert _UUID4.match(seen["request_id"])
-        uuid.UUID(seen["request_id"])
+        assert _UUID4.match(seen["requestId"])
+        uuid.UUID(seen["requestId"])
 
     def test_tenant_id_is_absent_when_the_header_is_absent(self) -> None:
         """Never invent a tenant; absent is absent (00-project-context.md)."""
@@ -82,7 +82,7 @@ class TestRequestContextMiddleware:
 
         asyncio.run(RequestContextMiddleware(app)(_scope(), _receive, _collect([])))
 
-        assert "tenant_id" not in seen
+        assert "tenantId" not in seen
 
     def test_echoes_exactly_one_request_id_header(self) -> None:
         sent: list[dict[str, Any]] = []
@@ -128,7 +128,7 @@ class TestRequestContextMiddleware:
 
     def test_clears_contextvars_on_the_exception_path(self) -> None:
         async def app(scope: dict, receive: Any, send: Any) -> None:
-            assert structlog.contextvars.get_contextvars()["request_id"] == "req-42"
+            assert structlog.contextvars.get_contextvars()["requestId"] == "req-42"
             raise RuntimeError("boom")
 
         async def run() -> dict[str, Any]:
@@ -148,6 +148,35 @@ class TestRequestContextMiddleware:
             return structlog.contextvars.get_contextvars()
 
         assert asyncio.run(run()) == {}
+
+    def test_websocket_scope_binds_request_and_tenant_from_handshake_headers(self) -> None:
+        seen: dict[str, Any] = {}
+
+        async def app(scope: dict, receive: Any, send: Any) -> None:
+            seen.update(structlog.contextvars.get_contextvars())
+
+        scope = {
+            "type": "websocket",
+            "path": "/ws",
+            "headers": [(b"x-request-id", b"ws-9"), (b"x-tenant-id", b"tenant-3")],
+        }
+        asyncio.run(RequestContextMiddleware(app)(scope, _receive, _collect([])))
+
+        assert seen == {"requestId": "ws-9", "tenantId": "tenant-3"}
+        assert structlog.contextvars.get_contextvars() == {}
+
+    @pytest.mark.parametrize("bad", [b"a b", b"x" * 65, b"a/b", b"<script>"])
+    def test_malformed_inbound_request_id_is_replaced(self, bad: bytes) -> None:
+        seen: dict[str, Any] = {}
+
+        async def app(scope: dict, receive: Any, send: Any) -> None:
+            seen.update(structlog.contextvars.get_contextvars())
+
+        asyncio.run(
+            RequestContextMiddleware(app)(_scope([(b"x-request-id", bad)]), _receive, _collect([]))
+        )
+
+        assert _UUID4.match(seen["requestId"])
 
     def test_non_http_scope_is_passed_through_untouched(self) -> None:
         calls: list[str] = []
@@ -216,6 +245,9 @@ class TestAccessLogMiddleware:
         failed = _lines(stream)[-1]
         assert failed["event"] == "request.failed"
         assert failed["error_type"] == "RuntimeError"
+        assert "error" not in failed
+        assert "boom" not in json.dumps({k: v for k, v in failed.items() if k != "exception"})
+        assert "RuntimeError" in failed["exception"]
         assert isinstance(failed["duration_ms"], (int, float))
 
     def test_non_http_scope_is_passed_through_untouched(self, capture_log_output: Capture) -> None:

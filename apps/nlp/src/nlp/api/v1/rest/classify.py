@@ -48,7 +48,7 @@ def _require_tenant(tenant_id: str | None, task: str, header_tenant: str | None)
     """
     assert_tenant_matches_header(tenant_id, header_tenant)
     if not (tenant_id or "").strip():
-        logger.error(f"nlp.tenant_header.missing task={task}")
+        logger.warning("nlp.tenant_header.missing", task=task)
         raise HTTPException(
             status_code=428,
             detail=(
@@ -87,17 +87,17 @@ async def classify_text(
             # the model-cache pin longer than necessary.
             async with inference_bound:
                 result = await service.process(request)
-            logger.info(f"Text classified with confidence {result.confidence:.3f}")
+            logger.info("nlp.classify.text_done", confidence=round(result.confidence, 3))
             return result
     except ModelUnavailableError as e:
-        logger.error(f"Text classification model load failed: {str(e)}")
+        logger.error("nlp.classify.text_model_unavailable", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(
             status_code=503, detail="Text classification model not available"
         ) from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Text classification failed: {str(e)}")
+        logger.error("nlp.classify.text_failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Text classification failed") from e
 
 
@@ -138,14 +138,18 @@ async def classify_text_multi_label(
             )
             return result
     except ModelUnavailableError as e:
-        logger.error(f"Multi-label classification model load failed: {str(e)}")
+        logger.error(
+            "nlp.classify.multi_label_model_unavailable",
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=503, detail="Text classification model not available"
         ) from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Multi-label classification failed: {str(e)}")
+        logger.error("nlp.classify.multi_label_failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Multi-label classification failed") from e
 
 
@@ -175,26 +179,34 @@ async def classify_tokens(
             # Bound concurrent inference.
             async with inference_bound:
                 result = await service.process(request)
-            logger.info(f"Token classification extracted {len(result.entities)} entities")
+            logger.info("nlp.classify.tokens_done", entity_count=len(result.entities))
             return result
     except ExtractorLabelsUnavailable as e:
         # F14 — the MODEL loaded; the caller-resolved taxonomy it needs did not
         # arrive. Unserviceable, so 503 like every other fail-closed selection
         # gap on this router (`/guard/pii`, `/classify/topic`) — and the cause
         # stays legible instead of surfacing as a 500.
-        logger.error(f"Token classification taxonomy unavailable: {str(e)}")
+        logger.error(
+            "nlp.classify.tokens_taxonomy_unavailable",
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=503, detail="Token classification labels not configured for this model"
         ) from e
     except ModelUnavailableError as e:
-        logger.error(f"Token classification model load failed: {str(e)}")
+        logger.error(
+            "nlp.classify.tokens_model_unavailable",
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=503, detail="Token classification model not available"
         ) from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Token classification failed: {str(e)}")
+        logger.error("nlp.classify.tokens_failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Token classification failed") from e
 
 
@@ -269,12 +281,12 @@ async def classify_topic(
             llm_guardrail_usage=generated.guardrail_usage,
         )
     except ExternalTextUnavailableError as e:
-        logger.error(f"Topic classification upstream (text) unavailable: {str(e)}")
+        logger.error("nlp.classify.topic_upstream_unavailable", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=503, detail="Topic classification is not available") from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Topic classification failed: {str(e)}")
+        logger.error("nlp.classify.topic_failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Topic classification failed") from e
 
 
@@ -320,10 +332,10 @@ async def classify_intent(
             llm_guardrail_usage=generated.guardrail_usage,
         )
     except ExternalTextUnavailableError as e:
-        logger.error(f"Intent classification upstream (text) unavailable: {str(e)}")
+        logger.error("nlp.classify.intent_upstream_unavailable", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=503, detail="Intent classification is not available") from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Intent classification failed: {str(e)}")
+        logger.error("nlp.classify.intent_failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Intent classification failed") from e

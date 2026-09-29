@@ -106,10 +106,23 @@ actually configured in tests.
 
 ### 6. Every line carries its context
 
-`timestamp`, `level`, `logger`, `event`, `service` always; `traceId`, `spanId`, `request_id`,
-`tenant_id` when they exist. `traceId`/`spanId` are **absent**, not `"0"`, outside a span.
-`tenant_id` is bound only when `X-Tenant-Id` is present — the middleware never invents one and never
-defaults to a tenant.
+`timestamp`, `level`, `logger`, `event`, `service` always; `traceId`, `spanId`, `requestId`,
+`tenantId` when they exist. `traceId`/`spanId` are **absent**, not `"0"`, outside a span.
+`tenantId` is bound only when `X-Tenant-Id` is present — the middleware never invents one and never
+defaults to a tenant. `requestId` is the inbound `X-Request-Id` when it matches
+`[A-Za-z0-9._-]{1,64}`, else a fresh uuid4, and is bound for HTTP **and** WebSocket scopes.
+
+Field names are camelCase, matching `traceId`/`spanId` and the gateway's log lines. The former
+snake_case names `request_id` / `tenant_id` are still emitted beside them **for one release** (so
+dashboards and alerts written against them keep matching) and are then removed: query
+`requestId` / `tenantId`, and read the camelCase keys from the bound contextvars. A peer HTTP
+client forwards the id with `outbound_context_headers()` (`from hope_obs import ...`), merged into
+the headers it already builds; `traceparent` is added by the httpx instrumentation.
+
+`RequestValidationError` is handled by `hope_obs` for every FastAPI service: the 422 body is
+`{"detail": [{"loc", "msg", "type"}]}` — FastAPI's default echoes each violation's `input`, which
+here can be a patient identifier — and the `hope.request.validation_failed` warning carries only
+`violations=[{loc, type}]`. `request.failed` logs `error_type` and the traceback, never `str(exc)`.
 
 ### 7. One log path: stdout → Alloy → Loki
 

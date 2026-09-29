@@ -30,6 +30,7 @@ from typing import Any
 
 import numpy as np
 import structlog
+from hope_obs import redact_id
 
 from stt.core.api_client.gateway import APIGatewayClient
 from stt.core.config.settings import get_settings
@@ -5946,23 +5947,20 @@ class SessionManager:
         try:
             await self._redis.hset(TRANSCRIPT_OUTBOX_KEY, idempotency_key, json.dumps(payload))
             logger.error(
-                "stt.transcript.outbox_enqueued — transcript persistence failed "
-                "after inline retries; enqueued to the durable outbox for reaper "
-                "re-drive",
-                session_id=session.session_id,
-                consultation_id=session.consultation_id,
-                idempotency_key=idempotency_key,
-                error=str(last_error),
+                "stt.transcript.outbox_enqueued",
+                session=redact_id(session.session_id),
+                consultation=redact_id(session.consultation_id),
+                idempotency_key=redact_id(idempotency_key),
+                error_type=type(last_error).__name__ if last_error else None,
             )
         except Exception as exc:
             logger.error(
-                "stt.transcript.outbox_enqueue_failed — could not enqueue "
-                "transcript to the durable outbox (DURABLE LOSS RISK)",
-                session_id=session.session_id,
-                consultation_id=session.consultation_id,
-                idempotency_key=idempotency_key,
-                enqueue_error=str(exc),
-                persist_error=str(last_error),
+                "stt.transcript.outbox_enqueue_failed",
+                session=redact_id(session.session_id),
+                consultation=redact_id(session.consultation_id),
+                idempotency_key=redact_id(idempotency_key),
+                enqueue_error_type=type(exc).__name__,
+                persist_error_type=type(last_error).__name__ if last_error else None,
             )
 
     async def _drain_transcript_outbox(self) -> None:
@@ -5990,8 +5988,8 @@ class SessionManager:
                 except (ValueError, TypeError):
                     await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
                     logger.error(
-                        "stt.transcript.outbox_corrupt_drop — dropping unparseable outbox entry",
-                        idempotency_key=field_key,
+                        "stt.transcript.outbox_corrupt_drop",
+                        idempotency_key=redact_id(field_key),
                     )
                     continue
                 lease_expiry = payload.get("lease_expiry", 0)
@@ -6000,8 +5998,8 @@ class SessionManager:
                 await self._redrive_outbox_entry(field_key, payload, now)
         except Exception as exc:
             logger.warning(
-                "stt.transcript.outbox_drain_error — outbox drain scan failed",
-                error=str(exc),
+                "stt.transcript.outbox_drain_error",
+                error_type=type(exc).__name__,
             )
 
     async def _redrive_outbox_entry(
@@ -6025,10 +6023,9 @@ class SessionManager:
             await self._redis.hset(TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload))
         except Exception as exc:
             logger.warning(
-                "stt.transcript.outbox_claim_failed — could not stamp outbox lease; "
-                "leaving entry for the next scan",
-                idempotency_key=idempotency_key,
-                error=str(exc),
+                "stt.transcript.outbox_claim_failed",
+                idempotency_key=redact_id(idempotency_key),
+                error_type=type(exc).__name__,
             )
             return
 
@@ -6056,15 +6053,14 @@ class SessionManager:
             await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
         except Exception as exc:
             logger.warning(
-                "stt.transcript.outbox_ack_delete_failed — transcript persisted but "
-                "outbox entry not removed; a later redrive will dedup server-side",
-                idempotency_key=idempotency_key,
-                error=str(exc),
+                "stt.transcript.outbox_ack_delete_failed",
+                idempotency_key=redact_id(idempotency_key),
+                error_type=type(exc).__name__,
             )
         logger.info(
-            "stt.transcript.outbox_drained — durable transcript persisted from outbox",
-            consultation_id=consultation_id,
-            idempotency_key=idempotency_key,
+            "stt.transcript.outbox_drained",
+            consultation=redact_id(consultation_id),
+            idempotency_key=redact_id(idempotency_key),
             attempts=int(payload.get("attempts", 0)),
         )
 
@@ -6084,14 +6080,17 @@ class SessionManager:
         if self._is_permanent_persist_error(exc):
             try:
                 await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
-            except Exception:
-                pass
+            except Exception as del_exc:
+                logger.debug(
+                    "stt.transcript.outbox_delete_failed",
+                    idempotency_key=redact_id(idempotency_key),
+                    error_type=type(del_exc).__name__,
+                )
             logger.error(
-                "stt.transcript.outbox_permanent_drop — permanent (4xx) error; "
-                "dropping transcript from the outbox",
-                consultation_id=consultation_id,
-                idempotency_key=idempotency_key,
-                error=str(exc),
+                "stt.transcript.outbox_permanent_drop",
+                consultation=redact_id(consultation_id),
+                idempotency_key=redact_id(idempotency_key),
+                error_type=type(exc).__name__,
             )
             return
 
@@ -6099,15 +6098,18 @@ class SessionManager:
         if attempts >= self._transcript_outbox_max_attempts:
             try:
                 await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
-            except Exception:
-                pass
+            except Exception as del_exc:
+                logger.debug(
+                    "stt.transcript.outbox_delete_failed",
+                    idempotency_key=redact_id(idempotency_key),
+                    error_type=type(del_exc).__name__,
+                )
             logger.error(
-                "stt.transcript.outbox_exhausted_drop — transcript dropped after max "
-                "outbox attempts (ALERT: durable transcript lost)",
-                consultation_id=consultation_id,
-                idempotency_key=idempotency_key,
+                "stt.transcript.outbox_exhausted_drop",
+                consultation=redact_id(consultation_id),
+                idempotency_key=redact_id(idempotency_key),
                 attempts=attempts,
-                error=str(exc),
+                error_type=type(exc).__name__,
             )
             return
 
@@ -6119,20 +6121,18 @@ class SessionManager:
         try:
             await self._redis.hset(TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload))
             logger.warning(
-                "stt.transcript.outbox_retry_deferred — transient error; entry "
-                "retained for re-drive on the next reaper scan",
-                consultation_id=consultation_id,
-                idempotency_key=idempotency_key,
+                "stt.transcript.outbox_retry_deferred",
+                consultation=redact_id(consultation_id),
+                idempotency_key=redact_id(idempotency_key),
                 attempts=attempts,
-                error=str(exc),
+                error_type=type(exc).__name__,
             )
         except Exception as re_exc:
             logger.error(
-                "stt.transcript.outbox_reenqueue_failed — could not update outbox "
-                "entry; it remains re-drivable at its prior attempt count",
-                consultation_id=consultation_id,
-                idempotency_key=idempotency_key,
-                error=str(re_exc),
+                "stt.transcript.outbox_reenqueue_failed",
+                consultation=redact_id(consultation_id),
+                idempotency_key=redact_id(idempotency_key),
+                error_type=type(re_exc).__name__,
             )
 
     async def _finalize_session(
