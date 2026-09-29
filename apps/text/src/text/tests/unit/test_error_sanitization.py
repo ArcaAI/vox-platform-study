@@ -142,7 +142,7 @@ class TestStreamingErrorSanitization:
 
         provider.generate_stream = _failing_stream
 
-        req = GenerateRequest(prompt="hi", stream=True)
+        req = GenerateRequest(provider="lm-studio", prompt="hi", stream=True)
         await _run_streaming_generation(tm, provider, "t-stream-1", req)
 
         error_calls = [c for c in tm.append_chunk.call_args_list if c.args[1].type == "error"]
@@ -170,7 +170,7 @@ class TestStreamingErrorSanitization:
 
         provider.generate_stream = _failing_stream
 
-        req = GenerateRequest(prompt="hi", stream=True)
+        req = GenerateRequest(provider="lm-studio", prompt="hi", stream=True)
         await _run_streaming_generation(tm, provider, "t-stream-2", req)
 
         failed_calls = [

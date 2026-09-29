@@ -82,7 +82,7 @@ async def test_blocked_content_rejected_with_422(_client_factory, mock_provider)
     )
     client = await _client_factory(guardrail)
 
-    resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+    resp = await client.post("/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello"})
 
     assert resp.status_code == 422
     body = resp.json()
@@ -98,7 +98,8 @@ async def test_allowed_content_proceeds(_client_factory, mock_provider):
     client = await _client_factory(guardrail)
 
     resp = await client.post(
-        "/api/v1/generate", json={"prompt": "patient note", "model": "test-model"}
+        "/api/v1/generate",
+        json={"provider": "lm-studio", "prompt": "patient note", "model": "test-model"},
     )
 
     assert resp.status_code == 200
@@ -113,7 +114,7 @@ async def test_tenant_id_header_propagated_to_guardrail(_client_factory):
 
     await client.post(
         "/api/v1/generate",
-        json={"prompt": "patient note", "system_prompt": "be careful"},
+        json={"provider": "lm-studio", "prompt": "patient note", "system_prompt": "be careful"},
         headers={"X-Tenant-Id": "tenant-42"},
     )
 
@@ -128,7 +129,9 @@ async def test_tenant_id_header_propagated_to_guardrail(_client_factory):
 async def test_no_guardrail_client_skips_validation(_client_factory, mock_provider):
     client = await _client_factory(None)  # guardrail unwired
 
-    resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "test-model"})
+    resp = await client.post(
+        "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "test-model"}
+    )
 
     assert resp.status_code == 200
     mock_provider.generate.assert_called_once()
@@ -147,7 +150,9 @@ async def test_sustained_outage_returns_503_and_never_generates(_client_factory,
     )
     client = await _client_factory(guardrail)
 
-    resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
+    resp = await client.post(
+        "/api/v1/generate", json={"provider": "lm-studio", "prompt": "patient note", "model": "m"}
+    )
 
     assert resp.status_code == 503
     assert resp.json()["error_code"] == "GUARDRAIL_UNAVAILABLE"
@@ -163,7 +168,9 @@ async def test_missing_allowed_key_fails_closed(_client_factory, mock_provider):
     guardrail.validate = AsyncMock(return_value={"reason": "malformed"})
     client = await _client_factory(guardrail)
 
-    resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
+    resp = await client.post(
+        "/api/v1/generate", json={"provider": "lm-studio", "prompt": "patient note", "model": "m"}
+    )
 
     assert resp.status_code == 422
     assert resp.json()["error_code"] == "CONTENT_BLOCKED"
@@ -183,7 +190,7 @@ async def test_generic_content_block_when_not_specifically_non_medical(
     )
     client = await _client_factory(guardrail)
 
-    resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+    resp = await client.post("/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello"})
 
     assert resp.status_code == 422
     assert resp.json()["error_code"] == "CONTENT_BLOCKED"
@@ -205,7 +212,7 @@ async def test_content_rejection_never_leaks_the_free_text_reasoning(
     )
     client = await _client_factory(guardrail)
 
-    resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+    resp = await client.post("/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello"})
 
     assert resp.status_code == 422
     assert resp.json()["error_code"] == "CONTENT_BLOCKED_NOT_MEDICAL"
@@ -227,7 +234,10 @@ async def test_none_client_with_enforce_posture_fails_closed(
     app.state.guardrail_posture = GuardrailPosture(enabled=True)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
+        resp = await client.post(
+            "/api/v1/generate",
+            json={"provider": "lm-studio", "prompt": "patient note", "model": "m"},
+        )
 
     assert resp.status_code == 503
     assert resp.json()["error_code"] == "GUARDRAIL_UNAVAILABLE"

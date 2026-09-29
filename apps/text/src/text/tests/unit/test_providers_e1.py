@@ -36,7 +36,7 @@ class TestAzurePayloadDefaults:
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        req = GenerateRequest(prompt="hello", model="test-model")
+        req = GenerateRequest(provider="lm-studio", prompt="hello", model="test-model")
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args
@@ -55,7 +55,12 @@ class TestAzurePayloadDefaults:
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
         req = GenerateRequest(
-            prompt="hello", temperature=0.5, max_tokens=8000, top_p=0.8, model="test-model"
+            provider="lm-studio",
+            prompt="hello",
+            temperature=0.5,
+            max_tokens=8000,
+            top_p=0.8,
+            model="test-model",
         )
         await provider.generate(req)
 
@@ -91,6 +96,7 @@ class TestAzureResponseFormat:
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
         req = GenerateRequest(
+            provider="lm-studio",
             prompt="hello",
             response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True),
             model="test-model",
@@ -112,7 +118,7 @@ class TestAzureResponseFormat:
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        req = GenerateRequest(prompt="hello", model="test-model")
+        req = GenerateRequest(provider="lm-studio", prompt="hello", model="test-model")
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
@@ -140,7 +146,7 @@ class TestAzureTokenUsage:
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
         content, _reasoning, stats = await provider.generate(
-            GenerateRequest(prompt="hello", model="test-model")
+            GenerateRequest(provider="lm-studio", prompt="hello", model="test-model")
         )
         assert content == "Summary here"
         assert stats.prompt_tokens == 50
@@ -162,7 +168,7 @@ class TestBedrockPayloadDefaults:
 
     def test_none_hyperparams_get_defaults(self):
         provider = self._make_provider()
-        req = GenerateRequest(prompt="hello", model="test-model")
+        req = GenerateRequest(provider="lm-studio", prompt="hello", model="test-model")
         params = provider._build_converse_params(req)
         assert params["inferenceConfig"]["temperature"] == 0.1
         assert params["inferenceConfig"]["maxTokens"] == 16_384
@@ -171,7 +177,12 @@ class TestBedrockPayloadDefaults:
     def test_explicit_hyperparams_preserved(self):
         provider = self._make_provider()
         req = GenerateRequest(
-            prompt="hello", temperature=0.5, max_tokens=8000, top_p=0.8, model="test-model"
+            provider="lm-studio",
+            prompt="hello",
+            temperature=0.5,
+            max_tokens=8000,
+            top_p=0.8,
+            model="test-model",
         )
         params = provider._build_converse_params(req)
         assert params["inferenceConfig"]["temperature"] == 0.5
@@ -190,7 +201,7 @@ class TestBedrockResponseFormat:
 
     def test_no_response_format_no_tool_config(self):
         provider = self._make_provider()
-        req = GenerateRequest(prompt="hello", model="test-model")
+        req = GenerateRequest(provider="lm-studio", prompt="hello", model="test-model")
         params = provider._build_converse_params(req)
         assert "toolConfig" not in params
 
@@ -202,6 +213,7 @@ class TestBedrockResponseFormat:
             "title": "ClinicalNote",
         }
         req = GenerateRequest(
+            provider="lm-studio",
             prompt="hello",
             response_format=ResponseFormat(type="json_schema", json_schema=schema),
             model="test-model",
@@ -233,7 +245,11 @@ class TestBedrockTokenUsage:
         }
 
         content, _reasoning, stats = await provider.generate(
-            GenerateRequest(prompt="hello", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+            GenerateRequest(
+                provider="lm-studio",
+                prompt="hello",
+                model="anthropic.claude-3-5-haiku-20241022-v1:0",
+            )
         )
         assert content == "Summary"
         assert stats.prompt_tokens == 25
@@ -248,7 +264,11 @@ class TestBedrockTokenUsage:
         }
 
         content, _reasoning, stats = await provider.generate(
-            GenerateRequest(prompt="hello", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+            GenerateRequest(
+                provider="lm-studio",
+                prompt="hello",
+                model="anthropic.claude-3-5-haiku-20241022-v1:0",
+            )
         )
         assert content == "Hi"
         assert stats.prompt_tokens == 0

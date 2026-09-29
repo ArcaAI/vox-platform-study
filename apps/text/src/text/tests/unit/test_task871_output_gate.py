@@ -446,7 +446,9 @@ class TestNonStreamingPath:
     ) -> None:
         client = await client_factory(_guardrail(screen=_unavailable()))
 
-        resp = await client.post("/api/v1/generate", json={"prompt": "note", "model": "m"})
+        resp = await client.post(
+            "/api/v1/generate", json={"provider": "lm-studio", "prompt": "note", "model": "m"}
+        )
 
         assert resp.status_code == 503
         assert resp.json()["error_code"] == "GUARDRAIL_UNAVAILABLE"
@@ -456,7 +458,9 @@ class TestNonStreamingPath:
     async def test_malformed_output_verdict_fails_closed(self, client_factory) -> None:
         client = await client_factory(_guardrail(screen={"reason": "malformed"}))
 
-        resp = await client.post("/api/v1/generate", json={"prompt": "note", "model": "m"})
+        resp = await client.post(
+            "/api/v1/generate", json={"provider": "lm-studio", "prompt": "note", "model": "m"}
+        )
 
         assert resp.status_code == 422
         assert resp.json()["error_code"] == "CONTENT_BLOCKED"
@@ -475,7 +479,10 @@ class TestNonStreamingPath:
             _guardrail(screen=_block(reason=phi_shaped_reason)), redis=redis
         )
 
-        resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
+        resp = await client.post(
+            "/api/v1/generate",
+            json={"provider": "lm-studio", "prompt": "patient note", "model": "m"},
+        )
 
         assert resp.status_code == 422
         assert resp.json()["error_code"] == "CONTENT_BLOCKED"
@@ -491,7 +498,12 @@ class TestNonStreamingPath:
 
         resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "patient note", "system_prompt": "be brief", "model": "m"},
+            json={
+                "provider": "lm-studio",
+                "prompt": "patient note",
+                "system_prompt": "be brief",
+                "model": "m",
+            },
             headers={"X-Tenant-Id": "tenant-42"},
         )
 
@@ -541,7 +553,9 @@ class TestNonStreamingPath:
     ) -> None:
         client = await client_factory(None)
 
-        resp = await client.post("/api/v1/generate", json={"prompt": "note", "model": "m"})
+        resp = await client.post(
+            "/api/v1/generate", json={"provider": "lm-studio", "prompt": "note", "model": "m"}
+        )
 
         assert resp.status_code == 200
         mock_provider.generate.assert_awaited_once()
@@ -552,7 +566,9 @@ class TestNonStreamingPath:
         same arguments as a built-in one — nothing branches on provider or funding."""
         guardrail_builtin = _guardrail()
         client = await client_factory(guardrail_builtin)
-        await client.post("/api/v1/generate", json={"prompt": "note", "model": "m"})
+        await client.post(
+            "/api/v1/generate", json={"provider": "lm-studio", "prompt": "note", "model": "m"}
+        )
 
         guardrail_byo = _guardrail()
         client = await client_factory(guardrail_byo)

@@ -152,7 +152,7 @@ class TestMainLifespanProviderKeys:
         # empty-keyed client downstream — and none of those env vars helped.
         assert not hasattr(provider, "_client")
         with pytest.raises(ProviderCredentialsError):
-            provider._client_for(GenerateRequest(prompt="hello", model="m"))
+            provider._client_for(GenerateRequest(provider="lm-studio", prompt="hello", model="m"))
 
 
 class TestGenerateEndpointWithTenantKeys:

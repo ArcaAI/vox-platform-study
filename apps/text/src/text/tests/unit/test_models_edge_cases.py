@@ -19,84 +19,89 @@ from text.models.task import TaskState, TaskStatus
 class TestGenerateRequestEdgeCases:
     def test_whitespace_only_prompt_rejected(self):
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="   ")
+            GenerateRequest(provider="lm-studio", prompt="   ")
 
     def test_max_tokens_exactly_one(self):
-        req = GenerateRequest(prompt="hi", max_tokens=1)
+        req = GenerateRequest(provider="lm-studio", prompt="hi", max_tokens=1)
         assert req.max_tokens == 1
 
     def test_max_tokens_zero_rejected(self):
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hi", max_tokens=0)
+            GenerateRequest(provider="lm-studio", prompt="hi", max_tokens=0)
 
     def test_temperature_exactly_zero(self):
-        req = GenerateRequest(prompt="hi", temperature=0.0)
+        req = GenerateRequest(provider="lm-studio", prompt="hi", temperature=0.0)
         assert req.temperature == 0.0
 
     def test_temperature_exactly_two(self):
-        req = GenerateRequest(prompt="hi", temperature=2.0)
+        req = GenerateRequest(provider="lm-studio", prompt="hi", temperature=2.0)
         assert req.temperature == 2.0
 
     def test_temperature_below_zero_rejected(self):
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hi", temperature=-0.1)
+            GenerateRequest(provider="lm-studio", prompt="hi", temperature=-0.1)
 
     def test_temperature_above_two_rejected(self):
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hi", temperature=2.1)
+            GenerateRequest(provider="lm-studio", prompt="hi", temperature=2.1)
 
     def test_top_p_exactly_zero(self):
-        req = GenerateRequest(prompt="hi", top_p=0.0)
+        req = GenerateRequest(provider="lm-studio", prompt="hi", top_p=0.0)
         assert req.top_p == 0.0
 
     def test_top_p_exactly_one(self):
-        req = GenerateRequest(prompt="hi", top_p=1.0)
+        req = GenerateRequest(provider="lm-studio", prompt="hi", top_p=1.0)
         assert req.top_p == 1.0
 
     def test_top_p_above_one_rejected(self):
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hi", top_p=1.1)
+            GenerateRequest(provider="lm-studio", prompt="hi", top_p=1.1)
 
     def test_top_p_below_zero_rejected(self):
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hi", top_p=-0.01)
+            GenerateRequest(provider="lm-studio", prompt="hi", top_p=-0.01)
 
     def test_default_retry_config_embedded(self):
-        req = GenerateRequest(prompt="hi")
+        req = GenerateRequest(provider="lm-studio", prompt="hi")
         assert req.retry_config.max_retries == 3
         assert "timeout" in req.retry_config.retry_on
 
     def test_custom_retry_config(self):
-        req = GenerateRequest(prompt="hi", retry_config=RetryConfig(max_retries=0, retry_on=[]))
+        req = GenerateRequest(
+            provider="lm-studio", prompt="hi", retry_config=RetryConfig(max_retries=0, retry_on=[])
+        )
         assert req.retry_config.max_retries == 0
 
     def test_context_none_by_default(self):
-        req = GenerateRequest(prompt="hi")
+        req = GenerateRequest(provider="lm-studio", prompt="hi")
         assert req.context is None
 
     def test_context_accepts_nested_dict(self):
-        req = GenerateRequest(prompt="hi", context={"a": {"b": [1, 2, 3]}})
+        req = GenerateRequest(provider="lm-studio", prompt="hi", context={"a": {"b": [1, 2, 3]}})
         assert req.context["a"]["b"] == [1, 2, 3]
 
-    def test_provider_defaults_to_lm_studio(self):
-        """PINS A KNOWN DEFECT — do not read this as the intended contract.
+    def test_provider_has_no_default(self):
+        """Selection is fail-closed: `provider`, like `model`, is never guessed.
 
-        `model` has no default and fail-closes with a 422; `provider` silently
-        defaults to a hardcoded engine, so a caller that pins a model and omits
-        the provider is routed to LM Studio whatever engine that model lives on.
-        `models/requests.py::_HARDCODED_DEFAULT_PROVIDER` records why removal is
-        blocked (two callers outside `apps/text`) and names this test as the one
-        that must flip once the gateway stamps the provider unconditionally.
+        The gateway and the harness resolve BOTH halves of the `{provider, model}` pair from
+        the agent, so a request that names no provider is a caller defect — not a request for
+        whichever engine this service would otherwise have picked.
         """
-        req = GenerateRequest(prompt="hi")
-        assert req.provider == "lm-studio"
+        with pytest.raises(ValidationError) as excinfo:
+            GenerateRequest(prompt="hi", model="m")
+        assert [error["loc"] for error in excinfo.value.errors()] == [("provider",)]
+
+    def test_blank_provider_rejected(self):
+        with pytest.raises(ValidationError) as excinfo:
+            GenerateRequest(prompt="hi", provider="", model="m")
+        assert [error["loc"] for error in excinfo.value.errors()] == [("provider",)]
 
     def test_model_none_by_default(self):
-        req = GenerateRequest(prompt="hi")
+        req = GenerateRequest(provider="lm-studio", prompt="hi")
         assert req.model is None
 
     def test_serializes_to_json(self):
-        req = GenerateRequest(prompt="hi", temperature=0.5)
+        req = GenerateRequest(provider="lm-studio", prompt="hi", temperature=0.5)
         j = req.model_dump_json()
         assert '"prompt":"hi"' in j or '"prompt": "hi"' in j
 

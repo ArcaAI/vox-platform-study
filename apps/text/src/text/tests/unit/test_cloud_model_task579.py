@@ -86,12 +86,12 @@ class TestResolveModelNeverFallsBackToDefault:
     @pytest.mark.parametrize("name,factory", _CLOUD_PROVIDERS, ids=_CLOUD_IDS)
     def test_no_model_returns_none(self, name, factory):
         provider = factory()
-        assert provider._resolve_model(GenerateRequest(prompt="hi")) is None
+        assert provider._resolve_model(GenerateRequest(provider="lm-studio", prompt="hi")) is None
 
     @pytest.mark.parametrize("name,factory", _CLOUD_PROVIDERS, ids=_CLOUD_IDS)
     def test_caller_model_is_honored(self, name, factory):
         provider = factory()
-        req = GenerateRequest(prompt="hi", model="caller-model")
+        req = GenerateRequest(provider="lm-studio", prompt="hi", model="caller-model")
         assert provider._resolve_model(req) == "caller-model"
 
 
@@ -245,7 +245,9 @@ class TestLocalEnginesUnaffected:
         provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        content, _reasoning, _stats = await provider.generate(GenerateRequest(prompt="hi"))
+        content, _reasoning, _stats = await provider.generate(
+            GenerateRequest(provider="lm-studio", prompt="hi")
+        )
         assert content == "ok"
 
 

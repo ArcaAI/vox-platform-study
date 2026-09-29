@@ -80,80 +80,80 @@ class TestGenerateRequestOptionalHyperparams:
     def test_temperature_defaults_to_none(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         assert req.temperature is None
 
     def test_max_tokens_defaults_to_none(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         assert req.max_tokens is None
 
     def test_top_p_defaults_to_none(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         assert req.top_p is None
 
     def test_explicit_temperature_is_preserved(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello", temperature=0.1)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", temperature=0.1)
         assert req.temperature == 0.1
 
     def test_explicit_max_tokens_is_preserved(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello", max_tokens=6000)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", max_tokens=6000)
         assert req.max_tokens == 6000
 
     def test_explicit_top_p_is_preserved(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello", top_p=0.95)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", top_p=0.95)
         assert req.top_p == 0.95
 
     def test_temperature_zero_is_valid(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello", temperature=0.0)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", temperature=0.0)
         assert req.temperature == 0.0
 
     def test_temperature_boundary_2_is_valid(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello", temperature=2.0)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", temperature=2.0)
         assert req.temperature == 2.0
 
     def test_temperature_above_2_rejected(self):
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hello", temperature=3.0)
+            GenerateRequest(provider="lm-studio", prompt="hello", temperature=3.0)
 
     def test_max_tokens_zero_rejected(self):
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hello", max_tokens=0)
+            GenerateRequest(provider="lm-studio", prompt="hello", max_tokens=0)
 
     def test_max_tokens_negative_rejected(self):
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hello", max_tokens=-1)
+            GenerateRequest(provider="lm-studio", prompt="hello", max_tokens=-1)
 
     def test_top_p_negative_rejected(self):
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hello", top_p=-0.1)
+            GenerateRequest(provider="lm-studio", prompt="hello", top_p=-0.1)
 
     def test_top_p_above_1_rejected(self):
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hello", top_p=1.1)
+            GenerateRequest(provider="lm-studio", prompt="hello", top_p=1.1)
 
 
 # ── GenerateRequest — response_format field ──
@@ -165,14 +165,14 @@ class TestGenerateRequestResponseFormat:
     def test_response_format_defaults_to_none(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         assert req.response_format is None
 
     def test_response_format_accepts_text(self):
         from text.models.requests import GenerateRequest, ResponseFormat
 
         fmt = ResponseFormat(type="text")
-        req = GenerateRequest(prompt="hello", response_format=fmt)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", response_format=fmt)
         assert req.response_format.type == "text"
 
     def test_response_format_accepts_json_schema(self):
@@ -180,7 +180,7 @@ class TestGenerateRequestResponseFormat:
 
         schema = {"type": "object", "properties": {"assessment": {"type": "string"}}}
         fmt = ResponseFormat(type="json_schema", json_schema=schema)
-        req = GenerateRequest(prompt="hello", response_format=fmt)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", response_format=fmt)
         assert req.response_format.type == "json_schema"
         assert req.response_format.json_schema == schema
 
@@ -211,6 +211,7 @@ class TestGenerateRequestResponseFormat:
 
         schema = {"type": "object", "properties": {"s": {"type": "string"}}}
         req = GenerateRequest(
+            provider="lm-studio",
             prompt="hello",
             temperature=0.1,
             response_format=ResponseFormat(type="json_schema", json_schema=schema),
@@ -224,7 +225,7 @@ class TestGenerateRequestResponseFormat:
     def test_serialization_with_none_response_format(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         data = req.model_dump()
         assert data["response_format"] is None
         restored = GenerateRequest(**data)
@@ -241,34 +242,30 @@ class TestGenerateRequestExistingValidation:
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="")
+            GenerateRequest(provider="lm-studio", prompt="")
 
     def test_whitespace_only_prompt_rejected(self):
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="   ")
+            GenerateRequest(provider="lm-studio", prompt="   ")
 
     def test_prompt_required(self):
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest()
-
-    def test_default_provider_is_lm_studio(self):
-        from text.models.requests import GenerateRequest
-
-        req = GenerateRequest(prompt="hello")
-        assert req.provider == "lm-studio"
+            GenerateRequest(
+                provider="lm-studio",
+            )
 
     def test_default_stream_is_false(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         assert req.stream is False
 
     def test_retry_config_default(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         assert req.retry_config.max_retries == 3

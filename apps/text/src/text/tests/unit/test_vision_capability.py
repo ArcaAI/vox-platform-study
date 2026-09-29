@@ -27,6 +27,7 @@ _PNG_B64 = base64.b64encode(b"fake-png-bytes").decode("ascii")
 def _image_request(**overrides: Any) -> GenerateRequest:
     payload: dict[str, Any] = {
         "prompt": "Describe this image",
+        "provider": "lm-studio",
         "model": "caller-model",
         "content_parts": [
             {"type": "image", "data": _PNG_B64, "media_type": "image/png"},
@@ -37,7 +38,7 @@ def _image_request(**overrides: Any) -> GenerateRequest:
 
 
 def _text_request(**overrides: Any) -> GenerateRequest:
-    payload: dict[str, Any] = {"prompt": "hello", "model": "caller-model"}
+    payload: dict[str, Any] = {"prompt": "hello", "provider": "lm-studio", "model": "caller-model"}
     payload.update(overrides)
     return GenerateRequest(**payload)
 
@@ -82,6 +83,7 @@ class TestContentPartsModel:
     def test_image_media_type_must_be_image_mime(self):
         with pytest.raises(ValueError, match="image/"):
             GenerateRequest(
+                provider="lm-studio",
                 prompt="hi",
                 content_parts=[{"type": "image", "data": _PNG_B64, "media_type": "text/plain"}],
                 model="test-model",

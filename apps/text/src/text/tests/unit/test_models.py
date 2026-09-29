@@ -123,7 +123,7 @@ class TestGenerateRequest:
     def test_minimal_request(self):
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="Hello world")
+        req = GenerateRequest(provider="lm-studio", prompt="Hello world")
         assert req.prompt == "Hello world"
         assert req.provider == "lm-studio"
         assert req.temperature is None
@@ -156,19 +156,19 @@ class TestGenerateRequest:
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="")
+            GenerateRequest(provider="lm-studio", prompt="")
 
     def test_negative_max_tokens_rejected(self):
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hi", max_tokens=-1)
+            GenerateRequest(provider="lm-studio", prompt="hi", max_tokens=-1)
 
     def test_temperature_out_of_range_rejected(self):
         from text.models.requests import GenerateRequest
 
         with pytest.raises(ValidationError):
-            GenerateRequest(prompt="hi", temperature=3.0)
+            GenerateRequest(provider="lm-studio", prompt="hi", temperature=3.0)
 
 
 # ── GenerateResponse model ──

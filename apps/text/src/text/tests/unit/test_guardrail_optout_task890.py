@@ -190,7 +190,12 @@ async def test_an_opted_out_call_does_not_503_on_an_unwired_client(_app_client, 
 
     response = await client.post(
         "/api/v1/generate",
-        json={"prompt": "patient note", "model": "m", "guardrail_policy": {"enabled": False}},
+        json={
+            "provider": "lm-studio",
+            "prompt": "patient note",
+            "model": "m",
+            "guardrail_policy": {"enabled": False},
+        },
     )
 
     assert response.status_code == 200
@@ -205,7 +210,12 @@ async def test_a_call_that_did_not_opt_out_still_fails_closed_on_an_unwired_clie
 
     response = await client.post(
         "/api/v1/generate",
-        json={"prompt": "patient note", "model": "m", "guardrail_policy": {"enabled": True}},
+        json={
+            "provider": "lm-studio",
+            "prompt": "patient note",
+            "model": "m",
+            "guardrail_policy": {"enabled": True},
+        },
     )
 
     assert response.status_code == 503
@@ -221,7 +231,12 @@ async def test_the_pushed_decision_reaches_the_client_verbatim(_app_client):
 
     await client.post(
         "/api/v1/generate",
-        json={"prompt": "patient note", "model": "m", "guardrail_policy": {"enabled": False}},
+        json={
+            "provider": "lm-studio",
+            "prompt": "patient note",
+            "model": "m",
+            "guardrail_policy": {"enabled": False},
+        },
     )
 
     policy = guardrail.validate.await_args.kwargs["tenant_policy"]

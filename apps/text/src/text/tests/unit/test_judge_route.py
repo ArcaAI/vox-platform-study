@@ -611,7 +611,9 @@ class TestPublicGeneratePathUnchanged:
         guardrail.validate = AsyncMock(return_value={"allowed": False, "reason": "not_medical"})
         client, _ = await client_factory(guardrail_client=guardrail)
 
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "m"})
+        resp = await client.post(
+            "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}
+        )
 
         assert resp.status_code == 422
         assert "guardrail" in resp.json()["detail"].lower()
@@ -625,7 +627,9 @@ class TestPublicGeneratePathUnchanged:
         )
         client, _ = await client_factory(guardrail_client=guardrail)
 
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "m"})
+        resp = await client.post(
+            "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}
+        )
 
         assert resp.status_code == 503
         mock_provider.generate.assert_not_called()
@@ -636,7 +640,9 @@ class TestPublicGeneratePathUnchanged:
         guardrail.validate = AsyncMock(return_value={"reason": "malformed"})
         client, _ = await client_factory(guardrail_client=guardrail)
 
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "m"})
+        resp = await client.post(
+            "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}
+        )
 
         assert resp.status_code == 422
         mock_provider.generate.assert_not_called()
@@ -651,7 +657,9 @@ class TestPublicGeneratePathUnchanged:
         client, app = await client_factory(guardrail_client=None)
         app.state.guardrail_posture = GuardrailPosture(enabled=True)
 
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "m"})
+        resp = await client.post(
+            "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}
+        )
 
         assert resp.status_code == 503
         mock_provider.generate.assert_not_called()
@@ -675,7 +683,9 @@ class TestPublicGeneratePathUnchanged:
         )
         client, _ = await client_factory(guardrail_client=guardrail)
 
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "m"})
+        resp = await client.post(
+            "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}
+        )
 
         assert resp.status_code == 200, resp.text
         assert resp.json()["guardrail_usage"]["provider"] == "lm-studio"
@@ -710,7 +720,9 @@ class TestJudgeTakesNoRepetitionPenalty:
         apply_generation_defaults({"frequency_penalty": 0.5, "presence_penalty": 0.5})
         # The default is LIVE — a public request would carry it — so the judge
         # assertion below cannot pass vacuously.
-        public = resolve_request_defaults(GenerateRequest(prompt="hello", model="m"))
+        public = resolve_request_defaults(
+            GenerateRequest(provider="lm-studio", prompt="hello", model="m")
+        )
         assert public["frequency_penalty"] == 0.5
         assert public["presence_penalty"] == 0.5
 
