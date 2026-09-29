@@ -30,6 +30,7 @@ import { ProviderCredentialResolver } from '../ai-provider-connection/provider-c
 import { derivedLocalPath } from '../ai-model/constants';
 import { runInTenantContext } from '../agentPromotion/tenant-context';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
+import { fallbackOnNotFound, warnAndFallback } from '../../common/swallow-policy';
 
 export interface ResolveAgentInput {
   tenantId: string;
@@ -150,6 +151,7 @@ export function failedBindingKey(provider: string, slug: string | null | undefin
  * transcription — this read decides a KEY, never whether a credential may be used.
  */
 export class ConnectionIdentityLookup {
+  private readonly logger = new Logger(ConnectionIdentityLookup.name);
   private rows?: Promise<ConnectionIdentity[]>;
 
   constructor(
@@ -183,7 +185,13 @@ export class ConnectionIdentityLookup {
                 hasKey: row.hasKey === true,
               })),
             )
-            .catch(() => []);
+            .catch(
+              warnAndFallback([] as ConnectionIdentity[], {
+                logger: this.logger,
+                message: 'Provider connection identity lookup failed; degrading to the naming convention',
+                meta: { service: this.service, tenantId: this.tenantId },
+              }),
+            );
     }
     return this.rows;
   }
@@ -458,14 +466,20 @@ export class AgentResolverService {
   }
 
   private async modelById(id: string, tenantId: string): Promise<AiModelEntity | null> {
-    const model = await this.aiModelRepository.findById(id).catch(() => null);
+    const model = await this.aiModelRepository
+      .findById(id)
+      .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Agent model lookup by id failed', meta: { modelId: id, tenantId } }));
     return model && (model.tenantId === tenantId || model.tenantId === SYSTEM_TENANT_ID) ? model : null;
   }
 
   private async modelBySlug(slug: string, tenantId: string): Promise<AiModelEntity | null> {
-    const own = tenantId === SYSTEM_TENANT_ID ? null : await this.aiModelRepository.findBySlug(tenantId, slug).catch(() => null);
+    const own = tenantId === SYSTEM_TENANT_ID ? null : await this.aiModelRepository
+          .findBySlug(tenantId, slug)
+          .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Agent model lookup by slug failed', meta: { modelSlug: slug, tenantId } }));
     if (own) return own;
-    return this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug).catch(() => null);
+    return this.aiModelRepository
+      .findBySlug(SYSTEM_TENANT_ID, slug)
+      .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Agent model lookup by slug failed', meta: { modelSlug: slug, tenantId: SYSTEM_TENANT_ID } }));
   }
 }
 

@@ -275,8 +275,9 @@ export class StorageController {
         hash: '',
       });
       response.mediaId = media.id;
-    } catch {
+    } catch (error) {
       // Media record creation is best-effort; do not fail the upload
+      this.logger.warn({ message: 'Media record creation failed after upload', error, bucketName, fileKey });
     }
 
     return response;

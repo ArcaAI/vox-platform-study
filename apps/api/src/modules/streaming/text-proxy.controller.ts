@@ -48,6 +48,7 @@ import {
   ModelTaskType,
   PromptTemplateRepository,
 } from '@arcaai/domains';
+import { DataNotFoundException } from '@arcaai/exceptions';
 import { HttpService } from '@nestjs/axios';
 import {
   BadRequestException,
@@ -558,8 +559,7 @@ export class TextProxyController {
     try {
       res.setHeader('Retry-After', String(bounded));
     } catch {
-      // A response already committed (a stream) cannot take a late header.
-      // Losing the hint must never cost the error itself.
+      // swallow-ok: a response already committed (a stream) cannot take a late header, and losing the hint must never cost the error itself.
     }
   }
 
@@ -1159,8 +1159,11 @@ export class TextProxyController {
         this.logger.error({
           message: 'SSE stream error from TEXT',
           taskId,
-          error: err.message,
+          error: err,
         });
+        // The client would otherwise see a clean end-of-stream and take a truncated generation for a
+        // finished one. The frame names no upstream content; the client resumes from Last-Event-ID.
+        this.writeSseErrorFrame(res);
         res.end();
       });
 
@@ -1184,7 +1187,7 @@ export class TextProxyController {
       this.logger.error({
         message: 'Failed to connect to TEXT SSE stream',
         taskId,
-        error: err instanceof Error ? err.message : String(err),
+        error: err,
         upstreamStatus,
       });
       // This branch is currently DEAD (flushHeaders() above
@@ -1199,8 +1202,19 @@ export class TextProxyController {
         const status = typeof upstreamStatus === 'number' ? upstreamStatus : HttpStatus.BAD_GATEWAY;
         res.status(status).json({ detail: 'TEXT service unavailable' });
       } else {
+        this.writeSseErrorFrame(res);
         res.end();
       }
+    }
+  }
+
+  /** Terminal SSE `error` frame for a relay whose upstream died mid-stream. Generic on purpose. */
+  private writeSseErrorFrame(res: Response): void {
+    if (res.writableEnded) return;
+    try {
+      res.write(`event: error\ndata: ${JSON.stringify({ code: 'UPSTREAM_STREAM_ERROR', message: 'The TEXT stream ended unexpectedly.' })}\n\n`);
+    } catch (error) {
+      this.logger.warn({ message: 'Could not write the SSE error frame', error });
     }
   }
 
@@ -1527,7 +1541,14 @@ export class TextProxyController {
    * unreadable attachment must not fail the whole generation request.
    */
   private async extractAttachmentText(mediaId: string): Promise<{ name: string; text: string } | null> {
-    const media = await this.mediaRepository.findById(mediaId).catch(() => null);
+    const media = await this.mediaRepository.findById(mediaId).catch((error: unknown) => {
+      // A miss is logged just below; any other failure is logged here and, per the contract above,
+      // costs this attachment only.
+      if (!(error instanceof DataNotFoundException)) {
+        this.logger.warn({ message: 'Attachment media lookup failed; skipping', error, mediaId });
+      }
+      return null;
+    });
     if (!media) {
       this.logger.warn({ message: 'Attachment media not found; skipping', mediaId });
       return null;
@@ -1634,7 +1655,8 @@ export class TextProxyController {
     let defaultSelection: { provider: string; model: string } | undefined;
     try {
       defaultSelection = await this.harnessPolicyService?.resolveTextSelection(tenantId);
-    } catch {
+    } catch (error) {
+      this.logger.warn({ message: 'Default text model selection failed; listing without a default', error, tenantId });
       defaultSelection = undefined;
     }
 
@@ -1699,7 +1721,8 @@ export class TextProxyController {
     try {
       const resolved = await this.routingPolicies?.resolveDefault(tenantId, 'guardrail.validate', { systemOnly: true });
       defaultSelection = resolved?.model ? { provider: resolved.model.provider ?? null, model: resolved.model.sourceUri } : undefined;
-    } catch {
+    } catch (error) {
+      this.logger.warn({ message: 'Default guardrail model selection failed; listing without a default', error, tenantId });
       defaultSelection = undefined;
     }
 

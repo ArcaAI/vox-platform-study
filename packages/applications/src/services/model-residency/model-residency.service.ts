@@ -28,6 +28,7 @@ import {
 } from '@arcaai/domains';
 import { ArgumentInvalidException, BusinessException, DataNotFoundException } from '@arcaai/exceptions';
 import { ClsService } from 'nestjs-cls';
+import { fallbackOnNotFound, warnAndFallback } from '../../common/swallow-policy';
 import { BaseService } from '../../common/base.service';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import type { IActiveUserContext } from '../../interfaces';
@@ -939,7 +940,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   }
 
   private async readGpuUsed(): Promise<Map<string, number> | null> {
-    const samples = await this.prometheus.instantVector(PROMQL.fbUsed).catch(() => [] as PrometheusSample[]);
+    const samples = await this.prometheus.instantVector(PROMQL.fbUsed).catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU used-memory metric read failed' }));
     if (samples.length === 0) return null;
     return new Map(samples.map((s) => [`gpu${s.metric.gpu}`, s.value * MiB]));
   }
@@ -948,7 +949,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   private async readGpuUsedAfter(sinceMs: number): Promise<Map<string, number> | null> {
     const deadline = Date.now() + this.measurementMaxWaitMs;
     for (;;) {
-      const stamps = await this.prometheus.instantVector(PROMQL.fbUsedAt).catch(() => [] as PrometheusSample[]);
+      const stamps = await this.prometheus.instantVector(PROMQL.fbUsedAt).catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU sample-time metric read failed' }));
       if (stamps.length > 0 && stamps.every((s) => s.value * 1000 >= sinceMs)) return this.readGpuUsed();
       if (Date.now() >= deadline) return null;
       await new Promise((resolve) => setTimeout(resolve, this.measurementPollMs));
@@ -1002,7 +1003,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const read = async (key: ModelResidencySettingKey): Promise<number | boolean> => {
       const fallback: number | boolean = MODEL_RESIDENCY_DEFAULTS[key];
       // SYSTEM explicitly: these keys are `globalOnly` / `maxScope: 'system'` — there is no tenant tier to widen from.
-      const resolved = await this.effectiveSettings.resolveEffective(key, { tenantId: SYSTEM_TENANT_ID }).catch(() => null);
+      const resolved = await this.effectiveSettings
+        .resolveEffective(key, { tenantId: SYSTEM_TENANT_ID })
+        .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Residency setting read failed', meta: { key } }));
       const value = resolved?.value;
       if (typeof fallback === 'boolean') return typeof value === 'boolean' ? value : fallback;
       return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -1045,7 +1048,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       this.readModelMetrics(),
       this.policies
         .findAll({ filters: { tenantId: SYSTEM_TENANT_ID, resourceStatus: ResourceStatusType.ENABLED } as never })
-        .catch(() => this.ledger?.policies ?? []),
+        .catch(
+          warnAndFallback(this.ledger?.policies ?? [], { logger: this.logger, message: 'Residency policy read failed; reusing the previous ledger' }),
+        ),
       this.livePath.read(now),
       this.refreshReport('stt', () => this.agents.report('stt'), now),
       this.refreshReport('nlp', () => this.agents.report('nlp'), now),
@@ -1253,7 +1258,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   }
 
   private async readGpus(): Promise<GpuReading[]> {
-    const query = (q: string) => this.prometheus.instantVector(q).catch(() => [] as PrometheusSample[]);
+    const query = (q: string) => this.prometheus.instantVector(q).catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'GPU metric read failed', meta: { query: q } }));
     const [used, free, reserved, util] = await Promise.all([
       query(PROMQL.fbUsed),
       query(PROMQL.fbFree),
@@ -1284,7 +1289,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   }
 
   private async readModelMetrics(): Promise<ModelMetrics> {
-    const query = (q: string) => this.prometheus.instantVector(q).catch(() => [] as PrometheusSample[]);
+    const query = (q: string) => this.prometheus.instantVector(q).catch(warnAndFallback([] as PrometheusSample[], { logger: this.logger, message: 'Model metric read failed', meta: { query: q } }));
     const [running, rate, p50, workerResident, workerBytes] = await Promise.all([
       query(PROMQL.running),
       query(PROMQL.ratePerMin),
@@ -1317,7 +1322,10 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     if (refs.wireModelId.size) or.push({ tenantId: SYSTEM_TENANT_ID, wireModelId: { in: [...refs.wireModelId] } });
     if (ids.size) or.push({ id: { in: [...ids] } });
 
-    const rows = or.length > 0 ? await this.aiModels.findAll({ filters: { OR: or } as never }).catch(() => [] as AiModelEntity[]) : [];
+    const rows = or.length > 0 ? await this.aiModels
+          .findAll({ filters: { OR: or } as never })
+          .catch(warnAndFallback([] as AiModelEntity[], { logger: this.logger, message: 'Residency catalogue read failed' }))
+      : [];
     const byId = new Map(rows.map((row) => [row.id, row]));
     const system = rows.filter((row) => row.tenantId === SYSTEM_TENANT_ID);
     return {
@@ -1432,7 +1440,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
     const field = service === 'lm-studio' ? 'wireModelId' : service === 'nlp' ? 'sourceUri' : 'slug';
     const rows = await this.aiModels
       .findAll({ filters: { tenantId: SYSTEM_TENANT_ID, [field]: modelRef } as never })
-      .catch(() => [] as AiModelEntity[]);
+      .catch(warnAndFallback([] as AiModelEntity[], { logger: this.logger, message: 'Residency catalogue model lookup failed', meta: { service, modelRef } }));
     return rows.find(
       (row) =>
         row.tenantId === SYSTEM_TENANT_ID &&

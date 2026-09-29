@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AgentTask, AiModelRepository, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
+import { fallbackOnNotFound } from '../../common/swallow-policy';
 import type { AgentFundingTier, ResolvedAgent, ResolvedAgentModel, ResolvedTtsSpec } from '@arcaai/types';
 import { readAgentFallbackGovernance } from '@arcaai/workflow-contract';
 import { IAgentAssignmentService } from '../agent-assignment/IAgentAssignmentService';
@@ -356,8 +357,16 @@ export class TtsAgentResolverService {
 
   /** `AiModel._metadata` for a materialised model — voices and artifact paths the loader needs. */
   private async metaDataFor(model: ResolvedAgentModel, tenantId: string): Promise<unknown> {
-    const own = tenantId === SYSTEM_TENANT_ID ? null : await this.aiModelRepository.findBySlug(tenantId, model.slug).catch(() => null);
-    const row = own ?? (await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, model.slug).catch(() => null));
+    const lookup = (scopeTenantId: string) =>
+      this.aiModelRepository.findBySlug(scopeTenantId, model.slug).catch(
+        fallbackOnNotFound(null, {
+          logger: this.logger,
+          message: 'TTS model metadata lookup failed',
+          meta: { modelSlug: model.slug, tenantId: scopeTenantId },
+        }),
+      );
+    const own = tenantId === SYSTEM_TENANT_ID ? null : await lookup(tenantId);
+    const row = own ?? (await lookup(SYSTEM_TENANT_ID));
     return row?.metaData ?? null;
   }
 }
