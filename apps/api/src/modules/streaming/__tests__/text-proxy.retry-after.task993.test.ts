@@ -72,7 +72,7 @@ async function generateExpectingThrow(rejection: any) {
   const { ctrl, res, http } = build(rejection);
   let thrown: HttpException | undefined;
   try {
-    await ctrl.generate({ prompt: 'p', stream: false, model: 'medgemma-27b' } as any, res);
+    await ctrl.generate({ prompt: 'p', stream: false } as any, res);
   } catch (err) {
     thrown = err as HttpException;
   }
@@ -132,7 +132,7 @@ describe('TEXT proxy — a vendor 429 reaches the caller intact', () => {
     // that do are `@Res({ passthrough: true })` params that a unit test may
     // omit. Losing the hint must never cost the error.
     const { ctrl } = build(upstream(429, { error_code: 'RATE_LIMITED' }, { 'retry-after': '7' }));
-    await expect(ctrl.generate({ prompt: 'p', stream: false, model: 'medgemma-27b' } as any)).rejects.toBeInstanceOf(HttpException);
+    await expect(ctrl.generate({ prompt: 'p', stream: false } as any)).rejects.toBeInstanceOf(HttpException);
   });
 });
 
@@ -166,7 +166,7 @@ describe('TEXT proxy — the assembled-prompt sibling behaves identically', () =
     (ctrl as any).assemblePrompt = vi.fn(async () => ({ prompt: 'p', systemPrompt: 's', resolvedMeta: {} }));
 
     await expect(
-      ctrl.generateAssembled({ type: 'summary', context_item_ids: ['ci-1'], model: 'medgemma-27b', stream: false } as any, res),
+      ctrl.generateAssembled({ type: 'summary', context_item_ids: ['ci-1'], stream: false } as any, res),
     ).rejects.toBeInstanceOf(HttpException);
 
     expect(headerValue(res, 'Retry-After')).toBe('4');

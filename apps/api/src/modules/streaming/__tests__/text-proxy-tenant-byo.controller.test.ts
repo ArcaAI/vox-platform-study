@@ -31,6 +31,8 @@ function build(
     platformDefault?: { entitlementSuppressed: boolean; vetoed: string[] };
     resolverThrows?: boolean;
     selectionThrows?: boolean;
+    /** The agent-resolved pair — a business caller no longer pins one (TASK-1012 L-3). */
+    selected?: { provider: string; model: string };
   } = {},
 ) {
   const http = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { content: 'ok' } }), get: vi.fn() } };
@@ -39,7 +41,7 @@ function build(
   const selection = {
     resolveTextSelection: vi.fn(async () => {
       if (opts.selectionThrows) throw new Error('no default model configured');
-      return { provider: 'azure', model: 'gpt-4o-mini' };
+      return opts.selected ?? { provider: 'azure', model: 'gpt-4o-mini' };
     }),
   };
   const connections = {
@@ -119,9 +121,12 @@ describe('TEXT proxy — tenant BYO credential injection', () => {
     // inverted, not deleted. This previously asserted the resolver
     // was SKIPPED for a self-host provider; that short-circuit is the defect
     // that made a keyed SYSTEM row for vLLM/openai-compat undeliverable.
-    const { ctrl, http, connections } = build({ overrides: { ollama: { api_key: 'not-needed', funding: 'platform' } } });
+    const { ctrl, http, connections } = build({
+      overrides: { ollama: { api_key: 'not-needed', funding: 'platform' } },
+      selected: { provider: 'ollama', model: 'gemma-4' },
+    });
 
-    await ctrl.generate({ prompt: 'p', provider: 'ollama', model: 'gemma-4', stream: false } as any);
+    await ctrl.generate({ prompt: 'p', stream: false } as any);
 
     expect(connections.resolveTenantCloudOverrides).toHaveBeenCalled();
     expect(forwardedBody(http)).toHaveProperty('provider_overrides');
@@ -131,9 +136,9 @@ describe('TEXT proxy — tenant BYO credential injection', () => {
   it('omits provider_overrides for a self-host provider with NO resolving row', async () => {
     // The keyless/absent case still yields nothing to inject — that, not the
     // provider list, is what stops a `baseUrl` being mistaken for a credential.
-    const { ctrl, http, connections } = build({ overrides: {} });
+    const { ctrl, http, connections } = build({ overrides: {}, selected: { provider: 'ollama', model: 'gemma-4' } });
 
-    await ctrl.generate({ prompt: 'p', provider: 'ollama', model: 'gemma-4', stream: false } as any);
+    await ctrl.generate({ prompt: 'p', stream: false } as any);
 
     expect(connections.resolveTenantCloudOverrides).toHaveBeenCalled();
     expect(forwardedBody(http)).not.toHaveProperty('provider_overrides');

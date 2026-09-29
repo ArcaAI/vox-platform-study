@@ -636,8 +636,18 @@ export class HarnessPolicyService {
    *
    * Throws (fail-closed) when nothing is assigned or the resolver is not wired — selection is
    * `failMode: closed`; a tenant veto of the primary provider propagates unchanged.
+   *
+   * `agentSlug` (TASK-1012 L-3) is a caller's EXPLICIT TEXT_GENERATION agent — the only other
+   * way a business-plane caller may choose a model. It skips the cascade (the agent resolver
+   * ignores the phase selector for an explicit slug), and a slug the tenant cannot see stays the
+   * resolver's 404 rather than being re-worded as "nothing is assigned".
    */
-  async resolveTextSelection(tenantId?: string, task: TextRoutingTask = 'finalize', departmentId?: string | null): Promise<TextSelection> {
+  async resolveTextSelection(
+    tenantId?: string,
+    task: TextRoutingTask = 'finalize',
+    departmentId?: string | null,
+    agentSlug?: string | null,
+  ): Promise<TextSelection> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
     if (!this.textAgents) {
@@ -649,12 +659,13 @@ export class HarnessPolicyService {
       const spec = await this.textAgents.resolve({
         tenantId: tid,
         departmentId: departmentId ?? null,
+        ...(agentSlug ? { agentSlug } : {}),
         selectorTags: textPhaseSelectorTags(task),
       });
       const generation = generationOf(spec.primary);
       return { provider: spec.primary.provider, model: spec.primary.model, ...(generation ? { generation } : {}) };
     } catch (error) {
-      if (error instanceof NotFoundException) {
+      if (error instanceof NotFoundException && !agentSlug) {
         throw new BadRequestException(
           'No TEXT_GENERATION agent is assigned for this tenant. Assign a published TEXT_GENERATION agent at TENANT or DEPARTMENT scope, or restore the SYSTEM platform default assignment.',
         );
