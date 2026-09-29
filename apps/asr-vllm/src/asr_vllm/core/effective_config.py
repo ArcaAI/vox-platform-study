@@ -227,6 +227,8 @@ def ensure_invalidation_listener(app_state: Any) -> None:
     """
     if getattr(app_state, "config_invalidation_task", None) is not None:
         return
+    if getattr(app_state, "config_invalidation_disabled", False):
+        return
     client = getattr(app_state, "effective_config_client", None)
     settings = getattr(app_state, "settings", None)
     if client is None or settings is None or not str(settings.redis_url).strip():
@@ -234,7 +236,18 @@ def ensure_invalidation_listener(app_state: Any) -> None:
 
     try:
         import redis.asyncio as redis_asyncio
+    except ImportError:
+        # The package cannot appear at runtime: give up ONCE rather than warn on every
+        # refresh. (Absent from the vLLM image today — see the README.)
+        app_state.config_invalidation_disabled = True
+        logger.warning(
+            "asr_vllm.config_invalidation_unavailable",
+            error="the redis package is not installed; the effective-config TTL is the "
+            "only propagation path",
+        )
+        return
 
+    try:
         # Bounded and non-retrying ON PURPOSE: this connection only receives
         # invalidations and the TTL covers everything it does.
         invalidation_redis = redis_asyncio.from_url(

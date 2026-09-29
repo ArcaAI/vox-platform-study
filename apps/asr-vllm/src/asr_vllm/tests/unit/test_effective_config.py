@@ -264,3 +264,28 @@ async def test_the_first_refresh_arms_push_invalidation_when_redis_is_configured
     assert pubsub.subscribed == [CONFIG_INVALIDATION_CHANNEL]
     await close_control_plane(state)
     assert state.config_invalidation_task is None  # type: ignore[attr-defined]
+
+
+async def test_without_the_redis_package_push_is_disabled_once_and_the_ttl_serves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The vLLM image has no `redis` today: give up on push ONCE, not on every refresh."""
+    import sys
+
+    from asr_vllm.core.effective_config import refresh_control_plane
+
+    monkeypatch.setitem(sys.modules, "redis.asyncio", None)  # `import` now raises
+    monkeypatch.setenv("REDIS_URL", "redis://redis.test:6379/0")
+
+    class State:
+        pass
+
+    gateway = Gateway({"asrVllm.engine.maxNumSeqs": 32})
+    state = State()
+    state.settings = Settings()  # type: ignore[attr-defined]
+    state.effective_config_client = client_for(gateway)  # type: ignore[attr-defined]
+
+    await refresh_control_plane(state)
+    assert state.config_invalidation_disabled is True  # type: ignore[attr-defined]
+    assert getattr(state, "config_invalidation_task", None) is None
+    assert state.settings.max_num_seqs == 32  # type: ignore[attr-defined]
