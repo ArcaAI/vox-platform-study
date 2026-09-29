@@ -180,7 +180,6 @@ clean_build() {
     remove_matching "tsbuildinfo files"               f "*.tsbuildinfo"
     remove_path     "generated Prisma client"         "packages/database/src/generated"
     remove_path     "vox e2e fixture bundle"          "packages/agentic-sdk-v2/e2e/fixtures/dist"
-    remove_path     "vad e2e fixture bundle"          "packages/vad/e2e/fixtures/dist"
 }
 
 clean_cache() {
