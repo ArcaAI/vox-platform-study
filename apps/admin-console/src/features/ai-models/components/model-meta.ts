@@ -38,7 +38,82 @@ export const FORMAT_OPTIONS: AiModelFormat[] = [
 ];
 
 /** Canonical runtime provider ids (mirrors AI_MODEL_PROVIDERS in @arcaai/applications). */
-export const RUNTIME_PROVIDER_OPTIONS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam', 'openai', 'anthropic', 'vertex', 'vllm', 'llama-cpp'] as const;
+export const RUNTIME_PROVIDER_OPTIONS = [
+  'ollama',
+  'lm-studio',
+  'azure',
+  'bedrock',
+  'built-in',
+  'sarvam',
+  'openai',
+  'azure-speech',
+  'azure-foundry',
+  'anthropic',
+  'vertex',
+  'vllm',
+  'llama-cpp',
+] as const;
+
+/**
+ * Every `ModelTaskType` the gateway DTO accepts (`@IsEnum(ModelTaskType)`), in
+ * the enum's order. A copy because the console cannot import `@arcaai/domains`;
+ * `model-meta.test.ts` fails if it drifts from the enum.
+ */
+export const MODEL_TASK_TYPE_OPTIONS = [
+  'IMAGE_TEXT_TO_TEXT',
+  'VISUAL_QUESTION_ANSWERING',
+  'DOCUMENT_QUESTION_ANSWERING',
+  'VIDEO_TEXT_TO_TEXT',
+  'ANY_TO_ANY',
+  'DEPTH_ESTIMATION',
+  'IMAGE_CLASSIFICATION',
+  'OBJECT_DETECTION',
+  'IMAGE_SEGMENTATION',
+  'TEXT_TO_IMAGE',
+  'IMAGE_TO_TEXT',
+  'IMAGE_TO_IMAGE',
+  'IMAGE_TO_VIDEO',
+  'UNCONDITIONAL_IMAGE_GENERATION',
+  'VIDEO_CLASSIFICATION',
+  'TEXT_TO_VIDEO',
+  'ZERO_SHOT_IMAGE_CLASSIFICATION',
+  'MASK_GENERATION',
+  'ZERO_SHOT_OBJECT_DETECTION',
+  'TEXT_TO_3D',
+  'IMAGE_TO_3D',
+  'IMAGE_FEATURE_EXTRACTION',
+  'KEYPOINT_DETECTION',
+  'TEXT_CLASSIFICATION',
+  'TOKEN_CLASSIFICATION',
+  'TABLE_QUESTION_ANSWERING',
+  'QUESTION_ANSWERING',
+  'ZERO_SHOT_CLASSIFICATION',
+  'TRANSLATION',
+  'SUMMARIZATION',
+  'FEATURE_EXTRACTION',
+  'TEXT_GENERATION',
+  'TEXT2TEXT_GENERATION',
+  'FILL_MASK',
+  'SENTENCE_SIMILARITY',
+  'GUARDRAIL',
+  'TEXT_TO_SPEECH',
+  'TEXT_TO_AUDIO',
+  'AUTOMATIC_SPEECH_RECOGNITION',
+  'AUDIO_TO_AUDIO',
+  'AUDIO_CLASSIFICATION',
+  'VOICE_ACTIVITY_DETECTION',
+  'SPEAKER_DIARIZATION',
+  'SPEAKER_EMBEDDING',
+  'TABULAR_CLASSIFICATION',
+  'TABULAR_REGRESSION',
+  'TIME_SERIES_FORECASTING',
+  'UNKNOWN',
+] as const;
+
+/** "TEXT2TEXT_GENERATION" -> "text2text-generation" — the Hub's own spelling of the task. */
+export function taskTypeToPipelineTag(taskType: string): string {
+  return taskType.toLowerCase().replaceAll('_', '-');
+}
 
 /** Serving libraries — the Hub `library_name` facet (mirrors AI_MODEL_LIBRARIES). */
 export const LIBRARY_OPTIONS = [

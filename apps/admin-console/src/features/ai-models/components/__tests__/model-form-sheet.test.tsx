@@ -271,7 +271,7 @@ describe('ModelFormSheet — LOCAL source (TASK-960)', () => {
 
     fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: 'ArcaAI Whisper EN' } });
     fireEvent.change(within(dialog).getByLabelText(/^slug/i), { target: { value: 'arcaai-whisper-en-2609' } });
-    fireEvent.change(within(dialog).getByLabelText(/task \(hugging face/i), { target: { value: 'AUTOMATIC_SPEECH_RECOGNITION' } });
+    await selectOption(within(dialog).getByLabelText(/task \(hugging face/i), 'automatic-speech-recognition');
     await selectOption(within(dialog).getByLabelText(/^source\*$/i), 'Local');
     fireEvent.change(within(dialog).getByLabelText(/^bucket prefix/i), { target: { value: 'arcaai-whisper-en-2609/' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Register model' }));
@@ -463,5 +463,61 @@ describe('ModelFormSheet — ASR decode profile (TASK-934)', () => {
     expect(within(dialog).getByText('ASR decode profile')).toBeDefined();
 
     expect(await axe(dialog)).toHaveNoViolations();
+  });
+});
+
+describe('ModelFormSheet — task type is chosen, never typed', () => {
+  function captureFetch() {
+    const calls: { method: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        calls.push({ method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
+        return Response.json(MODEL, { headers: { etag: '"1"' } });
+      }),
+    );
+    return calls;
+  }
+
+  async function fillRequired(dialog: HTMLElement) {
+    fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: 'Gemma 3' } });
+    fireEvent.change(within(dialog).getByLabelText(/^slug/i), { target: { value: 'gemma-3' } });
+    fireEvent.change(within(dialog).getByLabelText(/^source uri/i), { target: { value: 'google/gemma-3' } });
+  }
+
+  it('offers the task as a select labelled by pipeline tag and sends the enum value', async () => {
+    const calls = captureFetch();
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
+
+    const task = within(dialog).getByLabelText(/task \(hugging face/i);
+    expect(task.getAttribute('role')).toBe('combobox');
+    await fillRequired(dialog);
+    await selectOption(task, 'text-generation');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Register model' }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
+    expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({ taskType: 'TEXT_GENERATION' });
+  });
+
+  it('blocks submit with an inline error while no task is chosen', async () => {
+    const calls = captureFetch();
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
+
+    await fillRequired(dialog);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Register model' }));
+
+    expect(await within(dialog).findByText(/choose a task before registering/i)).toBeDefined();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('keeps an existing row\'s task selectable even when the console list does not know it', async () => {
+    stubFetchFor({ ...MODEL, taskType: 'SOME_FUTURE_TASK' });
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId="m-1" />);
+    const dialog = await screen.findByRole('dialog', { name: /edit model/i });
+
+    await waitFor(() => expect(within(dialog).getByLabelText(/task \(hugging face/i).textContent).toContain('some-future-task'));
   });
 });

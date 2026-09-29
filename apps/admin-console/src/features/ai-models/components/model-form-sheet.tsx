@@ -43,6 +43,7 @@ import {
   DEPLOYMENT_KIND_OPTIONS,
   FORMAT_OPTIONS,
   LIBRARY_OPTIONS,
+  MODEL_TASK_TYPE_OPTIONS,
   MODEL_TYPE_OPTIONS,
   RUNTIME_PROVIDER_OPTIONS,
   SERVED_BY_OPTIONS,
@@ -52,6 +53,7 @@ import {
   deriveLocalSourceUri,
   humanizeEnum,
   isBucketPrefixRedundant,
+  taskTypeToPipelineTag,
 } from './model-meta';
 import { ModelRegistryConnectionStatus } from './model-registry-connection-status';
 
@@ -449,6 +451,7 @@ export function ModelFormSheet({
   const [baseline, setBaseline] = useState<ModelFormValues>(() => toValues());
   const [seededFor, setSeededFor] = useState<string>('closed');
   const [discarding, setDiscarding] = useState(false);
+  const [taskTypeMissing, setTaskTypeMissing] = useState(false);
 
   // Seed during render (never in an effect): the fields must already hold the
   // loaded row on the commit that first shows them.
@@ -474,6 +477,11 @@ export function ModelFormSheet({
       isOutOfRange(values.asrNoRepeatNgramSize, AI_MODEL_ASR_PROFILE_DECODING_RANGES.noRepeatNgramSize) ||
       isOutOfRange(values.asrPrevTextContextWords, AI_MODEL_ASR_PROFILE_DECODING_RANGES.prevTextContextWords));
   const isLocalSource = values.source === 'LOCAL';
+  // An existing row may carry a task this console's copy of the enum predates; keep it selectable.
+  const taskTypeOptions: readonly string[] =
+    values.taskType && !(MODEL_TASK_TYPE_OPTIONS as readonly string[]).includes(values.taskType)
+      ? [values.taskType, ...MODEL_TASK_TYPE_OPTIONS]
+      : MODEL_TASK_TYPE_OPTIONS;
   const derivedSourceUri = deriveLocalSourceUri(values.bucketPrefix);
   const hasBucketPrefixError = isBucketPrefixRedundant(values.bucketPrefix);
 
@@ -508,6 +516,12 @@ export function ModelFormSheet({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // A Radix Select takes no part in native `required` validation, so an
+    // unchosen task would otherwise reach the gateway as `""` and 400.
+    if (!values.taskType.trim()) {
+      setTaskTypeMissing(true);
+      return;
+    }
     if (isEdit && model) {
       updateMutation.mutate(
         { id: model.id, patch: toUpdateRequest(values), etag },
@@ -620,14 +634,34 @@ export function ModelFormSheet({
                 />
               </Field>
               <Field id={`${uid}-task-type`} label="Task (Hugging Face pipeline tag)" required className="sm:col-span-2">
-                <Input
-                  id={`${uid}-task-type`}
+                <Select
                   value={values.taskType}
-                  onChange={(event) => set('taskType', event.target.value)}
-                  required
-                  className="font-mono"
-                  placeholder="AUTOMATIC_SPEECH_RECOGNITION"
-                />
+                  onValueChange={(next) => {
+                    set('taskType', next);
+                    setTaskTypeMissing(false);
+                  }}
+                >
+                  <SelectTrigger
+                    id={`${uid}-task-type`}
+                    className="w-full font-mono"
+                    aria-invalid={taskTypeMissing || undefined}
+                    aria-describedby={taskTypeMissing ? `${uid}-task-type-error` : undefined}
+                  >
+                    <SelectValue placeholder="Choose a task" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {taskTypeOptions.map((taskType) => (
+                      <SelectItem key={taskType} value={taskType} className="font-mono">
+                        {taskTypeToPipelineTag(taskType)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {taskTypeMissing ? (
+                  <p id={`${uid}-task-type-error`} className="text-destructive text-sm">
+                    Choose a task before registering.
+                  </p>
+                ) : null}
               </Field>
               <Field id={`${uid}-library`} label="Serving library" required>
                 <EnumSelect id={`${uid}-library`} value={values.libraryName} onChange={(value) => set('libraryName', value)} options={[...LIBRARY_OPTIONS]} labels={LIBRARY_LABELS} />

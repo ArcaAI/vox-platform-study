@@ -151,6 +151,11 @@ export class ContextInterceptor implements NestInterceptor {
         error: (err) => {
           hasErrored = true;
           const durationMs = Date.now() - start;
+          // A class-validator 400 is re-shaped by ExceptionInterceptor into a
+          // bare "Validation error" + `subErrors`; without them the log line
+          // cannot say which field was rejected. The messages name the field
+          // and its constraint, never the submitted value.
+          const validationErrors: unknown = err?.response?.subErrors;
           this.logger.error({
             message: 'Request failed',
             requestId: request.requestId,
@@ -164,6 +169,7 @@ export class ContextInterceptor implements NestInterceptor {
             errorMessage: err?.message || String(err),
             errorType: err?.constructor?.name,
             statusCode: err?.status || err?.statusCode || 500,
+            ...(Array.isArray(validationErrors) ? { validationErrors } : {}),
           });
           throw err; // rethrow the error to ensure it is propagated
         },
