@@ -352,6 +352,24 @@
         "packages/py-runtime-models/**",
         "uv.lock"
       ]
+    },
+    {
+      "name": "vllm",
+      "tagPrefixes": [],
+      "dockerfile": "apps/vllm/Dockerfile",
+      "context": ".",
+      "target": "production",
+      "pythonBase": false,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "apps/vllm/**",
+        "packages/py-env/**",
+        "packages/py-obs/**",
+        "uv.lock"
+      ]
     }
   ]
 }

@@ -410,6 +410,40 @@ build-gpu-process-exporter:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ALL-/
 
+# ── vLLM general-inference service (TASK-1021 Phase 1: Whisper ASR) ─────────
+# `apps/vllm` -- a FastAPI shell (port 8867) over the vLLM engine, serving
+# Whisper ASR to `stt` with weights read from the shared `hope-models` bucket.
+# Deployed as `hope-vllm-asr` (deployment repo: vllm-pool + overlays/*/vllm-asr).
+#
+# NOT a `hope-python-base` image: vLLM pins torch/fastapi versions the monorepo's
+# single uv.lock cannot hold, so the Dockerfile builds FROM vLLM's own
+# digest-pinned image (apps/vllm/Dockerfile header). Hence no `build-python-base`
+# dependency and no BASE_IMAGE build arg. The build context is the repo root
+# because the shell installs three local `packages/py-*` libraries.
+#
+# ~10 GB base pull, so the timeout is longer than the 30m .build-template default.
+# Not in warm-up-base-images for the same reason as `.build-vllm` above.
+#
+# NO SERVICE RELEASE TAG: `<SVC>` in the release grammar is a CLOSED set
+# (packages/utils/src/version-grammar.ts) with no VLLM member, so -- like
+# build-lmstudio and build-gpu-process-exporter -- this builds on dev/staging/cicd
+# branch pushes and on an `ALL-` tag only. Promoted by digest (promote.sh
+# SERVICES=), pinned in overlays/*/vllm-asr as `hope-v2/vllm`.
+build-vllm:
+  extends: .build-template
+  needs:
+    - job: warm-up-base-images
+      optional: true
+  variables:
+    SERVICE_NAME: vllm
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/vllm/Dockerfile
+    BUILD_TARGET: production
+  timeout: 60m
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
 # ── TTS ─────────────────────────────────────────────────────────────────────
 
 build-tts:
@@ -760,7 +794,11 @@ verify-lmstudio-runtime:
     - job: warm-up-base-images
       optional: true
   variables:
-    SERVICE_NAME: vllm
+    # TASK-1021: renamed from `vllm`. The name `vllm` now belongs to the live
+    # general-inference service (`build-vllm`, below), and two jobs -- one hidden --
+    # sharing a SERVICE_NAME would collide on the image repo the moment this
+    # template is re-enabled. Retiring it is Phase 2.
+    SERVICE_NAME: vllm-textgen
     # Context is the image directory itself, not the repo root: this image
     # copies exactly one file and needs none of the monorepo. Same shape as
     # build-lmstudio and build-python-base.
@@ -804,7 +842,7 @@ verify-lmstudio-runtime:
   script:
     - |
       set -eu
-      img="$REGISTRY/$CI_PROJECT_PATH/vllm@${DIGEST}"
+      img="$REGISTRY/$CI_PROJECT_PATH/vllm-textgen@${DIGEST}"
       echo "verifying $img"
 
       # The pin as the REPO states it at this commit. Extracted rather than
