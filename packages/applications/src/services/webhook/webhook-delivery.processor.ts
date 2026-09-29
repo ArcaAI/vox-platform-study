@@ -20,6 +20,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { WebhookService } from './webhook.service';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
+import { attachJobTrace, runJobInContext } from '../baseServices/observability/job-context';
 
 /**
  * The delivery side of the `Webhook` subscription model — the missing half
@@ -178,7 +179,7 @@ export class WebhookDeliveryProcessor extends WorkerHost {
       return;
     }
 
-    await this.cls.run(async () => {
+    await runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', event.tenantId as string);
       this.cls.set('user', createWorkerSession({ tenantId: event.tenantId as string, kind: 'webhook-delivery' }));
 
@@ -220,7 +221,7 @@ export class WebhookDeliveryProcessor extends WorkerHost {
           occurredAt: new Date(event.createdAt).toISOString(),
         };
 
-        await this.deliveryQueue.add(JobQueue.WebhookDelivery, payload, {
+        await this.deliveryQueue.add(JobQueue.WebhookDelivery, attachJobTrace(payload), {
           ...WEBHOOK_DELIVERY_JOB_OPTIONS,
           jobId: webhookDeliveryIdempotencyKey(webhook.id, event.id),
         });
@@ -262,7 +263,7 @@ export class WebhookDeliveryDispatchProcessor extends WorkerHost {
   async process(job: Job<WebhookDeliveryJobPayload>): Promise<void> {
     const { webhookId, tenantId, sourceEnvelopeId, eventType, resourceType, resourceId, occurredAt } = job.data;
 
-    return this.cls.run(async () => {
+    return runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ tenantId, kind: 'webhook-delivery' }));
 

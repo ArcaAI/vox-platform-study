@@ -8,6 +8,7 @@ import {
   TtsAgentResolverService,
   UsageIdempotencyKey,
   appendComputeAndByteUnits,
+  injectTraceCarrier,
 } from '@arcaai/applications';
 import type { ResolvedTtsSpec, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiUsageUnit } from '@arcaai/domains';
@@ -111,6 +112,9 @@ interface Bridge {
   // event without threading extra params through the message callback.
   sessionId: string;
   tenantId: string | null;
+  /** Actor of the session (from the consumed ticket) and the correlation id echoed to the client. */
+  userId: string | null;
+  requestId: string;
   /**
    * TASK-959 §4.2 — bytes of upstream BINARY audio relayed to the browser so far. `stream_ws.py`'s
    * own `"usage"` control frame carries no device, timing, or byte count of its own (unlike the
@@ -304,7 +308,14 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     }
 
-    await this.openBridge(client, sessionId, stored.tenantId);
+    await this.openBridge(client, sessionId, stored.tenantId, stored.userId ?? null, this.requestIdFor(req, sessionId));
+  }
+
+  /** A well-formed inbound `x-request-id`, else the session id (stable and client-quotable). */
+  private requestIdFor(req: IncomingMessage, sessionId: string): string {
+    const raw = req.headers?.['x-request-id'];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    return typeof value === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(value) ? value : sessionId;
   }
 
   handleDisconnect(client: WebSocket): void {
@@ -335,8 +346,12 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  private async openBridge(client: WebSocket, sessionId: string, tenantId: string | null): Promise<void> {
-    const headers: Record<string, string> = {};
+  private async openBridge(client: WebSocket, sessionId: string, tenantId: string | null, userId: string | null, requestId: string): Promise<void> {
+    // Correlation for the upstream hop: W3C trace context + the request id + the tenant.
+    const headers: Record<string, string> = { ...injectTraceCarrier(), 'X-Request-Id': requestId };
+    if (tenantId) {
+      headers['X-Tenant-Id'] = tenantId;
+    }
     // The ONE shared `INTERNAL_ACCESS_TOKEN` (the `TTS_SERVICE_TOKEN` fallback was retired with its descriptor, TASK-879/880).
     const token = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
     if (token) {
@@ -375,7 +390,11 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.logger.error({
         message: 'Failed to open upstream TTS socket',
         sessionId,
-        error: err instanceof Error ? err.message : String(err),
+        tenantId,
+        userId,
+        correlationId: requestId,
+        errorName: err instanceof Error ? err.name : typeof err,
+        error: err,
       });
       this.reject(client, 'upstream unavailable', sessionId);
       return;
@@ -391,6 +410,8 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       initEnriched: false,
       sessionId,
       tenantId,
+      userId,
+      requestId,
       relayedBytes: 0,
       firstAudioAtMs: null,
     };
@@ -426,7 +447,17 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
     upstream.on('close', () => this.closeClientAndTeardown(client));
     upstream.on('error', (err: Error) => {
-      this.logger.warn({ message: 'Upstream TTS socket error', sessionId, error: err.message });
+      this.logger.warn({
+        message: 'Upstream TTS socket error',
+        sessionId,
+        tenantId,
+        userId,
+        correlationId: requestId,
+        errorName: err.name,
+        error: err,
+      });
+      // The browser gets a quotable id for this failure, never the upstream's message.
+      this.safeSend(client, Buffer.from(JSON.stringify({ type: 'error', code: 'upstream_error', message: 'TTS upstream error', correlationId: requestId })), false);
       this.closeClientAndTeardown(client, TTS_WS_CLOSE_CODES.UPSTREAM_ERROR);
     });
 

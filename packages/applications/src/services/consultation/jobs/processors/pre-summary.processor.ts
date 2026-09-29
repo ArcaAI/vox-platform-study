@@ -31,6 +31,7 @@ import { readRecordedVisitType } from '../../consultation/open-markers';
 import { QUEUE_CONCURRENCY } from '../../../baseServices/redis/queue-concurrency';
 import { EffectiveSettingsService } from '../../../settings-registry/effective-settings.service';
 import { resolvePlatformOutputLanguage } from '../../summary/platform-output-language';
+import { runJobInContext } from '../../../baseServices/observability/job-context';
 
 // boundary (owner decision,: KEPT,
 // un-gated, as an explicitly non-signable helper generator — never had a
@@ -110,7 +111,7 @@ export class PreSummaryProcessor extends WorkerHost {
     }
     // Rebind tenantId + user into a fresh CLS scope so the
     // tenantScope Prisma extension sees the correct context.
-    return this.cls.run(async () => {
+    return runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ userId, tenantId, kind: 'pre-summary' }));
 

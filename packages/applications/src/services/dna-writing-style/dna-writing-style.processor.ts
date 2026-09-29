@@ -57,6 +57,7 @@ import type { UsageEventBatchInput } from '../usageLedger/dto';
 import type { UsageOrigin } from '../usageLedger/usage-attributes';
 import { IActiveUserContext } from '../../interfaces';
 import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
+import { runJobInContext } from '../baseServices/observability/job-context';
 
 const CONTEXT_DEFAULTS = {
   maxSamples: 50,
@@ -190,7 +191,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
   }
 
   async process(job: Job<GenerateDnaReportJobPayload>): Promise<DnaReportJobResult> {
-    return this.clsService.run(async () => {
+    return runJobInContext(this.clsService, job, async () => {
       return this.processWithContext(job);
     });
   }

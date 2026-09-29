@@ -18,6 +18,7 @@ import { SecretsService } from '../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IUsageLedgerService, UsageIdempotencyKey } from '../usageLedger';
 import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
+import { runJobInContext } from '../baseServices/observability/job-context';
 
 /**
  * The harness knowledge-ingest path dense-embeds through the SELF-HOSTED
@@ -108,7 +109,7 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
       throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
     }
 
-    return this.cls.run(async () => {
+    return runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ userId, tenantId, kind: 'ingest-knowledge' }));
 

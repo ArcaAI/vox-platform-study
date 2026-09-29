@@ -8,7 +8,17 @@ import { clearSession, getSession, isElevated, setSession, type SessionPayload }
  * `user-agent` rides along so gateway audit rows record the operator's
  * browser, not undici's "node" default.
  */
-const FORWARDED_REQUEST_HEADERS = ['content-type', 'if-match', 'idempotency-key', 'user-agent'] as const;
+const FORWARDED_REQUEST_HEADERS = ['content-type', 'if-match', 'idempotency-key', 'user-agent', 'traceparent', 'tracestate'] as const;
+
+/** The correlation id: forwarded to the gateway and returned to the browser. */
+const REQUEST_ID_HEADER = 'x-request-id';
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+
+/** The browser's request id when well-formed, otherwise a fresh one (originated here at the edge). */
+function resolveRequestId(request: Request): string {
+  const inbound = request.headers.get(REQUEST_ID_HEADER);
+  return inbound && REQUEST_ID_PATTERN.test(inbound) ? inbound : crypto.randomUUID();
+}
 
 /** Response headers surfaced back to the browser (allowlist). Cache-Control
  * rides along so the gateway's `no-store` surfaces (e.g. the Prisma Studio
@@ -38,12 +48,13 @@ function isPlatformWide(path: readonly string[]): boolean {
  * `FORWARDED_RESPONSE_HEADERS` is an allowlist, so the gateway can never
  * inject it — keep it that way.
  */
-function sessionLost(message: string): Response {
-  return Response.json({ message }, { status: 401, headers: { 'x-session-expired': '1' } });
+function sessionLost(message: string, requestId: string): Response {
+  return Response.json({ message }, { status: 401, headers: { 'x-session-expired': '1', [REQUEST_ID_HEADER]: requestId } });
 }
 
-function buildHeaders(request: Request, path: readonly string[], session: SessionPayload): Headers {
+function buildHeaders(request: Request, path: readonly string[], session: SessionPayload, requestId: string): Headers {
   const headers = new Headers();
+  headers.set(REQUEST_ID_HEADER, requestId);
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
@@ -76,18 +87,19 @@ function encodeGatewayPath(path: string[]): string {
   return path.map(encodeURIComponent).join('/');
 }
 
-async function sendToGateway(request: Request, path: string[], search: string, session: SessionPayload, body: ArrayBuffer | null): Promise<Response> {
+async function sendToGateway(request: Request, path: string[], search: string, session: SessionPayload, body: ArrayBuffer | null, requestId: string): Promise<Response> {
   return fetch(gatewayUrl(encodeGatewayPath(path), search), {
     method: request.method,
-    headers: buildHeaders(request, path, session),
+    headers: buildHeaders(request, path, session, requestId),
     body: body && body.byteLength > 0 ? body : undefined,
     cache: 'no-store',
     redirect: 'manual',
   });
 }
 
-function toClientResponse(gatewayResponse: Response): Response {
+function toClientResponse(gatewayResponse: Response, requestId: string): Response {
   const headers = new Headers();
+  headers.set(REQUEST_ID_HEADER, requestId);
   for (const name of FORWARDED_RESPONSE_HEADERS) {
     const value = gatewayResponse.headers.get(name);
     if (value) headers.set(name, value);
@@ -102,18 +114,19 @@ function toClientResponse(gatewayResponse: Response): Response {
  * from an expired access token with a single-flight refresh + one retry.
  */
 export async function handleProxy(request: Request, path: string[]): Promise<Response> {
+  const requestId = resolveRequestId(request);
   const session = await getSession();
   if (!session) {
-    return sessionLost('Unauthorized');
+    return sessionLost('Unauthorized', requestId);
   }
 
   const { search } = new URL(request.url);
   // Buffer the body once so the 401-retry can resend it.
   const body = BODYLESS_METHODS.has(request.method) ? null : await request.arrayBuffer();
 
-  const first = await sendToGateway(request, path, search, session, body);
+  const first = await sendToGateway(request, path, search, session, body, requestId);
   if (first.status !== 401) {
-    return toClientResponse(first);
+    return toClientResponse(first, requestId);
   }
 
   // Impersonation tokens are non-refreshable: recovery means ending the
@@ -133,9 +146,9 @@ export async function handleProxy(request: Request, path: string[]): Promise<Res
   }
 
   if (recovered) {
-    const retried = await sendToGateway(request, path, search, recovered, body);
+    const retried = await sendToGateway(request, path, search, recovered, body, requestId);
     if (retried.status !== 401) {
-      return toClientResponse(retried);
+      return toClientResponse(retried, requestId);
     }
     // The access token was just refreshed, so a lingering 401 is NOT session
     // expiry — it is an authorization / step-up re-auth failure (e.g. a wrong
@@ -143,10 +156,10 @@ export async function handleProxy(request: Request, path: string[]): Promise<Res
     // the session intact; a mistyped step-up password must not log the user
     // out. (Impersonation keeps the stricter clear-on-401 recovery below.)
     if (!session.impersonation) {
-      return toClientResponse(retried);
+      return toClientResponse(retried, requestId);
     }
   }
 
   await clearSession();
-  return sessionLost('Session expired');
+  return sessionLost('Session expired', requestId);
 }

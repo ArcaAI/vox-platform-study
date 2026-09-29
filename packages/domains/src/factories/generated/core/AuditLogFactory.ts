@@ -16,6 +16,7 @@ export interface CreateAuditLogProps extends BaseEntityFactoryCreateProps {
   resourceDatabase?: IAuditLogEntity['resourceDatabase'];
   correlationId?: IAuditLogEntity['correlationId'];
   causationId?: IAuditLogEntity['causationId'];
+  traceId?: IAuditLogEntity['traceId'];
   action: IAuditLogEntity['action'];
   eventType?: IAuditLogEntity['eventType'];
   success?: IAuditLogEntity['success'];
@@ -57,6 +58,7 @@ export class AuditLogFactory {
       resourceDatabase: props.resourceDatabase ?? '',
       correlationId: props.correlationId ?? '',
       causationId: props.causationId ?? '',
+      traceId: props.traceId ?? null,
       action: props.action,
       eventType: props.eventType ?? null,
       success: props.success ?? null,

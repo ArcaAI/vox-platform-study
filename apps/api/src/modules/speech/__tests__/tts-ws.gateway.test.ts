@@ -98,9 +98,10 @@ describe('TtsWsGateway', () => {
   it('opens the upstream at the ws URL with the service token on a valid ticket', async () => {
     const client = makeSocket();
     await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
-    expect(gateway.createUpstreamSocket).toHaveBeenCalledWith('ws://tts:8865/api/v1/audio/stream', {
-      'X-Service-Token': 'svc-token',
-    });
+    expect(gateway.createUpstreamSocket).toHaveBeenCalledWith(
+      'ws://tts:8865/api/v1/audio/stream',
+      expect.objectContaining({ 'X-Service-Token': 'svc-token', 'X-Tenant-Id': 't1', 'X-Request-Id': 'sess-1' }),
+    );
     expect(client.close).not.toHaveBeenCalled();
   });
 
