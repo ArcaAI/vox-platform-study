@@ -149,9 +149,8 @@ def test_a_code_switch_pair_pins_its_primary_on_vllm() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _manager(tenant_id: str | None = "tenant-a") -> MagicMock:
+def _manager() -> MagicMock:
     mgr = MagicMock(spec=SessionManager)
-    mgr._pending_tenant_id = tenant_id
     mgr._make_vllm_callable = lambda *a, **k: SessionManager._make_vllm_callable(mgr, *a, **k)
     return mgr
 
@@ -161,7 +160,9 @@ async def test_the_streaming_callable_forwards_tenant_language_and_the_agent_pro
     mgr = _manager()
     config = InferenceConfig(language="ml")
 
-    run = SessionManager._make_asr_callable(mgr, _loaded(), config, initial_prompt=AGENT_PROMPT)
+    run = SessionManager._make_asr_callable(
+        mgr, _loaded(), config, initial_prompt=AGENT_PROMPT, tenant_id="tenant-a"
+    )
     result = await run(np.zeros(SR, dtype=np.float32), SR)
 
     fields, _wav = _parts(seen[0])
@@ -177,7 +178,7 @@ def test_the_streaming_callable_takes_no_carry_forward_prompt() -> None:
     """The inference worker sends ``prompt=`` (prior-transcript context) only to a
     callable that declares it; this one does not, so none is ever synthesised."""
     run = SessionManager._make_vllm_callable(
-        _manager(), _loaded(), InferenceConfig(language="ml"), initial_prompt=None
+        _manager(), _loaded(), InferenceConfig(language="ml"), tenant_id="tenant-a"
     )
     params = inspect.signature(run).parameters
     assert "prompt" not in params
@@ -187,7 +188,7 @@ def test_the_streaming_callable_takes_no_carry_forward_prompt() -> None:
 async def test_the_streaming_callable_sends_no_prompt_when_the_agent_has_none(wire) -> None:
     seen = wire(lambda r: _ok())
     run = SessionManager._make_vllm_callable(
-        _manager(), _loaded(), InferenceConfig(language="ml"), initial_prompt=None
+        _manager(), _loaded(), InferenceConfig(language="ml"), tenant_id="tenant-a"
     )
     await run(np.zeros(SR, dtype=np.float32), SR)
     assert "prompt" not in _parts(seen[0])[0]
@@ -200,16 +201,21 @@ async def test_the_streaming_callable_sends_no_prompt_when_the_agent_has_none(wi
 def test_the_streaming_callable_refuses_to_build_without_tenant_or_language(
     tenant_id: str | None, language: str | None, match: str
 ) -> None:
-    with pytest.raises(RuntimeError, match=match):
+    from stt.streaming.vllm_asr import VllmSessionContextError
+
+    with pytest.raises(VllmSessionContextError, match=match):
         SessionManager._make_vllm_callable(
-            _manager(tenant_id), _loaded(), InferenceConfig(language=language)
+            _manager(), _loaded(), InferenceConfig(language=language), tenant_id=tenant_id
         )
 
 
 async def test_a_long_final_is_split_at_the_models_window(wire) -> None:
     seen = wire(lambda r: _ok("x"))
     run = SessionManager._make_vllm_callable(
-        _manager(), _loaded(), InferenceConfig(language="ml", max_decode_window_sec=7.0)
+        _manager(),
+        _loaded(),
+        InferenceConfig(language="ml", max_decode_window_sec=7.0),
+        tenant_id="tenant-a",
     )
 
     await run(np.random.default_rng(0).normal(0, 0.1, 20 * SR).astype(np.float32), SR)
@@ -312,10 +318,15 @@ async def test_a_70s_file_is_three_windows_decoded_concurrently_and_reassembled_
     service = BatchTranscriptionService.__new__(BatchTranscriptionService)
     progress: list[float] = []
 
-    bind_request_context(tenantId="tenant-c", requestId="req-9")
+    bind_request_context(requestId="req-9")  # the request id rides the job context
     try:
         result = await service._run_vllm_inference(
-            audio, SR, _loaded(), InferenceConfig(language="ml"), progress.append
+            audio,
+            SR,
+            _loaded(),
+            InferenceConfig(language="ml"),
+            progress.append,
+            tenant_id="tenant-c",
         )
     finally:
         clear_request_context()
@@ -346,18 +357,18 @@ async def test_batch_windows_honour_a_shorter_model_window(wire) -> None:
     service = BatchTranscriptionService.__new__(BatchTranscriptionService)
     audio = _speech_with_pauses(20.0, [])
 
-    bind_request_context(tenantId="tenant-c")
-    try:
-        await service._run_vllm_inference(
-            audio, SR, _loaded(), InferenceConfig(language="ml", max_decode_window_sec=7.0)
-        )
-    finally:
-        clear_request_context()
+    await service._run_vllm_inference(
+        audio,
+        SR,
+        _loaded(),
+        InferenceConfig(language="ml", max_decode_window_sec=7.0),
+        tenant_id="tenant-c",
+    )
 
     assert max(_duration_s(_parts(r)[1]) for r in seen) <= 7.0 + 1e-6
 
 
-async def test_batch_refuses_without_a_bound_tenant(wire) -> None:
+async def test_batch_refuses_without_a_tenant(wire) -> None:
     from stt.transcription.batch_service import TranscriptionError
 
     wire(lambda r: _ok())
@@ -374,10 +385,18 @@ async def test_the_batch_engine_dispatches_to_the_vllm_body() -> None:
     service = SimpleNamespace(_run_vllm_inference=AsyncMock(return_value="raw"))
 
     out = await VllmEngine().run_batch(
-        service, "samples", SR, "model", "config", None, prompt="carry", initial_prompt="agent"
+        service,
+        "samples",
+        SR,
+        "model",
+        "config",
+        None,
+        prompt="carry",
+        initial_prompt="agent",
+        tenant_id="job-tenant",
     )
 
     assert out == "raw"
     service._run_vllm_inference.assert_awaited_once_with(
-        "samples", SR, "model", "config", None, initial_prompt="agent"
+        "samples", SR, "model", "config", None, initial_prompt="agent", tenant_id="job-tenant"
     )

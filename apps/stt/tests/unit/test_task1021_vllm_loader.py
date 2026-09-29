@@ -187,7 +187,12 @@ async def test_the_streaming_load_bypasses_the_cache_and_hands_the_loader_the_ov
     mgr._load_cloud_asr_uncached = lambda **kw: SessionManager._load_cloud_asr_uncached(mgr, **kw)
     captured: dict[str, Any] = {}
 
-    def _spy(asr_model: Any, inference_config: Any, initial_prompt: str | None = None) -> Any:
+    def _spy(
+        asr_model: Any,
+        inference_config: Any,
+        initial_prompt: str | None = None,
+        tenant_id: str | None = None,
+    ) -> Any:
         captured["model"] = asr_model
         return AsyncMock()
 

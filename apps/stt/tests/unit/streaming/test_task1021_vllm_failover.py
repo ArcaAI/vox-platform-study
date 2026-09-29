@@ -61,7 +61,6 @@ def saturated_vllm(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
 
 
 def _vllm_callable(mgr: Any) -> Any:
-    mgr._pending_tenant_id = "t1"
     loaded = LoadedModel(
         model_id="m",
         model_slug="ml-en-vllm",
@@ -74,7 +73,9 @@ def _vllm_callable(mgr: Any) -> Any:
         format=AiModelFormat.VLLM,
         device="remote",
     )
-    return SessionManager._make_vllm_callable(mgr, loaded, InferenceConfig(language="ml"))
+    return SessionManager._make_vllm_callable(
+        mgr, loaded, InferenceConfig(language="ml"), tenant_id="t1"
+    )
 
 
 async def _drive(mgr: Any, worker: StreamingInferenceWorker, count: int) -> None:

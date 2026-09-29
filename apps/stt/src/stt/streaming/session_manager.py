@@ -3327,10 +3327,6 @@ class SessionManager:
             getattr(pipeline_config, "postprocessing", None), "timestamps", None
         )
         self._pending_want_word_timestamps = bool(getattr(timestamps_cfg, "word_timestamps", False))
-        # TASK-1021 — the SESSION's tenant, for an engine that must name it on the wire
-        # (`vllm`: `X-Tenant-Id` is mandatory). Stashed like the flag above, read
-        # synchronously by `_make_vllm_callable` below.
-        self._pending_tenant_id = tenant_id
 
         # Create the callable ASR pipeline. Built even for a duplex engine: it
         # is what a later engine switch installs on the worker, and it is the
@@ -3339,6 +3335,9 @@ class SessionManager:
             asr_model,
             inference_config,
             initial_prompt=initial_prompt,
+            # TASK-1021 — the SESSION's tenant, for an engine that names it on the
+            # wire (`vllm`: `X-Tenant-Id` is mandatory). Explicit, never manager state.
+            tenant_id=tenant_id,
         )
 
         if probe_duplex:
@@ -3537,6 +3536,7 @@ class SessionManager:
         inference_config: Any,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> StreamingAsrCallable:
         """Create a standalone callable ASR pipeline for streaming inference.
 
@@ -3582,6 +3582,7 @@ class SessionManager:
             inference_config,
             initial_prompt=initial_prompt,
             task=task,
+            tenant_id=tenant_id,
         )
         return callable_
 
@@ -3840,6 +3841,7 @@ class SessionManager:
         loaded_model: Any,
         inference_config: Any,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> StreamingAsrCallable:
         """Whisper on the in-cluster `vllm` service — per-utterance REST (TASK-1021).
 
@@ -3852,22 +3854,26 @@ class SessionManager:
         inference worker never hands it prior-transcript context (TASK-994: the
         fine-tune decodes best with none).
 
-        Refuses to BUILD without the session tenant or a resolved language — both are
-        mandatory on the wire — so the session falls through to its fallback chain
-        instead of failing every utterance.
+        ``tenant_id`` is the SESSION's, passed explicitly by the caller; nothing is
+        read from manager state, so one session's tenant can never reach another's
+        callable. Refuses to BUILD without it or a resolved language — both are
+        mandatory on the wire — with ``VllmSessionContextError``, so the session falls
+        through to its fallback chain instead of failing every utterance.
         """
-        from stt.streaming.vllm_asr import vllm_recognize_windows
+        from stt.streaming.vllm_asr import VllmSessionContextError, vllm_recognize_windows
 
         config = loaded_model.model
-        tenant_id = getattr(self, "_pending_tenant_id", None)
         language = getattr(inference_config, "language", None)
         if not isinstance(tenant_id, str) or not tenant_id:
-            raise RuntimeError("vllm ASR needs the session tenant (X-Tenant-Id is mandatory)")
+            raise VllmSessionContextError(
+                "vllm ASR needs the session tenant (X-Tenant-Id is mandatory)"
+            )
         if not isinstance(language, str) or not language:
-            raise RuntimeError(
+            raise VllmSessionContextError(
                 "vllm ASR needs a pinned language: the route requires the Whisper language "
                 "token and cannot auto-detect"
             )
+        session_tenant: str = tenant_id
         service_token = get_settings().internal_access_token.get_secret_value()
         default_window = getattr(inference_config, "max_decode_window_sec", None)
 
@@ -3885,11 +3891,14 @@ class SessionManager:
                 window_s=window,
                 language=language,
                 prompt=initial_prompt,
-                tenant_id=tenant_id,
+                tenant_id=session_tenant,
                 request_id=None,
                 service_token=service_token,
             )
 
+        # The missing `prompt` parameter is deliberate (see above): tell the inference
+        # worker's signature probe not to warn that this session "decodes unconditioned".
+        run_vllm_inference.declines_carry_forward_prompt = True  # type: ignore[attr-defined]
         return run_vllm_inference
 
     def _make_transformers_callable(

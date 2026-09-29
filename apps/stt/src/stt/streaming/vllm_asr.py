@@ -33,7 +33,7 @@ import structlog
 from hope_obs import outbound_context_headers
 from hope_otel.trace_propagation import inject_trace_carrier
 
-from stt.core.exceptions import CloudASRTranscriptionError
+from stt.core.exceptions import CloudASRError, CloudASRTranscriptionError
 from stt.models.cloud_asr import (
     raise_for_cloud_status,
     raise_for_cloud_transport,
@@ -49,7 +49,11 @@ _MAX_RETRIES = 2
 #: ``Retry-After`` absent or unparseable → this; a larger value is capped at the ceiling.
 _DEFAULT_RETRY_AFTER_S = 0.5
 _RETRY_AFTER_CEILING_S = 2.0
-_RETRYABLE_STATUSES = frozenset({429, 503})
+#: A 503 is retried only when the engine is SATURATED (C-3: ``engine_capacity``,
+#: which carries ``Retry-After``). Every other 503 — ``engine_load_failed``,
+#: ``MODEL_NOT_PUBLISHED``, an ``EngineBuildRefused`` code — will not clear by
+#: waiting, so it fails over at once.
+_CAPACITY_503_CODE = "engine_capacity"
 
 #: ``asyncio.Semaphore`` binds to the loop it first blocks on, and this process runs
 #: more than one loop (the API loop and each worker thread's), so the cap is kept per
@@ -57,6 +61,16 @@ _RETRYABLE_STATUSES = frozenset({429, 503})
 _SEMAPHORES: weakref.WeakKeyDictionary[
     asyncio.AbstractEventLoop, dict[str, tuple[int, asyncio.Semaphore]]
 ] = weakref.WeakKeyDictionary()
+
+
+class VllmSessionContextError(RuntimeError):
+    """A vLLM callable was asked to build without what every request must carry.
+
+    ``X-Tenant-Id`` is mandatory on the wire (C-3) and the route needs a Whisper
+    language token, so a callable missing either would fail every utterance — or,
+    worse, send another session's tenant. It refuses at BUILD time instead, so the
+    session falls through to its fallback chain.
+    """
 
 
 def _http_client(timeout_s: float) -> httpx.AsyncClient:
@@ -84,6 +98,20 @@ def _retry_after_s(response: httpx.Response) -> float:
     except ValueError:
         value = _DEFAULT_RETRY_AFTER_S
     return max(0.0, min(value, _RETRY_AFTER_CEILING_S))
+
+
+def _is_retryable(response: httpx.Response) -> bool:
+    if response.status_code == 429:
+        return True
+    if response.status_code != 503:
+        return False
+    if "Retry-After" in response.headers:
+        return True
+    try:
+        error = response.json().get("error")
+    except (ValueError, AttributeError):
+        return False
+    return isinstance(error, dict) and error.get("code") == _CAPACITY_503_CODE
 
 
 def _error_detail(response: httpx.Response) -> str:
@@ -173,7 +201,7 @@ async def vllm_recognize_utterance(
                     )
             except httpx.RequestError as exc:
                 raise_for_cloud_transport(PROVIDER, type(exc).__name__)
-        if response.status_code in _RETRYABLE_STATUSES and attempt < _MAX_RETRIES:
+        if attempt < _MAX_RETRIES and _is_retryable(response):
             attempt += 1
             delay = _retry_after_s(response)
             logger.info(
@@ -240,6 +268,27 @@ def split_windows(
     return splitter._split_spans(np.asarray(samples, dtype=np.float32), sample_rate, limit)
 
 
+def _first_leaf(group_error: BaseExceptionGroup) -> BaseException:
+    """The first failure in a (possibly nested) group, preferring a Cloud ASR error.
+
+    Only the first window's failure is meaningful to the caller; the siblings it
+    cancelled contribute nothing but ``CancelledError``, which a ``TaskGroup``
+    does not include.
+    """
+    leaves: list[BaseException] = []
+
+    def walk(error: BaseException) -> None:
+        if isinstance(error, BaseExceptionGroup):
+            for inner in error.exceptions:
+                walk(inner)
+        else:
+            leaves.append(error)
+
+    walk(group_error)
+    typed = [e for e in leaves if isinstance(e, CloudASRError)]
+    return (typed or leaves)[0]
+
+
 async def vllm_recognize_windows(
     config: VllmAsrConfig,
     samples: np.ndarray,
@@ -254,29 +303,40 @@ async def vllm_recognize_windows(
 ) -> dict[str, Any]:
     """Transcribe audio of any length as ≤ 30 s windows, decoded concurrently.
 
-    Windows are cut by :func:`split_windows`, sent together with ``asyncio.gather``
-    (the per-``base_url`` semaphore in :func:`vllm_recognize_utterance` bounds how
-    many are in flight), and reassembled in AUDIO order: one segment per window,
-    its times offset by the window's start. Every window carries the same agent
-    prompt — never the previous window's text (TASK-994).
+    Windows are cut by :func:`split_windows`, sent together in an
+    ``asyncio.TaskGroup`` (the per-``base_url`` semaphore in
+    :func:`vllm_recognize_utterance` bounds how many are in flight), and reassembled
+    in AUDIO order: one segment per window, its times offset by the window's start.
+    Every window carries the same agent prompt — never the previous window's text
+    (TASK-994).
+
+    The first window to fail CANCELS its siblings, so a failed utterance leaves no
+    orphan decode queued on the GPU, and the caller receives that window's own typed
+    error (the ``ExceptionGroup`` is unwrapped) — which is what ``engine_switch``
+    classifies.
     """
     audio = np.asarray(samples, dtype=np.float32)
     spans = split_windows(audio, sample_rate, window_s)
-    results = await asyncio.gather(
-        *(
-            vllm_recognize_utterance(
-                config,
-                audio[start:end],
-                sample_rate,
-                language=language,
-                prompt=prompt,
-                tenant_id=tenant_id,
-                request_id=request_id,
-                service_token=service_token,
-            )
-            for start, end in spans
-        )
-    )
+    try:
+        async with asyncio.TaskGroup() as group:
+            tasks = [
+                group.create_task(
+                    vllm_recognize_utterance(
+                        config,
+                        audio[start:end],
+                        sample_rate,
+                        language=language,
+                        prompt=prompt,
+                        tenant_id=tenant_id,
+                        request_id=request_id,
+                        service_token=service_token,
+                    )
+                )
+                for start, end in spans
+            ]
+    except BaseExceptionGroup as group_error:
+        raise _first_leaf(group_error) from None
+    results = [task.result() for task in tasks]
 
     segments: list[dict[str, Any]] = []
     for (start, end), result in zip(spans, results, strict=True):

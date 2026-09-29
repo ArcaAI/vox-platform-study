@@ -1237,7 +1237,11 @@ class StreamingInferenceWorker:
                 name for name in self._OPTIONAL_ASR_KWARGS if name in params
             )
         missing = [n for n in self._OPTIONAL_ASR_KWARGS if n not in self._kwarg_probe_result]
-        if "prompt" in missing:
+        # TASK-1021 — an engine may decline the carry-forward prompt ON PURPOSE (the
+        # `vllm` callable sends only the agent's own prompt, per TASK-994); that is a
+        # configuration, not a signature mismatch, so it is not warned about.
+        declined = getattr(pipeline, "declines_carry_forward_prompt", False) is True
+        if "prompt" in missing and not declined:
             logger.warning(
                 "stt.streaming.asr_signature.no_prompt",
                 pipeline_id=self._active_pipeline_id,

@@ -607,6 +607,7 @@ class BatchTranscriptionService:
                         inline_identifier=inline_identifier,
                         inline_diarization_config=inline_diarization_config,
                         segment_merge_config=spec.postprocessing.segment_merge,
+                        tenant_id=tenant_id,
                     )
                 else:
                     # Full-audio ASR (no VAD or no segments detected)
@@ -620,6 +621,7 @@ class BatchTranscriptionService:
                         first_word_hook=_on_first_word,
                         prompt=compose_prompt(initial_prompt, None),
                         initial_prompt=initial_prompt,
+                        tenant_id=tenant_id,
                     )
 
             timing.inference_seconds = time.time() - inference_start
@@ -1409,6 +1411,7 @@ class BatchTranscriptionService:
         inline_identifier: Any | None = None,
         inline_diarization_config: Any | None = None,
         segment_merge_config: Any | None = None,
+        tenant_id: str | None = None,
     ) -> RawTranscription:
         """Run ASR inference on each VAD speech segment independently.
 
@@ -1656,6 +1659,7 @@ class BatchTranscriptionService:
                             config,
                             prompt=segment_prompt,
                             initial_prompt=initial_prompt,
+                            tenant_id=tenant_id,
                         )
                     except Exception as e:
                         logger.warning(
@@ -1768,6 +1772,7 @@ class BatchTranscriptionService:
                         config,
                         prompt=segment_prompt,
                         initial_prompt=initial_prompt,
+                        tenant_id=tenant_id,
                     )
                 except Exception as e:
                     logger.warning(
@@ -1920,6 +1925,7 @@ class BatchTranscriptionService:
         first_word_hook: Callable[[], None] | None = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> RawTranscription:
         """Run ASR model inference.
 
@@ -1949,6 +1955,7 @@ class BatchTranscriptionService:
             first_word_hook=first_word_hook,
             prompt=prompt,
             initial_prompt=initial_prompt,
+            tenant_id=tenant_id,
         )
         return result
 
@@ -2250,6 +2257,7 @@ class BatchTranscriptionService:
         progress_callback: Callable[[float], None] | None = None,
         *,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> RawTranscription:
         """Whole-file inference on the in-cluster `vllm` service (TASK-1021).
 
@@ -2260,16 +2268,12 @@ class BatchTranscriptionService:
         offset on its segment. Only the agent's ``initial_prompt`` is sent — never
         prior-window text (TASK-994).
 
-        The tenant and request id are the JOB's, bound by ``job_context`` from the
-        message (``tenant_id`` is the actor's own argument); a job with no bound
-        tenant is refused rather than sent without ``X-Tenant-Id``.
+        ``tenant_id`` is the JOB's, threaded from ``transcribe`` through ``run_batch``;
+        a job without one is refused rather than sent without ``X-Tenant-Id``. The
+        request id rides the bound job context (``outbound_context_headers``).
         """
-        import structlog
-
         from ..streaming.vllm_asr import vllm_recognize_windows
 
-        bound = structlog.contextvars.get_contextvars()
-        tenant_id = bound.get("tenantId")
         if not isinstance(tenant_id, str) or not tenant_id:
             raise TranscriptionError(
                 "vllm batch transcription needs the job tenant (X-Tenant-Id is mandatory)"
@@ -2280,7 +2284,6 @@ class BatchTranscriptionService:
                 "vllm batch transcription needs a pinned language: the route requires "
                 "the Whisper language token and cannot auto-detect"
             )
-        request_id = bound.get("requestId")
         result = await vllm_recognize_windows(
             model.model,
             samples,
@@ -2289,7 +2292,7 @@ class BatchTranscriptionService:
             language=language,
             prompt=initial_prompt,
             tenant_id=tenant_id,
-            request_id=request_id if isinstance(request_id, str) else None,
+            request_id=None,
             service_token=get_settings().internal_access_token.get_secret_value(),
         )
         if progress_callback:

@@ -2123,6 +2123,7 @@ class TestPerSegmentInference:
             progress_callback=None,
             prompt=None,
             initial_prompt=None,
+            tenant_id=None,  # TASK-1021 — the job tenant, threaded through
         ):
             nonlocal call_count
             call_count += 1
@@ -2248,6 +2249,7 @@ class TestPerSegmentInference:
             progress_callback=None,
             prompt=None,
             initial_prompt=None,
+            tenant_id=None,  # TASK-1021 — the job tenant, threaded through
         ):
             nonlocal call_count
             call_count += 1
@@ -2668,6 +2670,7 @@ class TestPerSegmentInferenceEdgeCases:
             progress_callback=None,
             prompt=None,
             initial_prompt=None,
+            tenant_id=None,  # TASK-1021 — the job tenant, threaded through
         ):
             nonlocal call_idx
             text = texts[call_idx]
@@ -2704,6 +2707,7 @@ class TestPerSegmentInferenceEdgeCases:
             progress_callback=None,
             prompt=None,
             initial_prompt=None,
+            tenant_id=None,  # TASK-1021 — the job tenant, threaded through
         ):
             del progress_callback, initial_prompt
             prompts.append(prompt)
@@ -2747,6 +2751,7 @@ class TestPerSegmentInferenceEdgeCases:
             progress_callback=None,
             prompt=None,
             initial_prompt=None,
+            tenant_id=None,  # TASK-1021 — the job tenant, threaded through
         ):
             del progress_callback, initial_prompt
             prompts.append(prompt)
