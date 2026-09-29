@@ -37,6 +37,7 @@ import {
   type UpdateModelRequest,
 } from '../api/types';
 import { ModelDownloadPanel } from './model-download';
+import { ModelStatusSection } from './model-status-section';
 import {
   CATEGORY_OPTIONS,
   DEPLOYMENT_KIND_LABELS,
@@ -967,7 +968,12 @@ export function ModelFormSheet({
               ) : null}
             </form>
             {/* Publish needs an id — no create-time equivalent, so this is edit-only. */}
-            {isEdit && model ? <ModelDownloadPanel model={model} /> : null}
+            {isEdit && model ? (
+              <>
+                <ModelStatusSection model={model} />
+                <ModelDownloadPanel model={model} />
+              </>
+            ) : null}
           </>
         )}
       </DetailDrawer>
