@@ -145,6 +145,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           }
                         }
                       },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
+                      },
                       "previous_case_notes": {
                         "type": "object",
                         "properties": {
@@ -806,7 +852,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "086414d5cf806391a0539cac4fb81f02aafa88e3d3d881587c3ff5a3647f01b8"
+      "checksum": "4ae6c5dabd59066175b5677e55e0f538df8c18eac698c94157f36e04369a3995"
     }
   },
   "ARCAAI:arcaai-surg-consultation": {
@@ -940,6 +986,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string"
                           }
                         }
+                      },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "previous_case_notes": {
                         "type": "object",
@@ -1602,7 +1694,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "8520a28150c2e177e0fdf6cd9894341acfb7dee92d495223dded251cf3b90a42"
+      "checksum": "cec9242f49da92012b5b2a5aaa4d732a90c24c7f7351dd70aa7f4d3fa52cf512"
     }
   },
   "ARCAAI:arcaai-rheum-consultation": {
@@ -1736,6 +1828,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string"
                           }
                         }
+                      },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "previous_case_notes": {
                         "type": "object",
@@ -2398,7 +2536,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "170d67fe0f2162129d8effea94e92182f6193227096be8a6a4ccaacdaad85eed"
+      "checksum": "a29d26a9f67d15ab23ec49b6bd007dcfbea1242c16590170cbffd744cde829ba"
     }
   },
   "ARCAAI:arcaai-neur-consultation": {
@@ -2532,6 +2670,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string"
                           }
                         }
+                      },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "previous_case_notes": {
                         "type": "object",
@@ -3194,7 +3378,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "cd5a5a835f2ffac9801e37f4d8fb9f938502a858f1fbe3c2704469536d7a5093"
+      "checksum": "3cc1d9b7d9a74824c5a9200f0586e059cf576c56b41b00d2e22159a410cd93aa"
     }
   },
   "ARCAAI:arcaai-orth-consultation": {
@@ -3328,6 +3512,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string"
                           }
                         }
+                      },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "previous_case_notes": {
                         "type": "object",
@@ -3990,7 +4220,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "be38c17acb2efe9220076a213c52407fac2bec1a01bac94c0fab68fd033f76cd"
+      "checksum": "322bd14ffea508e07c5d0d85d1536409b8232bccf53ca530c551f2a908ef38d2"
     }
   },
   "ARCAAI:arcaai-heme-consultation": {
@@ -4124,6 +4354,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string"
                           }
                         }
+                      },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "previous_case_notes": {
                         "type": "object",
@@ -4786,7 +5062,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "785c148b6b0bc33f99e56c7e3d77fab487efa17a4acd6cfd2f348c1d2eeabc30"
+      "checksum": "17524c6d7da9078d9b312b7680214942fcb6ed2e87a19d65033248dc55fb52cf"
     }
   },
   "ARCAAI:arcaai-bren-consultation": {
@@ -4920,6 +5196,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string"
                           }
                         }
+                      },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "previous_case_notes": {
                         "type": "object",
@@ -5582,7 +5904,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "4ff85bfedd7ee9919d1882a481940cbf22a6f389a68e206a020529e5eafcc409"
+      "checksum": "325740a3a47f0444919bbfd1fca73fb045743c0530d5749ce1e46681c9177607"
     }
   },
   "ARCAAI:arcaai-derm-consultation": {
@@ -5716,6 +6038,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string"
                           }
                         }
+                      },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "previous_case_notes": {
                         "type": "object",
@@ -6378,7 +6746,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "9d491c3b42b19266c46c0c896e5c8cec4e3324199f704cffded9900010bd8c09"
+      "checksum": "a78f0d024b08fc1de957277776ef00ecb4139f498323c70ca5f0566808c6b2c6"
     }
   },
   "ARCAAI:arcaai-diet-consultation": {
@@ -6512,6 +6880,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string"
                           }
                         }
+                      },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "previous_case_notes": {
                         "type": "object",
@@ -7174,7 +7588,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "d8c2a70e242835f62d375baed43defaf0fef5eb2012514afd65a5d74a83aebbc"
+      "checksum": "7a8f2de43fb3411948e2299b5885353db4e584da42b0cca0022a00d8e757738d"
     }
   },
   "ARCAAI:arcaai-neph-consultation": {
@@ -7308,6 +7722,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string"
                           }
                         }
+                      },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "previous_case_notes": {
                         "type": "object",
@@ -7970,7 +8430,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "ba22bcacdb4c6c5fc6f93d6b8dd398818cfe304a8a171f85db729a5e519d804c"
+      "checksum": "a20eb27c996ace0985d1213481209541a1e3c46677c7034f0b1e48bf9961dc01"
     }
   },
   "ARCAAI:arcaai-sonc-consultation": {
@@ -8104,6 +8564,52 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string"
                           }
                         }
+                      },
+                      "investigations": {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "maxItems": 100,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                "value": {
+                                  "type": [
+                                    "string",
+                                    "number"
+                                  ]
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "refRange": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "collectedAt": {
+                                  "type": "string",
+                                  "maxLength": 40
+                                },
+                                "flag": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "previous_case_notes": {
                         "type": "object",
@@ -8766,7 +9272,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "0e31cebbac235c6c0886afdfe340b752d359da9fa6a995995124d689049c6bf0"
+      "checksum": "3770eb66d25bc37d773d24cb7e4b3fb893c6ffa3373af4cbfbfb52d8cb4a0cec"
     }
   }
 };

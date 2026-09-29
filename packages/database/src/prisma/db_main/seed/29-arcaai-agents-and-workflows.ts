@@ -40,7 +40,12 @@ import {
   SYSTEM_USER_ID,
 } from './00-constants';
 import { ARCAAI_ALL_CLINICAL_DEPARTMENTS } from './04-department';
-import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATE_IDS, arcaaiOutputLanguagePolicyFragment } from './07b-arcaai-clinical-templates';
+import {
+  ARCAAI_CLINICAL_APPROVED_VERSION,
+  ARCAAI_CLINICAL_TEMPLATE_IDS,
+  arcaaiOutputLanguagePolicyFragment,
+  arcaaiSameDayReturnFragment,
+} from './07b-arcaai-clinical-templates';
 import { noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
 import { ARCAAI_CONSULTATION_SCRIBE_DEFINITION } from './07g-arcaai-two-schemas';
 import {
@@ -216,6 +221,9 @@ export const ARCAAI_DEPARTMENT_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_
     instruction: {
       fragments: [
         { key: 'clinical_note', promptTemplateId: row.templates[visit], promptVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION },
+        // TASK-1020 OD-5(a) — REVISIT agents only: the conditional same-day-return instruction sits
+        // between the body and the policy, so the policy stays LAST.
+        ...(visit === 'revisit' ? [arcaaiSameDayReturnFragment()] : []),
         arcaaiOutputLanguagePolicyFragment(),
       ],
     },

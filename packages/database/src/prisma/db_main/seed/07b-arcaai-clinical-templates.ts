@@ -791,6 +791,78 @@ export const arcaaiOutputLanguagePolicyFragment = () => ({
 });
 
 /**
+ * TASK-1020 OD-5(a) — the SAME-DAY RETURN instruction, an ArcaAI-tenant fragment bound as the THIRD
+ * fragment (after `clinical_note`, before the language policy) on the 11 REVISIT summary agents.
+ *
+ * The revisit bodies assume a weeks-old prior visit ("Last Visit Complaints", "never restate the
+ * previous plan"). At a same-day return the afternoon visit IS where the definitive plan and script
+ * are made, so this fragment maps onto the EXISTING revisit sections (Investigations Previous vs
+ * Current, Treatment Plan, Instructions & Orders) and lifts that restatement rule. No new note
+ * shapes (owner decision OD-5(a)).
+ *
+ * It is CONDITIONAL: `when` is true only when the live/finalize lane says an earlier visit exists
+ * today (`trigger.context.same_day_prequel`, produced by L-CARRY). The `has()` guard is deliberate —
+ * the bare path raises `no such key` when the flag is absent, which the selector records as a
+ * `condition_error`; guarded, an ordinary revisit is a clean `condition_false`. Both placeholders
+ * carry `default("")`, so this fragment never adds a REQUIRED variable to the agent's publish
+ * projection (`requiredPromptVariables` reads every fragment, conditional ones included).
+ *
+ * Like the language policy it is a POINTER to one shared row with no version pin, and it stays OUT
+ * of the clinical corpus (22 + 1 rows, v1/v2/v3 each). The `arcaai-same-day-return` slug is a TAG:
+ * a fragment key may not contain a hyphen (`^[a-z0-9_]{2,48}$`), so the key is `same_day_return`.
+ */
+export const ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID = '71000000-0000-0000-0001-000000000034';
+
+/** The fragment key — `^[a-z0-9_]{2,48}$` (TASK-947). */
+export const ARCAAI_SAME_DAY_RETURN_FRAGMENT_KEY = 'same_day_return';
+
+/** True only when an earlier visit with this patient exists today; absent or false selects nothing. */
+export const ARCAAI_SAME_DAY_RETURN_WHEN = 'has(trigger.context.same_day_prequel) && trigger.context.same_day_prequel == true';
+
+export const ARCAAI_SAME_DAY_RETURN_CONTENT = `SAME-DAY RETURN VISIT. This encounter continues an earlier visit with this patient today. The earlier note(s): {{context.same_day_prequel_summary | default("")}}. Results available now: {{context.formatted_test_results | default("")}}.
+- Document only what is new since the earlier visit today: investigations completed, results with values, units and flags, and symptoms or findings that changed.
+- Under "Investigations (Previous vs Current)", Previous is what was ordered or known at the earlier visit today; Current is the results now available.
+- Update the assessment/diagnosis in the light of the results; say explicitly when it is unchanged.
+- Treatment Plan and Instructions & Orders in this note are the DEFINITIVE plan of care: state the complete medication list (drug, dose, route, frequency, duration) and all follow-up instructions, even where they repeat the earlier visit's provisional plan. This overrides any instruction not to restate the previous plan.
+- Do not repeat the earlier visit's history, examination or complaints unless they changed; refer to them as "as documented at the earlier visit today".
+- Never invent a result that is not in the conversation or in the results above.`;
+
+export const ARCAAI_SAME_DAY_RETURN_TEMPLATE = {
+  id: ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID,
+  tenantId: ARCAAI_TENANT_ID,
+  name: 'Same-day return visit',
+  description:
+    'Instructions added to the revisit summary agents when the patient already had an earlier visit today: document only what is new, compare investigations previous vs current, and treat the plan of care in this note as definitive. Selected by the condition on the fragment (trigger.context.same_day_prequel); the revisit agents must be republished for an approved new version to reach a note.',
+  content: ARCAAI_SAME_DAY_RETURN_CONTENT,
+  category: 'SUMMARY' as PromptTemplateCategory,
+  status: 'APPROVED' as PromptTemplateStatus,
+  scope: 'TENANT_DEFAULT' as PromptTemplateScope,
+  variables: null as Prisma.InputJsonValue | null,
+  currentVersionNumber: 1,
+  approvedVersionNumber: 1,
+  departmentId: null as string | null,
+  // NOT tagged `pre-summary` (see the language policy row): that tag is how the tenant pre-summary is found.
+  tags: ['arcaai', 'arcaai-same-day-return', 'same-day-return', 'revisit'],
+};
+
+export const ARCAAI_SAME_DAY_RETURN_VERSION = {
+  id: versionId(ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID, 1),
+  tenantId: ARCAAI_TENANT_ID,
+  promptTemplateId: ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID,
+  versionNumber: 1,
+  content: ARCAAI_SAME_DAY_RETURN_CONTENT,
+  changeReason: 'Initial version — same-day return visit instruction for the revisit summary agents (TASK-1020 OD-5a).',
+  changedBy: SYSTEM_USER_ID,
+};
+
+/** The fragment a REVISIT agent attaches: a pointer to the shared row, conditional, unpinned. */
+export const arcaaiSameDayReturnFragment = () => ({
+  key: ARCAAI_SAME_DAY_RETURN_FRAGMENT_KEY,
+  promptTemplateId: ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID,
+  when: ARCAAI_SAME_DAY_RETURN_WHEN,
+});
+
+/**
  * Seed the ArcaAI clinical prompt library. Runs in Phase 3 AFTER
  * seedPromptTemplate (shares the PromptTemplate / PromptVersion tables) and
  * AFTER seedDepartment (the ArcaAI departments carry the legacy prompt-id
@@ -860,4 +932,19 @@ export const seedArcaaiClinicalTemplates = async (client: CorePrismaClient) => {
     create: ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION,
   });
   console.log('Seeded the ArcaAI output-language policy template (1 template, 1 version)');
+
+  // TASK-1020 — the same-day-return fragment body, likewise beside the corpus and not part of it.
+  const { variables: sameDayVariables, ...sameDayRest } = ARCAAI_SAME_DAY_RETURN_TEMPLATE;
+  const sameDayData = { ...sameDayRest, ...(sameDayVariables != null ? { variables: sameDayVariables } : {}) };
+  await client.promptTemplate.upsert({
+    where: { id: ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID },
+    update: sameDayData,
+    create: sameDayData,
+  });
+  await client.promptVersion.upsert({
+    where: { id: ARCAAI_SAME_DAY_RETURN_VERSION.id },
+    update: ARCAAI_SAME_DAY_RETURN_VERSION,
+    create: ARCAAI_SAME_DAY_RETURN_VERSION,
+  });
+  console.log('Seeded the ArcaAI same-day-return template (1 template, 1 version)');
 };
