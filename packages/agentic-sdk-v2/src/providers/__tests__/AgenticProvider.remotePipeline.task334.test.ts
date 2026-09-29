@@ -1,13 +1,13 @@
 /**
- * Remote pipeline-id population.
+ * Remote pipeline-id population — REMOVED (TASK-1012).
  *
- * The assigned remote ASR pipeline is resolved per-user server-side
- * (admin override -> tenant default -> global) and returned on
- * `GET /users/me/preferences` as `remoteConfig.pipelineId`. The provider must
- * surface it into `resolvedConfig.stt.transcriptionPipelineId` via the
- * admin/tenant tier so the consultation panel runs the correct pipeline
- * instead of falling back to the hardcoded default, and so a user preference
- * cannot override it (the field is `permission: 'admin'`).
+ * The provider used to read `remoteConfig.pipelineId` off `GET /users/me/preferences` and
+ * inject it into `resolvedConfig.stt.transcriptionPipelineId`. The gateway has not sent
+ * `remoteConfig` since TASK-1006 (`AsrPipeline` is gone; ASR is selected by the gateway from
+ * the tenant's agent assignment), so that injection was dead. These tests pin its ABSENCE:
+ * even a (stale) `remoteConfig.pipelineId` never reaches the cascade, on mount or on a
+ * same-tab user switch. `stt.transcriptionPipelineId` stays admin-owned (a user preference
+ * still cannot set it) and is `@deprecated`, removed in 5.0.0.
  *
  * @vitest-environment jsdom
  */
@@ -94,18 +94,18 @@ function defaultHandler(url: string): Promise<Response> {
   return Promise.resolve(jsonResponse({}));
 }
 
-describe('remote pipeline-id population', () => {
-  it('injects remoteConfig.pipelineId into resolvedConfig.stt.transcriptionPipelineId', async () => {
+describe('remote pipeline-id population is gone (TASK-1012)', () => {
+  it('never injects remoteConfig.pipelineId into resolvedConfig.stt.transcriptionPipelineId', async () => {
     handler = defaultHandler;
 
     const store = await renderProvider();
 
     await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
 
-    expect(store.getState().resolvedConfig?.stt?.transcriptionPipelineId).toBe(REMOTE_PIPELINE_ID);
+    expect(store.getState().resolvedConfig?.stt?.transcriptionPipelineId).toBeUndefined();
   });
 
-  it('keeps the assigned pipeline id authoritative — a user preference cannot override it', async () => {
+  it('keeps stt.transcriptionPipelineId admin-owned — a user preference cannot set it', async () => {
     handler = defaultHandler;
 
     const store = await renderProvider();
@@ -115,43 +115,12 @@ describe('remote pipeline-id population', () => {
     const configManager = store.getState().configManager;
     expect(configManager).toBeTruthy();
 
-    // stt.transcriptionPipelineId is permission: 'admin' -> setUserValue must
-    // reject and the resolved value must remain the server-assigned pipeline.
     const accepted = configManager!.setUserValue('stt.transcriptionPipelineId', 'pipe-hacked');
     expect(accepted).toBe(false);
-    expect(store.getState().resolvedConfig?.stt?.transcriptionPipelineId).toBe(REMOTE_PIPELINE_ID);
-  });
-
-  it('omits the override when no remote pipeline is assigned (field stays undefined)', async () => {
-    handler = async (url) => {
-      if (url.includes('/users/me/preferences')) {
-        return jsonResponse({});
-      }
-      return defaultHandler(url);
-    };
-
-    const store = await renderProvider();
-
-    await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
-
     expect(store.getState().resolvedConfig?.stt?.transcriptionPipelineId).toBeUndefined();
   });
 
-  // ===========================================================================
-  // Impersonation parity — a same-tab user switch must re-resolve the pipeline.
-  //
-  // mount-time init() (deps []) is the ONLY place that injected
-  // remoteConfig.pipelineId into the cascade tenant tier, and it runs ONCE with
-  // the MOUNTING identity (the admin). On impersonation `effectiveUserId`
-  // changes and the *second* effect re-hydrates the namespace — but it used to
-  // only refresh `store.tenantConfig` (display) and never re-applied the cascade
-  // tenant tier, so `resolvedConfig.stt.transcriptionPipelineId` kept the
-  // admin's (empty) value and the panel fell back to the hardcoded SYSTEM
-  // DEFAULT pipeline → cross-tenant 404. The switch must re-fetch the incoming
-  // user's resolved pipeline and re-apply it.
-  // ===========================================================================
-  it('re-applies the impersonated user resolved pipeline to the cascade on a same-tab user switch', async () => {
-    // Mount as an ADMIN with NO assigned pipeline (remoteConfig empty).
+  it('does not inject a pipeline on a same-tab user switch either, while still re-applying the transcription mode', async () => {
     handler = async (url) => {
       if (url.endsWith('/auth/me')) return jsonResponse({ id: 'admin-1', tenantId: 'tenant-1' });
       if (url.includes('/tenants/me')) return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
@@ -161,15 +130,12 @@ describe('remote pipeline-id population', () => {
 
     const store = await renderProvider();
     await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
-    expect(store.getState().resolvedConfig?.stt?.transcriptionPipelineId).toBeUndefined();
 
-    // Impersonate a doctor whose server-resolved pipeline is tenant-owned.
-    const DOCTOR_PIPELINE = 'pipe-doctor-streamable';
     handler = async (url) => {
       if (url.endsWith('/auth/me')) return jsonResponse({ id: 'doctor-2', tenantId: 'tenant-1' });
       if (url.includes('/tenants/me')) return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
       if (url.includes('/users/me/preferences')) {
-        return jsonResponse({ remoteConfig: { pipelineId: DOCTOR_PIPELINE, assignedBy: 'admin' } });
+        return jsonResponse({ remoteConfig: { pipelineId: 'pipe-doctor-streamable', assignedBy: 'admin' }, transcriptionMode: 'LOCAL' });
       }
       return jsonResponse({});
     };
@@ -181,6 +147,7 @@ describe('remote pipeline-id population', () => {
       });
     });
 
-    await waitFor(() => expect(store.getState().resolvedConfig?.stt?.transcriptionPipelineId).toBe(DOCTOR_PIPELINE), { timeout: 2000 });
+    await waitFor(() => expect(store.getState().resolvedConfig?.stt?.transcriptionMode).toBe('LOCAL'), { timeout: 2000 });
+    expect(store.getState().resolvedConfig?.stt?.transcriptionPipelineId).toBeUndefined();
   });
 });

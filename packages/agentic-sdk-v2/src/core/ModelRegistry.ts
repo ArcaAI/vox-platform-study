@@ -60,6 +60,8 @@ const SELECTED_MODELS_SCHEMA = v.object({
  * // Get model URL for loading
  * const url = registry.getModelUrl('whisper-small');
  * ```
+ *
+ * @deprecated TASK-1012 — do not construct or drive this directly. The browser never runs a model (TASK-865/TASK-1006), so its model catalogue and selection (`selectModel`, `selectSttTask`, `getModelUrl`, load tracking) are dead; `AgenticProvider` still uses it internally to load the tenant config. ASR is a server-side Agent (`agentSlug`). Removed from the public surface in 5.0.0.
  */
 export class ModelRegistry {
   private config: ModelRegistryConfig;
@@ -199,6 +201,8 @@ export class ModelRegistry {
 
   /**
    * Select a model for a type
+   *
+   * @deprecated TASK-1012 — selects nothing: the browser never runs a model. Name the ASR Agent with `agentSlug`. Removed in 5.0.0.
    */
   selectModel(type: 'stt' | 'vad' | 'ner', modelId: string): void {
     const model = this.models.get(modelId);
@@ -250,6 +254,8 @@ export class ModelRegistry {
    * the same tenant/user-namespaced row. Unlike the tenant-default auto-select
    * in `loadTenantConfig`, this is an explicit user action, so it always
    * persists (mirrors `selectModel`).
+   *
+   * @deprecated TASK-1012 — selects nothing: the browser never runs a model. Name the ASR Agent with `agentSlug`. Removed in 5.0.0.
    */
   selectSttTask(task: SttTask): void {
     const previousTask = this.selected.sttTask;

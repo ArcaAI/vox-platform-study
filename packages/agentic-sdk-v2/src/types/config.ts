@@ -182,7 +182,11 @@ export interface AgenticConfig {
   audio?: AudioPluginConfig;
   /** Additional plugins (NER, TTS, etc.) */
   plugins?: PluginConfig;
-  /** Model registry for STT, VAD, NER models */
+  /**
+   * Model registry for STT, VAD, NER models
+   *
+   * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so the local model registry selects nothing. ASR is a server-side Agent (`agentSlug`). Removed in 5.0.0.
+   */
   models?: ModelRegistryConfig;
   /** User personalization settings */
   personalization?: PersonalizationConfig;
@@ -346,6 +350,8 @@ export interface TTSPluginConfig {
 
 /**
  * Model Registry Configuration
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so the local model registry selects nothing. ASR is a server-side Agent (`agentSlug`). Removed in 5.0.0.
  */
 export interface ModelRegistryConfig {
   /** Custom organization models */
@@ -360,6 +366,8 @@ export interface ModelRegistryConfig {
 
 /**
  * Model Definition
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so the local model registry selects nothing. ASR is a server-side Agent (`agentSlug`). Removed in 5.0.0.
  */
 export interface ModelDefinition {
   /** Unique model identifier */
@@ -523,6 +531,8 @@ export interface ActiveVoiceProfileSummary {
 /**
  * Remote workflow configuration (read-only, resolved from admin config).
  * Included in the response so doctors can see their assigned pipeline.
+ *
+ * @deprecated TASK-1012 — the gateway has not sent `remoteConfig` since TASK-1006 (`AsrPipeline` is gone; ASR is resolved server-side from the tenant's agent assignment), and the SDK no longer reads it. Removed in 5.0.0.
  */
 export interface RemoteConfigResponse {
   /** Assigned ASR pipeline ID */
@@ -552,7 +562,11 @@ export interface UserPreferences {
   dnaStyleId?: string;
   /** Local workflow model configuration (used when workflowMode === 'local') */
   localConfig?: Partial<LocalWorkflowConfig>;
-  /** Read-only remote pipeline info (resolved from admin config, not settable by doctors) */
+  /**
+   * Read-only remote pipeline info (resolved from admin config, not settable by doctors)
+   *
+   * @deprecated TASK-1012 — the gateway has not sent `remoteConfig` since TASK-1006 (`AsrPipeline` is gone; ASR is resolved server-side from the tenant's agent assignment), and the SDK no longer reads it. Removed in 5.0.0.
+   */
   remoteConfig?: RemoteConfigResponse;
   /**
    * Read-only summary of the currently active voice profile, resolved from
@@ -699,9 +713,15 @@ export interface TenantFeatureFlags {
  *   - `general` -> `defaultLanguage`
  *   - `feature-flags` -> `features.*`
  *   - `ux-constants` -> `localAsrModels`, `localVadModels`, `localNoiseSuppressionModels`
+ *
+ * The browser-model fields (`defaultSttModel`, `vadSensitivity`, `local*Models`) are
+ * `@deprecated` (TASK-1012): the browser never runs a model since TASK-865/TASK-1006; they
+ * are removed in 5.0.0 together with the platform seed that still serves them.
  */
 export interface TenantAudioConfig {
+  /** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
   defaultSttModel?: string;
+  /** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
   vadSensitivity?: number;
   defaultLanguage?: string;
   features: TenantFeatureFlags;
@@ -711,21 +731,27 @@ export interface TenantAudioConfig {
    * perspective; the provider maps it into `audio.captureRawAudio`.
    */
   captureRawAudio?: boolean;
+  /** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
   localAsrModels?: LocalAsrModelInfo[];
+  /** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
   localVadModels?: LocalVadModelInfo[];
+  /** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
   localNoiseSuppressionModels?: LocalNoiseSuppressionModelInfo[];
 }
 
+/** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
 export interface LocalAsrModelInfo {
   id: string;
   name: string;
 }
 
+/** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
 export interface LocalVadModelInfo {
   id: string;
   name: string;
 }
 
+/** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
 export interface LocalNoiseSuppressionModelInfo {
   id: string;
   name: string;
@@ -747,7 +773,9 @@ export const DEFAULT_TENANT_FEATURES: TenantFeatureFlags = {
  * in `packages/database/src/prisma/db_main/seed/11-global-setting.ts`.
  */
 export const TENANT_CONFIG_KEYS = {
+  /** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
   DEFAULT_STT_MODEL: 'default-stt-model',
+  /** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
   VAD_SENSITIVITY: 'vad-sensitivity',
   DEFAULT_LANGUAGE: 'default-language',
   ENABLE_REAL_TIME_TRANSCRIPTION: 'enable-real-time-transcription',
@@ -760,8 +788,11 @@ export const TENANT_CONFIG_KEYS = {
   // /tenants/me/config and mapped into audio.captureRawAudio (admin-owned;
   // user preferences cannot override it).
   ENABLE_LOCAL_RAW_CAPTURE: 'enable-local-raw-capture',
+  /** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
   LOCAL_ASR_MODELS: 'local-asr-models',
+  /** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
   LOCAL_VAD_MODELS: 'local-vad-models',
+  /** @deprecated TASK-1012 — legacy browser-model setting (still parsed in 4.x); the browser runs no model. Removed in 5.0.0. */
   LOCAL_NOISE_SUPPRESSION_MODELS: 'local-noise-suppression-models',
 } as const;
 

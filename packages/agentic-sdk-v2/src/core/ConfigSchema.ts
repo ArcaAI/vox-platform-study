@@ -62,11 +62,13 @@ export const SttConfigSchema = v.object({
   // (`UiConfigSchema.language` below is the UI locale picker and keeps its
   // default — different field, different job.)
   language: v.optional(v.string()),
-  // Resolved REMOTE transcription pipeline id (admin/tenant-assigned).
-  // Surfaced through the cascade so consumers (e.g. the consultation recording
-  // panel) select the right pipeline instead of a hardcoded default. Optional:
-  // `undefined` → the caller falls back to its own default. Populating this from
-  // the tenant/user remote-config cascade.
+  /**
+   * @deprecated TASK-1012 — never populated. The provider used to inject the
+   * gateway's `remoteConfig.pipelineId` here; the gateway has not sent it since
+   * TASK-1006 (`AsrPipeline` is gone — ASR is selected server-side from the
+   * tenant's agent assignment), so the injection was removed. Still parses and
+   * stays admin-owned for 4.x source compatibility; removed in 5.0.0.
+   */
   transcriptionPipelineId: v.optional(v.string()),
   // EFFECTIVE transcription mode resolved SERVER-SIDE in
   // UserPreferencesService (locked ⇒ tenant default; unlocked ⇒ doctor's
@@ -136,8 +138,9 @@ export const CONFIG_PERMISSIONS: Record<string, ConfigFieldMeta> = {
   'stt.defaultModel': { permission: 'admin', section: 'stt', key: 'defaultModel', label: 'Default STT Model' },
   'stt.availableModels': { permission: 'admin', section: 'stt', key: 'availableModels', label: 'Available Models' },
   'stt.language': { permission: 'user', section: 'stt', key: 'language', label: 'Transcription Language' },
-  // Which remote pipeline a user runs is admin/tenant-assigned, so the
-  // resolved id is admin-owned (user prefs can't override it via the cascade).
+  // Deprecated (TASK-1012): never populated since the gateway stopped sending
+  // `remoteConfig` (TASK-1006). Kept admin-owned so a user pref still cannot set it;
+  // removed in 5.0.0.
   'stt.transcriptionPipelineId': { permission: 'admin', section: 'stt', key: 'transcriptionPipelineId', label: 'Transcription Pipeline' },
   // The effective transcription mode is resolved server-side and is
   // authoritative; admin-owned so the cascade's stripLockedAndAdminPaths keeps

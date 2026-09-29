@@ -395,6 +395,8 @@ export const transcriptionJobScopeFor = (jobId: string): string => `transcriptio
  *
  * Matches backend NlpController at `/nlp` (proxied to Python NLP service).
  * These are proxied to the Python NLP service.
+ *
+ * @deprecated TASK-1012 — the gateway has no `/nlp/*` routes; every path here 404s. Entity extraction is a `NAMED_ENTITY_RECOGNITION` agent (`useAgentInvocation`). Removed in 5.0.0.
  */
 export const NLP_ENDPOINTS = {
   /** Classify tokens (medical NER) — primary NER endpoint */
@@ -561,6 +563,10 @@ export const POLICY_ENDPOINTS = {
  * Controller: `apps/api/src/modules/streaming/text-proxy.controller.ts`
  * (`@Controller('text-generations')`). `GENERATE_ASSEMBLED` runs server-side prompt
  * assembly (DNA-styled + attachment-aware); `GENERATE` is the raw passthrough.
+ *
+ * Neither accepts a caller-pinned `provider` or `model` (400 `MODEL_PINNING_NOT_ALLOWED`,
+ * TASK-1012): the SDK never selects a model. To run a specific configuration, invoke the
+ * tenant's published `TEXT_GENERATION` agent by `agentSlug` with `useAgentInvocation`.
  */
 export const TEXT_ENDPOINTS = {
   /** Generate text (raw passthrough; sync or streaming) */

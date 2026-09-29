@@ -3,8 +3,13 @@
  *
  * Utilities for checking and managing Transformers.js model cache in browser Cache Storage.
  * Transformers.js stores downloaded models in Cache Storage API.
+ *
+ * DEPRECATED (TASK-1012): every export is unused. The browser never runs a model since
+ * TASK-865/TASK-1006 (the in-browser Whisper/VAD/NER packages were deleted), so nothing
+ * downloads Transformers.js weights any more. Scheduled for removal.
  */
 
+/** @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal. */
 export interface TransformersCacheInfo {
   isCached: boolean;
   cacheSize?: number;
@@ -16,6 +21,8 @@ export interface TransformersCacheInfo {
  * Cache Storage name Transformers.js uses by default for PUBLIC (HF-hub) model
  * weights. Public weights (Whisper, Silero, …) are identical across tenants, so
  * they remain in this single shared cache and are downloaded once per origin.
+ *
+ * @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal.
  */
 export const SHARED_TRANSFORMERS_CACHE_NAME = 'transformers-cache';
 
@@ -33,9 +40,12 @@ const CUSTOM_CACHE_NAMESPACE = 'vox';
  * - `custom` — a tenant-published artifact (e.g. `TenantAudioConfig.localAsrModels`).
  *   Must be isolated per tenant so one tenant can never read/serve another
  *   tenant's private weights from a shared cache.
+ *
+ * @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal.
  */
 export type TransformersModelSource = 'public' | 'custom';
 
+/** @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal. */
 export interface TransformersCacheNameOptions {
   /** Defaults to `public` when unset. */
   source?: TransformersModelSource;
@@ -55,6 +65,8 @@ export interface TransformersCacheNameOptions {
  *
  * Fails closed: a `custom` source without a usable (non-blank) `tenantId` throws
  * rather than silently falling back to the shared cache.
+ *
+ * @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal.
  */
 export function getTransformersCacheName(options: TransformersCacheNameOptions = {}): string {
   const { source = 'public', tenantId } = options;
@@ -79,6 +91,8 @@ export function getTransformersCacheName(options: TransformersCacheNameOptions =
  * cache ({@link SHARED_TRANSFORMERS_CACHE_NAME}) and other tenants' custom caches
  * are never touched. A blank `tenantId` is a no-op (returns `false`) to avoid
  * accidentally matching unrelated caches.
+ *
+ * @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal.
  */
 export async function clearTenantCustomTransformersCache(tenantId: string): Promise<boolean> {
   try {
@@ -110,6 +124,8 @@ export async function clearTenantCustomTransformersCache(tenantId: string): Prom
 
 /**
  * Check if a Transformers.js model is cached
+ *
+ * @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal.
  */
 export async function isTransformersModelCached(modelId: string): Promise<boolean> {
   try {
@@ -142,6 +158,8 @@ export async function isTransformersModelCached(modelId: string): Promise<boolea
 
 /**
  * Get detailed cache information for a Transformers.js model
+ *
+ * @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal.
  */
 export async function getTransformersCacheInfo(modelId: string): Promise<TransformersCacheInfo> {
   try {
@@ -197,6 +215,8 @@ export async function getTransformersCacheInfo(modelId: string): Promise<Transfo
 
 /**
  * Clear Transformers.js cache for a specific model
+ *
+ * @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal.
  */
 export async function clearTransformersModelCache(modelId: string): Promise<boolean> {
   try {
@@ -230,6 +250,8 @@ export async function clearTransformersModelCache(modelId: string): Promise<bool
 
 /**
  * Get all cached Transformers.js models
+ *
+ * @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal.
  */
 export async function getAllCachedTransformersModels(): Promise<string[]> {
   try {
@@ -265,6 +287,8 @@ export async function getAllCachedTransformersModels(): Promise<string[]> {
 
 /**
  * Get total size of all Transformers.js cached models
+ *
+ * @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal.
  */
 export async function getTotalTransformersCacheSize(): Promise<number> {
   try {
@@ -299,6 +323,8 @@ export async function getTotalTransformersCacheSize(): Promise<number> {
 
 /**
  * Clear all Transformers.js cache
+ *
+ * @deprecated TASK-1012 — no consumer: the browser never runs a model (TASK-865/TASK-1006), so there are no Transformers.js weights to cache. Scheduled for removal.
  */
 export async function clearAllTransformersCache(): Promise<boolean> {
   try {
