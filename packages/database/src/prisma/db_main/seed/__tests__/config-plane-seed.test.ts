@@ -91,11 +91,11 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     expect(SYSTEM_AI_PROVIDER_CONNECTIONS.some((c) => c.service === 'llm' && c.provider === 'sarvam')).toBe(false);
   });
 
-  it('seeds the STT cloud catalog rows', () => {
+  it('seeds the STT cloud catalog rows, and the platform`s own vLLM ASR pool (TASK-1021)', () => {
     const stt = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'stt')
       .map((c) => c.provider)
       .sort();
-    expect(stt).toEqual(['azure-foundry', 'azure-speech', 'openai', 'sarvam']);
+    expect(stt).toEqual(['azure-foundry', 'azure-speech', 'openai', 'sarvam', 'vllm']);
 
     // TASK-880 — `stt.azureFoundry.enabled` became the SYSTEM row's `enabled` (a PREVIEW veto that
     // must seed OFF), and `stt.sarvam.baseUrl` / `stt.openai.baseUrl` moved onto their rows. A row
@@ -199,6 +199,9 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
       'llm:vllm',
       'model-registry:huggingface',
       'model-registry:s3',
+      // TASK-1021 — the platform's own vLLM ASR pool: it IS the endpoint every `provider: 'vllm'`
+      // registry row is served from, so it is enabled Day-1 like the built-in llm engines.
+      'stt:vllm',
       'tts:kokoro',
     ]);
   });

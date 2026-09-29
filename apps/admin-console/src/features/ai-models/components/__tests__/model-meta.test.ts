@@ -12,6 +12,7 @@ import {
   isBucketPrefixRedundant,
   MODEL_TASK_TYPE_OPTIONS,
   RUNTIME_PROVIDER_OPTIONS,
+  SERVED_BY_OPTIONS,
   SOURCE_LABELS,
   SOURCE_OPTIONS,
   taskTypeToPipelineTag,
@@ -105,5 +106,12 @@ describe('taskTypeToPipelineTag', () => {
   it('renders the enum member as the Hugging Face pipeline tag', () => {
     expect(taskTypeToPipelineTag('AUTOMATIC_SPEECH_RECOGNITION')).toBe('automatic-speech-recognition');
     expect(taskTypeToPipelineTag('TEXT2TEXT_GENERATION')).toBe('text2text-generation');
+  });
+});
+
+describe('SERVED_BY_OPTIONS — the vllm serving target (TASK-1021 D-13)', () => {
+  it('offers vllm, and no longer the retired asr-vllm name', () => {
+    expect(SERVED_BY_OPTIONS).toContain('vllm');
+    expect(SERVED_BY_OPTIONS).not.toContain('asr-vllm');
   });
 });

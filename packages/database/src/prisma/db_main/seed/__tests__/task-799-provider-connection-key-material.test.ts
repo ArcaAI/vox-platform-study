@@ -69,8 +69,11 @@ const TEXT_SELF_HOST_ENGINES = ['llm:lm-studio', 'llm:ollama', 'llm:vllm', 'llm:
  * `isPlatformSelfHostConnection`, so a row that gets MISCLASSIFIED in the seed
  * still fails the keyless assertion below instead of classifying itself out of
  * it. Widen it deliberately, never to make a red test green.
+ *
+ * TASK-1021 added `stt:vllm` — the platform's own vLLM ASR pool, which `apps/stt` reads off the
+ * same fold (`provider_overrides["vllm"]`) for its `base_url`.
  */
-const OTHER_SELF_HOST_ROWS = ['embeddings:tei-embed'];
+const OTHER_SELF_HOST_ROWS = ['embeddings:tei-embed', 'stt:vllm'];
 
 /** Rows for which a seeded (placeholder) key is correct. Everything else is CLOUD and must be keyless. */
 const KEYED_SELF_HOST_ROWS = [...TEXT_SELF_HOST_ENGINES, ...OTHER_SELF_HOST_ROWS];

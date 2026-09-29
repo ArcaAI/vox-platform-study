@@ -68,6 +68,16 @@ function lmStudioBaseUrl(): string {
 }
 
 /**
+ * TASK-1021 — where the vLLM ASR pool (`apps/vllm`, Service `hope-vllm-asr`) listens, for the
+ * environment being seeded. Same shape and reasoning as {@link lmStudioBaseUrl}: the default is the
+ * k3s Service name; a laptop points it at its native process. Seed-time input only — the row it
+ * writes is the `db-config` source of truth an admin edits afterwards.
+ */
+function vllmAsrBaseUrl(): string {
+  return (process.env.SEED_VLLM_ASR_BASE_URL ?? '').trim() || 'http://hope-vllm-asr:8867/v1';
+}
+
+/**
  * ## Why a keyless row is not enough ( Round 4, lane B)
  *
  * There are TWO ways a connection row reaches a consumer, and they have
@@ -147,6 +157,8 @@ export const PLATFORM_SELF_HOST_CONNECTIONS = [
   'llm:built-in',
   'llm:vllm',
   'llm:llama-cpp',
+  // TASK-1021 — the vLLM ASR pool: `stt` rides the `provider_overrides` fold like `apps/text`.
+  'stt:vllm',
   // Not seeded (see the delivery-path table above) — classified for the lane
   // that eventually gets a delivery path for them.
   'rerank:tei',
@@ -258,6 +270,11 @@ export interface AiProviderConnectionSeed {
    * property of the CONNECTION to that vendor, not a service-wide setting key.
    */
   timeoutS?: number | null;
+  /**
+   * TASK-1021 — simultaneous in-flight requests the endpoint may take (`maxConcurrent`), carried
+   * to `apps/stt` as `max_concurrent`. `null`/absent = the consuming service's own default.
+   */
+  maxConcurrent?: number | null;
   /**
    * Plaintext to encrypt into `encryptedApiKey` at seed time, or `null` for a
    * genuinely keyless row.
@@ -546,6 +563,32 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
+  },
+  {
+    // TASK-1021 — the platform's OWN vLLM ASR pool (`apps/vllm`), a self-host ENGINE rather than a
+    // cloud vendor (`PLATFORM_SELF_HOST_PROVIDERS.stt`): a tenant row is a 403, the platform-default
+    // entitlement never suppresses it, and this row serves every tenant. It is what makes a
+    // `provider: 'vllm'` registry row usable (D-13): the ASR resolver folds it into
+    // `provider_overrides["vllm"]` as `{ base_url, max_concurrent, ... }` for `apps/stt`'s loader.
+    //
+    // KEY: the non-secret `not-needed` PLACEHOLDER (see "Why a keyless row is not enough"): the
+    // fold DROPS a keyless row, and a dropped row delivers no endpoint. `apps/stt` authenticates to
+    // the engine with the shared internal token, never with this value.
+    id: '87000000-0000-0000-0000-0000000000c5',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'stt',
+    provider: 'vllm',
+    baseUrl: vllmAsrBaseUrl(),
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
+    enabled: true,
+    // In-flight decodes `apps/stt` may keep open against the pool (its engines batch them).
+    maxConcurrent: 32,
+    metaData: { note: 'Platform vLLM ASR pool (apps/vllm); admin-tunable on this row (db-config tier).' },
   },
 
   // ── TTS cloud providers (unified from TenantTtsProviderCredential) ─────────
@@ -872,6 +915,7 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
         deploymentName: row.deploymentName,
         enabled: row.enabled,
         ...(row.timeoutS !== undefined && row.timeoutS !== null ? { timeoutS: row.timeoutS } : {}),
+        ...(row.maxConcurrent !== undefined && row.maxConcurrent !== null ? { maxConcurrent: row.maxConcurrent } : {}),
         ...(row.extraJson ? { extraJson: row.extraJson } : {}),
         // Conditional spread, not `?? undefined` — the repo compiles
         // with `exactOptionalPropertyTypes`, so an explicit `undefined`

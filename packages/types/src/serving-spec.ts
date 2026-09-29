@@ -24,6 +24,17 @@ export type ServingKind = (typeof SERVING_KINDS)[number];
 export const SERVING_COMPUTE_TYPES = ['float16', 'bfloat16', 'float32'] as const;
 export type ServingComputeType = (typeof SERVING_COMPUTE_TYPES)[number];
 
+/**
+ * D-11 — the engine-sizing facts a vLLM-served row DECLARES on `AiModel._metadata.serving`, beside
+ * (never inside) the LM Studio load profile that shares the key. `vramGiB` is required for the row
+ * to be servable; the serving-spec builder refuses a row without it (`SERVING_FACTS_MISSING`).
+ */
+export type AiModelEngineServingFacts = {
+  vramGiB?: number;
+  maxNumSeqs?: number;
+  enforceEager?: boolean;
+};
+
 /** Engine sizing, from `AiModel._metadata.serving`. `null` = the engine default applies. */
 export interface ResolvedServingEngine {
   /** GPU memory the engine is sized to, in GiB (never a fraction of the card). Always > 0. */
