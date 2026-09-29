@@ -10,7 +10,7 @@ import { HF_CACHE_LIBRARIES, HOPE_MODELS_BUCKET, SINGLE_FILE_LIBRARIES, deriveLo
 import { DownloadHeartbeat, DownloadHeartbeatSnapshot } from './download-heartbeat';
 import { mergeDownloadMeta, readDownloadMeta } from './model-download-meta.util';
 import { buildAiModelManifest } from './model-manifest.util';
-import { ModelPublisherError, NON_RETRYABLE_PUBLISHER_CODES } from './model-publisher.errors';
+import { ModelPublisherError, isNonRetryablePublisherError } from './model-publisher.errors';
 import { ModelSourceFetcherService } from './model-source-fetcher.service';
 import { createStagingDir, removeStagingDir, resolveStagingBaseDir } from './model-staging';
 import { ModelStoreFactory } from './model-store';
@@ -301,7 +301,7 @@ export class AiModelDownloadProcessor extends WorkerHost {
     } catch (error) {
       await heartbeat?.stop();
       const message = error instanceof Error ? error.message : String(error);
-      const recordFailure = finalAttempt || isNonRetryable(error);
+      const recordFailure = finalAttempt || isNonRetryablePublisherError(error);
       this.logger.error({ message: 'AiModel publish failed', jobId, aiModelId, attempt, willRetry: !recordFailure, error: message });
 
       const fresh = await this.aiModelRepository.findById(aiModelId).catch(() => null);
@@ -348,7 +348,7 @@ export class AiModelDownloadProcessor extends WorkerHost {
    * rethrown as-is (BullMQ retries it while attempts remain).
    */
   private toJobError(error: unknown, finalAttempt: boolean, context: Record<string, string>): unknown {
-    if (!finalAttempt && isNonRetryable(error)) {
+    if (!finalAttempt && isNonRetryablePublisherError(error)) {
       this.logger.warn({ message: 'Publisher job failed with a non-retryable code', ...context, code: (error as ModelPublisherError).code });
       return new UnrecoverableError((error as Error).message);
     }
@@ -383,8 +383,4 @@ export class AiModelDownloadProcessor extends WorkerHost {
       return null;
     }
   }
-}
-
-function isNonRetryable(error: unknown): boolean {
-  return error instanceof ModelPublisherError && NON_RETRYABLE_PUBLISHER_CODES.has(error.code);
 }

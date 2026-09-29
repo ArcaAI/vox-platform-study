@@ -31,3 +31,8 @@ export class ModelPublisherError extends Error {
  * spending its remaining BullMQ attempts.
  */
 export const NON_RETRYABLE_PUBLISHER_CODES: ReadonlySet<string> = new Set([MODEL_STORE_CREDENTIAL_MISSING, STAGING_SPACE_INSUFFICIENT, MODEL_STORE_PREFIX_REFUSED]);
+
+/** A coded publisher failure no retry can fix (see `NON_RETRYABLE_PUBLISHER_CODES`). */
+export function isNonRetryablePublisherError(error: unknown): error is ModelPublisherError {
+  return error instanceof ModelPublisherError && NON_RETRYABLE_PUBLISHER_CODES.has(error.code);
+}

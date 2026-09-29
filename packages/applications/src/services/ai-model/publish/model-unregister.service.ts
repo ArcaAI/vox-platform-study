@@ -13,7 +13,8 @@
  *   2. bookkeeping — availability MISSING (when deleted), `_metadata.unregister`
  *      completed — written while the row is still live and OCC-writable;
  *   3. the row soft-deleted, then `ResourceDeleted` broadcast.
- * A failure anywhere records the error (on the final attempt) and leaves the
+ * A failure anywhere records the error (on the final attempt, or at once for a
+ * non-retryable code) and leaves the
  * row registered: a half-unregistered row that still exists is recoverable, a
  * soft-deleted row whose weights are still present is an orphan nobody sees.
  */
@@ -24,6 +25,7 @@ import { AiModelAvailability, AiModelRepository, ResourceType, SysEventType } fr
 import { BaseService, assertEqualTenants } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { mergeUnregisterMeta } from './model-download-meta.util';
+import { isNonRetryablePublisherError } from './model-publisher.errors';
 import { ModelStoreFactory } from './model-store';
 import type { UnregisterAiModelJobPayload, UnregisterWeightsOutcome } from './publisher-job.contract';
 
@@ -127,9 +129,13 @@ export class AiModelUnregisterService extends BaseService {
       return { aiModelId, bucketPrefix, weights, deletedObjects: counts.objects, deletedVersions: counts.versions };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // Recorded now on the final attempt, AND on a coded failure no retry can
+      // fix: the processor turns that into an UnrecoverableError on attempt 1,
+      // so no later attempt would ever record it (I4).
+      const recordFailure = opts.finalAttempt || isNonRetryablePublisherError(error);
       const fresh = await this.aiModelRepository.findByIdOrNull(aiModelId);
       if (fresh) {
-        fresh.metaData = opts.finalAttempt
+        fresh.metaData = recordFailure
           ? mergeUnregisterMeta(fresh.metaData, { jobId, deleteWeights, purge, finishedAt: new Date().toISOString(), error: message })
           : mergeUnregisterMeta(fresh.metaData, { jobId, deleteWeights, purge, finishedAt: null, error: null });
         if (userId) fresh.updatedBy = userId;

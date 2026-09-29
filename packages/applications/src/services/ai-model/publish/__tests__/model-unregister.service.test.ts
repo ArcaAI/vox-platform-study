@@ -9,6 +9,7 @@ import { SysEventType } from '@arcaai/domains';
 import { AiModelUnregisterService, deriveWeightsPrefix } from '../model-unregister.service';
 import { readUnregisterMeta } from '../model-download-meta.util';
 import type { UnregisterAiModelJobPayload } from '../publisher-job.contract';
+import { MODEL_STORE_CREDENTIAL_MISSING, ModelPublisherError } from '../model-publisher.errors';
 
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 
@@ -134,6 +135,15 @@ describe('AiModelUnregisterService (P9)', () => {
 
     expect(repository.softDelete).not.toHaveBeenCalled();
     expect(readUnregisterMeta(row.metaData)).toMatchObject({ error: null, finishedAt: null });
+  });
+
+  it('I4 — a NON-retryable failure on the first attempt records the error and finishedAt (BullMQ will not retry it)', async () => {
+    storeFactory.create.mockRejectedValue(new ModelPublisherError(MODEL_STORE_CREDENTIAL_MISSING, 'not set'));
+
+    await expect(service.execute(payload(), { finalAttempt: false })).rejects.toThrow(/^MODEL_STORE_CREDENTIAL_MISSING/);
+
+    expect(repository.softDelete).not.toHaveBeenCalled();
+    expect(readUnregisterMeta(row.metaData)).toMatchObject({ error: expect.stringMatching(/^MODEL_STORE_CREDENTIAL_MISSING/), finishedAt: expect.any(String) });
   });
 
   it('refuses a row owned by another tenant than the payload names', async () => {
