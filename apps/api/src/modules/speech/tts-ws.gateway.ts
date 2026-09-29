@@ -466,14 +466,14 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /**
    * Enrich the browser's first `init` frame with the tenant's resolved TEXT_TO_SPEECH agent.
    *
-   * Binary frames, non-init frames, and everything after the first init pass through untouched;
-   * a non-JSON frame is forwarded verbatim. What the enrichment carries changed with TASK-879:
+   * Binary frames, non-init frames, and everything after the first init pass through untouched
+   * (bar the caller-selection strip below); a non-JSON frame is forwarded verbatim. What the enrichment carries changed with TASK-879:
    * `routing_en` / `routing_ml` / `allowed_providers` / `voice_bindings` were the `TenantTtsConfig`
    * fold and are gone, replaced by the resolved spec — which names the engine chain, the model,
    * its voices and the connection that serves each engine.
    */
   private maybeEnrichInit(bridge: Bridge, data: WebSocket.RawData, isBinary: boolean): WebSocket.RawData {
-    if (isBinary || bridge.initEnriched || (!bridge.spec && !bridge.providerOverrides)) {
+    if (isBinary) {
       return data;
     }
     let parsed: Record<string, unknown>;
@@ -482,11 +482,19 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     } catch {
       return data;
     }
-    if (!parsed || parsed.type !== 'init') {
+    if (!parsed || typeof parsed !== 'object') {
       return data;
     }
+    // `resolved_spec` / `provider_overrides` are the RESOLUTION this gateway injects; a client that
+    // sends its own names an engine chain / credential of its choosing. Dropped from EVERY client
+    // text frame — with no resolver, and on any init after the first (TASK-1012 L-1).
+    const callerSelected = 'resolved_spec' in parsed || 'provider_overrides' in parsed;
+    const { resolved_spec: _callerSpec, provider_overrides: _callerOverrides, ...clean } = parsed;
+    if (clean.type !== 'init' || bridge.initEnriched || (!bridge.spec && !bridge.providerOverrides)) {
+      return callerSelected ? Buffer.from(JSON.stringify(clean)) : data;
+    }
     bridge.initEnriched = true;
-    const enriched: Record<string, unknown> = { ...parsed };
+    const enriched: Record<string, unknown> = { ...clean };
     const spec = bridge.spec;
     if (spec) {
       // The agent's own speed is the default; a client that named one keeps it.

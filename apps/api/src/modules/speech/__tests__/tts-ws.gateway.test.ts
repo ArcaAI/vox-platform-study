@@ -277,6 +277,43 @@ describe('TtsWsGateway', () => {
 
       expect('provider_overrides' in lastUpstreamTextFrame()).toBe(false);
     });
+
+    // TASK-1012 L-1 — the socket twin of the REST proxy hole: a client frame carrying its own
+    // `resolved_spec` / `provider_overrides` names an engine chain / credential of its choosing.
+    // Both are dropped from EVERY client text frame — with no resolver, and on a later init frame
+    // after the first one was already enriched.
+    const CALLER_FRAME = '{"type":"init","resolved_spec":{"primary":{"model":{"slug":"caller-picked"}}},"provider_overrides":{"azure":{"api_key":"CALLER-KEY"}}}';
+
+    it('strips a client-supplied resolved_spec + provider_overrides when there is no resolver', async () => {
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      client.emit('message', Buffer.from(CALLER_FRAME), false);
+
+      const frame = lastUpstreamTextFrame();
+      expect(frame.type).toBe('init');
+      expect('resolved_spec' in frame).toBe(false);
+      expect('provider_overrides' in frame).toBe(false);
+    });
+
+    it('replaces a client-supplied spec + credential with the resolved ones, and strips them from a second init', async () => {
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeResolver() as never);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      client.emit('message', Buffer.from(CALLER_FRAME), false);
+      const first = lastUpstreamTextFrame();
+      expect(first.resolved_spec).toEqual(SPEC);
+      expect('provider_overrides' in first).toBe(false);
+
+      client.emit('message', Buffer.from(CALLER_FRAME), false);
+      const second = lastUpstreamTextFrame();
+      expect('resolved_spec' in second).toBe(false);
+      expect('provider_overrides' in second).toBe(false);
+    });
   });
 
   // Tts sends a final {"type":"usage",...} control frame at
