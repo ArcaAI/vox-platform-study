@@ -13,11 +13,9 @@ MLflow, GGUF servers). Not used by CI or the cluster deployment.
 | `configs/vault/` | Vault dev-mode bootstrap (`dev-init.sh`, `test-init.sh`, `policies/*.hcl`) |
 | `configs/temporal/`, `configs/prometheus/`, `configs/grafana/` | Per-profile service config, mounted read-only |
 | `python-base/` | `hope-python-base` shared image (Python 3.11 + uv + non-root user) |
-| `scripts/init-qdrant-collections.py` | Qdrant collection bootstrap shared by dev and test |
+| `scripts/init-qdrant-collections.py` | Qdrant collection bootstrap shared by dev and test — creates the `knowledge_chunks` collection (harness institutional RAG: named dense + sparse vectors, keyword payload indexes on `tenant_id` / `knowledge_document_id` / `status` / `chunk_id`); baked into the `qdrant-init` image. No speaker-embedding collection is provisioned — voice-profile embeddings live on `UserVoiceProfile` in Postgres |
 | `lmstudio/` | The `hope-lmstudio` headless GPU serving image — see [lmstudio/README.md](lmstudio/README.md) |
 | `minio/` | MinIO bucket layout, IAM policies, `hope-models` publishing convention — see [minio/README.md](minio/README.md) |
-| `README-STT-ORCHESTRA.md`, `QDRANT-SETUP.md`, `QDRANT-QUICK-REFERENCE.md` | Historical per-service runbooks |
-| `env.stt-dev.example` | Legacy STT Orchestra env template |
 
 ## Commands
 

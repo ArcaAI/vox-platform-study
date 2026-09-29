@@ -78,9 +78,7 @@ directory.
 | `docker/configs/prometheus/`, `docker/configs/grafana/` | Dev observability configs mounted by the `observability` profile services |
 | `docker/python-base/` | `hope-python-base` — shared CPU base image (Python 3.11 + uv + non-root user) for all HOPE Python service images |
 | `docker/qdrant-init/`, `docker/vllm/` | Dockerfiles for the Qdrant collection-init and vLLM build-verify sidecars |
-| `docker/scripts/init-qdrant-collections.py` | Qdrant collection bootstrap, reused by dev and test init containers |
-| `docker/QDRANT-SETUP.md`, `docker/QDRANT-QUICK-REFERENCE.md`, `docker/README-STT-ORCHESTRA.md` | Historical per-service runbooks |
-| `docker/env.stt-dev.example` | Legacy STT Orchestra env template |
+| `docker/scripts/init-qdrant-collections.py` | Qdrant collection bootstrap (`knowledge_chunks`, harness institutional RAG), reused by dev and test init containers |
 
 ### `grafana/` — standalone dashboards
 
