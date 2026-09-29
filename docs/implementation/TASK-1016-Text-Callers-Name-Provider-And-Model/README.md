@@ -263,6 +263,23 @@ that deterministic 422 3× and answers an opaque 503. Whether open-taxonomy topi
 screened for medical relevance at all (topics like `billing` suggest not) is an **owner
 decision** (a per-call `guardrail_policy` opt-out exists since TASK-890 OD-R).
 
+**DECIDED 2026-09-29 (owner): opt topic/intent out of the medical guardrail** (`b6d7b865e`).
+The NLP → text delegation pushes `guardrail_policy: {"require_medical": false}`. This is the
+NARROW knob: the guardrail still screens (`/api/medical/validate` still runs on every call) and
+the output gate still runs. `enabled` is deliberately left unset, because `false` would switch
+both gates off. Live after the change:
+
+```
+topic  "I need help understanding my last invoice, please."   201  billing          (was 422 → 503)
+topic  "Can I move my appointment to next Tuesday?"            201  appointments
+topic  "Where can I download my discharge summary?"            201  medical_records
+intent "I was charged twice, please give my money back."       201  request_refund
+       guardrail /api/medical/validate 200 at 14:49:01 / :06 / :10 — screening kept
+```
+
+The ARCAAI dev tenant now has an `nlp.intent` instructions row
+(`request_refund`, `reschedule_visit`, `request_records`), created for this proof.
+
 ### Follow-ups (not in this ticket)
 
 - `ExternalTextClient` retries **every** exception, including a deterministic 4xx from text. With
@@ -271,8 +288,10 @@ decision** (a per-call `guardrail_policy` opt-out exists since TASK-890 OD-R).
 - `apps/api/tests/e2e/task-729-nlp-task-expansion.spec.ts` still posts to `/api/v1/ai/nlp/topic`, a
   redirect shim TASK-1012 D-3 deleted. The live route is `/api/v1/text-analyses/topic`, so that
   spec now meets a 404 its `[200, 503]` expectation does not allow.
-- Owner decision: should topic/intent opt out of the input medical-relevance guardrail? (See
-  Live proof.)
+- `apps/nlp/src/nlp/services/external_text_client.py` fails `ruff` I001 (import order), introduced
+  by the TASK-1015 merge `7770c5d0e` (`hope_obs` import placed after `nlp.core.config`). Left for
+  that ticket's owner; `pnpm nlp:lint` is red on `dev-2.2` until then.
+- `ExternalTextClient` still retries a deterministic 4xx from text 3× and surfaces an opaque 503.
 - Dev Vault: re-key the remaining self-hosted SYSTEM connections, or reseed from a reset, when
   their providers are needed.
 - Vision extraction (OD-2) → TASK-1017.
@@ -284,3 +303,4 @@ decision** (a per-call `guardrail_policy` opt-out exists since TASK-890 OD-R).
 | 2026-09-29 | Ticket opened (drafted as TASK-1014; renumbered to TASK-1016 because a parallel session merged its own TASK-1014 and opened TASK-1015 in the meantime). Root cause verified, RED tests, fix, GREEN + replay-compat + lint evidence. ODs 1–3 raised. |
 | 2026-09-29 | Owner: OD-1 → (a), OD-2 → separate ticket (TASK-1017), go. Gateway half implemented (routing keys + seed elections + injection), artifacts regenerated, merged into `dev-2.2`. |
 | 2026-09-29 | Owner: "reseed the dev db and prove topic live". Non-destructive `RUN_SEED=safe` reseed created the two elections. The live run found and fixed the NLP `/generate` path (404) and the missing connection injection (503 PROVIDER_CREDENTIALS_MISSING), both merged. Re-keyed the dev SYSTEM `lm-studio` connection after a Vault restart. Topic proven live: 3/3 correct labels on gemma via the SYSTEM connection. Medical-relevance guardrail refusal of non-clinical text recorded as an owner decision. |
+| 2026-09-29 | Owner: "opt topic/intent out of the medical guardrail". `guardrail_policy.require_medical=false` pushed on the delegation (screening and output gate kept). Live: non-clinical billing question → `billing`; `/intent` → `request_refund`. |
