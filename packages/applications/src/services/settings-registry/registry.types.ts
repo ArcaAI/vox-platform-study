@@ -47,9 +47,9 @@ export const CONSUMING_DEPLOYABLES = [
   'guardrail',
   'harness',
   'tts',
-  // TASK-1010 (OD-6) — the vLLM Whisper decode backend; authenticates with the ONE shared
-  // `INTERNAL_ACCESS_TOKEN` (`InternalServiceTokenGuard`).
-  'asr-vllm',
+  // TASK-1010 (OD-6) — the vLLM inference service (`apps/vllm`; `asr-vllm` until TASK-1021);
+  // authenticates with the ONE shared `INTERNAL_ACCESS_TOKEN` (`InternalServiceTokenGuard`).
+  'vllm',
 ] as const;
 
 export type ConsumingDeployable = (typeof CONSUMING_DEPLOYABLES)[number];
