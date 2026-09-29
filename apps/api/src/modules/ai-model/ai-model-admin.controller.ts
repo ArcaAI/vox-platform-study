@@ -2,15 +2,24 @@ import {
   AiModelDownloadService,
   AiModelService,
   CreateModelRequest,
+  DownloadMissingResponse,
   HttpMethod,
+  HubPreviewQuery,
+  HubPreviewResponse,
   ModelDownloadStatusResponse,
   ModelInventoryReport,
   ModelInventoryService,
+  ModelRegistryOperationsService,
   ModelResponse,
+  ModelUsageResponse,
   PaginatedModelResponse,
   PaginatedQuery,
+  RegisterFromHubRequest,
+  RegisterFromHubResponse,
   SetPlatformDefaultRequest,
   TriggerModelDownloadResponse,
+  UnregisterModelRequest,
+  UnregisterModelResponse,
   UpdateModelRequest,
 } from '@arcaai/applications';
 import { Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
@@ -30,6 +39,13 @@ import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey,
  * write (403). Rows live only in the SYSTEM tenant; a super admin's working
  * tenant never changes what this controller reads or writes. OCC is enforced
  * via the `If-Match` header on the field edit.
+ *
+ * AUTH-NOTE: the bucket and cross-tenant operations — download, the inventory,
+ * Hub preview / register, usage, unregister, download-missing — are gated
+ * IMPERATIVELY in their services beyond `manage:all`: a SUPER_ADMIN with NO
+ * working tenant (403 otherwise), the model-residency shape. They publish to
+ * or delete from the bucket every tenant's workloads load from, and read
+ * referrers across every tenant.
  */
 @ApiBearerAuth()
 @ApiTags('admin-ai-models')
@@ -42,6 +58,7 @@ export class AiModelAdminController {
     private readonly aiModelService: AiModelService,
     private readonly aiModelDownloadService: AiModelDownloadService,
     private readonly modelInventoryService: ModelInventoryService,
+    private readonly registryOperations: ModelRegistryOperationsService,
   ) {}
 
   /**
@@ -61,7 +78,7 @@ export class AiModelAdminController {
       'references ("In bucket, not registered → Register"). The same sweep runs hourly when `modelRegistry.inventory.enabled` is on.',
   })
   @ApiResponse({ status: 200, type: ModelInventoryReport })
-  @ApiResponse({ status: 403, description: 'Platform administrators only.' })
+  @ApiResponse({ status: 403, description: 'Platform administrators only, with no working tenant selected.' })
   @ApiResponse({ status: 502, description: 'The bucket could not be listed — nothing was marked.' })
   async runInventory(): Promise<ModelInventoryReport> {
     return this.modelInventoryService.runInventory();
@@ -89,9 +106,81 @@ export class AiModelAdminController {
       'nobody has run one, or the stored report has expired). Read-only: it never lists the bucket and never writes `availability`.',
   })
   @ApiResponse({ status: 200, type: ModelInventoryReport })
-  @ApiResponse({ status: 403, description: 'Platform administrators only.' })
+  @ApiResponse({ status: 403, description: 'Platform administrators only, with no working tenant selected.' })
   async lastInventory(): Promise<ModelInventoryReport | null> {
     return this.modelInventoryService.getLastReport();
+  }
+
+  /**
+   * Read a Hugging Face repo's card and file list and suggest how to register it.
+   * Static path — registered before the `:id` family.
+   */
+  @Get('hub/preview')
+  @ApiOperation({
+    summary: 'Preview a Hugging Face model before registering it',
+    description:
+      'Reads the repo card and file list at `revision` (default `main`) and returns what registering it would record: the commit it ' +
+      'resolves to, task, library, licence, whether it is gated, languages, total size and every file — plus suggested registry ' +
+      'fields (slug, name, task, category, format, serving library, bucket layout, serving workload). Nothing is written. Gated and ' +
+      'private repos are read with the platform Hugging Face token.',
+  })
+  @ApiResponse({ status: 200, type: HubPreviewResponse })
+  @ApiResponse({ status: 400, description: 'The repo id or revision is malformed.' })
+  @ApiResponse({ status: 403, description: 'Platform administrators only, with no working tenant selected.' })
+  @ApiResponse({ status: 404, description: 'Hugging Face has no such repo at that revision.' })
+  @ApiResponse({
+    status: 422,
+    description:
+      '`HF_TOKEN_REQUIRED` — the repo is gated or private (or does not exist) and no platform Hugging Face token is configured; ' +
+      '`HF_TOKEN_REJECTED` — the configured token cannot read it.',
+  })
+  @ApiResponse({ status: 502, description: 'Hugging Face could not be reached.' })
+  async previewHub(@Query() query: HubPreviewQuery): Promise<HubPreviewResponse> {
+    return this.registryOperations.previewHub(query);
+  }
+
+  /**
+   * Register a Hugging Face repo and start downloading it, in one call.
+   */
+  @Post('register-from-hub')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Register a model from a Hugging Face repo and download it',
+    description:
+      'Creates a platform model row from the repo (source `hf:<repo>`, pinned to the commit the revision resolves to), with the ' +
+      'same validation as registering a model by hand, then starts downloading its weights into the models bucket. Any field ' +
+      'in the body overrides what the preview suggests. Answers as soon as the download is queued; poll ' +
+      '`GET admin/ai-models/:id/download` for progress.',
+  })
+  @ApiResponse({ status: 202, type: RegisterFromHubResponse })
+  @ApiResponse({
+    status: 400,
+    description: 'The resulting registration is invalid — for example no serving library could be inferred and none was given.',
+  })
+  @ApiResponse({ status: 403, description: 'Platform administrators only, with no working tenant selected.' })
+  @ApiResponse({ status: 404, description: 'Hugging Face has no such repo at that revision.' })
+  @ApiResponse({ status: 409, description: '`SLUG_TAKEN` — a model with that slug is already registered.' })
+  @ApiResponse({ status: 422, description: '`HF_TOKEN_REQUIRED` / `HF_TOKEN_REJECTED` — as for the preview.' })
+  async registerFromHub(@Body() request: RegisterFromHubRequest): Promise<RegisterFromHubResponse> {
+    return this.registryOperations.registerFromHub(request);
+  }
+
+  /**
+   * Queue a download for every platform model whose weights are missing from the bucket.
+   */
+  @Post('download-missing')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Download every model whose weights are missing',
+    description:
+      'Queues a download for each self-hosted platform model the last inventory measured as MISSING and whose source can be ' +
+      'fetched (a Hugging Face repo or an `s3://` prefix). Models already downloading or being unregistered are skipped, and ' +
+      'every skip says why. Use it to fill an empty models bucket on a new cluster.',
+  })
+  @ApiResponse({ status: 202, type: DownloadMissingResponse })
+  @ApiResponse({ status: 403, description: 'Platform administrators only, with no working tenant selected.' })
+  async downloadMissing(): Promise<DownloadMissingResponse> {
+    return this.registryOperations.downloadMissing();
   }
 
   @ApiEndpoint({
@@ -296,10 +385,58 @@ export class AiModelAdminController {
   })
   @ApiParam({ name: 'id', description: 'Model ID', type: String })
   @ApiResponse({ status: 202, type: TriggerModelDownloadResponse })
+  @ApiResponse({ status: 403, description: 'Platform administrators only, with no working tenant selected.' })
   @ApiResponse({ status: 404, description: 'Model not found' })
-  @ApiResponse({ status: 409, description: 'A download for this model is already in progress' })
+  @ApiResponse({ status: 409, description: 'A download for this model is already in progress, or the model is being unregistered' })
   async triggerDownload(@Param('id') id: string): Promise<TriggerModelDownloadResponse> {
     return this.aiModelDownloadService.triggerDownload(id);
+  }
+
+  /**
+   * Everything that still references this model, across all tenants.
+   */
+  @Get(':id/usage')
+  @ApiOperation({
+    summary: 'List what still uses this model',
+    description:
+      'Every agent (primary model, fallback, or an ASR sub-model such as the VAD or speaker-embedding model), routing policy, ' +
+      'residency policy and voice profile that references the model, in every tenant. A model with any referrer cannot be ' +
+      'unregistered; this is the list the refusal carries.',
+  })
+  @ApiParam({ name: 'id', description: 'Model ID', type: String })
+  @ApiResponse({ status: 200, type: ModelUsageResponse })
+  @ApiResponse({ status: 403, description: 'Platform administrators only, with no working tenant selected.' })
+  @ApiResponse({ status: 404, description: 'Model not found' })
+  async getUsage(@Param('id') id: string): Promise<ModelUsageResponse> {
+    return this.registryOperations.getUsage(id);
+  }
+
+  /**
+   * Unregister a model and (by default) delete its weights from the models bucket.
+   */
+  @Post(':id/unregister')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Unregister a model and delete its weights',
+    description:
+      'Refused while anything still uses the model (see `GET :id/usage`). Otherwise the model is first unloaded from every service ' +
+      'holding it, then marked UNREGISTERING and removed by the model publisher: the row is retired and — unless ' +
+      '`deleteWeights` is false or another registered model shares the same files — its weights are deleted from the bucket. ' +
+      'Deleted weights stay recoverable for 30 days unless `purge` is true.',
+  })
+  @ApiParam({ name: 'id', description: 'Model ID', type: String })
+  @ApiResponse({ status: 202, type: UnregisterModelResponse })
+  @ApiResponse({ status: 400, description: 'The body is malformed.' })
+  @ApiResponse({ status: 403, description: 'Platform administrators only, with no working tenant selected.' })
+  @ApiResponse({ status: 404, description: 'Model not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`MODEL_IN_USE` (with `referrers`), `MODEL_UNLOAD_FAILED` (still loaded somewhere, with `services`), `MODEL_UNREGISTERING`, ' +
+      '`DOWNLOAD_IN_PROGRESS`, or `MODEL_CHANGED` (edited concurrently — retry).',
+  })
+  async unregister(@Param('id') id: string, @Body() request: UnregisterModelRequest): Promise<UnregisterModelResponse> {
+    return this.registryOperations.unregister(id, request ?? {});
   }
 
   /** Poll the status of the most recent download job for this model. */
@@ -307,6 +444,7 @@ export class AiModelAdminController {
   @ApiOperation({ summary: 'Poll the status of the most recent download job for this model.' })
   @ApiParam({ name: 'id', description: 'Model ID', type: String })
   @ApiResponse({ status: 200, type: ModelDownloadStatusResponse })
+  @ApiResponse({ status: 403, description: 'Platform administrators only, with no working tenant selected.' })
   @ApiResponse({ status: 404, description: 'Model not found' })
   async getDownloadStatus(@Param('id') id: string): Promise<ModelDownloadStatusResponse> {
     return this.aiModelDownloadService.getDownloadStatus(id);

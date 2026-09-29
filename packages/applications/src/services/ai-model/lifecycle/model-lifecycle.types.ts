@@ -42,3 +42,24 @@ export interface ModelLifecycle {
   /** When the residency view this was derived from was observed (ISO), null when none. */
   observedAt: string | null;
 }
+
+/**
+ * What kind of row still points at a model — the list `MODEL_IN_USE` carries and
+ * `GET admin/ai-models/:id/usage` returns. Every kind is read across ALL tenants.
+ *
+ *  - `agent`              `Agent.modelId` (the version's primary model)
+ *  - `agent-fallback`     `AgentModelFallback.modelId` (`id` is the AGENT's id)
+ *  - `agent-asr-submodel` an ASR agent's VAD / denoise / embedding / punctuation / endpointing slug
+ *  - `routing-policy`     `AiRoutingPolicy.modelId`
+ *  - `residency-policy`   `ModelResidencyPolicy.aiModelId`
+ *  - `voice-profile`      `UserVoiceProfile.modelId` (which holds the model SLUG)
+ */
+export const MODEL_REFERRER_KINDS = ['agent', 'agent-fallback', 'agent-asr-submodel', 'routing-policy', 'residency-policy', 'voice-profile'] as const;
+export type ModelReferrerKind = (typeof MODEL_REFERRER_KINDS)[number];
+
+export interface ModelReferrer {
+  kind: ModelReferrerKind;
+  tenantId: string;
+  id: string;
+  name: string;
+}

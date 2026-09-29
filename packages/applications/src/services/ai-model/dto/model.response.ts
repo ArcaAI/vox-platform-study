@@ -12,6 +12,7 @@ import {
 } from '@arcaai/domains';
 import type { AiModelAsrProfile } from '@arcaai/types';
 import { AI_MODEL_LIBRARIES, AI_MODEL_SERVED_BY } from '../constants';
+import { ModelLifecycleResponse } from './model-lifecycle.response';
 
 export class ModelResponse {
   @ApiProperty({ description: 'Model ID' })
@@ -163,6 +164,14 @@ export class ModelResponse {
 
   @ApiPropertyOptional({ description: 'Updated by user ID' })
   updatedBy?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "The model's one-word status with its per-service evidence — being downloaded, serving, failed to load, and so on. " +
+      'Present on the registry reads (`GET admin/ai-models`, `GET admin/ai-models/list`, `GET admin/ai-models/:id`); absent on write responses.',
+    type: ModelLifecycleResponse,
+  })
+  lifecycle?: ModelLifecycleResponse;
 }
 
 export class PaginatedModelResponse {
