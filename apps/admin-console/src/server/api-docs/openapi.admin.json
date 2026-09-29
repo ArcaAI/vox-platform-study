@@ -2351,11 +2351,27 @@
             "minimum": 1,
             "type": "number"
           },
+          "maxModelLen": {
+            "description": "Decoder context, in tokens, a serving engine sizes its cache for (vLLM `--max-model-len`). Whisper: 448.",
+            "minimum": 1,
+            "type": "number"
+          },
           "partialWindowSec": {
             "description": "Tail window of the live utterance decoded for PARTIALs, seconds.",
             "maximum": 30,
             "minimum": 1,
             "type": "number"
+          },
+          "quantization": {
+            "description": "How the weights on this row are quantised, for a serving engine that must be told (vLLM `--quantization`). `none` = the checkpoint dtype (`computeType`). A quantised variant is its own registry row.",
+            "enum": [
+              "none",
+              "fp8",
+              "awq",
+              "gptq",
+              "int8"
+            ],
+            "type": "string"
           }
         },
         "type": "object"
@@ -6571,7 +6587,8 @@
               "tts-worker",
               "lmstudio",
               "text",
-              "gateway-proxy"
+              "gateway-proxy",
+              "asr-vllm"
             ],
             "example": "stt",
             "type": "string"
@@ -14471,7 +14488,8 @@
               "tts-worker",
               "lmstudio",
               "text",
-              "gateway-proxy"
+              "gateway-proxy",
+              "asr-vllm"
             ],
             "type": "string"
           },
@@ -24105,7 +24123,8 @@
               "tts-worker",
               "lmstudio",
               "text",
-              "gateway-proxy"
+              "gateway-proxy",
+              "asr-vllm"
             ],
             "type": "string"
           },

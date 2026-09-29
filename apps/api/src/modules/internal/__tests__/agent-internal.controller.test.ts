@@ -141,3 +141,47 @@ describe('AgentInternalController', () => {
     });
   });
 });
+
+// TASK-1010 OD-12 — the asr-vllm bench resolves its spec through the SAME ASR resolver a live
+// session uses (agent → registered model), never by naming a model. Only `.spec` crosses the
+// wire: `providerOverrides` holds decrypted credentials and must never leave the gateway here.
+describe('AgentInternalController.asrSpec (TASK-1010 OD-12)', () => {
+  function makeWithAsr() {
+    const base = make();
+    const asrResolver = {
+      resolve: vi.fn(async (input: unknown): Promise<unknown> => ({
+        spec: { runtimeKey: 'agent-version-1', input },
+        providerOverrides: { openai: { apiKey: 'sk-secret' } },
+        fundingTier: 'platform',
+      })),
+    };
+    const controller = new AgentInternalController(
+      base.resolver as never,
+      base.cls as never,
+      base.textAgents as never,
+      base.entitlements as never,
+      asrResolver as never,
+    );
+    return { ...base, controller, asrResolver };
+  }
+
+  it('returns ONLY the resolved spec, pinned to the caller tenant, for an explicit agent', async () => {
+    const { controller, asrResolver, cls } = makeWithAsr();
+    const out = await controller.asrSpec(undefined, 'realtime-transcription-vllm-spike', 'dep-1', 't1');
+    expect(asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 't1', agentSlug: 'realtime-transcription-vllm-spike', departmentId: 'dep-1' });
+    expect(cls.set).toHaveBeenCalledWith('tenantId', 't1');
+    expect(out).toEqual({ runtimeKey: 'agent-version-1', input: { tenantId: 't1', agentSlug: 'realtime-transcription-vllm-spike', departmentId: 'dep-1' } });
+    expect(JSON.stringify(out)).not.toContain('sk-secret');
+  });
+
+  it('applies the same tenant rules as resolve', async () => {
+    const { controller } = makeWithAsr();
+    await expect(controller.asrSpec(undefined, 'a', undefined, undefined)).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(controller.asrSpec('t1', 'a', undefined, 't2')).rejects.toBeInstanceOf(ArgumentInvalidException);
+  });
+
+  it('answers 503 when the ASR resolver is not wired', async () => {
+    const { controller } = make();
+    await expect(controller.asrSpec('t1', 'a', undefined, undefined)).rejects.toMatchObject({ status: 503 });
+  });
+});

@@ -1,7 +1,14 @@
-import { AgentResolverService, AgentTask, IActiveUserContext, IEntitlementsService, TextAgentResolverService } from '@arcaai/applications';
-import type { ResolvedAgent, ResolvedTextGenerationAgent } from '@arcaai/applications';
+import {
+  AgentResolverService,
+  AgentTask,
+  AsrAgentResolverService,
+  IActiveUserContext,
+  IEntitlementsService,
+  TextAgentResolverService,
+} from '@arcaai/applications';
+import type { ResolvedAgent, ResolvedAsrSpec, ResolvedTextGenerationAgent } from '@arcaai/applications';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { Controller, Get, Headers, Inject, Optional, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Headers, Inject, Optional, Query, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import { ApiExcludeController, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
@@ -30,6 +37,11 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
  * another round trip. `textPrimary` is what makes the PRIMARY attempt attributable: bare
  * `ResolvedAgent.fundingTier` is populated only for a cloud BYO override, so a self-hosted
  * platform primary would otherwise meter as `null` while its own fallback metered `platform`.
+ *
+ * TASK-1010 OD-12: `GET /internal/agents/asr-spec` answers the `ResolvedAsrSpec` a live
+ * streaming session would get for the same agent (the SAME `AsrAgentResolverService`), so the
+ * asr-vllm bench exercises agent → registered model exactly as production does. Only `.spec`
+ * crosses the wire; the session's decrypted `providerOverrides` never leave the gateway here.
  */
 @ApiExcludeController()
 @ApiTags('internal-agents')
@@ -44,6 +56,8 @@ export class AgentInternalController {
     // Optional + trailing so existing positional constructions keep their arity;
     // absent ⇒ no gate (metering is additive and must never break resolution).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-1010 — optional + trailing for the same arity reason as `entitlements`.
+    @Optional() private readonly asrResolver?: AsrAgentResolverService,
   ) {}
 
   @Get('resolve')
@@ -54,13 +68,7 @@ export class AgentInternalController {
     @Query('departmentId') departmentId: string | undefined,
     @Headers('x-tenant-id') tenantIdHeader: string | undefined,
   ): Promise<ResolvedAgent | ResolvedTextGenerationAgent> {
-    const tenantId = tenantIdHeader?.trim() || tenantIdQuery?.trim();
-    if (!tenantId) {
-      throw new ArgumentInvalidException('`X-Tenant-Id` (or `tenantId`) is required — internal agent resolution is always tenant-scoped.');
-    }
-    if (tenantIdHeader && tenantIdQuery && tenantIdHeader.trim() !== tenantIdQuery.trim()) {
-      throw new ArgumentInvalidException('`X-Tenant-Id` and `tenantId` disagree.');
-    }
+    const tenantId = this.requireTenant(tenantIdHeader, tenantIdQuery);
     if (!task && !agentSlug) {
       throw new ArgumentInvalidException('Either `task` or `agentSlug` is required.');
     }
@@ -91,5 +99,35 @@ export class AgentInternalController {
       const spec = await this.textAgents.resolveFromAgent(resolved, tenantId);
       return { ...resolved, textPrimary: spec.primary, textFallback: spec.fallback };
     });
+  }
+
+  @Get('asr-spec')
+  async asrSpec(
+    @Query('tenantId') tenantIdQuery: string | undefined,
+    @Query('agentSlug') agentSlug: string | undefined,
+    @Query('departmentId') departmentId: string | undefined,
+    @Headers('x-tenant-id') tenantIdHeader: string | undefined,
+  ): Promise<ResolvedAsrSpec> {
+    const tenantId = this.requireTenant(tenantIdHeader, tenantIdQuery);
+    const asrResolver = this.asrResolver;
+    if (!asrResolver) {
+      throw new ServiceUnavailableException('ASR agent resolution is not available on this gateway.');
+    }
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      const session = await asrResolver.resolve({ tenantId, agentSlug: agentSlug || null, departmentId: departmentId || null });
+      return session.spec;
+    });
+  }
+
+  private requireTenant(tenantIdHeader: string | undefined, tenantIdQuery: string | undefined): string {
+    const tenantId = tenantIdHeader?.trim() || tenantIdQuery?.trim();
+    if (!tenantId) {
+      throw new ArgumentInvalidException('`X-Tenant-Id` (or `tenantId`) is required — internal agent resolution is always tenant-scoped.');
+    }
+    if (tenantIdHeader && tenantIdQuery && tenantIdHeader.trim() !== tenantIdQuery.trim()) {
+      throw new ArgumentInvalidException('`X-Tenant-Id` and `tenantId` disagree.');
+    }
+    return tenantId;
   }
 }

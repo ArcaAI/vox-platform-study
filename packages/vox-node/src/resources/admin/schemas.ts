@@ -575,8 +575,12 @@ export interface AsrProfileRequest {
   initialPrompt?: string;
   /** Longest audio fed to the engine in ONE decode, seconds. */
   maxDecodeWindowSec?: number;
+  /** Decoder context, in tokens, a serving engine sizes its cache for (vLLM `--max-model-len`). Whisper: 448. */
+  maxModelLen?: number;
   /** Tail window of the live utterance decoded for PARTIALs, seconds. */
   partialWindowSec?: number;
+  /** How the weights on this row are quantised, for a serving engine that must be told (vLLM `--quantization`). `none` = the checkpoint dtype (`computeType`). A quantised variant is its own registry row. */
+  quantization?: 'none' | 'fp8' | 'awq' | 'gptq' | 'int8';
 }
 
 export interface AssignDepartmentPromptRequest {
@@ -1712,7 +1716,7 @@ export interface CreateModelRequest {
     | 'vllm'
     | 'llama-cpp';
   /** Workload that executes the model. */
-  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy';
+  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'asr-vllm';
   /** URL-friendly unique identifier */
   slug: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only; azure-blob:// is out of scope). */
@@ -3931,7 +3935,7 @@ export interface ModelResponse {
   /** Resource status */
   resourceStatus: 'ENABLED' | 'DISABLED' | 'SUSPENDED' | 'ARCHIVED' | 'DELETED';
   /** Workload that executes the model. */
-  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy';
+  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'asr-vllm';
   /** URL-friendly unique identifier */
   slug: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only). */
@@ -6715,7 +6719,7 @@ export interface UpdateModelRequest {
     | 'vllm'
     | 'llama-cpp';
   /** Workload that executes the model. */
-  servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy';
+  servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'asr-vllm';
   /** URL-friendly unique identifier */
   slug?: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only; azure-blob:// is out of scope). */

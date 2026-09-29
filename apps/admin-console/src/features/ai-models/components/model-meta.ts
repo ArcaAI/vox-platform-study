@@ -72,7 +72,7 @@ export const LIBRARY_OPTIONS = [
 ] as const;
 
 /** Workloads that execute a row (mirrors AI_MODEL_SERVED_BY). */
-export const SERVED_BY_OPTIONS = ['stt', 'stt-worker', 'nlp', 'tts', 'tts-worker', 'lmstudio', 'text', 'gateway-proxy'] as const;
+export const SERVED_BY_OPTIONS = ['stt', 'stt-worker', 'nlp', 'tts', 'tts-worker', 'lmstudio', 'text', 'gateway-proxy', 'asr-vllm'] as const;
 
 export const DEPLOYMENT_KIND_OPTIONS: AiDeploymentKind[] = ['SELF_HOSTED', 'CLOUD'];
 export const DEPLOYMENT_KIND_LABELS: Record<AiDeploymentKind, string> = { SELF_HOSTED: 'Self-hosted', CLOUD: 'Cloud' };

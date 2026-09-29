@@ -13330,6 +13330,22 @@
     },
     {
       "controller": "AgentInternalController",
+      "handler": "asrSpec",
+      "method": "GET",
+      "path": "/api/v1/internal/agents/asr-spec",
+      "routePath": "/internal/agents/asr-spec",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "AgentInternalController",
       "handler": "resolve",
       "method": "GET",
       "path": "/api/v1/internal/agents/resolve",
