@@ -14,12 +14,12 @@ import { AiModelUnregisterService } from './model-unregister.service';
  * AiModelPublisherWorkerModule — the CONSUMER half of the model publisher
  * (TASK-1019 OD-1 / D-5): the `DownloadAiModel` processor (download AND
  * unregister jobs), the streaming source fetcher, the Hub client, the
- * publisher's own `ModelStore` (vault-kv key pair, D-2) and the unregister
+ * publisher’s own `ModelStore` (env-tier key pair on the publisher pod alone, D-2 / C3) and the unregister
  * service. Imported ONLY by the model-publisher worker's root module
  * (`apps/api/src/model-publisher/model-publisher-worker.module.ts`); never by
  * `hope-api`.
  *
- * `CommonServiceModule` supplies `SecretsService`, `IAppSettingsService`,
+ * `CommonServiceModule` supplies `IAppSettingsService`,
  * `IS3Service` (read side of `s3://` sources only — publishes go through
  * `ModelStore`) and the BullMQ root connection; `CoreDatabaseModule` the
  * `AiModelRepository` / `TenantStorageConfigRepository`;

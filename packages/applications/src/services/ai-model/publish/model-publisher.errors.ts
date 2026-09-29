@@ -7,7 +7,7 @@
  * from a network fault without parsing prose.
  */
 
-/** The publisher's own bucket credential (vault-kv, D-2) is not set. Never falls back. */
+/** The publisher's own bucket credential (env-tier, publisher pod only — D-2 / C3) is not set. Never falls back. */
 export const MODEL_STORE_CREDENTIAL_MISSING = 'MODEL_STORE_CREDENTIAL_MISSING';
 
 /** The files to publish do not fit the staging directory's free space (D-3 pre-flight). */

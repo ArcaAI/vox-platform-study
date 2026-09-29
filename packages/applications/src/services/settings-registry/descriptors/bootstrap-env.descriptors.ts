@@ -224,4 +224,43 @@ export const BOOTSTRAP_ENV_SETTINGS: SettingDescriptor[] = [
     dataType: 'secret',
     failMode: 'closed',
   },
+
+  // ── The model publisher's own `hope-models` principal (TASK-1019 D-2 / C3) ──
+  // Not the `model-registry:s3` provider row (apps/stt, nlp and tts read that
+  // through `/internal/model-registry-credential`, so a write+delete key there
+  // would reach every ML pod), not `S3_ACCESS_KEY` (`hope-platform-rw` has no
+  // rights on `hope-models` and must not gain them), and not `vault-kv`: a
+  // kv-v2 path is readable by the ONE AppRole every hope-api pod holds, and
+  // under `SECRETS_PROVIDER=vault` `SecretsService` has no env fallback — so
+  // the pair lives in env, fed by `secretKeyRef` to the publisher pod alone.
+  {
+    ...envFloor(
+      'modelStore.publisher.accessKeyId',
+      'string',
+      'Data Plane',
+      'Model publisher access key',
+      'S3/MinIO access key the model-publisher worker uses to write, and on unregister delete, model weights in the `hope-models` bucket (`ModelStoreFactory`). ' +
+        'Read ONLY by the model-publisher worker (`model-publisher.main.ts`) — hope-api never reads it and must not be given it. ' +
+        'CLASSIFIED `env`, NOT `vault-kv`, DELIBERATELY: a Vault kv-v2 path would be readable by hope-api’s shared AppRole, so on the cluster the pair is fed from the `hope-models-publisher` Secret by `secretKeyRef` into the publisher Deployment alone. ' +
+        'Absent ⇒ every publish/unregister job fails closed with `MODEL_STORE_CREDENTIAL_MISSING`; it never falls back to the platform storage credential. ' +
+        'Endpoint and region come from the platform storage cascade, not from here.',
+      'closed',
+    ),
+    sensitivity: 'secret',
+    dataType: 'secret',
+  },
+  {
+    ...envFloor(
+      'modelStore.publisher.secretKey',
+      'string',
+      'Data Plane',
+      'Model publisher secret key',
+      'S3/MinIO secret key paired with `MODEL_STORE_PUBLISHER_ACCESS_KEY_ID` — the model-publisher worker’s own principal on `hope-models` (write + delete + delete-version). ' +
+        'Read ONLY by the model-publisher worker — hope-api never reads it and must not be given it. ' +
+        'CLASSIFIED `env`, NOT `vault-kv`, for the same reason as its access key: a kv-v2 path would be readable by hope-api’s shared AppRole. Fails closed when absent.',
+      'closed',
+    ),
+    sensitivity: 'secret',
+    dataType: 'secret',
+  },
 ];
