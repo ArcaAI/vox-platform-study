@@ -49,6 +49,9 @@ export class InternalServiceTokenGuard implements CanActivate {
     // tts presents the ONE shared token since its private secret was retired (TASK-879/880).
     tts: 'INTERNAL_ACCESS_TOKEN',
     stt: 'API_GATEWAY_KEY',
+    // TASK-1010 — the vLLM Whisper decode backend was born on the ONE shared token; it has no
+    // per-service secret to retire.
+    'asr-vllm': 'INTERNAL_ACCESS_TOKEN',
   };
 
   /** The ONE shared internal token every peer may present (owner rule: one token for all internal calls). */
