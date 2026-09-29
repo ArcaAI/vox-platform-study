@@ -595,7 +595,7 @@ class TestFinalizeSessionRecording:
         assert session.status == SessionStatus.CLOSED
         assert session.metadata.raw_audio_uri == "s3://bucket/complete.wav"
         assert session.metadata.transcript_uri == "s3://bucket/transcript.json"
-        mgr.remove_session.assert_awaited_once_with(session.session_id)
+        mgr.remove_session.assert_awaited_once_with(session.session_id, outcome="closed")
 
     @pytest.mark.asyncio
     async def test_finalize_all_uploads_fail_still_closes(self):
@@ -620,7 +620,7 @@ class TestFinalizeSessionRecording:
         assert session.status == SessionStatus.CLOSED
         assert session.metadata.raw_audio_uri is None
         assert session.metadata.transcript_uri is None
-        mgr.remove_session.assert_awaited_once_with(session.session_id)
+        mgr.remove_session.assert_awaited_once_with(session.session_id, outcome="closed")
 
     @pytest.mark.asyncio
     async def test_finalize_empty_buffer_skips_upload(self):
@@ -1458,7 +1458,7 @@ class TestFinalizeCloseGuarantee:
         await mgr._finalize_session(session)
 
         session.close.assert_awaited_once()
-        mgr.remove_session.assert_awaited_once_with(session.session_id)
+        mgr.remove_session.assert_awaited_once_with(session.session_id, outcome="closed")
 
 
 # ---------------------------------------------------------------------------

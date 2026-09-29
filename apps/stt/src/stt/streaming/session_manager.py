@@ -44,6 +44,7 @@ from stt.core.metering import BYTE_SOURCE_WIRE, normalize_device
 from stt.core.metrics import (
     streaming_inference_queue_dropped,
     streaming_session_ended,
+    streaming_session_finished,
     streaming_session_started,
 )
 from stt.models.whisper_kwargs import build_whisper_generate_kwargs
@@ -335,6 +336,21 @@ def _language_state_of(manager: Any, name: str) -> dict[str, Any]:
     return state
 
 
+def _recovered_session_ids_of(manager: Any) -> set[str]:
+    """Ids of the sessions THIS process rebuilt in ``_recover_sessions`` (TASK-1013).
+
+    Such a session was counted ``started`` by the process that created it, so its
+    normal close is recorded as ``recovered`` rather than ``closed``. Same posture
+    as ``_language_state_of``: a ``MagicMock(spec=SessionManager)`` double gets a
+    real set attached on first use.
+    """
+    ids = getattr(manager, "_recovered_session_ids", None)
+    if not isinstance(ids, set):
+        ids = set()
+        manager._recovered_session_ids = ids
+    return ids
+
+
 def _spec_asr_provider_of(manager: Any, session_id: str, slug: str | None) -> str | None:
     """The ``provider`` the session's spec declares for ASR row *slug* (any chain).
 
@@ -569,6 +585,8 @@ class SessionManager:
         self._worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}-{os.getpid()}"
         self._capacity_guard = CapacityGuard(profile.max_concurrent_streams)
         self._sessions: dict[str, StreamSession] = {}
+        # TASK-1013 — see `_recovered_session_ids_of`.
+        self._recovered_session_ids: set[str] = set()
         # session_id → model slugs pinned for the active pipeline.
         self._session_pinned_models: dict[str, list[str]] = {}
         self._consumers: dict[str, IngestionConsumer] = {}
@@ -2642,8 +2660,18 @@ class SessionManager:
         finally:
             lock.release()
 
-    async def remove_session(self, session_id: str) -> None:
-        """Remove a session, stopping its consumers and releasing capacity."""
+    async def remove_session(self, session_id: str, *, outcome: str = "failed") -> None:
+        """Remove a session, stopping its consumers and releasing capacity.
+
+        TASK-1013 — ``outcome`` is the terminal ``stt_streaming_sessions_total``
+        status (``SESSION_FINISHED_STATUSES``), recorded here and only here, and
+        only when this call actually removes a live session: every terminal path
+        ends in this method, and a second removal of the same id records nothing.
+        The default is ``failed`` — a removal no completed finalize asked for (a
+        finalize trigger that raised, a create-time rollback, a failed recovery,
+        ``force_end_all_sessions``). The finalizer, the reaper and CANCEL pass
+        their own.
+        """
         # Stop consumer and listener
         consumer = self._consumers.pop(session_id, None)
         if consumer:
@@ -2742,7 +2770,8 @@ class SessionManager:
         progress = self._ingest_progress.pop(session_id, None)
         if progress is not None:
             progress.set()
-        self._sessions.pop(session_id, None)
+        removed = self._sessions.pop(session_id, None)
+        _recovered_session_ids_of(self).discard(session_id)
         # Release pipeline model pins so idle TTL can apply.
         pinned = self._session_pinned_models.pop(session_id, None)
         if pinned:
@@ -2781,6 +2810,10 @@ class SessionManager:
             session_id=session_id,
             active_sessions=self.active_session_count,
         )
+        # Last, so an invalid `outcome` (a ValueError) can never skip the
+        # capacity release above.
+        if removed is not None:
+            streaming_session_finished(outcome)
 
     async def force_end_all_sessions(self) -> list[str]:
         """Force-end all active sessions and return removed session IDs."""
@@ -6103,9 +6136,17 @@ class SessionManager:
             )
 
     async def _finalize_session(
-        self, session: StreamSession, *, stash_summary: bool = True
+        self,
+        session: StreamSession,
+        *,
+        stash_summary: bool = True,
+        outcome: str | None = None,
     ) -> dict[str, Any] | None:
         """Finalize a session under a per-session lock.
+
+        ``outcome`` — TASK-1013. The terminal session status to record; ``None``
+        means the normal close (``closed``, or ``recovered`` for a session this
+        process rebuilt). Only the idle reaper passes one (``reaped``).
 
         ``stash_summary`` — TASK-985 M-23. ``False`` for the HTTP ``end_session``
         caller, which RETURNS the summary to the gateway and is therefore the
@@ -6131,7 +6172,9 @@ class SessionManager:
             lock = asyncio.Lock()
             self._finalize_locks[session.session_id] = lock
         async with lock:
-            return await self._finalize_session_locked(session, stash_summary=stash_summary)
+            return await self._finalize_session_locked(
+                session, stash_summary=stash_summary, outcome=outcome
+            )
 
     def _compute_session_seconds(self, session: StreamSession) -> float:
         """Wall-clock socket open->close seconds (``created_at`` -> ``closed_at``).
@@ -6320,7 +6363,11 @@ class SessionManager:
         }
 
     async def _finalize_session_locked(
-        self, session: StreamSession, *, stash_summary: bool = True
+        self,
+        session: StreamSession,
+        *,
+        stash_summary: bool = True,
+        outcome: str | None = None,
     ) -> dict[str, Any] | None:
         """Finalize a session — mark finalizing, close out the live stream, upload, clean up.
 
@@ -6573,8 +6620,13 @@ class SessionManager:
                 self._stash_teardown_summary(session.session_id, teardown_summary)
 
             # Always clean up in-memory and capacity state, even if graceful
-            # close failed.
-            await self.remove_session(session.session_id)
+            # close failed. TASK-1013 — the session reached `session.close()`, so
+            # it FINISHED: a durability step that failed above is logged as
+            # non-fatal and does not make the session a failure.
+            if outcome is None:
+                recovered = session.session_id in _recovered_session_ids_of(self)
+                outcome = "recovered" if recovered else "closed"
+            await self.remove_session(session.session_id, outcome=outcome)
 
         return teardown_summary
 
@@ -6588,7 +6640,9 @@ class SessionManager:
         if publisher:
             await publisher.publish_status("cancelled")
 
-        await self.remove_session(session.session_id)
+        # TASK-1013 — a client's CANCEL ends the session on purpose; it is not a
+        # service failure, so it counts toward `closed`.
+        await self.remove_session(session.session_id, outcome="closed")
         logger.info("Session cancelled", session_id=session.session_id)
 
     # ------------------------------------------------------------------
@@ -6777,6 +6831,7 @@ class SessionManager:
                     )
 
                     self._sessions[meta.session_id] = session
+                    _recovered_session_ids_of(self).add(meta.session_id)
                     self._dual_capture[meta.session_id] = self._resolve_dual_capture(
                         pipeline_config
                     )
@@ -6891,7 +6946,7 @@ class SessionManager:
                     # is then kept, marked `pushed_back`, only so a late DELETE
                     # is answered honestly rather than re-emitting.
                     teardown_summary = await self._finalize_session(
-                        session, stash_summary=False
+                        session, stash_summary=False, outcome="reaped"
                     )
                     # The reaper is the FINALIZER here, which means
                     # the gateway crashed and its removal retries were exhausted:

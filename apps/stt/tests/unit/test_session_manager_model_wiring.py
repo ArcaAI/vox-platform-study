@@ -1208,7 +1208,7 @@ class TestFinalizeSession:
         publisher.publish_status.assert_any_await("finalizing")
         publisher.publish_status.assert_any_await("closed")
         session.close.assert_awaited_once()
-        mgr.remove_session.assert_awaited_once_with("s-1")
+        mgr.remove_session.assert_awaited_once_with("s-1", outcome="closed")
 
     @pytest.mark.asyncio
     async def test_finalize_skips_non_active_session(self):
@@ -1271,7 +1271,7 @@ class TestCancelSession:
         assert session.status == SessionStatus.CLOSED
         session.force_persist.assert_awaited_once()
         publisher.publish_status.assert_awaited_once_with("cancelled")
-        mgr.remove_session.assert_awaited_once_with("s-cancel")
+        mgr.remove_session.assert_awaited_once_with("s-cancel", outcome="closed")
 
     @pytest.mark.asyncio
     async def test_cancel_without_publisher(self):
@@ -1428,7 +1428,9 @@ class TestReaper:
         # gone, and the stash TTL would lose the row to a pod roll. The
         # control-FINALIZE and final-frame finalizers below still take the
         # default (True) — they have nobody to return the summary to.
-        mgr._finalize_session.assert_awaited_once_with(session, stash_summary=False)
+        mgr._finalize_session.assert_awaited_once_with(
+            session, stash_summary=False, outcome="reaped"
+        )
 
     @pytest.mark.asyncio
     async def test_reap_skips_active_sessions(self):
@@ -1497,7 +1499,9 @@ class TestReaper:
         # gone, and the stash TTL would lose the row to a pod roll. The
         # control-FINALIZE and final-frame finalizers below still take the
         # default (True) — they have nobody to return the summary to.
-        mgr._finalize_session.assert_awaited_once_with(session, stash_summary=False)
+        mgr._finalize_session.assert_awaited_once_with(
+            session, stash_summary=False, outcome="reaped"
+        )
 
     @pytest.mark.asyncio
     async def test_reaper_loop_spares_active_session_paused_below_audio_idle(self):
@@ -1890,7 +1894,7 @@ class TestFinalizeSessionPendingSegments:
 
         mgr._publishers["s-order"] = publisher
         mgr._sessions["s-order"] = session
-        mgr.remove_session = AsyncMock(side_effect=lambda sid: call_order.append("remove"))
+        mgr.remove_session = AsyncMock(side_effect=lambda sid, **_kw: call_order.append("remove"))
 
         await mgr._finalize_session(session)
 
