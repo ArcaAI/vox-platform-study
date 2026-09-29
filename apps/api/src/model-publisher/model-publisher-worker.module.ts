@@ -1,4 +1,11 @@
-import { AiModelPublisherWorkerModule, BlobStorageModule, CommonServiceModule, ConfigModule, LoggingServiceModule, SysEventServiceModule } from '@arcaai/applications';
+import {
+  AiModelPublisherWorkerModule,
+  BlobStorageModule,
+  CommonServiceModule,
+  ConfigModule,
+  LoggingServiceModule,
+  SysEventServiceModule,
+} from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
