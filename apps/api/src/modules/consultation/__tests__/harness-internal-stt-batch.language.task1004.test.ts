@@ -40,7 +40,6 @@ describe('HarnessInternalController — stt/batch-jobs language (TASK-1004)', ()
       none,
       none,
       none,
-      none,
       jobService as any,
       realtimeService as any,
       consultationService as any,

@@ -32,7 +32,6 @@ const buildController = () =>
     undefined as never,
     cls as never,
     undefined as never,
-    undefined as never,
     trajectoryService as never,
     undefined as never,
     undefined as never,
