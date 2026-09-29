@@ -16,6 +16,13 @@ export const STAGING_SPACE_INSUFFICIENT = 'STAGING_SPACE_INSUFFICIENT';
 /** A bucket prefix that must never be deleted (empty, root, or not a directory). */
 export const MODEL_STORE_PREFIX_REFUSED = 'MODEL_STORE_PREFIX_REFUSED';
 
+/**
+ * The worker's own re-check found a live referrer (an agent, fallback, routing
+ * or residency policy, voice profile) bound AFTER the gateway accepted the
+ * unregister — the row and its weights are kept (I9).
+ */
+export const MODEL_IN_USE = 'MODEL_IN_USE';
+
 export class ModelPublisherError extends Error {
   constructor(
     readonly code: string,
@@ -30,7 +37,12 @@ export class ModelPublisherError extends Error {
  * Codes a retry can never fix — the processor fails such a job without
  * spending its remaining BullMQ attempts.
  */
-export const NON_RETRYABLE_PUBLISHER_CODES: ReadonlySet<string> = new Set([MODEL_STORE_CREDENTIAL_MISSING, STAGING_SPACE_INSUFFICIENT, MODEL_STORE_PREFIX_REFUSED]);
+export const NON_RETRYABLE_PUBLISHER_CODES: ReadonlySet<string> = new Set([
+  MODEL_STORE_CREDENTIAL_MISSING,
+  STAGING_SPACE_INSUFFICIENT,
+  MODEL_STORE_PREFIX_REFUSED,
+  MODEL_IN_USE,
+]);
 
 /** A coded publisher failure no retry can fix (see `NON_RETRYABLE_PUBLISHER_CODES`). */
 export function isNonRetryablePublisherError(error: unknown): error is ModelPublisherError {

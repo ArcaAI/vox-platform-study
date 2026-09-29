@@ -7,6 +7,9 @@
  * because only the worker holds a delete-capable key on `hope-models` (D-2).
  *
  * Order of effects, and why:
+ *   0. referrers — RE-CHECKED here (I9): a binding made between the gateway's
+ *      accept and this job would otherwise be left pointing at a deleted row.
+ *      In use ⇒ `MODEL_IN_USE` recorded, nothing deleted, non-retryable;
  *   1. weights — deleted (or purged) unless `deleteWeights` is false, or
  *      another non-deleted row still references the prefix (D-6: two rows may
  *      wrap one repo at different revisions / compute types) → `kept-shared`;
@@ -14,9 +17,9 @@
  *      completed — written while the row is still live and OCC-writable;
  *   3. the row soft-deleted, then `ResourceDeleted` broadcast.
  * A failure anywhere records the error (on the final attempt, or at once for a
- * non-retryable code) and leaves the
- * row registered: a half-unregistered row that still exists is recoverable, a
- * soft-deleted row whose weights are still present is an orphan nobody sees.
+ * non-retryable code) and leaves the row registered: a half-unregistered row
+ * that still exists is recoverable, a soft-deleted row whose weights are still
+ * present is an orphan nobody sees.
  */
 import { Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
@@ -24,8 +27,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AiModelAvailability, AiModelRepository, ResourceType, SysEventType } from '@arcaai/domains';
 import { BaseService, assertEqualTenants } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { ModelUsageReader } from '../lifecycle/model-usage.reader';
 import { mergeUnregisterMeta } from './model-download-meta.util';
-import { isNonRetryablePublisherError } from './model-publisher.errors';
+import { MODEL_IN_USE, ModelPublisherError, isNonRetryablePublisherError } from './model-publisher.errors';
 import { ModelStoreFactory } from './model-store';
 import type { UnregisterAiModelJobPayload, UnregisterWeightsOutcome } from './publisher-job.contract';
 
@@ -68,6 +72,7 @@ export class AiModelUnregisterService extends BaseService {
   constructor(
     private readonly aiModelRepository: AiModelRepository,
     private readonly modelStoreFactory: ModelStoreFactory,
+    private readonly usage: ModelUsageReader,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
@@ -89,6 +94,8 @@ export class AiModelUnregisterService extends BaseService {
     const bucketPrefix = model.bucketPrefix ?? null;
 
     try {
+      await this.assertNotInUse(model);
+
       let weights: UnregisterWeightsOutcome = 'kept';
       let counts = { objects: 0, versions: 0 };
 
@@ -135,14 +142,42 @@ export class AiModelUnregisterService extends BaseService {
       const recordFailure = opts.finalAttempt || isNonRetryablePublisherError(error);
       const fresh = await this.aiModelRepository.findByIdOrNull(aiModelId);
       if (fresh) {
+        const inUse = error instanceof ModelPublisherError && error.code === MODEL_IN_USE;
         fresh.metaData = recordFailure
-          ? mergeUnregisterMeta(fresh.metaData, { jobId, deleteWeights, purge, finishedAt: new Date().toISOString(), error: message })
+          ? mergeUnregisterMeta(fresh.metaData, {
+              jobId,
+              deleteWeights,
+              purge,
+              finishedAt: new Date().toISOString(),
+              error: message,
+              ...(inUse ? { weights: 'kept' as const } : {}),
+            })
           : mergeUnregisterMeta(fresh.metaData, { jobId, deleteWeights, purge, finishedAt: null, error: null });
         if (userId) fresh.updatedBy = userId;
         await this.aiModelRepository.updateWithVersion(aiModelId, fresh, fresh.version);
       }
       throw error;
     }
+  }
+
+  /**
+   * "Who still points at this model?" across EVERY tenant — so it runs OUTSIDE
+   * the job's CLS context (tenant-less + no CLS ⇒ the tenant-scope extension
+   * passes through), exactly the context the gateway's platform-admin check
+   * reads it in. The job context is SYSTEM-scoped and would hide every
+   * customer tenant's agents.
+   */
+  private async assertNotInUse(model: { id: string; slug: string }): Promise<void> {
+    const referrers = await this.clsService.exit(() => this.usage.referrersOf(model));
+    if (referrers.length === 0) return;
+    const named = referrers
+      .slice(0, 5)
+      .map((r) => `${r.kind} '${r.name}'`)
+      .join(', ');
+    throw new ModelPublisherError(
+      MODEL_IN_USE,
+      `still used by ${referrers.length} ${referrers.length === 1 ? 'item' : 'items'} (${named}${referrers.length > 5 ? ', …' : ''}); remove those references first — nothing was deleted`,
+    );
   }
 
   /**
