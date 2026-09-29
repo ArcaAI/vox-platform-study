@@ -3,7 +3,7 @@ Tests for the HuggingFace (Transformers) inference path.
 
 These tests cover the non-ONNX inference path that uses
 ``_run_transformers_inference`` in ``batch_service.py``.  This path is
-exercised when the pipeline YAML specifies ``engine: "transformers"`` (or
+exercised when the resolved ASR model's engine is ``transformers`` (or
 the model format resolves to SAFETENSOR/PYTORCH).
 
 **Why this file exists:**
@@ -35,130 +35,6 @@ Markers:
 from __future__ import annotations
 
 import pytest
-
-# ---------------------------------------------------------------------------
-# Pipeline YAML configs for HuggingFace (Transformers) engine
-# ---------------------------------------------------------------------------
-
-
-def _hf_pipeline_yaml_float32() -> str:
-    """HuggingFace pipeline with explicit float32 compute type.
-
-    Uses ``openai/whisper-large-v3-turbo`` via the ``transformers`` engine
-    (SAFETENSOR).  This is the safest config — works on all devices
-    (CPU, CUDA, MPS).
-    """
-    return """
-version: "1.1"
-
-models:
-  asr:
-    hf_model_id: "openai/whisper-large-v3-turbo"
-    engine: "safetensor"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: false
-  denoise:
-    enabled: false
-
-inference:
-  batch_size: 1
-  compute_type: float32
-  device: auto
-  language: null
-
-postprocessing:
-  timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
-  punctuation:
-    enabled: true
-  remove_disfluencies: false
-  lowercase: false
-"""
-
-
-def _hf_pipeline_yaml_auto_compute() -> str:
-    """HuggingFace pipeline with ``compute_type: auto``.
-
-    On GPU/MPS this resolves to float16, on CPU to float32.
-    This is the config that triggered the dtype mismatch bug before the fix.
-    """
-    return """
-version: "1.1"
-
-models:
-  asr:
-    hf_model_id: "openai/whisper-large-v3-turbo"
-    engine: "safetensor"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: false
-  denoise:
-    enabled: false
-
-inference:
-  batch_size: 1
-  compute_type: auto
-  device: auto
-  language: null
-
-postprocessing:
-  timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
-  punctuation:
-    enabled: true
-  remove_disfluencies: false
-  lowercase: false
-"""
-
-
-def _hf_pipeline_yaml_float16() -> str:
-    """HuggingFace pipeline with explicit float16 compute type.
-
-    This is the most likely config to trigger the dtype mismatch bug
-    because the model loads in float16 but the processor outputs float32.
-    The fix in ``_run_transformers_inference`` must cast inputs to match.
-    """
-    return """
-version: "1.1"
-
-models:
-  asr:
-    hf_model_id: "openai/whisper-large-v3-turbo"
-    engine: "safetensor"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: false
-  denoise:
-    enabled: false
-
-inference:
-  batch_size: 1
-  compute_type: float16
-  device: auto
-  language: null
-
-postprocessing:
-  timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
-  punctuation:
-    enabled: true
-  remove_disfluencies: false
-  lowercase: false
-"""
-
 
 # ============================================================================
 # Unit tests for the dtype casting fix (fast, no ML inference)
@@ -409,13 +285,13 @@ class TestDtypeCastingFix:
 
 
 # ============================================================================
-# YAML parser tests for compute_type default
+# compute_type default
 # ============================================================================
 
 
 @pytest.mark.e2e
 class TestComputeTypeDefaults:
-    """Verify that the YAML parser and DTO use safe defaults for compute_type."""
+    """Verify that the DTO uses a safe default for compute_type."""
 
     def test_inference_config_default_is_auto(self):
         """InferenceConfig.compute_type should default to 'auto', not 'float16'.
@@ -430,64 +306,3 @@ class TestComputeTypeDefaults:
             f"InferenceConfig.compute_type should default to 'auto', "
             f"got '{config.compute_type}'"
         )
-
-    def test_yaml_parser_default_compute_type_is_auto(self):
-        """YAML parser should default compute_type to 'auto' when not specified."""
-        from stt.pipeline.yaml_parser import get_yaml_parser
-
-        parser = get_yaml_parser()
-        yaml_without_compute_type = """
-version: "1.1"
-
-models:
-  asr:
-    hf_model_id: "openai/whisper-small"
-    engine: "safetensor"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: false
-  denoise:
-    enabled: false
-
-inference:
-  batch_size: 1
-  device: auto
-
-postprocessing:
-  timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
-  punctuation:
-    enabled: true
-"""
-        spec = parser.parse(yaml_without_compute_type)
-        assert spec.inference.compute_type == "auto", (
-            f"Parser should default compute_type to 'auto', " f"got '{spec.inference.compute_type}'"
-        )
-
-    def test_yaml_parser_explicit_float16_preserved(self):
-        """YAML parser should preserve explicit ``compute_type: float16``."""
-        from stt.pipeline.yaml_parser import get_yaml_parser
-
-        parser = get_yaml_parser()
-        spec = parser.parse(_hf_pipeline_yaml_float16())
-        assert spec.inference.compute_type == "float16"
-
-    def test_yaml_parser_explicit_float32_preserved(self):
-        """YAML parser should preserve explicit ``compute_type: float32``."""
-        from stt.pipeline.yaml_parser import get_yaml_parser
-
-        parser = get_yaml_parser()
-        spec = parser.parse(_hf_pipeline_yaml_float32())
-        assert spec.inference.compute_type == "float32"
-
-    def test_yaml_parser_explicit_auto_preserved(self):
-        """YAML parser should preserve explicit ``compute_type: auto``."""
-        from stt.pipeline.yaml_parser import get_yaml_parser
-
-        parser = get_yaml_parser()
-        spec = parser.parse(_hf_pipeline_yaml_auto_compute())
-        assert spec.inference.compute_type == "auto"

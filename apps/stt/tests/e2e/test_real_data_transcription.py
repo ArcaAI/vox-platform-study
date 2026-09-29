@@ -61,10 +61,11 @@ import asyncio
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from stt.pipeline.dto import PipelineConfig
+    from stt.pipeline.dto import PipelineConfig, PipelineSpec
     from stt.transcription.dto import TranscriptionResult
 
 import contextlib
+import dataclasses
 import json
 import logging
 import os
@@ -117,13 +118,17 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_TENANT_ID = "50000000-0000-0000-0000-000000000000"
 SYSTEM_USER_ID = "60000000-0000-0000-0000-000000000000"
 
+# ``PipelineSpec.version`` is an opaque label at runtime; an agent-built spec carries
+# ``agent/1`` (``stt.pipeline.spec.AGENT_PIPELINE_SPEC_VERSION``).
+_SPEC_VERSION = "agent/1"
+
 
 # =============================================================================
-# PIPELINE YAML CONFIGURATIONS
+# PIPELINE SPECS
 # =============================================================================
 
 
-def _pipeline_yaml_onnx_basic() -> str:
+def _spec_onnx_basic() -> "PipelineSpec":
     """
     Basic pipeline: Safetensor engine, Whisper Large V3 Turbo, no preprocessing.
 
@@ -145,42 +150,51 @@ def _pipeline_yaml_onnx_basic() -> str:
       - Apple Silicon MPS:  ~14 s
       - CUDA GPU:           ~5 s
       - CPU (fallback):     ~60 s
+
+    Uses the safetensor engine for automatic MPS/CUDA/CPU acceleration.
     """
-    return """version: "1.1"
+    from stt.pipeline.dto import (
+        AiModelFormat,
+        DenoiseConfig,
+        InferenceConfig,
+        InlineModelDef,
+        ModelRef,
+        ModelRefs,
+        PipelineSpec,
+        PostprocessingConfig,
+        PreprocessingConfig,
+        PunctuationConfig,
+        TimestampConfig,
+        VadConfig,
+    )
 
-# Basic pipeline: Whisper Large V3 Turbo (safetensor), no preprocessing
-# Uses safetensor engine for automatic MPS/CUDA/CPU acceleration.
-models:
-  asr:
-    hf_model_id: "openai/whisper-large-v3-turbo"
-    engine: "safetensor"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: false
-  denoise:
-    enabled: false
-
-inference:
-  batch_size: 1
-  compute_type: auto
-  device: auto
-  language: null
-
-postprocessing:
-  timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
-  punctuation:
-    enabled: true
-  remove_disfluencies: false
-  lowercase: false
-"""
+    return PipelineSpec(
+        version=_SPEC_VERSION,
+        models=ModelRefs(
+            asr=ModelRef(
+                inline=InlineModelDef(
+                    hf_model_id="openai/whisper-large-v3-turbo",
+                    engine=AiModelFormat.SAFETENSOR,
+                )
+            )
+        ),
+        preprocessing=PreprocessingConfig(
+            target_sample_rate=16000,
+            normalize=True,
+            vad=VadConfig(enabled=False),
+            denoise=DenoiseConfig(enabled=False),
+        ),
+        inference=InferenceConfig(batch_size=1, compute_type="auto", device="auto", language=None),
+        postprocessing=PostprocessingConfig(
+            timestamps=TimestampConfig(word_timestamps=True, sentence_timestamps=True),
+            punctuation=PunctuationConfig(enabled=True),
+            remove_disfluencies=False,
+            lowercase=False,
+        ),
+    )
 
 
-def _pipeline_yaml_onnx_full_pipeline() -> str:
+def _spec_onnx_full_pipeline() -> "PipelineSpec":
     """
     Full pipeline: Safetensor engine, Whisper Large V3 Turbo, denoise + VAD + diarization.
 
@@ -201,56 +215,66 @@ def _pipeline_yaml_onnx_full_pipeline() -> str:
     Uses safetensor engine for automatic MPS/CUDA/CPU acceleration.
     VAD and denoise are kept to exercise the full preprocessing path.
     """
-    return """version: "1.1"
+    from stt.pipeline.dto import (
+        AiModelFormat,
+        DenoiseConfig,
+        DiarizationConfig,
+        InferenceConfig,
+        InlineModelDef,
+        ModelRef,
+        ModelRefs,
+        PipelineSpec,
+        PostprocessingConfig,
+        PreprocessingConfig,
+        PunctuationConfig,
+        TimestampConfig,
+        VadConfig,
+    )
 
-# Full pipeline: Whisper Large V3 Turbo (safetensor) + denoise + VAD + diarization
-models:
-  asr:
-    hf_model_id: "openai/whisper-large-v3-turbo"
-    engine: "safetensor"
-  vad:
-    hf_model_id: "snakers4/silero-vad"
-    engine: "onnx"
-    version: "main"
-  denoise:
-    hf_model_id: "nickolay/rnnoise"
-    engine: "onnx"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: true
-    threshold: 0.5
-    min_speech_duration_ms: 250
-    min_silence_duration_ms: 150
-    padding_ms: 30
-  denoise:
-    enabled: true
-    strength: 0.7
-
-inference:
-  batch_size: 1
-  compute_type: auto
-  device: auto
-  language: null
-
-postprocessing:
-  timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
-  punctuation:
-    enabled: true
-  remove_disfluencies: false
-  lowercase: false
-
-diarization:
-  enabled: true
-  similarity_threshold: 0.7
-  max_speakers: 0
-  auto_register_speakers: true
-  min_segment_duration_s: 1.0
-"""
+    return PipelineSpec(
+        version=_SPEC_VERSION,
+        models=ModelRefs(
+            asr=ModelRef(
+                inline=InlineModelDef(
+                    hf_model_id="openai/whisper-large-v3-turbo",
+                    engine=AiModelFormat.SAFETENSOR,
+                )
+            ),
+            vad=ModelRef(
+                inline=InlineModelDef(
+                    hf_model_id="snakers4/silero-vad",
+                    engine=AiModelFormat.ONNX,
+                    version="main",
+                )
+            ),
+            denoise=ModelRef(
+                inline=InlineModelDef(
+                    hf_model_id="nickolay/rnnoise",
+                    engine=AiModelFormat.ONNX,
+                )
+            ),
+        ),
+        preprocessing=PreprocessingConfig(
+            target_sample_rate=16000,
+            normalize=True,
+            vad=VadConfig(
+                enabled=True,
+                threshold=0.5,
+                min_speech_duration_ms=250,
+                min_silence_duration_ms=150,
+                padding_ms=30,
+            ),
+            denoise=DenoiseConfig(enabled=True, strength=0.7),
+        ),
+        inference=InferenceConfig(batch_size=1, compute_type="auto", device="auto", language=None),
+        postprocessing=PostprocessingConfig(
+            timestamps=TimestampConfig(word_timestamps=True, sentence_timestamps=True),
+            punctuation=PunctuationConfig(enabled=True),
+            remove_disfluencies=False,
+            lowercase=False,
+        ),
+        diarization=DiarizationConfig(enabled=True, max_speakers=0, min_segment_duration_s=1.0),
+    )
 
 
 # =============================================================================
@@ -358,26 +382,11 @@ def _build_pipeline_config(
     slug: str,
     name: str,
     description: str,
-    config_yaml: str,
+    spec: "PipelineSpec",
     tags: list[str],
 ) -> "PipelineConfig":
-    """
-    Build a PipelineConfig from YAML without requiring a database.
-
-    This creates a fully resolved PipelineConfig by parsing the YAML directly,
-    bypassing the database-based config reader.
-    """
+    """Wrap a hand-built ``PipelineSpec`` in a ``PipelineConfig`` — no database needed."""
     from stt.pipeline.dto import PipelineConfig
-    from stt.pipeline.yaml_parser import get_yaml_parser
-
-    parser = get_yaml_parser()
-    spec = parser.parse(config_yaml)
-
-    # Validate the pipeline spec
-    validation = parser.validate(spec)
-    if not validation.valid:
-        error_messages = validation.get_error_messages()
-        pytest.fail(f"Pipeline YAML validation failed: {error_messages}")
 
     return PipelineConfig(
         id=pipeline_id,
@@ -396,7 +405,7 @@ def _write_markdown_report(
     test_name: str,
     pipeline_name: str,
     pipeline_slug: str,
-    pipeline_yaml: str,
+    pipeline_spec: "PipelineSpec",
     result: "TranscriptionResult",
     audio_file: str,
     audio_size_bytes: int,
@@ -416,7 +425,7 @@ def _write_markdown_report(
         test_name: Name of the test (used in filename)
         pipeline_name: Human-readable pipeline name
         pipeline_slug: Pipeline slug identifier
-        pipeline_yaml: Raw YAML configuration
+        pipeline_spec: The pipeline spec the run used (rendered as JSON)
         result: TranscriptionResult from the batch service
         audio_file: Path to the audio file used
         audio_size_bytes: Size of the audio file in bytes
@@ -455,8 +464,8 @@ def _write_markdown_report(
         "",
         "## Pipeline Configuration",
         "",
-        "```yaml",
-        pipeline_yaml.strip(),
+        "```json",
+        json.dumps(dataclasses.asdict(pipeline_spec), indent=2, default=str),
         "```",
         "",
         "## Audio File",
@@ -1002,7 +1011,7 @@ async def _run_transcription(
     gateway_client = _InMemoryGatewayClient()
     gateway_client.create_job(audio_uri=audio_uri)
     # TASK-1006 — the worker selects its engine from the job's `resolved_spec` only.
-    # These YAML-defined, inline-model pipelines have no agent behind them, so the
+    # These hand-built, inline-model pipelines have no agent behind them, so the
     # spec → chain step is stubbed with the chain built above (the role the deleted
     # pipeline-reader stub played); everything downstream of selection is real.
     from stt.transcription.workers.transcribe_file import _JobLanguage
@@ -1803,11 +1812,8 @@ async def warm_asr_model():
     """
     from stt.models.cache import get_model_cache
     from stt.pipeline.dto import ModelTaskType
-    from stt.pipeline.yaml_parser import get_yaml_parser
 
-    parser = get_yaml_parser()
-    spec = parser.parse(_pipeline_yaml_onnx_basic())
-    asr_inline = spec.models.asr.inline
+    asr_inline = _spec_onnx_basic().models.asr.inline
 
     if asr_inline:
         cache = get_model_cache()
@@ -1890,7 +1896,7 @@ class TestRealDataTranscription:
         3. NO processed audio stored (no processing features enabled)
         4. Transcript exported to MinIO and local JSON file
         """
-        yaml_config = _pipeline_yaml_onnx_basic()
+        pipeline_spec = _spec_onnx_basic()
         job_id = "test-rd-001"
         consultation_id = "test-consult-ml-basic-001"
 
@@ -1902,7 +1908,7 @@ class TestRealDataTranscription:
                 "Real-data test #1: Safetensor engine, Whisper Small, "
                 "no denoising, no VAD, no diarization (ML audio)"
             ),
-            config_yaml=yaml_config,
+            spec=pipeline_spec,
             tags=["test", "real-data", "safetensor", "basic", "ml", "whisper-small"],
         )
 
@@ -1999,7 +2005,7 @@ class TestRealDataTranscription:
             test_name="test_01_ml_onnx_large_v3_turbo_q4_basic",
             pipeline_name="ONNX Whisper Large V3 Turbo Q4 Basic (ML)",
             pipeline_slug=pipeline.slug,
-            pipeline_yaml=yaml_config,
+            pipeline_spec=pipeline_spec,
             result=result,
             audio_file=ml_audio_file_info["name"],
             audio_size_bytes=ml_audio_file_info["size_bytes"],
@@ -2049,7 +2055,7 @@ class TestRealDataTranscription:
         """
         _skip_if_full_pipeline_models_missing()
 
-        yaml_config = _pipeline_yaml_onnx_full_pipeline()
+        pipeline_spec = _spec_onnx_full_pipeline()
         job_id = "test-rd-002"
         consultation_id = "test-consult-ml-full-001"
 
@@ -2061,7 +2067,7 @@ class TestRealDataTranscription:
                 "Real-data test #2: Safetensor engine, Whisper Small, "
                 "denoise + VAD + diarization (ML audio)"
             ),
-            config_yaml=yaml_config,
+            spec=pipeline_spec,
             tags=[
                 "test",
                 "real-data",
@@ -2205,7 +2211,7 @@ class TestRealDataTranscription:
             test_name="test_02_ml_onnx_large_v3_turbo_q4_full_pipeline",
             pipeline_name="ONNX Whisper Large V3 Turbo Q4 Full Pipeline (ML)",
             pipeline_slug=pipeline.slug,
-            pipeline_yaml=yaml_config,
+            pipeline_spec=pipeline_spec,
             result=result,
             audio_file=ml_audio_file_info["name"],
             audio_size_bytes=ml_audio_file_info["size_bytes"],
@@ -2253,7 +2259,7 @@ class TestRealDataTranscription:
         3. NO processed audio stored (no processing features enabled)
         4. Transcript exported to MinIO and local JSON file
         """
-        yaml_config = _pipeline_yaml_onnx_basic()
+        pipeline_spec = _spec_onnx_basic()
         job_id = "test-rd-003"
         consultation_id = "test-consult-en-basic-001"
 
@@ -2265,7 +2271,7 @@ class TestRealDataTranscription:
                 "Real-data test #3: Safetensor engine, Whisper Small, "
                 "no denoising, no VAD, no diarization (EN audio)"
             ),
-            config_yaml=yaml_config,
+            spec=pipeline_spec,
             tags=["test", "real-data", "safetensor", "basic", "en", "whisper-small"],
         )
 
@@ -2361,7 +2367,7 @@ class TestRealDataTranscription:
             test_name="test_03_en_onnx_large_v3_turbo_q4_basic",
             pipeline_name="ONNX Whisper Large V3 Turbo Q4 Basic (EN)",
             pipeline_slug=pipeline.slug,
-            pipeline_yaml=yaml_config,
+            pipeline_spec=pipeline_spec,
             result=result,
             audio_file=en_audio_file_info["name"],
             audio_size_bytes=en_audio_file_info["size_bytes"],
@@ -2411,7 +2417,7 @@ class TestRealDataTranscription:
         """
         _skip_if_full_pipeline_models_missing()
 
-        yaml_config = _pipeline_yaml_onnx_full_pipeline()
+        pipeline_spec = _spec_onnx_full_pipeline()
         job_id = "test-rd-004"
         consultation_id = "test-consult-en-full-001"
 
@@ -2423,7 +2429,7 @@ class TestRealDataTranscription:
                 "Real-data test #4: Safetensor engine, Whisper Small, "
                 "denoise + VAD + diarization (EN audio)"
             ),
-            config_yaml=yaml_config,
+            spec=pipeline_spec,
             tags=[
                 "test",
                 "real-data",
@@ -2566,7 +2572,7 @@ class TestRealDataTranscription:
             test_name="test_04_en_onnx_large_v3_turbo_q4_full_pipeline",
             pipeline_name="ONNX Whisper Large V3 Turbo Q4 Full Pipeline (EN)",
             pipeline_slug=pipeline.slug,
-            pipeline_yaml=yaml_config,
+            pipeline_spec=pipeline_spec,
             result=result,
             audio_file=en_audio_file_info["name"],
             audio_size_bytes=en_audio_file_info["size_bytes"],

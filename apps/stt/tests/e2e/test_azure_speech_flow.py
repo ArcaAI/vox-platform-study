@@ -1,13 +1,12 @@
 """E2E tests for Azure Speech transcription flow.
 
 Tests the Azure Speech pipeline end-to-end:
-- Pipeline YAML parsing with azure_speech engine
 - Inline model config conversion for Azure Speech
 - Full transcription flow with mocked Azure SDK boundary
 - Full transcription flow with REAL Azure SDK (requires credentials)
 
 Test tiers:
-1. YAML parsing / config resolution — no mocks, no Azure SDK needed
+1. Config resolution — no mocks, no Azure SDK needed
 2. Full pipeline with mocked Azure SDK — validates data flow without credentials
 3. Full pipeline with REAL Azure SDK — requires AZURE_SPEECH_KEY and
    AZURE_SPEECH_REGION env vars, marked @pytest.mark.slow
@@ -42,134 +41,29 @@ DEFAULT_TENANT_ID = "50000000-0000-0000-0000-000000000000"
 
 
 # =============================================================================
-# Pipeline YAML Configurations for Azure Speech
+# Azure Speech inline model definition
 # =============================================================================
 
 
-def _pipeline_yaml_azure_basic() -> str:
-    """Azure Speech pipeline — basic, no VAD, no denoise."""
-    return """version: "1.1"
+def _azure_inline_model():
+    """Azure Speech ASR model — cloud-based, the ``revision`` field carries the region."""
+    from stt.pipeline.dto import AiModelFormat, InlineModelDef
 
-# Azure Speech engine — cloud-based ASR
-models:
-  asr:
-    hf_model_id: "azure/speech-to-text"
-    engine: "azure_speech"
-    revision: "eastus"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: false
-  denoise:
-    enabled: false
-
-inference:
-  batch_size: 1
-  device: auto
-  language: en
-
-postprocessing:
-  timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
-  punctuation:
-    enabled: true
-  lowercase: false
-"""
-
-
-def _pipeline_yaml_azure_multilingual() -> str:
-    """Azure Speech pipeline — Malayalam (ml) language."""
-    return """version: "1.1"
-
-# Azure Speech engine — multilingual test (Malayalam)
-models:
-  asr:
-    hf_model_id: "azure/speech-to-text"
-    engine: "azure_speech"
-    revision: "eastus"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: false
-  denoise:
-    enabled: false
-
-inference:
-  batch_size: 1
-  device: auto
-  language: ml
-
-postprocessing:
-  timestamps:
-    word_timestamps: true
-  punctuation:
-    enabled: true
-  lowercase: false
-"""
-
-
-def _pipeline_yaml_azure_alias() -> str:
-    """Azure Speech pipeline using 'azure' alias (not 'azure_speech')."""
-    return """version: "1.1"
-
-# Uses the 'azure' alias for engine name
-models:
-  asr:
-    hf_model_id: "azure/speech-to-text"
-    engine: "azure"
-    revision: "westus2"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-
-inference:
-  language: en
-"""
+    return InlineModelDef(
+        hf_model_id="azure/speech-to-text",
+        engine=AiModelFormat.AZURE_SPEECH,
+        revision="eastus",
+    )
 
 
 # =============================================================================
-# TIER 1: YAML Parsing and Config Resolution (no mocks needed)
+# TIER 1: Config Resolution (no mocks needed)
 # =============================================================================
 
 
 @pytest.mark.e2e
-class TestAzureSpeechYamlParsing:
-    """E2E tests for Azure Speech pipeline YAML parsing and validation."""
-
-    @pytest.mark.asyncio
-    async def test_azure_speech_yaml_parses_correctly(self):
-        """Test that Azure Speech YAML is parsed with correct engine type."""
-        from stt.pipeline.dto import AiModelFormat
-        from stt.pipeline.yaml_parser import get_yaml_parser
-
-        parser = get_yaml_parser()
-        spec = parser.parse(_pipeline_yaml_azure_basic())
-
-        assert spec.version == "1.1"
-        assert spec.models.asr.is_inline is True
-        assert spec.models.asr.inline.engine == AiModelFormat.AZURE_SPEECH
-        assert spec.models.asr.inline.revision == "eastus"
-
-        # Validate
-        result = parser.validate(spec)
-        assert result.valid is True, f"Validation failed: {result.get_error_messages()}"
-
-    @pytest.mark.asyncio
-    async def test_azure_alias_resolves_to_azure_speech(self):
-        """Test that 'azure' alias maps to AZURE_SPEECH format."""
-        from stt.pipeline.dto import AiModelFormat
-        from stt.pipeline.yaml_parser import get_yaml_parser
-
-        parser = get_yaml_parser()
-        spec = parser.parse(_pipeline_yaml_azure_alias())
-
-        assert spec.models.asr.inline.engine == AiModelFormat.AZURE_SPEECH
+class TestAzureSpeechInlineModelConfig:
+    """E2E tests for Azure Speech inline model config conversion."""
 
     @pytest.mark.asyncio
     async def test_azure_speech_inline_model_to_config(self):
@@ -178,27 +72,13 @@ class TestAzureSpeechYamlParsing:
             AiModelFormat,
             ModelTaskType,
         )
-        from stt.pipeline.yaml_parser import get_yaml_parser
 
-        parser = get_yaml_parser()
-        spec = parser.parse(_pipeline_yaml_azure_basic())
-
-        inline = spec.models.asr.inline
+        inline = _azure_inline_model()
         config = inline.to_ai_model_config(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION)
 
         assert config.format == AiModelFormat.AZURE_SPEECH
         assert config.source_revision == "eastus"  # Region from revision field
         assert config.task_type == ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
-
-    @pytest.mark.asyncio
-    async def test_azure_multilingual_yaml_parses_language(self):
-        """Test that multilingual YAML correctly captures language setting."""
-        from stt.pipeline.yaml_parser import get_yaml_parser
-
-        parser = get_yaml_parser()
-        spec = parser.parse(_pipeline_yaml_azure_multilingual())
-
-        assert spec.inference.language == "ml"
 
 
 # =============================================================================
@@ -210,8 +90,8 @@ class TestAzureSpeechYamlParsing:
 class TestAzureSpeechFullFlowMocked:
     """E2E tests for the full Azure Speech pipeline with mocked Azure SDK.
 
-    These tests exercise the real pipeline code (YAML parsing → model config →
-    loader → batch service → result) but mock the Azure SDK at the network
+    These tests exercise the real pipeline code (model config → loader →
+    batch service → result) but mock the Azure SDK at the network
     boundary to avoid requiring real credentials.
     """
 
@@ -237,7 +117,7 @@ class TestAzureSpeechFullFlowMocked:
 
     @pytest.mark.asyncio
     async def test_full_azure_pipeline_with_mocked_sdk(self, mock_azure_env):
-        """Test complete pipeline: YAML → config → load → inference → result.
+        """Test complete pipeline: config → load → inference → result.
 
         All real code runs except the Azure ConversationTranscriber which is
         mocked to return a realistic transcription response.
@@ -247,17 +127,14 @@ class TestAzureSpeechFullFlowMocked:
             AiModelFormat,
             ModelTaskType,
         )
-        from stt.pipeline.yaml_parser import get_yaml_parser
         from stt.transcription.batch_service import BatchTranscriptionService
         from stt.transcription.dto import RawTranscription
 
-        # Step 1: Parse YAML (real code)
-        parser = get_yaml_parser()
-        spec = parser.parse(_pipeline_yaml_azure_basic())
-        assert spec.models.asr.inline.engine == AiModelFormat.AZURE_SPEECH
+        # Step 1: Inline model definition
+        inline = _azure_inline_model()
+        assert inline.engine == AiModelFormat.AZURE_SPEECH
 
         # Step 2: Build model config (real code)
-        inline = spec.models.asr.inline
         model_config = inline.to_ai_model_config(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION)
 
         # Step 3: Load model through AzureSpeechLoader (real code, mocked SpeechConfig)
@@ -366,17 +243,11 @@ class TestAzureSpeechFullFlowMocked:
         """Test that multilingual config correctly normalizes language codes."""
         from stt.models.azure_speech_loader import AzureSpeechLoader
         from stt.pipeline.dto import ModelTaskType
-        from stt.pipeline.yaml_parser import get_yaml_parser
         from stt.transcription.batch_service import BatchTranscriptionService
         from stt.transcription.dto import RawTranscription
 
-        # Parse multilingual YAML
-        parser = get_yaml_parser()
-        spec = parser.parse(_pipeline_yaml_azure_multilingual())
-        assert spec.inference.language == "ml"
-
         # Load model
-        model_config = spec.models.asr.inline.to_ai_model_config(
+        model_config = _azure_inline_model().to_ai_model_config(
             ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
         )
 
@@ -412,13 +283,10 @@ class TestAzureSpeechFullFlowMocked:
         from stt.core.exceptions import CloudASRAuthError
         from stt.models.azure_speech_loader import AzureSpeechLoader
         from stt.pipeline.dto import ModelTaskType
-        from stt.pipeline.yaml_parser import get_yaml_parser
 
         get_settings.cache_clear()
 
-        parser = get_yaml_parser()
-        spec = parser.parse(_pipeline_yaml_azure_basic())
-        model_config = spec.models.asr.inline.to_ai_model_config(
+        model_config = _azure_inline_model().to_ai_model_config(
             ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
         )
 
@@ -489,7 +357,7 @@ class TestAzureSpeechRealTranscription:
         """Test real Azure Speech transcription with actual audio.
 
         This test:
-        1. Parses the Azure pipeline YAML (no mocks)
+        1. Builds the Azure inline model definition (no mocks)
         2. Loads a real SpeechConfig with real credentials
         3. Sends real audio to Azure for transcription
         4. Validates the returned text and timestamps
@@ -501,17 +369,12 @@ class TestAzureSpeechRealTranscription:
             AiModelFormat,
             ModelTaskType,
         )
-        from stt.pipeline.yaml_parser import get_yaml_parser
         from stt.transcription.batch_service import BatchTranscriptionService
 
         get_settings.cache_clear()
 
-        # Step 1: Parse YAML
-        parser = get_yaml_parser()
-        spec = parser.parse(_pipeline_yaml_azure_multilingual())
-
-        # Step 2: Build config and load (uses real AZURE_SPEECH_KEY)
-        model_config = spec.models.asr.inline.to_ai_model_config(
+        # Step 1: Build config and load (uses real AZURE_SPEECH_KEY)
+        model_config = _azure_inline_model().to_ai_model_config(
             ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
         )
         loader = AzureSpeechLoader()
@@ -528,7 +391,7 @@ class TestAzureSpeechRealTranscription:
         assert loaded_model.format == AiModelFormat.AZURE_SPEECH
         assert loaded_model.device == "cloud"
 
-        # Step 3: Run real transcription
+        # Step 2: Run real transcription
         service = BatchTranscriptionService()
 
         # Convert audio bytes to float32 samples
@@ -555,7 +418,7 @@ class TestAzureSpeechRealTranscription:
             _skip_if_azure_platform_unsupported(exc)
             raise
 
-        # Step 4: Validate result
+        # Step 3: Validate result
         assert result is not None
         assert isinstance(result.text, str)
         assert len(result.text) > 0, "Azure should return transcribed text"
@@ -569,7 +432,7 @@ class TestAzureSpeechRealTranscription:
         if result.segments:
             logger.info(f"Segments: {len(result.segments)}")
 
-        # Step 5: Write report
+        # Step 4: Write report
         report_path = (
             OUTPUT_DIR / f"azure_real_transcription_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         )
