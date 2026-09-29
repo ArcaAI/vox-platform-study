@@ -17,6 +17,12 @@ export const STAGING_SPACE_INSUFFICIENT = 'STAGING_SPACE_INSUFFICIENT';
 export const MODEL_STORE_PREFIX_REFUSED = 'MODEL_STORE_PREFIX_REFUSED';
 
 /**
+ * A Hub download received no byte for the idle window (I7). RETRYABLE — a dead
+ * connection is exactly what the next attempt fixes.
+ */
+export const DOWNLOAD_IDLE_TIMEOUT = 'DOWNLOAD_IDLE_TIMEOUT';
+
+/**
  * The worker's own re-check found a live referrer (an agent, fallback, routing
  * or residency policy, voice profile) bound AFTER the gateway accepted the
  * unregister — the row and its weights are kept (I9).

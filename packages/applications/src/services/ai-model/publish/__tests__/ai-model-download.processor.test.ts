@@ -187,6 +187,30 @@ describe('AiModelDownloadProcessor', () => {
     expect(await readdir(stagingBaseDir)).toEqual([]);
   });
 
+  it('I7 — hands the byte-idle timeout to the fetcher (default 120 s; modelRegistry.download.idleTimeoutSeconds when set)', async () => {
+    const model = createBehavioralModelEntity();
+    mockRepository.findById.mockResolvedValue(model);
+    mockRepository.updateWithVersion.mockImplementation(async (_id: string, entity: typeof model) => entity);
+    mockFetcher.fetch.mockImplementation(stages({ 'model.gguf': 10 }));
+
+    await processor.process(job());
+    expect(mockFetcher.fetch).toHaveBeenLastCalledWith('HUGGINGFACE', expect.any(String), null, expect.objectContaining({ idleTimeoutMs: 120_000 }));
+
+    const settings = { getValueWithDefault: vi.fn((key: string, fallback: unknown) => (key === 'modelRegistry.download.idleTimeoutSeconds' ? 30 : fallback)) };
+    const configured = new AiModelDownloadProcessor(
+      mockRepository as never,
+      mockFetcher as never,
+      mockCls as never,
+      mockHfClient as never,
+      mockStoreFactory as never,
+      mockUnregister as never,
+      { stagingBaseDir, heartbeatIntervalMs: 5000 },
+      settings as never,
+    );
+    await configured.process(job());
+    expect(mockFetcher.fetch).toHaveBeenLastCalledWith('HUGGINGFACE', expect.any(String), null, expect.objectContaining({ idleTimeoutMs: 30_000 }));
+  });
+
   it('throws (fails the job) when tenantId is missing from the payload — fail-closed guard', async () => {
     await expect(processor.process(job({ tenantId: undefined }))).rejects.toThrow();
   });

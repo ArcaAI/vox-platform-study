@@ -156,10 +156,13 @@ describe('ModelSourceFetcherService', () => {
       const onBytes = vi.fn();
       const onPlanned = vi.fn();
 
-      const files = await service.fetch(AiModelSource.HUGGINGFACE, 'org/repo', null, { stagingDir, revision: 'abc123', onBytes, onPlanned });
+      const files = await service.fetch(AiModelSource.HUGGINGFACE, 'org/repo', null, { stagingDir, revision: 'abc123', onBytes, onPlanned, idleTimeoutMs: 45_000 });
 
       expect(mockHfClient.listRepoFiles).toHaveBeenCalledWith('org/repo', 'abc123');
-      expect(mockHfClient.downloadFileTo).toHaveBeenCalledWith('org/repo', 'onnx/model.onnx', 'abc123', join(stagingDir, 'onnx/model.onnx'), onBytes);
+      // The byte-idle watchdog bound rides through to every Hub download (I7).
+      expect(mockHfClient.downloadFileTo).toHaveBeenCalledWith('org/repo', 'onnx/model.onnx', 'abc123', join(stagingDir, 'onnx/model.onnx'), onBytes, {
+        idleTimeoutMs: 45_000,
+      });
       expect(onPlanned).toHaveBeenCalledWith(26);
       expect(onBytes).toHaveBeenCalledTimes(2);
       expect(files.map((f) => f.localPath)).toEqual([join(stagingDir, 'onnx/model.onnx'), join(stagingDir, 'config.json')]);

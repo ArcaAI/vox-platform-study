@@ -16,6 +16,7 @@ import { Readable } from 'node:stream';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { HuggingFaceModelSourceClient } from '../huggingface-model-source.client';
+import { DOWNLOAD_IDLE_TIMEOUT, ModelPublisherError, isNonRetryablePublisherError } from '../model-publisher.errors';
 
 function resolvedCredential(apiKey: string) {
   return { outcome: 'resolved' as const, apiKey, funding: 'platform' as const };
@@ -123,6 +124,58 @@ describe('HuggingFaceModelSourceClient', () => {
       });
 
       await expect(client.downloadFileTo('org/repo', 'model.gguf', 'main', join(dir, 'model.gguf'))).rejects.toThrow('socket hang up');
+    });
+
+    describe('byte-idle watchdog (I7) — a half-open socket fails the attempt instead of hanging the queue', () => {
+      it('aborts with a RETRYABLE DOWNLOAD_IDLE_TIMEOUT when no byte arrives for the idle window', async () => {
+        const body = new Readable({ read() {} });
+        let signal: AbortSignal | undefined;
+        axiosRef.get.mockImplementation(async (_url: string, config: { signal?: AbortSignal }) => {
+          signal = config.signal;
+          setImmediate(() => body.push(Buffer.alloc(10))); // one chunk, then silence
+          return { data: body };
+        });
+
+        const failure = await client
+          .downloadFileTo('org/repo', 'model.gguf', 'main', join(dir, 'model.gguf'), undefined, { idleTimeoutMs: 60 })
+          .catch((e: unknown) => e);
+
+        expect(failure).toBeInstanceOf(ModelPublisherError);
+        expect((failure as ModelPublisherError).code).toBe(DOWNLOAD_IDLE_TIMEOUT);
+        expect(isNonRetryablePublisherError(failure)).toBe(false);
+        expect(signal?.aborted).toBe(true);
+        expect(body.destroyed).toBe(true);
+      });
+
+      it('also covers a response whose headers never arrive', async () => {
+        axiosRef.get.mockImplementation(
+          (_url: string, config: { signal: AbortSignal }) =>
+            new Promise((_resolve, reject) => config.signal.addEventListener('abort', () => reject(new Error('canceled')))),
+        );
+
+        await expect(
+          client.downloadFileTo('org/repo', 'model.gguf', 'main', join(dir, 'model.gguf'), undefined, { idleTimeoutMs: 40 }),
+        ).rejects.toMatchObject({ code: DOWNLOAD_IDLE_TIMEOUT });
+      });
+
+      it('resets on every chunk: a slow but steady transfer longer than the window completes', async () => {
+        const body = new Readable({ read() {} });
+        axiosRef.get.mockImplementation(async () => {
+          let sent = 0;
+          const timer = setInterval(() => {
+            body.push(Buffer.alloc(5));
+            if (++sent === 5) {
+              clearInterval(timer);
+              body.push(null);
+            }
+          }, 25);
+          return { data: body };
+        });
+
+        const result = await client.downloadFileTo('org/repo', 'model.gguf', 'main', join(dir, 'model.gguf'), undefined, { idleTimeoutMs: 80 });
+
+        expect(result.size).toBe(25);
+      });
     });
   });
 

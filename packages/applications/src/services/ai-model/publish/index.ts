@@ -12,5 +12,6 @@ export * from './model-manifest.util';
 export * from './model-store';
 export * from './model-staging';
 export * from './model-publisher.errors';
+export * from './model-publisher-timeouts.settings';
 export * from './model-unregister.service';
 export * from './download-heartbeat';

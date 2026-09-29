@@ -35,6 +35,8 @@ export interface FetchStagingOptions {
   onPlanned?: (totalBytes: number) => void;
   /** Called per received chunk — progress + liveness. */
   onBytes?: (bytes: number) => void;
+  /** A Hub download receiving no byte for this long is aborted (`DOWNLOAD_IDLE_TIMEOUT`, I7). */
+  idleTimeoutMs?: number;
 }
 
 const HF_REPO_RE = /^(?:hf:)?([\w.-]+\/[\w.-]+)$/;
@@ -126,7 +128,7 @@ export class ModelSourceFetcherService {
 
     const files: StagedModelFile[] = [];
     for (const { entry, localPath } of planned) {
-      const { size, sha256 } = await this.hfClient.downloadFileTo(repo, entry.path, revision, localPath, opts.onBytes);
+      const { size, sha256 } = await this.hfClient.downloadFileTo(repo, entry.path, revision, localPath, opts.onBytes, { idleTimeoutMs: opts.idleTimeoutMs });
       files.push({ path: entry.path, localPath, size, sha256 });
     }
     return files;

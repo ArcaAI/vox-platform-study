@@ -8,6 +8,8 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
+import { DOWNLOAD_IDLE_TIMEOUT, ModelPublisherError } from './model-publisher.errors';
+import { MODEL_PUBLISHER_TIMEOUT_DEFAULTS } from './model-publisher-timeouts.settings';
 
 const LIST_TIMEOUT_MS = 15000;
 
@@ -132,6 +134,13 @@ export class HuggingFaceModelSourceClient {
    * + liveness). Parent directories of `destPath` are created. A body that
    * errors mid-transfer rejects; the partial file is the caller's staging
    * directory to clean up.
+   *
+   * BYTE-IDLE WATCHDOG (I7). A half-open socket delivers nothing and never
+   * errors, so without a bound the job — and the concurrency-1 queue behind it
+   * — hangs forever. If no byte (or no response) arrives for `idleTimeoutMs`,
+   * the request is aborted and the call rejects with the RETRYABLE
+   * `DOWNLOAD_IDLE_TIMEOUT`. Every chunk restarts the clock, so a slow but
+   * moving transfer is never cut off.
    */
   async downloadFileTo(
     repo: string,
@@ -139,33 +148,62 @@ export class HuggingFaceModelSourceClient {
     revision: string,
     destPath: string,
     onBytes?: (bytes: number) => void,
+    opts: { idleTimeoutMs?: number } = {},
   ): Promise<{ size: number; sha256: string }> {
     const url = `https://huggingface.co/${repo}/resolve/${revision}/${path}`;
+    const idleTimeoutMs = opts.idleTimeoutMs ?? MODEL_PUBLISHER_TIMEOUT_DEFAULTS.idleTimeoutSeconds * 1000;
     const headers = await this.resolveAuthHeaders();
     // Before the request: once the body stream exists, nothing may be awaited
     // until `pipeline` owns it, or an early socket error has no listener.
     await mkdir(dirname(destPath), { recursive: true });
 
-    let body: Readable;
-    try {
-      const response = await this.httpService.axiosRef.get(url, { responseType: 'stream', headers });
-      body = response.data as Readable;
-    } catch (error) {
-      throw this.toRepoError(repo, error);
-    }
+    const controller = new AbortController();
+    let body: Readable | null = null;
+    let idle: ModelPublisherError | null = null;
+    let timer: NodeJS.Timeout | null = null;
+    const arm = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        idle = new ModelPublisherError(DOWNLOAD_IDLE_TIMEOUT, `no data from HuggingFace for ${Math.round(idleTimeoutMs / 1000)} s while downloading '${path}' of '${repo}'`);
+        controller.abort(idle);
+        body?.destroy(idle);
+      }, idleTimeoutMs);
+      timer.unref?.();
+    };
 
-    const hash = createHash('sha256');
-    let size = 0;
-    const meter = new Transform({
-      transform(chunk: Buffer, _encoding, callback) {
-        size += chunk.length;
-        hash.update(chunk);
-        onBytes?.(chunk.length);
-        callback(null, chunk);
-      },
-    });
-    await pipeline(body, meter, createWriteStream(destPath));
-    return { size, sha256: hash.digest('hex') };
+    arm();
+    try {
+      try {
+        const response = await this.httpService.axiosRef.get(url, { responseType: 'stream', headers, signal: controller.signal });
+        body = response.data as Readable;
+      } catch (error) {
+        throw idle ?? this.toRepoError(repo, error);
+      }
+      if (idle) {
+        body.destroy(idle);
+        throw idle;
+      }
+
+      const hash = createHash('sha256');
+      let size = 0;
+      const meter = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          arm();
+          size += chunk.length;
+          hash.update(chunk);
+          onBytes?.(chunk.length);
+          callback(null, chunk);
+        },
+      });
+      try {
+        await pipeline(body, meter, createWriteStream(destPath));
+      } catch (error) {
+        throw idle ?? error;
+      }
+      return { size, sha256: hash.digest('hex') };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   /**

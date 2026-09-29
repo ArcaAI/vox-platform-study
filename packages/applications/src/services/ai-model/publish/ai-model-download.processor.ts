@@ -19,6 +19,8 @@ import { HuggingFaceModelSourceClient } from './huggingface-model-source.client'
 import { buildSha256SumsContent, deriveModelVersion, deriveQuantTokenFromFilenames, normalizeQuantToken, sha256Hex } from './model-version.util';
 import { isUnregisterJob, type DownloadAiModelJobPayload, type PublisherJobPayload, type UnregisterAiModelJobPayload } from './publisher-job.contract';
 import { QUEUE_CONCURRENCY } from '../../baseServices/redis/queue-concurrency';
+import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
+import { readModelPublisherTimeouts } from './model-publisher-timeouts.settings';
 import { runJobInContext } from '../../baseServices/observability/job-context';
 
 // Re-exported for the existing importers (tests, the API module); the constant moved to `../constants`.
@@ -28,7 +30,10 @@ export type { DownloadAiModelJobPayload } from './publisher-job.contract';
 
 const HF_REPO_RE = /^(?:hf:)?([\w.-]+)\/([\w.-]+)$/;
 
-/** Liveness cadence: "at most every few seconds" (D-4). Not a policy knob — staleness is (`staleAfterSeconds`). */
+/**
+ * Liveness cadence: "at most every few seconds" (D-4), and only while the job
+ * is making progress (I7). Not a policy knob — staleness is (`staleAfterSeconds`).
+ */
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 5000;
 
 export interface DownloadAiModelResult {
@@ -137,6 +142,9 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
     private readonly modelStoreFactory: ModelStoreFactory,
     private readonly unregisterService: AiModelUnregisterService,
     @Optional() @Inject(MODEL_PUBLISHER_PROCESSOR_OPTIONS) options?: ModelPublisherProcessorOptions,
+    // The `modelRegistry.download.*` knobs the WORKER reads (I7) — the gateway
+    // reads `maxAttempts` / `staleAfterSeconds` the same way.
+    @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
   ) {
     super();
     this.stagingBaseDir = options?.stagingBaseDir ?? resolveStagingBaseDir();
@@ -240,9 +248,11 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
       const liveHeartbeat = heartbeat;
 
       const quantHint = model.computeType ?? null;
+      const { idleTimeoutMs } = readModelPublisherTimeouts(this.appSettings);
       const files = await this.modelSourceFetcher.fetch(model.source, model.sourceUri, quantHint, {
         stagingDir,
         revision: hub?.sha,
+        idleTimeoutMs,
         onPlanned: (total) => liveHeartbeat.setTotal(total),
         onBytes: (bytes) => liveHeartbeat.addBytes(bytes),
       });
@@ -273,23 +283,26 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
       });
       const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2), 'utf8');
 
+      // Every bucket request runs inside `during()`: the heartbeat keeps the row
+      // alive while one is in flight (each is bounded by the store's request
+      // timeout), and stops beating once nothing moves (I7).
       for (const file of files) {
         const key = `${prefix}${file.path}`;
         // Retry-safe: an object a previous attempt already published whole is
         // not sent again; a truncated or different one is replaced.
-        const existing = await store.headObject(key);
+        const existing = await liveHeartbeat.during(store.headObject(key));
         if (!existing || existing.size !== file.size) {
-          await store.uploadFile(key, file.localPath);
+          await liveHeartbeat.during(store.uploadFile(key, file.localPath));
         }
         liveHeartbeat.beat();
       }
-      await store.putSmall(`${prefix}SHA256SUMS`, Buffer.from(sha256sumsContent, 'utf8'));
-      await store.putSmall(`${prefix}manifest.json`, manifestBytes);
+      await liveHeartbeat.during(store.putSmall(`${prefix}SHA256SUMS`, Buffer.from(sha256sumsContent, 'utf8')));
+      await liveHeartbeat.during(store.putSmall(`${prefix}manifest.json`, manifestBytes));
       if (cacheLayout) {
         // `refs/main` is what `hf_hub_download` resolves a revision through
         // when offline; without it the snapshot is invisible to the loader.
         // The body is the bare sha — no trailing newline.
-        await store.putSmall(`${cacheLayout.repoPrefix}refs/main`, Buffer.from(cacheLayout.sha, 'utf8'));
+        await liveHeartbeat.during(store.putSmall(`${cacheLayout.repoPrefix}refs/main`, Buffer.from(cacheLayout.sha, 'utf8')));
       }
 
       await heartbeat.stop();

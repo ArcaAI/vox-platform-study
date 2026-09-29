@@ -47,6 +47,7 @@ import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSe
 import { minioCertCheckFromEnv, resolvePlatformStorageConfig } from '../../tenant-storage-config/platform-storage-config';
 import { HOPE_MODELS_BUCKET } from '../constants';
 import { MODEL_STORE_CREDENTIAL_MISSING, MODEL_STORE_PREFIX_REFUSED, ModelPublisherError } from './model-publisher.errors';
+import { readModelPublisherTimeouts } from './model-publisher-timeouts.settings';
 
 export { MODEL_STORE_CREDENTIAL_MISSING, ModelPublisherError } from './model-publisher.errors';
 
@@ -328,9 +329,17 @@ export class ModelStoreFactory {
       // REQUIRE a checksum (DeleteObjects) still get one.
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
-      // Same deliberate, reversible TLS relaxation as `S3Service` (owner
-      // ruling 2026-08-30, `MINIO_CERT_CHECK`) — grep it to revert every site.
-      ...(minioCertCheckFromEnv(this.env) ? {} : { requestHandler: new NodeHttpHandler({ httpsAgent: new HttpsAgent({ rejectUnauthorized: false }) }) }),
+      // I7 — every request is bounded: a half-open socket on a part upload
+      // must FAIL (and the job retry), never hold the concurrency-1 queue
+      // forever. `throwOnRequestTimeout` turns the SDK's default warning into
+      // an error. The TLS relaxation is the same deliberate, reversible one as
+      // `S3Service` (owner ruling 2026-08-30, `MINIO_CERT_CHECK`) — grep it to
+      // revert every site.
+      requestHandler: new NodeHttpHandler({
+        requestTimeout: readModelPublisherTimeouts(this.appSettings).requestTimeoutMs,
+        throwOnRequestTimeout: true,
+        ...(minioCertCheckFromEnv(this.env) ? {} : { httpsAgent: new HttpsAgent({ rejectUnauthorized: false }) }),
+      }),
     });
 
     return new S3ModelStore(client, HOPE_MODELS_BUCKET);
