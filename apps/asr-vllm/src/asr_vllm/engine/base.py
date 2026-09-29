@@ -20,6 +20,20 @@ class DecoderBudgetError(ValueError):
     """The decoder prompt leaves no room to generate within the model's context."""
 
 
+class EngineBuildRefused(RuntimeError):
+    """The backend refuses to build this spec for a NAMED reason.
+
+    ``code`` travels unchanged through the pool to the HTTP layer (503 ``detail.code``),
+    so a caller learns WHY — a vetoed registry credential, a checksum mismatch, fp8 on a
+    GPU that cannot run it — instead of a generic load failure. Nothing is cached: the
+    next request re-evaluates, which is what lets a fixed credential or row take effect.
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 @dataclass(frozen=True)
 class DecodeRequest:
     audio: npt.NDArray[np.float32]

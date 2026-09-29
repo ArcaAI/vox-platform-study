@@ -16,6 +16,7 @@ no connection; both are pulled on first use.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -72,6 +73,11 @@ def create_app(
     engine_factory: EngineFactory | None = None,
     effective_config_client: EffectiveConfigClient | None = None,
 ) -> FastAPI:
+    # OD-7: no AMBIENT HuggingFace token (`HF_TOKEN`, a cached `huggingface-cli login`)
+    # may ever fund a pull — only the model owner's registry credential, passed
+    # explicitly. Set before anything can import `huggingface_hub`, which reads it once
+    # at import; the Dockerfile sets it too.
+    os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
     settings = settings or get_settings()
     gateway_url = settings.api_gateway_url.strip()
     if effective_config_client is None and gateway_url:

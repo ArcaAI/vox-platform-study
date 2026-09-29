@@ -27,6 +27,18 @@ whisper.py``, ``vllm/v1/engine/async_llm.py``, ``vllm/sampling_params.py``):
 * ``SamplingParams.max_tokens`` defaults to **16** — a silent truncation for ASR — and
   vLLM rejects a value larger than the remaining context. So the adapter always sends an
   explicit budget: ``max_model_len − decoder-prompt tokens``, clamped from the request's.
+
+What a BUILD does, in order (TASK-1010 phase B):
+
+1. **Quantization** (``AiModel._metadata.asr.quantization`` → ``spec.models.asr``) is
+   mapped onto vLLM's method names; a value vLLM has no method for is refused by name
+   BEFORE any weights move. ``fp8`` additionally needs FP8 tensor cores — compute
+   capability ≥ 8.9 (Ada / Hopper and newer) — and is refused below it (OD-11: the
+   production RTX A6000 is sm_86; dev's RTX 2000 Ada is sm_89).
+2. **Weights** come from ``ModelSourceResolver`` (OD-7): always a LOCAL DIRECTORY —
+   vLLM is never handed a repo id, so it can never pull on its own.
+3. **Engine knobs** (``asrVllm.engine.*``) are read from the settings the control plane
+   keeps current; the pool pulls it right before this build.
 """
 
 from __future__ import annotations
@@ -36,19 +48,85 @@ import importlib.util
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from pathlib import Path
+from typing import Any, Protocol
 
 from hope_obs import get_logger
 
 from asr_vllm.audio import SAMPLE_RATE
 from asr_vllm.core.config import Settings
-from asr_vllm.engine.base import DecoderBudgetError, DecodeRequest, DecodeResult
-from asr_vllm.spec import ResolvedVllmAsrSpec
+from asr_vllm.engine.base import (
+    DecoderBudgetError,
+    DecodeRequest,
+    DecodeResult,
+    EngineBuildRefused,
+)
+from asr_vllm.models.source_resolver import ModelSourceResolver
+from asr_vllm.spec import AsrModelSlice, ResolvedVllmAsrSpec
 
 logger = get_logger(__name__)
 
-#: ``spec -> (text -> token count)``; the default loads the checkpoint's own tokenizer.
-TokenCounterLoader = Callable[[ResolvedVllmAsrSpec], Callable[[str], int]]
+#: ``checkpoint dir -> (text -> token count)``; the default loads the checkpoint's tokenizer.
+TokenCounterLoader = Callable[[str], Callable[[str], int]]
+
+#: ``() -> (major, minor)`` of the GPU this process will run on, or None (no CUDA device).
+CudaCapability = Callable[[], tuple[int, int] | None]
+
+#: Registry ``quantization`` → vLLM ``quantization=``. ``none`` = the checkpoint's own
+#: precision. ``int8`` is deliberately ABSENT: vLLM has no method of that name (it runs a
+#: pre-quantised int8 checkpoint by detecting the checkpoint's own ``quantization_config``),
+#: so passing it would fail inside vLLM after the weights had already moved.
+VLLM_QUANTIZATION: dict[str, str | None] = {
+    "none": None,
+    "fp8": "fp8",
+    "awq": "awq",
+    "gptq": "gptq",
+}
+
+#: FP8 tensor cores: Ada (sm_89), Hopper (sm_90) and newer.
+FP8_MIN_CAPABILITY = (8, 9)
+
+
+class SourceResolver(Protocol):
+    async def resolve(self, model: AsrModelSlice) -> Path: ...
+
+
+def vllm_quantization(model: AsrModelSlice, capability: CudaCapability) -> str | None:
+    """The vLLM ``quantization=`` for ``model``, or a named refusal (before any pull)."""
+    if model.quantization is None:
+        return None
+    if model.quantization not in VLLM_QUANTIZATION:
+        raise EngineBuildRefused(
+            "QUANTIZATION_UNSUPPORTED",
+            f"model '{model.slug}' declares quantization '{model.quantization}', which vLLM "
+            f"has no method for (supported: {', '.join(sorted(VLLM_QUANTIZATION))})",
+        )
+    if model.quantization == "fp8":
+        sm = capability()
+        if sm is not None and sm < FP8_MIN_CAPABILITY:
+            raise EngineBuildRefused(
+                "QUANTIZATION_UNSUPPORTED_ON_GPU",
+                f"model '{model.slug}' is fp8, which needs compute capability >= sm_89; this "
+                f"GPU is sm_{sm[0]}{sm[1]} — bind an fp16 or int8 row here (OD-11)",
+            )
+    return VLLM_QUANTIZATION[model.quantization]
+
+
+def _vllm_cuda_capability() -> tuple[int, int] | None:
+    """The device's compute capability through vLLM's platform layer.
+
+    vLLM's CUDA platform answers from NVML, so this creates no CUDA context in the
+    server process (a context here would force vLLM's engine-core process onto
+    ``spawn``). ``None`` off CUDA — the guard then leaves the decision to vLLM.
+    """
+    from vllm.platforms import current_platform
+
+    if not current_platform.is_cuda():
+        return None
+    capability = current_platform.get_device_capability()
+    if capability is None:
+        return None
+    return int(capability.major), int(capability.minor)
 
 
 def build_decoder_prompt(language: str, prompt: str | None) -> str:
@@ -67,25 +145,13 @@ def resolve_max_tokens(requested: int | None, *, max_model_len: int, prompt_toke
     return budget if requested is None else min(requested, budget)
 
 
-def _load_target(spec: ResolvedVllmAsrSpec) -> tuple[str, str | None]:
-    """The published directory, else the HF repo id at the row's pinned revision."""
-    model = spec.model
-    if model.local_path:
-        return model.local_path, None
-    uri = model.source_uri.strip()
-    for prefix in ("hf://", "huggingface://"):
-        if uri.startswith(prefix):
-            return uri[len(prefix) :], model.source_revision
-    return uri, model.source_revision
-
-
-def _hf_token_counter(spec: ResolvedVllmAsrSpec) -> Callable[[str], int]:
+def _hf_token_counter(model_dir: str) -> Callable[[str], int]:
     """Count decoder-prompt tokens with the checkpoint's own tokenizer (``transformers``
-    ships with vLLM). Special tokens written in the text resolve to their single ids."""
+    ships with vLLM), loaded from the SAME local directory the engine loads — never a
+    repo id. Special tokens written in the text resolve to their single ids."""
     from transformers import AutoTokenizer
 
-    target, revision = _load_target(spec)
-    tokenizer = AutoTokenizer.from_pretrained(target, revision=revision)
+    tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
     def count(text: str) -> int:
         return len(tokenizer(text, add_special_tokens=False)["input_ids"])
@@ -184,10 +250,19 @@ class VllmEngineFactory:
     name = "vllm"
 
     def __init__(
-        self, settings: Settings, *, token_counter_loader: TokenCounterLoader | None = None
+        self,
+        settings: Settings,
+        *,
+        source_resolver: SourceResolver | None = None,
+        token_counter_loader: TokenCounterLoader | None = None,
+        cuda_capability: CudaCapability | None = None,
     ) -> None:
         self._settings = settings
+        self._source_resolver: SourceResolver = (
+            source_resolver or ModelSourceResolver.from_settings(settings)
+        )
         self._token_counter_loader = token_counter_loader or _hf_token_counter
+        self._cuda_capability = cuda_capability or _vllm_cuda_capability
 
     def availability(self) -> str | None:
         try:
@@ -197,21 +272,23 @@ class VllmEngineFactory:
         return None if found else "vllm is not installed in this image (Linux + CUDA only)"
 
     async def build(self, spec: ResolvedVllmAsrSpec) -> VllmWhisperEngine:
-        return await asyncio.to_thread(self._build_sync, spec)
+        quantization = vllm_quantization(spec.model, self._cuda_capability)
+        model_dir = await self._source_resolver.resolve(spec.model)
+        return await asyncio.to_thread(self._build_sync, spec, str(model_dir), quantization)
 
-    def _build_sync(self, spec: ResolvedVllmAsrSpec) -> VllmWhisperEngine:
+    def _build_sync(
+        self, spec: ResolvedVllmAsrSpec, model_dir: str, quantization: str | None
+    ) -> VllmWhisperEngine:
         from vllm import AsyncEngineArgs, SamplingParams
         from vllm.inputs import ExplicitEncoderDecoderPrompt, TextPrompt
         from vllm.v1.engine.async_llm import AsyncLLM
 
         settings = self._settings
         model = spec.model
-        target, revision = _load_target(spec)
         args = AsyncEngineArgs(
-            model=target,
-            revision=revision,
+            model=model_dir,
             dtype=model.compute_type or "auto",
-            quantization=model.quantization,
+            quantization=quantization,
             max_model_len=model.max_model_len,
             gpu_memory_utilization=settings.gpu_memory_utilization,
             max_num_seqs=settings.max_num_seqs,
@@ -225,6 +302,9 @@ class VllmEngineFactory:
             runtime_key=spec.runtime_key,
             max_model_len=max_model_len,
             max_num_seqs=settings.max_num_seqs,
+            gpu_memory_utilization=settings.gpu_memory_utilization,
+            enforce_eager=settings.enforce_eager,
+            quantization=quantization,
         )
         return VllmWhisperEngine(
             api=_VllmApi(
@@ -234,6 +314,6 @@ class VllmEngineFactory:
             ),
             engine=engine,
             spec=spec,
-            count_tokens=self._token_counter_loader(spec),
+            count_tokens=self._token_counter_loader(model_dir),
             max_model_len=max_model_len,
         )

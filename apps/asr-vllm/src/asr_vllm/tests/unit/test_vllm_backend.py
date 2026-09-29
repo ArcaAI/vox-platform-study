@@ -14,6 +14,7 @@ import importlib.machinery
 import sys
 import types
 from collections.abc import AsyncIterator
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -22,13 +23,13 @@ import pytest
 
 from asr_vllm.core.config import Settings
 from asr_vllm.core.control_plane import apply_control_plane
-from asr_vllm.engine.base import DecoderBudgetError, DecodeRequest
+from asr_vllm.engine.base import DecoderBudgetError, DecodeRequest, EngineBuildRefused
 from asr_vllm.engine.vllm_backend import (
     VllmEngineFactory,
     build_decoder_prompt,
     resolve_max_tokens,
 )
-from asr_vllm.spec import ResolvedVllmAsrSpec
+from asr_vllm.spec import AsrModelSlice, ResolvedVllmAsrSpec
 from asr_vllm.tests.conftest import spec_payload
 
 
@@ -98,9 +99,28 @@ def fake_vllm(monkeypatch: pytest.MonkeyPatch) -> type[FakeAsyncLLM]:
     return FakeAsyncLLM
 
 
-def _count_chars_as_tokens(spec: ResolvedVllmAsrSpec) -> Any:
+TOKENIZER_DIRS: list[str] = []
+
+
+def _count_chars_as_tokens(model_dir: str) -> Any:
     """Stand-in tokenizer: every special token counts 1, i.e. 4 for the bare prompt."""
+    TOKENIZER_DIRS.append(model_dir)
     return lambda text: text.count("<|")
+
+
+#: Where the stand-in resolver "finds" the weights — always a LOCAL directory.
+RESOLVED_DIR = Path("/resolved/snapshots/abc123")
+
+
+class FakeResolver:
+    """Records what the factory asks to resolve; returns a local directory (OD-7)."""
+
+    def __init__(self) -> None:
+        self.calls: list[AsrModelSlice] = []
+
+    async def resolve(self, model: AsrModelSlice) -> Path:
+        self.calls.append(model)
+        return RESOLVED_DIR
 
 
 def serve(settings: Settings, **values: Any) -> None:
@@ -119,8 +139,27 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def factory(settings: Settings) -> VllmEngineFactory:
-    return VllmEngineFactory(settings, token_counter_loader=_count_chars_as_tokens)
+def resolver() -> FakeResolver:
+    return FakeResolver()
+
+
+@pytest.fixture
+def capability() -> dict[str, tuple[int, int] | None]:
+    """The GPU the factory sees — sm_89 (the dev RTX 2000 Ada) unless a test says otherwise."""
+    return {"value": (8, 9)}
+
+
+@pytest.fixture
+def factory(
+    settings: Settings, resolver: FakeResolver, capability: dict[str, tuple[int, int] | None]
+) -> VllmEngineFactory:
+    TOKENIZER_DIRS.clear()
+    return VllmEngineFactory(
+        settings,
+        source_resolver=resolver,
+        token_counter_loader=_count_chars_as_tokens,
+        cuda_capability=lambda: capability["value"],
+    )
 
 
 def make_spec(**overrides: object) -> ResolvedVllmAsrSpec:
@@ -190,20 +229,82 @@ def test_factory_is_available_when_vllm_is_importable(fake_vllm, factory) -> Non
 # ── build ───────────────────────────────────────────────────────────────────
 
 
-async def test_build_passes_the_resolved_spec_and_engine_tuning(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+async def test_build_passes_the_resolved_spec_and_engine_tuning(  # type: ignore[no-untyped-def]
+    fake_vllm, factory, resolver
+) -> None:
     spec = make_spec(quantization="fp8", maxModelLen=448, computeType="bfloat16")
     await factory.build(spec)
 
+    assert resolver.calls == [spec.model]
     (engine,) = fake_vllm.created
     kwargs = engine.args.kwargs
-    assert kwargs["model"] == "/mnt/models-bucket/hf/whisper-turbo-ml-en-fp16"
-    assert kwargs["revision"] is None  # a local directory has no revision
+    assert kwargs["model"] == str(RESOLVED_DIR)  # the resolved LOCAL directory
+    assert kwargs.get("revision") is None  # a local directory has no revision
     assert kwargs["dtype"] == "bfloat16"
     assert kwargs["quantization"] == "fp8"
     assert kwargs["max_model_len"] == 448
     assert kwargs["gpu_memory_utilization"] == pytest.approx(0.4)
     assert kwargs["max_num_seqs"] == 48
     assert kwargs["limit_mm_per_prompt"] == {"audio": 1}
+    assert TOKENIZER_DIRS == [str(RESOLVED_DIR)]  # the tokenizer loads from the same dir
+
+
+async def test_vllm_is_never_handed_a_repo_id(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+    """An HF-only row still reaches vLLM as the directory the resolver pulled into."""
+    await factory.build(make_spec(localPath=None, sourceRevision="abc123"))
+    kwargs = fake_vllm.created[0].args.kwargs
+    assert kwargs["model"] == str(RESOLVED_DIR)
+    assert "taphuynh/" not in str(kwargs)
+    assert kwargs.get("revision") is None
+
+
+@pytest.mark.parametrize(
+    ("registry", "vllm"), [(None, None), ("none", None), ("awq", "awq"), ("gptq", "gptq")]
+)
+async def test_quantization_passes_through_to_vllm(  # type: ignore[no-untyped-def]
+    fake_vllm, factory, registry: str | None, vllm: str | None
+) -> None:
+    await factory.build(make_spec(quantization=registry))
+    assert fake_vllm.created[0].args.kwargs["quantization"] == vllm
+
+
+async def test_a_quantization_vllm_has_no_method_for_is_refused_before_any_pull(  # type: ignore[no-untyped-def]
+    fake_vllm, factory, resolver
+) -> None:
+    with pytest.raises(EngineBuildRefused) as caught:
+        await factory.build(make_spec(quantization="int8"))
+    assert caught.value.code == "QUANTIZATION_UNSUPPORTED"
+    assert resolver.calls == [] and fake_vllm.created == []
+
+
+@pytest.mark.parametrize("sm", [(8, 6), (8, 0), (7, 5)])
+async def test_fp8_below_sm89_is_refused_by_name_before_any_pull(  # type: ignore[no-untyped-def]
+    fake_vllm, factory, resolver, capability, sm: tuple[int, int]
+) -> None:
+    """OD-11: production A6000 is sm_86 — fp8 is refused there until measured."""
+    capability["value"] = sm
+    with pytest.raises(EngineBuildRefused) as caught:
+        await factory.build(make_spec(quantization="fp8"))
+    assert caught.value.code == "QUANTIZATION_UNSUPPORTED_ON_GPU"
+    assert f"sm_{sm[0]}{sm[1]}" in str(caught.value)
+    assert resolver.calls == [] and fake_vllm.created == []
+
+
+@pytest.mark.parametrize("sm", [(8, 9), (9, 0), (12, 0)])
+async def test_fp8_on_sm89_or_newer_is_passed_through(  # type: ignore[no-untyped-def]
+    fake_vllm, factory, capability, sm: tuple[int, int]
+) -> None:
+    capability["value"] = sm
+    await factory.build(make_spec(quantization="fp8"))
+    assert fake_vllm.created[0].args.kwargs["quantization"] == "fp8"
+
+
+async def test_the_arch_guard_only_looks_at_the_gpu_for_fp8(  # type: ignore[no-untyped-def]
+    fake_vllm, factory, capability
+) -> None:
+    capability["value"] = (7, 5)
+    await factory.build(make_spec(quantization="none"))
+    assert fake_vllm.created[0].args.kwargs["quantization"] is None
 
 
 async def test_engine_knobs_are_read_when_an_engine_is_built(  # type: ignore[no-untyped-def]
@@ -219,14 +320,6 @@ async def test_engine_knobs_are_read_when_an_engine_is_built(  # type: ignore[no
     assert first["enforce_eager"] is False
     assert second["gpu_memory_utilization"] == pytest.approx(0.3)
     assert (second["max_num_seqs"], second["enforce_eager"]) == (16, True)
-
-
-async def test_hf_source_is_loaded_at_its_pinned_revision(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
-    await factory.build(make_spec(localPath=None, sourceRevision="abc123", computeType=None))
-    kwargs = fake_vllm.created[0].args.kwargs
-    assert kwargs["model"] == "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16"
-    assert kwargs["revision"] == "abc123"
-    assert kwargs["dtype"] == "auto"
 
 
 # ── transcribe ──────────────────────────────────────────────────────────────

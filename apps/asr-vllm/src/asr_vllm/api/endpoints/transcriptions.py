@@ -196,7 +196,7 @@ async def transcribe(
         ) from None
     except EngineLoadError as exc:
         metrics.WINDOWS_TOTAL.labels(outcome="load_failed").inc()
-        raise _error(503, "ENGINE_LOAD_FAILED", str(exc)) from None
+        raise _error(503, exc.code, str(exc)) from None
     except DecoderBudgetError as exc:
         metrics.WINDOWS_TOTAL.labels(outcome="rejected").inc()
         raise _error(422, "PROMPT_EXCEEDS_DECODER_CONTEXT", str(exc)) from None
@@ -271,7 +271,7 @@ async def warm(
             f"runtime key {body.spec.runtime_key} is already bound to a different model spec",
         ) from None
     except EngineLoadError as exc:
-        raise _error(503, "ENGINE_LOAD_FAILED", str(exc)) from None
+        raise _error(503, exc.code, str(exc)) from None
     return WarmResponse(
         runtime_key=body.spec.runtime_key,
         already_resident=already,

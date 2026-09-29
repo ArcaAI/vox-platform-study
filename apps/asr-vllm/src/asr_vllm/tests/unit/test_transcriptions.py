@@ -9,6 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from asr_vllm.core.config import Settings
+from asr_vllm.engine.base import EngineBuildRefused
 from asr_vllm.main import create_app
 from asr_vllm.tests.conftest import (
     DROP,
@@ -213,3 +214,30 @@ async def test_warm_loads_the_engine_and_reports_load_time(client, factory) -> N
 async def test_warm_requires_the_tenant_header(client) -> None:  # type: ignore[no-untyped-def]
     response = await client.post("/api/v1/engines/warm", json={"spec": spec_payload()})
     assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "MODEL_CREDENTIAL_DENIED",
+        "MODEL_CREDENTIAL_UNAVAILABLE",
+        "MODEL_CHECKSUM_MISMATCH",
+        "QUANTIZATION_UNSUPPORTED_ON_GPU",
+    ],
+)
+async def test_a_named_build_refusal_is_a_503_carrying_its_reason(
+    settings: Settings, code: str
+) -> None:
+    factory = FakeEngineFactory(fail_with=EngineBuildRefused(code, f"because {code}"))
+    app = create_app(settings, engine_factory=factory)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            window = await client.post(
+                "/api/v1/transcriptions", json=transcription_body(), headers=HEADERS
+            )
+            warm = await client.post(
+                "/api/v1/engines/warm", json={"spec": spec_payload()}, headers=HEADERS
+            )
+    for response in (window, warm):
+        assert response.status_code == 503
+        assert response.json()["detail"] == {"code": code, "message": f"because {code}"}

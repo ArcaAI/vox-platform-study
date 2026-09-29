@@ -18,6 +18,8 @@ identical replicas sit behind one Service — any replica can serve any window.
 * **Fail closed on drift.** One runtime key must always mean one spec. A request that
   reuses a key for different weights is refused rather than served by the wrong model.
 * **Failures are not cached.** A failed load leaves nothing behind; the next request retries.
+  A NAMED refusal (``EngineBuildRefused``) keeps its code through the pool, so the HTTP
+  layer answers with the reason rather than a generic load failure.
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ from typing import Any
 from hope_obs import get_logger
 
 from asr_vllm.core import metrics
-from asr_vllm.engine.base import EngineFactory, WhisperEngine
+from asr_vllm.engine.base import EngineBuildRefused, EngineFactory, WhisperEngine
 from asr_vllm.spec import ResolvedVllmAsrSpec
 
 logger = get_logger(__name__)
@@ -42,8 +44,16 @@ class EngineCapacityError(RuntimeError):
     """Every resident engine is busy and the residency bound is reached."""
 
 
+#: The code of a load failure the backend did not name.
+ENGINE_LOAD_FAILED = "ENGINE_LOAD_FAILED"
+
+
 class EngineLoadError(RuntimeError):
-    """The backend failed to build the engine."""
+    """The backend failed to build the engine; ``code`` names why (503 ``detail.code``)."""
+
+    def __init__(self, message: str, *, code: str = ENGINE_LOAD_FAILED) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class RuntimeKeySpecMismatchError(RuntimeError):
@@ -154,7 +164,8 @@ class EnginePool:
                     raise EngineLoadError(f"load of {key} was cancelled") from None
                 raise
             except Exception as exc:
-                raise EngineLoadError(str(exc)) from exc
+                code = exc.code if isinstance(exc, EngineBuildRefused) else ENGINE_LOAD_FAILED
+                raise EngineLoadError(str(exc), code=code) from exc
             # Loop: pick the now-resident engine up under the lock (and re-check the spec).
 
     async def _load(self, spec: ResolvedVllmAsrSpec) -> _Resident:
