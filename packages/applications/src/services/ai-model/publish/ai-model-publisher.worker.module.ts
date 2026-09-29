@@ -30,7 +30,20 @@ import { ModelUsageReader } from '../lifecycle/model-usage.reader';
  * worker root module's global `EventEmitterModule` / `ClsModule`.
  */
 @Module({
-  imports: [HttpModule, CommonServiceModule, CoreDatabaseModule, AiProviderConnectionServiceModule, BullModule.registerQueue({ name: JobQueue.DownloadAiModel })],
-  providers: [AiModelDownloadProcessor, ModelSourceFetcherService, HuggingFaceModelSourceClient, ModelStoreFactory, AiModelUnregisterService, ModelUsageReader],
+  imports: [
+    HttpModule,
+    CommonServiceModule,
+    CoreDatabaseModule,
+    AiProviderConnectionServiceModule,
+    BullModule.registerQueue({ name: JobQueue.DownloadAiModel }),
+  ],
+  providers: [
+    AiModelDownloadProcessor,
+    ModelSourceFetcherService,
+    HuggingFaceModelSourceClient,
+    ModelStoreFactory,
+    AiModelUnregisterService,
+    ModelUsageReader,
+  ],
 })
 export class AiModelPublisherWorkerModule {}

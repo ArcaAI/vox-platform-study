@@ -22,7 +22,17 @@ function modelRow(overrides: Record<string, unknown> = {}) {
     bucketPrefix: 'gemma/q4-0-abcdef012345/',
     availability: 'AVAILABLE',
     updatedBy: null as string | null,
-    metaData: { unregister: { jobId: 'u-1', startedAt: '2026-09-29T10:00:00.000Z', deleteWeights: true, purge: false, finishedAt: null, error: null, weights: 'deleting' } } as Record<string, unknown>,
+    metaData: {
+      unregister: {
+        jobId: 'u-1',
+        startedAt: '2026-09-29T10:00:00.000Z',
+        deleteWeights: true,
+        purge: false,
+        finishedAt: null,
+        error: null,
+        weights: 'deleting',
+      },
+    } as Record<string, unknown>,
     markAvailability: vi.fn(function (this: { availability: string }, availability: string) {
       this.availability = availability;
     }),
@@ -146,7 +156,10 @@ describe('AiModelUnregisterService (P9)', () => {
     await expect(service.execute(payload(), { finalAttempt: false })).rejects.toThrow(/^MODEL_STORE_CREDENTIAL_MISSING/);
 
     expect(repository.softDelete).not.toHaveBeenCalled();
-    expect(readUnregisterMeta(row.metaData)).toMatchObject({ error: expect.stringMatching(/^MODEL_STORE_CREDENTIAL_MISSING/), finishedAt: expect.any(String) });
+    expect(readUnregisterMeta(row.metaData)).toMatchObject({
+      error: expect.stringMatching(/^MODEL_STORE_CREDENTIAL_MISSING/),
+      finishedAt: expect.any(String),
+    });
   });
 
   describe('I9 — referrers re-checked in the worker, before anything is deleted', () => {

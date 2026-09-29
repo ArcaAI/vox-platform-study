@@ -124,7 +124,10 @@ export async function removeStagingDir(dir: string | null | undefined): Promise<
 export async function assertStagingSpace(dir: string, requiredBytes: number, probe: FreeSpaceProbe): Promise<void> {
   const free = await probe(dir);
   if (requiredBytes > free) {
-    throw new ModelPublisherError(STAGING_SPACE_INSUFFICIENT, `the model needs ${requiredBytes} bytes of staging space but only ${free} are free at '${dir}'`);
+    throw new ModelPublisherError(
+      STAGING_SPACE_INSUFFICIENT,
+      `the model needs ${requiredBytes} bytes of staging space but only ${free} are free at '${dir}'`,
+    );
   }
 }
 

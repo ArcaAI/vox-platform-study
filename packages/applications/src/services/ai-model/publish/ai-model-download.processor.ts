@@ -17,7 +17,12 @@ import { ModelStoreFactory } from './model-store';
 import { AiModelUnregisterService, UnregisterAiModelResult } from './model-unregister.service';
 import { HuggingFaceModelSourceClient } from './huggingface-model-source.client';
 import { buildSha256SumsContent, deriveModelVersion, deriveQuantTokenFromFilenames, normalizeQuantToken, sha256Hex } from './model-version.util';
-import { isUnregisterJob, type DownloadAiModelJobPayload, type PublisherJobPayload, type UnregisterAiModelJobPayload } from './publisher-job.contract';
+import {
+  isUnregisterJob,
+  type DownloadAiModelJobPayload,
+  type PublisherJobPayload,
+  type UnregisterAiModelJobPayload,
+} from './publisher-job.contract';
 import { QUEUE_CONCURRENCY } from '../../baseServices/redis/queue-concurrency';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
 import { readModelPublisherTimeouts } from './model-publisher-timeouts.settings';
@@ -160,10 +165,15 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
   async onModuleInit(): Promise<void> {
     try {
       const removed = await sweepStaleStagingDirs(this.stagingBaseDir, this.startedAtMs);
-      if (removed.length > 0) this.logger.log({ message: 'Swept stale model-publisher staging dirs', count: removed.length, stagingBaseDir: this.stagingBaseDir });
+      if (removed.length > 0)
+        this.logger.log({ message: 'Swept stale model-publisher staging dirs', count: removed.length, stagingBaseDir: this.stagingBaseDir });
     } catch (error) {
       // swallow-ok: a failed sweep only leaves disk used; the pre-flight still measures it.
-      this.logger.warn({ message: 'Staging sweep failed', stagingBaseDir: this.stagingBaseDir, error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn({
+        message: 'Staging sweep failed',
+        stagingBaseDir: this.stagingBaseDir,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -192,7 +202,13 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
   private async runUnregister(payload: UnregisterAiModelJobPayload, finalAttempt: boolean): Promise<UnregisterAiModelResult> {
     try {
       const result = await this.unregisterService.execute(payload, { finalAttempt });
-      this.logger.log({ message: 'AiModel unregistered', jobId: payload.jobId, aiModelId: payload.aiModelId, weights: result.weights, purge: payload.purge });
+      this.logger.log({
+        message: 'AiModel unregistered',
+        jobId: payload.jobId,
+        aiModelId: payload.aiModelId,
+        weights: result.weights,
+        purge: payload.purge,
+      });
       return result;
     } catch (error) {
       throw this.toJobError(error, finalAttempt, { jobId: payload.jobId, aiModelId: payload.aiModelId, action: 'unregister' });
@@ -226,7 +242,15 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
       // This attempt is now the live one: clear a previous attempt's outcome,
       // restart the byte counter, stamp liveness.
       const startedAt = readDownloadMeta(model.metaData)?.startedAt ?? this.isoNow();
-      model.metaData = mergeDownloadMeta(model.metaData, { jobId, startedAt, finishedAt: null, error: null, attempt, heartbeatAt: this.isoNow(), bytesDone: 0 });
+      model.metaData = mergeDownloadMeta(model.metaData, {
+        jobId,
+        startedAt,
+        finishedAt: null,
+        error: null,
+        attempt,
+        heartbeatAt: this.isoNow(),
+        bytesDone: 0,
+      });
       if (userId) model.updatedBy = userId;
       await this.aiModelRepository.updateWithVersion(aiModelId, model, model.version);
 
@@ -404,7 +428,11 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
     const fresh = await this.aiModelRepository.findById(aiModelId);
     const meta = readDownloadMeta(fresh?.metaData);
     if (!fresh || meta?.jobId !== jobId || meta.finishedAt || meta.error) return;
-    fresh.metaData = mergeDownloadMeta(fresh.metaData, { bytesDone: snapshot.bytesDone, bytesTotal: snapshot.bytesTotal, heartbeatAt: snapshot.heartbeatAt });
+    fresh.metaData = mergeDownloadMeta(fresh.metaData, {
+      bytesDone: snapshot.bytesDone,
+      bytesTotal: snapshot.bytesTotal,
+      heartbeatAt: snapshot.heartbeatAt,
+    });
     try {
       await this.aiModelRepository.updateWithVersion(aiModelId, fresh, fresh.version);
     } catch (error) {
@@ -436,7 +464,10 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
    * `null` for a non-Hub source, and for a Hub the job could not reach (the
    * caller then fetches `main`, publishes flat and records no revision).
    */
-  private async resolveHubInfo(sourceUri: string, revision: string | null): Promise<{ sha: string; repoPrefix: string; snapshotPrefix: string } | null> {
+  private async resolveHubInfo(
+    sourceUri: string,
+    revision: string | null,
+  ): Promise<{ sha: string; repoPrefix: string; snapshotPrefix: string } | null> {
     const match = sourceUri.match(HF_REPO_RE);
     if (!match) return null;
     const [, org, repo] = match;

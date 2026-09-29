@@ -164,7 +164,10 @@ export class HuggingFaceModelSourceClient {
     const arm = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        idle = new ModelPublisherError(DOWNLOAD_IDLE_TIMEOUT, `no data from HuggingFace for ${Math.round(idleTimeoutMs / 1000)} s while downloading '${path}' of '${repo}'`);
+        idle = new ModelPublisherError(
+          DOWNLOAD_IDLE_TIMEOUT,
+          `no data from HuggingFace for ${Math.round(idleTimeoutMs / 1000)} s while downloading '${path}' of '${repo}'`,
+        );
         controller.abort(idle);
         body?.destroy(idle);
       }, idleTimeoutMs);
