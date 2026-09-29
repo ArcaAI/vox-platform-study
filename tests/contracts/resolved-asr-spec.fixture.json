@@ -1907,5 +1907,324 @@
         }
       }
     }
+  },
+  "vllmServingFacts": {
+    "$comment": "TASK-1010 phase B (OD-6 / OD-8) — the two SERVING facts a registry row declares on `AiModel._metadata.asr` (`quantization`, `maxModelLen`) ride the wire TOP-LEVEL on `AsrSpecModel`, beside `metadata` and never inside it: they are facts about the weights a serving engine must be told, not decode geometry. The primary is the vLLM row (`servedBy: asr-vllm`) that the Global-only spike agent binds — selection is still the AGENT's; the row only describes itself. The fallback row declares neither, so its chain entry OMITS both (never `null`); every other case omits them too, which is what lets the gateway, `apps/stt` and `apps/asr-vllm` deploy in either order against `extra='forbid'` mirrors.",
+    "input": {
+      "agent": {
+        "agentId": "0199a861-0000-7000-8000-000000000061",
+        "agentVersionId": "0199a861-0000-7000-8000-000000000061",
+        "slug": "realtime-transcription-vllm-spike",
+        "versionNumber": 1,
+        "task": "SPEECH_TO_TEXT",
+        "tenantId": "50000000-0000-0000-0000-000000000000",
+        "source": "explicit",
+        "compiledConfig": {
+          "task": "SPEECH_TO_TEXT",
+          "service": "stt",
+          "model": {
+            "id": "0199a860-0000-7000-8000-00000000a061",
+            "slug": "arcaai-whisper-large-ml-en-vllm",
+            "provider": "built-in",
+            "taskType": "AUTOMATIC_SPEECH_RECOGNITION"
+          },
+          "fallbacks": [
+            {
+              "priority": 0,
+              "id": "0199a860-0000-7000-8000-00000000a062",
+              "slug": "arcaai-whisper-large-ml-en",
+              "provider": "built-in"
+            }
+          ],
+          "instruction": {},
+          "resolvedPrompt": null,
+          "parameters": {
+            "decoding": {
+              "languageMode": "ml-en",
+              "temperature": 0
+            },
+            "streaming": {
+              "endpointing": "fixed"
+            }
+          },
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object"
+          },
+          "tools": []
+        },
+        "models": [
+          {
+            "role": "primary",
+            "slug": "arcaai-whisper-large-ml-en-vllm",
+            "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16",
+            "sourceRevision": "main",
+            "localPath": "/mnt/models-bucket/hf",
+            "checksum": "sha256:cccc",
+            "format": "SAFETENSOR",
+            "libraryName": "transformers",
+            "computeType": "float16",
+            "provider": "built-in",
+            "tenantId": "00000000-0000-0000-0000-000000000000",
+            "metaData": {
+              "asr": {
+                "maxDecodeWindowSec": 7,
+                "quantization": "none",
+                "maxModelLen": 448
+              }
+            }
+          },
+          {
+            "role": "fallback",
+            "priority": 0,
+            "slug": "arcaai-whisper-large-ml-en",
+            "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16",
+            "sourceRevision": "main",
+            "localPath": "/mnt/models-bucket/hf",
+            "checksum": "sha256:cccc",
+            "format": "SAFETENSOR",
+            "libraryName": "transformers",
+            "computeType": "float16",
+            "provider": "built-in",
+            "tenantId": "00000000-0000-0000-0000-000000000000"
+          }
+        ]
+      },
+      "fallbackAgent": null
+    },
+    "expected": {
+      "schemaVersion": 1,
+      "runtimeKey": "0199a861-0000-7000-8000-000000000061",
+      "agent": {
+        "slug": "realtime-transcription-vllm-spike",
+        "versionId": "0199a861-0000-7000-8000-000000000061",
+        "versionNumber": 1,
+        "tenantId": "50000000-0000-0000-0000-000000000000",
+        "source": "explicit"
+      },
+      "models": {
+        "asr": {
+          "role": "asr",
+          "slug": "arcaai-whisper-large-ml-en-vllm",
+          "taskType": "AUTOMATIC_SPEECH_RECOGNITION",
+          "format": "SAFETENSOR",
+          "libraryName": "transformers",
+          "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16",
+          "sourceRevision": "main",
+          "localPath": "/mnt/models-bucket/hf",
+          "checksum": "sha256:cccc",
+          "computeType": "float16",
+          "provider": "built-in",
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "metadata": {
+            "maxDecodeWindowSec": 7
+          },
+          "quantization": "none",
+          "maxModelLen": 448
+        }
+      },
+      "audioFrontEnd": {
+        "vad": {
+          "enabled": false,
+          "threshold": null,
+          "minSpeechMs": null,
+          "minSilenceMs": null
+        },
+        "denoise": {
+          "enabled": false,
+          "level": "off"
+        },
+        "diarization": {
+          "enabled": false,
+          "backend": "embedding",
+          "maxSpeakers": null
+        },
+        "resample": true,
+        "normalize": true
+      },
+      "decoding": {
+        "languageMode": "ml-en",
+        "codeSwitching": false,
+        "wordTimestamps": false,
+        "beamSize": null,
+        "temperature": 0,
+        "vadFilter": false,
+        "sources": {
+          "temperature": "agent"
+        }
+      },
+      "postProcessing": {
+        "punctuation": {
+          "enabled": true
+        },
+        "disfluency": false,
+        "stabilizer": false,
+        "merge": false
+      },
+      "streaming": {
+        "partialIntervalMs": null,
+        "endpointing": "fixed",
+        "maxUtteranceSec": null
+      },
+      "instruction": {
+        "initialPrompt": null,
+        "hotwords": []
+      },
+      "fallback": {
+        "kind": "model",
+        "autoSwitch": true,
+        "switchAfterConsecutiveFailures": 2,
+        "chain": [
+          {
+            "runtimeKey": "0199a861-0000-7000-8000-000000000061:fallback:arcaai-whisper-large-ml-en",
+            "agent": {
+              "slug": "realtime-transcription-vllm-spike",
+              "versionId": "0199a861-0000-7000-8000-000000000061",
+              "versionNumber": 1,
+              "tenantId": "50000000-0000-0000-0000-000000000000",
+              "source": "explicit"
+            },
+            "models": {
+              "asr": {
+                "role": "asr",
+                "slug": "arcaai-whisper-large-ml-en",
+                "taskType": "AUTOMATIC_SPEECH_RECOGNITION",
+                "format": "SAFETENSOR",
+                "libraryName": "transformers",
+                "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16",
+                "sourceRevision": "main",
+                "localPath": "/mnt/models-bucket/hf",
+                "checksum": "sha256:cccc",
+                "computeType": "float16",
+                "provider": "built-in",
+                "tenantId": "00000000-0000-0000-0000-000000000000"
+              }
+            },
+            "audioFrontEnd": {
+              "vad": {
+                "enabled": false,
+                "threshold": null,
+                "minSpeechMs": null,
+                "minSilenceMs": null
+              },
+              "denoise": {
+                "enabled": false,
+                "level": "off"
+              },
+              "diarization": {
+                "enabled": false,
+                "backend": "embedding",
+                "maxSpeakers": null
+              },
+              "resample": true,
+              "normalize": true
+            },
+            "decoding": {
+              "languageMode": "ml-en",
+              "codeSwitching": false,
+              "wordTimestamps": false,
+              "beamSize": null,
+              "temperature": 0,
+              "vadFilter": false,
+              "sources": {
+                "temperature": "agent"
+              }
+            },
+            "postProcessing": {
+              "punctuation": {
+                "enabled": true
+              },
+              "disfluency": false,
+              "stabilizer": false,
+              "merge": false
+            },
+            "streaming": {
+              "partialIntervalMs": null,
+              "endpointing": "fixed",
+              "maxUtteranceSec": null
+            },
+            "instruction": {
+              "initialPrompt": null,
+              "hotwords": []
+            }
+          }
+        ],
+        "spec": {
+          "runtimeKey": "0199a861-0000-7000-8000-000000000061:fallback:arcaai-whisper-large-ml-en",
+          "agent": {
+            "slug": "realtime-transcription-vllm-spike",
+            "versionId": "0199a861-0000-7000-8000-000000000061",
+            "versionNumber": 1,
+            "tenantId": "50000000-0000-0000-0000-000000000000",
+            "source": "explicit"
+          },
+          "models": {
+            "asr": {
+              "role": "asr",
+              "slug": "arcaai-whisper-large-ml-en",
+              "taskType": "AUTOMATIC_SPEECH_RECOGNITION",
+              "format": "SAFETENSOR",
+              "libraryName": "transformers",
+              "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16",
+              "sourceRevision": "main",
+              "localPath": "/mnt/models-bucket/hf",
+              "checksum": "sha256:cccc",
+              "computeType": "float16",
+              "provider": "built-in",
+              "tenantId": "00000000-0000-0000-0000-000000000000"
+            }
+          },
+          "audioFrontEnd": {
+            "vad": {
+              "enabled": false,
+              "threshold": null,
+              "minSpeechMs": null,
+              "minSilenceMs": null
+            },
+            "denoise": {
+              "enabled": false,
+              "level": "off"
+            },
+            "diarization": {
+              "enabled": false,
+              "backend": "embedding",
+              "maxSpeakers": null
+            },
+            "resample": true,
+            "normalize": true
+          },
+          "decoding": {
+            "languageMode": "ml-en",
+            "codeSwitching": false,
+            "wordTimestamps": false,
+            "beamSize": null,
+            "temperature": 0,
+            "vadFilter": false,
+            "sources": {
+              "temperature": "agent"
+            }
+          },
+          "postProcessing": {
+            "punctuation": {
+              "enabled": true
+            },
+            "disfluency": false,
+            "stabilizer": false,
+            "merge": false
+          },
+          "streaming": {
+            "partialIntervalMs": null,
+            "endpointing": "fixed",
+            "maxUtteranceSec": null
+          },
+          "instruction": {
+            "initialPrompt": null,
+            "hotwords": []
+          }
+        }
+      }
+    }
   }
 }
