@@ -308,9 +308,8 @@ unchanged (3/3 topics correct).
 - `ExternalTextClient` retries **every** exception, including a deterministic 4xx from text. With
   D-1 the missing-selection case no longer reaches text, but any other 4xx would still be
   retried as if it were an outage.
-- `apps/api/tests/e2e/task-729-nlp-task-expansion.spec.ts` still posts to `/api/v1/ai/nlp/topic`, a
-  redirect shim TASK-1012 D-3 deleted. The live route is `/api/v1/text-analyses/topic`, so that
-  spec now meets a 404 its `[200, 503]` expectation does not allow.
+- `/text-analyses/topic` and `/intent` return **201** (a Nest `@Post` default) while `@ApiOkResponse`
+  documents 200. Owner to decide: pin `@HttpCode(200)`, or document 201. The e2e spec asserts 201.
 - Dev Vault: re-key the remaining self-hosted SYSTEM connections, or reseed from a reset, when
   their providers are needed.
 - Vision extraction (OD-2) → TASK-1017.
@@ -324,3 +323,4 @@ unchanged (3/3 topics correct).
 | 2026-09-29 | Owner: "reseed the dev db and prove topic live". Non-destructive `RUN_SEED=safe` reseed created the two elections. The live run found and fixed the NLP `/generate` path (404) and the missing connection injection (503 PROVIDER_CREDENTIALS_MISSING), both merged. Re-keyed the dev SYSTEM `lm-studio` connection after a Vault restart. Topic proven live: 3/3 correct labels on gemma via the SYSTEM connection. Medical-relevance guardrail refusal of non-clinical text recorded as an owner decision. |
 | 2026-09-29 | Owner: "opt topic/intent out of the medical guardrail". `guardrail_policy.require_medical=false` pushed on the delegation (screening and output gate kept). Live: non-clinical billing question → `billing`; `/intent` → `request_refund`. |
 | 2026-09-29 | Owner: "fix the retry on 4xx in the nlp client". Non-retryable 4xx → one attempt, `ExternalTextRejectedError`, route 422/502 instead of an opaque 503. Live-proven with a real text 404. Fixed the inherited ruff I001 in the same file. |
+| 2026-09-29 | e2e `task-729-nlp-task-expansion.spec.ts` repointed from the deleted `/ai/nlp/topic` shim to `/text-analyses/topic`, success status corrected to 201 (`90d4b3f24`). Before: 1 failed (`Expected value: 404`). After: 6/6 passed against the dev gateway, success branch exercised. All work merged into `dev-2.2`; the post-merge spec run was 6/6 from the primary. Worktree `eloquent-boyd-928da8` and branches `agent/eloquent-boyd-928da8` / `task-1016-e2e-text-analyses-routes` removed after the merge. |
