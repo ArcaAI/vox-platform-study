@@ -43,15 +43,24 @@ describe('ModelServingInternalController (TASK-1021 C-2)', () => {
 
   it('answers 400 without X-Tenant-Id, before touching the service', async () => {
     const { controller, servingSpecs } = make();
-    await expect(controller.servingSpec(SLUG, undefined)).rejects.toBeInstanceOf(BadRequestException);
-    await expect(controller.servingSpec(SLUG, '   ')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(controller.servingSpec(SLUG, 'vllm', undefined)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(controller.servingSpec(SLUG, 'vllm', '   ')).rejects.toBeInstanceOf(BadRequestException);
     expect(servingSpecs.resolve).not.toHaveBeenCalled();
   });
 
   it('resolves for the header tenant, with CLS pinned to it', async () => {
     const { controller, servingSpecs } = make();
-    const spec = await controller.servingSpec(SLUG, TENANT);
+    const spec = await controller.servingSpec(SLUG, 'vllm', TENANT);
     expect(servingSpecs.resolve).toHaveBeenCalledWith(SLUG, TENANT);
     expect(spec).toMatchObject({ slug: SLUG, tenantIdSeenByService: TENANT });
   });
+
+  it.each([['nlp'], ['stt'], ['text'], [undefined]])(
+    'answers 400 when the caller names service=%s — only vllm reads serving specs',
+    async (service) => {
+      const { controller, servingSpecs } = make();
+      await expect(controller.servingSpec(SLUG, service, TENANT)).rejects.toBeInstanceOf(BadRequestException);
+      expect(servingSpecs.resolve).not.toHaveBeenCalled();
+    },
+  );
 });

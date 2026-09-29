@@ -16,7 +16,10 @@
 
 import { AI_MODEL_ASR_PROFILE_QUANTIZATIONS, type AiModelAsrProfileQuantization } from './asr-model-profile.js';
 
-/** What a served model does — derived from `AiModel.taskType`. */
+/**
+ * What a served model does — derived from `AiModel.taskType` (the MODEL task, not the agent task):
+ * `AUTOMATIC_SPEECH_RECOGNITION` → `asr`, `TEXT_GENERATION` → `llm`, `TEXT_TO_SPEECH` → `tts`.
+ */
 export const SERVING_KINDS = ['asr', 'llm', 'tts'] as const;
 export type ServingKind = (typeof SERVING_KINDS)[number];
 

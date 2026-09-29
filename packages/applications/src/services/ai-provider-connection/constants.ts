@@ -306,8 +306,11 @@ export function providerClassOf(
   if (row.tenantId !== SYSTEM_TENANT_ID) return 'cloud-byo';
   if (!provider) return null;
   if (provider === PLATFORM_SELF_HOST_MODEL_PROVIDER) return 'platform-self-host';
-  if (service && isPlatformSelfHostProvider(service, provider)) return 'platform-self-host';
+  // TASK-1021 — the engine check comes BEFORE the self-host list: `vllm` is on both
+  // (`PLATFORM_SELF_HOST_PROVIDERS.stt` makes its connection SYSTEM-only and opens the ASR
+  // credential gate), and its rows must be judged by that connection, not by the bucket (D-13).
   if (ENGINE_SERVED_PROVIDERS.has(provider)) return 'engine-served';
+  if (service && isPlatformSelfHostProvider(service, provider)) return 'platform-self-host';
   if (service && isCloudByoProvider(service, provider)) return 'cloud-platform';
   return null;
 }
