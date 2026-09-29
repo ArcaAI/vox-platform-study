@@ -1,8 +1,8 @@
 # TASK-1011 — tts/nlp model-registry credential fetch always 401s
 
-**Status:** Review
+**Status:** Completed
 **Type:** bugfix
-**Branch:** `agent/focused-driscoll-a2624a` → target `dev-2.2` (not merged yet)
+**Branch:** `dev-2.2` (merged from `agent/focused-driscoll-a2624a`, merge commit `9781687aa`)
 **Related:** TASK-1010 (`apps/asr-vllm` has its own client and was left alone on purpose)
 
 ## Requirement Analysis
@@ -109,10 +109,12 @@ passed. `conda run` refused to start in this shell.)
 
 ### Follow-ups
 
-- **`pnpm env:sync:check` was not run.** The worktree has no built `@arcaai/applications`, which the
-  generator imports. The two `.env.sample` blocks and the two `env-surface.generated.md` rows were
-  removed by hand to match the regenerated manifest. Run `pnpm env:sync:check` once after merging
-  to `dev-2.2`; it should report no drift.
+- **`pnpm env:sync:check` — resolved after the merge.** The worktree had no built packages, so the
+  `.env.sample` / `env-surface.generated.md` edits were first made by hand. Run from the primary
+  after the merge, the check found three artifacts the hand edit had missed: the root `.env.sample`
+  (two commented duplicate `API_GATEWAY_KEY` blocks), `turbo.json#globalEnv` (`NLP_API_GATEWAY_KEY`)
+  and the count rows of `env-surface.generated.md` (311→309 fields, 363→362 names, 516→515
+  globalEnv). Regenerated with `pnpm env:sync` and committed on `dev-2.2`.
 - **Deployment repo.** Any `API_GATEWAY_KEY` delivered to the tts/nlp pods is now unread. Removing
   it from `hope-v2-deployment` is optional cleanup; `envfrom-coverage` only checks reads that are
   missing, not supply that is unused.
@@ -124,3 +126,4 @@ passed. `conda run` refused to start in this shell.)
 | Date | Change |
 |---|---|
 | 2026-09-29 | Ticket opened after a static read; defect confirmed with failing client tests; fix + orphan removal on `agent/focused-driscoll-a2624a` |
+| 2026-09-29 | Merged into `dev-2.2` (`9781687aa`); gates re-run on the merged tree; `env:sync` drift (root `.env.sample`, `turbo.json`, doc counts) regenerated and committed |
