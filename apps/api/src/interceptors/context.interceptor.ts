@@ -2,8 +2,8 @@ import { BadRequestException, Injectable, NestInterceptor, ExecutionContext, Cal
 import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { tap, finalize } from 'rxjs/operators';
-import { uuidv7 } from 'uuidv7';
 import { trace } from '@opentelemetry/api';
+import { routeOf } from '../filters/failure-log';
 import { resolveActiveTenant } from './resolve-active-tenant';
 
 @Injectable()
@@ -44,18 +44,16 @@ export class ContextInterceptor implements NestInterceptor {
       this.tryClsSet('spanId', spanId);
     }
 
-    if (!request.requestId) {
-      // Source the correlation id from the standard `x-request-id` header
-      // (set by an upstream LB / CDN / gateway), NOT from
-      // `request.body.requestId` — reading a body field would let any
-      // client pin its own correlation id with a POST payload, polluting
-      // CLS / logs and letting two unrelated requests share an id.
-      // Fallback stays uuidv7() so the logs always get a
-      // strictly-increasing identifier.
-      const headerRequestId = request.headers?.['x-request-id'];
-      const normalisedHeader = Array.isArray(headerRequestId) ? headerRequestId[0] : headerRequestId;
-      request.requestId = (typeof normalisedHeader === 'string' && normalisedHeader.length > 0 ? normalisedHeader : undefined) ?? uuidv7();
-      this.tryClsSet('correlationId', request.requestId);
+    // The request id is set ONCE, by the CLS middleware (`request-id.ts`),
+    // which also aliases it onto `request.requestId`. Read it; never mint one.
+    let requestId: string | undefined = request.requestId;
+    if (!requestId) {
+      try {
+        requestId = this.clsService.getId() || undefined;
+      } catch {
+        requestId = undefined;
+      }
+      if (requestId) request.requestId = requestId;
     }
 
     // Store the request IP (normalize IPv6 mapped IPv4)
@@ -96,7 +94,7 @@ export class ContextInterceptor implements NestInterceptor {
           message: 'super-admin elevated active tenant from x-tenant-id header',
           superAdminId: clsUser?.id,
           elevatedTenantId: decision.tenantId,
-          correlationId: request.requestId,
+          correlationId: requestId,
         });
       }
     }
@@ -123,10 +121,10 @@ export class ContextInterceptor implements NestInterceptor {
     // disconnecting before the stream's own terminal event ever arrives).
     // That makes it the correct place for a once-per-request completion log
     // regardless of response shape. The `hasErrored` guard stops it from
-    // double-logging a request that failed: that outcome already gets its
-    // own "Request failed" line from the `tap.error` callback below, and
-    // `finalize` always runs after (or instead of) that callback since it
-    // fires on every termination path, error included.
+    // double-logging a request that failed: that outcome gets its own
+    // "Request failed" line from the terminal exception filter, and
+    // `finalize` always runs after the `tap.error` callback below that sets
+    // the flag, since it fires on every termination path, error included.
     let hasErrored = false;
 
     const logRequestCompleted = () => {
@@ -134,11 +132,13 @@ export class ContextInterceptor implements NestInterceptor {
       const durationMs = Date.now() - start;
       this.logger.log({
         message: 'Request completed',
-        requestId: request.requestId,
+        requestId,
         traceId,
         spanId,
         method: request.method,
-        path: request.url,
+        // The route TEMPLATE — never `request.url`, which carries the query
+        // string and raw ids.
+        route: routeOf(request),
         durationMs,
         clientIp,
         tenantId: this.tryClsGet('tenantId'),
@@ -148,30 +148,12 @@ export class ContextInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap({
-        error: (err) => {
+        // A failed request gets exactly ONE failure line, and it is written by
+        // the terminal exception filter (`filters/failure-log.ts`), which knows
+        // the final status and code. Logging here too is what used to emit a
+        // second "Request failed" line — at `error` for every 404.
+        error: () => {
           hasErrored = true;
-          const durationMs = Date.now() - start;
-          // A class-validator 400 is re-shaped by ExceptionInterceptor into a
-          // bare "Validation error" + `subErrors`; without them the log line
-          // cannot say which field was rejected. The messages name the field
-          // and its constraint, never the submitted value.
-          const validationErrors: unknown = err?.response?.subErrors;
-          this.logger.error({
-            message: 'Request failed',
-            requestId: request.requestId,
-            traceId,
-            spanId,
-            method: request.method,
-            path: request.url,
-            durationMs,
-            clientIp,
-            tenantId: this.tryClsGet('tenantId'),
-            errorMessage: err?.message || String(err),
-            errorType: err?.constructor?.name,
-            statusCode: err?.status || err?.statusCode || 500,
-            ...(Array.isArray(validationErrors) ? { validationErrors } : {}),
-          });
-          throw err; // rethrow the error to ensure it is propagated
         },
       }),
       finalize(logRequestCompleted),

@@ -64,10 +64,13 @@ describe('ContextInterceptor — S-8 single completion log', () => {
   }
 
   function createSingleEmissionHandler(): CallHandler {
-    return { handle: () => new Observable<string>((subscriber) => {
-      subscriber.next('response-value');
-      subscriber.complete();
-    }) };
+    return {
+      handle: () =>
+        new Observable<string>((subscriber) => {
+          subscriber.next('response-value');
+          subscriber.complete();
+        }),
+    };
   }
 
   /** Subscribes to completion (collects every emitted value, resolves on complete). */
@@ -128,7 +131,7 @@ describe('ContextInterceptor — S-8 single completion log', () => {
     expect((calls[0][0] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(0);
   });
 
-  it('does NOT log "Request completed" for a request that errors — only "Request failed"', async () => {
+  it('does NOT log "Request completed" for a request that errors (its failure line is the filter\'s)', async () => {
     const context = createMockContext();
     const handler: CallHandler = {
       handle: () =>
@@ -140,10 +143,9 @@ describe('ContextInterceptor — S-8 single completion log', () => {
 
     await expect(drain(interceptor.intercept(context, handler))).rejects.toThrow('boom');
 
-    // logSpy only observes `logger.log` — "Request failed" goes through
-    // `logger.error` instead, so an errored request producing zero
-    // "Request completed" entries here is exactly the `hasErrored` guard
-    // preventing `finalize` from double-logging the same outcome.
+    // An errored request producing zero "Request completed" entries is
+    // exactly the `hasErrored` guard; its single failure line is written by
+    // the terminal exception filter, not by this interceptor.
     expect(completionLogCalls()).toHaveLength(0);
   });
 

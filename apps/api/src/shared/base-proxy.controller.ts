@@ -6,6 +6,8 @@ import type { Socket } from 'net';
 import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
 
 import { redactTopology } from '../filters/downstream-error';
+import { requestIdOf, routeOf } from '../filters/failure-log';
+import { REQUEST_ID_HEADER, resolveRequestId } from '../request-id';
 
 export interface ProxyControllerConfig {
   serviceUrl: string;
@@ -78,14 +80,14 @@ export abstract class BaseProxyController {
               this.logger.error({
                 message: 'Proxy error response',
                 method: req.method,
-                path: req.url,
+                route: routeOf(req),
                 status: proxyRes.statusCode,
               });
             } else {
               this.logger.debug({
                 message: 'Proxy response',
                 method: req.method,
-                path: req.url,
+                route: routeOf(req),
                 status: proxyRes.statusCode,
               });
             }
@@ -97,7 +99,7 @@ export abstract class BaseProxyController {
               service: config.serviceName,
               target: config.serviceUrl,
               method: req.method,
-              path: req.url,
+              route: routeOf(req),
               error: errorDetail,
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               code: (err as any).code,
@@ -139,16 +141,18 @@ export abstract class BaseProxyController {
 
   proxyRequest(@Req() req: Request, @Res() res: Response) {
     const startTime = Date.now();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const requestId = (req as any).requestId || req.headers['x-request-id'] || Math.random().toString(36).substring(2, 15);
-    req.headers['x-request-id'] = requestId;
-    req.headers['x-correlation-id'] = requestId;
+    // The ONE request id (`cls.getId()`), forwarded on the hop. Outside a CLS
+    // context (tests, a direct call) the inbound header is adopted only when it
+    // is a safe token, else a uuidv7 is minted — never a raw client value.
+    // `x-correlation-id` is retired: `x-request-id` is the only id header.
+    const requestId = requestIdOf(req) ?? resolveRequestId(req);
+    req.headers[REQUEST_ID_HEADER] = requestId;
 
     this.logger.debug({
       message: 'Proxy request started',
       requestId,
       method: req.method,
-      path: req.url,
+      route: routeOf(req),
     });
 
     this.proxy(req, res, (err: Error | undefined) => {
@@ -159,7 +163,7 @@ export abstract class BaseProxyController {
           message: 'Proxy request failed',
           requestId,
           method: req.method,
-          path: req.url,
+          route: routeOf(req),
           durationMs,
           error: this.getErrorDetail(err),
         });
@@ -176,7 +180,7 @@ export abstract class BaseProxyController {
           message: 'Proxy request completed',
           requestId,
           method: req.method,
-          path: req.url,
+          route: routeOf(req),
           durationMs,
         });
       }

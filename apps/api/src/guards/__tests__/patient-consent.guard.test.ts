@@ -68,7 +68,7 @@ describe('PatientConsentGuard', () => {
   });
 
   it('is a no-op on a @ConsentExempt(reason) route — never calls assertConsent', async () => {
-    metadata['consentExempt'] = 'Lists the caller doctor\'s own consultations; no single patientId to gate on.';
+    metadata['consentExempt'] = "Lists the caller doctor's own consultations; no single patientId to gate on.";
     const guard = buildGuard();
     const context = createContext({ patientId: 'p' });
 
@@ -87,7 +87,12 @@ describe('PatientConsentGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
 
     expect(consentService.assertConsent).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'tenant-1', externalPatientId: 'EHR-A:12345', purpose: 'HISTORY_RETRIEVAL', actor: { userId: 'clinician-1', kind: 'user' } }),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        externalPatientId: 'EHR-A:12345',
+        purpose: 'HISTORY_RETRIEVAL',
+        actor: { userId: 'clinician-1', kind: 'user' },
+      }),
     );
     expect(consultationRepository.findById).not.toHaveBeenCalled();
   });
@@ -133,6 +138,25 @@ describe('PatientConsentGuard', () => {
     expect(consentService.assertConsent).not.toHaveBeenCalled();
   });
 
+  it('a cross-tenant consultation 404 writes no line of its own; its reason rides the exception', async () => {
+    reflector.getAllAndOverride.mockImplementation((key: string) => {
+      if (key === 'requiresConsent') return { purpose: 'AI_DOCUMENTATION' };
+      return undefined;
+    });
+    consultationRepository.findById.mockResolvedValue({ tenantId: 'some-other-tenant', patientId: 'EHR-C:1' });
+    const guard = buildGuard();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const warnSpy = vi.spyOn((guard as any).logger, 'warn').mockImplementation(() => undefined);
+
+    const err = await guard.canActivate(createContext({ id: 'consultation-1' })).catch((e) => e);
+    expect(err).toBeInstanceOf(NotFoundException);
+    expect((err as Record<symbol, unknown>)[Symbol.for('hope.failureLogContext')]).toMatchObject({
+      reason: 'cross_tenant_consultation',
+      consultationId: 'consultation-1',
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it('propagates ConsentDeniedException unchanged', async () => {
     reflector.getAllAndOverride.mockImplementation((key: string) => {
       if (key === 'requiresConsent') return { purpose: 'HISTORY_RETRIEVAL' };
@@ -153,7 +177,12 @@ describe('PatientConsentGuard', () => {
       return undefined;
     });
     consentService.assertConsent.mockRejectedValue(
-      new ConsentUnavailableException('unavailable', { tenantId: 'tenant-1', externalPatientId: 'p', purpose: 'HISTORY_RETRIEVAL', cause: 'grant_lookup_failed' }),
+      new ConsentUnavailableException('unavailable', {
+        tenantId: 'tenant-1',
+        externalPatientId: 'p',
+        purpose: 'HISTORY_RETRIEVAL',
+        cause: 'grant_lookup_failed',
+      }),
     );
     const guard = buildGuard();
     const context = createContext({ patientId: 'p' });

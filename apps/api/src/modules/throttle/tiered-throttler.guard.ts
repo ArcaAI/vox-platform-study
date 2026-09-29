@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional, type ExecutionContext } from '@nestjs/common';
 import { ThrottlerGuard, type ThrottlerLimitDetail, type ThrottlerRequest } from '@nestjs/throttler';
 import * as jwt from 'jsonwebtoken';
+import { attachFailureLogContext } from '../../filters/failure-log';
 import { resolveClientIp, trustedProxiesFromEnv } from './client-ip';
 import { apiKeyPrincipal, serviceAccountPrincipal, userPrincipal, UNTRUSTED_CALLER, type TrustedCaller } from './principal';
 import {
@@ -390,7 +391,9 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
    * window: the per-principal bucket's and the tenant aggregate's may differ.
    */
   private handleLane(props: ThrottlerRequest, lockout: boolean): Promise<boolean> {
-    return super.handleRequest({ ...props, blockDuration: lockout ? props.ttl : RATE_LIMIT_NO_LOCKOUT_BLOCK_MS });
+    return super.handleRequest({ ...props, blockDuration: lockout ? props.ttl : RATE_LIMIT_NO_LOCKOUT_BLOCK_MS }).catch((err: unknown) => {
+      throw attachFailureLogContext(err, { tier: props.throttler.name ?? 'default' });
+    });
   }
 
   /**
@@ -531,7 +534,18 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
       }
     }
 
-    return super.throwThrottlingException(context, detail);
+    try {
+      return await super.throwThrottlingException(context, detail);
+    } catch (err) {
+      // The 429 is logged once, by the exception filter; hand it what this
+      // lane knows. `handleLane` adds which tier refused.
+      throw attachFailureLogContext(err, {
+        limiter: 'tiered',
+        retryAfter: Number.isFinite(seconds) ? Math.max(1, Math.ceil(seconds)) : undefined,
+        limit: detail.limit,
+        windowMs: detail.ttl,
+      });
+    }
   }
 
   /**

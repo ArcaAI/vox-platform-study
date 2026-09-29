@@ -8,6 +8,7 @@ import { ClsService } from 'nestjs-cls';
 import type WebSocket from 'ws';
 import { isOriginEnforcementEnabled } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
+import { logWsFailure } from './ws-failure-log';
 import {
   RUN_EVENT_TRANSPORT,
   WORKFLOW_RUN_COMPLETED,
@@ -98,7 +99,15 @@ export class WorkflowWsGateway implements OnGatewayConnection, OnModuleDestroy {
         this.cls.set('user', { id: stored.userId, tenantId: stored.tenantId, roles: [] });
         return this.workflowExposureService.getRunStatus(slug, runId);
       });
-    } catch {
+    } catch (err) {
+      // The close stays generic (no enumeration signal); the reason does not
+      // vanish — a 404 is the expected case, anything else is worth seeing.
+      this.logger.warn({
+        message: 'workflow WS run lookup failed',
+        runId,
+        tenantId: stored.tenantId,
+        errorName: err instanceof Error ? err.name : typeof err,
+      });
       return reject('run not found for this ticket');
     }
 
@@ -146,7 +155,7 @@ export class WorkflowWsGateway implements OnGatewayConnection, OnModuleDestroy {
         if (!result) continue;
         entries = result[0][1] as [string, string[]][];
       } catch (err) {
-        this.logger.warn({ message: 'workflow WS read failed — closing', runId, error: err instanceof Error ? err.message : String(err) });
+        logWsFailure(this.logger, { message: 'workflow WS read failed — closing', level: 'warn', runId, closeCode: 1000 }, err);
         return;
       }
       for (const [entryId, fields] of entries) {
