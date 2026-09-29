@@ -110,7 +110,9 @@ pull), `TTS_REDIS_URL` (control-plane invalidation subscription only — this
 does not make the service stateful; it reads no keys and writes none),
 `TTS_CORS_ENABLED`/`TTS_CORS_ORIGINS`, `TTS_METRICS_ENABLED`,
 `TTS_OTEL_*`, `TTS_LOG_LEVEL`, `TTS_DEBUG`, and the shared
-`INTERNAL_ACCESS_TOKEN`/`API_GATEWAY_KEY` credentials every service uses.
+`INTERNAL_ACCESS_TOKEN` credential every service uses (also presented, as
+`X-Service-Token` with `service=tts`, on the gateway's
+`/internal/model-registry-credential` route).
 
 **Inbound auth.** `ServiceAuthMiddleware` requires `X-Service-Token`,
 constant-time compare, health/docs/metrics exempt. The accepted credential is

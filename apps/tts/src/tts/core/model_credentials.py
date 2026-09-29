@@ -54,14 +54,16 @@ WHERE THIS DIFFERS FROM ``stt.core.model_credentials`` (both deliberate).
    tenant-scoped work."* This resolution is never tenant-less (always
    ``SYSTEM_TENANT_ID`` — see above), so the header always carries a real
    value.
-4. **Authenticates with ``api_gateway_key`` / ``X-Internal-Service-Key``**, NOT
-   the ``internal_access_token`` / ``X-Service-Token`` pair
-   ``tts.core.effective_config.EffectiveConfigClient`` presents for its
-   peer-to-peer settings pull. Same header+field shape stt already uses to
-   reach the gateway's ``/internal/*`` surface. ``api_gateway_key`` reads the
-   bare, platform-wide ``API_GATEWAY_KEY`` (already declared in
-   ``turbo.json#globalEnv`` and read the identical way by ``apps/stt``) — not
-   a new secret this module invents.
+4. **Authenticates as ``service=tts`` with ``X-Service-Token``** — the SAME
+   shared ``INTERNAL_ACCESS_TOKEN`` (``peer_service_token()``) that
+   ``tts.core.effective_config.EffectiveConfigClient`` presents. The route is
+   guarded by ``InternalServiceTokenGuard``
+   (``apps/api/src/modules/internal/internal-service-token.guard.ts``), which
+   401s a request without ``?service=`` and reads ``X-Internal-Service-Key``
+   for ``service=stt`` ONLY. This client used to present ``API_GATEWAY_KEY`` as
+   ``X-Internal-Service-Key`` with no ``service`` parameter — stt's shape, which
+   the guard rejects for every other service — so every fetch 401'd and failed
+   closed.
 """
 
 from __future__ import annotations
@@ -91,6 +93,9 @@ DEFAULT_TTL_S = 60
 DEFAULT_TIMEOUT_S = 5.0
 
 _CREDENTIAL_PATH = "/internal/model-registry-credential"
+
+#: The caller identity `InternalServiceTokenGuard` binds the presented token to.
+CALLER_SERVICE = "tts"
 
 
 class CredentialOutcome(StrEnum):
@@ -226,7 +231,7 @@ class ModelRegistryCredentialClient:
     def __init__(
         self,
         base_url: str,
-        api_key: str,
+        service_token: str,
         *,
         ttl_s: int = DEFAULT_TTL_S,
         timeout_s: float = DEFAULT_TIMEOUT_S,
@@ -234,7 +239,7 @@ class ModelRegistryCredentialClient:
         time_func: Any | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._api_key = api_key
+        self._service_token = service_token
         self._ttl_s = ttl_s
         self._timeout_s = timeout_s
         self._transport = transport
@@ -276,7 +281,7 @@ class ModelRegistryCredentialClient:
                 timeout=self._timeout_s,
                 transport=self._transport,
                 headers={
-                    "X-Internal-Service-Key": self._api_key,
+                    "X-Service-Token": self._service_token,
                     # 00-project-context.md: mandatory on every internal call
                     # carrying tenant-scoped work. This resolution is never
                     # tenant-less (`owner_tenant_of` always returns a real
@@ -286,7 +291,11 @@ class ModelRegistryCredentialClient:
             ) as client:
                 response = await client.get(
                     _CREDENTIAL_PATH,
-                    params={"provider": provider, "tenantId": tenant_id},
+                    params={
+                        "service": CALLER_SERVICE,
+                        "provider": provider,
+                        "tenantId": tenant_id,
+                    },
                 )
                 response.raise_for_status()
                 return ModelRegistryCredential.from_payload(response.json())
@@ -325,7 +334,7 @@ def get_model_credential_client() -> ModelRegistryCredentialClient:
         settings = get_settings()
         _client = ModelRegistryCredentialClient(
             base_url=settings.gateway_url,
-            api_key=settings.api_gateway_key.get_secret_value(),
+            service_token=settings.peer_service_token(),
         )
     return _client
 
