@@ -55,6 +55,15 @@ import { API_PLATFORM_ENV_SETTINGS } from './env.descriptors';
 export const NOT_READ_BY_THIS_PROCESS = new Set(['VAULT_DB_ADMIN_PASS']);
 
 /**
+ * Read only by the model-publisher worker (`model-publisher.main.ts`), never by
+ * the gateway: the publisher's own `hope-models` key pair, delivered to that pod
+ * alone. Declared for the gateway's boot contract, it would make every gateway
+ * refuse to start without a credential it must never hold. Exported so
+ * `scripts/env-sync.mts` annotates it in the generated example files.
+ */
+export const READ_BY_MODEL_PUBLISHER_ONLY = new Set(['MODEL_STORE_PUBLISHER_ACCESS_KEY_ID', 'MODEL_STORE_PUBLISHER_SECRET_KEY']);
+
+/**
  * Secrets whose `closed` failMode is the registry's secret invariant rather than
  * a boot requirement: needed only under `SECRETS_PROVIDER=vault`, and the two
  * secret_id forms are alternatives (see the header). Exported for the same
@@ -93,7 +102,7 @@ export const API_ENV_DESCRIPTORS: SettingDescriptor[] = [
   // service's flag fails the gateway's boot instead of silently doing nothing.
   HARNESS_CLAIM_CHECK_ENABLED,
   ...API_PLATFORM_ENV_SETTINGS,
-].filter((d) => !NOT_READ_BY_THIS_PROCESS.has(toEnvVarName(d.key)));
+].filter((d) => !NOT_READ_BY_THIS_PROCESS.has(toEnvVarName(d.key)) && !READ_BY_MODEL_PUBLISHER_ONLY.has(toEnvVarName(d.key)));
 
 /** The validator for one variable, derived from its declared `dataType`. */
 function leafSchema(name: string, descriptor: SettingDescriptor): z.ZodType {
