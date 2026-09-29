@@ -21,7 +21,7 @@
  * dataclass defaults (one source of truth per default).
  */
 
-import type { AiModelAsrProfileDecoding } from './asr-model-profile.js';
+import type { AiModelAsrProfileDecoding, AiModelAsrProfileQuantization } from './asr-model-profile.js';
 import type { ResolvedAgent } from './agent.js';
 
 export const RESOLVED_ASR_SPEC_SCHEMA_VERSION = 1 as const;
@@ -126,6 +126,18 @@ export interface AsrSpecModel {
   tenantId: string;
   /** TASK-880 — the row's own decode geometry. OMITTED (never `null`) when it declares none. */
   metadata?: AsrSpecModelMetadata;
+  /**
+   * TASK-1010 (OD-6 / OD-8) — the row's `_metadata.asr.quantization`: how THESE weights are
+   * quantised, for a serving engine that must be told (vLLM `--quantization`). OMITTED (never
+   * `null`) when the row declares none, like `libraryName`: both halves are `extra: 'forbid'`,
+   * so omit-when-absent is what lets the gateway and a runtime deploy in either order.
+   */
+  quantization?: AiModelAsrProfileQuantization;
+  /**
+   * TASK-1010 (OD-6 / OD-8) — the row's `_metadata.asr.maxModelLen`: the decoder context in
+   * tokens a serving engine sizes its cache for (vLLM `--max-model-len`). Omit-when-absent.
+   */
+  maxModelLen?: number;
 }
 
 /**
