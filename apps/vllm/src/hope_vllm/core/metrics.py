@@ -39,3 +39,12 @@ ENGINE_LOAD_SECONDS = Histogram(
     "Cold start of one engine (weights + CUDA graphs)",
     buckets=(1, 5, 10, 20, 30, 60, 120, 300),
 )
+REJECTIONS_TOTAL = Counter(
+    "hope_vllm_rejections_total", "Requests refused before a decode, by reason", ["reason"]
+)
+ENGINE_LOADS_TOTAL = Counter(
+    "hope_vllm_engine_loads_total", "Engine builds by result (loaded | failed)", ["result"]
+)
+ENGINE_EVICTIONS_TOTAL = Counter(
+    "hope_vllm_engine_evictions_total", "Idle engines evicted to admit another"
+)

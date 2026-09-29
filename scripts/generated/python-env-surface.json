@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 365,
+  "distinctNames": 363,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -3720,6 +3720,18 @@
       "title": "Inference shell on vLLM",
       "fields": [
         {
+          "name": "HF_HUB_OFFLINE",
+          "aliases": [],
+          "class": "Settings",
+          "field": "hf_hub_offline",
+          "prefix": "VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "boolean",
+          "default": "false",
+          "description": "HuggingFace's own offline switch. A cluster pod runs with HF_HUB_OFFLINE=1: weights come from the published models bucket only, and a model absent from it is a NAMED refusal (MODEL_NOT_PUBLISHED), never an attempted pull."
+        },
+        {
           "name": "INTERNAL_ACCESS_TOKEN",
           "aliases": [],
           "class": "Settings",
@@ -3756,52 +3768,28 @@
           "description": "Where the control plane lives (env `VLLM_API_GATEWAY_URL`). BOOTSTRAP TRANSPORT \u2014 the address of the config source, not config. Blank \u21d2 no control plane: platform knobs stay at their defaults and HuggingFace pulls fail closed (no registry credential can be resolved)."
         },
         {
-          "name": "VLLM_ENFORCE_EAGER__MOVED_TO_CONTROL_PLANE",
+          "name": "VLLM_POOL",
           "aliases": [],
           "class": "Settings",
-          "field": "enforce_eager",
+          "field": "pool",
           "prefix": "VLLM_",
           "required": false,
           "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "Skip CUDA-graph capture (faster cold start, slower steady state)."
+          "dataType": "string",
+          "default": "default",
+          "description": "Which pool this process IS (C-4): a key of `vllm.pools`. Pod identity, so env \u2014 a Deployment per pool sets it. A name the map does not declare refuses to start."
         },
         {
-          "name": "VLLM_GPU_MEMORY_UTILIZATION__MOVED_TO_CONTROL_PLANE",
+          "name": "VLLM_POOLS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
-          "field": "gpu_memory_utilization",
+          "field": "pools",
           "prefix": "VLLM_",
           "required": false,
           "secret": false,
-          "dataType": "number",
-          "default": 0.2,
-          "description": "vLLM engine capacity \u2014 CONTROL PLANE (`asrVllm.engine.*`), read at engine BUILD. Fraction of the WHOLE GPU's memory each engine may claim (weights + KV/encoder cache). A time-sliced GPU has no memory isolation, so on a shared card this is the service's budget share, not \"how much is free\". 0.20 while ASR shares a 16 GB card (OD-10); raised per environment on the SYSTEM row, never in code."
-        },
-        {
-          "name": "VLLM_MAX_NUM_SEQS__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "max_num_seqs",
-          "prefix": "VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 64,
-          "description": "vLLM's running-batch cap \u2014 the ceiling on concurrent windows in one engine."
-        },
-        {
-          "name": "VLLM_MAX_RESIDENT_ENGINES__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "max_resident_engines",
-          "prefix": "VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 1,
-          "description": "Engines resident at once (one per runtime key), read at every eviction check. Each claims `gpu_memory_utilization`, so the product must fit one card."
+          "dataType": "json",
+          "default": "{\"default\": {\"acceptedKinds\": [\"asr\"], \"pins\": [], \"vramBudgetGiB\": 6, \"maxResidentEngines\": 1, \"inflightFactor\": 2}}",
+          "description": "Pools \u2014 CONTROL PLANE (`vllm.pools`), read at every admission. The raw map; see `pool_config()` for this process's entry."
         },
         {
           "name": "VLLM_TRUNCATION_MIN_CHARS_PER_VOICED_SECOND__MOVED_TO_CONTROL_PLANE",
@@ -3813,7 +3801,7 @@
           "secret": false,
           "dataType": "number",
           "default": 3.0,
-          "description": "Truncation heuristic (vllm#53144 hook) \u2014 CONTROL PLANE (`asrVllm.truncation.*`), read per request."
+          "description": "Truncation heuristic (vllm#53144 hook) \u2014 CONTROL PLANE (`vllm.truncation.*`), read per request."
         },
         {
           "name": "VLLM_TRUNCATION_VOICED_DBFS__MOVED_TO_CONTROL_PLANE",
@@ -3901,12 +3889,6 @@
     ],
     "HF_HUB_DISABLE_IMPLICIT_TOKEN": [
       "apps/vllm/src/hope_vllm/main.py"
-    ],
-    "HF_HUB_OFFLINE": [
-      "apps/harness/src/harness/models/source_resolver.py",
-      "apps/nlp/src/nlp/models/source_resolver.py",
-      "apps/stt/src/stt/models/source_resolver.py",
-      "apps/tts/src/tts/models/source_resolver.py"
     ],
     "HOPE_SECRETS_DIR": [
       "packages/py-env/src/hope_env/settings_sources.py"

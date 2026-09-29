@@ -22,7 +22,6 @@ import numpy as np
 import pytest
 
 from hope_vllm.core.config import Settings
-from hope_vllm.core.control_plane import apply_control_plane
 from hope_vllm.engine.base import DecoderBudgetError, DecodeRequest, EngineBuildRefused
 from hope_vllm.engine.vllm_backend import (
     VllmEngineFactory,
@@ -123,19 +122,13 @@ class FakeResolver:
         return RESOLVED_DIR
 
 
-def serve(settings: Settings, **values: Any) -> None:
-    """Overlay platform values exactly as the effective-config pull would (OD-6)."""
-    apply_control_plane(
-        settings,
-        {"settings": {f"asrVllm.engine.{key}": {"value": v} for key, v in values.items()}},
-    )
+#: The card the stand-in NVML reports: 16 GiB, the dev RTX 2000 Ada.
+DEVICE_TOTAL_GIB = 16.0
 
 
 @pytest.fixture
 def settings() -> Settings:
-    settings = Settings()
-    serve(settings, gpuMemoryUtilization=0.4, maxNumSeqs=48)
-    return settings
+    return Settings()
 
 
 @pytest.fixture
@@ -159,6 +152,7 @@ def factory(
         source_resolver=resolver,
         token_counter_loader=_count_chars_as_tokens,
         cuda_capability=lambda: capability["value"],
+        device_total_gib=lambda: DEVICE_TOTAL_GIB,
     )
 
 
@@ -243,8 +237,10 @@ async def test_build_passes_the_resolved_spec_and_engine_tuning(  # type: ignore
     assert kwargs["dtype"] == "bfloat16"
     assert kwargs["quantization"] == "fp8"
     assert kwargs["max_model_len"] == 448
-    assert kwargs["gpu_memory_utilization"] == pytest.approx(0.4)
-    assert kwargs["max_num_seqs"] == 48
+    # 3 GiB (the conftest spec) of a 16 GiB card, rounded to 3 places.
+    assert kwargs["gpu_memory_utilization"] == 0.188
+    assert kwargs["max_num_seqs"] == 64
+    assert kwargs["enforce_eager"] is False
     assert kwargs["limit_mm_per_prompt"] == {"audio": 1}
     assert TOKENIZER_DIRS == [str(RESOLVED_DIR)]  # the tokenizer loads from the same dir
 
@@ -307,19 +303,60 @@ async def test_the_arch_guard_only_looks_at_the_gpu_for_fp8(  # type: ignore[no-
     assert fake_vllm.created[0].args.kwargs["quantization"] is None
 
 
-async def test_engine_knobs_are_read_when_an_engine_is_built(  # type: ignore[no-untyped-def]
-    fake_vllm, factory, settings
+async def test_gpu_memory_utilization_is_the_specs_gib_over_the_device_total(  # type: ignore[no-untyped-def]
+    fake_vllm, factory
 ) -> None:
-    """A resident engine keeps its shape; the NEXT build takes the platform's new values."""
-    await factory.build(make_spec(runtimeKey="first"))
-    serve(settings, gpuMemoryUtilization=0.3, maxNumSeqs=16, enforceEager=True)
-    await factory.build(make_spec(runtimeKey="second"))
+    """D-11: sizing is GiB on the model row, converted to vLLM's fraction at build."""
+    await factory.build(make_spec(vramGiB=5))
+    assert fake_vllm.created[0].args.kwargs["gpu_memory_utilization"] == 0.312
 
-    first, second = (engine.args.kwargs for engine in fake_vllm.created)
-    assert (first["gpu_memory_utilization"], first["max_num_seqs"]) == (0.4, 48)
-    assert first["enforce_eager"] is False
-    assert second["gpu_memory_utilization"] == pytest.approx(0.3)
-    assert (second["max_num_seqs"], second["enforce_eager"]) == (16, True)
+
+@pytest.mark.parametrize(
+    ("max_num_seqs", "enforce_eager", "expected"),
+    [(None, None, (64, False)), (16, True, (16, True)), (128, False, (128, False))],
+)
+async def test_batch_cap_and_eager_come_from_the_spec_engine(  # type: ignore[no-untyped-def]
+    fake_vllm, factory, max_num_seqs, enforce_eager, expected
+) -> None:
+    await factory.build(make_spec(maxNumSeqs=max_num_seqs, enforceEager=enforce_eager))
+    kwargs = fake_vllm.created[0].args.kwargs
+    assert (kwargs["max_num_seqs"], kwargs["enforce_eager"]) == expected
+
+
+async def test_each_build_sizes_its_own_engine(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+    await factory.build(make_spec(runtimeKey="small", vramGiB=2))
+    await factory.build(make_spec(runtimeKey="big", vramGiB=8, maxNumSeqs=8))
+    small, big = (engine.args.kwargs for engine in fake_vllm.created)
+    assert (small["gpu_memory_utilization"], small["max_num_seqs"]) == (0.125, 64)
+    assert (big["gpu_memory_utilization"], big["max_num_seqs"]) == (0.5, 8)
+
+
+def test_the_default_device_total_reads_nvml_device_0_without_cuda(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`pynvml` (vLLM's own `nvidia-ml-py`) answers without creating a CUDA context."""
+    from hope_vllm.engine.vllm_backend import nvml_device_total_gib
+
+    calls: list[str] = []
+    nvml = types.ModuleType("pynvml")
+    nvml.__spec__ = importlib.machinery.ModuleSpec("pynvml", None)
+    nvml.nvmlInit = lambda: calls.append("init")  # type: ignore[attr-defined]
+    nvml.nvmlShutdown = lambda: calls.append("shutdown")  # type: ignore[attr-defined]
+
+    def handle(index: int) -> str:
+        calls.append(f"handle-{index}")
+        return "h0"
+
+    nvml.nvmlDeviceGetHandleByIndex = handle  # type: ignore[attr-defined]
+    nvml.nvmlDeviceGetMemoryInfo = lambda h: SimpleNamespace(total=16 * 2**30)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pynvml", nvml)
+
+    assert nvml_device_total_gib() == 16.0
+    assert calls == ["init", "handle-0", "shutdown"]
+
+
+def test_importing_the_adapter_does_not_import_pynvml() -> None:
+    assert "pynvml" not in sys.modules
 
 
 # ── transcribe ──────────────────────────────────────────────────────────────

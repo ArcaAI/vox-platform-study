@@ -253,3 +253,52 @@ async def test_no_checksum_means_no_verification(tmp_path: Path) -> None:
     (published / "manifest.json").write_text("not json")  # never even read
     subject, _ = resolver(RESOLVED, FakeHub(tmp_path))
     assert await subject.resolve(model(localPath=str(published), checksum=None)) == published
+
+
+# ── HF_HUB_OFFLINE: the cluster posture (review focus 1) ────────────────────
+
+
+def offline_resolver(hub: FakeHub) -> tuple[ModelSourceResolver, FakeCredentials]:
+    credentials = FakeCredentials(RESOLVED)
+    return (
+        ModelSourceResolver(
+            credentials, cache_dir=None, snapshot_download=hub.snapshot_download, offline=True
+        ),
+        credentials,
+    )
+
+
+@pytest.mark.parametrize("local_path", ["missing", None])
+async def test_offline_and_not_on_the_mount_is_model_not_published(
+    tmp_path: Path, local_path: str | None
+) -> None:
+    """A cluster pod has HF_HUB_OFFLINE=1: a model absent from the models bucket is a NAMED
+    503, never a hang on an HF call and never a pull."""
+    hub = FakeHub(tmp_path / "hub")
+    subject, credentials = offline_resolver(hub)
+    path = str(tmp_path / local_path) if local_path else None
+
+    with pytest.raises(ModelSourceError) as caught:
+        await subject.resolve(model(localPath=path))
+
+    assert caught.value.code == "MODEL_NOT_PUBLISHED"
+    assert "arcaai-whisper-large-ml-en-vllm" in str(caught.value)
+    assert hub.calls == [] and credentials.calls == []
+
+
+async def test_offline_still_loads_a_published_directory_in_place(tmp_path: Path) -> None:
+    published = tmp_path / "bucket" / "snapshots" / "sha"
+    publish(published)
+    subject, _ = offline_resolver(FakeHub(tmp_path / "hub"))
+    assert await subject.resolve(model(localPath=str(published))) == published
+
+
+def test_from_settings_takes_the_offline_posture_from_hf_hub_offline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hope_vllm.core.config import Settings
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    assert ModelSourceResolver.from_settings(Settings()).offline is True
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")
+    assert ModelSourceResolver.from_settings(Settings()).offline is False

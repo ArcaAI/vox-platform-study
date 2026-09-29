@@ -1,35 +1,50 @@
 """vllm settings (pydantic-settings, ``VLLM_`` prefix).
 
-ENV IS THE BOOTSTRAP FLOOR ONLY (TASK-1010 OD-6). What remains settable from the
-environment is what this process needs to REACH its control plane and to be reached:
-the shared inbound/outbound credential (``INTERNAL_ACCESS_TOKEN``, vault-kv), the
-gateway address (``VLLM_API_GATEWAY_URL``), the Redis address the config
-invalidation channel lives on (shared ``REDIS_URL``), and where HuggingFace pulls land
-on this pod (``VLLM_WEIGHTS_CACHE_DIR``). Port, log level and ``OTEL_*`` are read by
-the launcher and ``hope_obs``.
+ENV IS THE BOOTSTRAP FLOOR ONLY. What remains settable from the environment is what this
+process needs to REACH its control plane and to be reached: the shared inbound/outbound
+credential (``INTERNAL_ACCESS_TOKEN``, vault-kv), the gateway address
+(``VLLM_API_GATEWAY_URL``), the Redis address the config invalidation channel lives on
+(shared ``REDIS_URL``), where HuggingFace pulls land on this pod
+(``VLLM_WEIGHTS_CACHE_DIR``), HuggingFace's own offline switch (``HF_HUB_OFFLINE`` — a
+cluster pod never pulls), and WHICH pool this process is (``VLLM_POOL``, pod identity, C-4).
+Port, log level and ``OTEL_*`` are read by the launcher and ``hope_obs``.
 
-What is deliberately NOT here: any model selection. The model arrives with every
-request as a resolved spec (``hope_vllm.spec``), built by the gateway from the tenant's
-ASR Agent — an env var naming a model would be a hardcoded selection
-(``.claude/rules/09-infrastructure-devops.md`` §No hardcoded configuration). There is no
-HuggingFace token either: weights are pulled with the MODEL OWNER's registry credential
-(``core/model_credentials.py``), never an ambient one.
+What is deliberately NOT here: any model selection (a client names ``model=<slug>`` and
+the gateway resolves it — ``hope_vllm.spec``), and any engine SIZING — since TASK-1021
+D-11 that lives on the model row (``engine.vramGiB`` / ``maxNumSeqs`` / ``enforceEager``
+on the serving spec) and on the pool (``vllm.pools``), never in settings or env.
 
-The six vLLM engine / truncation knobs were env during the spike (V-2). They are now
-platform-only ``global-kv`` descriptors ``asrVllm.*`` served over the effective-config
-route and overlaid by ``core/control_plane.py``; their env path is CLOSED with a dead
-``validation_alias`` (``moved_alias``) so a stale ConfigMap value cannot silently win.
-The field defaults below ARE the descriptor defaults (OD-10), so an empty or unreachable
-control plane changes nothing.
+Control-plane knobs (``vllm.pools``, ``vllm.truncation.*``) are platform-only ``global-kv``
+descriptors served over the effective-config route and overlaid by
+``core/control_plane.py``; their env path is CLOSED with a dead ``validation_alias``
+(``moved_alias``). The field defaults below ARE the descriptor defaults, so an empty or
+unreachable control plane changes nothing.
 """
 
 from __future__ import annotations
 
+import copy
+from typing import Any
+
 from hope_env import hope_settings_sources, load_env, real_secret
-from pydantic import AliasChoices, Field, SecretStr, model_validator
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from hope_vllm.core.control_plane import gpu_budget_fits, moved_alias
+from hope_vllm.core.control_plane import DEFAULT_POOLS, moved_alias, parse_pools
+from hope_vllm.engine.pool import PoolConfig
+
+__all__ = ["DEFAULT_POOLS", "PoolNotConfiguredError", "Settings", "get_settings"]
+
+
+class PoolNotConfiguredError(RuntimeError):
+    """``VLLM_POOL`` names a pool ``vllm.pools`` does not declare — the process refuses to start."""
+
+    def __init__(self, pool: str, declared: list[str]) -> None:
+        super().__init__(
+            f"VLLM_POOL={pool!r} is not declared in vllm.pools (declared: "
+            f"{', '.join(declared) or 'none'}); refusing to start"
+        )
+        self.pool = pool
 
 
 class Settings(BaseSettings):
@@ -64,30 +79,23 @@ class Settings(BaseSettings):
     # HF_HOME). Published weights (`localPath`) are read in place and never copied here.
     weights_cache_dir: str | None = None
 
-    # ── vLLM engine capacity — CONTROL PLANE (`asrVllm.engine.*`), read at engine BUILD.
-    #: Fraction of the WHOLE GPU's memory each engine may claim (weights + KV/encoder
-    #: cache). A time-sliced GPU has no memory isolation, so on a shared card this is the
-    #: service's budget share, not "how much is free". 0.20 while ASR shares a 16 GB
-    #: card (OD-10); raised per environment on the SYSTEM row, never in code.
-    gpu_memory_utilization: float = Field(
-        default=0.20,
-        ge=0.05,
-        le=0.95,
-        validation_alias=moved_alias("VLLM_GPU_MEMORY_UTILIZATION"),
-    )
-    #: vLLM's running-batch cap — the ceiling on concurrent windows in one engine.
-    max_num_seqs: int = Field(
-        default=64, ge=1, le=1024, validation_alias=moved_alias("VLLM_MAX_NUM_SEQS")
-    )
-    #: Skip CUDA-graph capture (faster cold start, slower steady state).
-    enforce_eager: bool = Field(default=False, validation_alias=moved_alias("VLLM_ENFORCE_EAGER"))
-    #: Engines resident at once (one per runtime key), read at every eviction check.
-    #: Each claims `gpu_memory_utilization`, so the product must fit one card.
-    max_resident_engines: int = Field(
-        default=1, ge=1, le=4, validation_alias=moved_alias("VLLM_MAX_RESIDENT_ENGINES")
+    # ── Which pool this process IS (C-4): a key of `vllm.pools`. Pod identity, so env —
+    # a Deployment per pool sets it. A name the map does not declare refuses to start.
+    pool: str = Field(default="default", min_length=1)
+
+    # ── HuggingFace's own offline switch. A cluster pod runs with HF_HUB_OFFLINE=1: weights
+    # come from the published models bucket only, and a model absent from it is a NAMED
+    # refusal (MODEL_NOT_PUBLISHED), never an attempted pull.
+    hf_hub_offline: bool = Field(default=False, validation_alias=AliasChoices("HF_HUB_OFFLINE"))
+
+    # ── Pools — CONTROL PLANE (`vllm.pools`), read at every admission. The raw map; see
+    # `pool_config()` for this process's entry.
+    pools: dict[str, Any] = Field(
+        default_factory=lambda: copy.deepcopy(DEFAULT_POOLS),
+        validation_alias=moved_alias("VLLM_POOLS"),
     )
 
-    # ── Truncation heuristic (vllm#53144 hook) — CONTROL PLANE (`asrVllm.truncation.*`),
+    # ── Truncation heuristic (vllm#53144 hook) — CONTROL PLANE (`vllm.truncation.*`),
     # read per request.
     truncation_min_chars_per_voiced_second: float = Field(
         default=3.0,
@@ -101,14 +109,12 @@ class Settings(BaseSettings):
         validation_alias=moved_alias("VLLM_TRUNCATION_VOICED_DBFS"),
     )
 
-    @model_validator(mode="after")
-    def _resident_engines_fit_one_gpu(self) -> Settings:
-        if not gpu_budget_fits(self.max_resident_engines, self.gpu_memory_utilization):
-            raise ValueError(
-                f"max_resident_engines ({self.max_resident_engines}) × gpu_memory_utilization "
-                f"({self.gpu_memory_utilization}) exceeds one GPU; lower either"
-            )
-        return self
+    def pool_config(self) -> PoolConfig:
+        """This process's pool. Raises :class:`PoolNotConfiguredError` when undeclared."""
+        pools = parse_pools(self.pools)
+        if self.pool not in pools:
+            raise PoolNotConfiguredError(self.pool, sorted(pools))
+        return pools[self.pool]
 
     @property
     def accepted_service_tokens(self) -> tuple[str, ...]:

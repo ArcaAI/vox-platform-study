@@ -23,7 +23,7 @@ from hope_vllm.core.serving_spec_client import (
     ServingSpecClient,
     ServingSpecUnavailable,
 )
-from hope_vllm.engine.pool import EnginePool
+from hope_vllm.engine.pool import EnginePool, PoolConfig
 from hope_vllm.spec import ResolvedServingSpec
 from hope_vllm.tests.conftest import serving_spec_payload
 from hope_vllm.tests.fakes import FakeEngineFactory
@@ -243,7 +243,10 @@ async def test_same_slug_for_two_tenants_yields_two_runtime_keys_and_two_engines
     assert spec_a.runtime_key != spec_b.runtime_key
 
     factory = FakeEngineFactory()
-    pool = EnginePool(factory, max_resident=2)
+    pool_config = PoolConfig(
+        accepted_kinds=frozenset({"asr"}), pins=(), vram_budget_gib=6.0, max_resident=2
+    )
+    pool = EnginePool(factory, pool_config=lambda: pool_config)
     async with pool.lease(spec_a) as engine_a, pool.lease(spec_b) as engine_b:
         assert engine_a is not engine_b
     assert factory.builds == ["byo-a-row:v1", "system-row:v1"]

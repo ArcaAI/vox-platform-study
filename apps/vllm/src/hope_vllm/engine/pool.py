@@ -1,25 +1,32 @@
-"""EnginePool — one lazily built engine per runtime key, single-flight, bounded residency.
+"""EnginePool — one lazily built engine per runtime key, admitted by GiB, with pins and kinds.
 
-The service holds no per-stream state: every request names its model (the resolved
-spec), and the pool maps ``runtimeKey`` → a resident vLLM engine. That is what lets N
-identical replicas sit behind one Service — any replica can serve any window.
+The service holds no per-stream state: every request names a model, the gateway resolves
+it to a ``ResolvedServingSpec``, and the pool maps ``runtimeKey`` → a resident vLLM engine.
+That is what lets N identical replicas sit behind one Service.
 
-* **Lazy.** Nothing loads at boot; the model is only known when a request names it.
-  ``warm()`` exists so a router (or the bench) can load a replica before it takes traffic.
-* **Single-flight.** Concurrent first requests for one key share ONE load; waiters are
-  shielded, so a client disconnect never cancels a load other requests are waiting on.
-* **Bounded.** At most ``max_resident`` engines (resident + loading). At the bound the
-  least-recently-used IDLE engine is evicted; if every engine is busy the request is
-  refused (``EngineCapacityError`` → 503 + Retry-After) — never an eviction mid-decode.
-  The bound is read at EVERY eviction check (``asrVllm.engine.maxResidentEngines`` is a
-  control-plane knob — TASK-1010 OD-6), so a change applies without a restart.
-* **Fresh at build.** ``before_build`` (the control-plane pull) is awaited before every
-  build, so the engine knobs the factory reads next are the platform's current ones.
-* **Fail closed on drift.** One runtime key must always mean one spec. A request that
-  reuses a key for different weights is refused rather than served by the wrong model.
-* **Failures are not cached.** A failed load leaves nothing behind; the next request retries.
-  A NAMED refusal (``EngineBuildRefused``) keeps its code through the pool, so the HTTP
-  layer answers with the reason rather than a generic load failure.
+What a POOL is (TASK-1021 C-4): this process serves exactly one entry of ``vllm.pools`` —
+the one ``VLLM_POOL`` names — read through :class:`PoolConfig` at EVERY admission, so a
+platform-admin change applies without a restart.
+
+* **Kinds.** ``spec.kind`` outside ``accepted_kinds`` is refused
+  (``ModelNotServable("KIND_NOT_ACCEPTED")``) before anything loads — an ``asr`` pool never
+  builds an LLM because a client named one.
+* **GiB admission.** An engine is admitted while ``Σ resident + loading vramGiB + new ≤
+  vram_budget_gib`` and the engine count stays within ``max_resident``. Otherwise the
+  least-recently-used IDLE, UNPINNED engines are evicted, oldest first, until it fits; if
+  even evicting every candidate would not make room, NOTHING is evicted and the request is
+  refused (``EngineCapacityError`` → 503 + Retry-After) — never an eviction mid-decode, and
+  never an eviction for an ask that fails anyway. A spec larger than the whole budget is
+  refused by name (``VRAM_BUDGET_EXCEEDED``).
+* **Pins.** ``warm_pins`` resolves the pool's pinned slugs against the SYSTEM tenant (a pin
+  is platform configuration, never a customer's row) and loads them; a pinned runtime key
+  is never evicted.
+* **Lazy + single-flight.** Everything else loads on first use; concurrent first requests
+  share ONE load, shielded so a client disconnect never cancels a load others wait on.
+* **Fresh at build.** ``before_build`` (the control-plane pull) is awaited before every build.
+* **Fail closed on drift.** One runtime key must always mean one spec.
+* **Failures are not cached.** A NAMED refusal (``EngineBuildRefused``) keeps its code
+  through the pool, so the HTTP layer answers with the reason.
 """
 
 from __future__ import annotations
@@ -34,22 +41,40 @@ from typing import Any
 from hope_obs import get_logger
 
 from hope_vllm.core import metrics
+from hope_vllm.core.serving_spec_client import ModelNotServable
 from hope_vllm.engine.base import EngineBuildRefused, EngineFactory, WhisperEngine
 from hope_vllm.spec import ResolvedServingSpec
 
 logger = get_logger(__name__)
 
-
-class EngineCapacityError(RuntimeError):
-    """Every resident engine is busy and the residency bound is reached."""
-
+#: The reserved platform-configuration tenant. Pins resolve here, and only here.
+SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
 #: The code of a load failure the backend did not name.
 ENGINE_LOAD_FAILED = "ENGINE_LOAD_FAILED"
 
+#: `vllm.pools[*].inflightFactor` default (C-4).
+DEFAULT_INFLIGHT_FACTOR = 2
+
+
+@dataclass(frozen=True)
+class PoolConfig:
+    """This process's entry of ``vllm.pools`` (C-4), in engine terms."""
+
+    accepted_kinds: frozenset[str]
+    pins: tuple[str, ...]
+    vram_budget_gib: float
+    max_resident: int
+    #: A lease beyond ``max_num_seqs × inflight_factor`` on one engine is 429 (C-3).
+    inflight_factor: int = DEFAULT_INFLIGHT_FACTOR
+
+
+class EngineCapacityError(RuntimeError):
+    """The new engine does not fit, and evicting every idle unpinned engine would not help."""
+
 
 class EngineLoadError(RuntimeError):
-    """The backend failed to build the engine; ``code`` names why (503 ``detail.code``)."""
+    """The backend failed to build the engine; ``code`` names why (503)."""
 
     def __init__(self, message: str, *, code: str = ENGINE_LOAD_FAILED) -> None:
         super().__init__(message)
@@ -74,20 +99,19 @@ class EnginePool:
         self,
         factory: EngineFactory,
         *,
-        max_resident: int | Callable[[], int],
+        pool_config: Callable[[], PoolConfig],
         before_build: Callable[[], Awaitable[None]] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._factory = factory
-        self._max_resident: Callable[[], int] = (
-            max_resident if callable(max_resident) else (lambda: max_resident)
-        )
+        self._pool_config = pool_config
         self._before_build = before_build
         self._clock = clock
         self._lock = asyncio.Lock()
         self._resident: dict[str, _Resident] = {}
         self._loading: dict[str, asyncio.Task[_Resident]] = {}
         self._loading_specs: dict[str, ResolvedServingSpec] = {}
+        self._pinned: set[str] = set()
 
     # ── public ──────────────────────────────────────────────────────────────
 
@@ -108,13 +132,40 @@ class EnginePool:
             resident = self._resident[spec.runtime_key]
         return resident.load_seconds, already
 
+    async def warm_pins(self, resolve: Callable[[str], Awaitable[ResolvedServingSpec]]) -> None:
+        """Resolve and load every pin of this pool, in order. Raises on the first failure.
+
+        ``resolve`` maps a slug to its spec for the SYSTEM tenant (the caller binds it).
+        """
+        for slug in self._pool_config().pins:
+            spec = await resolve(slug)
+            self._pinned.add(spec.runtime_key)
+            await self.warm(spec)
+            logger.info("vllm.engine.pinned", slug=slug, runtime_key=spec.runtime_key)
+
+    def inflight(self, runtime_key: str) -> int:
+        """Leases currently held on ``runtime_key`` (0 when not resident)."""
+        resident = self._resident.get(runtime_key)
+        return resident.inflight if resident is not None else 0
+
+    def resident_specs(self) -> list[tuple[ResolvedServingSpec, bool]]:
+        """``(spec, pinned)`` for every resident engine."""
+        return [(r.spec, key in self._pinned) for key, r in self._resident.items()]
+
     def snapshot(self) -> dict[str, Any]:
+        config = self._pool_config()
         return {
-            "max_resident": self._max_resident(),
+            "accepted_kinds": sorted(config.accepted_kinds),
+            "max_resident": config.max_resident,
+            "vram_budget_gib": config.vram_budget_gib,
+            "resident_gib": self._committed_gib(),
             "loaded": [
                 {
                     "runtime_key": key,
                     "slug": r.spec.slug,
+                    "kind": r.spec.kind,
+                    "vram_gib": r.spec.engine.vram_gib,
+                    "pinned": key in self._pinned,
                     "inflight": r.inflight,
                     "load_seconds": round(r.load_seconds, 3),
                 }
@@ -133,11 +184,23 @@ class EnginePool:
 
     # ── internals ───────────────────────────────────────────────────────────
 
+    def _committed_gib(self) -> float:
+        return sum(r.spec.engine.vram_gib for r in self._resident.values()) + sum(
+            s.engine.vram_gib for s in self._loading_specs.values()
+        )
+
     async def _acquire(self, spec: ResolvedServingSpec) -> _Resident:
         key = spec.runtime_key
         while True:
-            victim: _Resident | None = None
+            victims: list[_Resident] = []
             async with self._lock:
+                config = self._pool_config()
+                if spec.kind not in config.accepted_kinds:
+                    raise ModelNotServable(
+                        "KIND_NOT_ACCEPTED",
+                        f"model '{spec.slug}' is a '{spec.kind}' model; this pool accepts "
+                        f"{', '.join(sorted(config.accepted_kinds))}",
+                    )
                 resident = self._resident.get(key)
                 if resident is not None:
                     if resident.spec != spec:
@@ -146,16 +209,13 @@ class EnginePool:
                     return resident
                 task = self._loading.get(key)
                 if task is None:
-                    if len(self._resident) + len(self._loading) >= self._max_resident():
-                        victim = self._evict_idle_lru()
-                        if victim is None:
-                            raise EngineCapacityError(key)
+                    victims = self._admit(spec, config)
                     task = asyncio.create_task(self._load(spec))
                     self._loading[key] = task
                     self._loading_specs[key] = spec
                 elif self._loading_specs[key] != spec:
                     raise RuntimeKeySpecMismatchError(key)
-            if victim is not None:
+            for victim in victims:
                 await self._shutdown(victim)
             try:
                 await asyncio.shield(task)
@@ -168,10 +228,63 @@ class EnginePool:
                 raise EngineLoadError(str(exc), code=code) from exc
             # Loop: pick the now-resident engine up under the lock (and re-check the spec).
 
+    def _admit(self, spec: ResolvedServingSpec, config: PoolConfig) -> list[_Resident]:
+        """Make room for ``spec`` (under the lock). Returns the evicted engines to shut down.
+
+        Evicts nothing unless the plan as a whole makes the new engine fit.
+        """
+        need = spec.engine.vram_gib
+        if need > config.vram_budget_gib:
+            metrics.REJECTIONS_TOTAL.labels(reason="vram_budget_exceeded").inc()
+            raise EngineBuildRefused(
+                "VRAM_BUDGET_EXCEEDED",
+                f"model '{spec.slug}' needs {need:g} GiB; this pool's whole budget is "
+                f"{config.vram_budget_gib:g} GiB",
+            )
+        committed = self._committed_gib()
+        count = len(self._resident) + len(self._loading)
+
+        def fits(gib: float, engines: int) -> bool:
+            return gib + need <= config.vram_budget_gib and engines + 1 <= config.max_resident
+
+        if fits(committed, count):
+            return []
+        candidates = sorted(
+            (r.last_used, key)
+            for key, r in self._resident.items()
+            if r.inflight == 0 and key not in self._pinned
+        )
+        plan: list[str] = []
+        for _, key in candidates:
+            plan.append(key)
+            committed -= self._resident[key].spec.engine.vram_gib
+            count -= 1
+            if fits(committed, count):
+                break
+        else:
+            metrics.REJECTIONS_TOTAL.labels(reason="engine_capacity").inc()
+            raise EngineCapacityError(spec.runtime_key)
+        victims = [self._resident.pop(key) for key in plan]
+        for victim in victims:
+            metrics.ENGINE_EVICTIONS_TOTAL.inc()
+            logger.info(
+                "vllm.engine.evicted",
+                runtime_key=victim.spec.runtime_key,
+                vram_gib=victim.spec.engine.vram_gib,
+                for_runtime_key=spec.runtime_key,
+            )
+        return victims
+
     async def _load(self, spec: ResolvedServingSpec) -> _Resident:
         key = spec.runtime_key
         started = self._clock()
-        logger.info("vllm.engine.load_started", runtime_key=key, slug=spec.slug)
+        logger.info(
+            "vllm.engine.load_started",
+            runtime_key=key,
+            slug=spec.slug,
+            kind=spec.kind,
+            vram_gib=spec.engine.vram_gib,
+        )
         try:
             if self._before_build is not None:
                 await self._before_build()
@@ -180,6 +293,7 @@ class EnginePool:
             async with self._lock:
                 self._loading.pop(key, None)
                 self._loading_specs.pop(key, None)
+            metrics.ENGINE_LOADS_TOTAL.labels(result="failed").inc()
             logger.warning(
                 "vllm.engine.load_failed",
                 runtime_key=key,
@@ -197,19 +311,12 @@ class EnginePool:
             self._loading.pop(key, None)
             self._loading_specs.pop(key, None)
             self._resident[key] = resident
+        metrics.ENGINE_LOADS_TOTAL.labels(result="loaded").inc()
         metrics.ENGINE_LOAD_SECONDS.observe(resident.load_seconds)
         logger.info(
             "vllm.engine.loaded", runtime_key=key, load_seconds=round(resident.load_seconds, 3)
         )
         return resident
-
-    def _evict_idle_lru(self) -> _Resident | None:
-        idle = [(r.last_used, key) for key, r in self._resident.items() if r.inflight == 0]
-        if not idle:
-            return None
-        _, key = min(idle)
-        logger.info("vllm.engine.evicted", runtime_key=key)
-        return self._resident.pop(key)
 
     async def _shutdown(self, resident: _Resident) -> None:
         try:

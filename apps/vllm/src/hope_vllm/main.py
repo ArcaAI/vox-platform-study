@@ -4,21 +4,30 @@ Run with the FACTORY form (``uvicorn --factory hope_vllm.main:create_app``): the
 module-level ``app``, so importing this module never loads an env file or builds
 settings as a side effect.
 
-The process is stateless per request: every window names its model (the resolved
-spec), engines are resident per runtime key, and nothing ties a stream to a replica —
-so N replicas behind one k8s Service scale out horizontally.
+The process is stateless per request: every request names its model (``model=<slug>``,
+resolved by the gateway for the calling tenant), engines are resident per runtime key,
+and nothing ties a stream to a replica — so N replicas of one POOL (``VLLM_POOL``) behind
+one k8s Service scale out horizontally.
 
 Its only peer is the gateway's ``/internal/*`` surface, reached with the shared
-``INTERNAL_ACCESS_TOKEN``: the platform settings (``asrVllm.*``, OD-6) and, for a
-HuggingFace pull, the model owner's registry credential (OD-7). Building the app opens
-no connection; both are pulled on first use.
+``INTERNAL_ACCESS_TOKEN``: the platform settings (``vllm.*``), the serving spec of a slug
+(C-2), and, for a HuggingFace pull, the model owner's registry credential (OD-7). Building
+the app opens no connection.
+
+STARTUP. The lifespan pulls the control plane once (``vllm.pools`` may declare this
+process's pool), refuses to start when ``VLLM_POOL`` is undeclared, then loads the pool's
+PINS in the background — ``/health/startup`` answers 503 until every pin is resident, while
+``/health/live`` keeps answering.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Protocol
 
 from fastapi import FastAPI
 from hope_obs import (
@@ -36,31 +45,75 @@ from hope_vllm.core.effective_config import (
     refresh_control_plane,
 )
 from hope_vllm.core.service_auth import is_local_environment
+from hope_vllm.core.serving_spec_client import ServingSpecClient
 from hope_vllm.engine.base import EngineFactory
-from hope_vllm.engine.pool import EnginePool
+from hope_vllm.engine.pool import SYSTEM_TENANT_ID, EnginePool
+from hope_vllm.spec import ResolvedServingSpec
 
 logger = get_logger(__name__)
+
+
+class SpecResolver(Protocol):
+    """``model=<slug>`` → spec for a tenant (``ServingSpecClient``; a fake in tests)."""
+
+    async def resolve(self, slug: str, tenant_id: str) -> ResolvedServingSpec: ...
+
+
+async def _warm_pins(app: FastAPI) -> None:
+    """Load every pin, then set the startup marker. A failure keeps startup at 503."""
+    resolver: SpecResolver = app.state.serving_spec_client
+
+    async def resolve_for_platform(slug: str) -> ResolvedServingSpec:
+        # A pin is platform configuration: it names a SYSTEM row, never a customer's.
+        return await resolver.resolve(slug, SYSTEM_TENANT_ID)
+
+    try:
+        await app.state.engine_pool.warm_pins(resolve_for_platform)
+    except Exception as exc:  # noqa: BLE001 — reported by /health/startup staying 503
+        logger.error(
+            "vllm.pins.warm_failed",
+            pool=app.state.settings.pool,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return
+    # Startup marker of the fleet health contract (see api/endpoints/health.py). This
+    # service does NOT self-register with the gateway, so the marker is None — its
+    # PRESENCE is what `/health/startup` reads.
+    app.state.service_release_task = None
+    logger.info("vllm.started", pool=app.state.settings.pool)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
+    # The control plane may declare this process's pool; give it its chance first. Never
+    # raises (no gateway / unreachable ⇒ the defaults stay in force).
+    await refresh_control_plane(app.state)
+    pool_config = settings.pool_config()  # PoolNotConfiguredError ⇒ refuse to start
     logger.info(
         "vllm.starting",
         backend=app.state.engine_factory.name,
         backend_unavailable_reason=app.state.engine_factory.availability(),
-        max_resident_engines=settings.max_resident_engines,
-        max_num_seqs=settings.max_num_seqs,
-        gpu_memory_utilization=settings.gpu_memory_utilization,
+        pool=settings.pool,
+        accepted_kinds=sorted(pool_config.accepted_kinds),
+        pins=list(pool_config.pins),
+        vram_budget_gib=pool_config.vram_budget_gib,
+        max_resident_engines=pool_config.max_resident,
         control_plane=app.state.effective_config_client is not None,
     )
-    # Startup marker of the fleet health contract (see api/endpoints/health.py). This
-    # service does NOT self-register with the gateway (it is reached through STT, never
-    # routed by the gateway), so the marker is None — its PRESENCE is what
-    # `/health/startup` reads.
-    app.state.service_release_task = None
-    logger.info("vllm.started")
+    if pool_config.pins:
+        app.state.pins_task = asyncio.create_task(_warm_pins(app))
+    else:
+        app.state.pins_task = None
+        app.state.service_release_task = None  # nothing to warm: started
+        logger.info("vllm.started", pool=settings.pool)
     yield
+    pins_task = app.state.pins_task
+    if pins_task is not None and not pins_task.done():
+        pins_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await pins_task
     await close_control_plane(app.state)
     await app.state.engine_pool.close()
     shutdown_observability(app)
@@ -72,6 +125,7 @@ def create_app(
     *,
     engine_factory: EngineFactory | None = None,
     effective_config_client: EffectiveConfigClient | None = None,
+    serving_spec_client: SpecResolver | None = None,
 ) -> FastAPI:
     # OD-7: no AMBIENT HuggingFace token (`HF_TOKEN`, a cached `huggingface-cli login`)
     # may ever fund a pull — only the model owner's registry credential, passed
@@ -89,8 +143,8 @@ def create_app(
     if effective_config_client is None:
         logger.warning(
             "vllm.control_plane.no_gateway_configured",
-            detail="VLLM_API_GATEWAY_URL is blank; asrVllm.* platform settings stay at "
-            "their defaults",
+            detail="VLLM_API_GATEWAY_URL is blank; vllm.* platform settings stay at their "
+            "defaults and no model=<slug> can be resolved",
         )
     if engine_factory is None:
         from hope_vllm.engine.vllm_backend import VllmEngineFactory
@@ -112,16 +166,19 @@ def create_app(
     app.state.control_plane_refresh = None
     app.state.config_invalidation_task = None
     app.state.config_invalidation_redis = None
+    # Construction performs NO I/O. With no gateway every resolve is a named 503.
+    app.state.serving_spec_client = serving_spec_client or ServingSpecClient(
+        base_url=gateway_url, token=settings.peer_service_token()
+    )
 
     async def pull_control_plane() -> None:
         await refresh_control_plane(app.state)
 
-    # `settings` is overlaid IN PLACE by the control plane, so both hooks read the
-    # platform's current values: the bound at every eviction check, the engine knobs
-    # right after the pull that precedes every build.
+    # `settings` is overlaid IN PLACE by the control plane, so the pool reads the
+    # platform's current `vllm.pools` entry at every admission.
     app.state.engine_pool = EnginePool(
         engine_factory,
-        max_resident=lambda: settings.max_resident_engines,
+        pool_config=settings.pool_config,
         before_build=pull_control_plane,
     )
 

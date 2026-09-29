@@ -5,8 +5,8 @@ contract (``GET /internal/effective-config?service=<name>``, ``X-Service-Token``
 cache jittered ±10 %, negative cache, single-flight refresh, and the shared
 ``arca:config:invalidate`` push channel. Duplicated per service on purpose.
 
-This service consumes only the generic ``settings`` map — the six ``asrVllm.*`` keys —
-overlaid onto ``Settings`` by :func:`hope_vllm.core.control_plane.apply_control_plane`.
+This service consumes only the generic ``settings`` map — the ``vllm.*`` keys
+(``vllm.pools``, ``vllm.truncation.*``) — overlaid onto ``Settings`` by :func:`hope_vllm.core.control_plane.apply_control_plane`.
 The gateway registers the service as ``vllm`` (``CONSUMING_DEPLOYABLES``) and its
 ``InternalServiceTokenGuard`` maps that name to the shared ``INTERNAL_ACCESS_TOKEN``.
 
@@ -204,7 +204,7 @@ class EffectiveConfigClient:
             return EffectiveConfigSnapshot(raw=payload, ok=True, fetched_at=self._last_refresh_at)
 
         except Exception as exc:  # noqa: BLE001 — degradation must be total
-            # Open-to-default (every asrVllm.* descriptor is `failMode: 'open-to-default'`):
+            # Open-to-default (every vllm.* descriptor is `failMode: 'open-to-default'`):
             # the values already in force keep serving for a full window.
             logger.warning(
                 "vllm.effective_config.fetch_error",

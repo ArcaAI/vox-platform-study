@@ -37,8 +37,10 @@ What a BUILD does, in order (TASK-1010 phase B):
    production RTX A6000 is sm_86; dev's RTX 2000 Ada is sm_89).
 2. **Weights** come from ``ModelSourceResolver`` (OD-7): always a LOCAL DIRECTORY —
    vLLM is never handed a repo id, so it can never pull on its own.
-3. **Engine knobs** (``asrVllm.engine.*``) are read from the settings the control plane
-   keeps current; the pool pulls it right before this build.
+3. **Engine sizing** comes from the MODEL ROW (``spec.engine``, TASK-1021 D-11): the GiB
+   the row declares becomes vLLM's ``gpu_memory_utilization`` as a fraction of THIS
+   device's total memory (read from NVML — no CUDA context in the server process), and
+   ``maxNumSeqs`` / ``enforceEager`` pass through with the service defaults (64 / off).
 """
 
 from __future__ import annotations
@@ -86,6 +88,12 @@ VLLM_QUANTIZATION: dict[str, str | None] = {
 #: FP8 tensor cores: Ada (sm_89), Hopper (sm_90) and newer.
 FP8_MIN_CAPABILITY = (8, 9)
 
+#: ``() -> total memory of the GPU this process runs on, in GiB``.
+DeviceTotalGib = Callable[[], float]
+
+#: vLLM's running-batch cap when the model row declares none.
+DEFAULT_MAX_NUM_SEQS = 64
+
 
 class SourceResolver(Protocol):
     async def resolve(self, model: ResolvedServingSpec) -> Path: ...
@@ -127,6 +135,30 @@ def _vllm_cuda_capability() -> tuple[int, int] | None:
     if capability is None:
         return None
     return int(capability.major), int(capability.minor)
+
+
+def nvml_device_total_gib() -> float:
+    """Total memory of device 0, in GiB, from NVML.
+
+    ``pynvml`` is vLLM's own ``nvidia-ml-py`` dependency (present wherever vLLM is), imported
+    lazily. NVML answers without a CUDA context, so the server process never initialises
+    CUDA (which would force vLLM's engine-core process onto ``spawn``). Device 0 is the
+    GPU the device plugin handed this container — the only one it can see.
+    """
+    import pynvml
+
+    pynvml.nvmlInit()
+    try:
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        total = pynvml.nvmlDeviceGetMemoryInfo(handle).total
+    finally:
+        pynvml.nvmlShutdown()
+    return float(total) / 2**30
+
+
+def gpu_memory_utilization(vram_gib: float, device_total_gib: float) -> float:
+    """The spec's GiB as vLLM's fraction of the WHOLE device, rounded to 3 places."""
+    return round(vram_gib / device_total_gib, 3)
 
 
 def build_decoder_prompt(language: str, prompt: str | None) -> str:
@@ -256,6 +288,7 @@ class VllmEngineFactory:
         source_resolver: SourceResolver | None = None,
         token_counter_loader: TokenCounterLoader | None = None,
         cuda_capability: CudaCapability | None = None,
+        device_total_gib: DeviceTotalGib | None = None,
     ) -> None:
         self._settings = settings
         self._source_resolver: SourceResolver = (
@@ -263,6 +296,7 @@ class VllmEngineFactory:
         )
         self._token_counter_loader = token_counter_loader or _hf_token_counter
         self._cuda_capability = cuda_capability or _vllm_cuda_capability
+        self._device_total_gib = device_total_gib or nvml_device_total_gib
 
     def availability(self) -> str | None:
         try:
@@ -283,27 +317,30 @@ class VllmEngineFactory:
         from vllm.inputs import ExplicitEncoderDecoderPrompt, TextPrompt
         from vllm.v1.engine.async_llm import AsyncLLM
 
-        settings = self._settings
-        model = spec
+        sizing = spec.engine
+        utilization = gpu_memory_utilization(sizing.vram_gib, self._device_total_gib())
+        max_num_seqs = sizing.max_num_seqs or DEFAULT_MAX_NUM_SEQS
+        enforce_eager = bool(sizing.enforce_eager)
         args = AsyncEngineArgs(
             model=model_dir,
-            dtype=model.compute_type or "auto",
+            dtype=spec.compute_type or "auto",
             quantization=quantization,
-            max_model_len=model.max_model_len,
-            gpu_memory_utilization=settings.gpu_memory_utilization,
-            max_num_seqs=settings.max_num_seqs,
-            enforce_eager=settings.enforce_eager,
+            max_model_len=spec.max_model_len,
+            gpu_memory_utilization=utilization,
+            max_num_seqs=max_num_seqs,
+            enforce_eager=enforce_eager,
             limit_mm_per_prompt={"audio": 1},
         )
         engine = AsyncLLM.from_engine_args(args)
-        max_model_len = model.max_model_len or int(engine.model_config.max_model_len)
+        max_model_len = spec.max_model_len or int(engine.model_config.max_model_len)
         logger.info(
             "vllm.backend.engine_started",
             runtime_key=spec.runtime_key,
             max_model_len=max_model_len,
-            max_num_seqs=settings.max_num_seqs,
-            gpu_memory_utilization=settings.gpu_memory_utilization,
-            enforce_eager=settings.enforce_eager,
+            vram_gib=sizing.vram_gib,
+            gpu_memory_utilization=utilization,
+            max_num_seqs=max_num_seqs,
+            enforce_eager=enforce_eager,
             quantization=quantization,
         )
         return VllmWhisperEngine(

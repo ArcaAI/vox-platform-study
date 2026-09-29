@@ -19,6 +19,11 @@ contract, in order:
 3. anything else (``s3://``, ``file://``, a cloud engine) → refused by name. A published
    row always has a ``localPath``; nothing here needs to reach an object store.
 
+OFFLINE (``HF_HUB_OFFLINE=1`` — every cluster pod). Step 2 is closed: a model that is not
+on the models-bucket mount is refused by name (``MODEL_NOT_PUBLISHED``, 503) before any
+credential lookup or pull, instead of hanging on an HF call that cannot succeed (TASK-1021
+review focus 1). Publishing the model to the bucket is the fix, never a pull.
+
 CHECKSUM. ``AiModel.checksum`` is the SHA256 of the publication's PRIMARY weights object
 (``AiModelDownloadProcessor``: the first weights file of the published ``manifest.json``).
 So it is verifiable exactly where that manifest says which file it describes — a
@@ -104,10 +109,13 @@ class ModelSourceResolver:
         *,
         cache_dir: str | None,
         snapshot_download: SnapshotDownload | None = None,
+        offline: bool = False,
     ) -> None:
         self._credentials = credentials
         self._cache_dir = cache_dir
         self._snapshot_download = snapshot_download or _hf_snapshot_download
+        #: ``HF_HUB_OFFLINE``: weights come from the published bucket only.
+        self.offline = offline
 
     @classmethod
     def from_settings(cls, settings: Settings) -> ModelSourceResolver:
@@ -117,6 +125,7 @@ class ModelSourceResolver:
                 base_url=settings.api_gateway_url, token=settings.peer_service_token()
             ),
             cache_dir=settings.weights_cache_dir,
+            offline=settings.hf_hub_offline,
         )
 
     async def resolve(self, model: ResolvedServingSpec) -> Path:
@@ -138,6 +147,14 @@ class ModelSourceResolver:
                 slug=model.slug,
                 path=str(path),
                 detail="configured localPath does not exist; falling through to sourceUri",
+            )
+
+        if self.offline:
+            raise ModelSourceError(
+                "MODEL_NOT_PUBLISHED",
+                f"model '{model.slug}' is not on the published models bucket "
+                f"(localPath={model.local_path!r}) and this pod is offline (HF_HUB_OFFLINE); "
+                "publish it to the bucket",
             )
 
         repo_id = hf_repo_id(model.source_uri)

@@ -71,7 +71,7 @@ def client_for(gateway: Gateway, clock: Clock | None = None) -> EffectiveConfigC
 
 
 async def test_pulls_its_own_subset_with_the_shared_service_token() -> None:
-    gateway = Gateway({"asrVllm.engine.maxNumSeqs": 32})
+    gateway = Gateway({"vllm.truncation.voicedDbfs": -30})
     snapshot = await client_for(gateway).get()
 
     (request,) = gateway.requests
@@ -80,7 +80,7 @@ async def test_pulls_its_own_subset_with_the_shared_service_token() -> None:
     assert request.headers["X-Service-Token"] == "tok-123"
     assert "X-Internal-Service-Key" not in request.headers
     assert snapshot.ok is True
-    assert snapshot.raw["settings"]["asrVllm.engine.maxNumSeqs"]["value"] == 32
+    assert snapshot.raw["settings"]["vllm.truncation.voicedDbfs"]["value"] == -30
 
 
 async def test_the_snapshot_is_cached_for_the_ttl_then_refetched() -> None:
@@ -131,7 +131,7 @@ async def test_an_invalidation_message_drops_the_cache() -> None:
     gateway = Gateway()
     client = client_for(gateway)
     await client.get()
-    assert client.handle_invalidation_message(b'{"key":"asrVllm.engine.maxNumSeqs"}') is True
+    assert client.handle_invalidation_message(b'{"key":"vllm.pools"}') is True
     assert client.handle_invalidation_message(b"not json") is True  # still evicts
     await client.get()
     assert len(gateway.requests) == 2
@@ -191,7 +191,7 @@ async def _post(client: AsyncClient) -> dict[str, Any]:
 
 async def test_truncation_knobs_follow_the_control_plane_per_request(settings: Settings) -> None:
     # "ok" on 7 s of voiced audio is flagged at the code default (3 chars / voiced s).
-    gateway, clock = Gateway({"asrVllm.truncation.minCharsPerVoicedSecond": 0}), Clock()
+    gateway, clock = Gateway({"vllm.truncation.minCharsPerVoicedSecond": 0}), Clock()
     app = create_app(
         settings,
         engine_factory=FakeEngineFactory(engine_text="ok"),
@@ -204,7 +204,7 @@ async def test_truncation_knobs_follow_the_control_plane_per_request(settings: S
 
             # A platform admin raises the threshold; the TTL lapses. The next window must
             # not WAIT for the pull (it refreshes in the background) — a later one sees it.
-            gateway.settings = {"asrVllm.truncation.minCharsPerVoicedSecond": 3}
+            gateway.settings = {"vllm.truncation.minCharsPerVoicedSecond": 3}
             clock.now += 120
             await _post(client)
             await app.state.control_plane_refresh
@@ -280,7 +280,7 @@ async def test_without_the_redis_package_push_is_disabled_once_and_the_ttl_serve
     class State:
         pass
 
-    gateway = Gateway({"asrVllm.engine.maxNumSeqs": 32})
+    gateway = Gateway({"vllm.truncation.voicedDbfs": -30})
     state = State()
     state.settings = Settings()  # type: ignore[attr-defined]
     state.effective_config_client = client_for(gateway)  # type: ignore[attr-defined]
@@ -288,4 +288,4 @@ async def test_without_the_redis_package_push_is_disabled_once_and_the_ttl_serve
     await refresh_control_plane(state)
     assert state.config_invalidation_disabled is True  # type: ignore[attr-defined]
     assert getattr(state, "config_invalidation_task", None) is None
-    assert state.settings.max_num_seqs == 32  # type: ignore[attr-defined]
+    assert state.settings.truncation_voiced_dbfs == -30  # type: ignore[attr-defined]

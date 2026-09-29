@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 111 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
-| Python declared fields | 312 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 365 |
-| `turbo.json#globalEnv` entries | 518 |
+| Python declared fields | 311 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 363 |
+| `turbo.json#globalEnv` entries | 516 |
 
 ## Variables — the TypeScript platform surface
 
@@ -327,6 +327,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `INTERNAL_ACCESS_TOKEN` | `apps/guardrail` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/nlp` | no | yes | `CHANGE_ME` | live | `NLP_INTERNAL_ACCESS_TOKEN` |
+| `HF_HUB_OFFLINE` | `apps/vllm` | no | no | `false` | commented | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/text` | no | yes | `CHANGE_ME` | live | `TOKEN` |
 | `INTERNAL_ACCESS_TOKEN` | `apps/tts` | no | yes | `CHANGE_ME` | live | — |
@@ -480,10 +481,8 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `VAD_MIN_SPEECH_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `100` | commented | — |
 | `VAD_THRESHOLD__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.5` | commented | — |
 | `VLLM_API_GATEWAY_URL` | `apps/vllm` | no | no | `http://localhost:8868/api/v1` | commented | — |
-| `VLLM_ENFORCE_EAGER__MOVED_TO_CONTROL_PLANE` | `apps/vllm` | no | no | `false` | commented | — |
-| `VLLM_GPU_MEMORY_UTILIZATION__MOVED_TO_CONTROL_PLANE` | `apps/vllm` | no | no | `0.2` | commented | — |
-| `VLLM_MAX_NUM_SEQS__MOVED_TO_CONTROL_PLANE` | `apps/vllm` | no | no | `64` | commented | — |
-| `VLLM_MAX_RESIDENT_ENGINES__MOVED_TO_CONTROL_PLANE` | `apps/vllm` | no | no | `1` | commented | — |
+| `VLLM_POOL` | `apps/vllm` | no | no | `default` | commented | — |
+| `VLLM_POOLS__MOVED_TO_CONTROL_PLANE` | `apps/vllm` | no | no | `{"default": {"acceptedKinds": ["asr"], "pins": [], "vramBudgetGiB": 6, "maxResidentEngines": 1, "inflightFactor": 2}}` | commented | — |
 | `VLLM_TRUNCATION_MIN_CHARS_PER_VOICED_SECOND__MOVED_TO_CONTROL_PLANE` | `apps/vllm` | no | no | `3` | commented | — |
 | `VLLM_TRUNCATION_VOICED_DBFS__MOVED_TO_CONTROL_PLANE` | `apps/vllm` | no | no | `-40` | commented | — |
 | `VLLM_WEIGHTS_CACHE_DIR` | `apps/vllm` | no | no | — | commented | — |
@@ -518,7 +517,6 @@ promotion into its service’s `BaseSettings`.
 | `HARNESS_VERDICT_CACHE_HMAC_KEY` | `apps/harness/src/harness/sensors/inferential/verdict_cache.py` |
 | `HF_HUB_CACHE` | `packages/py-runtime-models/src/hope_runtime_models/resolvable.py` |
 | `HF_HUB_DISABLE_IMPLICIT_TOKEN` | `apps/vllm/src/hope_vllm/main.py` |
-| `HF_HUB_OFFLINE` | `apps/harness/src/harness/models/source_resolver.py`, `apps/nlp/src/nlp/models/source_resolver.py`, `apps/stt/src/stt/models/source_resolver.py`, `apps/tts/src/tts/models/source_resolver.py` |
 | `HOPE_SECRETS_DIR` | `packages/py-env/src/hope_env/settings_sources.py` |
 | `HOPE_STT_APP_DIR` | `apps/stt/scripts/mlen_chunk_sweep.py` |
 | `HOSTNAME` | `packages/py-env/src/hope_env/service_registration.py`, `packages/py-runtime-models/src/hope_runtime_models/residency_agent.py` |

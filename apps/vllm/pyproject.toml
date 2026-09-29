@@ -107,8 +107,9 @@ exclude = "/tests/"
 
 [[tool.mypy.overrides]]
 # The engine is not installed where mypy runs (Mac, `arcaenv`); it is imported
-# lazily and only on Linux + CUDA.
-module = ["vllm", "vllm.*"]
+# lazily and only on Linux + CUDA. `pynvml` is vLLM's own `nvidia-ml-py` dependency,
+# imported lazily by the backend to size engines against the device (TASK-1021).
+module = ["vllm", "vllm.*", "pynvml"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
