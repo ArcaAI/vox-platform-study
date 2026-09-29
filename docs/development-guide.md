@@ -175,7 +175,6 @@ Per-service dev commands (Python services run inside conda `arcaenv` via `script
 | `pnpm admin:dev`                    | Admin console :5176                   | Next.js 16 App Router; BFF-proxies the gateway                 |
 | `pnpm ui:dev` / `pnpm ui:storybook` | `@arcaai/ui` build watch / Storybook  | component work                                                 |
 | `pnpm sdk:dev`, `pnpm sdk-node:dev` | browser SDK / server SDK watch builds |                                                                |
-| `pnpm compat:dev`                   | v1→v2 compat playground :5177         |                                                                |
 | `pnpm <svc>:dev:watch`              | scoped-reload variant                 | `<svc>` ∈ stt, text, guardrail, nlp, harness, tts (not worker) |
 
 Support commands:
@@ -229,7 +228,7 @@ Rules of thumb: controllers never touch Prisma; services import repositories fro
 
 Python services (`apps/stt`, `text`, `guardrail`, `nlp`, `harness`, `tts`) are PEP-621 `src/<package>/` layouts: `main.py` (FastAPI `create_app()` + lifespan), `core/` (pydantic-settings config with a per-service `env_prefix`, logging), `api/endpoints/`, `services/`, `models/`. Tests live in `src/<pkg>/tests/` (text, guardrail, harness, tts) or a top-level `tests/` (stt, nlp). Dependencies are declared per service but locked once at the repo root — run `uv lock` at the root after changing any member's dependencies. Shared Python packages are uv-workspace members too: `py-env` (the one env loader), `py-otel` (trace propagation), `py-runtime-models` (model-cache contract), `py-async-contract`.
 
-Frontend apps and packages: `apps/admin-console` (Next.js 16 operator UI, BFF auth + catch-all gateway proxy; governed by `.claude/rules/13-nextjs-apps.md`), `packages/ui` (`@arcaai/ui` — shadcn/Radix/cva components, Tailwind v4 tokens in `src/styles/globals.css`), `packages/agentic-sdk-v2` (`@arcaai/vox` — browser consultation SDK) composing `room`, `noise-filter`, `vad`, `stt`, `med-ner`, `pipeline`, plus `packages/vox-node` (`@arcaai/vox-node` — zero-dependency server SDK) and `packages/vox-codegen`. Shared backend packages: `logger`, `exceptions`, `types`, `utils`, `tools`, `async-contract`, `workflow-contract`, `json-schema-subset`, `config-*`.
+Frontend apps and packages: `apps/admin-console` (Next.js 16 operator UI, BFF auth + catch-all gateway proxy; governed by `.claude/rules/13-nextjs-apps.md`), `packages/ui` (`@arcaai/ui` — shadcn/Radix/cva components, Tailwind v4 tokens in `src/styles/globals.css`), `packages/agentic-sdk-v2` (`@arcaai/vox` — browser consultation SDK) composing `room` and `stt` (audio capture + backend streaming transport only — the browser runs no model; `pipeline` ships in the same SDK family), plus `packages/vox-node` (`@arcaai/vox-node` — zero-dependency server SDK) and `packages/vox-codegen`. Shared backend packages: `logger`, `exceptions`, `types`, `utils`, `tools`, `async-contract`, `workflow-contract`, `json-schema-subset`, `config-*`.
 
 Deep conventions with exemplar file paths: [development-patterns-and-standards.md](./development-patterns-and-standards.md). Capability-to-code mapping: [traceability/index.md](./traceability/index.md).
 

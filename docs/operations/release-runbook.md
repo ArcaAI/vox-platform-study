@@ -14,10 +14,10 @@ comes from applying one system's rules to the other's artifact.
 
 | | npm packages | Services and apps |
 |---|---|---|
-| **What** | `@arcaai/vox`, `vox-node`, `room`, `stt`, `vad`, `noise-filter`, `med-ner`, `pipeline`, plus `utils`, `types`, `json-schema-subset` | `apps/api`, the Python services, `admin-console` |
-| **Ships as** | a tarball in the GitLab Package Registry | a container image |
+| **What** | `@arcaai/vox`, `vox-node`, `vox-codegen`, `room`, `stt`, `pipeline`, `types` (the client-AI packages `vad` / `noise-filter` / `med-ner` were deleted in 4.0.0, TASK-1006) | `apps/api`, the Python services, `admin-console` |
+| **Ships as** | a tarball in GitHub Packages (`npm.pkg.github.com`) | a container image |
 | **Versioned by** | **Changesets** → the version in `package.json` | **the git tag** → baked into `/app/build-info.json` at build time |
-| **You bump it by** | `pnpm changeset`, then CI | pushing a tag |
+| **You bump it by** | `pnpm changeset`, then `pnpm changeset:version` and a LOCAL publish ([vox-sdk-release](./vox-sdk-release/README.md)) | pushing a tag |
 | **`package.json` version** | authoritative | **meaningless — never edit it** |
 
 > **Why `package.json` is meaningless for services.** `apps/api` reported `0.1.0` in every
@@ -32,25 +32,22 @@ comes from applying one system's rules to the other's artifact.
 ```bash
 pnpm changeset             # describe a change — run this WITH your PR, not at release time
 pnpm changeset:status      # what would be released, and what has no changeset yet
-pnpm changeset:version     # consume changesets → bump package.json + write CHANGELOGs   [CI does this]
-pnpm changeset:publish     # push tarballs to the registry                                [CI does this]
+pnpm changeset:version     # consume changesets → bump package.json + write CHANGELOGs   [operator, at release time]
+pnpm changeset:publish     # push tarballs to the registry                                [the CI job; no-op after a local publish]
 ```
 
-`changeset:version` and `changeset:publish` are listed so you can reason about CI and run them
-in an emergency. **In the normal flow you run neither** — you run `pnpm changeset` while writing
-the change, and CI does the rest.
+**Owner rule: SDK releases are published locally, never by the CI `publish-sdk` job** — follow
+[vox-sdk-release/README.md](./vox-sdk-release/README.md). While writing a change you run only
+`pnpm changeset`; the operator runs `changeset:version` and publishes at release time.
 
-### `scripts/publish-sdk.sh` (`pnpm sdk:publish`) — superseded
+### `scripts/publish-sdk.sh` (`pnpm sdk:publish`) — the scripted local publish
 
-This script exists only because Changesets was never configured; its own header says *"If
-changesets is ever configured, prefer it and retire this script."* Changesets **is** configured
-now, so:
-
-- **Do not use it for a normal release.** It hand-bumps every package to a version you type,
-  which is precisely how the SDK family drifted (`@arcaai/pipeline` sat at `2.0.6` while the
-  rest moved to `3.0.0`).
-- It is kept as a **break-glass fallback** for the case where the registry rejects a Changesets
-  publish half-way and you need to push one package by hand. Use `--dry-run` first.
+This is the scripted form of the LOCAL release path (its header states the owner rule). Version
+first with Changesets (`pnpm changeset:version`, which moves the whole `fixed` group together and
+writes the CHANGELOGs), commit, then run it with **that same version** — its bump step is then a
+no-op and it builds and publishes in dependency order. Do not hand-type a different version: that
+is precisely how the SDK family drifted (`@arcaai/pipeline` sat at `2.0.6` while the rest moved to
+`3.0.0`). Use `--dry-run` first; push the `SDK-<ver>` tag only afterwards.
 
 ---
 
@@ -72,15 +69,18 @@ request or response shape, a removed path, a new required option. If you are uns
 unexpected breaking change costs them a production incident.
 
 **The eight SDK packages move together.** `fixed` in `.changeset/config.json` groups `vox`,
-`vox-node`, `room`, `stt`, `vad`, `noise-filter`, `med-ner` and `pipeline`, so a changeset
-touching any one of them bumps **all eight** to the same version. This is deliberate
-(`08-vox-sdk.md`): a consumer pairing `vox@3` with `room@2` is a support problem nobody wants.
-Do not try to release one of them alone.
+`vox-node`, `vox-codegen`, `room`, `stt`, `pipeline`, `types` and the private
+`vox-node-codegen`, so a changeset touching any one of them bumps **all eight** to the same
+version. This is deliberate (`08-vox-sdk.md`): a consumer pairing `vox@4` with `room@3` is a
+support problem nobody wants. Do not try to release one of them alone.
 
 ### At release time
 
-Nothing manual. CI's `publish-sdk` job runs `changeset version` (bump + CHANGELOG), builds every
-publishable package, runs `changeset publish`, and commits the version bumps back.
+Manual, from the operator's machine — owner rule, never the CI `publish-sdk` job. Run
+`pnpm changeset:version` (bump + CHANGELOG) on the active branch, commit, then publish per
+[vox-sdk-release/README.md](./vox-sdk-release/README.md); only afterwards push the protected
+`SDK-<ver>` tag, whose `publish-sdk` job is then a no-op (`changeset publish` skips versions
+already on the registry).
 
 ### Checking before you cut
 
@@ -91,7 +91,7 @@ pnpm changeset:status
 - *"Some packages have been changed but no changesets were found"* → a real change is about to
   ship silently unversioned. Add one, or `pnpm changeset --empty` if it genuinely needs no
   release (a test-only or docs-only change).
-- Exit 0 with a bump list → that is exactly what CI will publish.
+- Exit 0 with a bump list → that is exactly what `changeset version` will bump and the local publish will ship.
 
 ---
 

@@ -30,8 +30,8 @@ packages/
   vox-node/          @arcaai/vox-node — non-browser server SDK, zero runtime deps
   vox-codegen/       @arcaai/vox-codegen — tenant context-schema -> TypeScript CLI
   vox-node-codegen/  private, generates hope.admin.* for @arcaai/vox-node from the gateway route manifest
-  room/, vad/, noise-filter/, stt/, med-ner/, pipeline/   browser audio/ML packages (VAD, denoise,
-                     local Whisper STT worker, client NER, sequential/parallel processing)
+  room/, stt/, pipeline/   browser audio capture + backend streaming transport, sequential/parallel
+                     processing (no in-browser models — VAD/denoise/ASR are server-side, chosen by the ASR Agent)
 
   # Shared cross-language contracts and Python glue
   async-contract/, py-async-contract/     shared async job/webhook contract (TS + Python mirror)

@@ -1,9 +1,10 @@
 # Changesets
 
-`.gitlab/ci/publish.yml` runs `changeset version` then `changeset publish` against the
-GitLab Package Registry. Until this directory existed, both were no-ops against a missing
-install — SDK versions were hand-maintained, which is how `@arcaai/pipeline` sat a full
-major behind the rest of the family without anything noticing.
+SDK versions are cut with Changesets (`pnpm changeset:version`) and published to GitHub
+Packages LOCALLY from the operator's machine per `docs/operations/vox-sdk-release/` — owner
+rule, never by the CI `publish-sdk` job. Until this directory existed, versions were
+hand-maintained, which is how `@arcaai/pipeline` sat a full major behind the rest of the
+family without anything noticing.
 
 ## Adding a changeset
 
@@ -12,19 +13,21 @@ pnpm changeset
 ```
 
 Pick the packages, pick major/minor/patch, write one line a consumer would understand.
-The file it writes is committed with your change; CI consumes and deletes it.
+The file it writes is committed with your change; `changeset version` consumes and deletes it.
 
 ## Two things this config encodes
 
-**`fixed` — the SDK family versions in lockstep.** `@arcaai/vox`, `vox-node`, `room`, `stt`,
-`vad`, `noise-filter`, `med-ner` and `pipeline` always move together, because
-`08-vox-sdk.md` requires it and because a consumer pairing `vox@3` with `room@2` is a
-support problem nobody wants. Bumping any one of them bumps all eight — that is the point,
-not an inconvenience.
+**`fixed` — the SDK family versions in lockstep.** `@arcaai/vox`, `vox-node`, `vox-codegen`,
+`room`, `stt`, `pipeline`, `types` and `vox-node-codegen` (private, versioned but never
+published) always move together, because `08-vox-sdk.md` requires it and because a consumer
+pairing `vox@4` with `room@3` is a support problem nobody wants. Bumping any one of them
+bumps all eight — that is the point, not an inconvenience. (The client-AI packages `vad`,
+`noise-filter` and `med-ner` left the family when they were deleted in 4.0.0, TASK-1006.)
 
-**`ignore` — public-but-not-published packages.** `async-contract`, `json-schema-subset`,
-`vox-codegen` and `workflow-contract` are not in the publish job's build list. They are
-listed here so `changeset publish` never tries.
+**`ignore` — packages Changesets must never version.** The apps and backend libraries
+(`admin-console`, `api`, `applications`, `database`, `domains`, `utils`) plus the shared
+contracts `async-contract` and `workflow-contract`. They are listed here so `changeset
+version` / `changeset publish` never touches them.
 
 ## What this does NOT version
 
