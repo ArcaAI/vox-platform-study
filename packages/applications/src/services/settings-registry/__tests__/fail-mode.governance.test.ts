@@ -230,6 +230,8 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'vault.kvMount': 'VAULT_KV_MOUNT',
     'vault.kvPrefix': 'VAULT_KV_PREFIX',
     'modelPublisher.stagingDir': 'MODEL_PUBLISHER_STAGING_DIR',
+    // TASK-1019 I8 — the staging emptyDir's size, so the pre-flight measures the pod's budget.
+    'modelPublisher.stagingMaxBytes': 'MODEL_PUBLISHER_STAGING_MAX_BYTES',
     // TASK-1019 C3 — the model publisher's own `hope-models` key pair is an ENV
     // secret delivered to the publisher pod alone (secretKeyRef), not vault-kv:
     // a Vault kv path would be readable by hope-api's shared AppRole.

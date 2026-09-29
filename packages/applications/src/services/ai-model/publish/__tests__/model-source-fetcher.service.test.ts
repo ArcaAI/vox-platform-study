@@ -185,6 +185,20 @@ describe('ModelSourceFetcherService', () => {
       await expect(service.fetch(AiModelSource.HUGGINGFACE, 'org/repo', null, opts())).resolves.toHaveLength(1);
     });
 
+    it('I8 — with no probe injected, the pre-flight honours MODEL_PUBLISHER_STAGING_MAX_BYTES (the pod budget), not just the node disk', async () => {
+      vi.stubEnv('MODEL_PUBLISHER_STAGING_DIR', stagingDir);
+      vi.stubEnv('MODEL_PUBLISHER_STAGING_MAX_BYTES', '500');
+      try {
+        const budgeted = new ModelSourceFetcherService(mockHfClient as never, mockS3Service as never);
+        mockHfClient.listRepoFiles.mockResolvedValue([{ path: 'model.gguf', size: 1000 }]);
+
+        await expect(budgeted.fetch(AiModelSource.HUGGINGFACE, 'org/repo', null, opts())).rejects.toMatchObject({ code: STAGING_SPACE_INSUFFICIENT });
+        expect(mockHfClient.downloadFileTo).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
     it('refuses a source path that would escape the staging dir', async () => {
       mockHfClient.listRepoFiles.mockResolvedValue([{ path: '../escape/model.gguf', size: 1 }]);
 

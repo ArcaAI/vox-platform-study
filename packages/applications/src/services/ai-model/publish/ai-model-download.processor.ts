@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Inject, Logger, Optional } from '@nestjs/common';
+import { Inject, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { Job, UnrecoverableError } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
@@ -12,7 +12,7 @@ import { mergeDownloadMeta, readDownloadMeta } from './model-download-meta.util'
 import { buildAiModelManifest } from './model-manifest.util';
 import { ModelPublisherError, isNonRetryablePublisherError } from './model-publisher.errors';
 import { ModelSourceFetcherService } from './model-source-fetcher.service';
-import { createStagingDir, removeStagingDir, resolveStagingBaseDir } from './model-staging';
+import { createStagingDir, removeStagingDir, resolveStagingBaseDir, sweepStaleStagingDirs } from './model-staging';
 import { ModelStoreFactory } from './model-store';
 import { AiModelUnregisterService, UnregisterAiModelResult } from './model-unregister.service';
 import { HuggingFaceModelSourceClient } from './huggingface-model-source.client';
@@ -121,11 +121,13 @@ export const MODEL_PUBLISHER_PROCESSOR_OPTIONS = Symbol('MODEL_PUBLISHER_PROCESS
 // ran at bullmq's default of 1 because no `@Processor` passed options; the
 // number, and the Prisma-pool budget it fits inside, live in one table.
 @Processor(JobQueue.DownloadAiModel, { concurrency: QUEUE_CONCURRENCY[JobQueue.DownloadAiModel] })
-export class AiModelDownloadProcessor extends WorkerHost {
+export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(AiModelDownloadProcessor.name);
   private readonly stagingBaseDir: string;
   private readonly heartbeatIntervalMs: number;
   private readonly now: () => number;
+  /** Staging dirs created before this moment belong to a previous container. */
+  private readonly startedAtMs = Date.now();
 
   constructor(
     private readonly aiModelRepository: AiModelRepository,
@@ -140,6 +142,21 @@ export class AiModelDownloadProcessor extends WorkerHost {
     this.stagingBaseDir = options?.stagingBaseDir ?? resolveStagingBaseDir();
     this.heartbeatIntervalMs = options?.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
     this.now = options?.now ?? Date.now;
+  }
+
+  /**
+   * I8 — an emptyDir outlives a container restart, so a job that died mid-download
+   * left its staging dir behind, eating the pod's budget. Sweep those at start;
+   * keyed on this process's start time, so it never races a job of its own.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const removed = await sweepStaleStagingDirs(this.stagingBaseDir, this.startedAtMs);
+      if (removed.length > 0) this.logger.log({ message: 'Swept stale model-publisher staging dirs', count: removed.length, stagingBaseDir: this.stagingBaseDir });
+    } catch (error) {
+      // swallow-ok: a failed sweep only leaves disk used; the pre-flight still measures it.
+      this.logger.warn({ message: 'Staging sweep failed', stagingBaseDir: this.stagingBaseDir, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   async process(job: Job<PublisherJobPayload>): Promise<DownloadAiModelResult | SupersededDownloadResult | UnregisterAiModelResult> {

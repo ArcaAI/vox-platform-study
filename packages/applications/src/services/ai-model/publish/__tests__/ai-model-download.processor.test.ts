@@ -10,7 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -174,6 +174,18 @@ describe('AiModelDownloadProcessor', () => {
   }
 
   const uploadedKeys = () => [...store.uploads.keys()];
+
+  it('I8 — sweeps model-publish-* staging dirs a previous container left in the pod, at worker start', async () => {
+    const stale = join(stagingBaseDir, 'model-publish-leftover');
+    await mkdir(stale);
+    await writeFile(join(stale, 'half.gguf'), 'x');
+    const past = new Date(Date.now() - 60_000);
+    await utimes(stale, past, past);
+
+    await processor.onModuleInit();
+
+    expect(await readdir(stagingBaseDir)).toEqual([]);
+  });
 
   it('throws (fails the job) when tenantId is missing from the payload — fail-closed guard', async () => {
     await expect(processor.process(job({ tenantId: undefined }))).rejects.toThrow();
