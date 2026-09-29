@@ -81,7 +81,7 @@ describe('StreamingBackendSTTProvider', () => {
   });
 
   describe('init()', () => {
-    it('creates a streaming session with the configured pipelineId and opens the WebSocket', async () => {
+    it('creates a streaming session — a deprecated pipelineId is NOT forwarded (TASK-1012) — and opens the WebSocket', async () => {
       await provider.init({
         sessionId: 'ignored',
         language: 'en-US',
@@ -97,7 +97,7 @@ describe('StreamingBackendSTTProvider', () => {
       });
 
       expect(session.createSession).toHaveBeenCalledTimes(1);
-      expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'pipeline-doctor-default' }));
+      expect(session.createSession).toHaveBeenCalledWith(expect.not.objectContaining({ pipelineId: expect.anything() }));
       expect(session.getWebSocketUrl).toHaveBeenCalled();
       expect(wsClient.connect).toHaveBeenCalledWith('wss://api.test/ws/stt/stream?sessionId=sess-1&ticket=T-abc');
       expect(provider.isReady()).toBe(true);

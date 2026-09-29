@@ -39,7 +39,11 @@ import type { ISDKLogger } from '../core/logger';
 export interface UseArcaConfigReturn {
   /** Current user preferences */
   preferences: UserPreferences;
-  /** Available models by type */
+  /**
+   * Available models by type
+   *
+   * @deprecated TASK-1012 — the local model catalogue and selection are dead: the browser never runs a model (TASK-865/TASK-1006). ASR is a server-side Agent — `agentSlug` on `audio.start`, discovered with `useSelectableAsrAgents()`. Removed in 5.0.0.
+   */
   models: {
     stt: ModelDefinition[];
     vad: ModelDefinition[];
@@ -56,9 +60,17 @@ export interface UseArcaConfigReturn {
   tenantConfig: TenantAudioConfig | null;
   /** Update user preferences */
   update: (updates: Partial<UserPreferences>) => Promise<void>;
-  /** Select a model for a capability */
+  /**
+   * Select a model for a capability
+   *
+   * @deprecated TASK-1012 — the local model catalogue and selection are dead: the browser never runs a model (TASK-865/TASK-1006). ASR is a server-side Agent — `agentSlug` on `audio.start`, discovered with `useSelectableAsrAgents()`. Removed in 5.0.0.
+   */
   selectModel: (type: 'stt' | 'vad' | 'ner', modelId: string) => void;
-  /** Persist the local STT task (transcribe|translate) */
+  /**
+   * Persist the local STT task (transcribe|translate)
+   *
+   * @deprecated TASK-1012 — the local model catalogue and selection are dead: the browser never runs a model (TASK-865/TASK-1006). ASR is a server-side Agent — `agentSlug` on `audio.start`, discovered with `useSelectableAsrAgents()`. Removed in 5.0.0.
+   */
   selectSttTask: (task: SttTask) => void;
   /** Get a specific preference value */
   get: <K extends keyof UserPreferences>(key: K) => UserPreferences[K];

@@ -61,7 +61,7 @@ describe('STTProcessor — streaming-transport wiring', () => {
       });
     });
 
-    it('uses StreamingBackendSTTProvider when a streaming transport is injected with a pipelineId', async () => {
+    it('uses StreamingBackendSTTProvider when a streaming transport is injected — a deprecated pipelineId is not forwarded (TASK-1012)', async () => {
       const wsClient = makeWsClient();
       const session = makeSession();
       processor.setStreamingTransport({
@@ -74,7 +74,7 @@ describe('STTProcessor — streaming-transport wiring', () => {
 
       const provider = processor.getProvider();
       expect(provider).toBeInstanceOf(StreamingBackendSTTProvider);
-      expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'pipeline-test' }));
+      expect(session.createSession).toHaveBeenCalledWith(expect.not.objectContaining({ pipelineId: expect.anything() }));
       expect(wsClient.connect).toHaveBeenCalled();
     });
 

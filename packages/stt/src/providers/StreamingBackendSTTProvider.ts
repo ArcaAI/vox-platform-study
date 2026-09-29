@@ -29,13 +29,15 @@ import { createStreamingResampler, float32ToInt16, WHISPER_SAMPLE_RATE, type Str
 /**
  * Configuration accepted by `StreamingBackendSTTProvider.init`.
  *
- * Extends the base `ProviderConfig` with the mandatory `pipelineId` field
- * that drives backend ASR pipeline orchestration.
+ * Extends the base `ProviderConfig` with the ASR selector (`agentSlug`, or
+ * nothing — the gateway resolves the tenant's assignment) and the session's
+ * transport knobs.
  */
 export interface StreamingRemoteProviderConfig extends ProviderConfig {
   /**
-   * ASR pipeline UUID or slug from the user's tenant.
-   * @deprecated TASK-865 — removed in R4. Use `agentSlug`, or neither.
+   * @deprecated IGNORED since 4.0.1 (TASK-1012) and removed in 5.0.0. The gateway
+   * refuses `pipelineId` (400) since TASK-1006, so it is never sent; setting it only
+   * logs a one-time warning. Name the ASR Agent with `agentSlug`, or set neither.
    */
   pipelineId?: string;
   /** Slug of the published ASR Agent to transcribe with (TASK-865). Optional: neither ⇒ tenant default. */
@@ -78,6 +80,18 @@ export interface StreamingRemoteProviderConfig extends ProviderConfig {
    * always mono). Defaults to 1 when omitted.
    */
   channelCount?: number;
+}
+
+let pipelineIdWarned = false;
+
+/** One warning per process: `pipelineId` is typed for 4.0.x source compatibility only. */
+function warnPipelineIdIgnored(): void {
+  if (pipelineIdWarned) return;
+  pipelineIdWarned = true;
+  console.warn(
+    '[@arcaai/stt] `pipelineId` is ignored and never sent (the gateway refuses it since TASK-1006); it is removed in 5.0.0. ' +
+      'Name the ASR Agent with `agentSlug`, or omit both and the gateway resolves the tenant assignment.',
+  );
 }
 
 /**
@@ -196,7 +210,7 @@ export interface StreamingWsClientLike {
  */
 export interface StreamingSessionLike {
   createSession(req: {
-    /** @deprecated TASK-865 — removed in R4. */
+    /** @deprecated Never sent since 4.0.1 (TASK-1012; the gateway 400s it); removed in 5.0.0. */
     pipelineId?: string;
     /** ASR Agent slug (TASK-865). */
     agentSlug?: string;
@@ -242,7 +256,6 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
 
   private session: StreamingSessionLike;
   private wsClient: StreamingWsClientLike;
-  private pipelineId: string | null = null;
   private agentSlug: string | null = null;
   /**
    * Per-session stop-drain ceiling from {@link StreamingRemoteProviderConfig.drainTimeoutMs}.
@@ -361,7 +374,8 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     this.config = streamingConfig;
     // TASK-865: neither selector is required — the gateway resolves the
     // tenant's default ASR Agent when the session names nothing.
-    this.pipelineId = streamingConfig.pipelineId ?? null;
+    // TASK-1012: `pipelineId` is IGNORED — the gateway 400s it (TASK-1006).
+    if (streamingConfig.pipelineId) warnPipelineIdIgnored();
     this.agentSlug = streamingConfig.agentSlug ?? null;
     this.drainTimeoutMs =
       typeof streamingConfig.drainTimeoutMs === 'number' && streamingConfig.drainTimeoutMs > 0 ? streamingConfig.drainTimeoutMs : null;
@@ -377,10 +391,9 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     this.resampler = null;
 
     await this.session.createSession({
-      // Spread only the selector(s) actually set, so the body carries no
-      // `pipelineId`/`agentSlug` KEY when nothing was named.
+      // Spread the selector only when set, so the body carries no `agentSlug`
+      // KEY when nothing was named. `pipelineId` is never sent (TASK-1012).
       ...(streamingConfig.agentSlug ? { agentSlug: streamingConfig.agentSlug } : {}),
-      ...(streamingConfig.pipelineId ? { pipelineId: streamingConfig.pipelineId } : {}),
       consultationId: streamingConfig.consultationId,
       sampleRate: streamingConfig.sampleRate,
       language: streamingConfig.language,
@@ -632,7 +645,6 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       // best-effort; backend may have already closed the session.
     }
     this.initialized = false;
-    this.pipelineId = null;
     this.agentSlug = null;
     this.drainTimeoutMs = null;
     this.quietWindowMs = null;
@@ -652,11 +664,12 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
   }
 
   /**
-   * Visible for diagnostics — which pipeline id we're streaming against.
-   * @deprecated TASK-865 — removed in R4. See {@link getAgentSlug}.
+   * @deprecated Always `null` since 4.0.1 (TASK-1012): `pipelineId` is no longer sent,
+   * so the session is never "streaming against" one. Removed in 5.0.0. See
+   * {@link getAgentSlug}; the resolved agent is echoed on the session response.
    */
   getPipelineId(): string | null {
-    return this.pipelineId;
+    return null;
   }
 
   /** Visible for diagnostics — which ASR Agent this session asked for (TASK-865). `null` when none was named. */

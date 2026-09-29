@@ -583,11 +583,22 @@ describe('useArca API — context', () => {
 // ===========================================================================
 
 describe('useArca API — summary', () => {
+  // TASK-1012 (L-2): the synchronous POST routes were removed by TASK-1006. Both hooks POST the
+  // ASYNC route, poll `GET /consultations/jobs/:jobId`, then read the persisted note.
+  const job = { jobId: 'job-1', status: 'pending', consultationId: 'cons-1', createdAt: '' };
+  const completedJob = { jobId: 'job-1', status: 'COMPLETED', progress: 100, consultationId: 'cons-1' };
+  function mockNoteJob(note: unknown): void {
+    mockFetch
+      .mockResolvedValueOnce(createMockResponse(job))
+      .mockResolvedValueOnce(createMockResponse(completedJob))
+      .mockResolvedValueOnce(createMockResponse(note));
+  }
+
   // ---- summary.generatePreSummary ----------------------------------------
   describe('summary.generatePreSummary()', () => {
-    it('should POST to pre-summary endpoint and store result', async () => {
+    it('should POST the async pre-summary route, wait for the job, and store the persisted pre-summary', async () => {
       const summary = createMockSummary({ id: 'ps-1', type: 'pre_summary' });
-      mockFetch.mockResolvedValueOnce(createMockResponse(summary));
+      mockNoteJob(summary);
 
       const { result } = renderHook(() => useArca());
       let returned: any;
@@ -596,25 +607,27 @@ describe('useArca API — summary', () => {
         returned = await result.current.summary.generatePreSummary();
       });
 
-      expect(calledUrl()).toBe('http://test/consultations/cons-1/summary/pre-summary');
-      expect(calledMethod()).toBe('POST');
+      expect(calledUrl(0)).toBe('http://test/consultations/cons-1/summary/pre-summary/async');
+      expect(calledMethod(0)).toBe('POST');
+      expect(calledUrl(1)).toBe('http://test/consultations/jobs/job-1');
+      expect(calledUrl(2)).toBe('http://test/consultations/cons-1/summary/pre-summary/latest');
       expect(mockStoreData.addSummary).toHaveBeenCalledWith(summary);
       expect(returned.id).toBe('ps-1');
     });
 
     it('should pass dnaStyleId option when provided', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse(createMockSummary()));
+      mockNoteJob(createMockSummary());
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
         await result.current.summary.generatePreSummary({ dnaStyleId: 'dna-1' });
       });
 
-      expect(calledBody()).toMatchObject({ dnaStyleId: 'dna-1' });
+      expect(calledBody(0)).toMatchObject({ dnaStyleId: 'dna-1' });
     });
 
     it('should toggle summaryGenerating flag', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse(createMockSummary()));
+      mockNoteJob(createMockSummary());
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
@@ -628,9 +641,9 @@ describe('useArca API — summary', () => {
 
   // ---- summary.generateSummary -------------------------------------------
   describe('summary.generateSummary()', () => {
-    it('should POST to summary endpoint and store result', async () => {
+    it('should POST the async summary route, wait for the job, and store the persisted summary', async () => {
       const summary = createMockSummary({ id: 'sum-1', type: 'summary' });
-      mockFetch.mockResolvedValueOnce(createMockResponse(summary));
+      mockNoteJob(summary);
 
       const { result } = renderHook(() => useArca());
       let returned: any;
@@ -639,21 +652,23 @@ describe('useArca API — summary', () => {
         returned = await result.current.summary.generateSummary();
       });
 
-      expect(calledUrl()).toBe('http://test/consultations/cons-1/summary');
-      expect(calledMethod()).toBe('POST');
+      expect(calledUrl(0)).toBe('http://test/consultations/cons-1/summary/async');
+      expect(calledMethod(0)).toBe('POST');
+      expect(calledUrl(1)).toBe('http://test/consultations/jobs/job-1');
+      expect(calledUrl(2)).toBe('http://test/consultations/cons-1/summary/latest');
       expect(mockStoreData.addSummary).toHaveBeenCalledWith(summary);
       expect(returned.id).toBe('sum-1');
     });
 
     it('should pass options (dnaStyleId, includeNER)', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse(createMockSummary()));
+      mockNoteJob(createMockSummary());
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
         await result.current.summary.generateSummary({ dnaStyleId: 'dna-2', includeNER: true });
       });
 
-      expect(calledBody()).toMatchObject({ dnaStyleId: 'dna-2', includeNER: true });
+      expect(calledBody(0)).toMatchObject({ dnaStyleId: 'dna-2', includeNER: true });
     });
   });
 

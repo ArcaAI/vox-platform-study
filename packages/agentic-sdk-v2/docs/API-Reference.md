@@ -1,10 +1,15 @@
 # @arcaai/vox SDK — API Reference
 
-**Package**: `@arcaai/vox` &middot; **Version**: 2.0.0  
+**Package**: `@arcaai/vox` &middot; **Version**: 4.0.1  
 **Peer Dependencies**: `react` 18/19, `react-dom` 18/19  
-**Optional Peers**: `@arcaai/med-ner`, `highlight.run`
+**Optional Peers**: `highlight.run`
 
-> Auto-generated from source on 2026-03-28. Verified against every hook, type, and barrel export.
+> Generated from source on 2026-03-28. Corrected for 4.0.1 (TASK-1012): the surfaces removed in 4.0.0
+> (TASK-1006 — the client-AI packages, `@arcaai/vox/plugins/med-ner`, `useSttProviderToggle`, the ASR
+> pipeline admin hook, every `pipelineId` input) and in TASK-1004 (the `@arcaai/vox/compat` entry) are
+> marked as such, and the browser model registry is marked `@deprecated`. **The browser never runs a
+> model and never selects one: ASR is the tenant's server-side Agent, named by `agentSlug` or chosen by
+> the gateway.** Members not touched by TASK-1012 are as of the 2026-03-28 generation.
 
 ---
 
@@ -14,7 +19,7 @@
 - [Import Paths](#import-paths)
 - [1. useArca — Unified Hook](#1-usearc--unified-hook)
 - [2. Focused Domain Hooks](#2-focused-domain-hooks)
-  - [useSttProviderToggle() — live pipeline ↔ default](#usesttprovidertoggle--live-pipeline--default)
+  - [useSttProviderToggle() — removed in 4.0.0](#usesttprovidertoggle--removed-in-400)
   - [useBatchTranscription() — pre-recorded files](#usebatchtranscription--pre-recorded-files)
 - [3. useAuth — Authentication](#3-useauth--authentication)
 - [4. useArcaConfig — Configuration](#4-usearcaconfig--configuration)
@@ -43,8 +48,7 @@ const config: AgenticConfig = {
     tenantId: 'tenant-uuid', // optional
   },
   audio: {
-    noiseFilter: { enabled: true, level: 'high' },
-    vad: { enabled: true, sensitivity: 0.5 },
+    // `noiseFilter` and `vad` were removed in 4.0.0 — the browser never runs a model.
     stt: { enabled: true, language: 'en', provider: 'auto' },
   },
   plugins: {
@@ -73,12 +77,15 @@ function App() {
 
 ## Import Paths
 
-| Path                          | Contents                                                                | Use Case                                           |
-| ----------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
-| `@arcaai/vox`                 | Everything (core + plugins)                                             | Full SDK                                           |
-| `@arcaai/vox/core`            | Core hooks, types, utils, classes (no audio plugin deps)                | Admin dashboards, SSR, lightweight bundle (~200KB) |
-| `@arcaai/vox/plugins`         | Plugin hooks (useSTT, useVAD, useNoiseFilter), PluginManager, pipelines | Audio processing features                          |
-| `@arcaai/vox/plugins/med-ner` | `useMedNER` hook                                                        | Medical NER (requires `@arcaai/med-ner` ~300MB)    |
+| Path                  | Contents                                                                      | Use Case                               |
+| --------------------- | ----------------------------------------------------------------------------- | -------------------------------------- |
+| `@arcaai/vox`         | Everything (core + plugins)                                                   | Full SDK                               |
+| `@arcaai/vox/core`    | Core hooks, types, utils, classes (no audio code)                             | Admin dashboards, SSR, lighter bundles |
+| `@arcaai/vox/plugins` | `useArcaAudio`, `useTtsPlayback` / `useTtsStream`, `PluginManager`, pipelines | Audio capture + backend STT, TTS       |
+
+Removed entries: `@arcaai/vox/compat` (the v1 compatibility layer — TASK-1004) and
+`@arcaai/vox/plugins/med-ner` (in-browser NER — 4.0.0, TASK-1006). Entity extraction is a
+`NAMED_ENTITY_RECOGNITION` agent invoked with `useAgentInvocation`.
 
 ---
 
@@ -135,19 +142,19 @@ function ConsultationPage() {
 | `isCapturing`        | `boolean`                                        | Audio capture active                           |
 | `isMuted`            | `boolean`                                        | Microphone muted                               |
 | `level`              | `number`                                         | Current audio level (0–100)                    |
-| `isSpeaking`         | `boolean`                                        | VAD speech detected                            |
+| `isSpeaking`         | `boolean`                                        | Speech detected (no client VAD since 4.0.0)    |
 | `currentTranscript`  | `string`                                         | In-progress (partial) transcript               |
 | `transcriptSegments` | `TranscriptSegment[]`                            | Finalized transcript segments with timing data |
 | `language`           | `string`                                         | Active language code (default `'en'`)          |
-| `plugins`            | `AudioPluginStates`                              | Plugin states (STT, VAD, NoiseFilter)          |
+| `plugins`            | `AudioPluginStates`                              | Plugin states (STT; VAD/NoiseFilter vestigial) |
 | `error`              | `Error \| null`                                  | Audio error                                    |
 | `start`              | `(options?: AudioStartOptions) => Promise<void>` | Start audio capture (requests mic permission)  |
 | `stop`               | `() => Promise<void>`                            | Stop audio capture, release mic                |
 | `mute`               | `() => void`                                     | Mute microphone                                |
 | `unmute`             | `() => void`                                     | Unmute microphone                              |
-| `toggleNoiseFilter`  | `(enabled?: boolean) => void`                    | Toggle noise filter on/off                     |
+| `toggleNoiseFilter`  | `(enabled?: boolean) => void`                    | Vestigial — no client noise filter since 4.0.0 |
 | `toggleSTT`          | `(enabled?: boolean) => Promise<void>`           | Toggle speech-to-text on/off                   |
-| `toggleVAD`          | `(enabled?: boolean) => Promise<void>`           | Toggle voice activity detection on/off         |
+| `toggleVAD`          | `(enabled?: boolean) => Promise<void>`           | Vestigial — no client VAD since 4.0.0          |
 
 ---
 
@@ -178,40 +185,48 @@ function ConsultationPage() {
 
 ### summary
 
-| Member                         | Signature                                                                                            | Description                                      |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `preSummary`                   | `SummaryResponse \| null`                                                                            | Latest pre-summary                               |
-| `summary`                      | `SummaryResponse \| null`                                                                            | Latest final summary                             |
-| `all`                          | `SummaryResponse[]`                                                                                  | All summaries for the consultation               |
-| `dnaStyle`                     | `DNAStyle \| null`                                                                                   | Doctor's DNA writing style                       |
-| `isGenerating`                 | `boolean`                                                                                            | Summary generation in progress                   |
-| `error`                        | `Error \| null`                                                                                      | Summary error                                    |
-| `generatePreSummary`           | `(options?: SummaryGenerationOptions) => Promise<SummaryResponse>`                                   | Generate pre-summary (synchronous)               |
-| `generateSummary`              | `(options?: SummaryGenerationOptions) => Promise<SummaryResponse>`                                   | Generate final summary (synchronous)             |
-| `updateSummary`                | `(id: string, content: string, options?: UpdateSummaryOptions) => Promise<void>`                     | Update an existing summary                       |
-| `loadSummaries`                | `(pagination?: PaginationParams) => Promise<SummaryResponse[]>`                                      | Load all summaries from backend                  |
-| `generateSummaryAsync`         | `(options?: SummaryGenerationOptions) => Promise<AsyncJobResponse>`                                  | Generate summary asynchronously (returns job ID) |
-| `generatePreSummaryAsync`      | `(options?: SummaryGenerationOptions) => Promise<AsyncJobResponse>`                                  | Generate pre-summary asynchronously              |
-| `generateComprehensiveSummary` | `(options?: { dnaStyleId?: string; includeNER?: boolean }) => Promise<ComprehensiveSummaryResponse>` | Generate cross-chain comprehensive summary       |
-| `getLatestPreSummary`          | `() => Promise<SummaryResponse>`                                                                     | Get latest pre-summary from backend              |
-| `getSummaryHistory`            | `(summaryId: string) => Promise<SummaryVersionEntry[]>`                                              | Get version history for a summary                |
-| `compareSummaryVersions`       | `(contextItemId: string, v1: number, v2: number) => Promise<DiffResult>`                             | Word-level diff between two versions             |
-| `analyzeDNA`                   | `(texts: string[]) => Promise<DNAStyle>`                                                             | **DEPRECATED** — no backend endpoint exists      |
+| Member                         | Signature                                                                                            | Description                                                   |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `preSummary`                   | `SummaryResponse \| null`                                                                            | Latest pre-summary                                            |
+| `summary`                      | `SummaryResponse \| null`                                                                            | Latest final summary                                          |
+| `all`                          | `SummaryResponse[]`                                                                                  | All summaries for the consultation                            |
+| `dnaStyle`                     | `DNAStyle \| null`                                                                                   | Doctor's DNA writing style                                    |
+| `isGenerating`                 | `boolean`                                                                                            | Summary generation in progress                                |
+| `error`                        | `Error \| null`                                                                                      | Summary error                                                 |
+| `generatePreSummary`           | `(options?: SummaryGenerationOptions) => Promise<SummaryResponse>`                                   | Start the pre-summary job, wait, resolve the note (see below) |
+| `generateSummary`              | `(options?: SummaryGenerationOptions) => Promise<SummaryResponse>`                                   | Start the summary job, wait, resolve the note (see below)     |
+| `updateSummary`                | `(id: string, content: string, options?: UpdateSummaryOptions) => Promise<void>`                     | Update an existing summary                                    |
+| `loadSummaries`                | `(pagination?: PaginationParams) => Promise<SummaryResponse[]>`                                      | Load all summaries from backend                               |
+| `generateSummaryAsync`         | `(options?: SummaryGenerationOptions) => Promise<AsyncJobResponse>`                                  | Generate summary asynchronously (returns job ID)              |
+| `generatePreSummaryAsync`      | `(options?: SummaryGenerationOptions) => Promise<AsyncJobResponse>`                                  | Generate pre-summary asynchronously                           |
+| `generateComprehensiveSummary` | `(options?: { dnaStyleId?: string; includeNER?: boolean }) => Promise<ComprehensiveSummaryResponse>` | Generate cross-chain comprehensive summary                    |
+| `getLatestPreSummary`          | `() => Promise<SummaryResponse>`                                                                     | Get latest pre-summary from backend                           |
+| `getSummaryHistory`            | `(summaryId: string) => Promise<SummaryVersionEntry[]>`                                              | Get version history for a summary                             |
+| `compareSummaryVersions`       | `(contextItemId: string, v1: number, v2: number) => Promise<DiffResult>`                             | Word-level diff between two versions                          |
+| `analyzeDNA`                   | `(texts: string[]) => Promise<DNAStyle>`                                                             | **DEPRECATED** — no backend endpoint exists                   |
 
 > **Note**: The standalone `useArcaSummary()` hook also exposes `approveSummary` — see [Focused Domain Hooks](#usearcasummary-1).
+
+> **`generateSummary` / `generatePreSummary` run on the async plane (4.0.1).** A note is generated only
+> through `POST …/summary/async` / `POST …/summary/pre-summary/async`; the synchronous routes these hooks
+> called in 4.0.0 were removed by TASK-1006 (404). Since 4.0.1 each hook starts the job, polls
+> `GET /consultations/jobs/:jobId` until it completes, and resolves the persisted note from
+> `…/summary/latest` / `…/summary/pre-summary/latest` — same signature, same resolved value. A failed or
+> cancelled job rejects with the job's error, and so does a job that has not finished within 5 minutes.
+> Use `generateSummaryAsync` + `useConsultationJob` when you want the job id and progress yourself.
 
 ---
 
 ### pipelines
 
-| Member                 | Signature                                     | Description                       |
-| ---------------------- | --------------------------------------------- | --------------------------------- |
-| `transcription`        | `PipelineStateInfo \| null`                   | Transcription pipeline state      |
-| `knowledge`            | `PipelineStateInfo \| null`                   | Knowledge pipeline state          |
-| `pauseTranscription`   | `() => void`                                  | Pause the transcription pipeline  |
-| `resumeTranscription`  | `() => void`                                  | Resume the transcription pipeline |
-| `triggerNER`           | `(text?: string) => Promise<MedicalEntity[]>` | Trigger NER extraction manually   |
-| `triggerSummarization` | `() => Promise<string>`                       | Trigger summarization manually    |
+| Member                 | Signature                                     | Description                                                   |
+| ---------------------- | --------------------------------------------- | ------------------------------------------------------------- |
+| `transcription`        | `PipelineStateInfo \| null`                   | Transcription pipeline state                                  |
+| `knowledge`            | `PipelineStateInfo \| null`                   | Knowledge pipeline state                                      |
+| `pauseTranscription`   | `() => void`                                  | Pause the transcription pipeline                              |
+| `resumeTranscription`  | `() => void`                                  | Resume the transcription pipeline                             |
+| `triggerNER`           | `(text?: string) => Promise<MedicalEntity[]>` | Trigger NER extraction manually                               |
+| `triggerSummarization` | `() => Promise<string>`                       | Generate the summary (async job, awaited) and return its text |
 
 ---
 
@@ -317,79 +332,19 @@ Includes all members from [`useArca().summary`](#summary) **plus**:
 
 ---
 
-### useArcaPipelines()
+### Pipeline control
 
-Pipeline control (pause/resume, NER, summarization).
-
-```tsx
-import { useArcaPipelines } from '@arcaai/vox';
-const pipelines = useArcaPipelines();
-```
-
-Same interface as [`useArca().pipelines`](#pipelines).
+There is no standalone pipeline hook — use [`useArca().pipelines`](#pipelines). (`useArcaPipelines` /
+`usePipelines` were removed in 4.0.0; the ASR "pipeline" they selected is now the tenant's Agent.)
 
 ---
 
-### useSttProviderToggle() — live pipeline ↔ default
+### useSttProviderToggle() — removed in 4.0.0
 
-Switch a LIVE transcription session between the selected pipeline and the
-tenant's default fallback STT provider, without dropping the session: the
-backend swaps the ASR engine while the WebSocket, the Redis streams and the
-session identity survive.
-
-```tsx
-import { useSttProviderToggle } from '@arcaai/vox';
-
-function ProviderToggle() {
-  const stt = useSttProviderToggle();
-
-  return (
-    <>
-      <span>
-        Transcribing on {stt.activeProvider?.name ?? 'the selected pipeline'}
-        {stt.isFallbackActive && ' (fallback)'}
-      </span>
-
-      {stt.usePipeline ? (
-        <button disabled={!stt.canSwitchToDefault} onClick={() => stt.switchToDefault()}>
-          Switch to {stt.fallback?.pipelineName ?? 'the default provider'}
-        </button>
-      ) : (
-        <button onClick={() => stt.switchToPipeline()}>Switch back to my pipeline</button>
-      )}
-
-      {stt.switchError && <p role="alert">{stt.switchError.message}</p>}
-    </>
-  );
-}
-```
-
-| Member                | Type                                               | Description                                                                                      |
-| --------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `activeProvider`      | `{ pipelineId, name?, isFallback } \| null`        | Pipeline currently transcribing. `null` before capture / for local STT                           |
-| `usePipeline`         | `boolean`                                          | On the SDK-configured (primary) pipeline                                                         |
-| `isFallbackActive`    | `boolean`                                          | On the tenant-admin default (fallback)                                                           |
-| `switchToPipeline()`  | `() => Promise<void>`                              | Switch (back) to the primary. Idempotent                                                         |
-| `switchToDefault()`   | `() => Promise<void>`                              | Switch to the tenant default. Idempotent                                                         |
-| `switchStatus`        | `'idle' \| 'switching' \| 'switched' \| 'failed'`  | Lifecycle of the most recent switch                                                              |
-| `switchError`         | `Error \| null`                                    | Last failure, so a UI need not wrap every call in `try/catch`                                    |
-| `resetSwitchStatus()` | `() => void`                                       | Back to `idle`; clears `switchError`                                                             |
-| `fallback`            | `{ configured, pipelineId, pipelineName } \| null` | The tenant's configured fallback. **`null` means UNKNOWN**, never "none configured"              |
-| `canSwitchToDefault`  | `boolean`                                          | A live session exists, is not already on the fallback, and a fallback is configured (or unknown) |
-| `refreshFallback()`   | `() => Promise<void>`                              | Re-read the fallback pointer                                                                     |
-
-Notes:
-
-- Both directions POST native routes (`switch-to-primary` / `switch-to-fallback`).
-  Compat mode only reroutes them through the `/api/stt/switch` shim; it is not
-  required for either direction.
-- Success is confirmed ASYNCHRONOUSLY by the backend's `provider_switched`
-  frame, which flips `activePipeline.isFallback` — that flip, not the HTTP
-  response, moves `switchStatus` to `'switched'`.
-- Both methods reject when there is no live streaming session (local STT
-  included), so the control is a no-op rather than a silent failure.
-- `canSwitchToDefault` is `true` while `fallback` is unknown: a failed labelling
-  read must not take a working fallback away from the user.
+Removed with the pipeline selector (TASK-1006). To move a LIVE session between the primary ASR agent
+and the tenant fallback, call `useArcaAudio().switchProvider('fallback' | 'primary')` — the backend
+swaps the engine in place and confirms with a `provider_switched` status frame. Which agents those
+are is the tenant admin's configuration, never the client's.
 
 ---
 
@@ -401,9 +356,11 @@ minutes** each), monitor each job live, and collect each result.
 ```tsx
 import { useBatchTranscription } from '@arcaai/vox';
 
-function BatchUpload({ pipelineId }: { pipelineId: string }) {
+function BatchUpload({ agentSlug }: { agentSlug?: string }) {
   const batch = useBatchTranscription({
-    options: { pipelineId },
+    // Optional: name a published SPEECH_TO_TEXT agent, or omit it and the gateway
+    // resolves the tenant's assignment. `pipelineId` was removed in 4.0.0 (the gateway 400s it).
+    options: agentSlug ? { agentSlug } : undefined,
     onItemCompleted: (item) => console.log(item.fileName, item.text),
   });
 
@@ -483,21 +440,21 @@ const auth = useAuth();
 
 **Returns**: `UseAuthReturn`
 
-| Member             | Signature                                                                            | Description                                                |
-| ------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| `user`             | `AuthUser \| null`                                                                   | Current authenticated user                                 |
-| `isAuthenticated`  | `boolean`                                                                            | Authentication status                                      |
-| `isLoading`        | `boolean`                                                                            | Loading state                                              |
-| `error`            | `Error \| null`                                                                      | Auth error                                                 |
-| `impersonatedUser` | `AuthUser \| null`                                                                   | Currently impersonated user (null if not impersonating)    |
-| `isImpersonating`  | `boolean`                                                                            | Whether impersonation is active                            |
+| Member             | Signature                                                                            | Description                                               |
+| ------------------ | ------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| `user`             | `AuthUser \| null`                                                                   | Current authenticated user                                |
+| `isAuthenticated`  | `boolean`                                                                            | Authentication status                                     |
+| `isLoading`        | `boolean`                                                                            | Loading state                                             |
+| `error`            | `Error \| null`                                                                      | Auth error                                                |
+| `impersonatedUser` | `AuthUser \| null`                                                                   | Currently impersonated user (null if not impersonating)   |
+| `isImpersonating`  | `boolean`                                                                            | Whether impersonation is active                           |
 | `canImpersonate`   | `boolean`                                                                            | Whether current user has SUPER_ADMIN or TENANT_ADMIN role |
-| `login`            | `(username: string, password: string, tenantKey?: string) => Promise<LoginResponse>` | Login with credentials                                     |
-| `logout`           | `() => Promise<void>`                                                                | Logout and clear tokens                                    |
-| `getMe`            | `() => Promise<AuthUser>`                                                            | Get current user profile                                   |
-| `refreshToken`     | `(refreshToken: string) => Promise<RefreshTokenResponse>`                            | Refresh JWT token                                          |
-| `impersonate`      | `(targetUserId: string) => Promise<ImpersonateResponse>`                             | Start impersonation session                                |
-| `endImpersonation` | `() => Promise<void>`                                                                | End impersonation, restore original admin identity         |
+| `login`            | `(username: string, password: string, tenantKey?: string) => Promise<LoginResponse>` | Login with credentials                                    |
+| `logout`           | `() => Promise<void>`                                                                | Logout and clear tokens                                   |
+| `getMe`            | `() => Promise<AuthUser>`                                                            | Get current user profile                                  |
+| `refreshToken`     | `(refreshToken: string) => Promise<RefreshTokenResponse>`                            | Refresh JWT token                                         |
+| `impersonate`      | `(targetUserId: string) => Promise<ImpersonateResponse>`                             | Start impersonation session                               |
+| `endImpersonation` | `() => Promise<void>`                                                                | End impersonation, restore original admin identity        |
 
 ---
 
@@ -512,23 +469,21 @@ const config = useArcaConfig();
 
 **Returns**: `UseArcaConfigReturn`
 
-| Member                 | Signature                                                         | Description                                                   |
-| ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------- |
-| `preferences`          | `UserPreferences`                                                 | Current user preferences                                      |
-| `models.stt`           | `ModelDefinition[]`                                               | Available STT models                                          |
-| `models.vad`           | `ModelDefinition[]`                                               | Available VAD models                                          |
-| `models.ner`           | `ModelDefinition[]`                                               | Available NER models                                          |
-| `models.selected`      | `{ stt?: string; vad?: string; ner?: string }`                    | Currently selected model IDs                                  |
-| `tenantConfig`         | `TenantAudioConfig \| null`                                       | Tenant-scoped audio/AI config (null until loaded)             |
-| `resolvedConfig`       | `AppConfig \| null`                                               | Merged config from all tiers (null until loaded)              |
-| `configReady`          | `boolean`                                                         | True once all config tiers have been loaded                   |
-| `update`               | `(updates: Partial<UserPreferences>) => Promise<void>`            | Update user preferences                                       |
-| `selectModel`          | `(type: 'stt' \| 'vad' \| 'ner', modelId: string) => void`        | Select a model for a capability                               |
-| `get`                  | `<K extends keyof UserPreferences>(key: K) => UserPreferences[K]` | Get a specific preference value                               |
-| `reset`                | `() => Promise<void>`                                             | Reset preferences to defaults                                 |
-| `isLocked`             | `(path: string) => boolean`                                       | Check if a config path is locked by tenant/admin              |
-| `setUserPreference`    | `(path: string, value: unknown) => boolean`                       | Set a user preference by dot-path (returns `false` if locked) |
-| `resetUserPreferences` | `() => void`                                                      | Clear all user preference overrides                           |
+| Member                 | Signature                                                         | Description                                                     |
+| ---------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------- |
+| `preferences`          | `UserPreferences`                                                 | Current user preferences                                        |
+| `models`               | `{ stt, vad, ner, selected }`                                     | **Deprecated (4.0.1)** — local model catalogue; selects nothing |
+| `tenantConfig`         | `TenantAudioConfig \| null`                                       | Tenant-scoped audio/AI config (null until loaded)               |
+| `resolvedConfig`       | `AppConfig \| null`                                               | Merged config from all tiers (null until loaded)                |
+| `configReady`          | `boolean`                                                         | True once all config tiers have been loaded                     |
+| `update`               | `(updates: Partial<UserPreferences>) => Promise<void>`            | Update user preferences                                         |
+| `selectModel`          | `(type: 'stt' \| 'vad' \| 'ner', modelId: string) => void`        | **Deprecated (4.0.1)** — selects nothing; use `agentSlug`       |
+| `selectSttTask`        | `(task: SttTask) => void`                                         | **Deprecated (4.0.1)** — local Whisper task; selects nothing    |
+| `get`                  | `<K extends keyof UserPreferences>(key: K) => UserPreferences[K]` | Get a specific preference value                                 |
+| `reset`                | `() => Promise<void>`                                             | Reset preferences to defaults                                   |
+| `isLocked`             | `(path: string) => boolean`                                       | Check if a config path is locked by tenant/admin                |
+| `setUserPreference`    | `(path: string, value: unknown) => boolean`                       | Set a user preference by dot-path (returns `false` if locked)   |
+| `resetUserPreferences` | `() => void`                                                      | Clear all user preference overrides                             |
 
 ---
 
@@ -816,14 +771,14 @@ this surface.
 
 **Returns**: `UseDnaWritingStyleReturn`
 
-| Member         | Signature                                                                | Description                                                |
-| -------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `job`          | `DnaIngestJobStatus \| null`                                              | Most recent ingest-job snapshot                               |
-| `isIngesting`  | `boolean`                                                                  | Whether an `ingest()` call is in flight                       |
-| `error`        | `Error \| null`                                                            | Error state                                                   |
-| `ingest`       | `(input: DnaWritingSamplesIngestInput) => Promise<DnaIngestJobResponse>`  | Submit a batch of writing samples; enqueues a job             |
-| `getIngestJob` | `(jobId: string) => Promise<DnaIngestJobStatus>`                          | Fetch the current status of an ingest job                     |
-| `pollIngestJob`| `(jobId: string, options?: PollIngestJobOptions) => Promise<DnaIngestJobStatus>` | Poll an ingest job until `completed`/`failed`, or reject on `timeoutMs` (default 2 min) |
+| Member          | Signature                                                                        | Description                                                                             |
+| --------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `job`           | `DnaIngestJobStatus \| null`                                                     | Most recent ingest-job snapshot                                                         |
+| `isIngesting`   | `boolean`                                                                        | Whether an `ingest()` call is in flight                                                 |
+| `error`         | `Error \| null`                                                                  | Error state                                                                             |
+| `ingest`        | `(input: DnaWritingSamplesIngestInput) => Promise<DnaIngestJobResponse>`         | Submit a batch of writing samples; enqueues a job                                       |
+| `getIngestJob`  | `(jobId: string) => Promise<DnaIngestJobStatus>`                                 | Fetch the current status of an ingest job                                               |
+| `pollIngestJob` | `(jobId: string, options?: PollIngestJobOptions) => Promise<DnaIngestJobStatus>` | Poll an ingest job until `completed`/`failed`, or reject on `timeoutMs` (default 2 min) |
 
 ```tsx
 const { ingest, pollIngestJob } = useDnaWritingStyle();
@@ -845,27 +800,11 @@ in which case `clinicianUserId` is REQUIRED.
 
 ---
 
-### usePipelines() (Admin — ASR Pipeline CRUD)
+### usePipelines() — removed in 4.0.0
 
-> Not to be confused with `useArcaPipelines()` which controls the runtime transcription/knowledge pipelines.
-
-**Returns**: `UsePipelinesReturn`
-
-| Member             | Signature                                                                | Description                   |
-| ------------------ | ------------------------------------------------------------------------ | ----------------------------- |
-| `pipelines`        | `Pipeline[]`                                                             | Loaded ASR pipelines list     |
-| `selectedPipeline` | `Pipeline \| null`                                                       | Currently selected pipeline   |
-| `isLoading`        | `boolean`                                                                | Loading state                 |
-| `error`            | `Error \| null`                                                          | Error state                   |
-| `list`             | `(pagination?: PaginationParams) => Promise<Pipeline[]>`                 | List ASR pipelines            |
-| `get`              | `(id: string) => Promise<Pipeline>`                                      | Get pipeline by ID            |
-| `getBySlug`        | `(slug: string) => Promise<Pipeline>`                                    | Get pipeline by slug          |
-| `select`           | `(pipelineId: string) => void`                                           | Select a pipeline locally     |
-| `createPipeline`   | `(input: CreatePipelineInput) => Promise<Pipeline>`                      | Create pipeline               |
-| `updatePipeline`   | `(id: string, input: UpdatePipelineInput) => Promise<Pipeline>`          | Update pipeline               |
-| `deletePipeline`   | `(id: string) => Promise<void>`                                          | Delete pipeline               |
-| `validateConfig`   | `(configYaml: string) => Promise<PipelineValidationResult>`              | Validate pipeline YAML config |
-| `assignToTenant`   | `(pipelineId: string, tenantId: string) => Promise<{ message: string }>` | Assign pipeline to tenant     |
+The ASR pipeline admin hook went with `AsrPipeline` (TASK-1006). ASR is configured as a
+`SPEECH_TO_TEXT` Agent and its assignment (admin console / `hope.admin.agent` in `@arcaai/vox-node`);
+the browser SDK discovers selectable agents with `useSelectableAsrAgents()`.
 
 ---
 
@@ -971,22 +910,24 @@ function MyComponent() {
 
 Available from `@arcaai/vox/plugins` (or `@arcaai/vox`):
 
-| Hook             | Package                | Description                                             |
-| ---------------- | ---------------------- | ------------------------------------------------------- |
-| `useVAD`         | `@arcaai/vad`          | Voice Activity Detection                                |
-| `useSTT`         | `@arcaai/stt`          | Speech-to-Text (Whisper WebWorker)                      |
-| `useNoiseFilter` | `@arcaai/noise-filter` | RNNoise WASM noise cancellation                         |
-| `useMedNER`      | `@arcaai/med-ner`      | Medical NER (import from `@arcaai/vox/plugins/med-ner`) |
+| Hook                              | Description                                  |
+| --------------------------------- | -------------------------------------------- |
+| `useArcaAudio`                    | Audio capture, muting, backend streaming STT |
+| `useTtsPlayback` / `useTtsStream` | Streamed text-to-speech playback             |
+
+Removed in 4.0.0 (TASK-1006 — the browser never runs a model): `useVAD` (`@arcaai/vad`), `useSTT`'s
+in-browser Whisper, `useNoiseFilter` (`@arcaai/noise-filter`), `useMedNER` (`@arcaai/med-ner`) and
+`useSttProviderToggle`.
 
 Also exported from `@arcaai/vox/plugins`:
 
-| Export                        | Description                                     |
-| ----------------------------- | ----------------------------------------------- |
-| `PluginManager`               | Orchestrates audio processing plugins           |
-| `TranscriptionPipeline`       | Audio → NoiseFilter → VAD → STT → Transcription |
-| `KnowledgePipeline`           | Transcription → NER → SpellCheck → Summary      |
-| `createTranscriptionPipeline` | Factory function                                |
-| `createKnowledgePipeline`     | Factory function                                |
+| Export                        | Description                                                       |
+| ----------------------------- | ----------------------------------------------------------------- |
+| `PluginManager`               | Orchestrates capture and the backend STT transport                |
+| `TranscriptionPipeline`       | Audio → backend streaming STT → transcription                     |
+| `KnowledgePipeline`           | Post-processing; summarization runs on the async note job (4.0.1) |
+| `createTranscriptionPipeline` | Factory function                                                  |
+| `createKnowledgePipeline`     | Factory function                                                  |
 
 ---
 
@@ -994,19 +935,19 @@ Also exported from `@arcaai/vox/plugins`:
 
 Exported from `@arcaai/vox/core` for advanced use cases:
 
-| Class                      | Description                                                               |
-| -------------------------- | ------------------------------------------------------------------------- |
-| `AgenticClient`            | HTTP client with auth, rate limiting, tenant headers                      |
-| `ConfigManager`            | Three-tier config merging (system → tenant → user)                        |
-| `ModelRegistry`            | STT/VAD/NER model discovery and selection                                 |
-| `PersonalizationManager`   | User preferences with local/backend/hybrid storage                        |
-| `FileTranscriptionService` | Upload and transcribe audio files                                         |
-| `BatchTranscriptionQueue`  | Framework-free batch queue (caps, scheduling, upload + result stream)     |
-| `SSEClient`                | Authenticated, reconnectable Server-Sent Events client                    |
-| `StreamingSessionManager`  | Manage STT streaming sessions                                             |
-| `SttWebSocketClient`       | WebSocket client for STT streaming protocol                               |
-| `useAgenticStore`          | Direct access to the Zustand store (advanced)                             |
-| `createSDKLogger`          | Logger factory with Console, Highlight.io, Loki, OpenTelemetry transports |
+| Class                      | Description                                                                            |
+| -------------------------- | -------------------------------------------------------------------------------------- |
+| `AgenticClient`            | HTTP client with auth, rate limiting, tenant headers                                   |
+| `ConfigManager`            | Three-tier config merging (system → tenant → user)                                     |
+| `ModelRegistry`            | **Deprecated (4.0.1)** — local model catalogue; used internally for tenant config only |
+| `PersonalizationManager`   | User preferences with local/backend/hybrid storage                                     |
+| `FileTranscriptionService` | Upload and transcribe audio files                                                      |
+| `BatchTranscriptionQueue`  | Framework-free batch queue (caps, scheduling, upload + result stream)                  |
+| `SSEClient`                | Authenticated, reconnectable Server-Sent Events client                                 |
+| `StreamingSessionManager`  | Manage STT streaming sessions                                                          |
+| `SttWebSocketClient`       | WebSocket client for STT streaming protocol                                            |
+| `useAgenticStore`          | Direct access to the Zustand store (advanced)                                          |
+| `createSDKLogger`          | Logger factory with Console, Highlight.io, Loki, OpenTelemetry transports              |
 
 ---
 
@@ -1030,9 +971,9 @@ All exported from `@arcaai/vox/core` (or `@arcaai/vox`):
 ```typescript
 interface AgenticConfig {
   api: ApiConfig; // baseUrl, accessToken, apiKey, tenantId, timeout, wsUrl, rateLimit
-  audio?: AudioPluginConfig; // noiseFilter, vad, stt
+  audio?: AudioPluginConfig; // stt (noiseFilter / vad removed in 4.0.0)
   plugins?: PluginConfig; // ner, tts
-  models?: ModelRegistryConfig; // custom models, pre-selected models
+  models?: ModelRegistryConfig; // @deprecated 4.0.1 — the browser runs no model
   personalization?: PersonalizationConfig; // storage mode, sync interval, defaults
   logging?: LoggingConfig; // Console, Highlight.io, Loki, OpenTelemetry
   debug?: boolean;
@@ -1060,7 +1001,10 @@ interface OpenSessionInput {
 ```typescript
 interface AudioStartOptions {
   language?: string;
-  pipelineId?: string;
+  /** A published SPEECH_TO_TEXT agent, or omit it and the gateway resolves one. */
+  agentSlug?: string;
+  // `pipelineId` was removed in 4.0.0 — the gateway answers 400 for it.
+  // (also: languageMode, deviceId, secondaryDeviceId, sourceStreams, drainTimeoutMs, …)
 }
 ```
 
@@ -1092,7 +1036,7 @@ interface UserPreferences {
   language?: string;
   dnaStyleId?: string;
   localConfig?: Partial<LocalWorkflowConfig>;
-  remoteConfig?: RemoteConfigResponse; // read-only, admin-controlled
+  remoteConfig?: RemoteConfigResponse; // @deprecated 4.0.1 — never sent by the gateway since TASK-1006
   custom?: Record<string, unknown>;
 }
 ```

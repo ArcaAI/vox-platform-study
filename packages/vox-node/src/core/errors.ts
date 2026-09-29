@@ -172,7 +172,12 @@ export class HopeAPIError extends Error {
  * wrong" (`HopeStreamError`).
  *
  * The `detail` carried by a gateway `error` frame is already PHI-redacted
- * upstream and never echoes model output — see `text-compat.controller.ts`.
+ * upstream and never echoes model output.
+ *
+ * @deprecated TASK-1012 — nothing in this package throws it any more: its only
+ * thrower was the `hope.summarization.*` stream, removed by TASK-1004 (the run
+ * streams resolve a failed run as a terminal status, not an exception). Kept
+ * exported so existing `instanceof` checks compile; removed in 5.0.0.
  */
 export class HopeStreamError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {

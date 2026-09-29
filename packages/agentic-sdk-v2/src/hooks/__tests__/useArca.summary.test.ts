@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useArca } from '../useArca';
-import { SUMMARY_ENDPOINTS, CONTEXT_ENDPOINTS } from '../../core/constants';
+import { SUMMARY_ENDPOINTS, CONTEXT_ENDPOINTS, CONSULTATION_JOB_ENDPOINTS } from '../../core/constants';
 import type { SummaryActions } from '../../types/summary';
 
 // =============================================================================
@@ -254,7 +254,12 @@ describe('summary action behaviors', () => {
     };
   });
 
-  it('generateSummary should POST to SUMMARY_ENDPOINTS.GENERATE', async () => {
+  // TASK-1012 (L-2): the synchronous POST routes were removed by TASK-1006 — both hooks start
+  // the ASYNC job, poll it to completion and resolve the persisted note.
+  const jobResp = { jobId: 'job-1', status: 'pending', consultationId: 'c-001', createdAt: '' };
+  const completedJob = { id: 'job-1', jobId: 'job-1', status: 'COMPLETED', progress: 100, consultationId: 'c-001' };
+
+  it('generateSummary starts the async job and resolves the persisted summary (TASK-1012)', async () => {
     const summaryResp = {
       id: 's-1',
       contextItemId: 'ctx-1',
@@ -264,19 +269,27 @@ describe('summary action behaviors', () => {
       modelName: 'gpt-4',
       createdAt: '',
     };
-    mockPost.mockResolvedValue(summaryResp);
+    mockPost.mockResolvedValue(jobResp);
+    mockGet.mockImplementation(async (url: string) => {
+      if (url === CONSULTATION_JOB_ENDPOINTS.GET('job-1')) return completedJob;
+      if (url === SUMMARY_ENDPOINTS.LATEST('c-001')) return summaryResp;
+      throw new Error(`unexpected GET ${url}`);
+    });
 
     const { result } = renderHook(() => useArca());
 
+    let resolved: unknown;
     await act(async () => {
-      await result.current.summary.generateSummary({ includeNER: true });
+      resolved = await result.current.summary.generateSummary({ includeNER: true });
     });
 
-    expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE('c-001'), { includeNER: true });
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), { includeNER: true });
+    expect(resolved).toEqual(summaryResp);
     expect(currentMockStore.addSummary).toHaveBeenCalledWith(summaryResp);
   });
 
-  it('generatePreSummary should POST to SUMMARY_ENDPOINTS.PRE_SUMMARY', async () => {
+  it('generatePreSummary starts the async job and resolves the persisted pre-summary (TASK-1012)', async () => {
     const preSummaryResp = {
       id: 'ps-1',
       contextItemId: 'ctx-1',
@@ -286,15 +299,38 @@ describe('summary action behaviors', () => {
       modelName: 'gpt-4',
       createdAt: '',
     };
-    mockPost.mockResolvedValue(preSummaryResp);
+    mockPost.mockResolvedValue(jobResp);
+    mockGet.mockImplementation(async (url: string) => {
+      if (url === CONSULTATION_JOB_ENDPOINTS.GET('job-1')) return completedJob;
+      if (url === SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY('c-001')) return preSummaryResp;
+      throw new Error(`unexpected GET ${url}`);
+    });
 
     const { result } = renderHook(() => useArca());
 
+    let resolved: unknown;
     await act(async () => {
-      await result.current.summary.generatePreSummary();
+      resolved = await result.current.summary.generatePreSummary();
     });
 
-    expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY('c-001'), undefined);
+    expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('c-001'), {});
+    expect(resolved).toEqual(preSummaryResp);
+    expect(currentMockStore.addSummary).toHaveBeenCalledWith(preSummaryResp);
+  });
+
+  it('generateSummary surfaces a FAILED job as an error and records it on the store (TASK-1012)', async () => {
+    mockPost.mockResolvedValue(jobResp);
+    mockGet.mockResolvedValue({ ...completedJob, status: 'FAILED', progress: 10, error: 'Note generation failed' });
+
+    const { result } = renderHook(() => useArca());
+
+    await expect(
+      act(async () => {
+        await result.current.summary.generateSummary();
+      }),
+    ).rejects.toThrow('Note generation failed');
+    expect(currentMockStore.setSummaryError).toHaveBeenCalledWith(expect.any(Error));
+    expect(currentMockStore.addSummary).not.toHaveBeenCalled();
   });
 
   it('loadSummaries should GET from SUMMARY_ENDPOINTS.LIST', async () => {

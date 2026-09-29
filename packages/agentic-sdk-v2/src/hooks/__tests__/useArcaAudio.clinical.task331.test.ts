@@ -241,13 +241,15 @@ describe('useArcaAudio — F3/Q5 startFromPreferences()', () => {
     expect(typeof result.current.startFromPreferences).toBe('function');
   });
 
-  it('derives options from prefs/config (remote workflow → ASR agent) and starts', async () => {
+  it('derives options from prefs/config and starts — the ASR agent is left to the gateway (TASK-1012)', async () => {
     const pluginManager = createMockPluginManager();
     setupStore({
       pluginManager,
       preferences: {
         language: 'th',
         workflowMode: 'remote',
+        // The gateway has not sent `remoteConfig` since TASK-1006; a stale cached one must
+        // never name the agent — selection is the gateway's (workflow → department → tenant).
         remoteConfig: { agentSlug: 'clinic-asr', assignedBy: 'admin' },
         custom: { deviceId: 'mic-A' },
       },
@@ -263,8 +265,8 @@ describe('useArcaAudio — F3/Q5 startFromPreferences()', () => {
     expect(mockStoreData.setAudioLanguage).toHaveBeenCalledWith('th');
     // Device derived from prefs.custom.
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-A' } } });
-    // Remote workflow → the named ASR agent forwarded to the plugin manager.
-    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: 'clinic-asr', language: 'th' }));
+    // No agent is named from preferences; the language still flows.
+    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: undefined, language: 'th' }));
   });
 
   it('omits the agentSlug when workflow is local (no ASR agent named)', async () => {

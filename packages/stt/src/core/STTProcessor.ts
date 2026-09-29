@@ -50,9 +50,9 @@ export interface STTStreamingTransport {
   sessionManager: StreamingSessionLike;
   wsClient: StreamingWsClientLike;
   /**
-   * Backend ASR pipeline UUID or slug.
-   * @deprecated TASK-865 — removed in R4. Name the ASR Agent with `agentSlug`,
-   * or set neither and let the gateway resolve the tenant default.
+   * @deprecated IGNORED since 4.0.1 (TASK-1012) — never sent, because the gateway refuses it
+   * (TASK-1006); the provider logs a one-time warning. Removed in 5.0.0. Name the ASR Agent
+   * with `agentSlug`, or set neither and let the gateway resolve the tenant assignment.
    */
   pipelineId?: string;
   /** Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) to transcribe with (TASK-865). */

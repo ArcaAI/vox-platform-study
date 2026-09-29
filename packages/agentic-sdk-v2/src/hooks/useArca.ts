@@ -37,6 +37,7 @@ import type {
 import type { SummaryGenerationOptions } from '../types/summary';
 import type { TranscriptSegment, AudioStartOptions, SttConnectionState, ActivePipelineInfo } from '../types/audio';
 import { CONSULTATION_ENDPOINTS, CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS, ENTITY_ENDPOINTS } from '../core/constants';
+import { generateSummaryViaJob, mapSummaryOptionsToBackend } from '../core/summaryJob';
 import { computeSummaryDiff } from '../utils/diffUtils';
 import { withRetry as withRetryUtil, type RetryOptions } from '../utils/errorUtils';
 import { ifMatchFor, requireExpectedVersion, toOccError, findSummaryVersion } from '../utils/occ';
@@ -162,12 +163,14 @@ export interface UseArcaAudio {
   startFromPreferences: () => Promise<void>;
   stop: () => Promise<void>;
   /**
-   * Switch the live streaming session to the tenant fallback pipeline (R4).
-   * Primary path swaps the ASR engine in place (session survives); pass
-   * `fallbackPipelineId` to enable the degraded destroy/recreate path on a
-   * backend that predates the in-place switch route (surfaced as reconnecting).
+   * Switch the live streaming session to the tenant's fallback ASR engine (R4).
+   * Primary path swaps the engine in place (session survives); pass
+   * `fallbackAgentSlug` to enable the degraded destroy/recreate path on a
+   * backend that predates the in-place switch route (surfaced as reconnecting)
+   * — the session is rebuilt on that ASR Agent. (The parameter is an agent
+   * slug; it was misnamed `fallbackPipelineId` here until 4.0.1.)
    */
-  switchToFallback: (fallbackPipelineId?: string) => Promise<void>;
+  switchToFallback: (fallbackAgentSlug?: string) => Promise<void>;
   mute: () => void;
   unmute: () => void;
   toggleNoiseFilter: (enabled?: boolean) => void;
@@ -221,7 +224,17 @@ export interface UseArcaSummary {
   dnaStyle: DNAStyle | null;
   isGenerating: boolean;
   error: Error | null;
+  /**
+   * Start a pre-summary on the async plane (`POST …/summary/pre-summary/async`), wait for the
+   * job, and resolve the persisted pre-summary (`…/pre-summary/latest`). Rejects on a failed job
+   * or after 5 minutes. (Since 4.0.1 — the synchronous route this used to call was removed.)
+   */
   generatePreSummary: (options?: SummaryGenerationOptions) => Promise<SummaryResponse>;
+  /**
+   * Start the note on the async plane (`POST …/summary/async`), wait for the job, and resolve the
+   * persisted summary (`…/summary/latest`). Rejects on a failed job or after 5 minutes. (Since
+   * 4.0.1 — the synchronous route this used to call was removed.)
+   */
   generateSummary: (options?: SummaryGenerationOptions) => Promise<SummaryResponse>;
   updateSummary: (id: string, content: string, options?: UpdateSummaryOptions) => Promise<void>;
   analyzeDNA: (texts: string[]) => Promise<DNAStyle>;
@@ -951,7 +964,9 @@ export function useArca(): UseArcaReturn {
       store.setSummaryError(null);
 
       try {
-        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY(consultation.id), options);
+        // TASK-1012 (L-2): the synchronous `POST …/summary/pre-summary` was removed (TASK-1006) —
+        // start the async job and resolve the persisted pre-summary.
+        const summary = await generateSummaryViaJob(apiClient, consultation.id, 'pre-summary', mapSummaryOptionsToBackend('pre-summary', options));
         store.addSummary(summary);
 
         timer?.end(true, {
@@ -997,7 +1012,9 @@ export function useArca(): UseArcaReturn {
       store.setSummaryError(null);
 
       try {
-        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.GENERATE(consultation.id), options);
+        // TASK-1012 (L-2): the synchronous `POST …/summary` was removed (TASK-1006) — start the
+        // async job and resolve the persisted summary.
+        const summary = await generateSummaryViaJob(apiClient, consultation.id, 'summary', mapSummaryOptionsToBackend('summary', options));
         store.addSummary(summary);
 
         timer?.end(true, {
@@ -1157,7 +1174,10 @@ export function useArca(): UseArcaReturn {
       store.setSummaryError(null);
 
       try {
-        const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id), options || {});
+        const job = await apiClient.post<AsyncJobResponse>(
+          SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id),
+          mapSummaryOptionsToBackend('summary', options) ?? {},
+        );
 
         timer?.end(true, { attributes: { jobId: job.jobId } });
         logger?.info('Async summary job created', {
@@ -1199,7 +1219,10 @@ export function useArca(): UseArcaReturn {
       store.setSummaryError(null);
 
       try {
-        const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id), options || {});
+        const job = await apiClient.post<AsyncJobResponse>(
+          SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id),
+          mapSummaryOptionsToBackend('pre-summary', options) ?? {},
+        );
 
         timer?.end(true, { attributes: { jobId: job.jobId } });
         return job;

@@ -9,10 +9,16 @@ TRANSPORT to the backend (`RemoteSTTProvider`/`StreamingBackendSTTProvider` over
 Register row: `docs/operations/deprecation-register.md` SDK section.
 
 A speech-to-text plugin for `@arcaai/room` (peer dependency) with two remote transport modes: a
-`RemoteSTTProvider` over a self-managed WebSocket, and a pipeline-aware streaming mode where the
+`RemoteSTTProvider` over a self-managed WebSocket, and a session-based streaming mode where the
 host supplies the transport (`STTStreamingTransport`) — this is how `@arcaai/vox` drives the
 backend STT service today. `STTProvider.type` is now a single-member `'remote'` union kept for
 source compatibility.
+
+The streaming session names the ASR Agent with `agentSlug`, or nothing (the gateway resolves the
+tenant's assignment). `pipelineId` on `STTStreamingTransport` / `StreamingRemoteProviderConfig` is
+**ignored and never sent since 4.0.1** (TASK-1012 — the gateway has answered 400 for it since
+TASK-1006; 4.0.0 still forwarded it). Setting it logs one console warning; it is removed in 5.0.0,
+and `StreamingBackendSTTProvider.getPipelineId()` now always returns `null`.
 
 ## Layout
 

@@ -8,10 +8,10 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useArca } from '../useArca';
-import { SUMMARY_ENDPOINTS } from '../../core/constants';
+import { SUMMARY_ENDPOINTS, CONSULTATION_JOB_ENDPOINTS } from '../../core/constants';
 
 const mockStoreDefaults = {
   consultation: null as Record<string, unknown> | null,
@@ -76,6 +76,10 @@ const mockStoreDefaults = {
 
 let currentMockStore = { ...mockStoreDefaults };
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 vi.mock('../../store', () => {
   return {
     useAgenticStore: vi.fn(() => currentMockStore),
@@ -109,18 +113,35 @@ describe('B-1: Summary generation with extended options', () => {
     };
   });
 
+  // TASK-1012 (L-2): `generateSummary` / `generatePreSummary` run on the ASYNC plane (the
+  // synchronous routes are gone), and every generate path sends ONLY the fields its route's DTO
+  // declares (`forbidNonWhitelisted` makes anything else a 400): deprecated names map onto
+  // `GenerateSummaryRequest` where it has the field, `departmentId` is dropped (the department is
+  // read from the consultation), and the pre-summary DTO takes only dnaStyleId/caseNoteIds/options.
+  const jobResp = { jobId: 'job-1', status: 'pending', consultationId: 'c-001', createdAt: '' };
+  const summaryResp = {
+    id: 's-1',
+    contextItemId: 'ctx-1',
+    content: 'Summary',
+    type: 'summary',
+    llmProvider: 'openai',
+    modelName: 'gpt-4',
+    createdAt: '',
+  };
+  const preSummaryResp = { ...summaryResp, id: 'ps-1', content: 'Pre-summary', type: 'pre_summary' };
+
+  beforeEach(() => {
+    mockPost.mockResolvedValue(jobResp);
+    mockGet.mockImplementation(async (url: string) => {
+      if (url === CONSULTATION_JOB_ENDPOINTS.GET('job-1')) return { jobId: 'job-1', status: 'COMPLETED', progress: 100 };
+      if (url === SUMMARY_ENDPOINTS.LATEST('c-001')) return summaryResp;
+      if (url === SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY('c-001')) return preSummaryResp;
+      throw new Error(`unexpected GET ${url}`);
+    });
+  });
+
   describe('generateSummary with new params', () => {
-    it('should pass transcript in the request body', async () => {
-      const summaryResp = {
-        id: 's-1',
-        contextItemId: 'ctx-1',
-        content: 'Summary',
-        type: 'summary',
-        llmProvider: 'openai',
-        modelName: 'gpt-4',
-        createdAt: '',
-      };
-      mockPost.mockResolvedValue(summaryResp);
+    it('maps `transcript` → `transcription` in the async request body', async () => {
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
@@ -129,23 +150,12 @@ describe('B-1: Summary generation with extended options', () => {
         });
       });
 
-      expect(mockPost).toHaveBeenCalledWith(
-        SUMMARY_ENDPOINTS.GENERATE('c-001'),
-        expect.objectContaining({ transcript: 'Doctor: Hello patient. Patient: I have a headache.' }),
-      );
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), {
+        transcription: 'Doctor: Hello patient. Patient: I have a headache.',
+      });
     });
 
-    it('should pass promptTemplateId in the request body', async () => {
-      const summaryResp = {
-        id: 's-1',
-        contextItemId: 'ctx-1',
-        content: 'Summary',
-        type: 'summary',
-        llmProvider: 'openai',
-        modelName: 'gpt-4',
-        createdAt: '',
-      };
-      mockPost.mockResolvedValue(summaryResp);
+    it('maps `promptTemplateId` → `template`', async () => {
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
@@ -154,20 +164,11 @@ describe('B-1: Summary generation with extended options', () => {
         });
       });
 
-      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE('c-001'), expect.objectContaining({ promptTemplateId: 'pt-neurology-001' }));
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), { template: 'pt-neurology-001' });
     });
 
-    it('should pass departmentId in the request body', async () => {
-      const summaryResp = {
-        id: 's-1',
-        contextItemId: 'ctx-1',
-        content: 'Summary',
-        type: 'summary',
-        llmProvider: 'openai',
-        modelName: 'gpt-4',
-        createdAt: '',
-      };
-      mockPost.mockResolvedValue(summaryResp);
+    it('drops `departmentId` — the gateway reads the department from the consultation', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
@@ -176,24 +177,15 @@ describe('B-1: Summary generation with extended options', () => {
         });
       });
 
-      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE('c-001'), expect.objectContaining({ departmentId: 'dept-cardiology' }));
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), {});
     });
 
-    it('should pass all new params together with existing ones', async () => {
-      const summaryResp = {
-        id: 's-1',
-        contextItemId: 'ctx-1',
-        content: 'Summary',
-        type: 'summary',
-        llmProvider: 'openai',
-        modelName: 'gpt-4',
-        createdAt: '',
-      };
-      mockPost.mockResolvedValue(summaryResp);
+    it('passes all params together, mapped, and resolves the persisted summary', async () => {
       const { result } = renderHook(() => useArca());
 
+      let resolved: unknown;
       await act(async () => {
-        await result.current.summary.generateSummary({
+        resolved = await result.current.summary.generateSummary({
           dnaStyleId: 'dna-1',
           includeNER: true,
           transcript: 'Transcript text',
@@ -202,32 +194,24 @@ describe('B-1: Summary generation with extended options', () => {
         });
       });
 
-      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE('c-001'), {
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), {
         dnaStyleId: 'dna-1',
         includeNER: true,
-        transcript: 'Transcript text',
-        promptTemplateId: 'pt-1',
-        departmentId: 'dept-1',
+        transcription: 'Transcript text',
+        template: 'pt-1',
       });
+      expect(resolved).toEqual(summaryResp);
     });
   });
 
   describe('generatePreSummary with new params', () => {
-    it('should pass transcript and promptTemplateId in the request body', async () => {
-      const preSummaryResp = {
-        id: 'ps-1',
-        contextItemId: 'ctx-1',
-        content: 'Pre-summary',
-        type: 'pre_summary',
-        llmProvider: 'openai',
-        modelName: 'gpt-4',
-        createdAt: '',
-      };
-      mockPost.mockResolvedValue(preSummaryResp);
+    it('posts only GeneratePreSummaryRequest fields to the pre-summary ASYNC route and resolves the pre-summary', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { result } = renderHook(() => useArca());
 
+      let resolved: unknown;
       await act(async () => {
-        await result.current.summary.generatePreSummary({
+        resolved = await result.current.summary.generatePreSummary({
           dnaStyleId: 'dna-1',
           transcript: 'Some transcript',
           promptTemplateId: 'pt-1',
@@ -235,22 +219,14 @@ describe('B-1: Summary generation with extended options', () => {
         });
       });
 
-      expect(mockPost).toHaveBeenCalledWith(
-        SUMMARY_ENDPOINTS.PRE_SUMMARY('c-001'),
-        expect.objectContaining({
-          dnaStyleId: 'dna-1',
-          transcript: 'Some transcript',
-          promptTemplateId: 'pt-1',
-          departmentId: 'dept-1',
-        }),
-      );
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('c-001'), { dnaStyleId: 'dna-1' });
+      expect(resolved).toEqual(preSummaryResp);
     });
   });
 
   describe('generateSummaryAsync with new params', () => {
-    it('should pass transcript, promptTemplateId, departmentId in the request body', async () => {
-      const jobResp = { jobId: 'job-1', status: 'pending', consultationId: 'c-001', createdAt: '' };
-      mockPost.mockResolvedValue(jobResp);
+    it('maps/drops transcript, promptTemplateId, departmentId per the route DTO', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
@@ -266,17 +242,15 @@ describe('B-1: Summary generation with extended options', () => {
       expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), {
         dnaStyleId: 'dna-1',
         includeNER: true,
-        transcript: 'Async transcript',
-        promptTemplateId: 'pt-async',
-        departmentId: 'dept-async',
+        transcription: 'Async transcript',
+        template: 'pt-async',
       });
     });
   });
 
   describe('generatePreSummaryAsync with new params', () => {
-    it('should pass transcript, promptTemplateId, departmentId in the request body', async () => {
-      const jobResp = { jobId: 'job-2', status: 'pending', consultationId: 'c-001', createdAt: '' };
-      mockPost.mockResolvedValue(jobResp);
+    it('maps/drops transcript, promptTemplateId, departmentId per the route DTO', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
@@ -288,54 +262,29 @@ describe('B-1: Summary generation with extended options', () => {
         });
       });
 
-      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('c-001'), {
-        dnaStyleId: 'dna-2',
-        transcript: 'Pre-async transcript',
-        promptTemplateId: 'pt-pre-async',
-        departmentId: 'dept-pre-async',
-      });
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('c-001'), { dnaStyleId: 'dna-2' });
     });
   });
 
   describe('backwards compatibility', () => {
-    it('generateSummary should still work with only dnaStyleId and includeNER', async () => {
-      const summaryResp = {
-        id: 's-1',
-        contextItemId: 'ctx-1',
-        content: 'Summary',
-        type: 'summary',
-        llmProvider: 'openai',
-        modelName: 'gpt-4',
-        createdAt: '',
-      };
-      mockPost.mockResolvedValue(summaryResp);
+    it('generateSummary still works with only dnaStyleId and includeNER', async () => {
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
         await result.current.summary.generateSummary({ dnaStyleId: 'dna-1', includeNER: true });
       });
 
-      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE('c-001'), { dnaStyleId: 'dna-1', includeNER: true });
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), { dnaStyleId: 'dna-1', includeNER: true });
     });
 
-    it('generateSummary should still work with no options', async () => {
-      const summaryResp = {
-        id: 's-1',
-        contextItemId: 'ctx-1',
-        content: 'Summary',
-        type: 'summary',
-        llmProvider: 'openai',
-        modelName: 'gpt-4',
-        createdAt: '',
-      };
-      mockPost.mockResolvedValue(summaryResp);
+    it('generateSummary still works with no options (empty body)', async () => {
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
         await result.current.summary.generateSummary();
       });
 
-      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE('c-001'), undefined);
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), {});
     });
   });
 });

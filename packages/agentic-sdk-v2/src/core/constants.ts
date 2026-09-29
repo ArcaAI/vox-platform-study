@@ -186,7 +186,19 @@ export const CONTEXT_ENDPOINTS = {
  * Summary endpoints
  */
 export const SUMMARY_ENDPOINTS = {
+  /**
+   * @deprecated TASK-1012 — there is no `POST` on this path any more: the synchronous
+   * generate route was removed by TASK-1006 (a note is generated only on the async plane).
+   * Use {@link SUMMARY_ENDPOINTS.GENERATE_ASYNC} to start one and
+   * {@link SUMMARY_ENDPOINTS.LATEST} to read it; `GET` on this path is {@link SUMMARY_ENDPOINTS.LIST}.
+   * Removed in 5.0.0.
+   */
   GENERATE: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary`,
+  /**
+   * @deprecated TASK-1012 — the route does not exist (removed by TASK-1006). Use
+   * {@link SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC} and {@link SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY}.
+   * Removed in 5.0.0.
+   */
   PRE_SUMMARY: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/pre-summary`,
   LATEST: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/latest`,
   /** Get latest pre-summary (SUM-03) */
@@ -383,6 +395,8 @@ export const transcriptionJobScopeFor = (jobId: string): string => `transcriptio
  *
  * Matches backend NlpController at `/nlp` (proxied to Python NLP service).
  * These are proxied to the Python NLP service.
+ *
+ * @deprecated TASK-1012 — the gateway has no `/nlp/*` routes; every path here 404s. Entity extraction is a `NAMED_ENTITY_RECOGNITION` agent (`useAgentInvocation`). Removed in 5.0.0.
  */
 export const NLP_ENDPOINTS = {
   /** Classify tokens (medical NER) — primary NER endpoint */
@@ -549,6 +563,10 @@ export const POLICY_ENDPOINTS = {
  * Controller: `apps/api/src/modules/streaming/text-proxy.controller.ts`
  * (`@Controller('text-generations')`). `GENERATE_ASSEMBLED` runs server-side prompt
  * assembly (DNA-styled + attachment-aware); `GENERATE` is the raw passthrough.
+ *
+ * Neither accepts a caller-pinned `provider` or `model` (400 `MODEL_PINNING_NOT_ALLOWED`,
+ * TASK-1012): the SDK never selects a model. To run a specific configuration, invoke the
+ * tenant's published `TEXT_GENERATION` agent by `agentSlug` with `useAgentInvocation`.
  */
 export const TEXT_ENDPOINTS = {
   /** Generate text (raw passthrough; sync or streaming) */
