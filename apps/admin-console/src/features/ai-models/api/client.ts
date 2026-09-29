@@ -8,11 +8,18 @@ import type {
   AiTaskKind,
   CreateModelRequest,
   DiscoveryResponse,
+  DownloadMissingResponse,
+  HubPreview,
   ModelDownloadState,
   ModelInventoryReport,
+  ModelUsage,
   ModelRegistryConnectionStatus,
   PaginatedModels,
+  RegisterFromHubRequest,
+  RegisterFromHubResponse,
   StartModelDownloadResponse,
+  UnregisterModelRequest,
+  UnregisterModelResponse,
   UpdateModelRequest,
 } from './types';
 
@@ -112,4 +119,33 @@ export function getModelDownloadState(id: string): Promise<ModelDownloadState> {
  */
 export function getModelRegistryConnectionStatus(): Promise<ModelRegistryConnectionStatus> {
   return getJson('admin/providers/model-registry/s3', { tenantId: SYSTEM_TENANT_ID });
+}
+
+// =============================================================================
+// TASK-1019 — register from Hugging Face, unregister, download-missing
+// =============================================================================
+
+/** Hub card for a repo id — 404 unknown repo, 422 `HF_TOKEN_REQUIRED` for a gated/private one. */
+export function previewHubRepo(repoId: string, revision?: string): Promise<HubPreview> {
+  return getJson(`${BASE}/hub/preview`, { repoId, revision: revision || undefined });
+}
+
+/** Creates the SYSTEM row and enqueues its download in one call (202). 409 = slug taken. */
+export function registerFromHub(body: RegisterFromHubRequest): Promise<RegisterFromHubResponse> {
+  return postJson(`${BASE}/register-from-hub`, body);
+}
+
+/** The referrers that would block an unregister — read before the confirm. */
+export function getModelUsage(id: string): Promise<ModelUsage> {
+  return getJson(`${BASE}/${encodeURIComponent(id)}/usage`);
+}
+
+/** 202 `{ jobId, weights }`; 409 `MODEL_IN_USE` / `MODEL_UNLOAD_FAILED`. */
+export function unregisterModel(id: string, body: UnregisterModelRequest): Promise<UnregisterModelResponse> {
+  return postJson(`${BASE}/${encodeURIComponent(id)}/unregister`, body);
+}
+
+/** Enqueues a download for every SYSTEM self-hosted row whose weights are missing. */
+export function downloadMissingModels(): Promise<DownloadMissingResponse> {
+  return postJson(`${BASE}/download-missing`);
 }

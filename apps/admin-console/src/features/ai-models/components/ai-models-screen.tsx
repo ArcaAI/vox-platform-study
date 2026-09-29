@@ -1,17 +1,17 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { IconCpu, IconDatabaseSearch, IconFilterOff, IconPencil, IconPlus, IconRadar, IconStar, IconTrash } from '@tabler/icons-react';
+import { IconCloudDownload, IconCpu, IconDatabaseSearch, IconFilterOff, IconPencil, IconPlus, IconRadar, IconStar, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
-import { type ColumnDef, type SortRule } from '@arcaai/ui';
+import { type ColumnDef, type FilterRule, type SortRule } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { useModelCatalogue } from '@/shared/catalog';
 import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
 import { normalizeList } from '@/shared/data/envelopes';
+import { toListParams } from '@/shared/data/grid-url-state';
 import type { FilterOption } from '@/shared/data/filter-bar';
-import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { CopyButton } from '@/shared/copy-button';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
@@ -19,10 +19,11 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
-import { useDeleteModel, useLastInventoryReport, useModelsPaginated, useRunModelInventory } from '../api/hooks';
-import type { AiModel, UnregisteredBucketPrefix } from '../api/types';
+import { useDownloadMissingModels, useLastInventoryReport, useModelsPaginated, useRunModelInventory } from '../api/hooks';
+import { MODEL_LIFECYCLE_STATUSES, type AiModel, type ModelLifecycleStatus, type UnregisteredBucketPrefix } from '../api/types';
 import { AvailabilityBadge, AVAILABILITY_META } from './availability-badge';
 import { DiscoveryDrawer } from './discovery-drawer';
+import { LIFECYCLE_META, LifecycleCell } from './lifecycle-badge';
 import { ModelFormSheet, type ModelFormSeed } from './model-form-sheet';
 import {
   AVAILABILITY_OPTIONS,
@@ -34,7 +35,9 @@ import {
   pipelineTagRank,
 } from './model-meta';
 import { PlatformDefaultDialog } from './platform-default-dialog';
+import { RegisterFromHubSheet } from './register-from-hub-sheet';
 import { UnregisteredPrefixesDrawer } from './unregistered-prefixes-drawer';
+import { UnregisterModelDialog } from './unregister-model-dialog';
 
 /** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
 const AI_MODEL_SEARCH_FIELDS = ['name', 'slug'];
@@ -47,6 +50,21 @@ const AVAILABILITY_FILTER_OPTIONS: FilterOption[] = AVAILABILITY_OPTIONS.map((av
   value: availability,
   label: AVAILABILITY_META[availability].label,
 }));
+const LIFECYCLE_FILTER_OPTIONS: FilterOption[] = MODEL_LIFECYCLE_STATUSES.map((status) => ({ value: status, label: LIFECYCLE_META[status].label }));
+/** The grid column id the lifecycle status lives under — filtered on the client, never sent to the gateway. */
+const LIFECYCLE_COLUMN_ID = 'lifecycle';
+
+/**
+ * Lifecycle is DERIVED by the gateway from residency + download state, so it is
+ * not a column the list endpoint can filter on. The grid still owns the filter
+ * UI and URL state; the screen strips it from the request and applies it to the
+ * page it loaded.
+ */
+function matchesLifecycleFilter(rule: FilterRule, status: ModelLifecycleStatus | undefined): boolean {
+  const wanted = (Array.isArray(rule.value) ? rule.value : [rule.value]).map(String);
+  const hit = status !== undefined && wanted.includes(status);
+  return rule.operator === 'notInArray' || rule.operator === 'ne' ? !hit : hit;
+}
 const STATUS_OPTIONS: FilterOption[] = [
   { value: 'ENABLED', label: 'Enabled' },
   { value: 'DISABLED', label: 'Disabled' },
@@ -54,7 +72,7 @@ const STATUS_OPTIONS: FilterOption[] = [
   { value: 'ARCHIVED', label: 'Archived' },
 ];
 
-/** Edit / platform-default / retire row actions — module-level so the column memo stays stable. */
+/** Edit / platform-default / unregister row actions — module-level so the column memo stays stable. */
 function ModelRowActions({
   model,
   onEdit,
@@ -74,7 +92,7 @@ function ModelRowActions({
       <Button variant="ghost" size="icon-sm" aria-label={`Set platform default for ${model.name}`} onClick={onPlatformDefault}>
         <IconStar aria-hidden />
       </Button>
-      <Button variant="ghost" size="icon-sm" aria-label={`Retire ${model.name}`} onClick={onDelete}>
+      <Button variant="ghost" size="icon-sm" aria-label={`Unregister ${model.name}`} onClick={onDelete}>
         <IconTrash aria-hidden />
       </Button>
     </span>
@@ -101,23 +119,33 @@ function orderByPipelineTag(rows: AiModel[]): AiModel[] {
  * Header actions: Register (drawer), Run inventory (measures every row against
  * the bucket and opens "In bucket, not registered" when it finds orphans),
  * Loaded on engines (read-only live discovery). Row actions: edit, set
- * platform default per task, retire.
+ * platform default per task, unregister (TASK-1019).
  */
 export function AiModelsScreen() {
   const query = useAdminGridParams({ searchFields: AI_MODEL_SEARCH_FIELDS, defaultSort: AI_MODEL_DEFAULT_SORT });
-  const { data, isLoading, isFetching, error, refetch } = useModelsPaginated(query.listParams);
+  const lifecycleRules = useMemo(() => query.queryState.filters.filter((rule) => rule.id === LIFECYCLE_COLUMN_ID), [query.queryState.filters]);
+  // The request never carries the lifecycle filter — see `matchesLifecycleFilter`.
+  const serverParams = useMemo(
+    () =>
+      lifecycleRules.length === 0
+        ? query.listParams
+        : toListParams({ ...query.queryState, filters: query.queryState.filters.filter((rule) => rule.id !== LIFECYCLE_COLUMN_ID) }, { searchFields: AI_MODEL_SEARCH_FIELDS }),
+    [lifecycleRules, query.listParams, query.queryState],
+  );
+  const { data, isLoading, isFetching, error, refetch } = useModelsPaginated(serverParams);
   const { rows: pageRows, total } = normalizeList<AiModel>(data);
-  const rows = orderByPipelineTag(pageRows);
-  const totalCount = total ?? 0;
+  const rows = orderByPipelineTag(pageRows).filter((row) => lifecycleRules.every((rule) => matchesLifecycleFilter(rule, row.lifecycle?.status)));
+  const totalCount = lifecycleRules.length > 0 ? rows.length : (total ?? 0);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetSeed, setSheetSeed] = useState<ModelFormSeed | undefined>(undefined);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [unregisteredOpen, setUnregisteredOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<AiModel | null>(null);
+  const [hubOpen, setHubOpen] = useState(false);
+  const [unregisterTarget, setUnregisterTarget] = useState<AiModel | null>(null);
   const [defaultTarget, setDefaultTarget] = useState<AiModel | null>(null);
-  const deleteMutation = useDeleteModel();
+  const downloadMissing = useDownloadMissingModels();
   const inventoryMutation = useRunModelInventory();
   const lastInventory = useLastInventoryReport();
   // TASK-890 §3.7 Risk 6 — a catalogue row naming no provider this platform can
@@ -135,14 +163,16 @@ export function AiModelsScreen() {
 
   const clearFilters = useCallback(() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] }), [query]);
 
-  function handleDelete() {
-    if (!deleteTarget) return;
-    deleteMutation.mutate(deleteTarget.id, {
-      onSuccess: () => {
-        toast.success('Model retired');
-        setDeleteTarget(null);
+  function runDownloadMissing() {
+    downloadMissing.mutate(undefined, {
+      onSuccess: ({ enqueued, skipped }) => {
+        toast.success(
+          enqueued.length === 0
+            ? `Nothing to download${skipped.length > 0 ? ` · ${skipped.length} skipped` : ''}`
+            : `Download missing: ${enqueued.length} enqueued${skipped.length > 0 ? ` · ${skipped.length} skipped` : ''}`,
+        );
       },
-      onError: (error) => toast.error(error.message),
+      onError: (err) => toast.error(err.message),
     });
   }
 
@@ -222,6 +252,15 @@ export function AiModelsScreen() {
         size: 170,
       },
       {
+        id: LIFECYCLE_COLUMN_ID,
+        header: 'Lifecycle',
+        enableSorting: false,
+        meta: { label: 'Lifecycle', variant: 'multiSelect', options: LIFECYCLE_FILTER_OPTIONS },
+        cell: ({ row }) => <LifecycleCell model={row.original} />,
+        size: 300,
+        minSize: 200,
+      },
+      {
         accessorKey: 'availability',
         header: 'Availability',
         enableSorting: false,
@@ -295,12 +334,12 @@ export function AiModelsScreen() {
               setSheetOpen(true);
             }}
             onPlatformDefault={() => setDefaultTarget(row.original)}
-            onDelete={() => setDeleteTarget(row.original)}
+            onDelete={() => setUnregisterTarget(row.original)}
           />
         ),
       },
     ],
-    [setDeleteTarget, setDefaultTarget, setEditingId, setSheetOpen, setSheetSeed],
+    [setUnregisterTarget, setDefaultTarget, setEditingId, setSheetOpen, setSheetSeed],
   );
 
   return (
@@ -348,6 +387,14 @@ export function AiModelsScreen() {
                 <Button variant="outline" onClick={runInventory} disabled={inventoryMutation.isPending}>
                   {inventoryMutation.isPending ? <Spinner /> : <IconCpu aria-hidden />}
                   Run inventory
+                </Button>
+                <Button variant="outline" onClick={runDownloadMissing} disabled={downloadMissing.isPending}>
+                  {downloadMissing.isPending ? <Spinner /> : <IconCloudDownload aria-hidden />}
+                  Download missing
+                </Button>
+                <Button variant="outline" onClick={() => setHubOpen(true)}>
+                  <IconPlus aria-hidden />
+                  Register from Hugging Face
                 </Button>
                 <Button onClick={() => openCreate()}>
                   <IconPlus aria-hidden />
@@ -427,6 +474,7 @@ export function AiModelsScreen() {
         modelId={editingId}
         seed={sheetSeed}
       />
+      <RegisterFromHubSheet open={hubOpen} onOpenChange={setHubOpen} />
       <PlatformDefaultDialog
         model={defaultTarget}
         open={defaultTarget !== null}
@@ -434,22 +482,12 @@ export function AiModelsScreen() {
           if (!open) setDefaultTarget(null);
         }}
       />
-      <ConfirmDialog
-        open={deleteTarget !== null}
+      <UnregisterModelDialog
+        model={unregisterTarget}
+        open={unregisterTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
+          if (!open) setUnregisterTarget(null);
         }}
-        title="Retire model"
-        description={
-          <>
-            This retires <span className="text-foreground font-medium">{deleteTarget?.name}</span> (
-            <span className="font-mono">{deleteTarget?.slug}</span>) from the platform catalogue. Agents bound to it fall back to platform defaults.
-          </>
-        }
-        confirmLabel="Retire model"
-        destructive
-        isPending={deleteMutation.isPending}
-        onConfirm={handleDelete}
       />
     </>
   );

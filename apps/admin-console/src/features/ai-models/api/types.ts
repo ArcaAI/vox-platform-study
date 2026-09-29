@@ -226,6 +226,12 @@ export interface AiModel {
   updatedAt: string;
   createdBy?: string | null;
   updatedBy?: string | null;
+  /**
+   * TASK-1019 — the ONE lifecycle status per row plus its per-service evidence.
+   * Optional on the type because an older gateway does not serve it; every reader
+   * treats an absent value as "no lifecycle known" rather than a status.
+   */
+  lifecycle?: ModelLifecycle | null;
 }
 
 /** GET /admin/ai-models/list envelope — CUSTOM (not the platform standard). */
@@ -403,3 +409,132 @@ export interface DiscoveryResponse {
 // `POST admin/ai-models/discovery/register` is deprecated (TASK-860, 410 Gone):
 // discovery is READ-ONLY; registration is `createModel` (optionally from an
 // inventory-reported bucket prefix).
+
+// =============================================================================
+// Lifecycle (TASK-1019 D-9) — HAND-MIRRORED from
+// `packages/applications/src/services/ai-model/lifecycle/model-lifecycle.types.ts`
+// (the console cannot import server packages). Keep this block the ONLY place
+// the lifecycle wire shape lives so a rename on the gateway is a one-file edit.
+// =============================================================================
+
+export const MODEL_LIFECYCLE_STATUSES = [
+  'UNREGISTERING',
+  'DOWNLOADING',
+  'DOWNLOAD_FAILED',
+  'NOT_DOWNLOADED',
+  'LOAD_FAILED',
+  'LOADING',
+  'SERVING',
+  'DOWNLOADED',
+  'NOT_OBSERVED',
+  'NOT_APPLICABLE',
+] as const;
+export type ModelLifecycleStatus = (typeof MODEL_LIFECYCLE_STATUSES)[number];
+
+/** Residency states a service reports for one model. */
+export type ModelServiceState = 'loaded' | 'loading' | 'unloading' | 'not_loaded' | 'failed';
+
+export interface ModelServiceStatus {
+  /** `stt` | `stt-worker` | `nlp` | `lm-studio` */
+  service: string;
+  state: ModelServiceState;
+  device: string | null;
+  bytes: number | null;
+  inFlight: number | null;
+  requestsPerMin: number | null;
+  error: { code: string; message: string; at: string | null } | null;
+}
+
+export interface ModelLifecycle {
+  status: ModelLifecycleStatus;
+  services: ModelServiceStatus[];
+  download: { bytesDone: number | null; bytesTotal: number | null; error: string | null } | null;
+  unregister: { weights: string; error: string | null } | null;
+  observedAt: string | null;
+}
+
+// =============================================================================
+// Register from Hugging Face (TASK-1019 OD-1) — GET hub/preview, POST register-from-hub
+// =============================================================================
+
+/** How the weights are laid out in the bucket once published. */
+export type HubLayout = 'hf-cache' | 'flat';
+
+/** GET admin/ai-models/hub/preview?repoId=&revision= */
+export interface HubPreview {
+  repoId: string;
+  revision: string;
+  commitSha: string;
+  taskType: ModelTaskType | null;
+  libraryName: string | null;
+  license: string | null;
+  gated: boolean;
+  languages: string[];
+  baseModel: string | null;
+  totalBytes: number | null;
+  fileCount: number;
+  suggestedSlug: string;
+  suggestedName: string;
+  suggestedFormat: AiModelFormat | null;
+  layout: HubLayout;
+}
+
+/** POST admin/ai-models/register-from-hub — the create form's optional fields ride along. */
+export interface RegisterFromHubRequest {
+  repoId: string;
+  revision?: string;
+  slug: string;
+  name: string;
+  taskType?: ModelTaskType;
+  format?: AiModelFormat;
+  computeType?: string;
+  servedBy?: string;
+}
+
+/** 202 body. */
+export interface RegisterFromHubResponse {
+  model: AiModel;
+  jobId: string;
+}
+
+// =============================================================================
+// Unregister (TASK-1019 OD-2/OD-3) — GET :id/usage, POST :id/unregister
+// =============================================================================
+
+export interface ModelReferrer {
+  /** `agent`, `agent-fallback`, `routing-policy`, `residency-policy`, `asr-sub-model`, `voice-profile`, … */
+  kind: string;
+  tenantId: string;
+  id: string;
+  name: string;
+}
+
+export interface ModelUsage {
+  referrers: ModelReferrer[];
+}
+
+export interface UnregisterModelRequest {
+  /** Default true. */
+  deleteWeights?: boolean;
+  /** Default false — otherwise the weights stay recoverable for 30 days. */
+  purge?: boolean;
+}
+
+export interface UnregisterModelResponse {
+  jobId: string;
+  weights: 'deleting' | 'kept-shared' | 'kept';
+}
+
+/** Gateway error codes the console reacts to (carried in the error body). */
+export const MODEL_IN_USE = 'MODEL_IN_USE';
+export const MODEL_UNLOAD_FAILED = 'MODEL_UNLOAD_FAILED';
+export const HF_TOKEN_REQUIRED = 'HF_TOKEN_REQUIRED';
+
+// =============================================================================
+// Download missing (TASK-1019 OD-4) — POST download-missing
+// =============================================================================
+
+export interface DownloadMissingResponse {
+  enqueued: { id: string; slug: string; jobId: string }[];
+  skipped: { id: string; slug: string; reason: string }[];
+}

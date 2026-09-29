@@ -204,7 +204,7 @@ describe('AiModelsScreen — the HF-organised catalogue grid', () => {
   });
 });
 
-describe('AiModelsScreen — register / edit / retire', () => {
+describe('AiModelsScreen — register / edit / unregister', () => {
   it('registers a model by POSTing the registry payload — library, served-by and deployment kind travel; localPath never does', async () => {
     // TASK-983 R1: the registered row must appear WITHOUT a page reload. The
     // create mutation invalidates the `['ai-models']` prefix, so the list GET
@@ -314,21 +314,28 @@ describe('AiModelsScreen — register / edit / retire', () => {
     expect(await within(dialog).findByRole('alert')).toBeDefined();
   });
 
-  it('retires a model only after the destructive confirm', async () => {
+  // TASK-1019 D-10: "Retire" (row-only DELETE) became "Unregister" — usage check,
+  // weights choice, then POST :id/unregister. The DELETE client function stays
+  // for API compatibility; the console no longer calls it.
+  it('unregisters a model only after the usage check and an explicit confirm', async () => {
     const calls = stubFetch((url, method) => {
-      if (method === 'DELETE') return new Response(null, { status: 204 });
+      if (url.endsWith('/m-1/usage')) return Response.json({ referrers: [] });
+      if (url.endsWith('/m-1/unregister') && method === 'POST') return Response.json({ jobId: 'j-1', weights: 'deleting' }, { status: 202 });
       return Response.json(envelope([MODEL]));
     });
     renderWithProviders(<AiModelsScreen />);
     await screen.findByText('ArcaAI Whisper ML-EN (GGUF)');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retire ArcaAI Whisper ML-EN (GGUF)' }));
-    const confirm = await screen.findByRole('alertdialog');
-    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Retire model' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unregister ArcaAI Whisper ML-EN (GGUF)' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Unregister model' });
+    expect(calls.some((call) => call.method === 'POST')).toBe(false);
+    const confirm = within(dialog).getByRole('button', { name: 'Unregister model' }) as HTMLButtonElement;
+    await waitFor(() => expect(confirm.disabled).toBe(false));
+    fireEvent.click(confirm);
 
-    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE')).toBe(true));
-    expect(calls.find((call) => call.method === 'DELETE')?.url).toBe('/api/hope/admin/ai-models/m-1');
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
+    expect(calls.find((call) => call.method === 'POST')?.url).toBe('/api/hope/admin/ai-models/m-1/unregister');
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
   });
 });
 

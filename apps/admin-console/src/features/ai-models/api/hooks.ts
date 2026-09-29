@@ -6,27 +6,59 @@ import {
   createModel,
   deleteModel,
   discoverModels,
+  downloadMissingModels,
   getModel,
   getModelBySlug,
   getLastModelInventory,
   getModelDownloadState,
   getModelRegistryConnectionStatus,
+  getModelUsage,
   listModels,
   listModelsPaginated,
+  previewHubRepo,
+  registerFromHub,
   runModelInventory,
   setModelPlatformDefault,
   startModelDownload,
+  unregisterModel,
   updateModel,
 } from './client';
 import { aiModelKeys } from './keys';
-import type { AiTaskKind, CreateModelRequest, ModelInventoryReport, UpdateModelRequest } from './types';
+import { isTransientLifecycle, LIFECYCLE_POLL_MS, listRefetchInterval } from './lifecycle';
+import type { AiTaskKind, CreateModelRequest, ModelInventoryReport, RegisterFromHubRequest, UnregisterModelRequest, UpdateModelRequest } from './types';
 
 export function useModels() {
   return useQuery({ queryKey: aiModelKeys.all(), queryFn: listModels });
 }
 
+/**
+ * The registry list. Re-reads every 5 s WHILE any row is DOWNLOADING /
+ * UNREGISTERING / LOADING (TASK-1019 OD-5) and not at all otherwise — the
+ * interval reads the query's own last page, so polling stops itself the moment
+ * every row is settled.
+ */
 export function useModelsPaginated(params?: ListParams) {
-  return useQuery({ queryKey: aiModelKeys.list(params), queryFn: () => listModelsPaginated(params), placeholderData: keepPreviousData });
+  return useQuery({
+    queryKey: aiModelKeys.list(params),
+    queryFn: () => listModelsPaginated(params),
+    placeholderData: keepPreviousData,
+    refetchInterval: (query) => listRefetchInterval(query.state.data),
+  });
+}
+
+/**
+ * Live lifecycle of ONE model for the drawer's Status section. A query of its
+ * own (not `useModel`) on purpose: `useModel` carries the ETag the edit form
+ * PATCHes with, and a background refetch must never silently advance the
+ * version under an admin's unsaved edits.
+ */
+export function useModelLifecycle(id: string) {
+  return useQuery({
+    queryKey: aiModelKeys.lifecycle(id),
+    queryFn: async () => (await getModel(id)).data?.lifecycle ?? null,
+    enabled: !!id,
+    refetchInterval: (query) => (isTransientLifecycle(query.state.data?.status) ? LIFECYCLE_POLL_MS : false),
+  });
 }
 
 export function useModel(id: string) {
@@ -155,4 +187,58 @@ export function useStartModelDownload() {
 
 export function useModelRegistryConnectionStatus() {
   return useQuery({ queryKey: aiModelKeys.modelRegistryConnection(), queryFn: getModelRegistryConnectionStatus });
+}
+
+
+// =============================================================================
+// TASK-1019 — register from Hugging Face, unregister, download-missing
+// =============================================================================
+
+/** Repo ids look like `org/name` — anything else never reaches the Hub. */
+export const HF_REPO_ID_PATTERN = /^[A-Za-z0-9][\w.-]*\/[\w.-]+$/;
+
+/**
+ * Hub card for a repo id. `enabled` is the caller's debounced + validated gate;
+ * a 404 / 422 is a real answer the form renders, so no retry.
+ */
+export function useHubPreview(repoId: string, revision: string, enabled: boolean) {
+  return useQuery({
+    queryKey: aiModelKeys.hubPreview(repoId, revision),
+    queryFn: () => previewHubRepo(repoId, revision || undefined),
+    enabled: enabled && HF_REPO_ID_PATTERN.test(repoId),
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
+/** Creates the row + enqueues the download; the list refetches and shows DOWNLOADING. */
+export function useRegisterFromHub() {
+  const invalidate = useInvalidateAiModels();
+  return useMutation({ mutationFn: (body: RegisterFromHubRequest) => registerFromHub(body), onSuccess: invalidate });
+}
+
+/** Referrers of a model — `enabled` gates it to the open dialog. */
+export function useModelUsage(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: aiModelKeys.usage(id),
+    queryFn: () => getModelUsage(id),
+    enabled: enabled && id !== '',
+    retry: false,
+    // A referrer can appear between two opens; never trust a cached "no referrers".
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+export function useUnregisterModel() {
+  const invalidate = useInvalidateAiModels();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & UnregisterModelRequest) => unregisterModel(id, body),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDownloadMissingModels() {
+  const invalidate = useInvalidateAiModels();
+  return useMutation({ mutationFn: () => downloadMissingModels(), onSuccess: invalidate });
 }
