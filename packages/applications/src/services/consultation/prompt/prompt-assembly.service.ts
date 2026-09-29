@@ -333,6 +333,21 @@ export interface PromptAssemblyParams {
    */
   previousVisits?: string;
   /**
+   * TASK-1020 — the dated notes of the patient's EARLIER visits TODAY (same patient, same day,
+   * chained by `parentConsultationId`), as rendered by `harness/same-day-prequel.ts`. Its own
+   * variable, `same_day_prequel_summary`, independent of the carry-forward {@link priorVisitSummary}:
+   * a same-day return is produced whenever a same-day ancestor exists, not on a graph binding.
+   * Rendered in place where a body inlines it, else appended as a delimiter-wrapped data block.
+   * Absent / blank ⇒ `''` and the prompt is byte-identical.
+   */
+  sameDayPrequelSummary?: string;
+  /**
+   * TASK-1020 — the client's `investigations`, one line per result, as rendered by the shared
+   * reader. Feeds v1's `{{context.formatted_test_results}}` (which had no source until now) and a
+   * `test_results` data block where a body does not inline it. Absent ⇒ v1's own `''`.
+   */
+  testResults?: string;
+  /**
    * Uploaded lab/exam attachment contents (extracted text when
    * available, else the filename label). Serialised into {attachments} and/or
    * appended to the prompt.
@@ -605,6 +620,19 @@ export class PromptAssemblyService {
     const previousCaseNotesBlock = variables.previous_case_notes_summary ?? '';
     if (previousCaseNotesBlock && !userPrompt.includes(previousCaseNotesBlock)) {
       userPrompt += wrapExternalData('previous_case_notes_summary', 'PREVIOUS CASE NOTES SUMMARY', previousCaseNotesBlock);
+    }
+
+    // TASK-1020 — the client's lab results and the same-day prequel, on the same consumed-variable
+    // convention: inlined by the body ⇒ no duplicate; otherwise a delimiter-wrapped block; absent ⇒
+    // nothing, so the prompt is byte-identical for every consultation without them.
+    const testResultsBlock = variables.formatted_test_results ?? '';
+    if (testResultsBlock && !userPrompt.includes(testResultsBlock)) {
+      userPrompt += wrapExternalData('test_results', 'TEST RESULTS', testResultsBlock);
+    }
+
+    const sameDayPrequelBlock = variables.same_day_prequel_summary ?? '';
+    if (sameDayPrequelBlock && !userPrompt.includes(sameDayPrequelBlock)) {
+      userPrompt += wrapExternalData('same_day_prequel_summary', 'SAME-DAY EARLIER VISIT(S)', sameDayPrequelBlock);
     }
 
     // Fold the doctor's manually highlighted spans into
@@ -898,6 +926,12 @@ export class PromptAssemblyService {
       case_notes: serializeTextBlock(params.caseNotes),
       recent_vitals: params.vitals?.trim() ?? '',
       previous_case_notes_summary: params.previousVisits?.trim() ?? '',
+      // TASK-1020 — always defined (empty when absent) for the same two reasons: a body referencing
+      // either never renders a literal placeholder, and the `includes(...)` guard can decide between
+      // inlined and appended. `formatted_test_results` is v1's own name, so the pre-summary builder
+      // below writes the same value when a v1 body is resolved.
+      formatted_test_results: params.testResults?.trim() ?? '',
+      same_day_prequel_summary: params.sameDayPrequelSummary?.trim() ?? '',
       // Always define {doctor_highlights} (empty when
       // none) so templates referencing it never leave a literal placeholder.
       doctor_highlights: serializeTextBlock(params.highlights),
@@ -924,11 +958,13 @@ export class PromptAssemblyService {
           // the builder rather than assigned after it, so both inherit v1's `|| default`
           // semantics instead of a second copy of them.
           //
-          // Demographics and test results still have no source in the v2 data model (`patientId`
-          // is an external reference with no local demographic store), so those fall through to
-          // v1's own defaults — Unknown / '' — rather than an invented one.
+          // Demographics still have no source in the v2 data model (`patientId` is an external
+          // reference with no local demographic store), so those fall through to v1's own default —
+          // Unknown — rather than an invented one. Test results DO now (TASK-1020): the client's
+          // `investigations` kind, through the same builder so v1's `''` default still applies.
           vitals: params.vitals,
           previousVisits: params.previousVisits,
+          testResults: params.testResults,
           language: params.conversationLanguage,
         }),
       );

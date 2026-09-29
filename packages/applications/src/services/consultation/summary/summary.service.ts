@@ -72,6 +72,7 @@ import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, interna
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { clientCaseNoteRenderings, clientClinicalContextReaderFor, type ClientClinicalContext } from '../context/client-clinical-context';
+import { resolveSameDayPrequel } from '../harness/same-day-prequel';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IBillingService } from '../../billing/IBillingService';
@@ -461,6 +462,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     // from the client is a consultation with notes, and it must not start refusing simply because
     // the same text also reaches the prompt as prior-visit context below.
     const client = await this.readClientClinicalContext(consultationId);
+    // TASK-1020 — the client's lab results and the same-day prequel (the patient's EARLIER visits
+    // today): at a same-day return this briefing is exactly where the morning's note and the labs
+    // taken in between belong. Both never throw; both are spread only when present.
+    const [testResults, sameDayPrequel] = await Promise.all([
+      clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).readTestResults(consultationId),
+      resolveSameDayPrequel({ consultationRepository: this.consultationRepository, contextItemRepository: this.contextItemRepository }, consultation),
+    ]);
 
     // A note the client sent under `previous_case_notes` is persisted TWICE at open — once as the
     // structured kind, once as a `CASE_NOTE` row per entry — and `client.previousVisits` already
@@ -490,6 +498,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       caseNotes: promptCaseNotes,
       vitals: client.vitals,
       previousVisits: client.previousVisits,
+      ...(testResults ? { testResults } : {}),
+      ...(sameDayPrequel.hasSameDayPrequel ? { sameDayPrequelSummary: sameDayPrequel.summary } : {}),
       conversationLanguage: (await this.resolveNoteOutputLanguage(tenantId)).tag,
       dnaStyleId: request.dnaStyleId,
       preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
