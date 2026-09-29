@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/types",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "description": "Shared TypeScript types for ArcaAI/HOPE",
   "type": "module",
   "main": "./dist/index.js",
