@@ -127,6 +127,11 @@ export const PARENT_PATIENT_MISMATCH_CODE = 'PARENT_PATIENT_MISMATCH';
 /** TASK-1020 D-2 — the `externalRef` is already this tenant's encounter id for another patient (409). */
 export const EXTERNAL_REF_CONFLICT_CODE = 'EXTERNAL_REF_CONFLICT';
 
+/** Prisma's unique-constraint violation — the encounter-key partial unique index (TASK-1020 D-2). */
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002';
+}
+
 /**
  * TASK-951 — everything `open` learned from the caller's `context`, in one value.
  *
@@ -1327,7 +1332,17 @@ export class ConsultationService extends BaseService implements IConsultationSer
       consultation.parentConsultationId = parentConsultationId;
     }
 
-    const saved = await this.consultationRepository.create(consultation);
+    let saved: ConsultationEntity;
+    try {
+      saved = await this.consultationRepository.create(consultation);
+    } catch (error) {
+      // TASK-1020 D-2 — two opens racing on the same encounter: the partial unique index lets one
+      // insert win; the loser returns the winner's row exactly as a re-open would.
+      const winner = externalRef && isUniqueViolation(error) ? await this.findEncounterMatch(tenantId, request, appointmentDate, actingClinicianId, externalRef) : null;
+      if (!winner) throw error;
+      const withRelations = await this.consultationRepository.findWithRelations(winner.id);
+      return ConsultationDtoMapper.toResponse(withRelations ?? winner, false);
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,

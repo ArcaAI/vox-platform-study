@@ -310,7 +310,8 @@ function ScribeWorkspace() {
   // (dispatch is best-effort so a harness outage never blocks an open).
   const governingWorkflow = useConsultationWorkflow(consultationId ?? undefined);
   const isRecording = (consultation?.status ?? '').toUpperCase() === 'RECORDING';
-  const isClosed = (consultation?.status ?? '').toUpperCase() === 'CLOSED';
+  // TASK-1020 — every terminal status the gateway returns, not only the retired `CLOSED`.
+  const isClosed = ['CLOSED', 'CLOSED_COMPLETE', 'CLOSED_INCOMPLETE', 'SIGNED'].includes((consultation?.status ?? '').toUpperCase());
 
   // SDK-native live running-SOAP preview (opens SSE direct to the gateway via
   // the SDK client). Driven imperatively from the record/select handlers.

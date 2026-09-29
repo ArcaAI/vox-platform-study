@@ -459,7 +459,7 @@ describe('ConsultationsResource#open — TASK-1020 response contract', () => {
     const visitType: 'new-visit' | 'revisit' = result.visitType;
     const externalRef: string | null = result.externalRef;
     const recordable: boolean = result.recordable;
-    const parent: string | null = result.parentConsultationId;
+    const parent: string | null | undefined = result.parentConsultationId;
     expect([status, visitType, externalRef, recordable, parent]).toEqual(['OPEN', 'revisit', 'evt-2', true, 'c1']);
   });
 

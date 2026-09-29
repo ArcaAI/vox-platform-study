@@ -211,8 +211,8 @@ export interface ConsultationOpenResponse {
   departmentId?: string;
   /** `YYYY-MM-DD`. */
   appointmentDate: string;
-  /** The parent visit — the explicit one, or the server-derived same-day predecessor; `null` for a first visit. */
-  parentConsultationId: string | null;
+  /** The parent visit — the explicit one, or the server-derived same-day predecessor. Absent (or `null`) for a first visit. */
+  parentConsultationId?: string | null;
   /** Lifecycle status — the `ConsultationStatus` column. Read {@link recordable} before recording. */
   status: ConsultationStatus;
   /** `'revisit'` when the visit has a parent, else `'new-visit'`. Selects the governing graph's branch. */

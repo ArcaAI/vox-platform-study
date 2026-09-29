@@ -194,6 +194,24 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
       expect(consultationRepository.findByPatientAndDate).not.toHaveBeenCalled();
     });
 
+    it('a racing open that loses the unique index returns the winner row (isNew false), not a 500', async () => {
+      const winner = row({ externalRef: 'EVT-RACE', metadata: { externalRef: 'EVT-RACE' } });
+      consultationRepository.findByExternalRef.mockResolvedValueOnce([]).mockResolvedValueOnce([winner]);
+      consultationRepository.create.mockRejectedValueOnce(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }));
+
+      const result = await open({ metadata: { externalRef: 'EVT-RACE' } });
+
+      expect(result.id).toBe(winner.id);
+      expect(result.isNew).toBe(false);
+    });
+
+    it('a unique violation with no externalRef is rethrown untouched', async () => {
+      const failure = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+      consultationRepository.create.mockRejectedValueOnce(failure);
+
+      await expect(open({})).rejects.toBe(failure);
+    });
+
     it('a ref already used for ANOTHER patient is 409 EXTERNAL_REF_CONFLICT and nothing is written', async () => {
       consultationRepository.findByExternalRef.mockResolvedValue([row({ patientId: 'patient-9', externalRef: 'EVT-1' })]);
 
