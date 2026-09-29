@@ -674,7 +674,7 @@ engineers.
 | D-7 | A late approval still signs: `CLOSED_INCOMPLETE → SIGNED`, then `close` → `CLOSED_COMPLETE`. |
 | D-8 | The timeout is a settings-registry key, `consultation.session.completionTimeoutMinutes` (`maxScope: tenant`, tenant → SYSTEM → 5, whole minutes 1..10080). The wave-5 `HarnessPolicy.gateMaxEscalations` column (never pushed) was withdrawn with its migration. |
 | D-9 | Resume is a sanctioned edge: `CLOSED_INCOMPLETE → RECORDING` and (owner, same day) `PENDING_REVIEW → RECORDING` — both work with `requirePrimedBeforeRecording` ON too. 26 legal transitions. `DRAFT_PENDING_SENSORS` was not added. |
-| D-10 | ALaaS Save runs the full HOPE finish (update → approve → close); a `CLOSED_INCOMPLETE` consultation is not "already finished" for it. |
+| D-10 | ~~ALaaS Save runs the full HOPE finish (update → approve → close)~~ **Superseded 2026-09-29 by TASK-1008 OD-1: the EMR copy is the only sign-off trigger; Save never signs.** A `CLOSED_INCOMPLETE` consultation is still not "already finished" for the finish sequence. |
 | D-11 | The guide lives in the repo only (`docs/guides/consultation-session-lifecycle.md`). |
 
 **How it works.** The clock is held by the GATEWAY (corrected after the first cluster check — see below):
@@ -759,3 +759,4 @@ plaintext note outputs were deleted from the local scratchpad afterwards (owner 
 | 2026-09-23 | Wave 2: owner answered OD-7/9/10/12/13. Penalty plumbing (P1/P2), English-by-default output language with `ml-en` accepted (L5), ALaaS sibling ticket S-1…S-5 (A1/A2). Merged, gated once, RED verified, worktrees destroyed, pushed `9e8db9d91` (pipeline #1304). |
 | 2026-09-22 | Implemented in four parallel worktree lanes, merged to `dev-2.2`, gated once (`640762e55`). OD-7 answered (keep E2B). OD-10 opened: the decode-time penalties are inert on this platform, so the dedup is the only defence. OD-11 resolved against the ticket's own §A2. Worktrees and branches destroyed after the merge and the green gate. |
 | 2026-09-22 | Four parallel read-only investigation lanes (HOPE stream contract · ALaaS consumer · cluster log forensics · stored-data truth). **Part B confirmed by decryption**: the duplication is in HOPE's stored note, in three exact-repeat shapes, none a paraphrase — which settles OD-5 toward exact-normalised sentence dedup. Nine secondary findings (S-1…S-9) recorded, including one confirmed-occurred ALaaS double-subscription and an observability bug that inflated the apparent stream-open count from 4 to 58. OD-9 added. |
+| 2026-09-29 | D-10 superseded by TASK-1008 (owner): ALaaS `e02e390` (Save → HOPE finish) is reverted; the EMR copy is the only approval trigger. The lifecycle guide's ALaaS mapping was updated with it. |

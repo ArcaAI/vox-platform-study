@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — owner go 2026-09-29; lanes A-BE / A-UI running, H-DOC inline |
+| Status | **Review** — merged locally into ALaaS `refactor-hope-integaration` (`3d19224`) and hope-v2 `dev-2.2`; NOT pushed (owner); §8 live verification pending |
 | Type | bugfix + refactor (clinical sign-off semantics) |
 | Branch | `dev-2.2` (hope-v2, docs only) · `refactor-hope-integaration` (ALaaSv3.0) |
 | Repos | `arca/hope-v2` (docs + lifecycle guide), `ALaaSv3.0` (`apps/audio-stream-svc`, `apps/web_ui`) |
@@ -182,7 +182,65 @@ From the 2026-09-29 lifecycle review; recorded so they are not lost:
 
 ## 9. Implementation summary
 
-_Not started._
+Lanes (rule 14): **A-BE** audio-stream-svc — `opus` (clinical sign-off + concurrency: the verdict
+stage); **A-UI** web_ui — `sonnet` (well-specified multi-file UI work under a pinned contract);
+**H-DOC** — inline by the orchestrator. Each lane in its own ALaaS worktree off
+`refactor-hope-integaration` @ `9333154`; both lanes built against the §6 HTTP contract in
+parallel, no shared files.
+
+### ALaaS (`refactor-hope-integaration`, merges `b7108dc` A-BE, `3d19224` A-UI — local, not pushed)
+
+| Commit | What |
+|---|---|
+| `15efbe1` | revert of `e02e390` — `save_summary` never calls `finishInHope` (the expected spec conflict did not occur) |
+| `16f8bc7` | `mark_copied_to_emr/:s/:e` takes `{ content, versionId?, updatedBy?, updatedById? }` (`mark-copied-to-emr.dto.ts`); version resolved by text (`isSameSummaryText`), a foreign `versionId` → 404, unmatched text → new `updated_summary`; content always forwarded; finish compares with the same normalisation (D2, D4) |
+| `494a213` | single-flight finish per consultation id, in-process (D5) |
+| `f781aa1` | a 409 on approve/close is re-read: done only for `SIGNED` / `CLOSED_*`; `RECORDING` / `DRAINING` / `OPEN` / `PRIMED` → `notReady` (D6) |
+| `d4303aa` | outcome persisted on `consultation_link` (`hope_finish_status`, `hope_finish_error`, `hope_signed_at`, `hope_finish_updated_at`); migration `src/migrations/add-hope-finish-status.sql` |
+| `db9f3bf` | `GET summary/hope-status/:s/:e`, `POST …/retry` (202; 404 unlinked; 409 `not copied to EMR`) |
+| `8055c63` | orchestrator fix: a stored `pending` with no run in flight and older than 2 min reads as `failed` ("interrupted … retry") — a restart can no longer leave the badge at "Signing…" forever |
+| `2dcf083` | web_ui: shared client `utils/emrSignOff.js` + `services/emrSignOffService.js`, badge model, `HopeSignOffBadge.jsx` |
+| `e9f9133` | web_ui: Copy to EMR from the read view (D1); mark only after the EMR accepted, one call with `content`, in every screen (D3); "Copied to EMR" only when EMR + mark both succeeded (D7); badge beside every copy control; Save dialog → Cancel · **Save draft** · **Save, sign & copy to EMR**; copy confirm names the signer |
+
+Deviations from the brief (accepted): a 409 on approve whose re-read shows `CLOSED_*` counts as
+done; when an owned `versionId` and `content` disagree, content wins; the mark route keeps its
+existing 201; `hope-status` reports `pending` while a run is in flight in this process.
+
+### hope-v2 (`dev-2.2`)
+
+- `docs/guides/consultation-session-lifecycle.md` — ALaaS mapping (Save draft → nothing; EMR copy
+  → update / approve / close), §1, §3 and troubleshooting.
+- TASK-1001 README — D-10 struck through and superseded; Change History entry.
+
+### Gate evidence (merged tree, primary checkout, 2026-09-29)
+
+```
+audio-stream-svc  npx jest                         Test Suites: 2 failed, 39 passed, 41 total
+                                                   Tests:       5 failed, 925 passed, 930 total
+                  (the 5 failures — src/queue/consultation-workflow-run.spec.ts,
+                   src/patient-data/department-name-map.spec.ts — fail identically on the
+                   pre-merge base 9333154: 5 failed / 39 passed; out of scope)
+                  jest src/medical_summary src/consultation   21 suites / 614 tests passed
+                  npx tsc --noEmit                 exit 0
+                  npx nest build                   ok
+                  npx eslint src/medical_summary src/consultation   0 errors
+web_ui            npm test                         tests 495, pass 483, fail 12
+                  (the 12 are the pre-existing department-code / prior-case-notes failures;
+                   baseline was 482 / 470 / 12; +13 new tests, all green)
+                  npx vite build (to /tmp)         built in 2.30s
+```
+
+Worktrees `ALaaSv3.0-task-1008-{be,ui}` removed after the merge; branches `task-1008/{be,ui}`
+deleted (merged).
+
+### Deploy notes
+
+- Non-development environments must apply `add-hope-finish-status.sql` by hand (`psql`), as with
+  `add-hope-consultation-link.sql`; development relies on TypeORM `synchronize`.
+- Single-flight is per process — correct for today's single broker replica; a second replica
+  needs a shared lock.
+- OD-5: raise `consultation.session.completionTimeoutMinutes` for the tenant at deploy.
+- Not yet exercised in a browser or against the live stack — §8.
 
 ## 10. Change history
 
@@ -190,3 +248,4 @@ _Not started._
 |---|---|
 | 2026-09-29 | Opened: review of the Save / Submit sign-off (ALaaS `e02e390`), commit inventory, EMR-copy trigger analysis, defects D1–D7, plan. OD-1 and OD-2 decided by the owner. |
 | 2026-09-29 | OD-3…OD-6 decided (recommendations accepted); go given. Lanes: A-BE (audio-stream-svc, opus), A-UI (web_ui, sonnet), H-DOC (inline). |
+| 2026-09-29 | Implemented in two parallel ALaaS worktree lanes (A-BE opus, A-UI sonnet) + H-DOC inline; orchestrator fix `8055c63` (stale pending); merged locally into `refactor-hope-integaration` (`3d19224`) and gated on the merged tree; docs committed on `dev-2.2`. Not pushed (owner). Status → Review; §8 live verification pending. |

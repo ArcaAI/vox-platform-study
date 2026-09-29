@@ -22,7 +22,7 @@ stateDiagram-v2
     DRAINING --> PENDING_REVIEW: final note generated\n(completion window starts)
     DRAINING --> DRAFT_PENDING_SENSORS: final note generated,\nquality checks still running
     DRAFT_PENDING_SENSORS --> PENDING_REVIEW: checks finished
-    PENDING_REVIEW --> SIGNED: approve() — clinician Save / Submit
+    PENDING_REVIEW --> SIGNED: approve() — clinician signs\n(ALaaS: Copy to EMR)
     DRAFT_PENDING_SENSORS --> SIGNED: approve()
     PENDING_REVIEW --> CLOSED_INCOMPLETE: completion timeout,\nno approval
     DRAINING --> CLOSED_INCOMPLETE: completion timeout,\nno approval
@@ -42,7 +42,8 @@ The short version:
 
 1. **Open** a consultation, **record**, **stop**.
 2. HOPE writes the **final note**. The consultation is now **ready to complete**, and a timer starts.
-3. The clinician **approves** the note (in ALaaS: _Save_ or _Submit_, edited or as generated). HOPE
+3. The clinician **approves** the note (in ALaaS: by copying it to the EMR, edited or as generated —
+   a plain _Save_ only keeps a draft). HOPE
    signs it, your integration **closes** it: `CLOSED_COMPLETE`.
 4. If nobody approves within the tenant's **completion timeout** (5 minutes unless your tenant admin
    changed it), HOPE closes the session **unsigned**: `CLOSED_INCOMPLETE`. That is not a dead end —
@@ -103,7 +104,7 @@ that recording stops starts a new one.
 
 | Outcome       | Trigger                                                                                                                                               | Result                                                              |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| **Approved**  | `summaries.approve(consultationId, summaryId, …)` — in ALaaS, the clinician clicks **Save** or **Submit** on the final summary, with or without edits | `SIGNED`; your integration then calls `close()` → `CLOSED_COMPLETE` |
+| **Approved**  | `summaries.approve(consultationId, summaryId, …)` — in ALaaS, the clinician copies the final summary to the EMR (**Copy to EMR**, or **Save, sign & copy to EMR**), with or without edits | `SIGNED`; your integration then calls `close()` → `CLOSED_COMPLETE` |
 | **Timed out** | No approval within the tenant's completion timeout                                                                                                    | `CLOSED_INCOMPLETE` — closed, unsigned                              |
 
 ```mermaid
@@ -113,7 +114,7 @@ sequenceDiagram
     C->>H: recording.stop()
     H-->>H: generate the final note
     Note over H: ready to complete — window starts<br/>(tenant timeout, default 5 min)
-    alt clinician saves or submits in time
+    alt clinician signs in time
         C->>H: summaries.update(edited text)  (only if edited)
         C->>H: summaries.approve()
         H-->>C: SIGNED
@@ -127,21 +128,25 @@ sequenceDiagram
 
 ### A late approval still signs
 
-If the clinician saves after the window closed, run the same sequence — update (if edited),
+If the clinician signs after the window closed, run the same sequence — update (if edited),
 approve, close. HOPE accepts `CLOSED_INCOMPLETE → SIGNED`, and `close()` then lands on
 `CLOSED_COMPLETE`. Nothing needs reopening first. (`close()` on a consultation that is already
 closed is answered, not refused, so a double-click is harmless.)
 
 ### How ALaaS maps to this
 
-| Clinician action in ALaaS                | Calls to HOPE                                                                   |
-| ---------------------------------------- | ------------------------------------------------------------------------------- |
-| **Save** on the final summary            | `summaries.update` (only when the text changed) → `summaries.approve` → `close` |
-| **Save & copy to EMR** / **Copy to EMR** | the same three calls, after the EMR accepted the note                           |
-| Resume recording                         | `recording.start` on the same consultation (see §4)                             |
+| Clinician action in ALaaS                                  | Calls to HOPE                                                                                     |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Save draft** on the final summary                        | none — the draft stays in ALaaS; HOPE keeps waiting (`PENDING_REVIEW`, then `CLOSED_INCOMPLETE`)  |
+| **Copy to EMR** / **Save, sign & copy to EMR**             | after the EMR accepted the note: `summaries.update` (only when the text changed) → `summaries.approve` → `close` |
+| Resume recording                                           | `recording.start` on the same consultation (see §4)                                               |
 
-ALaaS sends these fire-and-forget after its own save succeeded, and treats "already signed" /
-"already closed" as success, so repeating a Save is safe.
+The EMR copy is the sign-off (TASK-1008): it is the clinician's confirmed "this is my note" moment,
+and the text HOPE signs is exactly the text the EMR received. A Save never signs — TASK-1001's
+"Save = full finish" was reverted. ALaaS runs the sequence once per consultation (a repeat joins the
+run in flight), counts a `409` as done only after re-reading a `SIGNED` / `CLOSED_COMPLETE` status,
+and shows the outcome next to the note (_Draft — not signed_, _Signed & closed_, or a named failure
+with **Retry**).
 
 ---
 
@@ -243,7 +248,7 @@ settings (Settings → _Consultation Pipeline_), checked every 15 minutes.
 
 | Symptom                                                                       | Cause                                                                                                                                                                 | What to do                                                                                                                 |
 | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Consultations end up `CLOSED_INCOMPLETE` a few minutes after the doctor stops | Nobody approved inside the completion timeout                                                                                                                         | Make sure Save / Submit calls `approve` (ALaaS does); raise the timeout in Settings if clinicians routinely review longer  |
+| Consultations end up `CLOSED_INCOMPLETE` a few minutes after the doctor stops | Nobody approved inside the completion timeout                                                                                                                         | Make sure the clinician's sign-off calls `approve` (in ALaaS: the EMR copy — a Save alone never signs); raise the timeout in Settings if clinicians routinely review longer  |
 | `approve` answers 409                                                         | The consultation is in a state approve does not accept (e.g. still `RECORDING`, or already `SIGNED`)                                                                  | Stop the recording first; "already signed" is success for a retry                                                          |
 | The final note does not include what was said after a resume                  | The note is re-generated when the **resumed recording stops**, not while it runs                                                                                      | Stop the recording; read `summaries.latest` again after the harness progress stream finishes                               |
 | A resumed recording did not change the note                                   | The note was already `SIGNED` — signed notes are never replaced                                                                                                       | `reopen()` for review, or start a new consultation for a new encounter                                                     |
