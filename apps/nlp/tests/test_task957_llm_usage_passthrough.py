@@ -73,7 +73,9 @@ class TestExternalTextClientUsage:
             {"content": "billing", "usage_detail": USAGE_DETAIL, "guardrail_usage": GUARDRAIL_USAGE}
         )
 
-        result = await client.generate_label_with_usage("prompt", tenant_id="tenant-abc")
+        result = await client.generate_label_with_usage(
+            "prompt", tenant_id="tenant-abc", provider="lm-studio", model="gemma"
+        )
 
         assert result.label == "billing"
         # Verbatim — not reshaped, not re-keyed. The gateway owns the one parser.
@@ -85,7 +87,7 @@ class TestExternalTextClientUsage:
         # An empty dict would parse as "measured, and it was nothing"; `None` is
         # "the service reported none", which is a different fact.
         result = await _client({"content": "billing"}).generate_label_with_usage(
-            "prompt", tenant_id="tenant-abc"
+            "prompt", tenant_id="tenant-abc", provider="lm-studio", model="gemma"
         )
         assert result.usage_detail is None
         assert result.guardrail_usage is None
@@ -96,14 +98,18 @@ class TestExternalTextClientUsage:
         # `forbidNonWhitelisted` DTO on some future route. Refuse it at the source.
         result = await _client(
             {"content": "billing", "usage_detail": "nope"}
-        ).generate_label_with_usage("prompt", tenant_id="tenant-abc")
+        ).generate_label_with_usage(
+            "prompt", tenant_id="tenant-abc", provider="lm-studio", model="gemma"
+        )
         assert result.usage_detail is None
 
     @pytest.mark.asyncio
     async def test_generate_label_still_returns_the_bare_label(self) -> None:
         # The narrow accessor stays — one implementation, two shapes.
         assert (
-            await _client({"content": "billing"}).generate_label("prompt", tenant_id="tenant-abc")
+            await _client({"content": "billing"}).generate_label(
+                "prompt", tenant_id="tenant-abc", provider="lm-studio", model="gemma"
+            )
             == "billing"
         )
 
@@ -114,7 +120,13 @@ class _FakeExternalTextClient:
         self.guardrail = guardrail
 
     async def generate_label_with_usage(
-        self, prompt: str, system_prompt: str | None = None, *, tenant_id: str
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        *,
+        tenant_id: str,
+        provider: str,
+        model: str,
     ):
         from nlp.services.external_text_client import GeneratedLabel
 
@@ -136,6 +148,8 @@ BODY = {
     "text": "I have a billing question",
     "instructions": ["billing", "clinical"],
     "tenant_id": "t1",
+    "text_provider": "lm-studio",
+    "text_model": "gemma",
 }
 
 

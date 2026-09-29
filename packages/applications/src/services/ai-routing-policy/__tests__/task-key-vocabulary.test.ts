@@ -44,6 +44,9 @@ describe('AI_TASK_KEYS — the routing-policy vocabulary', () => {
         'nlp.diagnosis',
         'nlp.sentiment',
         'nlp.toxicity',
+        // TASK-1016 (OD-1a) — the open-taxonomy generations NLP delegates to text.
+        'nlp.topic',
+        'nlp.intent',
         'harness.judge',
         'vlm.extract',
       ].sort(),
@@ -76,7 +79,7 @@ describe('governance — who may write, and which tier the runtime reads', () =>
     },
   );
 
-  it.each(['nlp.ner', 'nlp.classification', 'nlp.diagnosis', 'nlp.sentiment', 'nlp.toxicity', 'harness.judge'])(
+  it.each(['nlp.ner', 'nlp.classification', 'nlp.diagnosis', 'nlp.sentiment', 'nlp.toxicity', 'nlp.topic', 'nlp.intent', 'harness.judge'])(
     '%s is super-admin-only',
     (key) => {
       expect(isSuperAdminOnlyTaskKey(key)).toBe(true);

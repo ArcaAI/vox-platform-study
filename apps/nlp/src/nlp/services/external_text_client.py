@@ -86,6 +86,8 @@ class ExternalTextClient:
         system_prompt: str | None = None,
         *,
         tenant_id: str,
+        provider: str,
+        model: str,
     ) -> str:
         """Post `prompt` to `text`'s `/generate` and return the generated
         label (the response's `content`, stripped). Raises
@@ -95,7 +97,9 @@ class ExternalTextClient:
         The narrow accessor over :meth:`generate_label_with_usage`, kept for
         callers that have no billing plane to feed."""
         return (
-            await self.generate_label_with_usage(prompt, system_prompt, tenant_id=tenant_id)
+            await self.generate_label_with_usage(
+                prompt, system_prompt, tenant_id=tenant_id, provider=provider, model=model
+            )
         ).label
 
     async def generate_label_with_usage(
@@ -104,9 +108,15 @@ class ExternalTextClient:
         system_prompt: str | None = None,
         *,
         tenant_id: str,
+        provider: str,
+        model: str,
     ) -> GeneratedLabel:
         """The same call as :meth:`generate_label`, also returning what it cost
-        (TASK-957 F-7b — see :class:`GeneratedLabel`)."""
+        (TASK-957 F-7b — see :class:`GeneratedLabel`).
+
+        TASK-1016 — ``provider`` + ``model`` are the gateway-injected selection. `text` has no
+        default for either (`/generate` answers 422), so a blank one raises HERE, before any
+        call: retrying a request `text` can only refuse would just delay the same failure."""
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
@@ -126,7 +136,20 @@ class ExternalTextClient:
             )
         headers["X-Tenant-Id"] = resolved_tenant
 
-        body: dict[str, Any] = {"prompt": prompt, "stream": False}
+        resolved_provider = (provider or "").strip()
+        resolved_model = (model or "").strip()
+        if not resolved_provider or not resolved_model:
+            raise ValueError(
+                "external text generate_label requires a provider and model : the "
+                "gateway must inject the selection; text has no default for either."
+            )
+
+        body: dict[str, Any] = {
+            "prompt": prompt,
+            "stream": False,
+            "provider": resolved_provider,
+            "model": resolved_model,
+        }
         if system_prompt:
             body["system_prompt"] = system_prompt
 

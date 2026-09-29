@@ -48629,6 +48629,8 @@
                 "nlp.diagnosis",
                 "nlp.sentiment",
                 "nlp.toxicity",
+                "nlp.topic",
+                "nlp.intent",
                 "harness.judge",
                 "vlm.extract"
               ],
@@ -48763,6 +48765,8 @@
                 "nlp.diagnosis",
                 "nlp.sentiment",
                 "nlp.toxicity",
+                "nlp.topic",
+                "nlp.intent",
                 "harness.judge",
                 "vlm.extract"
               ],

@@ -243,6 +243,15 @@ class TopicClassificationRequest(BaseModel):
     tenant_id: str | None = Field(
         default=None, description="Gateway-injected tenant id, forwarded to text as X-Tenant-Id"
     )
+    # TASK-1016 — the delegated generation's SELECTION, gateway-injected like `model_name` on
+    # `/classify/text` and never caller-chosen. `text` has no default provider or model, so an
+    # absent pair fails closed (503) here instead of reaching `text` as a 422.
+    text_provider: str | None = Field(
+        default=None, description="Gateway-injected text provider for the delegated generation"
+    )
+    text_model: str | None = Field(
+        default=None, description="Gateway-injected provider-native model id for the generation"
+    )
 
 
 class TopicClassificationResponse(BaseModel):
@@ -281,6 +290,15 @@ class IntentClassificationRequest(BaseModel):
     )
     tenant_id: str | None = Field(
         default=None, description="Gateway-injected tenant id, forwarded to text as X-Tenant-Id"
+    )
+    # TASK-1016 — the delegated generation's SELECTION, gateway-injected like `model_name` on
+    # `/classify/text` and never caller-chosen. `text` has no default provider or model, so an
+    # absent pair fails closed (503) here instead of reaching `text` as a 422.
+    text_provider: str | None = Field(
+        default=None, description="Gateway-injected text provider for the delegated generation"
+    )
+    text_model: str | None = Field(
+        default=None, description="Gateway-injected provider-native model id for the generation"
     )
 
 

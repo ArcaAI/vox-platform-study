@@ -23,6 +23,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { AiInferenceController } from '../ai-inference.controller';
 
 const NLP_MODEL = { sourceUri: 'org/medical-ner', slug: 'medical-ner', provider: 'built-in', metaData: null };
+// TASK-1016 (OD-1a) — the delegated topic/intent routes now resolve their own SYSTEM text election.
+const TEXT_MODEL = {
+  sourceUri: 'gemma-4-e2b-it-qat',
+  wireModelId: 'gemma-4-e2b-it-qat',
+  slug: 'lms-gemma-4-e2b-it-qat',
+  provider: 'lm-studio',
+  metaData: null,
+};
 
 const USAGE_DETAIL = {
   task_id: 'text-task-topic-1',
@@ -66,7 +74,11 @@ function build(opts: { upstream?: Record<string, unknown>; computeDevice?: unkno
   const ledger = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 1 }) };
   const controller = new AiInferenceController(
     client as never,
-    { resolveDefault: vi.fn(async () => ({ model: NLP_MODEL })) } as never,
+    {
+      resolveDefault: vi.fn(async (_tenantId: string, taskKey: string) => ({
+        model: taskKey === 'nlp.topic' || taskKey === 'nlp.intent' ? TEXT_MODEL : NLP_MODEL,
+      })),
+    } as never,
     { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : undefined)) } as never,
     ledger as never,
     { getRow: vi.fn(async () => ({ instructionsJson: ['billing', 'clinical'] })) } as never,

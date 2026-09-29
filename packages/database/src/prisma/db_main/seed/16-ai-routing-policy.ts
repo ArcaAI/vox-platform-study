@@ -44,8 +44,9 @@ const AI_TASK_KIND_BY_SEEDED_TASK_KEY: Record<string, AiTaskKind> = {
   'nlp.diagnosis': 'TEXT_CLASSIFICATION',
   'nlp.sentiment': 'TEXT_CLASSIFICATION',
   'nlp.toxicity': 'TEXT_CLASSIFICATION',
-  'nlp.topic': 'TEXT_CLASSIFICATION',
-  'nlp.intent': 'TEXT_CLASSIFICATION',
+  // TASK-1016 (OD-1a) — LLM generations delegated to `text`, not encoder heads.
+  'nlp.topic': 'TEXT_GENERATION',
+  'nlp.intent': 'TEXT_GENERATION',
   'guardrail.validate': 'CONTENT_SAFETY',
   'guardrail.safety': 'CONTENT_SAFETY',
   'guardrail.groundedness': 'GROUNDEDNESS',
@@ -73,7 +74,10 @@ export const SYSTEM_TASK_DEFAULT_EXEMPTIONS: Record<string, string> = {
   'nlp.toxicity': 'No checkpoint has been selected (multi-label, needs a per-label head + `labelTaxonomy.cls_threshold`) — an OPEN OWNER DECISION.',
 };
 
-/** The nine SYSTEM elected defaults — the retired seed's twelve minus the three `text.*` elections (TASK-881). */
+/**
+ * The eleven SYSTEM elected defaults — the retired seed's twelve minus the three `text.*`
+ * elections (TASK-881), plus `nlp.topic` / `nlp.intent` (TASK-1016, owner decision OD-1a).
+ */
 export const SYSTEM_TASK_DEFAULT_ROUTING: TaskDefaultRoutingSeed[] = [
   { id: '89000000-0000-0000-0000-000000000001', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.validate', modelSlug: 'granite-guardian-4.1-8b' },
   { id: '89000000-0000-0000-0000-000000000002', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.ner', modelSlug: 'medical-ner' },
@@ -91,6 +95,11 @@ export const SYSTEM_TASK_DEFAULT_ROUTING: TaskDefaultRoutingSeed[] = [
   { id: '89000000-0000-0000-0000-000000000012', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.pii.spans', modelSlug: 'gliner2-guardrails-pii-multi' },
   { id: '89000000-0000-0000-0000-000000000007', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.groundedness', modelSlug: 'minicheck-flan-t5-large' },
   { id: '89000000-0000-0000-0000-000000000008', tenantId: SYSTEM_TENANT_ID, taskKey: 'harness.judge', modelSlug: 'lms-gemma-4-e2b-it-qat' },
+  // TASK-1016 (OD-1a) — the open-taxonomy topic/intent labels `apps/nlp` delegates to `text`'s
+  // `/generate`, which has no default model. Same platform text model as the judge (owner
+  // directive 2026-09-03: every text-generation task on LM Studio `gemma-4-e2b-it-qat`).
+  { id: '89000000-0000-0000-0000-000000000013', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.topic', modelSlug: 'lms-gemma-4-e2b-it-qat' },
+  { id: '89000000-0000-0000-0000-000000000014', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.intent', modelSlug: 'lms-gemma-4-e2b-it-qat' },
 ];
 
 export const seedAiRoutingPolicy = async (

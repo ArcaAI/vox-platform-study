@@ -120,6 +120,7 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     ActivityBudget,
     chain_candidates,
     read_text_fallback,
+    read_text_primary,
     wire_provider,
 )
 from harness.temporal.models import (
@@ -3515,6 +3516,67 @@ def _json_block(raw: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+#: TASK-1016 — the named fail-closed reasons of the loop's text selection.
+_PLANNER_AGENT_UNRESOLVED = "planner_agent_unresolved"
+_SPECIALIST_AGENT_UNRESOLVED = "specialist_agent_unresolved"
+_VISION_MODEL_UNSELECTED = "vision_model_unselected"
+
+
+class _LoopSelectionUnresolved(Exception):
+    """No provider/model could be resolved for a loop activity's ``text`` call."""
+
+
+class _LoopTextSelection(NamedTuple):
+    provider: str
+    model: str
+    provider_override: dict[str, Any] | None
+    policy: HarnessPolicy
+
+
+async def _resolve_loop_text_selection(
+    settings: Settings, *, agent_slug: str | None, tenant_id: str
+) -> _LoopTextSelection:
+    """The text selection of the agent ``agent_slug``, through the ONE agent resolution.
+
+    TASK-1016 — ``apps/text`` has no default provider or model, so a loop activity that names
+    neither is refused (422). Its model is the one its AGENT names: ``textPrimary`` of
+    ``GET /internal/agents/resolve`` (provider, provider-native model, one-hop credential),
+    exactly as ``core.agent`` reads it — plus the tenant's effective policy, whose PHI flags
+    guard the egress. Raises :class:`_LoopSelectionUnresolved` rather than substituting.
+    """
+    slug = (agent_slug or "").strip()
+    if not slug:
+        raise _LoopSelectionUnresolved("no agent slug")
+    api = _api_client(settings)
+    try:
+        raw = await api.resolve_agent(slug=slug, tenant_id=tenant_id)
+    except ApiServiceError as exc:
+        raise _LoopSelectionUnresolved(f"agent {slug!r} unresolved: {exc}") from exc
+    primary = read_text_primary(raw)
+    provider = wire_provider(primary.provider) if primary is not None else None
+    if primary is None or not provider or not primary.model:
+        raise _LoopSelectionUnresolved(f"agent {slug!r} names no text provider/model")
+    try:
+        policy = HarnessPolicy.from_api(await api.get_policy(tenant_id))
+    except ApiServiceError as exc:
+        raise _LoopSelectionUnresolved(f"effective policy fetch unreachable: {exc}") from exc
+    return _LoopTextSelection(provider, primary.model, primary.provider_override, policy)
+
+
+def _loop_egress_safe(
+    text: str, selection: _LoopTextSelection, settings: Settings, redactor: PhiRedactor
+) -> str:
+    """The same fail-closed PHI egress guard ``generate`` and ``core.agent`` apply."""
+    return ensure_egress_safe(
+        text,
+        provider=selection.provider,
+        settings=settings,
+        phi_enabled=selection.policy.phi_enabled,
+        phi_fail_closed=selection.policy.phi_fail_closed,
+        redactor=redactor,
+    )
+
+
 @activity.defn
 async def plan_reasoning(payload: PlanLoopInput) -> PlanDecision:
     """Decide which specialists review the newly arrived context. RECORDED.
@@ -3553,10 +3615,45 @@ async def plan_reasoning(payload: PlanLoopInput) -> PlanDecision:
 
     settings = get_settings()
     try:
+        tenant_id = _required_tenant(payload.tenant_id, "plan_reasoning")
+    except ValueError as exc:
+        return PlanDecision(plan_id=plan_id, dispatch=[], degraded=True, rationale=str(exc))
+    # TASK-1016 — the planner IS the primary agent, so it runs on that agent's model.
+    try:
+        selection = await _resolve_loop_text_selection(
+            settings, agent_slug=payload.planner_agent_slug, tenant_id=tenant_id
+        )
+    except _LoopSelectionUnresolved as exc:
+        activity.logger.warning(
+            "harness.loop.plan_unselected",
+            extra={"consultation_id": payload.consultation_id, "reason": str(exc)},
+        )
+        return PlanDecision(
+            plan_id=plan_id,
+            dispatch=[],
+            degraded=True,
+            rationale=f"{_PLANNER_AGENT_UNRESOLVED}: {exc}",
+        )
+    redactor = _phi_redactor()
+    try:
+        safe_prompt = _loop_egress_safe(prompt, selection, settings, redactor)
+        safe_system = _loop_egress_safe(_PLANNER_SYSTEM_PROMPT, selection, settings, redactor)
+    except PhiEgressBlocked as exc:
+        activity.logger.warning(
+            "harness.phi_egress.blocked",
+            extra={"provider": exc.provider, "reason": exc.reason, "stage": "plan_reasoning"},
+        )
+        return PlanDecision(
+            plan_id=plan_id, dispatch=[], degraded=True, rationale=f"phi_egress_blocked: {exc}"
+        )
+    try:
         result = await _text_client(settings).generate(
-            tenant_id=_required_tenant(payload.tenant_id, "plan_reasoning"),
-            prompt=prompt,
-            system_prompt=_PLANNER_SYSTEM_PROMPT,
+            tenant_id=tenant_id,
+            prompt=safe_prompt,
+            system_prompt=safe_system,
+            provider=selection.provider,
+            model=selection.model,
+            provider_override=selection.provider_override,
             temperature=0.0,
             idempotency_key=f"plan:{plan_id}",
             context={"reasoning": payload.reasoning, "task": "harness.loop.plan"},
@@ -3629,11 +3726,41 @@ async def run_specialist(payload: SpecialistAnalysisInput) -> SpecialistResult:
         f"Consultation context:\n{body}"
     )
 
+    tenant_id = _required_tenant(payload.tenant_id, "run_specialist")
+    # TASK-1016 — a specialist runs on its OWN agent's model. Unresolved is non-retryable: a
+    # retry would ask the same resolver the same question.
+    try:
+        selection = await _resolve_loop_text_selection(
+            settings, agent_slug=payload.agent_slug, tenant_id=tenant_id
+        )
+    except _LoopSelectionUnresolved as exc:
+        activity.logger.warning(
+            "harness.loop.specialist_unselected",
+            extra={
+                "consultation_id": payload.consultation_id,
+                "agent_id": payload.agent_id,
+                "reason": str(exc),
+            },
+        )
+        raise ApplicationError(
+            f"{_SPECIALIST_AGENT_UNRESOLVED}: {exc}",
+            type=_SPECIALIST_AGENT_UNRESOLVED,
+            non_retryable=True,
+        ) from exc
+    # A blocked prompt propagates, exactly as it does from `generate`: the specialist fails
+    # alone and the parent degrades.
+    redactor = _phi_redactor()
+    safe_prompt = _loop_egress_safe(prompt, selection, settings, redactor)
+    safe_system = _loop_egress_safe(_SPECIALIST_SYSTEM_PROMPT, selection, settings, redactor)
+
     try:
         result = await _text_client(settings).generate(
-            tenant_id=_required_tenant(payload.tenant_id, "run_specialist"),
-            prompt=prompt,
-            system_prompt=_SPECIALIST_SYSTEM_PROMPT,
+            tenant_id=tenant_id,
+            prompt=safe_prompt,
+            system_prompt=safe_system,
+            provider=selection.provider,
+            model=selection.model,
+            provider_override=selection.provider_override,
             temperature=0.0,
             idempotency_key=f"spec:{payload.plan_id}:{payload.agent_id}:{payload.kind_key}",
             context={"reasoning": payload.reasoning, "task": "harness.loop.specialist"},
@@ -3727,43 +3854,21 @@ def _derived_kind(kind_key: str | None, suffix: str) -> str:
 
 @activity.defn
 async def vision_extract_text(payload: DeriveContextInput) -> DeriveContextResult:
-    """Extract text from an IMAGE context item.
+    """Extract text from an IMAGE context item — FAILS CLOSED until a selection plane exists.
 
-    Backs `vision.extract_text`, which declared but left dispatching as
-    an `unsupported_action` skip. Uses the vision capability shipped in
-    Text. Its output re-enters the context bus one depth deeper, which is what
-    makes image -> text the same mechanism as audio -> transcript.
+    Backs `vision.extract_text`. TASK-1016: ``apps/text`` has no default provider or model, and
+    nothing selects one for this call — there is no vision ``AgentTask``, and the
+    ``vlm.extract`` routing key has no harness-reachable resolve and deliberately no SYSTEM
+    default. The former call named neither (every one was refused with a 422) and never sent
+    the image itself, only the item's text. So the branch ends here, with a NAMED reason in
+    history, and ``text`` is not called. A dead branch of the cascade, not an error: it must
+    not degrade the consultation.
     """
-    settings = get_settings()
-    source = await _resolve_derive_text(settings, payload)
-    try:
-        result = await _text_client(settings).generate(
-            tenant_id=_required_tenant(payload.tenant_id, "vision_extract_text"),
-            prompt=(
-                "Transcribe all legible text in this clinical image verbatim. "
-                "Do not interpret, diagnose or summarise.\n\n"
-                f"{source}"
-            ),
-            temperature=0.0,
-            idempotency_key=f"vision:{payload.context_item_id}",
-            context={"task": "harness.loop.vision_extract", "vision": True},
-        )
-    except Exception as exc:  # noqa: BLE001 — a dead branch of the cascade, not an error
-        activity.logger.warning(
-            "harness.loop.vision_extract_failed",
-            extra={"context_item_id": payload.context_item_id, "error": str(exc)},
-        )
-        return DeriveContextResult(derived=False)
-
-    text = (result.content or "").strip()
-    if not text:
-        return DeriveContextResult(derived=False)
-    return DeriveContextResult(
-        derived=True,
-        context_item_id=f"{payload.context_item_id}:vision",
-        kind_key=_derived_kind(payload.kind_key, "text"),
-        text=text,
+    activity.logger.warning(
+        "harness.loop.vision_extract_unselected",
+        extra={"context_item_id": payload.context_item_id, "reason": _VISION_MODEL_UNSELECTED},
     )
+    return DeriveContextResult(derived=False, reason=_VISION_MODEL_UNSELECTED)
 
 
 @activity.defn

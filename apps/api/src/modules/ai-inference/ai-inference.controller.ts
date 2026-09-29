@@ -11,6 +11,7 @@ import {
   IUsageLedgerService,
   parseTextUsageDetail,
   resolveDeployment,
+  textWireProvider,
   toLedgerProvider,
   type ComputeAugmentedBatch,
   type TextUsageDetail,
@@ -409,11 +410,13 @@ export class AiInferenceController {
   async classifyTopic(@Body() body: ClassifyTopicRequest): Promise<Record<string, unknown>> {
     const tenantId = this.resolveTenantIdOrThrow();
     const instructions = await this.resolveNlpInstructions('nlp.topic', tenantId);
+    const selection = await this.resolveTextSelection('nlp.topic');
     const result = await this.client.classifyTopic({
       text: body.text,
       ...(body.language ? { language: body.language } : {}),
       ...(instructions ? { instructions } : {}),
       tenant_id: tenantId,
+      ...selection,
     });
     // TASK-957 F-7b — the delegated LLM call is what this classification cost.
     await this.emitDelegatedClassifyUsage(result);
@@ -432,11 +435,13 @@ export class AiInferenceController {
   async classifyIntent(@Body() body: ClassifyIntentRequest): Promise<Record<string, unknown>> {
     const tenantId = this.resolveTenantIdOrThrow();
     const instructions = await this.resolveNlpInstructions('nlp.intent', tenantId);
+    const selection = await this.resolveTextSelection('nlp.intent');
     const result = await this.client.classifyIntent({
       text: body.text,
       ...(body.language ? { language: body.language } : {}),
       ...(instructions ? { instructions } : {}),
       tenant_id: tenantId,
+      ...selection,
     });
     // See `/topic` above.
     await this.emitDelegatedClassifyUsage(result);
@@ -486,14 +491,31 @@ export class AiInferenceController {
   }
 
   /**
+   * TASK-1016 (owner decision OD-1a) — the SYSTEM `nlp.topic` / `nlp.intent` election, as the
+   * `text_provider` + `text_model` `apps/nlp` forwards to `text`'s `/generate`, which has no
+   * default for either. The provider is named the way apps/text registers it and the model by
+   * its WIRE id — the same projection the text-agent candidate uses (`toTextCandidate`). FAIL
+   * CLOSED: a missing election, or one whose model names no provider / wire id, is a 503 here and
+   * NLP is never called.
+   */
+  private async resolveTextSelection(taskKey: 'nlp.topic' | 'nlp.intent'): Promise<{ text_provider: string; text_model: string }> {
+    const selection = await this.resolveDefaultModelSelection(taskKey);
+    if (!selection.provider || !selection.wireModelId) {
+      throw new ServiceUnavailableException(`SYSTEM routing election for '${taskKey}' names no text provider / wire model id.`);
+    }
+    return { text_provider: textWireProvider(selection.provider), text_model: selection.wireModelId };
+  }
+
+  /**
    * The same fail-closed resolution as `resolveDefaultModelName`,
    * but keeping the `provider` / `modelSlug` the runtime-profile cascade is
    * keyed on. Split out rather than re-calling `resolveDefault` a second time.
    */
-  private async resolveDefaultModelSelection(taskKey: 'nlp.ner' | 'nlp.diagnosis'): Promise<{
+  private async resolveDefaultModelSelection(taskKey: 'nlp.ner' | 'nlp.diagnosis' | 'nlp.topic' | 'nlp.intent'): Promise<{
     sourceUri: string;
     provider: string | null;
     modelSlug: string | null;
+    wireModelId: string | null;
     localPath: string | null;
     clinicalTaxonomy: Record<string, unknown> | null;
   }> {
@@ -511,6 +533,7 @@ export class AiInferenceController {
         sourceUri,
         provider: resolved.model?.provider ?? null,
         modelSlug: resolved.model?.slug ?? null,
+        wireModelId: resolved.model?.wireModelId?.trim() || null,
         // TASK-890 §3.11 — DERIVED from the elected row's bucket identity.
         localPath: derivedLocalPath(resolved.model),
         clinicalTaxonomy: readClinicalTaxonomy(resolved.model?.metaData),

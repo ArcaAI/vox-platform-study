@@ -80,7 +80,10 @@ async def test_posts_to_generate_with_prompt_and_returns_content() -> None:
     client = _client(ExternalTextConfig(base_url="http://text.local"), http)
 
     label = await client.generate_label(
-        "Which topic does this note discuss?", tenant_id="tenant-abc"
+        "Which topic does this note discuss?",
+        tenant_id="tenant-abc",
+        provider="lm-studio",
+        model="gemma",
     )
 
     assert label == "billing"
@@ -94,7 +97,9 @@ async def test_service_token_forwarded_as_header() -> None:
     http = _RecordingClient({"content": "billing"})
     client = _client(ExternalTextConfig(), http, service_token="tok-123")
 
-    await client.generate_label("prompt", tenant_id="tenant-abc")
+    await client.generate_label(
+        "prompt", tenant_id="tenant-abc", provider="lm-studio", model="gemma"
+    )
 
     assert http.calls[0]["headers"]["X-Service-Token"] == "tok-123"
 
@@ -104,7 +109,9 @@ async def test_no_service_token_header_when_unset() -> None:
     http = _RecordingClient({"content": "billing"})
     client = _client(ExternalTextConfig(), http, service_token="")
 
-    await client.generate_label("prompt", tenant_id="tenant-abc")
+    await client.generate_label(
+        "prompt", tenant_id="tenant-abc", provider="lm-studio", model="gemma"
+    )
 
     assert "X-Service-Token" not in http.calls[0]["headers"]
 
@@ -114,7 +121,9 @@ async def test_tenant_id_forwarded_as_header() -> None:
     http = _RecordingClient({"content": "billing"})
     client = _client(ExternalTextConfig(), http)
 
-    await client.generate_label("prompt", tenant_id="tenant-abc")
+    await client.generate_label(
+        "prompt", tenant_id="tenant-abc", provider="lm-studio", model="gemma"
+    )
 
     assert http.calls[0]["headers"]["X-Tenant-Id"] == "tenant-abc"
 
@@ -134,7 +143,7 @@ async def test_blank_tenant_raises_instead_of_omitting_the_header() -> None:
     client = _client(ExternalTextConfig(), http)
 
     with pytest.raises(ValueError, match="tenant_id"):
-        await client.generate_label("prompt", tenant_id="")
+        await client.generate_label("prompt", tenant_id="", provider="lm-studio", model="gemma")
 
     assert http.calls == [], "the request must never leave apps/nlp without a tenant"
 
@@ -145,7 +154,9 @@ async def test_declared_tenantless_marker_is_forwarded_verbatim() -> None:
     http = _RecordingClient({"content": "billing"})
     client = _client(ExternalTextConfig(), http)
 
-    await client.generate_label("prompt", tenant_id="tenantless:control-plane")
+    await client.generate_label(
+        "prompt", tenant_id="tenantless:control-plane", provider="lm-studio", model="gemma"
+    )
 
     assert http.calls[0]["headers"]["X-Tenant-Id"] == "tenantless:control-plane"
 
@@ -155,7 +166,9 @@ async def test_transient_blip_absorbed_by_bounded_retry() -> None:
     http = _RaiseThenSucceedClient(fail_times=1, payload={"content": "billing"})
     client = _client(ExternalTextConfig(max_retries=2), http)
 
-    label = await client.generate_label("prompt", tenant_id="tenant-abc")
+    label = await client.generate_label(
+        "prompt", tenant_id="tenant-abc", provider="lm-studio", model="gemma"
+    )
 
     assert label == "billing"
     assert http.calls == 2
@@ -167,7 +180,9 @@ async def test_sustained_outage_raises_after_bounded_retries_never_guesses_a_lab
     client = _client(ExternalTextConfig(max_retries=1, retry_backoff_ms=0), http)
 
     with pytest.raises(ExternalTextUnavailableError):
-        await client.generate_label("prompt", tenant_id="tenant-abc")
+        await client.generate_label(
+            "prompt", tenant_id="tenant-abc", provider="lm-studio", model="gemma"
+        )
 
     assert http.calls == 2  # max_retries=1 -> 2 total attempts
 
@@ -178,4 +193,6 @@ async def test_empty_content_raises_rather_than_returning_blank_label() -> None:
     client = _client(ExternalTextConfig(max_retries=0), http)
 
     with pytest.raises(ExternalTextUnavailableError):
-        await client.generate_label("prompt", tenant_id="tenant-abc")
+        await client.generate_label(
+            "prompt", tenant_id="tenant-abc", provider="lm-studio", model="gemma"
+        )
