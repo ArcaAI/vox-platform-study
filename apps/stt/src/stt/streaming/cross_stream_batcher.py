@@ -11,7 +11,7 @@ Shape
 -----
 One ``CrossStreamBatcher`` per LOADED MODEL, shared by every session using it.
 A caller :meth:`~CrossStreamBatcher.submit`\\ s a ``(key, payload)`` and gets a
-``concurrent.futures.Future``. A single flusher thread per batcher:
+``concurrent.futures.Future[Any]``. A single flusher thread per batcher:
 
 * groups pending requests by ``key`` — requests whose decode parameters differ
   (task, language, decode knobs) are NEVER mixed into one decode, because a
@@ -78,7 +78,7 @@ class BatchObserver(Protocol):
 @dataclass
 class _Request:
     payload: Any
-    future: concurrent.futures.Future
+    future: concurrent.futures.Future[Any]
     enqueued_at: float
 
 
@@ -164,7 +164,7 @@ class CrossStreamBatcher:
             self._max_queue = max_queue
             self._cond.notify_all()
 
-    def submit(self, key: Hashable, payload: Any) -> concurrent.futures.Future:
+    def submit(self, key: Hashable, payload: Any) -> concurrent.futures.Future[Any]:
         """Queue one decode request. Never blocks on the decode itself.
 
         Raises
@@ -174,7 +174,7 @@ class CrossStreamBatcher:
         RuntimeError
             The batcher was closed.
         """
-        future: concurrent.futures.Future = concurrent.futures.Future()
+        future: concurrent.futures.Future[Any] = concurrent.futures.Future()
         with self._cond:
             if self._closed:
                 raise RuntimeError(f"cross-stream batcher {self._name!r} is closed")

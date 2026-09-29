@@ -174,7 +174,12 @@ class CrossStreamBatching:
         queue = getattr(settings, "faster_whisper_batch_max_queue", None)
         numbers = (size, wait, queue)
         if not all(isinstance(v, int | float) and not isinstance(v, bool) for v in numbers) or not (
-            size >= 1 and wait >= 0 and queue >= 1
+            size is not None
+            and wait is not None
+            and queue is not None
+            and size >= 1
+            and wait >= 0
+            and queue >= 1
         ):
             logger.warning(
                 "stt.asr_batch.invalid_limits_batching_off",
@@ -252,11 +257,11 @@ def close_model_batcher(loaded_model: LoadedModel) -> None:
         batcher.close()
 
 
-def _chain(inner: concurrent.futures.Future, transform: Any) -> concurrent.futures.Future:
+def _chain(inner: concurrent.futures.Future[Any], transform: Any) -> concurrent.futures.Future[Any]:
     """A future for ``transform(inner.result())``; cancelling it cancels *inner*."""
-    outer: concurrent.futures.Future = concurrent.futures.Future()
+    outer: concurrent.futures.Future[Any] = concurrent.futures.Future()
 
-    def _settle(done: concurrent.futures.Future) -> None:
+    def _settle(done: concurrent.futures.Future[Any]) -> None:
         if outer.done():
             return
         try:
@@ -272,7 +277,7 @@ def _chain(inner: concurrent.futures.Future, transform: Any) -> concurrent.futur
             if not outer.done():
                 outer.set_exception(exc)
 
-    def _propagate_cancel(done: concurrent.futures.Future) -> None:
+    def _propagate_cancel(done: concurrent.futures.Future[Any]) -> None:
         if done.cancelled():
             inner.cancel()
 
@@ -458,7 +463,7 @@ class FasterWhisperAsrAdapter:
         sample_rate: int,
         *,
         prompt: str | None = None,
-    ) -> concurrent.futures.Future | None:
+    ) -> concurrent.futures.Future[Any] | None:
         """Queue this window on the model's cross-stream batch; ``None`` = decode per call.
 
         ``None`` when batching is off, or for a window one batch item cannot hold.
@@ -473,7 +478,7 @@ class FasterWhisperAsrAdapter:
 
     def _submit_prepared(
         self, audio: np.ndarray, prompt: str | None
-    ) -> concurrent.futures.Future | None:
+    ) -> concurrent.futures.Future[Any] | None:
         if self._batcher is None or not self._batchable(audio):
             return None
         inner = self._batcher.submit(self._batch_key, FwBatchItem(audio, prompt or None))
@@ -508,7 +513,8 @@ class FasterWhisperAsrAdapter:
         audio = self._prepare(samples, sample_rate)
         batched = self._submit_prepared(audio, prompt)
         if batched is not None:
-            return batched.result()
+            result: dict[str, Any] = batched.result()
+            return result
 
         kwargs: dict[str, Any] = {
             "task": self._task,

@@ -70,7 +70,8 @@ def _freeze(value: Any) -> Hashable:
         return tuple(_freeze(v) for v in value)
     if isinstance(value, dict):
         return tuple(sorted((k, _freeze(v)) for k, v in value.items()))
-    return value
+    frozen: Hashable = value
+    return frozen
 
 
 @dataclass(frozen=True)
