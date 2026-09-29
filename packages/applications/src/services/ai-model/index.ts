@@ -11,3 +11,5 @@ export * from './aiModel.service';
 export * from './aiModel.service.module';
 export * from './publish';
 export * from './inventory';
+// TASK-1021 — the engine-build contract `apps/vllm` resolves per model slug (C-1 / C-2).
+export * from './serving-spec';
