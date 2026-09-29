@@ -30,6 +30,12 @@ export function formatModelStatus(model: ResidencyCatalogueModel, devices: Resid
   if (model.status === 'loading') return 'Loading…';
   if (model.status === 'unloading') return 'Unloading…';
 
+  // Text, never colour alone (WCAG 1.4.1): the generic code only repeats the sentence, so it is dropped.
+  if (model.status === 'failed') {
+    const code = model.error?.code;
+    return code && code !== 'LOAD_FAILED' ? `Load failed · ${code}` : 'Load failed';
+  }
+
   if (model.status === 'loaded' && model.residency) {
     const device = deviceShortLabel(model.residency.device, devices);
     const bytes = model.residency.bytes ?? model.size.bytes;
@@ -43,6 +49,12 @@ export function formatModelStatus(model: ResidencyCatalogueModel, devices: Resid
   const prefix = model.size.source === 'measured' ? '' : '~';
   const loadPart = model.loadSeconds !== null ? ` · loads in ${Math.round(model.loadSeconds)} s` : '';
   return `Not loaded · ${prefix}${formatBytes(model.size.bytes)}${loadPart}`;
+}
+
+/** The failed load's own message, for the row's detail/tooltip — null when the model has not failed. */
+export function formatLoadFailureDetail(model: ResidencyCatalogueModel): string | null {
+  if (model.status !== 'failed') return null;
+  return model.error?.message || null;
 }
 
 /** "4 agents · 2 tenants", singular-aware, or "No agent uses it" when nothing does. */
