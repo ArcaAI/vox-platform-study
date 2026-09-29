@@ -80,10 +80,9 @@ describe('ExtractEntitiesRequest validation', () => {
     await expectRejected(ExtractEntitiesRequest, { text: 'x', aggregation_strategy: 'simple' });
   });
 
-  it('accepts an optional modelName override', async () => {
-    await expect(runPipe(ExtractEntitiesRequest, { text: 'x', modelName: 'blaze999/Medical-NER' })).resolves.toMatchObject({
-      modelName: 'blaze999/Medical-NER',
-    });
+  // TASK-1012 L-4 / D-2 — the model is the NER selection (`nlp.ner`), never the caller's pick.
+  it('rejects a modelName override (the field is gone)', async () => {
+    await expectRejected(ExtractEntitiesRequest, { text: 'x', modelName: 'blaze999/Medical-NER' });
   });
 
   it('rejects a smuggled snake_case model_name field', async () => {
