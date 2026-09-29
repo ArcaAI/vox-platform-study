@@ -184,12 +184,13 @@ vllm 0.30.0, torch 2.13.0, fastapi 0.136.3, transformers 5.17.0).
 
 | # | Question |
 |---|---|
-| OD-5 | Accept asr-vllm outside the shared uv lock (own lock + vLLM image), or hold for a vLLM release compatible with `fastapi>=0.141`? |
-| OD-6 | Where `quantization` / `maxModelLen` live (new `AsrSpecModel` fields in `@arcaai/types` vs `AiModel._metadata`), and where the engine tuning (V-2) moves: an `asr.vllm.*` settings descriptor or the model row. |
-| OD-7 | `sourceUri`-only specs for private HF repos: wire the registry-credential route (as STT does), or require a published `localPath`? |
+| OD-5 | **DECIDED (owner, 2026-09-29): accept** — `apps/asr-vllm` keeps its own lock and the pinned `vllm/vllm-openai` base image; it stays out of the root uv workspace. |
+| OD-6 | **Owner direction (2026-09-29): platform configuration.** Proposed shape (awaiting confirmation): model-intrinsic facts (`quantization`, `maxModelLen`, dtype) on the `AiModel` registry row, a quantised variant = its own row; engine capacity knobs + truncation thresholds as platform-only `global-kv` descriptors `asrVllm.*` read through an effective-config client, applied at engine (re)build; env keeps bootstrap only. See Change History 2026-09-29. |
+| OD-7 | **DECIDED (owner, 2026-09-29): registry first.** Every model the service loads must be registered in the HOPE model registry (`AiModel`) first — including HF-hosted ones — and weights are pulled with the registry credential (`AiProviderConnection` `model-registry:huggingface`, funded by the model row's owner, the same cascade STT uses via `GET internal/stt/model-registry-credential`). Raw `sourceUri` pulls with ambient credentials are not allowed. |
 
 ## Change History
 
+- 2026-09-29 — Owner OD round: OD-5 accepted (own lock + vLLM image); OD-7 registry-first (AiModel row + `model-registry:huggingface` credential, no ambient pulls); OD-6 directed to platform configuration, shape proposed. Lanes merged into `dev-2.2` (`cd56ccdba` TASK-1009, `e5337ed9b` TASK-1010).
 - 2026-09-29 — Lane `task-1010/asr-vllm-service`: `apps/asr-vllm` service (decode endpoint, engine pool, lazy vLLM 0.30.0 adapter, warm route, health/metrics), concurrency bench, CUDA Dockerfile (not built), root scripts + launcher target. Workspace lock unsatisfiable with vLLM → standalone lock (V-1). 93 unit tests green on the Mac; no GPU run. Added OD-5..OD-7.
 - 2026-09-29 — Owner: 25 streams is milestone 1, design target 1,000; added scale-out criteria.
 - 2026-09-29 — Ticket opened from the TASK-1007 follow-up research (whisper.cpp batching limits,
