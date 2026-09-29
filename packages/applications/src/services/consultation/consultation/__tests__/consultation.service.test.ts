@@ -164,6 +164,9 @@ describe('ConsultationService', () => {
       tenantId: 'tenant-1',
     });
     mockConsultationRepository.findCreatedInRange.mockResolvedValue([]);
+    // TASK-1020 OD-4 — a `revisit` opened with no parent looks up the patient's same-day visits
+    // to chain to. Default: none (tests that exercise the derivation live in the task1020 file).
+    mockConsultationRepository.findByPatientAndDate.mockResolvedValue([]);
 
     // Create service instance with mocks
     service = new ConsultationService(
@@ -217,9 +220,9 @@ describe('ConsultationService', () => {
     });
 
     it('does NOT re-grant when an existing consultation is returned', async () => {
-      // The existing branch returns early. Re-granting here would silently
+      // The existing branch does not record consent. Re-granting here would silently
       // resurrect an admin's deliberate revocation every time the clinician
-      // re-opened the same consultation.
+      // re-opened the same consultation (re-affirmed by TASK-1020 D-6).
       mockConsultationRepository.findByUniqueKey.mockResolvedValue(createMockConsultationEntity());
 
       await wired.getOrCreate({ patientId: 'patient-1' }, 'doctor-1');
@@ -407,107 +410,6 @@ describe('ConsultationService', () => {
       await service.getOrCreate({ patientId: 'patient-123-äöü' }, 'doctor-1');
 
       expect(mockConsultationRepository.findByUniqueKey).toHaveBeenCalledWith('tenant-1', 'patient-123-äöü', expect.any(Date), 'doctor-1');
-    });
-  });
-
-  describe('createRevisit', () => {
-    it('should throw BadRequestException when tenant ID is not available', async () => {
-      mockClsService.get.mockImplementation((key: string) => {
-        if (key === 'tenantId') return null;
-        if (key === 'user') return { id: 'user-id-1' };
-        return null;
-      });
-
-      await expect(service.createRevisit({ patientId: 'patient-1' }, 'doctor-1', 'parent-id')).rejects.toThrow(BadRequestException);
-    });
-
-    // The "parent not found" path is now routed through
-    // `assertParentInScope`, which throws `NotFoundException` (no
-    // existence leak) instead of `BadRequestException`. This is a
-    // behaviour change vs. the previous error type, but it is required
-    // to make missing-vs-cross-tenant indistinguishable.
-    it('should throw NotFoundException when parent consultation not found', async () => {
-      mockConsultationRepository.findById.mockResolvedValue(null);
-
-      await expect(service.createRevisit({ patientId: 'patient-1' }, 'doctor-1', 'non-existent-id')).rejects.toThrow(NotFoundException);
-      await expect(service.createRevisit({ patientId: 'patient-1' }, 'doctor-1', 'non-existent-id')).rejects.toThrow('Resource not found');
-    });
-
-    it('should create revisit consultation when parent exists', async () => {
-      const parentConsultation = createMockConsultationEntity({ id: 'parent-id' });
-      mockConsultationRepository.findById.mockResolvedValue(parentConsultation);
-      const newRevisit = createMockConsultationEntity({
-        id: 'new-revisit-id',
-        parentConsultationId: 'parent-id',
-      });
-      mockConsultationRepository.create.mockResolvedValue(newRevisit);
-
-      const result = await service.createRevisit({ patientId: 'patient-1' }, 'doctor-1', 'parent-id');
-
-      expect(result.id).toBe('new-revisit-id');
-      expect(result.isNew).toBe(true);
-      expect(mockConsultationRepository.create).toHaveBeenCalled();
-      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-        SysEventType.ResourceCreated,
-        expect.objectContaining({
-          resourceId: 'new-revisit-id',
-          data: { action: 'createRevisit', parentId: 'parent-id' },
-        }),
-      );
-    });
-
-    it('should use provided appointment date for revisit', async () => {
-      const parentConsultation = createMockConsultationEntity();
-      mockConsultationRepository.findById.mockResolvedValue(parentConsultation);
-      const newRevisit = createMockConsultationEntity({ id: 'new-revisit-id' });
-      mockConsultationRepository.create.mockResolvedValue(newRevisit);
-
-      await service.createRevisit({ patientId: 'patient-1', appointmentDate: '2026-03-01' }, 'doctor-1', 'parent-id');
-
-      expect(mockConsultationRepository.create).toHaveBeenCalled();
-    });
-
-    it('should allow different doctor for revisit', async () => {
-      const parentConsultation = createMockConsultationEntity({ doctorId: 'original-doctor' });
-      mockConsultationRepository.findById.mockResolvedValue(parentConsultation);
-      const newRevisit = createMockConsultationEntity({
-        id: 'new-revisit-id',
-        doctorId: 'different-doctor',
-      });
-      mockConsultationRepository.create.mockResolvedValue(newRevisit);
-
-      const result = await service.createRevisit({ patientId: 'patient-1' }, 'different-doctor', 'parent-id');
-
-      expect(result.isNew).toBe(true);
-      expect(mockConsultationRepository.create).toHaveBeenCalled();
-    });
-
-    it('should include metadata in revisit', async () => {
-      const parentConsultation = createMockConsultationEntity();
-      mockConsultationRepository.findById.mockResolvedValue(parentConsultation);
-      const newRevisit = createMockConsultationEntity({
-        id: 'new-revisit-id',
-        metadata: { reason: 'follow-up' },
-      });
-      mockConsultationRepository.create.mockResolvedValue(newRevisit);
-
-      await service.createRevisit({ patientId: 'patient-1', metadata: { reason: 'follow-up' } }, 'doctor-1', 'parent-id');
-
-      expect(mockConsultationRepository.create).toHaveBeenCalled();
-    });
-
-    it('should include departmentId in revisit', async () => {
-      const parentConsultation = createMockConsultationEntity();
-      mockConsultationRepository.findById.mockResolvedValue(parentConsultation);
-      const newRevisit = createMockConsultationEntity({
-        id: 'new-revisit-id',
-        departmentId: 'dept-cardio',
-      });
-      mockConsultationRepository.create.mockResolvedValue(newRevisit);
-
-      await service.createRevisit({ patientId: 'patient-1', departmentId: 'dept-cardio' }, 'doctor-1', 'parent-id');
-
-      expect(mockConsultationRepository.create).toHaveBeenCalled();
     });
   });
 
@@ -1191,43 +1093,6 @@ describe('ConsultationService', () => {
         expect(mockDepartmentRepository.findById).not.toHaveBeenCalled();
         expect(mockConsultationRepository.findById).not.toHaveBeenCalled();
         expect(mockUserRoleAssignmentRepository.findFirst).toHaveBeenCalledOnce();
-      });
-    });
-
-    describe('createRevisit', () => {
-      it('throws NotFoundException when doctorId has no role-assignment in caller tenant', async () => {
-        mockConsultationRepository.findById.mockResolvedValue(createMockConsultationEntity({ id: 'parent-id' }));
-        mockUserRoleAssignmentRepository.findFirst.mockResolvedValue(null);
-
-        await expect(service.createRevisit({ patientId: 'patient-1' }, 'cross-tenant-doctor', 'parent-id')).rejects.toThrow(NotFoundException);
-        expect(mockConsultationRepository.create).not.toHaveBeenCalled();
-      });
-
-      it('throws NotFoundException when departmentId belongs to another tenant', async () => {
-        mockConsultationRepository.findById.mockResolvedValue(createMockConsultationEntity({ id: 'parent-id' }));
-        mockDepartmentRepository.findById.mockResolvedValue({
-          id: 'dept-other',
-          tenantId: 'tenant-OTHER',
-        });
-
-        await expect(service.createRevisit({ patientId: 'patient-1', departmentId: 'dept-other' }, 'doctor-1', 'parent-id')).rejects.toThrow(
-          NotFoundException,
-        );
-        expect(mockConsultationRepository.create).not.toHaveBeenCalled();
-      });
-
-      it('throws NotFoundException when parentConsultationId belongs to another tenant (audit)', async () => {
-        mockConsultationRepository.findById.mockResolvedValue(
-          createMockConsultationEntity({
-            id: 'parent-other',
-            tenantId: 'tenant-OTHER',
-          }),
-        );
-
-        await expect(service.createRevisit({ patientId: 'patient-1' }, 'doctor-1', 'parent-other')).rejects.toThrow(NotFoundException);
-        await expect(service.createRevisit({ patientId: 'patient-1' }, 'doctor-1', 'parent-other')).rejects.toThrow('Resource not found');
-
-        expect(mockConsultationRepository.create).not.toHaveBeenCalled();
       });
     });
   });

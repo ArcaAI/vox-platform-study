@@ -30,6 +30,15 @@ model Consultation {
   // Flexible metadata (scheduling info, external refs, etc.)
   metadata Json? @db.JsonB
 
+  // TASK-1020 D-2 — the caller's own id for this ENCOUNTER (an EMR event id), promoted from the
+  // `metadata.externalRef` marker (TASK-951) to a column so `open` can key on it and the database
+  // can enforce it: a partial unique index `Consultation_encounterKey_uq` on
+  // (tenantId, patientId, doctorId, externalRef) WHERE externalRef IS NOT NULL lives in the
+  // migration (Prisma cannot express a partial index). Same ref = same encounter (retries and
+  // reconnects are safe); a new ref = a new encounter. NULL = the caller sent none, and the
+  // legacy (tenantId, patientId, appointmentDate, doctorId) key applies.
+  externalRef String?
+
   // Lifecycle state — typed promotion of the legacy free-form
   // `metadata.status` JSON. Backfilled non-destructively; the attestation
   // gate transitions PENDING_REVIEW → SIGNED.
@@ -88,6 +97,9 @@ model Consultation {
   /// (the owner sorts by "latest"). Without this the sort is a full scan of the
   /// tenant's consultations plus a sort, on every page.
   @@index([tenantId, updatedAt], name: "Consultation_tenant_updated_idx")
+  /// TASK-1020 D-2 — the encounter key `open` looks up. The UNIQUENESS is the partial index
+  /// `Consultation_encounterKey_uq` in the migration (WHERE "externalRef" IS NOT NULL).
+  @@index([tenantId, patientId, doctorId, externalRef], name: "Consultation_encounterKey_idx")
   @@schema("core")
 }
 
