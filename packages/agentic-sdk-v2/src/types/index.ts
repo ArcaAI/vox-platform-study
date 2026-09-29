@@ -69,6 +69,7 @@ export type { CrossTabConfig, SessionPersistenceConfig } from './config';
 export type {
   Consultation,
   ConsultationStatus,
+  LegacyConsultationStatus,
   CreateConsultationInput,
   OpenSessionInput,
   SessionActions,

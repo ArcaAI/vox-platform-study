@@ -21,6 +21,7 @@ import {
   HopeClient,
   NotFoundError,
   PermissionError,
+  ConflictError,
   QuotaExceededError,
   RateLimitError,
 } from '@arcaai/vox-node';
@@ -59,6 +60,10 @@ async function main(): Promise<void> {
       console.error('Rate limited; retry after (ms):', err.retryAfterMs, err.message);
     } else if (err instanceof QuotaExceededError) {
       console.error('Quota exceeded:', err.message);
+    } else if (err instanceof ConflictError) {
+      // A state conflict, told apart by `err.code`: CONSULTATION_NOT_RECORDABLE,
+      // CONSULTATION_TRANSITION_ILLEGAL, EXTERNAL_REF_CONFLICT, STT_SESSION_NOT_ACTIVE.
+      console.error(`Conflict [${err.code ?? 'no code'}]:`, err.message);
     } else if (err instanceof HopeAPIError) {
       // Catches every other HopeAPIError subclass uniformly (status/code/requestId).
       console.error(`HopeAPIError [${err.status}] ${err.code ?? ''}:`, err.message, 'requestId:', err.requestId);

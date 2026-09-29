@@ -55,8 +55,11 @@ export class ConsultationRecordingResource {
    *
    * Does three things, and the second is easy to miss: it stops the live
    * session, it SIGNALS the consultation loop that the recording ended (which
-   * is what makes the ending actions and the finalize run), and it reverts the
-   * consultation status.
+   * is what makes the ending actions and the finalize run), and it moves the
+   * consultation to `DRAINING` — the tail is drained and the final note produced, after which the
+   * status settles at `PENDING_REVIEW` (or `DRAFT_PENDING_SENSORS`). It does not revert to `OPEN`.
+   * Pair it with {@link ConsultationsResource.waitForFinalNote}, passing this response's
+   * `updatedAt` as `since`.
    *
    * `persistSnapshot: true` saves the last running-summary snapshot as a
    * `PRE_SUMMARY` context item before teardown — worth it when the finalize may

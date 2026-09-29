@@ -20,7 +20,7 @@ import type {
   TimelineScope,
 } from '../consultation';
 
-import { isNewVisit, isRevisit } from '../consultation';
+import { CONSULTATION_STATUS_ORDER, isNewVisit, isRevisit, normalizeConsultationStatus } from '../consultation';
 
 // =============================================================================
 // Helper: minimal valid Consultation factory
@@ -142,19 +142,33 @@ describe('consultation types', () => {
 
 describe('consultation types (SES-02)', () => {
   describe('ConsultationStatus', () => {
-    it('should define valid consultation status values', () => {
-      const active: ConsultationStatus = 'active';
-      const completed: ConsultationStatus = 'completed';
-      const cancelled: ConsultationStatus = 'cancelled';
-      expect(active).toBe('active');
-      expect(completed).toBe('completed');
-      expect(cancelled).toBe('cancelled');
+    it('is exactly the 12 Prisma ConsultationStatus values', () => {
+      const all: Record<ConsultationStatus, true> = {
+        OPEN: true,
+        PRIMED: true,
+        RECORDING: true,
+        DRAINING: true,
+        DRAFT_PENDING_SENSORS: true,
+        PENDING_REVIEW: true,
+        SIGNED: true,
+        TIMED_OUT: true,
+        REOPENED: true,
+        CLOSED_COMPLETE: true,
+        CLOSED_INCOMPLETE: true,
+        CLOSED: true,
+      };
+      expect(Object.keys(all)).toHaveLength(12);
     });
 
-    it('should support all three expected status values', () => {
-      const statuses: ConsultationStatus[] = ['active', 'completed', 'cancelled'];
-      expect(statuses).toHaveLength(3);
-      expect(new Set(statuses).size).toBe(3);
+    it('CONSULTATION_STATUS_ORDER lists the live-to-note phases in lifecycle order', () => {
+      expect(CONSULTATION_STATUS_ORDER).toEqual(['OPEN', 'PRIMED', 'RECORDING', 'DRAINING', 'PENDING_REVIEW', 'SIGNED']);
+    });
+
+    it('normalizeConsultationStatus passes real values through and maps the three legacy strings', () => {
+      expect(normalizeConsultationStatus('PENDING_REVIEW')).toBe('PENDING_REVIEW');
+      expect(normalizeConsultationStatus('active')).toBe('OPEN');
+      expect(normalizeConsultationStatus('completed')).toBe('CLOSED');
+      expect(normalizeConsultationStatus('cancelled')).toBe('CLOSED_INCOMPLETE');
     });
   });
 
@@ -212,8 +226,8 @@ describe('consultation types (SES-02)', () => {
     });
 
     it('should accept status update', () => {
-      const input: UpdateConsultationInput = { status: 'completed' };
-      expect(input.status).toBe('completed');
+      const input: UpdateConsultationInput = { status: 'CLOSED_COMPLETE' };
+      expect(input.status).toBe('CLOSED_COMPLETE');
     });
 
     it('should accept metadata update', () => {
@@ -226,11 +240,11 @@ describe('consultation types (SES-02)', () => {
     it('should accept combined update with all fields', () => {
       const input: UpdateConsultationInput = {
         department: 'Oncology',
-        status: 'cancelled',
+        status: 'CLOSED_INCOMPLETE',
         metadata: { reason: 'Patient transferred' },
       };
       expect(input.department).toBe('Oncology');
-      expect(input.status).toBe('cancelled');
+      expect(input.status).toBe('CLOSED_INCOMPLETE');
       expect(input.metadata).toEqual({ reason: 'Patient transferred' });
     });
 
@@ -264,6 +278,23 @@ describe('isNewVisit()', () => {
 });
 
 describe('isRevisit()', () => {
+  it('should return true when the top-level parentConsultationId is set (the gateway field)', () => {
+    expect(isRevisit(makeConsultation({ parentConsultationId: 'consult-parent' }))).toBe(true);
+  });
+
+  it('should return false when the top-level parentConsultationId is null and nothing else says revisit', () => {
+    expect(isRevisit(makeConsultation({ parentConsultationId: null }))).toBe(false);
+  });
+
+  it("should trust visitType when present: 'revisit' is true, 'new-visit' is false", () => {
+    expect(isRevisit(makeConsultation({ visitType: 'revisit' }))).toBe(true);
+    expect(isRevisit(makeConsultation({ visitType: 'new-visit', parentConsultationId: null }))).toBe(false);
+  });
+
+  it('should prefer the top-level parentConsultationId over a stale metadata marker', () => {
+    expect(isRevisit(makeConsultation({ parentConsultationId: null, visitType: 'new-visit', metadata: { parentConsultationId: 'old' } }))).toBe(false);
+  });
+
   it('should return true when metadata has parentConsultationId', () => {
     const consultation = makeConsultation({
       metadata: { parentConsultationId: 'consult-parent' },
@@ -344,5 +375,18 @@ describe('TASK-932 — OpenSessionInput.language', () => {
       updatedAt: '2026-09-09T00:00:00.000Z',
     };
     expect(consultation.language).toBe('ml');
+  });
+});
+
+describe('OpenSessionInput (TASK-1020)', () => {
+  it('accepts parentConsultationId, context and metadata', () => {
+    const input: OpenSessionInput = {
+      patientId: 'patient-123',
+      parentConsultationId: 'consult-001',
+      context: { encounter: { event_id: 'evt-2' } },
+      metadata: { source: 'emr' },
+    };
+    expect(input.parentConsultationId).toBe('consult-001');
+    expect(input.context).toEqual({ encounter: { event_id: 'evt-2' } });
   });
 });

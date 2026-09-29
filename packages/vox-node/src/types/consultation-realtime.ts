@@ -27,6 +27,7 @@
  */
 
 import type { GoverningRunSummary } from '@arcaai/types';
+import type { ConsultationStatus } from './consultation';
 import type { LanguageModeId } from './language';
 
 // -----------------------------------------------------------------------------
@@ -82,11 +83,31 @@ export interface OpenConsultationRequest<TContext extends Record<string, unknown
    */
   departmentId?: string;
   /**
-   * The PRIOR consultation, when this visit is a revisit or a referral.
-   * Its presence is the whole of HOPE's visit-type signal: absent ⇒
-   * `visit-type:new-visit`, present ⇒ `visit-type:revisit`, and the graph's
-   * `n_visit` branch routes on it. There is no separate "visit type" field to
-   * send.
+   * The PRIOR consultation, when this visit is a revisit or a referral. An
+   * explicit parent always wins.
+   *
+   * **Visit type and encounter identity travel as schema-marked context
+   * fields, not as request fields** (TASK-1020). The tenant's context schema
+   * marks which field carries the encounter/event id (`externalRef`, e.g.
+   * `context.encounter.event_id` for ArcaAI) and which carries the visit type;
+   * HOPE reads them out of {@link context} at open. Read the outcome off the
+   * response: {@link ConsultationOpenResponse.visitType},
+   * {@link ConsultationOpenResponse.externalRef} and
+   * {@link ConsultationOpenResponse.parentConsultationId}.
+   *
+   * The open key follows from that:
+   * - **With an `externalRef`**, the same ref returns the same encounter and a
+   *   NEW ref creates a new consultation — so a patient seen again the same
+   *   day is a second consultation, chained to the first. The same ref bound
+   *   to a different patient is a 409 `EXTERNAL_REF_CONFLICT`.
+   * - **A `revisit` open that names no parent** gets a server-derived one: the
+   *   same patient's latest consultation on the same tenant-local day.
+   * - **Without an `externalRef`** the legacy key `(patientId, clinician,
+   *   appointmentDate)` applies, and a terminal match (`SIGNED`,
+   *   `CLOSED_COMPLETE`) is returned as-is with `recordable: false` rather than
+   *   spawning a visit. To start a follow-up there, send a new `externalRef`
+   *   (or an explicit parent).
+   * - The parent must belong to the same patient: 400 `PARENT_PATIENT_MISMATCH`.
    */
   parentConsultationId?: string;
   /**
@@ -190,8 +211,23 @@ export interface ConsultationOpenResponse {
   departmentId?: string;
   /** `YYYY-MM-DD`. */
   appointmentDate: string;
-  parentConsultationId?: string;
-  status?: string;
+  /** The parent visit — the explicit one, or the server-derived same-day predecessor; `null` for a first visit. */
+  parentConsultationId: string | null;
+  /** Lifecycle status — the `ConsultationStatus` column. Read {@link recordable} before recording. */
+  status: ConsultationStatus;
+  /** `'revisit'` when the visit has a parent, else `'new-visit'`. Selects the governing graph's branch. */
+  visitType: 'new-visit' | 'revisit';
+  /** The encounter/event id that keyed this open (the schema's `externalRef`-marked field); `null` when none was supplied. */
+  externalRef: string | null;
+  /**
+   * Whether `recording.start` can succeed on this consultation.
+   *
+   * `false` for a consultation that is already signed or closed (`SIGNED`, `CLOSED_COMPLETE`,
+   * `CLOSED_INCOMPLETE`, `TIMED_OUT`, `REOPENED`, `CLOSED`) — `recording.start` there is a 409
+   * `CONSULTATION_NOT_RECORDABLE`, so do not call it. Show the existing note, or start a return
+   * visit by opening again with a NEW `externalRef` (or an explicit `parentConsultationId`).
+   */
+  recordable: boolean;
   /** As DECLARED at open; absent = undeclared. */
   language?: string;
   metadata?: Record<string, unknown>;
@@ -209,8 +245,9 @@ export interface ConsultationOpenResponse {
   governingRun: GoverningRunSummary | null;
   /**
    * `true` when this call CREATED the consultation, `false` when it returned
-   * an existing one for the same `(patientId, doctorId, appointmentDate)`.
-   * Open is get-or-create, so this is the only way to tell.
+   * an existing one for the same visit (same `externalRef`, or — without one —
+   * the same `(patientId, doctorId, appointmentDate)`). Open is get-or-create,
+   * so this is how to tell; {@link recordable} says whether you may record.
    */
   isNew?: boolean;
 }
@@ -300,7 +337,7 @@ export interface StopRecordingRequest {
 /** Response of both recording routes. Mirrors `RecordingStateResponse`. */
 export interface RecordingStateResponse {
   consultationId: string;
-  /** Lifecycle status AFTER the transition (`RECORDING` on start; reverted on stop). */
+  /** Lifecycle status AFTER the transition (`RECORDING` on start; `DRAINING` on stop, while the tail is drained and the note is produced). */
   status: string;
   recording: boolean;
   /** Echoed from the request. */

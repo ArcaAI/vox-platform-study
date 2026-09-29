@@ -29,6 +29,7 @@ export type {
   ContextItemType,
   ContextItemSource,
   ConsultationGetResponse,
+  ConsultationStatus,
   ConsultationSummaryStructuredData,
   ConsultationSummaryResponse,
   ConsultationSummarySection,

@@ -8,6 +8,7 @@
  * on `error.status`.
  */
 
+import type { ConsultationStatus } from '../types/consultation';
 import { redactHeaders } from './redact';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -249,12 +250,35 @@ export class NotFoundError extends HopeAPIError {
   }
 }
 
-/** HTTP 409 — an entitlements quota (quantity-capped resource) was exceeded. */
-export class QuotaExceededError extends HopeAPIError {
+/**
+ * HTTP 409 — the request conflicts with the resource's current state. Read {@link HopeAPIError.code}
+ * to tell WHICH conflict; the codes the consultation plane raises are:
+ *
+ * - `CONSULTATION_NOT_RECORDABLE` — `recording.start` on a consultation that can no longer take a
+ *   recording (`SIGNED`, `CLOSED_*`, `TIMED_OUT`, `REOPENED`). Start a return visit with a new
+ *   `externalRef` instead of retrying.
+ * - `CONSULTATION_TRANSITION_ILLEGAL` — a lifecycle route (`close`, `approve`, ...) called from a
+ *   state that does not allow it.
+ * - `EXTERNAL_REF_CONFLICT` — `open` with an `externalRef` already bound to a different patient.
+ * - `STT_SESSION_NOT_ACTIVE` — `recording.start` named an STT session that has already ended.
+ *
+ * Before 4.1.0 every 409 was a {@link QuotaExceededError}; that class is now raised ONLY for
+ * `DOMAIN.QUOTA_EXCEEDED` and extends this one, so `instanceof ConflictError` matches both.
+ */
+export class ConflictError extends HopeAPIError {
   constructor(init: Omit<HopeAPIErrorInit, 'status'>) {
     super({ ...init, status: 409 });
   }
 }
+
+/** The `code` the gateway puts on a 409 that is an entitlements quota (`QuotaExceededException`). */
+export const QUOTA_EXCEEDED_CODE = 'DOMAIN.QUOTA_EXCEEDED';
+
+/**
+ * HTTP 409 with `code: 'DOMAIN.QUOTA_EXCEEDED'` — an entitlements quota (quantity-capped resource)
+ * was exceeded. A {@link ConflictError}; every other 409 is a plain `ConflictError`.
+ */
+export class QuotaExceededError extends ConflictError {}
 
 /** Constructor options for {@link VersionConflictError}. */
 export interface VersionConflictErrorInit extends Omit<HopeAPIErrorInit, 'status'> {
@@ -480,6 +504,42 @@ export class TranscriptionJobTimeoutError extends Error {
   }
 }
 
+/**
+ * `hope.consultations.waitForFinalNote` saw the consultation close with no fresh note
+ * (`CLOSED_INCOMPLETE`): there is nothing newer than `since` to wait for. Not an HTTP error —
+ * carries no status code.
+ */
+export class FinalNoteUnavailableError extends Error {
+  /** The consultation that was being awaited. */
+  readonly consultationId: string;
+  /** The consultation status that made the wait futile. */
+  readonly status: ConsultationStatus;
+
+  constructor(consultationId: string, status: ConsultationStatus) {
+    super(`Consultation "${consultationId}" reached ${status} without a final note newer than the requested baseline.`);
+    this.name = 'FinalNoteUnavailableError';
+    this.consultationId = consultationId;
+    this.status = status;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/** `hope.consultations.waitForFinalNote` gave up: no fresh note within `timeoutMs`. The note may still land later. */
+export class FinalNoteTimeoutError extends Error {
+  /** The consultation that was being awaited. */
+  readonly consultationId: string;
+  /** The `timeoutMs` that elapsed. */
+  readonly timeoutMs: number;
+
+  constructor(consultationId: string, timeoutMs: number) {
+    super(`No final note newer than the requested baseline arrived for consultation "${consultationId}" within ${timeoutMs}ms.`);
+    this.name = 'FinalNoteTimeoutError';
+    this.consultationId = consultationId;
+    this.timeoutMs = timeoutMs;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 /** Constructor options for {@link APIConnectionError}. */
 export interface APIConnectionErrorInit {
   message?: string;
@@ -551,7 +611,7 @@ export function fromResponse(response: Response, body: unknown, extra: FromRespo
     case 404:
       return new NotFoundError(common);
     case 409:
-      return new QuotaExceededError(common);
+      return code === QUOTA_EXCEEDED_CODE ? new QuotaExceededError(common) : new ConflictError(common);
     case 412:
       return new VersionConflictError({ ...common, currentVersion: readCurrentVersion(body) });
     case 428:

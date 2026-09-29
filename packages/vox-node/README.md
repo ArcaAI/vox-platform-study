@@ -85,6 +85,8 @@ callers are unaffected). A key holding `consultation:*` satisfies every scope be
 | ---------------------------------------------------------------------------------------------- | ---------------------------- |
 | `consultations.open`, `.recording.start/.stop`, `.addContext`, `.streams.*`, `.updateLanguage` | `consultation:session:write` |
 | `consultations.get`, `jobs.get/.cancel/.stream/.subscribe/.waitFor`                            | `consultation:session:read`  |
+| `consultations.chain`, `.listContext`, `.documentSections`, `.close`, `.summaries.approve`     | `consultation:session:write` (the controller's class default; a service account needs `svc:consultation:session:read` for `chain`/`listContext`, `:write` for `close`/`approve`, `svc:consultation:report:read` for `documentSections`) |
+| `consultations.waitForFinalNote` (polls `summaries.latest` + `get`)                            | `consultation:report:read` + `consultation:session:read` |
 | `stt.createStreamSession`/`.refreshTicket`/`.closeStreamSession`                               | `stt:transcription:write`    |
 | `agents.transcribe(slug, { file })` — multipart upload, batch ASR                              | `stt:transcription:write`    |
 | `agents.transcribe(slug, { mediaId })` — media already uploaded                                | `agent:invocation:write`     |
@@ -235,11 +237,39 @@ ungoverned — derived from the persisted marker, never a live harness call. Rea
 `core.humanReview` node id without hardcoding it, release it with
 `hope.workflows.reviews.get/decide(slug, runId, nodeId)`, then finish the consultation:
 `hope.consultations.summaries.approve(consultationId, contextItemId, { clinicianUserId? }, { ifMatch })`
-signs the note (only legal from `PENDING_REVIEW`), and
+signs the note (legal from `PENDING_REVIEW`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT` or `CLOSED_INCOMPLETE`), and
 `hope.consultations.close(consultationId, { clinicianUserId? }, { ifMatch })` closes it (only
 legal from `SIGNED` or `TIMED_OUT` — a `PENDING_REVIEW` consultation must be approved first, or
 `close()` answers 409). Both need the row's `version` as `ifMatch`, exactly like every other
 OCC-guarded write in this SDK.
+
+### Visits, return visits and the final note (TASK-1020)
+
+`consultations.open` returns the visit's identity and whether it may still be recorded:
+`status` (the 12-value `ConsultationStatus`), `visitType` (`'new-visit' | 'revisit'`),
+`externalRef` (`string | null`), `parentConsultationId` (`string | null`) and `recordable`.
+
+- **One consultation per visit.** With an `externalRef` (the value of the schema's
+  `externalRef`-marked context field, e.g. `context.encounter.event_id` for ArcaAI) the same ref
+  returns the same consultation and a new ref creates a new one — a patient seen again the same
+  day is a second, chained consultation. A `revisit` open with no `parentConsultationId` gets a
+  server-derived same-day parent. The ref bound to a different patient is a 409
+  `EXTERNAL_REF_CONFLICT`; a parent of another patient is a 400 `PARENT_PATIENT_MISMATCH`.
+- **Check `recordable` before `recording.start`.** A signed or closed consultation is returned
+  as-is with `recordable: false`; `recording.start` on it is a 409 `CONSULTATION_NOT_RECORDABLE`.
+  Start a return visit by opening with a new `externalRef` instead.
+- **`consultations.chain(id)`** reads the chain the visit belongs to (`GET consultations/:id/chain`).
+- **`consultations.waitForFinalNote(id, { since, timeoutMs?, pollIntervalMs?, signal? })`** resolves
+  with the latest summary only once it is NEWER than `since` (pass the moment you stopped — the
+  `updatedAt` of the `recording.stop` response) and the status is note-ready. A stale note from an
+  earlier recording is never returned. It rejects with `FinalNoteUnavailableError` when the
+  consultation closes `CLOSED_INCOMPLETE` with no fresh note, and `FinalNoteTimeoutError` on
+  timeout.
+
+```ts
+const stopped = await hope.consultations.recording.stop(id);
+const note = await hope.consultations.waitForFinalNote(id, { since: stopped.updatedAt });
+```
 
 ### Async jobs
 
@@ -267,8 +297,10 @@ your process can afford to stay connected. See `examples/09-completion-signals.t
 ### Errors
 
 Every non-2xx response throws a typed `HopeAPIError` subclass: `AuthenticationError` (401),
-`PermissionError` (403), `NotFoundError` (404), `QuotaExceededError` (409),
-`VersionConflictError` (412), `PreconditionRequiredError` (428), `RateLimitError` (429),
+`PermissionError` (403), `NotFoundError` (404), `ConflictError` (409, told apart by `error.code` —
+`CONSULTATION_NOT_RECORDABLE`, `CONSULTATION_TRANSITION_ILLEGAL`, `EXTERNAL_REF_CONFLICT`,
+`STT_SESSION_NOT_ACTIVE`; `QuotaExceededError extends ConflictError` and is raised only for
+`DOMAIN.QUOTA_EXCEEDED`), `VersionConflictError` (412), `PreconditionRequiredError` (428), `RateLimitError` (429),
 `APIConnectionError`/`APITimeoutError` (no HTTP status — connection-phase failures). Streaming
 methods can also throw `HopeStreamError`.
 

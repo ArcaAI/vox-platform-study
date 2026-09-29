@@ -18,7 +18,7 @@ export { ConsultationSummariesResource } from './consultation-summaries';
 export type { JobRequestOptions, WaitForOptions } from './jobs';
 export { isTerminalJobStatus, JobsResource } from './jobs';
 
-export type { AddContextOptions, CloseConsultationOptions, ConsultationRequestOptions, UpdateLanguageOptions } from './consultations';
+export type { AddContextOptions, CloseConsultationOptions, ConsultationRequestOptions, UpdateLanguageOptions, WaitForFinalNoteOptions } from './consultations';
 export { ConsultationsResource } from './consultations';
 
 /** The consultation REALTIME lifecycle (TASK-933): recording, the live SSE planes, and the STT session. */
