@@ -48,7 +48,8 @@ import { HarnessProgressService } from './harness-progress.service';
 import { ConfigResolver } from '../../config-resolver';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { selectAuthoritativeNoteText, truncatePriorVisitSummary } from './prior-visit-summary';
-import { resolveSameDayPrequel } from './same-day-prequel';
+import { resolveSameDayPrequel, resolveSameDayPrequelTimeZone } from './same-day-prequel';
+import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
 import { clientClinicalContextReaderFor } from '../context/client-clinical-context';
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
@@ -368,6 +369,10 @@ export class HarnessInternalService extends BaseService {
     // positional fixture keeps its arity; absent => every task-key resolve is a 503
     // (selection fails closed).
     @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicies?: IAiRoutingPolicyService,
+    // TASK-1020 — the tenant's `consultation.appointmentDay.timeZone`, which the same-day prequel
+    // states its times in. Optional + trailing so every positional fixture keeps its arity; absent
+    // ⇒ the times read in UTC, exactly as before.
+    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {
     super(eventEmitter as EventEmitter2, cls, ResourceType.Consultation);
   }
@@ -1383,6 +1388,7 @@ export class HarnessInternalService extends BaseService {
         resolveSameDayPrequel(
           { consultationRepository: this.consultationRepository, contextItemRepository: this.contextItemRepository },
           consultation,
+          { timeZone: await resolveSameDayPrequelTimeZone(this.effectiveSettings, tenantId) },
         ),
       ]);
 

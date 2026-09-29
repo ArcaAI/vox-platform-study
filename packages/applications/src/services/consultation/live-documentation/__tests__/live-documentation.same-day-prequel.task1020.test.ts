@@ -17,6 +17,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { ContextItemType } from '@arcaai/domains';
+import { renderTemplate } from '@arcaai/workflow-contract';
 
 import { LiveDocumentationService } from '../live-documentation.service';
 
@@ -33,6 +34,8 @@ interface Wiring {
   parent?: Record<string, unknown> | null;
   parentNotes?: Partial<Record<ContextItemType, Array<{ content: string; createdAt: Date }>>>;
   investigations?: unknown;
+  /** The tenant's `consultation.appointmentDay.timeZone`, served by a stub EffectiveSettingsService. */
+  timeZone?: string;
 }
 
 function buildService(wiring: Wiring = {}) {
@@ -103,6 +106,11 @@ function buildService(wiring: Wiring = {}) {
   };
   args[3] = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
   args[5] = contextItemRepository;
+  if (wiring.timeZone !== undefined) {
+    args[9] = {
+      resolveEffective: vi.fn(async (key: string) => ({ value: key === 'consultation.appointmentDay.timeZone' ? wiring.timeZone : undefined })),
+    };
+  }
   args[15] = consultationRepository;
   args[28] = { findById: vi.fn(async () => ({ id: 'dept-1', name: 'Haematology' })) };
 
@@ -148,6 +156,14 @@ describe('TASK-1020 — realtimeRunContext exposes the prequel to agents and fra
 
     expect(context.same_day_prequel).toBe(true);
     expect(context.same_day_prequel_summary).toBe(PREQUEL);
+  });
+
+  it('states the earlier visit`s time in the TENANT`s day zone (live-replay D3: an IST clinic read UTC)', async () => {
+    const { service } = buildService({ parentNotes: MORNING, timeZone: 'Asia/Kolkata' });
+
+    const context = await startedContext(service);
+
+    expect(context.same_day_prequel_summary).toBe('### Earlier visit today (09:45 IST, status SIGNED)\nMORNING-SIGNED plan: CBC, LFT');
   });
 
   it('publishes same_day_prequel = false (a boolean, never absent) for a first visit', async () => {
@@ -292,5 +308,26 @@ describe('TASK-1020 — the live handoff carries the flag to the durable finaliz
     const context = await handoffContext(service, stored);
 
     expect(context.formatted_test_results).toBe('- Hb: 9.8');
+  });
+
+  /**
+   * Live-replay defect D2 — the durable `casenote-finalization` must see all THREE keys for a
+   * same-day return, together, under `trigger.context.*`: the handoff context is what the durable
+   * interpreter overlays onto its run context (`workflow.py#_publish_context`:
+   * `{ ...trigger, ...live, context: { ...authored, ...live } }`), and the `same_day_return`
+   * fragment reads exactly those three paths.
+   */
+  it('a same-day return with investigations carries the flag, the prequel AND the results, and they resolve under trigger.context', async () => {
+    const { service, stored } = buildService({ parentNotes: MORNING, investigations: { results: [{ name: 'Troponin', value: '0.01', unit: 'ng/mL' }] } });
+
+    const context = await handoffContext(service, stored);
+
+    expect(context).toMatchObject({ same_day_prequel: true, same_day_prequel_summary: PREQUEL, formatted_test_results: '- Troponin: 0.01 ng/mL' });
+    const trigger = { ...context, context: { ...context } };
+    const rendered = renderTemplate(
+      '{{trigger.context.same_day_prequel}}|{{trigger.context.same_day_prequel_summary | default("")}}|{{trigger.context.formatted_test_results | default("")}}',
+      { trigger, context: trigger },
+    );
+    expect(rendered).toBe(`true|${PREQUEL}|- Troponin: 0.01 ng/mL`);
   });
 });

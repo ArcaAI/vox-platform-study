@@ -149,7 +149,7 @@ import { readRecordedVisitType } from '../consultation/open-markers';
 // TASK-951 D-7 — the SAME cap the carried prior-visit summary is bounded by, applied here so a
 // client-supplied history is a bounded prompt input rather than an unbounded one.
 import { clientClinicalContextReaderFor, type ClientClinicalContext } from '../context/client-clinical-context';
-import { resolveSameDayPrequel, type SameDayPrequel, type SameDayPrequelSubject } from '../harness/same-day-prequel';
+import { resolveSameDayPrequel, resolveSameDayPrequelTimeZone, type SameDayPrequel, type SameDayPrequelSubject } from '../harness/same-day-prequel';
 // TASK-932 — the visit type the realtime lane's `core.condition` guards branch on. The SHARED
 // instance rather than an injected one: since TASK-882 `VisitTypeService` holds no state, takes
 // no dependency and derives the answer from the consultation's own parent link, so the facade
@@ -4628,6 +4628,8 @@ return 0`;
         resolveSameDayPrequel(
           { consultationRepository: this.consultationRepository, contextItemRepository: this.contextItemRepository },
           consultation,
+          // The block's time in the tenant's day zone (`consultation.appointmentDay.timeZone`), not UTC.
+          { timeZone: await resolveSameDayPrequelTimeZone(this.effectiveSettings, consultation?.tenantId) },
         ),
         clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).readTestResults(consultationId),
       ]);
