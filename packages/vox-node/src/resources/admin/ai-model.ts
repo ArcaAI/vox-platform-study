@@ -14,6 +14,8 @@ import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource'
 import type {
   CreateModelRequest,
   DiscoveryResponse,
+  DownloadMissingResponse,
+  HubPreviewResponse,
   LmStudioRuntimeResponse,
   LoadLmStudioModelRequest,
   LoadLmStudioModelResponse,
@@ -21,12 +23,17 @@ import type {
   ModelDownloadStatusResponse,
   ModelInventoryReport,
   ModelResponse,
+  ModelUsageResponse,
   PaginatedModelResponse,
   PaginatedResponse,
   RegisterDiscoveredModelRequest,
+  RegisterFromHubRequest,
+  RegisterFromHubResponse,
   SetPlatformDefaultRequest,
   TriggerModelDownloadResponse,
   UnloadLmStudioModelResponse,
+  UnregisterModelRequest,
+  UnregisterModelResponse,
   UpdateModelRequest,
 } from './schemas';
 
@@ -42,7 +49,7 @@ import type {
  * the scope above is the one that reaches EVERY route.
  *
  * Backed by controllers AiModelAdminController, AiModelCatalogueController, AiModelDiscoveryController, InferenceEnginesController
- * (18 routes). Several controllers sharing one scope share one
+ * (23 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -174,6 +181,39 @@ export class AdminAiModelResource extends AdminResource {
   }
 
   /**
+   * Unregister a model and delete its weights
+   *
+   * Refused while anything still uses the model (see `GET :id/usage`). Otherwise the model is first unloaded from every service holding it, then marked UNREGISTERING and removed by the model publisher: the row is retired and — unless `deleteWeights` is false or another registered model shares the same files — its weights are deleted from the bucket. Deleted weights stay recoverable for 30 days unless `purge` is true.
+   *
+   * `POST /api/v1/admin/ai-models/{id}/unregister` — `AiModelAdminController.unregister`.
+   */
+  unregister(id: string, body: UnregisterModelRequest, options: AdminRequestOptions = {}): Promise<UnregisterModelResponse> {
+    return this.request<UnregisterModelResponse>({
+      method: 'POST',
+      path: `admin/ai-models/${encodePathSegment(String(id))}/unregister`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List what still uses this model
+   *
+   * Every agent (primary model, fallback, or an ASR sub-model such as the VAD or speaker-embedding model), routing policy, residency policy and voice profile that references the model, in every tenant. A model with any referrer cannot be unregistered; this is the list the refusal carries.
+   *
+   * `GET /api/v1/admin/ai-models/{id}/usage` — `AiModelAdminController.getUsage`.
+   */
+  getUsage(id: string, options: AdminRequestOptions = {}): Promise<ModelUsageResponse> {
+    return this.request<ModelUsageResponse>({
+      method: 'GET',
+      path: `admin/ai-models/${encodePathSegment(String(id))}/usage`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * The model catalogue this tenant may bind, in picker order
    *
    * Two groups: the tenant’s OWN provider connections first (`byo:<service>:<provider>`), then exactly one "Hope provider" entry standing for everything the platform serves. Each model carries a `usable` verdict with a machine-readable reason (an unusable model is listed WITH its reason rather than hidden) and the last OBSERVED `readiness` — a stored snapshot, never a probe: reading this route never causes a vendor call. Plan entitlements BOUND the Hope group; they never add or substitute a model. Rows naming no servable provider are hidden, and counted in `unassignedProviderCount` for a super admin.
@@ -284,6 +324,39 @@ export class AdminAiModelResource extends AdminResource {
   }
 
   /**
+   * Download every model whose weights are missing
+   *
+   * Queues a download for each self-hosted platform model the last inventory measured as MISSING and whose source can be fetched (a Hugging Face repo or an `s3://` prefix). Models already downloading or being unregistered are skipped, and every skip says why. Use it to fill an empty models bucket on a new cluster.
+   *
+   * `POST /api/v1/admin/ai-models/download-missing` — `AiModelAdminController.downloadMissing`.
+   */
+  downloadMissing(options: AdminRequestOptions = {}): Promise<DownloadMissingResponse> {
+    return this.request<DownloadMissingResponse>({
+      method: 'POST',
+      path: 'admin/ai-models/download-missing',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Preview a Hugging Face model before registering it
+   *
+   * Reads the repo card and file list at `revision` (default `main`) and returns what registering it would record: the commit it resolves to, task, library, licence, whether it is gated, languages, total size and every file — plus suggested registry fields (slug, name, task, category, format, serving library, bucket layout, serving workload). Nothing is written. Gated and private repos are read with the platform Hugging Face token.
+   *
+   * `GET /api/v1/admin/ai-models/hub/preview` — `AiModelAdminController.previewHub`.
+   */
+  previewHub(options: AdminRequestOptions & { query?: { repoId: string; revision?: string } } = {}): Promise<HubPreviewResponse> {
+    return this.request<HubPreviewResponse>({
+      method: 'GET',
+      path: 'admin/ai-models/hub/preview',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Read the last model-bucket inventory report
    *
    * Returns the most recent `POST admin/ai-models/inventory` result without measuring anything — the availability verdicts and the manifest-bearing bucket prefixes no registry row references. `null` when no run has been stored (the hourly sweep is off and nobody has run one, or the stored report has expired). Read-only: it never lists the bucket and never writes `availability`.
@@ -329,6 +402,23 @@ export class AdminAiModelResource extends AdminResource {
       method: 'GET',
       path: 'admin/ai-models/list',
       query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Register a model from a Hugging Face repo and download it
+   *
+   * Creates a platform model row from the repo (source `hf:<repo>`, pinned to the commit the revision resolves to), with the same validation as registering a model by hand, then starts downloading its weights into the models bucket. Any field in the body overrides what the preview suggests. Answers as soon as the download is queued; poll `GET admin/ai-models/:id/download` for progress.
+   *
+   * `POST /api/v1/admin/ai-models/register-from-hub` — `AiModelAdminController.registerFromHub`.
+   */
+  registerFromHub(body: RegisterFromHubRequest, options: AdminRequestOptions = {}): Promise<RegisterFromHubResponse> {
+    return this.request<RegisterFromHubResponse>({
+      method: 'POST',
+      path: 'admin/ai-models/register-from-hub',
+      body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

@@ -33,7 +33,16 @@ describe('ai-readiness descriptors — registration and policy', () => {
     for (const key of KEYS) {
       expect(HOPE_SETTINGS_REGISTRY.get(key), `${key} is not registered`).toBeDefined();
     }
-    expect(AI_READINESS_SETTINGS.map((d) => d.key).sort()).toEqual([...KEYS].sort());
+    // TASK-1019 — the two model-download knobs share this file; their own test pins them.
+    expect(AI_READINESS_SETTINGS.map((d) => d.key).sort()).toEqual(
+      [
+        ...KEYS,
+        'modelRegistry.download.staleAfterSeconds',
+        'modelRegistry.download.maxAttempts',
+        'modelRegistry.download.idleTimeoutSeconds',
+        'modelRegistry.download.requestTimeoutSeconds',
+      ].sort(),
+    );
   });
 
   it('classifies every key as a platform `global-kv` knob — never env, never a tenant surface', () => {

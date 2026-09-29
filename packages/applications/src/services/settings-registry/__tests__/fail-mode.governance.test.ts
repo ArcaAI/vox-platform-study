@@ -229,6 +229,14 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'vault.wrappedSecretId': 'VAULT_WRAPPED_SECRET_ID',
     'vault.kvMount': 'VAULT_KV_MOUNT',
     'vault.kvPrefix': 'VAULT_KV_PREFIX',
+    'modelPublisher.stagingDir': 'MODEL_PUBLISHER_STAGING_DIR',
+    // TASK-1019 I8 — the staging emptyDir's size, so the pre-flight measures the pod's budget.
+    'modelPublisher.stagingMaxBytes': 'MODEL_PUBLISHER_STAGING_MAX_BYTES',
+    // TASK-1019 C3 — the model publisher's own `hope-models` key pair is an ENV
+    // secret delivered to the publisher pod alone (secretKeyRef), not vault-kv:
+    // a Vault kv path would be readable by hope-api's shared AppRole.
+    'modelStore.publisher.accessKeyId': 'MODEL_STORE_PUBLISHER_ACCESS_KEY_ID',
+    'modelStore.publisher.secretKey': 'MODEL_STORE_PUBLISHER_SECRET_KEY',
     'vault.dbAdminPass': 'VAULT_DB_ADMIN_PASS',
     secretsProvider: 'SECRETS_PROVIDER',
     // Storage bootstrap fallback, superseded by the SYSTEM TenantStorageConfig row
@@ -346,5 +354,24 @@ describe('API_KEY_PEPPER — staged, keyVersion-aware rotation', () => {
     // the assertion here is on the classification that drives that refusal.
     expect(pepper().sensitivity).toBe('secret');
     expect(() => HOPE_SETTINGS_REGISTRY.assertWithinMaxScope('api.keyPepper', 'tenant')).toThrow(ArgumentInvalidException);
+  });
+});
+
+describe('model publisher key pair — an env secret delivered to the publisher pod alone (TASK-1019 C3)', () => {
+  const KEYS = ['modelStore.publisher.accessKeyId', 'modelStore.publisher.secretKey'];
+
+  it('is env-tier, secret, fail-closed — never vault-kv', () => {
+    for (const key of KEYS) {
+      expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key), key).toMatchObject({ tier: 'env', sensitivity: 'secret', dataType: 'secret', failMode: 'closed' });
+    }
+  });
+
+  it('says why it is not vault-kv, and that ONLY the publisher worker reads it (hope-api never does)', () => {
+    for (const key of KEYS) {
+      const description = HOPE_SETTINGS_REGISTRY.getOrThrow(key).description ?? '';
+      expect(description, key).toMatch(/AppRole/);
+      expect(description, key).toMatch(/only by the model-publisher worker/i);
+      expect(description, key).toMatch(/hope-api never/i);
+    }
   });
 });

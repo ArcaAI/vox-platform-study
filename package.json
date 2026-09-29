@@ -248,6 +248,8 @@
     "py-otel:format:check": "conda run -n arcaenv --no-capture-output black --check packages/py-otel/src/ packages/py-otel/tests/",
     "── WORKER — harness Temporal worker ──────────────": "",
     "worker:dev": "./scripts/dev-service.sh worker",
+    "── PUBLISHER — model-publisher worker (Node) ─────": "",
+    "publisher:dev": "./scripts/dev-service.sh publisher",
     "── STACKS — full app stack + readiness doctors ───": "",
     "stack:dev": "./scripts/dev-stack.sh",
     "stack:dev:observability": "./scripts/dev-stack.sh --observability",

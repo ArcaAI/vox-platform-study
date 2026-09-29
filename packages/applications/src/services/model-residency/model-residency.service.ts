@@ -62,6 +62,7 @@ import {
   type ResidencyClassName,
   type ResidencyClassSource,
   type ResidencyControlledService,
+  type ResidencyLoadError,
   type ResidencyMode,
   type ResidencyModelState,
   type ResidencyServiceName,
@@ -73,7 +74,7 @@ import {
 } from './model-residency.types';
 import { PhysicalGpuLoadGate } from './physical-gpu-load-gate';
 import { ResidencyAgentClient, ResidencyAgentError } from './residency-agent.client';
-import { buildResidencyCatalogue } from './residency-catalogue';
+import { type CatalogueFailedEntry, buildResidencyCatalogue } from './residency-catalogue';
 import { ResidencyLoadSpecBuilder, ResidencyLoadSpecError } from './residency-load-spec.builder';
 import { residencyAdmissionRejectionsTotal, residencyDecisionsTotal } from './residency-metrics';
 import { ResidencyOperationRegistry } from './residency-operations';
@@ -203,6 +204,8 @@ interface Ledger {
   policies: ModelResidencyPolicyEntity[];
   livePath: LivePathModel[];
   catalogue: CatalogueIndex;
+  /** Models whose last load FAILED (TASK-1019): they hold no memory, so they are not `entries`. */
+  failures: CatalogueFailedEntry[];
 }
 
 interface Classification {
@@ -226,6 +229,10 @@ interface LoadJob {
   origin: 'operator' | 'policy';
   recommendation?: ModelResidencyRecommendation;
 }
+
+/** A reported model that holds memory (anything but `failed`). */
+type ResidentReportedModel = ReportedResidentModel & { state: ResidencyModelState };
+const isResident = (model: ReportedResidentModel): model is ResidentReportedModel => model.state !== 'failed';
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 const parseMs = (value: string | null | undefined): number | null => {
@@ -268,6 +275,8 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
   // LM Studio reports no pin, footprint, timestamps or usage: the controller keeps them.
   private readonly lmsPins = new Map<string, { ttlSeconds: number | null }>();
   private readonly lmsFootprint = new Map<string, { bytes: number; loadSeconds: number | null }>();
+  /** TASK-1019 D-8 — LM Studio's failed loads, kept until the next successful load or unload of that model (in memory; a restart re-observes). */
+  private readonly lmsFailures = new Map<string, ResidencyLoadError>();
   private readonly lmsLoadedAt = new Map<string, number>();
   private readonly lmsLastUsed = new Map<string, number>();
   /** First time this process saw a resident (service, model) — a residency floor when the service reports no load time. */
@@ -543,6 +552,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       devices: ledger.devices,
       staleServices: ledger.staleServices,
       entries: ledger.entries,
+      failed: ledger.failures,
       loading: this.operations.running().map((op) => ({ service: op.service, modelRef: op.modelRef })),
       catalogue,
       modelById: (id) => ledger.catalogue.byId.get(id),
@@ -874,6 +884,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
           : await this.loadViaAgent(service, modelRef, job.loadSpec ?? {}, job.pin);
       if (measured.bytes && job.aiModelId) await this.writeObserved(job.aiModelId, measured.bytes, measured.loadSeconds);
 
+      if (service === 'lm-studio') this.lmsFailures.delete(modelRef);
       this.operations.succeed(job.opId);
       if (job.recommendation) job.recommendation.applied = true;
       if (job.pin && job.origin === 'policy') this.controllerPinned.add(residencyKey(service, modelRef));
@@ -890,6 +901,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       });
     } catch (error) {
       const failure = describeError(error);
+      if (service === 'lm-studio') this.lmsFailures.set(modelRef, { ...failure, message: failure.message.slice(0, 500), at: iso(Date.now()) });
       this.operations.fail(job.opId, failure);
       this.logger.warn({ message: 'residency.load.failed', operationId: job.opId, service, modelRef, ...failure });
       this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -990,6 +1002,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         this.lmsLoadedAt.delete(instanceId);
       }
       this.lmsPins.delete(modelRef);
+      this.lmsFailures.delete(modelRef);
     } else {
       outcome = (await this.agents.unload(service, { modelRef, force, reason })).outcome;
     }
@@ -1090,16 +1103,31 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
 
     const usage = indexModelMetrics(metrics);
     const entries: LedgerEntry[] = [];
+    const failures: CatalogueFailedEntry[] = [];
     for (const report of reports) {
       for (const model of report.models) {
+        if (!isResident(model)) {
+          failures.push(this.failureFrom(report.service, model, catalogue));
+          continue;
+        }
         entries.push(this.entryFrom(report, model, gpus, gpuIds, devices, catalogue, usage, now));
       }
     }
     for (const sample of metrics.workerResident) {
+      if (sample.metric.state === 'failed') {
+        failures.push(this.workerFailure(sample, catalogue));
+        continue;
+      }
       entries.push(this.workerEntry(sample, metrics.workerBytes, catalogue, usage));
     }
+    // LM Studio reports no failures of its own: the gateway's record of a failed load stands until it loads, unloads, or is seen resident.
+    for (const [modelRef, error] of this.lmsFailures) {
+      if (entries.some((e) => e.service === 'lm-studio' && e.modelRef === modelRef)) continue;
+      const aiModel = catalogue.modelFor('lm-studio', modelRef);
+      failures.push({ service: 'lm-studio', modelRef, aiModelId: aiModel?.id ?? null, aiModelName: aiModel?.name ?? null, error });
+    }
 
-    const ledger: Ledger = { at: now, devices, entries, staleServices, maxAgeSeconds, policies, livePath, catalogue };
+    const ledger: Ledger = { at: now, devices, entries, staleServices, maxAgeSeconds, policies, livePath, catalogue, failures };
     this.ledger = ledger;
     return ledger;
   }
@@ -1114,7 +1142,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
 
   private entryFrom(
     report: ServiceResidencyReport,
-    model: ReportedResidentModel,
+    model: ResidentReportedModel,
     gpus: GpuReading[],
     gpuIds: string[],
     devices: Ledger['devices'],
@@ -1189,6 +1217,36 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       adminPinned,
       cache: model.cache,
       ...(model.instanceId ? { instanceId: model.instanceId } : {}),
+    };
+  }
+
+  /** A model an agent reports `failed`: it is not resident, but its cache name is remembered so a retry can rebuild its load spec. */
+  private failureFrom(service: ResidencyServiceName, model: ReportedResidentModel, catalogue: CatalogueIndex): CatalogueFailedEntry {
+    this.lastSeenCache.set(residencyKey(service, model.modelRef), model.cache);
+    const aiModel = (model.aiModelId ? catalogue.byId.get(model.aiModelId) : undefined) ?? catalogue.modelFor(service, model.modelRef);
+    return {
+      service,
+      modelRef: model.modelRef,
+      aiModelId: model.aiModelId ?? aiModel?.id ?? null,
+      aiModelName: aiModel?.name ?? null,
+      error: model.error ?? { code: 'LOAD_FAILED', message: '', at: null },
+    };
+  }
+
+  /** The stt-worker has no report route: `model_resident{state="failed"} == 1` is all it says, so there is no code, message or time. */
+  private workerFailure(sample: PrometheusSample, catalogue: CatalogueIndex): CatalogueFailedEntry {
+    const modelRef = sample.metric.model ?? 'unknown';
+    const aiModel = catalogue.modelFor('stt-worker', modelRef);
+    return {
+      service: 'stt-worker',
+      modelRef,
+      aiModelId: aiModel?.id ?? null,
+      aiModelName: aiModel?.name ?? null,
+      error: {
+        code: 'LOAD_FAILED',
+        message: 'The stt-worker reports that the last load of this model failed (model_load_failures_total has the error code; its logs the cause).',
+        at: null,
+      },
     };
   }
 
@@ -1574,7 +1632,7 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       aiModelName: model?.name ?? null,
       device: reported?.device ?? 'unknown',
       devices: [],
-      state: reported?.state ?? 'loaded',
+      state: reported?.state && reported.state !== 'failed' ? reported.state : 'loaded',
       bytes: reported?.bytes ?? null,
       bytesSource: reported?.bytesSource ?? 'unknown',
       inFlight: reported?.inFlight ?? null,

@@ -899,6 +899,52 @@
       "apiExcluded": false
     },
     {
+      "controller": "AiModelAdminController",
+      "handler": "unregister",
+      "method": "POST",
+      "path": "/api/v1/admin/ai-models/{id}/unregister",
+      "routePath": "/admin/ai-models/:id/unregister",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelAdminController",
+      "handler": "getUsage",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-models/{id}/usage",
+      "routePath": "/admin/ai-models/:id/usage",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AiModelCatalogueController",
       "handler": "catalogue",
       "method": "GET",
@@ -970,6 +1016,52 @@
     },
     {
       "controller": "AiModelAdminController",
+      "handler": "downloadMissing",
+      "method": "POST",
+      "path": "/api/v1/admin/ai-models/download-missing",
+      "routePath": "/admin/ai-models/download-missing",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelAdminController",
+      "handler": "previewHub",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-models/hub/preview",
+      "routePath": "/admin/ai-models/hub/preview",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelAdminController",
       "handler": "lastInventory",
       "method": "GET",
       "path": "/api/v1/admin/ai-models/inventory",
@@ -1020,6 +1112,29 @@
       "method": "GET",
       "path": "/api/v1/admin/ai-models/list",
       "routePath": "/admin/ai-models/list",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelAdminController",
+      "handler": "registerFromHub",
+      "method": "POST",
+      "path": "/api/v1/admin/ai-models/register-from-hub",
+      "routePath": "/admin/ai-models/register-from-hub",
       "svcScopes": [
         "svc:admin:ai-model:manage"
       ],

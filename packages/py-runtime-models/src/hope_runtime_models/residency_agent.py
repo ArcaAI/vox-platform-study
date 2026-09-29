@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from .cache import UNSET, AdmissionRejected, ModelInFlightError, ResidentModel
+from .cache import UNSET, AdmissionRejected, LoadFailure, ModelInFlightError, ResidentModel
 
 
 @dataclass(frozen=True)
@@ -110,6 +110,10 @@ def _in_flight(model_ref: str, in_flight: int) -> ResidencyError:
 
 def _iso(epoch_seconds: float) -> str:
     return datetime.fromtimestamp(epoch_seconds, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _error_json(failure: LoadFailure) -> dict[str, Any]:
+    return {"code": failure.code, "message": failure.message, "at": _iso(failure.at)}
 
 
 async def _settle(value: Any) -> Any:
@@ -223,6 +227,16 @@ class ResidencyAgent:
         if in_flight and not force:
             raise _in_flight(model_ref, in_flight)
 
+        # A model whose last load FAILED is not loaded, but an unload dismisses that failure
+        # (outcome stays `not_loaded`: nothing was resident; the operator asked to forget it).
+        for binding in self._live_bindings():
+            for model in binding.cache.residency_snapshot():
+                if (
+                    model.state == "failed"
+                    and binding.describe(model.key, model.instance).model_ref == model_ref
+                ):
+                    await _settle(binding.cache.unload(model.key, force=force, reason=reason))
+
         unloaded = False
         for item in found:
             try:
@@ -324,6 +338,7 @@ class ResidencyAgent:
             ),
             "last_used_at": None if model.idle_seconds is None else _iso(now - model.idle_seconds),
             "load_seconds": None if model.load_seconds is None else round(model.load_seconds, 3),
+            "error": None if model.error is None else _error_json(model.error),
         }
 
     @staticmethod

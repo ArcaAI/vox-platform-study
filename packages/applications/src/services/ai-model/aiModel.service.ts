@@ -75,6 +75,7 @@ import {
 } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
+import { ModelLifecycleService } from './lifecycle/model-lifecycle.service';
 
 /**
  * How a `filters` token coerces on the ADMIN registry grid (TASK-983 R1/R4).
@@ -219,6 +220,12 @@ export class AiModelService extends BaseService implements IAiModelService {
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnections?: IProviderConnectionServicePort,
     @Optional() private readonly tenantRepository?: TenantRepository,
     @Optional() @Inject(IInferenceReadinessService) private readonly readiness?: ReadinessSnapshotReader,
+    // TASK-1019 D-9 — the one-word status per row on the admin reads. `@Optional()`
+    // and TRAILING like the three above; absent, the reads carry no `lifecycle`.
+    // The explicit `@Inject` is load-bearing: the `Pick<…>` type emits `Object`
+    // as its design type, so without it Nest resolves nothing and — the param
+    // being optional — silently injects `undefined` (final review C1).
+    @Optional() @Inject(ModelLifecycleService) private readonly lifecycle?: Pick<ModelLifecycleService, 'forRows'>,
   ) {
     super(eventEmitter, clsService, ResourceType.AiModel);
   }
@@ -580,7 +587,7 @@ export class AiModelService extends BaseService implements IAiModelService {
       resourceId: model.id,
     });
 
-    return AiModelDtoMapper.toResponse(model);
+    return (await this.withLifecycle([model]))[0];
   }
 
   /** Get model by slug — the ADMIN registry read (TASK-932 OD-4). */
@@ -593,7 +600,7 @@ export class AiModelService extends BaseService implements IAiModelService {
       resourceId: model.id,
     });
 
-    return AiModelDtoMapper.toResponse(model);
+    return (await this.withLifecycle([model]))[0];
   }
 
   /**
@@ -635,7 +642,7 @@ export class AiModelService extends BaseService implements IAiModelService {
       data: { count: models.length },
     });
 
-    return models.map(AiModelDtoMapper.toResponse);
+    return this.withLifecycle(models);
   }
 
   /**
@@ -683,7 +690,7 @@ export class AiModelService extends BaseService implements IAiModelService {
     });
 
     return {
-      data: models.map(AiModelDtoMapper.toResponse),
+      data: await this.withLifecycle(models),
       total,
       page,
       limit,
@@ -748,6 +755,32 @@ export class AiModelService extends BaseService implements IAiModelService {
   // ==========================================================================
   // Internals
   // ==========================================================================
+
+  /**
+   * TASK-1019 D-9 — map rows to the admin DTO with their `lifecycle`, derived in
+   * ONE pass for the whole set (one residency read however many rows). The
+   * status is advisory: if deriving it fails the rows are still returned, just
+   * without it.
+   */
+  private async withLifecycle(models: AiModelEntity[]): Promise<ModelResponse[]> {
+    const responses = models.map(AiModelDtoMapper.toResponse);
+    if (!this.lifecycle || models.length === 0) return responses;
+    try {
+      const byId = await this.lifecycle.forRows(models);
+      for (const response of responses) {
+        const lifecycle = byId.get(response.id);
+        if (lifecycle) response.lifecycle = lifecycle;
+      }
+    } catch (error) {
+      // swallow-ok: the status is advisory — the registry read never fails on the join; logged with the row count.
+      this.logger.warn({
+        message: 'ai_model.lifecycle.join_failed',
+        rows: models.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return responses;
+  }
 
   /**
    * The model tier the caller's PLAN grants (`base` / `full` / `full_custom`).

@@ -8,9 +8,15 @@
  * `IProviderConnectionService` and attaches it as a bearer token. That
  * resolver is mocked here the same way `axiosRef` is.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { HuggingFaceModelSourceClient } from '../huggingface-model-source.client';
+import { DOWNLOAD_IDLE_TIMEOUT, ModelPublisherError, isNonRetryablePublisherError } from '../model-publisher.errors';
 
 function resolvedCredential(apiKey: string) {
   return { outcome: 'resolved' as const, apiKey, funding: 'platform' as const };
@@ -76,18 +82,100 @@ describe('HuggingFaceModelSourceClient', () => {
     });
   });
 
-  describe('downloadFile', () => {
-    it('GETs the resolve URL as an arraybuffer and returns a Buffer', async () => {
-      axiosRef.get.mockResolvedValue({ data: new TextEncoder().encode('hello').buffer });
+  describe('downloadFileTo (TASK-1019 P3 — streamed to disk, never a whole-file Buffer)', () => {
+    let dir: string;
+    beforeEach(async () => {
+      dir = await mkdtemp(join(tmpdir(), 'hf-client-test-'));
+    });
+    afterEach(async () => {
+      vi.restoreAllMocks();
+      await rm(dir, { recursive: true, force: true });
+    });
 
-      const result = await client.downloadFile('google/gemma-4-e2b-it-qat-q4_0-gguf', 'config.json');
+    it('streams a 3-chunk body to the destination while hashing it, reporting bytes as they arrive', async () => {
+      const chunks = [Buffer.alloc(4096, 1), Buffer.alloc(4096, 2), Buffer.alloc(1000, 3)];
+      const total = chunks.reduce((n, c) => n + c.length, 0);
+      const expectedSha = createHash('sha256').update(chunks[0]).update(chunks[1]).update(chunks[2]).digest('hex');
+      axiosRef.get.mockResolvedValue({ data: Readable.from(chunks) });
+      const concatSpy = vi.spyOn(Buffer, 'concat');
+      const onBytes = vi.fn();
+      const dest = join(dir, 'nested', 'model.gguf');
 
-      expect(axiosRef.get).toHaveBeenCalledWith(
-        'https://huggingface.co/google/gemma-4-e2b-it-qat-q4_0-gguf/resolve/main/config.json',
-        expect.objectContaining({ responseType: 'arraybuffer' }),
-      );
-      expect(Buffer.isBuffer(result)).toBe(true);
-      expect(result.toString('utf8')).toBe('hello');
+      const result = await client.downloadFileTo('org/repo', 'nested/model.gguf', 'abc123', dest, onBytes);
+
+      expect(axiosRef.get).toHaveBeenCalledWith('https://huggingface.co/org/repo/resolve/abc123/nested/model.gguf', expect.objectContaining({ responseType: 'stream' }));
+      expect(result).toEqual({ size: total, sha256: expectedSha });
+      expect(onBytes.mock.calls.map((c) => c[0])).toEqual([4096, 4096, 1000]);
+      expect((await readFile(dest)).equals(Buffer.concat(chunks))).toBe(true);
+      // The only whole-file concat is the assertion's own, made after the call.
+      const fullFileConcats = concatSpy.mock.results.filter((r) => (r.value as Buffer).length >= total);
+      expect(fullFileConcats).toHaveLength(1);
+    });
+
+    it('rejects when the body stream errors mid-transfer (no partial success)', async () => {
+      const body = new Readable({ read() {} });
+      // The socket fails AFTER the response arrived — as it does for real.
+      axiosRef.get.mockImplementation(async () => {
+        setImmediate(() => {
+          body.push(Buffer.alloc(10));
+          body.destroy(new Error('socket hang up'));
+        });
+        return { data: body };
+      });
+
+      await expect(client.downloadFileTo('org/repo', 'model.gguf', 'main', join(dir, 'model.gguf'))).rejects.toThrow('socket hang up');
+    });
+
+    describe('byte-idle watchdog (I7) — a half-open socket fails the attempt instead of hanging the queue', () => {
+      it('aborts with a RETRYABLE DOWNLOAD_IDLE_TIMEOUT when no byte arrives for the idle window', async () => {
+        const body = new Readable({ read() {} });
+        let signal: AbortSignal | undefined;
+        axiosRef.get.mockImplementation(async (_url: string, config: { signal?: AbortSignal }) => {
+          signal = config.signal;
+          setImmediate(() => body.push(Buffer.alloc(10))); // one chunk, then silence
+          return { data: body };
+        });
+
+        const failure = await client
+          .downloadFileTo('org/repo', 'model.gguf', 'main', join(dir, 'model.gguf'), undefined, { idleTimeoutMs: 60 })
+          .catch((e: unknown) => e);
+
+        expect(failure).toBeInstanceOf(ModelPublisherError);
+        expect((failure as ModelPublisherError).code).toBe(DOWNLOAD_IDLE_TIMEOUT);
+        expect(isNonRetryablePublisherError(failure)).toBe(false);
+        expect(signal?.aborted).toBe(true);
+        expect(body.destroyed).toBe(true);
+      });
+
+      it('also covers a response whose headers never arrive', async () => {
+        axiosRef.get.mockImplementation(
+          (_url: string, config: { signal: AbortSignal }) =>
+            new Promise((_resolve, reject) => config.signal.addEventListener('abort', () => reject(new Error('canceled')))),
+        );
+
+        await expect(
+          client.downloadFileTo('org/repo', 'model.gguf', 'main', join(dir, 'model.gguf'), undefined, { idleTimeoutMs: 40 }),
+        ).rejects.toMatchObject({ code: DOWNLOAD_IDLE_TIMEOUT });
+      });
+
+      it('resets on every chunk: a slow but steady transfer longer than the window completes', async () => {
+        const body = new Readable({ read() {} });
+        axiosRef.get.mockImplementation(async () => {
+          let sent = 0;
+          const timer = setInterval(() => {
+            body.push(Buffer.alloc(5));
+            if (++sent === 5) {
+              clearInterval(timer);
+              body.push(null);
+            }
+          }, 25);
+          return { data: body };
+        });
+
+        const result = await client.downloadFileTo('org/repo', 'model.gguf', 'main', join(dir, 'model.gguf'), undefined, { idleTimeoutMs: 80 });
+
+        expect(result.size).toBe(25);
+      });
     });
   });
 
@@ -107,9 +195,9 @@ describe('HuggingFaceModelSourceClient', () => {
 
     it('resolves against SYSTEM regardless of which model/tenant is being fetched — never a caller-supplied tenant', async () => {
       resolveCredential.mockResolvedValue(resolvedCredential('hf_live_secret_token'));
-      axiosRef.get.mockResolvedValue({ data: new ArrayBuffer(0) });
+      axiosRef.get.mockResolvedValue({ data: Readable.from([]) });
 
-      await client.downloadFile('some/private-repo', 'weights.gguf');
+      await client.downloadFileTo('some/private-repo', 'weights.gguf', 'main', join(tmpdir(), `hf-client-${process.pid}-a.bin`));
 
       expect(resolveCredential).toHaveBeenCalledWith('model-registry', 'huggingface', SYSTEM_TENANT_ID);
     });
@@ -141,9 +229,9 @@ describe('HuggingFaceModelSourceClient', () => {
 
     it('never sends the credential to the wrong host — Authorization only reaches huggingface.co URLs already being requested', async () => {
       resolveCredential.mockResolvedValue(resolvedCredential('hf_live_secret_token'));
-      axiosRef.get.mockResolvedValue({ data: new ArrayBuffer(0) });
+      axiosRef.get.mockResolvedValue({ data: Readable.from([]) });
 
-      await client.downloadFile('google/gemma-4-e2b-it-qat-q4_0-gguf', 'model.gguf');
+      await client.downloadFileTo('google/gemma-4-e2b-it-qat-q4_0-gguf', 'model.gguf', 'main', join(tmpdir(), `hf-client-${process.pid}-b.bin`));
 
       const [url] = axiosRef.get.mock.calls[0];
       expect(url).toMatch(/^https:\/\/huggingface\.co\//);
@@ -164,7 +252,7 @@ describe('HuggingFaceModelSourceClient', () => {
       resolveCredential.mockResolvedValue(resolvedCredential('hf_live_secret_token'));
       axiosRef.get.mockRejectedValue({ response: { status: 403 }, message: 'Request failed with status code 403' });
 
-      await expect(client.downloadFile('gated/private-repo', 'model.gguf')).rejects.toThrow(/403.*configure the SYSTEM/);
+      await expect(client.downloadFileTo('gated/private-repo', 'model.gguf', 'main', join(tmpdir(), `hf-client-${process.pid}-c.bin`))).rejects.toThrow(/403.*configure the SYSTEM/);
     });
 
     it('NEVER includes the resolved token in the thrown error, in any form (message, cause, or stack)', async () => {

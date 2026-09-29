@@ -22,12 +22,13 @@ import { API_ENV_DESCRIPTORS, parseApiEnv } from '../env.schema';
 const MINIMAL = { DATABASE_URL: 'postgres://u:p@localhost:5432/hope' } as const;
 
 describe('API_ENV_DESCRIPTORS — the declared surface', () => {
-  it('carries every bootstrap-floor descriptor except the Vault provisioning password', () => {
+  it('carries every bootstrap-floor descriptor except those another process reads', () => {
     const declared = new Set(API_ENV_DESCRIPTORS.map((d) => toEnvVarName(d.key)));
     const missing = BOOTSTRAP_ENV_SETTINGS.map((d) => toEnvVarName(d.key)).filter((name) => !declared.has(name));
     // VAULT_DB_ADMIN_PASS is consumed at Vault PROVISIONING time by shell
-    // scripts + compose, never by this process (zero TS readers).
-    expect(missing).toEqual(['VAULT_DB_ADMIN_PASS']);
+    // scripts + compose, never by this process (zero TS readers). The publisher
+    // key pair is read only by the model-publisher worker.
+    expect([...missing].sort()).toEqual(['MODEL_STORE_PUBLISHER_ACCESS_KEY_ID', 'MODEL_STORE_PUBLISHER_SECRET_KEY', 'VAULT_DB_ADMIN_PASS']);
   });
 
   it('declares no duplicate env-var names', () => {
@@ -61,6 +62,15 @@ describe('parseApiEnv — fail fast, report everything', () => {
   });
 
   it('accepts the minimal environment', () => {
+    expect(() => parseApiEnv({ ...MINIMAL })).not.toThrow();
+  });
+});
+
+describe('parseApiEnv — keys another process reads', () => {
+  it('never requires, or even declares, the model-publisher key pair — only the worker reads it', () => {
+    const names = API_ENV_DESCRIPTORS.map((d) => toEnvVarName(d.key));
+    expect(names).not.toContain('MODEL_STORE_PUBLISHER_ACCESS_KEY_ID');
+    expect(names).not.toContain('MODEL_STORE_PUBLISHER_SECRET_KEY');
     expect(() => parseApiEnv({ ...MINIMAL })).not.toThrow();
   });
 });

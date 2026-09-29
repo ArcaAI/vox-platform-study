@@ -35,6 +35,26 @@ import {
   INFERENCE_READINESS_INTERVAL_KEY,
 } from '../../ai-readiness/inference-readiness.constants';
 import { MODEL_INVENTORY_SETTING_KEYS } from '../../ai-model/inventory/model-inventory.cron.service';
+import { MODEL_DOWNLOAD_SETTING_DEFAULTS, MODEL_DOWNLOAD_SETTING_KEYS } from '../../ai-model/lifecycle/model-download-settings';
+import {
+  MODEL_PUBLISHER_TIMEOUT_DEFAULTS,
+  MODEL_PUBLISHER_TIMEOUT_KEYS,
+  MODEL_PUBLISHER_TIMEOUT_MIN_SECONDS,
+} from '../../ai-model/publish/model-publisher-timeouts.settings';
+
+/** A whole number ≥ 1 — the two download knobs make no sense at 0 or as a fraction. */
+function positiveWholeNumber(label: string) {
+  return (value: unknown): string | void => {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return `${label} must be a whole number of at least 1`;
+  };
+}
+
+/** A whole number of seconds ≥ the floor — a shorter timeout would fire on an ordinary network hiccup. */
+function wholeSecondsAtLeast(label: string, min: number) {
+  return (value: unknown): string | void => {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < min) return `${label} must be a whole number of at least ${min} seconds`;
+  };
+}
 
 export { INFERENCE_READINESS_CLOUD_PROBE_INTERVAL_KEY, INFERENCE_READINESS_ENABLED_KEY, INFERENCE_READINESS_INTERVAL_KEY };
 
@@ -108,5 +128,55 @@ export const AI_READINESS_SETTINGS: SettingDescriptor[] = [
       'Standard five-field cron expression for the inventory sweep. The scheduler re-reads it on every settings-cache ' +
       'refresh, so a change takes effect without a restart.',
     default: '0 * * * *',
+  },
+
+  // ── Model downloads (TASK-1019 D-4) ──────────────────────────────────────
+  {
+    ...PLATFORM_KNOB,
+    key: MODEL_DOWNLOAD_SETTING_KEYS.staleAfterSeconds,
+    dataType: 'number',
+    label: 'Model download stall timeout (seconds)',
+    description:
+      'A download whose worker has not reported progress for this many seconds is shown as failed (STALLED) and may be ' +
+      'started again. The worker reports progress while it transfers, so this only needs to exceed the longest quiet ' +
+      'gap — a crashed or never-started worker is what it catches.',
+    default: MODEL_DOWNLOAD_SETTING_DEFAULTS.staleAfterSeconds,
+    validate: positiveWholeNumber('The stall timeout'),
+  },
+  {
+    ...PLATFORM_KNOB,
+    key: MODEL_DOWNLOAD_SETTING_KEYS.maxAttempts,
+    dataType: 'number',
+    label: 'Model download attempts',
+    description:
+      'How many times the model publisher tries one download before recording it as failed, waiting exponentially ' +
+      'longer between tries (30 s, 60 s, …). A retry skips files already in the bucket at the right size.',
+    default: MODEL_DOWNLOAD_SETTING_DEFAULTS.maxAttempts,
+    validate: positiveWholeNumber('The attempt count'),
+  },
+  // TASK-1019 I7 — the two bounds on a HUNG transfer, read by the model-publisher worker.
+  {
+    ...PLATFORM_KNOB,
+    key: MODEL_PUBLISHER_TIMEOUT_KEYS.idleTimeoutSeconds,
+    dataType: 'number',
+    label: 'Model download idle timeout (seconds)',
+    description:
+      'A Hugging Face download that receives no data for this many seconds is aborted and retried (DOWNLOAD_IDLE_TIMEOUT). ' +
+      'It catches a silently dead connection, which would otherwise hold the model publisher — and every download queued ' +
+      'behind it — forever. Any byte received restarts the clock, so a slow but moving download is never cut off.',
+    default: MODEL_PUBLISHER_TIMEOUT_DEFAULTS.idleTimeoutSeconds,
+    validate: wholeSecondsAtLeast('The idle timeout', MODEL_PUBLISHER_TIMEOUT_MIN_SECONDS),
+  },
+  {
+    ...PLATFORM_KNOB,
+    key: MODEL_PUBLISHER_TIMEOUT_KEYS.requestTimeoutSeconds,
+    dataType: 'number',
+    label: 'Model bucket request timeout (seconds)',
+    description:
+      'The longest one request of the model publisher to the models bucket may take — one uploaded part (64 MiB or more), ' +
+      'one small file, one delete batch. A request that exceeds it fails, and the job retries. Keep it well above the time ' +
+      'one part takes on the slowest link to the object store.',
+    default: MODEL_PUBLISHER_TIMEOUT_DEFAULTS.requestTimeoutSeconds,
+    validate: wholeSecondsAtLeast('The request timeout', MODEL_PUBLISHER_TIMEOUT_MIN_SECONDS),
   },
 ];

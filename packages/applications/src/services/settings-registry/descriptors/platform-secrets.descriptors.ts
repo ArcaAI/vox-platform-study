@@ -223,6 +223,10 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
     'Data Plane',
   ),
   platformSecret('s3.secretKey', 'S3 secret key', 'S3-protocol secret key read by `S3Service`.', 'Data Plane'),
+  // TASK-1019 D-2 / C3 — the model publisher's OWN principal on `hope-models`
+  // (`modelStore.publisher.*`) is NOT here: it is an env-tier secret in
+  // `bootstrap-env.descriptors.ts`, delivered to the publisher pod alone. A
+  // vault-kv path would be readable by hope-api's shared AppRole.
   platformSecret(
     'azureStorage.connectionString',
     'Azure Blob connection string',

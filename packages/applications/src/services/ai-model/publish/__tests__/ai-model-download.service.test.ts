@@ -62,9 +62,10 @@ describe('AiModelDownloadService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // TASK-1019 R3 — both routes are platform administration: a SUPER_ADMIN with no working tenant.
     mockClsService.get.mockImplementation((key: string) => {
-      if (key === 'user') return { id: 'current-user-id' };
-      if (key === 'tenantId') return 'tenant-1';
+      if (key === 'user') return { id: 'current-user-id', roles: ['SUPER_ADMIN'] };
+      if (key === 'tenantId') return null;
       return null;
     });
     service = new AiModelDownloadService(mockModelRepository as never, mockDownloadQueue as never, mockEventEmitter as never, mockClsService as never);

@@ -31,12 +31,26 @@ const BODYLESS_METHODS = new Set(['GET', 'HEAD']);
  * Gateway route prefixes (as path segments) that are platform-wide by
  * definition and refuse a working tenant (403): the working tenant is never
  * forwarded to them, so a super admin can use them without clearing the tenant
- * they are working in. Model residency (TASK-1005 D-11) is the only one.
+ * they are working in: model residency and the model registry.
  */
-const PLATFORM_WIDE_PREFIXES: readonly (readonly string[])[] = [['admin', 'model-residency']];
+const PLATFORM_WIDE_PREFIXES: readonly (readonly string[])[] = [
+  ['admin', 'model-residency'],
+  ['admin', 'ai-models'],
+];
+
+/**
+ * Tenant-scoped routes under a platform-wide prefix, which keep the working
+ * tenant: the model catalogue is read FOR a tenant (the agent model picker).
+ */
+const TENANT_SCOPED_EXCEPTIONS: readonly (readonly string[])[] = [['admin', 'ai-models', 'catalogue']];
+
+function matchesPrefix(path: readonly string[], prefix: readonly string[]): boolean {
+  return prefix.every((segment, i) => path[i] === segment);
+}
 
 function isPlatformWide(path: readonly string[]): boolean {
-  return PLATFORM_WIDE_PREFIXES.some((prefix) => prefix.every((segment, i) => path[i] === segment));
+  if (TENANT_SCOPED_EXCEPTIONS.some((prefix) => matchesPrefix(path, prefix))) return false;
+  return PLATFORM_WIDE_PREFIXES.some((prefix) => matchesPrefix(path, prefix));
 }
 
 /**

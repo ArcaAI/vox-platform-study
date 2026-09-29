@@ -14,6 +14,7 @@ from .cache import (
     AdmissionRejected,
     CacheStats,
     EvictionCount,
+    LoadFailure,
     MetricsSink,
     ModelCache,
     ModelInFlightError,
@@ -25,6 +26,7 @@ from .cache import (
 from .devices import Device, cpu_device, default_device, gpu_device
 from .metrics import (
     EVICTIONS_TOTAL,
+    LOAD_FAILURES_TOTAL,
     LOADS_TOTAL,
     MODEL_LOAD_SECONDS,
     MODEL_LOAD_SECONDS_BUCKETS,
@@ -68,6 +70,7 @@ __all__ = [
     "DEFAULT_BUDGET_SECONDS",
     "EVICTIONS_TOTAL",
     "EVICTION_REASONS",
+    "LOAD_FAILURES_TOTAL",
     "LOADS_TOTAL",
     "MAX_PROBE_THREADS",
     "MODEL_LOAD_SECONDS",
@@ -91,6 +94,7 @@ __all__ = [
     "Device",
     "DeviceMemory",
     "EvictionCount",
+    "LoadFailure",
     "MetricsSink",
     "ModelCache",
     "ModelInFlightError",

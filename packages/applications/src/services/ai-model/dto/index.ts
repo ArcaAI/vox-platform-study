@@ -6,3 +6,5 @@ export * from './set-platform-default.request';
 export * from './model.response';
 export * from './model-catalogue.response';
 export * from './model-catalogue.query';
+export * from './model-lifecycle.response';
+export * from './model-registry-operations.dto';

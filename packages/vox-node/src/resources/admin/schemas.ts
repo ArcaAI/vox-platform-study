@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 487 component schemas the generated surface transitively
+ * Only the 505 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2408,6 +2408,24 @@ export interface DocumentTemplateVersionResponse {
   versionSkew?: 'IDENTICAL' | 'ADDITIVE' | 'BREAKING';
 }
 
+export interface DownloadMissingEnqueuedResponse {
+  id: string;
+  jobId: string;
+  slug: string;
+}
+
+export interface DownloadMissingResponse {
+  enqueued: DownloadMissingEnqueuedResponse[];
+  skipped: DownloadMissingSkippedResponse[];
+}
+
+export interface DownloadMissingSkippedResponse {
+  id: string;
+  /** `SOURCE_NOT_FETCHABLE` (no Hub or s3:// source), `DOWNLOADING` (already in progress), `UNREGISTERING`, or `CONFLICT` (changed concurrently). */
+  reason: 'SOURCE_NOT_FETCHABLE' | 'DOWNLOADING' | 'UNREGISTERING' | 'CONFLICT';
+  slug: string;
+}
+
 export interface EditBurdenResponse {
   /** Consultation the telemetry belongs to. */
   consultationId: string;
@@ -3017,6 +3035,173 @@ export interface HarnessPolicyResponse {
   warmStartEnabled?: boolean | null;
 }
 
+export interface HubFileResponse {
+  /** Path inside the repo. */
+  path: string;
+  /** Size in bytes. */
+  size: number;
+}
+
+export interface HubPreviewResponse {
+  /** Upstream base model, when the card names one. */
+  baseModel: string | null;
+  /** Commit sha the revision resolves to — what will be downloaded. */
+  commitSha: string;
+  /** Number of files in the repo at this revision. */
+  fileCount: number;
+  files: HubFileResponse[];
+  /** The repo is gated — downloading it needs the platform Hugging Face token. */
+  gated: boolean;
+  /** Model-card languages. */
+  languages: string[];
+  /** How the weights will be laid out in the models bucket: `hf-cache` (a Hugging Face hub cache) or `flat` (`<slug>/<version>/`). */
+  layout: 'hf-cache' | 'flat';
+  /** Hub `library_name`, verbatim. */
+  libraryName: string | null;
+  /** Model-card licence. */
+  license: string | null;
+  /** Hub `pipeline_tag`. */
+  pipelineTag: string | null;
+  repoId: string;
+  /** The revision that was read. */
+  revision: string;
+  /** The registry `sourceUri` this repo registers as. */
+  sourceUri: string;
+  /** Registry fields prefilled from the card; `null` where nothing could be inferred. */
+  suggested: HubPreviewSuggestionResponse;
+  /** Artifact format inferred from the files. */
+  suggestedFormat:
+    | 'SAFETENSOR'
+    | 'ONNX'
+    | 'NEMO'
+    | 'PYTORCH'
+    | 'CTRANSLATE2'
+    | 'FASTER_WHISPER'
+    | 'MLX'
+    | 'GGUF'
+    | 'ONNX_OPTIMUM'
+    | 'AZURE_SPEECH'
+    | 'AZURE_FOUNDRY'
+    | 'PARAKEET_CPP'
+    | 'CLOUD_API'
+    | 'WHISPER_CPP'
+    | 'SARVAM'
+    | 'OPENAI'
+    | null;
+  /** Display name (the repo name). */
+  suggestedName: string;
+  /** Registry slug derived from the repo name. */
+  suggestedSlug: string;
+  /** Task inferred from the Hub `pipeline_tag`, as the registry task value. */
+  taskType:
+    | 'IMAGE_TEXT_TO_TEXT'
+    | 'VISUAL_QUESTION_ANSWERING'
+    | 'DOCUMENT_QUESTION_ANSWERING'
+    | 'VIDEO_TEXT_TO_TEXT'
+    | 'ANY_TO_ANY'
+    | 'DEPTH_ESTIMATION'
+    | 'IMAGE_CLASSIFICATION'
+    | 'OBJECT_DETECTION'
+    | 'IMAGE_SEGMENTATION'
+    | 'TEXT_TO_IMAGE'
+    | 'IMAGE_TO_TEXT'
+    | 'IMAGE_TO_IMAGE'
+    | 'IMAGE_TO_VIDEO'
+    | 'UNCONDITIONAL_IMAGE_GENERATION'
+    | 'VIDEO_CLASSIFICATION'
+    | 'TEXT_TO_VIDEO'
+    | 'ZERO_SHOT_IMAGE_CLASSIFICATION'
+    | 'MASK_GENERATION'
+    | 'ZERO_SHOT_OBJECT_DETECTION'
+    | 'TEXT_TO_3D'
+    | 'IMAGE_TO_3D'
+    | 'IMAGE_FEATURE_EXTRACTION'
+    | 'KEYPOINT_DETECTION'
+    | 'TEXT_CLASSIFICATION'
+    | 'TOKEN_CLASSIFICATION'
+    | 'TABLE_QUESTION_ANSWERING'
+    | 'QUESTION_ANSWERING'
+    | 'ZERO_SHOT_CLASSIFICATION'
+    | 'TRANSLATION'
+    | 'SUMMARIZATION'
+    | 'FEATURE_EXTRACTION'
+    | 'TEXT_GENERATION'
+    | 'TEXT2TEXT_GENERATION'
+    | 'FILL_MASK'
+    | 'SENTENCE_SIMILARITY'
+    | 'GUARDRAIL'
+    | 'TEXT_TO_SPEECH'
+    | 'TEXT_TO_AUDIO'
+    | 'AUTOMATIC_SPEECH_RECOGNITION'
+    | 'AUDIO_TO_AUDIO'
+    | 'AUDIO_CLASSIFICATION'
+    | 'VOICE_ACTIVITY_DETECTION'
+    | 'SPEAKER_DIARIZATION'
+    | 'SPEAKER_EMBEDDING'
+    | 'TABULAR_CLASSIFICATION'
+    | 'TABULAR_REGRESSION'
+    | 'TIME_SERIES_FORECASTING'
+    | 'UNKNOWN'
+    | null;
+  /** Sum of every file size, in bytes. */
+  totalBytes: number;
+}
+
+export interface HubPreviewSuggestionResponse {
+  /** Category inferred from the task. */
+  category: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN' | null;
+  /** Serving library this platform would load it with. */
+  libraryName:
+    | 'faster-whisper'
+    | 'whisper.cpp'
+    | 'ctranslate2'
+    | 'parakeet.cpp'
+    | 'nemo'
+    | 'onnxruntime'
+    | 'pyrnnoise'
+    | 'deepfilternet'
+    | 'speechbrain'
+    | 'pyannote-audio'
+    | 'cadence-punctuation'
+    | 'transformers'
+    | 'gliner2'
+    | 'llama.cpp'
+    | 'kokoro'
+    | 'parler-tts'
+    | 'lm-studio'
+    | 'ollama'
+    | 'vllm'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'azure-openai'
+    | 'openai'
+    | 'sarvam'
+    | 'bedrock'
+    | 'anthropic'
+    | 'vertex'
+    | null;
+  /** QUANTIZED_MODEL for GGUF / ggml weights; otherwise not inferred. */
+  modelType: 'BASE_MODEL' | 'FINETUNED_MODEL' | 'QUANTIZED_MODEL' | 'UNKNOWN' | null;
+  /** Runtime provider id. */
+  provider:
+    | 'ollama'
+    | 'lm-studio'
+    | 'azure'
+    | 'bedrock'
+    | 'built-in'
+    | 'sarvam'
+    | 'openai'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'anthropic'
+    | 'vertex'
+    | 'vllm'
+    | 'llama-cpp'
+    | null;
+  /** Workload that would run it. */
+  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'asr-vllm' | null;
+}
+
 export interface ImportAgentRequest {
   /** The exported bundle, exactly as `GET /admin/agents/{slug}/export` produced it. */
   bundle: Record<string, unknown>;
@@ -3564,6 +3749,56 @@ export interface ModelInventoryRow {
   slug: string;
 }
 
+export interface ModelLifecycleDownloadResponse {
+  /** Bytes transferred so far by the current or last download. */
+  bytesDone: number | null;
+  /** Total bytes the download will transfer, when known. */
+  bytesTotal: number | null;
+  /** Why the last download failed; `STALLED` when the worker stopped reporting progress. */
+  error: string | null;
+}
+
+export interface ModelLifecycleResponse {
+  /** Progress of the current or last download; null when the model was never downloaded here. */
+  download: ModelLifecycleDownloadResponse;
+  /** When the per-service view was observed (ISO 8601); null when it could not be read and the status rests on the registry alone. */
+  observedAt: string | null;
+  /** Per-service evidence behind the status. */
+  services: ModelServiceStatusResponse[];
+  /** One status per model. In order of precedence: UNREGISTERING, DOWNLOADING, DOWNLOAD_FAILED, NOT_APPLICABLE (cloud), NOT_DOWNLOADED, LOAD_FAILED, LOADING, SERVING, DOWNLOADED (idle), NOT_OBSERVED (served by a workload whose loaded models are not reported). */
+  status:
+    | 'UNREGISTERING'
+    | 'DOWNLOADING'
+    | 'DOWNLOAD_FAILED'
+    | 'NOT_DOWNLOADED'
+    | 'LOAD_FAILED'
+    | 'LOADING'
+    | 'SERVING'
+    | 'DOWNLOADED'
+    | 'NOT_OBSERVED'
+    | 'NOT_APPLICABLE';
+  /** The unregister in progress (or failed); null otherwise. */
+  unregister: ModelLifecycleUnregisterResponse;
+}
+
+export interface ModelLifecycleUnregisterResponse {
+  /** Why the unregister failed, if it did. */
+  error: string | null;
+  /** What happens to the weights: `deleting`, `deleted`, `kept-shared` (another model uses the same files) or `kept`. */
+  weights: string;
+}
+
+export interface ModelReferrerResponse {
+  /** The referrer id (for `agent-fallback`, the agent id). */
+  id: string;
+  /** What points at the model. */
+  kind: 'agent' | 'agent-fallback' | 'agent-asr-submodel' | 'routing-policy' | 'residency-policy' | 'voice-profile';
+  /** Display name, with the version or role where it helps. */
+  name: string;
+  /** The tenant that owns the referrer. */
+  tenantId: string;
+}
+
 export interface ModelResidencyCatalogueDevice {
   freeBytes: number;
   /** The `residency.headroomPercent` in force. */
@@ -3584,6 +3819,8 @@ export interface ModelResidencyCatalogueModel {
   actions: Array<'load' | 'unload' | 'reload' | 'edit_policy'>;
   /** `null` only for a resident model the catalogue does not know. */
   aiModelId: string | null;
+  /** Set only while `status` is `failed`. */
+  error: ModelResidencyLoadError;
   format: string | null;
   keepPolicy: ModelResidencyKeepPolicy;
   /** Seconds the last load took (measured). */
@@ -3595,7 +3832,8 @@ export interface ModelResidencyCatalogueModel {
   residency: ModelResidencyPlacement;
   size: ModelResidencySize;
   slug: string | null;
-  status: 'loaded' | 'loading' | 'unloading' | 'not_loaded';
+  /** `failed` = the last load of this model raised and nothing has cleared it yet (a later load or unload does). `error` says why. */
+  status: 'loaded' | 'loading' | 'unloading' | 'not_loaded' | 'failed';
   usage: ModelResidencyUsage;
 }
 
@@ -3661,6 +3899,15 @@ export interface ModelResidencyKeepPolicy {
   policyVersion: number | null;
   reason: string;
   source: 'policy' | 'implicit-live-path' | 'default';
+}
+
+export interface ModelResidencyLoadError {
+  /** When it failed (ISO); `null` when the source carries no time (the stt-worker gauge). */
+  at: string | null;
+  /** The error code the failed load raised (an agent exception class name, or a gateway code). */
+  code: string;
+  /** What the load said, truncated to 500 characters. */
+  message: string;
 }
 
 export interface ModelResidencyLoadResponse {
@@ -3922,6 +4169,8 @@ export interface ModelResponse {
     | 'vertex';
   /** Model-card licence identifier. */
   license?: string | null;
+  /** The model's one-word status with its per-service evidence — being downloaded, serving, failed to load, and so on. Present on the registry reads (`GET admin/ai-models`, `GET admin/ai-models/list`, `GET admin/ai-models/:id`); absent on write responses. */
+  lifecycle?: ModelLifecycleResponse;
   /** DERIVED, never stored (TASK-890 §3.11): `/mnt/models-bucket/` + `bucketPrefix`, plus `primaryObject` for a single-file loader. Read by every service resolver as the highest-precedence weight location; null when the row has no bucket identity, which is the signal to fall back to `sourceUri` scheme dispatch. */
   localPath?: string;
   /** sha256 of the published `manifest.json`. */
@@ -4012,6 +4261,41 @@ export interface ModelResponse {
   version: number;
   /** Vendor wire id for a CLOUD row. */
   wireModelId?: string | null;
+}
+
+export interface ModelServiceErrorResponse {
+  /** When the failure was recorded (ISO 8601). */
+  at: string | null;
+  /** Stable failure code the service reported (for example `CUDA_OOM`). */
+  code: string;
+  /** Human-readable failure message. */
+  message: string;
+}
+
+export interface ModelServiceStatusResponse {
+  /** Bytes the loaded model holds; null when not loaded or not measured. */
+  bytes: number | null;
+  /** Where it is resident: `gpu<N>`, `multi`, or `cpu:<service>`; null when not loaded. */
+  device: string | null;
+  /** The last load failure, while the state is `failed`. */
+  error: ModelServiceErrorResponse;
+  /** Requests in flight on this model right now. */
+  inFlight: number | null;
+  /** Requests per minute over the recent window. */
+  requestsPerMin: number | null;
+  /** The workload reporting this model: `stt`, `stt-worker`, `nlp` or `lm-studio`. */
+  service: string;
+  /** What the service holds right now. */
+  state: 'loaded' | 'loading' | 'unloading' | 'not_loaded' | 'failed';
+}
+
+export interface ModelUsageResponse {
+  /** Whether anything still references the model — an unregister would be refused. */
+  inUse: boolean;
+  modelId: string;
+  /** Every referrer, across all tenants. */
+  referrers: ModelReferrerResponse[];
+  slug: string;
 }
 
 export interface NamedEntityResponse {
@@ -5209,6 +5493,145 @@ export interface RegisterDiscoveredModelRequest {
   slug?: string;
 }
 
+export interface RegisterFromHubRequest {
+  /** Model architecture family. */
+  architecture?: string;
+  category?: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
+  /** Compute type (float32, float16, int8). */
+  computeType?: string;
+  /** Description. */
+  description?: string;
+  format?:
+    | 'SAFETENSOR'
+    | 'ONNX'
+    | 'NEMO'
+    | 'PYTORCH'
+    | 'CTRANSLATE2'
+    | 'FASTER_WHISPER'
+    | 'MLX'
+    | 'GGUF'
+    | 'ONNX_OPTIMUM'
+    | 'AZURE_SPEECH'
+    | 'AZURE_FOUNDRY'
+    | 'PARAKEET_CPP'
+    | 'CLOUD_API'
+    | 'WHISPER_CPP'
+    | 'SARVAM'
+    | 'OPENAI';
+  libraryName?:
+    | 'faster-whisper'
+    | 'whisper.cpp'
+    | 'ctranslate2'
+    | 'parakeet.cpp'
+    | 'nemo'
+    | 'onnxruntime'
+    | 'pyrnnoise'
+    | 'deepfilternet'
+    | 'speechbrain'
+    | 'pyannote-audio'
+    | 'cadence-punctuation'
+    | 'transformers'
+    | 'gliner2'
+    | 'llama.cpp'
+    | 'kokoro'
+    | 'parler-tts'
+    | 'lm-studio'
+    | 'ollama'
+    | 'vllm'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'azure-openai'
+    | 'openai'
+    | 'sarvam'
+    | 'bedrock'
+    | 'anthropic'
+    | 'vertex';
+  /** Estimated memory size in MB. */
+  memorySizeMb?: number;
+  modelType?: 'BASE_MODEL' | 'FINETUNED_MODEL' | 'QUANTIZED_MODEL' | 'UNKNOWN';
+  /** Display name. Defaults to the repo name. */
+  name?: string;
+  provider?:
+    | 'ollama'
+    | 'lm-studio'
+    | 'azure'
+    | 'bedrock'
+    | 'built-in'
+    | 'sarvam'
+    | 'openai'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'anthropic'
+    | 'vertex'
+    | 'vllm'
+    | 'llama-cpp';
+  /** Hugging Face repo id, `<org>/<name>`. */
+  repoId: string;
+  /** Branch, tag or commit to register. Defaults to `main`; the row pins the commit it resolves to. */
+  revision?: string;
+  servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'asr-vllm';
+  /** Registry slug. Defaults to the repo name in slug form. */
+  slug?: string;
+  /** Tags. */
+  tags?: string[];
+  taskType?:
+    | 'IMAGE_TEXT_TO_TEXT'
+    | 'VISUAL_QUESTION_ANSWERING'
+    | 'DOCUMENT_QUESTION_ANSWERING'
+    | 'VIDEO_TEXT_TO_TEXT'
+    | 'ANY_TO_ANY'
+    | 'DEPTH_ESTIMATION'
+    | 'IMAGE_CLASSIFICATION'
+    | 'OBJECT_DETECTION'
+    | 'IMAGE_SEGMENTATION'
+    | 'TEXT_TO_IMAGE'
+    | 'IMAGE_TO_TEXT'
+    | 'IMAGE_TO_IMAGE'
+    | 'IMAGE_TO_VIDEO'
+    | 'UNCONDITIONAL_IMAGE_GENERATION'
+    | 'VIDEO_CLASSIFICATION'
+    | 'TEXT_TO_VIDEO'
+    | 'ZERO_SHOT_IMAGE_CLASSIFICATION'
+    | 'MASK_GENERATION'
+    | 'ZERO_SHOT_OBJECT_DETECTION'
+    | 'TEXT_TO_3D'
+    | 'IMAGE_TO_3D'
+    | 'IMAGE_FEATURE_EXTRACTION'
+    | 'KEYPOINT_DETECTION'
+    | 'TEXT_CLASSIFICATION'
+    | 'TOKEN_CLASSIFICATION'
+    | 'TABLE_QUESTION_ANSWERING'
+    | 'QUESTION_ANSWERING'
+    | 'ZERO_SHOT_CLASSIFICATION'
+    | 'TRANSLATION'
+    | 'SUMMARIZATION'
+    | 'FEATURE_EXTRACTION'
+    | 'TEXT_GENERATION'
+    | 'TEXT2TEXT_GENERATION'
+    | 'FILL_MASK'
+    | 'SENTENCE_SIMILARITY'
+    | 'GUARDRAIL'
+    | 'TEXT_TO_SPEECH'
+    | 'TEXT_TO_AUDIO'
+    | 'AUTOMATIC_SPEECH_RECOGNITION'
+    | 'AUDIO_TO_AUDIO'
+    | 'AUDIO_CLASSIFICATION'
+    | 'VOICE_ACTIVITY_DETECTION'
+    | 'SPEAKER_DIARIZATION'
+    | 'SPEAKER_EMBEDDING'
+    | 'TABULAR_CLASSIFICATION'
+    | 'TABULAR_REGRESSION'
+    | 'TIME_SERIES_FORECASTING'
+    | 'UNKNOWN';
+}
+
+export interface RegisterFromHubResponse {
+  /** The download job — poll `GET admin/ai-models/:id/download`. */
+  jobId: string;
+  /** The registered row (SYSTEM tenant, source HUGGINGFACE, pinned to the resolved commit). */
+  model: ModelResponse;
+}
+
 export interface RequestVolumePoint {
   /** Requests/sec at this point (rate over the step). */
   requests: number;
@@ -6373,6 +6796,20 @@ export interface UnloadModelResidencyRequest {
   /** Why — recorded on the audit event. */
   reason?: string | null;
   service: 'stt' | 'nlp' | 'lm-studio';
+}
+
+export interface UnregisterModelRequest {
+  /** Delete the model's weights from the models bucket. Defaults to true. */
+  deleteWeights?: boolean;
+  /** Delete every stored version of the weights now, instead of keeping them recoverable for 30 days. Defaults to false. */
+  purge?: boolean;
+}
+
+export interface UnregisterModelResponse {
+  /** The unregister job id. */
+  jobId: string;
+  /** `deleting` — the weights are being removed; `kept-shared` — another registered model uses the same files, so they stay; `kept` — deletion was not requested or there is nothing in the bucket. */
+  weights: 'deleting' | 'kept-shared' | 'kept';
 }
 
 export interface UnregisteredBucketPrefix {

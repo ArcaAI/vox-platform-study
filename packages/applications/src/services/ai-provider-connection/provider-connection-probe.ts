@@ -1,9 +1,9 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { AiProviderConnectionEntity, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { SecretsService } from '../baseServices/_meta/secrets/SecretsService';
 import { decryptSecretField } from '../baseServices/_meta/secrets/secret-field.util';
 import { AiProviderConnectionService } from './ai-provider-connection.service';
-import { CONNECTION_ERROR_CODES, ProviderService, isKnownProviderId } from './constants';
+import { CONNECTION_ERROR_CODES, ProviderService, isCloudByoProvider, isKnownProviderId } from './constants';
 import { TestProviderConnectionRequest, TestProviderConnectionResponse } from './dto';
 
 /** Probe timeout — generous enough for a slow link, short enough for a synchronous admin click. */
@@ -129,20 +129,51 @@ export class ProviderConnectionProbe {
     // a provider id, which is every call that predates named connections.
     const provider = this.resolveProbeVendor(service, slug, row, dto);
 
-    if (needsStored && !row && tenantId !== SYSTEM_TENANT_ID) {
-      // The platform fallback is read by the resolved VENDOR, never by the
-      // slug: the platform tier holds one row per provider and knows nothing of
-      // a tenant's names for its connections.
-      row = await this.connections.findDefaultRow(service, provider, SYSTEM_TENANT_ID);
-      tier = row ? 'platform' : 'request';
+    // A platform-only (service, provider) — built-in engines, the model
+    // registry — does not exist for a tenant, so it cannot be tested by one:
+    // the same 404 the read route answers.
+    if (tenantId !== SYSTEM_TENANT_ID && !isCloudByoProvider(service, provider)) {
+      throw new NotFoundException(`No connection row for provider '${provider}' (service '${service}').`);
     }
 
     const clean = (v: string | null | undefined): string | null => {
       const s = v?.trim();
       return s ? s : null;
     };
+    // The key the BODY actually supplies. `apiKey: null` (IsOptional skips it)
+    // and a whitespace key (passes MinLength) both clean to null and fall back
+    // to the stored key exactly like an absent one — so every "did the caller
+    // bring a key" decision below reads THIS, never `dto.apiKey === undefined`.
+    const bodyApiKey = clean(dto.apiKey);
 
-    let apiKey = clean(dto.apiKey);
+    if (needsStored && !row && tenantId !== SYSTEM_TENANT_ID) {
+      // The platform fallback is read by the resolved VENDOR, never by the
+      // slug: the platform tier holds one row per provider and knows nothing of
+      // a tenant's names for its connections.
+      row = await this.connections.findDefaultRow(service, provider, SYSTEM_TENANT_ID);
+      tier = row ? 'platform' : 'request';
+      // The platform key goes only where the platform admin pointed it. A body
+      // endpoint field (baseUrl, or region/apiVersion/deploymentName, which are
+      // interpolated into the probe URL) would otherwise send the decrypted
+      // platform credential to a host the tenant chose.
+      if (row && bodyApiKey === null) {
+        const overridden = (['baseUrl', 'region', 'apiVersion', 'deploymentName'] as const).filter((field) => {
+          const requested = clean(dto[field]);
+          return requested !== null && requested !== clean(row?.[field]);
+        });
+        if (overridden.length > 0) {
+          throw new BadRequestException({
+            code: CONNECTION_ERROR_CODES.PLATFORM_KEY_ENDPOINT_LOCKED,
+            message:
+              'This test would use the platform default credential, which is only ever sent to the endpoint the platform ' +
+              `configured. Remove ${overridden.join(', ')} from the request, or supply your own apiKey to test another endpoint.`,
+            fields: overridden,
+          });
+        }
+      }
+    }
+
+    let apiKey = bodyApiKey;
     if (apiKey === null && row?.encryptedApiKey?.length) {
       if (!this.secretsService) {
         throw new BadRequestException('The stored key cannot be decrypted (no secrets provider); supply `apiKey` to test.');
@@ -155,7 +186,7 @@ export class ProviderConnectionProbe {
     }
 
     // A body that supplies nothing and finds no stored row has nothing to test.
-    const source: TestProviderConnectionResponse['source'] = dto.apiKey !== undefined && dto.baseUrl !== undefined ? 'request' : tier;
+    const source: TestProviderConnectionResponse['source'] = bodyApiKey !== null && dto.baseUrl !== undefined ? 'request' : tier;
 
     return {
       apiKey,

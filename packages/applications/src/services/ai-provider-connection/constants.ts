@@ -411,6 +411,12 @@ export const CONNECTION_ERROR_CODES = Object.freeze({
   BYO_SLUG_TAKEN: 'BYO_SLUG_TAKEN',
   /** 409 — a declared model's slug would shadow a platform row (pre-existing, P-29). */
   BYO_SLUG_SHADOWS_PLATFORM: 'BYO_SLUG_SHADOWS_PLATFORM',
+  /**
+   * 400 — a tenant's test-connection falls back to the PLATFORM credential and the
+   * body names a different endpoint (`baseUrl`/`region`/`apiVersion`/`deploymentName`).
+   * The platform key is presented only to the endpoint the platform stored.
+   */
+  PLATFORM_KEY_ENDPOINT_LOCKED: 'PLATFORM_KEY_ENDPOINT_LOCKED',
 } as const);
 
 /**

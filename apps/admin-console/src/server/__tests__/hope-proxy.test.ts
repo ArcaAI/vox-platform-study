@@ -173,6 +173,26 @@ describe('handleProxy', () => {
     expect(calls[2].headers.get('x-tenant-id')).toBe('50000000-0000-0000-0000-000000000000');
   });
 
+  // The model registry is platform-wide too (TASK-1019 D-11): its operations
+  // refuse a working tenant. The one exception is the tenant-scoped
+  // `admin/ai-models/catalogue` read, which the agent model picker issues FOR
+  // the working tenant and so must keep it.
+  it('never sends the working tenant to the model registry, except its tenant-scoped catalogue', async () => {
+    await seedSession({ ...baseSession, workingTenantId: '50000000-0000-0000-0000-000000000000' });
+    const calls = installFetchMock(() => Response.json({}));
+    await handleProxy(new Request('http://console.local/api/hope/admin/ai-models/list'), ['admin', 'ai-models', 'list']);
+    await handleProxy(new Request('http://console.local/api/hope/admin/ai-models/x/unregister', { method: 'POST', body: '{}' }), [
+      'admin',
+      'ai-models',
+      'x',
+      'unregister',
+    ]);
+    await handleProxy(new Request('http://console.local/api/hope/admin/ai-models/catalogue'), ['admin', 'ai-models', 'catalogue']);
+    expect(calls[0].headers.get('x-tenant-id')).toBeNull();
+    expect(calls[1].headers.get('x-tenant-id')).toBeNull();
+    expect(calls[2].headers.get('x-tenant-id')).toBe('50000000-0000-0000-0000-000000000000');
+  });
+
   it('uses the impersonation token while impersonation is active', async () => {
     await seedSession({
       ...baseSession,

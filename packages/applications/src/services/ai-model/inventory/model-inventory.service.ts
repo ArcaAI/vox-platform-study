@@ -8,7 +8,10 @@ import {
   ResourceStatusType,
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
+import { ClsService } from 'nestjs-cls';
 import { IS3Service } from '../../baseServices/storage';
+import { IActiveUserContext } from '../../../interfaces';
+import { assertPlatformRegistryAdmin } from '../lifecycle/platform-admin';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { IInferenceReadinessService } from '../../ai-readiness/IInferenceReadinessService';
 import { HOPE_MODELS_BUCKET } from '../constants';
@@ -76,9 +79,13 @@ export class ModelInventoryService {
     // refreshed. Absent collaborators degrade the follow-up, never the run.
     @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
     @Optional() @Inject(IInferenceReadinessService) private readonly readiness?: { sweep(): Promise<unknown> },
+    // TASK-1019 R3 — the request caller, for the platform-admin gate. Optional and
+    // trailing for the same arity reason as the two above.
+    @Optional() private readonly clsService?: ClsService<IActiveUserContext>,
   ) {}
 
   async runInventory(): Promise<ModelInventoryReport> {
+    this.assertPlatformAdminCaller('run the model-bucket inventory');
     const checkedAt = new Date();
 
     // ONE listing — a bucket read error is surfaced, never turned into a
@@ -133,6 +140,7 @@ export class ModelInventoryService {
    * says "not measured" rather than rendering a fabricated empty bucket.
    */
   async getLastReport(): Promise<ModelInventoryReport | null> {
+    this.assertPlatformAdminCaller('read the model-bucket inventory');
     if (this.redisCache?.isConnected()) {
       try {
         const raw = await this.redisCache.get(MODEL_INVENTORY_REPORT_KEY);
@@ -150,6 +158,16 @@ export class ModelInventoryService {
       }
     }
     return this.lastReport;
+  }
+
+  /**
+   * TASK-1019 R3 (D-11) — inside a REQUEST the caller must be a tenant-less
+   * platform admin. Outside one (the settings-gated cron runs with no CLS
+   * context) there is no caller, and the sweep is the platform's own.
+   */
+  private assertPlatformAdminCaller(action: string): void {
+    if (!this.clsService?.isActive()) return;
+    assertPlatformRegistryAdmin(this.clsService.get('user'), this.clsService.get('tenantId') || null, action);
   }
 
   /** Publish the report so a reader in ANOTHER process (or a fresh tab) has it. */
