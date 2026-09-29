@@ -14,7 +14,12 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { PHI_KEYS, REDACTED_VALUE, redactEntry, redactValue } from '../redactor';
+import { redactId } from '../redact-id';
+import { HASHED_ID_KEYS, PHI_KEYS, REDACTED_VALUE, redactEntry, redactValue } from '../redactor';
+
+// Clinical identifiers are hashed (stable, Python-parity `redactId`) rather
+// than blanked; every other PHI key is blanked.
+const HASHED_P1 = redactId('P-1');
 
 describe('redactValue', () => {
   it('redacts every canonical PHI key', () => {
@@ -23,7 +28,8 @@ describe('redactValue', () => {
     const out = redactValue(input) as Record<string, unknown>;
 
     for (const key of PHI_KEYS) {
-      expect(out[key], `${key} must be redacted`).toBe(REDACTED_VALUE);
+      const expected = HASHED_ID_KEYS.includes(key) ? redactId('sensitive') : REDACTED_VALUE;
+      expect(out[key], `${key} must be redacted`).toBe(expected);
     }
   });
 
@@ -32,7 +38,7 @@ describe('redactValue', () => {
 
     const out = redactValue(input) as any;
 
-    expect(out.a.b.c[0].patientId).toBe(REDACTED_VALUE);
+    expect(out.a.b.c[0].patientId).toBe(HASHED_P1);
     expect(out.a.b.c[0].keep).toBe('ok');
   });
 
@@ -50,7 +56,7 @@ describe('redactValue', () => {
     input.self = input;
 
     expect(() => redactValue(input)).not.toThrow();
-    expect((redactValue(input) as any).patientId).toBe(REDACTED_VALUE);
+    expect((redactValue(input) as any).patientId).toBe(HASHED_P1);
   });
 
   it('treats binary payloads as opaque PHI — audio buffers are PHI here', () => {
@@ -93,7 +99,7 @@ describe('redactEntry', () => {
   it('redacts PHI in meta', () => {
     const out = redactEntry({ ...base, meta: { patientId: 'P-1', durationMs: 12 } });
 
-    expect((out.meta as any).patientId).toBe(REDACTED_VALUE);
+    expect((out.meta as any).patientId).toBe(HASHED_P1);
     expect((out.meta as any).durationMs).toBe(12);
   });
 
@@ -161,7 +167,7 @@ describe('LoggingService dispatch integration', () => {
 
     expect(seen).toHaveLength(1);
     const entry = seen[0] as any;
-    expect(entry.meta.patientId).toBe(REDACTED_VALUE);
+    expect(entry.meta.patientId).toBe(HASHED_P1);
     expect(entry.meta.durationMs).toBe(5);
   });
 
@@ -212,7 +218,7 @@ describe('identity preservation (transport contract)', () => {
     expect(out).toBeInstanceOf(Error);
     expect(out).not.toBe(err);
     expect(out.message).toBe('boom');
-    expect(out.patientId).toBe(REDACTED_VALUE);
+    expect(out.patientId).toBe(HASHED_P1);
     expect(err.patientId).toBe('P-1'); // original untouched
   });
 

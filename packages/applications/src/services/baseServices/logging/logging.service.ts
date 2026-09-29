@@ -26,6 +26,7 @@ import {
   type OTelTransportConfig,
   type OTelLogBridgeTransportConfig,
   LOG_LEVEL_VALUES,
+  shouldLogLevel,
   ConsoleTransport,
   FileTransport,
   HighlightTransport,
@@ -35,16 +36,29 @@ import {
 } from './transports';
 import { getEnvBoolean, getEnvString, getEnvNumber, isHumanReadableStdout } from './env.utils';
 import { redactEntry } from './redactor';
+import { readAmbientContext } from './ambient-context';
+
+/** Upper bound on `flush()`: a crashing process must not hang on one transport. */
+const FLUSH_TIMEOUT_MS = 2_000;
+
+/**
+ * State one root logger shares BY REFERENCE with every `child()` / `withMeta()`
+ * derived from it, so the platform's live log-level knob and a transport added
+ * after a child was created reach every logger at once.
+ */
+interface SharedLoggerState {
+  level: LogLevel;
+  transports: ILogTransport[];
+}
 
 /**
  * Main logging service implementation
  */
 @Injectable()
 export class LoggingService implements ILoggingService, LoggerService, OnModuleInit, OnModuleDestroy {
-  private transports: ILogTransport[] = [];
+  private readonly shared: SharedLoggerState = { level: 'info', transports: [] };
   private context?: string;
   private defaultMeta: LogMeta = {};
-  private level: LogLevel = 'info';
   private readonly serviceName: string;
   private readonly serviceVersion: string;
   private readonly environment: string;
@@ -77,6 +91,22 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
     this.initializeTransports();
   }
 
+  private get transports(): ILogTransport[] {
+    return this.shared.transports;
+  }
+
+  private set transports(transports: ILogTransport[]) {
+    this.shared.transports = transports;
+  }
+
+  private get level(): LogLevel {
+    return this.shared.level;
+  }
+
+  private set level(level: LogLevel) {
+    this.shared.level = level;
+  }
+
   async onModuleInit(): Promise<void> {
     // Initialize all transports
     await Promise.all(this.transports.map((t) => t.initialize()));
@@ -93,11 +123,15 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
    * Initialize transports based on environment configuration
    */
   private initializeTransports(): void {
+    // Built-in transports are constructed at `trace` on purpose: the service
+    // is the ONE level gate (`emit`), so a later `setLevel()` — the platform's
+    // live log-level knob — can widen output as well as narrow it. A transport
+    // built at the boot level would silently keep dropping what the knob asks for.
     // Console transport (always enabled)
     const consoleConfig: ConsoleTransportConfig = {
       name: 'console',
       enabled: getEnvBoolean('LOG_CONSOLE_ENABLED', true),
-      level: this.level,
+      level: 'trace',
       // "Is this development?" is the wrong question; "is a human watching
       // this stream?" is the right one. The dev CLUSTER runs
       // NODE_ENV=development, so the old default shipped ANSI-coloured
@@ -120,7 +154,7 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
       const fileConfig: FileTransportConfig = {
         name: 'file',
         enabled: true,
-        level: this.level,
+        level: 'trace',
         logDir: getEnvString('LOG_FILE_PATH', './logs') || './logs',
         maxFileSize: getEnvString('LOG_FILE_MAX_SIZE', '10m'),
         maxFiles: getEnvNumber('LOG_FILE_MAX_FILES', 30),
@@ -135,7 +169,7 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
       const highlightConfig: HighlightTransportConfig = {
         name: 'highlight',
         enabled: true,
-        level: this.level,
+        level: 'trace',
         projectId: highlightProjectId,
         serviceName: this.serviceName,
         serviceVersion: this.serviceVersion,
@@ -153,7 +187,7 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
       const lokiConfig: LokiTransportConfig = {
         name: 'loki',
         enabled: true,
-        level: this.level,
+        level: 'trace',
         host: lokiHost,
         basicAuth: getEnvString('LOKI_BASIC_AUTH'),
         labels: {
@@ -176,7 +210,7 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
       const bridgeConfig: OTelLogBridgeTransportConfig = {
         name: 'otel-bridge',
         enabled: true,
-        level: this.level,
+        level: 'trace',
         serviceName: this.serviceName,
         serviceVersion: this.serviceVersion,
       };
@@ -187,7 +221,7 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
         const otelConfig: OTelTransportConfig = {
           name: 'otel',
           enabled: true,
-          level: this.level,
+          level: 'trace',
           endpoint: otelEndpoint,
           serviceName: this.serviceName,
           serviceVersion: this.serviceVersion,
@@ -246,6 +280,9 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
     // on the public methods directly rather than on a bridge.
     const { text, fields } = this.splitStructuredMessage(message);
     const resolvedMeta = { ...fields, ...this.resolveMeta(meta) };
+    // Precedence: explicit meta > `withMeta()` defaults > the ambient span and
+    // request context. Absent everywhere means the key is omitted.
+    const ambient = readAmbientContext();
 
     return {
       level,
@@ -254,11 +291,12 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
       timestamp: now.toISOString(),
       timestampMs: now.getTime(),
       context: resolvedContext,
-      traceId: resolvedMeta.traceId || this.defaultMeta.traceId,
-      spanId: resolvedMeta.spanId || this.defaultMeta.spanId,
-      requestId: resolvedMeta.requestId || this.defaultMeta.requestId,
-      userId: resolvedMeta.userId || this.defaultMeta.userId,
-      tenantId: resolvedMeta.tenantId || this.defaultMeta.tenantId,
+      traceId: resolvedMeta.traceId || this.defaultMeta.traceId || ambient.traceId,
+      spanId: resolvedMeta.spanId || this.defaultMeta.spanId || ambient.spanId,
+      requestId: resolvedMeta.requestId || this.defaultMeta.requestId || ambient.requestId,
+      userId: resolvedMeta.userId || this.defaultMeta.userId || ambient.userId,
+      tenantId: resolvedMeta.tenantId || this.defaultMeta.tenantId || ambient.tenantId,
+      credentialClass: resolvedMeta.credentialClass || this.defaultMeta.credentialClass || ambient.credentialClass,
       error: resolvedMeta.error,
       meta: this.extractExtraMeta(resolvedMeta),
       serviceName: this.serviceName,
@@ -283,7 +321,7 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
    * Extract extra metadata (excluding known fields)
    */
   private extractExtraMeta(meta: LogMeta): Record<string, unknown> | undefined {
-    const knownKeys = ['traceId', 'spanId', 'requestId', 'userId', 'tenantId', 'error'];
+    const knownKeys = ['traceId', 'spanId', 'requestId', 'userId', 'tenantId', 'credentialClass', 'error'];
     const extra: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(meta)) {
@@ -336,6 +374,16 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
   }
 
   /**
+   * The one level gate. Checked BEFORE the entry is built, so a suppressed
+   * `debug` line costs neither the ambient-context reads nor redaction.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same unnarrowed NestJS payload `createLogEntry` accepts
+  private emit(level: LogLevel, message: any, meta?: LogMeta | Error | string, context?: string): void {
+    if (!shouldLogLevel(level, this.shared.level)) return;
+    this.dispatch(this.createLogEntry(level, message, meta, context));
+  }
+
+  /**
    * Dispatch log entry to all transports
    */
   private dispatch(entry: LogEntry): void {
@@ -362,46 +410,38 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
   // ========== ILoggingService Implementation ==========
 
   fatal(message: string, meta?: LogMeta | string, context?: string): void {
-    const entry = this.createLogEntry('fatal', message, meta, context);
-    this.dispatch(entry);
+    this.emit('fatal', message, meta, context);
   }
 
   error(message: string, meta?: LogMeta | Error | string, context?: string): void {
-    const entry = this.createLogEntry('error', message, meta, context);
-    this.dispatch(entry);
+    this.emit('error', message, meta, context);
   }
 
   warn(message: string, meta?: LogMeta | string, context?: string): void {
-    const entry = this.createLogEntry('warn', message, meta, context);
-    this.dispatch(entry);
+    this.emit('warn', message, meta, context);
   }
 
   info(message: string, meta?: LogMeta | string, context?: string): void {
-    const entry = this.createLogEntry('info', message, meta, context);
-    this.dispatch(entry);
+    this.emit('info', message, meta, context);
   }
 
   debug(message: string, meta?: LogMeta | string, context?: string): void {
-    const entry = this.createLogEntry('debug', message, meta, context);
-    this.dispatch(entry);
+    this.emit('debug', message, meta, context);
   }
 
   verbose(message: string, meta?: LogMeta | string, context?: string): void {
-    const entry = this.createLogEntry('trace', message, meta, context);
-    this.dispatch(entry);
+    this.emit('trace', message, meta, context);
   }
 
   http(message: string, meta?: LogMeta, context?: string): void {
-    const entry = this.createLogEntry('info', message, { ...meta, http: true }, context);
-    this.dispatch(entry);
+    this.emit('info', message, { ...meta, http: true }, context);
   }
 
   /**
    * Log with explicit level (ILoggingService interface)
    */
   logWithLevel(level: LogLevel, message: string, meta?: LogMeta, context?: string): void {
-    const entry = this.createLogEntry(level, message, meta, context);
-    this.dispatch(entry);
+    this.emit(level, message, meta, context);
   }
 
   setContext(context: string): void {
@@ -409,25 +449,44 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
   }
 
   child(context: string): ILoggingService {
-    const childService = new LoggingService();
-    childService.context = context;
-    childService.defaultMeta = { ...this.defaultMeta };
-    // Share transports with parent
-    childService.transports = this.transports;
-    return childService;
+    return this.derive(context, { ...this.defaultMeta });
   }
 
   withMeta(meta: LogMeta): ILoggingService {
-    const childService = new LoggingService();
-    childService.context = this.context;
-    childService.defaultMeta = { ...this.defaultMeta, ...meta };
-    // Share transports with parent
-    childService.transports = this.transports;
-    return childService;
+    return this.derive(this.context, { ...this.defaultMeta, ...meta });
   }
 
-  async flush(): Promise<void> {
-    await Promise.all(this.transports.map((t) => t.flush()));
+  /**
+   * A lightweight view over this logger: its own context and default meta,
+   * everything else — transports, level, service identity — read through the
+   * prototype, so no constructor runs (no env re-read, no transport rebuilt
+   * per call) and the root's `shared` state is the child's.
+   */
+  private derive(context: string | undefined, defaultMeta: LogMeta): LoggingService {
+    const derived = Object.create(this) as LoggingService;
+    derived.context = context;
+    derived.defaultMeta = defaultMeta;
+    return derived;
+  }
+
+  /**
+   * Flush every transport, bounded: resolves after `timeoutMs` even if a
+   * transport hangs, and never rejects — this runs on the crash path, where a
+   * hung exporter must not hold the process open and a failed one must not
+   * replace the original error.
+   */
+  async flush(timeoutMs: number = FLUSH_TIMEOUT_MS): Promise<void> {
+    const work = Promise.allSettled(this.transports.map((t) => Promise.resolve().then(() => t.flush())));
+    let timer: NodeJS.Timeout | undefined;
+    const cap = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs);
+      timer.unref?.();
+    });
+    try {
+      await Promise.race([work, cap]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   getLevel(): LogLevel {
@@ -435,6 +494,8 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
   }
 
   setLevel(level: LogLevel): void {
+    // Writes the SHARED state, so a child's `setLevel` moves the root too —
+    // there is one level per root logger, not one per view.
     this.level = level;
   }
 

@@ -12,8 +12,9 @@ OpenTelemetry OTLP exporter (or an OTel log-bridge).
 | `ILoggingService.ts` | The injectable interface (`Symbol('ILoggingService')`) — `fatal/error/warn/info/debug/verbose/http`, `logWithLevel`, `setContext`, `child`, `withMeta`, `flush`, `getLevel`/`setLevel` |
 | `logging.service.ts` | `LoggingService` — reads env, builds the transport list, redacts, dispatches |
 | `transports/` | `base.transport.ts` + one file per transport (console, file, highlight, loki, otel, otel-log-bridge) |
-| `redactor.ts` | PHI field redaction applied before any transport sees a log entry |
-| `nestjs-logger.adapter.ts` | Adapts `ILoggingService` to Nest's `LoggerService` interface |
+| `redactor.ts` | PHI redaction applied before any transport sees a log entry — keys, value patterns, the `error.cause` chain |
+| `redact-id.ts` | `redactId` — stable 12-hex token for a clinical id; identical to Python `hope_obs.phi.redact_id` |
+| `ambient-context.ts` | Reads `traceId`/`spanId` from the active span and `requestId`/`tenantId`/`userId`/`credentialClass` from CLS |
 | `env.utils.ts` | `getEnvString`/`getEnvBoolean`/`getEnvNumber` helpers with defaults |
 
 ## How it works
@@ -38,11 +39,36 @@ transport sees the entry — mirroring the browser SDK's own redactor (`@arcaai/
 deliberate copy, not a shared import: `packages/applications` is server-side and must not take a
 dependency on a browser-only SDK. `LOG_REDACT_FIELDS` extends the built-in key list.
 
+- **Keys** (case/`_`/`-` insensitive) are blanked to `[REDACTED]`; every `phone*` key too.
+- **Clinical ids** — `patientId`, `externalPatientId`, `consultationId` — are HASHED with `redactId`
+  instead, so a line stays correlatable and matches the Python fleet's token. `mrn` stays blanked
+  (short and guessable, so an unsalted hash would be reversible). `tenantId`/`userId`/`traceId`/
+  `requestId` are not PHI and stay raw.
+- **Value patterns** in every string (message, meta, error message and stack): email addresses,
+  JWTs and `Bearer <token>`.
+- **`error.cause`** is walked recursively (depth 5) and kept on the rebuilt error.
+
+### Correlation is ambient
+
+Every line carries `traceId`/`spanId` from the active OTel span (invalid all-zero contexts are
+dropped) and `requestId` (the CLS id), `tenantId`, `userId`, `credentialClass` from the request's
+CLS context — without the call site passing them. Precedence: explicit meta > `withMeta()` defaults
+> ambient. Outside a request / with tracing off the keys are simply absent.
+
+### Level
+
+`LOG_LEVEL` sets the boot level and `setLevel()` (the platform's live log-level knob) changes it at
+runtime. The service is the only level gate; built-in transports are constructed at `trace`.
+
 ### Contextual loggers
 
 `logger.child(context)` returns a new `ILoggingService` fixed to a context string (class/service
 name); `logger.withMeta(meta)` returns one with default metadata (e.g. `requestId`, `tenantId`)
-merged into every subsequent call.
+merged into every subsequent call. Both are lightweight views (`Object.create`) over the root: no
+constructor runs, and they share the root's transports and level by reference.
+
+`flush()` is bounded (2 s by default) and never rejects, so the crash path cannot hang on one
+transport; it also force-flushes the OTel log provider when the bridge is in use.
 
 ## Gotchas
 
