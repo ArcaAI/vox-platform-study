@@ -23,38 +23,11 @@ import type {
 import type { SummaryApprovalResponse } from '../types/summary';
 import type { SummaryGenerationOptions, ComprehensiveSummaryGenerationOptions } from '../types/summary';
 import { SUMMARY_ENDPOINTS, CONTEXT_ENDPOINTS } from '../core/constants';
+import { generateSummaryViaJob, mapSummaryOptionsToBackend } from '../core/summaryJob';
 import { computeSummaryDiff } from '../utils/diffUtils';
 import { withIdempotencyKey } from '../utils/idempotency';
 import { ifMatchFor, requireExpectedVersion, toOccError, findSummaryVersion } from '../utils/occ';
 import type { ISDKLogger } from '../core/logger';
-
-/**
- * Reconcile legacy SDK option field names to the canonical
- * backend DTO fields before POSTing. The backend's `GenerateSummaryRequest`
- * does NOT accept `transcript` / `promptTemplateId` / `departmentId`, so we
- * normalise them here and strip the legacy names from the body.
- */
-function mapSummaryOptionsToBackend(options?: SummaryGenerationOptions): Record<string, unknown> | undefined {
-  if (!options) return undefined;
-
-  const { transcript, promptTemplateId, departmentId, transcription, template, options: optsBag, ...rest } = options;
-
-  const out: Record<string, unknown> = { ...rest };
-  const canonicalTranscription = transcription ?? transcript;
-  const canonicalTemplate = template ?? promptTemplateId;
-
-  if (canonicalTranscription !== undefined) out.transcription = canonicalTranscription;
-  if (canonicalTemplate !== undefined) out.template = canonicalTemplate;
-
-  if (departmentId !== undefined || optsBag !== undefined) {
-    out.options = {
-      ...(optsBag ?? {}),
-      ...(departmentId !== undefined ? { departmentId } : {}),
-    };
-  }
-
-  return out;
-}
 
 export type { UseArcaSummary } from './useArca';
 
@@ -80,9 +53,10 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const mapped = mapSummaryOptionsToBackend(options);
-        const body = mapped ? withIdempotencyKey(mapped, options?.idempotencyKey) : undefined;
-        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY(consultation.id), body);
+        // TASK-1012 (L-2): the synchronous `POST …/summary/pre-summary` was removed (TASK-1006) —
+        // start the async job (same body as `generatePreSummaryAsync`) and resolve the persisted note.
+        const body = withIdempotencyKey(mapSummaryOptionsToBackend('pre-summary', options) ?? {}, options?.idempotencyKey);
+        const summary = await generateSummaryViaJob(apiClient, consultation.id, 'pre-summary', body);
         store.addSummary(summary);
         timer?.end(true, { attributes: { summaryId: summary.id } });
         return summary;
@@ -112,9 +86,10 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const mapped = mapSummaryOptionsToBackend(options);
-        const body = mapped ? withIdempotencyKey(mapped, options?.idempotencyKey) : undefined;
-        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.GENERATE(consultation.id), body);
+        // TASK-1012 (L-2): the synchronous `POST …/summary` was removed (TASK-1006) — start the
+        // async job (same body as `generateSummaryAsync`) and resolve the persisted note.
+        const body = withIdempotencyKey(mapSummaryOptionsToBackend('summary', options) ?? {}, options?.idempotencyKey);
+        const summary = await generateSummaryViaJob(apiClient, consultation.id, 'summary', body);
         store.addSummary(summary);
         timer?.end(true, { attributes: { summaryId: summary.id } });
         return summary;
@@ -225,7 +200,7 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const mapped = mapSummaryOptionsToBackend(options) ?? {};
+        const mapped = mapSummaryOptionsToBackend('summary', options) ?? {};
         const body = withIdempotencyKey(mapped, options?.idempotencyKey);
         const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id), body);
         return job;
@@ -249,7 +224,7 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const mapped = mapSummaryOptionsToBackend(options) ?? {};
+        const mapped = mapSummaryOptionsToBackend('pre-summary', options) ?? {};
         const body = withIdempotencyKey(mapped, options?.idempotencyKey);
         const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id), body);
         return job;

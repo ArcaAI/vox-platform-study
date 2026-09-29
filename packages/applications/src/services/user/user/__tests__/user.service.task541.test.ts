@@ -20,7 +20,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 
-const mockUserRepository = { create: vi.fn(), findById: vi.fn(), update: vi.fn(), softDelete: vi.fn() };
+const mockUserRepository = { create: vi.fn(), findById: vi.fn(), update: vi.fn(), softDelete: vi.fn(), findByUsername: vi.fn(async () => null) };
 const mockUserRoleAssignmentRepository = { create: vi.fn() };
 const mockUserDepartmentRepository = { create: vi.fn() };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn() } };

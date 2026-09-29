@@ -26,9 +26,9 @@ import {
 } from './ITranscriptionJobService';
 import {
   BatchDispatchEnvelope,
-  CreateBatchJobRequest,
-  CreateJobRequest,
-  CreateStreamingJobRequest,
+  CreateBatchJobInput,
+  CreateJobInput,
+  CreateStreamingJobInput,
   PaginatedTranscriptionJobResponse,
   TranscriptionJobResponse,
   TranscriptionJobStatusCountResponse,
@@ -73,7 +73,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   /**
    * Create a transcription job
    */
-  async create(dto: CreateJobRequest): Promise<TranscriptionJobResponse> {
+  async create(dto: CreateJobInput): Promise<TranscriptionJobResponse> {
     const tenantId = this.tenantId;
     const userId = this.requestUserId;
 
@@ -133,7 +133,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   /**
    * Create a batch transcription job
    */
-  async createBatchJob(dto: CreateBatchJobRequest): Promise<TranscriptionJobResponse> {
+  async createBatchJob(dto: CreateBatchJobInput): Promise<TranscriptionJobResponse> {
     return this.create({
       ...dto,
       jobType: TranscriptionJobType.BATCH,
@@ -143,7 +143,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   /**
    * Create a streaming transcription job
    */
-  async createStreamingJob(dto: CreateStreamingJobRequest): Promise<TranscriptionJobResponse> {
+  async createStreamingJob(dto: CreateStreamingJobInput): Promise<TranscriptionJobResponse> {
     return this.create({
       ...dto,
       jobType: TranscriptionJobType.STREAMING,

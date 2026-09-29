@@ -31,7 +31,6 @@ import {
   HarnessPolicyService,
   HarnessProgressAck,
   HarnessProgressRequest,
-  HarnessProgressService,
   HarnessProviderCredentialResponse,
   HarnessRealtimeDeliveryAck,
   HarnessResolvedModelResponse,
@@ -459,8 +458,6 @@ export class HarnessInternalController {
     // HarnessPolicyServiceModule imported by ConsultationModule.
     private readonly harnessPolicyService: HarnessPolicyService,
     private readonly cls: ClsService<IActiveUserContext>,
-    // Live harness activity feed; ephemeral Redis publish, no CLS needed.
-    private readonly harnessProgressService: HarnessProgressService,
     // Live per-claim assurance feed; ephemeral Redis publish, no CLS needed
     // (carries no PHI, only ids/sensor keys/verdict labels).
     private readonly harnessAssuranceService: HarnessAssuranceService,
@@ -865,7 +862,9 @@ export class HarnessInternalController {
   @ApiOperation({ summary: 'Publish a harness workflow progress stage to the live UI feed (ephemeral, best-effort)' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   async reportProgress(@Param('id') id: string, @Body() dto: HarnessProgressRequest): Promise<HarnessProgressAck> {
-    return this.harnessProgressService.reportProgress(id, dto);
+    // TASK-1014: through HarnessInternalService — it feeds the same live channel AND settles the
+    // summary ConsultationJob FAILED when the doc workflow reports its `failed` terminal stage.
+    return this.harnessInternalService.reportProgress(id, dto);
   }
 
   // The (future) ConsultationLoopWorkflow posts one event

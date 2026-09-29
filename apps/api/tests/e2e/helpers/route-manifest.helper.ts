@@ -81,8 +81,8 @@ export type SkipReason = 'streaming' | 'auth-endpoint';
  * The routes it covers are precisely the ones this sweep most needs: every `/internal/*`
  * controller carries `@ApiExcludeController()` — including the 24 `@Public()` routes assertion
  * A5b proves are service-token-gated rather than publicly reachable — and the redirect
- * shims carry `@ApiExcludeEndpoint()` while deliberately REPRODUCING their target's
- * `@Authorize()`/`@ForbidApiKey()` decorators, a reproduction nothing else verifies.
+ * shims (deleted by TASK-1012) carried `@ApiExcludeEndpoint()` while deliberately REPRODUCING
+ * their target's `@Authorize()`/`@ForbidApiKey()` decorators, a reproduction nothing else verified.
  *
  * The bug was dormant only because the emitter mis-read the metadata (`=== true` against
  * `@nestjs/swagger`'s wrapped `{ disable: true }` / `[true]` shapes), so the flag was always

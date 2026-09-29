@@ -82,12 +82,12 @@ function formatSentProviderModel(request: LlmRequest | null): string {
 
 /**
  * Frame 54 strip under the header: the EFFECTIVE request settings, including
- * the HarnessPolicy-cascade note whenever provider/model are omitted, plus
- * the live task id. (The cancel control lives on the output pane header.)
+ * the tenant-agent note whenever provider/model are not pinned, plus the live
+ * task id. (The cancel control lives on the output pane header.)
  */
 function RequestSummaryStrip({
   providersLoading,
-  hasCatalog,
+  pinned,
   selectedProvider,
   selectedModel,
   temperature,
@@ -96,7 +96,8 @@ function RequestSummaryStrip({
   taskId,
 }: {
   providersLoading: boolean;
-  hasCatalog: boolean;
+  /** A provider AND model are pinned (platform admins only — TASK-1012 L-3). */
+  pinned: boolean;
   selectedProvider: string;
   selectedModel: string;
   temperature: number;
@@ -113,24 +114,20 @@ function RequestSummaryStrip({
     <div className="bg-card text-foreground flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border px-3 py-2 font-mono text-xs">
       {providersLoading ? (
         <Skeleton className="h-4 w-48" />
-      ) : hasCatalog ? (
+      ) : pinned ? (
         <>
           <span>
             <span className="text-muted-foreground">Provider </span>
             {selectedProvider}
           </span>
           {separator}
-          {selectedModel ? (
-            <span>
-              <span className="text-muted-foreground">model </span>
-              {selectedModel}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">model omitted {'\u2192'} tenant default via HarnessPolicy cascade</span>
-          )}
+          <span>
+            <span className="text-muted-foreground">model </span>
+            {selectedModel}
+          </span>
         </>
       ) : (
-        <span className="text-muted-foreground">provider/model omitted {'\u2192'} tenant default via HarnessPolicy cascade</span>
+        <span className="text-muted-foreground">provider/model omitted {'\u2192'} tenant TEXT_GENERATION agent</span>
       )}
       {separator}
       <span>
@@ -221,6 +218,9 @@ function PlaygroundLlmBody() {
   const isElevated = session.data?.isElevated ?? false;
   const workingTenantName = session.data?.workingTenantName ?? null;
   const canDebug = roles.includes('SUPER_ADMIN') || roles.includes('TENANT_ADMIN');
+  // TASK-1012 L-3 — pinning a provider/model is the platform-admin playground route
+  // (`admin/text-generations/*`); everyone else runs on the tenant's TEXT_GENERATION agent.
+  const canPinModel = roles.includes('SUPER_ADMIN');
 
   const [globalCatalog, setGlobalCatalog] = useState(false);
   const tenantKey = globalCatalog ? '__GLOBAL__' : undefined;
@@ -242,6 +242,9 @@ function PlaygroundLlmBody() {
   const selectedProvider = providerChoice ?? defaultProvider?.name ?? '';
   const activeProvider = providers?.find((provider) => provider.name === selectedProvider);
   const selectedModel = modelChoice ?? activeProvider?.default_model ?? activeProvider?.models[0]?.name ?? '';
+  // The pair travels together or not at all: an omitted model means "the tenant agent decides",
+  // and a provider alone is not a selection the gateway can honour.
+  const pinned = canPinModel && !!selectedProvider && !!selectedModel;
 
   const [run, setRun] = useState<RunState>({ kind: 'idle' });
   const stream = useTaskStream(run.kind === 'stream' ? run.taskId : null);
@@ -303,8 +306,7 @@ function PlaygroundLlmBody() {
           ? { enabled: false }
           : { enabled: true, ...(form.reasoningEffort ? { effort: form.reasoningEffort } : {}) };
     const shared = {
-      ...(selectedProvider ? { provider: selectedProvider } : {}),
-      ...(selectedModel ? { model: selectedModel } : {}),
+      ...(pinned ? { provider: selectedProvider, model: selectedModel } : {}),
       temperature: form.temperature,
       max_tokens: parseMaxTokens(form.maxTokens),
       stream: form.streaming,
@@ -392,7 +394,7 @@ function PlaygroundLlmBody() {
           <TabsContent value="text" className="flex flex-col gap-4">
             <RequestSummaryStrip
               providersLoading={providersQuery.isLoading}
-              hasCatalog={!!providers && providers.length > 0}
+              pinned={pinned}
               selectedProvider={selectedProvider}
               selectedModel={selectedModel}
               temperature={form.temperature}
@@ -413,6 +415,7 @@ function PlaygroundLlmBody() {
                   setModelChoice(null);
                 }}
                 onModelChange={setModelChoice}
+                canPinModel={canPinModel}
                 canDebug={canDebug}
                 sourceHint={sourceHint}
               />

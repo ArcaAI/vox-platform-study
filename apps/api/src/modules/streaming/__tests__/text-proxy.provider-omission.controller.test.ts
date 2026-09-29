@@ -32,6 +32,11 @@
  * silently routed to LM Studio. That is the intended fail-closed behaviour, not
  * a regression — and with the LM Studio deployment at `replicas: 0` the silent
  * route was not working anyway.
+ *
+ * AMENDED by TASK-1012 L-3: a caller-pinned `provider`/`model` is now refused on the
+ * BUSINESS route (400 `MODEL_PINNING_NOT_ALLOWED`). Pinning survives only on the admin
+ * playground route (`admin/text-generations/*`, super admin), which runs the shared
+ * `proxyGenerate` pipeline these tests now drive — the contract above is that pipeline's.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -74,7 +79,7 @@ describe('TEXT proxy — provider is never left for apps/text to guess', () => {
   it('fills the provider when the caller pins a model but omits the provider', async () => {
     const { ctrl, http, selection } = build();
 
-    await ctrl.generate({ prompt: 'p', stream: false, model: 'whisper-large-v3' } as any);
+    await ctrl.proxyGenerate({ prompt: 'p', stream: false, model: 'whisper-large-v3' } as any);
 
     // The bug: this resolver was never consulted on a model-pinned request.
     expect(selection.resolveTextSelection).toHaveBeenCalledTimes(1);
@@ -87,7 +92,7 @@ describe('TEXT proxy — provider is never left for apps/text to guess', () => {
   it('never forwards an undefined provider on a model-pinned request', async () => {
     const { ctrl, http } = build();
 
-    await ctrl.generate({ prompt: 'p', stream: false, model: 'whisper-large-v3' } as any);
+    await ctrl.proxyGenerate({ prompt: 'p', stream: false, model: 'whisper-large-v3' } as any);
 
     const body = bodyOf(http);
     expect(body.provider).toBeDefined();
@@ -97,7 +102,7 @@ describe('TEXT proxy — provider is never left for apps/text to guess', () => {
   it('leaves a caller-supplied provider alone', async () => {
     const { ctrl, http, selection } = build();
 
-    await ctrl.generate({ prompt: 'p', stream: false, model: 'gpt-4o', provider: 'azure-openai' } as any);
+    await ctrl.proxyGenerate({ prompt: 'p', stream: false, model: 'gpt-4o', provider: 'azure-openai' } as any);
 
     expect(selection.resolveTextSelection).not.toHaveBeenCalled();
     const body = bodyOf(http);
@@ -110,7 +115,7 @@ describe('TEXT proxy — provider is never left for apps/text to guess', () => {
 
     // A provider without a model cannot be honoured on its own: the resolved
     // model belongs to the resolved provider, so both move together.
-    await ctrl.generate({ prompt: 'p', stream: false, provider: 'ollama' } as any);
+    await ctrl.proxyGenerate({ prompt: 'p', stream: false, provider: 'ollama' } as any);
 
     const body = bodyOf(http);
     expect(body.provider).toBe('vllm');
@@ -120,7 +125,7 @@ describe('TEXT proxy — provider is never left for apps/text to guess', () => {
   it('fails closed when a model-pinned request has no resolvable selection', async () => {
     const { ctrl, http } = build(new Error('No AiTaskDefault for text.finalize'));
 
-    await expect(ctrl.generate({ prompt: 'p', stream: false, model: 'orphan-model' } as any)).rejects.toThrow();
+    await expect(ctrl.proxyGenerate({ prompt: 'p', stream: false, model: 'orphan-model' } as any)).rejects.toThrow();
     // Nothing reached TEXT, so nothing inherited its hardcoded provider literal.
     expect(http.axiosRef.post).not.toHaveBeenCalled();
   });
@@ -140,6 +145,6 @@ describe('TEXT proxy — provider is never left for apps/text to guess', () => {
       { getConfigValue: vi.fn(() => 'http://localhost:8862') } as any,
     );
 
-    await expect(ctrl.generate({ prompt: 'p', stream: false, model: 'x' } as any)).resolves.toBeDefined();
+    await expect(ctrl.proxyGenerate({ prompt: 'p', stream: false, model: 'x' } as any)).resolves.toBeDefined();
   });
 });

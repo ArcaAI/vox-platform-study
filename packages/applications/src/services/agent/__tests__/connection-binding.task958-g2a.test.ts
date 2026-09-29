@@ -332,6 +332,18 @@ describe('TASK-958 F11 — the bench spends the account the draft is BOUND to', 
     ).rejects.toMatchObject({ response: { code: AGENT_CONNECTION_UNAVAILABLE } });
   });
 
+  it('acks with the CANONICAL gateway stream path, never the text/* shim (TASK-1012 L-8)', async () => {
+    const ack = await bench(() => null).submit({
+      tenantId: TENANT,
+      prompt: 'hi',
+      systemPrompt: null,
+      provider: 'azure-openai',
+      model: 'gpt-5.4-mini',
+      guardrailEnabled: true,
+    });
+    expect(ack).toEqual({ taskId: 'task-1', streamUrl: 'text-generations/tasks/task-1/stream' });
+  });
+
   it('an UNBOUND draft is unchanged — the enrichment folds the tenant`s default', async () => {
     await bench(() => null).submit({
       tenantId: TENANT,

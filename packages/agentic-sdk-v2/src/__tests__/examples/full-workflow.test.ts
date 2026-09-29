@@ -138,26 +138,28 @@ describe('full consultation workflow', () => {
       expect(result).toEqual(sharedItems);
     });
 
-    it('step 5: generate pre-summary', async () => {
+    // TASK-1012: a note is generated only on the async plane (the synchronous POST routes were
+    // removed by TASK-1006) — the POST answers a job; the note is read back from `…/latest`.
+    it('step 5: generate pre-summary (async job)', async () => {
       const preSummaryPayload = { options: { includeTranscriptions: true } };
-      const mockPreSummary = createMockSummary({ type: 'pre_summary', id: 'pre-summary-1' });
-      mockFetch.mockResolvedValueOnce(createMockResponse(mockPreSummary));
+      const job = { jobId: 'job-pre-1', status: 'pending', consultationId: CONSULTATION_ID, createdAt: '' };
+      mockFetch.mockResolvedValueOnce(createMockResponse(job));
 
-      const endpoint = SUMMARY_ENDPOINTS.PRE_SUMMARY(CONSULTATION_ID);
+      const endpoint = SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(CONSULTATION_ID);
       const result = await client.post(endpoint, preSummaryPayload);
 
       expect(lastFetchUrl()).toBe(`${API_BASE}${endpoint}`);
       expect(lastFetchInit().method).toBe('POST');
       expect(JSON.parse(lastFetchInit().body as string)).toEqual(preSummaryPayload);
-      expect(result).toEqual(mockPreSummary);
+      expect(result).toEqual(job);
     });
 
-    it('step 6: generate final summary', async () => {
+    it('step 6: generate final summary (async job)', async () => {
       const summaryPayload = { options: { dnaStyleId: 'dna-style-1' } };
-      const mockSummary = createMockSummary({ type: 'summary' });
+      const mockSummary = { jobId: 'job-1', status: 'pending', consultationId: CONSULTATION_ID, createdAt: '' };
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSummary));
 
-      const endpoint = SUMMARY_ENDPOINTS.GENERATE(CONSULTATION_ID);
+      const endpoint = SUMMARY_ENDPOINTS.GENERATE_ASYNC(CONSULTATION_ID);
       const result = await client.post(endpoint, summaryPayload);
 
       expect(lastFetchUrl()).toBe(`${API_BASE}${endpoint}`);
@@ -295,11 +297,11 @@ describe('full consultation workflow', () => {
       expect(shared).toEqual(sharedCtx);
 
       // Step 5
-      const ps = await client.post(SUMMARY_ENDPOINTS.PRE_SUMMARY(CONSULTATION_ID), {});
+      const ps = await client.post(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(CONSULTATION_ID), {});
       expect(ps).toEqual(preSummary);
 
       // Step 6
-      const fs = await client.post(SUMMARY_ENDPOINTS.GENERATE(CONSULTATION_ID), {});
+      const fs = await client.post(SUMMARY_ENDPOINTS.GENERATE_ASYNC(CONSULTATION_ID), {});
       expect(fs).toEqual(finalSummary);
 
       expect(mockFetch).toHaveBeenCalledTimes(6);
@@ -421,7 +423,7 @@ describe('full consultation workflow', () => {
     it('500 server error during summary generation', async () => {
       mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Internal Server Error'));
 
-      await expect(client.post(SUMMARY_ENDPOINTS.GENERATE(CONSULTATION_ID), {})).rejects.toMatchObject({
+      await expect(client.post(SUMMARY_ENDPOINTS.GENERATE_ASYNC(CONSULTATION_ID), {})).rejects.toMatchObject({
         code: 'API_ERROR',
         message: 'Internal Server Error',
       });
@@ -464,8 +466,9 @@ describe('full consultation workflow', () => {
     });
 
     it('summary endpoints use correct paths', () => {
-      expect(SUMMARY_ENDPOINTS.PRE_SUMMARY(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary/pre-summary`);
-      expect(SUMMARY_ENDPOINTS.GENERATE(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary`);
+      expect(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary/pre-summary/async`);
+      expect(SUMMARY_ENDPOINTS.GENERATE_ASYNC(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary/async`);
+      expect(SUMMARY_ENDPOINTS.LATEST(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary/latest`);
       expect(SUMMARY_ENDPOINTS.UPDATE(CONSULTATION_ID, SUMMARY_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary/${SUMMARY_ID}`);
       expect(SUMMARY_ENDPOINTS.VERSIONS(CONSULTATION_ID, SUMMARY_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary/${SUMMARY_ID}/versions`);
       expect(SUMMARY_ENDPOINTS.LIST(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary`);

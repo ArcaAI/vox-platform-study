@@ -69,7 +69,7 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
 import type { Readable } from 'node:stream';
 
@@ -86,11 +86,28 @@ interface TextResponseFormat {
   strict?: boolean;
 }
 
-interface TextGenerateRequest {
+/**
+ * TASK-1012 L-3 / D-1 — the business text plane selects a model ONLY through an Agent. A caller
+ * `provider` / `model` on `POST text-generations/generate[/assembled]` is refused with this code;
+ * raw pinning lives on the admin plane (`admin/text-generations/*`, super admin only).
+ */
+export const MODEL_PINNING_NOT_ALLOWED = 'MODEL_PINNING_NOT_ALLOWED';
+
+export interface TextGenerateRequest {
   prompt: string;
   system_prompt?: string;
+  /**
+   * RAW model pinning — honoured ONLY on the admin plane (`admin/text-generations/*`, super admin).
+   * The business route refuses either field with 400 `MODEL_PINNING_NOT_ALLOWED` (TASK-1012 L-3).
+   */
   provider?: string;
   model?: string;
+  /**
+   * The caller's explicit TEXT_GENERATION agent (a lineage slug). Absent ⇒ the tenant's
+   * assignment cascade decides. A SELECTOR for this gateway — stripped before forwarding, since
+   * what TEXT receives is the resolved `{provider, model}`.
+   */
+  agentSlug?: string;
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
@@ -157,15 +174,18 @@ interface TextGenerateRequest {
 type VisitType = string;
 type GenerationType = 'pre-summary' | 'summary';
 
-interface AssembledGenerateRequest {
+export interface AssembledGenerateRequest {
   type: GenerationType;
   visit_type?: VisitType;
   context_item_ids?: string[];
   message?: string;
   prompt_template_id?: string;
   dna_writing_style_id?: string;
+  /** Admin plane only — see {@link TextGenerateRequest.provider}. */
   provider?: string;
   model?: string;
+  /** See {@link TextGenerateRequest.agentSlug}. */
+  agentSlug?: string;
   temperature?: number;
   max_tokens?: number;
   stream?: boolean;
@@ -397,10 +417,14 @@ export class TextProxyController {
    *   - model pinned, no provider → fill the PROVIDER only, model untouched;
    *   - provider pinned + model pinned → nothing is resolved or overwritten.
    */
-  private async applyTextModelSelection<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
+  private async applyTextModelSelection<T extends { provider?: string; model?: string; agentSlug?: string }>(target: T): Promise<T> {
+    // A SELECTOR for this gateway, never forwarded: TEXT receives the resolved pair.
+    const agentSlug = target.agentSlug;
+    delete target.agentSlug;
     if (!target.model && this.harnessPolicyService) {
       const tenantId = this.clsService.get('tenantId');
-      const { provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId);
+      // TASK-1012 L-3 — an explicit TEXT_GENERATION agent, else the assignment cascade.
+      const { provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize', null, agentSlug);
       target.provider = provider;
       target.model = model;
     } else if (!target.provider && this.harnessPolicyService) {
@@ -734,6 +758,17 @@ export class TextProxyController {
   // is taken only so a vendor `Retry-After` can be relayed (TASK-993 lane F).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(@Body() body: TextGenerateRequest, @Res({ passthrough: true }) res?: Response): Promise<any> {
+    assertNoModelPinning(body);
+    return this.proxyGenerate(body, res);
+  }
+
+  /**
+   * NOT a route. The `generate` pipeline, shared by the business route above (after its
+   * model-pinning refusal) and the admin playground route (`TextGenerationAdminController`, after
+   * its super-admin gate), so raw pinning and agent selection run through ONE proxy path.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the TEXT response body (sync result or streaming ack) is proxied untyped, as `generate` returns it
+  async proxyGenerate(body: TextGenerateRequest, res?: Response): Promise<any> {
     // OUTSIDE the try below, deliberately: that catch turns everything it sees
     // into `buildUpstreamException` ("TEXT service unavailable"), which would
     // disguise a 429 quota refusal as a 502 the caller cannot act on.
@@ -1172,9 +1207,22 @@ export class TextProxyController {
   @Post('generate/assembled')
   @Authorize()
   @ApiOperation({ summary: 'Generate text with server-side prompt assembly (debug mode)' })
+  @ApiResponse({
+    status: 400,
+    description:
+      '`MODEL_PINNING_NOT_ALLOWED` — `provider` / `model` were sent: the model is selected through a TEXT_GENERATION agent ' +
+      '(`agentSlug`, or the tenant`s assignment). Also a malformed assembly request (type, context source, or visit type).',
+  })
   // `@Res({ passthrough: true })` for the same reason as `generate()` above.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generateAssembled(@Body() body: AssembledGenerateRequest, @Res({ passthrough: true }) res?: Response): Promise<any> {
+    assertNoModelPinning(body);
+    return this.proxyGenerateAssembled(body, res);
+  }
+
+  /** NOT a route — the `generate/assembled` pipeline; see {@link proxyGenerate}. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the TEXT response body plus `_debug` is proxied untyped, as `generateAssembled` returns it
+  async proxyGenerateAssembled(body: AssembledGenerateRequest, res?: Response): Promise<any> {
     this.validateAssembledRequest(body);
     this.requireDebugAccess(body.debug);
     // Before the assembly work, and outside the try below (same reason as
@@ -1188,6 +1236,7 @@ export class TextProxyController {
       system_prompt: systemPrompt,
       provider: body.provider,
       model: body.model,
+      agentSlug: body.agentSlug,
       temperature: body.temperature,
       max_tokens: body.max_tokens,
       stream: body.stream ?? false,
@@ -1705,4 +1754,21 @@ function usageBatches(pair: ComputeAugmentedBatch | null, attributes: UsageAttri
   if (!pair) return [];
   const halves = pair.platformBatch ? [pair.batch, pair.platformBatch] : [pair.batch];
   return halves.map((batch) => withUsageAttributes(batch, attributes) ?? batch);
+}
+
+/**
+ * TASK-1012 L-3 / D-1 — the business text plane refuses a caller-named engine. Selection is an
+ * explicit TEXT_GENERATION `agentSlug` or the assignment cascade; raw `provider` / `model` pinning
+ * is the platform LLM playground's, on `admin/text-generations/*` (super admin only). Refused
+ * before any quota read, resolution or upstream call, so nothing is spent on a request that was
+ * never going to run.
+ */
+function assertNoModelPinning(body: { provider?: unknown; model?: unknown }): void {
+  if (!body.provider && !body.model) return;
+  throw new BadRequestException({
+    code: MODEL_PINNING_NOT_ALLOWED,
+    message:
+      'A text model is selected through an Agent, not by the caller: omit `provider` and `model` and name a published ' +
+      'TEXT_GENERATION agent with `agentSlug`, or omit it to use the agent assigned to your tenant or department.',
+  });
 }

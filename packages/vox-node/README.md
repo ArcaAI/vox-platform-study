@@ -1,11 +1,11 @@
 # @arcaai/vox-node — server-side Node SDK for the HOPE gateway
 
-`packages/vox-node`, npm package `@arcaai/vox-node` (version 3.5.0). A typed, non-browser client
+`packages/vox-node`, npm package `@arcaai/vox-node` (version 4.0.x). A typed, non-browser client
 for `apps/api` (port 8868): the realtime consultation lifecycle
 (`hope.consultations.open` -> `recording` -> live SSE `streams`, with `hope.stt` streaming audio
 over a WebSocket), consultation-bound summarization (`hope.consultations.summaries.*`), the
 workflow and published-agent invocation planes, DNA writing-style ingest, and the full
-administration plane (`hope.admin.*`, 49 areas). For backend engineers calling HOPE from a Node
+administration plane (`hope.admin.*`, 48 areas). For backend engineers calling HOPE from a Node
 service, script, or worker.
 
 It shares the "vox" brand with `@arcaai/vox` (`packages/agentic-sdk-v2`, the browser consultation
@@ -29,7 +29,7 @@ Agent, resolved by the gateway.
 | `src/index.ts`         | The public entry point — the only supported import surface                                                                                                                                 |
 | `src/client.ts`        | `HopeClient` — constructs the transport and every resource namespace                                                                                                                       |
 | `src/resources/`       | Hand-authored resources: `consultations`, `consultation-recording`, `consultation-streams`, `consultation-summaries`, `jobs`, `stt`, `tenants`, `workflows`, `agents`, `dna-writing-style` |
-| `src/resources/admin/` | GENERATED `/api/v1/admin/**` surface (49 areas) — only `admin-resource.ts` is hand-authored                                                                                                |
+| `src/resources/admin/` | GENERATED `/api/v1/admin/**` surface (48 areas) — only `admin-resource.ts` is hand-authored                                                                                                |
 | `src/core/`            | Transport, retry, redact, SSE parsing/subscription, realtime STT socket, run-identity guard, webhook signing, service-account token exchange, errors                                       |
 | `src/types/`           | Request/response types                                                                                                                                                                     |
 | `examples/`            | Seven runnable examples (`03-consultation-async.ts` through `09-completion-signals.ts`), own `examples/README.md`                                                                          |
@@ -109,9 +109,9 @@ recorded as the clinician); a human JWT caller is refused if it sends one.
 
 ### The admin plane — `hope.admin.*`
 
-49 administration areas, service-account only, generated from the gateway's route manifest and
+48 administration areas, service-account only, generated from the gateway's route manifest and
 OpenAPI document (`pnpm gen:admin`); `gen:admin:check` fails CI on drift. Areas are named after
-the scope they need: `svc:admin:tenant-tts-config:manage` -> `hope.admin.tenantTtsConfig`. `svc:
+the scope they need: `svc:admin:tenant-storage:manage` -> `hope.admin.tenantStorage`. `svc:
 admin:*` does not reach areas whose scope predates the `admin:*` convention (e.g.
 `hope.admin.webhookEvent` needs `svc:webhook:event:write` separately); `svc:*` reaches everything.
 

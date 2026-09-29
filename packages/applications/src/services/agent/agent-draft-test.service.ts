@@ -192,7 +192,7 @@ export class AgentDraftTestService {
       throw error;
     }
 
-    return { taskId, streamUrl: `text/tasks/${taskId}/stream` };
+    return { taskId, streamUrl: `text-generations/tasks/${taskId}/stream` };
   }
 
   /**

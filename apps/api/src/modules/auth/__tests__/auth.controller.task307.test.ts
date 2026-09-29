@@ -36,6 +36,7 @@ const createMockUserRepository = (users: Map<string, any> = new Map()) => ({
     }
     return null;
   }),
+  findByUsername: vi.fn(async (username: string) => [...users.values()].find((u) => u.username === username) ?? null),
   update: vi.fn(),
 });
 

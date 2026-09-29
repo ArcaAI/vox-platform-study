@@ -6,7 +6,6 @@ import {
   TenantReferenceSetServiceModule,
 } from '@arcaai/applications';
 import { TenantController } from './tenant.controller';
-import { MyTenantRedirectShimController } from './my-tenant-redirect.shim.controller';
 import { MyTenantController } from './my-tenant.controller';
 // Global-admin create-tenant-with-admin (`POST /admin/tenants/provision`).
 import { TenantProvisionController } from './tenant-provision.controller';
@@ -15,6 +14,6 @@ import { TenantReferenceSetController } from './tenant-reference-set.controller'
 
 @Module({
   imports: [TenantServiceModule, TenantFrontendConfigServiceModule, TenantOnboardingServiceModule, TenantReferenceSetServiceModule],
-  controllers: [TenantController, MyTenantController, MyTenantRedirectShimController, TenantProvisionController, TenantReferenceSetController],
+  controllers: [TenantController, MyTenantController, TenantProvisionController, TenantReferenceSetController],
 })
 export class TenantModule {}

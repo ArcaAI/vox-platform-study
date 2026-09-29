@@ -627,7 +627,7 @@ export class SettingsRegistryWriteService extends BaseService {
    * 500 — i.e. the platform row was unwritable from the console's normal state.
    *
    * The same defect and its two remedies are documented on
-   * `AiTaskDefaultService.crossTenantLane`, which routes the write through the
+   * `AiRoutingPolicyService.crossTenantLane` (and formerly `AiTaskDefaultService`'s), which routes the write through the
    * UNSCOPED base client. This lane cannot: it persists through
    * `IGlobalSettingService`, whose `create`/`update` carry semantics worth
    * keeping (revive-on-create over the soft-delete unique index, the

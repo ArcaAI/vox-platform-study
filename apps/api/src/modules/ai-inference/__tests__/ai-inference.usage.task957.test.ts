@@ -79,7 +79,6 @@ function build(opts: { upstream?: Record<string, unknown>; computeDevice?: unkno
         model: taskKey === 'nlp.topic' || taskKey === 'nlp.intent' ? TEXT_MODEL : NLP_MODEL,
       })),
     } as never,
-    undefined as never,
     { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : undefined)) } as never,
     ledger as never,
     { getRow: vi.fn(async () => ({ instructionsJson: ['billing', 'clinical'] })) } as never,

@@ -5,21 +5,21 @@ a configuration-driven `AgenticProvider`, a unified `useArca()` hook plus focuse
 real-time audio capture streamed to backend transcription, consultation/context/summary
 management against the `apps/api` gateway (port 8868), and multi-tenant-safe browser state
 (per-provider Zustand stores, namespaced persistence, cross-tab sync). Consumed by
-`apps/admin-console` and `apps/compat-playground`. Peer deps: `react` / `react-dom`
+`apps/admin-console` (`apps/compat-playground` went with the compat entry). Peer deps: `react` / `react-dom`
 `^18.3.0 || ^19.0.4`.
 
 ## Layout
 
-| Path                                                             | What it holds                                                                                                                                                                                                                                                                                          |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/index.ts` / `core.ts` / `plugins.ts`                        | The three entry points (see below)                                                                                                                                                                                                                                                                     |
-| `src/providers/`                                                 | `AgenticProvider` — owns one Zustand store instance per mount                                                                                                                                                                                                                                          |
-| `src/hooks/`                                                     | `useArca` + focused domain hooks (business plane only, no admin surface)                                                                                                                                                                                                                               |
-| `src/store/`                                                     | `createAgenticStore`, `useArcaStore`, `useStoreApi`                                                                                                                                                                                                                                                    |
-| `src/core/`                                                      | `AgenticClient`, `ConfigManager`/`ConfigSchema` (valibot), `PluginManager`, `TranscriptionPipeline`, `KnowledgePipeline`, `SttWebSocketClient`, `SSEClient`, `StreamingSessionManager`, `SharedConnectionManager`/`Worker`, `SimpleCrossTabSync`, `PersonalizationManager`, `ModelRegistry`, `logger/` |
-| `src/types/`                                                     | Config, consultation, context, summary, STT types                                                                                                                                                                                                                                                      |
-| `docs/API-Reference.md`, `docs/Batch-Transcription-Reference.md` | Generated/maintained API references                                                                                                                                                                                                                                                                    |
-| `e2e/`                                                           | Playwright specs + fixtures                                                                                                                                                                                                                                                                            |
+| Path                                      | What it holds                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts` / `core.ts` / `plugins.ts` | The three entry points (see below)                                                                                                                                                                                                                                                                                  |
+| `src/providers/`                          | `AgenticProvider` — owns one Zustand store instance per mount                                                                                                                                                                                                                                                       |
+| `src/hooks/`                              | `useArca` + focused domain hooks (business plane only, no admin surface)                                                                                                                                                                                                                                            |
+| `src/store/`                              | `createAgenticStore`, `useArcaStore`, `useStoreApi`                                                                                                                                                                                                                                                                 |
+| `src/core/`                               | `AgenticClient`, `ConfigManager`/`ConfigSchema` (valibot), `PluginManager`, `TranscriptionPipeline`, `KnowledgePipeline`, `SttWebSocketClient`, `SSEClient`, `StreamingSessionManager`, `SharedConnectionManager`/`Worker`, `SimpleCrossTabSync`, `PersonalizationManager`, `ModelRegistry` (deprecated), `logger/` |
+| `src/types/`                              | Config, consultation, context, summary, STT types                                                                                                                                                                                                                                                                   |
+| `docs/API-Reference.md`                   | Maintained API reference (the compat and compat-batch references were deleted with the compat entry — TASK-1012)                                                                                                                                                                                                    |
+| `e2e/`                                    | Playwright specs + fixtures                                                                                                                                                                                                                                                                                         |
 
 ## Commands
 
@@ -68,8 +68,11 @@ Selection is by `agentSlug`, never a pipeline/engine/model id: `useSelectableAsr
 the active session's governing workflow first, when it names a speech-to-text agent, otherwise the
 tenant admin's assignment (department, then tenant default). There is no other way to select an
 ASR engine from the browser SDK — `AudioStartOptions.pipelineId` and `audio.clientInference` were
-removed in TASK-1006 (R4); the gateway may still accept the `pipelineId` field over the wire from
-older clients, but this SDK no longer sends it.
+removed in TASK-1006 (R4), and the gateway answers 400 for a `pipelineId`. Since 4.0.1 no SDK path
+sends one: `@arcaai/stt`'s streaming provider still forwarded a caller-supplied `pipelineId` in
+4.0.0; it now ignores it (one console warning) and the option is removed in 5.0.0. The browser model
+registry (`ModelRegistry`, `useArcaConfig().models` / `selectModel` / `selectSttTask`, the Whisper /
+Silero defaults) selects nothing and is `@deprecated` since 4.0.1.
 
 Client-side VAD (Silero), noise filtering (RNNoise), local Whisper transcription, and browser NER
 are gone, not merely gated off — the `@arcaai/vad`, `@arcaai/noise-filter`, and `@arcaai/med-ner`
@@ -99,8 +102,9 @@ platform-default` assignment cascade for that one consultation; discover valid s
    transcripts land in `context.transcriptions`, entities in `context.entities`. Devices are
    mixed via `@arcaai/room`'s `AudioMixer`.
 3. `context.addCaseNote(...)`, `context.extractEntities()` — enrich the record.
-4. `summary.generateSummary(...)` (or `generateSummaryAsync` for job-based generation with SSE
-   progress).
+4. `summary.generateSummary(...)` — starts the async note job, waits for it and resolves the
+   persisted note (since 4.0.1; the synchronous route it called in 4.0.0 was removed by TASK-1006).
+   Use `generateSummaryAsync` + `useConsultationJob` to track the job yourself.
 5. `audio.stop()`, then `useArcaSession().close()` (or `reopen()`).
 
 `useArcaSession().consultation.governingRun` and `useConsultationWorkflow().governingRun` read

@@ -19,6 +19,12 @@ const createMockCls = (tenantId: string | undefined = 't1') => ({
   get: vi.fn((key: string) => (key === 'tenantId' ? tenantId : undefined)),
 });
 
+// A caller can no longer send `provider_overrides` (TASK-1012 L-1 strips it), so the metering tests
+// reach the credential the way production does: the tenant's resolved agent carries it.
+const createOverridesResolver = (providerOverrides: Record<string, unknown>) => ({
+  resolve: vi.fn().mockResolvedValue({ spec: { primary: { parameters: { format: null, speed: null } } }, providerOverrides }),
+});
+
 function makeStream() {
   const stream = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn> };
   stream.destroy = vi.fn();
@@ -273,6 +279,52 @@ describe('SpeechProxyController', () => {
       await expect(ctrl.synthesize({ input: 'Hi.' } as any, makeRes())).rejects.toThrow('Agent not found');
       expect(http.axiosRef.post).not.toHaveBeenCalled();
     });
+
+    // TASK-1012 L-1 — `resolved_spec` and `provider_overrides` are the RESOLUTION this gateway
+    // injects. A caller that sends its own is naming an engine chain / credential of its choosing,
+    // which bypasses the agent cascade — so they are stripped from EVERY inbound body, before
+    // anything else, and a missing resolver or tenant must not turn into a pass-through.
+    const CALLER_SPEC = { schemaVersion: 1, primary: { model: { slug: 'caller-picked' } } };
+    const CALLER_OVERRIDES = { azure: { api_key: 'CALLER-KEY', funding: 'platform' } };
+    const callerBody = () => ({ input: 'Hi.', resolved_spec: CALLER_SPEC, provider_overrides: CALLER_OVERRIDES }) as any;
+
+    it.each([
+      ['no resolver and no tenant', () => new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any)],
+      [
+        'a resolver but no tenant',
+        () =>
+          new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, makeResolver() as any, {
+            get: vi.fn(() => undefined),
+          } as any),
+      ],
+      [
+        'a tenant but no resolver',
+        () => new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, undefined, createMockCls('t1') as any),
+      ],
+    ])('strips a caller-supplied resolved_spec + provider_overrides with %s', async (_label, build) => {
+      const ctrl = build();
+      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
+
+      await ctrl.synthesize(callerBody(), makeRes());
+
+      const body = http.axiosRef.post.mock.calls[0][1];
+      expect('resolved_spec' in body).toBe(false);
+      expect('provider_overrides' in body).toBe(false);
+      expect(JSON.stringify(body)).not.toContain('CALLER-KEY');
+    });
+
+    it('replaces a caller-supplied resolved_spec + provider_overrides with the RESOLVED ones', async () => {
+      const ctrl = buildController(makeResolver());
+      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
+
+      await ctrl.synthesize(callerBody(), makeRes());
+
+      const body = http.axiosRef.post.mock.calls[0][1];
+      expect(body.resolved_spec).toEqual(SPEC);
+      // The tenant resolved no credential, so none rides — the caller's never does.
+      expect('provider_overrides' in body).toBe(false);
+      expect(JSON.stringify(body)).not.toContain('CALLER-KEY');
+    });
   });
 
   // Gateway emits CHARACTER + AUDIO_SECOND usage rows using the
@@ -283,8 +335,8 @@ describe('SpeechProxyController', () => {
   // the byte count it observes while proxying, using the SAME PCM/WAV byte
   // math tts uses internally.
   describe('POST /speech/synthesize — usage-ledger emission', () => {
-    const buildController = (usageLedger: unknown = createMockUsageLedger(), cls: unknown = createMockCls()) =>
-      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, undefined, cls as any, usageLedger as any);
+    const buildController = (usageLedger: unknown = createMockUsageLedger(), cls: unknown = createMockCls(), resolver?: unknown) =>
+      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, resolver as any, cls as any, usageLedger as any);
 
     it('emits CHARACTER + the EXACT AUDIO_SECOND from the batch response header', async () => {
       const usageLedger = createMockUsageLedger();
@@ -388,12 +440,9 @@ describe('SpeechProxyController', () => {
     });
 
     it('classifies a BYOK-served provider: deployment BYOK, costBasis BYOK_NOTIONAL', async () => {
-      // No tenantTtsConfig injected — applyTenantConfig() returns the body
-      // unchanged, so a caller-supplied provider_overrides (as the browser
-      // client would forward it, or as applyTenantConfig injects it in
-      // production) passes through verbatim to the classification below.
+      // The resolved agent injects the tenant's own credential; the classification reads it back.
       const usageLedger = createMockUsageLedger();
-      const ctrl = buildController(usageLedger);
+      const ctrl = buildController(usageLedger, createMockCls(), createOverridesResolver({ azure: { api_key: 'k' } }));
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
         headers: {
@@ -407,7 +456,7 @@ describe('SpeechProxyController', () => {
       });
       const res = makeRes();
 
-      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', provider_overrides: { azure: { api_key: 'k' } } } as any, res);
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
       stream.emit('end');
 
       const call = usageLedger.recordUsage.mock.calls[0][0];
@@ -421,7 +470,7 @@ describe('SpeechProxyController', () => {
       // cloud call (OD-2), NOT as BYOK/BYOK_NOTIONAL (which contributes zero
       // to the COGS rollups and is never invoiced).
       const usageLedger = createMockUsageLedger();
-      const ctrl = buildController(usageLedger);
+      const ctrl = buildController(usageLedger, createMockCls(), createOverridesResolver({ azure: { api_key: 'k', funding: 'platform' } }));
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
         headers: {
@@ -435,7 +484,7 @@ describe('SpeechProxyController', () => {
       });
       const res = makeRes();
 
-      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', provider_overrides: { azure: { api_key: 'k', funding: 'platform' } } } as any, res);
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
       stream.emit('end');
 
       const call = usageLedger.recordUsage.mock.calls[0][0];
@@ -445,7 +494,7 @@ describe('SpeechProxyController', () => {
 
     it('An override for a DIFFERENT provider never marks this call BYOK', async () => {
       const usageLedger = createMockUsageLedger();
-      const ctrl = buildController(usageLedger);
+      const ctrl = buildController(usageLedger, createMockCls(), createOverridesResolver({ sarvam: { api_key: 'k' } }));
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
         headers: {
@@ -459,7 +508,7 @@ describe('SpeechProxyController', () => {
       });
       const res = makeRes();
 
-      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', provider_overrides: { sarvam: { api_key: 'k' } } } as any, res);
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
       stream.emit('end');
 
       expect(usageLedger.recordUsage.mock.calls[0][0].common).toMatchObject({ provider: 'azure', deployment: 'CLOUD' });
@@ -572,8 +621,8 @@ describe('SpeechProxyController', () => {
   // TASK-959 T2b — the four new headers `apps/tts` sends beside `X-Tts-Audio-Seconds`, and the
   // gateway's own stream fallbacks for the two that are batch-only.
   describe('POST /speech/synthesize — compute + byte units (TASK-959)', () => {
-    const buildController = (usageLedger: unknown = createMockUsageLedger(), cls: unknown = createMockCls()) =>
-      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, undefined, cls as any, usageLedger as any);
+    const buildController = (usageLedger: unknown = createMockUsageLedger(), cls: unknown = createMockCls(), resolver?: unknown) =>
+      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, resolver as any, cls as any, usageLedger as any);
 
     it('a batch response with all four headers yields the compute + byte rows with the right units and attributes', async () => {
       const usageLedger = createMockUsageLedger();
@@ -725,7 +774,7 @@ describe('SpeechProxyController', () => {
       // one where a compute row (this reader needs `X-Tts-Device`, which only a self-hosted
       // engine ever sends) meets a BYOK batch (TASK-959 §6.3's sanctioned mixed-basis case).
       const usageLedger = createMockUsageLedger();
-      const ctrl = buildController(usageLedger);
+      const ctrl = buildController(usageLedger, createMockCls(), createOverridesResolver({ kokoro: { api_key: 'k', funding: 'tenant' } }));
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
         headers: {
@@ -741,7 +790,7 @@ describe('SpeechProxyController', () => {
       });
       const res = makeRes();
 
-      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', provider_overrides: { kokoro: { api_key: 'k', funding: 'tenant' } } } as any, res);
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
       stream.emit('end');
 
       expect(usageLedger.recordUsage).toHaveBeenCalledTimes(2);

@@ -46,7 +46,6 @@ describe('HarnessInternalController — STT batch-trigger routes (Task 5)', () =
       undefined as any, // harnessInternalService (unused by these routes)
       undefined as any, // harnessPolicyService
       makeCls() as any, // cls
-      undefined as any, // harnessProgressService
       undefined as any, // harnessAssuranceService
       undefined as any, // agentTrajectoryService
       undefined as any, // consultationLoopEventService
@@ -171,7 +170,6 @@ describe('HarnessInternalController — STT batch-trigger routes (Task 5)', () =
       undefined as any,
       undefined as any,
       makeCls() as any,
-      undefined as any,
       undefined as any,
       undefined as any,
       undefined as any,

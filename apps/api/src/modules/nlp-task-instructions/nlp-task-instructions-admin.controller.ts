@@ -15,16 +15,17 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * NlpTaskInstructionsAdminController — the admin surface for per-tenant
  * `nlp.topic` / `nlp.intent` INSTRUCTION content (topic list / intent list),
  * mounted at `/admin/nlp-task-instructions` (global prefix →
- * `/api/v1/admin/nlp-task-instructions`). Mirrors `AiTaskDefaultAdminController`'s
- * row GET/PUT shape, but deliberately WITHOUT its `getEffective`/`getOptions`
- * routes and super-admin-only write lock — this is a plain tenant-writable
- * resource (a SEPARATE subject, `TenantNlpTaskInstructions`, from
- * `AiRoutingPolicy`; see `01-policy.ts`'s tenant-full-access grant).
+ * `/api/v1/admin/nlp-task-instructions`). It was modelled on the row GET/PUT
+ * shape of `AiTaskDefaultAdminController` (retired by TASK-881), deliberately
+ * WITHOUT that controller's `getEffective`/`getOptions` routes and
+ * super-admin-only write lock — this is a plain tenant-writable resource (a
+ * SEPARATE subject, `TenantNlpTaskInstructions`, from `AiRoutingPolicy`; see
+ * `01-policy.ts`'s tenant-full-access grant).
  *
- * Model/provider SELECTION for `nlp.topic`/`nlp.intent` is untouched — it
- * still resolves through `/admin/ai-task-defaults` under the existing
- * `nlp.*` super-admin-only lock. This controller carries ONLY instruction
- * content (never a modelSlug).
+ * Model/provider SELECTION for `nlp.topic`/`nlp.intent` is not this
+ * controller's: NLP delegates both classifications to `apps/text` (see the
+ * `topic` / `intent` routes of `AiInferenceController`). This controller
+ * carries ONLY instruction content (never a modelSlug).
  *
  *  - `GET 'row'?taskKey=`  → ONE raw, editable row (`version` drives the OCC
  *    token; a `version:0` placeholder when none exists yet).

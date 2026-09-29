@@ -213,14 +213,10 @@ export class AuthController {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the repository's generic find props aren't narrowed to UserEntity here; the value is immediately guarded by the `if (!user)` below
       let user: any;
       try {
-        user = await this.userRepository.findFirst({
-          filters: {
-            username: request.username,
-            resourceStatus: { equals: ResourceStatusType.ENABLED },
-          },
-          relations: { UserProfile: true },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any);
+        // Case-insensitive (an admin's username defaults to their email), exact
+        // case preferred — see `UserRepository.findByUsername`. A repository
+        // failure is still folded into the same uniform 401 below.
+        user = await this.userRepository.findByUsername(request.username, { resourceStatus: ResourceStatusType.ENABLED });
       } catch {
         user = null;
       }

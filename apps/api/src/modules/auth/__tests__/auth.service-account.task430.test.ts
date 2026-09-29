@@ -48,6 +48,7 @@ function buildAuthController(fixture: AuthFixture) {
       const { id, username } = props?.filters ?? {};
       return fixture.users.find((u) => (id ? u.id === id : u.username === username)) ?? null;
     }),
+    findByUsername: vi.fn(async (username: string) => fixture.users.find((u) => u.username === username) ?? null),
     update: vi.fn(),
   };
   const tenantRepository = {

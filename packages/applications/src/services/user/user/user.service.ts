@@ -1,4 +1,4 @@
-import { Injectable, Inject, Optional, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Inject, Optional, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -194,6 +194,7 @@ export class UserService extends BaseService implements IUserService {
     // FIRST, before the password policy, the factory, the seat count and every
     // write: a refused create must leave nothing behind.
     await this.assertTenantMembershipSupplied(request);
+    await this.assertUsernameAvailable(request.username);
 
     const { roleId, departmentId, isPrimaryDepartment, email, ...userRequest } = request;
     const wantsMembership = Boolean(roleId || departmentId);
@@ -322,8 +323,22 @@ export class UserService extends BaseService implements IUserService {
    * after the identity row exists (keyed by userId). No-op when email is absent.
    */
   private async persistProfileEmail(userId: string, email?: string): Promise<void> {
-    if (!email) return;
-    await this.userProfileService.upsertByUserId(userId, { email } as UpdateUserProfileRequest);
+    const normalised = email?.trim().toLowerCase();
+    if (!normalised) return;
+    await this.userProfileService.upsertByUserId(userId, { email: normalised } as UpdateUserProfileRequest);
+  }
+
+  /**
+   * Usernames are case-insensitive (login matches them that way), but the
+   * database unique index is case-sensitive — so `Bob` and `bob` would both
+   * insert. Refuse a name that any OTHER user already holds in any case.
+   * `exceptUserId` lets a user change only the case of their own username.
+   */
+  private async assertUsernameAvailable(username: string, exceptUserId?: string): Promise<void> {
+    const holder = await this.userRepository.findByUsername(username);
+    if (holder && holder.id !== exceptUserId) {
+      throw new ConflictException({ code: 'USERNAME_TAKEN', message: 'That username is already taken.' });
+    }
   }
 
   async createExternalUser(request: CreateOAuthUserRequest): Promise<UserEntity> {
@@ -461,6 +476,10 @@ export class UserService extends BaseService implements IUserService {
 
   async update(id: EntityId, request: UpdateUserRequest): Promise<UserEntity> {
     const user = await this.userRepository.findById(id);
+
+    if (request.username && request.username !== user.username) {
+      await this.assertUsernameAvailable(request.username, user.id);
+    }
 
     const previousData = user.toObject();
     // A password update goes through the same policy +

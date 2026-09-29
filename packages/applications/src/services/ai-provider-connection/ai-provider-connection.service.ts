@@ -134,9 +134,9 @@ export class AiProviderConnectionService extends BaseService implements IProvide
 
   constructor(
     private readonly connectionRepository: AiProviderConnectionRepository,
-    // The UNSCOPED base client backing the cross-tenant lane (mirrors
-    // `AiTaskDefaultService`) — a super admin acting under working tenant W
-    // must be able to read/write SYSTEM and foreign-tenant rows.
+    // The UNSCOPED base client backing the cross-tenant lane (the pattern the
+    // retired `AiTaskDefaultService` introduced, TASK-881) — a super admin acting
+    // under working tenant W must be able to read/write SYSTEM and foreign-tenant rows.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
@@ -1679,8 +1679,8 @@ export class AiProviderConnectionService extends BaseService implements IProvide
   /**
    * The two privilege boundaries. Both throw 403 rather than 404: the caller is
    * acting on its OWN tenant, so there is nothing to hide — the rule is "you may
-   * not do this", not "this may not exist". Mirrors
-   * `AiTaskDefaultService.upsertRow`'s SUPER_ADMIN_ONLY guard.
+   * not do this", not "this may not exist". The same posture as the
+   * SUPER_ADMIN_ONLY guard the retired `AiTaskDefaultService.upsertRow` carried (TASK-881).
    */
   /**
    * TASK-932 R-12 — whether a TIER may see `(service, provider)` at all.
@@ -2126,7 +2126,12 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     };
   }
 
-  /** See `AiTaskDefaultService.crossTenantLane` for the full rationale. */
+  /**
+   * The cross-tenant persistence lane (r2605 Finding A; first written for the retired
+   * `AiTaskDefaultService`, TASK-881). When the target differs from the CLS tenant AND the caller
+   * is a super admin, route the read/write set through the UNSCOPED base client so the queries
+   * carry ONLY their explicit tenant filters; everyone else stays on the tenant-scoped client.
+   */
   private crossTenantLane(targetTenantId: string): CoreDatabaseService['baseClient'] | undefined {
     if (targetTenantId !== this.tenantId && isSuperAdmin(this.requestUser)) {
       return this.databaseService.baseClient;

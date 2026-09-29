@@ -32,6 +32,7 @@ const createMockUserRepository = (users: Map<string, any> = new Map()) => ({
     }
     return null;
   }),
+  findByUsername: vi.fn(async (username: string) => [...users.values()].find((u) => u.username === username) ?? null),
   update: vi.fn(),
 });
 
@@ -326,6 +327,29 @@ describe('AuthController', () => {
       const result = await controller.login({ username: 'dr_smith', password: 'pass123', tenantKey: 'acme-hospital' }, createMockRequest());
 
       expect(result.user.email).toBe('custom@hospital.com');
+    });
+
+    // A username defaults to the admin's email, and people type an email in any
+    // case: matching is case-insensitive, done by the repository. The controller
+    // must hand it the username exactly as typed (no client-side normalising that
+    // would break a legacy mixed-case account) and require ENABLED.
+    it('looks the user up through findByUsername with the typed username, so any casing signs in', async () => {
+      const hashedPassword = await bcrypt.hash('pass123', 10);
+      const user = createUser({ username: 'Dr_Smith', password: hashedPassword });
+      const userRepository = createMockUserRepository(new Map([[user.id, user]]));
+      userRepository.findByUsername.mockImplementation(async (username: string) => (username.toLowerCase() === 'dr_smith' ? user : null));
+
+      controller = buildController({
+        userRepository,
+        authService: createMockAuthService(),
+        tenantRepository: tenantRepo(),
+        userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
+      });
+
+      const result = await controller.login({ username: 'dR_sMiTh', password: 'pass123', tenantKey: 'acme-hospital' }, createMockRequest());
+
+      expect(userRepository.findByUsername).toHaveBeenCalledWith('dR_sMiTh', { resourceStatus: 'ENABLED' });
+      expect(result.user.username).toBe('Dr_Smith');
     });
 
     it('should handle user with no UserProfile (email defaults to empty string)', async () => {

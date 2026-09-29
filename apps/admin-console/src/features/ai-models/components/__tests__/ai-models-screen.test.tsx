@@ -229,7 +229,7 @@ describe('AiModelsScreen — register / edit / retire', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Register model' });
     fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: 'Medical NER' } });
     fireEvent.change(within(dialog).getByLabelText(/^slug/i), { target: { value: 'medical-ner' } });
-    fireEvent.change(within(dialog).getByLabelText(/^task \(hugging face/i), { target: { value: 'TOKEN_CLASSIFICATION' } });
+    await selectOption(within(dialog).getByLabelText(/^task \(hugging face/i), 'token-classification');
     fireEvent.change(within(dialog).getByLabelText(/^source uri/i), { target: { value: 'blaze999/Medical-NER' } });
     await selectOption(within(dialog).getByLabelText(/^serving library/i), 'transformers');
     await selectOption(within(dialog).getByLabelText(/^served by/i), 'nlp');

@@ -4,7 +4,6 @@ import { PolicyServiceModule, RbacRoleServiceModule, UserRoleAssignmentServiceMo
 import { RolesController } from './roles.controller';
 import { PoliciesController } from './policies.controller';
 import { PermissionCheckController, UserPermissionCheckController } from './permission-check.controller';
-import { PermissionCheckRedirectShimController } from './permission-check-redirect.shim.controller';
 
 /**
  * RBAC Module
@@ -34,6 +33,6 @@ import { PermissionCheckRedirectShimController } from './permission-check-redire
   // `:id` parameter swallows `me` and every self permission check silently
   // resolves to the by-id handler. Pinned by
   // `src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts`.
-  controllers: [RolesController, PoliciesController, PermissionCheckController, UserPermissionCheckController, PermissionCheckRedirectShimController],
+  controllers: [RolesController, PoliciesController, PermissionCheckController, UserPermissionCheckController],
 })
 export class RbacModule {}

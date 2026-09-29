@@ -614,8 +614,8 @@ export class HarnessPolicyService {
 
   /**
    * TASK-876 — the single fail-closed text-selection seam every TS `/api/v1/generate` caller
-   * funnels through (the live loop, the finalize/pre-summary processors, the DNA processor,
-   * the text proxy and the v1 compat controller).
+   * funnels through (the live loop, the finalize/pre-summary processors, the DNA processor and
+   * the text proxy; the v1 compat controller that also did was deleted by TASK-1004).
    *
    * ONE tier: the tenant's assigned TEXT_GENERATION agent, `department → tenant → SYSTEM`,
    * through `TextAgentResolverService` (which also owns the fallback chain and per-row derived
@@ -636,8 +636,18 @@ export class HarnessPolicyService {
    *
    * Throws (fail-closed) when nothing is assigned or the resolver is not wired — selection is
    * `failMode: closed`; a tenant veto of the primary provider propagates unchanged.
+   *
+   * `agentSlug` (TASK-1012 L-3) is a caller's EXPLICIT TEXT_GENERATION agent — the only other
+   * way a business-plane caller may choose a model. It skips the cascade (the agent resolver
+   * ignores the phase selector for an explicit slug), and a slug the tenant cannot see stays the
+   * resolver's 404 rather than being re-worded as "nothing is assigned".
    */
-  async resolveTextSelection(tenantId?: string, task: TextRoutingTask = 'finalize', departmentId?: string | null): Promise<TextSelection> {
+  async resolveTextSelection(
+    tenantId?: string,
+    task: TextRoutingTask = 'finalize',
+    departmentId?: string | null,
+    agentSlug?: string | null,
+  ): Promise<TextSelection> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
     if (!this.textAgents) {
@@ -649,12 +659,13 @@ export class HarnessPolicyService {
       const spec = await this.textAgents.resolve({
         tenantId: tid,
         departmentId: departmentId ?? null,
+        ...(agentSlug ? { agentSlug } : {}),
         selectorTags: textPhaseSelectorTags(task),
       });
       const generation = generationOf(spec.primary);
       return { provider: spec.primary.provider, model: spec.primary.model, ...(generation ? { generation } : {}) };
     } catch (error) {
-      if (error instanceof NotFoundException) {
+      if (error instanceof NotFoundException && !agentSlug) {
         throw new BadRequestException(
           'No TEXT_GENERATION agent is assigned for this tenant. Assign a published TEXT_GENERATION agent at TENANT or DEPARTMENT scope, or restore the SYSTEM platform default assignment.',
         );
@@ -699,8 +710,8 @@ export class HarnessPolicyService {
    *
    * Fail-OPEN by contract: `null` — never a throw — when the toggle is off, the chain is empty
    * (the primary IS the platform default), the resolver is un-wired, or the lookup faults. A
-   * `null` means the caller runs no fallback. The per-tenant `text.*.fallback` AiTaskDefault
-   * keys are no longer read.
+   * `null` means the caller runs no fallback. The per-tenant `text.*.fallback` keys of the retired `AiTaskDefault`
+   * facade (TASK-881) are no longer read.
    *
    * TASK-891 — the candidate's OWN `generation` rides along, exactly as on the primary. A
    * fallback exists to survive a provider outage, not to change how hard the engine thinks: one

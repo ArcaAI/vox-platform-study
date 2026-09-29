@@ -54,6 +54,7 @@ const createMockUserRepository = (user: any = null) => ({
     if (!user) throw new Error('DataNotFoundException: User not found');
     return user;
   }),
+  findByUsername: vi.fn(async () => user),
   update: vi.fn(),
 });
 

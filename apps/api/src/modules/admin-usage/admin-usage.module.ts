@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { ShadowMeteringServiceModule, UsageAnalyticsServiceModule } from '@arcaai/applications';
 
 import { AdminUsageController } from './admin-usage.controller';
-import { MyUsageRedirectShimController } from './my-usage-redirect.shim.controller';
 import { MyUsageController } from './my-usage.controller';
 
 /**
@@ -17,6 +16,6 @@ import { MyUsageController } from './my-usage.controller';
  */
 @Module({
   imports: [UsageAnalyticsServiceModule, ShadowMeteringServiceModule],
-  controllers: [AdminUsageController, MyUsageController, MyUsageRedirectShimController],
+  controllers: [AdminUsageController, MyUsageController],
 })
 export class AdminUsageApiModule {}

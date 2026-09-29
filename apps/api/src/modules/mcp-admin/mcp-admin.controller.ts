@@ -15,8 +15,8 @@ import { resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
 /**
  * McpAdminController — the admin surface for the MCP
  * external-tools registry, mounted at `/admin/mcp-servers` (global prefix →
- * `/api/v1/admin/mcp-servers`). Mirrors `AiTaskDefaultAdminController`
- * (`If-Match` OCC, `resolveScoped*` tenant scoping).
+ * `/api/v1/admin/mcp-servers`). Modelled on the since-retired
+ * `AiTaskDefaultAdminController` (TASK-881): `If-Match` OCC, `resolveScoped*` tenant scoping.
  *
  * AUTHORIZATION: gated by the registry's OWN `McpServer` subject.
  * It previously borrowed `HarnessPolicy` — that subject now means

@@ -262,7 +262,7 @@ describe('(6) — the gateway relays, it does not own', () => {
       const body = streamOf([sseFrame('meta', { generation_id: 'gen-42' }, 'gen-42:0')]);
       http.axiosRef.post.mockResolvedValue({ data: body });
 
-      const ack = await ctrl.generate({ prompt: 'p', provider: 'lm-studio', model: 'm', stream: true });
+      const ack = await ctrl.generate({ prompt: 'p', stream: true });
 
       expect(ack.task_id).toBe('gen-42');
       expect(ack.stream_url).toBe('text-generations/tasks/gen-42/stream');
@@ -277,7 +277,7 @@ describe('(6) — the gateway relays, it does not own', () => {
       const body = streamOf([sseFrame('meta', { generation_id: 'gen-42' }, 'gen-42:0')]);
       http.axiosRef.post.mockResolvedValue({ data: body });
 
-      await ctrl.generate({ prompt: 'p', provider: 'lm-studio', model: 'm', stream: true });
+      await ctrl.generate({ prompt: 'p', stream: true });
 
       // The subscription is torn down (the browser will open its own) …
       expect(body.destroy).toHaveBeenCalled();
@@ -290,7 +290,7 @@ describe('(6) — the gateway relays, it does not own', () => {
       const { ctrl, http } = build();
       http.axiosRef.post.mockResolvedValue({ data: { task_id: 't-1', content: 'hello' } });
 
-      const result = await ctrl.generate({ prompt: 'p', provider: 'lm-studio', model: 'm', stream: false });
+      const result = await ctrl.generate({ prompt: 'p', stream: false });
 
       expect(result).toEqual({ task_id: 't-1', content: 'hello' });
       const [, , options] = http.axiosRef.post.mock.calls[0];
@@ -304,7 +304,7 @@ describe('(6) — the gateway relays, it does not own', () => {
 
       // A generation whose id we never learned is one nobody can resume, so it
       // must surface as a failure rather than as an ack with an empty id.
-      await expect(ctrl.generate({ prompt: 'p', provider: 'lm-studio', model: 'm', stream: true })).rejects.toBeTruthy();
+      await expect(ctrl.generate({ prompt: 'p', stream: true })).rejects.toBeTruthy();
     });
   });
 });

@@ -17,7 +17,7 @@ import type { MedicalEntity } from '../types/context';
 import { DEFAULT_KNOWLEDGE_PIPELINE_CONFIG } from '../types/pipeline';
 import type { ISDKLogger } from './logger';
 import type { AgenticClient } from './AgenticClient';
-import { SUMMARY_ENDPOINTS } from './constants';
+import { generateSummaryViaJob } from './summaryJob';
 
 /**
  * Trigger mode for pipeline stages.
@@ -431,10 +431,11 @@ export class KnowledgePipeline {
     stage.processing = true;
 
     try {
-      const response = await this.apiClient.post<{ content: string }>(SUMMARY_ENDPOINTS.GENERATE(contextId), {
-        type: 'summary',
-        dnaStyleId: this.config.summarization.dnaStyleId,
-      });
+      // TASK-1012 (L-2): the synchronous `POST …/summary` was removed (TASK-1006). Start the
+      // async note job and resolve the persisted summary. `contextId` is the CONSULTATION id
+      // (it always was — it names the URL). `type` is not a gateway DTO field, so it is not sent.
+      const { dnaStyleId } = this.config.summarization;
+      const response = await generateSummaryViaJob(this.apiClient, contextId, 'summary', dnaStyleId ? { dnaStyleId } : {});
 
       this.emit('summaryComplete', { summary: response.content });
 

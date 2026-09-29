@@ -13,8 +13,12 @@
  * it never contends with the other spec file's writes to the same tenant's
  * `azure` row:
  *
- *   1. Tenant A sets an ENABLED bedrock BYO credential, then calls
- *      `POST /api/v1/text-generations/generate` with `provider: 'bedrock'`. The
+ *   1. Tenant A sets an ENABLED bedrock BYO credential, then a generation PINNED to
+ *      `provider: 'bedrock'` runs in tenant A's context. Since TASK-1012 L-3 a
+ *      business caller cannot pin a provider (400 `MODEL_PINNING_NOT_ALLOWED`), so
+ *      the pinned call goes through the admin playground route
+ *      `POST /api/v1/admin/text-generations/generate` as a SUPER ADMIN working in
+ *      tenant A — the SAME proxy pipeline and credential fold. The
  *      credential the gateway forwards downstream as
  *      `provider_overrides.bedrock` must match exactly what tenant A
  *      configured.
@@ -51,7 +55,8 @@ import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/h
 
 // TASK-862: the `admin/ai-providers` alias was removed; the unified route pins `service='llm'`.
 const ADMIN_BASE = '/api/v1/admin/providers/llm';
-const GENERATE_ROUTE = '/api/v1/text-generations/generate';
+// TASK-1012 L-3: provider pinning is admin-plane only (super admin); the fold under test is shared.
+const GENERATE_ROUTE = '/api/v1/admin/text-generations/generate';
 const ARCAAI_TENANT_KEY = 'ARCAAI';
 
 const TEXT_STUB_ENABLED = process.env.E2E_TEXT_STUB === '1';
@@ -83,6 +88,8 @@ test.describe.serial('tenant BYO cloud credential reaches TEXT (generate round-t
 
   let stubServer: http.Server;
   let tenantAToken: string;
+  /** A SUPER ADMIN working in tenant A — the only caller that may pin a provider (TASK-1012 L-3). */
+  let tenantAPlatformToken: string;
   let tenantBToken: string;
   let tenantACredentialWritten = false;
 
@@ -116,6 +123,9 @@ test.describe.serial('tenant BYO cloud credential reaches TEXT (generate round-t
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
     tenantAToken = ta!.token;
+    const tap = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
+    expect(tap, `super admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
+    tenantAPlatformToken = tap!.token;
 
     // Tenant B is a second REAL tenant (not merely a second user in the same
     // tenant): a SUPER_ADMIN logged in against the secondary cross-tenant
@@ -169,7 +179,7 @@ test.describe.serial('tenant BYO cloud credential reaches TEXT (generate round-t
     test.skip(!tenantACredentialWritten, 'no Vault Transit provider in this environment — see beforeAll');
 
     const resp = await request.post(GENERATE_ROUTE, {
-      headers: { Authorization: `Bearer ${tenantAToken}` },
+      headers: { Authorization: `Bearer ${tenantAPlatformToken}` },
       data: { prompt: 'ping', provider: 'bedrock', model: 'test-model', stream: false },
     });
     expect(resp.status()).toBe(200);

@@ -48,7 +48,7 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
   constructor(
     private readonly mcpServerRepository: McpServerRepository,
     // The UNSCOPED base client backs the super-admin cross-tenant lane
-    // (mirrors AiTaskDefaultService / HarnessPolicyService).
+    // (same lane as AiRoutingPolicyService / RbacRoleService).
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
@@ -256,7 +256,7 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
   }
 
   /**
-   * Super-admin cross-tenant persistence lane (mirrors AiTaskDefaultService):
+   * Super-admin cross-tenant persistence lane (same lane as AiRoutingPolicyService):
    * when the resolved target differs from the CLS working tenant AND the caller
    * is a super admin, route the read/write through the UNSCOPED base client so
    * the SYSTEM-owned registry rows are addressed by their explicit tenant filter

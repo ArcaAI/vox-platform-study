@@ -24,7 +24,7 @@ import {
   TranscriptionJobService,
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
-import type { LanguageModeSource, ResolvedAsrSession, ResolvedAsrSpec } from '@arcaai/applications';
+import type { LanguageModeSource, ResolvedAsrJobSelection, ResolvedAsrSession, ResolvedAsrSpec } from '@arcaai/applications';
 import { TenantBucketPurpose } from '@arcaai/domains';
 import type { Response } from 'express';
 import { probeAudioDurationSeconds } from './audio-duration';
@@ -513,31 +513,36 @@ export class TranscriptionJobController {
   @ApiOperation({ summary: 'Create a transcription job' })
   async create(@Body() dto: CreateJobRequest) {
     // TASK-861 — the same resolution as `POST …/transcribe`: explicit `agentSlug`, else the
-    // tenant's assigned ASR agent, keys the job to a `ResolvedAsrSpec`. The gateway never guesses.
-    if (!dto.agentVersionId) {
-      const resolved = await this.resolveAsrAgent(this.getTenantId(), dto.agentSlug, dto.consultationId);
-      const { agentSlug: _agentSlug, ...rest } = dto;
-      return this.jobService.create({
-        ...rest,
-        agentVersionId: resolved.spec.agent.versionId,
-        resolvedSpec: resolved.spec as unknown as Record<string, unknown>,
-      });
-    }
-    return this.jobService.create(dto);
+    // tenant's assigned ASR agent, keys the job to a `ResolvedAsrSpec`. The gateway never guesses,
+    // and (TASK-1012 L-7) never takes a caller's `agentVersionId` / `resolvedSpec`.
+    const { agentSlug, ...rest } = dto;
+    return this.jobService.create({ ...rest, ...(await this.resolveJobAgent(agentSlug, dto.consultationId)) });
   }
 
   @Post('batch')
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a batch transcription job' })
   async createBatch(@Body() dto: CreateBatchJobRequest) {
-    return this.jobService.createBatchJob(dto);
+    const { agentSlug, ...rest } = dto;
+    return this.jobService.createBatchJob({ ...rest, ...(await this.resolveJobAgent(agentSlug, dto.consultationId)) });
   }
 
   @Post('streaming')
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a streaming transcription job' })
   async createStreaming(@Body() dto: CreateStreamingJobRequest) {
-    return this.jobService.createStreamingJob(dto);
+    const { agentSlug, ...rest } = dto;
+    return this.jobService.createStreamingJob({ ...rest, ...(await this.resolveJobAgent(agentSlug, dto.consultationId)) });
+  }
+
+  /**
+   * TASK-1012 L-7 — the ONE selection for the three job-create routes: the resolved ASR agent
+   * (`agentSlug`, else the assignment cascade). Spread LAST over the request, so a caller-supplied
+   * `agentVersionId` / `resolvedSpec` that slipped past the pipe is overwritten, never honoured.
+   */
+  private async resolveJobAgent(agentSlug: string | undefined, consultationId: string | undefined): Promise<ResolvedAsrJobSelection> {
+    const resolved = await this.resolveAsrAgent(this.getTenantId(), agentSlug, consultationId);
+    return { agentVersionId: resolved.spec.agent.versionId, resolvedSpec: resolved.spec as unknown as Record<string, unknown> };
   }
 
   @Get('stats')

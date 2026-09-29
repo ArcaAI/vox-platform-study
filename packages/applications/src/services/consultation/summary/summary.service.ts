@@ -52,7 +52,7 @@ import { finalNoteSections, sectionKeysByTitle, splitHeadedNote } from './final-
 import { ISummaryService } from './ISummaryService';
 import { GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse, SummaryProvenanceResponse, CitedSegmentResponse } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
-import { buildTextGeneratePayload, mapTextGenerateResponse, type LegacyTextSummaryResponse } from './text-generate';
+import { buildTextGeneratePayload, mapTextGenerateResponse, withoutCallerModelSelection, type LegacyTextSummaryResponse } from './text-generate';
 import {
   buildGuardrailUsageBatches,
   buildLlmUsageBatches,
@@ -1658,7 +1658,10 @@ export class SummaryService extends BaseService implements ISummaryService {
       }
     }
 
-    let options = payload.options;
+    // The caller's `options` ride along but NEVER select the engine (TASK-1012 item 11):
+    // model-selecting keys are dropped before the resolved pair is merged in.
+    const callerOptions = withoutCallerModelSelection(payload.options);
+    let options = callerOptions;
     // TASK-891 — the resolved selection's `generation` block, carried alongside
     // {provider, model} so its reasoning posture can reach `applyTextRuntimeProfile` below.
     let generation: Record<string, unknown> | undefined;
@@ -1666,7 +1669,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // The assigned `TEXT_GENERATION` agent; the A4 fallback retry below stays
       // TENANT-configured.
       const selection = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize', payload.departmentId ?? null);
-      options = { textProvider: selection.provider, textModel: selection.model, ...payload.options };
+      options = { ...callerOptions, textProvider: selection.provider, textModel: selection.model };
       generation = selection.generation;
     }
 

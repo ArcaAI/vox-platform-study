@@ -1329,23 +1329,19 @@ export function useArcaAudio() {
    * Derives {@link AudioStartOptions} from `store.preferences` (already populated
    * by PersonalizationManager / useArcaConfig — no new config plumbing):
    *   - `language`            ← `preferences.language`
-   *   - ASR Agent selection   ← `preferences.remoteConfig.agentSlug`, when the
-   *                             backend names one. Omitted entirely otherwise
-   *                             (TASK-1006: the client never names a pipeline —
-   *                             the gateway resolves the tenant's assignment).
+   *   - ASR Agent selection   ← none: the gateway resolves it (governing
+   *                             workflow, then the tenant admin's assignment).
+   *                             TASK-1012 removed the `remoteConfig.agentSlug`
+   *                             read — the gateway never sends `remoteConfig`.
    *   - `deviceId` / `secondaryDeviceId` / `dualCaptureEnabled`
    *                           ← `preferences.custom` (the existing extensible bag).
    */
   const startFromPreferences = useCallback(async (): Promise<void> => {
     const prefs = store.preferences ?? {};
-    const isRemote = prefs.workflowMode === 'remote';
     const custom = (prefs.custom ?? {}) as Record<string, unknown>;
-
-    const agentSlug = isRemote ? (prefs.remoteConfig as { agentSlug?: string } | undefined)?.agentSlug : undefined;
 
     const options: AudioStartOptions = {
       language: prefs.language,
-      ...(agentSlug ? { agentSlug } : {}),
       deviceId: typeof custom.deviceId === 'string' ? custom.deviceId : undefined,
       secondaryDeviceId: typeof custom.secondaryDeviceId === 'string' ? custom.secondaryDeviceId : undefined,
       dualCaptureEnabled: custom.dualCaptureEnabled === true,
@@ -1357,7 +1353,6 @@ export function useArcaAudio() {
       attributes: {
         workflowMode: prefs.workflowMode,
         language: options.language,
-        hasAgentSlug: !!agentSlug,
       },
     });
 

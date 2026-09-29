@@ -3,7 +3,7 @@
  *
  * Core SDK exports WITHOUT plugin dependencies.
  * This entry point provides a lightweight bundle (~200KB) for consumers
- * who don't need audio processing features (STT, VAD, noise filter).
+ * who don't need audio capture / backend streaming STT.
  *
  * Use this when:
  * - Building admin/dashboard apps that only need API access
@@ -15,8 +15,8 @@
  * // Import only core functionality
  * import { AgenticProvider, useArca } from '@arcaai/vox/core';
  *
- * // For full SDK with plugins:
- * import { AgenticProvider, useArca, useVAD } from '@arcaai/vox';
+ * // For the full SDK, including the audio facade (`useArcaAudio`) and TTS playback:
+ * import { AgenticProvider, useArca, useArcaAudio } from '@arcaai/vox';
  * ```
  *
  * @packageDocumentation

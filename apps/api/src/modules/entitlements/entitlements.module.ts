@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { EntitlementsServiceModule } from '@arcaai/applications';
 import { EntitlementsAdminController } from './entitlements-admin.controller';
-import { MyEntitlementsRedirectShimController } from './my-entitlements-redirect.shim.controller';
 import { MyEntitlementsController } from './my-entitlements.controller';
 
 /**
@@ -13,6 +12,6 @@ import { MyEntitlementsController } from './my-entitlements.controller';
  */
 @Module({
   imports: [EntitlementsServiceModule],
-  controllers: [EntitlementsAdminController, MyEntitlementsController, MyEntitlementsRedirectShimController],
+  controllers: [EntitlementsAdminController, MyEntitlementsController],
 })
 export class EntitlementsApiModule {}

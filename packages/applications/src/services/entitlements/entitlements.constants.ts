@@ -411,7 +411,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     // (owner decision 2026-08-22): these two are STRUCTURAL floors, not
     // commercial ones, and they are sized to what tenant creation actually
     // provisions — 8 golden departments (`seed/04-department.ts`) and the 14
-    // SYSTEM pipelines `provisionTenantPipelineCatalog` clones. They were 2 and 1,
+    // SYSTEM pipelines the (since-retired, TASK-890/1006) `provisionTenantPipelineCatalog` cloned. They were 2 and 1,
     // which meant every new tenant landed 4x and 14x OVER its own caps the moment
     // OD-5 stopped resolving plan-less tenants as ungated. Provisioning writes
     // through the repository so creation never failed — but the tenant could not

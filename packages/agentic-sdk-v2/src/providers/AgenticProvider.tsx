@@ -416,9 +416,9 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     }
 
     // Capture the backend-preferences load so init() can await
-    // it and read the per-user resolved `remoteConfig.pipelineId` before the
+    // it and read the per-user EFFECTIVE `transcriptionMode` before the
     // first cascade resolve (see Step 2). Resolves even on failure so the
-    // tenant tier still applies without the pipeline id.
+    // tenant tier still applies without it.
     let preferencesLoadPromise: Promise<void> = Promise.resolve();
     if (personalizationConfig.storage !== 'local') {
       const loadOp = providerLogger.startOperation('loadPreferences');
@@ -607,23 +607,15 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         if (tenantCfg.captureRawAudio !== undefined) {
           tenantOverrides.audio = { ...(tenantOverrides.audio ?? {}), captureRawAudio: tenantCfg.captureRawAudio };
         }
-        // The assigned remote ASR pipeline is resolved per-user
-        // server-side (per-user admin override -> tenant default -> global) and
-        // returned on GET /users/me/preferences as `remoteConfig.pipelineId`.
-        // Surface it as an admin-owned tenant-tier override
-        // (stt.transcriptionPipelineId is permission:'admin' in
-        // CONFIG_PERMISSIONS), so the cascade's stripLockedAndAdminPaths keeps
-        // it authoritative against user prefs and the consultation panel runs
-        // the correct pipeline instead of DEFAULT_TRANSCRIPTION_PIPELINE_ID.
-        // Awaiting the in-flight backend-prefs load (started above) adds no new
-        // request and only blocks the tier on a fetch the SDK already issues.
+        // TASK-1012: the `remoteConfig.pipelineId` → `stt.transcriptionPipelineId`
+        // injection that lived here is gone — the gateway has not sent
+        // `remoteConfig` since TASK-1006 (ASR is selected server-side from the
+        // tenant's agent assignment). Awaiting the in-flight backend-prefs load
+        // (started above) adds no new request and only blocks the tier on a
+        // fetch the SDK already issues.
         try {
           await preferencesLoadPromise;
           const resolvedPrefs = personalizationManager.getPreferences();
-          const remotePipelineId = resolvedPrefs.remoteConfig?.pipelineId;
-          if (remotePipelineId) {
-            tenantOverrides.stt = { ...(tenantOverrides.stt ?? {}), transcriptionPipelineId: remotePipelineId };
-          }
           // The EFFECTIVE transcription mode is resolved per-user
           // server-side and returned on the prefs response. Surface it as an
           // admin-owned tenant-tier override (stt.transcriptionMode is
@@ -634,7 +626,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
           }
         } catch {
           // loadFromBackend already logs at error; the tenant tier still
-          // applies — the panel just falls back to its default pipeline id.
+          // applies without the effective transcription mode.
         }
         if ('lockedPaths' in tenantCfg && Array.isArray((tenantCfg as Record<string, unknown>).lockedPaths)) {
           lockedPaths.push(...((tenantCfg as Record<string, unknown>).lockedPaths as string[]));
@@ -833,30 +825,24 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
 
             // Re-apply the CASCADE tenant tier for
             // the INCOMING identity. The mount-time init() (deps []) is the only
-            // other place that calls `configManager.setTenantConfig`, and it
-            // injects the per-user server-resolved remote ASR pipeline
-            // (`remoteConfig.pipelineId` from GET /users/me/preferences) into
-            // `stt.transcriptionPipelineId`. init() runs ONCE with the MOUNTING
-            // identity (e.g. the admin), so on a same-tab user/impersonation
-            // switch the cascade kept the previous user's tenant tier — leaving
-            // `stt.transcriptionPipelineId` empty for the switched-in user, so the
-            // consultation/clinical panels fell back to
-            // DEFAULT_TRANSCRIPTION_PIPELINE_ID (a SYSTEM pipeline that 404s for a
-            // customer tenant). Re-fetch the incoming user's resolved pipeline and
-            // rebuild the tier here. This GET is read-only and does NOT write the
-            // personalization user-pref tier, so it never races the playground's
-            // single-writer impersonation prefs (F-2 below).
-            let remotePipelineId: string | undefined;
+            // other place that calls `configManager.setTenantConfig`, and it runs
+            // ONCE with the MOUNTING identity (e.g. the admin), so on a same-tab
+            // user/impersonation switch the cascade would keep the previous
+            // user's tenant tier. Re-fetch the incoming user's effective
+            // transcription mode and rebuild the tier here. (TASK-1012: the
+            // `remoteConfig.pipelineId` injection this also did is gone — the
+            // gateway has not sent `remoteConfig` since TASK-1006.) This GET is
+            // read-only and does NOT write the personalization user-pref tier, so
+            // it never races the playground's single-writer impersonation prefs
+            // (F-2 below).
             let effectiveTranscriptionMode: 'LOCAL' | 'BACKEND' | undefined;
             try {
               const remotePrefs = await apiClient.get<{
-                remoteConfig?: { pipelineId?: string };
                 transcriptionMode?: 'LOCAL' | 'BACKEND';
               }>(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES);
-              remotePipelineId = remotePrefs?.remoteConfig?.pipelineId;
               effectiveTranscriptionMode = remotePrefs?.transcriptionMode;
             } catch (error) {
-              providerLogger.warn('Remote pipeline fetch after user switch failed', {
+              providerLogger.warn('Preferences fetch after user switch failed', {
                 operation: 'rehydrateUserNamespace',
                 component: 'AgenticProvider',
                 error: error as Error,
@@ -872,9 +858,6 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
             }
             if (nextTenantCfg.captureRawAudio !== undefined) {
               nextTenantOverrides.audio = { ...(nextTenantOverrides.audio ?? {}), captureRawAudio: nextTenantCfg.captureRawAudio };
-            }
-            if (remotePipelineId) {
-              nextTenantOverrides.stt = { ...(nextTenantOverrides.stt ?? {}), transcriptionPipelineId: remotePipelineId };
             }
             // Re-apply the switched-in user's effective transcription mode.
             if (effectiveTranscriptionMode) {

@@ -13,6 +13,8 @@ import type { ModelDefinition } from './config';
 
 /**
  * Model registry state
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export interface ModelRegistryState {
   /** All available models */
@@ -33,6 +35,8 @@ export interface ModelRegistryState {
  *   checkpoints only; English-only `.en` models reject this upstream).
  *
  * @see the STT models module for background.
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export type SttTask = 'transcribe' | 'translate';
 
@@ -42,6 +46,8 @@ export type SttTask = 'transcribe' | 'translate';
  * `sttTask` persists the user's chosen Whisper task alongside the
  * selected STT model in the SAME tenant/user-namespaced row, so a user's local
  * transcribe/translate choice survives reload.
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export interface SelectedModels {
   stt?: string;
@@ -52,6 +58,8 @@ export interface SelectedModels {
 
 /**
  * Model loading states
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export interface ModelLoadingStates {
   /** Currently loading model IDs */
@@ -66,6 +74,8 @@ export interface ModelLoadingStates {
 
 /**
  * Model load progress event
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export interface ModelLoadProgress {
   /** Model ID */
@@ -84,11 +94,15 @@ export interface ModelLoadProgress {
 
 /**
  * Model load status
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export type ModelLoadStatus = 'pending' | 'downloading' | 'loading' | 'ready' | 'error';
 
 /**
  * Model load options
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export interface ModelLoadOptions {
   /** Force reload even if cached */
@@ -103,6 +117,8 @@ export interface ModelLoadOptions {
 
 /**
  * Default public STT models (HuggingFace)
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export const DEFAULT_STT_MODELS: ModelDefinition[] = [
   {
@@ -146,6 +162,8 @@ const STT_MODEL_SIZE_LABELS: Record<string, string> = {
 /**
  * A locally-selectable STT model as presented in the UI (id + display name +
  * optional human-readable download size).
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export interface AvailableSttModel {
   id: string;
@@ -159,6 +177,8 @@ export interface AvailableSttModel {
  * `ConfigSchema.SttConfigSchema.availableModels` defaults to this so the
  * "presented" set can never drift from the registry-"selectable/loadable" set
  * again (single-source-of-truth).
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export const DEFAULT_AVAILABLE_STT_MODELS: AvailableSttModel[] = DEFAULT_STT_MODELS.map((model) => ({
   id: model.id,
@@ -168,6 +188,8 @@ export const DEFAULT_AVAILABLE_STT_MODELS: AvailableSttModel[] = DEFAULT_STT_MOD
 
 /**
  * Default VAD models
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export const DEFAULT_VAD_MODELS: ModelDefinition[] = [
   {
@@ -188,6 +210,8 @@ export const DEFAULT_VAD_MODELS: ModelDefinition[] = [
 
 /**
  * All default models
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export const DEFAULT_MODELS: ModelDefinition[] = [...DEFAULT_STT_MODELS, ...DEFAULT_VAD_MODELS];
 
@@ -197,6 +221,8 @@ export const DEFAULT_MODELS: ModelDefinition[] = [...DEFAULT_STT_MODELS, ...DEFA
 
 /**
  * Model registry actions interface
+ *
+ * @deprecated TASK-1012 — the browser never runs a model (TASK-865/TASK-1006), so this local model catalogue selects nothing. ASR is a server-side Agent: pass `agentSlug` (discover with `useSelectableAsrAgents()`) or nothing. Removed in 5.0.0.
  */
 export interface ModelRegistryActions {
   /** Get all available models */

@@ -4,20 +4,19 @@
  * Two things are under test and they pull in opposite directions:
  *
  *  1. Every renamed route answers at its NEW URI, and every RETIRED URI
- *     answers **308 Permanent Redirect** with a `Location` pointing at the new
- *     one. 308 specifically: 301 and 302 permit a client to rewrite a POST
- *     into a GET, which silently drops the body — a summarization POST would
- *     arrive at the new path as an empty GET. Asserting "a 3xx" would let that
- *     regression through, so the exact code is asserted.
+ *     answers **404**. Until TASK-1012 (D-3) a retired URI answered a 308
+ *     Permanent Redirect from a shim marked `DELETE IN ALL-2.0.0`; the shims
+ *     are deleted, so a retired prefix is now simply not a route. A 308 (or any
+ *     3xx) here would mean a shim came back.
  *
  *  2. The v1 COMPAT surfaces (`api/smr/api/v1`, `api/stt`, `ws /stt`) were
  *     removed outright by TASK-1004 (zero traffic, no consumers). The block
  *     below now asserts the opposite of what it asserted before that ticket:
  *     each retired path answers 404, not a redirect and not a live route.
  *
- * Every request that probes a redirect sets `maxRedirects: 0`; Playwright
- * follows redirects by default, which would make a shim indistinguishable from
- * a route that never moved.
+ * Every request that probes a retired URI sets `maxRedirects: 0`; Playwright
+ * follows redirects by default, which would hide a resurrected shim behind the
+ * route it redirects to.
  */
 import { expect, test } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
@@ -96,15 +95,17 @@ test.describe('the normalized URIs answer', () => {
   });
 });
 
-// ─── The retired URIs answer 308 ─────────────────────────────────────────
+// ─── The retired URIs answer 404 (TASK-1012 D-3 — the 308 shims are gone) ──
 
-interface Shim {
+interface RetiredUri {
   method: 'get' | 'post' | 'patch' | 'delete';
   from: string;
+  /** The URI that replaced it — documentation only; nothing redirects there any more. */
   to: string;
+  asTenantAdmin?: boolean;
 }
 
-const SHIMS: Shim[] = [
+const RETIRED: RetiredUri[] = [
   { method: 'get', from: `${V1}/user/me/preferences`, to: `${V1}/users/me/preferences` },
   { method: 'patch', from: `${V1}/user/me/preferences`, to: `${V1}/users/me/preferences` },
   { method: 'get', from: `${V1}/user/me/settings`, to: `${V1}/users/me/settings` },
@@ -135,54 +136,26 @@ const SHIMS: Shim[] = [
   { method: 'get', from: `${V1}/text/tasks/t-1/stream`, to: `${V1}/text-generations/tasks/t-1/stream` },
 ];
 
-test.describe('every retired URI answers 308 with a Location', () => {
-  for (const shim of SHIMS) {
-    test(`${shim.method.toUpperCase()} ${shim.from} → 308 ${shim.to}`, async ({ request }) => {
-      // A shim copies its target's auth posture verbatim, INCLUDING the CASL
-      // ability — so it answers 403 to a caller who could not perform the write
-      // at the new path either. That is the same answer the target gives, but it
-      // means the 308 contract can only be observed by an authorised caller.
-      // `PATCH tenants/me/config` needs `update:Tenant`, which a DOCTOR lacks.
-      const response = await request[shim.method](shim.from, {
-        headers: bearer(shim.asTenantAdmin ? tenantAdminToken : doctorToken),
+test.describe('every retired URI answers 404 — removed, not redirected', () => {
+  for (const retired of RETIRED) {
+    test(`${retired.method.toUpperCase()} ${retired.from} → 404 (was 308 → ${retired.to})`, async ({ request }) => {
+      const response = await request[retired.method](retired.from, {
+        headers: bearer(retired.asTenantAdmin ? tenantAdminToken : doctorToken),
         maxRedirects: 0,
-        ...(shim.method === 'get' ? {} : { data: {} }),
+        ...(retired.method === 'get' ? {} : { data: {} }),
       });
 
-      expect(response.status(), `${shim.from} must answer 308 — 301/302 would let a client drop the request body`).toBe(308);
-      expect(response.headers()['location']).toBe(shim.to);
+      expect(response.status(), `${retired.from} must be gone — a 3xx means a redirect shim came back`).toBe(404);
+      expect(response.headers()['location']).toBeUndefined();
     });
   }
 
-  test('a shim preserves the query string verbatim', async ({ request }) => {
-    const response = await request.get(`${V1}/tenant/me/context-schema?departmentId=dep-1&x=a%20b`, {
-      headers: bearer(doctorToken),
-      maxRedirects: 0,
-    });
-    expect(response.status()).toBe(308);
-    expect(response.headers()['location']).toBe(`${V1}/tenants/me/context-schema?departmentId=dep-1&x=a%20b`);
-  });
-
-  test('a shim preserves a path parameter verbatim', async ({ request }) => {
-    const response = await request.patch(`${V1}/voice-profile/1d0b0f1e-0000-4000-8000-000000000001/activate`, {
-      headers: bearer(doctorToken),
-      data: {},
-      maxRedirects: 0,
-    });
-    expect(response.status()).toBe(308);
-    expect(response.headers()['location']).toBe(`${V1}/voice-profiles/1d0b0f1e-0000-4000-8000-000000000001/activate`);
-  });
-
-  test('a shim never becomes a cheaper way in: an unauthenticated call 401s AT the shim', async ({ request }) => {
+  test('an anonymous caller is not redirected anywhere either', async ({ request }) => {
     for (const path of [`${V1}/user/me/settings`, `${V1}/tenant/me`, `${V1}/entitlements/me`, `${V1}/voice-profile`]) {
       const response = await request.get(path, { maxRedirects: 0 });
-      expect(response.status(), `${path} redirected an anonymous caller instead of rejecting it`).toBe(401);
+      expect(response.status(), `${path} answered ${response.status()}`).not.toBe(308);
+      expect(response.status()).toBeGreaterThanOrEqual(400);
     }
-  });
-
-  test('a shim never becomes a cheaper way in: an unauthenticated POST 401s AT the shim', async ({ request }) => {
-    const response = await request.post(`${V1}/rbac/check/my-permissions`, { data: {}, maxRedirects: 0 });
-    expect(response.status()).toBe(401);
   });
 });
 

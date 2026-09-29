@@ -5,7 +5,7 @@
  *
  * This is the main entry point that includes everything:
  * - Core SDK functionality (providers, hooks, types, utilities)
- * - Plugin hooks and pipelines (STT, VAD, noise filter)
+ * - Plugin hooks and pipelines (audio capture, backend streaming STT, TTS playback)
  *
  * For smaller bundles, use selective imports:
  * - `@arcaai/vox/core` - Core only (~200KB)
@@ -14,10 +14,9 @@
  * Features:
  * - Simplified unified API with configuration-driven plugins
  * - React hooks for easy integration
- * - Support for noise cancellation, VAD, and STT
+ * - Backend streaming STT — the browser never runs a model; ASR is the tenant's Agent (`agentSlug`)
  * - Context management for case notes, transcriptions, and summaries
  * - Hybrid personalization (local + backend sync)
- * - Custom model registry support
  *
  * @example
  * ```tsx
@@ -26,8 +25,6 @@
  * const config = {
  *   api: { baseUrl: 'https://api.arcaai.com', apiKey: 'your-key' },
  *   audio: {
- *     noiseFilter: { enabled: true, level: 'high' },
- *     vad: { enabled: true },
  *     stt: { enabled: true, language: 'en' },
  *   },
  * };

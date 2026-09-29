@@ -828,9 +828,9 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         ? { provider_overrides: { [analystSpec.primary.provider]: stripProvider(analystSpec.primary.providerOverride) } }
         : {}),
       // constrain DNA output to the closed-vocabulary schema
-      // (mirrors the SOAP `response_format` binding —
-      // `text-compat.controller.ts`'s `response_format: { type: 'json_schema',
-      // json_schema: responseSchema, strict: true }`). Omitted entirely
+      // (the same `response_format: { type: 'json_schema', json_schema,
+      // strict: true }` binding the v1-compat SOAP route used — that
+      // `text-compat.controller.ts` was deleted by TASK-1004). Omitted entirely
       // (not even as `undefined`) when the resolved template carries no
       // schema, so the outgoing payload shape is unchanged for legacy
       // templates/fixtures.

@@ -98,7 +98,7 @@ STREAMING_SESSIONS_ACTIVE = Gauge(
 
 STREAMING_SESSIONS_TOTAL = Counter(
     "stt_streaming_sessions_total",
-    "Total streaming sessions started",
+    "Streaming sessions by lifecycle status: started, then one terminal status each",
     ["status"],
 )
 
@@ -666,25 +666,24 @@ SESSION_FINISHED_STATUSES = frozenset({"closed", "recovered", "reaped", "failed"
 def streaming_session_finished(status: str) -> None:
     """Record one terminal streaming-session outcome.
 
-    Call ONCE per terminal outcome, from `session_manager.py` (line numbers
-    as of TASK-985 D7; re-check before wiring, this file moves fast):
+    Wired by TASK-1013. The only caller is ``SessionManager.remove_session``
+    (``stt/streaming/session_manager.py``), which every terminal path ends in, and
+    it records only when it actually removed a live session — so each session
+    counted ``started`` gets exactly one of:
 
-    - ``"closed"`` — the normal path, beside the existing
-      `record_streaming_teardown(..., status="closed", ...)` call in
-      `_build_teardown_summary` (~:4220, called from `_finalize_session_locked`).
-    - ``"recovered"`` — a session that was reconstructed after a crash
-      restart, on ITS OWN eventual close. `_build_teardown_summary`'s
-      "RECOVERED session" branch (~:4189) builds that session's usage
-      SEGMENT, not a session-finish event — confirm with the session-lifecycle
-      lane whether the recovered flag is available where `streaming_session_finished`
-      is actually called (likely still `_build_teardown_summary`/
-      `_finalize_session_locked`, with `status="recovered"` instead of
-      `"closed"` when the session was never a live creation) before wiring.
-    - ``"reaped"`` — `_reap_expired_sessions`' success branch (~:4746,
-      `await self._finalize_session(session)` succeeds).
-    - ``"failed"`` — that same function's `except Exception` branch (~:4768,
-      "Failed to reap session gracefully; forcing removal"), and any
-      `remove_session` call that runs without a prior `_finalize_session`.
+    - ``"closed"`` — finalized normally (in-band final frame, control FINALIZE,
+      the gateway's DELETE — which is also how a client disconnect or a gateway
+      resume-grace expiry reaches STT), or ended by a client CANCEL.
+    - ``"recovered"`` — the same normal close, for a session this process rebuilt
+      in ``_recover_sessions`` after a crash restart (its ``started`` was counted
+      by the process that created it).
+    - ``"reaped"`` — finalized by the idle reaper (``_reap_expired_sessions``).
+    - ``"failed"`` — removed without a completed finalize: a finalize trigger
+      that raised, a create-time rollback, a failed recovery,
+      ``force_end_all_sessions``.
+
+    A graceful ``SessionManager.stop()`` records nothing: its sessions stay in
+    Redis and finish (as ``recovered``) in the process that rebuilds them.
 
     Raises ``ValueError`` outside this closed 4-value set — ``"started"`` is
     handled separately by `streaming_session_started` and is not a valid

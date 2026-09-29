@@ -5,8 +5,17 @@
  * bucket-relative `bucketPrefix` validation (D2/Lane B).
  */
 
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { deriveLocalSourceUri, isBucketPrefixRedundant, SOURCE_LABELS, SOURCE_OPTIONS } from '../model-meta';
+import {
+  deriveLocalSourceUri,
+  isBucketPrefixRedundant,
+  MODEL_TASK_TYPE_OPTIONS,
+  RUNTIME_PROVIDER_OPTIONS,
+  SOURCE_LABELS,
+  SOURCE_OPTIONS,
+  taskTypeToPipelineTag,
+} from '../model-meta';
 
 describe('SOURCE_OPTIONS / SOURCE_LABELS — S3 (TASK-960 D3)', () => {
   it('offers S3 alongside the existing sources', () => {
@@ -61,5 +70,40 @@ describe('isBucketPrefixRedundant (TASK-960 D2, mirrors the gateway DTO validato
   it('is false for an empty value — required-ness is a separate concern', () => {
     expect(isBucketPrefixRedundant('')).toBe(false);
     expect(isBucketPrefixRedundant('   ')).toBe(false);
+  });
+});
+
+/**
+ * The console cannot import `@arcaai/domains` / `@arcaai/applications`, so the
+ * dropdown vocabularies are copies. These read the gateway's sources and fail
+ * on drift: a value missing here cannot be chosen; one extra here is a 400.
+ */
+const REPO_ROOT = new URL('../../../../../../../', import.meta.url);
+
+function sourceArray(relativePath: string, constName: string): string[] {
+  const source = readFileSync(new URL(relativePath, REPO_ROOT), 'utf8');
+  const body = source.match(new RegExp(`${constName}\\s*=\\s*\\[([\\s\\S]*?)\\]`))?.[1] ?? '';
+  return [...body.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((match) => match[1]);
+}
+
+describe('dropdown vocabularies mirror the gateway DTO', () => {
+  it('MODEL_TASK_TYPE_OPTIONS is exactly the ModelTaskType enum', () => {
+    const source = readFileSync(new URL('packages/domains/src/enums/generated/ModelTaskType.ts', REPO_ROOT), 'utf8');
+    const enumValues = [...source.matchAll(/=\s*'([A-Z0-9_]+)'/g)].map((match) => match[1]);
+    expect(enumValues.length).toBeGreaterThan(40);
+    expect([...MODEL_TASK_TYPE_OPTIONS].sort()).toEqual([...enumValues].sort());
+  });
+
+  it('RUNTIME_PROVIDER_OPTIONS is exactly AI_MODEL_PROVIDERS', () => {
+    const providers = sourceArray('packages/applications/src/services/ai-model/constants.ts', 'AI_MODEL_PROVIDERS');
+    expect(providers).toContain('azure-speech');
+    expect([...RUNTIME_PROVIDER_OPTIONS].sort()).toEqual([...providers].sort());
+  });
+});
+
+describe('taskTypeToPipelineTag', () => {
+  it('renders the enum member as the Hugging Face pipeline tag', () => {
+    expect(taskTypeToPipelineTag('AUTOMATIC_SPEECH_RECOGNITION')).toBe('automatic-speech-recognition');
+    expect(taskTypeToPipelineTag('TEXT2TEXT_GENERATION')).toBe('text2text-generation');
   });
 });

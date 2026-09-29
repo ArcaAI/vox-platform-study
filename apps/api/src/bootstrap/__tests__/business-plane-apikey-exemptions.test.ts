@@ -71,18 +71,12 @@ describe('business-plane API-key exemption audit (policy A1)', () => {
   /**
    * This pin exists so that widening the exemption set is a REVIEWED act, not a
    * silent one — it caught shim addition and forced the reason to be
-   * written down. Three reasoned exemptions plus one inherited:
-   * `VoiceProfileRedirectShimController` is the 308 shim for the retired
-   * `voice-profile` prefix. A shim copies its target's auth posture verbatim, so
-   * it inherits `VoiceProfileController`'s exemption; without the entry the audit
-   * reads a faithful shim as an unexplained hole and refuses the boot, which is
-   * exactly what it did. It dies with the shim in `ALL-2.0.0`, taking this entry
-   * with it.
+   * written down. Three reasoned exemptions. The fourth, inherited entry
+   * (`VoiceProfileRedirectShimController`, the 308 shim for the retired
+   * `voice-profile` prefix) died with the shim (TASK-1012 D-3).
    */
-  it('names exactly the reasoned exemptions and their inherited shim', () => {
-    expect(BUSINESS_PLANE_KEY_FORBIDDEN).toEqual(
-      new Set(['AuthController', 'VoiceProfileController', 'DnaWritingStyleController', 'VoiceProfileRedirectShimController']),
-    );
+  it('names exactly the reasoned exemptions', () => {
+    expect(BUSINESS_PLANE_KEY_FORBIDDEN).toEqual(new Set(['AuthController', 'VoiceProfileController', 'DnaWritingStyleController']));
   });
 
   /**

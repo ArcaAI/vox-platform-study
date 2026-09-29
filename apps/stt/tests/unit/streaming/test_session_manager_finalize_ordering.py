@@ -125,7 +125,7 @@ def _instrument(mgr, session):
 
     session.close = _close  # type: ignore[method-assign]
 
-    async def _remove(_session_id: str):
+    async def _remove(_session_id: str, **_kwargs):
         order.append("remove_session")
 
     mgr.remove_session = AsyncMock(side_effect=_remove)

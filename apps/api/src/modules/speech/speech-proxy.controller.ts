@@ -126,7 +126,11 @@ export class SpeechProxyController {
    */
   private async applyAgentSpec(body: SpeechSynthesizeRequest): Promise<SpeechSynthesizeRequest> {
     const tenantId = this.cls?.get('tenantId');
-    const { agentSlug, ...forwarded } = body;
+    // `resolved_spec` / `provider_overrides` are the RESOLUTION this gateway injects. A caller that
+    // sends its own names an engine chain / credential of its choosing and bypasses the agent
+    // cascade, so both are dropped from EVERY inbound body — including when there is no resolver or
+    // tenant to resolve with, which must never degrade into a pass-through (TASK-1012 L-1).
+    const { agentSlug, resolved_spec: _callerSpec, provider_overrides: _callerOverrides, ...forwarded } = body;
     if (!this.ttsAgentResolver || !tenantId) return forwarded;
     const { spec, overrides } = await resolveTtsRequestConfig(tenantId, {
       ttsAgentResolver: this.ttsAgentResolver,

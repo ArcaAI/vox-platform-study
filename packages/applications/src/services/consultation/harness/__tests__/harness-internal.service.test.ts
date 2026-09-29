@@ -14,7 +14,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConsultationEntity, ConsultationStatus, HarnessAuditAction, ResourceStatusType, SummaryMetaFactory } from '@arcaai/domains';
 import { HarnessInternalService } from '../harness-internal.service';
-import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_TERMINAL_STAGE } from '../dto';
+import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_FAILED_STAGE, HARNESS_PROGRESS_TERMINAL_STAGE } from '../dto';
+import { ConsultationJobService } from '../../jobs/consultation-job.service';
 
 /**
  * `consultationRepository.findById` fixtures used to be plain
@@ -119,6 +120,8 @@ const createMockContextItemRepository = () => {
     // fixture's `preSummaryText` assertion is unaffected.
     decryptContentFromEntity: vi.fn().mockImplementation(async (entity: { content?: string | null }) => entity?.content ?? null),
     create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...', tenantId: 'tenant-1' }),
+    // TASK-1014: the completed job's `content` is read back from the persisted row.
+    findById: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...', tenantId: 'tenant-1' }),
     // PersistDraft adopts its OWN prior draft (marked
     // `metaData.subType = 'HARNESS_DRAFT'`) instead of creating a second note.
     // Default empty ⇒ the "no prior draft" create path, so every pre-existing
@@ -265,8 +268,12 @@ const createMockHarnessAuditService = () => ({
 });
 
 const createMockJobService = () => ({
+  // TASK-1014: terminal callbacks read the job first (settled ⇒ duplicate, ignored); `null` = no
+  // record, so every pre-existing jobId test still sees its progress push.
+  getJobStatus: vi.fn().mockResolvedValue(null),
   notifyProgress: vi.fn().mockResolvedValue(undefined),
   notifyComplete: vi.fn().mockResolvedValue(undefined),
+  notifyFailed: vi.fn().mockResolvedValue(undefined),
 });
 
 // The live harness-progress feed. The interpreter's onEnd persist carries NO summary
@@ -2890,6 +2897,165 @@ describe('HarnessInternalService', () => {
 
       expect(namedEntityRepository.createMany).toHaveBeenCalledTimes(1);
       expect(namedEntityRepository.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // TASK-1014 — a harness-run SUMMARY job reaches a TERMINAL status
+  // =========================================================================
+  //
+  // `POST consultations/:id/summary/async` registers a ConsultationJob for the harness's own
+  // correlation id and hands the run to apps/harness. Only notifyProgress(…, 100) used to arrive,
+  // so `GET consultations/jobs/:jobId` sat at RUNNING forever and `jobs.waitFor()` timed out.
+  // These tests drive the REAL ConsultationJobService over an in-memory Redis, so the assertion is
+  // the status a poller reads — not which mock was called.
+  describe('TASK-1014 — harness summary job terminal status', () => {
+    const JOB_ID = 'harness-doc-job-1';
+    let jobs: ConsultationJobService;
+
+    const createInMemoryRedis = () => {
+      const store = new Map<string, string>();
+      return {
+        get: vi.fn(async (key: string) => store.get(key) ?? null),
+        setex: vi.fn(async (key: string, _ttl: number, value: string) => {
+          store.set(key, value);
+        }),
+        publish: vi.fn(async () => 1),
+      };
+    };
+
+    const legacyDraft = () => ({
+      tenantId: 'tenant-1',
+      userId: 'doctor-1',
+      jobId: JOB_ID,
+      content: 'S: chest pain O: BP 120/80 A: stable P: review',
+      modelName: 'gpt-x',
+      modelVersion: 'v9',
+      gateDecision: 'PASS',
+    });
+    const earlyDraft = () => ({ ...legacyDraft(), phase: HARNESS_DRAFT_PHASE.EARLY });
+    const finalizeBody = () => ({
+      tenantId: 'tenant-1',
+      userId: 'doctor-1',
+      jobId: JOB_ID,
+      contextItemId: 'ctx-draft-1',
+      gateDecision: 'PASS',
+      modelName: 'gpt-x',
+      modelVersion: 'v9',
+    });
+
+    beforeEach(async () => {
+      jobs = new ConsultationJobService({} as any, createInMemoryRedis() as any, {} as any);
+      await jobs.registerHarnessNoteJob(JOB_ID, 'consultation-1', 'tenant-1', 'doctor-1');
+      jobService = jobs as any;
+      // The persisted note as the row holds it (decrypt-on-read repopulates `content`).
+      contextItemRepository.findById.mockResolvedValue({ id: 'ctx-draft-1', content: 'S: persisted note', tenantId: 'tenant-1' });
+      service = buildService(false);
+    });
+
+    const draftPendingSensors = () =>
+      consultationFixture({
+        id: 'consultation-1',
+        tenantId: 'tenant-1',
+        status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+        updatedBy: null,
+        resourceStatus: ResourceStatusType.ENABLED,
+      });
+
+    it('single-shot persistDraft completes the job with the BullMQ result shape', async () => {
+      await service.persistDraft('consultation-1', legacyDraft());
+
+      const job = await jobs.getJobStatus(JOB_ID);
+      expect(job?.status).toBe('COMPLETED');
+      expect(job?.progress).toBe(100);
+      expect(job?.completedAt).toBeInstanceOf(Date);
+      expect(job?.result).toEqual({
+        contextItemId: 'ctx-draft-1',
+        content: 'S: persisted note',
+        summaryMeta: { aiModelId: 'gpt-x' },
+      });
+    });
+
+    it('an EARLY persistDraft is NOT terminal — the job stays RUNNING at 90 while assurance runs', async () => {
+      await service.persistDraft('consultation-1', earlyDraft());
+
+      const job = await jobs.getJobStatus(JOB_ID);
+      expect(job?.status).toBe('RUNNING');
+      expect(job?.progress).toBe(90);
+      expect(job?.result).toBeUndefined();
+    });
+
+    it('finalizeAssurance after an EARLY draft completes the job', async () => {
+      await service.persistDraft('consultation-1', earlyDraft());
+      consultationRepository.findById.mockResolvedValue(draftPendingSensors());
+
+      await service.finalizeAssurance('consultation-1', finalizeBody());
+
+      const job = await jobs.getJobStatus(JOB_ID);
+      expect(job?.status).toBe('COMPLETED');
+      expect(job?.progress).toBe(100);
+      expect(job?.result).toEqual({
+        contextItemId: 'ctx-draft-1',
+        content: 'S: persisted note',
+        summaryMeta: { aiModelId: 'gpt-x' },
+      });
+    });
+
+    it('a duplicate finalizeAssurance callback completes the job exactly once', async () => {
+      consultationRepository.findById.mockResolvedValue(draftPendingSensors());
+      const complete = vi.spyOn(jobs, 'notifyComplete');
+
+      await service.finalizeAssurance('consultation-1', finalizeBody());
+      const first = await jobs.getJobStatus(JOB_ID);
+      await service.finalizeAssurance('consultation-1', finalizeBody());
+      const second = await jobs.getJobStatus(JOB_ID);
+
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(second?.status).toBe('COMPLETED');
+      expect(second?.completedAt).toEqual(first?.completedAt);
+    });
+
+    it('a late duplicate EARLY persistDraft never regresses a COMPLETED job to RUNNING', async () => {
+      await service.persistDraft('consultation-1', legacyDraft());
+      await service.persistDraft('consultation-1', earlyDraft());
+
+      const job = await jobs.getJobStatus(JOB_ID);
+      expect(job?.status).toBe('COMPLETED');
+      expect(job?.progress).toBe(100);
+    });
+
+    it('a CANCELLED job is not resurrected by a terminal callback', async () => {
+      // A harness SUMMARY job has no queue for `cancelJob` to act on, so seed the terminal state directly.
+      const registered = await jobs.getJobStatus(JOB_ID);
+      await (jobs as any).storeJobStatus(JOB_ID, { ...registered, status: 'CANCELLED', completedAt: new Date() });
+      await service.persistDraft('consultation-1', legacyDraft());
+
+      expect((await jobs.getJobStatus(JOB_ID))?.status).toBe('CANCELLED');
+    });
+
+    it('the harness `failed` progress stage fails the job and still feeds the progress channel', async () => {
+      const dto = { tenantId: 'tenant-1', jobId: JOB_ID, stage: HARNESS_PROGRESS_FAILED_STAGE, label: 'Documentation generation failed' };
+
+      const ack = await service.reportProgress('consultation-1', dto);
+
+      expect(ack).toEqual({ ok: true });
+      expect(progressService.reportProgress).toHaveBeenCalledWith('consultation-1', dto);
+      const job = await jobs.getJobStatus(JOB_ID);
+      expect(job?.status).toBe('FAILED');
+      expect(job?.error).toBe('Documentation generation failed');
+    });
+
+    it('a `failed` stage after the job COMPLETED leaves it COMPLETED (the run failed later, the note stands)', async () => {
+      await service.persistDraft('consultation-1', legacyDraft());
+      await service.reportProgress('consultation-1', { tenantId: 'tenant-1', jobId: JOB_ID, stage: HARNESS_PROGRESS_FAILED_STAGE });
+
+      expect((await jobs.getJobStatus(JOB_ID))?.status).toBe('COMPLETED');
+    });
+
+    it('a non-terminal progress stage never touches the job', async () => {
+      await service.reportProgress('consultation-1', { tenantId: 'tenant-1', jobId: JOB_ID, stage: 'drafting_note' });
+
+      expect((await jobs.getJobStatus(JOB_ID))?.status).toBe('PENDING');
     });
   });
 });

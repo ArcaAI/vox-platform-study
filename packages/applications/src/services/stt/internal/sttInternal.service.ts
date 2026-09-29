@@ -748,12 +748,14 @@ export class SttInternalService extends BaseService implements ISttInternalServi
         attributesJson: {
           engine: dto.engine!,
           channelCount: 1,
-          // TASK-957 F-8 — WHY this transcription happened. Exactly two routes
-          // create a BATCH job and the row distinguishes them: an agent-keyed
-          // job carries `agentVersionId`, the consultation lane (the realtime
-          // service and the harness batch trigger) carries a `pipelineId` and
-          // no agent. Two values, no third state — an absent trigger here would
-          // be the hole this closes, not a fact.
+          // TASK-957 F-8 — WHY this transcription happened. When this was
+          // written, two routes created a BATCH job and the row told them apart:
+          // an agent-keyed job carried `agentVersionId`, the consultation lane
+          // (the realtime service and the harness batch trigger) carried a
+          // `pipelineId` and no agent. TASK-1006 retired `pipelineId`, and every
+          // batch job — the harness trigger included — is now agent-keyed, so
+          // this reads `AGENT_INVOCATION` for both; the consultation lane needs a
+          // signal of its own to be told apart again.
           trigger: (job.agentVersionId ? 'AGENT_INVOCATION' : 'CONSULTATION') as UsageTrigger,
         },
       };

@@ -12,7 +12,7 @@ import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { clientCaseNoteRenderings, clientClinicalContextReaderFor } from '../../context/client-clinical-context';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
-import { buildTextGeneratePayload, mapTextGenerateResponse } from '../../summary/text-generate';
+import { buildTextGeneratePayload, mapTextGenerateResponse, withoutCallerModelSelection } from '../../summary/text-generate';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { TextRequestEnrichmentService } from '../../../text-request/text-request-enrichment.service';
 import { ConfigResolver } from '../../../config-resolver';
@@ -332,15 +332,17 @@ export class PreSummaryProcessor extends WorkerHost {
   }> {
     try {
       const textStart = Date.now();
-      // Resolve the tenant's effective {provider, model} and merge as the
-      // base so a caller-supplied model wins.
-      let options = request.options;
+      // Resolve the tenant's effective {provider, model} (its TEXT_GENERATION agent). The caller's
+      // `options` ride along, but NEVER select the engine (TASK-1012 item 11): model-selecting
+      // keys are dropped before the resolved pair is merged in.
+      const callerOptions = withoutCallerModelSelection(request.options);
+      let options = callerOptions;
       // TASK-891 — the resolved selection's `generation` block, carried alongside
       // {provider, model} so its reasoning posture can reach `applyTextRuntimeProfile` below.
       let generation: Record<string, unknown> | undefined;
       if (this.harnessPolicyService) {
         const selection = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize');
-        options = { textProvider: selection.provider, textModel: selection.model, ...request.options };
+        options = { ...callerOptions, textProvider: selection.provider, textModel: selection.model };
         generation = selection.generation;
       }
       const textPayload = buildTextGeneratePayload(assembledPrompt, options, {

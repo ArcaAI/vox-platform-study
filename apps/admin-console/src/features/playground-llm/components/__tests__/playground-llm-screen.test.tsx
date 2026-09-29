@@ -251,7 +251,7 @@ describe('PlaygroundLlmScreen', () => {
   it('runs a sync generation and renders content, usage, latency and finish reason', async () => {
     let generateBody: unknown;
     stubLlm((call, parsed) => {
-      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') {
         generateBody = call.body;
         return Response.json(SYNC_RESULT);
       }
@@ -283,7 +283,7 @@ describe('PlaygroundLlmScreen', () => {
 
   it('renders a Reasoning panel for a sync generation that carries reasoning', async () => {
     stubLlm((call, parsed) => {
-      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') {
         return Response.json({ ...SYNC_RESULT, reasoning: 'Checking for cardiac vs pulmonary causes first.' });
       }
       return undefined;
@@ -300,7 +300,7 @@ describe('PlaygroundLlmScreen', () => {
 
   it('streams tokens over the ticket-authenticated gateway SSE: chunks append live, usage/done finalize', async () => {
     const calls = stubLlm((call, parsed) => {
-      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
       return undefined;
     });
     renderWithProviders(<PlaygroundLlmScreen />);
@@ -343,7 +343,7 @@ describe('PlaygroundLlmScreen', () => {
 
   it('cancels a running stream via POST text-generations/tasks/:taskId/cancel and stops the source', async () => {
     const calls = stubLlm((call, parsed) => {
-      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
       if (parsed.pathname === '/api/hope/text-generations/tasks/t-5531/cancel' && call.method === 'POST') {
         return Response.json({
           task_id: 't-5531',
@@ -379,7 +379,7 @@ describe('PlaygroundLlmScreen', () => {
 
   it('renders the designed 422 fail-closed panel (no model resolved) instead of a toast, with a retry', async () => {
     const calls = stubLlm((call, parsed) => {
-      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') {
         return Response.json(
           {
             statusCode: 422,
@@ -412,7 +412,7 @@ describe('PlaygroundLlmScreen', () => {
 
   it('renders the content-not-clinical panel for a CONTENT_BLOCKED_NOT_MEDICAL 422, never the "no model resolved" copy', async () => {
     stubLlm((call, parsed) => {
-      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') {
         return Response.json(
           {
             // The gateway's own fixed phrase for this code (never the upstream
@@ -445,7 +445,7 @@ describe('PlaygroundLlmScreen', () => {
 
   it('renders a generic fail-closed explanation when the 422 carries no recognised error_code', async () => {
     stubLlm((call, parsed) => {
-      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') {
         return Response.json({ detail: 'Something else went wrong upstream.' }, { status: 422 });
       }
       return undefined;
@@ -464,7 +464,7 @@ describe('PlaygroundLlmScreen', () => {
 
   it('surfaces a transport drop as the designed reattach state and reads the task post-mortem', async () => {
     const calls = stubLlm((call, parsed) => {
-      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
       if (parsed.pathname === '/api/hope/text-generations/tasks/t-5531' && call.method === 'GET') {
         return Response.json({
           task_id: 't-5531',
@@ -515,7 +515,7 @@ describe('PlaygroundLlmScreen', () => {
     expect(await screen.findByText(/No provider catalog/)).toBeDefined();
     expect(screen.queryByLabelText('Provider')).toBeNull();
     expect(screen.queryByLabelText('Model')).toBeNull();
-    expect(screen.getByText('provider/model omitted → tenant default via HarnessPolicy cascade')).toBeDefined();
+    expect(screen.getByText('provider/model omitted → tenant TEXT_GENERATION agent')).toBeDefined();
 
     fireEvent.click(screen.getByRole('switch', { name: 'Streaming mode' }));
     await generateWithPrompt('Summarize');
@@ -523,7 +523,7 @@ describe('PlaygroundLlmScreen', () => {
     expect(generateBody).toEqual({ prompt: 'Summarize', temperature: 0.1, max_tokens: 32768, stream: false });
   });
 
-  it('offers a model omit option that drops the model from the body (HarnessPolicy cascade)', async () => {
+  it('offers a model omit option that drops provider AND model (the tenant agent selects, on the business route)', async () => {
     let generateBody: unknown;
     stubLlm((call, parsed) => {
       if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
@@ -536,18 +536,18 @@ describe('PlaygroundLlmScreen', () => {
 
     const modelSelect = (await screen.findByLabelText('Model')) as HTMLSelectElement;
     fireEvent.change(modelSelect, { target: { value: '' } });
-    expect(screen.getByText('model omitted → tenant default via HarnessPolicy cascade')).toBeDefined();
+    expect(screen.getByText('provider/model omitted → tenant TEXT_GENERATION agent')).toBeDefined();
 
     fireEvent.click(screen.getByRole('switch', { name: 'Streaming mode' }));
     await generateWithPrompt('Summarize');
     await waitFor(() => expect(generateBody).toBeDefined());
-    // model is absent; the gateway cascade resolves the {provider, model} pair.
-    expect(generateBody).toEqual({ prompt: 'Summarize', provider: 'azure-openai', temperature: 0.1, max_tokens: 32768, stream: false });
+    // Nothing pinned: the tenant's TEXT_GENERATION agent resolves the {provider, model} pair.
+    expect(generateBody).toEqual({ prompt: 'Summarize', temperature: 0.1, max_tokens: 32768, stream: false });
   });
 
   it('shows the request-summary strip with the effective settings and the live task id', async () => {
     stubLlm((call, parsed) => {
-      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
       return undefined;
     });
     renderWithProviders(<PlaygroundLlmScreen />);
@@ -568,7 +568,7 @@ describe('PlaygroundLlmScreen', () => {
 
   it('finalizes a dropped stream from the task read when the task completed server-side', async () => {
     stubLlm((call, parsed) => {
-      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
       if (parsed.pathname === '/api/hope/text-generations/tasks/t-5531' && call.method === 'GET') {
         return Response.json({
           task_id: 't-5531',
@@ -628,7 +628,7 @@ describe('PlaygroundLlmScreen', () => {
       if (parsed.pathname === '/api/hope/admin/prompt-templates' && call.method === 'GET') {
         return Response.json({ data: [{ id: 'tpl-1', name: 'Cardio Pre-Summary', scope: 'TENANT_DEFAULT' }], count: 1, limit: 20, page: 1 });
       }
-      if (parsed.pathname === '/api/hope/text-generations/generate/assembled' && call.method === 'POST') {
+      if (parsed.pathname === '/api/hope/admin/text-generations/generate/assembled' && call.method === 'POST') {
         assembledBody = call.body;
         return Response.json({
           ...SYNC_RESULT,
@@ -686,8 +686,37 @@ describe('PlaygroundLlmScreen', () => {
     });
     renderWithProviders(<PlaygroundLlmScreen />);
 
-    await screen.findByLabelText('Provider');
+    await screen.findByText(/reserved to platform administrators/);
     expect(screen.queryByRole('switch', { name: /__GLOBAL__/ })).toBeNull();
+  });
+
+  // TASK-1012 L-3 — pinning a provider/model is the platform-admin playground route
+  // (`admin/text-generations/*`). A tenant admin runs on its tenant's TEXT_GENERATION agent:
+  // no picker, nothing pinned, the business route.
+  it('a tenant admin gets no provider/model picker and runs on the tenant agent via the business route', async () => {
+    let generateBody: unknown;
+    const calls = stubLlm((call, parsed) => {
+      if (parsed.pathname === '/api/auth/session') {
+        return Response.json(session({ isElevated: false, roles: ['TENANT_ADMIN'], workingTenantId: null }));
+      }
+      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
+        generateBody = call.body;
+        return Response.json(SYNC_RESULT);
+      }
+      return undefined;
+    });
+    renderWithProviders(<PlaygroundLlmScreen />);
+
+    expect(await screen.findByText(/reserved to platform administrators/)).toBeDefined();
+    expect(screen.queryByLabelText('Provider')).toBeNull();
+    expect(screen.queryByLabelText('Model')).toBeNull();
+    expect(await screen.findByText('provider/model omitted → tenant TEXT_GENERATION agent')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Streaming mode' }));
+    await generateWithPrompt('Summarize');
+    await waitFor(() => expect(generateBody).toBeDefined());
+    expect(generateBody).toEqual({ prompt: 'Summarize', temperature: 0.1, max_tokens: 32768, stream: false });
+    expect(calls.some((call) => call.url.includes('/api/hope/admin/text-generations/'))).toBe(false);
   });
 
   /**
@@ -702,7 +731,7 @@ describe('PlaygroundLlmScreen', () => {
     async function bodyForReasoning(prepare: () => void): Promise<Record<string, unknown>> {
       let generateBody: Record<string, unknown> = {};
       stubLlm((call, parsed) => {
-        if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
+        if (parsed.pathname === '/api/hope/admin/text-generations/generate' && call.method === 'POST') {
           generateBody = call.body as Record<string, unknown>;
           return Response.json(SYNC_RESULT);
         }

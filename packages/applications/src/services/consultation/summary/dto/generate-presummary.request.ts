@@ -13,7 +13,10 @@ export class GeneratePreSummaryRequest {
   @IsString({ each: true })
   caseNoteIds?: string[];
 
-  @ApiPropertyOptional({ description: 'Additional options for pre-summarization' })
+  @ApiPropertyOptional({
+    description:
+      'Additional options for pre-summarization. Engine-selecting keys (`provider`, `textProvider`, `model`, `textModel`) are ignored — the model is the tenant`s TEXT_GENERATION agent.',
+  })
   @IsOptional()
   @IsObject()
   options?: Record<string, unknown>;

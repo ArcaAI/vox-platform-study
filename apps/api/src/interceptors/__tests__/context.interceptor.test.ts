@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ExecutionContext, CallHandler } from '@nestjs/common';
-import { of, firstValueFrom } from 'rxjs';
+import { BadRequestException, ExecutionContext, CallHandler } from '@nestjs/common';
+import { of, firstValueFrom, throwError } from 'rxjs';
 import { ContextInterceptor } from '../context.interceptor';
 
 describe('ContextInterceptor', () => {
@@ -69,6 +69,29 @@ describe('ContextInterceptor', () => {
       await firstValueFrom(result$);
 
       expect(mockClsService.set).toHaveBeenCalledWith('requestIp', '10.0.0.1');
+    });
+
+    it('logs the per-field reasons of a validation 400 on the "Request failed" line', async () => {
+      const errorSpy = vi.spyOn(interceptor['logger'], 'error');
+      const reasons = ['taskType must be one of the following values: TEXT_GENERATION, ...'];
+      const handler: CallHandler = {
+        handle: () => throwError(() => new BadRequestException({ statusCode: 400, message: 'Validation error', subErrors: reasons })),
+      };
+
+      await expect(firstValueFrom(interceptor.intercept(createMockContext({ method: 'POST' }), handler))).rejects.toThrow();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Request failed', statusCode: 400, validationErrors: reasons }),
+      );
+    });
+
+    it('omits validationErrors when the failure carries none', async () => {
+      const errorSpy = vi.spyOn(interceptor['logger'], 'error');
+      const handler: CallHandler = { handle: () => throwError(() => new BadRequestException('nope')) };
+
+      await expect(firstValueFrom(interceptor.intercept(createMockContext(), handler))).rejects.toThrow();
+
+      expect(errorSpy.mock.calls[0][0]).not.toHaveProperty('validationErrors');
     });
 
     it('should pass through the handler response', async () => {
