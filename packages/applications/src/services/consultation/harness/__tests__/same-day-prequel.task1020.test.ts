@@ -16,6 +16,7 @@ import {
   SAME_DAY_PREQUEL_TRUNCATION_MARKER,
   hasSameDayPrequel,
   resolveSameDayPrequel,
+  resolveSameDayPrequelTimeZone,
 } from '../same-day-prequel';
 import { selectAuthoritativeNoteText } from '../prior-visit-summary';
 
@@ -72,6 +73,41 @@ describe('TASK-1020 — resolveSameDayPrequel', () => {
     expect(prequel.summary).toBe('### Earlier visit today (04:15 UTC, status SIGNED)\nMORNING-SIGNED-NOTE plan: CBC, LFT');
     expect(prequel.hasSameDayPrequel).toBe(true);
     expect(hasSameDayPrequel(prequel.summary)).toBe(true);
+  });
+
+  /**
+   * Live-replay defect D3 — an IST clinic read "Earlier visit today (16:26 UTC, …)" for a visit its
+   * clinician saw at 21:56. The block's time is read in the tenant's
+   * `consultation.appointmentDay.timeZone`, the same zone that decides which day the visit is on.
+   */
+  it('states each block`s time in the tenant time zone the caller passes', async () => {
+    const morning = row({ id: 'morning', createdAt: new Date('2026-09-29T16:26:00.000Z'), status: 'CLOSED_COMPLETE' });
+    const deps = readers([morning], { morning: { [ContextItemType.SIGNED_NOTE]: [note('MORNING')] } });
+
+    const prequel = await resolveSameDayPrequel(deps, row({ id: 'pm', parentConsultationId: 'morning' }), { timeZone: 'Asia/Kolkata' });
+
+    expect(prequel.summary).toBe('### Earlier visit today (21:56 IST, status CLOSED_COMPLETE)\nMORNING');
+  });
+
+  it('keeps a zone with a well-known abbreviation, and an offset where the zone has none', async () => {
+    const morning = row({ id: 'morning', createdAt: new Date('2026-09-29T16:26:00.000Z') });
+    const deps = readers([morning], { morning: { [ContextItemType.SIGNED_NOTE]: [note('M')] } });
+    const at = async (timeZone: string) =>
+      (await resolveSameDayPrequel(deps, row({ id: 'pm', parentConsultationId: 'morning' }), { timeZone })).summary.split('\n')[0];
+
+    expect(await at('America/New_York')).toBe('### Earlier visit today (12:26 EDT, status SIGNED)');
+    expect(await at('UTC')).toBe('### Earlier visit today (16:26 UTC, status SIGNED)');
+    expect(await at('Asia/Kathmandu')).toMatch(/^### Earlier visit today \(22:11 GMT\+5:45, status SIGNED\)$/);
+  });
+
+  it('falls back to UTC for a zone this runtime cannot resolve, and when none is passed', async () => {
+    const morning = row({ id: 'morning', createdAt: new Date('2026-09-29T16:26:00.000Z') });
+    const deps = readers([morning], { morning: { [ContextItemType.SIGNED_NOTE]: [note('M')] } });
+    const subject = row({ id: 'pm', parentConsultationId: 'morning' });
+
+    expect((await resolveSameDayPrequel(deps, subject, { timeZone: 'Mars/Olympus' })).summary).toContain('(16:26 UTC,');
+    expect((await resolveSameDayPrequel(deps, subject, { timeZone: null })).summary).toContain('(16:26 UTC,');
+    expect((await resolveSameDayPrequel(deps, subject)).summary).toContain('(16:26 UTC,');
   });
 
   it('is empty (and false) for a first visit — no parent, no read at all', async () => {
@@ -286,5 +322,25 @@ describe('TASK-1020 — the ONE authority-order selection, shared with the prior
 
   it('returns null when no tier has a usable note', async () => {
     await expect(selectAuthoritativeNoteText({ findByType: vi.fn(async () => [note('  ')]) }, 'c-1')).resolves.toBeNull();
+  });
+});
+
+describe('TASK-1020 — resolveSameDayPrequelTimeZone (the zone a caller passes)', () => {
+  const settings = (value: unknown) => ({ resolveEffective: vi.fn(async () => ({ value })) });
+
+  it('reads consultation.appointmentDay.timeZone for the tenant', async () => {
+    const effective = settings('Asia/Kolkata');
+
+    await expect(resolveSameDayPrequelTimeZone(effective, TENANT)).resolves.toBe('Asia/Kolkata');
+    expect(effective.resolveEffective).toHaveBeenCalledWith('consultation.appointmentDay.timeZone', { tenantId: TENANT });
+  });
+
+  it('answers UTC — never throws — when unwired, tenant-less, invalid, or the settings read fails', async () => {
+    await expect(resolveSameDayPrequelTimeZone(undefined, TENANT)).resolves.toBe('UTC');
+    await expect(resolveSameDayPrequelTimeZone(settings('Asia/Kolkata'), null)).resolves.toBe('UTC');
+    await expect(resolveSameDayPrequelTimeZone(settings('Mars/Olympus'), TENANT)).resolves.toBe('UTC');
+    await expect(resolveSameDayPrequelTimeZone({ resolveEffective: vi.fn(async () => Promise.reject(new Error('down'))) }, TENANT)).resolves.toBe(
+      'UTC',
+    );
   });
 });

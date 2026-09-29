@@ -807,6 +807,13 @@ export const arcaaiOutputLanguagePolicyFragment = () => ({
  * carry `default("")`, so this fragment never adds a REQUIRED variable to the agent's publish
  * projection (`requiredPromptVariables` reads every fragment, conditional ones included).
  *
+ * The placeholders read `trigger.context.*`, the SAME root as the `when` — never `context.*`. The
+ * `context` alias is the unwrapped kind only for an agent whose frozen schema has exactly one kind
+ * keyed `context`; the ArcaAI scribe has several, so on the realtime lane (`{ trigger: { context } }`)
+ * `context.same_day_prequel_summary` resolved to nothing and a live replay rendered "The earlier
+ * note(s):." while the fragment was selected. `trigger.context.*` resolves on both lanes: realtime
+ * publishes the kind there, and the durable interpreter nests the handoff context under it too.
+ *
  * Like the language policy it is a POINTER to one shared row with no version pin, and it stays OUT
  * of the clinical corpus (22 + 1 rows, v1/v2/v3 each). The `arcaai-same-day-return` slug is a TAG:
  * a fragment key may not contain a hyphen (`^[a-z0-9_]{2,48}$`), so the key is `same_day_return`.
@@ -819,7 +826,7 @@ export const ARCAAI_SAME_DAY_RETURN_FRAGMENT_KEY = 'same_day_return';
 /** True only when an earlier visit with this patient exists today; absent or false selects nothing. */
 export const ARCAAI_SAME_DAY_RETURN_WHEN = 'has(trigger.context.same_day_prequel) && trigger.context.same_day_prequel == true';
 
-export const ARCAAI_SAME_DAY_RETURN_CONTENT = `SAME-DAY RETURN VISIT. This encounter continues an earlier visit with this patient today. The earlier note(s): {{context.same_day_prequel_summary | default("")}}. Results available now: {{context.formatted_test_results | default("")}}.
+export const ARCAAI_SAME_DAY_RETURN_CONTENT = `SAME-DAY RETURN VISIT. This encounter continues an earlier visit with this patient today. The earlier note(s): {{trigger.context.same_day_prequel_summary | default("")}}. Results available now: {{trigger.context.formatted_test_results | default("")}}.
 - Document only what is new since the earlier visit today: investigations completed, results with values, units and flags, and symptoms or findings that changed.
 - Under "Investigations (Previous vs Current)", Previous is what was ordered or known at the earlier visit today; Current is the results now available.
 - Update the assessment/diagnosis in the light of the results; say explicitly when it is unchanged.

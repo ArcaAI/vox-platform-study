@@ -49,6 +49,10 @@ import {
 import { noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
 import { ARCAAI_CONSULTATION_SCRIBE_DEFINITION } from './07g-arcaai-two-schemas';
 import {
+  CASENOTE_FINALIZATION_PARAMETERS,
+  CASENOTE_FINALIZATION_SYSTEM_PROMPT,
+  CASENOTE_OUTPUT_SCHEMA,
+  CLINICAL_NOTE_FRAGMENT_KEY,
   PRE_SUMMARY_AGENT_SLUG,
   PRE_SUMMARY_PARAMETERS,
   summarizationParameters,
@@ -242,6 +246,70 @@ export const ARCAAI_DEPARTMENT_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_
 /** The 22 department agents plus the tenant's own warm start — what phase 29 writes. */
 export const ARCAAI_AGENT_SPECS: SeedAgentSpec[] = [...ARCAAI_DEPARTMENT_AGENT_SPECS, ARCAAI_PRE_SUMMARY_AGENT_SPEC];
 
+/** The lineage key every consultation graph's `n_finalize` node names (`28-workflow-library.ts`). */
+export const ARCAAI_FINALIZATION_AGENT_SLUG = 'casenote-finalization';
+
+/**
+ * TASK-1020 (live-replay defect D2) — ArcaAI's OWN finalizer.
+ *
+ * `n_finalize` runs `casenote-finalization`, which ArcaAI used to receive as a verbatim clone of the
+ * SYSTEM row (phase 26): the finalization body and the language policy, nothing that reads the
+ * same-day prequel or the results. At an afternoon return the durable finalize therefore rebuilt
+ * the note from the partial note alone — the lab values were lost and the plan sections came out
+ * empty, while the live lane had both.
+ *
+ * Seeded HERE for the same reason as {@link ARCAAI_PRE_SUMMARY_AGENT_SPEC}: phase 29 runs before 26
+ * and `copyAgents` skips a slug the tenant already has. Everything but the instruction is the
+ * platform finalizer's (model, parameters, output contract), and the instruction is the platform's
+ * body FIRST (byte-identical, inline), then the SAME conditional `same_day_return` fragment the 11
+ * revisit agents carry, then the tenant's language policy LAST. On a first visit the handoff
+ * publishes no `same_day_prequel`, the guarded `when` is a clean `condition_false`, and the prompt
+ * is exactly the platform finalizer's.
+ *
+ * Kept OUT of {@link ARCAAI_AGENT_SPECS}: that list is the tenant's clinical-corpus agents (every
+ * one binds an ArcaAI clinical template, and several tests pin it at 23). An existing tenant is
+ * converted by the TASK-1020 rollout script, not by this seed — see `seedArcaaiFinalizationAgent`.
+ */
+export const ARCAAI_FINALIZATION_AGENT_SPEC: SeedAgentSpec = {
+  id: arcaaiAgentId(24),
+  tenantId: ARCAAI,
+  slug: ARCAAI_FINALIZATION_AGENT_SLUG,
+  name: 'Case note finalization',
+  description:
+    'Finalizes the case note from the partial summaries and the work notes, redacts residual PII, keeps the document template headings. At a same-day return visit it also receives the earlier note(s) of the day and the results now available. Structured output: { case_note, redactions }.',
+  task: 'TEXT_GENERATION',
+  modelSlug: 'lms-gemma-4-e2b-it-qat',
+  fallbackModelSlugs: [],
+  instruction: {
+    fragments: [
+      { key: CLINICAL_NOTE_FRAGMENT_KEY, systemPrompt: CASENOTE_FINALIZATION_SYSTEM_PROMPT },
+      arcaaiSameDayReturnFragment(),
+      arcaaiOutputLanguagePolicyFragment(),
+    ],
+  },
+  parameters: CASENOTE_FINALIZATION_PARAMETERS,
+  outputSchema: CASENOTE_OUTPUT_SCHEMA,
+  status: 'PUBLISHED',
+  isActive: true,
+  tags: ['tier:tenant-authored', 'task:llm', 'capability:finalization'],
+  provenance: null,
+};
+
+/**
+ * Seed {@link ARCAAI_FINALIZATION_AGENT_SPEC} — unless the tenant already HAS a finalizer (a clone
+ * phase 26 made on an earlier seed, or one an admin edited). `seedAgentSpecs` dedupes by id only,
+ * so creating over an existing slug would collide on `(tenantId, slug, versionNumber)`; the live
+ * row is converted through the admin API by the TASK-1020 rollout script instead.
+ */
+async function seedArcaaiFinalizationAgent(client: SeedArcaaiClient) {
+  const existing = await client.agent.findFirst({ where: { tenantId: ARCAAI, slug: ARCAAI_FINALIZATION_AGENT_SLUG }, select: { id: true } });
+  if (existing) {
+    console.log(`  ArcaAI ${ARCAAI_FINALIZATION_AGENT_SLUG} already present — left as is (convert it with the TASK-1020 rollout script)`);
+    return { created: 0, skippedExisting: 1, skippedUnresolvable: 0, assignmentsCreated: 0 };
+  }
+  return seedAgentSpecs(client, [ARCAAI_FINALIZATION_AGENT_SPEC], 'ArcaAI finalization', 300);
+}
+
 // =============================================================================
 // Workflows — 11
 // =============================================================================
@@ -341,6 +409,9 @@ export function arcaaiWorkflowAssignments(departmentIdByCode: ReadonlyMap<string
 // =============================================================================
 
 export interface SeedArcaaiClient extends SeedAgentsClient, SeedWorkflowsClient {
+  agent: SeedAgentsClient['agent'] & {
+    findFirst(args: { where: { tenantId: string; slug: string }; select: { id: true } }): Promise<{ id: string } | null>;
+  };
   department: {
     findMany(args: {
       where: { tenantId: string; code: { in: string[] } };
@@ -359,6 +430,8 @@ export const seedArcaaiAgentsAndWorkflows = async (client: CorePrismaClient | Se
   console.log('Seeding the ArcaAI department agents and consultation workflows (11 departments × 2 visit types) ...');
 
   const agents = await seedAgentSpecs(typed, ARCAAI_AGENT_SPECS, 'ArcaAI department', 200);
+  // TASK-1020 D2 — the tenant's own finalizer, before phase 26 would clone the platform row.
+  const finalizer = await seedArcaaiFinalizationAgent(typed);
   // TASK-932 §3.7 — the department note SHAPES, written HERE and not in phase 27: they are one
   // customer's content, and phase 27 runs in `safe` mode. The definitions below name their slugs,
   // so the rows must exist before a lane resolves one (`resolveForGeneration` falls open to the
@@ -374,7 +447,7 @@ export const seedArcaaiAgentsAndWorkflows = async (client: CorePrismaClient | Se
   const assignments = await writeWorkflowAssignments(typed, rows, changes);
 
   console.log(
-    `  ✓ ArcaAI agents: ${agents.created} created, ${agents.skippedExisting} skipped, ${agents.skippedUnresolvable} unresolvable · document templates: ${documentTemplates} · workflows: ${definitions.created} created, ${definitions.skipped} skipped · assignments: ${assignments}`,
+    `  ✓ ArcaAI agents: ${agents.created} created, ${agents.skippedExisting} skipped, ${agents.skippedUnresolvable} unresolvable · finalizer: ${finalizer.created} created · document templates: ${documentTemplates} · workflows: ${definitions.created} created, ${definitions.skipped} skipped · assignments: ${assignments}`,
   );
   return { success: true as const, agents, definitions, assignments, documentTemplates };
 };

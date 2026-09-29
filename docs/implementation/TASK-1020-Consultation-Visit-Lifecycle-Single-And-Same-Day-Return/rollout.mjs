@@ -9,8 +9,16 @@
  *   2. that fragment, conditional, on the ACTIVE version of each `arcaai-<dept>-summary-revisit` agent
  *      (order: clinical_note, same_day_return, output-language policy) — a republish per agent,
  *      because publish FREEZES fragment text into `compiledConfig`
- *   3. the `investigations` kind on the `arcaai_consultation_scribe` context schema (publish + pin)
- *   4. the tenant setting `consultation.appointmentDay.timeZone`
+ *   3. that fragment, same `when`, on the ACTIVE `casenote-finalization` agent — the one every ArcaAI
+ *      graph's durable `n_finalize` node runs (order: its base body, same_day_return, policy LAST).
+ *      A single-form instruction (`systemPrompt` or `promptTemplateId`) is lifted into fragments
+ *      with the base kept FIRST. Same republish recipe as step 2.
+ *   4. the `investigations` kind on the `arcaai_consultation_scribe` context schema (publish + pin)
+ *   5. the tenant setting `consultation.appointmentDay.timeZone`
+ *
+ * A changed fragment BODY in the seed (e.g. the placeholder root fix) re-runs steps 1-3: step 1
+ * PATCHes the template back to DRAFT and re-approves it, and steps 2-3 compare the FROZEN text in
+ * each agent's `compiledConfig` with the seed body, so every agent is republished onto it.
  *
  * The source of truth for the text, the `when`, and the schema definition is the committed seed
  * (`packages/database/src/prisma/db_main/seed/07b-*.ts`, `07g-*.ts`), evaluated with `tsx` so
@@ -264,6 +272,29 @@ const fragmentBound = (instr, tpl, seed) =>
     );
   })();
 
+/**
+ * The republish recipe (publish FREEZES fragment text): new version → PATCH the instruction under
+ * If-Match → validate → publish + activate → exactly one active version → the fragment text is
+ * frozen into `compiledConfig`. Returns whether a version was published.
+ */
+async function republish(step, active, instruction, marker) {
+  let draft = await call('POST', `admin/agents/${active.id}/versions`, { body: {} });
+  draft = await call('PATCH', `admin/agents/${draft.id}`, { ifMatch: draft.version, body: { instruction } });
+  const validated = await call('POST', `admin/agents/${draft.id}/validate`, { body: {} });
+  if (validated.validationReport?.blocking) {
+    fail(step, `validate blocked: ${JSON.stringify(validated.validationReport.findings).slice(0, 500)} (draft ${draft.id} left unpublished)`);
+    return false;
+  }
+  const pub = await call('POST', `admin/agents/${draft.id}/publish`, { body: { activate: true } });
+  const versions = await get(`admin/agents/${pub.id}/versions`);
+  const activeCount = versions.filter((v) => v.isActive).length;
+  const frozen = findText(pub.compiledConfig, marker);
+  if (activeCount !== 1) fail(step, `${activeCount} active versions after publish`);
+  else if (!frozen) fail(step, `published v${pub.versionNumber} but the fragment text is not frozen into compiledConfig`);
+  else ok(step, `v${active.versionNumber} -> v${pub.versionNumber} id=${pub.id} active=1 frozen at ${frozen}`);
+  return true;
+}
+
 async function ensureAgents(seed, tplIn) {
   // In a dry run before the template exists, plan against a placeholder id.
   const tpl = tplIn ?? { id: '<new-template-id>' };
@@ -296,25 +327,102 @@ async function ensureAgents(seed, tplIn) {
         plan(step, `v${active.versionNumber} -> v${active.versionNumber + 1}: bound=${bound} frozen=${Boolean(frozenAt)}; fragments=[${instruction.fragments.map((f) => f.key).join(', ')}]`);
         continue;
       }
-      let draft = await call('POST', `admin/agents/${active.id}/versions`, { body: {} });
-      draft = await call('PATCH', `admin/agents/${draft.id}`, { ifMatch: draft.version, body: { instruction } });
-      const validated = await call('POST', `admin/agents/${draft.id}/validate`, { body: {} });
-      if (validated.validationReport?.blocking) {
-        fail(step, `validate blocked: ${JSON.stringify(validated.validationReport.findings).slice(0, 500)} (draft ${draft.id} left unpublished)`);
-        continue;
-      }
-      const pub = await call('POST', `admin/agents/${draft.id}/publish`, { body: { activate: true } });
-      published += 1;
-      const versions = await get(`admin/agents/${pub.id}/versions`);
-      const activeCount = versions.filter((v) => v.isActive).length;
-      const frozen = findText(pub.compiledConfig, marker);
-      if (activeCount !== 1) fail(step, `${activeCount} active versions after publish`);
-      else if (!frozen) fail(step, `published v${pub.versionNumber} but the fragment text is not frozen into compiledConfig`);
-      else ok(step, `v${active.versionNumber} -> v${pub.versionNumber} id=${pub.id} active=1 frozen at ${frozen}`);
+      if (await republish(step, active, instruction, marker)) published += 1;
     } catch (e) {
       fail(step, e.message);
     }
   }
+  return published;
+}
+
+// ---------------------------------------------------------------------------------------------
+// 3. the durable finalizer
+// ---------------------------------------------------------------------------------------------
+/** The lineage key every consultation graph's `n_finalize` names (seed `28-workflow-library.ts`, `ARCAAI_FINALIZATION_AGENT_SLUG`). */
+const FINALIZER_SLUG = 'casenote-finalization';
+const BASE_KEY = 'clinical_note';
+
+/**
+ * The finalizer's instruction with `same_day_return` placed right after its BASE body, derived from
+ * what it carries now. The base is the `clinical_note` fragment, else the first fragment; a policy
+ * fragment stays LAST. A single-form instruction (`systemPrompt` inline, or `promptTemplateId`) is
+ * lifted into `[base, same_day_return, policy?]`, carrying every other instruction key. `null` =
+ * cannot derive.
+ */
+function desiredFinalizerInstruction(current, tpl, seed, policyTemplateId) {
+  const sameDay = { key: seed.sameDayKey, promptTemplateId: tpl.id, when: seed.sameDayWhen };
+  if (Array.isArray(current?.fragments)) {
+    const { fragments: all, ...carried } = current;
+    const fragments = all.filter((f) => f.key !== seed.sameDayKey);
+    if (fragments.length === 0) return null;
+    const baseIdx = Math.max(0, fragments.findIndex((f) => f.key === BASE_KEY));
+    fragments.splice(baseIdx + 1, 0, sameDay);
+    const policyIdx = fragments.findIndex((f) => f.key === seed.policyKey);
+    if (policyIdx >= 0 && policyIdx !== fragments.length - 1) fragments.push(...fragments.splice(policyIdx, 1));
+    return { ...carried, fragments };
+  }
+  let base;
+  let carried;
+  if (typeof current?.systemPrompt === 'string' && current.systemPrompt) {
+    const { systemPrompt, ...rest } = current;
+    base = { key: BASE_KEY, systemPrompt };
+    carried = rest;
+  } else if (current?.promptTemplateId) {
+    const { promptTemplateId, promptVersionNumber, ...rest } = current;
+    base = { key: BASE_KEY, promptTemplateId, ...(promptVersionNumber ? { promptVersionNumber } : {}) };
+    carried = rest;
+  } else {
+    return null;
+  }
+  const fragments = [base, sameDay, ...(policyTemplateId ? [{ key: seed.policyKey, promptTemplateId: policyTemplateId }] : [])];
+  return { ...carried, fragments };
+}
+
+/** Bound = same_day_return right after the base, pointing at `tpl` with the seed `when`, and any policy LAST. */
+function finalizerBound(instr, tpl, seed) {
+  if (!Array.isArray(instr?.fragments)) return false;
+  const fragments = instr.fragments;
+  const i = fragments.findIndex((f) => f.key === seed.sameDayKey);
+  const baseIdx = Math.max(0, fragments.findIndex((f) => f.key === BASE_KEY));
+  const policyIdx = fragments.findIndex((f) => f.key === seed.policyKey);
+  return (
+    i === baseIdx + 1 &&
+    fragments[i].promptTemplateId === tpl.id &&
+    fragments[i].when === seed.sameDayWhen &&
+    (policyIdx < 0 || policyIdx === fragments.length - 1)
+  );
+}
+
+async function ensureFinalizer(seed, tplIn) {
+  const step = `agent ${FINALIZER_SLUG}`;
+  const tpl = tplIn ?? { id: '<new-template-id>' };
+  const list = (await get('admin/agents?task=TEXT_GENERATION')) ?? [];
+  const actives = rows(list).filter((a) => a.slug === FINALIZER_SLUG && a.tenantId === TENANT_ID && a.isActive && a.status === 'PUBLISHED');
+  if (actives.length !== 1) {
+    fail(step, `expected 1 active published ${FINALIZER_SLUG} in the tenant, found ${actives.length}`);
+    return 0;
+  }
+  const active = await get(`admin/agents/${actives[0].id}`);
+  const marker = seed.template.content;
+  const bound = tpl.id !== '<new-template-id>' && finalizerBound(active.instruction, tpl, seed);
+  const frozenAt = tplIn ? findText(active.compiledConfig, marker) : null;
+  if (bound && frozenAt) {
+    skip(step, `v${active.versionNumber} active, fragment bound and frozen at ${frozenAt}`);
+    return 0;
+  }
+  const instruction = desiredFinalizerInstruction(active.instruction, tpl, seed, await findPolicyTemplateId());
+  if (!instruction) {
+    fail(step, `cannot derive fragments (no fragments, systemPrompt or promptTemplateId); instruction keys=${Object.keys(active.instruction ?? {})}`);
+    return 0;
+  }
+  if (DRY) {
+    plan(step, `v${active.versionNumber} -> v${active.versionNumber + 1}: bound=${bound} frozen=${Boolean(frozenAt)}; fragments=[${instruction.fragments.map((f) => f.key).join(', ')}]`);
+    return 0;
+  }
+  return (await republish(step, active, instruction, marker)) ? 1 : 0;
+}
+
+async function settleAgentCache(published) {
   if (published > 0 && SETTLE_MS > 0) {
     line('ok', 'agents settle', `waiting ${SETTLE_MS} ms for the per-process agent cache`);
     await sleep(SETTLE_MS);
@@ -322,7 +430,7 @@ async function ensureAgents(seed, tplIn) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// 3. the context schema
+// 4. the context schema
 // ---------------------------------------------------------------------------------------------
 async function ensureSchema(seed) {
   const step = `context schema ${seed.scribeSlug}`;
@@ -367,7 +475,7 @@ const countBy = (list) =>
   }, {});
 
 // ---------------------------------------------------------------------------------------------
-// 4. the setting
+// 5. the setting
 // ---------------------------------------------------------------------------------------------
 async function ensureSetting() {
   const step = `setting ${TZ_KEY}`;
@@ -401,14 +509,22 @@ async function main() {
   } catch (e) {
     fail('template same_day_return', e.message);
   }
+  let published = 0;
   if (tpl || DRY) {
     try {
-      await ensureAgents(seed, tpl);
+      published += await ensureAgents(seed, tpl);
     } catch (e) {
       fail('agents', e.message);
     }
+    try {
+      published += await ensureFinalizer(seed, tpl);
+    } catch (e) {
+      fail(`agent ${FINALIZER_SLUG}`, e.message);
+    }
+    await settleAgentCache(published);
   } else {
     fail('agents', 'skipped: template step failed');
+    fail(`agent ${FINALIZER_SLUG}`, 'skipped: template step failed');
   }
   try {
     await ensureSchema(seed);

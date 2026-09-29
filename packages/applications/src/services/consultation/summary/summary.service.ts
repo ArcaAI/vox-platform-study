@@ -72,7 +72,7 @@ import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, interna
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { clientCaseNoteRenderings, clientClinicalContextReaderFor, type ClientClinicalContext } from '../context/client-clinical-context';
-import { resolveSameDayPrequel } from '../harness/same-day-prequel';
+import { resolveSameDayPrequel, resolveSameDayPrequelTimeZone } from '../harness/same-day-prequel';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IBillingService } from '../../billing/IBillingService';
@@ -467,7 +467,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     // taken in between belong. Both never throw; both are spread only when present.
     const [testResults, sameDayPrequel] = await Promise.all([
       clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).readTestResults(consultationId),
-      resolveSameDayPrequel({ consultationRepository: this.consultationRepository, contextItemRepository: this.contextItemRepository }, consultation),
+      resolveSameDayPrequel(
+        { consultationRepository: this.consultationRepository, contextItemRepository: this.contextItemRepository },
+        consultation,
+        {
+          timeZone: await resolveSameDayPrequelTimeZone(this.effectiveSettings, tenantId),
+        },
+      ),
     ]);
 
     // A note the client sent under `previous_case_notes` is persisted TWICE at open — once as the

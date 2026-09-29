@@ -30,6 +30,11 @@
  * foreign row, or a store error degrades to "no prequel", because context is supplementary and a
  * clinical note must still be produced.
  */
+import {
+  CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT,
+  CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY,
+  isValidTimeZone,
+} from '../../settings-registry/descriptors/consultation-appointment-day.descriptors';
 import { selectAuthoritativeNoteText, type AuthoritativeNoteReader } from './prior-visit-summary';
 
 /** How many ancestors the walk visits at most. */
@@ -83,11 +88,53 @@ function dayOf(value: Date | string | null | undefined): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
-/** `HH:MM UTC` of a timestamp, or `null`. */
-function utcTimeOf(value: Date | string | null | undefined): string | null {
+/**
+ * Locales tried, in order, for a zone's SHORT name. The abbreviation CLDR prints depends on the
+ * locale (`Asia/Kolkata` is `IST` only in `en-IN`, `Europe/London` is `BST` only in `en-GB`), so
+ * the first locale that yields a NAME rather than a `GMT±h` offset wins; a zone with no common
+ * abbreviation keeps the offset, which is unambiguous.
+ */
+const ZONE_NAME_LOCALES = ['en-US', 'en-IN', 'en-GB'] as const;
+
+/** `HH:MM <zone>` of a timestamp in `timeZone` (e.g. `21:56 IST`), or `null`. */
+function localTimeOf(value: Date | string | null | undefined, timeZone: string): string | null {
   if (value === null || value === undefined) return null;
   const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : `${date.toISOString().slice(11, 16)} UTC`;
+  if (Number.isNaN(date.getTime())) return null;
+  let rendered: string | null = null;
+  for (const locale of ZONE_NAME_LOCALES) {
+    const parts = new Intl.DateTimeFormat(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZone,
+      timeZoneName: 'short',
+    }).formatToParts(date);
+    const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? '';
+    const zone = part('timeZoneName');
+    rendered ??= `${part('hour')}:${part('minute')} ${zone}`;
+    if (!/^(GMT|UTC)[+-]/.test(zone)) return `${part('hour')}:${part('minute')} ${zone}`;
+  }
+  return rendered;
+}
+
+/**
+ * The zone a same-day prequel states its times in — the tenant's `consultation.appointmentDay.timeZone`
+ * (tenant → SYSTEM → `UTC`), the same zone that decides which DAY a visit is on. Never throws: an
+ * unwired settings graph, no tenant, a value this runtime cannot resolve, or a failed read all answer
+ * the `UTC` default, because a time label must never cost the clinician a note.
+ */
+export async function resolveSameDayPrequelTimeZone(
+  settings: { resolveEffective(key: string, ctx: { tenantId: string }): Promise<{ value: unknown }> } | null | undefined,
+  tenantId: string | null | undefined,
+): Promise<string> {
+  if (!settings || !tenantId) return CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT;
+  try {
+    const { value } = await settings.resolveEffective(CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY, { tenantId });
+    return isValidTimeZone(value) ? value : CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT;
+  } catch {
+    return CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT;
+  }
 }
 
 /** Same patient, same tenant, same day — each side must STATE the value; absence is never equality. */
@@ -98,8 +145,8 @@ function isSameDaySibling(subject: SameDayPrequelSubject, candidate: SameDayPreq
   return day !== null && day === dayOf(candidate.appointmentDate);
 }
 
-function renderBlock(ancestor: SameDayPrequelSubject, note: string): string {
-  const when = utcTimeOf(ancestor.createdAt) ?? 'time unknown';
+function renderBlock(ancestor: SameDayPrequelSubject, note: string, timeZone: string): string {
+  const when = localTimeOf(ancestor.createdAt, timeZone) ?? 'time unknown';
   const status = ancestor.status ? String(ancestor.status) : 'unknown';
   const body =
     note.length > SAME_DAY_PREQUEL_BLOCK_MAX_CHARS
@@ -108,13 +155,21 @@ function renderBlock(ancestor: SameDayPrequelSubject, note: string): string {
   return `### Earlier visit today (${when}, status ${status})\n${body}`;
 }
 
+/** Options for {@link resolveSameDayPrequel}. */
+export interface SameDayPrequelOptions {
+  /** IANA zone each block's time is stated in — see {@link resolveSameDayPrequelTimeZone}. Absent or unresolvable ⇒ `UTC`. */
+  timeZone?: string | null;
+}
+
 /**
  * The same-day prequel for `subject`: one block per same-day ancestor with a note, oldest first,
- * joined by a blank line — `### Earlier visit today (<HH:MM UTC>, status <status>)\n<note>`.
+ * joined by a blank line — `### Earlier visit today (<HH:MM zone>, status <status>)\n<note>`, the
+ * time in `options.timeZone` (the tenant's day zone).
  */
 export async function resolveSameDayPrequel(
   readers: SameDayPrequelReaders,
   subject: SameDayPrequelSubject | null | undefined,
+  options: SameDayPrequelOptions = {},
 ): Promise<SameDayPrequel> {
   const consultations = readers.consultationRepository;
   const notes = readers.contextItemRepository;
@@ -138,11 +193,12 @@ export async function resolveSameDayPrequel(
       current = parent;
     }
 
+    const timeZone = isValidTimeZone(options.timeZone) ? options.timeZone : CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT;
     const blocks: string[] = [];
     // Collected nearest-first; rendered oldest-first so the day reads in order.
     for (const ancestor of ancestors.reverse()) {
       const note = await selectAuthoritativeNoteText(notes, ancestor.id);
-      if (note) blocks.push(renderBlock(ancestor, note));
+      if (note) blocks.push(renderBlock(ancestor, note, timeZone));
     }
     const summary = blocks.join('\n\n');
     return { summary, hasSameDayPrequel: hasSameDayPrequel(summary) };
