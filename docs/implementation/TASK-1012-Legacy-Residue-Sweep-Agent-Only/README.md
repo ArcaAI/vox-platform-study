@@ -1,6 +1,6 @@
 # TASK-1012 — Legacy residue sweep: nothing left of v1-compat / pre-agent selection
 
-**Status:** In Progress (D-1..D-6 approved 2026-09-29; lanes W-1..W-5 running)
+**Status:** Review (all lanes merged into `dev-2.2`; gate pass green; SDK 4.0.1 release pending owner confirmation)
 **Type:** refactor (+ one security-relevant fix, + one SDK bugfix)
 **Branch:** `dev-2.2`
 **Related:** TASK-1004 (v1-compat removal), TASK-1006 (pipeline removal, SDK 4.0.0), TASK-1010, TASK-1011
@@ -93,8 +93,22 @@ deployment-repo docs (`apps/smr` paths, `smr_*` metrics, compat-playground), ~15
 TDD: each removal of a live path gets an "absent/refused" test first (e.g. speech proxy strips caller `resolved_spec` even with no tenant).
 
 ## Implementation Summary
-_Not started._
+
+| Merge | Lane | Result |
+|---|---|---|
+| `ebb4546a1` (+ `a9a0e3cf9`) | W-1 gateway | L-1 caller `resolved_spec`/`provider_overrides` stripped on every speech-proxy body AND every TTS WS client frame; L-3 business `text-generations/generate[/assembled]` → 400 `MODEL_PINNING_NOT_ALLOWED` on `provider`/`model`, optional `agentSlug`; raw pinning moved to `POST admin/text-generations/generate[/assembled]` (`@ForbidApiKey`, `@ForbidServiceAccount`, `manage:all` + imperative super-admin, AUTH-NOTE); console playground shows the picker to super admins only; L-4 `modelName` removed; L-6 `localConfig.*.modelId` deprecated-and-ignored (SDK 4.0.0 round-trips it); L-7 `agentVersionId`/`resolvedSpec` removed, `agentSlug` on batch + streaming, `codeSwitching` deprecated-and-ignored; L-8 canonical stream URL; caller `options.{provider,textProvider,model,textModel}` stripped in pre-summary + summary (found by W-2); `pipelineRef` validator deleted; **10** redirect shims deleted (incl. `user/me/*`) |
+| `d74d2f0b5` | W-2 SDKs | summary hooks on `…/async` + job poll + `…/latest`, per-route body whitelists; `pipelineId` never sent; `remoteConfig` → ASR injection deleted; dead exports `@deprecated`; vox-node cleanups; SDK docs; `.changeset/task-1012-sdk-4-0-1.md` (patch, fixed group → 4.0.1). Not published |
+| `d211119f6` | W-3 Python | STT YAML pipeline stack deleted (parser, errors, namespaces, 3 test files; specs rebuilt from dto); text `provider` required (fail closed); stale comments |
+| `7fcc4a616` (+ `2d49c0814`) | W-4 docs | rules, architecture/traceability/API/ops docs, generator + seed comments, `vitest.config` globs, 5 obsolete `infrastructure/docker` files, console `pipelineId`; clean.sh + MCP OD-7 wording |
+| `808241b70` | W-6 comments | 15 files, comment-only: no live `AiTaskDefaultService` precedent, canonical routes in `app.module.ts` |
+| deployment `60f092c` (pushed) | W-5 | `smr`/`stt-v2`/compat/`rnnoise`/`pipelineId`/`AiTaskDefault` residue in deployment docs; 2 SLO queries that matched nothing fixed; `hope.pipeline_id` removed from the collector allow-list; dev render otherwise byte-identical |
+| `a3b0ab23b` | orchestrator | gate-pass fixes: console mirror of the ASR profile serving facts (TASK-1010 L1 had missed it); route-precedence test no longer depends on a trailing comma |
+
+**Gate pass** — clean worktree at `808241b70` with its own `pnpm install` + builds (the primary carried another session's uncommitted edits), then re-checked at `a3b0ab23b`: types 102, workflow-contract 979, applications 15,162, database 1,968, api 4,588 (after fix), console 3,760, vox 3,290, @arcaai/stt 326, vox-node 587 passed; api/applications/console/vox lint 0 errors; api/console/vox/stt/vox-node typecheck clean; contracts TS 658 (after fix) + py 137; env checks + openapi/portal/`gen:admin` checks green; Python stt 3,883, text 2,002, asr-vllm 247; ruff clean; mypy text/asr-vllm clean, stt = the 4 pre-existing errors. API e2e (live gateway) not run.
+
+**Spun out (separate tasks):** STT `streaming_session_finished()` never called; nlp + three harness activities call text without provider/model (always 422); harness SUMMARY jobs never COMPLETED (landed as TASK-1014 by another session). **Left:** `workflowMode`/`transcriptionMode` still on the gateway API (5.0.0 with the SDK); orphaned STT dto validators + likely-unused `pyyaml`; a few STT docstrings saying "YAML"; collector allow-list for `gen_ai.*` / `hope.stt.session_id` (owner PHI decision).
 
 ## Change History
+- 2026-09-29 — All lanes merged; gate pass green after two fixes (`a3b0ab23b`); status Review.
 - 2026-09-29 — D-1..D-6 approved; L-9 found to be a false positive; shim traffic check 0 hits / 7 d; lanes W-1..W-5 started from `df9eed44f` (deployment lane from `origin/main` `67e41e2`).
 - 2026-09-29 — Ticket opened from the owner's "nothing left of v1-compat" directive; audit findings recorded; `apps/smr/` leftover (ignored `.pyc` only) deleted locally.
