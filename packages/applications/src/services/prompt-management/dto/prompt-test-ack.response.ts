@@ -39,7 +39,7 @@ export class PromptTestAckResponse {
 
   @ApiPropertyOptional({
     description: 'Gateway-relative SSE path for the generation stream (stream mode only)',
-    example: 'text/tasks/0f1c…/stream',
+    example: 'text-generations/tasks/0f1c…/stream',
   })
   streamUrl?: string;
 }

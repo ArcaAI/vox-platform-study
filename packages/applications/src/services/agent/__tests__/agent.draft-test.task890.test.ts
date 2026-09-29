@@ -123,7 +123,7 @@ beforeEach(() => {
   mockAiModelRepository.findById.mockResolvedValue(LLM_MODEL);
   mockFallbackRepository.findByAgentId.mockResolvedValue([]);
   mockProviderConnections.resolveConnection.mockResolvedValue({ source: 'system', encryptedApiKey: new Uint8Array([1]) });
-  mockDraftTest.submit.mockResolvedValue({ taskId: 'task-1', streamUrl: 'text/tasks/task-1/stream' });
+  mockDraftTest.submit.mockResolvedValue({ taskId: 'task-1', streamUrl: 'text-generations/tasks/task-1/stream' });
 });
 
 describe('testDraft — dry run (the default)', () => {
@@ -276,7 +276,7 @@ describe('testDraft — a non-dry run', () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ parameters: { guards: { enabled: false } } }));
     const ack = await makeService().testDraft('agent-1', { dryRun: false, context: { clinic: 'Ward B' }, input: { text: 'Summarise this.' } });
 
-    expect(ack).toMatchObject({ mode: 'stream', taskId: 'task-1', streamUrl: 'text/tasks/task-1/stream' });
+    expect(ack).toMatchObject({ mode: 'stream', taskId: 'task-1', streamUrl: 'text-generations/tasks/task-1/stream' });
     expect(mockDraftTest.submit).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: TENANT, provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', guardrailEnabled: false }),
     );
