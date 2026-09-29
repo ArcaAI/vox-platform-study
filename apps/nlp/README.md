@@ -116,6 +116,12 @@ GPU/CPU inference or be starved by it. Most of these are bootstrap fallbacks
 only — the runtime value is pulled from the control plane
 (`nlp.*` registry keys) via `core/effective_config.py`.
 
+**Which model the topic/intent delegation runs on is gateway-injected** (TASK-1016): the
+SYSTEM `nlp.topic` / `nlp.intent` `AiRoutingPolicy` election arrives on the request as
+`text_provider` + `text_model` and is forwarded to `text`'s `/generate`, which has no default
+for either. Absent ⇒ 503 `"<Task> classification model not selected for this tenant"` before
+any call to `text` — never a substituted default.
+
 **Device placement.** `NLP_INFERENCE_DEVICE` is `cpu` (safe everywhere),
 `auto` (best device present), or an explicit `mps`/`cuda` that raises rather
 than silently falling back if absent. `NLP_INFERENCE_DEVICE_CPU_ONLY_MODULES`

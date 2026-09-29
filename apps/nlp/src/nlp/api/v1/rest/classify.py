@@ -59,6 +59,25 @@ def _require_tenant(tenant_id: str | None, task: str, header_tenant: str | None)
         )
 
 
+def _require_text_selection(provider: str | None, model: str | None, task: str) -> tuple[str, str]:
+    """TASK-1016 — the delegated generation's provider + model, or a named 503.
+
+    `text` has no default provider or model, so a request the gateway sent without the pair
+    can only be refused there (422). Refusing it HERE names the real cause — no selection for
+    this tenant — instead of letting the client retry a request `text` will always reject.
+    Never substituted: provider/model SELECTION is fail-closed platform-wide.
+    """
+    resolved_provider = (provider or "").strip()
+    resolved_model = (model or "").strip()
+    if not resolved_provider or not resolved_model:
+        logger.error(f"nlp.{task}.text_model_unselected")
+        raise HTTPException(
+            status_code=503,
+            detail=f"{task.capitalize()} classification model not selected for this tenant",
+        )
+    return resolved_provider, resolved_model
+
+
 @router.post("/text", response_model=TextClassificationResponse)
 async def classify_text(
     request: TextClassificationRequest,
@@ -253,6 +272,7 @@ async def classify_topic(
     # absent tenant is a CALLER defect and is refused rather than silently
     # delegated to `text` with no tenant.
     _require_tenant(request.tenant_id, "topic", http_request.headers.get(TENANT_HEADER))
+    provider, model = _require_text_selection(request.text_provider, request.text_model, "topic")
     prompt = _build_topic_prompt(request.text, request.instructions)
     try:
         async with peer_call_bound:
@@ -260,7 +280,7 @@ async def classify_topic(
             # This route runs no local model, so that one LLM call (plus the guardrail call it
             # triggered) IS the cost of a topic classification, and it reached nobody before.
             generated = await external_text_client.generate_label_with_usage(
-                prompt, tenant_id=str(request.tenant_id)
+                prompt, tenant_id=str(request.tenant_id), provider=provider, model=model
             )
         return TopicClassificationResponse(
             predicted_topic=generated.label,
@@ -306,12 +326,13 @@ async def classify_intent(
 
     # see /topic above.
     _require_tenant(request.tenant_id, "intent", http_request.headers.get(TENANT_HEADER))
+    provider, model = _require_text_selection(request.text_provider, request.text_model, "intent")
     prompt = _build_intent_prompt(request.text, request.instructions)
     try:
         async with peer_call_bound:
             # See /topic above — the delegated generation's own cost rides back with its label.
             generated = await external_text_client.generate_label_with_usage(
-                prompt, tenant_id=str(request.tenant_id)
+                prompt, tenant_id=str(request.tenant_id), provider=provider, model=model
             )
         return IntentClassificationResponse(
             predicted_intent=generated.label,

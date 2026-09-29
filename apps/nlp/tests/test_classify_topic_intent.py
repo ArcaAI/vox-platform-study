@@ -26,7 +26,12 @@ class _FakeExternalTextClient:
         self.raise_error = False
 
     async def generate_label_with_usage(
-        self, prompt: str, system_prompt: str | None = None, tenant_id: str | None = None
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        tenant_id: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
     ) -> GeneratedLabel:
         # TASK-957 F-7b — the routes now read the label AND what the delegated
         # generation cost off one call.
@@ -36,6 +41,10 @@ class _FakeExternalTextClient:
         if self.raise_error:
             raise ExternalTextUnavailableError("text unreachable")
         return GeneratedLabel(label=self.label)
+
+
+# TASK-1016 — the gateway-injected text selection every delegated generation now requires.
+_SELECTION = {"text_provider": "lm-studio", "text_model": "gemma"}
 
 
 @pytest.fixture()
@@ -71,6 +80,7 @@ class TestClassifyTopic:
                 "text": "I have a billing question",
                 "instructions": ["billing", "appointments"],
                 "tenant_id": "t1",
+                **_SELECTION,
             },
         )
         assert resp.status_code == 200
@@ -104,7 +114,7 @@ class TestClassifyTopic:
         fake.raise_error = True
         resp = client.post(
             "/api/v1/classify/topic",
-            json={"text": "hello", "instructions": ["billing"], "tenant_id": "t1"},
+            json={"text": "hello", "instructions": ["billing"], "tenant_id": "t1", **_SELECTION},
         )
         assert resp.status_code == 503
 
@@ -125,6 +135,7 @@ class TestClassifyIntent:
                 "text": "book me an appointment",
                 "instructions": ["schedule_appointment", "cancel_appointment"],
                 "tenant_id": "t1",
+                **_SELECTION,
             },
         )
         assert resp.status_code == 200
@@ -161,7 +172,12 @@ class TestPeerCallBoundIndependence:
 
         resp = client.post(
             "/api/v1/classify/topic",
-            json={"text": "billing question", "instructions": ["billing"], "tenant_id": "t1"},
+            json={
+                "text": "billing question",
+                "instructions": ["billing"],
+                "tenant_id": "t1",
+                **_SELECTION,
+            },
         )
 
         assert resp.status_code == 200
@@ -182,6 +198,7 @@ class TestPeerCallBoundIndependence:
                 "text": "book an appointment",
                 "instructions": ["schedule_appointment"],
                 "tenant_id": "t1",
+                **_SELECTION,
             },
         )
 

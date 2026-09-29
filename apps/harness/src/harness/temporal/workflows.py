@@ -2820,6 +2820,9 @@ class ConsultationLoopWorkflow:
                 goal=primary.goal if primary else None,
                 trigger_kinds=trigger_kinds,
                 candidates=candidates,
+                # TASK-1016 — the planner runs on the primary agent's own model. Input-only:
+                # no new command, so recorded histories replay unchanged.
+                planner_agent_slug=primary.slug if primary else None,
             ),
             start_to_close_timeout=_PLAN_TIMEOUT,
             retry_policy=_PLAN_RETRY,

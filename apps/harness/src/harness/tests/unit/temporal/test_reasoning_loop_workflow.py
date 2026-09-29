@@ -215,6 +215,20 @@ class TestPlannerIsAnActivity:
         assert h.recorder.count("plan_reasoning") >= 1
 
     @pytest.mark.asyncio
+    async def test_the_planner_is_handed_the_primary_agents_slug(self):
+        """TASK-1016 — the planner's model is the PRIMARY agent's, so its slug rides the input."""
+        async with _ReasoningHarness() as h:
+            handle = await h.start(_wf_input())
+            await handle.signal(ConsultationLoopWorkflow.context_added, _ctx("i-1"))
+            await _await_state(handle, lambda s: s.plans_made >= 1)
+            await handle.signal(
+                ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
+            )
+            await handle.result()
+
+        assert h.recorder.payloads("plan_reasoning")[0].planner_agent_slug == "primary"
+
+    @pytest.mark.asyncio
     async def test_the_recorded_decision_replays_without_re_invoking_the_model(self):
         """A replay of the produced history must issue no NEW planner call."""
         async with _ReasoningHarness() as h:

@@ -1655,6 +1655,10 @@ class PlanLoopInput(BaseModel):
     candidates: list[LoopAgentSpec] = Field(default_factory=list)
     max_specialists: int = 8
     reasoning: bool = True
+    # TASK-1016 — the PRIMARY agent's slug. The planner IS the primary, so its model is that
+    # agent's, resolved through the one agent resolution; ``None`` fails the plan closed.
+    # Additive-optional: a history recorded before this field replays unchanged.
+    planner_agent_slug: str | None = None
 
 
 class PlannedSpecialist(BaseModel):
@@ -1850,6 +1854,9 @@ class DeriveContextResult(BaseModel):
     context_item_id: str | None = None
     kind_key: str | None = None
     text: str = ""
+    # TASK-1016 — WHY nothing was derived, when the cause is a named fail-closed state rather
+    # than an empty extraction (e.g. ``vision_model_unselected``). Additive-optional.
+    reason: str | None = None
 
 
 def adjudicate(
