@@ -12,17 +12,9 @@
  * pre-existing v1 URLs outside the `api/v1` prefix. Those routes — and this
  * package's `hope.summarization.*` resource that called the first two — were
  * removed outright (zero production traffic in 10 days; see the deprecation
- * register). {@link PREFIX_EXEMPT_PATHS} is kept as an explicit EMPTY set
- * rather than deleted, so a future compat-shaped exemption has a documented
- * place to be added rather than reinventing this module's contract.
+ * register). TASK-1012 then deleted the empty exemption set this module kept
+ * for them: every path gets the prefix, with no exception to maintain.
  */
-
-/**
- * Exact relative paths (no leading slash) that `main.ts` excludes from the
- * `api/v1` global prefix, mirrored here so {@link buildUrl} does not
- * double-prefix them. Empty since TASK-1004 — see the module docstring.
- */
-const PREFIX_EXEMPT_PATHS: ReadonlySet<string> = new Set([]);
 
 /** The gateway's global route prefix (`app.setGlobalPrefix('api/v1', ...)`). */
 const API_PREFIX = 'api/v1';
@@ -58,12 +50,11 @@ export interface BuildUrlOptions {
  * `/api/v1` — e.g. a consumer copies the origin straight from a browser tab
  * that was pointed at the Swagger docs at `/api/v1/docs` — is normalized
  * down to the bare origin/base path first. `buildUrl` then re-applies the
- * prefix (or not) uniformly from that normalized base, so
- * `http://host:8868`, `http://host:8868/api/v1`, and
- * `http://host:8868/api/v1/` all produce IDENTICAL output for both prefixed
- * and exempt paths. The alternative (trust the caller's baseUrl verbatim)
- * would silently double-prefix non-exempt paths for exactly the consumer
- * this decision protects.
+ * prefix uniformly from that normalized base, so `http://host:8868`,
+ * `http://host:8868/api/v1`, and `http://host:8868/api/v1/` all produce
+ * IDENTICAL output. The alternative (trust the caller's baseUrl verbatim)
+ * would silently double-prefix every path for exactly the consumer this
+ * decision protects.
  */
 function normalizeBaseUrl(baseUrl: string): string {
   let base = baseUrl.trim().replace(/\/+$/, '');
@@ -100,7 +91,7 @@ function buildQueryString(query: Record<string, QueryValue>): string {
 
 /**
  * Join a `baseUrl` with a gateway-relative `path`, applying the `api/v1`
- * prefix unless `path` is one of the {@link PREFIX_EXEMPT_PATHS}.
+ * prefix (every gateway route carries it — see the module docstring).
  *
  * `path` may be given with or without a leading slash. Query params, when
  * given, are appended and encoded via `URLSearchParams` (space → `+`, which
@@ -109,9 +100,8 @@ function buildQueryString(query: Record<string, QueryValue>): string {
 export function buildUrl(baseUrl: string, path: string, options: BuildUrlOptions = {}): string {
   const base = normalizeBaseUrl(baseUrl);
   const relPath = stripLeadingSlashes(path);
-  const finalPath = PREFIX_EXEMPT_PATHS.has(relPath) ? relPath : `${API_PREFIX}/${relPath}`;
 
-  let url = `${base}/${finalPath}`;
+  let url = `${base}/${API_PREFIX}/${relPath}`;
   const queryString = options.query ? buildQueryString(options.query) : '';
   if (queryString) url += `?${queryString}`;
   return url;

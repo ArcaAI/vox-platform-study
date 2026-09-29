@@ -1,8 +1,10 @@
 /**
  * P0.5 — v2 native, consultation-bound summarization (persisted). Backed by
  * `apps/api/src/modules/consultation/consultation.controller.ts`'s `:id/summary*`
- * routes, all of which sit behind the gateway's `api/v1` prefix (not exempt —
- * only the v1-compat summarization shims in `./summarization.ts` are).
+ * routes, behind the gateway's `api/v1` prefix like every other route. A note is
+ * GENERATED only on the async plane (`generateAsync` / `generatePreSummaryAsync`,
+ * then `hope.jobs.waitFor`); the synchronous generate routes were removed by
+ * TASK-1006, and the v1-compat summarization resource by TASK-1004.
  */
 
 import { encodePathSegment } from '../core/url';
