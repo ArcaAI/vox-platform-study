@@ -124,6 +124,9 @@ class _Wire(BaseModel):
 
 AsrSpecModelRole = Literal["asr", "vad", "denoise", "embedding", "punctuation", "endpointing"]
 
+#: TASK-1010 — the mirror of ``AiModelAsrProfileQuantization`` in ``@arcaai/types``.
+AsrSpecModelQuantization = Literal["none", "fp8", "awq", "gptq", "int8"]
+
 #: TASK-934 / TASK-985 — the mirror of ``AsrSpecDecodingSource`` in ``@arcaai/types``:
 #: which tier supplied a contested knob, or ``unsupported:<library>`` when a tier decided a
 #: value the chain's engine cannot honour at all. Constrained rather than free ``str`` so a
@@ -274,7 +277,9 @@ class AsrSpecModelMetadata(_Wire):
 class AsrSpecModel(_Wire):
     """One resolved registry row — the fields the model loaders consume."""
 
-    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"metadata", "library_name"})
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"metadata", "library_name", "quantization", "max_model_len"}
+    )
 
     role: AsrSpecModelRole
     slug: str
@@ -294,6 +299,13 @@ class AsrSpecModel(_Wire):
     provider: str | None
     tenant_id: str
     metadata: AsrSpecModelMetadata | None = None
+    #: TASK-1010 (OD-6 / OD-8) — the row's SERVING facts (``AiModel._metadata.asr``): how
+    #: these weights are quantised and the decoder context a serving engine sizes its cache
+    #: for (vLLM ``--quantization`` / ``--max-model-len``). This runtime does not act on
+    #: them; it ACCEPTS them so the gateway may send them. Omit-when-absent, like
+    #: ``library_name``, so either half may deploy first.
+    quantization: AsrSpecModelQuantization | None = None
+    max_model_len: int | None = Field(default=None, ge=1)
 
 
 class AsrSpecModels(_Wire):

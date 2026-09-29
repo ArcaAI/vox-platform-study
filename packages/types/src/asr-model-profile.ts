@@ -159,7 +159,23 @@ export type AiModelAsrProfile = {
    * utterances it helps), so it belongs beside the weights, not in one agent-wide truth.
    */
   initialPrompt?: string;
+  /**
+   * TASK-1010 (OD-6 / OD-8) — how the weights ON THIS ROW are quantised, as a serving
+   * engine must be told (vLLM `--quantization`). `'none'` = the checkpoint's own dtype,
+   * which is the `computeType` column. A quantised variant is its OWN row, never a toggle
+   * on this one: it is bound to an agent explicitly and evaluated on its own.
+   */
+  quantization?: AiModelAsrProfileQuantization;
+  /**
+   * TASK-1010 (OD-6 / OD-8) — the decoder context, in tokens, the serving engine sizes its
+   * cache for (vLLM `--max-model-len`). A fact about the weights: Whisper's decoder is 448.
+   */
+  maxModelLen?: number;
 }
+
+/** TASK-1010 — the closed vocabulary of {@link AiModelAsrProfile.quantization}. */
+export const AI_MODEL_ASR_PROFILE_QUANTIZATIONS = Object.freeze(['none', 'fp8', 'awq', 'gptq', 'int8'] as const);
+export type AiModelAsrProfileQuantization = (typeof AI_MODEL_ASR_PROFILE_QUANTIZATIONS)[number];
 
 /** Inclusive `[min, max]` bounds, published so an admin UI and the API validator share ONE table. */
 export interface AiModelAsrProfileRange {
@@ -197,6 +213,14 @@ export const AI_MODEL_ASR_PROFILE_DECODING_RANGES: Readonly<Record<string, AiMod
   entropyThreshold: Object.freeze({ min: 0, max: 10 }),
   maxTokens: Object.freeze({ min: 0, max: 224, integer: true }),
   audioCtx: Object.freeze({ min: 0, max: 1500, integer: true }),
+});
+
+/**
+ * TASK-1010 — the numeric SERVING facts' ranges. `maxModelLen` is bounded below only (a
+ * whole number of tokens, at least one); `max` is the type's own ceiling, not a policy.
+ */
+export const AI_MODEL_ASR_PROFILE_SERVING_RANGES: Readonly<Record<'maxModelLen', AiModelAsrProfileRange>> = Object.freeze({
+  maxModelLen: Object.freeze({ min: 1, max: Number.MAX_SAFE_INTEGER, integer: true }),
 });
 
 /**
@@ -375,8 +399,19 @@ export function parseAiModelAsrProfile(raw: unknown): ParsedAiModelAsrProfile {
     if (isInitialPrompt(raw.initialPrompt)) profile.initialPrompt = raw.initialPrompt;
     else rejected.push('initialPrompt');
   }
+  // TASK-1010 — the two serving facts. A value outside the vocabulary / range is dropped and
+  // named like any other member: it must never reach an `extra='forbid'` mirror.
+  if (raw.quantization !== undefined) {
+    if ((AI_MODEL_ASR_PROFILE_QUANTIZATIONS as readonly unknown[]).includes(raw.quantization)) {
+      profile.quantization = raw.quantization as AiModelAsrProfileQuantization;
+    } else rejected.push('quantization');
+  }
+  if (raw.maxModelLen !== undefined) {
+    if (inRange(raw.maxModelLen, AI_MODEL_ASR_PROFILE_SERVING_RANGES.maxModelLen)) profile.maxModelLen = raw.maxModelLen;
+    else rejected.push('maxModelLen');
+  }
 
-  const known = new Set([...Object.keys(AI_MODEL_ASR_PROFILE_WINDOW_RANGES), 'decoding', 'initialPrompt']);
+  const known = new Set([...Object.keys(AI_MODEL_ASR_PROFILE_WINDOW_RANGES), 'decoding', 'initialPrompt', 'quantization', 'maxModelLen']);
   for (const key of Object.keys(raw)) if (!known.has(key)) rejected.push(key);
   return { profile, rejected };
 }

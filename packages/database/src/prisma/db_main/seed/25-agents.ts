@@ -191,7 +191,10 @@ export interface SeedAgentSpec {
   provenance: SeedAgentProvenance | null;
 }
 
-/** Id blocks: `9c000000-…-0001-` SYSTEM agents, `-0002-` Global agents, `-0003-` fallbacks, `-0004-` assignments, `-0005-` ArcaAI agents (phase 29). */
+/**
+ * Id blocks: `9c000000-…-0001-` SYSTEM agents, `-0002-` Global agents, `-0003-` fallbacks, `-0004-` assignments, `-0005-` ArcaAI agents (phase 29),
+ * `-0006-` Global PLAYGROUND-ONLY agents (never promoted, never assigned — see `GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS`).
+ */
 const sys = (n: number) => `9c000000-0000-0000-0001-${String(n).padStart(12, '0')}`;
 const glob = (n: number) => `9c000000-0000-0000-0002-${String(n).padStart(12, '0')}`;
 export const fallbackId = (n: number) => `9c000000-0000-0000-0003-${String(n).padStart(12, '0')}`;
@@ -849,6 +852,56 @@ export const PLATFORM_AGENT_ASSIGNMENTS: SeedAgentAssignment[] = assignmentsFor(
 export const GLOBAL_AGENT_ASSIGNMENTS: SeedAgentAssignment[] = assignmentsFor(SEED_TENANT_ID, 10);
 
 // ----------------------------------------------------------------------------------------------
+// Global playground-only agents
+// ----------------------------------------------------------------------------------------------
+
+/**
+ * TASK-1010 (OD-12) — the lineage key of the vLLM Whisper spike agent.
+ *
+ * Owner rule: model selection is ALWAYS through an agent — the bench and `apps/asr-vllm` reach the
+ * vLLM registry row (`arcaai-whisper-large-ml-en-vllm`) by `agentSlug`, never by a model slug.
+ */
+export const VLLM_SPIKE_AGENT_SLUG = 'realtime-transcription-vllm-spike';
+
+const playgroundOnly = (n: number) => `9c000000-0000-0000-0006-${String(n).padStart(12, '0')}`;
+
+/**
+ * Agents the Global PLAYGROUND authors and deliberately does NOT promote: trials, not platform
+ * content. The deliberate differences from {@link GLOBAL_AGENT_SPECS}:
+ *
+ *  · no SYSTEM copy — so the reference set (phase 26) can never clone one into a customer tenant
+ *    (TASK-890 OD-M: content is cloned from SYSTEM, never from Global);
+ *  · no `AgentAssignment` and no workflow names them — so no assignment cascade or governing
+ *    workflow resolves one implicitly. Only a request that names the slug reaches it.
+ *
+ * Promotion stays what it always is: an explicit `POST /admin/agents/promote-to-system`.
+ */
+export const GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS: SeedAgentSpec[] = [
+  {
+    id: playgroundOnly(1),
+    tenantId: SEED_TENANT_ID,
+    slug: VLLM_SPIKE_AGENT_SLUG,
+    name: 'Realtime transcription — vLLM spike (ML/EN)',
+    description:
+      'TASK-1010 spike: the in-house Malayalam/English Whisper fine-tune (fp16) on the vLLM decode backend (`apps/asr-vllm`, continuous batching across streams). Playground-only: never promoted, never assigned — reached only by naming this agent.',
+    task: 'SPEECH_TO_TEXT',
+    modelSlug: 'arcaai-whisper-large-ml-en-vllm',
+    // No fallback chain: the spike measures ONE engine, and a silent failover to another runtime
+    // would hide exactly the failures it exists to find.
+    fallbackModelSlugs: [],
+    // The `realtime-transcription` agent's instruction and parameters, verbatim — one variable (the
+    // serving engine) between the two agents.
+    instruction: ASR_INSTRUCTION,
+    parameters: ASR_PARAMETERS,
+    outputSchema: null,
+    status: 'PUBLISHED',
+    isActive: true,
+    tags: ['tier:playground', 'task:stt', 'capability:transcription', 'spike:task-1010'],
+    provenance: null,
+  },
+];
+
+// ----------------------------------------------------------------------------------------------
 // Row building (pure)
 // ----------------------------------------------------------------------------------------------
 
@@ -1255,6 +1308,16 @@ export async function seedAgentAssignments(
     console.log(`  assigned ${label} ${assignment.task}${assignment.selectorKey ? ` [${assignment.selectorKey}]` : ''} → ${assignment.agentSlug}`);
   }
   return created;
+}
+
+/**
+ * TASK-1010 — the Global playground-only agents. Create-only like every seeded agent, and NO
+ * assignments: that absence is the point (see {@link GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS}). Its own
+ * fallback id range (150) so a future entry with a chain can never collide with Global's (100) or
+ * ArcaAI's (200).
+ */
+export async function seedGlobalPlaygroundOnlyAgents(client: CorePrismaClient | SeedAgentsClient): Promise<SeedAgentsResult> {
+  return seedAgentSpecs(client as unknown as SeedAgentsClient, GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS, 'Global (playground-only, never promoted)', 150);
 }
 
 /** Global authors, then SYSTEM as the promoted copy; each with its four TENANT assignments. */

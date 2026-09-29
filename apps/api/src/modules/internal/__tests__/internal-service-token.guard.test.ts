@@ -123,6 +123,34 @@ describe('InternalServiceTokenGuard', () => {
     });
   });
 
+  describe('asr-vllm (TASK-1010 phase B)', () => {
+    // The vLLM decode backend pulls its `asrVllm.*` knobs (effective-config) and its
+    // model-registry credential with the ONE shared token (owner decision D-D). It must be a
+    // KNOWN service: an unknown name admits ANY valid peer token so the controller can 400,
+    // which would let e.g. nlp's private token read asr-vllm's subset.
+    it('admits service=asr-vllm with the shared INTERNAL_ACCESS_TOKEN', async () => {
+      const guard = guardWith();
+      await expect(guard.canActivate(makeContext({ 'x-service-token': 'shared-token' }, { service: 'asr-vllm' }))).resolves.toBe(true);
+    });
+
+    it.each([['nlp-token'], ['harness-token'], ['stt-key'], ['garbage']])(
+      'rejects any other token (%s) for service=asr-vllm — it is a known service, not an unknown-name pass-through',
+      async (token) => {
+        const guard = guardWith();
+        await expect(guard.canActivate(makeContext({ 'x-service-token': token }, { service: 'asr-vllm' }))).rejects.toBeInstanceOf(
+          UnauthorizedException,
+        );
+      },
+    );
+
+    it('does not accept the stt alternate header for service=asr-vllm', async () => {
+      const guard = guardWith();
+      await expect(guard.canActivate(makeContext({ 'x-internal-service-key': 'shared-token' }, { service: 'asr-vllm' }))).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+  });
+
   describe('unknown service name', () => {
     // An AUTHENTICATED caller naming a bad service deserves the contract's 400
     // from the controller, so the guard lets a recognised token through and lets

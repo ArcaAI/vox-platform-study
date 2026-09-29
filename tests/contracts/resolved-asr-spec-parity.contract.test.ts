@@ -34,8 +34,9 @@ const MODEL_FIELDS = ['role', 'slug', 'taskType', 'format', 'sourceUri', 'source
  * both halves are strict about unknown keys, so a field added on one side first has to
  * be able to be missing on the other. It IS present on every model in this fixture,
  * asserted separately below — the loader-selection field going missing is the defect.
+ * TASK-1010 — `quantization` / `maxModelLen` (the row's serving facts) follow the same rule.
  */
-const OPTIONAL_MODEL_FIELDS = ['metadata', 'libraryName'];
+const OPTIONAL_MODEL_FIELDS = ['metadata', 'libraryName', 'quantization', 'maxModelLen'];
 
 function assertCore(core: AsrSpecCore): void {
   expect(core.runtimeKey.length).toBeGreaterThan(0);
@@ -237,6 +238,30 @@ describe('ResolvedAsrSpec parity — producer half', () => {
       for (const field of ['connectionId', 'connectionSlug', 'connectionKey']) {
         expect(expected, `${name}.${field}`).not.toHaveProperty(field);
         if (expected.fallback.spec) expect(expected.fallback.spec, `${name}.fallback.${field}`).not.toHaveProperty(field);
+      }
+    }
+  });
+
+  it('carries the row`s SERVING facts top-level on the model, per chain, and omits them when the row is silent (TASK-1010)', () => {
+    // OD-6 / OD-8 — `quantization` and `maxModelLen` are facts about the WEIGHTS a serving engine
+    // must be told (vLLM `--quantization` / `--max-model-len`). They sit beside `metadata`, never
+    // inside it, and each chain row carries only its OWN.
+    const vllm = fixture.vllmServingFacts as FixtureCase;
+    expect(vllm.expected.models.asr.quantization).toBe('none');
+    expect(vllm.expected.models.asr.maxModelLen).toBe(448);
+    expect(vllm.expected.models.asr.metadata).toEqual({ maxDecodeWindowSec: 7 });
+    const fallbackAsr = vllm.expected.fallback.chain[0]?.models.asr;
+    expect(fallbackAsr?.slug).toBe('arcaai-whisper-large-ml-en');
+    expect(fallbackAsr).not.toHaveProperty('quantization');
+    expect(fallbackAsr).not.toHaveProperty('maxModelLen');
+
+    // Omit-when-absent, as for every additive field before it: never `null`, on any model of any chain.
+    for (const [name, { expected }] of cases.filter(([caseName]) => caseName !== 'vllmServingFacts')) {
+      for (const core of [expected, ...expected.fallback.chain]) {
+        for (const [role, model] of Object.entries(core.models)) {
+          expect(model, `${name}.${role}`).not.toHaveProperty('quantization');
+          expect(model, `${name}.${role}`).not.toHaveProperty('maxModelLen');
+        }
       }
     }
   });

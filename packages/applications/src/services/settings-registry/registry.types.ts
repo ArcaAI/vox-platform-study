@@ -40,7 +40,17 @@ export type SettingSensitivity = 'public' | 'internal' | 'secret';
  * `EFFECTIVE_CONFIG_SERVICES` on the wire contract is THIS list, imported, so
  * the two can never drift.
  */
-export const CONSUMING_DEPLOYABLES = ['text', 'nlp', 'stt', 'guardrail', 'harness', 'tts'] as const;
+export const CONSUMING_DEPLOYABLES = [
+  'text',
+  'nlp',
+  'stt',
+  'guardrail',
+  'harness',
+  'tts',
+  // TASK-1010 (OD-6) — the vLLM Whisper decode backend; authenticates with the ONE shared
+  // `INTERNAL_ACCESS_TOKEN` (`InternalServiceTokenGuard`).
+  'asr-vllm',
+] as const;
 
 export type ConsumingDeployable = (typeof CONSUMING_DEPLOYABLES)[number];
 

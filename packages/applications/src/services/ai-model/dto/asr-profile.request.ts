@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -18,7 +19,10 @@ import {
   AI_MODEL_ASR_PROFILE_DECODING_RANGES,
   AI_MODEL_ASR_PROFILE_HOTWORDS_MAX_ITEMS,
   AI_MODEL_ASR_PROFILE_INITIAL_PROMPT_MAX_LENGTH,
+  AI_MODEL_ASR_PROFILE_QUANTIZATIONS,
+  AI_MODEL_ASR_PROFILE_SERVING_RANGES,
   AI_MODEL_ASR_PROFILE_WINDOW_RANGES,
+  type AiModelAsrProfileQuantization,
 } from '@arcaai/types';
 
 const DECODING = AI_MODEL_ASR_PROFILE_DECODING_RANGES;
@@ -352,4 +356,27 @@ export class AsrProfileRequest {
   @IsString()
   @MaxLength(AI_MODEL_ASR_PROFILE_INITIAL_PROMPT_MAX_LENGTH)
   initialPrompt?: string;
+
+  /**
+   * TASK-1010 (OD-6 / OD-8) — how the weights on THIS row are quantised, as a serving engine
+   * must be told (vLLM `--quantization`). A quantised variant is its own row, never a toggle.
+   */
+  @ApiPropertyOptional({
+    description:
+      'How the weights on this row are quantised, for a serving engine that must be told (vLLM `--quantization`). `none` = the checkpoint dtype (`computeType`). A quantised variant is its own registry row.',
+    enum: AI_MODEL_ASR_PROFILE_QUANTIZATIONS,
+  })
+  @IsOptional()
+  @IsIn(AI_MODEL_ASR_PROFILE_QUANTIZATIONS)
+  quantization?: AiModelAsrProfileQuantization;
+
+  /** TASK-1010 (OD-6 / OD-8) — the decoder context in tokens a serving engine sizes its cache for. */
+  @ApiPropertyOptional({
+    description: 'Decoder context, in tokens, a serving engine sizes its cache for (vLLM `--max-model-len`). Whisper: 448.',
+    minimum: AI_MODEL_ASR_PROFILE_SERVING_RANGES.maxModelLen.min,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(AI_MODEL_ASR_PROFILE_SERVING_RANGES.maxModelLen.min)
+  maxModelLen?: number;
 }

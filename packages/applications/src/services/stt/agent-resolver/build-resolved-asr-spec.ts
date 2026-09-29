@@ -184,7 +184,25 @@ function profileOf(model: ResolvedAgentModel, onProfileRejection?: (rejection: A
   return profile;
 }
 
-function toSpecModel(model: ResolvedAgentModel, role: AsrSpecModelRole, metadata = specModelMetadata(profileOf(model))): AsrSpecModel {
+/**
+ * TASK-1010 (OD-6 / OD-8) — the row's SERVING facts (`quantization`, `maxModelLen`), top-level on
+ * the wire model and OMITTED (never `null`) when the row states none: every consumer's mirror is
+ * `extra='forbid'`, so omit-when-absent is what lets the gateway and a runtime deploy in either
+ * order. They are facts about the weights the AGENT bound — never a selection input.
+ */
+function servingFacts(profile: AiModelAsrProfile): Pick<AsrSpecModel, 'quantization' | 'maxModelLen'> {
+  return {
+    ...(profile.quantization !== undefined ? { quantization: profile.quantization } : {}),
+    ...(profile.maxModelLen !== undefined ? { maxModelLen: profile.maxModelLen } : {}),
+  };
+}
+
+function toSpecModel(
+  model: ResolvedAgentModel,
+  role: AsrSpecModelRole,
+  profile: AiModelAsrProfile = profileOf(model),
+  metadata = specModelMetadata(profile),
+): AsrSpecModel {
   return {
     role,
     slug: model.slug,
@@ -202,6 +220,7 @@ function toSpecModel(model: ResolvedAgentModel, role: AsrSpecModelRole, metadata
     provider: model.provider ?? null,
     tenantId: model.tenantId,
     ...(metadata ? { metadata } : {}),
+    ...servingFacts(profile),
   };
 }
 
@@ -681,7 +700,7 @@ export function buildAsrSpecCore(
   // builds every chain (primary, model-level fallback, fallback agent), so all three are covered.
   assertDiarizationBackendSupported(agent, parameters);
   const front = audioFrontEnd(parameters);
-  const models: AsrSpecModels = { asr: toSpecModel(asrModel, 'asr', specModelMetadata(profile, partialWindowSec)), ...auxModels(agent, front) };
+  const models: AsrSpecModels = { asr: toSpecModel(asrModel, 'asr', profile, specModelMetadata(profile, partialWindowSec)), ...auxModels(agent, front) };
   assertVadRunnable(agent, front, models.vad);
   assertDiarizationRunnable(agent, front, models.embedding);
   const decodingBlock = decoding(parameters, profile, sources);

@@ -180,6 +180,37 @@ def test_a_fallbackless_spec_declares_kind_none() -> None:
         assert (fallback.spec is None) == (fallback.kind == "none"), name
 
 
+def test_serving_facts_ride_the_model_and_are_omitted_when_the_row_is_silent() -> None:
+    """TASK-1010 (OD-6 / OD-8) — a row's ``quantization`` / ``maxModelLen`` reach the mirror.
+
+    They are facts about the WEIGHTS a serving engine must be told (vLLM ``--quantization``
+    / ``--max-model-len``); this runtime does not act on them, but it must ACCEPT them, or a
+    gateway that sends them fails every session on ``extra='forbid'``. Absent stays absent.
+    """
+    spec = ResolvedAsrSpec.model_validate(CASES["vllmServingFacts"]["expected"])
+    assert spec.models.asr.quantization == "none"
+    assert spec.models.asr.max_model_len == 448
+
+    silent = spec.fallback.chain[0].models.asr
+    assert silent.quantization is None
+    assert silent.max_model_len is None
+    dumped = silent.model_dump(by_alias=True, mode="json")
+    assert "quantization" not in dumped
+    assert "maxModelLen" not in dumped
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("quantization", "q4_k_m"), ("quantization", "FP8"), ("maxModelLen", 0), ("maxModelLen", 2.5)],
+)
+def test_an_invalid_serving_fact_is_a_contract_drift(field: str, value: object) -> None:
+    """The gateway's parser drops anything outside the vocabulary / range before the wire."""
+    expected = json.loads(json.dumps(CASES["vllmServingFacts"]["expected"]))
+    expected["models"]["asr"][field] = value
+    with pytest.raises(ValidationError):
+        ResolvedAsrSpec.model_validate(expected)
+
+
 def test_format_this_runtime_does_not_execute_fails_closed() -> None:
     expected = json.loads(json.dumps(CASES["platformDefault"]["expected"]))
     expected["models"]["asr"]["format"] = "GGUF"  # a catalogue-only (LM-Studio) format

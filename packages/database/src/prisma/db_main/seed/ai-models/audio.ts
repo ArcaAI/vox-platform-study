@@ -343,6 +343,39 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'faster-whisper', 'ctranslate2', 'private-repo'],
   },
   {
+    // TASK-1010 (OD-9) — the SAME fp16 checkpoint as `arcaai-whisper-large-ml-en`, as its own row
+    // for the vLLM decode backend (`apps/asr-vllm`): readiness and inventory stay per serving
+    // target. `libraryName: transformers` publishes it in HF-cache layout, so vLLM is only ever
+    // handed a local directory. Reached ONLY through an agent (the Global-only spike agent in
+    // `25-agents.ts`); nobody's platform default. `_metadata.asr` carries the SERVING facts
+    // (OD-8): unquantised, and Whisper's 448-token decoder context. A quantised variant would be
+    // its own `…-fp8` row, never a toggle on this one.
+    id: '80000000-0000-0000-0001-000000000026',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'ArcaAI Whisper Large ML-EN Code-Switch (vLLM)',
+    slug: 'arcaai-whisper-large-ml-en-vllm',
+    description:
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo (fp16 safetensor), served by the vLLM decode backend with continuous batching across streams (TASK-1010 spike).',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.FINETUNED_MODEL,
+    source: AiModelSource.HUGGINGFACE,
+    sourceUri: 'taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16',
+    sourceRevision: 'main',
+    format: AiModelFormat.SAFETENSOR,
+    libraryName: 'transformers',
+    servedBy: 'asr-vllm',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    baseModel: 'openai/whisper-large-v3-turbo',
+    languages: ['ml', 'en'],
+    provider: 'built-in',
+    architecture: 'whisper',
+    memorySizeMb: 3584,
+    computeType: 'float16',
+    metaData: { asr: { quantization: 'none', maxModelLen: 448 } },
+    tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'transformers', 'vllm', 'private-repo'],
+  },
+  {
     // ArcaAI in-house English medical fine-tune (2607.26 merge), GGUF f16 for
     // whisper.cpp. Verified against the HF API 2026-09-02: the repo carries
     // the dotted date segment.
