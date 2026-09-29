@@ -163,12 +163,14 @@ export interface UseArcaAudio {
   startFromPreferences: () => Promise<void>;
   stop: () => Promise<void>;
   /**
-   * Switch the live streaming session to the tenant fallback pipeline (R4).
-   * Primary path swaps the ASR engine in place (session survives); pass
-   * `fallbackPipelineId` to enable the degraded destroy/recreate path on a
-   * backend that predates the in-place switch route (surfaced as reconnecting).
+   * Switch the live streaming session to the tenant's fallback ASR engine (R4).
+   * Primary path swaps the engine in place (session survives); pass
+   * `fallbackAgentSlug` to enable the degraded destroy/recreate path on a
+   * backend that predates the in-place switch route (surfaced as reconnecting)
+   * — the session is rebuilt on that ASR Agent. (The parameter is an agent
+   * slug; it was misnamed `fallbackPipelineId` here until 4.0.1.)
    */
-  switchToFallback: (fallbackPipelineId?: string) => Promise<void>;
+  switchToFallback: (fallbackAgentSlug?: string) => Promise<void>;
   mute: () => void;
   unmute: () => void;
   toggleNoiseFilter: (enabled?: boolean) => void;

@@ -1,16 +1,16 @@
 # @arcaai/room — browser audio capture foundation
 
-`packages/room`, npm package `@arcaai/room` (version 3.5.0). Browser microphone capture (`Room`,
+`packages/room`, npm package `@arcaai/room` (version 4.0.x). Browser microphone capture (`Room`,
 `AudioTrack`), a shared `AudioContext` manager, a chainable processor pipeline, and React
-hooks/components on top. Every audio plugin in this monorepo builds on the `BaseProcessor` /
+hooks/components on top. Any Web Audio stage attaches through the `BaseProcessor` /
 `TrackProcessor` contract defined here. Runtime dependency: `eventemitter3`. Peer dependency:
 `react` `^18.3.0 || ^19.0.4`.
 
-Consumed by `@arcaai/vox` (`packages/agentic-sdk-v2`), whose `TranscriptionPipeline` wires
-processors onto room tracks, and by `@arcaai/med-ner` type-only. `@arcaai/noise-filter` and
-`@arcaai/vad` implement `BaseProcessor` against this package but are deprecated for removal (see
-[The browser never runs a model](#the-browser-never-runs-a-model)); `@arcaai/stt`'s in-browser
-processor is likewise deprecated, though the package's PCM capture helpers are not.
+Consumed by `@arcaai/vox` (`packages/agentic-sdk-v2`), whose `TranscriptionPipeline` wires room
+tracks into the backend streaming STT transport, and by `@arcaai/stt` (PCM capture helpers + that
+transport). The model-running processors that used to build on it — `@arcaai/noise-filter`,
+`@arcaai/vad`, `@arcaai/med-ner` and `@arcaai/stt`'s in-browser Whisper — were deleted in 4.0.0
+(TASK-1006; see [The browser never runs a model](#the-browser-never-runs-a-model)).
 
 ## Layout
 
@@ -117,17 +117,18 @@ class MyProcessor extends BaseProcessor {
 Chain several with `ProcessorPipeline`:
 
 ```typescript
-const pipeline = new ProcessorPipeline([noiseFilter, vad, stt]);
+// Your own Web Audio stages — e.g. a gain stage and a level meter (never a model).
+const pipeline = new ProcessorPipeline([gainStage, levelMeter]);
 await audioTrack.setProcessor(pipeline);
-await pipeline.setEnabled('vad-processor', false);
+await pipeline.setEnabled('level-meter', false);
 ```
 
 ### Sample-rate enforcement
 
-Downstream processors are sample-rate sensitive: RNNoise (`@arcaai/noise-filter`) requires
-48000 Hz; Silero VAD resamples internally to 16000 Hz. macOS commonly locks devices to
-44100 Hz, which silently degrades RNNoise quality. `AudioContextManager.acquire(opts)` supports
-opt-in enforcement:
+Some processors are sample-rate sensitive (the enforcement below was added for the RNNoise
+processor, which required 48000 Hz and was deleted in 4.0.0). macOS commonly locks devices to
+44100 Hz, which a fixed-rate stage would silently mishandle. `AudioContextManager.acquire(opts)`
+supports opt-in enforcement:
 
 | `requireSampleRate` | `allowMismatch` | Behavior on mismatch |
 |---|---|---|
@@ -138,10 +139,10 @@ opt-in enforcement:
 ### The browser never runs a model
 
 `@arcaai/room` itself never runs a model — it is pure capture and Web Audio plumbing. The
-deprecated downstream processors (`@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt`'s local
-Whisper, `@arcaai/med-ner`) that attach to it via `TrackProcessor` are retired by owner directive
-(TASK-865): VAD, denoise, diarization, ASR and NER are server-side decisions of the tenant's
-Agents. Native `getUserMedia` constraints (`noiseSuppression`, `echoCancellation`,
+downstream processors that did (`@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt`'s local
+Whisper, `@arcaai/med-ner`) were retired by owner directive (TASK-865) and deleted in 4.0.0
+(TASK-1006): VAD, denoise, diarization, ASR and NER are server-side decisions of the tenant's
+Agents, selected by `agentSlug` or by the gateway — never by the browser. Native `getUserMedia` constraints (`noiseSuppression`, `echoCancellation`,
 `autoGainControl`) are not models and stay on by default.
 
 ### Runtime requirements
@@ -158,7 +159,7 @@ Agents. Native `getUserMedia` constraints (`noiseSuppression`, `echoCancellation
 
 - [`@arcaai/vox`](../agentic-sdk-v2/README.md) — the browser SDK that wires this package's tracks
   into its capture graph.
-- [`@arcaai/noise-filter`](../noise-filter/README.md), [`@arcaai/vad`](../vad/README.md),
-  [`@arcaai/stt`](../stt/README.md), [`@arcaai/med-ner`](../med-ner/README.md) — deprecated
-  processor implementations built on this package.
+- [`@arcaai/stt`](../stt/README.md) — PCM capture helpers and the backend streaming STT transport
+  built on this package. (`@arcaai/noise-filter`, `@arcaai/vad` and `@arcaai/med-ner` were
+  deleted in 4.0.0.)
 - `.claude/rules/08-vox-sdk.md` — the owner directive that the browser never runs a model.
