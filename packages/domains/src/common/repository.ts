@@ -3,13 +3,46 @@ import { Prisma, PrismaClient, modelHasSoftDelete } from '@arcaai/database';
 import { formatFindAllProps, formatCountProps, QueryBuilder, BaseEntity, BaseMapper, EntityId, CoreUnitOfWorkService } from '../common';
 import { ICountProps, IFindAllProps, IRepository } from '../interfaces';
 
-import { DataCreationException, DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
+import {
+  DataConflictException,
+  DataCreationException,
+  DataNotFoundException,
+  DatabaseConnectionException,
+  OptimisticConcurrencyException,
+  QueryFailedException,
+} from '@arcaai/exceptions';
 import { ResourceStatusType } from '../enums';
 import { removeNullValues } from './removeNullValues';
 import { getPhiReadSecrets, wrapDelegateWithPhiDecrypt } from './phi-read-decrypt';
 
 // Type for the database context - can be extended client or transaction client
 type DatabaseContext = ReturnType<PrismaClient['$extends']> | Prisma.TransactionClient;
+
+const PRISMA_CONNECTION_CODES = new Set(['P1001', 'P1002', 'P1017']);
+
+/**
+ * The single Prisma-error chokepoint: maps a driver error onto the persistence
+ * exception family, keeping the original as `cause`. Detected by the `code`
+ * property (duck-typed) so no Prisma runtime class is imported. Anything that
+ * is not a Prisma error — including already-mapped domain exceptions — is
+ * returned unchanged.
+ */
+function mapPrismaError(error: unknown, modelName: string, entityId?: string): unknown {
+  if (!(error instanceof Error)) return error;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code !== 'string' || !/^P\d{4}$/.test(code)) return error;
+  if (code === 'P2002') return new DataConflictException(`[DB] ${modelName} unique constraint violated (${code}).`, error);
+  if (code === 'P2025') return new DataNotFoundException(modelName, entityId ?? 'unknown', error);
+  if (PRISMA_CONNECTION_CODES.has(code)) return new DatabaseConnectionException(`[DB] ${modelName} database connection failed (${code}).`, error);
+  return new QueryFailedException(`[DB] ${modelName} query failed (${code}).`, error);
+}
+
+function filterKeys(props: unknown): string {
+  if (!props || typeof props !== 'object') return '';
+  const where = (props as { where?: unknown }).where;
+  const source = where && typeof where === 'object' ? where : props;
+  return Object.keys(source as object).join(', ');
+}
 
 @Injectable()
 export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel> implements IRepository<DomainEntity, DatabaseModel> {
@@ -47,6 +80,14 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     return delegate;
   }
 
+  private async guard<T>(work: () => Promise<T>, entityId?: string): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      throw mapPrismaError(error, this._modelName, entityId);
+    }
+  }
+
   public async create(entity: DomainEntity, tx?: Prisma.TransactionClient | any): Promise<DomainEntity> {
     let data = this._mapper.toPersistence(entity);
     data = removeNullValues(data);
@@ -59,10 +100,12 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     // client (`this.db`) is used — behaviour unchanged.
     const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
 
-    const model = await delegate.create({
-      data,
-      include: this._includes,
-    });
+    const model = await this.guard(() =>
+      delegate.create({
+        data,
+        include: this._includes,
+      }),
+    );
     if (!model) {
       throw new DataCreationException(delegate?.name || this._modelName || Repository.name);
     }
@@ -98,46 +141,70 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
 
     const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
 
-    const result = await delegate.createMany({
-      data,
-      skipDuplicates,
-    });
+    const result = await this.guard(() =>
+      delegate.createMany({
+        data,
+        skipDuplicates,
+      }),
+    );
 
     return { count: result.count };
   }
 
   public async findById(id: EntityId): Promise<DomainEntity> {
-    const model = await this.db.findUnique({
-      where: { id },
-      include: this._includes,
-    });
+    const model = await this.guard(
+      () =>
+        this.db.findUnique({
+          where: { id },
+          include: this._includes,
+        }),
+      id,
+    );
     if (!model) {
       throw new DataNotFoundException(this.db.name || Repository.name, id);
     }
     return this._mapper.toDomainEntity(model);
   }
 
+  /**
+   * `findById` for callers where absence is an expected outcome. Returns
+   * `null` only for a genuine miss; every other failure still propagates.
+   */
+  public async findByIdOrNull(id: EntityId): Promise<DomainEntity | null> {
+    try {
+      return await this.findById(id);
+    } catch (error) {
+      if (error instanceof DataNotFoundException) return null;
+      throw error;
+    }
+  }
+
   public async findFirst(props: IFindAllProps<DatabaseModel>): Promise<DomainEntity> {
-    const model = await this.db.findFirst({
-      ...formatFindAllProps(this.applyDefaultSearchFields(props)),
-      include: this._includes,
-    });
+    const model = await this.guard(() =>
+      this.db.findFirst({
+        ...formatFindAllProps(this.applyDefaultSearchFields(props)),
+        include: this._includes,
+      }),
+    );
     if (!model) {
-      throw new DataNotFoundException(this.db.name || Repository.name, JSON.stringify(props));
+      // Filter KEYS only: the values are identifiers, emails and other PHI-adjacent data.
+      throw new DataNotFoundException(this._modelName, `matching filter (where keys: ${filterKeys(props)})`);
     }
     return this._mapper.toDomainEntity(model);
   }
 
   public async findAll(props: IFindAllProps<DatabaseModel>): Promise<DomainEntity[]> {
-    const models = await this.db.findMany({
-      ...formatFindAllProps(this.applyDefaultSearchFields(props)),
-      include: this._includes,
-    });
+    const models = await this.guard(() =>
+      this.db.findMany({
+        ...formatFindAllProps(this.applyDefaultSearchFields(props)),
+        include: this._includes,
+      }),
+    );
     return models.map((model: DatabaseModel) => this._mapper.toDomainEntity(model));
   }
 
   public async count(props: ICountProps<DatabaseModel>): Promise<number> {
-    return await this.db.count(formatCountProps(this.applyDefaultSearchFields(props)));
+    return await this.guard(() => this.db.count(formatCountProps(this.applyDefaultSearchFields(props))));
   }
 
   private applyDefaultSearchFields<T extends { search?: string; searchFields?: string[] }>(props: T): T {
@@ -172,11 +239,15 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     const changes = this._mapper.toPersistenceChanges(entity);
     const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
 
-    const model = await delegate.update({
-      where: { id },
-      data: changes,
-      include: this._includes,
-    });
+    const model = await this.guard(
+      () =>
+        delegate.update({
+          where: { id },
+          data: changes,
+          include: this._includes,
+        }),
+      id,
+    );
     return this._mapper.toDomainEntity(model);
   }
 
@@ -223,22 +294,32 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     // cached extended client (`this.db`).
     const model: any = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
 
-    const result = await model.updateMany({
-      where: { id, version: expectedVersion },
-      data: { ...safeChanges, version: { increment: 1 } },
-    });
+    const result = await this.guard(
+      () =>
+        model.updateMany({
+          where: { id, version: expectedVersion },
+          data: { ...safeChanges, version: { increment: 1 } },
+        }),
+      id,
+    );
 
     if (result.count === 0) {
-      const current = await model.findUnique({
-        where: { id },
-        select: { version: true },
-      });
+      const current = await this.guard(
+        () =>
+          model.findUnique({
+            where: { id },
+            select: { version: true },
+          }),
+        id,
+      );
       if (!current) {
         throw new DataNotFoundException(this._modelName, id);
       }
+      const tenantId = (entity as { tenantId?: unknown }).tenantId;
       throw new OptimisticConcurrencyException(this._modelName, id, {
         expectedVersion,
         currentVersion: current.version,
+        ...(typeof tenantId === 'string' && tenantId ? { tenantId } : {}),
       });
     }
 
@@ -259,10 +340,14 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
       return this.findById(id);
     }
     const model: any = (tx as Record<string, any>)[this._modelName];
-    const found = await model.findUnique({
-      where: { id },
-      include: this._includes,
-    });
+    const found = await this.guard(
+      () =>
+        model.findUnique({
+          where: { id },
+          include: this._includes,
+        }),
+      id,
+    );
     if (!found) {
       throw new DataNotFoundException(this._modelName, id);
     }
@@ -270,10 +355,14 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
   }
 
   public async delete(id: EntityId): Promise<DomainEntity> {
-    const model = await this.db.delete({
-      where: { id },
-      include: this._includes,
-    });
+    const model = await this.guard(
+      () =>
+        this.db.delete({
+          where: { id },
+          include: this._includes,
+        }),
+      id,
+    );
     return this._mapper.toDomainEntity(model);
   }
 
@@ -315,20 +404,24 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     }
     const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
 
-    const model = await delegate.update({
-      where: { id },
-      data: {
-        resourceStatus: ResourceStatusType.DELETED,
-        resourceStatusUpdatedAt: new Date(),
-        ...(updatedBy && { resourceStatusUpdatedBy: updatedBy }),
-        // Soft-delete is a real state change.
-        // Bumping `_version` prevents a stale reader at v(n) from successfully
-        // calling `updateWithVersion(…, n)` after another admin soft-deleted
-        // the row, which would resurrect deleted PHI (compliance / SOC2 risk).
-        version: { increment: 1 },
-      },
-      include: this._includes,
-    });
+    const model = await this.guard(
+      () =>
+        delegate.update({
+          where: { id },
+          data: {
+            resourceStatus: ResourceStatusType.DELETED,
+            resourceStatusUpdatedAt: new Date(),
+            ...(updatedBy && { resourceStatusUpdatedBy: updatedBy }),
+            // Soft-delete is a real state change.
+            // Bumping `_version` prevents a stale reader at v(n) from successfully
+            // calling `updateWithVersion(…, n)` after another admin soft-deleted
+            // the row, which would resurrect deleted PHI (compliance / SOC2 risk).
+            version: { increment: 1 },
+          },
+          include: this._includes,
+        }),
+      id,
+    );
     return this._mapper.toDomainEntity(model);
   }
 
@@ -349,18 +442,22 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     }
     const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
 
-    const model = await delegate.update({
-      where: { id },
-      data: {
-        resourceStatus: ResourceStatusType.ENABLED,
-        resourceStatusUpdatedAt: new Date(),
-        ...(updatedBy && { resourceStatusUpdatedBy: updatedBy }),
-        // Restore is the inverse state
-        // change and must also bump so OCC tracks the resurrection cleanly.
-        version: { increment: 1 },
-      },
-      include: this._includes,
-    });
+    const model = await this.guard(
+      () =>
+        delegate.update({
+          where: { id },
+          data: {
+            resourceStatus: ResourceStatusType.ENABLED,
+            resourceStatusUpdatedAt: new Date(),
+            ...(updatedBy && { resourceStatusUpdatedBy: updatedBy }),
+            // Restore is the inverse state
+            // change and must also bump so OCC tracks the resurrection cleanly.
+            version: { increment: 1 },
+          },
+          include: this._includes,
+        }),
+      id,
+    );
     return this._mapper.toDomainEntity(model);
   }
 
