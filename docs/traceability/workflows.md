@@ -28,7 +28,7 @@ domain file.
   version ≥ 1 already exists. `"0"` is now an accepted strong validator (`(0|[1-9][0-9]*)`);
   a null result renders 404, never a 200 with an empty body. Evidence: `apps/api/src/decorators/expectedVersion.decorator.ts`
   (+ `__tests__/expectedVersion.decorator.test.ts`), e2e `optimistic-locking.spec.ts`,
-  `ai-provider-connections.spec.ts`, `ai-runtime-profiles.spec.ts`, `settings-registry-write.spec.ts`.
+  `ai-provider-connections.spec.ts`, `settings-registry-write.spec.ts`.
 - **PHI posture.** Clinical payloads (context items, highlights, transcript segments, summaries,
   DNA reports, audit rows) are envelope-encrypted at rest; golden-case reads surface
   PHI-safe metadata only; guardrail validation is **fail-closed** on the
@@ -346,7 +346,7 @@ closed` (no env fallback).
   comment. A genuine `202 → RUNNING → COMPLETED` round trip is unverified pending a running
   harness + Temporal worker (R-2 already names Temporal as not production-ready for the same
   reason).
-- **The "0"-create contract is proven mostly at the unit/decorator layer plus the `ai-provider-connections.spec.ts` / `ai-runtime-profiles.spec.ts` / `settings-registry-write.spec.ts` 428/412 legs.** The create-from-absent (`If-Match: "0"` → new row) path is asserted in the service unit suites (`settings-registry-write.occ`, `ai-provider-connection.service`, `harness-policy.service`), not yet in a dedicated e2e create leg.
+- **The "0"-create contract is proven mostly at the unit/decorator layer plus the `ai-provider-connections.spec.ts` / `settings-registry-write.spec.ts` 428/412 legs.** The create-from-absent (`If-Match: "0"` → new row) path is asserted in the service unit suites (`settings-registry-write.occ`, `ai-provider-connection.service`, `harness-policy.service`), not yet in a dedicated e2e create leg.
 - W6 (tenancy/entitlements) and W10 (audit) now resolve to [`tenancy-provisioning.md`](./tenancy-provisioning.md) and [`platform-ops.md`](./platform-ops.md) respectively; their step-level claims were carried over from the retired matrix and have not been re-verified against those files line by line.
 - **[`ai-models-providers.md`](./ai-models-providers.md) M7's `e2e: —` is stale.** `apps/api/tests/e2e/trajectory-admin.spec.ts` exists and probes the M7 `/admin/agent-trajectory/*` read plane (RBAC + keyset step pagination + `payloadRef`-never-surfaced); code wins over the domain file's cell. W7 step 5 cites it; M7's e2e cell should be corrected on that file's next re-stamp.
 
