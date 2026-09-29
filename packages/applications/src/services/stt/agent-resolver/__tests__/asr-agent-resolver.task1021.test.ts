@@ -54,10 +54,13 @@ function systemVllmRow(overrides: Record<string, unknown> = {}) {
 
 function makeResolver(rowsByTenant: Record<string, unknown[]>, entitled = false) {
   const repo = withTask958Lookups({
-    findByTenantServiceProvider: vi.fn(async (service: string, provider: string, tenantId: string) =>
-      ((rowsByTenant[tenantId] ?? []) as any[]).find((r) => r.service === service && r.provider === provider) ?? null,
+    findByTenantServiceProvider: vi.fn(
+      async (service: string, provider: string, tenantId: string) =>
+        ((rowsByTenant[tenantId] ?? []) as any[]).find((r) => r.service === service && r.provider === provider) ?? null,
     ),
-    findByTenantIdAndService: vi.fn(async (service: string, tenantId: string) => ((rowsByTenant[tenantId] ?? []) as any[]).filter((r) => r.service === service)),
+    findByTenantIdAndService: vi.fn(async (service: string, tenantId: string) =>
+      ((rowsByTenant[tenantId] ?? []) as any[]).filter((r) => r.service === service),
+    ),
     findDeletedByTenantServiceProvider: vi.fn(async () => null),
   });
   const cls = { get: vi.fn((k: string) => (k === 'tenantId' ? TENANT : undefined)) };
@@ -65,7 +68,14 @@ function makeResolver(rowsByTenant: Record<string, unknown[]>, entitled = false)
   // Unentitled by default: the platform-default gate governs VENDOR spend and must not touch a
   // self-host engine.
   const entitlements = { isFeatureEnabled: vi.fn(async () => entitled), assertQuantityQuota: vi.fn() };
-  const connections = new AiProviderConnectionService(repo as any, { baseClient: {} } as any, { emit: vi.fn() } as any, cls as any, secrets as any, entitlements as any);
+  const connections = new AiProviderConnectionService(
+    repo as any,
+    { baseClient: {} } as any,
+    { emit: vi.fn() } as any,
+    cls as any,
+    secrets as any,
+    entitlements as any,
+  );
   vi.spyOn((connections as any).logger, 'warn').mockImplementation(() => undefined);
   const agents = { resolve: vi.fn(async () => vllmAgent()) };
   return new AsrAgentResolverService(agents as never, new ProviderCredentialResolver(connections));
@@ -80,7 +90,10 @@ describe('TASK-1021 — the self-host vLLM engine on the ASR credential plane', 
   });
 
   it('an agent whose primary is provider vllm gets providerOverrides.vllm with base_url and max_concurrent', async () => {
-    const session = await makeResolver({ [SYSTEM_TENANT_ID]: [systemVllmRow()] }).resolve({ tenantId: TENANT, agentSlug: 'realtime-transcription-vllm' });
+    const session = await makeResolver({ [SYSTEM_TENANT_ID]: [systemVllmRow()] }).resolve({
+      tenantId: TENANT,
+      agentSlug: 'realtime-transcription-vllm',
+    });
 
     expect(session.providerOverrides?.vllm).toMatchObject({ base_url: BASE_URL, max_concurrent: 32, funding: 'platform', connection_slug: 'vllm' });
     expect(session.providerOverrides?.vllm.connection_id).toEqual(expect.any(String));
@@ -88,7 +101,10 @@ describe('TASK-1021 — the self-host vLLM engine on the ASR credential plane', 
   });
 
   it('the spec itself stays credential-free', async () => {
-    const session = await makeResolver({ [SYSTEM_TENANT_ID]: [systemVllmRow()] }).resolve({ tenantId: TENANT, agentSlug: 'realtime-transcription-vllm' });
+    const session = await makeResolver({ [SYSTEM_TENANT_ID]: [systemVllmRow()] }).resolve({
+      tenantId: TENANT,
+      agentSlug: 'realtime-transcription-vllm',
+    });
     const wire = JSON.stringify(session.spec);
     expect(wire).not.toContain('self-host-placeholder');
     expect(wire).not.toContain('api_key');
@@ -96,14 +112,20 @@ describe('TASK-1021 — the self-host vLLM engine on the ASR credential plane', 
   });
 
   it('a row with no maxConcurrent carries no max_concurrent key (the engine default applies)', async () => {
-    const session = await makeResolver({ [SYSTEM_TENANT_ID]: [systemVllmRow({ maxConcurrent: null })] }).resolve({ tenantId: TENANT, agentSlug: 'realtime-transcription-vllm' });
+    const session = await makeResolver({ [SYSTEM_TENANT_ID]: [systemVllmRow({ maxConcurrent: null })] }).resolve({
+      tenantId: TENANT,
+      agentSlug: 'realtime-transcription-vllm',
+    });
     expect(session.providerOverrides?.vllm.base_url).toBe(BASE_URL);
     expect(session.providerOverrides?.vllm).not.toHaveProperty('max_concurrent');
   });
 
   it('a TENANT row can never serve a self-host engine — only the SYSTEM row does', async () => {
     const tenantRow = systemVllmRow({ tenantId: TENANT, baseUrl: 'http://attacker.invalid/v1' });
-    const session = await makeResolver({ [TENANT]: [tenantRow], [SYSTEM_TENANT_ID]: [systemVllmRow()] }).resolve({ tenantId: TENANT, agentSlug: 'realtime-transcription-vllm' });
+    const session = await makeResolver({ [TENANT]: [tenantRow], [SYSTEM_TENANT_ID]: [systemVllmRow()] }).resolve({
+      tenantId: TENANT,
+      agentSlug: 'realtime-transcription-vllm',
+    });
     expect(session.providerOverrides?.vllm.base_url).toBe(BASE_URL);
   });
 

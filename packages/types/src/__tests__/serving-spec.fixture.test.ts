@@ -16,15 +16,60 @@ describe('ResolvedServingSpec — the committed fixture (TASK-1021 C-1)', () => 
   });
 
   it.each([
-    ['a missing key', (spec: Record<string, unknown>) => { delete spec.sourceRevision; }],
-    ['an unknown kind', (spec: Record<string, unknown>) => { spec.kind = 'video'; }],
-    ['a non-SAFETENSOR format', (spec: Record<string, unknown>) => { spec.format = 'WHISPER_CPP'; }],
-    ['an unknown computeType', (spec: Record<string, unknown>) => { spec.computeType = 'int8'; }],
-    ['an unknown quantization', (spec: Record<string, unknown>) => { spec.quantization = 'q4'; }],
-    ['a string maxModelLen', (spec: Record<string, unknown>) => { spec.maxModelLen = '448'; }],
-    ['a non-positive vramGiB', (spec: Record<string, unknown>) => { spec.engine = { vramGiB: 0, maxNumSeqs: null, enforceEager: null }; }],
-    ['a string enforceEager', (spec: Record<string, unknown>) => { spec.engine = { vramGiB: 5, maxNumSeqs: null, enforceEager: 'yes' }; }],
-    ['an extra top-level key', (spec: Record<string, unknown>) => { spec.apiKey = 'x'; }],
+    [
+      'a missing key',
+      (spec: Record<string, unknown>) => {
+        delete spec.sourceRevision;
+      },
+    ],
+    [
+      'an unknown kind',
+      (spec: Record<string, unknown>) => {
+        spec.kind = 'video';
+      },
+    ],
+    [
+      'a non-SAFETENSOR format',
+      (spec: Record<string, unknown>) => {
+        spec.format = 'WHISPER_CPP';
+      },
+    ],
+    [
+      'an unknown computeType',
+      (spec: Record<string, unknown>) => {
+        spec.computeType = 'int8';
+      },
+    ],
+    [
+      'an unknown quantization',
+      (spec: Record<string, unknown>) => {
+        spec.quantization = 'q4';
+      },
+    ],
+    [
+      'a string maxModelLen',
+      (spec: Record<string, unknown>) => {
+        spec.maxModelLen = '448';
+      },
+    ],
+    [
+      'a non-positive vramGiB',
+      (spec: Record<string, unknown>) => {
+        spec.engine = { vramGiB: 0, maxNumSeqs: null, enforceEager: null };
+      },
+    ],
+    [
+      'a string enforceEager',
+      (spec: Record<string, unknown>) => {
+        spec.engine = { vramGiB: 5, maxNumSeqs: null, enforceEager: 'yes' };
+      },
+    ],
+    [
+      'an extra top-level key',
+      (spec: Record<string, unknown>) => {
+        spec.apiKey = 'x';
+      },
+    ],
   ])('rejects %s', (_label, mutate) => {
     const spec = structuredClone(fixture) as Record<string, unknown>;
     mutate(spec);

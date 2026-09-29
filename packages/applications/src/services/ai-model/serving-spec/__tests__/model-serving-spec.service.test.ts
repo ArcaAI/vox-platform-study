@@ -37,7 +37,9 @@ function row(overrides: Record<string, unknown> = {}): AiModelEntity {
 
 /** A repository holding exactly `rows`, keyed by `(tenantId, slug)`, every status included. */
 function repositoryOf(rows: AiModelEntity[]) {
-  const findBySlugIncludingDeleted = vi.fn(async (tenantId: string, slug: string) => rows.find((r) => r.tenantId === tenantId && r.slug === slug) ?? null);
+  const findBySlugIncludingDeleted = vi.fn(
+    async (tenantId: string, slug: string) => rows.find((r) => r.tenantId === tenantId && r.slug === slug) ?? null,
+  );
   return { repository: { findBySlugIncludingDeleted } as unknown as AiModelRepository, findBySlugIncludingDeleted };
 }
 
@@ -101,13 +103,19 @@ describe('ModelServingSpecService.resolve (TASK-1021 C-2)', () => {
 
   it('a row with no vramGiB → 409 SERVING_FACTS_MISSING', async () => {
     const { service } = serviceOver([row({ metaData: { asr: { maxModelLen: 448 } } })]);
-    expect(await rejection(service.resolve(SLUG, TENANT_A))).toEqual({ status: 409, body: { code: 'MODEL_NOT_SERVABLE', reason: 'SERVING_FACTS_MISSING' } });
+    expect(await rejection(service.resolve(SLUG, TENANT_A))).toEqual({
+      status: 409,
+      body: { code: 'MODEL_NOT_SERVABLE', reason: 'SERVING_FACTS_MISSING' },
+    });
   });
 
   it('broadcasts ResourceViewed for the served row (the read pattern — no audit write)', async () => {
     const { service } = serviceOver([row()]);
     await service.resolve(SLUG, TENANT_A);
-    expect(eventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceViewed, expect.objectContaining({ resourceId: '00000000-0000-0000-0001-000000000026' }));
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      SysEventType.ResourceViewed,
+      expect.objectContaining({ resourceId: '00000000-0000-0000-0001-000000000026' }),
+    );
     expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
   });
 });

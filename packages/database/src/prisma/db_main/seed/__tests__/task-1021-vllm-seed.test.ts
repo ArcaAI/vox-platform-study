@@ -35,7 +35,12 @@ import {
   type SeedAgentsClient,
 } from '../25-agents';
 import { ARCAAI_AGENT_SPECS } from '../29-arcaai-agents-and-workflows';
-import { PLATFORM_SELF_HOST_CONNECTIONS, SELF_HOST_PLACEHOLDER_API_KEY, SYSTEM_AI_PROVIDER_CONNECTIONS, seedAiProviderConnection } from '../17-ai-provider-connection';
+import {
+  PLATFORM_SELF_HOST_CONNECTIONS,
+  SELF_HOST_PLACEHOLDER_API_KEY,
+  SYSTEM_AI_PROVIDER_CONNECTIONS,
+  seedAiProviderConnection,
+} from '../17-ai-provider-connection';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SEED_DIR = path.resolve(HERE, '..');
@@ -145,7 +150,9 @@ describe('the Global-only vLLM agent (OD-12)', () => {
   it('has an agent id in its own block, used by nothing else', () => {
     const id = agentSpec()!.id;
     expect(id).toMatch(/^9c000000-0000-0000-0006-/);
-    const allIds = [...PLATFORM_AGENT_SPECS, ...GLOBAL_AGENT_SPECS, ...ARCAAI_AGENT_SPECS, ...GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS].map((spec) => spec.id);
+    const allIds = [...PLATFORM_AGENT_SPECS, ...GLOBAL_AGENT_SPECS, ...ARCAAI_AGENT_SPECS, ...GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS].map(
+      (spec) => spec.id,
+    );
     expect(allIds.filter((candidate) => candidate === id)).toHaveLength(1);
   });
 
@@ -174,7 +181,10 @@ describe('the Global-only vLLM agent (OD-12)', () => {
         },
       },
     );
-    expect(problems.filter((problem: { severity: string }) => problem.severity === 'ERROR'), JSON.stringify(problems)).toEqual([]);
+    expect(
+      problems.filter((problem: { severity: string }) => problem.severity === 'ERROR'),
+      JSON.stringify(problems),
+    ).toEqual([]);
   });
 });
 
@@ -214,7 +224,12 @@ describe('seedGlobalPlaygroundOnlyAgents against an in-memory client', () => {
 
   it('creates the agent PUBLISHED with a compiled config frozen on the vLLM row, and nothing else', async () => {
     const { client, agents, fallbacks, assignments } = memoryClient();
-    expect(await seedGlobalPlaygroundOnlyAgents(client)).toMatchObject({ created: 1, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 0 });
+    expect(await seedGlobalPlaygroundOnlyAgents(client)).toMatchObject({
+      created: 1,
+      skippedExisting: 0,
+      skippedUnresolvable: 0,
+      assignmentsCreated: 0,
+    });
     const row = agents.get(agentSpec()!.id);
     expect(row).toMatchObject({ tenantId: SEED_TENANT_ID, slug: VLLM_ASR_AGENT_SLUG, status: 'PUBLISHED', modelId: VLLM_ID });
     expect(row.compiledConfig.model).toMatchObject({ id: VLLM_ID, slug: VLLM_SLUG, taskType: 'AUTOMATIC_SPEECH_RECOGNITION' });
@@ -282,6 +297,12 @@ describe('TASK-1021 — the SYSTEM stt/vllm connection (where the engine lives)'
     };
     await seedAiProviderConnection(client as any);
     const row = created.find((data) => data.service === 'stt' && data.provider === 'vllm');
-    expect(row).toMatchObject({ slug: 'vllm', defaultForProvider: 'vllm', baseUrl: 'http://hope-vllm-asr:8867/v1', maxConcurrent: 32, enabled: true });
+    expect(row).toMatchObject({
+      slug: 'vllm',
+      defaultForProvider: 'vllm',
+      baseUrl: 'http://hope-vllm-asr:8867/v1',
+      maxConcurrent: 32,
+      enabled: true,
+    });
   });
 });

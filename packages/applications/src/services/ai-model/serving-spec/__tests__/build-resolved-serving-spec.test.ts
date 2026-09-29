@@ -72,14 +72,20 @@ describe('buildResolvedServingSpec (TASK-1021 C-1)', () => {
   });
 
   it('hands vLLM the snapshot DIRECTORY, never the primary object inside it', () => {
-    const result = buildResolvedServingSpec(whisperRow({ bucketPrefix: 'arcaai-whisper-large-ml-en-vllm/fp16-abc/', primaryObject: 'model.safetensors' }));
+    const result = buildResolvedServingSpec(
+      whisperRow({ bucketPrefix: 'arcaai-whisper-large-ml-en-vllm/fp16-abc/', primaryObject: 'model.safetensors' }),
+    );
     expect(result.ok && result.spec.localPath).toBe('/mnt/models-bucket/arcaai-whisper-large-ml-en-vllm/fp16-abc');
   });
 
   it('reads quantization and maxModelLen from _metadata.asr, and the engine knobs from _metadata.serving', () => {
     const metaData = { asr: { quantization: 'fp8', maxModelLen: 448 }, serving: { vramGiB: 6.5, maxNumSeqs: 32, enforceEager: true } };
     const result = buildResolvedServingSpec(whisperRow({ metaData }));
-    expect(result.ok && result.spec).toMatchObject({ quantization: 'fp8', maxModelLen: 448, engine: { vramGiB: 6.5, maxNumSeqs: 32, enforceEager: true } });
+    expect(result.ok && result.spec).toMatchObject({
+      quantization: 'fp8',
+      maxModelLen: 448,
+      engine: { vramGiB: 6.5, maxNumSeqs: 32, enforceEager: true },
+    });
   });
 
   it('keys the runtime on the checksum when the row has one, else on the version', () => {

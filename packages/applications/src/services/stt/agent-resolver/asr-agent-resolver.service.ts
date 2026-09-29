@@ -4,7 +4,12 @@ import { QuotaExceededException } from '@arcaai/exceptions';
 import type { ResolvedAgent, ResolvedAsrSpec } from '@arcaai/types';
 import { AgentResolverService, ConnectionIdentityLookup, failedBindingKey, providerOverrideKey } from '../../agent/agent-resolver.service';
 import { ProviderCredentialResolver } from '../../ai-provider-connection/provider-credential-resolver';
-import { CLOUD_BYO_PROVIDERS, PLATFORM_SELF_HOST_PROVIDERS, isCloudByoProvider, isPlatformSelfHostProvider } from '../../ai-provider-connection/constants';
+import {
+  CLOUD_BYO_PROVIDERS,
+  PLATFORM_SELF_HOST_PROVIDERS,
+  isCloudByoProvider,
+  isPlatformSelfHostProvider,
+} from '../../ai-provider-connection/constants';
 import { ProviderVetoedException } from '../../ai-provider-connection/provider-vetoed.exception';
 import { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
 import type {

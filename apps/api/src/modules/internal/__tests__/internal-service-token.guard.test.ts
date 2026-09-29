@@ -137,15 +137,15 @@ describe('InternalServiceTokenGuard', () => {
       'rejects any other token (%s) for service=vllm — it is a known service, not an unknown-name pass-through',
       async (token) => {
         const guard = guardWith();
-        await expect(guard.canActivate(makeContext({ 'x-service-token': token }, { service: 'vllm' }))).rejects.toBeInstanceOf(
-          UnauthorizedException,
-        );
+        await expect(guard.canActivate(makeContext({ 'x-service-token': token }, { service: 'vllm' }))).rejects.toBeInstanceOf(UnauthorizedException);
       },
     );
 
     it('no longer knows the retired asr-vllm name — only a valid peer token passes it through', async () => {
       const guard = guardWith();
-      await expect(guard.canActivate(makeContext({ 'x-service-token': 'garbage' }, { service: 'asr-vllm' }))).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(guard.canActivate(makeContext({ 'x-service-token': 'garbage' }, { service: 'asr-vllm' }))).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
     });
 
     it('does not accept the stt alternate header for service=vllm', async () => {

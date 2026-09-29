@@ -40,7 +40,13 @@ import { SttInternalController } from './stt-internal.controller';
     // TASK-1021 — `ModelServingInternalController` (`/internal/models/:slug/serving-spec`), apps/vllm's engine-build contract.
     ModelServingSpecServiceModule,
   ],
-  controllers: [SttInternalController, EffectiveConfigController, ModelRegistryInternalController, AgentInternalController, ModelServingInternalController],
+  controllers: [
+    SttInternalController,
+    EffectiveConfigController,
+    ModelRegistryInternalController,
+    AgentInternalController,
+    ModelServingInternalController,
+  ],
   // Applied via `@UseGuards` on the controller, but provided here so Nest can
   // inject SecretsService into it.
   providers: [InternalServiceTokenGuard],
