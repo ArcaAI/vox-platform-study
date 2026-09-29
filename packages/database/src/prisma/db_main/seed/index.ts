@@ -35,7 +35,7 @@ import { seedGuardrailAvailability } from './18-guardrail-availability';
 import { seedAiProviderConnection } from './17-ai-provider-connection';
 import { seedAiPriceBook } from './20-ai-price-book';
 import { seedConsentGrant } from './22-consent-grant';
-import { seedAgents } from './25-agents';
+import { seedAgents, seedGlobalPlaygroundOnlyAgents } from './25-agents';
 import { seedTenantReferenceSets } from './26-tenant-reference-set';
 import { seedDocumentTemplateLibrary } from './27-document-template-library';
 import { seedWorkflowLibrary } from './28-workflow-library';
@@ -308,6 +308,11 @@ export const seed = async () => {
     // binds; a spec whose model/template is missing is skipped, never seeded broken.
     if (isPhaseEnabled('25-agents', mode)) {
       await seedAgents(client);
+      console.log('');
+      // TASK-1010 (OD-12) — the Global playground's vLLM spike agent: never promoted, never
+      // assigned, reachable only by its `agentSlug`. After `seedAgents` because it binds a
+      // SYSTEM model row by slug the same way.
+      await seedGlobalPlaygroundOnlyAgents(client);
       console.log('');
     }
     // TASK-930 §8.4 — the core-palette workflow library (Global + SYSTEM): the consultation
