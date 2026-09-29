@@ -225,6 +225,18 @@ module.exports = [
         },
     },
     {
+        // An error that vanishes without a trace turns an outage into "not found": a database
+        // blip reads as an unknown user, a permission failure as an empty list. `.catch(() => null)`
+        // and empty `catch {}` are flagged; a deliberate swallow says why with
+        // `// swallow-ok: <reason>`. Warn-level: the existing sites are cleared in follow-up sweeps.
+        name: 'arcaai/no-silent-catch',
+        files: ['**/src/services/**/*.ts', '**/src/modules/**/*.ts'],
+        ignores: ['**/__tests__/**', '**/*.test.ts', '**/*.spec.ts', '**/tests/**'],
+        rules: {
+            'arcaai-internal/no-silent-catch': 'warn',
+        },
+    },
+    {
         name: 'arcaai/house-rules',
         rules: {
             // Parity shim for the typescript-eslint v7 → v8 move: v7

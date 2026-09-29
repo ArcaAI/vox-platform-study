@@ -24,5 +24,6 @@ module.exports = {
     'no-direct-downstream-url-env': require('./rules/no-direct-downstream-url-env'),
     'require-internal-tenant-header': require('./rules/require-internal-tenant-header'),
     'require-api-key-justification': require('./rules/require-api-key-justification'),
+    'no-silent-catch': require('./rules/no-silent-catch'),
   },
 };

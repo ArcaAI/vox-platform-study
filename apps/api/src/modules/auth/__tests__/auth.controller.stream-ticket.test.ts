@@ -5,6 +5,7 @@
  * single-use, 30-second SSE ticket scoped to a specific resource. The
  * caller is identified by the existing JWT context (ClsService).
  */
+import { DataNotFoundException } from '@arcaai/exceptions';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
@@ -42,7 +43,7 @@ function buildController(
   // Default fail-closed: no binding bound for any session.
   const streamSessionTenantBinding = opts.streamSessionTenantBinding ?? { lookupBinding: vi.fn().mockResolvedValue(null) };
   // Default fail-closed: no run resolvable for any (tenantId, runId).
-  const workflowRunService = opts.workflowRunService ?? { getRun: vi.fn().mockRejectedValue(new Error('not found')) };
+  const workflowRunService = opts.workflowRunService ?? { getRun: vi.fn().mockRejectedValue(new DataNotFoundException('Resource', 'missing')) };
   // H-02: default fail-closed — no DNA job resolvable for any id.
   const dnaQueue = opts.dnaQueue ?? { getJob: vi.fn().mockResolvedValue(null) };
   // H-02: default fail-closed — the caller holds no ability at all.
@@ -198,7 +199,7 @@ describe('AuthController.issueStreamTicket', () => {
 
     it('throws NotFoundException and never mints when the consultation is missing', async () => {
       const issueTicket = vi.fn();
-      const findById = vi.fn().mockRejectedValue(new Error('not found'));
+      const findById = vi.fn().mockRejectedValue(new DataNotFoundException('Resource', 'missing'));
       const { controller } = buildController({
         cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
         streamTicketService: { issueTicket, consumeTicket: vi.fn() },
@@ -295,7 +296,7 @@ describe('AuthController.issueStreamTicket', () => {
 
     it('throws NotFoundException and never mints when the harness-progress consultation is missing', async () => {
       const issueTicket = vi.fn();
-      const findById = vi.fn().mockRejectedValue(new Error('not found'));
+      const findById = vi.fn().mockRejectedValue(new DataNotFoundException('Resource', 'missing'));
       const { controller } = buildController({
         cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
         streamTicketService: { issueTicket, consumeTicket: vi.fn() },
@@ -420,16 +421,17 @@ describe('AuthController.issueStreamTicket', () => {
       expect(issueTicket).not.toHaveBeenCalled();
     });
 
-    it('fail-closed: a binding lookup failure (Redis blip) rejects with 404, never a mint', async () => {
+    it('fail-closed: a binding lookup failure (Redis blip) is rethrown as the outage — never a 404, never a mint', async () => {
       const issueTicket = vi.fn();
-      const lookupBinding = vi.fn().mockRejectedValue(new Error('redis down'));
+      const outage = new Error('redis down');
+      const lookupBinding = vi.fn().mockRejectedValue(outage);
       const { controller } = buildController({
         cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
         streamTicketService: { issueTicket, consumeTicket: vi.fn() },
         streamSessionTenantBinding: { lookupBinding },
       });
 
-      await expect(controller.issueStreamTicket({ scope: 'stt_session:sess-1' })).rejects.toThrow(NotFoundException);
+      await expect(controller.issueStreamTicket({ scope: 'stt_session:sess-1' })).rejects.toBe(outage);
       expect(issueTicket).not.toHaveBeenCalled();
     });
 
@@ -516,7 +518,7 @@ describe('AuthController.issueStreamTicket', () => {
     it("throws NotFoundException (no existence leak) and never mints for another tenant's run", async () => {
       const issueTicket = vi.fn();
       // IWorkflowRunService.getRun itself 404s a foreign-tenant id — simulated here as a throw.
-      const getRun = vi.fn().mockRejectedValue(new Error('not found'));
+      const getRun = vi.fn().mockRejectedValue(new DataNotFoundException('Resource', 'missing'));
       const { controller } = buildController({
         cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
         streamTicketService: { issueTicket, consumeTicket: vi.fn() },

@@ -4,6 +4,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from 'vitest';
+import { DataNotFoundException } from '@arcaai/exceptions';
 import { AiRoutingPolicyFactory, AiRoutingPolicyStatus, ResourceStatusType, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiRoutingPolicyService } from '../ai-routing-policy.service';
 import { TaskSelectionVetoedError } from '../task-selection-veto';
@@ -48,7 +49,7 @@ function makeService(opts: { rows?: any[]; models?: Record<string, any>; roles?:
   const models = opts.models ?? { 'model-1': { id: 'model-1', slug: 'granite', resourceStatus: ResourceStatusType.ENABLED } };
   const modelRepo = {
     findById: vi.fn(async (id: string) => {
-      if (!models[id]) throw new Error('not found');
+      if (!models[id]) throw new DataNotFoundException('AiModel', id);
       return models[id];
     }),
   };

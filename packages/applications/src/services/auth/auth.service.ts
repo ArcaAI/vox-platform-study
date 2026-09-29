@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { IAuthService, AuthenticationTrackingData } from './IAuthService';
 import { IUserService, CreateOAuthUserRequest } from '../user/user/';
@@ -6,6 +6,7 @@ import { InternalServerErrorException } from '@arcaai/exceptions';
 import { EventTypes } from '@arcaai/domains';
 import { OAuthUserResponse } from './dto';
 import { AuthDtoMapper } from './auth.dto.mapper';
+import { fallbackOnNotFound } from '../../common/swallow-policy';
 
 /**
  * AuthService is responsible for handling authentication-related operations,
@@ -13,6 +14,8 @@ import { AuthDtoMapper } from './auth.dto.mapper';
  */
 @Injectable()
 export class AuthService implements IAuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @Inject(IUserService) private readonly userService: IUserService,
     private eventEmitter: EventEmitter2,
@@ -28,7 +31,9 @@ export class AuthService implements IAuthService {
    */
   public async getOrCreateOidcUser(request: CreateOAuthUserRequest): Promise<OAuthUserResponse> {
     // Attempt to fetch the user by their external ID
-    let user = await this.userService.fetchByExternalId(request.externalId).catch(() => null);
+    let user = await this.userService.fetchByExternalId(request.externalId).catch(
+      fallbackOnNotFound(null, { logger: this.logger, message: 'OIDC user lookup by external id failed' }),
+    );
 
     // If the user does not exist, create a new user
     if (!user) {

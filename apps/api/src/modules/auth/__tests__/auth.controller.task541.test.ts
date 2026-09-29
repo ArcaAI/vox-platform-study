@@ -18,6 +18,7 @@
  *
  * Mirrors the auth.controller.task307.test.ts harness shape.
  */
+import { DataNotFoundException } from '@arcaai/exceptions';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
@@ -51,7 +52,7 @@ const createUser = (overrides: Record<string, any> = {}) => ({
  */
 const createMockUserRepository = (user: any = null) => ({
   findFirst: vi.fn(async () => {
-    if (!user) throw new Error('DataNotFoundException: User not found');
+    if (!user) throw new DataNotFoundException('User', 'missing');
     return user;
   }),
   findByUsername: vi.fn(async () => user),
