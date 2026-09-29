@@ -222,7 +222,10 @@ export class AiModelService extends BaseService implements IAiModelService {
     @Optional() @Inject(IInferenceReadinessService) private readonly readiness?: ReadinessSnapshotReader,
     // TASK-1019 D-9 — the one-word status per row on the admin reads. `@Optional()`
     // and TRAILING like the three above; absent, the reads carry no `lifecycle`.
-    @Optional() private readonly lifecycle?: Pick<ModelLifecycleService, 'forRows'>,
+    // The explicit `@Inject` is load-bearing: the `Pick<…>` type emits `Object`
+    // as its design type, so without it Nest resolves nothing and — the param
+    // being optional — silently injects `undefined` (final review C1).
+    @Optional() @Inject(ModelLifecycleService) private readonly lifecycle?: Pick<ModelLifecycleService, 'forRows'>,
   ) {
     super(eventEmitter, clsService, ResourceType.AiModel);
   }
