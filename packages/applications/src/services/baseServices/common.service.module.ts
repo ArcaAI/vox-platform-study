@@ -39,8 +39,8 @@ export const COMMON_SERVICE_WARMUP_KEYS = [
   // reader asks for only keeps a retired credential resident in every process.
   //
   // D-D — the ONE shared internal access token. Read through `getSecretSync` on
-  // the two gateway→Text proxy paths that cannot await
-  // (`TextProxyController`/`TextCompatController.getForwardHeaders`), and
+  // the gateway proxy paths that cannot await (`TextProxyController.getForwardHeaders`;
+  // its `TextCompatController` twin was deleted by TASK-1004), and
   // `getSecretSync` is cache-only by design: unwarmed, it resolves to undefined
   // on EVERY request, so those hops would attach no `X-Service-Token` at all and
   // the shared token would appear "not deployed". Pinned by

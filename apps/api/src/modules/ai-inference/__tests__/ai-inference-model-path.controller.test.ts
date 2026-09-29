@@ -16,12 +16,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AiInferenceController } from '../ai-inference.controller';
 
-function makeController(
-  routingPolicies?: { resolveDefault: ReturnType<typeof vi.fn> },
-  aiModels?: { getByTaskTypeSharedRead: ReturnType<typeof vi.fn> },
-) {
+function makeController(routingPolicies?: { resolveDefault: ReturnType<typeof vi.fn> }) {
   const client = { analyzeGuardrail: vi.fn(), classifyTokens: vi.fn(), suggestDiagnosis: vi.fn() };
-  const controller = new AiInferenceController(client as never, routingPolicies as never, aiModels as never);
+  const controller = new AiInferenceController(client as never, routingPolicies as never);
   return { controller, client };
 }
 
@@ -141,37 +138,5 @@ describe('model_path injection (diagnosis)', () => {
       model_name: 'some/diagnosis-model',
       ner_model_name: 'blaze999/Medical-NER',
     });
-  });
-});
-
-describe('override lane stays fail-closed', () => {
-  it('a validated override forwards the MATCHED row path, derived, not a caller value', async () => {
-    const aiModels = {
-      getByTaskTypeSharedRead: vi
-        .fn()
-        .mockResolvedValue([{ slug: 'ner-alt', sourceUri: 'org/ner-alt', bucketPrefix: 'ner-alt/1', primaryObject: null, libraryName: 'transformers' }]),
-    };
-    const { controller, client } = makeController(undefined, aiModels);
-    client.classifyTokens.mockResolvedValue({});
-
-    await controller.extractEntities({ text: 'x', modelName: 'ner-alt' });
-
-    expect(client.classifyTokens).toHaveBeenCalledWith({
-      text: 'x',
-      model_name: 'org/ner-alt',
-      model_path: derived('ner-alt/1'),
-    });
-  });
-
-  it('an override whose row has no bucket identity injects no model_path', async () => {
-    const aiModels = {
-      getByTaskTypeSharedRead: vi.fn().mockResolvedValue([{ slug: 'ner-alt', sourceUri: 'org/ner-alt', bucketPrefix: null }]),
-    };
-    const { controller, client } = makeController(undefined, aiModels);
-    client.classifyTokens.mockResolvedValue({});
-
-    await controller.extractEntities({ text: 'x', modelName: 'ner-alt' });
-
-    expect(Object.keys(client.classifyTokens.mock.calls[0][0])).not.toContain('model_path');
   });
 });

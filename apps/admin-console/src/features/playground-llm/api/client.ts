@@ -36,18 +36,28 @@ export function listGuardrailProviders(tenantKey?: string): Promise<TextProvider
 }
 
 /**
+ * TASK-1012 L-3 — a body that PINS a provider/model runs on the platform-admin playground route
+ * (`admin/text-generations/*`, SUPER_ADMIN only); the business route refuses both fields
+ * (400 `MODEL_PINNING_NOT_ALLOWED`). An unpinned body stays on the business route, where the
+ * tenant's TEXT_GENERATION agent selects the model.
+ */
+function generatePrefix(body: { provider?: string; model?: string }): string {
+  return body.provider || body.model ? 'admin/text-generations' : 'text-generations';
+}
+
+/**
  * Sync (stream falsy) resolves to the full GenerateTextResponse; streaming
  * resolves to a StreamingGenerateAck whose task feeds the SSE. When
- * provider/model are omitted the tenant's HarnessPolicy cascade resolves
+ * provider/model are omitted the tenant's TEXT_GENERATION agent resolves
  * them — and the service fails CLOSED with 422 when nothing resolves.
  */
 export function generateText(body: GenerateTextRequest): Promise<GenerateOutcome> {
-  return postJson('text-generations/generate', body);
+  return postJson(`${generatePrefix(body)}/generate`, body);
 }
 
 /** Server-side prompt assembly; `debug: true` is admin-only (403 otherwise). */
 export function generateAssembled(body: AssembledGenerateRequest): Promise<AssembledGenerateResponse> {
-  return postJson('text-generations/generate/assembled', body);
+  return postJson(`${generatePrefix(body)}/generate/assembled`, body);
 }
 
 export function getTask(taskId: string): Promise<TextTask> {

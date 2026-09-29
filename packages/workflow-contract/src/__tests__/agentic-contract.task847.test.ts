@@ -89,9 +89,15 @@ describe('exactly one provider-configuration selection source', () => {
     expect(problems[0]).toContain('exactly one');
   });
 
-  it('applies the same rule to the TTS node`s binding and the STT node`s pipeline ref', () => {
+  it('applies the same rule to the TTS node`s binding', () => {
     expect(agenticNodeConfigProblems({ id: 't', type: 'agentic.tts', config: { providerConfigRef: {} } })).toHaveLength(1);
-    expect(agenticNodeConfigProblems({ id: 's', type: 'agentic.stt', config: { pipelineRef: { pipelineId: ROUTING_POLICY_ID, pipelineSlug: 'x' } } })).toHaveLength(1);
+  });
+
+  // TASK-1012 — the `agentic.stt` node and its `pipelineRef` (an `AsrPipeline` id or slug) were
+  // retired with the pipeline table (TASK-1006); speech-to-text is an ASR Agent. No rule survives
+  // to validate a reference to a table that no longer exists.
+  it('carries no pipelineRef rule for the retired agentic.stt node', () => {
+    expect(agenticNodeConfigProblems({ id: 's', type: 'agentic.stt', config: { pipelineRef: { pipelineId: ROUTING_POLICY_ID, pipelineSlug: 'x' } } })).toEqual([]);
   });
 });
 

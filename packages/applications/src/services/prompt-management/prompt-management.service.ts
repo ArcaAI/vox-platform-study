@@ -1632,7 +1632,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *    `tenant_id: null` and the usage ledger can attribute the run.
    *
    * The generation itself is consumed by the caller over SSE
-   * (`GET text/tasks/:taskId/stream`, which is where the ledger row is emitted)
+   * (`GET text-generations/tasks/:taskId/stream`, which is where the ledger row is emitted)
    * and then finalized through {@link finalizePromptTemplateTest}.
    *
    * the SINGLE-CALL contract. TEXT no longer answers a
@@ -1691,12 +1691,12 @@ export class PromptManagementService extends BaseService implements IPromptManag
       throw error;
     }
 
-    // Gateway-relative SSE path (`TextProxyController` mounts `text/*`), never a
+    // Gateway-relative SSE path (`TextProxyController` mounts `text-generations/*`), never a
     // service-relative one — the browser talks to the gateway, with a
     // `text_task:<taskId>`-scoped single-use ticket. TEXT used to report its own
     // `stream_url` in the 202 ack; under there is no ack, so
     // this path is composed here from the id and nowhere else.
-    return { taskId, streamUrl: `text/tasks/${taskId}/stream` };
+    return { taskId, streamUrl: `text-generations/tasks/${taskId}/stream` };
   }
 
   /**

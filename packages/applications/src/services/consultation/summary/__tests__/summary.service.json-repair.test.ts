@@ -117,6 +117,14 @@ const buildService = (responseFormat: unknown, responses: string[]) => {
     createMockClsService() as never,
     { create: vi.fn(), getVersionsByChangeReason: vi.fn().mockResolvedValue([]) } as never,
     promptAssembly as never,
+    undefined, // secretsService
+    undefined, // userProfileRepository
+    undefined, // harnessAuditService
+    undefined, // harnessGatewayService
+    // The tenant's agent-resolved pair. A caller's `options.provider` no longer selects the
+    // engine (TASK-1012 item 11), and `response_format` — the thing this file repairs — is only
+    // forwarded once a provider is known.
+    { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }), resolveTextFallbackSelection: vi.fn().mockResolvedValue(null) } as never,
   );
   return { service, ctx, http };
 };

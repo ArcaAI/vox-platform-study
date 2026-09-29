@@ -1,8 +1,8 @@
 import {
   BatchDispatchEnvelope,
-  CreateJobRequest,
-  CreateBatchJobRequest,
-  CreateStreamingJobRequest,
+  CreateJobInput,
+  CreateBatchJobInput,
+  CreateStreamingJobInput,
   TranscriptionJobResponse,
   PaginatedTranscriptionJobResponse,
   TranscriptionJobStatusCountResponse,
@@ -55,19 +55,20 @@ export interface CompletedStreamSessionJob {
 
 export interface ITranscriptionJobService {
   /**
-   * Create a transcription job
+   * Create a transcription job keyed to the ASR agent the GATEWAY resolved (TASK-1012 L-7: never a
+   * caller-supplied `agentVersionId` / `resolvedSpec`).
    */
-  create(dto: CreateJobRequest): Promise<TranscriptionJobResponse>;
+  create(dto: CreateJobInput): Promise<TranscriptionJobResponse>;
 
   /**
    * Create a batch transcription job
    */
-  createBatchJob(dto: CreateBatchJobRequest): Promise<TranscriptionJobResponse>;
+  createBatchJob(dto: CreateBatchJobInput): Promise<TranscriptionJobResponse>;
 
   /**
    * Create a streaming transcription job
    */
-  createStreamingJob(dto: CreateStreamingJobRequest): Promise<TranscriptionJobResponse>;
+  createStreamingJob(dto: CreateStreamingJobInput): Promise<TranscriptionJobResponse>;
 
   /**
    * TASK-999 (D-5(a)) — write the row mirroring a realtime STT session, already

@@ -455,9 +455,9 @@ const featureModules: any[] = [
   // recommendations). Platform-admin only; shares InferenceEnginesModule's
   // LM Studio client so both surfaces hold one load lock per engine.
   ModelResidencyModule,
-  // /admin/ai-task-defaults (per-tenant default model per AI task key).
   // /admin/nlp-task-instructions (tenant-writable nlp.topic/nlp.intent
-  // instruction content — separate subject from AiRoutingPolicy).
+  // instruction content — separate subject from AiRoutingPolicy). The
+  // /admin/ai-task-defaults surface this module used to carry was retired by TASK-881.
   NlpTaskInstructionsModule,
   // The config-plane core surface: /admin/providers (provider endpoints +
   // BYO credentials + connection ceilings + test-connection). TASK-862 removed

@@ -420,10 +420,6 @@ export function agenticNodeConfigProblems(node: AgenticNodeView, context?: Agent
     problems.push(...exactlyOneOf(node.id, 'providerConfigRef', asObject(config.providerConfigRef), ['routingPolicyId', 'taskKey']));
   }
 
-  if (node.type === 'agentic.stt') {
-    problems.push(...exactlyOneOf(node.id, 'pipelineRef', asObject(config.pipelineRef), ['pipelineId', 'pipelineSlug']));
-  }
-
   if (node.type === 'agentic.agent') {
     const guards = asObject(config.guards);
     if (guards !== undefined) {

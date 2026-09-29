@@ -5,14 +5,12 @@
  * `IAiRoutingPolicyService.resolveDefault` (fail-closed), and proxies the client response verbatim.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiInferenceController } from '../ai-inference.controller';
 import { SafetyCheckController } from '../safety-check.controller';
 
 function makeController(
   routingPolicies?: { resolveDefault: ReturnType<typeof vi.fn> },
-  aiModels?: { getByTaskTypeSharedRead: ReturnType<typeof vi.fn> },
   cls?: { get: ReturnType<typeof vi.fn> },
   usageLedgerService?: { recordUsage: ReturnType<typeof vi.fn> },
   tenantNlpTaskInstructionsService?: { getRow: ReturnType<typeof vi.fn> },
@@ -21,7 +19,6 @@ function makeController(
   const controller = new AiInferenceController(
     client as never,
     routingPolicies as never,
-    aiModels as never,
     cls as never,
     usageLedgerService as never,
     tenantNlpTaskInstructionsService as never,
@@ -138,63 +135,18 @@ describe('AiInferenceController — NER entities', () => {
     expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', model_name: 'blaze999/Medical-NER' });
   });
 
-  // r2605 Finding B (security) — a caller-supplied modelName was previously
-  // forwarded UNVALIDATED, letting any authenticated user make the clinical
-  // NLP service download/load an arbitrary HuggingFace model. The override
-  // must now resolve against ENABLED TOKEN_CLASSIFICATION registry rows
-  // (shared-read: [tenant, SYSTEM]) by slug OR sourceUri; the row's sourceUri
-  // is what gets forwarded. Anything else → 400.
-  describe('modelName override validation (r2605 Finding B)', () => {
-    const registryRows = [
-      { id: 'm1', slug: 'medical-ner', sourceUri: 'blaze999/Medical-NER', taskType: 'TOKEN_CLASSIFICATION' },
-      { id: 'm2', slug: 'clinical-ner-v2', sourceUri: 'org/clinical-ner-v2', taskType: 'TOKEN_CLASSIFICATION' },
-    ];
+  // TASK-1012 L-4 / D-2 — there is NO caller model override on this route any more: the model is
+  // the `nlp.ner` routing election, full stop (the DTO no longer declares `modelName`, so the
+  // global pipe 400s it). A value smuggled past the pipe is ignored, never validated or forwarded.
+  it('ignores a smuggled modelName and serves the nlp.ner selection (no caller override lane)', async () => {
+    const routingPolicies = { resolveDefault: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
+    const { controller, client } = makeController(routingPolicies);
+    client.classifyTokens.mockResolvedValue({});
 
-    it('a registry SLUG override is forwarded as that row sourceUri', async () => {
-      const routingPolicies = { resolveDefault: vi.fn() };
-      const aiModels = { getByTaskTypeSharedRead: vi.fn().mockResolvedValue(registryRows) };
-      const { controller, client } = makeController(routingPolicies, aiModels);
-      client.classifyTokens.mockResolvedValue({});
+    await controller.extractEntities({ text: 'x', modelName: 'evil/arbitrary-model' } as never);
 
-      await controller.extractEntities({ text: 'x', modelName: 'medical-ner' });
-
-      expect(aiModels.getByTaskTypeSharedRead).toHaveBeenCalledWith('TOKEN_CLASSIFICATION');
-      expect(routingPolicies.resolveDefault).not.toHaveBeenCalled();
-      expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', model_name: 'blaze999/Medical-NER' });
-    });
-
-    it('a registry SOURCE URI override passes and forwards that sourceUri', async () => {
-      const aiModels = { getByTaskTypeSharedRead: vi.fn().mockResolvedValue(registryRows) };
-      const { controller, client } = makeController(undefined, aiModels);
-      client.classifyTokens.mockResolvedValue({});
-
-      await controller.extractEntities({ text: 'x', modelName: 'org/clinical-ner-v2' });
-
-      expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', model_name: 'org/clinical-ner-v2' });
-    });
-
-    it('an UNKNOWN override → 400 and nothing is forwarded upstream', async () => {
-      const aiModels = { getByTaskTypeSharedRead: vi.fn().mockResolvedValue(registryRows) };
-      const { controller, client } = makeController(undefined, aiModels);
-
-      await expect(controller.extractEntities({ text: 'x', modelName: 'evil/arbitrary-model' })).rejects.toBeInstanceOf(BadRequestException);
-      expect(client.classifyTokens).not.toHaveBeenCalled();
-    });
-
-    it('FAILS CLOSED: an override with no registry service wired → 400 (unlike the fail-open default injection)', async () => {
-      const { controller, client } = makeController(undefined, undefined);
-
-      await expect(controller.extractEntities({ text: 'x', modelName: 'medical-ner' })).rejects.toBeInstanceOf(BadRequestException);
-      expect(client.classifyTokens).not.toHaveBeenCalled();
-    });
-
-    it('FAILS CLOSED: a registry read error under an override → 400, never an unvalidated forward', async () => {
-      const aiModels = { getByTaskTypeSharedRead: vi.fn().mockRejectedValue(new Error('db down')) };
-      const { controller, client } = makeController(undefined, aiModels);
-
-      await expect(controller.extractEntities({ text: 'x', modelName: 'medical-ner' })).rejects.toBeInstanceOf(BadRequestException);
-      expect(client.classifyTokens).not.toHaveBeenCalled();
-    });
+    expect(routingPolicies.resolveDefault).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.ner', { systemOnly: true });
+    expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', model_name: 'blaze999/Medical-NER' });
   });
 
   it('FAILS CLOSED: null SYSTEM default → 503, never forwards without model_name', async () => {
@@ -236,7 +188,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('emits a TEXT_UNIT + REQUEST row with an nlp:<generated requestId> key and NO consultation attribution', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
     const cls = clsFor({ id: 'user-1', roles: [] });
-    const { controller, client } = makeController(routingPolicies(), undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(routingPolicies(), cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'aspirin 100mg' });
@@ -257,7 +209,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('attributes doctorId when the CLS user is a clinician (DOCTOR/SPECIALIST/CONSULTANT)', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
     const cls = clsFor({ id: 'doctor-9', roles: ['DOCTOR'] });
-    const { controller, client } = makeController(routingPolicies(), undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(routingPolicies(), cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'x' });
@@ -269,7 +221,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('omits doctorId when the CLS user has no clinician role (e.g. a SUPER_ADMIN using the playground)', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
     const cls = clsFor({ id: 'admin-1', roles: ['SUPER_ADMIN'] });
-    const { controller, client } = makeController(routingPolicies(), undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(routingPolicies(), cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'x' });
@@ -281,7 +233,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('does not emit when no tenantId is available in CLS', async () => {
     const usageLedgerService = { recordUsage: vi.fn() };
     const cls = clsFor({ id: 'user-1' }, null as never);
-    const { controller, client } = makeController(routingPolicies(), undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(routingPolicies(), cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'x' });
@@ -291,7 +243,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
 
   it('does not emit when no usage-ledger service is wired (test-fixture ergonomics, unaffected proxying)', async () => {
     const cls = clsFor({ id: 'user-1' });
-    const { controller, client } = makeController(routingPolicies(), undefined, cls, undefined);
+    const { controller, client } = makeController(routingPolicies(), cls, undefined);
     const entities = { entities: [], model_version: 'v1' };
     client.classifyTokens.mockResolvedValue(entities);
 
@@ -302,7 +254,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('never fails extractEntities when the ledger rejects (best-effort, like every other emitter in this codebase)', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockRejectedValue(new Error('outbox unavailable')) };
     const cls = clsFor({ id: 'user-1' });
-    const { controller, client } = makeController(routingPolicies(), undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(routingPolicies(), cls, usageLedgerService);
     const entities = { entities: [], model_version: 'v1' };
     client.classifyTokens.mockResolvedValue(entities);
 
@@ -422,7 +374,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
 
   it('classifyTopic FAILS CLOSED with 503 when there is no CLS tenant', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');
-    const { controller, client } = makeController(undefined, undefined, clsFor(undefined));
+    const { controller, client } = makeController(undefined, clsFor(undefined));
 
     await expect(controller.classifyTopic({ text: 'a billing question' })).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.classifyTopic).not.toHaveBeenCalled();
@@ -430,7 +382,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
 
   it('classifyTopic resolves TenantNlpTaskInstructions and injects instructions + tenant_id', async () => {
     const instructions = { getRow: vi.fn().mockResolvedValue({ tenantId: 't1', taskKey: 'nlp.topic', instructionsJson: ['billing', 'appointments'], version: 1 }) };
-    const { controller, client } = makeController(undefined, undefined, clsFor('t1'), undefined, instructions);
+    const { controller, client } = makeController(undefined, clsFor('t1'), undefined, instructions);
     client.classifyTopic.mockResolvedValue({ predicted_topic: 'billing', available_topics: ['billing', 'appointments'] });
 
     const result = await controller.classifyTopic({ text: 'a billing question', language: 'en' });
@@ -446,7 +398,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
   });
 
   it('classifyTopic proceeds without instructions when the service is unwired (NLP fails closed itself)', async () => {
-    const { controller, client } = makeController(undefined, undefined, clsFor('t1'), undefined, undefined);
+    const { controller, client } = makeController(undefined, clsFor('t1'), undefined, undefined);
     client.classifyTopic.mockResolvedValue({});
 
     await controller.classifyTopic({ text: 'x' });
@@ -456,7 +408,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
 
   it('classifyTopic degrades to no instructions on a resolution error (never blocks the proxy)', async () => {
     const instructions = { getRow: vi.fn().mockRejectedValue(new Error('db down')) };
-    const { controller, client } = makeController(undefined, undefined, clsFor('t1'), undefined, instructions);
+    const { controller, client } = makeController(undefined, clsFor('t1'), undefined, instructions);
     client.classifyTopic.mockResolvedValue({});
 
     await controller.classifyTopic({ text: 'x' });
@@ -466,7 +418,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
 
   it('classifyIntent resolves TenantNlpTaskInstructions (nlp.intent) and injects instructions + tenant_id', async () => {
     const instructions = { getRow: vi.fn().mockResolvedValue({ tenantId: 't1', taskKey: 'nlp.intent', instructionsJson: ['schedule_appointment'], version: 1 }) };
-    const { controller, client } = makeController(undefined, undefined, clsFor('t1'), undefined, instructions);
+    const { controller, client } = makeController(undefined, clsFor('t1'), undefined, instructions);
     client.classifyIntent.mockResolvedValue({ predicted_intent: 'schedule_appointment', available_intents: ['schedule_appointment'] });
 
     const result = await controller.classifyIntent({ text: 'book me an appointment' });
@@ -482,7 +434,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
 
   it('classifyIntent FAILS CLOSED with 503 when there is no CLS tenant', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');
-    const { controller, client } = makeController(undefined, undefined, clsFor(undefined));
+    const { controller, client } = makeController(undefined, clsFor(undefined));
 
     await expect(controller.classifyIntent({ text: 'book me an appointment' })).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.classifyIntent).not.toHaveBeenCalled();

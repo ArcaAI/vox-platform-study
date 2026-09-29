@@ -81,7 +81,9 @@ describe('playground-llm client', () => {
       stream: true,
     });
     expect(calls).toHaveLength(1);
-    expect(`${calls[0].method} ${calls[0].url}`).toBe('POST /api/hope/text-generations/generate');
+    // TASK-1012 L-3 — a pinned provider/model is the platform-admin playground route; the
+    // business route refuses it (MODEL_PINNING_NOT_ALLOWED).
+    expect(`${calls[0].method} ${calls[0].url}`).toBe('POST /api/hope/admin/text-generations/generate');
     expect(calls[0].body).toEqual({
       prompt: 'Summarize',
       system_prompt: 'You are a clinical summarizer.',
@@ -91,6 +93,23 @@ describe('playground-llm client', () => {
       max_tokens: 1024,
       stream: true,
     });
+  });
+
+  it('an unpinned body (agent selection) stays on the business routes', async () => {
+    const calls = installFetchMock();
+    await generateText({ prompt: 'Summarize', stream: false });
+    await generateAssembled({ type: 'summary', message: 'Chest pressure.', stream: false });
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+      'POST /api/hope/text-generations/generate',
+      'POST /api/hope/text-generations/generate/assembled',
+    ]);
+  });
+
+  it('a pinned assembled body goes to the admin playground route', async () => {
+    const calls = installFetchMock();
+    await generateAssembled({ type: 'summary', message: 'Chest pressure.', provider: 'azure-openai', model: 'gpt-5' });
+    expect(`${calls[0].method} ${calls[0].url}`).toBe('POST /api/hope/admin/text-generations/generate/assembled');
+    expect(calls[0].body).toMatchObject({ provider: 'azure-openai', model: 'gpt-5' });
   });
 
   it('POSTs the assembled body with exactly-one context source untouched', async () => {

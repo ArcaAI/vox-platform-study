@@ -37,6 +37,27 @@ const LEGACY_KEYS = {
 } as const;
 
 /**
+ * TASK-1012 L-6 — the `localConfig` stages whose `modelId` was a client-side model pick for a
+ * browser AI stage SDK 4.0.0 removed. The published SDK still sends them, so the request DTO keeps
+ * them (deprecated); this service ignores them and never persists one.
+ */
+const CLIENT_AI_MODEL_STAGES = ['noiseCancellation', 'stt', 'vad', 'ner'] as const;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- same arbitrary-JSON shape as `deepMergeLocalConfig`
+function withoutClientModelIds(localConfig: Record<string, any>): Record<string, any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same arbitrary-JSON shape as `deepMergeLocalConfig`
+  const result: Record<string, any> = { ...localConfig };
+  for (const stage of CLIENT_AI_MODEL_STAGES) {
+    const value = result[stage];
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      const { modelId: _ignored, ...rest } = value as Record<string, unknown>;
+      result[stage] = rest;
+    }
+  }
+  return result;
+}
+
+/**
  * User Preferences Service
  *
  * Aggregates key-value UserSettings into a typed UserPreferences object
@@ -229,7 +250,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
     if (request.localConfig !== undefined) {
       // Deep merge with existing localConfig
       const existing = await this.getExistingLocalConfig(userId);
-      const merged = this.deepMergeLocalConfig(existing, request.localConfig);
+      const merged = this.deepMergeLocalConfig(existing, withoutClientModelIds(request.localConfig));
       updates.push({
         key: PREFERENCE_KEYS.LOCAL_CONFIG,
         value: JSON.stringify(merged),

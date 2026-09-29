@@ -48,6 +48,8 @@ interface PromptEditorCardProps {
   selectedModel: string;
   onProviderChange: (name: string) => void;
   onModelChange: (name: string) => void;
+  /** Platform admins only (TASK-1012 L-3): everyone else runs on the tenant's TEXT_GENERATION agent. */
+  canPinModel: boolean;
   /** SUPER_ADMIN / TENANT_ADMIN — gates the assembled debug switch. */
   canDebug: boolean;
   /** Exactly-one-context-source violation message (assembled mode). */
@@ -87,6 +89,7 @@ export function PromptEditorCard({
   selectedModel,
   onProviderChange,
   onModelChange,
+  canPinModel,
   canDebug,
   sourceHint,
 }: PromptEditorCardProps) {
@@ -120,7 +123,12 @@ export function PromptEditorCard({
           />
         </div>
 
-        {providersLoading ? (
+        {!canPinModel ? (
+          <p className="text-muted-foreground rounded-md border border-dashed p-3 text-sm">
+            The model is selected by this tenant’s TEXT_GENERATION agent. Pinning a provider and model is reserved to platform
+            administrators.
+          </p>
+        ) : providersLoading ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <Skeleton className="h-9 w-full" />
             <Skeleton className="h-9 w-full" />

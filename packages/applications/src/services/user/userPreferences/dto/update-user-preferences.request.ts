@@ -4,7 +4,15 @@ import { Type } from 'class-transformer';
 import { BaseRequest } from '../../../../common';
 
 export class NoiseCancellationConfigDto {
-  @ApiPropertyOptional({ description: 'Noise cancellation model ID from the model registry' })
+  /**
+   * @deprecated TASK-1012 L-6 — a client-side model pick for a browser AI stage SDK 4.0.0 removed.
+   * Still declared because the published SDK round-trips it; ignored and never persisted.
+   */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      'Ignored — a client-side noise-cancellation model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
+  })
   @IsOptional()
   @IsString()
   modelId?: string;
@@ -19,14 +27,30 @@ export class NoiseCancellationConfigDto {
 }
 
 export class STTConfigDto {
-  @ApiPropertyOptional({ description: 'STT model ID (e.g. whisper-large-v3)' })
+  /**
+   * @deprecated TASK-1012 L-6 — a client-side model pick for a browser AI stage SDK 4.0.0 removed.
+   * Still declared because the published SDK round-trips it; ignored and never persisted.
+   */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      'Ignored — a client-side speech-to-text model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
+  })
   @IsOptional()
   @IsString()
   modelId?: string;
 }
 
 export class VADConfigDto {
-  @ApiPropertyOptional({ description: 'VAD model ID (e.g. silero-vad-v5)' })
+  /**
+   * @deprecated TASK-1012 L-6 — a client-side model pick for a browser AI stage SDK 4.0.0 removed.
+   * Still declared because the published SDK round-trips it; ignored and never persisted.
+   */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      'Ignored — a client-side voice-activity-detection model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
+  })
   @IsOptional()
   @IsString()
   modelId?: string;
@@ -40,7 +64,15 @@ export class VADConfigDto {
 }
 
 export class NERConfigDto {
-  @ApiPropertyOptional({ description: 'NER model ID' })
+  /**
+   * @deprecated TASK-1012 L-6 — a client-side model pick for a browser AI stage SDK 4.0.0 removed.
+   * Still declared because the published SDK round-trips it; ignored and never persisted.
+   */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      'Ignored — a client-side NER model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
+  })
   @IsOptional()
   @IsString()
   modelId?: string;

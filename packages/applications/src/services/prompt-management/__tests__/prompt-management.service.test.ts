@@ -2026,7 +2026,8 @@ describe('PromptManagementService', () => {
 
       expect(ack.mode).toBe('stream');
       expect(ack.taskId).toBe('task-1');
-      expect(ack.streamUrl).toBe('text/tasks/task-1/stream');
+      // TASK-1012 L-8 — the CANONICAL gateway path; `text/tasks/*` is served only by a 308 shim.
+      expect(ack.streamUrl).toBe('text-generations/tasks/task-1/stream');
       const [, payload] = httpMock.axiosRef.post.mock.calls[0];
       expect((payload as { stream?: boolean }).stream).toBe(true);
       // no blocking read of the completion, and no write

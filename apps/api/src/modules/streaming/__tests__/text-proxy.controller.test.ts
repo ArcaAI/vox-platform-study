@@ -162,7 +162,6 @@ describe('TextProxyController', () => {
 
       const body = {
         prompt: 'Generate a summary',
-        provider: 'ollama',
         stream: false,
       };
 
@@ -182,7 +181,6 @@ describe('TextProxyController', () => {
 
       const body = {
         prompt: 'Generate a summary',
-        provider: 'ollama',
         stream: true,
       };
 
@@ -218,7 +216,7 @@ describe('TextProxyController', () => {
 
       let thrown: unknown;
       try {
-        await controller.generate({ prompt: 'test', provider: 'lm-studio', stream: false });
+        await controller.generate({ prompt: 'test', stream: false });
       } catch (error) {
         thrown = error;
       }
@@ -247,7 +245,7 @@ describe('TextProxyController', () => {
         response: { status: 400, data: PHI_STRING },
       });
 
-      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+      const thrown = await controller.generate({ prompt: 'p', stream: false }).catch((e: unknown) => e);
 
       expect(thrown).toBeInstanceOf(HttpException);
       expect((thrown as HttpException).getStatus()).toBe(400);
@@ -260,7 +258,7 @@ describe('TextProxyController', () => {
         response: { status: 422, data: { detail: PHI_STRING, error_code: 'LEAK' } },
       });
 
-      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+      const thrown = await controller.generate({ prompt: 'p', stream: false }).catch((e: unknown) => e);
 
       expect((thrown as HttpException).getStatus()).toBe(422);
       expect((thrown as HttpException).getResponse()).toEqual({ detail: 'TEXT service unavailable' });
@@ -278,7 +276,7 @@ describe('TextProxyController', () => {
       const payload = { detail: PHI_STRING, error_code: 'LEAK' };
       mockHttpService.axiosRef.post.mockRejectedValue({ response: { status: 500, data: payload } });
 
-      await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch(() => undefined);
+      await controller.generate({ prompt: 'p', stream: false }).catch(() => undefined);
 
       // A redacted server-side marker carries the status + correlation id (for
       // debugging) and an explicit redaction sentinel — but never the raw body.
@@ -308,7 +306,7 @@ describe('TextProxyController', () => {
     it('falls back to 503 with a generic message when the upstream produced no HTTP response', async () => {
       mockHttpService.axiosRef.post.mockRejectedValue(new Error('socket hang up'));
 
-      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+      const thrown = await controller.generate({ prompt: 'p', stream: false }).catch((e: unknown) => e);
 
       expect((thrown as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
       expect((thrown as HttpException).getResponse()).toEqual({ detail: 'TEXT service unavailable' });
@@ -336,7 +334,7 @@ describe('TextProxyController', () => {
         response: { status: 422, data: { detail: PHI_DETAIL, error_code: code } },
       });
 
-      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+      const thrown = await controller.generate({ prompt: 'p', stream: false }).catch((e: unknown) => e);
 
       expect(thrown).toBeInstanceOf(HttpException);
       const body = (thrown as HttpException).getResponse() as { detail?: string; error_code?: string };
@@ -353,7 +351,7 @@ describe('TextProxyController', () => {
         response: { status: 503, data: { detail: PHI_DETAIL, error_code: 'GUARDRAIL_UNAVAILABLE' } },
       });
 
-      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+      const thrown = await controller.generate({ prompt: 'p', stream: false }).catch((e: unknown) => e);
 
       expect((thrown as HttpException).getStatus()).toBe(503);
       expect((thrown as HttpException).getResponse()).toEqual({
@@ -367,7 +365,7 @@ describe('TextProxyController', () => {
         response: { status: 422, data: { detail: PHI_DETAIL, error_code: 'SOME_OTHER_CODE' } },
       });
 
-      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+      const thrown = await controller.generate({ prompt: 'p', stream: false }).catch((e: unknown) => e);
 
       expect((thrown as HttpException).getResponse()).toEqual({ detail: 'TEXT service unavailable' });
     });
@@ -378,7 +376,7 @@ describe('TextProxyController', () => {
         response: { status: 422, data: { detail: PHI_DETAIL, error_code: 'CONTENT_BLOCKED' } },
       });
 
-      await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch(() => undefined);
+      await controller.generate({ prompt: 'p', stream: false }).catch(() => undefined);
 
       const redactedLog = errorSpy.mock.calls.some((call) => {
         const arg = call[0] as { upstreamBodyRedacted?: unknown } | undefined;
@@ -389,10 +387,10 @@ describe('TextProxyController', () => {
     });
   });
 
-  // The playground/SDK proxy passes a caller-supplied
-  // model through untouched (SDK fidelity); only when the model is absent does it
-  // fall back to the HarnessPolicy cascade. When neither is available it forwards
-  // to TEXT, which is the fail-closed 422 authority (no in-proxy default).
+  // The business routes select through the tenant's TEXT_GENERATION agent (a caller
+  // `provider`/`model` is a 400 since TASK-1012 — `text-proxy.model-pinning.task1012.test.ts`).
+  // The shared pipeline (`proxyGenerate*`) still passes a PINNED model through untouched for
+  // the admin playground route; when the model is absent it resolves the agent cascade.
   describe('TEXT model selection', () => {
     const buildWithResolver = (resolver: { resolveTextSelection: ReturnType<typeof vi.fn> }) =>
       new TextProxyController(
@@ -410,12 +408,12 @@ describe('TextProxyController', () => {
         resolver as any, // HarnessPolicyService resolver
       );
 
-    it('passes a caller-supplied model through without resolving (SDK fidelity)', async () => {
+    it('the admin-plane pipeline passes a pinned model through without resolving', async () => {
       const resolver = { resolveTextSelection: vi.fn() };
       const ctrl = buildWithResolver(resolver);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { content: 'ok' } });
 
-      await ctrl.generate({ prompt: 'p', provider: 'lm-studio', model: 'caller-pinned', stream: false });
+      await ctrl.proxyGenerate({ prompt: 'p', provider: 'lm-studio', model: 'caller-pinned', stream: false });
 
       expect(resolver.resolveTextSelection).not.toHaveBeenCalled();
       const body = mockHttpService.axiosRef.post.mock.calls[0][1];
@@ -458,12 +456,12 @@ describe('TextProxyController', () => {
       expect(body.model).toBe('granite4:latest');
     });
 
-    it('generate/assembled passes a caller-supplied model through without resolving', async () => {
+    it('the admin-plane assembled pipeline passes a pinned model through without resolving', async () => {
       const resolver = { resolveTextSelection: vi.fn() };
       const ctrl = buildWithResolver(resolver);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { task_id: 't', status: 'completed', content: 'ok' } });
 
-      await ctrl.generateAssembled({ type: 'summary', message: 'hello', provider: 'lm-studio', model: 'qwen3.5-4b' });
+      await ctrl.proxyGenerateAssembled({ type: 'summary', message: 'hello', provider: 'lm-studio', model: 'qwen3.5-4b' });
 
       expect(resolver.resolveTextSelection).not.toHaveBeenCalled();
       const body = mockHttpService.axiosRef.post.mock.calls[0][1];
@@ -492,7 +490,7 @@ describe('TextProxyController', () => {
     it('does NOT re-POST /generate after a post-send ECONNRESET (single delivery)', async () => {
       mockHttpService.axiosRef.post.mockRejectedValue(codeError('ECONNRESET'));
 
-      const outcome = controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+      const outcome = controller.generate({ prompt: 'p', stream: false }).catch((e: unknown) => e);
       await vi.runAllTimersAsync();
       expect(await outcome).toBeInstanceOf(HttpException);
 
@@ -504,7 +502,7 @@ describe('TextProxyController', () => {
         mockHttpService.axiosRef.post.mockReset();
         mockHttpService.axiosRef.post.mockRejectedValue(codeError(code));
 
-        const outcome = controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+        const outcome = controller.generate({ prompt: 'p', stream: false }).catch((e: unknown) => e);
         await vi.runAllTimersAsync();
         await outcome;
 
@@ -515,7 +513,7 @@ describe('TextProxyController', () => {
     it('does NOT re-POST /generate when TEXT itself responded 5xx (request was delivered)', async () => {
       mockHttpService.axiosRef.post.mockRejectedValue({ response: { status: 503, data: { detail: 'busy' } } });
 
-      const outcome = controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+      const outcome = controller.generate({ prompt: 'p', stream: false }).catch((e: unknown) => e);
       await vi.runAllTimersAsync();
       const err = await outcome;
 
@@ -526,7 +524,7 @@ describe('TextProxyController', () => {
     it('still retries a connect-phase ECONNREFUSED (request never reached TEXT)', async () => {
       mockHttpService.axiosRef.post.mockRejectedValueOnce(codeError('ECONNREFUSED')).mockResolvedValueOnce({ data: { task_id: 't-retry' } });
 
-      const outcome = controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false });
+      const outcome = controller.generate({ prompt: 'p', stream: false });
       await vi.runAllTimersAsync();
       const result = await outcome;
 
@@ -538,7 +536,7 @@ describe('TextProxyController', () => {
       mockHttpService.axiosRef.post.mockRejectedValue(codeError('ECONNRESET'));
 
       const outcome = controller
-        .generateAssembled({ type: 'summary', message: 'Patient transcript', provider: 'ollama', model: 'm' })
+        .generateAssembled({ type: 'summary', message: 'Patient transcript' })
         .catch((e: unknown) => e);
       await vi.runAllTimersAsync();
       expect(await outcome).toBeInstanceOf(HttpException);
@@ -1271,7 +1269,6 @@ describe('TextProxyController', () => {
         type: 'pre-summary',
         message: 'Patient presents with chest pain',
         debug: true,
-        provider: 'ollama',
       });
 
       expect(result.task_id).toBe('task-assembled-1');
@@ -1615,8 +1612,6 @@ describe('TextProxyController', () => {
         type: 'summary',
         message: 'Patient transcript',
         stream: true,
-        provider: 'lm-studio',
-        model: 'qwen3.5-4b',
       });
 
       expect(result.task_id).toBe('task-stream-assembled');
@@ -1626,8 +1621,6 @@ describe('TextProxyController', () => {
         expect.stringContaining('/api/v1/generate'),
         expect.objectContaining({
           stream: true,
-          provider: 'lm-studio',
-          model: 'qwen3.5-4b',
         }),
         expect.any(Object),
       );

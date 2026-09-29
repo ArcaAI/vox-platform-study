@@ -1,5 +1,4 @@
 import {
-  AiModelService,
   COMPUTE_DEVICES,
   IComputeDeviceResolver,
   buildGuardrailUsageBatches,
@@ -18,8 +17,8 @@ import {
   type UsageEventBatchInput,
 } from '@arcaai/applications';
 import type { ComputeDevice } from '@arcaai/applications';
-import { AiDeploymentKind, generateId, ModelTaskType, SYSTEM_TENANT_ID } from '@arcaai/domains';
-import { BadRequestException, Body, Controller, Inject, Logger, Optional, Post, ServiceUnavailableException } from '@nestjs/common';
+import { AiDeploymentKind, generateId, SYSTEM_TENANT_ID } from '@arcaai/domains';
+import { Body, Controller, Inject, Logger, Optional, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, RequiredScopes } from '../../decorators';
@@ -114,10 +113,6 @@ export class AiInferenceController {
     // `resolveDefault`, the `AiTaskDefault` facade is gone). Optional so unit
     // fixtures construct cleanly; absent = the NLP routes refuse (fail-closed).
     @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicies?: IAiRoutingPolicyService,
-    // Validates a caller-supplied model override against the
-    // registry. Optional for fixture compatibility, but an OVERRIDE with the
-    // service absent is rejected (fail-closed) — see resolveValidatedModelOverride.
-    @Optional() @Inject(AiModelService) private readonly aiModelService?: AiModelService,
     //  — tenantId + clinician-attribution source for
     // the playground NER usage-ledger row. Optional (mirrors AiInferenceClient's
     // own `cls` field) so unit fixtures compile without a mock; absent ⇒ no
@@ -152,34 +147,17 @@ export class AiInferenceController {
   })
   @ApiOkResponse({ description: 'Upstream `{ entities[], model_version }`, proxied verbatim.' })
   async extractEntities(@Body() body: ExtractEntitiesRequest): Promise<Record<string, unknown>> {
-    // An explicit override is VALIDATED against the registry
-    // (fail-closed); only the absent-override default injection stays fail-open.
-    // A caller-supplied override pins only the MODEL, and we have no
-    // registry provider for an arbitrary override, so profile injection applies
-    // to the resolved-default path only.
-    let modelName: string;
-    // The registry row's operator weight override. Always
-    // registry-derived (never caller-supplied), and OMITTED when absent so the
-    // payload stays byte-for-byte identical to pre-527 for every existing row.
-    let modelPath: string | null = null;
-    // The CLINICAL TAXONOMY the resolved checkpoint declares :
-    // ontology vocabulary, vitals plausibility bands, ConText/NegEx triggers and
-    // the NER contract, all previously Python literals / `TOKEN_CLASSIFIER_*`
-    // env fields inside `apps/nlp`. It travels with the MODEL, so an override
-    // gets the OVERRIDDEN row's taxonomy — not the default row's, which would
-    // apply one checkpoint's conventions to another's output.
-    let clinicalTaxonomy: Record<string, unknown> | null = null;
-    if (body.modelName) {
-      const override = await this.resolveValidatedModelOverride(body.modelName);
-      modelName = override.sourceUri;
-      modelPath = override.localPath;
-      clinicalTaxonomy = override.clinicalTaxonomy;
-    } else {
-      const selection = await this.resolveDefaultModelSelection('nlp.ner');
-      modelName = selection.sourceUri;
-      modelPath = selection.localPath;
-      clinicalTaxonomy = selection.clinicalTaxonomy;
-    }
+    // TASK-1012 L-4 / D-2 — the model is the `nlp.ner` routing election and nothing else: there is
+    // no caller override lane (the retired `modelName` let a caller name the checkpoint). The weight
+    // path and the clinical taxonomy travel with the SELECTED row.
+    const selection = await this.resolveDefaultModelSelection('nlp.ner');
+    const modelName = selection.sourceUri;
+    // The registry row's operator weight override — OMITTED when absent so the payload stays
+    // byte-for-byte identical for every row that has none.
+    const modelPath = selection.localPath;
+    // The CLINICAL TAXONOMY the resolved checkpoint declares: ontology vocabulary, vitals
+    // plausibility bands, ConText/NegEx triggers and the NER contract. It travels with the MODEL.
+    const clinicalTaxonomy = selection.clinicalTaxonomy;
 
     const result = await this.client.classifyTokens({
       text: body.text,
@@ -496,53 +474,6 @@ export class AiInferenceController {
       });
       return null;
     }
-  }
-
-  /**
-   * Validate a caller-supplied `modelName`
-   * override against the registry before forwarding it to NLP. Previously the
-   * raw value was proxied verbatim, letting any authenticated user make the
-   * clinical NLP service download/load an ARBITRARY HuggingFace model. The
-   * override must match an ENABLED `TOKEN_CLASSIFICATION` registry row visible
-   * in [tenant, SYSTEM] (shared-read) by `slug` OR `sourceUri`; the row's
-   * `sourceUri` is what gets forwarded. FAILS CLOSED: an unknown value, a
-   * registry read failure, or a missing registry service all reject with 400 —
-   * an unvalidatable override is never forwarded (unlike the fail-open
-   * default injection below, which only ever forwards registry-derived ids).
-   */
-  private async resolveValidatedModelOverride(
-    requested: string,
-  ): Promise<{ sourceUri: string; localPath: string | null; clinicalTaxonomy: Record<string, unknown> | null }> {
-    const rejection = () =>
-      new BadRequestException(
-        `modelName '${requested}' is not an ENABLED TOKEN_CLASSIFICATION model in the registry (expected a registry slug or sourceUri).`,
-      );
-    if (!this.aiModelService) {
-      throw rejection();
-    }
-    let rows;
-    try {
-      rows = await this.aiModelService.getByTaskTypeSharedRead(ModelTaskType.TOKEN_CLASSIFICATION);
-    } catch (err) {
-      this.logger.warn({
-        message: 'Registry read failed while validating a modelName override; rejecting the override (fail-closed)',
-        error: err instanceof Error ? err.message : String(err),
-      });
-      throw rejection();
-    }
-    const match = rows.find((row) => row.slug === requested || row.sourceUri === requested);
-    if (!match) {
-      throw rejection();
-    }
-    // The weight path comes from the MATCHED REGISTRY ROW, never
-    // from the caller, so an override cannot point NLP at an arbitrary path.
-    return {
-      sourceUri: match.sourceUri,
-      // TASK-890 §3.11 — DERIVED from the matched row's bucket identity, never a
-      // stored column and never anything the caller supplied.
-      localPath: derivedLocalPath(match),
-      clinicalTaxonomy: readClinicalTaxonomy((match as { metaData?: unknown }).metaData),
-    };
   }
 
   /**
