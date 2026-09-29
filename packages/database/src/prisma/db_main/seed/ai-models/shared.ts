@@ -149,7 +149,18 @@ export type AiModelLibrary = (typeof AI_MODEL_LIBRARIES)[number];
  *
  * Mirrored in `packages/applications/.../ai-model/constants.ts`; same parity pin.
  */
-export const AI_MODEL_SERVED_BY = ['stt', 'stt-worker', 'nlp', 'tts', 'tts-worker', 'lmstudio', 'text', 'gateway-proxy'] as const;
+export const AI_MODEL_SERVED_BY = [
+  'stt',
+  'stt-worker',
+  'nlp',
+  'tts',
+  'tts-worker',
+  'lmstudio',
+  'text',
+  'gateway-proxy',
+  // TASK-1010 (OD-9) — `apps/asr-vllm`, the vLLM Whisper decode backend.
+  'asr-vllm',
+] as const;
 
 export type AiModelServedBy = (typeof AI_MODEL_SERVED_BY)[number];
 

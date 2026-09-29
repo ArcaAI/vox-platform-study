@@ -90,7 +90,19 @@ export type AiModelLibrary = (typeof AI_MODEL_LIBRARIES)[number];
  * are GOVERNED by the gateway (credentials, cascade — TASK-862) and EXECUTED
  * by the owning service, so they name that service, not the gateway.
  */
-export const AI_MODEL_SERVED_BY = ['stt', 'stt-worker', 'nlp', 'tts', 'tts-worker', 'lmstudio', 'text', 'gateway-proxy'] as const;
+export const AI_MODEL_SERVED_BY = [
+  'stt',
+  'stt-worker',
+  'nlp',
+  'tts',
+  'tts-worker',
+  'lmstudio',
+  'text',
+  'gateway-proxy',
+  // TASK-1010 (OD-9) — `apps/asr-vllm`, the vLLM Whisper decode backend. Its rows are their own
+  // registry entries (readiness and inventory stay per serving target), reached through an agent.
+  'asr-vllm',
+] as const;
 
 export type AiModelServedBy = (typeof AI_MODEL_SERVED_BY)[number];
 
