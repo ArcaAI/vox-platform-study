@@ -96,6 +96,13 @@ export interface PreSummaryVariableSources {
   dob?: string | null;
   gender?: string | null;
   vitals?: string | null;
+  /**
+   * TASK-1020 — the client's `investigations` kind, one line per result, rendered by the shared
+   * reader (`context/client-clinical-context.ts#formatTestResultsForPrompt`). Until that kind existed
+   * no surface had a source for it, so `formatted_test_results` was v1's `''` on every prompt.
+   * (`same_day_prequel_summary` is deliberately NOT one of the nine v1 names: it is set beside them
+   * by prompt assembly and the live lanes.)
+   */
   testResults?: string | null;
   previousVisits?: string | null;
   language?: string | null;

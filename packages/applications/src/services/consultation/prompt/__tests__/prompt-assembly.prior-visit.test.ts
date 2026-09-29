@@ -110,16 +110,18 @@ describe('PromptAssemblyService — prior-visit carry-forward', () => {
     expect(userPrompt).not.toContain('x'.repeat(PRIOR_VISIT_SUMMARY_MAX_CHARS + 1));
   });
 
-  it('no longer accepts the dead sameDayPrequelSummary variable', async () => {
+  it('fills {{context.same_day_prequel_summary}} from sameDayPrequelSummary — independent of the prior-visit carry-forward (TASK-1020)', async () => {
     mockPromptTemplateRepository.findById.mockResolvedValue(
-      createTemplate('Summarize for {{context.conversation_language}}. Prequel: {same_day_prequel_summary}.'),
+      createTemplate('Summarize for {{context.conversation_language}}. Prequel: {{context.same_day_prequel_summary}}.'),
     );
     const service = await buildService();
 
-    const { userPrompt } = await assemble(service as never, { sameDayPrequelSummary: 'SHOULD-NOT-APPEAR' });
+    const { userPrompt } = await assemble(service as never, { sameDayPrequelSummary: 'MORNING-PREQUEL-MARKER' });
 
-    expect(userPrompt).not.toContain('SHOULD-NOT-APPEAR');
-    // The placeholder is left untouched (no producer, no variable) rather than silently filled.
-    expect(userPrompt).toContain('{same_day_prequel_summary}');
+    // The variable has a producer again (`harness/same-day-prequel.ts`), so it is substituted…
+    expect(userPrompt).toContain('Prequel: MORNING-PREQUEL-MARKER.');
+    // …once, and it never switches the carry-forward block on.
+    expect(userPrompt.split('MORNING-PREQUEL-MARKER').length - 1).toBe(1);
+    expect(userPrompt).not.toContain('prior_visit_summary');
   });
 });

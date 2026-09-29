@@ -47,7 +47,8 @@ import { HarnessAssuranceService } from './harness-assurance.service';
 import { HarnessProgressService } from './harness-progress.service';
 import { ConfigResolver } from '../../config-resolver';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
-import { truncatePriorVisitSummary } from './prior-visit-summary';
+import { selectAuthoritativeNoteText, truncatePriorVisitSummary } from './prior-visit-summary';
+import { resolveSameDayPrequel } from './same-day-prequel';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
 import { clientClinicalContextReaderFor } from '../context/client-clinical-context';
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
@@ -729,14 +730,10 @@ export class HarnessInternalService extends BaseService {
     assertEqualTenants(parent, { tenantId });
 
     try {
-      for (const type of [ContextItemType.SIGNED_NOTE, ContextItemType.MODIFIED_SUMMARY, ContextItemType.RAW_SUMMARY]) {
-        const items = (await this.contextItemRepository.findByType(parentConsultationId, type)) ?? [];
-        const usable = items.filter((item) => item?.content?.trim());
-        if (usable.length === 0) continue;
-        const newest = usable.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
-        return truncatePriorVisitSummary(newest.content!.trim());
-      }
-      return null;
+      // TASK-1020 — the selection is shared with the same-day prequel, so the two never disagree
+      // about which of a visit's notes is "the" note.
+      const note = await selectAuthoritativeNoteText(this.contextItemRepository, parentConsultationId);
+      return note ? truncatePriorVisitSummary(note) : null;
     } catch (error) {
       this.logger.warn({
         message: 'Prior-visit summary lookup failed — the re-visit prompt proceeds without carry-forward',
@@ -1374,11 +1371,26 @@ export class HarnessInternalService extends BaseService {
 
       // The measured readings and prior-visit history the client stated at `open`. Read from the
       // consultation's own rows, so the durable finalize sees exactly what the live lane saw.
-      const client = await clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).read(consultationId);
+      const clientReader = clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService);
+      const client = await clientReader.read(consultationId);
+      // TASK-1020 — the client's lab results, and the same-day prequel (the patient's EARLIER visits
+      // today, chained by `parentConsultationId`). The prequel is produced UNCONDITIONALLY when a
+      // same-day ancestor exists: unlike `priorVisitSummary` above it rides no graph binding. Both
+      // never throw, and both are spread only when present so the key is ABSENT otherwise — the same
+      // regression-lock shape `priorVisitSummary` uses.
+      const [testResults, sameDayPrequel] = await Promise.all([
+        clientReader.readTestResults(consultationId),
+        resolveSameDayPrequel(
+          { consultationRepository: this.consultationRepository, contextItemRepository: this.contextItemRepository },
+          consultation,
+        ),
+      ]);
 
       const assembled = await this.promptAssemblyService.assemble({
         vitals: client.vitals,
         previousVisits: client.previousVisits,
+        ...(testResults ? { testResults } : {}),
+        ...(sameDayPrequel.hasSameDayPrequel ? { sameDayPrequelSummary: sameDayPrequel.summary } : {}),
         // Explicit tenant so prompt assembly resolves the SAME
         // effective warm-start policy this method just gated the snapshot on
         // (the harness runs outside the API-edge CLS middleware).
@@ -1500,8 +1512,24 @@ export class HarnessInternalService extends BaseService {
         // to `work()` whenever Redis is absent or throws: a cache can never be the
         // guarantee for a clinical artifact.
         const existingDraft = await this.findOwnHarnessDraft(consultationId);
+        // TASK-1020 (probe → guard) — a re-delivery must never overwrite a note the clinician has
+        // already APPROVED. Signed documentation is immutable (BP-2); a change after signing is an
+        // explicit addendum, never a late workflow execution. Measured before this guard: the
+        // adoption below re-wrote the RAW_SUMMARY body (and re-stamped its SummaryMeta) under a
+        // SIGNED consultation, because the CAS predicate is read fresh here and so always matched.
+        const adoptionRefused = existingDraft ? await this.isApprovedHarnessDraft(consultation, existingDraft.id) : false;
         let contextItemId: string;
-        if (existingDraft) {
+        if (existingDraft && adoptionRefused) {
+          contextItemId = existingDraft.id;
+          this.logger.warn({
+            message:
+              'Harness draft adoption skipped — the note was already approved (signed). A late re-delivery never overwrites signed documentation; ' +
+              'the signed note and its SummaryMeta were left untouched.',
+            consultationId,
+            contextItemId,
+            currentStatus: consultation?.status,
+          });
+        } else if (existingDraft) {
           // capture the CAS predicate BEFORE mutating the entity
           // `entity.version` is the OCC compare-and-set counter (DB-owned),
           // distinct from `currentVersionNumber` (the content-revision
@@ -1663,8 +1691,11 @@ export class HarnessInternalService extends BaseService {
         // was ADOPTED rather than created we must re-stamp the existing meta row, not
         // insert a second one for the same `contextItemId`. Mirrors the read-modify-write
         // shape of `applyAssuranceBackfillWithCas` (fresh entity ⇒ fresh change tracking).
-        const existingMeta = existingDraft ? await this.summaryMetaRepository.findByContextItem(contextItemId) : null;
-        if (existingMeta) {
+        const existingMeta = existingDraft && !adoptionRefused ? await this.summaryMetaRepository.findByContextItem(contextItemId) : null;
+        if (adoptionRefused) {
+          // TASK-1020 — the signed note's meta describes the run that produced what was signed; a
+          // run whose content was NOT applied must not re-stamp it.
+        } else if (existingMeta) {
           // TASK-869 — field-by-field, NOT `Object.assign(existingMeta, summaryMeta, …)`.
           // `BaseEntity.id` is getter-only, so copying a whole entity over another
           // threw `TypeError: Cannot set property id of #<BaseEntity> which has only
@@ -2330,6 +2361,23 @@ export class HarnessInternalService extends BaseService {
       consultationId,
       reason: dto.reason,
     });
+  }
+
+  /**
+   * TASK-1020 — has the clinician already APPROVED this harness draft? True when the consultation is
+   * SIGNED / CLOSED_COMPLETE, or when the note carries an `approved` ContextItemVersion (the row
+   * `SummaryService.approveSummary` writes) — the second catches a signed note whose consultation
+   * has since moved on. A version-lookup failure answers from the status alone, so an unreadable
+   * store never blocks the ordinary re-delivery of an unapproved draft.
+   */
+  private async isApprovedHarnessDraft(consultation: ConsultationEntity | null | undefined, contextItemId: string): Promise<boolean> {
+    if (consultation?.status === ConsultationStatus.SIGNED || consultation?.status === ConsultationStatus.CLOSED_COMPLETE) return true;
+    if (!this.contextItemVersionRepository?.getVersionsByChangeReason) return false;
+    try {
+      return ((await this.contextItemVersionRepository.getVersionsByChangeReason(contextItemId, 'approved')) ?? []).length > 0;
+    } catch {
+      return false;
+    }
   }
 
   /**

@@ -42,6 +42,13 @@ import { truncatePriorVisitSummary } from '../harness/prior-visit-summary';
 /** The kind keys every prompt surface reads. Both are declared by the tenant's scribe schema. */
 export const CLIENT_VITALS_KIND_KEY = 'vitals';
 export const CLIENT_PREVIOUS_CASE_NOTES_KIND_KEY = 'previous_case_notes';
+/**
+ * TASK-1020 (OD-6) — the client's lab/investigation results, when its EMR has them. Read by its OWN
+ * reader method ({@link ClientClinicalContextReader.readTestResults}), not by `read()`: that method
+ * is pinned at exactly the two kinds above, and a surface with no use for lab results must not start
+ * paying a round trip for them.
+ */
+export const CLIENT_INVESTIGATIONS_KIND_KEY = 'investigations';
 
 /**
  * The narrow projection of the client's validated `vitals` object these renderers need.
@@ -76,6 +83,24 @@ export interface ClientPreviousCaseNote {
   doctor?: string;
   title?: string;
   text?: string;
+}
+
+/**
+ * One entry of the client-supplied `investigations` kind (TASK-1020 §7.1). `name` and `value` are
+ * required to render a line; the rest are optional and rendered only when stated.
+ */
+export interface ClientInvestigationResult {
+  name?: string;
+  value?: string | number;
+  unit?: string;
+  refRange?: string;
+  collectedAt?: string;
+  flag?: string;
+}
+
+/** The `investigations` kind's payload. */
+export interface ClientInvestigationsPayload {
+  results?: readonly ClientInvestigationResult[];
 }
 
 /** What a prompt surface gets back: the two rendered strings, plus the payloads they came from. */
@@ -210,6 +235,37 @@ export function formatPreviousVisitsForPrompt(notes: readonly ClientPreviousCase
 }
 
 /**
+ * TASK-1020 — render the client's `investigations` as `formatted_test_results`, one line per result:
+ * `- <name>: <value>[ <unit>][ (ref <refRange>)][ [<flag>]][ — <collectedAt>]`.
+ *
+ * `''` for an absent payload, an empty list or a payload that is not the declared shape — the value
+ * v1's own builder declares for this name. An entry without a name or a value is dropped rather than
+ * rendered as half a result; a numeric `0` is a value, not an absence.
+ */
+export function formatTestResultsForPrompt(payload: ClientInvestigationsPayload | undefined): string {
+  const results = payload?.results;
+  if (!Array.isArray(results)) return '';
+
+  const text = (value: unknown): string =>
+    typeof value === 'string' ? value.trim() : typeof value === 'number' && Number.isFinite(value) ? String(value) : '';
+  const lines: string[] = [];
+  for (const result of results) {
+    if (!isPlainRecord(result)) continue;
+    const name = text(result.name);
+    const value = text(result.value);
+    if (!name || !value) continue;
+    const unit = text(result.unit);
+    const refRange = text(result.refRange);
+    const flag = text(result.flag);
+    const collectedAt = text(result.collectedAt);
+    lines.push(
+      `- ${name}: ${value}${unit ? ` ${unit}` : ''}${refRange ? ` (ref ${refRange})` : ''}${flag ? ` [${flag}]` : ''}${collectedAt ? ` — ${collectedAt}` : ''}`,
+    );
+  }
+  return lines.join('\n');
+}
+
+/**
  * Every string the open-time materializer writes into a `CASE_NOTE` row for these notes.
  *
  * A kind marked `materializeAs: 'CASE_NOTE'` is persisted TWICE: once as the STRUCTURED item this
@@ -282,6 +338,7 @@ export function clientClinicalContextReaderFor(
  */
 export class ClientClinicalContextReader {
   private readonly inFlight = new Map<string, Promise<ClientClinicalContext>>();
+  private readonly testResultsInFlight = new Map<string, Promise<string>>();
 
   constructor(
     private readonly repository: ContextItemRepository | undefined,
@@ -295,6 +352,31 @@ export class ClientClinicalContextReader {
       this.inFlight.set(consultationId, pending);
     }
     return pending;
+  }
+
+  /**
+   * TASK-1020 — the client's `investigations`, rendered by {@link formatTestResultsForPrompt}, or
+   * `''`. Memoised per consultation like {@link read}, and separate from it on purpose (see
+   * {@link CLIENT_INVESTIGATIONS_KIND_KEY}). Never throws.
+   */
+  readTestResults(consultationId: string): Promise<string> {
+    let pending = this.testResultsInFlight.get(consultationId);
+    if (!pending) {
+      pending = this.loadTestResults(consultationId);
+      this.testResultsInFlight.set(consultationId, pending);
+    }
+    return pending;
+  }
+
+  private async loadTestResults(consultationId: string): Promise<string> {
+    if (!this.repository?.findLatestByKindKey) return '';
+    try {
+      const item = await this.repository.findLatestByKindKey(consultationId, CLIENT_INVESTIGATIONS_KIND_KEY);
+      const payload = (await this.payloadOf(item)) as ClientInvestigationsPayload | null;
+      return formatTestResultsForPrompt(payload ?? undefined);
+    } catch {
+      return '';
+    }
   }
 
   private async load(consultationId: string): Promise<ClientClinicalContext> {
