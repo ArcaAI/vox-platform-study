@@ -126,22 +126,22 @@ export class ModelRegistryOperationsService extends BaseService {
     const preview = await this.readHub(request.repoId, request.revision ?? 'main');
     const s = preview.suggested;
 
-    const slug = request.slug ?? s.slug;
+    const slug = request.slug ?? preview.suggestedSlug;
     if (await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug)) {
       throw new ConflictException({ code: 'SLUG_TAKEN', message: `A model with slug '${slug}' is already registered.` });
     }
 
-    const format = request.format ?? s.format;
+    const format = request.format ?? preview.suggestedFormat;
     if (!format) throw new BadRequestException(`The artifact format of '${request.repoId}' could not be inferred from its files; pass 'format'.`);
 
     // The SAME create path and validation as `POST admin/ai-models`: the DTO is
     // validated with the pipe's own options, then `AiModelService.create` runs.
     const createDto = plainToInstance(CreateModelRequest, {
-      name: request.name ?? s.name,
+      name: request.name ?? preview.suggestedName,
       slug,
       ...(request.description !== undefined ? { description: request.description } : {}),
       category: request.category ?? s.category ?? ModelCategory.UNKNOWN,
-      taskType: request.taskType ?? s.taskType ?? ModelTaskType.UNKNOWN,
+      taskType: request.taskType ?? preview.taskType ?? ModelTaskType.UNKNOWN,
       modelType: request.modelType ?? s.modelType ?? ModelType.UNKNOWN,
       source: AiModelSource.HUGGINGFACE,
       sourceUri: preview.sourceUri,

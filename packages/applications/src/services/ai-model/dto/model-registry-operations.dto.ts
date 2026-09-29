@@ -36,15 +36,6 @@ export class HubFileResponse {
 }
 
 export class HubPreviewSuggestionResponse {
-  @ApiProperty({ description: 'Registry slug derived from the repo name.', example: 'medical-ner' })
-  slug: string;
-
-  @ApiProperty({ description: 'Display name (the repo name).', example: 'Medical-NER' })
-  name: string;
-
-  @ApiProperty({ description: 'Task inferred from the Hub `pipeline_tag`.', enum: ModelTaskType, nullable: true })
-  taskType: ModelTaskType | null;
-
   @ApiProperty({ description: 'Category inferred from the task.', enum: ModelCategory, nullable: true })
   category: ModelCategory | null;
 
@@ -53,16 +44,6 @@ export class HubPreviewSuggestionResponse {
 
   @ApiProperty({ description: 'Serving library this platform would load it with.', enum: AI_MODEL_LIBRARIES, nullable: true })
   libraryName: string | null;
-
-  @ApiProperty({ description: 'Artifact format inferred from the files.', enum: AiModelFormat, nullable: true })
-  format: AiModelFormat | null;
-
-  @ApiProperty({
-    description: 'How the weights will be laid out in the models bucket: `hf-cache` (a Hugging Face hub cache) or `flat` (`<slug>/<version>/`).',
-    enum: ['hf-cache', 'flat'],
-    nullable: true,
-  })
-  layout: 'hf-cache' | 'flat' | null;
 
   @ApiProperty({ description: 'Workload that would run it.', enum: AI_MODEL_SERVED_BY, nullable: true })
   servedBy: string | null;
@@ -85,6 +66,17 @@ export class HubPreviewResponse {
   @ApiProperty({ description: 'Sum of every file size, in bytes.' }) totalBytes: number;
   @ApiProperty({ description: 'Number of files in the repo at this revision.' }) fileCount: number;
   @ApiProperty({ type: [HubFileResponse] }) files: HubFileResponse[];
+  @ApiProperty({ description: 'Task inferred from the Hub `pipeline_tag`, as the registry task value.', enum: ModelTaskType, nullable: true })
+  taskType: ModelTaskType | null;
+  @ApiProperty({ description: 'Registry slug derived from the repo name.', example: 'medical-ner' }) suggestedSlug: string;
+  @ApiProperty({ description: 'Display name (the repo name).', example: 'Medical-NER' }) suggestedName: string;
+  @ApiProperty({ description: 'Artifact format inferred from the files.', enum: AiModelFormat, nullable: true })
+  suggestedFormat: AiModelFormat | null;
+  @ApiProperty({
+    description: 'How the weights will be laid out in the models bucket: `hf-cache` (a Hugging Face hub cache) or `flat` (`<slug>/<version>/`).',
+    enum: ['hf-cache', 'flat'],
+  })
+  layout: 'hf-cache' | 'flat';
   @ApiProperty({
     description: 'Registry fields prefilled from the card; `null` where nothing could be inferred.',
     type: HubPreviewSuggestionResponse,

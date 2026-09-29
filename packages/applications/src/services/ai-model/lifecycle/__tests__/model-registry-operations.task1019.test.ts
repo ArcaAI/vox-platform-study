@@ -188,15 +188,15 @@ describe('R1 — hub preview', () => {
       baseModel: null,
       totalBytes: 500_000,
       fileCount: 2,
+      taskType: ModelTaskType.TOKEN_CLASSIFICATION,
+      suggestedSlug: 'medical-ner',
+      suggestedName: 'Medical-NER',
+      suggestedFormat: AiModelFormat.SAFETENSOR,
+      layout: 'hf-cache',
       suggested: {
-        slug: 'medical-ner',
-        name: 'Medical-NER',
-        taskType: ModelTaskType.TOKEN_CLASSIFICATION,
         category: ModelCategory.NLP,
         modelType: null,
         libraryName: 'transformers',
-        format: AiModelFormat.SAFETENSOR,
-        layout: 'hf-cache',
         servedBy: 'nlp',
         provider: 'built-in',
       },
@@ -213,15 +213,12 @@ describe('R1 — hub preview', () => {
     const { svc } = build({ hub });
     const preview = await svc.previewHub({ repoId: 'unsloth/Qwen3-0.6B-GGUF', revision: 'v1' });
     expect(hub.getRepoInfo).toHaveBeenCalledWith('unsloth/Qwen3-0.6B-GGUF', 'v1');
-    expect(preview.suggested).toMatchObject({
-      slug: 'qwen3-0-6b-gguf',
+    expect(preview).toMatchObject({
       taskType: ModelTaskType.TEXT_GENERATION,
-      libraryName: 'llama.cpp',
-      format: AiModelFormat.GGUF,
+      suggestedSlug: 'qwen3-0-6b-gguf',
+      suggestedFormat: AiModelFormat.GGUF,
       layout: 'flat',
-      servedBy: 'lmstudio',
-      provider: 'lm-studio',
-      modelType: ModelType.QUANTIZED_MODEL,
+      suggested: { libraryName: 'llama.cpp', servedBy: 'lmstudio', provider: 'lm-studio', modelType: ModelType.QUANTIZED_MODEL },
     });
   });
 

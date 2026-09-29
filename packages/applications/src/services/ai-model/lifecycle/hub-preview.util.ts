@@ -20,15 +20,18 @@ export interface HubModelPreview {
   totalBytes: number;
   fileCount: number;
   files: HuggingFaceFileEntry[];
+  /** The registry task inferred from `pipelineTag` (the `ModelTaskType` member), or null. */
+  taskType: ModelTaskType | null;
+  suggestedSlug: string;
+  suggestedName: string;
+  suggestedFormat: AiModelFormat | null;
+  /** How the publisher will lay the weights out in the bucket. */
+  layout: HubPublishLayout;
+  /** The remaining registry fields the card suggests; null where nothing could be inferred. */
   suggested: {
-    slug: string;
-    name: string;
-    taskType: ModelTaskType | null;
     category: ModelCategory | null;
     modelType: ModelType | null;
     libraryName: string | null;
-    format: AiModelFormat | null;
-    layout: HubPublishLayout | null;
     servedBy: string | null;
     provider: string | null;
   };
@@ -156,7 +159,7 @@ function servedByFor(task: ModelTaskType | null, library: string | null): string
 /**
  * Map a Hub card + file list onto the registry's vocabulary.
  *
- * The `suggested` block is a PREFILL, never a decision: a field this cannot infer
+ * Every suggestion is a PREFILL, never a decision: a field this cannot infer
  * is `null` and the platform admin supplies it. The layout follows the
  * publisher's own rule — a library that loads through a Hugging Face hub cache
  * is published as one (`hf-cache`), everything else as a flat, content-addressed
@@ -189,15 +192,16 @@ export function buildHubPreview(input: {
     totalBytes: files.reduce((sum, f) => sum + (Number.isFinite(f.size) ? f.size : 0), 0),
     fileCount: files.length,
     files,
+    taskType,
+    suggestedSlug: suggestedSlugFor(repoId),
+    suggestedName: repoId.split('/').pop() ?? repoId,
+    suggestedFormat: format,
+    // The processor's own rule: only a hub-cache library is published as a hub cache.
+    layout: libraryName && HF_CACHE_LIBRARIES.has(libraryName) ? 'hf-cache' : 'flat',
     suggested: {
-      slug: suggestedSlugFor(repoId),
-      name: repoId.split('/').pop() ?? repoId,
-      taskType,
       category: categoryOf(taskType),
       modelType: quantized ? ModelType.QUANTIZED_MODEL : null,
       libraryName,
-      format,
-      layout: libraryName ? (HF_CACHE_LIBRARIES.has(libraryName) ? 'hf-cache' : 'flat') : null,
       servedBy,
       provider: servedBy === 'lmstudio' ? 'lm-studio' : servedBy ? 'built-in' : null,
     },
