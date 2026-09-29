@@ -157,7 +157,9 @@ class TestTheStreamActuallyRunsThere:
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", model="m")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(provider="lm-studio", prompt="hi", model="m")
+        ):
             chunks.append(chunk)
 
         assert [c.content for c in chunks if c.type == "chunk"] == ["hi"]
@@ -191,7 +193,9 @@ class TestTheStreamActuallyRunsThere:
             provider._client.converse_stream.return_value = {"stream": _BlockingStream()}
 
             async def _drain():
-                async for _ in provider.generate_stream(GenerateRequest(prompt="hi", model="m")):
+                async for _ in provider.generate_stream(
+                    GenerateRequest(provider="lm-studio", prompt="hi", model="m")
+                ):
                     pass
 
             return asyncio.create_task(_drain())

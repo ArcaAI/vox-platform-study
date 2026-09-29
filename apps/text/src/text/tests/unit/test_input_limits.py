@@ -13,35 +13,35 @@ from text.models.responses import StreamingGenerateResponse
 
 class TestPromptLimits:
     def test_prompt_within_limit(self):
-        req = GenerateRequest(prompt="a" * 1_000)
+        req = GenerateRequest(provider="lm-studio", prompt="a" * 1_000)
         assert len(req.prompt) == 1_000
 
     def test_prompt_at_max_limit(self):
-        req = GenerateRequest(prompt="a" * 200_000)
+        req = GenerateRequest(provider="lm-studio", prompt="a" * 200_000)
         assert len(req.prompt) == 200_000
 
     def test_prompt_exceeds_limit(self):
         with pytest.raises(ValidationError) as exc_info:
-            GenerateRequest(prompt="a" * 200_001)
+            GenerateRequest(provider="lm-studio", prompt="a" * 200_001)
         errors = exc_info.value.errors()
         assert any(e["type"] == "string_too_long" for e in errors)
 
     def test_system_prompt_within_limit(self):
-        req = GenerateRequest(prompt="valid", system_prompt="s" * 1_000)
+        req = GenerateRequest(provider="lm-studio", prompt="valid", system_prompt="s" * 1_000)
         assert len(req.system_prompt) == 1_000
 
     def test_system_prompt_at_max_limit(self):
-        req = GenerateRequest(prompt="valid", system_prompt="s" * 50_000)
+        req = GenerateRequest(provider="lm-studio", prompt="valid", system_prompt="s" * 50_000)
         assert len(req.system_prompt) == 50_000
 
     def test_system_prompt_exceeds_limit(self):
         with pytest.raises(ValidationError) as exc_info:
-            GenerateRequest(prompt="valid", system_prompt="s" * 50_001)
+            GenerateRequest(provider="lm-studio", prompt="valid", system_prompt="s" * 50_001)
         errors = exc_info.value.errors()
         assert any(e["type"] == "string_too_long" for e in errors)
 
     def test_system_prompt_none_is_valid(self):
-        req = GenerateRequest(prompt="valid", system_prompt=None)
+        req = GenerateRequest(provider="lm-studio", prompt="valid", system_prompt=None)
         assert req.system_prompt is None
 
 

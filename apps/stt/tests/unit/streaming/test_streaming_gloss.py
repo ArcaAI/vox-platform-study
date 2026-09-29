@@ -1,7 +1,7 @@
 """Streaming English gloss — opt-in translate pass.
 
 Covers:
-- ``inference.streaming_english_gloss`` flag (DTO default + YAML parsing)
+- ``inference.streaming_english_gloss`` flag (DTO default)
 - ``SegmentResult`` additive ``type: gloss`` / ``utterance_index`` wire fields
 - ``StreamingInferenceWorker`` gloss behavior: emitted only when enabled,
   published AFTER the final (never delays it), failures/timeouts swallowed,
@@ -19,7 +19,6 @@ import numpy as np
 import pytest
 
 from stt.pipeline.dto import AiModelFormat, InferenceConfig
-from stt.pipeline.yaml_parser import PipelineYamlParser
 from stt.streaming.inference import StreamingInferenceWorker
 from stt.streaming.preprocessor import AudioUtterance
 from stt.streaming.schemas import SegmentResult
@@ -73,29 +72,6 @@ class TestGlossConfig:
 
     def test_inference_config_default_off(self):
         assert InferenceConfig().streaming_english_gloss is False
-
-    def test_yaml_parses_flag_true(self):
-        yaml_content = """
-version: "1.0"
-models:
-  asr: whisper-large-v3
-inference:
-  language: ml
-  streaming_english_gloss: true
-"""
-        spec = PipelineYamlParser().parse(yaml_content)
-        assert spec.inference.streaming_english_gloss is True
-
-    def test_yaml_default_false_when_absent(self):
-        yaml_content = """
-version: "1.0"
-models:
-  asr: whisper-large-v3
-inference:
-  language: ml
-"""
-        spec = PipelineYamlParser().parse(yaml_content)
-        assert spec.inference.streaming_english_gloss is False
 
 
 # =========================================================================

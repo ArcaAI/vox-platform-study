@@ -332,7 +332,7 @@ class TestStreamingGenerationBackground:
 
         provider.generate_stream = _failing_stream
 
-        req = GenerateRequest(prompt="hi", stream=True)
+        req = GenerateRequest(provider="lm-studio", prompt="hi", stream=True)
         await _run_streaming_generation(tm, provider, "t-1", req)
 
         tm.update_task.assert_any_call("t-1", status=TaskStatus.RUNNING)
@@ -359,7 +359,7 @@ class TestStreamingGenerationBackground:
 
         provider.generate_stream = _ok_stream
 
-        req = GenerateRequest(prompt="hi", stream=True)
+        req = GenerateRequest(provider="lm-studio", prompt="hi", stream=True)
         await _run_streaming_generation(tm, provider, "t-1", req)
 
         tm.update_task.assert_any_call("t-1", status=TaskStatus.RUNNING)

@@ -1,12 +1,11 @@
-"""Tenant auto-switch governance reaching the session.
+"""Auto-switch governance reaching the session.
 
-``autoSwitchEnabled`` and ``consecutiveFailureThreshold`` are real tenant
-settings — stored on ``TenantSttConfig``, resolved through
-``resolveEffectiveSttConfig``, exposed on the effective-config API — but they
-were never sent to STT. ``EngineSwitchController`` therefore always constructed
-with its own defaults (``True`` / ``2``), so a tenant that switched auto-fallback
-OFF still got auto-fallback, and a tenant that raised the failure threshold was
-ignored.
+``auto_switch_enabled`` and ``consecutive_failure_threshold`` come from the resolved
+ASR spec's ``fallback`` block (``autoSwitch`` / ``switchAfterConsecutiveFailures``)
+unless ``create_session`` is handed an explicit value. Either way they must reach
+``EngineSwitchController``: dropped, it constructs with its own defaults
+(``True`` / ``2``), so an agent that switched auto-fallback OFF would still get
+auto-fallback, and a raised failure threshold would be ignored.
 
 The heavy assembly is mocked but the REAL ``_make_switch_controller`` is bound,
 so these assert the controller's actual behaviour rather than a passed argument.

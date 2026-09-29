@@ -129,9 +129,6 @@ Tests are now organized by behavior categories:
 | `test_pipeline_dto.py`  | `TestModelRefsEdgeCases`             | Mixed inline/slug, all None, partial configs      |
 | `test_pipeline_dto.py`  | `TestPreprocessingConfigEdgeCases`   | Sample rate boundaries, VAD threshold limits      |
 | `test_pipeline_dto.py`  | `TestInferenceConfigEdgeCases`       | Batch size limits, temperature boundaries         |
-| `test_yaml_parser.py`   | `TestYamlParserEdgeCases`            | Empty YAML, unicode, deeply nested structures     |
-| `test_yaml_parser.py`   | `TestValidationEdgeCases`            | Negative values, boundary violations              |
-| `test_yaml_parser.py`   | `TestInlineModelValidationEdgeCases` | Missing engine, whitespace model IDs              |
 | `test_preprocessing.py` | `TestAudioPreprocessorEdgeCases`     | Very short/long audio, extreme resampling         |
 | `test_model_cache.py`   | `TestModelCacheEdgeCases`            | Memory overflow, eviction order, statistics       |
 | `test_batch_service.py` | `TestBatchServiceEdgeCases`          | Empty text, unicode, malformed timestamps         |
@@ -177,7 +174,6 @@ Tests are now organized by behavior categories:
 | `test_batch_service.py`   | Complete config fixtures, result structure tests, postprocessing behavior, **edge cases** |
 | `test_workers.py`         | Session state management tests, lifecycle transition tests                                |
 | `test_pipeline_dto.py`    | Inline model tests, ModelRef tests, **comprehensive edge cases**                          |
-| `test_yaml_parser.py`     | Version 1.1 parsing, inline model validation, **edge case coverage**                      |
 | `test_preprocessing.py`   | Audio processing tests, **boundary condition tests**                                      |
 | `test_model_cache.py`     | Inline model loading, format support, **cache edge cases**                                |
 | `test_model_loaders.py`   | ONNX Optimum detection, format support                                                    |
@@ -212,7 +208,6 @@ pytest tests/unit/test_api_client.py -v
 pytest tests/unit/test_batch_service.py -v
 pytest tests/unit/test_workers.py -v
 pytest tests/unit/test_pipeline_dto.py -v
-pytest tests/unit/test_yaml_parser.py -v
 
 # Run edge case tests specifically
 pytest tests/unit/ -v -k "EdgeCase"

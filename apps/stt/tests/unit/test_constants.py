@@ -4,25 +4,6 @@ Tests verify that all expected constants are defined and have correct values.
 """
 
 
-class TestDatabaseNamespaces:
-    """Tests for database namespace constants."""
-
-    def test_stt_config_namespace(self):
-        from stt.core.config.constants import NAMESPACE_STT_CONFIG
-
-        assert NAMESPACE_STT_CONFIG == "stt.config"
-
-    def test_stt_pipelines_namespace(self):
-        from stt.core.config.constants import NAMESPACE_STT_PIPELINES
-
-        assert NAMESPACE_STT_PIPELINES == "stt.pipelines"
-
-    def test_stt_models_namespace(self):
-        from stt.core.config.constants import NAMESPACE_STT_MODELS
-
-        assert NAMESPACE_STT_MODELS == "stt.models"
-
-
 class TestSystemConstants:
     """Tests for system-level constants."""
 

@@ -80,7 +80,7 @@ async def client(app):
         yield c
 
 
-_BODY = {"prompt": "hello", "model": "test-model"}
+_BODY = {"provider": "lm-studio", "prompt": "hello", "model": "test-model"}
 
 
 class TestGenerateIdempotency:

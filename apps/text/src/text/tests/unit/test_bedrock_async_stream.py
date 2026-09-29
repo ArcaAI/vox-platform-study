@@ -106,7 +106,9 @@ class TestBedrockAsyncStream:
 
         chunks: list[StreamChunk] = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+            GenerateRequest(
+                provider="lm-studio", prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0"
+            )
         ):
             chunks.append(chunk)
 
@@ -132,7 +134,9 @@ class TestBedrockAsyncStream:
 
         chunks: list[StreamChunk] = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+            GenerateRequest(
+                provider="lm-studio", prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0"
+            )
         ):
             chunks.append(chunk)
 
@@ -158,7 +162,9 @@ class TestBedrockAsyncStream:
 
         chunks: list[StreamChunk] = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+            GenerateRequest(
+                provider="lm-studio", prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0"
+            )
         ):
             chunks.append(chunk)
 
@@ -182,7 +188,9 @@ class TestBedrockAsyncStream:
 
         chunks: list[StreamChunk] = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+            GenerateRequest(
+                provider="lm-studio", prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0"
+            )
         ):
             chunks.append(chunk)
 
@@ -215,7 +223,9 @@ class TestBedrockAsyncStream:
 
         chunks: list[StreamChunk] = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+            GenerateRequest(
+                provider="lm-studio", prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0"
+            )
         ):
             chunks.append(chunk)
 
@@ -240,7 +250,11 @@ class TestBedrockAsyncStream:
         chunks: list[StreamChunk] = []
         with pytest.raises(RuntimeError, match="connection reset"):
             async for chunk in provider.generate_stream(
-                GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+                GenerateRequest(
+                    provider="lm-studio",
+                    prompt="hi",
+                    model="anthropic.claude-3-5-haiku-20241022-v1:0",
+                )
             ):
                 chunks.append(chunk)
 
@@ -286,7 +300,9 @@ class TestBedrockAsyncStream:
 
         chunks: list[StreamChunk] = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+            GenerateRequest(
+                provider="lm-studio", prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0"
+            )
         ):
             chunks.append(chunk)
 
@@ -322,7 +338,11 @@ class TestBedrockAsyncStream:
         with patch("text.providers.bedrock._get_tracer", return_value=mock_tracer):
             chunks: list[StreamChunk] = []
             async for chunk in provider.generate_stream(
-                GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+                GenerateRequest(
+                    provider="lm-studio",
+                    prompt="hi",
+                    model="anthropic.claude-3-5-haiku-20241022-v1:0",
+                )
             ):
                 chunks.append(chunk)
 

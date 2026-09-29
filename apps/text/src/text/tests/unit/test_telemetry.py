@@ -145,7 +145,7 @@ class TestAzureGenAISpans:
             provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
             content, _reasoning, usage = await provider.generate(
-                GenerateRequest(prompt="hi", model="test-model")
+                GenerateRequest(provider="lm-studio", prompt="hi", model="test-model")
             )
 
         spans = in_memory_exporter.get_finished_spans()
@@ -174,7 +174,9 @@ class TestAzureGenAISpans:
             provider._client = stub_client(provider, AsyncMock())
             provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-            await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
+            await provider.generate(
+                GenerateRequest(provider="lm-studio", prompt="hi", model="test-model")
+            )
 
         spans = in_memory_exporter.get_finished_spans()
         gen_span = next(s for s in spans if s.attributes.get("gen_ai.system") == "azure_openai")
@@ -205,7 +207,7 @@ class TestAzureGenAISpans:
 
             chunks = []
             async for chunk in provider.generate_stream(
-                GenerateRequest(prompt="hi", stream=True, model="test-model")
+                GenerateRequest(provider="lm-studio", prompt="hi", stream=True, model="test-model")
             ):
                 chunks.append(chunk)
 
@@ -242,7 +244,9 @@ class TestBedrockGenAISpans:
         provider._client.converse.return_value = mock_boto_response
 
         content, _reasoning, usage = await provider.generate(
-            GenerateRequest(prompt="hi", model="anthropic.claude-3-haiku-20240307-v1:0")
+            GenerateRequest(
+                provider="lm-studio", prompt="hi", model="anthropic.claude-3-haiku-20240307-v1:0"
+            )
         )
 
         spans = in_memory_exporter.get_finished_spans()
@@ -265,7 +269,9 @@ class TestBedrockGenAISpans:
         provider._client.converse.return_value = mock_boto_response
 
         await provider.generate(
-            GenerateRequest(prompt="hi", model="anthropic.claude-3-haiku-20240307-v1:0")
+            GenerateRequest(
+                provider="lm-studio", prompt="hi", model="anthropic.claude-3-haiku-20240307-v1:0"
+            )
         )
 
         spans = in_memory_exporter.get_finished_spans()
@@ -293,7 +299,10 @@ class TestBedrockGenAISpans:
             chunks = []
             async for chunk in provider.generate_stream(
                 GenerateRequest(
-                    prompt="hi", stream=True, model="anthropic.claude-3-haiku-20240307-v1:0"
+                    provider="lm-studio",
+                    prompt="hi",
+                    stream=True,
+                    model="anthropic.claude-3-haiku-20240307-v1:0",
                 )
             ):
                 chunks.append(chunk)

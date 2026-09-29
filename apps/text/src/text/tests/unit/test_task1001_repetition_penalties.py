@@ -51,7 +51,7 @@ _AGENT_SCHEMAS_TS = _REPO_ROOT / "packages/workflow-contract/src/agent-schemas.t
 
 
 def _req(**overrides: Any) -> GenerateRequest:
-    payload: dict[str, Any] = {"prompt": "hello", "model": "caller-model"}
+    payload: dict[str, Any] = {"prompt": "hello", "provider": "lm-studio", "model": "caller-model"}
     payload.update(overrides)
     return GenerateRequest(**payload)
 

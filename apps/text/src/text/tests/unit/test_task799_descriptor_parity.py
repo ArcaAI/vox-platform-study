@@ -286,7 +286,7 @@ class TestAServedValueChangesBehaviour:
 
         # Not "the field exists": the hyperparameters an unprofiled request
         # actually carries to the engine are now the served ones.
-        resolved = resolve_request_defaults(GenerateRequest(prompt="hello"))
+        resolved = resolve_request_defaults(GenerateRequest(provider="lm-studio", prompt="hello"))
         assert resolved == {
             "temperature": 0.85,
             "max_tokens": 2048,
@@ -309,7 +309,9 @@ class TestAServedValueChangesBehaviour:
             ),
             SimpleNamespace(guardrail_posture=None),
         )
-        resolved = resolve_request_defaults(GenerateRequest(prompt="hi", temperature=0.0))
+        resolved = resolve_request_defaults(
+            GenerateRequest(provider="lm-studio", prompt="hi", temperature=0.0)
+        )
         assert resolved["temperature"] == 0.0
 
 
@@ -356,12 +358,16 @@ class TestWithNoRowNothingMoves:
             ),
             with_rows,
         )
-        served_request = resolve_request_defaults(GenerateRequest(prompt="hello"))
+        served_request = resolve_request_defaults(
+            GenerateRequest(provider="lm-studio", prompt="hello")
+        )
 
         apply_generation_defaults({})
         without = SimpleNamespace(guardrail_posture=None)
         apply_platform_posture(EffectiveConfigSnapshot(raw={}, ok=True), without)
-        floor_request = resolve_request_defaults(GenerateRequest(prompt="hello"))
+        floor_request = resolve_request_defaults(
+            GenerateRequest(provider="lm-studio", prompt="hello")
+        )
 
         assert with_rows.guardrail_posture == without.guardrail_posture
         assert served_request == floor_request

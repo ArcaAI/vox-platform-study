@@ -112,6 +112,33 @@ class TestGenerateRequiresModel:
         assert resp.json()["model"] == "caller-model"
 
 
+class TestGenerateRequiresProvider:
+    """Provider selection fails closed exactly like model selection — no engine is guessed."""
+
+    @pytest.mark.asyncio
+    async def test_missing_provider_returns_422_naming_the_field(self, client, mock_provider):
+        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "m"})
+        assert resp.status_code == 422
+        assert [detail["loc"][-1] for detail in resp.json()["detail"]] == ["provider"]
+        mock_provider.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_blank_provider_returns_422(self, client, mock_provider):
+        resp = await client.post(
+            "/api/v1/generate", json={"prompt": "hello", "provider": "", "model": "m"}
+        )
+        assert resp.status_code == 422
+        mock_provider.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_streaming_missing_provider_returns_422(self, client, mock_provider):
+        resp = await client.post(
+            "/api/v1/generate", json={"prompt": "hello", "model": "m", "stream": True}
+        )
+        assert resp.status_code == 422
+        mock_provider.generate.assert_not_called()
+
+
 # ── Providers: no in-gateway default fallback in the generation path ──
 
 
@@ -149,13 +176,13 @@ class TestProviderResolveModelNoFallback:
     @pytest.mark.parametrize("name,factory", _PROVIDER_FACTORIES)
     def test_resolve_model_uses_request_model(self, name, factory):
         provider = factory()
-        req = GenerateRequest(prompt="hi", model="caller-model")
+        req = GenerateRequest(provider="lm-studio", prompt="hi", model="caller-model")
         assert provider._resolve_model(req) == "caller-model"
 
     @pytest.mark.parametrize("name,factory", _PROVIDER_FACTORIES)
     def test_resolve_model_returns_none_when_the_caller_supplied_none(self, name, factory):
         provider = factory()
-        req = GenerateRequest(prompt="hi")  # model deliberately omitted
+        req = GenerateRequest(provider="lm-studio", prompt="hi")  # model deliberately omitted
         assert provider._resolve_model(req) is None
 
 

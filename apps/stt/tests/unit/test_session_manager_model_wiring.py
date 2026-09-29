@@ -2240,33 +2240,46 @@ class TestRecoverSessionsWorkerParity:
 class TestAssemblyWithRealPipelineSpec:
     """The criticals were masked by MagicMock pipeline
     configs (auto-created `.spec.models…` attributes). These tests drive
-    `_assemble_session_runtime` with a REAL `PipelineSpec` parsed from the
-    actual seeded default-pipeline YAML shape."""
+    `_assemble_session_runtime` with a REAL `PipelineSpec` (embedding
+    diarization, slug ASR + VAD, an inline embedding model) instead."""
 
-    _SEED_LIKE_YAML = (
-        'version: "2.0"\n'
-        "models:\n"
-        '  asr: "whisper-large-v3-turbo"\n'
-        '  vad: "silero-vad-v6"\n'
-        "  embedding:\n"
-        '    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"\n'
-        '    engine: "pytorch"\n'
-        "preprocessing:\n"
-        "  vad:\n"
-        "    enabled: true\n"
-        "diarization:\n"
-        "  enabled: true\n"
-        "  backend: embedding\n"
-        "  max_speakers: 2\n"
-        "streaming:\n"
-        "  commit_policy: local_agreement_2\n"
-    )
+    @staticmethod
+    def _seed_like_spec():
+        from stt.pipeline.dto import (
+            DiarizationConfig,
+            InferenceConfig,
+            InlineModelDef,
+            ModelRef,
+            ModelRefs,
+            PipelineSpec,
+            PostprocessingConfig,
+            PreprocessingConfig,
+            StreamingConfig,
+            VadConfig,
+        )
+
+        return PipelineSpec(
+            version="agent/1",
+            models=ModelRefs(
+                asr=ModelRef(slug="whisper-large-v3-turbo"),
+                vad=ModelRef(slug="silero-vad-v6"),
+                embedding=ModelRef(
+                    inline=InlineModelDef(
+                        hf_model_id="speechbrain/spkrec-ecapa-voxceleb",
+                        engine=AiModelFormat.PYTORCH,
+                    )
+                ),
+            ),
+            preprocessing=PreprocessingConfig(vad=VadConfig(enabled=True)),
+            inference=InferenceConfig(),
+            postprocessing=PostprocessingConfig(),
+            diarization=DiarizationConfig(enabled=True, backend="embedding", max_speakers=2),
+            streaming=StreamingConfig(commit_policy="local_agreement_2"),
+        )
 
     @pytest.mark.asyncio
     async def test_embedding_diarization_session_assembles_on_real_spec(self):
-        from stt.pipeline.yaml_parser import PipelineYamlParser
-
-        spec = PipelineYamlParser().parse(self._SEED_LIKE_YAML)
+        spec = self._seed_like_spec()
 
         mgr = _make_manager()
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())

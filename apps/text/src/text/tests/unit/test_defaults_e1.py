@@ -21,7 +21,7 @@ class TestResolveRequestDefaults:
         from text.core.defaults import resolve_request_defaults
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         resolved = resolve_request_defaults(req)
         assert resolved["temperature"] == 0.1
 
@@ -29,7 +29,7 @@ class TestResolveRequestDefaults:
         from text.core.defaults import resolve_request_defaults
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         resolved = resolve_request_defaults(req)
         assert resolved["max_tokens"] == 16_384
 
@@ -37,7 +37,7 @@ class TestResolveRequestDefaults:
         from text.core.defaults import resolve_request_defaults
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         resolved = resolve_request_defaults(req)
         assert resolved["top_p"] == 0.95
 
@@ -45,7 +45,7 @@ class TestResolveRequestDefaults:
         from text.core.defaults import resolve_request_defaults
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello", temperature=0.3)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", temperature=0.3)
         resolved = resolve_request_defaults(req)
         assert resolved["temperature"] == 0.3
 
@@ -53,7 +53,7 @@ class TestResolveRequestDefaults:
         from text.core.defaults import resolve_request_defaults
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello", max_tokens=6000)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", max_tokens=6000)
         resolved = resolve_request_defaults(req)
         assert resolved["max_tokens"] == 6000
 
@@ -61,7 +61,7 @@ class TestResolveRequestDefaults:
         from text.core.defaults import resolve_request_defaults
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello", top_p=0.8)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", top_p=0.8)
         resolved = resolve_request_defaults(req)
         assert resolved["top_p"] == 0.8
 
@@ -70,7 +70,7 @@ class TestResolveRequestDefaults:
         from text.core.defaults import resolve_request_defaults
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello", temperature=0.0)
+        req = GenerateRequest(provider="lm-studio", prompt="hello", temperature=0.0)
         resolved = resolve_request_defaults(req)
         assert resolved["temperature"] == 0.0
 
@@ -78,7 +78,7 @@ class TestResolveRequestDefaults:
         from text.core.defaults import resolve_request_defaults
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(provider="lm-studio", prompt="hello")
         resolved = resolve_request_defaults(req)
         assert resolved == {"temperature": 0.1, "max_tokens": 16_384, "top_p": 0.95}
 
@@ -86,7 +86,9 @@ class TestResolveRequestDefaults:
         from text.core.defaults import resolve_request_defaults
         from text.models.requests import GenerateRequest
 
-        req = GenerateRequest(prompt="hello", temperature=0.5, max_tokens=8000)
+        req = GenerateRequest(
+            provider="lm-studio", prompt="hello", temperature=0.5, max_tokens=8000
+        )
         resolved = resolve_request_defaults(req)
         assert resolved["temperature"] == 0.5
         assert resolved["max_tokens"] == 8000
@@ -140,7 +142,9 @@ class TestGenerationDefaultsHaveAControlPlaneHome:
         from text.models.requests import GenerateRequest
 
         apply_generation_defaults({"temperature": 0.7, "max_tokens": 512})
-        resolved = resolve_request_defaults(GenerateRequest(prompt="hi", model="m"))
+        resolved = resolve_request_defaults(
+            GenerateRequest(provider="lm-studio", prompt="hi", model="m")
+        )
 
         assert resolved["temperature"] == 0.7
         assert resolved["max_tokens"] == 512
@@ -153,7 +157,7 @@ class TestGenerationDefaultsHaveAControlPlaneHome:
 
         apply_generation_defaults({"temperature": 0.7})
         resolved = resolve_request_defaults(
-            GenerateRequest(prompt="hi", model="m", temperature=0.0)
+            GenerateRequest(provider="lm-studio", prompt="hi", model="m", temperature=0.0)
         )
 
         # 0.0 is a real caller value, not "unset" — it must not fall through.

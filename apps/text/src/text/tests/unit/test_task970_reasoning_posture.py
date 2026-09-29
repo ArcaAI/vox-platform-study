@@ -65,7 +65,7 @@ def recorded(monkeypatch) -> list[tuple[str, dict[str, Any]]]:
 
 
 def _req(**overrides: Any) -> GenerateRequest:
-    payload: dict[str, Any] = {"prompt": "hello", "model": "caller-model"}
+    payload: dict[str, Any] = {"prompt": "hello", "provider": "lm-studio", "model": "caller-model"}
     payload.update(overrides)
     return GenerateRequest(**payload)
 

@@ -1,10 +1,5 @@
 """Application constants."""
 
-# Database namespaces for GlobalSetting
-NAMESPACE_STT_CONFIG = "stt.config"
-NAMESPACE_STT_PIPELINES = "stt.pipelines"
-NAMESPACE_STT_MODELS = "stt.models"
-
 # NOTE: there is deliberately NO `DEFAULT_TENANT_ID` here. It used to hold
 # `50000000-…` labelled "system-wide", which it is not: that is the CUSTOMER
 # tenant "Global" (the platform-admin playground). The runtime cascade is

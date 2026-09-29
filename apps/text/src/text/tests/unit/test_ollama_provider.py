@@ -64,7 +64,7 @@ class TestOllamaGenerate:
         provider = OllamaProvider(mock_http_client)
         stub_endpoint(provider)
         content, _reasoning, stats = await provider.generate(
-            GenerateRequest(prompt="hi", model="test-model")
+            GenerateRequest(provider="lm-studio", prompt="hi", model="test-model")
         )
         assert content == "Hello there!"
         assert isinstance(stats, GenerationStats)
@@ -81,7 +81,9 @@ class TestOllamaGenerate:
 
         provider = OllamaProvider(mock_http_client)
         stub_endpoint(provider)
-        await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
+        await provider.generate(
+            GenerateRequest(provider="lm-studio", prompt="hi", model="test-model")
+        )
 
         call_args = mock_http_client.post.call_args
         assert "/api/generate" in call_args[0][0] or "/api/generate" in str(call_args)
@@ -98,7 +100,9 @@ class TestOllamaGenerate:
 
         provider = OllamaProvider(mock_http_client)
         stub_endpoint(provider)
-        await provider.generate(GenerateRequest(prompt="tell me a joke", model="llama3.2:latest"))
+        await provider.generate(
+            GenerateRequest(provider="lm-studio", prompt="tell me a joke", model="llama3.2:latest")
+        )
 
         call_kwargs = mock_http_client.post.call_args
         body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
@@ -119,7 +123,9 @@ class TestOllamaGenerate:
         provider = OllamaProvider(mock_http_client)
         stub_endpoint(provider)
         with pytest.raises(httpx.HTTPStatusError):
-            await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
+            await provider.generate(
+                GenerateRequest(provider="lm-studio", prompt="hi", model="test-model")
+            )
 
 
 # ── generate_stream ──
@@ -157,7 +163,7 @@ class TestOllamaGenerateStream:
         stub_endpoint(provider)
         chunks = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", stream=True, model="test-model")
+            GenerateRequest(provider="lm-studio", prompt="hi", stream=True, model="test-model")
         ):
             chunks.append(chunk)
 
@@ -202,7 +208,7 @@ class TestOllamaGenerateStream:
 
         mock_http_client.stream = _capturing_stream
         async for _ in provider.generate_stream(
-            GenerateRequest(prompt="hi", stream=True, model="test-model")
+            GenerateRequest(provider="lm-studio", prompt="hi", stream=True, model="test-model")
         ):
             pass
 
@@ -232,7 +238,7 @@ class TestOllamaGenerateStream:
         stub_endpoint(provider)
         chunks = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", stream=True, model="test-model")
+            GenerateRequest(provider="lm-studio", prompt="hi", stream=True, model="test-model")
         ):
             chunks.append(chunk)
 
@@ -272,7 +278,7 @@ class TestOllamaGenerateStream:
         stub_endpoint(provider)
         chunks = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", stream=True, model="test-model")
+            GenerateRequest(provider="lm-studio", prompt="hi", stream=True, model="test-model")
         ):
             chunks.append(chunk)
 
@@ -304,7 +310,7 @@ class TestOllamaGenerateStream:
         stub_endpoint(provider)
         chunks = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", stream=True, model="test-model")
+            GenerateRequest(provider="lm-studio", prompt="hi", stream=True, model="test-model")
         ):
             chunks.append(chunk)
 

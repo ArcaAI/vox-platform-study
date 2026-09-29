@@ -256,45 +256,14 @@ class ReasoningPosture(BaseModel):
     effort: ReasoningEffort | None = None
 
 
-#: The engine a request that names no provider is routed to.
-#:
-#: ⚠️ THIS IS A HARDCODED SELECTION, and it is retained deliberately rather than
-# by oversight ( calls it "a rule-00 config costume"). Recorded
-#: here so the next reader does not have to re-derive why it is still standing:
-#:
-#: * It is ASYMMETRIC with `model`, which has NO default: `POST /generate`
-# Fail-closes with a 422 when the model is missing (`api/endpoints/generate.py`
-# "Text has no default model"). Provider selection deserves the same posture —
-# Both halves of a `{provider, model}` pair come from the same `Agent` /
-# `AiRoutingPolicy` resolution on the gateway.
-#: * It is REACHABLE, not vestigial. `apps/api`
-# `streaming/text-proxy.controller.ts::applyTextModelSelection` stamps
-# `{provider, model}` only when `!target.model`, so a caller that PINS a model
-# And omits the provider reaches this line — and is then routed to LM Studio
-# Whatever engine that model actually lives on.
-#:
-#: WHAT BLOCKS REMOVAL, precisely: turning this into a required field (or
-#: `None` + a 422, mirroring `model`) converts that silent mis-route into a hard
-#: failure for two callers that live OUTSIDE `apps/text` and cannot be fixed from
-#: here — `apps/api` `text-proxy.controller.ts:299` (above) and
-#: `apps/harness/src/harness/services/text_client.py:144`
-#: (`if provider: body["provider"] = provider`, with `model` set independently).
-#: The correct fix is upstream: the gateway resolves and stamps the provider
-#: whenever it is absent, not only when the model is. Once it does, this default
-#: is removable in one edit and `tests/unit/test_models_edge_cases.py`
-#: ::test_provider_defaults_to_lm_studio is the test that must flip.
-#:
-#: `apps/nlp` `services/external_text_client.py` is NOT a blocker: it sends
-#: neither `provider` nor `model`, so it already fail-closes on the model guard.
-_HARDCODED_DEFAULT_PROVIDER = "lm-studio"
-
-
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=200_000)
     system_prompt: str | None = Field(default=None, max_length=50_000)
-    # See `_HARDCODED_DEFAULT_PROVIDER` — a known, documented config violation
-    # whose removal is blocked on two callers outside this service.
-    provider: str = _HARDCODED_DEFAULT_PROVIDER
+    # Selection is fail-closed: Text names no engine of its own, so a request that
+    # omits `provider` is refused (422) exactly as one that omits `model` is
+    # (`api/endpoints/generate.py`). The caller resolves both halves of the
+    # `{provider, model}` pair from the same Agent / routing-policy resolution.
+    provider: str = Field(..., min_length=1)
     model: str | None = None
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1)
@@ -359,35 +328,3 @@ class GenerateRequest(BaseModel):
         if not self.content_parts:
             return []
         return [p for p in self.content_parts if isinstance(p, ImageContentPart)]
-
-
-class GenerateBatchRequest(BaseModel):
-    """Async batch-generation submission ( residual close-out)
-    enqueued onto ``WorkerPoolQueue`` and processed out-of-process by
-    ``worker.py::_handle_batch_generation``, which re-validates this payload
-    as a `GenerateRequest`.
-
-    Mirrors ``EmbeddingBatchRequest``'s minimalism (``models/embedding.py``):
-    the async surface exposes only the fields the out-of-process handler
-    actually consumes to build a ``GenerateRequest`` — not the synchronous
-    ``/generate`` request's same-pod concerns (``stream``, ``retry_config``,
-    ``provider_overrides``, ``content_parts``, ``fallback_provider``), none of
-    which the worker's ``_handle_batch_generation`` reads or acts on today.
-    """
-
-    prompt: str = Field(..., min_length=1, max_length=200_000)
-    system_prompt: str | None = Field(default=None, max_length=50_000)
-    # Same default, same blocker — the worker re-validates this payload as a
-    # `GenerateRequest`, so the two must not disagree about the fallback engine.
-    provider: str = _HARDCODED_DEFAULT_PROVIDER
-    model: str | None = None
-    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
-    max_tokens: int | None = Field(default=None, ge=1)
-    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
-
-    @field_validator("prompt")
-    @classmethod
-    def _prompt_not_blank(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("Prompt must not be blank or whitespace-only")
-        return v

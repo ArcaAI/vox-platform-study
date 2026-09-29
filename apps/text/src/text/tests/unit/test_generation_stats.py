@@ -132,7 +132,7 @@ class TestOpenAiCompatMapping:
 
         chunks: list[StreamChunk] = []
         async for sc in provider.generate_stream(
-            GenerateRequest(prompt="hi", stream=True, model="m")
+            GenerateRequest(provider="lm-studio", prompt="hi", stream=True, model="m")
         ):
             chunks.append(sc)
 

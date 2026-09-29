@@ -297,7 +297,7 @@ def is_valid_language_for_engine(code: str, engine: AiModelFormat) -> bool:
 
 # =============================================================================
 # INLINE MODEL DEFINITION
-# Allows administrators to specify models directly in pipeline YAML
+# A model named by HuggingFace id + engine rather than by registry slug
 # =============================================================================
 
 
@@ -309,7 +309,7 @@ class InlineModelDef:
     Allows admins to specify models directly with HuggingFace ID and engine,
     without requiring pre-registration in the AiModel table.
 
-    Example YAML:
+    Example (the ``models`` mapping):
         models:
           asr:
             hf_model_id: "onnx-community/whisper-large-v3-turbo_timestamped"
@@ -427,7 +427,7 @@ class ModelRef:
     @classmethod
     def from_value(cls, value: str | dict[str, Any]) -> "ModelRef":
         """
-        Create ModelRef from YAML value.
+        Create ModelRef from a slug, a ``provider :: model`` shorthand or an inline mapping.
 
         Args:
             value: A string slug, a ``provider :: model[@rev]`` shorthand
@@ -584,10 +584,10 @@ class ModelRefs:
 class VadConfig:
     """Voice Activity Detection configuration."""
 
-    # TASK-977 (owner decision D-1) — OFF by default. Only the DEPRECATED `pipeline_id` YAML
-    # path can reach this default: an agent-resolved session always STATES the flag on the
-    # wire (`ResolvedAsrSpec.audio_front_end.vad.enabled` is required, no pydantic default).
-    # Flipped so the legacy path cannot run a stage the gateway, the SYSTEM agent and the
+    # TASK-977 (owner decision D-1) — OFF by default. An agent-resolved session always
+    # STATES the flag on the wire (`ResolvedAsrSpec.audio_front_end.vad.enabled` is required,
+    # no pydantic default), so this default only reaches a `VadConfig` built without one.
+    # It stays OFF so such a config cannot run a stage the gateway, the SYSTEM agent and the
     # browser SDK all declare off — one posture, not one per entry point.
     enabled: bool = False
     threshold: float = 0.6
@@ -947,7 +947,8 @@ class StreamingConfig:
 
 @dataclass
 class PipelineSpec:
-    """Full pipeline specification parsed from YAML."""
+    """Full pipeline specification: the runtime dataclasses the session manager and the batch
+    service consume (built from a resolved ASR spec by ``pipeline_spec_from_resolved``)."""
 
     version: str
     models: ModelRefs

@@ -69,7 +69,7 @@ class TestLmStudioTtl:
         create = AsyncMock(return_value=_completion())
         stub_client(provider, AsyncMock()).chat.completions.create = create
 
-        await provider.generate(GenerateRequest(prompt="hi", model="m"))
+        await provider.generate(GenerateRequest(provider="lm-studio", prompt="hi", model="m"))
 
         assert "extra_body" not in create.await_args.kwargs
 
