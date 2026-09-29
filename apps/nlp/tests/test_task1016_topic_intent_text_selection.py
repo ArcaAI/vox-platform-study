@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -21,7 +22,12 @@ from fastapi.testclient import TestClient
 from nlp.api.v1 import rest_api_router_v1
 from nlp.core.config import ExternalTextConfig
 from nlp.dependencies import get_external_text_client
-from nlp.services.external_text_client import ExternalTextClient, GeneratedLabel
+from nlp.services.external_text_client import (
+    ExternalTextClient,
+    ExternalTextRejectedError,
+    ExternalTextUnavailableError,
+    GeneratedLabel,
+)
 
 #: The gateway-resolved connection entry `text` consumes as `provider_overrides[provider]`.
 CONNECTION = {"api_key": "keyless-local", "base_url": "http://localhost:1234/v1"}
@@ -204,3 +210,100 @@ class TestRoutesForwardOrFailClosed:
         assert resp.status_code == 503
         assert "model not selected" in resp.json()["detail"]
         assert fake.calls == []
+
+
+class _StatusHttp:
+    """Answers each POST with the next status in `statuses` (the last one repeats), as a REAL
+    `httpx.Response`, so `raise_for_status()` raises the genuine `httpx.HTTPStatusError`."""
+
+    def __init__(self, statuses: list[int], error_code: str | None = None) -> None:
+        self.statuses = statuses
+        self.error_code = error_code
+        self.calls = 0
+
+    async def post(self, url, json=None, headers=None, timeout=None):  # noqa: ANN001
+        status = self.statuses[min(self.calls, len(self.statuses) - 1)]
+        self.calls += 1
+        payload: dict[str, Any] = (
+            {"content": "billing"}
+            if status < 400
+            else {"detail": "refused", "error_code": self.error_code}
+        )
+        return httpx.Response(status, json=payload, request=httpx.Request("POST", url))
+
+
+def _status_client(http: _StatusHttp) -> ExternalTextClient:
+    return ExternalTextClient(
+        settings=ExternalTextConfig(base_url="http://text.local", retry_backoff_ms=0),
+        http_client=http,
+    )
+
+
+async def _label(client: ExternalTextClient) -> GeneratedLabel:
+    return await client.generate_label_with_usage(
+        "Which topic?", tenant_id="t1", provider="lm-studio", model="gemma"
+    )
+
+
+class TestNoRetryOnDeterministicRefusal:
+    """A 4xx from `text` is a refusal of THIS request — the same request is refused again, so
+    retrying only burns the budget and turns a named refusal into an opaque 503."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [400, 401, 404, 422])
+    async def test_a_4xx_is_attempted_once_and_raised_as_a_rejection(self, status: int) -> None:
+        http = _StatusHttp([status], error_code="CONTENT_BLOCKED_NOT_MEDICAL")
+
+        with pytest.raises(ExternalTextRejectedError) as exc_info:
+            await _label(_status_client(http))
+
+        assert http.calls == 1
+        assert exc_info.value.status_code == status
+        assert exc_info.value.error_code == "CONTENT_BLOCKED_NOT_MEDICAL"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [408, 429])
+    async def test_timeout_and_rate_limit_4xx_are_still_retried(self, status: int) -> None:
+        http = _StatusHttp([status, 200])
+
+        generated = await _label(_status_client(http))
+
+        assert http.calls == 2
+        assert generated.label == "billing"
+
+    @pytest.mark.asyncio
+    async def test_a_5xx_keeps_the_bounded_retry(self) -> None:
+        http = _StatusHttp([503])
+
+        with pytest.raises(ExternalTextUnavailableError):
+            await _label(_status_client(http))
+
+        assert http.calls == 3  # max_retries (2) + 1
+
+
+class _RejectingClient:
+    def __init__(self, status: int) -> None:
+        self.status = status
+
+    async def generate_label_with_usage(self, *args: Any, **kwargs: Any) -> GeneratedLabel:
+        raise ExternalTextRejectedError(self.status, "CONTENT_BLOCKED_NOT_MEDICAL")
+
+
+@pytest.mark.parametrize("path", ["/api/v1/classify/topic", "/api/v1/classify/intent"])
+class TestRouteSurfacesTheRefusal:
+    def _post(self, path: str, status: int):
+        app = FastAPI()
+        app.include_router(rest_api_router_v1)
+        app.dependency_overrides[get_external_text_client] = lambda: _RejectingClient(status)
+        return TestClient(app).post(path, json=_body())
+
+    def test_a_content_refusal_is_422_naming_texts_code(self, path: str) -> None:
+        resp = self._post(path, 422)
+
+        assert resp.status_code == 422
+        assert "CONTENT_BLOCKED_NOT_MEDICAL" in resp.json()["detail"]
+
+    def test_any_other_4xx_is_an_integration_defect_502(self, path: str) -> None:
+        resp = self._post(path, 400)
+
+        assert resp.status_code == 502

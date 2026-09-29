@@ -24,7 +24,11 @@ from nlp.schemas.classification import (
     TopicClassificationRequest,
     TopicClassificationResponse,
 )
-from nlp.services.external_text_client import ExternalTextClient, ExternalTextUnavailableError
+from nlp.services.external_text_client import (
+    ExternalTextClient,
+    ExternalTextRejectedError,
+    ExternalTextUnavailableError,
+)
 from nlp.services.gliner_token_classifier import ExtractorLabelsUnavailable
 from nlp.services.model_cache import ModelUnavailableError
 
@@ -89,6 +93,26 @@ def _require_text_selection(
     return resolved_provider, resolved_model, connection
 
 
+def _refusal_http_error(exc: ExternalTextRejectedError, task: str) -> HTTPException:
+    """Map `text`'s deterministic refusal to an honest status (TASK-1016).
+
+    422 is `text` refusing the CONTENT (e.g. a guardrail block) — the caller's request, so it
+    stays 422 and names text's code. Any other 4xx means this service built a request `text`
+    cannot accept (bad body, bad service token, wrong route): an integration defect, 502 —
+    never passed through, since a 401 from a peer is not the end user's authentication failing.
+    Neither is a 503: nothing about it is temporary.
+    """
+    code = exc.error_code or "unknown"
+    if exc.status_code == 422:
+        return HTTPException(
+            status_code=422, detail=f"{task.capitalize()} classification refused by text ({code})"
+        )
+    return HTTPException(
+        status_code=502,
+        detail=f"{task.capitalize()} classification failed: text rejected the request ({code})",
+    )
+
+
 @router.post("/text", response_model=TextClassificationResponse)
 async def classify_text(
     request: TextClassificationRequest,
@@ -120,7 +144,9 @@ async def classify_text(
             logger.info("nlp.classify.text_done", confidence=round(result.confidence, 3))
             return result
     except ModelUnavailableError as e:
-        logger.error("nlp.classify.text_model_unavailable", error_type=type(e).__name__, exc_info=True)
+        logger.error(
+            "nlp.classify.text_model_unavailable", error_type=type(e).__name__, exc_info=True
+        )
         raise HTTPException(
             status_code=503, detail="Text classification model not available"
         ) from e
@@ -317,8 +343,17 @@ async def classify_topic(
             llm_usage=generated.usage_detail,
             llm_guardrail_usage=generated.guardrail_usage,
         )
+    except ExternalTextRejectedError as e:
+        logger.warning(
+            "nlp.classify.topic_upstream_rejected",
+            status_code=e.status_code,
+            error_code=e.error_code,
+        )
+        raise _refusal_http_error(e, "topic") from e
     except ExternalTextUnavailableError as e:
-        logger.error("nlp.classify.topic_upstream_unavailable", error_type=type(e).__name__, exc_info=True)
+        logger.error(
+            "nlp.classify.topic_upstream_unavailable", error_type=type(e).__name__, exc_info=True
+        )
         raise HTTPException(status_code=503, detail="Topic classification is not available") from e
     except HTTPException:
         raise
@@ -375,8 +410,17 @@ async def classify_intent(
             llm_usage=generated.usage_detail,
             llm_guardrail_usage=generated.guardrail_usage,
         )
+    except ExternalTextRejectedError as e:
+        logger.warning(
+            "nlp.classify.intent_upstream_rejected",
+            status_code=e.status_code,
+            error_code=e.error_code,
+        )
+        raise _refusal_http_error(e, "intent") from e
     except ExternalTextUnavailableError as e:
-        logger.error("nlp.classify.intent_upstream_unavailable", error_type=type(e).__name__, exc_info=True)
+        logger.error(
+            "nlp.classify.intent_upstream_unavailable", error_type=type(e).__name__, exc_info=True
+        )
         raise HTTPException(status_code=503, detail="Intent classification is not available") from e
     except HTTPException:
         raise
