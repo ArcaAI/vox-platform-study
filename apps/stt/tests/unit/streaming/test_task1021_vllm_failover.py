@@ -48,7 +48,10 @@ def saturated_vllm(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
-        return httpx.Response(503, headers={"Retry-After": "0"}, json={"error": {}})
+        # Saturated: the one 503 code (with drain / spec-read) the client retries (F5).
+        return httpx.Response(
+            503, headers={"Retry-After": "0"}, json={"error": {"code": "engine_capacity"}}
+        )
 
     transport = httpx.MockTransport(handler)
     monkeypatch.setattr(

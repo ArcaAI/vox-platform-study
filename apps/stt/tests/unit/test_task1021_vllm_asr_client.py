@@ -194,7 +194,11 @@ async def test_a_429_that_persists_raises_the_quota_error(wire) -> None:
 
 
 async def test_three_503s_raise_the_transcription_error(wire) -> None:
-    seen = wire(lambda r: httpx.Response(503, headers={"Retry-After": "0"}, json={}))
+    seen = wire(
+        lambda r: httpx.Response(
+            503, headers={"Retry-After": "0"}, json={"error": {"code": "engine_capacity"}}
+        )
+    )
 
     with pytest.raises(CloudASRTranscriptionError):
         await _call()

@@ -12,9 +12,9 @@ server being OUR hardware rather than a vendor's:
   trace across `stt` and `vllm`.
 * **Backpressure is local.** A per-process, per-event-loop semaphore keyed by
   ``base_url`` caps in-flight requests at the connection's ``max_concurrent``, and a
-  429/503 from a saturated engine is retried briefly (``Retry-After``, capped) before
-  it is raised as a typed Cloud ASR error, which is what ``engine_switch`` fails
-  over on.
+  429, or a 503 whose ``error.code`` is transient (capacity, draining, spec read), is
+  retried briefly (``Retry-After``, capped) before it is raised as a typed Cloud ASR
+  error, which is what ``engine_switch`` fails over on.
 * **Truncation is reported, never guessed.** The server returns
   ``x_hope.truncation`` (D-9); a suspected truncation is logged by its shape only —
   never the transcript.
@@ -49,11 +49,14 @@ _MAX_RETRIES = 2
 #: ``Retry-After`` absent or unparseable → this; a larger value is capped at the ceiling.
 _DEFAULT_RETRY_AFTER_S = 0.5
 _RETRY_AFTER_CEILING_S = 2.0
-#: A 503 is retried only when the engine is SATURATED (C-3: ``engine_capacity``,
-#: which carries ``Retry-After``). Every other 503 — ``engine_load_failed``,
-#: ``MODEL_NOT_PUBLISHED``, an ``EngineBuildRefused`` code — will not clear by
-#: waiting, so it fails over at once.
-_CAPACITY_503_CODE = "engine_capacity"
+#: A 503 is retried only when its ``error.code`` names a condition that clears by
+#: waiting (C-3): the engine is SATURATED (``engine_capacity``), the replica is
+#: ``draining`` (the Service routes the retry to a sibling), or the gateway's
+#: serving-spec read failed transiently (``serving_spec_unavailable``). Every other
+#: 503 — ``engine_load_failed``, ``ENGINE_BACKEND_UNAVAILABLE``, ``MODEL_NOT_PUBLISHED``,
+#: an ``EngineBuildRefused`` code — will not clear by waiting, so it fails over at
+#: once, whether or not it carries ``Retry-After`` (the header only sizes the delay).
+_TRANSIENT_503_CODES = frozenset({"engine_capacity", "draining", "serving_spec_unavailable"})
 
 #: ``asyncio.Semaphore`` binds to the loop it first blocks on, and this process runs
 #: more than one loop (the API loop and each worker thread's), so the cap is kept per
@@ -105,13 +108,11 @@ def _is_retryable(response: httpx.Response) -> bool:
         return True
     if response.status_code != 503:
         return False
-    if "Retry-After" in response.headers:
-        return True
     try:
         error = response.json().get("error")
     except (ValueError, AttributeError):
         return False
-    return isinstance(error, dict) and error.get("code") == _CAPACITY_503_CODE
+    return isinstance(error, dict) and error.get("code") in _TRANSIENT_503_CODES
 
 
 def _error_detail(response: httpx.Response) -> str:

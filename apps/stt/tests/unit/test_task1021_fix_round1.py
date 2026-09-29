@@ -271,14 +271,35 @@ async def test_an_engine_capacity_503_is_retried(wire, monkeypatch: pytest.Monke
     assert result["text"] == "after capacity"
 
 
-async def test_a_503_with_retry_after_is_retried(wire) -> None:
+@pytest.mark.parametrize("code", ["engine_capacity", "draining", "serving_spec_unavailable"])
+async def test_a_transient_503_code_is_retried(wire, code: str) -> None:
     responses = iter(
-        [httpx.Response(503, headers={"Retry-After": "0"}, json={"error": {}}), _ok("later")]
+        [
+            httpx.Response(503, headers={"Retry-After": "0"}, json={"error": {"code": code}}),
+            _ok("later"),
+        ]
     )
     seen = wire(lambda r: next(responses))
 
     assert (await _one())["text"] == "later"
     assert len(seen) == 2
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"error": {"code": "ENGINE_BACKEND_UNAVAILABLE", "message": "no vllm"}},
+        {"error": {}},
+        {},
+    ],
+)
+async def test_a_retry_after_alone_does_not_make_a_503_retryable(wire, body: Any) -> None:
+    """TASK-1021 final review F5: only the CODE decides; ``Retry-After`` is just the delay."""
+    seen = wire(lambda r: httpx.Response(503, headers={"Retry-After": "0"}, json=body))
+
+    with pytest.raises(CloudASRTranscriptionError):
+        await _one()
+    assert len(seen) == 1
 
 
 # ---------------------------------------------------------------------------
