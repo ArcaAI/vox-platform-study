@@ -559,6 +559,16 @@ export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
   'The redaction rules above outrank the style in every case: a name is replaced with its placeholder however the clinician would have written it.\n\n' +
   'Return a JSON object with `case_note` (the finalized Markdown note) and `redactions` (an array of `{ text, label }`).';
 
+/**
+ * The finalizer's parameters — one constant, because ArcaAI seeds its own `casenote-finalization`
+ * (phase 29, TASK-1020) and must finalize exactly as the platform row does. The reasoning and
+ * temperature posture is explained at the `casenote-finalization` spec below.
+ */
+export const CASENOTE_FINALIZATION_PARAMETERS = {
+  generation: { temperature: 0, maxTokens: 4096, reasoning: { enabled: false } },
+  guards: { enabled: true },
+};
+
 /** INTERFACES §8.3 — `{ case_note: string, redactions: [{ text, label }] }`. */
 export const CASENOTE_OUTPUT_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -738,7 +748,7 @@ function catalogue(
       //
       // Temperature 0, same owner directive as {@link SUMMARIZATION_PARAMETERS}. This agent signs
       // the note the clinician puts their name to, so it is the last place sampling entropy belongs.
-      parameters: { generation: { temperature: 0, maxTokens: 4096, reasoning: { enabled: false } }, guards: { enabled: true } },
+      parameters: CASENOTE_FINALIZATION_PARAMETERS,
       outputSchema: CASENOTE_OUTPUT_SCHEMA,
       status: 'PUBLISHED',
       isActive: true,

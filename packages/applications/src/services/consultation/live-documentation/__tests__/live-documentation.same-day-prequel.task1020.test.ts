@@ -17,6 +17,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { ContextItemType } from '@arcaai/domains';
+import { renderTemplate } from '@arcaai/workflow-contract';
 
 import { LiveDocumentationService } from '../live-documentation.service';
 
@@ -292,5 +293,26 @@ describe('TASK-1020 — the live handoff carries the flag to the durable finaliz
     const context = await handoffContext(service, stored);
 
     expect(context.formatted_test_results).toBe('- Hb: 9.8');
+  });
+
+  /**
+   * Live-replay defect D2 — the durable `casenote-finalization` must see all THREE keys for a
+   * same-day return, together, under `trigger.context.*`: the handoff context is what the durable
+   * interpreter overlays onto its run context (`workflow.py#_publish_context`:
+   * `{ ...trigger, ...live, context: { ...authored, ...live } }`), and the `same_day_return`
+   * fragment reads exactly those three paths.
+   */
+  it('a same-day return with investigations carries the flag, the prequel AND the results, and they resolve under trigger.context', async () => {
+    const { service, stored } = buildService({ parentNotes: MORNING, investigations: { results: [{ name: 'Troponin', value: '0.01', unit: 'ng/mL' }] } });
+
+    const context = await handoffContext(service, stored);
+
+    expect(context).toMatchObject({ same_day_prequel: true, same_day_prequel_summary: PREQUEL, formatted_test_results: '- Troponin: 0.01 ng/mL' });
+    const trigger = { ...context, context: { ...context } };
+    const rendered = renderTemplate(
+      '{{trigger.context.same_day_prequel}}|{{trigger.context.same_day_prequel_summary | default("")}}|{{trigger.context.formatted_test_results | default("")}}',
+      { trigger, context: trigger },
+    );
+    expect(rendered).toBe(`true|${PREQUEL}|- Troponin: 0.01 ng/mL`);
   });
 });
