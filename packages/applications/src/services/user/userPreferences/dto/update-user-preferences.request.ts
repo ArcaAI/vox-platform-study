@@ -10,7 +10,8 @@ export class NoiseCancellationConfigDto {
    */
   @ApiPropertyOptional({
     deprecated: true,
-    description: 'Ignored — a client-side noise-cancellation model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
+    description:
+      'Ignored — a client-side noise-cancellation model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
   })
   @IsOptional()
   @IsString()
@@ -32,7 +33,8 @@ export class STTConfigDto {
    */
   @ApiPropertyOptional({
     deprecated: true,
-    description: 'Ignored — a client-side speech-to-text model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
+    description:
+      'Ignored — a client-side speech-to-text model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
   })
   @IsOptional()
   @IsString()
@@ -46,7 +48,8 @@ export class VADConfigDto {
    */
   @ApiPropertyOptional({
     deprecated: true,
-    description: 'Ignored — a client-side voice-activity-detection model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
+    description:
+      'Ignored — a client-side voice-activity-detection model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
   })
   @IsOptional()
   @IsString()
@@ -67,7 +70,8 @@ export class NERConfigDto {
    */
   @ApiPropertyOptional({
     deprecated: true,
-    description: 'Ignored — a client-side NER model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
+    description:
+      'Ignored — a client-side NER model id. The browser runs no model since SDK 4.0.0; a server-side Agent selects the model. Never persisted.',
   })
   @IsOptional()
   @IsString()

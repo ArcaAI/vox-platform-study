@@ -43,9 +43,9 @@ const LEGACY_KEYS = {
  */
 const CLIENT_AI_MODEL_STAGES = ['noiseCancellation', 'stt', 'vad', 'ner'] as const;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- same arbitrary-JSON shape as `deepMergeLocalConfig`
 function withoutClientModelIds(localConfig: Record<string, any>): Record<string, any> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same arbitrary-JSON shape as `deepMergeLocalConfig`
   const result: Record<string, any> = { ...localConfig };
   for (const stage of CLIENT_AI_MODEL_STAGES) {
     const value = result[stage];
