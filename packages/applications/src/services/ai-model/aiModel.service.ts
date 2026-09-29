@@ -751,16 +751,14 @@ export class AiModelService extends BaseService implements IAiModelService {
 
   /**
    * The model tier the caller's PLAN grants (`base` / `full` / `full_custom`).
-   * SYSTEM — and any caller whose tenant cannot be read — gets the full
-   * catalogue: the tier BOUNDS a tenant's choice, so an unresolvable plan must
-   * never silently narrow the platform's own view.
+   * SYSTEM gets the full catalogue. For a tenant the tier BOUNDS its choice, so
+   * a plan that cannot be read fails closed: the lookup error (a miss or an
+   * outage) propagates rather than granting the widest tier.
    */
   private async modelTierFor(tenantId: string): Promise<ModelTier> {
     if (tenantId === SYSTEM_TENANT_ID || !this.tenantRepository) return modelTierForPlan(null);
-    const tenant = await this.tenantRepository
-      .findById(tenantId)
-      .catch(warnAndFallback(null, { logger: this.logger, message: 'Tenant plan lookup failed; granting the full catalogue tier', meta: { tenantId } }));
-    return modelTierForPlan(tenant?.plan ?? null);
+    const tenant = await this.tenantRepository.findById(tenantId);
+    return modelTierForPlan(tenant.plan ?? null);
   }
 
   /**
