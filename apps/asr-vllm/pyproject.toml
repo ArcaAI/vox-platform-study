@@ -34,6 +34,11 @@ dependencies = [
     "httpx>=0.28.1",
     "prometheus-client>=0.26.0",
     "prometheus-fastapi-instrumentator>=8.1.0",
+    # Push invalidation of platform settings (`arca:config:invalidate`); absent = TTL only.
+    "redis>=8.1.0,<9.0",
+    # Registry-first weight fetch (OD-7): snapshot_download with the registry credential.
+    # Also a vLLM dependency; declared because this service imports it directly.
+    "huggingface-hub>=0.34.0",
     # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
     # --- Shared logging & tracing runtime (TASK-987) ---
