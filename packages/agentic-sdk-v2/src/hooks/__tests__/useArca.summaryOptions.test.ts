@@ -8,7 +8,7 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useArca } from '../useArca';
 import { SUMMARY_ENDPOINTS, CONSULTATION_JOB_ENDPOINTS } from '../../core/constants';
@@ -76,6 +76,10 @@ const mockStoreDefaults = {
 
 let currentMockStore = { ...mockStoreDefaults };
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 vi.mock('../../store', () => {
   return {
     useAgenticStore: vi.fn(() => currentMockStore),
@@ -110,9 +114,10 @@ describe('B-1: Summary generation with extended options', () => {
   });
 
   // TASK-1012 (L-2): `generateSummary` / `generatePreSummary` run on the ASYNC plane (the
-  // synchronous routes are gone), and every generate path maps the deprecated option names
-  // onto the gateway DTO fields — `GenerateSummaryRequest` rejects unknown keys, so the
-  // pass-through this hook used to do was a 400 for `transcript`/`promptTemplateId`/`departmentId`.
+  // synchronous routes are gone), and every generate path sends ONLY the fields its route's DTO
+  // declares (`forbidNonWhitelisted` makes anything else a 400): deprecated names map onto
+  // `GenerateSummaryRequest` where it has the field, `departmentId` is dropped (the department is
+  // read from the consultation), and the pre-summary DTO takes only dnaStyleId/caseNoteIds/options.
   const jobResp = { jobId: 'job-1', status: 'pending', consultationId: 'c-001', createdAt: '' };
   const summaryResp = {
     id: 's-1',
@@ -162,7 +167,8 @@ describe('B-1: Summary generation with extended options', () => {
       expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), { template: 'pt-neurology-001' });
     });
 
-    it('tucks `departmentId` under `options.departmentId`', async () => {
+    it('drops `departmentId` — the gateway reads the department from the consultation', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
@@ -171,7 +177,7 @@ describe('B-1: Summary generation with extended options', () => {
         });
       });
 
-      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), { options: { departmentId: 'dept-cardiology' } });
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), {});
     });
 
     it('passes all params together, mapped, and resolves the persisted summary', async () => {
@@ -193,14 +199,14 @@ describe('B-1: Summary generation with extended options', () => {
         includeNER: true,
         transcription: 'Transcript text',
         template: 'pt-1',
-        options: { departmentId: 'dept-1' },
       });
       expect(resolved).toEqual(summaryResp);
     });
   });
 
   describe('generatePreSummary with new params', () => {
-    it('posts the mapped body to the pre-summary ASYNC route and resolves the pre-summary', async () => {
+    it('posts only GeneratePreSummaryRequest fields to the pre-summary ASYNC route and resolves the pre-summary', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { result } = renderHook(() => useArca());
 
       let resolved: unknown;
@@ -213,18 +219,14 @@ describe('B-1: Summary generation with extended options', () => {
         });
       });
 
-      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('c-001'), {
-        dnaStyleId: 'dna-1',
-        transcription: 'Some transcript',
-        template: 'pt-1',
-        options: { departmentId: 'dept-1' },
-      });
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('c-001'), { dnaStyleId: 'dna-1' });
       expect(resolved).toEqual(preSummaryResp);
     });
   });
 
   describe('generateSummaryAsync with new params', () => {
-    it('maps transcript, promptTemplateId, departmentId in the request body', async () => {
+    it('maps/drops transcript, promptTemplateId, departmentId per the route DTO', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
@@ -242,13 +244,13 @@ describe('B-1: Summary generation with extended options', () => {
         includeNER: true,
         transcription: 'Async transcript',
         template: 'pt-async',
-        options: { departmentId: 'dept-async' },
       });
     });
   });
 
   describe('generatePreSummaryAsync with new params', () => {
-    it('maps transcript, promptTemplateId, departmentId in the request body', async () => {
+    it('maps/drops transcript, promptTemplateId, departmentId per the route DTO', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
@@ -260,12 +262,7 @@ describe('B-1: Summary generation with extended options', () => {
         });
       });
 
-      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('c-001'), {
-        dnaStyleId: 'dna-2',
-        transcription: 'Pre-async transcript',
-        template: 'pt-pre-async',
-        options: { departmentId: 'dept-pre-async' },
-      });
+      expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('c-001'), { dnaStyleId: 'dna-2' });
     });
   });
 

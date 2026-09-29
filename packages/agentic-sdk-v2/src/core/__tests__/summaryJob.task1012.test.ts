@@ -8,7 +8,7 @@
  * persisted note from `…/summary/latest` (or `…/pre-summary/latest`).
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { awaitSummaryJob, generateSummaryViaJob, mapSummaryOptionsToBackend, type SummaryJobApiClient } from '../summaryJob';
 import { CONSULTATION_JOB_ENDPOINTS, SUMMARY_ENDPOINTS } from '../constants';
 
@@ -30,6 +30,10 @@ function makeClient(jobs: Array<Record<string, unknown>>) {
 }
 
 const noSleep = () => Promise.resolve();
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('generateSummaryViaJob (TASK-1012 L-2)', () => {
   it('summary: POSTs the ASYNC route — never the removed synchronous one — and resolves the persisted note', async () => {
@@ -110,17 +114,68 @@ describe('awaitSummaryJob (TASK-1012 L-2)', () => {
   });
 });
 
-describe('mapSummaryOptionsToBackend', () => {
-  it('maps the deprecated option names onto the gateway DTO fields', () => {
-    expect(mapSummaryOptionsToBackend({ transcript: 't', promptTemplateId: 'pt', departmentId: 'd', dnaStyleId: 'x' })).toEqual({
-      transcription: 't',
-      template: 'pt',
-      options: { departmentId: 'd' },
-      dnaStyleId: 'x',
-    });
+/**
+ * The body of each async route is bound to a DIFFERENT gateway DTO and the global ValidationPipe is
+ * `forbidNonWhitelisted`, so a key outside the DTO is a 400. Fields copied from:
+ *   summary     — packages/applications/src/services/consultation/summary/dto/generate-summary.request.ts:8,13,18,23,29,34,44
+ *   pre-summary — packages/applications/src/services/consultation/summary/dto/generate-presummary.request.ts:8,14,19,25
+ */
+const SUMMARY_DTO_FIELDS = ['transcription', 'dnaStyleId', 'template', 'includeNER', 'contextItemIds', 'options', 'idempotencyKey'];
+const PRE_SUMMARY_DTO_FIELDS = ['dnaStyleId', 'caseNoteIds', 'options', 'idempotencyKey'];
+
+const kitchenSink = {
+  transcript: 'tx',
+  promptTemplateId: 'pt',
+  includeNER: true,
+  departmentId: 'dept-1',
+  dnaStyleId: 'dna-1',
+  type: 'summary',
+} as unknown as Parameters<typeof mapSummaryOptionsToBackend>[1];
+
+describe('mapSummaryOptionsToBackend — per-kind DTO whitelist (TASK-1012)', () => {
+  it('pre-summary: every key is a GeneratePreSummaryRequest field; legacy/summary-only keys are dropped', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const body = mapSummaryOptionsToBackend('pre-summary', kitchenSink)!;
+
+    for (const key of Object.keys(body)) expect(PRE_SUMMARY_DTO_FIELDS).toContain(key);
+    expect(body).toEqual({ dnaStyleId: 'dna-1' });
+  });
+
+  it('summary: every key is a GenerateSummaryRequest field; deprecated names map onto it', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const body = mapSummaryOptionsToBackend('summary', kitchenSink)!;
+
+    for (const key of Object.keys(body)) expect(SUMMARY_DTO_FIELDS).toContain(key);
+    // `departmentId` is dropped, not tucked into `options`: the gateway reads the department
+    // from the consultation row and never reads `options.departmentId` on either route.
+    expect(body).toEqual({ transcription: 'tx', template: 'pt', includeNER: true, dnaStyleId: 'dna-1' });
+  });
+
+  it('keeps the caller options bag and pre-summary caseNoteIds verbatim', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const opts = { options: { tone: 'concise' }, caseNoteIds: ['cn-1'], idempotencyKey: 'k-1' } as unknown as Parameters<
+      typeof mapSummaryOptionsToBackend
+    >[1];
+
+    expect(mapSummaryOptionsToBackend('pre-summary', opts)).toEqual({ options: { tone: 'concise' }, caseNoteIds: ['cn-1'], idempotencyKey: 'k-1' });
+    expect(mapSummaryOptionsToBackend('summary', opts)).toEqual({ options: { tone: 'concise' }, idempotencyKey: 'k-1' });
   });
 
   it('returns undefined for no options', () => {
-    expect(mapSummaryOptionsToBackend(undefined)).toBeUndefined();
+    expect(mapSummaryOptionsToBackend('summary', undefined)).toBeUndefined();
+  });
+
+  it('warns once per dropped key (per kind), naming it', async () => {
+    vi.resetModules();
+    const fresh = await import('../summaryJob.js');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    fresh.mapSummaryOptionsToBackend('pre-summary', kitchenSink);
+    fresh.mapSummaryOptionsToBackend('pre-summary', kitchenSink);
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0]![0]);
+    for (const key of ['transcript', 'promptTemplateId', 'includeNER', 'departmentId', 'type']) expect(message).toContain(key);
+    warn.mockRestore();
   });
 });

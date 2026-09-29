@@ -49,29 +49,62 @@ function defaultSleep(ms: number): Promise<void> {
 }
 
 /**
- * Reconcile the deprecated SDK option names to the gateway DTO fields
- * (`GenerateSummaryRequest`), which rejects unknown keys (`forbidNonWhitelisted`):
- * `transcript` → `transcription`, `promptTemplateId` → `template`,
- * `departmentId` → `options.departmentId`.
+ * The fields each async route's body DTO declares. The global ValidationPipe is
+ * `forbidNonWhitelisted`, so ANY other key is a 400 — and the two routes bind DIFFERENT DTOs:
+ *
+ * - `summary`     → `GenerateSummaryRequest`
+ *   (`packages/applications/src/services/consultation/summary/dto/generate-summary.request.ts:8,13,18,23,29,34,44`)
+ * - `pre-summary` → `GeneratePreSummaryRequest`
+ *   (`packages/applications/src/services/consultation/summary/dto/generate-presummary.request.ts:8,14,19,25`)
  */
-export function mapSummaryOptionsToBackend(options?: SummaryGenerationOptions): Record<string, unknown> | undefined {
+const DTO_FIELDS: Record<SummaryJobKind, ReadonlySet<string>> = {
+  summary: new Set(['transcription', 'dnaStyleId', 'template', 'includeNER', 'contextItemIds', 'options', 'idempotencyKey']),
+  'pre-summary': new Set(['dnaStyleId', 'caseNoteIds', 'options', 'idempotencyKey']),
+};
+
+/** `${kind}:${key}` pairs already reported, so each dropped key warns once per process. */
+const warnedDrops = new Set<string>();
+
+function warnDropped(kind: SummaryJobKind, keys: string[]): void {
+  const fresh = keys.filter((key) => !warnedDrops.has(`${kind}:${key}`));
+  if (fresh.length === 0) return;
+  for (const key of fresh) warnedDrops.add(`${kind}:${key}`);
+  console.warn(
+    `[@arcaai/vox] ${kind} generation: dropped ${fresh.map((k) => `\`${k}\``).join(', ')} — not accepted by the gateway's ` +
+      `${kind === 'summary' ? 'GenerateSummaryRequest' : 'GeneratePreSummaryRequest'} (a 400 if sent). ` +
+      'The department is read from the consultation, never from the request.',
+  );
+}
+
+/**
+ * Build the request body for one async route from the SDK options, keeping ONLY the fields that
+ * route's DTO declares (see {@link DTO_FIELDS}). The deprecated names map onto their canonical
+ * field where the target DTO has one (`transcript` → `transcription`, `promptTemplateId` →
+ * `template` — summary only); everything else is dropped with a one-time `console.warn`.
+ * `departmentId` is always dropped: the gateway reads the department from the consultation row
+ * and reads `options.departmentId` on neither route.
+ */
+export function mapSummaryOptionsToBackend(kind: SummaryJobKind, options?: SummaryGenerationOptions): Record<string, unknown> | undefined {
   if (!options) return undefined;
 
-  const { transcript, promptTemplateId, departmentId, transcription, template, options: optsBag, ...rest } = options;
+  const allowed = DTO_FIELDS[kind];
+  const out: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  // `callerKey` is the name the caller used, so a dropped alias is reported as they spelled it.
+  const put = (field: string, value: unknown, callerKey: string): void => {
+    if (value === undefined) return;
+    if (allowed.has(field)) out[field] = value;
+    else dropped.push(callerKey);
+  };
 
-  const out: Record<string, unknown> = { ...rest };
-  const canonicalTranscription = transcription ?? transcript;
-  const canonicalTemplate = template ?? promptTemplateId;
+  const { transcript, promptTemplateId, transcription, template, ...rest } = options;
+  if (transcription !== undefined) put('transcription', transcription, 'transcription');
+  else put('transcription', transcript, 'transcript');
+  if (template !== undefined) put('template', template, 'template');
+  else put('template', promptTemplateId, 'promptTemplateId');
+  for (const [key, value] of Object.entries(rest)) put(key, value, key);
 
-  if (canonicalTranscription !== undefined) out.transcription = canonicalTranscription;
-  if (canonicalTemplate !== undefined) out.template = canonicalTemplate;
-
-  if (departmentId !== undefined || optsBag !== undefined) {
-    out.options = {
-      ...(optsBag ?? {}),
-      ...(departmentId !== undefined ? { departmentId } : {}),
-    };
-  }
+  if (dropped.length > 0) warnDropped(kind, dropped);
 
   return out;
 }

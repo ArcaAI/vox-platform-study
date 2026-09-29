@@ -966,7 +966,7 @@ export function useArca(): UseArcaReturn {
       try {
         // TASK-1012 (L-2): the synchronous `POST …/summary/pre-summary` was removed (TASK-1006) —
         // start the async job and resolve the persisted pre-summary.
-        const summary = await generateSummaryViaJob(apiClient, consultation.id, 'pre-summary', mapSummaryOptionsToBackend(options));
+        const summary = await generateSummaryViaJob(apiClient, consultation.id, 'pre-summary', mapSummaryOptionsToBackend('pre-summary', options));
         store.addSummary(summary);
 
         timer?.end(true, {
@@ -1014,7 +1014,7 @@ export function useArca(): UseArcaReturn {
       try {
         // TASK-1012 (L-2): the synchronous `POST …/summary` was removed (TASK-1006) — start the
         // async job and resolve the persisted summary.
-        const summary = await generateSummaryViaJob(apiClient, consultation.id, 'summary', mapSummaryOptionsToBackend(options));
+        const summary = await generateSummaryViaJob(apiClient, consultation.id, 'summary', mapSummaryOptionsToBackend('summary', options));
         store.addSummary(summary);
 
         timer?.end(true, {
@@ -1176,7 +1176,7 @@ export function useArca(): UseArcaReturn {
       try {
         const job = await apiClient.post<AsyncJobResponse>(
           SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id),
-          mapSummaryOptionsToBackend(options) ?? {},
+          mapSummaryOptionsToBackend('summary', options) ?? {},
         );
 
         timer?.end(true, { attributes: { jobId: job.jobId } });
@@ -1221,7 +1221,7 @@ export function useArca(): UseArcaReturn {
       try {
         const job = await apiClient.post<AsyncJobResponse>(
           SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id),
-          mapSummaryOptionsToBackend(options) ?? {},
+          mapSummaryOptionsToBackend('pre-summary', options) ?? {},
         );
 
         timer?.end(true, { attributes: { jobId: job.jobId } });

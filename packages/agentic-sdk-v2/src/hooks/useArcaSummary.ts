@@ -55,7 +55,7 @@ export function useArcaSummary() {
       try {
         // TASK-1012 (L-2): the synchronous `POST …/summary/pre-summary` was removed (TASK-1006) —
         // start the async job (same body as `generatePreSummaryAsync`) and resolve the persisted note.
-        const body = withIdempotencyKey(mapSummaryOptionsToBackend(options) ?? {}, options?.idempotencyKey);
+        const body = withIdempotencyKey(mapSummaryOptionsToBackend('pre-summary', options) ?? {}, options?.idempotencyKey);
         const summary = await generateSummaryViaJob(apiClient, consultation.id, 'pre-summary', body);
         store.addSummary(summary);
         timer?.end(true, { attributes: { summaryId: summary.id } });
@@ -88,7 +88,7 @@ export function useArcaSummary() {
       try {
         // TASK-1012 (L-2): the synchronous `POST …/summary` was removed (TASK-1006) — start the
         // async job (same body as `generateSummaryAsync`) and resolve the persisted note.
-        const body = withIdempotencyKey(mapSummaryOptionsToBackend(options) ?? {}, options?.idempotencyKey);
+        const body = withIdempotencyKey(mapSummaryOptionsToBackend('summary', options) ?? {}, options?.idempotencyKey);
         const summary = await generateSummaryViaJob(apiClient, consultation.id, 'summary', body);
         store.addSummary(summary);
         timer?.end(true, { attributes: { summaryId: summary.id } });
@@ -200,7 +200,7 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const mapped = mapSummaryOptionsToBackend(options) ?? {};
+        const mapped = mapSummaryOptionsToBackend('summary', options) ?? {};
         const body = withIdempotencyKey(mapped, options?.idempotencyKey);
         const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id), body);
         return job;
@@ -224,7 +224,7 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const mapped = mapSummaryOptionsToBackend(options) ?? {};
+        const mapped = mapSummaryOptionsToBackend('pre-summary', options) ?? {};
         const body = withIdempotencyKey(mapped, options?.idempotencyKey);
         const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id), body);
         return job;
