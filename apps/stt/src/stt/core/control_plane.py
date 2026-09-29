@@ -115,6 +115,12 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "parakeet_cpp_library_path": "stt.parakeetCpp.libraryPath",
     "parakeet_cpp_num_threads": "stt.parakeetCpp.numThreads",
     "whisper_cpp_num_threads": "stt.whisperCpp.numThreads",
+    # TASK-1009 — cross-stream batching on the faster-whisper engine. Host knobs
+    # (they size a batch for THIS box's device), so platform-scoped like the rest.
+    "faster_whisper_batch_enabled": "stt.fasterWhisper.batch.enabled",
+    "faster_whisper_batch_max_batch_size": "stt.fasterWhisper.batch.maxBatchSize",
+    "faster_whisper_batch_max_wait_ms": "stt.fasterWhisper.batch.maxWaitMs",
+    "faster_whisper_batch_max_queue": "stt.fasterWhisper.batch.maxQueue",
     # `whisper_cpp_max_audio_seconds` and `whisper_cpp_consultation_prompt_enabled`
     # were mapped here until TASK-880. The first is the MODEL's decode window
     # (`AiModel._metadata.asr.maxDecodeWindowSec`, carried per chain on the spec), not one

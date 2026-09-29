@@ -365,6 +365,52 @@ def record_lock_wait(*, model: str, engine: str, seconds: float) -> None:
     STREAMING_LOCK_WAIT_SECONDS.labels(model=model, engine=engine).observe(max(0.0, seconds))
 
 
+# TASK-1009 — the cross-stream batch scheduler (`streaming/cross_stream_batcher.py`).
+# Labelled by model only: one scheduler exists per loaded model, so the label set
+# is the set of resident models. Queue depth is the scale-out signal the ticket
+# asks for (a replica whose queue stays non-zero is saturated); queue wait is the
+# latency a stream pays for batching; batch size says whether batching happens.
+ASR_BATCH_SIZE = Histogram(
+    "stt_asr_batch_size",
+    "Windows decoded per cross-stream ASR batch, by model",
+    ["model"],
+    buckets=[1, 2, 4, 8, 12, 16, 24, 32, 48, 64],
+)
+
+ASR_BATCH_QUEUE_WAIT_SECONDS = Histogram(
+    "stt_asr_batch_queue_wait_seconds",
+    "Time a window waited for its cross-stream ASR batch to start, by model",
+    ["model"],
+    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+)
+
+ASR_BATCH_DECODE_SECONDS = Histogram(
+    "stt_asr_batch_decode_seconds",
+    "Wall time of one cross-stream ASR batch decode, by model",
+    ["model"],
+    buckets=[0.05, 0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32],
+)
+
+ASR_BATCH_QUEUE_DEPTH = Gauge(
+    "stt_asr_batch_queue_depth",
+    "Windows waiting for a cross-stream ASR batch, by model",
+    ["model"],
+)
+
+
+def record_asr_batch(*, model: str, size: int, queue_waits_s: list[float], decode_s: float) -> None:
+    """One cross-stream batch decoded: its size, each window's queue wait, its wall time."""
+    ASR_BATCH_SIZE.labels(model=model).observe(size)
+    wait = ASR_BATCH_QUEUE_WAIT_SECONDS.labels(model=model)
+    for seconds in queue_waits_s:
+        wait.observe(max(0.0, seconds))
+    ASR_BATCH_DECODE_SECONDS.labels(model=model).observe(max(0.0, decode_s))
+
+
+def set_asr_batch_queue_depth(*, model: str, depth: int) -> None:
+    ASR_BATCH_QUEUE_DEPTH.labels(model=model).set(max(0, depth))
+
+
 # TASK-985 M-03 — deliberately UNLABELLED, matching the
 # `STREAMING_INFERENCE_QUEUE_DROPPED_TOTAL` precedent above ("unlabeled on
 # purpose"): a per-session or per-tenant label on a transport-timing

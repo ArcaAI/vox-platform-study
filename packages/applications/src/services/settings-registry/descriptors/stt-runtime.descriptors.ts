@@ -124,6 +124,47 @@ const KNOBS: Record<string, SttKnob> = {
     description: 'CPU threads used for whisper.cpp inference.',
     category: 'STT Engines',
   },
+  // TASK-1009 — cross-stream batching for the faster-whisper (CTranslate2) engine.
+  // HOST knobs: they size a batch for the device this stt process owns, which is
+  // why they sit here (platform scope) and not on the agent. Off by default, and
+  // with it off every decode takes the per-call path exactly as before.
+  'stt.fasterWhisper.batch.enabled': {
+    dataType: 'boolean',
+    default: false,
+    label: 'faster-whisper cross-stream batching',
+    description:
+      'Decode windows from concurrent streaming sessions on one faster-whisper model as one batch ' +
+      '(one encoder pass for the whole batch). Applies to sessions started after the change; ' +
+      'running sessions keep the mode they started with.',
+    category: 'STT Engines',
+  },
+  'stt.fasterWhisper.batch.maxBatchSize': {
+    dataType: 'number',
+    default: 8,
+    label: 'faster-whisper batch size',
+    description:
+      'Most windows one cross-stream batch decodes at once. Bounded by device memory: each window ' +
+      'is a full 30 s encoder input whatever its length.',
+    category: 'STT Engines',
+  },
+  'stt.fasterWhisper.batch.maxWaitMs': {
+    dataType: 'number',
+    default: 25,
+    label: 'faster-whisper batch wait (ms)',
+    description:
+      'Longest a window waits for batch-mates before a partial batch decodes. Added latency for a ' +
+      'lone stream; under load batches fill while the previous one decodes.',
+    category: 'STT Engines',
+  },
+  'stt.fasterWhisper.batch.maxQueue': {
+    dataType: 'number',
+    default: 256,
+    label: 'faster-whisper batch queue bound',
+    description:
+      'Windows allowed to wait for a batch per model. Beyond it a decode fails fast instead of ' +
+      'building a backlog no session will live to read; admission control stays with the stream cap.',
+    category: 'STT Engines',
+  },
   // TASK-880 removed `stt.whisperCpp.maxAudioSeconds` and
   // `stt.whisperCpp.consultationPromptEnabled`.
   //
