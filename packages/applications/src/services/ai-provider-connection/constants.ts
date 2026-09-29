@@ -154,6 +154,11 @@ export const PLATFORM_SELF_HOST_PROVIDERS: Readonly<Partial<Record<ProviderServi
   // own server is not that, so it belongs on a pair the gate does not touch.
   // `embeddings:{azure,openai}` stay exactly as they were — the tenant-BYO lane.
   embeddings: Object.freeze(['tei-embed'] as const),
+  // TASK-1021 — `vllm` is the platform's OWN OpenAI-compatible inference service (`apps/vllm`,
+  // `hope-vllm-asr` for the ASR pool). The SYSTEM `stt/vllm` row says where it lives (`baseUrl`)
+  // and how many decodes it may take at once (`maxConcurrent`); a tenant has no vendor account to
+  // bring for it, so a tenant row is a 403 and the platform-default entitlement never suppresses it.
+  stt: Object.freeze(['vllm'] as const),
 });
 
 /** Whether `(service, provider)` names one of the platform's own self-hosted serving engines. */
@@ -301,8 +306,11 @@ export function providerClassOf(
   if (row.tenantId !== SYSTEM_TENANT_ID) return 'cloud-byo';
   if (!provider) return null;
   if (provider === PLATFORM_SELF_HOST_MODEL_PROVIDER) return 'platform-self-host';
-  if (service && isPlatformSelfHostProvider(service, provider)) return 'platform-self-host';
+  // TASK-1021 — the engine check comes BEFORE the self-host list: `vllm` is on both
+  // (`PLATFORM_SELF_HOST_PROVIDERS.stt` makes its connection SYSTEM-only and opens the ASR
+  // credential gate), and its rows must be judged by that connection, not by the bucket (D-13).
   if (ENGINE_SERVED_PROVIDERS.has(provider)) return 'engine-served';
+  if (service && isPlatformSelfHostProvider(service, provider)) return 'platform-self-host';
   if (service && isCloudByoProvider(service, provider)) return 'cloud-platform';
   return null;
 }

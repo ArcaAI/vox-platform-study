@@ -1,0 +1,15 @@
+{
+  "slug": "arcaai-whisper-large-ml-en-vllm",
+  "kind": "asr",
+  "runtimeKey": "00000000-0000-0000-0001-000000000026:v1",
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "localPath": "/mnt/models-bucket/hf/hub/models--arcaai--whisper-large-ml-en/snapshots/0000000000000000000000000000000000000000",
+  "sourceUri": "hf:arcaai/whisper-large-ml-en",
+  "sourceRevision": null,
+  "checksum": null,
+  "format": "SAFETENSOR",
+  "computeType": "float16",
+  "quantization": null,
+  "maxModelLen": null,
+  "engine": { "vramGiB": 5, "maxNumSeqs": 64, "enforceEager": null }
+}

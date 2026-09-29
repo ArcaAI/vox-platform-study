@@ -4,7 +4,12 @@ import { QuotaExceededException } from '@arcaai/exceptions';
 import type { ResolvedAgent, ResolvedAsrSpec } from '@arcaai/types';
 import { AgentResolverService, ConnectionIdentityLookup, failedBindingKey, providerOverrideKey } from '../../agent/agent-resolver.service';
 import { ProviderCredentialResolver } from '../../ai-provider-connection/provider-credential-resolver';
-import { CLOUD_BYO_PROVIDERS, isCloudByoProvider } from '../../ai-provider-connection/constants';
+import {
+  CLOUD_BYO_PROVIDERS,
+  PLATFORM_SELF_HOST_PROVIDERS,
+  isCloudByoProvider,
+  isPlatformSelfHostProvider,
+} from '../../ai-provider-connection/constants';
 import { ProviderVetoedException } from '../../ai-provider-connection/provider-vetoed.exception';
 import { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
 import type {
@@ -317,7 +322,8 @@ export class AsrAgentResolverService {
     }
     const overrides: SttProviderOverrides = {};
     const identities = new ConnectionIdentityLookup(this.connections, 'stt', tenantId);
-    for (const provider of CLOUD_BYO_PROVIDERS.stt) {
+    // TASK-1021 — the self-host engines too: a batch job whose spec names `vllm` needs its entry.
+    for (const provider of [...CLOUD_BYO_PROVIDERS.stt, ...(PLATFORM_SELF_HOST_PROVIDERS.stt ?? [])]) {
       try {
         const binding = await this.credentials.resolve('stt', provider, tenantId);
         if (binding) overrides[provider] = binding.override;
@@ -395,7 +401,10 @@ export class AsrAgentResolverService {
     for (const position of ['primary', 'fallback'] as const) {
       const model = chain[position];
       const provider = model?.provider ?? null;
-      if (!model || !provider || !isCloudByoProvider('stt', provider)) continue;
+      // TASK-1021 — a platform self-host ENGINE (`vllm`) rides the same plane as a cloud BYO vendor:
+      // its SYSTEM connection row carries WHERE the engine lives and how much it may take, which is
+      // exactly what `apps/stt`'s loader reads off the entry. The spec stays credential-free.
+      if (!model || !provider || !(isCloudByoProvider('stt', provider) || isPlatformSelfHostProvider('stt', provider))) continue;
 
       // TASK-958 D-3 — the model row names the account; a SYSTEM catalogue row names
       // none and keeps the provider-NAME cascade (the tenant's DEFAULT connection).

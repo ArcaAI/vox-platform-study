@@ -34,6 +34,9 @@ export * from './lmstudio-serving-profile.js';
 // TASK-879 — the gateway-resolved TTS runtime contract (gateway → apps/tts), replacing the TenantTtsConfig fold.
 export * from './tts-spec.js';
 
+// TASK-1021 — the gateway-resolved engine-build contract for one `AiModel` row (gateway → apps/vllm).
+export * from './serving-spec.js';
+
 // The consultation-context contract: open refusal codes and the governing-run summary shape,
 // shared by the gateway, both SDKs, and codegen.
 export * from './consultation-context.js';

@@ -4,6 +4,7 @@ import {
   AsrAgentResolverServiceModule,
   EffectiveConfigServiceModule,
   EntitlementsServiceModule,
+  ModelServingSpecServiceModule,
   SttInternalServiceModule,
   StreamingSessionServiceModule,
 } from '@arcaai/applications';
@@ -12,6 +13,7 @@ import { AgentInternalController } from './agent-internal.controller';
 import { EffectiveConfigController } from './effective-config.controller';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
 import { ModelRegistryInternalController } from './model-registry-internal.controller';
+import { ModelServingInternalController } from './model-serving-internal.controller';
 import { SttInternalController } from './stt-internal.controller';
 
 @Module({
@@ -35,8 +37,16 @@ import { SttInternalController } from './stt-internal.controller';
     // gate on that same route (§3.13): the harness calls TEXT directly, so this
     // resolution is the only gateway touch a durable `core.agent` step makes.
     EntitlementsServiceModule,
+    // TASK-1021 — `ModelServingInternalController` (`/internal/models/:slug/serving-spec`), apps/vllm's engine-build contract.
+    ModelServingSpecServiceModule,
   ],
-  controllers: [SttInternalController, EffectiveConfigController, ModelRegistryInternalController, AgentInternalController],
+  controllers: [
+    SttInternalController,
+    EffectiveConfigController,
+    ModelRegistryInternalController,
+    AgentInternalController,
+    ModelServingInternalController,
+  ],
   // Applied via `@UseGuards` on the controller, but provided here so Nest can
   // inject SecretsService into it.
   providers: [InternalServiceTokenGuard],
