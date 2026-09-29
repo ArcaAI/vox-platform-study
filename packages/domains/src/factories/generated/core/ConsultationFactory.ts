@@ -14,6 +14,8 @@ export interface CreateConsultationProps extends BaseEntityFactoryCreateProps {
   departmentId?: IConsultationEntity['departmentId'];
   parentConsultationId?: IConsultationEntity['parentConsultationId'];
   metadata?: IConsultationEntity['metadata'];
+  // TASK-1020 D-2 — the caller's own encounter id (the `open` key when present)
+  externalRef?: IConsultationEntity['externalRef'];
   // Typed lifecycle state (defaults to OPEN)
   status?: IConsultationEntity['status'];
   // Health-flag projection on the active phase; not a state of its own
@@ -52,6 +54,7 @@ export class ConsultationFactory {
       departmentId: props.departmentId ?? null,
       parentConsultationId: props.parentConsultationId ?? null,
       metadata: props.metadata ?? null,
+      externalRef: props.externalRef ?? null,
       status: props.status ?? Enums.ConsultationStatus.OPEN,
       degradedReasons: props.degradedReasons ?? [],
       spokenLanguageMode: props.spokenLanguageMode ?? null,

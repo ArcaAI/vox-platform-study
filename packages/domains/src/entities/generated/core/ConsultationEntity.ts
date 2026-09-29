@@ -99,6 +99,9 @@ export interface IConsultationEntity extends IBaseTenantEntity {
   departmentId?: string | null;
   parentConsultationId?: string | null;
   metadata?: JsonValue | null;
+  // TASK-1020 D-2 — the caller's own id for this encounter (EMR event id), promoted from the
+  // `metadata.externalRef` marker. The key `open` matches on when present; null = none sent.
+  externalRef?: string | null;
   // Typed lifecycle state (defaults to OPEN)
   status?: Enums.ConsultationStatus;
   // Health-flag projection on the active phase; not a state of its own
@@ -122,6 +125,7 @@ export class ConsultationEntity extends BaseTenantEntity {
   private _departmentId?: IConsultationEntity['departmentId'];
   private _parentConsultationId?: IConsultationEntity['parentConsultationId'];
   private _metadata?: IConsultationEntity['metadata'];
+  private _externalRef?: IConsultationEntity['externalRef'];
   private _status: Enums.ConsultationStatus;
   private _degradedReasons: string[];
   private _spokenLanguageMode?: IConsultationEntity['spokenLanguageMode'];
@@ -144,6 +148,7 @@ export class ConsultationEntity extends BaseTenantEntity {
     this._departmentId = init.departmentId;
     this._parentConsultationId = init.parentConsultationId;
     this._metadata = init.metadata;
+    this._externalRef = init.externalRef;
     this._status = init.status ?? Enums.ConsultationStatus.OPEN;
     this._degradedReasons = init.degradedReasons ?? [];
     this._spokenLanguageMode = init.spokenLanguageMode;
@@ -200,6 +205,14 @@ export class ConsultationEntity extends BaseTenantEntity {
 
   set metadata(value: IConsultationEntity['metadata']) {
     this.setProperty('metadata', value);
+  }
+
+  get externalRef(): IConsultationEntity['externalRef'] {
+    return this._externalRef;
+  }
+
+  set externalRef(value: IConsultationEntity['externalRef']) {
+    this.setProperty('externalRef', value);
   }
 
   get status(): Enums.ConsultationStatus {
