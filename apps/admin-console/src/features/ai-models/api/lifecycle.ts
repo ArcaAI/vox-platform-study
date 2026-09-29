@@ -19,3 +19,16 @@ export function hasTransientRows(rows: readonly AiModel[] | undefined | null): b
 export function listRefetchInterval(page: PaginatedModels | undefined): number | false {
   return hasTransientRows(page?.data) ? LIFECYCLE_POLL_MS : false;
 }
+
+/**
+ * Why the edit form is read-only for a row in this status, or `null` when it is
+ * editable (final review I11). While a download runs every heartbeat bumps the
+ * row's `_version`, so a PATCH with the drawer's If-Match could only 412; an
+ * unregister is about to remove the row. LOADING is transient too, but it is a
+ * service-side state that does not touch the row, so it does not lock the form.
+ */
+export function editLockReason(status: ModelLifecycleStatus | undefined | null): string | null {
+  if (status === 'DOWNLOADING') return 'Editing is unavailable while the model is downloading.';
+  if (status === 'UNREGISTERING') return 'Editing is unavailable while the model is being unregistered.';
+  return null;
+}

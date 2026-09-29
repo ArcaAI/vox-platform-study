@@ -19,6 +19,7 @@ import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useCreateModel, useModel, useUpdateModel } from '../api/hooks';
+import { editLockReason } from '../api/lifecycle';
 import {
   AI_MODEL_ASR_PROFILE_DECODING_RANGES,
   AI_MODEL_ASR_PROFILE_HOTWORDS_MAX_ITEMS,
@@ -439,6 +440,7 @@ export function ModelFormSheet({
 }) {
   const uid = useId();
   const formId = `${uid}-form`;
+  const editLockNoticeId = `${uid}-edit-lock`;
   const isEdit = modelId !== null;
   const detail = useModel(modelId ?? '');
   const model = detail.data?.data ?? null;
@@ -456,7 +458,15 @@ export function ModelFormSheet({
 
   // Seed during render (never in an effect): the fields must already hold the
   // loaded row on the commit that first shows them.
-  const seedKey = seedKeyOf(open, isEdit, model) + (seed ? `:${seed.bucketPrefix ?? ''}${seed.slug ?? ''}` : '');
+  // Read-only while the row is DOWNLOADING / UNREGISTERING (final review I11):
+  // every heartbeat bumps `_version`, so a save could only 412. `useModel`
+  // re-reads the row meanwhile, and the seed key follows each read while locked
+  // and changes again on settle — so the re-enabled form is seeded from the
+  // SETTLED row (the worker writes fields such as the bucket prefix) rather
+  // than sending a pre-download snapshot back under the fresh ETag.
+  const editLock = isEdit ? editLockReason(model?.lifecycle?.status) : null;
+  const seedKey =
+    seedKeyOf(open, isEdit, model) + (editLock ? `:locked:${etag}` : '') + (seed ? `:${seed.bucketPrefix ?? ''}${seed.slug ?? ''}` : '');
   if (seedKey !== seededFor) {
     const seeded = seedKey.startsWith('row:') && model ? toValues(model) : toValues(undefined, seed);
     setSeededFor(seedKey);
@@ -487,6 +497,9 @@ export function ModelFormSheet({
   const hasBucketPrefixError = isBucketPrefixRedundant(values.bucketPrefix);
 
   function set<K extends keyof ModelFormValues>(key: K, value: ModelFormValues[K]) {
+    // The fieldset disables native controls, but a Radix Select still opens on
+    // pointerdown — so a locked form ignores every change at the source too.
+    if (editLock) return;
     setValues((current) => ({ ...current, [key]: value }));
   }
 
@@ -579,11 +592,21 @@ export function ModelFormSheet({
           showForm ? (
             <div className="flex w-full flex-col gap-2">
               {isEdit ? <OccConflictAlert error={updateMutation.error} onReload={handleReloadLatest} /> : null}
+              {editLock ? (
+                <p id={editLockNoticeId} role="status" className="text-muted-foreground text-sm">
+                  {editLock}
+                </p>
+              ) : null}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isPending}>
                   Cancel
                 </Button>
-                <Button type="submit" form={formId} disabled={isPending || hasAsrValidationError || hasBucketPrefixError}>
+                <Button
+                  type="submit"
+                  form={formId}
+                  disabled={isPending || hasAsrValidationError || hasBucketPrefixError || editLock !== null}
+                  aria-describedby={editLock ? editLockNoticeId : undefined}
+                >
                   {isPending ? <Spinner /> : null}
                   {isEdit ? 'Save changes' : 'Register model'}
                 </Button>
@@ -601,371 +624,377 @@ export function ModelFormSheet({
           />
         ) : (
           <>
-            <form id={formId} onSubmit={handleSubmit} className="grid auto-rows-min grid-cols-1 content-start gap-4 sm:grid-cols-2">
-              <Field id={`${uid}-name`} label="Name" required className="sm:col-span-2">
-                <Input id={`${uid}-name`} value={values.name} onChange={(event) => set('name', event.target.value)} required />
-              </Field>
-              <Field id={`${uid}-slug`} label="Slug" required className="sm:col-span-2">
-                <Input
-                  id={`${uid}-slug`}
-                  value={values.slug}
-                  onChange={(event) => set('slug', event.target.value)}
-                  required
-                  className="font-mono"
-                  placeholder="whisper-large-v4"
-                />
-              </Field>
-              <Field id={`${uid}-description`} label="Description" className="sm:col-span-2">
-                <Textarea
-                  id={`${uid}-description`}
-                  value={values.description}
-                  onChange={(event) => set('description', event.target.value)}
-                  rows={2}
-                />
-              </Field>
-              <Field id={`${uid}-category`} label="Category" required>
-                <EnumSelect id={`${uid}-category`} value={values.category} onChange={(value) => set('category', value)} options={CATEGORY_OPTIONS} />
-              </Field>
-              <Field id={`${uid}-model-type`} label="Model type" required>
-                <EnumSelect
-                  id={`${uid}-model-type`}
-                  value={values.modelType}
-                  onChange={(value) => set('modelType', value)}
-                  options={MODEL_TYPE_OPTIONS}
-                />
-              </Field>
-              <Field id={`${uid}-task-type`} label="Task (Hugging Face pipeline tag)" required className="sm:col-span-2">
-                <Select
-                  value={values.taskType}
-                  onValueChange={(next) => {
-                    set('taskType', next);
-                    setTaskTypeMissing(false);
-                  }}
-                >
-                  <SelectTrigger
-                    id={`${uid}-task-type`}
-                    className="w-full font-mono"
-                    aria-invalid={taskTypeMissing || undefined}
-                    aria-describedby={taskTypeMissing ? `${uid}-task-type-error` : undefined}
+            <form id={formId} onSubmit={handleSubmit}>
+              {/* A disabled fieldset disables every native control inside it — inputs, and the buttons behind each Select / Switch / Checkbox. */}
+              <fieldset
+                disabled={editLock !== null}
+                className="m-0 grid min-w-0 auto-rows-min grid-cols-1 content-start gap-4 border-0 p-0 sm:grid-cols-2"
+              >
+                <Field id={`${uid}-name`} label="Name" required className="sm:col-span-2">
+                  <Input id={`${uid}-name`} value={values.name} onChange={(event) => set('name', event.target.value)} required />
+                </Field>
+                <Field id={`${uid}-slug`} label="Slug" required className="sm:col-span-2">
+                  <Input
+                    id={`${uid}-slug`}
+                    value={values.slug}
+                    onChange={(event) => set('slug', event.target.value)}
+                    required
+                    className="font-mono"
+                    placeholder="whisper-large-v4"
+                  />
+                </Field>
+                <Field id={`${uid}-description`} label="Description" className="sm:col-span-2">
+                  <Textarea
+                    id={`${uid}-description`}
+                    value={values.description}
+                    onChange={(event) => set('description', event.target.value)}
+                    rows={2}
+                  />
+                </Field>
+                <Field id={`${uid}-category`} label="Category" required>
+                  <EnumSelect id={`${uid}-category`} value={values.category} onChange={(value) => set('category', value)} options={CATEGORY_OPTIONS} />
+                </Field>
+                <Field id={`${uid}-model-type`} label="Model type" required>
+                  <EnumSelect
+                    id={`${uid}-model-type`}
+                    value={values.modelType}
+                    onChange={(value) => set('modelType', value)}
+                    options={MODEL_TYPE_OPTIONS}
+                  />
+                </Field>
+                <Field id={`${uid}-task-type`} label="Task (Hugging Face pipeline tag)" required className="sm:col-span-2">
+                  <Select
+                    value={values.taskType}
+                    onValueChange={(next) => {
+                      set('taskType', next);
+                      setTaskTypeMissing(false);
+                    }}
                   >
-                    <SelectValue placeholder="Choose a task" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {taskTypeOptions.map((taskType) => (
-                      <SelectItem key={taskType} value={taskType} className="font-mono">
-                        {taskTypeToPipelineTag(taskType)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {taskTypeMissing ? (
-                  <p id={`${uid}-task-type-error`} className="text-destructive text-sm">
-                    Choose a task before registering.
+                    <SelectTrigger
+                      id={`${uid}-task-type`}
+                      className="w-full font-mono"
+                      aria-invalid={taskTypeMissing || undefined}
+                      aria-describedby={taskTypeMissing ? `${uid}-task-type-error` : undefined}
+                    >
+                      <SelectValue placeholder="Choose a task" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {taskTypeOptions.map((taskType) => (
+                        <SelectItem key={taskType} value={taskType} className="font-mono">
+                          {taskTypeToPipelineTag(taskType)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {taskTypeMissing ? (
+                    <p id={`${uid}-task-type-error`} className="text-destructive text-sm">
+                      Choose a task before registering.
+                    </p>
+                  ) : null}
+                </Field>
+                <Field id={`${uid}-library`} label="Serving library" required>
+                  <EnumSelect id={`${uid}-library`} value={values.libraryName} onChange={(value) => set('libraryName', value)} options={[...LIBRARY_OPTIONS]} labels={LIBRARY_LABELS} />
+                </Field>
+                <Field id={`${uid}-served-by`} label="Served by" required>
+                  <EnumSelect id={`${uid}-served-by`} value={values.servedBy} onChange={(value) => set('servedBy', value)} options={[...SERVED_BY_OPTIONS]} labels={SERVED_BY_LABELS} />
+                </Field>
+                <Field id={`${uid}-deployment`} label="Deployment" required>
+                  <EnumSelect
+                    id={`${uid}-deployment`}
+                    value={values.deploymentKind}
+                    onChange={(value) => set('deploymentKind', value)}
+                    options={DEPLOYMENT_KIND_OPTIONS}
+                    labels={DEPLOYMENT_KIND_LABELS}
+                  />
+                </Field>
+                <Field id={`${uid}-wire-model-id`} label="Wire model id" required={values.deploymentKind === 'CLOUD'}>
+                  <Input
+                    id={`${uid}-wire-model-id`}
+                    value={values.wireModelId}
+                    onChange={(event) => set('wireModelId', event.target.value)}
+                    required={values.deploymentKind === 'CLOUD'}
+                    disabled={values.deploymentKind !== 'CLOUD'}
+                    className="font-mono"
+                    placeholder="gpt-transcribe"
+                    aria-describedby={`${uid}-wire-model-id-hint`}
+                  />
+                  <p id={`${uid}-wire-model-id-hint`} className="text-muted-foreground text-xs">
+                    {values.deploymentKind === 'CLOUD' ? 'The id the vendor is invoked with.' : 'Cloud rows only — self-hosted rows are identified by their bucket prefix.'}
                   </p>
-                ) : null}
-              </Field>
-              <Field id={`${uid}-library`} label="Serving library" required>
-                <EnumSelect id={`${uid}-library`} value={values.libraryName} onChange={(value) => set('libraryName', value)} options={[...LIBRARY_OPTIONS]} labels={LIBRARY_LABELS} />
-              </Field>
-              <Field id={`${uid}-served-by`} label="Served by" required>
-                <EnumSelect id={`${uid}-served-by`} value={values.servedBy} onChange={(value) => set('servedBy', value)} options={[...SERVED_BY_OPTIONS]} labels={SERVED_BY_LABELS} />
-              </Field>
-              <Field id={`${uid}-deployment`} label="Deployment" required>
-                <EnumSelect
-                  id={`${uid}-deployment`}
-                  value={values.deploymentKind}
-                  onChange={(value) => set('deploymentKind', value)}
-                  options={DEPLOYMENT_KIND_OPTIONS}
-                  labels={DEPLOYMENT_KIND_LABELS}
-                />
-              </Field>
-              <Field id={`${uid}-wire-model-id`} label="Wire model id" required={values.deploymentKind === 'CLOUD'}>
-                <Input
-                  id={`${uid}-wire-model-id`}
-                  value={values.wireModelId}
-                  onChange={(event) => set('wireModelId', event.target.value)}
-                  required={values.deploymentKind === 'CLOUD'}
-                  disabled={values.deploymentKind !== 'CLOUD'}
-                  className="font-mono"
-                  placeholder="gpt-transcribe"
-                  aria-describedby={`${uid}-wire-model-id-hint`}
-                />
-                <p id={`${uid}-wire-model-id-hint`} className="text-muted-foreground text-xs">
-                  {values.deploymentKind === 'CLOUD' ? 'The id the vendor is invoked with.' : 'Cloud rows only — self-hosted rows are identified by their bucket prefix.'}
-                </p>
-              </Field>
-              <Field id={`${uid}-source`} label="Source" required>
-                <EnumSelect
-                  id={`${uid}-source`}
-                  value={values.source}
-                  onChange={(value) => set('source', value)}
-                  options={SOURCE_OPTIONS}
-                  labels={SOURCE_LABELS}
-                />
-              </Field>
-              <Field id={`${uid}-format`} label="Format" required>
-                <EnumSelect id={`${uid}-format`} value={values.format} onChange={(value) => set('format', value)} options={FORMAT_OPTIONS} />
-              </Field>
-              <Field id={`${uid}-provider`} label="Runtime provider">
-                <Select
-                  value={values.provider === '' ? PROVIDER_NONE : values.provider}
-                  onValueChange={(next) => set('provider', next === PROVIDER_NONE ? '' : next)}
-                >
-                  <SelectTrigger id={`${uid}-provider`} className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={PROVIDER_NONE}>(none)</SelectItem>
-                    {RUNTIME_PROVIDER_OPTIONS.map((provider) => (
-                      <SelectItem key={provider} value={provider} className="font-mono">
-                        {provider}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field id={`${uid}-architecture`} label="Architecture">
-                <Input
-                  id={`${uid}-architecture`}
-                  value={values.architecture}
-                  onChange={(event) => set('architecture', event.target.value)}
-                  className="font-mono"
-                  placeholder="gemma4"
-                />
-              </Field>
-              <Field id={`${uid}-source-uri`} label="Source URI" required={!isLocalSource} className="sm:col-span-2">
-                <Input
-                  id={`${uid}-source-uri`}
-                  value={isLocalSource ? derivedSourceUri : values.sourceUri}
-                  onChange={(event) => set('sourceUri', event.target.value)}
-                  required={!isLocalSource}
-                  disabled={isLocalSource}
-                  className="font-mono"
-                  placeholder="openai/whisper-large-v4"
-                  aria-describedby={`${uid}-source-uri-hint`}
-                />
-                <p id={`${uid}-source-uri-hint`} className="text-muted-foreground text-xs">
-                  {isLocalSource
-                    ? 'Derived from the bucket prefix below, so the two can never disagree. Nothing is downloaded — the weights are read directly from the hope-models bucket mount.'
-                    : 'Hugging Face repo id, GitHub URL, or MLflow URI — or, for the S3 source, an s3:// prefix in another bucket that gets copied into hope-models on publish.'}
-                </p>
-              </Field>
-              <Field id={`${uid}-license`} label="Licence">
-                <Input id={`${uid}-license`} value={values.license} onChange={(event) => set('license', event.target.value)} className="font-mono" placeholder="apache-2.0" />
-              </Field>
-              <Field id={`${uid}-base-model`} label="Base model">
-                <Input
-                  id={`${uid}-base-model`}
-                  value={values.baseModel}
-                  onChange={(event) => set('baseModel', event.target.value)}
-                  className="font-mono"
-                  placeholder="openai/whisper-large-v3-turbo"
-                />
-              </Field>
-              <Field id={`${uid}-languages`} label="Languages (comma-separated ISO codes)">
-                <Input id={`${uid}-languages`} value={values.languages} onChange={(event) => set('languages', event.target.value)} placeholder="en, ml" />
-              </Field>
-              <div className="flex items-center gap-2 self-end pb-2">
-                <Checkbox id={`${uid}-gated`} checked={values.gated} onCheckedChange={(checked) => set('gated', checked === true)} />
-                <Label htmlFor={`${uid}-gated`}>Gated Hub repo (needs the platform token)</Label>
-              </div>
-              <Field id={`${uid}-bucket-prefix`} label="Bucket prefix" required={isLocalSource} className="sm:col-span-2">
-                <Input
-                  id={`${uid}-bucket-prefix`}
-                  value={values.bucketPrefix}
-                  onChange={(event) => set('bucketPrefix', event.target.value)}
-                  required={isLocalSource}
-                  className="font-mono"
-                  placeholder="<slug>/<version>/ or hf/hub/models--org--repo/snapshots/<sha>/"
-                  aria-invalid={hasBucketPrefixError || undefined}
-                  aria-describedby={hasBucketPrefixError ? `${uid}-bucket-help ${uid}-bucket-prefix-error` : `${uid}-bucket-help`}
-                />
-                {hasBucketPrefixError ? (
-                  <p id={`${uid}-bucket-prefix-error`} className="text-destructive text-sm">
-                    Enter a path relative to the bucket — drop the leading &quot;hope-models/&quot; or &quot;s3://hope-models/&quot;; the mount
-                    already starts inside that bucket.
+                </Field>
+                <Field id={`${uid}-source`} label="Source" required>
+                  <EnumSelect
+                    id={`${uid}-source`}
+                    value={values.source}
+                    onChange={(value) => set('source', value)}
+                    options={SOURCE_OPTIONS}
+                    labels={SOURCE_LABELS}
+                  />
+                </Field>
+                <Field id={`${uid}-format`} label="Format" required>
+                  <EnumSelect id={`${uid}-format`} value={values.format} onChange={(value) => set('format', value)} options={FORMAT_OPTIONS} />
+                </Field>
+                <Field id={`${uid}-provider`} label="Runtime provider">
+                  <Select
+                    value={values.provider === '' ? PROVIDER_NONE : values.provider}
+                    onValueChange={(next) => set('provider', next === PROVIDER_NONE ? '' : next)}
+                  >
+                    <SelectTrigger id={`${uid}-provider`} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={PROVIDER_NONE}>(none)</SelectItem>
+                      {RUNTIME_PROVIDER_OPTIONS.map((provider) => (
+                        <SelectItem key={provider} value={provider} className="font-mono">
+                          {provider}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field id={`${uid}-architecture`} label="Architecture">
+                  <Input
+                    id={`${uid}-architecture`}
+                    value={values.architecture}
+                    onChange={(event) => set('architecture', event.target.value)}
+                    className="font-mono"
+                    placeholder="gemma4"
+                  />
+                </Field>
+                <Field id={`${uid}-source-uri`} label="Source URI" required={!isLocalSource} className="sm:col-span-2">
+                  <Input
+                    id={`${uid}-source-uri`}
+                    value={isLocalSource ? derivedSourceUri : values.sourceUri}
+                    onChange={(event) => set('sourceUri', event.target.value)}
+                    required={!isLocalSource}
+                    disabled={isLocalSource}
+                    className="font-mono"
+                    placeholder="openai/whisper-large-v4"
+                    aria-describedby={`${uid}-source-uri-hint`}
+                  />
+                  <p id={`${uid}-source-uri-hint`} className="text-muted-foreground text-xs">
+                    {isLocalSource
+                      ? 'Derived from the bucket prefix below, so the two can never disagree. Nothing is downloaded — the weights are read directly from the hope-models bucket mount.'
+                      : 'Hugging Face repo id, GitHub URL, or MLflow URI — or, for the S3 source, an s3:// prefix in another bucket that gets copied into hope-models on publish.'}
                   </p>
-                ) : null}
-              </Field>
-              <Field id={`${uid}-primary-object`} label="Primary object (single-file loaders)">
-                <Input
-                  id={`${uid}-primary-object`}
-                  value={values.primaryObject}
-                  onChange={(event) => set('primaryObject', event.target.value)}
-                  className="font-mono"
-                  placeholder="ggml-model-q8_0.bin"
-                  aria-describedby={`${uid}-bucket-help`}
-                />
-              </Field>
-              <Field id={`${uid}-hf-revision`} label="Hub revision (sha)">
-                <Input id={`${uid}-hf-revision`} value={values.hfRevision} onChange={(event) => set('hfRevision', event.target.value)} className="font-mono" />
-              </Field>
-              <div id={`${uid}-bucket-help`} className="text-muted-foreground flex flex-col gap-1.5 rounded-md border border-dashed p-3 text-xs sm:col-span-2">
-                <p>
-                  <span className="text-foreground font-medium">Where the weights live.</span> Every serving pod mounts{' '}
-                  <code className="font-mono">s3://hope-models</code> read-only at <code className="font-mono">/mnt/models-bucket</code>. The
-                  bucket prefix is normally written by <span className="text-foreground font-medium">Publish to bucket</span> (below, once the row
-                  exists) — type it yourself only for a Local row, or when registering weights the inventory found already in the bucket. Enter it
-                  relative to the bucket root — never prefixed with <code className="font-mono">hope-models/</code> or{' '}
-                  <code className="font-mono">s3://hope-models/</code>, since the mount above already starts inside that bucket.
-                </p>
-                <p>
-                  <span className="text-foreground font-medium">Derived local path:</span>{' '}
-                  <code className="font-mono" data-testid="derived-local-path">
-                    {values.bucketPrefix.trim() ? deriveLocalPath(values.bucketPrefix.trim(), values.primaryObject.trim() || null) : '— (not published)'}
-                  </code>{' '}
-                  — the services read it as the highest-precedence weight location; it is never typed by hand.
-                </p>
-                <ModelRegistryConnectionStatus />
-              </div>
-              <Field id={`${uid}-source-revision`} label="Source revision">
-                <Input
-                  id={`${uid}-source-revision`}
-                  value={values.sourceRevision}
-                  onChange={(event) => set('sourceRevision', event.target.value)}
-                  className="font-mono"
-                />
-              </Field>
-              <Field id={`${uid}-memory`} label="Memory size (MB)">
-                <Input
-                  id={`${uid}-memory`}
-                  type="number"
-                  min={0}
-                  value={values.memorySizeMb}
-                  onChange={(event) => set('memorySizeMb', event.target.value)}
-                />
-              </Field>
-              <Field id={`${uid}-compute-type`} label="Compute type">
-                <Input
-                  id={`${uid}-compute-type`}
-                  value={values.computeType}
-                  onChange={(event) => set('computeType', event.target.value)}
-                  placeholder="float16"
-                />
-              </Field>
-              <Field id={`${uid}-tags`} label="Tags (comma-separated)">
-                <Input id={`${uid}-tags`} value={values.tags} onChange={(event) => set('tags', event.target.value)} placeholder="stt, fallback" />
-              </Field>
-              {values.taskType.trim() === ASR_TASK_TYPE ? (
-                <fieldset className="flex flex-col gap-4 rounded-md border p-3 sm:col-span-2">
-                  <legend className="px-1 text-sm font-medium">ASR decode profile</legend>
-                  <p className="text-muted-foreground text-xs">
-                    Recommended decode geometry and thresholds for this fine-tune (TASK-934) — travels with the weights, not with
-                    whichever agent binds them. Resolved agent → this profile → engine default; a value an agent sets always wins.
+                </Field>
+                <Field id={`${uid}-license`} label="Licence">
+                  <Input id={`${uid}-license`} value={values.license} onChange={(event) => set('license', event.target.value)} className="font-mono" placeholder="apache-2.0" />
+                </Field>
+                <Field id={`${uid}-base-model`} label="Base model">
+                  <Input
+                    id={`${uid}-base-model`}
+                    value={values.baseModel}
+                    onChange={(event) => set('baseModel', event.target.value)}
+                    className="font-mono"
+                    placeholder="openai/whisper-large-v3-turbo"
+                  />
+                </Field>
+                <Field id={`${uid}-languages`} label="Languages (comma-separated ISO codes)">
+                  <Input id={`${uid}-languages`} value={values.languages} onChange={(event) => set('languages', event.target.value)} placeholder="en, ml" />
+                </Field>
+                <div className="flex items-center gap-2 self-end pb-2">
+                  <Checkbox id={`${uid}-gated`} checked={values.gated} onCheckedChange={(checked) => set('gated', checked === true)} />
+                  <Label htmlFor={`${uid}-gated`}>Gated Hub repo (needs the platform token)</Label>
+                </div>
+                <Field id={`${uid}-bucket-prefix`} label="Bucket prefix" required={isLocalSource} className="sm:col-span-2">
+                  <Input
+                    id={`${uid}-bucket-prefix`}
+                    value={values.bucketPrefix}
+                    onChange={(event) => set('bucketPrefix', event.target.value)}
+                    required={isLocalSource}
+                    className="font-mono"
+                    placeholder="<slug>/<version>/ or hf/hub/models--org--repo/snapshots/<sha>/"
+                    aria-invalid={hasBucketPrefixError || undefined}
+                    aria-describedby={hasBucketPrefixError ? `${uid}-bucket-help ${uid}-bucket-prefix-error` : `${uid}-bucket-help`}
+                  />
+                  {hasBucketPrefixError ? (
+                    <p id={`${uid}-bucket-prefix-error`} className="text-destructive text-sm">
+                      Enter a path relative to the bucket — drop the leading &quot;hope-models/&quot; or &quot;s3://hope-models/&quot;; the mount
+                      already starts inside that bucket.
+                    </p>
+                  ) : null}
+                </Field>
+                <Field id={`${uid}-primary-object`} label="Primary object (single-file loaders)">
+                  <Input
+                    id={`${uid}-primary-object`}
+                    value={values.primaryObject}
+                    onChange={(event) => set('primaryObject', event.target.value)}
+                    className="font-mono"
+                    placeholder="ggml-model-q8_0.bin"
+                    aria-describedby={`${uid}-bucket-help`}
+                  />
+                </Field>
+                <Field id={`${uid}-hf-revision`} label="Hub revision (sha)">
+                  <Input id={`${uid}-hf-revision`} value={values.hfRevision} onChange={(event) => set('hfRevision', event.target.value)} className="font-mono" />
+                </Field>
+                <div id={`${uid}-bucket-help`} className="text-muted-foreground flex flex-col gap-1.5 rounded-md border border-dashed p-3 text-xs sm:col-span-2">
+                  <p>
+                    <span className="text-foreground font-medium">Where the weights live.</span> Every serving pod mounts{' '}
+                    <code className="font-mono">s3://hope-models</code> read-only at <code className="font-mono">/mnt/models-bucket</code>. The
+                    bucket prefix is normally written by <span className="text-foreground font-medium">Publish to bucket</span> (below, once the row
+                    exists) — type it yourself only for a Local row, or when registering weights the inventory found already in the bucket. Enter it
+                    relative to the bucket root — never prefixed with <code className="font-mono">hope-models/</code> or{' '}
+                    <code className="font-mono">s3://hope-models/</code>, since the mount above already starts inside that bucket.
                   </p>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <RangedNumberField
-                      id={`${uid}-asr-max-decode-window`}
-                      label="Max decode window (s)"
-                      value={values.asrMaxDecodeWindowSec}
-                      onChange={(value) => set('asrMaxDecodeWindowSec', value)}
-                      range={AI_MODEL_ASR_PROFILE_WINDOW_RANGES.maxDecodeWindowSec}
-                      placeholder="7"
-                    />
-                    <RangedNumberField
-                      id={`${uid}-asr-partial-window`}
-                      label="Partial window (s)"
-                      value={values.asrPartialWindowSec}
-                      onChange={(value) => set('asrPartialWindowSec', value)}
-                      range={AI_MODEL_ASR_PROFILE_WINDOW_RANGES.partialWindowSec}
-                      placeholder="15"
-                    />
-                    <RangedNumberField
-                      id={`${uid}-asr-beam-size`}
-                      label="Beam size"
-                      value={values.asrBeamSize}
-                      onChange={(value) => set('asrBeamSize', value)}
-                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.beamSize}
-                    />
-                    <RangedNumberField
-                      id={`${uid}-asr-temperature`}
-                      label="Temperature"
-                      value={values.asrTemperature}
-                      onChange={(value) => set('asrTemperature', value)}
-                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.temperature}
-                    />
-                    <RangedNumberField
-                      id={`${uid}-asr-no-speech-threshold`}
-                      label="No-speech threshold"
-                      value={values.asrNoSpeechThreshold}
-                      onChange={(value) => set('asrNoSpeechThreshold', value)}
-                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.noSpeechThreshold}
-                    />
-                    <RangedNumberField
-                      id={`${uid}-asr-compression-ratio-threshold`}
-                      label="Compression ratio threshold"
-                      value={values.asrCompressionRatioThreshold}
-                      onChange={(value) => set('asrCompressionRatioThreshold', value)}
-                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.compressionRatioThreshold}
-                    />
-                    <RangedNumberField
-                      id={`${uid}-asr-logprob-threshold`}
-                      label="Logprob threshold"
-                      value={values.asrLogprobThreshold}
-                      onChange={(value) => set('asrLogprobThreshold', value)}
-                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.logprobThreshold}
-                    />
-                    <RangedNumberField
-                      id={`${uid}-asr-no-repeat-ngram-size`}
-                      label="No-repeat n-gram size"
-                      value={values.asrNoRepeatNgramSize}
-                      onChange={(value) => set('asrNoRepeatNgramSize', value)}
-                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.noRepeatNgramSize}
-                    />
-                    <RangedNumberField
-                      id={`${uid}-asr-prev-text-context-words`}
-                      label="Previous-text context words"
-                      value={values.asrPrevTextContextWords}
-                      onChange={(value) => set('asrPrevTextContextWords', value)}
-                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.prevTextContextWords}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-                    <div className="flex flex-col">
-                      <Label htmlFor={`${uid}-asr-condition-on-prev-tokens`}>Condition on previous tokens</Label>
-                      <span className="text-muted-foreground text-xs">Feed the previous window&apos;s tokens to the decoder as context.</span>
+                  <p>
+                    <span className="text-foreground font-medium">Derived local path:</span>{' '}
+                    <code className="font-mono" data-testid="derived-local-path">
+                      {values.bucketPrefix.trim() ? deriveLocalPath(values.bucketPrefix.trim(), values.primaryObject.trim() || null) : '— (not published)'}
+                    </code>{' '}
+                    — the services read it as the highest-precedence weight location; it is never typed by hand.
+                  </p>
+                  <ModelRegistryConnectionStatus />
+                </div>
+                <Field id={`${uid}-source-revision`} label="Source revision">
+                  <Input
+                    id={`${uid}-source-revision`}
+                    value={values.sourceRevision}
+                    onChange={(event) => set('sourceRevision', event.target.value)}
+                    className="font-mono"
+                  />
+                </Field>
+                <Field id={`${uid}-memory`} label="Memory size (MB)">
+                  <Input
+                    id={`${uid}-memory`}
+                    type="number"
+                    min={0}
+                    value={values.memorySizeMb}
+                    onChange={(event) => set('memorySizeMb', event.target.value)}
+                  />
+                </Field>
+                <Field id={`${uid}-compute-type`} label="Compute type">
+                  <Input
+                    id={`${uid}-compute-type`}
+                    value={values.computeType}
+                    onChange={(event) => set('computeType', event.target.value)}
+                    placeholder="float16"
+                  />
+                </Field>
+                <Field id={`${uid}-tags`} label="Tags (comma-separated)">
+                  <Input id={`${uid}-tags`} value={values.tags} onChange={(event) => set('tags', event.target.value)} placeholder="stt, fallback" />
+                </Field>
+                {values.taskType.trim() === ASR_TASK_TYPE ? (
+                  <fieldset className="flex flex-col gap-4 rounded-md border p-3 sm:col-span-2">
+                    <legend className="px-1 text-sm font-medium">ASR decode profile</legend>
+                    <p className="text-muted-foreground text-xs">
+                      Recommended decode geometry and thresholds for this fine-tune (TASK-934) — travels with the weights, not with
+                      whichever agent binds them. Resolved agent → this profile → engine default; a value an agent sets always wins.
+                    </p>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <RangedNumberField
+                        id={`${uid}-asr-max-decode-window`}
+                        label="Max decode window (s)"
+                        value={values.asrMaxDecodeWindowSec}
+                        onChange={(value) => set('asrMaxDecodeWindowSec', value)}
+                        range={AI_MODEL_ASR_PROFILE_WINDOW_RANGES.maxDecodeWindowSec}
+                        placeholder="7"
+                      />
+                      <RangedNumberField
+                        id={`${uid}-asr-partial-window`}
+                        label="Partial window (s)"
+                        value={values.asrPartialWindowSec}
+                        onChange={(value) => set('asrPartialWindowSec', value)}
+                        range={AI_MODEL_ASR_PROFILE_WINDOW_RANGES.partialWindowSec}
+                        placeholder="15"
+                      />
+                      <RangedNumberField
+                        id={`${uid}-asr-beam-size`}
+                        label="Beam size"
+                        value={values.asrBeamSize}
+                        onChange={(value) => set('asrBeamSize', value)}
+                        range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.beamSize}
+                      />
+                      <RangedNumberField
+                        id={`${uid}-asr-temperature`}
+                        label="Temperature"
+                        value={values.asrTemperature}
+                        onChange={(value) => set('asrTemperature', value)}
+                        range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.temperature}
+                      />
+                      <RangedNumberField
+                        id={`${uid}-asr-no-speech-threshold`}
+                        label="No-speech threshold"
+                        value={values.asrNoSpeechThreshold}
+                        onChange={(value) => set('asrNoSpeechThreshold', value)}
+                        range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.noSpeechThreshold}
+                      />
+                      <RangedNumberField
+                        id={`${uid}-asr-compression-ratio-threshold`}
+                        label="Compression ratio threshold"
+                        value={values.asrCompressionRatioThreshold}
+                        onChange={(value) => set('asrCompressionRatioThreshold', value)}
+                        range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.compressionRatioThreshold}
+                      />
+                      <RangedNumberField
+                        id={`${uid}-asr-logprob-threshold`}
+                        label="Logprob threshold"
+                        value={values.asrLogprobThreshold}
+                        onChange={(value) => set('asrLogprobThreshold', value)}
+                        range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.logprobThreshold}
+                      />
+                      <RangedNumberField
+                        id={`${uid}-asr-no-repeat-ngram-size`}
+                        label="No-repeat n-gram size"
+                        value={values.asrNoRepeatNgramSize}
+                        onChange={(value) => set('asrNoRepeatNgramSize', value)}
+                        range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.noRepeatNgramSize}
+                      />
+                      <RangedNumberField
+                        id={`${uid}-asr-prev-text-context-words`}
+                        label="Previous-text context words"
+                        value={values.asrPrevTextContextWords}
+                        onChange={(value) => set('asrPrevTextContextWords', value)}
+                        range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.prevTextContextWords}
+                      />
                     </div>
-                    <Switch
-                      id={`${uid}-asr-condition-on-prev-tokens`}
-                      checked={values.asrConditionOnPrevTokens}
-                      onCheckedChange={(checked) => set('asrConditionOnPrevTokens', checked)}
-                    />
-                  </div>
-                  <Field id={`${uid}-asr-hotwords`} label={`Hotwords (comma-separated, max ${AI_MODEL_ASR_PROFILE_HOTWORDS_MAX_ITEMS})`}>
-                    <Input
-                      id={`${uid}-asr-hotwords`}
-                      value={values.asrHotwords}
-                      onChange={(event) => set('asrHotwords', event.target.value)}
-                      placeholder="sephotrioxone, imoxicillin"
-                    />
-                  </Field>
-                  <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-                    <div className="flex flex-col">
-                      <Label htmlFor={`${uid}-asr-hotwords-in-prompt`}>Append hotwords to the decoder prompt</Label>
-                      <span className="text-muted-foreground text-xs">
-                        whisper.cpp has no hotword API, so the prompt is its only bias channel — and on the seeded ml-en code-switch fine-tune that append
-                        measured 2% Latin output against 100% without it. Leave off unless this model was measured with it. The terms still reach the
-                        clinical-vocabulary correction stage either way.
-                      </span>
+                    <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                      <div className="flex flex-col">
+                        <Label htmlFor={`${uid}-asr-condition-on-prev-tokens`}>Condition on previous tokens</Label>
+                        <span className="text-muted-foreground text-xs">Feed the previous window&apos;s tokens to the decoder as context.</span>
+                      </div>
+                      <Switch
+                        id={`${uid}-asr-condition-on-prev-tokens`}
+                        checked={values.asrConditionOnPrevTokens}
+                        onCheckedChange={(checked) => set('asrConditionOnPrevTokens', checked)}
+                      />
                     </div>
-                    <Switch
-                      id={`${uid}-asr-hotwords-in-prompt`}
-                      checked={values.asrHotwordsInPrompt}
-                      onCheckedChange={(checked) => set('asrHotwordsInPrompt', checked)}
-                    />
-                  </div>
-                  <Field id={`${uid}-asr-initial-prompt`} label="Initial prompt">
-                    <Textarea
-                      id={`${uid}-asr-initial-prompt`}
-                      value={values.asrInitialPrompt}
-                      onChange={(event) => set('asrInitialPrompt', event.target.value)}
-                      rows={2}
-                      maxLength={AI_MODEL_ASR_PROFILE_INITIAL_PROMPT_MAX_LENGTH}
-                      placeholder="Clinical consultation between a clinician and a patient. English and Malayalam medical terminology."
-                    />
-                  </Field>
-                </fieldset>
-              ) : null}
+                    <Field id={`${uid}-asr-hotwords`} label={`Hotwords (comma-separated, max ${AI_MODEL_ASR_PROFILE_HOTWORDS_MAX_ITEMS})`}>
+                      <Input
+                        id={`${uid}-asr-hotwords`}
+                        value={values.asrHotwords}
+                        onChange={(event) => set('asrHotwords', event.target.value)}
+                        placeholder="sephotrioxone, imoxicillin"
+                      />
+                    </Field>
+                    <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                      <div className="flex flex-col">
+                        <Label htmlFor={`${uid}-asr-hotwords-in-prompt`}>Append hotwords to the decoder prompt</Label>
+                        <span className="text-muted-foreground text-xs">
+                          whisper.cpp has no hotword API, so the prompt is its only bias channel — and on the seeded ml-en code-switch fine-tune that append
+                          measured 2% Latin output against 100% without it. Leave off unless this model was measured with it. The terms still reach the
+                          clinical-vocabulary correction stage either way.
+                        </span>
+                      </div>
+                      <Switch
+                        id={`${uid}-asr-hotwords-in-prompt`}
+                        checked={values.asrHotwordsInPrompt}
+                        onCheckedChange={(checked) => set('asrHotwordsInPrompt', checked)}
+                      />
+                    </div>
+                    <Field id={`${uid}-asr-initial-prompt`} label="Initial prompt">
+                      <Textarea
+                        id={`${uid}-asr-initial-prompt`}
+                        value={values.asrInitialPrompt}
+                        onChange={(event) => set('asrInitialPrompt', event.target.value)}
+                        rows={2}
+                        maxLength={AI_MODEL_ASR_PROFILE_INITIAL_PROMPT_MAX_LENGTH}
+                        placeholder="Clinical consultation between a clinician and a patient. English and Malayalam medical terminology."
+                      />
+                    </Field>
+                  </fieldset>
+                ) : null}
+              </fieldset>
             </form>
             {/* Publish needs an id — no create-time equivalent, so this is edit-only. */}
             {isEdit && model ? (
