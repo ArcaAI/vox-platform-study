@@ -1,133 +1,7 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 365,
+  "distinctNames": 363,
   "services": {
-    "asr-vllm": {
-      "port": 8867,
-      "title": "Whisper decode on vLLM",
-      "fields": [
-        {
-          "name": "ASR_VLLM_API_GATEWAY_URL",
-          "aliases": [],
-          "class": "Settings",
-          "field": "api_gateway_url",
-          "prefix": "ASR_VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "http://localhost:8868/api/v1",
-          "description": "Where the control plane lives (env `ASR_VLLM_API_GATEWAY_URL`). BOOTSTRAP TRANSPORT \u2014 the address of the config source, not config. Blank \u21d2 no control plane: platform knobs stay at their defaults and HuggingFace pulls fail closed (no registry credential can be resolved)."
-        },
-        {
-          "name": "ASR_VLLM_ENFORCE_EAGER__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "enforce_eager",
-          "prefix": "ASR_VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "Skip CUDA-graph capture (faster cold start, slower steady state)."
-        },
-        {
-          "name": "ASR_VLLM_GPU_MEMORY_UTILIZATION__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "gpu_memory_utilization",
-          "prefix": "ASR_VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 0.2,
-          "description": "vLLM engine capacity \u2014 CONTROL PLANE (`asrVllm.engine.*`), read at engine BUILD. Fraction of the WHOLE GPU's memory each engine may claim (weights + KV/encoder cache). A time-sliced GPU has no memory isolation, so on a shared card this is the service's budget share, not \"how much is free\". 0.20 while ASR shares a 16 GB card (OD-10); raised per environment on the SYSTEM row, never in code."
-        },
-        {
-          "name": "ASR_VLLM_MAX_NUM_SEQS__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "max_num_seqs",
-          "prefix": "ASR_VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 64,
-          "description": "vLLM's running-batch cap \u2014 the ceiling on concurrent windows in one engine."
-        },
-        {
-          "name": "ASR_VLLM_MAX_RESIDENT_ENGINES__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "max_resident_engines",
-          "prefix": "ASR_VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 1,
-          "description": "Engines resident at once (one per runtime key), read at every eviction check. Each claims `gpu_memory_utilization`, so the product must fit one card."
-        },
-        {
-          "name": "ASR_VLLM_TRUNCATION_MIN_CHARS_PER_VOICED_SECOND__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "truncation_min_chars_per_voiced_second",
-          "prefix": "ASR_VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 3.0,
-          "description": "Truncation heuristic (vllm#53144 hook) \u2014 CONTROL PLANE (`asrVllm.truncation.*`), read per request."
-        },
-        {
-          "name": "ASR_VLLM_TRUNCATION_VOICED_DBFS__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "truncation_voiced_dbfs",
-          "prefix": "ASR_VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": -40.0,
-          "description": ""
-        },
-        {
-          "name": "ASR_VLLM_WEIGHTS_CACHE_DIR",
-          "aliases": [],
-          "class": "Settings",
-          "field": "weights_cache_dir",
-          "prefix": "ASR_VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": null,
-          "description": "Where a `sourceUri` (HuggingFace) pull lands on this pod \u2014 a PVC mount, pod topology. Unset \u21d2 huggingface_hub's own cache (`$HF_HOME/hub`; the image sets HF_HOME). Published weights (`localPath`) are read in place and never copied here."
-        },
-        {
-          "name": "INTERNAL_ACCESS_TOKEN",
-          "aliases": [],
-          "class": "Settings",
-          "field": "internal_access_token",
-          "prefix": "ASR_VLLM_",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "Inbound AND outbound credential (owner decision D-D): the ONE shared internal token. Accepted inbound as `X-Service-Token`, presented as `X-Service-Token` on the gateway's `/internal/*` routes. Unprefixed on purpose \u2014 it belongs to no single service. Empty \u21d2 inbound auth bypassed, but only when running locally."
-        },
-        {
-          "name": "REDIS_URL",
-          "aliases": [],
-          "class": "Settings",
-          "field": "redis_url",
-          "prefix": "ASR_VLLM_",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "",
-          "description": "The Redis that carries `arca:config:invalidate`. Shared infrastructure, so the bare name every service reads. Blank \u21d2 no push invalidation; the effective-config TTL (60 s \u00b1 10 %) is then the only propagation path."
-        }
-      ]
-    },
     "guardrail": {
       "port": 8863,
       "title": "Safety Engine",
@@ -1562,7 +1436,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "Default OFF and requires an explicit endpoint (not just the flag) \u2014 a bare ``HARNESS_OTEL_ENABLED=true`` with no collector configured must not change startup behaviour. See ``otel_tracing_enabled`` below."
+          "description": "Default OFF and requires an explicit endpoint (not just the flag) \u2014 a bare ``HARNESS_OTEL_ENABLED=true`` with no collector configured must not change startup behaviour (`core/observability.py::build_observability_config`)."
         },
         {
           "name": "HARNESS_OTEL_EXPORTER_ENDPOINT",
@@ -3840,6 +3714,120 @@
           "description": "Local engines are LAZY by default: they register at boot but load their weights on the first synth request and are TTL-evicted when idle. Set TTS_WARMUP_ENABLED=true to restore boot-warm behaviour (fail-at-boot rather than first-request 503) \u2014 see docs/operations/inference/model-retention.md."
         }
       ]
+    },
+    "vllm": {
+      "port": 8867,
+      "title": "Inference shell on vLLM",
+      "fields": [
+        {
+          "name": "HF_HUB_OFFLINE",
+          "aliases": [],
+          "class": "Settings",
+          "field": "hf_hub_offline",
+          "prefix": "VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "boolean",
+          "default": "false",
+          "description": "HuggingFace's own offline switch. A cluster pod runs with HF_HUB_OFFLINE=1: weights come from the published models bucket only, and a model absent from it is a NAMED refusal (MODEL_NOT_PUBLISHED), never an attempted pull."
+        },
+        {
+          "name": "INTERNAL_ACCESS_TOKEN",
+          "aliases": [],
+          "class": "Settings",
+          "field": "internal_access_token",
+          "prefix": "VLLM_",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "Inbound AND outbound credential (owner decision D-D): the ONE shared internal token. Accepted inbound as `X-Service-Token`, presented as `X-Service-Token` on the gateway's `/internal/*` routes. Unprefixed on purpose \u2014 it belongs to no single service. Empty \u21d2 inbound auth bypassed, but only when running locally."
+        },
+        {
+          "name": "REDIS_URL",
+          "aliases": [],
+          "class": "Settings",
+          "field": "redis_url",
+          "prefix": "VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": "",
+          "description": "The Redis that carries `arca:config:invalidate`. Shared infrastructure, so the bare name every service reads. Blank \u21d2 no push invalidation; the effective-config TTL (60 s \u00b1 10 %) is then the only propagation path."
+        },
+        {
+          "name": "VLLM_API_GATEWAY_URL",
+          "aliases": [],
+          "class": "Settings",
+          "field": "api_gateway_url",
+          "prefix": "VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": "http://localhost:8868/api/v1",
+          "description": "Where the control plane lives (env `VLLM_API_GATEWAY_URL`). BOOTSTRAP TRANSPORT \u2014 the address of the config source, not config. Blank \u21d2 no control plane: platform knobs stay at their defaults and HuggingFace pulls fail closed (no registry credential can be resolved)."
+        },
+        {
+          "name": "VLLM_POOL",
+          "aliases": [],
+          "class": "Settings",
+          "field": "pool",
+          "prefix": "VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": "default",
+          "description": "Which pool this process IS (C-4): a key of `vllm.pools`. Pod identity, so env \u2014 a Deployment per pool sets it. A name the map does not declare refuses to start."
+        },
+        {
+          "name": "VLLM_POOLS__MOVED_TO_CONTROL_PLANE",
+          "aliases": [],
+          "class": "Settings",
+          "field": "pools",
+          "prefix": "VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "json",
+          "default": "{\"default\": {\"acceptedKinds\": [\"asr\"], \"pins\": [], \"vramBudgetGiB\": 6, \"maxResidentEngines\": 1, \"inflightFactor\": 2}}",
+          "description": "Pools \u2014 CONTROL PLANE (`vllm.pools`), read at every admission. The raw map; see `pool_config()` for this process's entry."
+        },
+        {
+          "name": "VLLM_TRUNCATION_MIN_CHARS_PER_VOICED_SECOND__MOVED_TO_CONTROL_PLANE",
+          "aliases": [],
+          "class": "Settings",
+          "field": "truncation_min_chars_per_voiced_second",
+          "prefix": "VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 3.0,
+          "description": "Truncation heuristic (vllm#53144 hook) \u2014 CONTROL PLANE (`vllm.truncation.*`), read per request."
+        },
+        {
+          "name": "VLLM_TRUNCATION_VOICED_DBFS__MOVED_TO_CONTROL_PLANE",
+          "aliases": [],
+          "class": "Settings",
+          "field": "truncation_voiced_dbfs",
+          "prefix": "VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": -40.0,
+          "description": ""
+        },
+        {
+          "name": "VLLM_WEIGHTS_CACHE_DIR",
+          "aliases": [],
+          "class": "Settings",
+          "field": "weights_cache_dir",
+          "prefix": "VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": null,
+          "description": "Where a `sourceUri` (HuggingFace) pull lands on this pod \u2014 a PVC mount, pod topology. Unset \u21d2 huggingface_hub's own cache (`$HF_HOME/hub`; the image sets HF_HOME). Published weights (`localPath`) are read in place and never copied here."
+        }
+      ]
     }
   },
   "bareReads": {
@@ -3847,7 +3835,6 @@
       "apps/harness/src/harness/eval/judge/selection.py"
     ],
     "DEPLOYMENT_ENVIRONMENT": [
-      "apps/asr-vllm/src/asr_vllm/core/service_auth.py",
       "apps/guardrail/src/guardrail/main.py",
       "apps/harness/src/harness/core/config.py",
       "apps/stt/src/stt/core/service_auth.py",
@@ -3855,6 +3842,7 @@
       "apps/stt/src/stt/worker.py",
       "apps/tts/src/tts/core/config.py",
       "apps/tts/src/tts/core/service_auth.py",
+      "apps/vllm/src/hope_vllm/core/service_auth.py",
       "packages/py-obs/src/hope_obs/config.py"
     ],
     "EXPORTER_INTERVAL_SECONDS": [
@@ -3900,13 +3888,7 @@
       "packages/py-runtime-models/src/hope_runtime_models/resolvable.py"
     ],
     "HF_HUB_DISABLE_IMPLICIT_TOKEN": [
-      "apps/asr-vllm/src/asr_vllm/main.py"
-    ],
-    "HF_HUB_OFFLINE": [
-      "apps/harness/src/harness/models/source_resolver.py",
-      "apps/nlp/src/nlp/models/source_resolver.py",
-      "apps/stt/src/stt/models/source_resolver.py",
-      "apps/tts/src/tts/models/source_resolver.py"
+      "apps/vllm/src/hope_vllm/main.py"
     ],
     "HOPE_SECRETS_DIR": [
       "packages/py-env/src/hope_env/settings_sources.py"

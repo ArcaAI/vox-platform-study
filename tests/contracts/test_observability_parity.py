@@ -2,7 +2,7 @@
 
 Hermetic, static-inspection guard that keeps the Python services
 (``stt``, ``text``, ``guardrail``, ``nlp``, ``harness``, ``tts``, and — since
-TASK-1010 — ``asr-vllm``) on the shared
+TASK-1010 — ``vllm``, renamed from ``asr-vllm`` by TASK-1021) on the shared
 ``hope_obs`` standard documented in
 ``docs/implementation/TASK-987-Python-Logging-And-Tracing-Standard/README.md``
 §3 (R-1..R-9). Nothing here boots an app, opens a socket, or imports a
@@ -88,14 +88,14 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-SERVICES: tuple[str, ...] = ("stt", "text", "guardrail", "nlp", "harness", "tts", "asr-vllm")
+SERVICES: tuple[str, ...] = ("stt", "text", "guardrail", "nlp", "harness", "tts", "vllm")
 
 #: Service FOLDER (``apps/<svc>``) -> importable package (``apps/<svc>/src/<pkg>``).
-#: Every service but one names them identically; ``asr-vllm`` cannot (a hyphen is not
-#: legal in a package name). Explicit rather than ``svc.replace("-", "_")`` so that a
+#: Every service but one names them identically; ``vllm`` cannot (a package named
+#: ``vllm`` would shadow the engine it serves). Explicit rather than ``svc.replace("-", "_")`` so that a
 #: folder/package mismatch is a reviewed line here, never an inference that could be
 #: wrong in silence.
-_SERVICE_PACKAGES: dict[str, str] = {"asr-vllm": "asr_vllm"}
+_SERVICE_PACKAGES: dict[str, str] = {"vllm": "hope_vllm"}
 
 #: STT's Dockerfile lives at a non-standard path (`docker/` subdirectory,
 #: multi-stage GPU build) — a naive `apps/<svc>/Dockerfile` glob misses it
@@ -111,17 +111,17 @@ _SERVICE_DOCKERFILES: dict[str, str] = {
     # (TASK-1010 OD-5: vLLM pins torch/fastapi/transformers, which the root uv lock
     # cannot hold). Nothing asserted below is about the base image — only that the
     # Dockerfile COPYs `packages/py-obs` — so the path is the only thing that differs.
-    "asr-vllm": "apps/asr-vllm/Dockerfile",
+    "vllm": "apps/vllm/Dockerfile",
 }
 
 #: How each service's pyproject sources `hope-obs`. The fleet uses the root uv
-#: workspace (``{workspace = true}``); `asr-vllm` is deliberately NOT a workspace
+#: workspace (``{workspace = true}``); `vllm` is deliberately NOT a workspace
 #: member (TASK-1010 OD-5 — it has its own ``uv.lock``), so it names the SAME in-repo
 #: package by path. The rule the assertion exists for is unchanged — `hope-obs` must
 #: resolve to `packages/py-obs`, never to PyPI — so this is a narrow, named exemption
 #: to the SPELLING, not to the rule. A second entry needs the same owner decision.
 _HOPE_OBS_SOURCE_OVERRIDES: dict[str, dict[str, object]] = {
-    "asr-vllm": {"path": "../../packages/py-obs"},
+    "vllm": {"path": "../../packages/py-obs"},
 }
 
 #: The ONE named exception to "no local MeterProvider" (see module docstring).
