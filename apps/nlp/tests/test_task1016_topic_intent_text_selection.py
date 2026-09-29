@@ -126,6 +126,24 @@ class TestClientNamesTheSelection:
         assert http.calls[0]["json"]["provider_overrides"] == {"lm-studio": CONNECTION}
 
     @pytest.mark.asyncio
+    async def test_opts_out_of_the_medical_relevance_gate_only(self) -> None:
+        """Owner decision (2026-09-29): open-taxonomy topic/intent labels are not clinical
+        content (`billing`, `appointments`), so the input medical-relevance gate must not
+        refuse them — `text` answered 422 CONTENT_BLOCKED_NOT_MEDICAL for a billing question.
+        ONLY that gate: `enabled` stays unset, so platform screening (and the output gate)
+        still run."""
+        http = _RecordingHttp()
+        client = ExternalTextClient(
+            settings=ExternalTextConfig(base_url="http://text.local"), http_client=http
+        )
+
+        await client.generate_label_with_usage(
+            "Which topic?", tenant_id="t1", provider="lm-studio", model="gemma-3-12b"
+        )
+
+        assert http.calls[0]["json"]["guardrail_policy"] == {"require_medical": False}
+
+    @pytest.mark.asyncio
     async def test_posts_to_texts_versioned_generate_route(self) -> None:
         """`TEXT_URL` is the fleet-wide bare ORIGIN (guardrail and harness append `/api/v1/...`);
         text mounts `/generate` under `/api/v1`. The bare `/generate` path 404'd on every call

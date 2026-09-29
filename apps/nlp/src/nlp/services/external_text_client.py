@@ -37,6 +37,14 @@ logger = get_logger(__name__)
 #: TASK-1016: the former bare `/generate` 404'd on every call.
 GENERATE_PATH = "/api/v1/generate"
 
+#: Owner decision (2026-09-29, TASK-1016): open-taxonomy topic/intent labels are not clinical
+#: content — a tenant's topics are things like `billing` and `appointments` — so `text`'s INPUT
+#: medical-relevance gate must not refuse them (it answered 422 CONTENT_BLOCKED_NOT_MEDICAL for a
+#: billing question). `require_medical` is the NARROW knob: the guardrail still screens and the
+#: output gate still runs. `enabled` is deliberately left unset — `False` would switch BOTH gates
+#: off (`GuardrailPolicyOverride` in apps/text), which is not what was decided.
+GUARDRAIL_POLICY = {"require_medical": False}
+
 
 class ExternalTextUnavailableError(Exception):
     """Raised when `text` is unreachable after the bounded retry budget, or
@@ -167,6 +175,7 @@ class ExternalTextClient:
             "stream": False,
             "provider": resolved_provider,
             "model": resolved_model,
+            "guardrail_policy": dict(GUARDRAIL_POLICY),
         }
         if provider_override:
             body["provider_overrides"] = {resolved_provider: provider_override}
