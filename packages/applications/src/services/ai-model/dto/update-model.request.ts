@@ -9,16 +9,19 @@ import {
   IsIn,
   IsNumber,
   IsInt,
+  IsObject,
   Matches,
   MaxLength,
   MinLength,
   Min,
   Validate,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { AiDeploymentKind, ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
 import { AI_MODEL_LIBRARIES, AI_MODEL_PROVIDERS, AI_MODEL_SERVED_BY, BucketRelativePrefixConstraint } from '../constants';
 import { AsrProfileRequest } from './asr-profile.request';
+import { ModelServingFactsRequest } from './serving-facts.request';
 
 /**
  * `PATCH admin/ai-models/:id`.
@@ -254,6 +257,21 @@ export class UpdateModelRequest {
   @ValidateNested()
   @Type(() => AsrProfileRequest)
   asrProfile?: AsrProfileRequest | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Engine sizing facts for a vLLM-served row (`_metadata.serving`, TASK-1021 D-11): `vramGiB` (required, > 0), and ' +
+      'optionally `maxNumSeqs` (whole, >= 1) and `enforceEager`. MERGED into the stored facts — a key the PATCH omits keeps ' +
+      'its value, and no other `_metadata` key is touched. Omit the field to leave the facts untouched. A row without ' +
+      '`vramGiB` is refused `SERVING_FACTS_MISSING` by the serving-spec route.',
+    type: ModelServingFactsRequest,
+  })
+  // `ValidateIf` (not `IsOptional`): an explicit `null` is refused rather than silently ignored.
+  @ValidateIf((_: unknown, value: unknown) => value !== undefined)
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ModelServingFactsRequest)
+  serving?: ModelServingFactsRequest;
 
   // OCC CAS predicate (echoed from the prior GET, e.g. via
   // the `ETag` header). The controller folds the `If-Match` header over this

@@ -372,6 +372,9 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     baseModel: 'openai/whisper-large-v3-turbo',
     languages: ['ml', 'en'],
     provider: 'vllm',
+    // `vllm` is ENGINE_SERVED, so the row must name what goes on the wire (the admin PATCH and the
+    // agent publish gate both refuse it otherwise). The `vllm` service answers to the slug.
+    wireModelId: 'arcaai-whisper-large-ml-en-vllm',
     architecture: 'whisper',
     memorySizeMb: 3584,
     computeType: 'float16',

@@ -86,6 +86,13 @@ describe('the vLLM registry row (OD-9, D-13)', () => {
     });
   });
 
+  it('names its slug as the wire model id — an engine-served row without one refuses every admin PATCH and agent publish', () => {
+    // `AiModelService.assertEngineServedWireId` 400s any PATCH of a row whose provider is ENGINE_SERVED
+    // (`vllm`) and has no wireModelId, and the agent publish gate refuses such a row too. The id the
+    // `vllm` service answers to on the wire IS the slug (`stt` sends `model=<slug>`).
+    expect(vllmRow()!.wireModelId).toBe(VLLM_SLUG);
+  });
+
   it('declares its engine sizing on _metadata.serving (D-11) — vramGiB is what sizes the GPU', () => {
     const serving = (vllmRow()!.metaData as Record<string, any>).serving;
     expect(serving).toEqual({ vramGiB: 5, maxNumSeqs: 64 });
