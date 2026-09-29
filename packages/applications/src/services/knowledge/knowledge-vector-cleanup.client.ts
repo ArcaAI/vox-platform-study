@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { requestIdHeader } from '../../common/internal-service-headers';
 
 /**
  * KnowledgeVectorCleanupClient — institutional RAG delete-side sibling of
@@ -39,7 +40,7 @@ export class KnowledgeVectorCleanupClient {
     await this.httpService.axiosRef.delete(url, {
       params: { tenantId: input.tenantId },
       timeout: 30000,
-      headers: { 'X-Service-Token': token, 'X-Tenant-Id': input.tenantId },
+      headers: { 'X-Service-Token': token, 'X-Tenant-Id': input.tenantId, ...requestIdHeader() },
     });
 
     this.logger.log({

@@ -7,6 +7,7 @@ import {
   TtsAgentResolverService,
   UsageIdempotencyKey,
   appendComputeAndByteUnits,
+  requestIdHeader,
 } from '@arcaai/applications';
 import type { UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
@@ -250,7 +251,7 @@ export class HarnessTtsInternalController {
 
   /** The ONE shared `INTERNAL_ACCESS_TOKEN` (the `TTS_SERVICE_TOKEN` fallback was retired with its descriptor, TASK-879/880). */
   private forwardHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/octet-stream' };
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/octet-stream', ...requestIdHeader() };
     const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;

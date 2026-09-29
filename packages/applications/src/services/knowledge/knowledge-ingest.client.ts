@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { requestIdHeader } from '../../common/internal-service-headers';
 
 /**
  * Request body sent to the harness internal knowledge-ingest endpoint. The
@@ -77,6 +78,7 @@ export class KnowledgeIngestClient {
         'Content-Type': 'application/json',
         'X-Service-Token': token,
         'X-Tenant-Id': request.tenantId,
+        ...requestIdHeader(),
       },
     });
 

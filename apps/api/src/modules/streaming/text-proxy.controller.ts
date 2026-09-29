@@ -36,6 +36,7 @@ import {
   type UsageAttributes,
   type UsageEventBatchInput,
   type VisitTypeDefinition,
+  requestIdHeader,
 } from '@arcaai/applications';
 import type { IBlobStorageService as IBlobStorageServiceType } from '@arcaai/applications';
 import {
@@ -505,6 +506,7 @@ export class TextProxyController {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       [TENANT_ID_HEADER]: tenantHeaderValue(this.clsService?.get('tenantId'), TENANTLESS.PLATFORM_OPERATOR),
+      ...requestIdHeader(),
     };
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;

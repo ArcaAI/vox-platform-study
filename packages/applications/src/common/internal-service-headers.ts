@@ -100,14 +100,23 @@ export function internalServiceHeaders(options: {
   tenantlessReason: TenantlessReason;
   extra?: Record<string, string>;
 }): Record<string, string> {
-  const requestId = currentRequestId();
   return {
     'Content-Type': 'application/json',
     [SERVICE_TOKEN_HEADER]: options.serviceToken,
     [TENANT_ID_HEADER]: tenantHeaderValue(options.tenantId, options.tenantlessReason),
-    ...(requestId ? { [REQUEST_ID_HEADER]: requestId } : {}),
+    ...requestIdHeader(),
     ...(options.extra ?? {}),
   };
+}
+
+/**
+ * `{ X-Request-Id }` for the current request, `{}` outside one. For internal
+ * clients that assemble their own headers instead of calling
+ * {@link internalServiceHeaders}: spread it in so the id reaches the next hop.
+ */
+export function requestIdHeader(): Record<string, string> {
+  const requestId = currentRequestId();
+  return requestId ? { [REQUEST_ID_HEADER]: requestId } : {};
 }
 
 /**
