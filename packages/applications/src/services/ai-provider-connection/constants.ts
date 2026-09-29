@@ -154,6 +154,11 @@ export const PLATFORM_SELF_HOST_PROVIDERS: Readonly<Partial<Record<ProviderServi
   // own server is not that, so it belongs on a pair the gate does not touch.
   // `embeddings:{azure,openai}` stay exactly as they were — the tenant-BYO lane.
   embeddings: Object.freeze(['tei-embed'] as const),
+  // TASK-1021 — `vllm` is the platform's OWN OpenAI-compatible inference service (`apps/vllm`,
+  // `hope-vllm-asr` for the ASR pool). The SYSTEM `stt/vllm` row says where it lives (`baseUrl`)
+  // and how many decodes it may take at once (`maxConcurrent`); a tenant has no vendor account to
+  // bring for it, so a tenant row is a 403 and the platform-default entitlement never suppresses it.
+  stt: Object.freeze(['vllm'] as const),
 });
 
 /** Whether `(service, provider)` names one of the platform's own self-hosted serving engines. */

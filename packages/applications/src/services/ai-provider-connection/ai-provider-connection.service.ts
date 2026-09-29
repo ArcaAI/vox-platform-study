@@ -1334,6 +1334,8 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       if (row.region) entry.region = row.region;
       if (row.apiVersion) entry.api_version = row.apiVersion;
       if (row.deploymentName) entry.deployment_name = row.deploymentName;
+      // TASK-1021 — the in-flight bound of a self-host engine (`stt/vllm`); absent = engine default.
+      if (row.maxConcurrent) entry.max_concurrent = row.maxConcurrent;
       return entry;
     } catch {
       this.logger.warn({

@@ -1,6 +1,6 @@
 /**
  * TASK-1010 phase B (OD-6 / OD-8) — the admin WRITE boundary for the two serving facts on
- * `AiModel._metadata.asr`, and the `asr-vllm` serving target.
+ * `AiModel._metadata.asr`, and the vLLM serving target (`asr-vllm`, renamed `vllm` by TASK-1021).
  *
  * `AsrProfileRequest` is strict (400 naming the field), unlike the lenient read-side parser:
  * an admin must be told their value was refused rather than have it silently dropped.
@@ -37,8 +37,12 @@ describe('AsrProfileRequest — serving facts (TASK-1010)', () => {
   });
 });
 
-describe('AI_MODEL_SERVED_BY — the asr-vllm serving target (TASK-1010 OD-9)', () => {
-  it('lists asr-vllm as a workload that executes a registry row', () => {
-    expect(AI_MODEL_SERVED_BY).toContain('asr-vllm');
+describe('AI_MODEL_SERVED_BY — the vllm serving target (TASK-1010 OD-9, renamed by TASK-1021 D-13)', () => {
+  it('lists vllm as a workload that executes a registry row', () => {
+    expect(AI_MODEL_SERVED_BY).toContain('vllm');
+  });
+
+  it('no longer lists the retired asr-vllm name', () => {
+    expect(AI_MODEL_SERVED_BY).not.toContain('asr-vllm');
   });
 });

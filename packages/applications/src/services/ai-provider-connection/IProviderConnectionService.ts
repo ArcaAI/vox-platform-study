@@ -72,6 +72,8 @@ export interface ProviderOverrideEntry {
   region?: string;
   api_version?: string;
   deployment_name?: string;
+  /** TASK-1021 — `AiProviderConnection.maxConcurrent`: in-flight requests the endpoint may take (self-host engines). */
+  max_concurrent?: number;
   /**
    * Providers whose per-request model/target lives in no dedicated column carry
    * it in the connection row's `extraJson` (the console writes it there): an

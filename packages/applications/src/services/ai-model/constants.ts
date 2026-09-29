@@ -99,9 +99,10 @@ export const AI_MODEL_SERVED_BY = [
   'lmstudio',
   'text',
   'gateway-proxy',
-  // TASK-1010 (OD-9) — `apps/asr-vllm`, the vLLM Whisper decode backend. Its rows are their own
-  // registry entries (readiness and inventory stay per serving target), reached through an agent.
-  'asr-vllm',
+  // TASK-1010 (OD-9) — the vLLM inference service. Its rows are their own registry entries
+  // (readiness and inventory stay per serving target), reached through an agent. TASK-1021 renamed
+  // it from `asr-vllm` when `apps/asr-vllm` became `apps/vllm` (D-13).
+  'vllm',
 ] as const;
 
 export type AiModelServedBy = (typeof AI_MODEL_SERVED_BY)[number];

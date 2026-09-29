@@ -158,8 +158,8 @@ export const AI_MODEL_SERVED_BY = [
   'lmstudio',
   'text',
   'gateway-proxy',
-  // TASK-1010 (OD-9) — `apps/asr-vllm`, the vLLM Whisper decode backend.
-  'asr-vllm',
+  // TASK-1010 (OD-9) — the vLLM inference service (`apps/vllm`; `asr-vllm` until TASK-1021).
+  'vllm',
 ] as const;
 
 export type AiModelServedBy = (typeof AI_MODEL_SERVED_BY)[number];

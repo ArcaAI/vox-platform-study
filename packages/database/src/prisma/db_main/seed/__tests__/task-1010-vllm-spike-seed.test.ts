@@ -68,7 +68,7 @@ describe('the vLLM registry row (OD-9)', () => {
       id: VLLM_ID,
       tenantId: SYSTEM_TENANT_ID,
       taskType: 'AUTOMATIC_SPEECH_RECOGNITION',
-      servedBy: 'asr-vllm',
+      servedBy: 'vllm',
       format: 'SAFETENSOR',
       // HF-cache layout on publish (`HF_CACHE_LIBRARIES`), so vLLM is handed a local directory.
       libraryName: 'transformers',

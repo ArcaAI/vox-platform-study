@@ -364,7 +364,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     sourceRevision: 'main',
     format: AiModelFormat.SAFETENSOR,
     libraryName: 'transformers',
-    servedBy: 'asr-vllm',
+    servedBy: 'vllm',
     deploymentKind: AiDeploymentKind.SELF_HOSTED,
     baseModel: 'openai/whisper-large-v3-turbo',
     languages: ['ml', 'en'],
