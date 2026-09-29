@@ -26,14 +26,13 @@ from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any, NamedTuple
 
+from hope_obs import redact_id
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from harness.core.config import Settings, get_runtime_judge_config, get_settings
 from harness.core.consent_client import ConsentClient, ConsentDecision, build_consent_client
 from harness.core.effective_config import get_effective_config_client
-from hope_obs import redact_id
-
 from harness.core.logging import get_logger
 from harness.core.metrics import inc_gate_decision, inc_regen, observe_step_duration
 from harness.core.provider_credentials import (

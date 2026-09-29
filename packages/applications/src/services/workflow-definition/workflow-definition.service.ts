@@ -522,15 +522,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const report = this.mergePublishGate(baseReport, await this.graphPublishFindings(graph, tenantId, triggerContextSchema));
 
     if (dto.parentVersionId) {
-      const parent = await this.workflowDefinitionRepository
-        .findById(dto.parentVersionId)
-        .catch(
-          fallbackOnNotFound(null, {
-            logger: this.logger,
-            message: 'Parent workflow version lookup failed',
-            meta: { parentVersionId: dto.parentVersionId, tenantId },
-          }),
-        );
+      const parent = await this.workflowDefinitionRepository.findById(dto.parentVersionId).catch(
+        fallbackOnNotFound(null, {
+          logger: this.logger,
+          message: 'Parent workflow version lookup failed',
+          meta: { parentVersionId: dto.parentVersionId, tenantId },
+        }),
+      );
       if (!parent || parent.tenantId !== tenantId || parent.slug !== dto.slug) {
         throw new BadRequestException(`Unknown parentVersionId '${dto.parentVersionId}' for slug '${dto.slug}'.`);
       }
@@ -736,15 +734,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     return runInTenantContext(this.clsService, targetTenantId, async () => {
       const existing = await this.workflowDefinitionRepository.findMaxVersionNumber(targetTenantId, slug, this.databaseService.baseClient);
       if (existing > 0) {
-        const rows = await this.workflowDefinitionRepository
-          .findAllVersionsBySlug(targetTenantId, slug)
-          .catch(
-            fallbackOnNotFound([] as never[], {
-              logger: this.logger,
-              message: 'Workflow version listing failed',
-              meta: { slug, tenantId: targetTenantId },
-            }),
-          );
+        const rows = await this.workflowDefinitionRepository.findAllVersionsBySlug(targetTenantId, slug).catch(
+          fallbackOnNotFound([] as never[], {
+            logger: this.logger,
+            message: 'Workflow version listing failed',
+            meta: { slug, tenantId: targetTenantId },
+          }),
+        );
         return { definitionId: rows[0]?.id ?? '', created: false };
       }
       const created = await this.clone(
@@ -1870,15 +1866,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       );
     }
 
-    const template = await this.promptTemplateRepository
-      .findById(binding.promptTemplateId)
-      .catch(
-        fallbackOnNotFound(null, {
-          logger: this.logger,
-          message: 'Prompt template lookup failed',
-          meta: { promptTemplateId: binding.promptTemplateId },
-        }),
-      );
+    const template = await this.promptTemplateRepository.findById(binding.promptTemplateId).catch(
+      fallbackOnNotFound(null, {
+        logger: this.logger,
+        message: 'Prompt template lookup failed',
+        meta: { promptTemplateId: binding.promptTemplateId },
+      }),
+    );
     if (!template || template.tenantId !== entity.tenantId) {
       // A node pinned to a template this tenant does not own is a broken graph,
       // not an authorization decision to explain — 404-over-403.

@@ -482,15 +482,13 @@ export class AgentResolverService {
               fallbackOnNotFound(null, { logger: this.logger, message: 'Agent model lookup by slug failed', meta: { modelSlug: slug, tenantId } }),
             );
     if (own) return own;
-    return this.aiModelRepository
-      .findBySlug(SYSTEM_TENANT_ID, slug)
-      .catch(
-        fallbackOnNotFound(null, {
-          logger: this.logger,
-          message: 'Agent model lookup by slug failed',
-          meta: { modelSlug: slug, tenantId: SYSTEM_TENANT_ID },
-        }),
-      );
+    return this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug).catch(
+      fallbackOnNotFound(null, {
+        logger: this.logger,
+        message: 'Agent model lookup by slug failed',
+        meta: { modelSlug: slug, tenantId: SYSTEM_TENANT_ID },
+      }),
+    );
   }
 }
 

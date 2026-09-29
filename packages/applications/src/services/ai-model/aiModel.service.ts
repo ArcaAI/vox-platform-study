@@ -820,15 +820,13 @@ export class AiModelService extends BaseService implements IAiModelService {
         .catch(warnAndFallback(null, { logger: this.logger, message: 'Default connection row read failed', meta: { service, provider, tenantId } })),
       tenantId === SYSTEM_TENANT_ID
         ? Promise.resolve(null)
-        : port
-            .findDefaultRow(service, provider, SYSTEM_TENANT_ID)
-            .catch(
-              warnAndFallback(null, {
-                logger: this.logger,
-                message: 'Default connection row read failed',
-                meta: { service, provider, tenantId: SYSTEM_TENANT_ID },
-              }),
-            ),
+        : port.findDefaultRow(service, provider, SYSTEM_TENANT_ID).catch(
+            warnAndFallback(null, {
+              logger: this.logger,
+              message: 'Default connection row read failed',
+              meta: { service, provider, tenantId: SYSTEM_TENANT_ID },
+            }),
+          ),
       port
         .resolveConnection(service, provider, tenantId)
         .catch(warnAndFallback(null, { logger: this.logger, message: 'Connection resolution failed', meta: { service, provider, tenantId } })),

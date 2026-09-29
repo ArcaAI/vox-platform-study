@@ -36,8 +36,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
-from hope_obs import outbound_context_headers
 import structlog
+from hope_obs import outbound_context_headers
 from pydantic import BaseModel, ConfigDict
 
 logger = structlog.get_logger(__name__)

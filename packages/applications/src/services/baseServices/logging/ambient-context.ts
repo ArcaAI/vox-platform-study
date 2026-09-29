@@ -38,7 +38,7 @@ export function readAmbientContext(): AmbientContext {
       ambient.spanId = spanContext.spanId;
     }
   } catch {
-    // No tracing: the keys stay absent.
+    // swallow-ok: no active span or tracing unavailable; the trace keys stay absent (the logger cannot log about itself)
   }
 
   try {
@@ -51,7 +51,7 @@ export function readAmbientContext(): AmbientContext {
       }
     }
   } catch {
-    // No request context: the keys stay absent.
+    // swallow-ok: outside a request CLS throws; the context keys stay absent (the logger cannot log about itself)
   }
 
   return ambient;

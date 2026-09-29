@@ -220,15 +220,13 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     // that is not ENABLED, is "no model" — the caller fails closed on null,
     // exactly as it did on an unresolvable `AiTaskDefault.modelSlug`.
     const model = policy?.modelId
-      ? await this.aiModelRepository
-          .findById(policy.modelId)
-          .catch(
-            fallbackOnNotFound(null, {
-              logger: this.logger,
-              message: 'Routing policy model lookup failed',
-              meta: { modelId: policy.modelId, tenantId, taskKey },
-            }),
-          )
+      ? await this.aiModelRepository.findById(policy.modelId).catch(
+          fallbackOnNotFound(null, {
+            logger: this.logger,
+            message: 'Routing policy model lookup failed',
+            meta: { modelId: policy.modelId, tenantId, taskKey },
+          }),
+        )
       : null;
     return { tenantId, taskKey, source, policy, model: model && model.resourceStatus === ResourceStatusType.ENABLED ? model : null };
   }
@@ -404,15 +402,13 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     // Mirrors `resolveRefs`: the un-laned read goes through the tenant-scope extension, which
     // pins `tenantId IN [caller, SYSTEM]` itself — so a SYSTEM-owned model stays readable and
     // another customer's does not.
-    const model = await this.aiModelRepository
-      .findById(row.modelId)
-      .catch(
-        warnAndFallback(null, {
-          logger: this.logger,
-          message: 'Routing configuration model lookup failed',
-          meta: { modelId: row.modelId, tenantId },
-        }),
-      );
+    const model = await this.aiModelRepository.findById(row.modelId).catch(
+      warnAndFallback(null, {
+        logger: this.logger,
+        message: 'Routing configuration model lookup failed',
+        meta: { modelId: row.modelId, tenantId },
+      }),
+    );
     if (!model) return { label, supportedGenerationParams: undefined };
 
     const declared = (model.metaData as Record<string, unknown> | null | undefined)?.supportedGenerationParams;
@@ -841,15 +837,13 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       let hasKey = false;
       let keyVersion: number | null = null;
       if (row.providerConnectionId) {
-        const connection = await this.aiProviderConnectionRepository
-          .findById(row.providerConnectionId)
-          .catch(
-            fallbackOnNotFound(null, {
-              logger: this.logger,
-              message: 'Routing policy provider connection lookup failed',
-              meta: { providerConnectionId: row.providerConnectionId },
-            }),
-          );
+        const connection = await this.aiProviderConnectionRepository.findById(row.providerConnectionId).catch(
+          fallbackOnNotFound(null, {
+            logger: this.logger,
+            message: 'Routing policy provider connection lookup failed',
+            meta: { providerConnectionId: row.providerConnectionId },
+          }),
+        );
         // `encryptedApiKey` is READ here only to answer "is there one", and its
         // value never leaves this expression.
         hasKey = Boolean(connection?.encryptedApiKey);
@@ -1068,15 +1062,13 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   private async resolveRefs(row: AiRoutingPolicyEntity): Promise<ConfigurationRefs> {
     const refs: ConfigurationRefs = {};
     if (row.providerConnectionId) {
-      const connection = await this.aiProviderConnectionRepository
-        .findById(row.providerConnectionId)
-        .catch(
-          fallbackOnNotFound(null, {
-            logger: this.logger,
-            message: 'Routing policy provider connection lookup failed',
-            meta: { providerConnectionId: row.providerConnectionId },
-          }),
-        );
+      const connection = await this.aiProviderConnectionRepository.findById(row.providerConnectionId).catch(
+        fallbackOnNotFound(null, {
+          logger: this.logger,
+          message: 'Routing policy provider connection lookup failed',
+          meta: { providerConnectionId: row.providerConnectionId },
+        }),
+      );
       refs.connectionProvider = connection?.provider ?? null;
       refs.connectionService = connection?.service ?? null;
     }
