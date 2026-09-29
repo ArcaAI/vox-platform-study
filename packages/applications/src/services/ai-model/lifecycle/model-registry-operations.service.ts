@@ -55,7 +55,8 @@ import {
 } from '../dto';
 import { HuggingFaceModelSourceClient } from '../publish/huggingface-model-source.client';
 import { claimAndEnqueueDownload, enqueuePublisherJob } from '../publish/ai-model-download.service';
-import type { AiModelUnregisterMeta, UnregisterAiModelJobPayload } from '../publish/publisher-job.contract';
+import type { UnregisterAiModelJobPayload } from '../publish/publisher-job.contract';
+import { mergeUnregisterMeta } from '../publish/model-download-meta.util';
 import { readModelDownloadSettings, type DownloadSettingsSource } from './model-download-settings';
 import { buildHubPreview } from './hub-preview.util';
 import { isUnregistering, publishStatusOf } from './model-lifecycle.derive';
@@ -220,7 +221,7 @@ export class ModelRegistryOperationsService extends BaseService {
 
     const weights = deleteWeights ? await this.weightsOutcome(row) : 'kept';
     const jobId = uuidv7();
-    const meta: AiModelUnregisterMeta = {
+    row.metaData = mergeUnregisterMeta(row.metaData, {
       jobId,
       startedAt: new Date().toISOString(),
       deleteWeights,
@@ -228,8 +229,7 @@ export class ModelRegistryOperationsService extends BaseService {
       finishedAt: null,
       error: null,
       weights,
-    };
-    row.metaData = { ...(row.metaData ?? {}), unregister: meta };
+    });
     if (this.requestUserId) row.updatedBy = this.requestUserId;
     try {
       await this.aiModelRepository.updateWithVersion(row.id, row, row.version);

@@ -1,8 +1,8 @@
 /**
  * TASK-1019 R6 — one lifecycle status per registry row (D-9), every branch.
  *
- * `derivePublishStatus` is spied through (the real util runs) so the stale-heartbeat
- * case can prove the OPTIONS reach it — the stale rule itself belongs to the util.
+ * `derivePublishStatus` is spied through (the real util runs, stale rule included) so
+ * the tests can also prove the OPTIONS reach it.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiDeploymentKind, AiModelAvailability } from '@arcaai/domains';
@@ -120,7 +120,6 @@ describe('deriveModelLifecycle — D-9 table', () => {
   });
 
   it('a stale heartbeat derives DOWNLOAD_FAILED / STALLED — the stale options reach derivePublishStatus', () => {
-    vi.mocked(derivePublishStatus).mockImplementationOnce(() => 'DOWNLOAD_FAILED');
     const lc = deriveModelLifecycle(
       row({
         availability: AiModelAvailability.MISSING,
@@ -129,7 +128,10 @@ describe('deriveModelLifecycle — D-9 table', () => {
       null,
       OPTS,
     );
-    expect(derivePublishStatus).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'd' }), AiModelAvailability.MISSING, OPTS);
+    expect(derivePublishStatus).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'd' }), AiModelAvailability.MISSING, {
+      now: new Date(NOW),
+      staleAfterMs: 300_000,
+    });
     expect(lc.status).toBe('DOWNLOAD_FAILED');
     expect(lc.download?.error).toBe('STALLED');
   });
@@ -207,7 +209,7 @@ describe('ModelLifecycleService.forRows', () => {
     expect(getCatalogue).toHaveBeenCalledTimes(1);
     expect(out.get('m-1')?.status).toBe('SERVING');
     expect(out.get('m-2')?.status).toBe('DOWNLOADED');
-    expect(derivePublishStatus).toHaveBeenCalledWith(null, AiModelAvailability.AVAILABLE, { now: NOW, staleAfterMs: 60_000 });
+    expect(derivePublishStatus).toHaveBeenCalledWith(null, AiModelAvailability.AVAILABLE, { now: new Date(NOW), staleAfterMs: 60_000 });
   });
 
   it('a catalogue failure does not fail the list — registry-only status, observedAt null', async () => {

@@ -1,8 +1,14 @@
 import { AiDeploymentKind, AiModelAvailability } from '@arcaai/domains';
 import type { ModelResidencyCatalogueResponse } from '../../model-residency/dto';
 import { residencyServiceOf } from '../../model-residency/model-residency.types';
-import { derivePublishStatus, readDownloadMeta, type AiModelDownloadMeta, type ModelPublishStatus } from '../publish/model-download-meta.util';
-import { DOWNLOAD_STALLED_CODE, type AiModelUnregisterMeta } from '../publish/publisher-job.contract';
+import {
+  derivePublishStatus,
+  isDownloadStalled,
+  readDownloadMeta,
+  readUnregisterMeta,
+  type ModelPublishStatus,
+} from '../publish/model-download-meta.util';
+import { DOWNLOAD_STALLED_CODE } from '../publish/publisher-job.contract';
 import type { ModelLifecycle, ModelLifecycleStatus, ModelServiceState, ModelServiceStatus } from './model-lifecycle.types';
 
 /** The registry-row facts one lifecycle is derived from. */
@@ -75,44 +81,18 @@ export function indexResidencyCatalogue(catalogue: ModelResidencyCatalogueRespon
   return { observedAt: str(catalogue.reportedAt), byId, bySlug };
 }
 
-/** `_metadata.unregister`, or null when absent / malformed. */
-export function readUnregisterMeta(metaData: Record<string, unknown> | null | undefined): AiModelUnregisterMeta | null {
-  const raw = rec(rec(metaData)?.unregister);
-  if (!raw || typeof raw.jobId !== 'string') return null;
-  return {
-    jobId: raw.jobId,
-    startedAt: str(raw.startedAt) ?? '',
-    deleteWeights: raw.deleteWeights !== false,
-    purge: raw.purge === true,
-    finishedAt: str(raw.finishedAt),
-    error: str(raw.error),
-    weights: (str(raw.weights) ?? 'kept') as AiModelUnregisterMeta['weights'],
-  };
-}
-
 /** An unregister accepted by the gateway and not yet finished (or failed) by the worker. */
 export function isUnregistering(metaData: Record<string, unknown> | null | undefined): boolean {
-  const meta = readUnregisterMeta(metaData);
-  return !!meta && !!meta.startedAt && !meta.finishedAt && !meta.error;
+  const meta = readUnregisterMeta(metaData ?? null);
+  return !!meta && !meta.finishedAt && !meta.error;
 }
 
-/**
- * `derivePublishStatus` with its stale-heartbeat options (D-4). Typed through a
- * widened signature so this compiles whether or not the options parameter has
- * landed on the util yet; a util without it simply ignores the argument.
- */
-const derivePublish = derivePublishStatus as (
-  meta: AiModelDownloadMeta | null,
-  availability: string | null | undefined,
-  opts?: { now: number; staleAfterMs: number },
-) => ModelPublishStatus;
-
-/** The publish state with the stale-heartbeat rule applied (D-4). */
+/** The publish state with the stale-heartbeat rule applied (D-4) — the util owns the rule. */
 export function publishStatusOf(
   row: Pick<LifecycleRow, 'metaData' | 'availability'>,
   opts: { now: number; staleAfterMs: number },
 ): ModelPublishStatus {
-  return derivePublish(readDownloadMeta(row.metaData ?? null), row.availability, opts);
+  return derivePublishStatus(readDownloadMeta(row.metaData ?? null), row.availability, { now: new Date(opts.now), staleAfterMs: opts.staleAfterMs });
 }
 
 /**
@@ -144,7 +124,9 @@ export function deriveModelLifecycle(
     ? {
         bytesDone: num(rawDownload.bytesDone),
         bytesTotal: num(rawDownload.bytesTotal),
-        error: downloadMeta?.error ?? (publish === 'DOWNLOAD_FAILED' ? DOWNLOAD_STALLED_CODE : null),
+        error:
+          downloadMeta?.error ??
+          (isDownloadStalled(downloadMeta, { now: new Date(opts.now), staleAfterMs: opts.staleAfterMs }) ? DOWNLOAD_STALLED_CODE : null),
       }
     : null;
   const unregister = unregisterMeta ? { weights: unregisterMeta.weights, error: unregisterMeta.error } : null;

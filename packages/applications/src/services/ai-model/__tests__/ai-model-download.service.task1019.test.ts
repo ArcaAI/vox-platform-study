@@ -96,7 +96,7 @@ describe('AiModelDownloadService — D-4 job shape and retry policy', () => {
     const out = await svc.triggerDownload('m-1');
 
     expect(out.status).toBe('DOWNLOADING');
-    expect(repo.updateWithVersion).toHaveBeenCalledWith('m-1', expect.anything(), 4, undefined);
+    expect(repo.updateWithVersion).toHaveBeenCalledWith('m-1', expect.anything(), 4);
     expect(queue.add).toHaveBeenCalledTimes(1);
     const [name, payload, jobOpts] = queue.add.mock.calls[0];
     expect(name).toBe(JobQueue.DownloadAiModel);
@@ -133,13 +133,12 @@ describe('AiModelDownloadService — D-4 job shape and retry policy', () => {
     const stale = entity({
       metaData: { download: { jobId: 'j0', startedAt: '2026-09-29T08:00:00Z', finishedAt: null, error: null, heartbeatAt: '2026-09-29T08:00:10Z' } },
     });
-    vi.mocked(derivePublishStatus).mockImplementationOnce(() => 'DOWNLOAD_FAILED');
     const { svc, queue } = build({ row: stale, settings: { 'modelRegistry.download.staleAfterSeconds': 120 } });
 
     await svc.triggerDownload('m-1');
 
     expect(derivePublishStatus).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'j0' }), AiModelAvailability.MISSING, {
-      now: expect.any(Number),
+      now: expect.any(Date),
       staleAfterMs: 120_000,
     });
     expect(queue.add).toHaveBeenCalledTimes(1);
@@ -156,7 +155,6 @@ describe('AiModelDownloadService — D-4 job shape and retry policy', () => {
 
   it('status of a stalled download reports DOWNLOAD_FAILED with the STALLED code', async () => {
     const stale = entity({ metaData: { download: { jobId: 'j0', startedAt: '2026-09-29T08:00:00Z', finishedAt: null, error: null } } });
-    vi.mocked(derivePublishStatus).mockImplementationOnce(() => 'DOWNLOAD_FAILED');
     const { svc } = build({ row: stale });
     const status = await svc.getDownloadStatus('m-1');
     expect(status).toMatchObject({ status: 'DOWNLOAD_FAILED', error: 'STALLED' });

@@ -49,7 +49,7 @@ export async function enqueuePublisherJob(queue: PublisherQueue, payload: Publis
 export async function claimAndEnqueueDownload(
   deps: { repository: Pick<AiModelRepository, 'updateWithVersion'>; queue: PublisherQueue },
   entity: AiModelEntity,
-  opts: { userId?: string | null; maxAttempts: number; tx?: unknown; now?: Date },
+  opts: { userId?: string | null; maxAttempts: number; now?: Date },
 ): Promise<{ jobId: string; updated: AiModelEntity }> {
   const jobId = uuidv7();
   const startedAt = (opts.now ?? new Date()).toISOString();
@@ -64,7 +64,7 @@ export async function claimAndEnqueueDownload(
 
   let updated: AiModelEntity;
   try {
-    updated = await deps.repository.updateWithVersion(entity.id, entity, expectedVersion, opts.tx);
+    updated = await deps.repository.updateWithVersion(entity.id, entity, expectedVersion);
   } catch (error) {
     if (error instanceof OptimisticConcurrencyException) {
       throw new ConflictException(`A download for model ${entity.id} is already in progress`);

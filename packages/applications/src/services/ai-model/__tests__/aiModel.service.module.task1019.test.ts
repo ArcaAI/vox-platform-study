@@ -12,17 +12,11 @@ describe('AiModelServiceModule — TASK-1019 wiring', () => {
     const imports = (
       (Reflect.getMetadata('imports', AiModelServiceModule) as Array<{ name?: string; module?: { name?: string } } | undefined>) ?? []
     ).map((m) => m?.name ?? m?.module?.name);
-    expect(imports).toEqual(expect.arrayContaining(['ModelResidencyServiceModule', 'CommonServiceModule', 'HttpModule']));
+    expect(imports).toEqual(expect.arrayContaining(['ModelResidencyServiceModule', 'CommonServiceModule', 'AiModelDownloadProducerModule']));
 
     const providers = ((Reflect.getMetadata('providers', AiModelServiceModule) as Array<{ name?: string }>) ?? []).map((p) => p.name);
     expect(providers).toEqual(
-      expect.arrayContaining([
-        'AiModelService',
-        'ModelLifecycleService',
-        'ModelUsageReader',
-        'ModelRegistryOperationsService',
-        'HuggingFaceModelSourceClient',
-      ]),
+      expect.arrayContaining(['AiModelService', 'ModelLifecycleService', 'ModelUsageReader', 'ModelRegistryOperationsService']),
     );
     const exported = ((Reflect.getMetadata('exports', AiModelServiceModule) as Array<{ name?: string }>) ?? []).map((p) => p.name);
     expect(exported).toEqual(expect.arrayContaining(['ModelRegistryOperationsService', 'ModelLifecycleService']));

@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { HttpModule } from '@nestjs/axios';
 import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ClsModule } from 'nestjs-cls';
@@ -12,7 +11,7 @@ import { AiModelService } from './aiModel.service';
 import { ModelLifecycleService } from './lifecycle/model-lifecycle.service';
 import { ModelRegistryOperationsService } from './lifecycle/model-registry-operations.service';
 import { ModelUsageReader } from './lifecycle/model-usage.reader';
-import { HuggingFaceModelSourceClient } from './publish/huggingface-model-source.client';
+import { AiModelDownloadProducerModule } from './publish/ai-model-download.service.module';
 
 /**
  * `AiProviderConnectionServiceModule` supplies the ONE thing the TASK-890
@@ -46,16 +45,16 @@ import { HuggingFaceModelSourceClient } from './publish/huggingface-model-source
     // TASK-1019 — the registry OPERATIONS (register from Hub, usage, unregister,
     // download-missing) and the lifecycle status on the admin reads:
     //   · ModelResidencyServiceModule — the per-service load state (and the unload an unregister issues);
-    //   · CommonServiceModule         — `IAppSettingsService`, for the two `modelRegistry.download.*` knobs;
-    //   · HttpModule                  — the Hub client's transport;
-    //   · the publisher queue         — this module PRODUCES download / unregister jobs (the worker consumes them).
-    // No cycle: nothing under the residency module imports this one.
+    //   · CommonServiceModule           — `IAppSettingsService`, for the two `modelRegistry.download.*` knobs;
+    //   · AiModelDownloadProducerModule — the Hub client the preview reads through;
+    //   · the publisher queue           — this module PRODUCES download / unregister jobs (the worker consumes them).
+    // No cycle: neither the residency module nor the producer module imports this one.
     ModelResidencyServiceModule,
     CommonServiceModule,
-    HttpModule,
+    AiModelDownloadProducerModule,
     BullModule.registerQueue({ name: JobQueue.DownloadAiModel }),
   ],
-  providers: [AiModelService, ModelLifecycleService, ModelUsageReader, ModelRegistryOperationsService, HuggingFaceModelSourceClient],
+  providers: [AiModelService, ModelLifecycleService, ModelUsageReader, ModelRegistryOperationsService],
   exports: [AiModelService, ModelLifecycleService, ModelRegistryOperationsService],
 })
 export class AiModelServiceModule {}
