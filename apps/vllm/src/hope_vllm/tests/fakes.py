@@ -30,6 +30,7 @@ class FakeEngine:
     shut_down: bool = False
     aborted: list[str] = field(default_factory=list)
     shutdown_delay_s: float = 0.0
+    shutdown_calls: int = 0
     #: Shared with the factory: `(event, runtime_key)` in the order things happened.
     events: list[tuple[str, str]] = field(default_factory=list)
 
@@ -54,6 +55,7 @@ class FakeEngine:
         )
 
     async def shutdown(self) -> None:
+        self.shutdown_calls += 1
         self.events.append(("shutdown_started", self.spec.runtime_key))
         if self.shutdown_delay_s:
             await asyncio.sleep(self.shutdown_delay_s)

@@ -123,7 +123,6 @@ async def _warm_pins(app: FastAPI) -> None:
             "vllm.pins.warm_failed",
             pool=app.state.settings.pool,
             error_type=type(exc).__name__,
-            error=str(exc),
         )
         return
     # Startup marker of the fleet health contract (see api/endpoints/health.py). This
@@ -152,7 +151,6 @@ async def _refresh_pins(app: FastAPI) -> None:
             "vllm.pins.refresh_failed",
             pool=app.state.settings.pool,
             error_type=type(exc).__name__,
-            error=str(exc),
         )
 
 

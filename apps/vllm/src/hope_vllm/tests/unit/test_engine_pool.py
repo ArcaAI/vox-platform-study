@@ -503,3 +503,63 @@ async def test_adding_a_slug_to_pins_warms_it() -> None:
     await pool.refresh_pins(resolve)
     assert loaded(pool) == ["new-pin:v1"]
     assert pool.snapshot()["loaded"][0]["pinned"] is True
+
+
+# ── fix round 2: one failing pin never blocks the others ────────────────────
+
+
+class FlakyPinResolver(PinResolver):
+    def __init__(self) -> None:
+        super().__init__()
+        self.failing: set[str] = set()
+
+    async def __call__(self, slug: str) -> ResolvedServingSpec:
+        if slug in self.failing:
+            raise RuntimeError(f"{slug} is gone")
+        return await super().__call__(slug)
+
+
+async def test_a_failing_pin_keeps_its_previous_spec_while_another_moves_to_its_new_key() -> None:
+    factory = FakeEngineFactory()
+    current = {"value": config(budget=6.0, max_resident=2, pins=("a", "b"))}
+    pool = EnginePool(factory, pool_config=lambda: current["value"])
+    resolve = FlakyPinResolver()
+    await pool.warm_pins(resolve)
+    assert loaded(pool) == ["a:v1", "b:v1"]
+
+    resolve.failing.add("a")  # a's SYSTEM row was deleted / disabled / unpublished
+    resolve.keys["b"] = "b:v2"  # b's row was edited
+    with pytest.raises(RuntimeError, match="a is gone"):  # reported, AFTER doing the rest
+        await pool.refresh_pins(resolve)
+
+    assert loaded(pool) == ["a:v1", "b:v2"]
+    assert factory.engines["b:v1"].shut_down is True  # the old key was evictable
+    pinned = {e["runtime_key"]: e["pinned"] for e in pool.snapshot()["loaded"]}
+    assert pinned == {"a:v1": True, "b:v2": True}  # a keeps its previous pin
+
+
+async def test_a_pin_that_never_resolved_is_dropped_and_the_rest_still_load() -> None:
+    factory = FakeEngineFactory()
+    pool = make_pool(factory, budget=6.0, max_resident=2, pins=("a", "b"))
+    resolve = FlakyPinResolver()
+    resolve.failing.add("a")
+    with pytest.raises(RuntimeError):  # startup still fails closed (startup probe stays 503)
+        await pool.warm_pins(resolve)
+    assert loaded(pool) == ["b:v1"]
+    assert pool.pending_pins() == []
+
+
+# ── fix round 2: an engine is shut down at most once ────────────────────────
+
+
+async def test_close_during_a_release_never_shuts_the_victim_down_twice() -> None:
+    factory = FakeEngineFactory(shutdown_delay_s=0.2)
+    pool = make_pool(factory, budget=6.0)
+    await pool.warm(make_spec(runtimeKey="a", vramGiB=6))
+    load = asyncio.create_task(pool.warm(make_spec(runtimeKey="b", vramGiB=6)))
+    await asyncio.sleep(0.05)  # `a` is mid-shutdown inside the load task
+    await pool.close()  # cancels the load task, then shuts down what is still releasing
+    with pytest.raises((EngineLoadError, asyncio.CancelledError)):
+        await load
+    assert factory.engines["a"].shutdown_calls == 1
+    assert factory.engines["a"].shut_down is True
