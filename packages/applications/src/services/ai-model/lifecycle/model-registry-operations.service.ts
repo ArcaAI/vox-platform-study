@@ -270,7 +270,11 @@ export class ModelRegistryOperationsService extends BaseService {
       filters: {
         tenantId: SYSTEM_TENANT_ID,
         deploymentKind: AiDeploymentKind.SELF_HOSTED,
-        availability: AiModelAvailability.MISSING,
+        // Everything not known to be on disk. A freshly registered row starts
+        // UNKNOWN and the cluster inventory cannot currently write MISSING, so a
+        // MISSING-only query enqueued nothing (final review I6); PARTIAL is a
+        // half-fetched copy worth completing.
+        availability: { in: [AiModelAvailability.MISSING, AiModelAvailability.UNKNOWN, AiModelAvailability.PARTIAL] },
         resourceStatus: { not: ResourceStatusType.DELETED },
       } as never,
       sort: [{ slug: 'asc' }],

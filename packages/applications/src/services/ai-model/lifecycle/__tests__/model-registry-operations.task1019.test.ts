@@ -6,7 +6,8 @@
  *   R3 every method: tenant admin 403, super admin with a working tenant 403
  *   R4 unregister with all six referrer kinds → 409 MODEL_IN_USE listing them with tenant ids; nothing enqueued
  *   R5 unregister unloads per service first; still loaded → 409 MODEL_UNLOAD_FAILED; unloaded → UNREGISTERING + one job
- *   R7 download-missing enqueues only SYSTEM SELF_HOSTED MISSING rows with a fetchable source; skips DOWNLOADING
+ *   R7 download-missing enqueues SYSTEM SELF_HOSTED rows that are not on disk (MISSING, UNKNOWN or PARTIAL) with a
+ *      fetchable source; skips DOWNLOADING / UNREGISTERING / unfetchable
  *
  * Boundaries mocked: repositories, queue, Hub client, residency port, AiModelService, event emitter, CLS.
  */
@@ -520,7 +521,9 @@ describe('R5 — unregister unloads first, then marks and enqueues', () => {
 // ─── R7 ──────────────────────────────────────────────────────────────────────
 
 describe('R7 — download-missing', () => {
-  it('asks only for SYSTEM SELF_HOSTED MISSING rows; enqueues the fetchable ones; skips DOWNLOADING and unfetchable', async () => {
+  const NOT_ON_DISK = { in: [AiModelAvailability.MISSING, AiModelAvailability.UNKNOWN, AiModelAvailability.PARTIAL] };
+
+  it('asks only for SYSTEM SELF_HOSTED not-on-disk rows; enqueues the fetchable ones; skips DOWNLOADING and unfetchable', async () => {
     const running = new Date().toISOString();
     const rows = [
       modelRow({ id: 'hf-1', slug: 'a', availability: AiModelAvailability.MISSING }),
@@ -542,7 +545,7 @@ describe('R7 — download-missing', () => {
         filters: {
           tenantId: SYSTEM_TENANT_ID,
           deploymentKind: AiDeploymentKind.SELF_HOSTED,
-          availability: AiModelAvailability.MISSING,
+          availability: NOT_ON_DISK,
           resourceStatus: { not: ResourceStatusType.DELETED },
         },
       }),
@@ -554,5 +557,28 @@ describe('R7 — download-missing', () => {
     ]);
     expect(queue.add).toHaveBeenCalledTimes(2);
     expect(queue.add.mock.calls.map((c) => c[1].kind)).toEqual(['download', 'download']);
+  });
+
+  // Final review I6: a freshly registered row defaults to UNKNOWN and the cluster
+  // inventory cannot write MISSING, so a MISSING-only query enqueued nothing.
+  it('a never-measured (UNKNOWN) or half-fetched (PARTIAL) row is downloaded; an UNREGISTERING one is skipped', async () => {
+    const rows = [
+      modelRow({ id: 'unk-1', slug: 'u', availability: AiModelAvailability.UNKNOWN }),
+      modelRow({ id: 'par-1', slug: 'p', availability: AiModelAvailability.PARTIAL }),
+      modelRow({
+        id: 'unr-1',
+        slug: 'r',
+        availability: AiModelAvailability.UNKNOWN,
+        metaData: { unregister: { jobId: 'j', startedAt: new Date().toISOString(), finishedAt: null, error: null } },
+      }),
+    ];
+    const { svc, repo, queue } = build({ rows });
+
+    const out = await svc.downloadMissing();
+
+    expect(repo.findAll.mock.calls[0][0].filters.availability).toEqual(NOT_ON_DISK);
+    expect(out.enqueued.map((e) => e.id)).toEqual(['unk-1', 'par-1']);
+    expect(out.skipped).toEqual([{ id: 'unr-1', slug: 'r', reason: 'UNREGISTERING' }]);
+    expect(queue.add).toHaveBeenCalledTimes(2);
   });
 });
