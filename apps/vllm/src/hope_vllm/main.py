@@ -14,6 +14,12 @@ Its only peer is the gateway's ``/internal/*`` surface, reached with the shared
 (C-2), and, for a HuggingFace pull, the model owner's registry credential (OD-7). Building
 the app opens no connection.
 
+SHUTDOWN (drain). SIGTERM flips ``app.state.draining`` BEFORE the server's own handler runs
+(the lifespan chains onto whatever SIGTERM handler uvicorn installed): new ``/v1/*``
+requests get 503 ``draining`` + Retry-After and ``/health/ready`` answers 503, so the pod
+leaves its Service endpoints; the lifespan shutdown then waits for every held lease (an
+in-flight decode) to finish — bounded by :data:`DRAIN_TIMEOUT_S` — before closing the pool.
+
 STARTUP. The lifespan pulls the control plane once (``vllm.pools`` may declare this
 process's pool), refuses to start when ``VLLM_POOL`` is undeclared, then loads the pool's
 PINS in the background — ``/health/startup`` answers 503 until every pin is resident, while
@@ -25,9 +31,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import signal
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Protocol
+from typing import Any, Protocol
 
 from fastapi import FastAPI
 from hope_obs import (
@@ -52,6 +60,49 @@ from hope_vllm.engine.pool import SYSTEM_TENANT_ID, EnginePool
 from hope_vllm.spec import ResolvedServingSpec
 
 logger = get_logger(__name__)
+
+#: How long the shutdown waits for in-flight decodes before closing the pool. Below the
+#: k8s default terminationGracePeriodSeconds (30 s); a 30 s window decodes in well under it.
+DRAIN_TIMEOUT_S = 25.0
+
+
+def begin_drain(app: FastAPI) -> None:
+    """Refuse new work from now on (idempotent). Called on SIGTERM and at shutdown."""
+    if not getattr(app.state, "draining", False):
+        app.state.draining = True
+        logger.info("vllm.drain.started", inflight=not app.state.engine_pool.idle())
+
+
+async def _wait_drained(app: FastAPI, timeout_s: float, poll_s: float = 0.05) -> bool:
+    """Until no admitted ``/v1/*`` request and no engine lease remains (or ``timeout_s``)."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_s
+    while getattr(app.state, "active_requests", 0) or not app.state.engine_pool.idle():
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(poll_s)
+    return True
+
+
+def _install_drain_on_sigterm(app: FastAPI) -> Any:
+    """Chain a drain onto the current SIGTERM handler; returns the one to restore.
+
+    Only from the main thread (``signal.signal`` refuses anywhere else) — a server run in a
+    worker thread, or a test harness, simply drains at lifespan shutdown instead.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        return None
+    previous = signal.getsignal(signal.SIGTERM)
+
+    def on_sigterm(signum: int, frame: Any) -> None:
+        begin_drain(app)
+        if callable(previous):
+            previous(signum, frame)
+        elif previous == signal.SIG_DFL:
+            raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGTERM, on_sigterm)
+    return previous
 
 
 class SpecResolver(Protocol):
@@ -103,6 +154,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         max_resident_engines=pool_config.max_resident,
         control_plane=app.state.effective_config_client is not None,
     )
+    app.state.draining = False
+    previous_sigterm = _install_drain_on_sigterm(app)
     if pool_config.pins:
         app.state.pins_task = asyncio.create_task(_warm_pins(app))
     else:
@@ -110,6 +163,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.service_release_task = None  # nothing to warm: started
         logger.info("vllm.started", pool=settings.pool)
     yield
+    begin_drain(app)
+    if previous_sigterm is not None:
+        signal.signal(signal.SIGTERM, previous_sigterm)
+    if not await _wait_drained(app, DRAIN_TIMEOUT_S):
+        logger.warning("vllm.drain.timed_out", timeout_s=DRAIN_TIMEOUT_S)
     pins_task = app.state.pins_task
     if pins_task is not None and not pins_task.done():
         pins_task.cancel()
@@ -168,6 +226,8 @@ def create_app(
     app.state.control_plane_refresh = None
     app.state.config_invalidation_task = None
     app.state.config_invalidation_redis = None
+    app.state.draining = False
+    app.state.active_requests = 0
     # Construction performs NO I/O. With no gateway every resolve is a named 503.
     app.state.serving_spec_client = serving_spec_client or ServingSpecClient(
         base_url=gateway_url, token=settings.peer_service_token()
@@ -185,6 +245,7 @@ def create_app(
     )
 
     from hope_vllm.api.middleware.auth import ServiceAuthMiddleware
+    from hope_vllm.api.middleware.drain import DrainMiddleware
 
     if not settings.accepted_service_tokens and not is_local_environment():
         logger.error(
@@ -193,6 +254,8 @@ def create_app(
             "all non-exempt traffic will be rejected",
         )
     app.add_middleware(ServiceAuthMiddleware)
+    # Added AFTER auth, so it runs FIRST: a draining replica refuses before any other work.
+    app.add_middleware(DrainMiddleware)
 
     from hope_vllm.api.endpoints.engines import router as engines_router
     from hope_vllm.api.endpoints.health import router as health_router

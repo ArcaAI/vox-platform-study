@@ -23,8 +23,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import re
+import time
 import uuid
 from collections.abc import Awaitable
+from dataclasses import dataclass
 from typing import Literal, TypeVar
 
 import numpy as np
@@ -33,7 +35,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from hope_obs import get_logger
 
-from hope_vllm.api.openai_errors import openai_error
+from hope_vllm.api.openai_errors import OpenAIError, openai_error
 from hope_vllm.audio import AudioError, decode_wav, voiced_seconds
 from hope_vllm.core import metrics
 from hope_vllm.core.config import Settings
@@ -176,7 +178,22 @@ async def _decode(
         raise openai_error(400, "prompt_too_long", str(exc), param="prompt") from None
 
 
-@router.post("/v1/audio/transcriptions", response_model=None)
+ROUTE = "/v1/audio/transcriptions"
+
+#: Refusals the POOL already counts in `hope_vllm_rejections_total` (never twice).
+_POOL_COUNTED = frozenset({"engine_capacity", "engine_saturated", "VRAM_BUDGET_EXCEEDED"})
+
+
+@dataclass
+class _Labels:
+    """Metric labels, filled in as the request learns them. `model` stays `unresolved`
+    until the GATEWAY resolved the slug — a client cannot mint label values."""
+
+    kind: str = "unknown"
+    model: str = "unresolved"
+
+
+@router.post(ROUTE, response_model=None)
 async def create_transcription(
     request: Request,
     file: UploadFile = File(...),
@@ -185,6 +202,39 @@ async def create_transcription(
     prompt: str | None = Form(None),
     temperature: float = Form(0.0),
     response_format: Literal["json", "text", "verbose_json"] = Form("json"),
+) -> Response:
+    labels = _Labels()
+    started = time.perf_counter()
+    status = 500
+    try:
+        response = await _transcribe(
+            request, labels, file, model, language, prompt, temperature, response_format
+        )
+        status = response.status_code
+        return response
+    except OpenAIError as exc:
+        status = exc.status
+        if exc.code not in _POOL_COUNTED:
+            metrics.REJECTIONS_TOTAL.labels(reason=exc.code.lower()).inc()
+        raise
+    finally:
+        metrics.REQUESTS_TOTAL.labels(
+            route=ROUTE, kind=labels.kind, model=labels.model, status=str(status)
+        ).inc()
+        metrics.REQUEST_SECONDS.labels(route=ROUTE, kind=labels.kind).observe(
+            time.perf_counter() - started
+        )
+
+
+async def _transcribe(
+    request: Request,
+    labels: _Labels,
+    file: UploadFile,
+    model: str,
+    language: str | None,
+    prompt: str | None,
+    temperature: float,
+    response_format: str,
 ) -> Response:
     tenant_id: str = request.state.tenant_id
     settings: Settings = request.app.state.settings
@@ -215,6 +265,7 @@ async def create_transcription(
         raise openai_error(400, exc.code, str(exc), param="file") from None
 
     spec = await _resolve(request, model, tenant_id)
+    labels.kind, labels.model = spec.kind, spec.slug
     pool: EnginePool = request.app.state.engine_pool
     decode = DecodeRequest(
         audio=samples,
@@ -230,6 +281,10 @@ async def create_transcription(
         logger.info("vllm.transcription.client_disconnected", runtime_key=spec.runtime_key)
         return Response(status_code=499)
 
+    if duration > 0:
+        metrics.ASR_RTF.labels(model=spec.slug).observe(result.decode_ms / 1000.0 / duration)
+    if result.engine_queue_ms is not None:
+        metrics.ENGINE_QUEUE_SECONDS.observe(result.engine_queue_ms / 1000.0)
     truncation = assess_truncation(
         result.text,
         finish_reason=result.finish_reason,

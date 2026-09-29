@@ -242,6 +242,9 @@ async def test_build_passes_the_resolved_spec_and_engine_tuning(  # type: ignore
     assert kwargs["max_num_seqs"] == 64
     assert kwargs["enforce_eager"] is False
     assert kwargs["limit_mm_per_prompt"] == {"audio": 1}
+    # vLLM's own `vllm:*` series on; its request logging (which would carry transcripts) off.
+    assert kwargs["disable_log_stats"] is False
+    assert kwargs["enable_log_requests"] is False
     assert TOKENIZER_DIRS == [str(RESOLVED_DIR)]  # the tokenizer loads from the same dir
 
 

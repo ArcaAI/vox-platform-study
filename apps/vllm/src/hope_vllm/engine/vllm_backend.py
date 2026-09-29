@@ -328,6 +328,10 @@ class VllmEngineFactory:
             max_num_seqs=max_num_seqs,
             enforce_eager=enforce_eager,
             limit_mm_per_prompt={"audio": 1},
+            # vLLM's `vllm:*` Prometheus series (served from this process's /metrics) —
+            # and NO request logging: a logged request would carry the transcript.
+            disable_log_stats=False,
+            enable_log_requests=False,
         )
         engine = AsyncLLM.from_engine_args(args)
         max_model_len = spec.max_model_len or int(engine.model_config.max_model_len)

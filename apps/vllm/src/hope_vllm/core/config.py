@@ -31,7 +31,7 @@ from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from hope_vllm.core.control_plane import DEFAULT_POOLS, moved_alias, parse_pools
-from hope_vllm.engine.pool import PoolConfig
+from hope_vllm.core.pools import PoolConfig
 
 __all__ = ["DEFAULT_POOLS", "PoolNotConfiguredError", "Settings", "get_settings"]
 

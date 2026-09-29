@@ -146,3 +146,23 @@ def test_there_is_no_model_selection_setting() -> None:
         "huggingface_token",
     }
     assert forbidden.isdisjoint(Settings.model_fields)
+
+
+def test_importing_settings_registers_no_prometheus_series() -> None:
+    """`scripts/python-env-surface.py` imports every service's settings in ONE process;
+    settings that dragged in the pool would register `model_resident_bytes`, which stt's
+    residency sink also registers — a DuplicateTimeseries crash in the env generator."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[3]
+    code = (
+        f"import sys; sys.path.insert(0, {str(src)!r}); import hope_vllm.core.config; "
+        "print(sorted(m for m in sys.modules if m.startswith(('hope_vllm.engine', "
+        "'hope_vllm.core.metrics', 'prometheus_client'))))"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert out == "[]"

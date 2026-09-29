@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
-# ── vllm (TASK-1010 spike) ───────────────────────────────────────────────
-# Whisper decode service on vLLM continuous batching. Linux amd64 + NVIDIA only.
+# ── vllm — HOPE inference shell on vLLM (TASK-1010 spike → TASK-1021) ───────
+# OpenAI-compatible, pool-managed Whisper transcription on vLLM continuous batching
+# (`POST /v1/audio/transcriptions`, `model=<slug>` resolved through the gateway).
+# Linux amd64 + NVIDIA only.
 #
 # AUTHORED, NOT YET BUILT: the lane that wrote it had no Linux/CUDA builder. The first
 # `docker build` is part of the GPU run (ticket README §Verification still open).
@@ -36,7 +38,7 @@ FROM ${VLLM_IMAGE} AS production
 LABEL maintainer="HOPE Team" \
     service="apps-vllm" \
     org.opencontainers.image.title="HOPE vllm (inference shell)" \
-    org.opencontainers.image.description="Whisper decode on vLLM continuous batching (TASK-1010 spike)"
+    org.opencontainers.image.description="OpenAI-compatible Whisper transcription on vLLM continuous batching (TASK-1021)"
 
 WORKDIR /app
 
@@ -67,6 +69,11 @@ PY
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m pip install --constraint /tmp/image-constraints.txt \
         -r /tmp/service-requirements.txt
+
+# The engine is sized from the model row's GiB against the device total, read through
+# NVML (`pynvml`, which vLLM itself depends on as `nvidia-ml-py`). Fail the BUILD, not the
+# first engine load, if a base-image bump ever drops it.
+RUN python3 -c "import pynvml"
 
 # Layer 3: the three local packages themselves — deps already satisfied above.
 COPY packages/py-env ./packages/py-env
@@ -123,4 +130,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 EXPOSE 8867
 
 # ONE process per GPU: the engine owns the card. Scale out with replicas, never workers.
-ENTRYPOINT ["python3", "-m", "uvicorn", "--factory", "hope_vllm.main:create_app", "--host", "0.0.0.0", "--port", "8867", "--workers", "1"]
+# The graceful window (20 s) lets in-flight decodes finish after SIGTERM; the lifespan then
+# closes the pool. terminationGracePeriodSeconds must exceed it (deployment repo).
+ENTRYPOINT ["python3", "-m", "uvicorn", "--factory", "hope_vllm.main:create_app", "--host", "0.0.0.0", "--port", "8867", "--workers", "1", "--timeout-graceful-shutdown", "20"]

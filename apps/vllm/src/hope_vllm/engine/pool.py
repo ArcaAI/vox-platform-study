@@ -48,6 +48,7 @@ from typing import Any
 from hope_obs import get_logger
 
 from hope_vllm.core import metrics
+from hope_vllm.core.pools import PoolConfig
 from hope_vllm.core.serving_spec_client import ModelNotServable
 from hope_vllm.engine.base import (
     DEFAULT_MAX_NUM_SEQS,
@@ -64,21 +65,6 @@ SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
 #: The code of a load failure the backend did not name.
 ENGINE_LOAD_FAILED = "ENGINE_LOAD_FAILED"
-
-#: `vllm.pools[*].inflightFactor` default (C-4).
-DEFAULT_INFLIGHT_FACTOR = 2
-
-
-@dataclass(frozen=True)
-class PoolConfig:
-    """This process's entry of ``vllm.pools`` (C-4), in engine terms."""
-
-    accepted_kinds: frozenset[str]
-    pins: tuple[str, ...]
-    vram_budget_gib: float
-    max_resident: int
-    #: A lease beyond ``max_num_seqs × inflight_factor`` on one engine is 429 (C-3).
-    inflight_factor: int = DEFAULT_INFLIGHT_FACTOR
 
 
 class EngineCapacityError(RuntimeError):
@@ -159,9 +145,12 @@ class EnginePool:
         (``enforce_saturation=False`` for a warm, which decodes nothing).
         """
         resident = await self._acquire(spec, enforce_saturation)
+        inflight = metrics.INFLIGHT.labels(model=spec.slug)
+        inflight.inc()
         try:
             yield resident.engine
         finally:
+            inflight.dec()
             resident.inflight -= 1
             resident.last_used = self._clock()
 
@@ -223,15 +212,30 @@ class EnginePool:
             "loading": sorted(self._loading),
         }
 
+    def idle(self) -> bool:
+        """No lease is held on any engine (a drain may close the pool)."""
+        return all(r.inflight == 0 for r in self._resident.values())
+
     async def close(self) -> None:
         for task in list(self._loading.values()):
             task.cancel()
         residents = list(self._resident.values())
         self._resident.clear()
         for resident in residents:
+            self._publish_residency(resident.spec.slug)
             await self._shutdown(resident)
+        metrics.RESIDENT_GIB.set(self._committed_gib())
 
     # ── internals ───────────────────────────────────────────────────────────
+
+    def _publish_residency(self, slug: str) -> None:
+        """``model_resident_bytes`` for ``slug``: the GPU claim of its resident engines."""
+        claimed = sum(
+            r.spec.engine.vram_gib for r in self._resident.values() if r.spec.slug == slug
+        )
+        metrics.MODEL_RESIDENT_BYTES.labels(
+            service=metrics.SERVICE, model=slug, device=metrics.DEVICE
+        ).set(claimed * 2**30)
 
     def _committed_gib(self) -> float:
         return sum(r.spec.engine.vram_gib for r in self._resident.values()) + sum(
@@ -245,6 +249,7 @@ class EnginePool:
             async with self._lock:
                 config = self._pool_config()
                 if spec.kind not in config.accepted_kinds:
+                    metrics.REJECTIONS_TOTAL.labels(reason="kind_not_accepted").inc()
                     raise ModelNotServable(
                         "KIND_NOT_ACCEPTED",
                         f"model '{spec.slug}' is a '{spec.kind}' model; this pool accepts "
@@ -271,7 +276,10 @@ class EnginePool:
                 elif weights_identity(self._loading_specs[key]) != weights_identity(spec):
                     raise RuntimeKeySpecMismatchError(key)
             for victim in victims:
+                self._publish_residency(victim.spec.slug)
                 await self._shutdown(victim)
+            queued = metrics.QUEUE_DEPTH.labels(model=spec.slug)
+            queued.inc()
             try:
                 await asyncio.shield(task)
             except asyncio.CancelledError:
@@ -281,6 +289,8 @@ class EnginePool:
             except Exception as exc:
                 code = exc.code if isinstance(exc, EngineBuildRefused) else ENGINE_LOAD_FAILED
                 raise EngineLoadError(str(exc), code=code) from exc
+            finally:
+                queued.dec()
             # Loop: pick the now-resident engine up under the lock (and re-check the spec).
 
     def _admit(self, spec: ResolvedServingSpec, config: PoolConfig) -> list[_Resident]:
@@ -289,6 +299,7 @@ class EnginePool:
         Evicts nothing unless the plan as a whole makes the new engine fit.
         """
         need = spec.engine.vram_gib
+        metrics.VRAM_BUDGET_GIB.set(config.vram_budget_gib)
         if need > config.vram_budget_gib:
             metrics.REJECTIONS_TOTAL.labels(reason="vram_budget_exceeded").inc()
             raise EngineBuildRefused(
@@ -303,6 +314,7 @@ class EnginePool:
             return gib + need <= config.vram_budget_gib and engines + 1 <= config.max_resident
 
         if fits(committed, count):
+            metrics.RESIDENT_GIB.set(committed + need)
             return []
         candidates = sorted(
             (r.last_used, key)
@@ -320,6 +332,7 @@ class EnginePool:
             metrics.REJECTIONS_TOTAL.labels(reason="engine_capacity").inc()
             raise EngineCapacityError(spec.runtime_key)
         victims = [self._resident.pop(key) for key in plan]
+        metrics.RESIDENT_GIB.set(self._committed_gib() + need)
         for victim in victims:
             metrics.ENGINE_EVICTIONS_TOTAL.inc()
             logger.info(
@@ -348,6 +361,7 @@ class EnginePool:
             async with self._lock:
                 self._loading.pop(key, None)
                 self._loading_specs.pop(key, None)
+                metrics.RESIDENT_GIB.set(self._committed_gib())
             metrics.ENGINE_LOADS_TOTAL.labels(result="failed").inc()
             logger.warning(
                 "vllm.engine.load_failed",
@@ -366,8 +380,11 @@ class EnginePool:
             self._loading.pop(key, None)
             self._loading_specs.pop(key, None)
             self._resident[key] = resident
+            self._publish_residency(spec.slug)
         metrics.ENGINE_LOADS_TOTAL.labels(result="loaded").inc()
-        metrics.ENGINE_LOAD_SECONDS.observe(resident.load_seconds)
+        metrics.MODEL_LOAD_SECONDS.labels(service=metrics.SERVICE, model=spec.slug).observe(
+            resident.load_seconds
+        )
         logger.info(
             "vllm.engine.loaded", runtime_key=key, load_seconds=round(resident.load_seconds, 3)
         )

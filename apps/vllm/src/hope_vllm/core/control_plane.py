@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from hope_obs import get_logger
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from hope_vllm.engine.pool import DEFAULT_INFLIGHT_FACTOR, PoolConfig
+from hope_vllm.core.pools import DEFAULT_INFLIGHT_FACTOR, PoolConfig
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from hope_vllm.core.config import Settings

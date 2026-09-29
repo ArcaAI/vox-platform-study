@@ -4,8 +4,10 @@
 * ``/health/live``    process alive. Reads NOTHING — no pool, no engine, no lock — so a
                       replica busy decoding (or loading weights in a worker thread) is
                       never restarted for being busy (TASK-1007 D-2 / F-3).
-* ``/health/ready``   can this replica serve? 503 only when the engine backend is absent
-                      from the image. No engine loaded yet is ``degraded`` but READY:
+* ``/health/ready``   can this replica serve? 503 when the engine backend is absent from
+                      the image, or while the replica DRAINS (SIGTERM — leave the Service
+                      endpoints; in-flight decodes finish). No engine loaded yet is
+                      ``degraded`` but READY:
                       engines are lazy because the model is only known per request, and a
                       router warms a new replica through ``POST /engines/warm``.
 * ``/health/startup`` lifespan finished (the shared ``service_release_task`` marker).
@@ -76,6 +78,11 @@ async def startup(request: Request) -> dict[str, str] | JSONResponse:
 @router.get("/health/ready", response_model=None)
 async def readiness(request: Request) -> dict[str, Any] | JSONResponse:
     factory = request.app.state.engine_factory
+    if getattr(request.app.state, "draining", False):
+        return JSONResponse(
+            status_code=503,
+            content={"status": "draining", "message": "shutting down; finishing in-flight work"},
+        )
     reason = factory.availability()
     if reason is not None:
         return JSONResponse(
