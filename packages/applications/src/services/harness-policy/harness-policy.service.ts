@@ -614,8 +614,8 @@ export class HarnessPolicyService {
 
   /**
    * TASK-876 — the single fail-closed text-selection seam every TS `/api/v1/generate` caller
-   * funnels through (the live loop, the finalize/pre-summary processors, the DNA processor,
-   * the text proxy and the v1 compat controller).
+   * funnels through (the live loop, the finalize/pre-summary processors, the DNA processor and
+   * the text proxy; the v1 compat controller that also did was deleted by TASK-1004).
    *
    * ONE tier: the tenant's assigned TEXT_GENERATION agent, `department → tenant → SYSTEM`,
    * through `TextAgentResolverService` (which also owns the fallback chain and per-row derived

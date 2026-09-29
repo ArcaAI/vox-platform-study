@@ -50,7 +50,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * `?tenantId=` selects which tenant's policies the request acts on; the SYSTEM
  * tenant id addresses the platform default every tenant inherits. Super admins
  * act cross-tenant via that parameter (the console's working-tenant gate
- * normally supplies it), exactly as on `/admin/ai-task-defaults`.
+ * normally supplies it), exactly as the retired `/admin/ai-task-defaults` did (TASK-881).
  */
 /**
  * ## Credential classes
