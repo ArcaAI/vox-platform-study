@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — merged locally on `dev-2.2` and ALaaS `refactor-hope-integaration`, NOT pushed; gates green; lifecycle proven live; the audio replay with prompt capture is pending the rollout steps in §9.4 |
+| Status | **Review** — merged locally on `dev-2.2` and ALaaS `refactor-hope-integaration`, NOT pushed (owner pushes). SDK 4.1.0 published. Local rollout applied, and the two-visit audio replay passes every §7.4 criterion (§9.5). The dev-cluster rollout follows the push (§9.4) |
 | Type | feature + bugfix (lifecycle correctness) |
 | Branch | `dev-2.2` (hope-v2) · `refactor-hope-integaration` (ALaaSv3.0) |
 | Repos | `arca/hope-v2` (DB, domains, applications, api, vox-node, vox, seeds), `ALaaSv3.0` (`apps/audio-stream-svc`, `apps/web_ui`) |
@@ -303,19 +303,56 @@ ALaaS, run in the worktree against the built vox-node:
 
 Side effect: the first attempt provisioned a dev clinician `auto_6a0b79169f3dec35` with staff id `arcaai_doctor`. That is TASK-950 find-or-provision, working as designed. It was reused for the proof and left in place.
 
-### 9.4 Still open (rollout, needs the owner)
+### 9.4 Rollout status
 
-1. **Content rollout.** Republish the 11 ArcaAI revisit agents per tenant so the new fragment is frozen into their published versions (publish freezes fragments; TASK-1001 precedent). Do this on the dev cluster, and locally with a reseed. Then run the two-visit **audio** replay with a prompt capture (§7.3 wave 3, steps 1–3); that is the remaining verification.
-2. **Tenant setting.** Write `consultation.appointmentDay.timeZone = Asia/Kolkata` on the ArcaAI tenant through the admin API, and read it back.
-3. **SDK release.** Publish SDK 4.1.0 locally per the runbook (`changeset version` → publish → tag `SDK-4.1.0`).
-4. **ALaaS dependency bump.** Bump `@arcaai/vox-node` / `@arcaai/vox-codegen` to 4.1.0 with its lockfile in one commit, then re-run `vox-codegen --tenant` so the generated types include `investigations`. Until then the ALaaS primary does not build: it still has 4.0.0, which lacks `waitForFinalNote`.
-5. **Pushes (OD-12).** Push `dev-2.2` (CI promotes to dev) and push ALaaS `refactor-hope-integaration`.
-6. **Stale ALaaS doc.** `docs/hope-integration/02-vox-node-adapter.md` still describes `findLatestConsultation`.
+| Step | Local dev | Dev cluster |
+|---|---|---|
+| Content (`rollout.mjs`): `same_day_return` template, 11 revisit agents, ArcaAI `casenote-finalization`, scribe schema v2 with `investigations` | ✓ template v2, revisit agents v3, finalizer v2; rerun = all `skip` | **After the push deploys.** Run `HOPE_BASE_URL=<cluster> HOPE_ADMIN_PASSWORD=… node docs/implementation/TASK-1020-*/rollout.mjs`, first with `DRY_RUN=1` |
+| Setting `consultation.appointmentDay.timeZone = Asia/Kolkata` (ArcaAI) | ✓ read back | same script, same run |
+| Migration `task_1020_consultation_external_ref` | ✓ (dev DB via `db:push` + partial unique index by hand) | applied by the `hope-db-migrate` job on deploy |
+| SDK 4.1.0 | published to GitHub Packages (7 packages); version commit `02ae9e071`; tag `SDK-4.1.0` exists locally, and the owner pushes it | — |
+| ALaaS on 4.1.0 | `a024be1` (manifest + lockfile + regenerated tenant context) | ships with the ALaaS push |
+
+Stale ALaaS doc: `docs/hope-integration/02-vox-node-adapter.md` still describes `findLatestConsultation`.
+
+### 9.5 Two-visit audio replay (local stack, 2026-09-29/30)
+
+**Run 1** (the afternoon replayed the morning WAV) found two TASK-1020 defects and one pre-existing ALaaS defect. All three are fixed:
+- The fragment placeholders used `{{context.*}}` and rendered empty on the live lane. They now use `{{trigger.context.*}}` (HOPE `6647034e9`).
+- The finalizer never saw the prequel or the results. ArcaAI now has its own `casenote-finalization`, composed of `clinical_note`, then `same_day_return`, then the language policy (`069a139a5`).
+- The prequel was dated in UTC; it now uses the tenant zone, e.g. "22:23 IST" (`68b864286`).
+- ALaaS (pre-existing, `f399db1`/`708043b`): a live snapshot that arrived before the first section patch gave the note template generic keys, so `note.final` held 22 sections, 11 of them empty twins. The template now adopts the patch identity (ALaaS `9cfe427`).
+- ALaaS also: `investigations` is now a known kind, and the replay script takes the event id, department code, visit type and investigations (`af2e8ab`).
+
+**Run 2** used a fresh patient, a synthesized 47 s afternoon clip (the doctor reviews Hb 10.2 L and FBS 142 H and prescribes), and investigations in the start frame.
+
+| Criterion (§7.4) | Result |
+|---|---|
+| Two consultations, each with its own note | PASS: C1 `new-visit` and C2 `revisit` (parent C1), each with its own RAW_SUMMARY, both approved, both `CLOSED_COMPLETE` |
+| C1 unchanged after the afternoon | PASS: RAW_SUMMARY / PRE_SUMMARY hashes and the consultation row are identical before, after C2's sign-off, and after the re-open |
+| The prompt (live and finalizer) carries prequel + results | PASS: the fragment text contains "### Earlier visit today (22:23 IST, status CLOSED_COMPLETE) …" and both result lines, in the live revisit call and in the `casenote-finalization` call; no `{{…}}` is left |
+| The afternoon note states the full plan and results | PASS on content: Hb 10.2 [L] and FBS 142 [H]; ferrous sulphate 325 mg PO OD × 3 months; metformin 500 mg PO BD; aspirin 81 mg continued; diet and walking advice; review in 4 weeks with repeat Hb and HbA1c; ED if chest pain; it refers back to the morning ECG and troponin |
+| No duplicate sections | PASS: 11 sections, 0 duplicates |
+| Re-opening the signed E1 is refused | PASS: `CONSULTATION_NOT_RECORDABLE`, no STT session, nothing recorded |
+
+Artifacts: session scratchpad `replay1020/run2/` (prompt captures `p29` live, `p43` harness stage 2, `p48` finalizer).
+
+### 9.6 Follow-ups found by the replay (pre-existing, not TASK-1020)
+
+- **The finalizer is blind to headings.** Its system prompt says to keep the partial summaries' headings, but its user turn is the section contents joined together with NO headings. The model therefore invents its own ("Chief Complaint / History/Interventions / …"), puts the plan under a non-template heading, does not update the diagnosis, and repeats the chief complaint. The morning new-visit note had the same shape. **This affects every note, not only return visits.** Recommended next ticket: pass the section titles, and the template's heading list, into the finalizer input.
+- **Live section routing.** `treatment_plan` was never patched: the plan landed three times, in `current_medications`, `additional_data` and `instructions_and_orders`. A stale "No new instructions…" line also survives next to the real orders.
+- **Degraded pre-summary.** `case-notes-pre-summary` is `degraded` on every visit when no case notes are sent.
+- **ALaaS stream-close 404.** `closeStreamSession` answers 404 once per visit.
 
 ## 10. Change history
 
 | Date | Change |
 |---|---|
+| 2026-09-30 | Owner: do rollout steps 1–3, pushes later. Done:
+- SDK 4.1.0 published; ALaaS on 4.1.0.
+- `rollout.mjs` applied locally.
+- Run-1 replay defects fixed (lane L-FIX merged `dfd76e779`; ALaaS `af2e8ab`, `9cfe427`).
+- Run-2 replay passes all criteria (§9.5); pre-existing follow-ups in §9.6. |
 | 2026-09-29 | Wave 1 + 2 merged (hope-v2 `b1af8ef92`…`0681017da`, ALaaS `0e6b773`), migration authored on the shadow DB, gate pass green, lifecycle proven live (§9.3). Status → Review. Deviations recorded in §9.1. |
 | 2026-09-29 | Owner: all ODs as recommended, TASK-1020 confirmed, go. Wave 1 lanes L-OPEN, L-CARRY, L-CONTENT, L-SDK spawned in sibling worktrees `../hope-v2-task-1020-<lane>`. |
 | 2026-09-29 | Plan written from a four-lane read-only discovery: HOPE lifecycle, SDKs, ALaaS broker/web_ui, content. Deciding facts re-verified by the orchestrator: `consultation.service.ts:1143-1177`, `:2296-2330`; `ConsultationEntity.ts:39-78`; `consultation-event.handler.ts:132-170, 470-495`; `visit-type.catalogue.ts:1-30`. |
