@@ -31,7 +31,6 @@ function build() {
     undefined as any,
     undefined as any,
     undefined as any,
-    undefined as any,
   );
 }
 

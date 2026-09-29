@@ -52,6 +52,7 @@ import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt
 import { clientClinicalContextReaderFor } from '../context/client-clinical-context';
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
+import type { JobStatusType, SummaryJobResult } from '../jobs/dto';
 import { IUsageLedgerService } from '../../usageLedger';
 import { INotificationService } from '../../notification';
 import type { CreateNotificationRequest } from '../../notification/dto';
@@ -76,6 +77,8 @@ import type {
   HarnessGateDecisionResponse,
   HarnessPersistEntitiesRequest,
   HarnessPersistEntitiesResponse,
+  HarnessProgressAck,
+  HarnessProgressRequest,
   HarnessResolvedModelResponse,
   HarnessSegmentCitationRef,
 } from './dto';
@@ -794,6 +797,90 @@ export class HarnessInternalService extends BaseService {
         throw new ConflictException(error.message);
       }
       throw error;
+    }
+  }
+
+  /**
+   * TASK-1014 — the harness progress callback. The live feed is `HarnessProgressService`'s
+   * (unchanged); this adds the ONE thing it cannot do: when the doc workflow reports its
+   * `failed` terminal stage with the summary job's id, the ConsultationJob becomes FAILED, so
+   * `GET consultations/jobs/:jobId` stops reading RUNNING for a run that is over.
+   *
+   * The interpreter's progress carries the harness RUN's id, not a ConsultationJob's — no job
+   * record exists for it, and `notifyFailed` writes nothing for an id it cannot find.
+   */
+  async reportProgress(consultationId: string, dto: HarnessProgressRequest): Promise<HarnessProgressAck> {
+    const ack = (await this.progressService?.reportProgress(consultationId, dto)) ?? { ok: false };
+    if (dto.stage === HARNESS_PROGRESS_FAILED_STAGE && dto.jobId) {
+      await this.failHarnessJob(dto.jobId, dto.label ?? 'Documentation generation failed');
+    }
+    return ack;
+  }
+
+  private static readonly TERMINAL_JOB_STATUSES: readonly JobStatusType[] = ['COMPLETED', 'FAILED', 'CANCELLED'];
+
+  /** True when the job has already settled — every harness callback after that is a duplicate or late. */
+  private async isHarnessJobSettled(jobId: string): Promise<boolean> {
+    const current = await this.jobService?.getJobStatus(jobId);
+    return !!current && HarnessInternalService.TERMINAL_JOB_STATUSES.includes(current.status);
+  }
+
+  /**
+   * Push a harness summary job forward, and complete it when `terminal` is given.
+   *
+   * Idempotent against duplicate harness callbacks (a second `HarnessDocWorkflow` execution, a
+   * re-delivered activity, a late EARLY draft): once the job is COMPLETED / FAILED / CANCELLED
+   * nothing here writes to it again, so it is completed at most once and never regressed to
+   * RUNNING. The result mirrors the BullMQ path's `SummaryJobResult`, with `content` read back
+   * from the persisted row — what the clinician will see, including an adoption the draft path
+   * skipped.
+   *
+   * Best-effort, like every push on this surface: a Redis hiccup must never undo a persisted note.
+   */
+  private async advanceHarnessJob(
+    jobId: string,
+    progress: number,
+    currentStep: string,
+    terminal: { contextItemId: string; modelName?: string } | null,
+  ): Promise<void> {
+    try {
+      if (await this.isHarnessJobSettled(jobId)) {
+        this.logger.debug({ message: 'Harness job already settled — duplicate callback ignored', jobId });
+        return;
+      }
+      await this.jobService?.notifyProgress(jobId, progress, currentStep);
+      if (terminal) {
+        await this.jobService?.notifyComplete(jobId, await this.buildSummaryJobResult(terminal.contextItemId, terminal.modelName));
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: 'Harness job status update failed (best-effort)',
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async buildSummaryJobResult(contextItemId: string, modelName?: string): Promise<SummaryJobResult> {
+    const row = await this.contextItemRepository.findById(contextItemId);
+    return {
+      contextItemId,
+      content: row?.content ?? '',
+      ...(modelName ? { summaryMeta: { aiModelId: modelName } } : {}),
+    };
+  }
+
+  /** The FAILED twin of `advanceHarnessJob` — same settled-guard, same best-effort posture. */
+  private async failHarnessJob(jobId: string, error: string): Promise<void> {
+    try {
+      if (await this.isHarnessJobSettled(jobId)) return;
+      await this.jobService?.notifyFailed(jobId, error);
+    } catch (err) {
+      this.logger.warn({
+        message: 'Harness job FAILED transition failed (best-effort)',
+        jobId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -1667,21 +1754,16 @@ export class HarnessInternalService extends BaseService {
           }
         }
 
-        // 4. SSE progress (best-effort — a Redis hiccup must not lose the draft).
+        // 4. SSE progress (best-effort — a Redis hiccup must not lose the draft). TASK-1014: the
+        // single-shot draft IS the run's terminal point, so the job also reaches COMPLETED here; an
+        // EARLY draft is not (assurance is still pending — `finalizeAssurance` completes it).
         if (dto.jobId) {
-          try {
-            await this.jobService?.notifyProgress(
-              dto.jobId,
-              isEarly ? 90 : 100,
-              isEarly ? 'Draft ready — verifying safety' : 'Draft ready for review',
-            );
-          } catch (error) {
-            this.logger.warn({
-              message: 'Harness draft SSE progress notify failed (best-effort)',
-              jobId: dto.jobId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
+          await this.advanceHarnessJob(
+            dto.jobId,
+            isEarly ? 90 : 100,
+            isEarly ? 'Draft ready — verifying safety' : 'Draft ready for review',
+            isEarly ? null : { contextItemId, modelName: dto.modelName },
+          );
         } else if (!isEarly) {
           // The interpreter's `onEnd` finalize persists through this same route but carries NO
           // summary `jobId` — the run payload's `jobId` is the harness RUN's, not a
@@ -1853,17 +1935,10 @@ export class HarnessInternalService extends BaseService {
           await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
         }
 
-        // 3. SSE progress (best-effort — a Redis hiccup must not lose the verdict).
+        // 3. SSE progress (best-effort — a Redis hiccup must not lose the verdict). TASK-1014: the
+        // second phase of an EARLY draft is the run's terminal point, so the job reaches COMPLETED.
         if (dto.jobId) {
-          try {
-            await this.jobService?.notifyProgress(dto.jobId, 100, 'Assurance complete');
-          } catch (error) {
-            this.logger.warn({
-              message: 'Harness finalizeAssurance SSE progress notify failed (best-effort)',
-              jobId: dto.jobId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
+          await this.advanceHarnessJob(dto.jobId, 100, 'Assurance complete', { contextItemId: dto.contextItemId, modelName: dto.modelName });
         }
 
         // 4. WORM — SENSOR_RUN (the deferred verdict) + REDUCED_ASSURANCE.
