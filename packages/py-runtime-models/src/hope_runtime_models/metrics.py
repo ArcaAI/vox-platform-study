@@ -13,10 +13,11 @@ five services, so they must be identical everywhere.
 TASK-1005 adds the RESIDENCY contract — per MODEL rather than per cache, read by
 the gateway residency controller and the "Model residency" console screen:
 
-    model_resident{service,model,device,state="loading|loaded|unloading"}   # 1 / 0
+    model_resident{service,model,device,state="loading|loaded|unloading|failed"}   # 1 / 0
     model_resident_bytes{service,model,device}   # MEASURED footprint; 0 = unmeasured
     model_load_seconds{service,model}            # histogram of successful loads
     model_evictions_total{service,reason="ttl|lru|pressure|admin|policy"}
+    model_load_failures_total{service,model,code}   # TASK-1019: one per failed load
 
 The two eviction counters coexist on purpose: `model_cache_evictions_total` keeps
 its three-value `reason` set (the retention dashboard reads exactly those), and
@@ -50,9 +51,12 @@ RESIDENT = "model_resident"
 RESIDENT_BYTES = "model_resident_bytes"
 MODEL_LOAD_SECONDS = "model_load_seconds"
 RESIDENCY_EVICTIONS_TOTAL = "model_evictions_total"
+LOAD_FAILURES_TOTAL = "model_load_failures_total"
 
 #: Fixed label vocabularies of the residency contract.
-RESIDENCY_STATES = ("loading", "loaded", "unloading")
+#: `failed` (TASK-1019): the model's last load raised and nothing has cleared it —
+#: no memory is held, so it is a state of the model rather than of the device.
+RESIDENCY_STATES = ("loading", "loaded", "unloading", "failed")
 RESIDENCY_EVICTION_REASONS = ("ttl", "lru", "pressure", "admin", "policy")
 
 #: Cold loads measured on this platform run from ~1 s (an 84 MB embedder) to
@@ -123,6 +127,8 @@ class ResidencyMetricsSink(Protocol):
 
     def on_eviction(self, service: str, reason: str) -> None: ...
 
+    def on_load_failure(self, service: str, model: str, code: str) -> None: ...
+
 
 class PrometheusResidencyMetrics:
     """Adapts residency callbacks onto pre-built prometheus_client metrics.
@@ -133,16 +139,23 @@ class PrometheusResidencyMetrics:
     """
 
     def __init__(
-        self, *, resident: Any, resident_bytes: Any, load_seconds: Any, evictions_total: Any
+        self,
+        *,
+        resident: Any,
+        resident_bytes: Any,
+        load_seconds: Any,
+        evictions_total: Any,
+        load_failures_total: Any = None,
     ) -> None:
         self._resident = resident
         self._resident_bytes = resident_bytes
         self._load_seconds = load_seconds
         self._evictions_total = evictions_total
+        self._load_failures_total = load_failures_total
 
     @classmethod
     def create(cls, prometheus_client: Any, *, registry: Any = None) -> PrometheusResidencyMetrics:
-        """Define the four residency metrics on ``registry`` (default: the global one)."""
+        """Define the five residency metrics on ``registry`` (default: the global one)."""
         extra = {} if registry is None else {"registry": registry}
         model_labels = ["service", "model", "device"]
         return cls(
@@ -171,6 +184,12 @@ class PrometheusResidencyMetrics:
                 RESIDENCY_EVICTIONS_TOTAL,
                 "Model evictions by reason (ttl|lru|pressure|admin|policy)",
                 ["service", "reason"],
+                **extra,
+            ),
+            load_failures_total=prometheus_client.Counter(
+                LOAD_FAILURES_TOTAL,
+                "Failed model loads, by the error code the load raised (TASK-1019)",
+                ["service", "model", "code"],
                 **extra,
             ),
         )
@@ -203,3 +222,10 @@ class PrometheusResidencyMetrics:
             self._evictions_total.labels(service=service, reason=reason).inc()
         except Exception:
             logger.debug("residency metrics on_eviction failed", exc_info=True)
+
+    def on_load_failure(self, service: str, model: str, code: str) -> None:
+        try:
+            if self._load_failures_total is not None:
+                self._load_failures_total.labels(service=service, model=model, code=code).inc()
+        except Exception:
+            logger.debug("residency metrics on_load_failure failed", exc_info=True)
