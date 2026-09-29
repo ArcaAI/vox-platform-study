@@ -2,7 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common/internal-service-headers';
 import { IConfigService } from '../baseServices/_meta/config';
 import { SecretsService } from '../baseServices/_meta/secrets';
-import type { ReportedDevice, ReportedResidentModel, ServiceResidencyReport } from './model-residency.types';
+import type { ReportedDevice, ReportedResidentModel, ResidencyLoadError, ServiceResidencyReport } from './model-residency.types';
 
 /**
  * TASK-1005 — the gateway's client for the residency AGENT every model-serving
@@ -100,10 +100,17 @@ function toDevice(raw: unknown): ReportedDevice {
   };
 }
 
+function toLoadError(raw: unknown): ResidencyLoadError | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const e = asRecord(raw);
+  return { code: str(e.code) ?? 'LOAD_FAILED', message: (str(e.message) ?? '').slice(0, 500), at: str(e.at) };
+}
+
 /** snake_case agent model → the contract's camelCase `gateway` model. */
 export function toReportedModel(raw: unknown): ReportedResidentModel {
   const m = asRecord(raw);
-  const state = m.state === 'loading' || m.state === 'unloading' ? m.state : 'loaded';
+  const state = m.state === 'loading' || m.state === 'unloading' || m.state === 'failed' ? m.state : 'loaded';
+  const error = toLoadError(m.error);
   return {
     modelRef: str(m.model_ref) ?? '',
     aiModelId: str(m.ai_model_id),
@@ -119,6 +126,8 @@ export function toReportedModel(raw: unknown): ReportedResidentModel {
     loadedAt: str(m.loaded_at),
     lastUsedAt: str(m.last_used_at),
     loadSeconds: num(m.load_seconds),
+    // A `failed` model always carries an error, even from an agent that omitted it.
+    ...(state === 'failed' ? { error: error ?? { code: 'LOAD_FAILED', message: '', at: null } } : error ? { error } : {}),
   };
 }
 

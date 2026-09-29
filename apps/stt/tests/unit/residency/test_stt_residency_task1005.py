@@ -225,3 +225,49 @@ async def test_any_process_building_the_cache_emits_residency_metrics(cache: Any
     assert REGISTRY.get_sample_value(
         "model_load_seconds_count", {"service": "stt", "model": PRIMARY_SLUG}
     )
+
+
+# ── TASK-1019 lane Y — a failed load is reported as state `failed`, not silence ──
+
+
+async def test_a_failed_load_is_reported_failed_then_cleared_by_unload(
+    cache: Any, client: AsyncClient
+) -> None:
+    cache.fake_loader.load.side_effect = RuntimeError("no gguf in /models/whisper")
+
+    async with client:
+        refused = await client.post(
+            "/internal/residency/load",
+            json={"model_ref": PRIMARY_SLUG, "load_spec": LOAD_SPEC, "pin": False},
+        )
+        report = (await client.get("/internal/residency")).json()
+        cleared = await client.post("/internal/residency/unload", json={"model_ref": PRIMARY_SLUG})
+        after = (await client.get("/internal/residency")).json()
+
+    assert refused.status_code == 500
+    assert refused.json()["error"]["code"] == "LOAD_FAILED"
+    (model,) = report["models"]
+    assert model["model_ref"] == PRIMARY_SLUG
+    assert model["state"] == "failed"
+    assert model["error"]["code"] in {"RuntimeError", "ModelLoadError"}
+    assert "no gguf in /models/whisper" in model["error"]["message"]
+    assert model["error"]["at"].endswith("Z")
+    assert cleared.json() == {"outcome": "not_loaded", "model_ref": PRIMARY_SLUG}
+    assert after["models"] == []
+
+
+async def test_a_successful_retry_clears_the_reported_failure(
+    cache: Any, client: AsyncClient
+) -> None:
+    cache.fake_loader.load.side_effect = RuntimeError("cold disk")
+    body = {"model_ref": PRIMARY_SLUG, "load_spec": LOAD_SPEC, "pin": False}
+
+    async with client:
+        await client.post("/internal/residency/load", json=body)
+        cache.fake_loader.load.side_effect = None
+        retried = await client.post("/internal/residency/load", json=body)
+        report = (await client.get("/internal/residency")).json()
+
+    assert retried.json()["outcome"] == "loaded"
+    (model,) = report["models"]
+    assert model["state"] == "loaded" and model["error"] is None

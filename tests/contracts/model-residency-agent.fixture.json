@@ -1,7 +1,7 @@
 {
   "$comment": "TASK-1005 — the model-residency agent contract. PINNED by the orchestrator before the lanes branched. PRODUCERS: the residency agent API in packages/py-runtime-models (hope_runtime_models), mounted by apps/stt and apps/nlp (lane L-AGENT) — snake_case JSON under `python`; the gateway-side LM Studio adapter (lane L-LMS) — which emits the camelCase `gateway` ResidencyReport shape directly from LM Studio REST v1. CONSUMER: the gateway ModelResidencyController (lane L-CTRL, wave 2), which maps every `python` report to the same camelCase `gateway` shape, and the console screen (lane L-UI). Transport for the Python agents: `X-Service-Token` + `X-Tenant-Id: tenantless:control-plane` (TENANTLESS.CONTROL_PLANE in packages/applications/src/common/internal-service-headers.ts). Routes: GET /internal/residency · POST /internal/residency/load · POST /internal/residency/unload · PUT /internal/residency/models/{model_ref}/policy. Lanes MAY add per-service `load_spec` examples under `loadSpecExamples`; they may NOT rename, retype or remove a pinned key. `bytes` is MEASURED (device free-memory delta around the load, loads serialised per device) or null — never a catalogue estimate; `bytes_source` says which. `in_flight` is the cache pin refcount (requests/sessions currently holding the model). `pinned` is true when ANY holder pins it; `admin_pinned` only when the operator/controller pinned it (survives idle TTL, never LRU/pressure-evicted). An unload with `in_flight > 0` and no `force` answers 409 IN_FLIGHT.",
   "enums": {
-    "state": ["loading", "loaded", "unloading"],
+    "state": ["loading", "loaded", "unloading", "failed"],
     "bytesSource": ["measured", "unknown"],
     "deviceKind": ["gpu", "cpu"],
     "loadOutcome": ["loaded", "already_loaded"],
@@ -32,7 +32,8 @@
           "ttl_seconds": 900,
           "loaded_at": "2026-09-24T12:40:00Z",
           "last_used_at": "2026-09-24T12:59:58Z",
-          "load_seconds": 6.8
+          "load_seconds": 6.8,
+          "error": null
         }
       ]
     },

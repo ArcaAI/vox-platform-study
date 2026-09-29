@@ -19,6 +19,7 @@ import {
   type ResidencyBytesSource,
   type ResidencyClassName,
   type ResidencyClassSource,
+  type ResidencyLoadError,
   type ResidencyMode,
   type ResidencyModelState,
   type ResidencyServiceName,
@@ -80,6 +81,15 @@ export interface CatalogueResidentEntry {
   adminPinned: boolean;
 }
 
+/** A model whose last load FAILED (TASK-1019): it holds no memory, so it is not an entry. */
+export interface CatalogueFailedEntry {
+  service: ResidencyServiceName;
+  modelRef: string;
+  aiModelId: string | null;
+  aiModelName: string | null;
+  error: ResidencyLoadError;
+}
+
 export interface CatalogueClassification {
   class: ResidencyClassName;
   classSource: ResidencyClassSource;
@@ -95,6 +105,8 @@ export interface CatalogueBuildInput {
   devices: Array<Omit<ModelResidencyDevice, 'headroomPercent'>>;
   staleServices: string[];
   entries: CatalogueResidentEntry[];
+  /** Models whose last load failed and nothing has cleared. A resident entry or a running load outranks one. */
+  failed: CatalogueFailedEntry[];
   /** Admitted loads still running (a `loading` row even before the service reports it). */
   loading: Array<{ service: string; modelRef: string }>;
   /** SYSTEM, SELF_HOSTED, not DELETED. Rows no residency workload runs are skipped. */
@@ -116,7 +128,7 @@ const SERVICE_META: Record<(typeof CATALOGUE_SERVICES)[number], { label: string;
   nlp: { label: 'Medical NLP — entities and classification', runsOn: 'cpu' },
 };
 
-const STATUS_ORDER: Record<CatalogueModelStatus, number> = { loaded: 0, loading: 1, unloading: 2, not_loaded: 3 };
+const STATUS_ORDER: Record<CatalogueModelStatus, number> = { loaded: 0, loading: 1, unloading: 2, failed: 3, not_loaded: 4 };
 const SUGGESTION_LIMIT = 100;
 const EMPTY_USAGE: ModelResidencyUsage = { agentCount: 0, tenantCount: 0, liveConsultation: false, uses: [] };
 
@@ -128,6 +140,7 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
   const groups = new Map<ResidencyServiceName, ModelResidencyCatalogueModel[]>(CATALOGUE_SERVICES.map((s) => [s, []]));
   const names = new Map<string, string>();
   const consumed = new Set<CatalogueResidentEntry>();
+  const consumedFailures = new Set<CatalogueFailedEntry>();
   const catalogueById = new Map(input.catalogue.map((m) => [m.id, m]));
 
   // 1. Every catalogue model, under the workload that runs it.
@@ -139,9 +152,13 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
       (e) => e.service === service && ((e.aiModelId !== null && e.aiModelId === model.id) || (modelRef !== null && e.modelRef === modelRef)),
     );
     for (const e of entries) consumed.add(e);
-    const ref = modelRef ?? entries[0]?.modelRef ?? null;
+    const failures = input.failed.filter(
+      (f) => f.service === service && ((f.aiModelId !== null && f.aiModelId === model.id) || (modelRef !== null && f.modelRef === modelRef)),
+    );
+    for (const f of failures) consumedFailures.add(f);
+    const ref = modelRef ?? entries[0]?.modelRef ?? failures[0]?.modelRef ?? null;
     if (ref) names.set(residencyKey(service, ref), model.name);
-    groups.get(service)!.push(modelRow(input, service, model, ref, entries));
+    groups.get(service)!.push(modelRow(input, service, model, ref, entries, failures[0]));
   }
 
   // 2. Resident models no row above claimed (served elsewhere per the catalogue, or unknown to it) — they hold memory.
@@ -156,6 +173,15 @@ export function buildResidencyCatalogue(input: CatalogueBuildInput): ModelReside
     const model = aiModelId ? (catalogueById.get(aiModelId) ?? input.modelById(aiModelId)) : undefined;
     if (model || entries[0].aiModelName) names.set(residencyKey(service, modelRef), model?.name ?? entries[0].aiModelName!);
     groups.get(service)!.push(modelRow(input, service, model, modelRef, entries));
+  }
+
+  // 2b. A failed load no row above claimed — a model the catalogue does not know still shows WHY it is not serving.
+  for (const failure of input.failed) {
+    const rows = groups.get(failure.service);
+    if (consumedFailures.has(failure) || !rows || rows.some((r) => r.modelRef === failure.modelRef)) continue;
+    const model = failure.aiModelId ? (catalogueById.get(failure.aiModelId) ?? input.modelById(failure.aiModelId)) : undefined;
+    if (model || failure.aiModelName) names.set(residencyKey(failure.service, failure.modelRef), model?.name ?? failure.aiModelName!);
+    rows.push(modelRow(input, failure.service, model, failure.modelRef, [], failure));
   }
 
   // 3. An admitted load the service has not reported yet, of a model no row names.
@@ -235,11 +261,13 @@ function modelRow(
   model: CatalogueModelRow | undefined,
   modelRef: string | null,
   entries: CatalogueResidentEntry[],
+  failure?: CatalogueFailedEntry,
 ): ModelResidencyCatalogueModel {
   const primary = entries[0];
   const loading = modelRef !== null && input.loading.some((op) => op.service === service && op.modelRef === modelRef);
-  const status: CatalogueModelStatus = primary ? primary.state : loading ? 'loading' : 'not_loaded';
-  const aiModelId = model?.id ?? primary?.aiModelId ?? null;
+  // A resident instance or a load in progress outranks an old failure: the failure is only news while nothing else is going on.
+  const status: CatalogueModelStatus = primary ? primary.state : loading ? 'loading' : failure ? 'failed' : 'not_loaded';
+  const aiModelId = model?.id ?? primary?.aiModelId ?? failure?.aiModelId ?? null;
 
   const measuredEntries = entries.filter((e) => e.bytesSource === 'measured' && e.bytes !== null);
   const residentBytes =
@@ -269,11 +297,12 @@ function modelRow(
   const cls = input.classify(service, modelRef ?? '', aiModelId);
   return {
     aiModelId,
-    name: model?.name ?? primary?.aiModelName ?? modelRef ?? 'Unnamed model',
+    name: model?.name ?? primary?.aiModelName ?? failure?.aiModelName ?? modelRef ?? 'Unnamed model',
     slug: model?.slug ?? null,
     modelRef,
     format: model?.format ?? null,
     status,
+    error: status === 'failed' && failure ? { ...failure.error } : null,
     size,
     loadSeconds: primary?.loadSeconds ?? (modelRef !== null ? input.observedLoadSeconds(service, modelRef, model) : null) ?? null,
     residency,
@@ -334,7 +363,7 @@ export function keepPolicyFor(cls: CatalogueClassification, serviceTtlSeconds: n
 export function actionsFor(service: string, status: CatalogueModelStatus, modelRef: string | null, aiModelId: string | null): CatalogueAction[] {
   const actions: CatalogueAction[] = [];
   if (isControlled(service) && modelRef !== null) {
-    if (status === 'not_loaded') actions.push('load');
+    if (status === 'not_loaded' || status === 'failed') actions.push('load');
     else if (status === 'loaded') {
       actions.push('unload');
       if (service === 'lm-studio') actions.push('reload');

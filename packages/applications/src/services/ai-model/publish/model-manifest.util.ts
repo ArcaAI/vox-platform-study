@@ -1,7 +1,7 @@
 /**
  * `manifest.json` builder — the Merkle-root record published alongside a
  * model's weights in `hope-models` (`infrastructure/docker/minio/README.md`
- * Pure function over already-fetched files; no I/O.
+ * Pure function over already-fetched (staged) files' facts; no I/O.
  *
  * Deliberately populates only what this lane's inputs can derive:
  * `schemaVersion`, `slug`, `version`, `quantization`, `format`,
@@ -12,7 +12,16 @@
  * OMITTED rather than guessed — see the ticket report for this open
  * question.
  */
-import { FetchedModelFile } from './model-source-fetcher.service';
+/**
+ * One published object: its size comes from `size` (a file staged on disk,
+ * TASK-1019) or, for an in-memory caller, from `data`.
+ */
+export interface AiModelManifestInputFile {
+  path: string;
+  sha256: string;
+  size?: number;
+  data?: Buffer;
+}
 
 export type AiModelManifestObjectRole = 'weights' | 'projector' | 'config';
 
@@ -54,14 +63,14 @@ export function buildAiModelManifest(params: {
   quant: string | null;
   format: string;
   sourceUri: string;
-  files: ReadonlyArray<Pick<FetchedModelFile, 'path' | 'sha256' | 'data'>>;
+  files: ReadonlyArray<AiModelManifestInputFile>;
   publishedBy: string;
   now?: Date;
 }): AiModelManifest {
   const objects: AiModelManifestObject[] = params.files.map((f) => ({
     path: f.path,
     role: roleFor(f.path),
-    bytes: f.data.length,
+    bytes: f.size ?? f.data?.length ?? 0,
     sha256: f.sha256,
   }));
 

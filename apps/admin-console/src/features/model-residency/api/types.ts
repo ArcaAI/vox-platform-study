@@ -24,7 +24,14 @@ export type ResidencyServiceId = 'stt' | 'stt-worker' | 'lm-studio' | 'nlp';
 
 export type ResidencyRunsOn = 'gpu' | 'cpu';
 
-export type ResidencyModelStatus = 'loaded' | 'loading' | 'unloading' | 'not_loaded';
+export type ResidencyModelStatus = 'loaded' | 'loading' | 'unloading' | 'not_loaded' | 'failed';
+
+/** Why a load failed (TASK-1019) — present while `status` is `failed`. `at` is null when the source carries no time. */
+export interface ResidencyLoadError {
+  code: string;
+  message: string;
+  at: string | null;
+}
 
 /** `measured` is a live NVML/allocator or agent-reported figure; `catalogue` is the registry
  *  estimate; `unknown` means neither is available. Never present an estimate as an observation. */
@@ -135,6 +142,8 @@ export interface ResidencyCatalogueModel {
   modelRef: string;
   format: string | null;
   status: ResidencyModelStatus;
+  /** Set only while `status` is `failed`; absent from a gateway that predates TASK-1019. */
+  error?: ResidencyLoadError | null;
   size: ResidencySize;
   /** Estimated (or measured) seconds to load, when known. */
   loadSeconds: number | null;

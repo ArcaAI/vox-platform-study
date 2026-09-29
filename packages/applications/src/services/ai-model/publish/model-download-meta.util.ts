@@ -1,3 +1,5 @@
+import type { AiModelDownloadProgressMeta, AiModelUnregisterMeta, UnregisterWeightsOutcome } from './publisher-job.contract';
+
 /**
  * `AiModel.metaData` (`_metadata` JSONB) bookkeeping for a download job.
  *
@@ -11,8 +13,7 @@
  * job bookkeeping rides under a `download` key rather than growing a new
  * column.
  */
-
-export interface AiModelDownloadMeta {
+export interface AiModelDownloadMeta extends AiModelDownloadProgressMeta {
   jobId: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -26,6 +27,12 @@ export interface AiModelDownloadMeta {
 }
 
 type MutableAiModelDownloadMeta = Partial<AiModelDownloadMeta> & { jobId?: string };
+
+/**
+ * TASK-1019 progress + liveness fields. Carried ONLY once written, so a row
+ * nobody has published since keeps the exact pre-TASK-1019 shape.
+ */
+const PROGRESS_KEYS = ['bytesDone', 'bytesTotal', 'heartbeatAt', 'attempt'] as const;
 
 /**
  * Merge a partial download-bookkeeping update onto an entity's existing
@@ -43,6 +50,13 @@ export function mergeDownloadMeta(existing: Record<string, unknown> | null | und
     error: 'error' in update ? (update.error ?? null) : (currentDownload?.error ?? null),
     sizeMb: 'sizeMb' in update ? (update.sizeMb ?? null) : (currentDownload?.sizeMb ?? null),
   };
+  for (const key of PROGRESS_KEYS) {
+    if (key in update) {
+      (merged as unknown as Record<string, unknown>)[key] = update[key] ?? null;
+    } else if (currentDownload && key in currentDownload) {
+      (merged as unknown as Record<string, unknown>)[key] = currentDownload[key] ?? null;
+    }
+  }
 
   return { ...base, download: merged };
 }
@@ -56,13 +70,18 @@ export function readDownloadMeta(metaData: Record<string, unknown> | null | unde
   const download = raw as Record<string, unknown>;
   if (typeof download.jobId !== 'string') return null;
 
-  return {
+  const meta: AiModelDownloadMeta = {
     jobId: download.jobId,
     startedAt: typeof download.startedAt === 'string' ? download.startedAt : null,
     finishedAt: typeof download.finishedAt === 'string' ? download.finishedAt : null,
     error: typeof download.error === 'string' ? download.error : null,
     sizeMb: typeof download.sizeMb === 'number' ? download.sizeMb : null,
   };
+  if ('bytesDone' in download) meta.bytesDone = typeof download.bytesDone === 'number' ? download.bytesDone : null;
+  if ('bytesTotal' in download) meta.bytesTotal = typeof download.bytesTotal === 'number' ? download.bytesTotal : null;
+  if ('heartbeatAt' in download) meta.heartbeatAt = typeof download.heartbeatAt === 'string' ? download.heartbeatAt : null;
+  if ('attempt' in download) meta.attempt = typeof download.attempt === 'number' ? download.attempt : null;
+  return meta;
 }
 
 /**
@@ -76,17 +95,93 @@ export function readDownloadMeta(metaData: Record<string, unknown> | null | unde
 export const MODEL_PUBLISH_STATUSES = ['NOT_DOWNLOADED', 'DOWNLOADING', 'DOWNLOADED', 'DOWNLOAD_FAILED'] as const;
 export type ModelPublishStatus = (typeof MODEL_PUBLISH_STATUSES)[number];
 
+/** Staleness inputs for `derivePublishStatus` / `isDownloadStalled` (TASK-1019 D-4). */
+export interface DownloadStalenessOptions {
+  now?: Date;
+  /** `modelRegistry.download.staleAfterSeconds` × 1000, resolved by the caller. */
+  staleAfterMs?: number;
+}
+
+function isInFlight(meta: AiModelDownloadMeta | null): boolean {
+  return Boolean(meta?.startedAt && !meta.finishedAt && !meta.error);
+}
+
+/**
+ * An in-flight run whose last sign of life — `heartbeatAt`, or `startedAt`
+ * when the worker never wrote one (it crashed before picking the job up, or
+ * the job was queued by a pre-TASK-1019 gateway) — is older than
+ * `staleAfterMs`. Such a run is reported as `DOWNLOAD_FAILED` with code
+ * `DOWNLOAD_STALLED_CODE` and may be re-triggered. `false` whenever no
+ * `staleAfterMs` is given: staleness is a policy the CALLER resolves.
+ */
+export function isDownloadStalled(meta: AiModelDownloadMeta | null, opts: DownloadStalenessOptions = {}): boolean {
+  if (opts.staleAfterMs === undefined || !isInFlight(meta)) return false;
+  const lastSeen = Date.parse(meta?.heartbeatAt ?? meta?.startedAt ?? '');
+  if (Number.isNaN(lastSeen)) return false;
+  return (opts.now ?? new Date()).getTime() - lastSeen > opts.staleAfterMs;
+}
+
 /**
  * The publish state of a row, DERIVED from the two facts that survive the column
  * drop: the run bookkeeping and the MEASURED bucket availability.
  *
  * Precedence is deliberate. A job still in flight wins (it is the most recent
- * fact); then a recorded failure — which must stay visible even when the row's
- * PREVIOUS weights are still in the bucket, because "the last publish failed" is
- * exactly what an operator is polling for; then measured presence.
+ * fact) — unless it has STALLED (TASK-1019 D-4: no heartbeat within
+ * `staleAfterMs`, the signature of a worker that died mid-job), which reads as
+ * a failure; then a recorded failure — which must stay visible even when the
+ * row's PREVIOUS weights are still in the bucket, because "the last publish
+ * failed" is exactly what an operator is polling for; then measured presence.
+ * With no `opts` the behaviour is exactly the pre-TASK-1019 one.
  */
-export function derivePublishStatus(meta: AiModelDownloadMeta | null, availability: string | null | undefined): ModelPublishStatus {
-  if (meta?.startedAt && !meta.finishedAt && !meta.error) return 'DOWNLOADING';
+export function derivePublishStatus(meta: AiModelDownloadMeta | null, availability: string | null | undefined, opts?: DownloadStalenessOptions): ModelPublishStatus {
+  if (isInFlight(meta)) return isDownloadStalled(meta, opts) ? 'DOWNLOAD_FAILED' : 'DOWNLOADING';
   if (meta?.error) return 'DOWNLOAD_FAILED';
   return availability === 'AVAILABLE' ? 'DOWNLOADED' : 'NOT_DOWNLOADED';
+}
+
+const UNREGISTER_WEIGHTS: ReadonlySet<string> = new Set<UnregisterWeightsOutcome>(['deleting', 'deleted', 'kept-shared', 'kept']);
+
+/**
+ * Merge a partial `_metadata.unregister` update (contract `AiModelUnregisterMeta`)
+ * — the gateway writes the accepted request, the publisher worker completes it.
+ * Every other `metaData` key, `download` included, is preserved.
+ */
+export function mergeUnregisterMeta(existing: Record<string, unknown> | null | undefined, update: Partial<AiModelUnregisterMeta>): Record<string, unknown> {
+  const base = existing && typeof existing === 'object' ? existing : {};
+  const current = readUnregisterMeta(base);
+  const merged: AiModelUnregisterMeta = {
+    jobId: update.jobId ?? current?.jobId ?? '',
+    startedAt: update.startedAt ?? current?.startedAt ?? new Date().toISOString(),
+    deleteWeights: update.deleteWeights ?? current?.deleteWeights ?? false,
+    purge: update.purge ?? current?.purge ?? false,
+    finishedAt: 'finishedAt' in update ? (update.finishedAt ?? null) : (current?.finishedAt ?? null),
+    error: 'error' in update ? (update.error ?? null) : (current?.error ?? null),
+    weights: update.weights ?? current?.weights ?? 'deleting',
+  };
+  const deletedObjects = 'deletedObjects' in update ? update.deletedObjects : current?.deletedObjects;
+  const deletedVersions = 'deletedVersions' in update ? update.deletedVersions : current?.deletedVersions;
+  if (deletedObjects !== undefined) merged.deletedObjects = deletedObjects;
+  if (deletedVersions !== undefined) merged.deletedVersions = deletedVersions;
+  return { ...base, unregister: merged };
+}
+
+/** Read `_metadata.unregister`; `null` when absent or malformed. */
+export function readUnregisterMeta(metaData: Record<string, unknown> | null | undefined): AiModelUnregisterMeta | null {
+  if (!metaData || typeof metaData !== 'object') return null;
+  const raw = (metaData as Record<string, unknown>).unregister;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const u = raw as Record<string, unknown>;
+  if (typeof u.jobId !== 'string' || typeof u.startedAt !== 'string') return null;
+  const meta: AiModelUnregisterMeta = {
+    jobId: u.jobId,
+    startedAt: u.startedAt,
+    deleteWeights: u.deleteWeights === true,
+    purge: u.purge === true,
+    finishedAt: typeof u.finishedAt === 'string' ? u.finishedAt : null,
+    error: typeof u.error === 'string' ? u.error : null,
+    weights: typeof u.weights === 'string' && UNREGISTER_WEIGHTS.has(u.weights) ? (u.weights as UnregisterWeightsOutcome) : 'deleting',
+  };
+  if (typeof u.deletedObjects === 'number') meta.deletedObjects = u.deletedObjects;
+  if (typeof u.deletedVersions === 'number') meta.deletedVersions = u.deletedVersions;
+  return meta;
 }

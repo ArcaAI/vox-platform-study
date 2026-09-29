@@ -223,6 +223,26 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
     'Data Plane',
   ),
   platformSecret('s3.secretKey', 'S3 secret key', 'S3-protocol secret key read by `S3Service`.', 'Data Plane'),
+  // TASK-1019 D-2 — the model publisher's OWN principal on `hope-models`. Not the
+  // `model-registry:s3` provider row: apps/stt, nlp and tts read that row through
+  // `/internal/model-registry-credential`, so a write+delete key there would reach
+  // every ML pod. Not `S3_ACCESS_KEY` either: `hope-platform-rw` has no rights on
+  // `hope-models` and must not gain them.
+  platformSecret(
+    'modelStore.publisher.accessKeyId',
+    'Model publisher access key',
+    'S3/MinIO access key the model-publisher worker uses to write, and on unregister delete, model weights in the `hope-models` bucket (`ModelStoreFactory`). ' +
+      'Read ONLY by the publisher worker — on the cluster it is fed from the `hope-models-publisher` Secret into that Deployment alone. ' +
+      'Absent ⇒ every publish/unregister job fails closed with `MODEL_STORE_CREDENTIAL_MISSING`; it never falls back to the platform storage credential. ' +
+      'Endpoint and region come from the platform storage cascade, not from here.',
+    'Data Plane',
+  ),
+  platformSecret(
+    'modelStore.publisher.secretKey',
+    'Model publisher secret key',
+    'S3/MinIO secret key paired with `MODEL_STORE_PUBLISHER_ACCESS_KEY_ID` — the model-publisher worker’s own principal on `hope-models` (write + delete + delete-version). Read only by that worker; fails closed when absent.',
+    'Data Plane',
+  ),
   platformSecret(
     'azureStorage.connectionString',
     'Azure Blob connection string',
