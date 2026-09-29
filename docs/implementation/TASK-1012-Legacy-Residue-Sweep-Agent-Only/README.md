@@ -1,6 +1,6 @@
 # TASK-1012 — Legacy residue sweep: nothing left of v1-compat / pre-agent selection
 
-**Status:** Pending (plan awaiting owner decisions D-1..D-6)
+**Status:** In Progress (D-1..D-6 approved 2026-09-29; lanes W-1..W-5 running)
 **Type:** refactor (+ one security-relevant fix, + one SDK bugfix)
 **Branch:** `dev-2.2`
 **Related:** TASK-1004 (v1-compat removal), TASK-1006 (pipeline removal, SDK 4.0.0), TASK-1010, TASK-1011
@@ -30,7 +30,7 @@ source) deleted locally 2026-09-29.
 | L-6 | `packages/applications/.../update-user-preferences.request.ts:6-52,100` | `PATCH users/me/preferences` accepts `localConfig.{noiseCancellation,stt,vad,ner}.modelId` (client-AI model ids; no consumer). In OpenAPI. |
 | L-7 | `transcription-job.controller.ts:511-541`, `create-job.request.ts:30-37,83,88-101,143,148-161` | Public DTOs accept client `agentVersionId` / `resolvedSpec` (never executed) and `codeSwitching` (ignored). |
 | L-8 | `agent-draft-test.service.ts:195`, `prompt-management.service.ts:1699` | Return `streamUrl: text/tasks/…`, served only by a 308 shim. |
-| L-9 | deployment repo `base/stt.yaml:288-296,577,611`, `stt-worker.yaml:230-234,428,462` | **Verified:** STT `DATABASE_URL/POOL_SIZE/MAX_OVERFLOW` + 5432 egress still on `main`; the fix `b233fef` (+ docs `30ef262`) sits on unmerged `task-1006/docs-deploy`, which ALSO carries an old `promote(dev)` commit — cherry-pick the two, never merge the branch. |
+| L-9 (**false positive**) | deployment repo `base/stt.yaml:288-296,577,611`, `stt-worker.yaml:230-234,428,462` | **Verified:** STT `DATABASE_URL/POOL_SIZE/MAX_OVERFLOW` + 5432 egress still on `main`; the fix `b233fef` (+ docs `30ef262`) sits on unmerged `task-1006/docs-deploy`, which ALSO carries an old `promote(dev)` commit — cherry-pick the two, never merge the branch. |
 
 ### Dead code
 Gateway: 10 `*-redirect.shim.controller.ts` marked "DELETE IN ALL-2.0.0", still mounted (after L-8);
@@ -53,7 +53,7 @@ vox-node README (49 vs 48 areas, `summarization.ts`), `.claude/rules/08-vox-sdk.
 deployment-repo docs (`apps/smr` paths, `smr_*` metrics, compat-playground), ~15 code comments citing
 `AiTaskDefault` / `text-compat` as current. Full path list: audit output, kept in the orchestrator session.
 
-## Owner decisions (proposed)
+## Owner decisions (all APPROVED as recommended, 2026-09-29)
 | # | Question | Recommendation |
 |---|---|---|
 | D-1 | L-3 raw `provider`/`model` on `text-generations/generate` | Business plane: `agentSlug` only. Raw pinning moves behind the admin plane (super-admin playground) or the playground uses a Global playground agent |
@@ -63,7 +63,28 @@ deployment-repo docs (`apps/smr` paths, `smr_*` metrics, compat-playground), ~15
 | D-5 | `core.classify` names a registry `modelSlug`, not an agent | Keep for now (workflow node config, platform-owned); convert to an agent reference in its own ticket |
 | D-6 | L-9 deployment change restarts STT pods on sync | Cherry-pick `b233fef` + `30ef262` onto deployment `main` now (dev only; STT no longer reads them) |
 
-## Implementation Plan (draft — after TASK-1010 phase B lanes merge; they share `packages/applications`)
+## Verification before the lanes (orchestrator, 2026-09-29)
+
+- **L-9 is a false positive.** The audit read the deployment primary checkout's stale LOCAL `main`
+  (`ada789e`). `b233fef` and `30ef262` are both ancestors of `origin/main` (`67e41e2`); a cherry-pick
+  onto `origin/main` was empty. D-6 needs no change.
+- **D-3 precondition met.** Loki, `{app="hope-api"}` "Request completed" lines, 28 × 6 h windows
+  2026-09-22T13:22Z → 2026-09-29T13:22Z (30-day retention, no window failed): **0 hits** on every shim
+  prefix (`usage`, `ai/`, `billing`, `tenant/me/context-schema`, `entitlements`, `rbac/check`, `text/`,
+  `tenant`, `voice-profile`); a control query on `health/` matched, so the filter works. The 9 shims
+  are deleted (W-1, as its own commit).
+
+## Implementation Plan (lanes, 2026-09-29)
+
+| Lane | Branch | Owns |
+|---|---|---|
+| W-1 (opus) | `task-1012/w1-gateway` | L-1, L-3 (D-1: business route refuses `provider`/`model` 400 `MODEL_PINNING_NOT_ALLOWED`; admin-plane playground route, super-admin + AUTH-NOTE; console playground-llm switched), L-4, L-6, L-7, L-8, shims (D-3), workflow-contract validator, stale comments in `apps/api` + `packages/applications`, five artifacts. Fields a published SDK may still send → accepted-and-ignored `@deprecated` until 5.0.0; fields that bypass agent resolution → refused/stripped |
+| W-2 (opus) | `task-1012/w2-sdks` | L-2, L-5, SDK side of the W-1 contract, dead exports `@deprecated`, vox-node cleanups, SDK docs, a `patch` changeset (4.0.1). No publish — the local release is a separate owner-confirmed step |
+| W-3 (sonnet) | `task-1012/w3-python` | stt YAML pipeline stack + tests, text hardcoded provider (fail closed if every caller supplies one), stale comments |
+| W-4 (sonnet) | `task-1012/w4-docs` | rules (`.claude`, `.cursor`), docs, generator comments, seed comments, `vitest.config` globs, console vestiges |
+| W-5 (sonnet) | deployment `task-1012/deploy-docs` (from `origin/main`) | deployment docs (`smr_*` → `text_*`, compat-playground, `pipelineId`), `hope.pipeline_id` span allow-list if nothing emits it |
+
+### Original draft (superseded by the table above)
 1. W-1 gateway + applications: L-1, L-3/L-4 per D-1/D-2, L-6, L-7, L-8, then shims (D-3), workflow-contract validator; regenerate the five API artifacts.
 2. W-2 SDKs: L-2, L-5, dead-export deprecations, vox-node cleanups, SDK docs; local release per the runbook (owner rule).
 3. W-3 Python: stt `yaml_parser` + exceptions/constants + their tests; text hardcoded provider.
@@ -75,4 +96,5 @@ TDD: each removal of a live path gets an "absent/refused" test first (e.g. speec
 _Not started._
 
 ## Change History
+- 2026-09-29 — D-1..D-6 approved; L-9 found to be a false positive; shim traffic check 0 hits / 7 d; lanes W-1..W-5 started from `df9eed44f` (deployment lane from `origin/main` `67e41e2`).
 - 2026-09-29 — Ticket opened from the owner's "nothing left of v1-compat" directive; audit findings recorded; `apps/smr/` leftover (ignored `.pyc` only) deleted locally.
