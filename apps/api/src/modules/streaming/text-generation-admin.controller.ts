@@ -61,7 +61,7 @@ export class TextGenerationAdminController {
   @ApiResponse({ status: 200, description: 'The generation result, or the streaming acknowledgement carrying the task stream URL.' })
   @ApiResponse({ status: 403, description: 'The caller is not a platform administrator.' })
   @ApiResponse({ status: 429, description: 'The tenant is over its monthly LLM-token allowance, or the provider is rate limiting.' })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the shared proxy pipeline returns the TEXT body untyped
   async generate(@Body() body: TextGenerateRequest, @Res({ passthrough: true }) res?: Response): Promise<any> {
     this.assertPlatformAdmin();
     return this.proxy().proxyGenerate(body, res);
@@ -81,7 +81,7 @@ export class TextGenerationAdminController {
   @ApiResponse({ status: 200, description: 'The generation result (with `_debug` assembly meta when requested).' })
   @ApiResponse({ status: 400, description: 'The assembly request is malformed (type, context source, or visit type).' })
   @ApiResponse({ status: 403, description: 'The caller is not a platform administrator.' })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the shared proxy pipeline returns the TEXT body untyped
   async generateAssembled(@Body() body: AssembledGenerateRequest, @Res({ passthrough: true }) res?: Response): Promise<any> {
     this.assertPlatformAdmin();
     return this.proxy().proxyGenerateAssembled(body, res);

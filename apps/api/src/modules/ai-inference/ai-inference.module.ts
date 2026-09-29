@@ -1,8 +1,4 @@
-import {
-  AiRoutingPolicyServiceModule,
-  TenantNlpTaskInstructionsServiceModule,
-  UsageLedgerServiceModule,
-} from '@arcaai/applications';
+import { AiRoutingPolicyServiceModule, TenantNlpTaskInstructionsServiceModule, UsageLedgerServiceModule } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { AiInferenceClient } from './ai-inference.client';

@@ -767,7 +767,7 @@ export class TextProxyController {
    * model-pinning refusal) and the admin playground route (`TextGenerationAdminController`, after
    * its super-admin gate), so raw pinning and agent selection run through ONE proxy path.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the TEXT response body (sync result or streaming ack) is proxied untyped, as `generate` returns it
   async proxyGenerate(body: TextGenerateRequest, res?: Response): Promise<any> {
     // OUTSIDE the try below, deliberately: that catch turns everything it sees
     // into `buildUpstreamException` ("TEXT service unavailable"), which would
@@ -1221,7 +1221,7 @@ export class TextProxyController {
   }
 
   /** NOT a route — the `generate/assembled` pipeline; see {@link proxyGenerate}. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the TEXT response body plus `_debug` is proxied untyped, as `generateAssembled` returns it
   async proxyGenerateAssembled(body: AssembledGenerateRequest, res?: Response): Promise<any> {
     this.validateAssembledRequest(body);
     this.requireDebugAccess(body.debug);
