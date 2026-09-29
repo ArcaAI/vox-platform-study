@@ -43,7 +43,7 @@ report but don't fail the pipeline) or are disabled behind an opt-in flag.
 | `test-tts` | pytest | **BLOCKING** (hermetic) | `PYTHONPATH=src pytest src/tts/tests/ -x` |
 | `test-harness` | pytest | **BLOCKING** (hermetic) | `pytest src/harness/tests/ -x` |
 | `test-stt` | pytest | **BLOCKING** (`allow_failure` was removed — "verified green under CI-shaped env"; corrected here 2026-09-19, TASK-985 QW-12 — this row previously read "advisory" with no `allow_failure` in the live YAML to back it) | unit, then `tests/` excluding e2e/integration, **plus** `tests/integration/test_seed_geometry_parity.py` (TASK-985 QW-12 — the ONE `tests/integration/` file admitted to this fast per-commit lane despite the `--ignore` above: pure-CPU, no services, and it is what turns an ungoverned `streaming.*`/prompt-state edit red at PR time. Self-skips until BP-1's live fingerprint capture lands in `streaming_thresholds.json`) |
-| `test-sdk` | Vitest | advisory (`allow_failure`) | vox, room, vad, stt, noise-filter, med-ner, ui |
+| `test-sdk` | Vitest | **BLOCKING** (`allow_failure: false` in `.gitlab/ci/test.yml`) | vox, vox-node, room, stt, ui (the client-AI packages vad / noise-filter / med-ner were deleted in 4.0.0, TASK-1006) |
 | `test-admin-console` | Vitest | advisory | `@arcaai/admin-console test` (unit only) |
 | `test-ui-ct` | Playwright CT | advisory + **opt-in** `RUN_UI_CT=true` | `@arcaai/ui test:ct` (Chromium/Firefox/WebKit) |
 | `test-text` | pytest | advisory | `src/text/tests/ -x` |

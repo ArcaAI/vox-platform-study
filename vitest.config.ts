@@ -113,9 +113,7 @@ export default defineConfig({
         'packages/exceptions/src/**/*.ts',
         'packages/pipeline/src/**/*.ts',
         'packages/agentic-sdk-v2/src/**/*.ts',
-        'packages/med-ner/src/**/*.ts',
         'packages/stt/src/**/*.ts',
-        'packages/vad/src/**/*.ts',
       ],
       exclude: [
         '**/node_modules/**',

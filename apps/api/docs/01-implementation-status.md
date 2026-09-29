@@ -144,12 +144,12 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 
 #### STT Service (Audio) — Port 8861
 
-- [x] **TranscriptionJobController**: Transcription job management (`/api/v1/audio/transcription-jobs`)
-- [x] **TranscriptionStreamController**: Streaming transcription (`/api/v1/audio/transcription-jobs`)
-- [x] **PipelineController**: Pipeline management (`/api/v1/audio/pipelines`)
-- [x] **AiModelController**: AI model management (`/api/v1/audio/ai-models`)
-- [x] **SttGateway**: WebSocket gateway for real-time STT (`/stt`)
-- [x] **SttInternalController**: Internal STT endpoints (`/internal/stt`)
+- [x] **TranscriptionJobController** (`streaming` module): job management, batch and streaming-session endpoints (`/api/v1/audio/transcription-jobs`)
+- [x] **AdminTranscriptionJobController**: admin read view (`/api/v1/admin/audio/transcription-jobs`)
+- [x] **SttWsGateway**: WebSocket gateway for real-time STT (`/ws/stt/stream`)
+- [x] **SttInternalController**: Internal STT endpoints (`/api/v1/internal/stt`)
+
+> **Note**: ASR selection is an Agent (`agentSlug` → `ResolvedAsrSpec`). `PipelineController` (`/audio/pipelines`) was removed by TASK-1006; the AI model registry is `admin/ai-models` (`AiModelAdminController`).
 
 > **Note**: STT v1 (`SttController`, `SttGateway`) was removed in TASK-210 Phase 1.
 > **Note**: The legacy TTS (`apps/tts`, port 8863) and FedL (`apps/fedl`, port 8865) services and their gateway proxy controllers/gateways have been removed. Port 8863 is now Guardrail and the Clinical Documentation Harness owns 8866.

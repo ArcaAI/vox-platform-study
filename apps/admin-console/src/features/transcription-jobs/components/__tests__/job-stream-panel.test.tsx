@@ -59,7 +59,7 @@ function job(overrides: Partial<TranscriptionJob> = {}): TranscriptionJob {
   return {
     id: 'job-1',
     jobType: 'BATCH',
-    pipelineId: 'p-1',
+    agentVersionId: 'av-1',
     consultationId: null,
     contextItemId: null,
     mediaId: 'm-1',
@@ -161,7 +161,7 @@ describe('JobStreamPanel', () => {
     renderWithProviders(<JobStreamPanel jobId="job-1" />);
 
     // The final REST state renders — no subscription needed to show it.
-    expect(await screen.findByText('p-1')).toBeDefined();
+    expect(await screen.findByText('av-1')).toBeDefined();
     expect(screen.getByText('Idle')).toBeDefined();
 
     // Give any (incorrect) subscription attempt a beat to fire before asserting its absence.

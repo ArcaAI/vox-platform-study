@@ -215,7 +215,7 @@ const TOOLS_ENV_SETTINGS: SettingDescriptor[] = [
  *
  * Every one is TRANSPORT or GEOMETRY — queue bounds, batch geometry, cache
  * retention, a filesystem root. None selects a model, a label set or a
- * threshold; those stay `AiTaskDefault` x `AiModel` per
+ * threshold; those stay `AiRoutingPolicy` x `AiModel` per
  * `00-project-context.md` §Configuration Principles.
  */
 const PYTHON_DESCRIPTION_OVERLAY: ReadonlyMap<string, string> = new Map([

@@ -2,7 +2,7 @@
 
 The durable clinical-documentation harness and the agentic-loop surfaces around it: the
 Temporal-orchestrated guides→generate→sensors→gate workflow, harness admin & observability,
-the realtime pipeline-policy cascade, RAG knowledge ingestion, evaluation golden sets +
+RAG knowledge ingestion (the realtime pipeline-policy cascade, H3, is retired), evaluation golden sets +
 edit-burden, the global agentic-policy engine console, and the MCP tool registry. Migrates
 legacy matrix rows **19**, **20**, **21**, **22**, **23**, and the agentic-loop console rows
 **34c** (golden sets / edit burden) and **34d** (MCP registry). Agent-trajectory
@@ -41,16 +41,14 @@ service-token routes and streams progress/assurance to the browser over SSE.
 | Console | `apps/admin-console` feature `harness-ops` (`harness-workflows-screen`, `harness-observability-screen`); routes `/harness/workflows`, `/harness/observability` (tier 30–49, tenant-scoped). Policy editing surfaces in `harness-policy` (`harness-policy-screen`), route `/harness/policy` |
 | Tests | unit(app): `harness-policy/__tests__/*`, `harness-observability/__tests__/*`, `harness-audit/__tests__/*`; unit(console): `harness-ops/components/__tests__/{harness-workflows-screen,harness-observability-screen}.test.tsx`, `harness-ops/api/__tests__/harness-ops-api.test.ts`, `harness-policy/components/__tests__/harness-policy-screen.test.tsx`, `harness-policy/api/__tests__/harness-policy-api.test.ts`; e2e: `super-admin-ops-surfaces.spec.ts` (partial); py(hrn) |
 
-### H3 — Realtime pipeline-policy cascade — legacy row 21
+### H3 — Realtime pipeline-policy cascade — legacy row 21 — RETIRED (TASK-882)
 
-| Field | Value |
-|---|---|
-| App / service | `apps/api` |
-| Key modules | `apps/api/src/modules/pipeline-policy-admin` (`pipeline-policy-admin.controller.ts`); `packages/applications/src/services/pipeline-policy` (`pipeline-policy.service.ts`) |
-| Prisma models | `PipelinePolicy`, `PipelinePolicyChange` (`db_main/pipeline-policy.prisma`) |
-| Key API endpoints | `@Controller('admin/harness/pipeline-policy')`: `GET ''`, `GET /row`, `PUT /row` (create/CAS under `If-Match`). **AUTH-NOTE:** the `globalOnly` descriptor lock is enforced imperatively (rule 05) |
-| Console | `apps/admin-console` feature `pipeline-policy` (`pipeline-policy-screen`); route `/harness/pipeline-policy` (tier 30–49, tenant-scoped) |
-| Tests | unit(app): `pipeline-policy/__tests__/{pipeline-policy.service,pipeline-policy.service.encryption}.test.ts`; unit(console): `pipeline-policy/components/__tests__/pipeline-policy-screen.test.tsx`, `pipeline-policy/api/__tests__/pipeline-policy-api.test.ts`; e2e: `backend-residuals.spec.ts` (partial) |
+`PipelinePolicy` / `PipelinePolicyChange`, the `pipeline-policy-admin` gateway module, the
+`pipeline-policy` service and the `admin/harness/pipeline-policy` routes no longer exist. The realtime
+pipeline toggles became `enabled` flags on the nodes of the workflow a department is assigned (edited in the
+console's `/workflow-studio/assignments`); the toggles that had no consumer were deleted, `autoSummaryEnabled` is
+the workflow generation node's `enabled`, and `dnaStyleEnabled` split into the `agent.dna_style` node (tenant) and a
+`UserSettings` preference (doctor). The section number is kept so links resolve; there is nothing to cover here.
 
 ### H4 — Institutional knowledge / RAG ingestion — legacy row 22
 
@@ -107,7 +105,7 @@ engine kill-switch (rule 13: `/agentic-policy` owns `harness/policy/global` +
 - **Row 23 was stale.** Eval runs + golden sets now have a controller surface (`harness-admin`); the legacy "no dedicated controller yet" note is corrected in H5. Golden-case reads are PHI-safe-metadata-only.
 - **RAG has no public REST surface (H4).** Ingestion is internal service-token + BullMQ only; there is no browser-facing knowledge API. `harness-institutional-rag.spec.ts` is the only e2e.
 - **Agent-trajectory observability is NOT duplicated here.** The `AgentTrajectoryStep` model, `admin/agent-trajectory/*` routes, and AI-operations console screens are migrated in [`ai-models-providers.md`](./ai-models-providers.md) (M7); this file records only the MCP half of legacy row 34d.
-- **Harness e2e is partial.** H2/H3 lean on `task-403`/`task-406` (marked partial in the legacy matrix) plus unit + py(hrn) coverage; there is no full workflow-ops e2e beyond the gate + progress specs. Harness CI (`test-harness`) is hermetic (Temporal/LLM/reranker stubbed) — it is not evidence of live-infra behavior.
+- **Harness e2e is partial.** H2 leans on `task-403`/`task-406` (marked partial in the legacy matrix) plus unit + py(hrn) coverage; there is no full workflow-ops e2e beyond the gate + progress specs. Harness CI (`test-harness`) is hermetic (Temporal/LLM/reranker stubbed) — it is not evidence of live-infra behavior.
 - **The admin router mounts under `/api/v1/internal/harness`, not `/api/v1/admin/harness`.** The gateway `admin/harness/workflows*` routes proxy to the harness service's `internal/harness/workflows*` — the browser-facing path is the gateway one.
 
 Last verified: 2026-07-22

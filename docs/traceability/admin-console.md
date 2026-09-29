@@ -64,9 +64,7 @@ capability rows (or marked console-only). "Owned here" = a capability row in AC1
 | `ai-operations-metrics` | `/ai-operations/metrics` | 10–19 | [`ai-models-providers.md`](./ai-models-providers.md) (M7) |
 | `ai-operations-runs` | `/ai-operations/runs` | 10–19 | [`ai-models-providers.md`](./ai-models-providers.md) (M7) |
 | `ai-services` | `/ai-services` | 10–19 | [`platform-ops.md`](./platform-ops.md) (PO7) |
-| `ai-task-defaults` | `/ai-configuration` | 30–49 | [`ai-models-providers.md`](./ai-models-providers.md) |
 | `api-keys` | `/api-keys` | 20–29 | [`auth-identity.md`](./auth-identity.md) |
-| `audio-pipelines` | `/audio/pipelines` | 30–49 | [`transcription.md`](./transcription.md) |
 | `audit-logs` | `/audit-logs` | 10–19 | [`platform-ops.md`](./platform-ops.md) (PO1) |
 | `auth` | `/login`, `/register`, `/reset-password`, `/verify-email` | (auth) | [`auth-identity.md`](./auth-identity.md) |
 | `consultation-review` | `/consultation-review` | 30–49 | [`consultation.md`](./consultation.md) |
@@ -79,7 +77,6 @@ capability rows (or marked console-only). "Owned here" = a capability row in AC1
 | `harness-policy` | `/harness/policy` | 30–49 | [`harness.md`](./harness.md) (H2) |
 | `identity-providers` | `/identity-providers` | 30–49 | [`auth-identity.md`](./auth-identity.md) |
 | `monitoring` | `/monitoring` | 10–19 | [`platform-ops.md`](./platform-ops.md) (PO4) |
-| `pipeline-policy` | `/harness/pipeline-policy` | 30–49 | [`harness.md`](./harness.md) (H3) |
 | `platform` | `/dashboard` | 10–19 | [`platform-ops.md`](./platform-ops.md) (PO4) |
 | `playground-consultation` | `/playground/consultation` | 50–59 | **admin-console.md** (AC3) |
 | `playground-dna-style` | `/playground/dna-writing-style` | 50–59 | **admin-console.md** (AC3) |
@@ -100,7 +97,8 @@ capability rows (or marked console-only). "Owned here" = a capability row in AC1
 
 ## Honest notes / gaps
 
-- **The inventory is the coverage guarantee.** Every one of the 41 `features/*` directories appears exactly once above; no feature is rowless. The `(global)/dashboard` route is backed by the `platform` feature dir (`features/platform/components/platform-dashboard.tsx`), inventoried above and owned by [`platform-ops.md`](./platform-ops.md) (PO4).
+- **Retired features.** `ai-task-defaults` (`/ai-configuration`, `/ai-model-defaults`), `audio-pipelines` (`/audio/pipelines`) and `pipeline-policy` (`/harness/pipeline-policy`) are gone with the `AiTaskDefault`, `AsrPipeline` and `PipelinePolicy` planes they edited (TASK-881, TASK-1006, TASK-882); agent / workflow selection is edited in `agents` and `workflow-studio`. Where a stub route survives it is a redirect page scheduled for deletion.
+- **The inventory is the coverage guarantee.** Every `features/*` directory that existed at the last full inventory (2026-07-22) appears exactly once above; features added since are not inventoried yet (`node scripts/verify-traceability.mjs --coverage` lists them). The `(global)/dashboard` route is backed by the `platform` feature dir (`features/platform/components/platform-dashboard.tsx`), inventoried above and owned by [`platform-ops.md`](./platform-ops.md) (PO4).
 - **Playground split.** Of the five tier-50–59 playground features, `playground-live-transcription` and `playground-voice-profiles` are owned by [`transcription.md`](./transcription.md) (they exercise real STT surfaces); the other three plus `playground-shared` are console-only demo surfaces owned in AC3.
 - **`storage` vs `storage-browser`.** Both point at [`storage.md`](./storage.md) but are distinct features: `storage` is bucket/config/key administration (tier 10–19), `storage-browser` is the object data plane (tier 30–49).
 - **No route of their own.** `playground-shared` (playground chrome) and the AC1 data-grid infrastructure have no console route; they are shared modules consumed by other features.

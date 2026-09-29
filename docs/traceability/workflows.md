@@ -28,7 +28,7 @@ domain file.
   version ≥ 1 already exists. `"0"` is now an accepted strong validator (`(0|[1-9][0-9]*)`);
   a null result renders 404, never a 200 with an empty body. Evidence: `apps/api/src/decorators/expectedVersion.decorator.ts`
   (+ `__tests__/expectedVersion.decorator.test.ts`), e2e `optimistic-locking.spec.ts`,
-  `ai-provider-connections.spec.ts`, `ai-runtime-profiles.spec.ts`, `settings-registry-write.spec.ts`.
+  `ai-provider-connections.spec.ts`, `settings-registry-write.spec.ts`.
 - **PHI posture.** Clinical payloads (context items, highlights, transcript segments, summaries,
   DNA reports, audit rows) are envelope-encrypted at rest; golden-case reads surface
   PHI-safe metadata only; guardrail validation is **fail-closed** on the
@@ -140,20 +140,20 @@ entitlements, wire SSO, and attach BYO credentials.
 
 ---
 
-## W7 — Model lifecycle (discovery → registry → task-defaults → retention)
+## W7 — Model lifecycle (discovery → registry → routing policy → retention)
 
 The AI model plane end to end: discover a model on a provider host, register it, wire it to
-tasks, resolve its runtime, and retire trajectory data on a retention schedule.
+non-agent tasks, resolve it at inference, and retire trajectory data on a retention schedule.
 
 1. **Discover.** `@Controller('admin/ai-models')` → `GET /admin/ai-models/discovery` (probe upstream hosts via `HttpService`, URLs from `IConfigService`). unit(api): `ai-model/__tests__/ai-model-discovery.controller.test.ts`; e2e: `ai-model-discovery.spec.ts`.
-2. **Register into the registry.** `POST /admin/ai-models/discovery/register`, `POST /admin/ai-models` → `AiModel` (`db_main/stt.prisma`); `PATCH /admin/ai-models/:id` (OCC). unit(api): `ai-model-admin.controller.test.ts`; unit(app): `stt/model/__tests__/aiModel.service.test.ts`.
-3. **Wire per-task defaults.** `@Controller('admin/ai-task-defaults')` → `GET /options`, `GET ''` (resolved effective map), `PUT /row` (create/CAS under `If-Match`, incl. the "0"-create contract) → `AiTaskDefault` (`db_main/ai-task-default.prisma`). unit(app): `ai-task-default/__tests__/ai-task-default.service.test.ts`; e2e: `ai-task-defaults-cross-tenant.spec.ts`.
-4. **Resolve runtime at inference.** `@Controller('admin/ai-runtime-profiles')` → `GET /resolve`, `PUT /row` → `AiRuntimeProfile`; consumed by `@Controller('ai')` → `POST /ai/{guardrail/analyze,nlp/entities,nlp/diagnosis}`. unit(api): `ai-inference/__tests__/ai-inference-runtime-profile.controller.test.ts`; e2e: `ai-inference-proxy.spec.ts`.
+2. **Register into the registry.** `POST /admin/ai-models/discovery/register`, `POST /admin/ai-models` → `AiModel` (`db_main/stt.prisma`); `PATCH /admin/ai-models/:id` (OCC). unit(api): `ai-model-admin.controller.test.ts`; unit(app): `ai-model/__tests__/aiModel.service.test.ts`.
+3. **Wire non-agent tasks.** `@Controller('admin/routing-policies')` → `GET ''`, `POST ''`, `PATCH /:id` and `POST /:id/default` (elect; `If-Match`), `GET /effective` → `AiRoutingPolicy` (`db_main/ai-routing-policy.prisma`); resolved by `AiRoutingPolicyService.resolveDefault` (tenant → SYSTEM). Agent tasks (text generation, ASR, TTS) select through the tenant's `Agent`, not here. unit(app): `ai-routing-policy/__tests__/ai-routing-policy.service.test.ts`; e2e: `task-779-policy-boundaries.spec.ts`.
+4. **Resolve the model at inference.** `@Controller('text-analyses')` → `POST /text-analyses/{entities,diagnosis,topic,intent}` and `@Controller('safety-checks')` → `POST /safety-checks` read the `nlp.*` / `guardrail.*` elections. unit(api): `ai-inference/__tests__/ai-inference.controller.test.ts`; e2e: `ai-inference-proxy.spec.ts`.
 5. **Observe + retain.** `@Controller('admin/agent-trajectory')` → `GET /metrics/generation`, `GET /sessions[/:sessionId/steps]` → `AgentTrajectoryStep` (`db_main/agent-trajectory.prisma`); retention sweep in `agent-trajectory-retention` (unit-only). unit(app): `agent-trajectory-retention/__tests__/agent-trajectory-retention.service.test.ts`; e2e: `trajectory-admin.spec.ts` (probes the `/admin/agent-trajectory/*` read plane: RBAC, keyset step pagination, `payloadRef` never surfaced).
 
-**Composes:** [`ai-models-providers.md`](./ai-models-providers.md) M1 (registry), M2 (discovery), M3 (task defaults), M4 (runtime profiles), M5 (inference gateway), M7 (trajectory + retention).
+**Composes:** [`ai-models-providers.md`](./ai-models-providers.md) M1 (registry), M2 (discovery), M3 (routing policy; M4, runtime profiles, is retired), M5 (inference gateway), M7 (trajectory + retention).
 
-**Invariants:** the registry is a **SUPER_ADMIN plane** (guards pinned to `manage:all`); OCC on `PATCH ai-models/:id` and every `PUT /row` (incl. "0"-create — `ai-provider-connections.spec.ts`, `ai-runtime-profiles.spec.ts`, `settings-registry-write.spec.ts`); certain task-default prefixes are SUPER_ADMIN-only **imperatively** (`SUPER_ADMIN_ONLY_TASK_PREFIXES`, a 403, not the 404 posture — rule 05); exact-tenant scoping in the Prisma `tenant-scope` extension.
+**Invariants:** the registry is a **SUPER_ADMIN plane** (guards pinned to `manage:all`); OCC on `PATCH ai-models/:id`, `PATCH`/elect on routing policies and `PUT /admin/providers/:service/:slug` (`ai-provider-connections.spec.ts`, `settings-registry-write.spec.ts`); every routing-policy write is SUPER_ADMIN-only **imperatively** (`assertSuperAdmin`; `SUPER_ADMIN_ONLY_TASK_PREFIXES` additionally pins `nlp.` / `harness.` / `guardrail.` reads to SYSTEM — a 403, not the 404 posture, rule 05); exact-tenant scoping in the Prisma `tenant-scope` extension.
 
 ---
 
@@ -210,14 +210,14 @@ The three release-governance write paths, each an authoritative-editor surface w
 imperative privilege gate above the declarative decorator.
 
 1. **Prompt approval (clinical gate).** `POST /admin/prompt-templates/:id/approve` → flips `PromptTemplate.status = APPROVED`, pins a `PromptVersion`, writes a WORM change row (`@RequiresIfMatch()`). **SUPER_ADMIN-only imperatively** (`isSuperAdmin` in the service — the class decorator understates it; `AUTH-NOTE`). This is the gate `prompt-resolution` (W4 step 1) requires. unit(app): `prompt-management/__tests__/prompt-management.service.test.ts`; e2e: `agent-management-contract.spec.ts`, `agents-backend-backlog.spec.ts`.
-2. **Policy cascade (realtime pipeline policy).** `@Controller('admin/harness/pipeline-policy')` → `GET /row`, `PUT /row` (create/CAS under `If-Match`, "0"-create) → `PipelinePolicy`, `PipelinePolicyChange`. **`globalOnly` descriptor lock enforced imperatively** (`AUTH-NOTE`). unit(app): `pipeline-policy/__tests__/pipeline-policy.service.test.ts`; e2e: `backend-residuals.spec.ts` (partial).
+2. **Policy cascade — RETIRED (TASK-882).** `PipelinePolicy` and `admin/harness/pipeline-policy` are gone; the realtime toggles are `enabled` flags on the assigned workflow's nodes (see [`harness.md`](./harness.md) H3). The `globalOnly` descriptor lock still governs settings-registry keys.
 3. **Global harness policy default.** `GET/PATCH /admin/harness/policy/global` (SYSTEM-tenant GLOBAL-DEFAULT `HarnessPolicy`; `@RequiresIfMatch()` even on first edit — 428/412) — the single authoritative editor (`/agentic-policy` owns it; `/harness/policy` links). **SUPER_ADMIN-only** via `SUPER_ADMIN_ONLY_POLICY_KEYS`. unit(app): `harness-policy/__tests__/*`; e2e: `agentic-policy.spec.ts`.
 4. **Engine kill switch.** `GET/PATCH /admin/harness/live/config` — `enabled:false` engages the kill-switch (new `start()` calls refused while in-flight sessions drain; NOT versioned). Reading/toggling raises `ForbiddenException` without platform (super-admin) privilege. unit(app): `agentic-instructions/__tests__/agentic-instructions.service.test.ts`; e2e: `agentic-policy.spec.ts`.
 5. **MCP tool registry writes.** `@Controller('admin/mcp-servers')` CRUD → `McpServer` — writes stay **SUPER_ADMIN-only** in the service (`AUTH-NOTE`). e2e: `mcp-admin.spec.ts`.
 
-**Composes:** [`summarization.md`](./summarization.md) G5 (prompt governance); [`harness.md`](./harness.md) H3 (pipeline-policy cascade), H6 (agentic-policy engine + kill switch), H7 (MCP registry).
+**Composes:** [`summarization.md`](./summarization.md) G5 (prompt governance); [`harness.md`](./harness.md) H6 (agentic-policy engine + kill switch), H7 (MCP registry).
 
-**Invariants:** these are **403 privilege boundaries** (imperative `isSuperAdmin` / `SUPER_ADMIN_ONLY_*` / `globalOnly` locks), NOT the 404-over-403 cross-tenant posture — a cross-tenant id is still **404** via `assertOwnedByTenant` (rule 05); OCC / "0"-create on every versioned `PUT /row` and `PATCH /policy/global`; approval + policy changes write WORM change rows (`HarnessPolicyChange`, `PipelinePolicyChange`, pinned `PromptVersion`); one authoritative editor per resource (rule 13).
+**Invariants:** these are **403 privilege boundaries** (imperative `isSuperAdmin` / `SUPER_ADMIN_ONLY_*` / `globalOnly` locks), NOT the 404-over-403 cross-tenant posture — a cross-tenant id is still **404** via `assertOwnedByTenant` (rule 05); OCC / "0"-create on every versioned `PUT /row` and `PATCH /policy/global`; approval + policy changes write WORM change rows (`HarnessPolicyChange`, pinned `PromptVersion`); one authoritative editor per resource (rule 13).
 
 ---
 
@@ -346,7 +346,7 @@ closed` (no env fallback).
   comment. A genuine `202 → RUNNING → COMPLETED` round trip is unverified pending a running
   harness + Temporal worker (R-2 already names Temporal as not production-ready for the same
   reason).
-- **The "0"-create contract is proven mostly at the unit/decorator layer plus the `ai-provider-connections.spec.ts` / `ai-runtime-profiles.spec.ts` / `settings-registry-write.spec.ts` 428/412 legs.** The create-from-absent (`If-Match: "0"` → new row) path is asserted in the service unit suites (`settings-registry-write.occ`, `ai-provider-connection.service`, `harness-policy.service`), not yet in a dedicated e2e create leg.
+- **The "0"-create contract is proven mostly at the unit/decorator layer plus the `ai-provider-connections.spec.ts` / `settings-registry-write.spec.ts` 428/412 legs.** The create-from-absent (`If-Match: "0"` → new row) path is asserted in the service unit suites (`settings-registry-write.occ`, `ai-provider-connection.service`, `harness-policy.service`), not yet in a dedicated e2e create leg.
 - W6 (tenancy/entitlements) and W10 (audit) now resolve to [`tenancy-provisioning.md`](./tenancy-provisioning.md) and [`platform-ops.md`](./platform-ops.md) respectively; their step-level claims were carried over from the retired matrix and have not been re-verified against those files line by line.
 - **[`ai-models-providers.md`](./ai-models-providers.md) M7's `e2e: —` is stale.** `apps/api/tests/e2e/trajectory-admin.spec.ts` exists and probes the M7 `/admin/agent-trajectory/*` read plane (RBAC + keyset step pagination + `payloadRef`-never-surfaced); code wins over the domain file's cell. W7 step 5 cites it; M7's e2e cell should be corrected on that file's next re-stamp.
 

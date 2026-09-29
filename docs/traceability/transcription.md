@@ -83,8 +83,9 @@ BYOK is unchanged in kind, moved store: `AiProviderConnection` (`service='stt'`)
 of `TenantSttProviderCredential`; `GET /internal/stt/provider-overrides` is still the
 batch-worker credential pull, just resolved from the new store.
 
-`AsrPipeline`/`AsrPipelineVersion` and `TenantSttConfig` remain in the schema pending a
-drop migration (TASK-1006 wave 2, D-1) once every reader is confirmed gone; see
+`AsrPipeline`/`AsrPipelineVersion` and `TenantSttConfig` (with `TranscriptionJob.pipelineId` and the
+`maxAsrPipelines` entitlement) were dropped by migration
+`20260925043212_task_1006_drop_asr_pipeline_and_stt_config`; see
 [model-and-config-plane.md §8](../architecture/model-and-config-plane.md#8-asr-selection--fallback--removed-the-pipeline-template-plane-task-1006).
 Every test file this section used to cite for R4/R5/R6 (`pipeline/__tests__/**`,
 `tenant-stt-config/__tests__/**`, `stt/pipeline/__tests__/**`, the console
@@ -95,7 +96,7 @@ exercising the agent-resolved fallback chain instead of a client-supplied pipeli
 
 ## Honest notes / gaps
 
-- **The `AiModel` half of legacy row 26 is NOT here.** The model registry / discovery / task-defaults live in [`ai-models-providers.md`](./ai-models-providers.md); the `AsrPipeline`/`AsrPipelineVersion`/`modules/pipeline` half that used to be recorded in this domain retired with R4/R5/R6 above (TASK-1006).
+- **The `AiModel` half of legacy row 26 is NOT here.** The model registry / discovery / routing policy live in [`ai-models-providers.md`](./ai-models-providers.md); the `AsrPipeline`/`AsrPipelineVersion`/`modules/pipeline` half that used to be recorded in this domain retired with R4/R5/R6 above (TASK-1006).
 - **`TranscriptSegment` (`db_main/consultation.prisma`) is a transcription-owned model on the consultation schema file.** It is populated by the streaming/batch path here, not by the consultation service.
 - **No dedicated live-DB streaming e2e for the WS bridge.** R1 has unit + contract + cross-tenant-job coverage; the full browser-WS live-transcription round-trip is env-gated (playground manual pass), not an `apps/api/tests/e2e` spec.
 - **R6 discovered a real drift, not yet fixed here (Phase H is docs-only)**: a seed change added `openai` to `packages/database/src/prisma/db_main/seed/ai-models/shared.ts`'s `AI_MODEL_PROVIDERS` without the matching addition to the DTO allow-list `AI_MODEL_PROVIDERS` in `packages/applications/src/services/stt/model/dto/create-model.request.ts` — `tests/contracts/ai-model-providers.contract.test.ts` fails as a result (`@IsIn` on the admin `AiModel` create/update routes would reject `provider: 'openai'` today). Confirmed via `git stash` bisection that this is caused by that seed change (the contract test passes on the tree before it), not pre-existing drift.

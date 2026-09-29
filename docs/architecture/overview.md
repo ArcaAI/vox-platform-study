@@ -120,7 +120,7 @@ The API gateway also runs in-process BullMQ workers (queues from the `JobQueue` 
 ```mermaid
 graph TB
     subgraph browser[Browser - host application]
-        SDK["@arcaai/vox SDK<br/>room + noise-filter + vad + stt (+ med-ner)"]
+        SDK["@arcaai/vox SDK<br/>room + stt (capture + streaming transport)"]
     end
 
     subgraph adminc[apps/admin-console - Next.js :5176]
@@ -210,7 +210,7 @@ sequenceDiagram
     API-->>SDK: sessionId + one-time stream ticket
     SDK->>API: WS connect /ws/stt/stream?sessionId&ticket
     loop while recording
-        SDK->>API: binary PCM frames (after room/noise-filter/vad)
+        SDK->>API: binary PCM frames (room capture → stt transport)
         API->>R: XADD stt:audio:{sessionId}
         STT->>R: XREAD stt:audio → VAD/ASR/diarization
         STT->>R: XADD stt:result:{sessionId}
@@ -363,7 +363,7 @@ Enforced conventions (see `.claude/rules` and `eslint-plugin-arcaai-internal`):
 
 Shared TypeScript packages: `logger` (Winston), `exceptions`, `types`, `utils`, `tools` (code generators: `gen:model|entity|mapper|repository|factory|service|controller`), `config-*` (eslint/ts/tailwind/rollup), `ui` (@arcaai/ui shadcn/Radix component library).
 
-Browser SDK packages: `agentic-sdk-v2` (`@arcaai/vox` — Zustand store, consultation client, WS/SSE clients) composing `room` (audio track management), `noise-filter` (RNNoise WASM), `vad` (Silero VAD v5), `stt` (Whisper WebWorker, local/offline STT), optional `med-ner` (client-side NER), `pipeline` (sequential/parallel processing primitives).
+Browser SDK packages: `agentic-sdk-v2` (`@arcaai/vox` — Zustand store, consultation client, WS/SSE clients) composing `room` (audio capture + track management) and `stt` (capture helpers + the backend streaming transport), with `pipeline` (sequential/parallel processing primitives) in the same SDK family. The browser runs no model — VAD, denoise, diarization, ASR and NER are server-side decisions of the tenant's published Agents (the client-AI packages `vad` / `noise-filter` / `med-ner` and the in-browser Whisper worker were removed in SDK 4.0.0, TASK-1006).
 
 ---
 
@@ -374,9 +374,9 @@ HOPE resolves _which model runs a task, where its provider lives, how it is auth
 | Concern                           | Mechanism                                                                                                                                                                                                                                                                                       |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Admin-controllable settings       | Settings registry (`HOPE_SETTINGS_REGISTRY`) + catalog; `EffectiveSettingsService` resolves a registry key with a first-set-wins cascade and refuses `secret` keys                                                                                                                              |
-| Task → model selection            | `AiTaskDefault` (per-`(tenant, taskKey)`; SYSTEM row = platform default; **super-admin-only** writes; resolution tenant → SYSTEM → env)                                                                                                                                                         |
+| Task → model selection            | Agent tasks (text generation, ASR, TTS): the tenant's published `Agent` (+ `AgentModelFallback` chain) resolved by `AgentAssignment`. Non-agent tasks (`guardrail.*`, `nlp.*`, `harness.judge`, `vlm.extract`): `AiRoutingPolicy` — the elected `isDefault` row per `(tenant, taskKey)` (`AiRoutingPolicyService.resolveDefault`, tenant → SYSTEM on absence); `guardrail.*` / `nlp.*` / `harness.*` are platform-only (super-admin writes, read pinned to SYSTEM). `AiTaskDefault` was retired by TASK-881 |
 | Provider location + auth          | `AiProviderConnection` (per-`(tenant, provider)`; BYO cloud key as Vault-Transit ciphertext, never returned; tenant rows only for azure/bedrock, self-host SYSTEM-only)                                                                                                                         |
-| Hyperparameters / concurrency     | `AiRuntimeProfile` (per provider or per model; super-admin/SYSTEM-only; injection cascade under request params)                                                                                                                                                                                 |
+| Hyperparameters / concurrency     | The Agent's `parameters` (TASK-863); provider CEILINGS (`maxConcurrent` / `rpmLimit` / `tpmLimit` / `timeoutS`) live on `AiProviderConnection`. `AiRuntimeProfile` was retired by TASK-862 |
 | Model registry + discovery        | `AiModel` + `AiModelDiscoveryService` merge view (registered vs discovered vs missing-on-server) over server-managed providers                                                                                                                                                                  |
 | Model source resolution           | `AiModel.sourceUri` scheme grammar (`hf:` / `file://` / `s3://`) + `localPath` override, honoured by every service's `resolve_model_dir`                                                                                                                                                        |
 | Model lifecycle / retention       | load-on-first-request, idle-TTL eviction (default 600 s, pinned models never evicted), set via `global-kv` settings, served over `internal/effective-config` (~60 s apply)                                                                                                                      |

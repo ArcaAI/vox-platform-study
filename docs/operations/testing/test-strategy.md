@@ -80,7 +80,7 @@ gate (build + test) green before advancing. See the layer-gate table in the work
 
 - **Collected everywhere, thresholds not yet hard-enforced in config.** Root Vitest coverage uses
   the `istanbul` provider (reporters `text/json/html/lcov` → `./coverage`) over a scoped include list
-  (`applications, domains, logger, exceptions, pipeline, agentic-sdk-v2, med-ner, stt, vad`). Python
+  (`applications, domains, logger, exceptions, pipeline, agentic-sdk-v2, stt`). Python
   services print `--cov-report=term-missing`; text/guardrail also emit html+xml.
 - **Target regime (aspirational gates until wired into CI):**
   - Domain + application layers (business logic): **≥ 85 %** line coverage; every public service

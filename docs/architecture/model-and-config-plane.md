@@ -27,7 +27,7 @@ endpoint for its own service-level knobs.
 | Task → model selection        | `AiRoutingPolicy` (elected `isDefault` row)          | `AiRoutingPolicyService.resolveDefault` (TASK-862)  | gateway proxies to guardrail / nlp / text / harness; guardrail's own SQL read |
 | Provider location + auth + ceilings | `AiProviderConnection`                          | `ProviderCredentialResolver` (tenant → SYSTEM, veto, entitlement gate) | gateway inference proxies, agents (TASK-863), workflow nodes |
 | Hyperparameters               | the Agent (TASK-863); connection CEILINGS live on `AiProviderConnection` | agent resolver / `runtimeProfiles` on the effective-config pull | Python services (pool limits), agents |
-| Model registry + discovery    | `AiModel` (+ live server enumeration)                | `AiModelDiscoveryService` (merge view)              | admin registration, pipeline / task references           |
+| Model registry + discovery    | `AiModel` (+ live server enumeration)                | `AiModelDiscoveryService` (merge view)              | admin registration, agent / routing-policy references    |
 | Model source resolution       | `AiModel.sourceUri` / `localPath`                    | each service's `resolve_model_dir`                  | stt, guardrail, nlp, harness                             |
 | Model lifecycle / retention   | `global-kv` settings keys                            | internal effective-config route                     | in-process model caches (all services)                   |
 | ASR selection / fallback (TASK-1006, replaces `AsrPipeline`) | the `Agent` (`task=SPEECH_TO_TEXT`) + `AgentModelFallback` chain | `AgentAssignment` cascade / `AsrAgentResolverService` → `ResolvedAsrSpec` | apps/stt (session-create, batch dispatch) |
@@ -47,10 +47,15 @@ platform-default row.
 The **settings registry** is a single queryable catalog assembled from
 descriptor arrays that feature modules contribute
 (`packages/applications/src/services/settings-registry/registry.ts` →
-`HOPE_SETTINGS_REGISTRY`). Descriptor groups currently registered: pipeline
-toggles, TTS, entitlements, model defaults, agentic-context knobs, platform-ops
-(rate limiting, audit retention, agent-trajectory retention), and stt / nlp
-service-runtime knobs. Registering a key at its current runtime default changes
+`HOPE_SETTINGS_REGISTRY`). Descriptor groups are one file per family under
+`settings-registry/descriptors/` — platform storage, entitlements and metering,
+STT / TTS / NLP service-runtime knobs, batch transcription, guardrail and harness
+judge tuning, agentic context / eval / few-shot, consultation gates and realtime,
+platform-ops (rate limiting, audit retention, agent-trajectory retention),
+security policy, feature availability. (The `pipeline.*` toggles and the `models.*`
+selection lane are gone: `PipelinePolicy` was retired by TASK-882 and model
+SELECTION is not a setting — it resolves through `AiRoutingPolicyService.resolveDefault`
+or the Agent.) Registering a key at its current runtime default changes
 no behaviour — it only makes the key **catalogable and admin-addressable**.
 
 Each descriptor carries a `tier`, a `sensitivity` (`secret` keys are never
@@ -68,8 +73,8 @@ max-scope filtering are the caller's responsibility.
 `EffectiveSettingsService` (`settings-registry/effective-settings.service.ts`) is
 the registry-key-addressed read facade — "what is the effective value of key `K`
 for this context, and which tier set it?". It delegates to the existing per-tier
-resolvers (pipeline toggles via `ConfigResolver`, `models.*` via
-`AiRoutingPolicyService.resolveDefault`, KV lane via `AppSettingsService`) rather than
+resolvers (the `global-kv` lane via the tenant-settings / `AppSettingsService`
+resolvers, the `db-config` lane per key family — e.g. platform storage) rather than
 re-implementing data access, and **refuses `secret`-sensitivity keys** so a
 secret value can never leak through a config read. It returns the value plus the
 `sourceScope` that supplied it (audit/debug trace).
@@ -97,31 +102,35 @@ standard `_version` / `If-Match` OCC path).
 
 ## 3. Task → model selection (`AiRoutingPolicy`)
 
-**TASK-862 finished the `AiTaskDefault` strangler.** The per-`(tenant, taskKey)`
-"default model for task X" is the ELECTED `AiRoutingPolicy` row (`isDefault =
-true`, at most one per selection — a DB-enforced partial unique index), which
-binds a catalogue model by FK (`modelId`) and, optionally, a provider connection
-by FK (`providerConnectionId`). `AiTaskDefault` is neither read nor written any
-more and is dropped in R3.
+**`AiTaskDefault` is gone.** TASK-862 absorbed it into `AiRoutingPolicy`, the TASK-870 wave-3a
+migration dropped the table, and TASK-881 deleted `AiTaskDefaultService` and its admin
+controller (the `ResourceType.AiTaskDefault` enum value stays as a tombstone for historical
+audit rows). The per-`(tenant, taskKey)`
+"default model for task X" is the ELECTED `AiRoutingPolicy` row (`isDefault = true`, at most
+one per selection — a DB-enforced partial unique index), which binds a catalogue model by FK
+(`modelId`) and, optionally, a provider connection by FK (`providerConnectionId`).
+
+Only the NON-agent tasks are keyed here — `AI_TASK_KEYS` is `guardrail.*`, `nlp.*`,
+`harness.judge` and `vlm.extract`. The five `text.*` keys left with TASK-881: text
+generation selects through the tenant's assigned `TEXT_GENERATION` Agent (TASK-876), as ASR
+(TASK-861) and TTS do, so a routing key for them had nothing left to select.
 
 Resolution — `AiRoutingPolicyService.resolveDefault(tenantId, taskKey)`:
 **tenant elected row → SYSTEM elected row → null**, widening only on ABSENCE.
 `getEffective` is the richer read for the router (match predicate, funded and
-gated fallback chain). `AiTaskDefaultService` survives one release as a FACADE
-over `resolveDefault` (reads) and the elected row (writes) so its ~17 DI
-consumers keep compiling while they are repointed.
+gated fallback chain).
 
 `apps/guardrail` — the one Python service with a sanctioned direct SQL read —
 selects `AiRoutingPolicy ⋈ AiModel` by `modelId` (tenant → SYSTEM, a DISABLED or
 switched-off tenant row is a VETO, fail-closed) and takes its judge tuning
 (`temperature` / `maxTokens` / `timeoutS`) off the winning row's `configJson`.
 
-**Governance:** `nlp.*` / `harness.*` keys are super-admin-only to write and
-resolve SYSTEM-only; `text.*` and `guardrail.*` accept tenant writes, and
-`guardrail.*` carries the platform floor (a tenant write must name a SYSTEM
-catalogue model). The SYSTEM election is edited from the model registry's
-"platform default for task" action (TASK-860); tenant choice for agentic tasks
-moves to the Agent (TASK-863). There is no tenant screen for routing policies.
+**Governance:** `nlp.*`, `harness.*` and `guardrail.*` are platform-only
+(`SUPER_ADMIN_ONLY_TASK_PREFIXES`): writes are super-admin-only and the runtime read pins to
+the SYSTEM tier, so a tenant row for one of them never wins and never vetoes; `vlm.extract`
+is the one key outside the lock. The SYSTEM election is edited from the model registry's
+"platform default for task" action (TASK-860); tenant choice for agentic tasks lives on the
+Agent (TASK-863). There is no tenant screen for routing policies.
 
 ---
 
@@ -221,8 +230,8 @@ Rows are organised the way the Hugging Face Hub is:
 | measured availability | `availability`, `availabilityCheckedAt`, `availabilityDetail` | written by the inventory job and the publisher only |
 | platform default | `isPlatformDefaultFor: AiTaskKind[]` | at most one enabled row per task; `PATCH admin/ai-models/:id/platform-default` clears the previous holder (the SYSTEM `AiRoutingPolicy` election it seeds is TASK-862's) |
 
-Models are still referenced **by slug** in pipeline YAML and by
-`AiTaskDefault.modelSlug`; `AiRoutingPolicy.modelId` is the one FK.
+Models are referenced **by slug** only by workflow-node config (`core.classify`);
+`AiRoutingPolicy.modelId` and the Agent's model binding are FK references.
 `downloadStatus` / `downloadedAt` / `fileSizeMb`, free-text `localPath`, the
 cloud `AiModelFormat` pseudo-values and `AiModelSource.MLFLOW`/`GITHUB` are
 deprecated (register: TASK-860, removed in R3).
@@ -344,10 +353,11 @@ client-facing selector is `agentSlug` alone — omit it and the assignment
 cascade picks one, echoed back as `agentSource`
 (`'explicit' | 'workflow' | 'department' | 'tenant'`). There is no clone, no
 template lock, no resync: an agent's fallback chain is simply edited in place,
-the way any other agent's `AgentModelFallback` rows are. The `AsrPipeline` /
-`AsrPipelineVersion` tables, and `TenantSttConfig`'s now-deprecated
-`fallbackPipelineId`/`autoSwitchEnabled` fallback pointer, are scheduled for a
-drop migration once every reader has moved off them (TASK-1006 wave 2).
+the way any other agent's `AgentModelFallback` rows are. The `AsrPipeline`,
+`AsrPipelineVersion` and `TenantSttConfig` tables (and the `maxAsrPipelines`
+entitlement and `TranscriptionJob.pipelineId` columns) were dropped by migration
+`20260925043212_task_1006_drop_asr_pipeline_and_stt_config`; their `ResourceType`
+enum members stay as tombstones for historical audit rows.
 
 ---
 

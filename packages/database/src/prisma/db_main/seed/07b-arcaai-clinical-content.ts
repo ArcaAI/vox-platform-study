@@ -34,17 +34,17 @@
  * bytes) and deliberately KEEPS v1's nine single-brace placeholders:
  * {current_department} / {visit_type} / {safe_age} / {safe_dob} / {safe_gender}
  * / {safe_vitals} / {formatted_test_results} / {formatted_previous_visits} /
- * {language_name}. They are substituted at ASSEMBLY time by
- * `renderPreSummaryTemplate` (apps/api .../text-compat/summary-prompt.builder.ts)
- * — never here and never at resolve time, so the stored row stays byte-identical
- * to v1 (audit/diff of the version-pinned APPROVED snapshot) and PHI never
- * reaches a resolved-prompt log. NOTE: `interpolateTemplate`
+ * {language_name}. They are substituted at ASSEMBLY time — never here and never at
+ * resolve time, so the stored row stays byte-identical to v1 (audit/diff of the
+ * version-pinned APPROVED snapshot) and PHI never reaches a resolved-prompt log.
+ * (v1 substituted them with `renderPreSummaryTemplate`, removed with the v1-compat
+ * surface by TASK-1004.) NOTE: `interpolateTemplate`
  * (prompt-management.service.ts) is {{var}} and test-path only — it does NOT
  * substitute these; rendering this content through it leaks literal braces.
  *
- * The FORMAT block's five section titles are title-matched by
- * `PRE_SUMMARY_DISPLAY_TITLES` (apps/api .../text-compat/summary-response.mapper.ts).
- * Editing one without the other returns an EMPTY structured_data.sections.
+ * The FORMAT block's five section titles were title-matched by
+ * `PRE_SUMMARY_DISPLAY_TITLES` in the v1-compat response mapper, removed with the
+ * v1-compat surface by TASK-1004; the body stays byte-locked regardless.
  *
  * Strings are JSON-encoded so backticks / ${...} in the source need no escaping.
  */

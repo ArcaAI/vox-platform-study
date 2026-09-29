@@ -531,15 +531,15 @@ interface ProxyControllerConfig {
 
 > STT v1 (`SttController`, `SttGateway`) has been removed. All transcription is handled via STT.
 
-**Location**: `src/modules/stt/`
+**Location**: `src/modules/streaming/` (job + streaming-session controllers, the STT WebSocket gateway); `SttInternalController` under `src/modules/internal/`
 
-| Controller                      | Route                      | Purpose                     |
-| ------------------------------- | -------------------------- | --------------------------- |
-| `TranscriptionJobController`    | `audio/transcription-jobs` | Job CRUD                    |
-| `TranscriptionStreamController` | `audio/transcription-jobs` | Streaming endpoints         |
-| `PipelineController`            | `audio/pipelines`          | Pipeline management         |
-| `AiModelController`             | `audio/ai-models`          | AI model listing            |
-| `SttInternalController`         | `internal/stt`             | Internal service-to-service |
+| Controller                       | Route                            | Purpose                                                      |
+| -------------------------------- | -------------------------------- | ------------------------------------------------------------ |
+| `TranscriptionJobController`     | `audio/transcription-jobs`       | Job CRUD, batch, streaming sessions (`agentSlug` selects the ASR Agent) |
+| `AdminTranscriptionJobController`| `admin/audio/transcription-jobs` | Admin read view                                              |
+| `SttInternalController`          | `internal/stt`                   | Internal service-to-service                                  |
+
+> `PipelineController` (`audio/pipelines`) was removed by TASK-1006 — ASR selection is an Agent, resolved by the gateway into a `ResolvedAsrSpec`. The AI model registry is `admin/ai-models`.
 
 ---
 
@@ -764,15 +764,17 @@ interface PaginatedQuery {
 
 ## WebSocket Gateways
 
-> **Note**: The STT v1 gateway (`SttGateway` at `/stt`) has been removed. Use STT gateway instead.
+> **Note**: The v1 STT gateways (`SttGateway` / `SttCompatGateway` at `/stt`) were removed (TASK-210, TASK-1004). Real-time STT is `SttWsGateway`.
 
-### SttGateway
+### SttWsGateway
 
-**Location**: `src/modules/stt/sttV2.gateway.ts`
+**Location**: `src/modules/streaming/stt-ws.gateway.ts`
 
-Provides real-time STT streaming.
+Provides real-time STT streaming, bridged to the STT service over Redis Streams. The session is opened with `POST /api/v1/audio/transcription-jobs/stream/session` (which resolves the ASR Agent) and the socket handshake carries the returned single-use ticket.
 
-**Namespace**: `/stt`
+**Path**: `/ws/stt/stream`
+
+Other gateways: `TtsWsGateway` at `/ws/tts/stream`, `WorkflowWsGateway` at `/ws/workflows`.
 
 ---
 

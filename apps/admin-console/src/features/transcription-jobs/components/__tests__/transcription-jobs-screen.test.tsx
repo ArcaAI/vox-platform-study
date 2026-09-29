@@ -59,7 +59,7 @@ function job(overrides: Partial<TranscriptionJob> = {}): TranscriptionJob {
   return {
     id: 'job-9f2ka7c3',
     jobType: 'BATCH',
-    pipelineId: 'p-1',
+    agentVersionId: 'av-1',
     consultationId: null,
     contextItemId: null,
     mediaId: 'm-1',
@@ -264,7 +264,7 @@ describe('TranscriptionJobsScreen', () => {
     fireEvent.click(await screen.findByText('job-9f2ka7c3'));
 
     // Detail read renders the mono job facts (one-shot; re-polls only if the stream errors).
-    expect(await screen.findByText('p-1')).toBeDefined();
+    expect(await screen.findByText('av-1')).toBeDefined();
     expect(await screen.findByText('60%')).toBeDefined();
 
     // Ticket minted for the job-scoped stream, EventSource opened directly

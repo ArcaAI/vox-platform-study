@@ -14,7 +14,6 @@ export const TERMINAL_JOB_STATUSES: readonly PlaygroundJobStatus[] = ['COMPLETED
 export interface PlaygroundTranscriptionJob {
   id: string;
   jobType: 'BATCH' | 'STREAMING';
-  pipelineId: string;
   consultationId?: string | null;
   mediaId?: string | null;
   status: PlaygroundJobStatus;
