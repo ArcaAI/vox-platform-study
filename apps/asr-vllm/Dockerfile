@@ -23,6 +23,7 @@
 #   docker build -f apps/asr-vllm/Dockerfile -t asr-vllm .
 # Run (needs the NVIDIA container toolkit):
 #   docker run --gpus all -p 8867:8867 -e INTERNAL_ACCESS_TOKEN=... \
+#     -e ASR_VLLM_API_GATEWAY_URL=http://<gateway>:8868/api/v1 \
 #     -v /path/to/models:/mnt/models-bucket:ro asr-vllm
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -79,12 +80,19 @@ RUN python3 -m pip install --no-cache-dir --no-deps --ignore-requires-python \
 # Non-root runtime. vLLM writes compile caches under $HOME, and HF_HOME is where an
 # `sourceUri`-only spec downloads to — mount a PVC there so a restart does not re-pull.
 # Published weights (`localPath`) are read from the read-only models bucket mount.
+#
+# Registry first (TASK-1010 OD-7): a pull is funded ONLY by the model owner's
+# `model-registry:huggingface` credential, which the service fetches from the gateway and
+# passes explicitly. HF_HUB_DISABLE_IMPLICIT_TOKEN=1 stops huggingface_hub from ever
+# adding an ambient token (HF_TOKEN, a cached login) — do not set HF_TOKEN on this image.
+# vLLM itself is only ever handed a local directory, so it never pulls at all.
 RUN useradd --create-home --uid 10001 hope \
     && mkdir -p /app/.cache/huggingface \
     && chown -R hope:hope /app/.cache
 
 ENV HOME=/home/hope \
     HF_HOME=/app/.cache/huggingface \
+    HF_HUB_DISABLE_IMPLICIT_TOKEN=1 \
     NODE_ENV=production \
     LOG_LEVEL=info
 

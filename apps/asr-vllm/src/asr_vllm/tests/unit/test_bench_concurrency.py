@@ -244,3 +244,48 @@ async def test_the_bench_body_is_accepted_by_the_real_endpoint(bench, settings) 
             )
     assert cold["status"] == 200
     assert summary.errors == {} and summary.ok == 6
+
+
+# ── OD-12: selection is a gateway-resolved spec; the bench never names a model ──
+
+
+def test_selection_is_a_spec_file_and_no_option_names_a_model(bench) -> None:  # type: ignore[no-untyped-def]
+    parser = bench._build_parser()
+    options = {opt for action in parser._actions for opt in action.option_strings}
+    spec_file = next(a for a in parser._actions if "--spec-file" in a.option_strings)
+    assert spec_file.required is True
+    forbidden = {
+        "--model",
+        "--model-slug",
+        "--slug",
+        "--model-path",
+        "--local-path",
+        "--source-uri",
+        "--repo",
+        "--engine",
+        "--pipeline-id",
+        "--hf-token",
+        "--quantization",
+    }
+    assert forbidden.isdisjoint(options)
+
+
+def test_the_spec_file_must_be_a_resolved_asr_spec(bench, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    from asr_vllm.tests.conftest import spec_payload
+
+    good = tmp_path / "spec.json"
+    good.write_text(json.dumps(spec_payload()))
+    assert bench.load_spec(good)["runtimeKey"] == "agent-version-0001"
+
+    # The pre-phase-B flat slice (model fields at the top level) is refused up front,
+    # instead of as a 422 on every window of every step.
+    flat = tmp_path / "flat.json"
+    flat.write_text(json.dumps({"runtimeKey": "k", "slug": "x", "format": "SAFETENSOR"}))
+    with pytest.raises(bench.BenchInputError, match="models.asr"):
+        bench.load_spec(flat)
+
+    for body in ("[]", '{"models": {"asr": {}}}', "not json"):
+        bad = tmp_path / "bad.json"
+        bad.write_text(body)
+        with pytest.raises(bench.BenchInputError):
+            bench.load_spec(bad)

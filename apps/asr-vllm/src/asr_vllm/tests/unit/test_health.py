@@ -113,3 +113,14 @@ def test_building_the_app_does_not_import_vllm(settings: Settings) -> None:
     sys.modules.pop("vllm", None)
     create_app(settings)  # the REAL factory, not a fake
     assert "vllm" not in sys.modules
+
+
+def test_building_the_app_disables_implicit_huggingface_tokens(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OD-7: no ambient token (`HF_TOKEN`, a cached login) may ever fund a pull."""
+    monkeypatch.delenv("HF_HUB_DISABLE_IMPLICIT_TOKEN", raising=False)
+    create_app(settings, engine_factory=FakeEngineFactory())
+    import os
+
+    assert os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] == "1"

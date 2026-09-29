@@ -34,6 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from asr_vllm.audio import SAMPLE_RATE, AudioError, decode_pcm16_b64, voiced_seconds
 from asr_vllm.core import metrics
 from asr_vllm.core.config import Settings
+from asr_vllm.core.effective_config import schedule_control_plane_refresh
 from asr_vllm.engine.base import DecoderBudgetError, DecodeRequest
 from asr_vllm.engine.pool import (
     EngineCapacityError,
@@ -150,6 +151,9 @@ async def transcribe(
     settings: Settings = request.app.state.settings
     pool: EnginePool = request.app.state.engine_pool
     _require_backend(request)
+    # The truncation knobs are read per request from `settings`; a stale control plane is
+    # refreshed in the BACKGROUND so this window never waits on the gateway.
+    schedule_control_plane_refresh(request.app.state)
 
     try:
         # Off the event loop: liveness must never wait behind request work.
@@ -192,7 +196,7 @@ async def transcribe(
         ) from None
     except EngineLoadError as exc:
         metrics.WINDOWS_TOTAL.labels(outcome="load_failed").inc()
-        raise _error(503, "ENGINE_LOAD_FAILED", str(exc)) from None
+        raise _error(503, exc.code, str(exc)) from None
     except DecoderBudgetError as exc:
         metrics.WINDOWS_TOTAL.labels(outcome="rejected").inc()
         raise _error(422, "PROMPT_EXCEEDS_DECODER_CONTEXT", str(exc)) from None
@@ -267,7 +271,7 @@ async def warm(
             f"runtime key {body.spec.runtime_key} is already bound to a different model spec",
         ) from None
     except EngineLoadError as exc:
-        raise _error(503, "ENGINE_LOAD_FAILED", str(exc)) from None
+        raise _error(503, exc.code, str(exc)) from None
     return WarmResponse(
         runtime_key=body.spec.runtime_key,
         already_resident=already,
