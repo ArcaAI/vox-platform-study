@@ -387,6 +387,20 @@ describe('AiModelDownloadProcessor', () => {
     expect(readDownloadMeta(model.metaData)!.error).toMatch(/^MODEL_STORE_CREDENTIAL_MISSING/);
   });
 
+  it('I10b — a job superseded by a re-trigger (the row names another download jobId) exits without writing anything', async () => {
+    const model = createBehavioralModelEntity({ metaData: { download: { jobId: 'job-2', startedAt: 't1', finishedAt: null, error: null } } });
+    mockRepository.findById.mockResolvedValue(model);
+    mockFetcher.fetch.mockImplementation(stages({ 'model.gguf': 10 }));
+
+    await expect(processor.process(job({ jobId: 'job-1' }))).resolves.toMatchObject({ aiModelId: 'model-id-1', superseded: true });
+
+    expect(mockRepository.updateWithVersion).not.toHaveBeenCalled();
+    expect(mockStoreFactory.create).not.toHaveBeenCalled();
+    expect(mockFetcher.fetch).not.toHaveBeenCalled();
+    expect(model.writes).toEqual([]);
+    expect(readDownloadMeta(model.metaData)!.jobId).toBe('job-2');
+  });
+
   it('throws (and never writes back) when the model row cannot be found', async () => {
     mockRepository.findById.mockResolvedValue(null);
     await expect(processor.process(job())).rejects.toThrow();

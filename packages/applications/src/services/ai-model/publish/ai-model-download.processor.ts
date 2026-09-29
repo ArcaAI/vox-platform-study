@@ -40,6 +40,22 @@ export interface DownloadAiModelResult {
   sha256: string | null;
 }
 
+/**
+ * A download job whose `jobId` is no longer the row's `_metadata.download.jobId`
+ * — a re-trigger (after a stall) superseded it. It exits without writing (I10b).
+ */
+export interface SupersededDownloadResult {
+  aiModelId: string;
+  jobId: string;
+  superseded: true;
+}
+
+/** True when the row's download bookkeeping names a DIFFERENT job than `jobId`. */
+function isSupersededBy(metaData: Record<string, unknown> | null | undefined, jobId: string): boolean {
+  const current = readDownloadMeta(metaData)?.jobId;
+  return Boolean(current) && current !== jobId;
+}
+
 /** Test/ops seams — none of them is configuration a tenant or operator sets. */
 export interface ModelPublisherProcessorOptions {
   /** Base directory for per-job staging dirs; default `MODEL_PUBLISHER_STAGING_DIR` or the OS temp dir. */
@@ -126,7 +142,7 @@ export class AiModelDownloadProcessor extends WorkerHost {
     this.now = options?.now ?? Date.now;
   }
 
-  async process(job: Job<PublisherJobPayload>): Promise<DownloadAiModelResult | UnregisterAiModelResult> {
+  async process(job: Job<PublisherJobPayload>): Promise<DownloadAiModelResult | SupersededDownloadResult | UnregisterAiModelResult> {
     const payload = job.data;
     if (!payload.tenantId) {
       throw new Error(`Job ${payload.jobId ?? job.id} is missing required tenantId`);
@@ -158,7 +174,12 @@ export class AiModelDownloadProcessor extends WorkerHost {
     }
   }
 
-  private async runDownload(job: Job, payload: DownloadAiModelJobPayload, attempt: number, finalAttempt: boolean): Promise<DownloadAiModelResult> {
+  private async runDownload(
+    job: Job,
+    payload: DownloadAiModelJobPayload,
+    attempt: number,
+    finalAttempt: boolean,
+  ): Promise<DownloadAiModelResult | SupersededDownloadResult> {
     const { jobId, aiModelId, tenantId, userId } = payload;
 
     const model = await this.aiModelRepository.findById(aiModelId);
@@ -166,6 +187,12 @@ export class AiModelDownloadProcessor extends WorkerHost {
       throw new Error(`AiModel ${aiModelId} not found`);
     }
     assertEqualTenants(model, { tenantId });
+
+    // A re-trigger (after a stall) wrote a NEW jobId; this job is a leftover and
+    // must not touch the row the live job now owns.
+    if (isSupersededBy(model.metaData, jobId)) {
+      return this.superseded(aiModelId, jobId, model.metaData);
+    }
 
     let stagingDir: string | null = null;
     let heartbeat: DownloadHeartbeat | null = null;
@@ -263,6 +290,9 @@ export class AiModelDownloadProcessor extends WorkerHost {
       if (!fresh) {
         throw new Error(`AiModel ${aiModelId} disappeared during download`);
       }
+      if (isSupersededBy(fresh.metaData, jobId)) {
+        return this.superseded(aiModelId, jobId, fresh.metaData);
+      }
       // TASK-890 §3.11 — the write-back is the BUCKET IDENTITY plus the
       // MEASURED availability, and nothing else; the published size — a fact
       // about THIS run, not about the row — rides in the run bookkeeping.
@@ -305,7 +335,8 @@ export class AiModelDownloadProcessor extends WorkerHost {
       this.logger.error({ message: 'AiModel publish failed', jobId, aiModelId, attempt, willRetry: !recordFailure, error: message });
 
       const fresh = await this.aiModelRepository.findById(aiModelId).catch(() => null);
-      if (fresh) {
+      // A superseded job's failure is not the live job's to record.
+      if (fresh && !isSupersededBy(fresh.metaData, jobId)) {
         // The failure is recorded in the run bookkeeping; `availability` is
         // deliberately NOT re-measured. A failed re-publish does not remove
         // the weights a previous run staged, and claiming MISSING here would
@@ -322,6 +353,16 @@ export class AiModelDownloadProcessor extends WorkerHost {
     } finally {
       await removeStagingDir(stagingDir);
     }
+  }
+
+  private superseded(aiModelId: string, jobId: string, metaData: Record<string, unknown> | null | undefined): SupersededDownloadResult {
+    this.logger.warn({
+      message: 'Download job superseded by a newer one — exiting without writing',
+      jobId,
+      aiModelId,
+      currentJobId: readDownloadMeta(metaData)?.jobId ?? null,
+    });
+    return { aiModelId, jobId, superseded: true };
   }
 
   /**
