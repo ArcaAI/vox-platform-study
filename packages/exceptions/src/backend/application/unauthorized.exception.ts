@@ -1,4 +1,4 @@
-import { UNAUTHORIZED, BaseException } from '../../common';
+import { UNAUTHORIZED, BaseException, ExceptionOptions } from '../../common';
 
 /**
  * Used to indicate that entity is not found
@@ -9,8 +9,8 @@ import { UNAUTHORIZED, BaseException } from '../../common';
 export class UnauthorizedException extends BaseException {
   static readonly message = 'Unauthorized';
 
-  constructor(message = UnauthorizedException.message) {
-    super(message);
+  constructor(message = UnauthorizedException.message, options?: ExceptionOptions) {
+    super(message, options?.cause, options?.metadata);
   }
 
   readonly code = UNAUTHORIZED;

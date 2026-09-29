@@ -11,6 +11,13 @@ import { getPhiReadSecrets, wrapDelegateWithPhiDecrypt } from './phi-read-decryp
 // Type for the database context - can be extended client or transaction client
 type DatabaseContext = ReturnType<PrismaClient['$extends']> | Prisma.TransactionClient;
 
+function filterKeys(props: unknown): string {
+  if (!props || typeof props !== 'object') return '';
+  const where = (props as { where?: unknown }).where;
+  const source = where && typeof where === 'object' ? where : props;
+  return Object.keys(source as object).join(', ');
+}
+
 @Injectable()
 export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel> implements IRepository<DomainEntity, DatabaseModel> {
   private _databaseContext?: DatabaseContext;
@@ -117,13 +124,27 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     return this._mapper.toDomainEntity(model);
   }
 
+  /**
+   * `findById` for callers where absence is an expected outcome. Returns
+   * `null` only for a genuine miss; every other failure still propagates.
+   */
+  public async findByIdOrNull(id: EntityId): Promise<DomainEntity | null> {
+    try {
+      return await this.findById(id);
+    } catch (error) {
+      if (error instanceof DataNotFoundException) return null;
+      throw error;
+    }
+  }
+
   public async findFirst(props: IFindAllProps<DatabaseModel>): Promise<DomainEntity> {
     const model = await this.db.findFirst({
       ...formatFindAllProps(this.applyDefaultSearchFields(props)),
       include: this._includes,
     });
     if (!model) {
-      throw new DataNotFoundException(this.db.name || Repository.name, JSON.stringify(props));
+      // Filter KEYS only: the values are identifiers, emails and other PHI-adjacent data.
+      throw new DataNotFoundException(this._modelName, `matching filter (where keys: ${filterKeys(props)})`);
     }
     return this._mapper.toDomainEntity(model);
   }
@@ -236,9 +257,11 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
       if (!current) {
         throw new DataNotFoundException(this._modelName, id);
       }
+      const tenantId = (entity as { tenantId?: unknown }).tenantId;
       throw new OptimisticConcurrencyException(this._modelName, id, {
         expectedVersion,
         currentVersion: current.version,
+        ...(typeof tenantId === 'string' && tenantId ? { tenantId } : {}),
       });
     }
 

@@ -5,8 +5,19 @@ export interface SerializedException {
   code: string;
   correlationId: string;
   stack?: string;
-  cause?: string;
+  cause?: { name: string; message: string };
   metadata?: unknown;
+}
+
+export interface ExceptionOptions {
+  cause?: unknown;
+  metadata?: Record<string, unknown>;
+}
+
+function serializeCause(cause: unknown): { name: string; message: string } | undefined {
+  if (cause === undefined || cause === null) return undefined;
+  if (cause instanceof Error) return { name: cause.name, message: cause.message };
+  return { name: 'NonError', message: typeof cause === 'string' ? cause : String(cause) };
 }
 
 // Matches an absolute filesystem path immediately followed by `:<line>:<col>`
@@ -42,7 +53,7 @@ export abstract class BaseException extends Error {
    */
   constructor(
     override readonly message: string,
-    readonly cause?: Error,
+    readonly cause?: unknown,
     readonly metadata?: unknown,
   ) {
     super(message);
@@ -73,7 +84,7 @@ export abstract class BaseException extends Error {
       code: this.code,
       correlationId: this.correlationId,
       stack: process.env['NODE_ENV'] === 'production' ? undefined : sanitizeStack(this.stack),
-      cause: this.cause ? JSON.stringify(this.cause) : undefined,
+      cause: process.env['NODE_ENV'] === 'production' ? undefined : serializeCause(this.cause),
       metadata: this.metadata,
     };
   }
