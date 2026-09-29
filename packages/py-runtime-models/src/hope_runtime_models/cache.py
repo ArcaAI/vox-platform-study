@@ -182,9 +182,37 @@ class _Entry(Generic[T]):
     load_seconds: float | None = None
 
 
+#: A failure message is an operator diagnostic, not a log: keep it bounded.
+LOAD_FAILURE_MESSAGE_MAX = 500
+
+
+@dataclass(frozen=True)
+class LoadFailure:
+    """The last failed load of one key (TASK-1019 D-8). ``at`` is WALL-clock epoch seconds."""
+
+    code: str
+    message: str
+    at: float
+
+
+def describe_load_failure(exc: Exception, at: float) -> LoadFailure:
+    """``code`` = the exception's own ``code`` when it carries a string one, else its class name."""
+    code = getattr(exc, "code", None)
+    return LoadFailure(
+        code=code if isinstance(code, str) and code else type(exc).__name__,
+        message=str(exc)[:LOAD_FAILURE_MESSAGE_MAX],
+        at=at,
+    )
+
+
 @dataclass(frozen=True)
 class ResidentModel:
-    """One model as the residency report sees it (ages are cache-clock seconds)."""
+    """One model as the residency report sees it (ages are cache-clock seconds).
+
+    ``state`` is ``failed`` for a key whose last load raised (TASK-1019): it holds
+    no memory, ``error`` says why, and it stays until the next successful load, an
+    explicit ``unload`` or ``clear``.
+    """
 
     key: str
     instance: Any
@@ -196,6 +224,7 @@ class ResidentModel:
     load_seconds: float | None
     loaded_seconds_ago: float | None
     idle_seconds: float | None
+    error: LoadFailure | None = None
 
 
 class _PendingLoad(NamedTuple):
@@ -237,6 +266,7 @@ class _CacheCore(Generic[T]):
         vram_headroom_bytes: int = 0,
         name: str = "model_cache",
         residency: CacheResidency | None = None,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
         self._factory = factory
         self._unload = unload
@@ -245,6 +275,7 @@ class _CacheCore(Generic[T]):
         self._max_bytes_estimate = max_bytes_estimate
         self._estimate_bytes = estimate_bytes
         self._time = time_func
+        self._wall_clock = wall_clock
         self._metrics = metrics
         self._vram_probe = vram_probe
         self._vram_headroom_bytes = vram_headroom_bytes
@@ -270,6 +301,9 @@ class _CacheCore(Generic[T]):
         self._loading: dict[str, float] = {}
         #: key → an evicted entry whose unload hook has not finished yet.
         self._unloading: dict[str, _Entry[T]] = {}
+        #: key → its last failed load (TASK-1019 D-8). Live state: cleared by the
+        #: next successful load, `unload(key)` or `clear()`; never persisted.
+        self._failures: dict[str, LoadFailure] = {}
 
         self._hits = 0
         self._misses = 0
@@ -429,6 +463,8 @@ class _CacheCore(Generic[T]):
         leaves the request pins in place — their holders unpin as they finish,
         and a reload in the meantime is born pinned, exactly as after any miss.
         """
+        # An explicit unload also dismisses a recorded failure — there may be nothing resident.
+        self._forget_failure(key)
         if key not in self._entries:
             return []
         in_flight = self._pins.get(key, 0)
@@ -472,6 +508,8 @@ class _CacheCore(Generic[T]):
     def _clear_locked(self) -> list[tuple[str, T]]:
         """Body of the public `clear`: evicts everything, pins included."""
         victims: list[tuple[str, T]] = []
+        for key in list(self._failures):
+            self._forget_failure(key)
         for key in list(self._entries):
             self._pins.pop(key, None)
             victims.extend(self._evict_locked(key, reason="lru"))
@@ -607,16 +645,26 @@ class _CacheCore(Generic[T]):
         self._emit_state(key, "loading")
         return _PendingLoad(key=key, started=time.perf_counter(), token=token)
 
-    def _end_load(self, pending: _PendingLoad, *, succeeded: bool) -> None:
-        """Close the measurement; a success is attached to the entry at admit."""
+    def _end_load(
+        self, pending: _PendingLoad, *, succeeded: bool, error: BaseException | None = None
+    ) -> None:
+        """Close the measurement; a success is attached to the entry at admit.
+
+        A failure that is an ``Exception`` is remembered (TASK-1019 D-8) and reported
+        as state ``failed``; a cancellation or interrupt is not a failed load.
+        """
         key = pending.key
         self._loading.pop(key, None)
         measured = None
         if pending.token is not None and self._residency is not None:
             measured = self._residency.device.end_load(pending.token, succeeded=succeeded)
         if not succeeded:
-            self._emit_state(key, None)
+            if isinstance(error, Exception):
+                self._record_failure(key, error)
+            else:
+                self._emit_state(key, None)
             return
+        self._failures.pop(key, None)
         seconds = time.perf_counter() - pending.started
         self._measurements[key] = (measured, seconds)
         if measured is not None:
@@ -624,6 +672,25 @@ class _CacheCore(Generic[T]):
         residency = self._residency
         if residency is not None and residency.metrics is not None:
             residency.metrics.on_load_seconds(residency.service, residency.model_ref(key), seconds)
+
+    def _record_failure(self, key: str, error: Exception) -> None:
+        failure = describe_load_failure(error, self._wall_clock())
+        self._failures[key] = failure
+        residency = self._residency
+        if residency is not None and residency.metrics is not None:
+            hook = getattr(residency.metrics, "on_load_failure", None)
+            if hook is not None:  # sinks written before TASK-1019 have none
+                hook(residency.service, residency.model_ref(key), failure.code)
+        self._emit_state(key, "failed")
+
+    def _forget_failure(self, key: str) -> None:
+        """Drop a key's recorded failure and zero its ``failed`` gauge."""
+        if (
+            self._failures.pop(key, None) is not None
+            and key not in self._entries
+            and key not in self._loading
+        ):
+            self._emit_state(key, None)
 
     def _begin_unload(self) -> None:
         if self._residency is not None:
@@ -690,10 +757,20 @@ class _CacheCore(Generic[T]):
             models.append(self._resident_model(key, entry, "loaded", now))
         for key, entry in list(self._unloading.items()):
             models.append(self._resident_model(key, entry, "unloading", now))
+        for key, failure in list(self._failures.items()):
+            if key in self._loading or key in self._entries or key in self._unloading:
+                continue  # a retry in progress, or a model that loaded since, outranks the old failure
+            models.append(self._resident_model(key, None, "failed", now, error=failure))
         return models
 
     def _resident_model(
-        self, key: str, entry: _Entry[T] | None, state: str, now: float
+        self,
+        key: str,
+        entry: _Entry[T] | None,
+        state: str,
+        now: float,
+        *,
+        error: LoadFailure | None = None,
     ) -> ResidentModel:
         return ResidentModel(
             key=key,
@@ -706,6 +783,7 @@ class _CacheCore(Generic[T]):
             load_seconds=None if entry is None else entry.load_seconds,
             loaded_seconds_ago=None if entry is None else now - entry.loaded_at,
             idle_seconds=None if entry is None else now - entry.last_accessed,
+            error=error,
         )
 
     def _emit_state(self, key: str, state: str | None) -> None:
@@ -776,6 +854,7 @@ class ModelCache(_CacheCore[T]):
         vram_headroom_bytes: int = 0,
         name: str = "model_cache",
         residency: CacheResidency | None = None,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
         super().__init__(
             factory=factory,
@@ -790,6 +869,7 @@ class ModelCache(_CacheCore[T]):
             vram_headroom_bytes=vram_headroom_bytes,
             name=name,
             residency=residency,
+            wall_clock=wall_clock,
         )
         self._lock = asyncio.Lock()
         # key → future of the load in progress (single-flight).
@@ -836,8 +916,8 @@ class ModelCache(_CacheCore[T]):
             pending = self._begin_load(key)
             try:
                 instance: T = await self._factory(key)
-            except BaseException:
-                self._end_load(pending, succeeded=False)
+            except BaseException as exc:
+                self._end_load(pending, succeeded=False, error=exc)
                 raise
             self._end_load(pending, succeeded=True)
         except BaseException as exc:
@@ -1019,6 +1099,7 @@ class SyncModelCache(_CacheCore[T]):
         vram_headroom_bytes: int = 0,
         name: str = "model_cache",
         residency: CacheResidency | None = None,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
         super().__init__(
             factory=factory,
@@ -1033,6 +1114,7 @@ class SyncModelCache(_CacheCore[T]):
             vram_headroom_bytes=vram_headroom_bytes,
             name=name,
             residency=residency,
+            wall_clock=wall_clock,
         )
         self._lock = threading.Lock()
         # key → the load in progress (single-flight).
@@ -1080,8 +1162,8 @@ class SyncModelCache(_CacheCore[T]):
             pending = self._begin_load(key)
             try:
                 instance: T = self._factory(key)
-            except BaseException:
-                self._end_load(pending, succeeded=False)
+            except BaseException as exc:
+                self._end_load(pending, succeeded=False, error=exc)
                 raise
             self._end_load(pending, succeeded=True)
         except BaseException as exc:

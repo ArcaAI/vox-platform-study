@@ -100,6 +100,13 @@ export class ModelResidencyKeepPolicy {
   @ApiProperty({ nullable: true, type: Number }) idleTtlSeconds!: number | null;
 }
 
+export class ModelResidencyLoadError {
+  @ApiProperty({ example: 'LOAD_FAILED', description: 'The error code the failed load raised (an agent exception class name, or a gateway code).' }) code!: string;
+  @ApiProperty({ description: 'What the load said, truncated to 500 characters.' }) message!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'When it failed (ISO); `null` when the source carries no time (the stt-worker gauge).' })
+  at!: string | null;
+}
+
 export class ModelResidencyCatalogueModel {
   @ApiProperty({ nullable: true, type: String, description: '`null` only for a resident model the catalogue does not know.' }) aiModelId!:
     string | null;
@@ -112,7 +119,12 @@ export class ModelResidencyCatalogueModel {
   })
   modelRef!: string | null;
   @ApiProperty({ nullable: true, type: String }) format!: string | null;
-  @ApiProperty({ enum: ['loaded', 'loading', 'unloading', 'not_loaded'] }) status!: CatalogueModelStatus;
+  @ApiProperty({
+    enum: ['loaded', 'loading', 'unloading', 'not_loaded', 'failed'],
+    description: '`failed` = the last load of this model raised and nothing has cleared it yet (a later load or unload does). `error` says why.',
+  })
+  status!: CatalogueModelStatus;
+  @ApiProperty({ type: ModelResidencyLoadError, nullable: true, description: 'Set only while `status` is `failed`.' }) error!: ModelResidencyLoadError | null;
   @ApiProperty({ type: ModelResidencySize }) size!: ModelResidencySize;
   @ApiProperty({ nullable: true, type: Number, description: 'Seconds the last load took (measured).' }) loadSeconds!: number | null;
   @ApiProperty({ type: ModelResidencyPlacement, nullable: true, description: '`null` when not loaded.' }) residency!: ModelResidencyPlacement | null;

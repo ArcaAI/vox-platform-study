@@ -212,3 +212,38 @@ def test_an_unusable_load_spec_is_400_load_failed(
 
     assert response.status_code == 400, response.text
     assert response.json()["error"]["code"] == "LOAD_FAILED"
+
+
+# ── TASK-1019 lane Y — a failed load is reported as state `failed`, not silence ──
+
+
+def test_a_failed_load_is_reported_failed_then_cleared_by_unload(
+    api: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import nlp.dependencies as deps
+
+    async def broken(_key: str) -> Any:
+        raise RuntimeError("model directory is empty")
+
+    monkeypatch.setattr(deps, "_create_token_classifier", broken)
+    deps.reset_model_caches()
+    ref = "blaze999/Medical-NER"
+
+    refused = api.post(
+        "/internal/residency/load",
+        json={"model_ref": ref, "load_spec": {"cache": "nlp_token_classifier"}},
+    )
+    report = api.get("/internal/residency").json()
+    cleared = api.post("/internal/residency/unload", json={"model_ref": ref})
+    after = api.get("/internal/residency").json()
+
+    assert refused.status_code == 500
+    assert refused.json()["error"]["code"] == "LOAD_FAILED"
+    (model,) = report["models"]
+    assert model["model_ref"] == ref
+    assert model["state"] == "failed"
+    assert model["error"]["code"] == "RuntimeError"
+    assert model["error"]["message"] == "model directory is empty"
+    assert model["error"]["at"].endswith("Z")
+    assert cleared.json() == {"outcome": "not_loaded", "model_ref": ref}
+    assert after["models"] == []

@@ -1,6 +1,7 @@
 {
   "$comment": "TASK-1005 §13 — the catalogue-first residency view, PINNED by the orchestrator before the redesign lanes branched (L-RCAT produces it, L-RUI consumes it). GET /api/v1/admin/model-residency/catalogue; same auth as the rest of admin/model-residency (platform admin, tenant-less; the BFF never forwards a working tenant to this prefix). `services[]` lists EVERY self-hosted AiModel (deploymentKind SELF_HOSTED, not DELETED) grouped by the workload that runs it (`AiModel.servedBy` normalised: stt, stt-worker, nlp, lm-studio), loaded or not; cloud rows are excluded because nothing can load them. Service order is fixed: stt, stt-worker, lm-studio, nlp. `status` is plain: loaded | loading | unloading | not_loaded. `usage.uses[]` is the reverse index model → consumers across ALL tenants: role `primary` (Agent.modelId), `fallback` (AgentModelFallback), `routing` (AiRoutingPolicy candidate for guardrail/NLP/judge tasks); only ACTIVE/PUBLISHED agents count. `liveConsultation` is true when any consumer is on the live path (the implicit PINNED rule). `keepPolicy.kind` maps PINNED→always, WARM→warm, ON_DEMAND→on_demand, with a human `label` and `reason`. `size` prefers the MEASURED footprint (`AiModel.observedMemoryMb`, or the resident report) and falls back to the catalogue estimate (`memorySizeMb`) with `source` saying which. `actions` lists what the UI may offer for this row right now (e.g. no `unload` while not loaded; `unload` still offered while in flight — the API answers 409 IN_FLIGHT and the UI asks for force + reason). Suggestions are the shadow-mode recommendations rewritten as one plain sentence each.",
   "path": "GET /api/v1/admin/model-residency/catalogue",
+  "$failedExample": "TASK-1019: a model whose last load failed has status \"failed\", residency null, actions [\"load\", \"edit_policy\"] and error {\"code\": \"RuntimeError\", \"message\": \"no gguf in /models/whisper\", \"at\": \"2026-09-29T10:00:00Z\" | null}; every OTHER model carries error: null. It clears on the next successful load or unload of that model.",
   "response": {
     "mode": "shadow",
     "reportedAt": "2026-09-25T02:00:05Z",
@@ -37,6 +38,7 @@
             "modelRef": "arcaai-whisper-ml-en-ggml",
             "format": "WHISPER_CPP",
             "status": "loaded",
+            "error": null,
             "size": { "bytes": 1623195648, "source": "measured" },
             "loadSeconds": 6.8,
             "residency": {
@@ -84,6 +86,7 @@
             "modelRef": "arcaai-whisper-radiology-en-f16",
             "format": "WHISPER_CPP",
             "status": "not_loaded",
+            "error": null,
             "size": { "bytes": 1610612736, "source": "catalogue" },
             "loadSeconds": null,
             "residency": null,
@@ -131,6 +134,7 @@
             "modelRef": "hand-copied-whisper",
             "format": null,
             "status": "loaded",
+            "error": null,
             "size": { "bytes": 943718400, "source": "measured" },
             "loadSeconds": null,
             "residency": {
@@ -182,6 +186,7 @@
             "modelRef": "blaze999/Medical-NER",
             "format": "SAFETENSOR",
             "status": "not_loaded",
+            "error": null,
             "size": { "bytes": 734003200, "source": "measured" },
             "loadSeconds": 3.2,
             "residency": null,
@@ -239,7 +244,7 @@
   "enums": {
     "service": ["stt", "stt-worker", "lm-studio", "nlp"],
     "runsOn": ["gpu", "cpu"],
-    "status": ["loaded", "loading", "unloading", "not_loaded"],
+    "status": ["loaded", "loading", "unloading", "not_loaded", "failed"],
     "sizeSource": ["measured", "catalogue", "unknown"],
     "useRole": ["primary", "fallback", "routing"],
     "keepPolicyKind": ["always", "warm", "on_demand"],
