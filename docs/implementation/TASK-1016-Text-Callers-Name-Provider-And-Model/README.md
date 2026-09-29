@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — OD-1 (a) implemented, OD-2 split to TASK-1017; merged into `dev-2.2`; runtime (live-stack) proof not run |
+| Status | **Review** — OD-1 (a) implemented, OD-2 split to TASK-1017; merged into `dev-2.2`; **live-proven on the dev stack 2026-09-29** (two further defects found and fixed by the live run) |
 | Type | bugfix |
 | Branch | `agent/eloquent-boyd-928da8`, based on `dev-2.2` @ `d211119f6` (TASK-1012 W-3 merge) |
 | Services | `apps/nlp`, `apps/harness`, `apps/api` (gateway), `packages/applications`, `packages/database` (seed) |
@@ -215,15 +215,66 @@ eslint (changed sources)               0 errors; prettier: the one file I un-for
                                        three files were already unformatted at HEAD and are left alone
 ```
 
+### Live proof (2026-09-29, dev stack from the primary on `dev-2.2`)
+
+**Reseed** (non-destructive, no reset): `NODE_ENV=development RUN_SEED=safe pnpm db:seed` →
+`Seeded AiRoutingPolicy defaults: 2 created, 8 skipped, 1 unresolved`. `nlp.topic` and
+`nlp.intent` → `lm-studio` / `gemma-4-e2b-it-qat`, TEXT_GENERATION, ACTIVE. The unresolved one
+is the pre-existing disabled `nlp.classification` placeholder.
+
+**Stack:** `pnpm stack:dev -- api nlp text guardrail`, LM Studio `gemma-4-e2b-it-qat` at 16k. As
+the ARCAAI tenant admin: `PUT admin/nlp-task-instructions/row?taskKey=nlp.topic` with
+`["billing","appointments","medical_records"]`, then `POST /api/v1/text-analyses/topic`.
+
+The live run found two more defects on this path, fixed TDD-style (RED → GREEN) and merged:
+
+1. **NLP posted to `{TEXT_URL}/generate`** (404 on every call). `TEXT_URL` is the fleet-wide
+   bare origin, and text mounts `/api/v1/generate`. Fix: `GENERATE_PATH` (`210f59d2f`).
+2. **No connection reached text** (503 `PROVIDER_CREDENTIALS_MISSING`). Text holds no endpoint
+   or credential and reads only the `provider_overrides[provider]` entry its caller forwards.
+   Fix: the gateway resolves the connection through the shared
+   `TextRequestEnrichmentService` (tenant → SYSTEM, veto + entitlement gate unchanged) and
+   injects `text_provider_overrides`. NLP requires it (`repr=False`) and forwards it one hop.
+   A missing connection is a named 503 at the gateway. `emit-openapi` bootstraps the full Nest
+   app, which proves the new DI import resolves; the documents are unchanged (`c23741191`).
+
+**Environment repair (not code):** the dev Vault had restarted before this session, which
+voided the seeded Transit ciphertext of every `AiProviderConnection` key (`Provider credential
+failed to decrypt … provider=lm-studio, keyVersion=1`). That breaks **every** text call on the
+dev stack, not just this route. Only the SYSTEM `llm/lm-studio` row was re-keyed
+(`PUT admin/providers/llm/lm-studio?tenantId=00000000-…`, super admin, `If-Match: "2"`, the
+keyless-local placeholder). The other self-hosted rows (`vllm`, `ollama`, `llama-cpp`) and any
+BYO keys are still undecryptable on the dev DB.
+
+**Result:**
+
+```
+"Please send me a copy of my blood test results and my discharge summary."  201  predicted_topic=medical_records
+"I was billed twice for my cardiology consultation last week."             201  predicted_topic=billing
+"My chest pain follow-up visit needs to move to next Tuesday."             201  predicted_topic=appointments
+  each: llm_usage.provider=lm-studio  model=gemma-4-e2b-it-qat
+        connection_id=87000000-0000-0000-0000-000000000002 (SYSTEM)  cost_basis=INTERNAL   (~3.7–4.5 s)
+```
+
+**Expected refusal, not a defect of this ticket:** a purely non-clinical utterance ("I need help
+understanding my last invoice, please.") is refused by text's input **medical-relevance
+guardrail**: 422 `CONTENT_BLOCKED_NOT_MEDICAL`, reproduced directly against text. NLP then retries
+that deterministic 422 3× and answers an opaque 503. Whether open-taxonomy topic/intent should be
+screened for medical relevance at all (topics like `billing` suggest not) is an **owner
+decision** (a per-call `guardrail_policy` opt-out exists since TASK-890 OD-R).
+
 ### Follow-ups (not in this ticket)
 
 - `ExternalTextClient` retries **every** exception, including a deterministic 4xx from text. With
   D-1 the missing-selection case no longer reaches text, but any other 4xx would still be
   retried as if it were an outage.
-- Live-stack proof of `/text-analyses/topic` → nlp → text with the seeded election was not run: the
-  dev stack in the primary belongs to another session. The e2e spec
-  `task-729-nlp-task-expansion.spec.ts` already accepts 200 **or** 503, and asserts label
-  containment when it is 200.
+- `apps/api/tests/e2e/task-729-nlp-task-expansion.spec.ts` still posts to `/api/v1/ai/nlp/topic`, a
+  redirect shim TASK-1012 D-3 deleted. The live route is `/api/v1/text-analyses/topic`, so that
+  spec now meets a 404 its `[200, 503]` expectation does not allow.
+- Owner decision: should topic/intent opt out of the input medical-relevance guardrail? (See
+  Live proof.)
+- Dev Vault: re-key the remaining self-hosted SYSTEM connections, or reseed from a reset, when
+  their providers are needed.
 - Vision extraction (OD-2) → TASK-1017.
 
 ## Change History
@@ -232,3 +283,4 @@ eslint (changed sources)               0 errors; prettier: the one file I un-for
 |---|---|
 | 2026-09-29 | Ticket opened (drafted as TASK-1014; renumbered to TASK-1016 because a parallel session merged its own TASK-1014 and opened TASK-1015 in the meantime). Root cause verified, RED tests, fix, GREEN + replay-compat + lint evidence. ODs 1–3 raised. |
 | 2026-09-29 | Owner: OD-1 → (a), OD-2 → separate ticket (TASK-1017), go. Gateway half implemented (routing keys + seed elections + injection), artifacts regenerated, merged into `dev-2.2`. |
+| 2026-09-29 | Owner: "reseed the dev db and prove topic live". Non-destructive `RUN_SEED=safe` reseed created the two elections. The live run found and fixed the NLP `/generate` path (404) and the missing connection injection (503 PROVIDER_CREDENTIALS_MISSING), both merged. Re-keyed the dev SYSTEM `lm-studio` connection after a Vault restart. Topic proven live: 3/3 correct labels on gemma via the SYSTEM connection. Medical-relevance guardrail refusal of non-clinical text recorded as an owner decision. |
