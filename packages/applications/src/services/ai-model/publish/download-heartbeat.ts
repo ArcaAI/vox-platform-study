@@ -8,9 +8,13 @@
  * dropped (the next interval retries). A missed heartbeat only ever makes the
  * row look staler; it must never fail the job it is reporting on.
  *
- * `start()` also beats on a timer, so the upload of one very large object —
- * during which no byte counter moves — still refreshes `heartbeatAt` and the
- * row is not mistaken for a stalled worker.
+ * `start()` also beats on a timer — but ONLY while the job is making progress
+ * (I7): bytes arrived since the last write, or a request wrapped in `during()`
+ * (an upload part, a put) is in flight. Liveness used to be pure wall-clock, so
+ * a transfer hung on a half-open socket kept reporting "alive" forever; now a
+ * hung job stops beating and readers derive STALLED. An in-flight request is
+ * itself bounded by the store's per-request timeout, and a download by the
+ * byte-idle watchdog, so "in flight" can never mean "forever".
  */
 
 export interface DownloadHeartbeatSnapshot {
@@ -31,6 +35,10 @@ export class DownloadHeartbeat {
   private lastWriteAt = Number.NEGATIVE_INFINITY;
   private inFlight: Promise<void> | null = null;
   private timer: NodeJS.Timeout | null = null;
+  /** `bytesDone` as of the last write — the timer beats only when it moved. */
+  private writtenBytes: number | null = null;
+  /** Requests wrapped in `during()` still running. */
+  private activeRequests = 0;
   private readonly now: () => number;
 
   constructor(
@@ -64,9 +72,25 @@ export class DownloadHeartbeat {
     this.tick();
   }
 
+  /**
+   * Run `work` as a request in flight: while it runs the timer keeps beating
+   * (the upload of one large part moves no byte counter). Result and rejection
+   * pass through unchanged.
+   */
+  async during<T>(work: Promise<T>): Promise<T> {
+    this.activeRequests++;
+    try {
+      return await work;
+    } finally {
+      this.activeRequests--;
+    }
+  }
+
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => this.tick(), this.opts.intervalMs);
+    this.timer = setInterval(() => {
+      if (this.activeRequests > 0 || this.bytesDone !== this.writtenBytes) this.tick();
+    }, this.opts.intervalMs);
     this.timer.unref?.();
   }
 
@@ -83,6 +107,7 @@ export class DownloadHeartbeat {
     const now = this.now();
     if (this.inFlight || now - this.lastWriteAt < this.opts.intervalMs) return;
     this.lastWriteAt = now;
+    this.writtenBytes = this.bytesDone;
     const snapshot: DownloadHeartbeatSnapshot = { bytesDone: this.bytesDone, bytesTotal: this.bytesTotal, heartbeatAt: new Date(now).toISOString() };
     this.inFlight = this.write(snapshot)
       .catch((error: unknown) => this.opts.onError?.(error instanceof Error ? error : new Error(String(error))))

@@ -72,20 +72,79 @@ describe('DownloadHeartbeat (P5)', () => {
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'db blip' }));
   });
 
-  it('start() beats on a timer so a long single-part transfer stays alive; stop() clears it', async () => {
-    vi.useFakeTimers();
-    try {
-      const write = vi.fn().mockResolvedValue(undefined);
-      const hb = new DownloadHeartbeat(write, { intervalMs: 5000, now: () => Date.now() });
-      hb.start();
-      await vi.advanceTimersByTimeAsync(15_000);
-      await hb.stop();
-      const calls = write.mock.calls.length;
-      await vi.advanceTimersByTimeAsync(15_000);
-      expect(calls).toBeGreaterThanOrEqual(3);
-      expect(write.mock.calls.length).toBe(calls);
-    } finally {
-      vi.useRealTimers();
+  describe('the timer beats only while the job is making progress (I7)', () => {
+    async function withFakeTimers(run: () => Promise<void>) {
+      vi.useFakeTimers();
+      try {
+        await run();
+      } finally {
+        vi.useRealTimers();
+      }
     }
+
+    it('a hung transfer — no bytes, nothing in flight — stops refreshing liveness, so the row goes STALLED', async () => {
+      await withFakeTimers(async () => {
+        const write = vi.fn().mockResolvedValue(undefined);
+        const hb = new DownloadHeartbeat(write, { intervalMs: 5000, now: () => Date.now() });
+        hb.start();
+        hb.addBytes(10); // first write
+        await vi.advanceTimersByTimeAsync(60_000);
+        await hb.stop();
+        expect(write).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('bytes that arrived since the last write are flushed by the next beat, once', async () => {
+      await withFakeTimers(async () => {
+        const write = vi.fn().mockResolvedValue(undefined);
+        const hb = new DownloadHeartbeat(write, { intervalMs: 5000, now: () => Date.now() });
+        hb.start();
+        hb.addBytes(10); // written
+        await vi.advanceTimersByTimeAsync(1000);
+        hb.addBytes(10); // throttled — not written yet
+        await vi.advanceTimersByTimeAsync(30_000);
+        await hb.stop();
+        expect(write).toHaveBeenCalledTimes(2);
+        expect(write.mock.calls[1][0]).toMatchObject({ bytesDone: 20 });
+      });
+    });
+
+    it('keeps beating while an upload request is in flight (bounded by the store request timeout), and stops once it settles', async () => {
+      await withFakeTimers(async () => {
+        const write = vi.fn().mockResolvedValue(undefined);
+        const hb = new DownloadHeartbeat(write, { intervalMs: 5000, now: () => Date.now() });
+        hb.start();
+        let finish!: () => void;
+        const upload = hb.during(new Promise<void>((resolve) => (finish = resolve)));
+        await vi.advanceTimersByTimeAsync(15_000);
+        expect(write.mock.calls.length).toBeGreaterThanOrEqual(3);
+        finish();
+        await upload;
+        const settled = write.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(30_000);
+        await hb.stop();
+        expect(write.mock.calls.length).toBeLessThanOrEqual(settled + 1);
+      });
+    });
+
+    it('during() passes the result and the rejection through unchanged', async () => {
+      const hb = new DownloadHeartbeat(vi.fn().mockResolvedValue(undefined), { intervalMs: 5000 });
+      await expect(hb.during(Promise.resolve(42))).resolves.toBe(42);
+      await expect(hb.during(Promise.reject(new Error('put failed')))).rejects.toThrow('put failed');
+    });
+
+    it('stop() clears the timer', async () => {
+      await withFakeTimers(async () => {
+        const write = vi.fn().mockResolvedValue(undefined);
+        const hb = new DownloadHeartbeat(write, { intervalMs: 5000, now: () => Date.now() });
+        hb.start();
+        void hb.during(new Promise(() => undefined));
+        await vi.advanceTimersByTimeAsync(10_000);
+        await hb.stop();
+        const calls = write.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(15_000);
+        expect(write.mock.calls.length).toBe(calls);
+      });
+    });
   });
 });

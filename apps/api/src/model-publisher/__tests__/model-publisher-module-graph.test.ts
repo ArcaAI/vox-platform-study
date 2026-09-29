@@ -12,7 +12,7 @@
  */
 import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
-import { AiModelDownloadProcessor, AiModelDownloadService, AiModelUnregisterService, ModelStoreFactory } from '@arcaai/applications';
+import { AiModelDownloadProcessor, AiModelDownloadService, AiModelUnregisterService, ModelStoreFactory, ModelUsageReader } from '@arcaai/applications';
 
 type AnyModule = unknown;
 
@@ -63,6 +63,8 @@ describe('model publisher module graph (P11)', () => {
     expect(providers.has(AiModelDownloadProcessor)).toBe(true);
     expect(providers.has(ModelStoreFactory)).toBe(true);
     expect(providers.has(AiModelUnregisterService)).toBe(true);
+    // I9 — the unregister job re-checks referrers itself before deleting anything.
+    expect(providers.has(ModelUsageReader)).toBe(true);
     // `PrometheusController` rides in with `ObservabilityModule` (via
     // `CommonServiceModule`); an application context mounts no HTTP server, so
     // it is inert. Nothing from the gateway's own surface may be here.

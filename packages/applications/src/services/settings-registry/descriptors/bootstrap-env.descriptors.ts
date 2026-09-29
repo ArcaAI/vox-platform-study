@@ -76,6 +76,16 @@ export const BOOTSTRAP_ENV_SETTINGS: SettingDescriptor[] = [
     'Filesystem path under which the model-publisher worker stages each download (streamed to disk, hashed, then multipart-uploaded to `hope-models`). A path on the worker\'s own filesystem — on the cluster a size-limited emptyDir. Unset falls back to the OS temp dir (`os.tmpdir()`).',
     'open-to-default',
   ),
+  envFloor(
+    'modelPublisher.stagingMaxBytes',
+    'number',
+    'Bootstrap',
+    'Model publisher staging budget (bytes)',
+    'The size, in whole bytes, of the model-publisher worker’s staging volume — on the cluster the staging emptyDir’s `sizeLimit`, set by the publisher Deployment (a topology value). ' +
+      'The download pre-flight refuses (`STAGING_SPACE_INSUFFICIENT`) a publish that exceeds min(filesystem free space, this budget − bytes already under `MODEL_PUBLISHER_STAGING_DIR`): `statfs` reports the NODE’s disk, not the emptyDir’s limit, so without it a publish that fits the node but not the pod gets the pod evicted mid-download. ' +
+      'Unset = no budget (the filesystem free space alone, right for local dev). A value that is not a positive whole number fails the worker at start. Read ONLY by the model-publisher worker.',
+    'open-to-default',
+  ),
 
   // ── Reaching the database (the floor, by definition) ──────────────────────
   {
@@ -223,5 +233,44 @@ export const BOOTSTRAP_ENV_SETTINGS: SettingDescriptor[] = [
     sensitivity: 'secret',
     dataType: 'secret',
     failMode: 'closed',
+  },
+
+  // ── The model publisher's own `hope-models` principal (TASK-1019 D-2 / C3) ──
+  // Not the `model-registry:s3` provider row (apps/stt, nlp and tts read that
+  // through `/internal/model-registry-credential`, so a write+delete key there
+  // would reach every ML pod), not `S3_ACCESS_KEY` (`hope-platform-rw` has no
+  // rights on `hope-models` and must not gain them), and not `vault-kv`: a
+  // kv-v2 path is readable by the ONE AppRole every hope-api pod holds, and
+  // under `SECRETS_PROVIDER=vault` `SecretsService` has no env fallback — so
+  // the pair lives in env, fed by `secretKeyRef` to the publisher pod alone.
+  {
+    ...envFloor(
+      'modelStore.publisher.accessKeyId',
+      'string',
+      'Data Plane',
+      'Model publisher access key',
+      'S3/MinIO access key the model-publisher worker uses to write, and on unregister delete, model weights in the `hope-models` bucket (`ModelStoreFactory`). ' +
+        'Read ONLY by the model-publisher worker (`model-publisher.main.ts`) — hope-api never reads it and must not be given it. ' +
+        'CLASSIFIED `env`, NOT `vault-kv`, DELIBERATELY: a Vault kv-v2 path would be readable by hope-api’s shared AppRole, so on the cluster the pair is fed from the `hope-models-publisher` Secret by `secretKeyRef` into the publisher Deployment alone. ' +
+        'Absent ⇒ every publish/unregister job fails closed with `MODEL_STORE_CREDENTIAL_MISSING`; it never falls back to the platform storage credential. ' +
+        'Endpoint and region come from the platform storage cascade, not from here.',
+      'closed',
+    ),
+    sensitivity: 'secret',
+    dataType: 'secret',
+  },
+  {
+    ...envFloor(
+      'modelStore.publisher.secretKey',
+      'string',
+      'Data Plane',
+      'Model publisher secret key',
+      'S3/MinIO secret key paired with `MODEL_STORE_PUBLISHER_ACCESS_KEY_ID` — the model-publisher worker’s own principal on `hope-models` (write + delete + delete-version). ' +
+        'Read ONLY by the model-publisher worker — hope-api never reads it and must not be given it. ' +
+        'CLASSIFIED `env`, NOT `vault-kv`, for the same reason as its access key: a kv-v2 path would be readable by hope-api’s shared AppRole. Fails closed when absent.',
+      'closed',
+    ),
+    sensitivity: 'secret',
+    dataType: 'secret',
   },
 ];

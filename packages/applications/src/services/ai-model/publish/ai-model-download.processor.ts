@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Inject, Logger, Optional } from '@nestjs/common';
+import { Inject, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { Job, UnrecoverableError } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
@@ -10,15 +10,22 @@ import { HF_CACHE_LIBRARIES, HOPE_MODELS_BUCKET, SINGLE_FILE_LIBRARIES, deriveLo
 import { DownloadHeartbeat, DownloadHeartbeatSnapshot } from './download-heartbeat';
 import { mergeDownloadMeta, readDownloadMeta } from './model-download-meta.util';
 import { buildAiModelManifest } from './model-manifest.util';
-import { ModelPublisherError, NON_RETRYABLE_PUBLISHER_CODES } from './model-publisher.errors';
+import { ModelPublisherError, isNonRetryablePublisherError } from './model-publisher.errors';
 import { ModelSourceFetcherService } from './model-source-fetcher.service';
-import { createStagingDir, removeStagingDir, resolveStagingBaseDir } from './model-staging';
+import { createStagingDir, removeStagingDir, resolveStagingBaseDir, sweepStaleStagingDirs } from './model-staging';
 import { ModelStoreFactory } from './model-store';
 import { AiModelUnregisterService, UnregisterAiModelResult } from './model-unregister.service';
 import { HuggingFaceModelSourceClient } from './huggingface-model-source.client';
 import { buildSha256SumsContent, deriveModelVersion, deriveQuantTokenFromFilenames, normalizeQuantToken, sha256Hex } from './model-version.util';
-import { isUnregisterJob, type DownloadAiModelJobPayload, type PublisherJobPayload, type UnregisterAiModelJobPayload } from './publisher-job.contract';
+import {
+  isUnregisterJob,
+  type DownloadAiModelJobPayload,
+  type PublisherJobPayload,
+  type UnregisterAiModelJobPayload,
+} from './publisher-job.contract';
 import { QUEUE_CONCURRENCY } from '../../baseServices/redis/queue-concurrency';
+import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
+import { readModelPublisherTimeouts } from './model-publisher-timeouts.settings';
 import { runJobInContext } from '../../baseServices/observability/job-context';
 
 // Re-exported for the existing importers (tests, the API module); the constant moved to `../constants`.
@@ -28,7 +35,10 @@ export type { DownloadAiModelJobPayload } from './publisher-job.contract';
 
 const HF_REPO_RE = /^(?:hf:)?([\w.-]+)\/([\w.-]+)$/;
 
-/** Liveness cadence: "at most every few seconds" (D-4). Not a policy knob — staleness is (`staleAfterSeconds`). */
+/**
+ * Liveness cadence: "at most every few seconds" (D-4), and only while the job
+ * is making progress (I7). Not a policy knob — staleness is (`staleAfterSeconds`).
+ */
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 5000;
 
 export interface DownloadAiModelResult {
@@ -38,6 +48,22 @@ export interface DownloadAiModelResult {
   localPath: string;
   fileSizeMb: number;
   sha256: string | null;
+}
+
+/**
+ * A download job whose `jobId` is no longer the row's `_metadata.download.jobId`
+ * — a re-trigger (after a stall) superseded it. It exits without writing (I10b).
+ */
+export interface SupersededDownloadResult {
+  aiModelId: string;
+  jobId: string;
+  superseded: true;
+}
+
+/** True when the row's download bookkeeping names a DIFFERENT job than `jobId`. */
+function isSupersededBy(metaData: Record<string, unknown> | null | undefined, jobId: string): boolean {
+  const current = readDownloadMeta(metaData)?.jobId;
+  return Boolean(current) && current !== jobId;
 }
 
 /** Test/ops seams — none of them is configuration a tenant or operator sets. */
@@ -105,11 +131,13 @@ export const MODEL_PUBLISHER_PROCESSOR_OPTIONS = Symbol('MODEL_PUBLISHER_PROCESS
 // ran at bullmq's default of 1 because no `@Processor` passed options; the
 // number, and the Prisma-pool budget it fits inside, live in one table.
 @Processor(JobQueue.DownloadAiModel, { concurrency: QUEUE_CONCURRENCY[JobQueue.DownloadAiModel] })
-export class AiModelDownloadProcessor extends WorkerHost {
+export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(AiModelDownloadProcessor.name);
   private readonly stagingBaseDir: string;
   private readonly heartbeatIntervalMs: number;
   private readonly now: () => number;
+  /** Staging dirs created before this moment belong to a previous container. */
+  private readonly startedAtMs = Date.now();
 
   constructor(
     private readonly aiModelRepository: AiModelRepository,
@@ -119,6 +147,9 @@ export class AiModelDownloadProcessor extends WorkerHost {
     private readonly modelStoreFactory: ModelStoreFactory,
     private readonly unregisterService: AiModelUnregisterService,
     @Optional() @Inject(MODEL_PUBLISHER_PROCESSOR_OPTIONS) options?: ModelPublisherProcessorOptions,
+    // The `modelRegistry.download.*` knobs the WORKER reads (I7) — the gateway
+    // reads `maxAttempts` / `staleAfterSeconds` the same way.
+    @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
   ) {
     super();
     this.stagingBaseDir = options?.stagingBaseDir ?? resolveStagingBaseDir();
@@ -126,7 +157,27 @@ export class AiModelDownloadProcessor extends WorkerHost {
     this.now = options?.now ?? Date.now;
   }
 
-  async process(job: Job<PublisherJobPayload>): Promise<DownloadAiModelResult | UnregisterAiModelResult> {
+  /**
+   * I8 — an emptyDir outlives a container restart, so a job that died mid-download
+   * left its staging dir behind, eating the pod's budget. Sweep those at start;
+   * keyed on this process's start time, so it never races a job of its own.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const removed = await sweepStaleStagingDirs(this.stagingBaseDir, this.startedAtMs);
+      if (removed.length > 0)
+        this.logger.log({ message: 'Swept stale model-publisher staging dirs', count: removed.length, stagingBaseDir: this.stagingBaseDir });
+    } catch (error) {
+      // swallow-ok: a failed sweep only leaves disk used; the pre-flight still measures it.
+      this.logger.warn({
+        message: 'Staging sweep failed',
+        stagingBaseDir: this.stagingBaseDir,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async process(job: Job<PublisherJobPayload>): Promise<DownloadAiModelResult | SupersededDownloadResult | UnregisterAiModelResult> {
     const payload = job.data;
     if (!payload.tenantId) {
       throw new Error(`Job ${payload.jobId ?? job.id} is missing required tenantId`);
@@ -151,14 +202,25 @@ export class AiModelDownloadProcessor extends WorkerHost {
   private async runUnregister(payload: UnregisterAiModelJobPayload, finalAttempt: boolean): Promise<UnregisterAiModelResult> {
     try {
       const result = await this.unregisterService.execute(payload, { finalAttempt });
-      this.logger.log({ message: 'AiModel unregistered', jobId: payload.jobId, aiModelId: payload.aiModelId, weights: result.weights, purge: payload.purge });
+      this.logger.log({
+        message: 'AiModel unregistered',
+        jobId: payload.jobId,
+        aiModelId: payload.aiModelId,
+        weights: result.weights,
+        purge: payload.purge,
+      });
       return result;
     } catch (error) {
       throw this.toJobError(error, finalAttempt, { jobId: payload.jobId, aiModelId: payload.aiModelId, action: 'unregister' });
     }
   }
 
-  private async runDownload(job: Job, payload: DownloadAiModelJobPayload, attempt: number, finalAttempt: boolean): Promise<DownloadAiModelResult> {
+  private async runDownload(
+    job: Job,
+    payload: DownloadAiModelJobPayload,
+    attempt: number,
+    finalAttempt: boolean,
+  ): Promise<DownloadAiModelResult | SupersededDownloadResult> {
     const { jobId, aiModelId, tenantId, userId } = payload;
 
     const model = await this.aiModelRepository.findById(aiModelId);
@@ -167,6 +229,12 @@ export class AiModelDownloadProcessor extends WorkerHost {
     }
     assertEqualTenants(model, { tenantId });
 
+    // A re-trigger (after a stall) wrote a NEW jobId; this job is a leftover and
+    // must not touch the row the live job now owns.
+    if (isSupersededBy(model.metaData, jobId)) {
+      return this.superseded(aiModelId, jobId, model.metaData);
+    }
+
     let stagingDir: string | null = null;
     let heartbeat: DownloadHeartbeat | null = null;
 
@@ -174,7 +242,15 @@ export class AiModelDownloadProcessor extends WorkerHost {
       // This attempt is now the live one: clear a previous attempt's outcome,
       // restart the byte counter, stamp liveness.
       const startedAt = readDownloadMeta(model.metaData)?.startedAt ?? this.isoNow();
-      model.metaData = mergeDownloadMeta(model.metaData, { jobId, startedAt, finishedAt: null, error: null, attempt, heartbeatAt: this.isoNow(), bytesDone: 0 });
+      model.metaData = mergeDownloadMeta(model.metaData, {
+        jobId,
+        startedAt,
+        finishedAt: null,
+        error: null,
+        attempt,
+        heartbeatAt: this.isoNow(),
+        bytesDone: 0,
+      });
       if (userId) model.updatedBy = userId;
       await this.aiModelRepository.updateWithVersion(aiModelId, model, model.version);
 
@@ -196,9 +272,11 @@ export class AiModelDownloadProcessor extends WorkerHost {
       const liveHeartbeat = heartbeat;
 
       const quantHint = model.computeType ?? null;
+      const { idleTimeoutMs } = readModelPublisherTimeouts(this.appSettings);
       const files = await this.modelSourceFetcher.fetch(model.source, model.sourceUri, quantHint, {
         stagingDir,
         revision: hub?.sha,
+        idleTimeoutMs,
         onPlanned: (total) => liveHeartbeat.setTotal(total),
         onBytes: (bytes) => liveHeartbeat.addBytes(bytes),
       });
@@ -229,23 +307,26 @@ export class AiModelDownloadProcessor extends WorkerHost {
       });
       const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2), 'utf8');
 
+      // Every bucket request runs inside `during()`: the heartbeat keeps the row
+      // alive while one is in flight (each is bounded by the store's request
+      // timeout), and stops beating once nothing moves (I7).
       for (const file of files) {
         const key = `${prefix}${file.path}`;
         // Retry-safe: an object a previous attempt already published whole is
         // not sent again; a truncated or different one is replaced.
-        const existing = await store.headObject(key);
+        const existing = await liveHeartbeat.during(store.headObject(key));
         if (!existing || existing.size !== file.size) {
-          await store.uploadFile(key, file.localPath);
+          await liveHeartbeat.during(store.uploadFile(key, file.localPath));
         }
         liveHeartbeat.beat();
       }
-      await store.putSmall(`${prefix}SHA256SUMS`, Buffer.from(sha256sumsContent, 'utf8'));
-      await store.putSmall(`${prefix}manifest.json`, manifestBytes);
+      await liveHeartbeat.during(store.putSmall(`${prefix}SHA256SUMS`, Buffer.from(sha256sumsContent, 'utf8')));
+      await liveHeartbeat.during(store.putSmall(`${prefix}manifest.json`, manifestBytes));
       if (cacheLayout) {
         // `refs/main` is what `hf_hub_download` resolves a revision through
         // when offline; without it the snapshot is invisible to the loader.
         // The body is the bare sha — no trailing newline.
-        await store.putSmall(`${cacheLayout.repoPrefix}refs/main`, Buffer.from(cacheLayout.sha, 'utf8'));
+        await liveHeartbeat.during(store.putSmall(`${cacheLayout.repoPrefix}refs/main`, Buffer.from(cacheLayout.sha, 'utf8')));
       }
 
       await heartbeat.stop();
@@ -262,6 +343,9 @@ export class AiModelDownloadProcessor extends WorkerHost {
       const fresh = await this.aiModelRepository.findById(aiModelId);
       if (!fresh) {
         throw new Error(`AiModel ${aiModelId} disappeared during download`);
+      }
+      if (isSupersededBy(fresh.metaData, jobId)) {
+        return this.superseded(aiModelId, jobId, fresh.metaData);
       }
       // TASK-890 §3.11 — the write-back is the BUCKET IDENTITY plus the
       // MEASURED availability, and nothing else; the published size — a fact
@@ -301,11 +385,12 @@ export class AiModelDownloadProcessor extends WorkerHost {
     } catch (error) {
       await heartbeat?.stop();
       const message = error instanceof Error ? error.message : String(error);
-      const recordFailure = finalAttempt || isNonRetryable(error);
+      const recordFailure = finalAttempt || isNonRetryablePublisherError(error);
       this.logger.error({ message: 'AiModel publish failed', jobId, aiModelId, attempt, willRetry: !recordFailure, error: message });
 
       const fresh = await this.aiModelRepository.findById(aiModelId).catch(() => null);
-      if (fresh) {
+      // A superseded job's failure is not the live job's to record.
+      if (fresh && !isSupersededBy(fresh.metaData, jobId)) {
         // The failure is recorded in the run bookkeeping; `availability` is
         // deliberately NOT re-measured. A failed re-publish does not remove
         // the weights a previous run staged, and claiming MISSING here would
@@ -324,6 +409,16 @@ export class AiModelDownloadProcessor extends WorkerHost {
     }
   }
 
+  private superseded(aiModelId: string, jobId: string, metaData: Record<string, unknown> | null | undefined): SupersededDownloadResult {
+    this.logger.warn({
+      message: 'Download job superseded by a newer one — exiting without writing',
+      jobId,
+      aiModelId,
+      currentJobId: readDownloadMeta(metaData)?.jobId ?? null,
+    });
+    return { aiModelId, jobId, superseded: true };
+  }
+
   /**
    * One heartbeat write: re-read the row and merge progress into THIS job's
    * bookkeeping. Skipped when the row has moved on (another job, or this one
@@ -333,7 +428,11 @@ export class AiModelDownloadProcessor extends WorkerHost {
     const fresh = await this.aiModelRepository.findById(aiModelId);
     const meta = readDownloadMeta(fresh?.metaData);
     if (!fresh || meta?.jobId !== jobId || meta.finishedAt || meta.error) return;
-    fresh.metaData = mergeDownloadMeta(fresh.metaData, { bytesDone: snapshot.bytesDone, bytesTotal: snapshot.bytesTotal, heartbeatAt: snapshot.heartbeatAt });
+    fresh.metaData = mergeDownloadMeta(fresh.metaData, {
+      bytesDone: snapshot.bytesDone,
+      bytesTotal: snapshot.bytesTotal,
+      heartbeatAt: snapshot.heartbeatAt,
+    });
     try {
       await this.aiModelRepository.updateWithVersion(aiModelId, fresh, fresh.version);
     } catch (error) {
@@ -348,7 +447,7 @@ export class AiModelDownloadProcessor extends WorkerHost {
    * rethrown as-is (BullMQ retries it while attempts remain).
    */
   private toJobError(error: unknown, finalAttempt: boolean, context: Record<string, string>): unknown {
-    if (!finalAttempt && isNonRetryable(error)) {
+    if (!finalAttempt && isNonRetryablePublisherError(error)) {
       this.logger.warn({ message: 'Publisher job failed with a non-retryable code', ...context, code: (error as ModelPublisherError).code });
       return new UnrecoverableError((error as Error).message);
     }
@@ -365,7 +464,10 @@ export class AiModelDownloadProcessor extends WorkerHost {
    * `null` for a non-Hub source, and for a Hub the job could not reach (the
    * caller then fetches `main`, publishes flat and records no revision).
    */
-  private async resolveHubInfo(sourceUri: string, revision: string | null): Promise<{ sha: string; repoPrefix: string; snapshotPrefix: string } | null> {
+  private async resolveHubInfo(
+    sourceUri: string,
+    revision: string | null,
+  ): Promise<{ sha: string; repoPrefix: string; snapshotPrefix: string } | null> {
     const match = sourceUri.match(HF_REPO_RE);
     if (!match) return null;
     const [, org, repo] = match;
@@ -383,8 +485,4 @@ export class AiModelDownloadProcessor extends WorkerHost {
       return null;
     }
   }
-}
-
-function isNonRetryable(error: unknown): boolean {
-  return error instanceof ModelPublisherError && NON_RETRYABLE_PUBLISHER_CODES.has(error.code);
 }

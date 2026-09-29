@@ -10,7 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -174,6 +174,42 @@ describe('AiModelDownloadProcessor', () => {
   }
 
   const uploadedKeys = () => [...store.uploads.keys()];
+
+  it('I8 — sweeps model-publish-* staging dirs a previous container left in the pod, at worker start', async () => {
+    const stale = join(stagingBaseDir, 'model-publish-leftover');
+    await mkdir(stale);
+    await writeFile(join(stale, 'half.gguf'), 'x');
+    const past = new Date(Date.now() - 60_000);
+    await utimes(stale, past, past);
+
+    await processor.onModuleInit();
+
+    expect(await readdir(stagingBaseDir)).toEqual([]);
+  });
+
+  it('I7 — hands the byte-idle timeout to the fetcher (default 120 s; modelRegistry.download.idleTimeoutSeconds when set)', async () => {
+    const model = createBehavioralModelEntity();
+    mockRepository.findById.mockResolvedValue(model);
+    mockRepository.updateWithVersion.mockImplementation(async (_id: string, entity: typeof model) => entity);
+    mockFetcher.fetch.mockImplementation(stages({ 'model.gguf': 10 }));
+
+    await processor.process(job());
+    expect(mockFetcher.fetch).toHaveBeenLastCalledWith('HUGGINGFACE', expect.any(String), null, expect.objectContaining({ idleTimeoutMs: 120_000 }));
+
+    const settings = { getValueWithDefault: vi.fn((key: string, fallback: unknown) => (key === 'modelRegistry.download.idleTimeoutSeconds' ? 30 : fallback)) };
+    const configured = new AiModelDownloadProcessor(
+      mockRepository as never,
+      mockFetcher as never,
+      mockCls as never,
+      mockHfClient as never,
+      mockStoreFactory as never,
+      mockUnregister as never,
+      { stagingBaseDir, heartbeatIntervalMs: 5000 },
+      settings as never,
+    );
+    await configured.process(job());
+    expect(mockFetcher.fetch).toHaveBeenLastCalledWith('HUGGINGFACE', expect.any(String), null, expect.objectContaining({ idleTimeoutMs: 30_000 }));
+  });
 
   it('throws (fails the job) when tenantId is missing from the payload — fail-closed guard', async () => {
     await expect(processor.process(job({ tenantId: undefined }))).rejects.toThrow();
@@ -385,6 +421,20 @@ describe('AiModelDownloadProcessor', () => {
     expect((failure as Error).message).toMatch(/^MODEL_STORE_CREDENTIAL_MISSING/);
     expect(mockFetcher.fetch).not.toHaveBeenCalled();
     expect(readDownloadMeta(model.metaData)!.error).toMatch(/^MODEL_STORE_CREDENTIAL_MISSING/);
+  });
+
+  it('I10b — a job superseded by a re-trigger (the row names another download jobId) exits without writing anything', async () => {
+    const model = createBehavioralModelEntity({ metaData: { download: { jobId: 'job-2', startedAt: 't1', finishedAt: null, error: null } } });
+    mockRepository.findById.mockResolvedValue(model);
+    mockFetcher.fetch.mockImplementation(stages({ 'model.gguf': 10 }));
+
+    await expect(processor.process(job({ jobId: 'job-1' }))).resolves.toMatchObject({ aiModelId: 'model-id-1', superseded: true });
+
+    expect(mockRepository.updateWithVersion).not.toHaveBeenCalled();
+    expect(mockStoreFactory.create).not.toHaveBeenCalled();
+    expect(mockFetcher.fetch).not.toHaveBeenCalled();
+    expect(model.writes).toEqual([]);
+    expect(readDownloadMeta(model.metaData)!.jobId).toBe('job-2');
   });
 
   it('throws (and never writes back) when the model row cannot be found', async () => {

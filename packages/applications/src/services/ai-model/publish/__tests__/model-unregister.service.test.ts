@@ -9,18 +9,30 @@ import { SysEventType } from '@arcaai/domains';
 import { AiModelUnregisterService, deriveWeightsPrefix } from '../model-unregister.service';
 import { readUnregisterMeta } from '../model-download-meta.util';
 import type { UnregisterAiModelJobPayload } from '../publisher-job.contract';
+import { MODEL_IN_USE, MODEL_STORE_CREDENTIAL_MISSING, ModelPublisherError, isNonRetryablePublisherError } from '../model-publisher.errors';
 
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 
 function modelRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'model-1',
+    slug: 'gemma',
     tenantId: SYSTEM,
     version: 3,
     bucketPrefix: 'gemma/q4-0-abcdef012345/',
     availability: 'AVAILABLE',
     updatedBy: null as string | null,
-    metaData: { unregister: { jobId: 'u-1', startedAt: '2026-09-29T10:00:00.000Z', deleteWeights: true, purge: false, finishedAt: null, error: null, weights: 'deleting' } } as Record<string, unknown>,
+    metaData: {
+      unregister: {
+        jobId: 'u-1',
+        startedAt: '2026-09-29T10:00:00.000Z',
+        deleteWeights: true,
+        purge: false,
+        finishedAt: null,
+        error: null,
+        weights: 'deleting',
+      },
+    } as Record<string, unknown>,
     markAvailability: vi.fn(function (this: { availability: string }, availability: string) {
       this.availability = availability;
     }),
@@ -44,7 +56,8 @@ describe('AiModelUnregisterService (P9)', () => {
   const store = { deletePrefix: vi.fn() };
   const storeFactory = { create: vi.fn() };
   const eventEmitter = { emit: vi.fn() };
-  const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? SYSTEM : undefined)) };
+  const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? SYSTEM : undefined)), exit: vi.fn((fn: () => unknown) => fn()) };
+  const usage = { referrersOf: vi.fn() };
   let service: AiModelUnregisterService;
   let row: ReturnType<typeof modelRow>;
 
@@ -58,7 +71,8 @@ describe('AiModelUnregisterService (P9)', () => {
     repository.softDelete.mockResolvedValue(row);
     storeFactory.create.mockResolvedValue(store);
     store.deletePrefix.mockResolvedValue({ objects: 4, versions: 0 });
-    service = new AiModelUnregisterService(repository as never, storeFactory as never, eventEmitter as never, cls as never);
+    usage.referrersOf.mockResolvedValue([]);
+    service = new AiModelUnregisterService(repository as never, storeFactory as never, usage as never, eventEmitter as never, cls as never);
   });
 
   it('keeps a prefix another live row still references: soft-deletes the row, never touches the bucket → kept-shared', async () => {
@@ -134,6 +148,57 @@ describe('AiModelUnregisterService (P9)', () => {
 
     expect(repository.softDelete).not.toHaveBeenCalled();
     expect(readUnregisterMeta(row.metaData)).toMatchObject({ error: null, finishedAt: null });
+  });
+
+  it('I4 — a NON-retryable failure on the first attempt records the error and finishedAt (BullMQ will not retry it)', async () => {
+    storeFactory.create.mockRejectedValue(new ModelPublisherError(MODEL_STORE_CREDENTIAL_MISSING, 'not set'));
+
+    await expect(service.execute(payload(), { finalAttempt: false })).rejects.toThrow(/^MODEL_STORE_CREDENTIAL_MISSING/);
+
+    expect(repository.softDelete).not.toHaveBeenCalled();
+    expect(readUnregisterMeta(row.metaData)).toMatchObject({
+      error: expect.stringMatching(/^MODEL_STORE_CREDENTIAL_MISSING/),
+      finishedAt: expect.any(String),
+    });
+  });
+
+  describe('I9 — referrers re-checked in the worker, before anything is deleted', () => {
+    const referrer = { kind: 'agent', tenantId: 'tenant-a', id: 'agent-1', name: 'Scribe (scribe v3)' };
+
+    it('a binding made after the gateway accepted the job: records MODEL_IN_USE, keeps the weights, never deletes, never soft-deletes', async () => {
+      usage.referrersOf.mockResolvedValue([referrer]);
+
+      const failure = await service.execute(payload(), { finalAttempt: false }).catch((e: unknown) => e);
+
+      expect(failure).toBeInstanceOf(ModelPublisherError);
+      expect((failure as ModelPublisherError).code).toBe(MODEL_IN_USE);
+      expect(isNonRetryablePublisherError(failure)).toBe(true);
+      expect(storeFactory.create).not.toHaveBeenCalled();
+      expect(store.deletePrefix).not.toHaveBeenCalled();
+      expect(repository.softDelete).not.toHaveBeenCalled();
+      expect(row.markAvailability).not.toHaveBeenCalled();
+      expect(eventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceDeleted, expect.anything());
+      expect(readUnregisterMeta(row.metaData)).toMatchObject({
+        error: expect.stringMatching(/^MODEL_IN_USE: .*Scribe/),
+        finishedAt: expect.any(String),
+        weights: 'kept',
+      });
+    });
+
+    it('re-checks even when the weights are kept (a soft-deleted row would still be referenced)', async () => {
+      usage.referrersOf.mockResolvedValue([referrer]);
+
+      await expect(service.execute(payload({ deleteWeights: false }), { finalAttempt: true })).rejects.toThrow(/^MODEL_IN_USE/);
+      expect(repository.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('reads usage ACROSS tenants — outside the job’s tenant-scoped CLS context — and before any store call', async () => {
+      await service.execute(payload(), { finalAttempt: true });
+
+      expect(cls.exit).toHaveBeenCalledTimes(1);
+      expect(usage.referrersOf).toHaveBeenCalledWith(expect.objectContaining({ id: 'model-1' }));
+      expect(usage.referrersOf.mock.invocationCallOrder[0]).toBeLessThan(storeFactory.create.mock.invocationCallOrder[0]);
+    });
   });
 
   it('refuses a row owned by another tenant than the payload names', async () => {

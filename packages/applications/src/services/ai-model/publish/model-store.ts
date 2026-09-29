@@ -6,9 +6,12 @@
  * principal (`hope-platform-rw`), which has NO rights on `hope-models` and must
  * not gain them — every gateway pod holds that key. The publisher writes AND
  * deletes model weights, so it authenticates with its own key pair, read from
- * two `vault-kv` secrets that only the publisher worker is given. An absent key
- * pair fails the job closed (`MODEL_STORE_CREDENTIAL_MISSING`); it is never
- * substituted by the platform storage credential.
+ * two ENV secrets (`MODEL_STORE_PUBLISHER_ACCESS_KEY_ID` / `_SECRET_KEY`) that
+ * the cluster delivers by `secretKeyRef` to the publisher pod alone. Not
+ * `vault-kv`: a kv path is readable by hope-api's shared AppRole, and under
+ * `SECRETS_PROVIDER=vault` `SecretsService` has no env fallback (TASK-1019 C3).
+ * An absent key pair fails the job closed (`MODEL_STORE_CREDENTIAL_MISSING`);
+ * it is never substituted by the platform storage credential.
  *
  * WHAT IT ADDS OVER `IS3Service`. Multipart upload FROM A LOCAL FILE (weights
  * are staged to disk, never held as one Buffer), a paginated prefix listing,
@@ -41,10 +44,10 @@ import {
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { SYSTEM_TENANT_ID, TenantStorageConfigRepository } from '@arcaai/domains';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
-import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
 import { minioCertCheckFromEnv, resolvePlatformStorageConfig } from '../../tenant-storage-config/platform-storage-config';
 import { HOPE_MODELS_BUCKET } from '../constants';
 import { MODEL_STORE_CREDENTIAL_MISSING, MODEL_STORE_PREFIX_REFUSED, ModelPublisherError } from './model-publisher.errors';
+import { readModelPublisherTimeouts } from './model-publisher-timeouts.settings';
 
 export { MODEL_STORE_CREDENTIAL_MISSING, ModelPublisherError } from './model-publisher.errors';
 
@@ -264,6 +267,10 @@ export function assertDeletablePrefix(prefix: string): void {
 export type ModelStoreClientFactory = (config: S3ClientConfig) => S3ClientLike;
 export const MODEL_STORE_CLIENT_FACTORY = Symbol('MODEL_STORE_CLIENT_FACTORY');
 
+/** The environment the key pair is read from — `process.env` unless a test injects one. */
+export type ModelStoreEnv = Readonly<Record<string, string | undefined>>;
+export const MODEL_STORE_ENV = Symbol('MODEL_STORE_ENV');
+
 const defaultClientFactory: ModelStoreClientFactory = (config) => new S3Client(config);
 
 /**
@@ -274,25 +281,26 @@ const defaultClientFactory: ModelStoreClientFactory = (config) => new S3Client(c
 @Injectable()
 export class ModelStoreFactory {
   private readonly createClient: ModelStoreClientFactory;
+  private readonly env: ModelStoreEnv;
 
   constructor(
     @Optional() private readonly storageConfigRepository?: TenantStorageConfigRepository,
     @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
-    @Optional() @Inject(SecretsService) private readonly secrets?: SecretsService,
+    @Optional() @Inject(MODEL_STORE_ENV) env?: ModelStoreEnv,
     @Optional() @Inject(MODEL_STORE_CLIENT_FACTORY) createClient?: ModelStoreClientFactory,
   ) {
+    this.env = env ?? process.env;
     this.createClient = createClient ?? defaultClientFactory;
   }
 
   async create(): Promise<ModelStore> {
-    // String literals on purpose: `vault-kv-coverage.test.ts` scans them and
-    // requires a `vault-kv` descriptor for each (platform-secrets.descriptors.ts).
-    const accessKeyId = (await this.secrets?.getSecretOptional('MODEL_STORE_PUBLISHER_ACCESS_KEY_ID'))?.trim();
-    const secretAccessKey = (await this.secrets?.getSecretOptional('MODEL_STORE_PUBLISHER_SECRET_KEY'))?.trim();
+    // Env-tier secrets (`bootstrap-env.descriptors.ts`), set on the publisher pod alone.
+    const accessKeyId = this.env['MODEL_STORE_PUBLISHER_ACCESS_KEY_ID']?.trim();
+    const secretAccessKey = this.env['MODEL_STORE_PUBLISHER_SECRET_KEY']?.trim();
     if (!accessKeyId || !secretAccessKey) {
       throw new ModelPublisherError(
         MODEL_STORE_CREDENTIAL_MISSING,
-        'the model publisher key pair (vault-kv MODEL_STORE_PUBLISHER_ACCESS_KEY_ID / MODEL_STORE_PUBLISHER_SECRET_KEY) is not set; the publisher never falls back to the platform storage credential',
+        'the model publisher key pair (env MODEL_STORE_PUBLISHER_ACCESS_KEY_ID / MODEL_STORE_PUBLISHER_SECRET_KEY on the publisher pod) is not set; the publisher never falls back to the platform storage credential',
       );
     }
 
@@ -307,7 +315,7 @@ export class ModelStoreFactory {
         AZURE_STORAGE_ACCOUNT: this.appSettings?.getValueWithDefault<string>('AZURE_STORAGE_ACCOUNT', '') ?? '',
         AZURE_STORAGE_ENDPOINT_SUFFIX: this.appSettings?.getValueWithDefault<string>('AZURE_STORAGE_ENDPOINT_SUFFIX', '') ?? '',
       },
-      env: process.env,
+      env: this.env,
     });
 
     const endpoint = config.endpoint.trim();
@@ -321,9 +329,17 @@ export class ModelStoreFactory {
       // REQUIRE a checksum (DeleteObjects) still get one.
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
-      // Same deliberate, reversible TLS relaxation as `S3Service` (owner
-      // ruling 2026-08-30, `MINIO_CERT_CHECK`) — grep it to revert every site.
-      ...(minioCertCheckFromEnv(process.env) ? {} : { requestHandler: new NodeHttpHandler({ httpsAgent: new HttpsAgent({ rejectUnauthorized: false }) }) }),
+      // I7 — every request is bounded: a half-open socket on a part upload
+      // must FAIL (and the job retry), never hold the concurrency-1 queue
+      // forever. `throwOnRequestTimeout` turns the SDK's default warning into
+      // an error. The TLS relaxation is the same deliberate, reversible one as
+      // `S3Service` (owner ruling 2026-08-30, `MINIO_CERT_CHECK`) — grep it to
+      // revert every site.
+      requestHandler: new NodeHttpHandler({
+        requestTimeout: readModelPublisherTimeouts(this.appSettings).requestTimeoutMs,
+        throwOnRequestTimeout: true,
+        ...(minioCertCheckFromEnv(this.env) ? {} : { httpsAgent: new HttpsAgent({ rejectUnauthorized: false }) }),
+      }),
     });
 
     return new S3ModelStore(client, HOPE_MODELS_BUCKET);

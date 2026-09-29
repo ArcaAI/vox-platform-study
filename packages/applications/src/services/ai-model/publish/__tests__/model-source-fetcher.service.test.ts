@@ -156,10 +156,13 @@ describe('ModelSourceFetcherService', () => {
       const onBytes = vi.fn();
       const onPlanned = vi.fn();
 
-      const files = await service.fetch(AiModelSource.HUGGINGFACE, 'org/repo', null, { stagingDir, revision: 'abc123', onBytes, onPlanned });
+      const files = await service.fetch(AiModelSource.HUGGINGFACE, 'org/repo', null, { stagingDir, revision: 'abc123', onBytes, onPlanned, idleTimeoutMs: 45_000 });
 
       expect(mockHfClient.listRepoFiles).toHaveBeenCalledWith('org/repo', 'abc123');
-      expect(mockHfClient.downloadFileTo).toHaveBeenCalledWith('org/repo', 'onnx/model.onnx', 'abc123', join(stagingDir, 'onnx/model.onnx'), onBytes);
+      // The byte-idle watchdog bound rides through to every Hub download (I7).
+      expect(mockHfClient.downloadFileTo).toHaveBeenCalledWith('org/repo', 'onnx/model.onnx', 'abc123', join(stagingDir, 'onnx/model.onnx'), onBytes, {
+        idleTimeoutMs: 45_000,
+      });
       expect(onPlanned).toHaveBeenCalledWith(26);
       expect(onBytes).toHaveBeenCalledTimes(2);
       expect(files.map((f) => f.localPath)).toEqual([join(stagingDir, 'onnx/model.onnx'), join(stagingDir, 'config.json')]);
@@ -183,6 +186,20 @@ describe('ModelSourceFetcherService', () => {
       freeSpace.mockResolvedValue(1000);
 
       await expect(service.fetch(AiModelSource.HUGGINGFACE, 'org/repo', null, opts())).resolves.toHaveLength(1);
+    });
+
+    it('I8 — with no probe injected, the pre-flight honours MODEL_PUBLISHER_STAGING_MAX_BYTES (the pod budget), not just the node disk', async () => {
+      vi.stubEnv('MODEL_PUBLISHER_STAGING_DIR', stagingDir);
+      vi.stubEnv('MODEL_PUBLISHER_STAGING_MAX_BYTES', '500');
+      try {
+        const budgeted = new ModelSourceFetcherService(mockHfClient as never, mockS3Service as never);
+        mockHfClient.listRepoFiles.mockResolvedValue([{ path: 'model.gguf', size: 1000 }]);
+
+        await expect(budgeted.fetch(AiModelSource.HUGGINGFACE, 'org/repo', null, opts())).rejects.toMatchObject({ code: STAGING_SPACE_INSUFFICIENT });
+        expect(mockHfClient.downloadFileTo).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
 
     it('refuses a source path that would escape the staging dir', async () => {

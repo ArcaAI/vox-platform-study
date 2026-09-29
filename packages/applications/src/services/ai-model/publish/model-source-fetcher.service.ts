@@ -5,7 +5,15 @@ import { AiModelSource } from '@arcaai/domains';
 import { IS3Service } from '../../baseServices/storage';
 import { HOPE_MODELS_MOUNT } from '../constants';
 import { HuggingFaceModelSourceClient } from './huggingface-model-source.client';
-import { FreeSpaceProbe, MODEL_STAGING_FREE_SPACE, assertStagingSpace, stagingPathFor, statfsFreeSpace } from './model-staging';
+import {
+  FreeSpaceProbe,
+  MODEL_STAGING_FREE_SPACE,
+  assertStagingSpace,
+  createStagingFreeSpaceProbe,
+  resolveStagingBaseDir,
+  resolveStagingMaxBytes,
+  stagingPathFor,
+} from './model-staging';
 import { isRelevantModelSourceFile, sha256Hex } from './model-version.util';
 
 /** A source file staged on local disk, hashed, ready to upload (TASK-1019 D-3). */
@@ -27,6 +35,8 @@ export interface FetchStagingOptions {
   onPlanned?: (totalBytes: number) => void;
   /** Called per received chunk — progress + liveness. */
   onBytes?: (bytes: number) => void;
+  /** A Hub download receiving no byte for this long is aborted (`DOWNLOAD_IDLE_TIMEOUT`, I7). */
+  idleTimeoutMs?: number;
 }
 
 const HF_REPO_RE = /^(?:hf:)?([\w.-]+\/[\w.-]+)$/;
@@ -37,7 +47,9 @@ const S3_URI_RE = /^s3:\/\/([^/]+)\/(.*)$/;
  * STAGING each to local disk (TASK-1019 D-3). Hub files are streamed straight
  * to disk while hashed — a weight file never exists as one Buffer. Before any
  * byte is fetched the selected files' total size is checked against the
- * staging directory's free space (`STAGING_SPACE_INSUFFICIENT`).
+ * staging directory's free space — min(filesystem free, the pod's
+ * `MODEL_PUBLISHER_STAGING_MAX_BYTES` budget − bytes already staged) —
+ * (`STAGING_SPACE_INSUFFICIENT`).
  *
  * `source` is checked FIRST (TASK-960 D1): a `LOCAL` row's weights are
  * expected already staged under the `hope-models` bucket mount — there is
@@ -72,7 +84,8 @@ export class ModelSourceFetcherService {
     @Inject(IS3Service) private readonly s3Service: IS3Service,
     @Optional() @Inject(MODEL_STAGING_FREE_SPACE) freeSpace?: FreeSpaceProbe,
   ) {
-    this.freeSpace = freeSpace ?? statfsFreeSpace;
+    // The pod's budget, not just the node's disk (I8).
+    this.freeSpace = freeSpace ?? createStagingFreeSpaceProbe({ baseDir: resolveStagingBaseDir(), budgetBytes: resolveStagingMaxBytes() });
   }
 
   async fetch(source: AiModelSource, sourceUri: string, quantFilter: string | null, opts: FetchStagingOptions): Promise<StagedModelFile[]> {
@@ -115,7 +128,9 @@ export class ModelSourceFetcherService {
 
     const files: StagedModelFile[] = [];
     for (const { entry, localPath } of planned) {
-      const { size, sha256 } = await this.hfClient.downloadFileTo(repo, entry.path, revision, localPath, opts.onBytes);
+      const { size, sha256 } = await this.hfClient.downloadFileTo(repo, entry.path, revision, localPath, opts.onBytes, {
+        idleTimeoutMs: opts.idleTimeoutMs,
+      });
       files.push({ path: entry.path, localPath, size, sha256 });
     }
     return files;

@@ -35,7 +35,13 @@ describe('ai-readiness descriptors — registration and policy', () => {
     }
     // TASK-1019 — the two model-download knobs share this file; their own test pins them.
     expect(AI_READINESS_SETTINGS.map((d) => d.key).sort()).toEqual(
-      [...KEYS, 'modelRegistry.download.staleAfterSeconds', 'modelRegistry.download.maxAttempts'].sort(),
+      [
+        ...KEYS,
+        'modelRegistry.download.staleAfterSeconds',
+        'modelRegistry.download.maxAttempts',
+        'modelRegistry.download.idleTimeoutSeconds',
+        'modelRegistry.download.requestTimeoutSeconds',
+      ].sort(),
     );
   });
 
