@@ -8,6 +8,8 @@
  * with their defaults unchanged. Platform-only (`maxScope: 'system'`, `globalOnly: true`), served on
  * `GET /internal/effective-config?service=vllm`. Nothing here SELECTS a model — that is the agent's job.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
 import { EFFECTIVE_CONFIG_SERVICES } from '../../effective-config/IEffectiveConfigService';
@@ -17,7 +19,14 @@ import { VLLM_DEFAULTS, VLLM_SETTINGS } from '../descriptors/vllm.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
 import { CONSUMING_DEPLOYABLES } from '../registry.types';
 
-const DEFAULT_POOLS = { default: { acceptedKinds: ['asr'], pins: [], vramBudgetGiB: 6, maxResidentEngines: 1, inflightFactor: 2 } };
+// Cross-language lock: `apps/vllm` `DEFAULT_POOLS` is pinned to the SAME committed fixture. The dev
+// overlay runs `VLLM_POOL=asr`, so `asr` must be declared by the default — otherwise a replica that
+// cannot reach the gateway at start refuses to start (PoolNotConfiguredError).
+const DEFAULT_POOLS = (
+  JSON.parse(readFileSync(resolve(__dirname, '../../../../../../tests/contracts/vllm-default-pools.fixture.json'), 'utf8')) as {
+    pools: { default: Record<string, unknown>; asr: Record<string, unknown> };
+  }
+).pools;
 
 const EXPECTED_DEFAULTS: Record<string, unknown> = {
   'vllm.pools': DEFAULT_POOLS,
@@ -57,6 +66,11 @@ describe('vllm descriptors (TASK-1021 C-4)', () => {
       expect(descriptor.envOverride, descriptor.key).toBeUndefined();
     }
     expect(HOPE_SETTINGS_REGISTRY.getOrThrow('vllm.pools').dataType).toBe('json');
+  });
+
+  it('declares the dev overlay`s asr pool in the default, identical to the fixture', () => {
+    expect(DEFAULT_POOLS.asr).toEqual({ acceptedKinds: ['asr'], pins: [], vramBudgetGiB: 6, maxResidentEngines: 1, inflightFactor: 2 });
+    expect(Object.keys(VLLM_DEFAULTS['vllm.pools']).sort()).toEqual(['asr', 'default']);
   });
 
   it('the default vllm.pools passes its own validator', () => {

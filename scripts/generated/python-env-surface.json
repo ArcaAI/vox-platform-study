@@ -3788,7 +3788,7 @@
           "required": false,
           "secret": false,
           "dataType": "json",
-          "default": "{\"default\": {\"acceptedKinds\": [\"asr\"], \"pins\": [], \"vramBudgetGiB\": 6, \"maxResidentEngines\": 1, \"inflightFactor\": 2}}",
+          "default": "{\"default\": {\"acceptedKinds\": [\"asr\"], \"pins\": [], \"vramBudgetGiB\": 6, \"maxResidentEngines\": 1, \"inflightFactor\": 2}, \"asr\": {\"acceptedKinds\": [\"asr\"], \"pins\": [], \"vramBudgetGiB\": 6, \"maxResidentEngines\": 1, \"inflightFactor\": 2}}",
           "description": "Pools \u2014 CONTROL PLANE (`vllm.pools`), read at every admission. The raw map; see `pool_config()` for this process's entry."
         },
         {

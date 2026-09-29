@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from hope_vllm.core.config import DEFAULT_POOLS, PoolNotConfiguredError, Settings
 from hope_vllm.engine.pool import PoolConfig
+
+DEFAULT_POOLS_FIXTURE = (
+    Path(__file__).resolve().parents[6] / "tests/contracts/vllm-default-pools.fixture.json"
+)
 
 #: Control-plane knobs whose env path is CLOSED (the control plane owns them).
 CLOSED_TUNING_ENV = {
@@ -62,15 +69,20 @@ def test_bootstrap_defaults_match_the_platform_descriptor_defaults() -> None:
         max_resident=1,
         inflight_factor=2,
     )
-    assert DEFAULT_POOLS == {
-        "default": {
-            "acceptedKinds": ["asr"],
-            "pins": [],
-            "vramBudgetGiB": 6,
-            "maxResidentEngines": 1,
-            "inflightFactor": 2,
-        }
-    }
+    # Cross-language lock: the gateway descriptor test pins the SAME committed fixture.
+    assert DEFAULT_POOLS == json.loads(DEFAULT_POOLS_FIXTURE.read_text())["pools"]
+
+
+def test_the_dev_asr_pool_is_declared_by_the_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The dev overlay runs VLLM_POOL=asr; a gateway unreachable at start must not crash it."""
+    monkeypatch.setenv("VLLM_POOL", "asr")
+    assert Settings().pool_config() == PoolConfig(
+        accepted_kinds=frozenset({"asr"}),
+        pins=(),
+        vram_budget_gib=6.0,
+        max_resident=1,
+        inflight_factor=2,
+    )
 
 
 def test_the_pool_identity_is_the_env_var_vllm_pool(monkeypatch: pytest.MonkeyPatch) -> None:

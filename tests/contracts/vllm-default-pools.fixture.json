@@ -1,0 +1,19 @@
+{
+  "$comment": "TASK-1021 C-4 — the `vllm.pools` descriptor DEFAULT, pinned on both sides: `VLLM_DEFAULTS['vllm.pools']` (packages/applications/src/services/settings-registry/descriptors/vllm.descriptors.ts) and `DEFAULT_POOLS` (apps/vllm/src/hope_vllm/core/control_plane.py). Every pool name a Deployment sets as VLLM_POOL must be declared here, or a replica that cannot reach the gateway at start crash-loops with PoolNotConfiguredError.",
+  "pools": {
+    "default": {
+      "acceptedKinds": ["asr"],
+      "pins": [],
+      "vramBudgetGiB": 6,
+      "maxResidentEngines": 1,
+      "inflightFactor": 2
+    },
+    "asr": {
+      "acceptedKinds": ["asr"],
+      "pins": [],
+      "vramBudgetGiB": 6,
+      "maxResidentEngines": 1,
+      "inflightFactor": 2
+    }
+  }
+}

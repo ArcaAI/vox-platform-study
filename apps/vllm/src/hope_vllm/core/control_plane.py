@@ -78,7 +78,10 @@ BOUNDS: dict[str, tuple[float | None, float | None]] = {
 
 # ── vllm.pools ──────────────────────────────────────────────────────────────
 
-#: `vllm.pools` default (C-4) — the descriptor default, verbatim.
+#: `vllm.pools` default (C-4) — the descriptor default, verbatim (both sides are pinned to
+#: ``tests/contracts/vllm-default-pools.fixture.json``). Every pool a Deployment names in
+#: ``VLLM_POOL`` must be declared HERE too — the dev overlay runs ``asr`` — or a replica that
+#: cannot reach the gateway at start refuses to start (``PoolNotConfiguredError``).
 DEFAULT_POOLS: dict[str, dict[str, Any]] = {
     "default": {
         "acceptedKinds": ["asr"],
@@ -86,7 +89,14 @@ DEFAULT_POOLS: dict[str, dict[str, Any]] = {
         "vramBudgetGiB": 6,
         "maxResidentEngines": 1,
         "inflightFactor": 2,
-    }
+    },
+    "asr": {
+        "acceptedKinds": ["asr"],
+        "pins": [],
+        "vramBudgetGiB": 6,
+        "maxResidentEngines": 1,
+        "inflightFactor": 2,
+    },
 }
 
 

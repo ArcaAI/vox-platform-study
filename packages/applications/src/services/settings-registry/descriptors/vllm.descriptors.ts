@@ -29,9 +29,13 @@ export const VLLM_POOLS_KEY = 'vllm.pools';
 
 export const VLLM_DEFAULTS = {
   // OD-4 — the dev `asr` pool takes ONE of the two free time-sliced units: a 6 GiB budget on a
-  // 16 GB card, one resident engine (the Whisper row declares `vramGiB: 5`).
+  // 16 GB card, one resident engine (the Whisper row declares `vramGiB: 5`). `asr` is the pool the
+  // dev overlay's replica names (`VLLM_POOL=asr`); it is declared HERE so a replica that cannot
+  // reach the gateway at start still finds its pool. Both sides pin this map to
+  // `tests/contracts/vllm-default-pools.fixture.json` (`apps/vllm` `DEFAULT_POOLS`).
   [VLLM_POOLS_KEY]: {
     default: { acceptedKinds: ['asr'], pins: [], vramBudgetGiB: 6, maxResidentEngines: 1, inflightFactor: 2 },
+    asr: { acceptedKinds: ['asr'], pins: [], vramBudgetGiB: 6, maxResidentEngines: 1, inflightFactor: 2 },
   },
   // Unchanged from the `asrVllm.truncation.*` keys they replace. Uncalibrated until the GPU run
   // measures them.

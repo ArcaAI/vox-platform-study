@@ -83,6 +83,27 @@ async def test_a_pool_name_the_map_does_not_declare_refuses_to_start(
             pass  # pragma: no cover - never reached
 
 
+async def test_vllm_pool_asr_starts_on_the_defaults_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dev overlay's VLLM_POOL=asr, no control plane reachable: the replica comes up."""
+    monkeypatch.setenv("VLLM_POOL", "asr")
+    app = create_app(Settings(), engine_factory=FakeEngineFactory())
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            assert (await client.get("/api/v1/health/live")).status_code == 200
+            startup_ok: list[bool] = []
+
+            async def probe() -> None:
+                startup_ok.append((await client.get("/api/v1/health/startup")).status_code == 200)
+
+            deadline = time.monotonic() + 2.0
+            while not (startup_ok and startup_ok[-1]) and time.monotonic() < deadline:
+                await probe()
+                await asyncio.sleep(0.01)
+            assert startup_ok[-1], "no pins to load: startup must go green on the defaults"
+
+
 async def test_pins_load_in_the_background_and_gate_startup(settings: Settings) -> None:
     factory = FakeEngineFactory(build_delay_s=0.2)
     resolver = FakeSpecResolver()
