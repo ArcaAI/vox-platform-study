@@ -32,6 +32,8 @@ from temporalio.exceptions import ApplicationError
 from harness.core.config import Settings, get_runtime_judge_config, get_settings
 from harness.core.consent_client import ConsentClient, ConsentDecision, build_consent_client
 from harness.core.effective_config import get_effective_config_client
+from hope_obs import redact_id
+
 from harness.core.logging import get_logger
 from harness.core.metrics import inc_gate_decision, inc_regen, observe_step_duration
 from harness.core.provider_credentials import (
@@ -1175,8 +1177,8 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
             logger.error(
                 "harness.policy_auth_failed",
                 tenant_id=payload.tenant_id,
-                consultation_id=payload.consultation_id,
-                error=str(exc),
+                consultation=redact_id(payload.consultation_id),
+                error_type=type(exc).__name__,
                 hint=(
                     "gateway rejected the policy fetch with 401/403 — "
                     "HARNESS_SERVICE_TOKEN is likely missing or misconfigured "

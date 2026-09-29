@@ -163,12 +163,14 @@ class TestRequestContext:
         configure_logging(ObservabilityConfig(service_name="stt"))
         stream = capture_log_output()
 
-        bind_request_context(request_id="req-1", tenant_id="tenant-1")
+        bind_request_context(requestId="req-1", tenantId="tenant-1")
         get_logger("stt.session").info("stt.session.started")
         logging.getLogger("httpx").warning("outbound")
 
         first, second = _lines(stream)
-        assert first["request_id"] == "req-1"
+        assert first["requestId"] == "req-1"
+        assert first["tenantId"] == "tenant-1"
+        assert first["request_id"] == "req-1"  # legacy alias, removable next release
         assert first["tenant_id"] == "tenant-1"
         assert second["request_id"] == "req-1"
         assert second["tenant_id"] == "tenant-1"

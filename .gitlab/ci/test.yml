@@ -115,7 +115,6 @@ test-packages:
     - pnpm --filter @arcaai/database db:generate
     - pnpm turbo build --filter=@arcaai/database
     - pnpm turbo build --filter=@arcaai/exceptions
-    - pnpm turbo build --filter=@arcaai/logger
     - pnpm turbo build --filter=@arcaai/domains
     # `@arcaai/domains` is included so the
     # permanent Postgres regression guard for optimistic-locking CAS runs in
@@ -125,9 +124,9 @@ test-packages:
     # (defense against Prisma #10207 / #28840 on a future driver migration).
     # `@arcaai/applications` (180 unit specs, mocked repositories) is
     # included so the application-service layer is exercised in CI, matching the
-    # local `pnpm test` (turbo) fan-out. Its workspace deps (exceptions/logger/
+    # local `pnpm test` (turbo) fan-out. Its workspace deps (exceptions/
     # domains) are built above.
-    - pnpm turbo test --filter=@arcaai/logger --filter=@arcaai/utils --filter=@arcaai/pipeline --filter=@arcaai/domains --filter=@arcaai/applications
+    - pnpm turbo test --filter=@arcaai/utils --filter=@arcaai/pipeline --filter=@arcaai/domains --filter=@arcaai/applications
   rules:
     - if: $SKIP_TESTS == "true"
       when: never
@@ -1194,7 +1193,6 @@ test-api-e2e:
     - pnpm --filter @arcaai/database db:generate
     - pnpm turbo build --filter=@arcaai/database
     - pnpm turbo build --filter=@arcaai/exceptions
-    - pnpm turbo build --filter=@arcaai/logger
     - pnpm turbo build --filter=@arcaai/domains
     - pnpm turbo build --filter=@arcaai/applications
     - pnpm turbo build --filter=@arcaai/api

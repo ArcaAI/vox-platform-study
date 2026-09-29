@@ -29,6 +29,7 @@ import {
   UserRepository,
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
+import { DataNotFoundException } from '@arcaai/exceptions';
 import {
   BadRequestException,
   Body,
@@ -36,12 +37,14 @@ import {
   ForbiddenException,
   Get,
   HttpCode,
+  HttpException,
   HttpStatus,
   Inject,
   Logger,
   NotFoundException,
   Post,
   Request,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -217,7 +220,14 @@ export class AuthController {
         // case preferred — see `UserRepository.findByUsername`. A repository
         // failure is still folded into the same uniform 401 below.
         user = await this.userRepository.findByUsername(request.username, { resourceStatus: ResourceStatusType.ENABLED });
-      } catch {
+      } catch (error) {
+        // A miss is the uniform 401 below; an OUTAGE must not look like one (it used to, so a
+        // database blip read as "unknown user" in the audit trail and to the client).
+        if (!this.isLookupMiss(error)) {
+          failureReason = 'user_lookup_failed';
+          this.logger.error({ message: 'Login user lookup failed', error });
+          throw new ServiceUnavailableException('Authentication is temporarily unavailable');
+        }
         user = null;
       }
 
@@ -355,8 +365,9 @@ export class AuthController {
         user.lastLoginAt = new Date();
         user.lastActiveAt = new Date();
         await this.userRepository.update(user.id, user);
-      } catch {
+      } catch (error) {
         // Non-fatal: proceed with login() even if timestamp update fails
+        this.logger.warn({ message: 'Login timestamp update failed', error, userId: user.id });
       }
 
       const userResponse = new LoginUserResponse({
@@ -397,7 +408,7 @@ export class AuthController {
         req,
       });
 
-      if (error instanceof UnauthorizedException || error instanceof BadRequestException) {
+      if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ServiceUnavailableException) {
         throw error;
       }
       throw new UnauthorizedException('Authentication failed');
@@ -471,8 +482,10 @@ export class AuthController {
     if (user?.jti) {
       try {
         await this.jwtRevocationService.revoke(user.jti, user.exp);
-      } catch {
-        // Swallow — see comment above.
+      } catch (error) {
+        // Not thrown (see comment above) but never silent: a token that outlives its logout is
+        // a security-relevant fact.
+        this.logger.error({ message: 'Logout access-token revocation failed', error, userId: user.id });
       }
     }
 
@@ -483,8 +496,8 @@ export class AuthController {
     if (user?.refreshFamily) {
       try {
         await this.refreshTokenService.revokeFamily(user.refreshFamily);
-      } catch {
-        // Swallow — independent of the jti revoke above.
+      } catch (error) {
+        this.logger.error({ message: 'Logout refresh-family revocation failed', error, userId: user.id });
       }
     }
 
@@ -497,8 +510,9 @@ export class AuthController {
           endpoint: '/auth/logout',
           method: 'POST',
         });
-      } catch {
+      } catch (error) {
         // Non-fatal — already revoked tokens, response stays success.
+        this.logger.warn({ message: 'Logout tracking failed', error, userId: user.id });
       }
     }
 
@@ -858,7 +872,13 @@ export class AuthController {
         relations: { UserProfile: true },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
-    } catch {
+    } catch (error) {
+      // Only a miss means "disabled or deleted". An outage used to fall in here too, and the
+      // refresh was answered as a revoked account instead of a retryable failure.
+      if (!this.isLookupMiss(error)) {
+        this.logger.error({ message: 'Refresh user lookup failed', error, userId: consumed.userId });
+        throw error;
+      }
       user = null;
     }
 
@@ -1025,7 +1045,11 @@ export class AuthController {
       try {
         const consultation = await this.consultationRepository.findById(consultationId);
         consultationTenantId = consultation?.tenantId;
-      } catch {
+      } catch (error) {
+        if (!this.isLookupMiss(error)) {
+          this.logger.error({ message: 'Stream-ticket consultation lookup failed', error, consultationId });
+          throw error;
+        }
         consultationTenantId = undefined;
       }
     }
@@ -1065,8 +1089,10 @@ export class AuthController {
     let binding: StreamSessionBinding | null;
     try {
       binding = await this.streamSessionTenantBinding.lookupBinding(sessionId);
-    } catch {
-      binding = null;
+    } catch (error) {
+      // `lookupBinding` answers a miss with null; a throw is a cache outage, not a 404.
+      this.logger.error({ message: 'Stream-ticket session binding lookup failed', error, sessionId });
+      throw error;
     }
     if (binding === null || binding.tenantId !== activeTenantId) {
       throw new NotFoundException('Session not found');
@@ -1099,7 +1125,11 @@ export class AuthController {
     const runId = scope.slice(AuthController.WORKFLOW_RUN_SCOPE_PREFIX.length);
     try {
       await this.workflowRunService.getRun(activeTenantId, runId);
-    } catch {
+    } catch (error) {
+      if (!this.isLookupMiss(error)) {
+        this.logger.error({ message: 'Stream-ticket workflow run lookup failed', error, runId });
+        throw error;
+      }
       throw new NotFoundException('Run not found');
     }
   }
@@ -1150,8 +1180,12 @@ export class AuthController {
     try {
       await getDnaJobStatus(this.dnaQueue, jobId, { tenantId: activeTenantId, doctorId: callerUserId });
       return;
-    } catch {
-      // Fall through to the admin arm.
+    } catch (error) {
+      // A 4xx (missing job, not the owner) falls through to the admin arm; a queue outage does not.
+      if (!this.isLookupMiss(error)) {
+        this.logger.error({ message: 'Stream-ticket DNA job lookup failed', error, jobId });
+        throw error;
+      }
     }
 
     // (b) tenant admin — tenant match plus the admin route's own ability.
@@ -1165,8 +1199,10 @@ export class AuthController {
     let ability: AppAbility;
     try {
       ability = await this.policyEngine.buildAbility({ userId: callerUserId, tenantId: activeTenantId ?? undefined });
-    } catch {
-      throw new NotFoundException('Job not found');
+    } catch (error) {
+      // Still fails closed (the ticket is not minted) — but as an outage, not as a 404.
+      this.logger.error({ message: 'Stream-ticket ability build failed', error, userId: callerUserId });
+      throw error;
     }
     if (!ability.can('manage', 'DnaWritingStyleReport')) {
       throw new NotFoundException('Job not found');
@@ -1175,9 +1211,22 @@ export class AuthController {
       // No `doctorId` — the admin surface's rule is tenant-only, exactly as
       // `DnaWritingStyleAdminController.jobAccess()` computes it.
       await getDnaJobStatus(this.dnaQueue, jobId, { tenantId: activeTenantId });
-    } catch {
+    } catch (error) {
+      if (!this.isLookupMiss(error)) {
+        this.logger.error({ message: 'Stream-ticket DNA job lookup failed (admin arm)', error, jobId });
+        throw error;
+      }
       throw new NotFoundException('Job not found');
     }
+  }
+
+  /**
+   * A lookup that answered "there is no such row" (the repository's `DataNotFoundException`, or a
+   * 4xx from a service that hides existence). Anything else is an outage and must be logged and
+   * rethrown, never folded into the not-found path.
+   */
+  private isLookupMiss(error: unknown): boolean {
+    return error instanceof DataNotFoundException || (error instanceof HttpException && error.getStatus() < 500);
   }
 
   /**

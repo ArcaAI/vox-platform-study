@@ -109,7 +109,6 @@ export default defineConfig({
       include: [
         'packages/applications/src/**/*.ts',
         'packages/domains/src/**/*.ts',
-        'packages/logger/src/**/*.ts',
         'packages/exceptions/src/**/*.ts',
         'packages/pipeline/src/**/*.ts',
         'packages/agentic-sdk-v2/src/**/*.ts',

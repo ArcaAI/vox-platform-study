@@ -3,6 +3,7 @@ import { CONCURRENCY_CONFLICT, BasePersistenceException } from '../../common';
 export interface OptimisticConcurrencyMetadata {
   expectedVersion: number;
   currentVersion: number;
+  tenantId?: string;
 }
 
 /**

@@ -72,7 +72,6 @@
           - packages/domains/**/*
           - packages/applications/**/*
           - packages/exceptions/**/*
-          - packages/logger/**/*
           - packages/tools/**/*
           - packages/config-eslint/**/*
           - packages/config-rollup/**/*
@@ -86,7 +85,6 @@
         - packages/domains/**/*
         - packages/applications/**/*
         - packages/exceptions/**/*
-        - packages/logger/**/*
         - packages/tools/**/*
         - packages/config-eslint/**/*
         - packages/config-rollup/**/*

@@ -27,16 +27,25 @@ const election = (provider: string | null, wireModelId: string | null) => ({
   },
 });
 
-function build(resolveDefault: ReturnType<typeof vi.fn>) {
+/** The connection entry the shared resolver returns for the SELECTED provider (tenant → SYSTEM). */
+const CONNECTION = { api_key: 'keyless-local', base_url: 'http://localhost:1234/v1', funding: 'platform' };
+
+function build(
+  resolveDefault: ReturnType<typeof vi.fn>,
+  overrides: Record<string, unknown> = { 'lm-studio': CONNECTION, 'azure-openai': CONNECTION },
+) {
   const client = { classifyTopic: vi.fn(async () => ({})), classifyIntent: vi.fn(async () => ({})) };
+  const providerConnections = { resolveTenantCloudOverrides: vi.fn(async () => ({ overrides })) };
   const controller = new AiInferenceController(
     client as never,
     { resolveDefault } as never,
     { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : undefined)) } as never,
     undefined as never,
     { getRow: vi.fn(async () => ({ instructionsJson: ['billing', 'clinical'] })) } as never,
+    undefined as never,
+    providerConnections as never,
   );
-  return { controller, client };
+  return { controller, client, providerConnections };
 }
 
 describe.each([
@@ -65,6 +74,25 @@ describe.each([
 
   it('fails closed with 503 when the election names no model, and never calls NLP', async () => {
     const { controller, client } = build(vi.fn(async () => ({ ...election(null, null), model: null })));
+
+    await expect(controller[method]({ text: 'hello' } as never)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(client[method]).not.toHaveBeenCalled();
+  });
+
+  it('injects the connection text needs as text_provider_overrides (text holds none of its own)', async () => {
+    const { controller, client, providerConnections } = build(vi.fn(async () => election('lm-studio', 'gemma-4-e2b-it-qat')));
+
+    await controller[method]({ text: 'hello' } as never);
+
+    expect(providerConnections.resolveTenantCloudOverrides).toHaveBeenCalledWith('llm', 'tenant-1');
+    expect(client[method]).toHaveBeenCalledWith(expect.objectContaining({ text_provider_overrides: CONNECTION }));
+  });
+
+  it('fails closed with 503 when no connection resolves for the elected provider, and never calls NLP', async () => {
+    const { controller, client } = build(
+      vi.fn(async () => election('lm-studio', 'gemma-4-e2b-it-qat')),
+      {},
+    );
 
     await expect(controller[method]({ text: 'hello' } as never)).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client[method]).not.toHaveBeenCalled();

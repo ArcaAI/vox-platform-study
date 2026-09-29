@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, ForbiddenException, Inject, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { warnAndFallback } from '../../common/swallow-policy';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -780,14 +781,14 @@ export class AiModelService extends BaseService implements IAiModelService {
 
   /**
    * The model tier the caller's PLAN grants (`base` / `full` / `full_custom`).
-   * SYSTEM — and any caller whose tenant cannot be read — gets the full
-   * catalogue: the tier BOUNDS a tenant's choice, so an unresolvable plan must
-   * never silently narrow the platform's own view.
+   * SYSTEM gets the full catalogue. For a tenant the tier BOUNDS its choice, so
+   * a plan that cannot be read fails closed: the lookup error (a miss or an
+   * outage) propagates rather than granting the widest tier.
    */
   private async modelTierFor(tenantId: string): Promise<ModelTier> {
     if (tenantId === SYSTEM_TENANT_ID || !this.tenantRepository) return modelTierForPlan(null);
-    const tenant = await this.tenantRepository.findById(tenantId).catch(() => null);
-    return modelTierForPlan(tenant?.plan ?? null);
+    const tenant = await this.tenantRepository.findById(tenantId);
+    return modelTierForPlan(tenant.plan ?? null);
   }
 
   /**
@@ -810,7 +811,9 @@ export class AiModelService extends BaseService implements IAiModelService {
       if (service) services.add(service);
     }
     for (const service of services) {
-      const listed = await this.providerConnections.list(service, tenantId).catch(() => []);
+      const listed = await this.providerConnections
+        .list(service, tenantId)
+        .catch(warnAndFallback([] as never[], { logger: this.logger, message: 'Provider connection listing failed', meta: { service, tenantId } }));
       for (const connection of listed) index.set(connection.id, connection);
     }
     return index;
@@ -842,9 +845,23 @@ export class AiModelService extends BaseService implements IAiModelService {
       // `findRow(service, provider, …)` meant before a provider named a GROUP of rows.
       // `findRow` is by SLUG now, and a slug that happens to equal a provider id is a
       // coincidence this must not depend on.
-      port.findDefaultRow(service, provider, tenantId).catch(() => null),
-      tenantId === SYSTEM_TENANT_ID ? Promise.resolve(null) : port.findDefaultRow(service, provider, SYSTEM_TENANT_ID).catch(() => null),
-      port.resolveConnection(service, provider, tenantId).catch(() => null),
+      port
+        .findDefaultRow(service, provider, tenantId)
+        .catch(warnAndFallback(null, { logger: this.logger, message: 'Default connection row read failed', meta: { service, provider, tenantId } })),
+      tenantId === SYSTEM_TENANT_ID
+        ? Promise.resolve(null)
+        : port
+            .findDefaultRow(service, provider, SYSTEM_TENANT_ID)
+            .catch(
+              warnAndFallback(null, {
+                logger: this.logger,
+                message: 'Default connection row read failed',
+                meta: { service, provider, tenantId: SYSTEM_TENANT_ID },
+              }),
+            ),
+      port
+        .resolveConnection(service, provider, tenantId)
+        .catch(warnAndFallback(null, { logger: this.logger, message: 'Connection resolution failed', meta: { service, provider, tenantId } })),
     ]);
 
     const facts: ConnectionFacts = {

@@ -3,6 +3,7 @@ from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from hope_obs import redact_id
 
 from nlp.api.middleware.auth import enforce_service_token_ws
 from nlp.api.tenant import TENANT_HEADER, assert_tenant_matches_header
@@ -101,9 +102,9 @@ async def websocket_classify_token(
         )
 
     except WebSocketDisconnect:
-        logger.info(f"NLP Token WebSocket disconnected: {session_id}")
+        logger.info("nlp.ws.token_disconnected", session=redact_id(session_id))
     except Exception as e:
-        logger.error(f"NLP Token WebSocket error: {str(e)}")
+        logger.error("nlp.ws.token_failed", error_type=type(e).__name__, exc_info=True)
 
 
 @router.websocket("/text/{session_id}")
@@ -126,6 +127,6 @@ async def websocket_classify_text(
             ),
         )
     except WebSocketDisconnect:
-        logger.info(f"NLP Text WebSocket disconnected: {session_id}")
+        logger.info("nlp.ws.text_disconnected", session=redact_id(session_id))
     except Exception as e:
-        logger.error(f"NLP Text WebSocket error: {str(e)}")
+        logger.error("nlp.ws.text_failed", error_type=type(e).__name__, exc_info=True)

@@ -19,6 +19,7 @@ import {
 import { JobsOptions } from 'bullmq';
 import { IResourceSubscriptionService } from '../resourceSubscription';
 import { scrubPhiForAudit } from '../../common/phi-audit-scrub';
+import { currentRequestId, currentTraceId } from '../baseServices/observability/job-context';
 import { ENTITLEMENTS_QUOTA_BLOCKED_EVENT, QuotaBlockedEvent } from '../entitlements/entitlements.constants';
 
 /**
@@ -72,7 +73,7 @@ export class SysEventService implements ISysEventService {
    * @param results - The results from Promise.allSettled
    * @param eventType - The event type for logging context
    */
-  private logJobQueueFailures(results: PromiseSettledResult<void>[], eventType: string): void {
+  private logJobQueueFailures(results: PromiseSettledResult<void>[], eventType: string, event?: SysEvent): void {
     let succeeded = 0;
     let failed = 0;
 
@@ -84,7 +85,10 @@ export class SysEventService implements ISysEventService {
           metric: 'audit_event_queue_failed_total',
           eventType,
           jobIndex: index,
-          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          tenantId: event?.tenantId,
+          resourceId: event?.resourceId,
+          correlationId: event?.correlationId || currentRequestId(),
+          error: result.reason,
         });
       } else {
         succeeded++;
@@ -138,6 +142,7 @@ export class SysEventService implements ISysEventService {
    * Build the standard AuditLogJob data payload from a SysEvent.
    */
   private buildAuditLogData(event: SysEvent, action: AuditAction): AuditLogJob {
+    const traceId = currentTraceId();
     return {
       action,
       responsibleUserId: event.responsibleEntityId,
@@ -163,7 +168,10 @@ export class SysEventService implements ISysEventService {
       // job so AuditLogProcessor persists it on the row's `metadata` column.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       metadata: event.metaData as any,
-      correlationId: event.correlationId,
+      // The event may be raised before the CLS correlation id was copied onto it
+      // (cron, worker, pre-interceptor code) — the CLS id is the request id.
+      correlationId: event.correlationId || currentRequestId(),
+      ...(traceId ? { traceId } : {}),
       tenantId: event.tenantId,
     };
   }
@@ -229,7 +237,7 @@ export class SysEventService implements ISysEventService {
     this.queueSysEventJob(jobs, event, JobType.ResourceCreated);
 
     const results = await Promise.allSettled(jobs);
-    this.logJobQueueFailures(results, SysEventType.ResourceCreated);
+    this.logJobQueueFailures(results, SysEventType.ResourceCreated, event);
   }
 
   /**
@@ -266,7 +274,7 @@ export class SysEventService implements ISysEventService {
     this.queueSysEventJob(jobs, event, JobType.ResourceViewed);
 
     const results = await Promise.allSettled(jobs);
-    this.logJobQueueFailures(results, SysEventType.ResourceViewed);
+    this.logJobQueueFailures(results, SysEventType.ResourceViewed, event);
   }
 
   @OnEvent(SysEventType.ResourceUpdated)
@@ -279,7 +287,7 @@ export class SysEventService implements ISysEventService {
     this.queueSysEventJob(jobs, event, JobType.ResourceUpdated);
 
     const results = await Promise.allSettled(jobs);
-    this.logJobQueueFailures(results, SysEventType.ResourceUpdated);
+    this.logJobQueueFailures(results, SysEventType.ResourceUpdated, event);
   }
 
   @OnEvent(SysEventType.ResourceDeleted)
@@ -292,7 +300,7 @@ export class SysEventService implements ISysEventService {
     this.queueSysEventJob(jobs, event, JobType.ResourceDeleted);
 
     const results = await Promise.allSettled(jobs);
-    this.logJobQueueFailures(results, SysEventType.ResourceDeleted);
+    this.logJobQueueFailures(results, SysEventType.ResourceDeleted, event);
   }
 
   @OnEvent(SysEventType.ResourceArchived)
@@ -305,7 +313,7 @@ export class SysEventService implements ISysEventService {
     this.queueSysEventJob(jobs, event, JobType.ResourceArchived);
 
     const results = await Promise.allSettled(jobs);
-    this.logJobQueueFailures(results, SysEventType.ResourceArchived);
+    this.logJobQueueFailures(results, SysEventType.ResourceArchived, event);
   }
 
   @OnEvent(SysEventType.SendContactMessage)

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { fallbackOnNotFound } from '../../common/swallow-policy';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -280,7 +281,9 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
   /** 404-over-403: a foreign (or SYSTEM) row is indistinguishable from a missing one for a write. */
   private async loadOwned(id: string): Promise<AgentAssignmentEntity> {
     const tenantId = this.requireTenant();
-    const entity = await this.assignmentRepository.findById(id).catch(() => null);
+    const entity = await this.assignmentRepository
+      .findById(id)
+      .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Agent assignment lookup failed', meta: { assignmentId: id, tenantId } }));
     if (!entity || entity.tenantId !== tenantId) {
       throw new NotFoundException('Agent assignment not found');
     }
@@ -304,7 +307,11 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
   private async assertDepartmentInTenant(scope: PipelinePolicyScope, scopeId: string | null): Promise<void> {
     if (scope !== PipelinePolicyScope.DEPARTMENT || !scopeId) return;
     const tenantId = this.requireTenant();
-    const department = await this.departmentRepository.findById(scopeId).catch(() => null);
+    const department = await this.departmentRepository
+      .findById(scopeId)
+      .catch(
+        fallbackOnNotFound(null, { logger: this.logger, message: 'Assignment department lookup failed', meta: { departmentId: scopeId, tenantId } }),
+      );
     if (!department || department.tenantId !== tenantId) {
       throw new NotFoundException('Department not found');
     }

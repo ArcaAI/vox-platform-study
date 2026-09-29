@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { fallbackOnNotFound, isNotFoundError, warnAndFallback } from '../../common/swallow-policy';
 import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import {
@@ -129,6 +130,8 @@ const REJECTION = {
  */
 @Injectable()
 export class AiRoutingPolicyService extends BaseService implements IAiRoutingPolicyService {
+  private readonly logger = new Logger(AiRoutingPolicyService.name);
+
   constructor(
     private readonly aiRoutingPolicyRepository: AiRoutingPolicyRepository,
     // the two FKs that replaced F-6's string joins are read back
@@ -216,7 +219,17 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     // The FK names the catalogue row; a model the caller may not read, or one
     // that is not ENABLED, is "no model" — the caller fails closed on null,
     // exactly as it did on an unresolvable `AiTaskDefault.modelSlug`.
-    const model = policy?.modelId ? await this.aiModelRepository.findById(policy.modelId).catch(() => null) : null;
+    const model = policy?.modelId
+      ? await this.aiModelRepository
+          .findById(policy.modelId)
+          .catch(
+            fallbackOnNotFound(null, {
+              logger: this.logger,
+              message: 'Routing policy model lookup failed',
+              meta: { modelId: policy.modelId, tenantId, taskKey },
+            }),
+          )
+      : null;
     return { tenantId, taskKey, source, policy, model: model && model.resourceStatus === ResourceStatusType.ENABLED ? model : null };
   }
 
@@ -371,7 +384,13 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
    * graph bound to an unprofiled configuration would block the platform on data entry.
    */
   async resolveGenerationCapabilities(tenantId: string, selector: GenerationCapabilitySelector): Promise<ResolvedGenerationCapabilities> {
-    const row = await this.resolveConfigurationRow(tenantId, selector).catch(() => null);
+    const row = await this.resolveConfigurationRow(tenantId, selector).catch(
+      warnAndFallback(null, {
+        logger: this.logger,
+        message: 'Routing configuration row lookup failed',
+        meta: { tenantId, routingPolicyId: selector.routingPolicyId, taskKey: selector.taskKey },
+      }),
+    );
     if (!row) {
       // Name what the AUTHOR wrote. A problem that cannot be traced back to the field that
       // caused it is a problem the author cannot act on.
@@ -385,7 +404,15 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     // Mirrors `resolveRefs`: the un-laned read goes through the tenant-scope extension, which
     // pins `tenantId IN [caller, SYSTEM]` itself — so a SYSTEM-owned model stays readable and
     // another customer's does not.
-    const model = await this.aiModelRepository.findById(row.modelId).catch(() => null);
+    const model = await this.aiModelRepository
+      .findById(row.modelId)
+      .catch(
+        warnAndFallback(null, {
+          logger: this.logger,
+          message: 'Routing configuration model lookup failed',
+          meta: { modelId: row.modelId, tenantId },
+        }),
+      );
     if (!model) return { label, supportedGenerationParams: undefined };
 
     const declared = (model.metaData as Record<string, unknown> | null | undefined)?.supportedGenerationParams;
@@ -732,7 +759,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     if (refs.connectionProvider && refs.connectionService) {
       const targetRow = await this.providerConnectionService
         .findDefaultRow(refs.connectionService as ProviderService, refs.connectionProvider, targetTenantId)
-        .catch(() => null);
+        .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Default provider connection lookup failed', meta: { targetTenantId } }));
       providerConnectionId = targetRow?.id ?? null;
     }
 
@@ -814,7 +841,15 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       let hasKey = false;
       let keyVersion: number | null = null;
       if (row.providerConnectionId) {
-        const connection = await this.aiProviderConnectionRepository.findById(row.providerConnectionId).catch(() => null);
+        const connection = await this.aiProviderConnectionRepository
+          .findById(row.providerConnectionId)
+          .catch(
+            fallbackOnNotFound(null, {
+              logger: this.logger,
+              message: 'Routing policy provider connection lookup failed',
+              meta: { providerConnectionId: row.providerConnectionId },
+            }),
+          );
         // `encryptedApiKey` is READ here only to answer "is there one", and its
         // value never leaves this expression.
         hasKey = Boolean(connection?.encryptedApiKey);
@@ -888,7 +923,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       if (entry.connection) {
         const targetRow = await this.providerConnectionService
           .findDefaultRow(entry.connection.service as ProviderService, entry.connection.provider, tenantId)
-          .catch(() => null);
+          .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Default provider connection lookup failed', meta: { tenantId } }));
         providerConnectionId = targetRow?.id ?? null;
       }
       if (entry.hasCredential && !providerConnectionId && entry.credentialRef) {
@@ -1012,7 +1047,11 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       // 'tenant' = the tenant's own BYO row paid; 'system' = the platform
       // default did. These are the wire labels for the same two facts.
       return { candidate, funding: resolved.source === 'system' ? 'CLOUD' : 'BYOK' };
-    } catch {
+    } catch (error) {
+      // Funding is a display label; a lookup that cannot answer degrades to "unknown".
+      if (!isNotFoundError(error)) {
+        this.logger.warn({ message: 'Routing funding lookup failed', error, tenantId, provider: refs.connectionProvider });
+      }
       return { candidate, funding: null };
     }
   }
@@ -1029,12 +1068,22 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   private async resolveRefs(row: AiRoutingPolicyEntity): Promise<ConfigurationRefs> {
     const refs: ConfigurationRefs = {};
     if (row.providerConnectionId) {
-      const connection = await this.aiProviderConnectionRepository.findById(row.providerConnectionId).catch(() => null);
+      const connection = await this.aiProviderConnectionRepository
+        .findById(row.providerConnectionId)
+        .catch(
+          fallbackOnNotFound(null, {
+            logger: this.logger,
+            message: 'Routing policy provider connection lookup failed',
+            meta: { providerConnectionId: row.providerConnectionId },
+          }),
+        );
       refs.connectionProvider = connection?.provider ?? null;
       refs.connectionService = connection?.service ?? null;
     }
     if (row.modelId) {
-      const model = await this.aiModelRepository.findById(row.modelId).catch(() => null);
+      const model = await this.aiModelRepository
+        .findById(row.modelId)
+        .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Routing policy model lookup failed', meta: { modelId: row.modelId } }));
       refs.modelSlug = model?.slug ?? null;
     }
     return refs;
@@ -1052,10 +1101,16 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
    */
   private async resolveModelBySlugForTenant(slug: string, tenantId: string): Promise<{ id: string } | null> {
     if (tenantId !== SYSTEM_TENANT_ID) {
-      const own = await this.aiModelRepository.findBySlug(tenantId, slug).catch(() => null);
+      const own = await this.aiModelRepository
+        .findBySlug(tenantId, slug)
+        .catch(fallbackOnNotFound(null, { logger: this.logger, message: 'Model slug lookup failed', meta: { modelSlug: slug, tenantId } }));
       if (own) return own;
     }
-    return this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug).catch(() => null);
+    return this.aiModelRepository
+      .findBySlug(SYSTEM_TENANT_ID, slug)
+      .catch(
+        fallbackOnNotFound(null, { logger: this.logger, message: 'Model slug lookup failed', meta: { modelSlug: slug, tenantId: SYSTEM_TENANT_ID } }),
+      );
   }
 
   /** Servable = credential resolves AND the router has not ejected it. */

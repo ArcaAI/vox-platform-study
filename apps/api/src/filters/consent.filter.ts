@@ -3,6 +3,28 @@ import type { Request, Response } from 'express';
 import { ConsentDeniedException, ConsentUnavailableException } from '@arcaai/exceptions';
 
 import { toUnifiedErrorBody } from './error-envelope';
+import { attachFailureLogContext, logRequestFailure, writeErrorBody } from './failure-log';
+
+/**
+ * The client body for a consent verdict: the unified envelope over
+ * `toJSON()`, WITHOUT the patient identifier (the caller already knows which
+ * patient it asked about; echoing it puts a patient identifier in every
+ * proxy, CDN and browser log on the way back) and without `stack`/`cause`.
+ * Shared with `ExceptionInterceptor`'s consent branches so both paths agree.
+ */
+export function consentClientBody(
+  exception: ConsentDeniedException | ConsentUnavailableException,
+  status: number,
+  correlationId?: string,
+): Record<string, unknown> {
+  const { stack: _stack, cause: _cause, ...json } = exception.toJSON() as unknown as Record<string, unknown>;
+  const metadata = json['metadata'];
+  if (metadata && typeof metadata === 'object') {
+    const { externalPatientId: _externalPatientId, ...rest } = metadata as Record<string, unknown>;
+    json['metadata'] = rest;
+  }
+  return toUnifiedErrorBody(json, { status, correlationId });
+}
 
 /**
  * Maps `ConsentDeniedException` → 403 and `ConsentUnavailableException` →
@@ -41,22 +63,16 @@ export class ConsentExceptionFilter implements ExceptionFilter<ConsentDeniedExce
     const isUnavailable = exception instanceof ConsentUnavailableException;
     const status = isUnavailable ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.FORBIDDEN;
 
-    // R4: a genuine denial is an expected, un-alarming compliance event
-    // (debug); an unavailability verdict is an infrastructure incident
-    // wearing a compliance-shaped mask (error) — never the same log level.
-    const logPayload = {
-      message: isUnavailable ? 'Consent could not be determined — grant lookup failed' : 'Consent denied',
-      correlationId: exception.correlationId,
-      metadata: exception.metadata,
-      method: request?.method,
-      path: request?.url,
-    };
-    if (isUnavailable) {
-      this.logger.error(logPayload);
-    } else {
-      this.logger.debug(logPayload);
-    }
+    // The single failure line. A genuine denial is an expected compliance
+    // event (warn, by its 403); an unavailability verdict is an infrastructure
+    // incident wearing a compliance-shaped mask (error, by its 503). The
+    // metadata rides the log under its own keys — `externalPatientId`
+    // included, which the logger hashes by key — and is stripped from the body.
+    const metadata = (exception.metadata ?? {}) as Record<string, unknown>;
+    attachFailureLogContext(exception, { ...metadata });
+    const body = consentClientBody(exception, status);
+    logRequestFailure(this.logger, { request, status, code: typeof body['code'] === 'string' ? body['code'] : undefined, exception });
 
-    response.status(status).json(toUnifiedErrorBody(exception.toJSON() as unknown as Record<string, unknown>, { status }));
+    writeErrorBody(response, status, body);
   }
 }

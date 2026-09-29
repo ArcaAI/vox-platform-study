@@ -18,8 +18,8 @@ export * from './logging.module';
 // Transports
 export * from './transports';
 
-// NestJS adapter
-export * from './nestjs-logger.adapter';
+// PHI-safe identifier token (parity with Python `hope_obs.phi.redact_id`)
+export { redactId } from './redact-id';
 
 // Utilities
 export * from './env.utils';

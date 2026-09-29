@@ -69,6 +69,31 @@ def _add_otel_context(
     return event_dict
 
 
+#: camelCase context key -> legacy snake_case alias. The camelCase names are the
+#: contract (they match ``traceId``/``spanId`` and the gateway's log fields); the
+#: aliases exist ONLY so dashboards and alerts written against the old names keep
+#: matching for one release. Remove ``_add_legacy_aliases`` and this table
+#: together in the release after it lands.
+_LEGACY_ALIASES: dict[str, str] = {
+    "requestId": "request_id",
+    "tenantId": "tenant_id",
+}
+
+
+def _add_legacy_aliases(
+    _logger: WrappedLogger, _method_name: str, event_dict: EventDict
+) -> EventDict:
+    """Emit ``request_id``/``tenant_id`` beside ``requestId``/``tenantId``.
+
+    Temporary (removable next release). An explicit binding of the snake_case
+    name is left alone.
+    """
+    for camel, snake in _LEGACY_ALIASES.items():
+        if camel in event_dict:
+            event_dict.setdefault(snake, event_dict[camel])
+    return event_dict
+
+
 def _service_stamp(service_name: str) -> Processor:
     """Every line carries ``service``; an explicit binding still wins."""
 
@@ -91,6 +116,7 @@ def _shared_processors(service_name: str) -> list[Processor]:
         structlog.contextvars.merge_contextvars,
         _service_stamp(service_name),
         _add_otel_context,
+        _add_legacy_aliases,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
@@ -156,7 +182,7 @@ def configure_logging(config: ObservabilityConfig) -> None:
     root.setLevel(resolve_log_level(config.log_level))
 
     # `AccessLogMiddleware` replaces uvicorn's access log with a structured one
-    # that carries request_id/tenant_id and a latency field; leaving both on
+    # that carries requestId/tenantId and a latency field; leaving both on
     # would log every request twice in two different shapes.
     logging.getLogger("uvicorn.access").disabled = True
 
@@ -184,7 +210,7 @@ def bind_request_context(**fields: str) -> None:
 
     Contextvars, so the binding follows the request through ``await`` points and
     does not leak to a concurrent one. ``RequestContextMiddleware`` binds
-    ``request_id`` and ``tenant_id``; a handler may add its own, subject to the
+    ``requestId`` and ``tenantId`` (camelCase, like ``traceId``); a handler may add its own, subject to the
     PHI rules — an identifier goes through ``redact_id`` first.
     """
     structlog.contextvars.bind_contextvars(**fields)

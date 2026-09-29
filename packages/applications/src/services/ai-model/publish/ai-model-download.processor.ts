@@ -19,6 +19,7 @@ import { HuggingFaceModelSourceClient } from './huggingface-model-source.client'
 import { buildSha256SumsContent, deriveModelVersion, deriveQuantTokenFromFilenames, normalizeQuantToken, sha256Hex } from './model-version.util';
 import { isUnregisterJob, type DownloadAiModelJobPayload, type PublisherJobPayload, type UnregisterAiModelJobPayload } from './publisher-job.contract';
 import { QUEUE_CONCURRENCY } from '../../baseServices/redis/queue-concurrency';
+import { runJobInContext } from '../../baseServices/observability/job-context';
 
 // Re-exported for the existing importers (tests, the API module); the constant moved to `../constants`.
 export { HOPE_MODELS_BUCKET };
@@ -134,7 +135,7 @@ export class AiModelDownloadProcessor extends WorkerHost {
     const attempt = (job.attemptsMade ?? 0) + 1;
     const finalAttempt = attempt >= (job.opts?.attempts ?? 1);
 
-    return this.cls.run(async () => {
+    return runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', payload.tenantId);
       // One worker identity for both job kinds: the session names the publisher
       // worker, the job kind rides in the logs and the audit event.

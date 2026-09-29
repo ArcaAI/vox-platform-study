@@ -19,6 +19,7 @@ export class AuditLog {
   public resourceDatabase: string | null;
   public correlationId: string | null;
   public causationId: string | null;
+  public traceId: string | null;
   public action: Enums.AuditAction;
   public eventType: string | null;
   public success: boolean | null;
@@ -52,6 +53,7 @@ export class AuditLog {
     this.resourceDatabase = data.resourceDatabase;
     this.correlationId = data.correlationId;
     this.causationId = data.causationId;
+    this.traceId = data.traceId;
     this.action = data.action;
     this.eventType = data.eventType;
     this.success = data.success;

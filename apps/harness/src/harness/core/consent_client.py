@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from hope_obs import outbound_context_headers
 import structlog
 from pydantic import BaseModel, ConfigDict
 
@@ -181,7 +182,7 @@ class ConsentClient:
                 base_url=self._base_url,
                 timeout=self._timeout_s,
                 transport=self._transport,
-                headers={self._header_name: self._token},
+                headers={self._header_name: self._token, **outbound_context_headers()},
             ) as client:
                 response = await client.post("/assert", json=body)
                 response.raise_for_status()

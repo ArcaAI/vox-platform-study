@@ -150,7 +150,7 @@ async def validate_medical_context(
         raise HTTPException(status_code=503, detail=exc.as_detail()) from exc
     except Exception as exc:
         # FAIL-CLOSED backstop. PHI-safe: the error TYPE only, never the validated text.
-        logger.error("guardrail.medical_validate.failed", error=type(exc).__name__)
+        logger.exception("guardrail.medical_validate.failed", error_type=type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail="medical validation failed — refusing to report 'is_medical'",
@@ -193,7 +193,7 @@ async def validate_batch_medical_context(
     try:
         results = await guardian_provider.batch_validate(request.texts)
     except Exception as exc:
-        logger.error("guardrail.medical_validate_batch.failed", error=type(exc).__name__)
+        logger.exception("guardrail.medical_validate_batch.failed", error_type=type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail="medical batch validation failed — refusing to report 'is_medical'",
@@ -207,7 +207,7 @@ async def validate_batch_medical_context(
         if isinstance(result, Exception):
             logger.error(
                 "guardrail.medical_validate_batch.item_undetermined",
-                error=type(result).__name__,
+                error_type=type(result).__name__,
             )
             responses.append(
                 MedicalValidationResponse(
@@ -219,7 +219,7 @@ async def validate_batch_medical_context(
                     processing_time_ms=per_item_ms,
                     request_id=f"{request.request_id or 'batch'}_{i}",
                     timestamp=datetime.now(UTC).isoformat(),
-                    error=str(result),
+                    error=type(result).__name__,
                     stats=None,
                 )
             )

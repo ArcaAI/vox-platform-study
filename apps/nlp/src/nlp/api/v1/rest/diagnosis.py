@@ -46,15 +46,17 @@ async def get_diagnosis_suggestions(
             # Bound concurrent inference.
             async with inference_bound:
                 response = await service.suggest(request)
-            logger.info(f"Diagnosis suggestions: {response}")
+            logger.info("nlp.diagnosis.suggested", suggestion_count=len(response.suggestions))
             return response
     except ModelUnavailableError as e:
-        logger.error(f"Medical suggester model load failed: {str(e)}")
+        logger.error(
+            "nlp.diagnosis.model_unavailable", error_type=type(e).__name__, exc_info=True
+        )
         raise HTTPException(
             status_code=503, detail="Medical suggester service not available"
         ) from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Medical suggester error: {str(e)}")
+        logger.error("nlp.diagnosis.failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Medical suggester error") from e

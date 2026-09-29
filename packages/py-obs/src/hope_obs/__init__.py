@@ -37,7 +37,7 @@ Never an f-string, never clinical content, never a raw identifier.
 
 The whole public surface is ``__all__`` below. Everything else
 (``hope_obs.middleware``, ``hope_obs.tracing``, ``hope_obs.phi``) is importable
-for a service that needs to compose its own middleware stack, but the nine names
+for a service that needs to compose its own middleware stack, but the names
 here are the contract the services are written against.
 """
 
@@ -49,6 +49,7 @@ from hope_obs.logging import (
     get_logger,
 )
 from hope_obs.phi import redact_id
+from hope_obs.propagation import outbound_context_headers
 from hope_obs.runtime import (
     WorkerObservability,
     configure_observability,
@@ -67,6 +68,7 @@ __all__ = [
     "configure_worker_observability",
     "get_logger",
     "get_tracer",
+    "outbound_context_headers",
     "redact_id",
     "shutdown_observability",
 ]

@@ -32,6 +32,7 @@ class _FakeExternalTextClient:
         tenant_id: str | None = None,
         provider: str | None = None,
         model: str | None = None,
+        provider_override: dict | None = None,
     ) -> GeneratedLabel:
         # TASK-957 F-7b — the routes now read the label AND what the delegated
         # generation cost off one call.
@@ -44,7 +45,11 @@ class _FakeExternalTextClient:
 
 
 # TASK-1016 — the gateway-injected text selection every delegated generation now requires.
-_SELECTION = {"text_provider": "lm-studio", "text_model": "gemma"}
+_SELECTION = {
+    "text_provider": "lm-studio",
+    "text_model": "gemma",
+    "text_provider_overrides": {"api_key": "keyless-local", "base_url": "http://localhost:1234/v1"},
+}
 
 
 @pytest.fixture()

@@ -33,6 +33,8 @@ import { ClsService } from 'nestjs-cls';
 import { CONSENT_EXEMPT_KEY, IConsultationConsentService, REQUIRES_CONSENT_KEY, RequiresConsentMetadata, SKIP_AUTH_KEY } from '@arcaai/applications';
 import { ConsultationRepository } from '@arcaai/domains';
 
+import { attachFailureLogContext } from '../filters/failure-log';
+
 interface RequestLike {
   params?: Record<string, string | undefined>;
 }
@@ -129,8 +131,12 @@ export class PatientConsentGuard implements CanActivate {
       // Prisma extension already filters this at the query layer for most
       // paths; this check makes the guard correct even if that changes.
       if (consultation.tenantId !== tenantId) {
-        this.logger.warn({ message: 'PatientConsentGuard: cross-tenant consultation id', consultationId: params.id });
-        throw new NotFoundException(`Consultation ${params.id} not found`);
+        // No line here: the reason rides the 404 onto the request's single
+        // failure line (the logger hashes `consultationId` by key).
+        throw attachFailureLogContext(new NotFoundException(`Consultation ${params.id} not found`), {
+          reason: 'cross_tenant_consultation',
+          consultationId: params.id,
+        });
       }
       return consultation.patientId;
     }

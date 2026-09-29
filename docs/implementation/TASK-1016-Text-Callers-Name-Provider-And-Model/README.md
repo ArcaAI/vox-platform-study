@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — OD-1 (a) implemented, OD-2 split to TASK-1017; merged into `dev-2.2`; runtime (live-stack) proof not run |
+| Status | **Review** — OD-1 (a) implemented, OD-2 split to TASK-1017; merged into `dev-2.2`; **live-proven on the dev stack 2026-09-29** (two further defects found and fixed by the live run) |
 | Type | bugfix |
 | Branch | `agent/eloquent-boyd-928da8`, based on `dev-2.2` @ `d211119f6` (TASK-1012 W-3 merge) |
 | Services | `apps/nlp`, `apps/harness`, `apps/api` (gateway), `packages/applications`, `packages/database` (seed) |
@@ -215,15 +215,103 @@ eslint (changed sources)               0 errors; prettier: the one file I un-for
                                        three files were already unformatted at HEAD and are left alone
 ```
 
+### Live proof (2026-09-29, dev stack from the primary on `dev-2.2`)
+
+**Reseed** (non-destructive, no reset): `NODE_ENV=development RUN_SEED=safe pnpm db:seed` →
+`Seeded AiRoutingPolicy defaults: 2 created, 8 skipped, 1 unresolved`. `nlp.topic` and
+`nlp.intent` → `lm-studio` / `gemma-4-e2b-it-qat`, TEXT_GENERATION, ACTIVE. The unresolved one
+is the pre-existing disabled `nlp.classification` placeholder.
+
+**Stack:** `pnpm stack:dev -- api nlp text guardrail`, LM Studio `gemma-4-e2b-it-qat` at 16k. As
+the ARCAAI tenant admin: `PUT admin/nlp-task-instructions/row?taskKey=nlp.topic` with
+`["billing","appointments","medical_records"]`, then `POST /api/v1/text-analyses/topic`.
+
+The live run found two more defects on this path, fixed TDD-style (RED → GREEN) and merged:
+
+1. **NLP posted to `{TEXT_URL}/generate`** (404 on every call). `TEXT_URL` is the fleet-wide
+   bare origin, and text mounts `/api/v1/generate`. Fix: `GENERATE_PATH` (`210f59d2f`).
+2. **No connection reached text** (503 `PROVIDER_CREDENTIALS_MISSING`). Text holds no endpoint
+   or credential and reads only the `provider_overrides[provider]` entry its caller forwards.
+   Fix: the gateway resolves the connection through the shared
+   `TextRequestEnrichmentService` (tenant → SYSTEM, veto + entitlement gate unchanged) and
+   injects `text_provider_overrides`. NLP requires it (`repr=False`) and forwards it one hop.
+   A missing connection is a named 503 at the gateway. `emit-openapi` bootstraps the full Nest
+   app, which proves the new DI import resolves; the documents are unchanged (`c23741191`).
+
+**Environment repair (not code):** the dev Vault had restarted before this session, which
+voided the seeded Transit ciphertext of every `AiProviderConnection` key (`Provider credential
+failed to decrypt … provider=lm-studio, keyVersion=1`). That breaks **every** text call on the
+dev stack, not just this route. Only the SYSTEM `llm/lm-studio` row was re-keyed
+(`PUT admin/providers/llm/lm-studio?tenantId=00000000-…`, super admin, `If-Match: "2"`, the
+keyless-local placeholder). The other self-hosted rows (`vllm`, `ollama`, `llama-cpp`) and any
+BYO keys are still undecryptable on the dev DB.
+
+**Result:**
+
+```
+"Please send me a copy of my blood test results and my discharge summary."  201  predicted_topic=medical_records
+"I was billed twice for my cardiology consultation last week."             201  predicted_topic=billing
+"My chest pain follow-up visit needs to move to next Tuesday."             201  predicted_topic=appointments
+  each: llm_usage.provider=lm-studio  model=gemma-4-e2b-it-qat
+        connection_id=87000000-0000-0000-0000-000000000002 (SYSTEM)  cost_basis=INTERNAL   (~3.7–4.5 s)
+```
+
+**Expected refusal, not a defect of this ticket:** a purely non-clinical utterance ("I need help
+understanding my last invoice, please.") is refused by text's input **medical-relevance
+guardrail**: 422 `CONTENT_BLOCKED_NOT_MEDICAL`, reproduced directly against text. NLP then retries
+that deterministic 422 3× and answers an opaque 503. Whether open-taxonomy topic/intent should be
+screened for medical relevance at all (topics like `billing` suggest not) is an **owner
+decision** (a per-call `guardrail_policy` opt-out exists since TASK-890 OD-R).
+
+**DECIDED 2026-09-29 (owner): opt topic/intent out of the medical guardrail** (`b6d7b865e`).
+The NLP → text delegation pushes `guardrail_policy: {"require_medical": false}`. This is the
+NARROW knob: the guardrail still screens (`/api/medical/validate` still runs on every call) and
+the output gate still runs. `enabled` is deliberately left unset, because `false` would switch
+both gates off. Live after the change:
+
+```
+topic  "I need help understanding my last invoice, please."   201  billing          (was 422 → 503)
+topic  "Can I move my appointment to next Tuesday?"            201  appointments
+topic  "Where can I download my discharge summary?"            201  medical_records
+intent "I was charged twice, please give my money back."       201  request_refund
+       guardrail /api/medical/validate 200 at 14:49:01 / :06 / :10 — screening kept
+```
+
+The ARCAAI dev tenant now has an `nlp.intent` instructions row
+(`request_refund`, `reschedule_visit`, `request_records`), created for this proof.
+
+### No retry on a deterministic 4xx (owner request, 2026-09-29, `218e4a87e`)
+
+`ExternalTextClient` used to retry every failure, so a 4xx from text (a guardrail content
+block, an invalid body, a bad service token) went out `max_retries + 1` times and then surfaced as
+an opaque 503. Now:
+
+| text answers | NLP client | `/classify/topic`, `/intent` answer |
+|---|---|---|
+| 4xx except 408/429 | ONE attempt, raises `ExternalTextRejectedError(status_code, error_code)`; text's free-text `detail` is not carried | 422 → **422** `"<Task> classification refused by text (<code>)"`; any other 4xx → **502** (an integration defect; a peer's 401 is never passed through as the user's) |
+| 408, 429, 5xx, transport error | bounded retry, unchanged | 503 once exhausted, unchanged |
+
+Tests: `TestNoRetryOnDeterministicRefusal` (400/401/404/422 → exactly 1 call; 408/429 → retried
+and recovered; 503 → 3 calls) and `TestRouteSurfacesTheRefusal` (422 → 422 naming the code, 400 →
+502), topic + intent. NLP suite 92 passed. `ruff`, `black` and `mypy` are clean. The same commit
+applies ruff's I001 import order to `external_text_client.py`, which the TASK-1015 merge
+`7770c5d0e` had left failing `pnpm nlp:lint`.
+
+Live (NLP restarted on `218e4a87e`, called directly with `text_provider: "no-such-provider"`):
+text answered **404 `PROVIDER_NOT_FOUND` once** (one `/api/v1/generate` 4xx in text's log at
+14:53:42). NLP logged one `nlp.external_text.rejected` and no `attempt_failed`, and answered
+**502 "text rejected the request (PROVIDER_NOT_FOUND)" in 2.0 s**. The gateway happy path was
+unchanged (3/3 topics correct).
+
 ### Follow-ups (not in this ticket)
 
 - `ExternalTextClient` retries **every** exception, including a deterministic 4xx from text. With
   D-1 the missing-selection case no longer reaches text, but any other 4xx would still be
   retried as if it were an outage.
-- Live-stack proof of `/text-analyses/topic` → nlp → text with the seeded election was not run: the
-  dev stack in the primary belongs to another session. The e2e spec
-  `task-729-nlp-task-expansion.spec.ts` already accepts 200 **or** 503, and asserts label
-  containment when it is 200.
+- `/text-analyses/topic` and `/intent` return **201** (a Nest `@Post` default) while `@ApiOkResponse`
+  documents 200. Owner to decide: pin `@HttpCode(200)`, or document 201. The e2e spec asserts 201.
+- Dev Vault: re-key the remaining self-hosted SYSTEM connections, or reseed from a reset, when
+  their providers are needed.
 - Vision extraction (OD-2) → TASK-1017.
 
 ## Change History
@@ -232,3 +320,7 @@ eslint (changed sources)               0 errors; prettier: the one file I un-for
 |---|---|
 | 2026-09-29 | Ticket opened (drafted as TASK-1014; renumbered to TASK-1016 because a parallel session merged its own TASK-1014 and opened TASK-1015 in the meantime). Root cause verified, RED tests, fix, GREEN + replay-compat + lint evidence. ODs 1–3 raised. |
 | 2026-09-29 | Owner: OD-1 → (a), OD-2 → separate ticket (TASK-1017), go. Gateway half implemented (routing keys + seed elections + injection), artifacts regenerated, merged into `dev-2.2`. |
+| 2026-09-29 | Owner: "reseed the dev db and prove topic live". Non-destructive `RUN_SEED=safe` reseed created the two elections. The live run found and fixed the NLP `/generate` path (404) and the missing connection injection (503 PROVIDER_CREDENTIALS_MISSING), both merged. Re-keyed the dev SYSTEM `lm-studio` connection after a Vault restart. Topic proven live: 3/3 correct labels on gemma via the SYSTEM connection. Medical-relevance guardrail refusal of non-clinical text recorded as an owner decision. |
+| 2026-09-29 | Owner: "opt topic/intent out of the medical guardrail". `guardrail_policy.require_medical=false` pushed on the delegation (screening and output gate kept). Live: non-clinical billing question → `billing`; `/intent` → `request_refund`. |
+| 2026-09-29 | Owner: "fix the retry on 4xx in the nlp client". Non-retryable 4xx → one attempt, `ExternalTextRejectedError`, route 422/502 instead of an opaque 503. Live-proven with a real text 404. Fixed the inherited ruff I001 in the same file. |
+| 2026-09-29 | e2e `task-729-nlp-task-expansion.spec.ts` repointed from the deleted `/ai/nlp/topic` shim to `/text-analyses/topic`, success status corrected to 201 (`90d4b3f24`). Before: 1 failed (`Expected value: 404`). After: 6/6 passed against the dev gateway, success branch exercised. All work merged into `dev-2.2`; the post-merge spec run was 6/6 from the primary. Worktree `eloquent-boyd-928da8` and branches `agent/eloquent-boyd-928da8` / `task-1016-e2e-text-analyses-routes` removed after the merge. |

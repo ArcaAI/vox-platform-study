@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import logging
 import os
 import socket
 from collections.abc import Coroutine
@@ -10,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import dramatiq
+from hope_obs import get_logger, redact_id
 
 from ...core.api_client.gateway import get_api_client
 from ...core.config.settings import get_settings
@@ -48,8 +48,9 @@ from ...pipeline.spec import (
 )
 from ...storage.blob_service import get_blob_service
 from ..batch_service import get_batch_service
+from .job_context import current_trace_carrier, job_context
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dramatiq.actor(
@@ -170,11 +171,26 @@ def transcribe_file(
                 voice_profiles=voice_profiles,
                 language_mode=language_mode,
                 language_mode_source=language_mode_source,
+                trace_carrier=current_trace_carrier(),
             )
         )
 
 
 async def _transcribe_file_async(
+    *args: Any, trace_carrier: dict[str, Any] | None = None, **kwargs: Any
+) -> None:
+    """Run one batch job inside the enqueuer's trace and request context.
+
+    The job's spans continue the trace the gateway started and every log line
+    carries the gateway's ``requestId`` and the job's ``tenantId`` (``tenant_id``
+    is the impl's own argument, named in ``args``/``kwargs``).
+    """
+    tenant_id = kwargs.get("tenant_id") or (args[1] if len(args) > 1 else None)
+    with job_context(trace_carrier, tenant_id=tenant_id):
+        await _transcribe_file_impl(*args, **kwargs)
+
+
+async def _transcribe_file_impl(
     job_id: str,
     tenant_id: str,
     audio_uri: str,
@@ -223,7 +239,7 @@ async def _transcribe_file_async(
     # genuine reclaim look like the same worker re-sending its claim — which
     # the gateway answers idempotently, leaving two workers on one job.
     worker_id = f"{socket.gethostname()}-{os.getpid()}"
-    logger.info(f"[{job_id}] Starting batch transcription (worker={worker_id})")
+    logger.info("stt.batch.started", job=redact_id(job_id), worker=worker_id)
 
     # Cancellation check helper — polls API for job status
     async def _check_cancelled() -> None:
@@ -235,7 +251,11 @@ async def _transcribe_file_async(
             raise
         except Exception as e:
             # Best-effort: log and continue if status check fails
-            logger.warning(f"[{job_id}] Cancellation check failed: {e}")
+            logger.warning(
+                "stt.batch.cancellation_check_failed",
+                job=redact_id(job_id),
+                error_type=type(e).__name__,
+            )
 
     # Create the event publisher for real-time SSE relay
     publisher = TranscriptionEventPublisher()
@@ -246,7 +266,7 @@ async def _transcribe_file_async(
 
         # Step 1: Mark job as processing
         await api_client.start_job(job_id, worker_id, tenant_id=tenant_id)
-        logger.info(f"[{job_id}] Job marked as PROCESSING")
+        logger.info("stt.batch.processing", job=redact_id(job_id))
 
         # Publish status: PROCESSING
         await publisher.publish_status(job_id, "PROCESSING", worker_id=worker_id)
@@ -261,7 +281,9 @@ async def _transcribe_file_async(
         # against that chain's engine, by the same call a live session makes; it may
         # start the job on a fallback when the primary cannot serve the mode, and
         # raises when no chain can.
-        logger.info(f"[{job_id}] Assembling engine chain from resolved spec {bundle.runtime_key}")
+        logger.info(
+            "stt.batch.assembling_chain", job=redact_id(job_id), runtime_key=bundle.runtime_key
+        )
         job_language = _plan_job_language(
             bundle,
             language_mode=language_mode,
@@ -272,17 +294,19 @@ async def _transcribe_file_async(
         language_resolution: LanguageResolution | None = job_language.receipt
         if job_language.runtime_key != bundle.runtime_key:
             logger.warning(
-                f"[{job_id}] Primary cannot serve language mode "
-                f"'{job_language.mode}'; running on fallback {job_language.runtime_key}"
+                "stt.batch.primary_cannot_serve_language",
+                job=redact_id(job_id),
+                language_mode=job_language.mode,
+                fallback_runtime_key=job_language.runtime_key,
             )
 
         # Check for cancellation before downloading audio
         await _check_cancelled()
 
         # Step 3: Download audio from storage
-        logger.info(f"[{job_id}] Downloading audio from {audio_uri}")
+        logger.info("stt.batch.downloading_audio", job=redact_id(job_id))
         audio_bytes = await blob_service.download_audio(audio_uri, tenant_id=tenant_id)
-        logger.info(f"[{job_id}] Downloaded {len(audio_bytes)} bytes")
+        logger.info("stt.batch.downloaded_audio", job=redact_id(job_id), size_bytes=len(audio_bytes))
 
         # Check for cancellation before starting transcription
         await _check_cancelled()
@@ -326,7 +350,11 @@ async def _transcribe_file_async(
                     try:
                         await api_client.update_job_progress(job_id, progress, tenant_id=tenant_id)
                     except Exception as e:
-                        logger.warning(f"[{job_id}] Failed to update progress: {e}")
+                        logger.warning(
+                            "stt.batch.progress_update_failed",
+                            job=redact_id(job_id),
+                            error_type=type(e).__name__,
+                        )
                     try:
                         await publisher.publish_progress(
                             job_id,
@@ -334,7 +362,11 @@ async def _transcribe_file_async(
                             stage="inference",
                         )
                     except Exception as e:
-                        logger.warning(f"[{job_id}] Failed to publish progress event: {e}")
+                        logger.warning(
+                            "stt.batch.progress_publish_failed",
+                            job=redact_id(job_id),
+                            error_type=type(e).__name__,
+                        )
 
         async def on_chunk(chunk: object) -> None:
             """Publish each partial transcript chunk for real-time SSE."""
@@ -413,8 +445,10 @@ async def _transcribe_file_async(
             if not fallback_key:
                 raise
             logger.warning(
-                f"[{job_id}] Primary ASR failed ({type(asr_exc).__name__}); "
-                f"re-dispatching on fallback {fallback_key}"
+                "stt.batch.primary_asr_failed",
+                job=redact_id(job_id),
+                error_type=type(asr_exc).__name__,
+                fallback_key=fallback_key,
             )
             try:
                 fb_pipeline_config, language_resolution = _resolve_chain_language(
@@ -427,8 +461,10 @@ async def _transcribe_file_async(
             except LanguageModeUnsupportedError:
                 # The fallback cannot serve the job's mode: the engine error stands.
                 logger.warning(
-                    f"[{job_id}] Fallback {fallback_key} cannot serve language mode "
-                    f"'{job_language.mode}'; not re-dispatching"
+                    "stt.batch.fallback_cannot_serve_language",
+                    job=redact_id(job_id),
+                    fallback_key=fallback_key,
+                    language_mode=job_language.mode,
                 )
                 raise asr_exc from None
             result = await _do_transcribe(fb_pipeline_config)
@@ -444,7 +480,7 @@ async def _transcribe_file_async(
         await _check_cancelled()
 
         # Step 5: Upload transcript to storage
-        logger.info(f"[{job_id}] Uploading transcript")
+        logger.info("stt.batch.uploading_transcript", job=redact_id(job_id))
         transcript_uri = await blob_service.upload_transcript(
             transcript_data=json.dumps(result.to_dict(), indent=2),
             tenant_id=tenant_id,
@@ -456,20 +492,24 @@ async def _transcribe_file_async(
 
         # Step 5b: Upload job metadata
         try:
-            metadata_uri = await blob_service.upload_batch_metadata(
+            await blob_service.upload_batch_metadata(
                 metadata_data=json.dumps(result.to_dict(), indent=2),
                 tenant_id=tenant_id,
                 job_id=job_id,
                 consultation_id=consultation_id,
             )
-            logger.info(f"[{job_id}] Uploaded metadata to {metadata_uri}")
+            logger.info("stt.batch.uploaded_metadata", job=redact_id(job_id))
         except Exception as e:
-            logger.warning(f"[{job_id}] Metadata upload failed (non-fatal): {e}")
+            logger.warning(
+                "stt.batch.metadata_upload_failed",
+                job=redact_id(job_id),
+                error_type=type(e).__name__,
+            )
 
         # Step 6: Create transcript context item (if consultation provided)
         context_item_id = None
         if consultation_id:
-            logger.info(f"[{job_id}] Creating transcript context item")
+            logger.info("stt.batch.creating_context_item", job=redact_id(job_id))
             try:
                 response = await api_client.create_transcript(
                     job_id=job_id,
@@ -484,15 +524,23 @@ async def _transcribe_file_async(
                     segments=result.build_transcript_segments(),
                 )
                 context_item_id = response.get("contextItemId")
-                logger.info(f"[{job_id}] Created context item: {context_item_id}")
+                logger.info(
+                    "stt.batch.created_context_item",
+                    job=redact_id(job_id),
+                    context_item=redact_id(context_item_id),
+                )
             except Exception as e:
-                logger.warning(f"[{job_id}] Failed to create context item: {e}")
+                logger.warning(
+                    "stt.batch.context_item_failed",
+                    job=redact_id(job_id),
+                    error_type=type(e).__name__,
+                )
 
         # Publish full transcript event before completing
         await publisher.publish_transcript(job_id, result)
 
         # Step 7: Complete job
-        logger.info(f"[{job_id}] Completing job")
+        logger.info("stt.batch.completing", job=redact_id(job_id))
         await api_client.complete_job(
             job_id=job_id,
             tenant_id=tenant_id,
@@ -531,13 +579,15 @@ async def _transcribe_file_async(
         await publisher.publish_status(job_id, "COMPLETED")
 
         logger.info(
-            f"[{job_id}] Transcription completed successfully "
-            f"({result.processing_time_seconds:.2f}s, {len(result.text)} chars)"
+            "stt.batch.completed",
+            job=redact_id(job_id),
+            processing_s=round(result.processing_time_seconds, 2),
+            text_chars=len(result.text),
         )
 
     except NotFoundError as e:
         # Non-retryable error
-        logger.error(f"[{job_id}] Resource not found: {e}")
+        logger.error("stt.batch.not_found", job=redact_id(job_id), error_type=type(e).__name__)
         await publisher.publish_error(job_id, "NOT_FOUND", str(e))
         await _fail_job(api_client, publisher, job_id, str(e), "NOT_FOUND", tenant_id=tenant_id)
         raise dramatiq.middleware.SkipMessage() from e
@@ -545,7 +595,11 @@ async def _transcribe_file_async(
     except ResolvedSpecRequiredError as e:
         # TASK-1006 — a message queued for the removed pipeline path. There is no
         # engine to resolve and a retry cannot grow one, so the broker skips it.
-        logger.error(f"[{job_id}] {e}")
+        logger.error(
+            "stt.batch.resolved_spec_required",
+            job=redact_id(job_id),
+            error_code=e.error_code,
+        )
         await publisher.publish_error(job_id, e.error_code, e.message)
         await _fail_job(api_client, publisher, job_id, e.message, e.error_code, tenant_id=tenant_id)
         raise dramatiq.middleware.SkipMessage() from e
@@ -554,7 +608,11 @@ async def _transcribe_file_async(
         # TASK-1004 — no engine in the job's chain can serve the requested mode:
         # the batch counterpart of a live session's 422. Re-running the same chain
         # can only fail the same way, so the broker skips the retries.
-        logger.error(f"[{job_id}] Language mode unsupported: {e}")
+        logger.error(
+            "stt.batch.language_mode_unsupported",
+            job=redact_id(job_id),
+            error_type=type(e).__name__,
+        )
         await publisher.publish_error(job_id, "LANGUAGE_MODE_UNSUPPORTED", str(e))
         await _fail_job(
             api_client,
@@ -568,14 +626,14 @@ async def _transcribe_file_async(
 
     except JobCancelledError as e:
         # Job was cancelled by user — stop processing, skip retries
-        logger.info(f"[{job_id}] Job cancelled, stopping worker")
+        logger.info("stt.batch.cancelled", job=redact_id(job_id))
         await publisher.publish_status(job_id, "CANCELLED")
         raise dramatiq.middleware.SkipMessage() from e
 
     except JobTerminalError:
         # Job was already completed/failed by a previous attempt -- skip silently.
         # Safe to drop: the job HAS an outcome and the client can see it.
-        logger.warning(f"[{job_id}] Job already in terminal state, skipping duplicate delivery")
+        logger.warning("stt.batch.duplicate_delivery_skipped", job=redact_id(job_id))
         return
 
     except JobConflictError as e:
@@ -594,21 +652,34 @@ async def _transcribe_file_async(
         # W2-4 did here: ending the job discards a transcription the platform
         # is perfectly able to complete, and on a refusal this worker's OWN
         # earlier claim caused, it would fail a job that is running fine.
-        logger.warning(f"[{job_id}] {e}; leaving the job alone and letting the broker retry")
+        logger.warning(
+            "stt.batch.claim_conflict_will_retry",
+            job=redact_id(job_id),
+            error_type=type(e).__name__,
+        )
         raise
 
     except AudioProcessingError as e:
         # The file itself is unusable (undecodable, wrong format,
         # too short). Report the specific code and let the broker skip retries;
         # re-reading the same bytes can only fail the same way.
-        logger.error(f"[{job_id}] Audio error ({e.error_code}): {e}")
+        logger.error(
+            "stt.batch.audio_error",
+            job=redact_id(job_id),
+            error_code=e.error_code,
+            error_type=type(e).__name__,
+        )
         await publisher.publish_error(job_id, e.error_code, e.message)
         await _fail_job(api_client, publisher, job_id, e.message, e.error_code, tenant_id=tenant_id)
         raise
 
     except TranscriptionError as e:
         # Transcription-specific error (may be retryable)
-        logger.error(f"[{job_id}] Transcription error: {e}")
+        logger.error(
+            "stt.batch.transcription_error",
+            job=redact_id(job_id),
+            error_type=type(e).__name__,
+        )
         await publisher.publish_error(job_id, "TRANSCRIPTION_ERROR", str(e))
         await _fail_job(
             api_client, publisher, job_id, str(e), "TRANSCRIPTION_ERROR", tenant_id=tenant_id
@@ -617,7 +688,9 @@ async def _transcribe_file_async(
 
     except Exception as e:
         # Unexpected error
-        logger.exception(f"[{job_id}] Unexpected error: {e}")
+        logger.exception(
+            "stt.batch.unexpected_error", job=redact_id(job_id), error_type=type(e).__name__
+        )
         await publisher.publish_error(job_id, "INTERNAL_ERROR", str(e))
         await _fail_job(
             api_client, publisher, job_id, str(e), "INTERNAL_ERROR", tenant_id=tenant_id
@@ -651,7 +724,11 @@ async def _fail_job(
             tenant_id=tenant_id,
         )
     except Exception as e:
-        logger.error(f"[{job_id}] Failed to update job status: {e}")
+        logger.error(
+            "stt.batch.job_status_update_failed",
+            job=redact_id(job_id),
+            error_type=type(e).__name__,
+        )
 
     # Publish status: FAILED
     await publisher.publish_status(job_id, "FAILED")

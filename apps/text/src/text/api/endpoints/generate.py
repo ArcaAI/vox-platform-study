@@ -517,7 +517,7 @@ async def generate(
                 future: asyncio.Future[bool] = asyncio.get_event_loop().create_future()
                 try:
                     await queue.enqueue(
-                        priority=0, future=future, request_id=ctx.get("request_id", "unknown")
+                        priority=0, future=future, request_id=ctx.get("requestId", "unknown")
                     )
                     QUEUE_SIZE.labels(provider=request_body.provider).set(queue.size)
                     await asyncio.wait_for(
@@ -614,7 +614,7 @@ async def generate(
                     circuit_breakers=circuit_breakers,
                     generation_audit=generation_audit,
                     tenant_id=x_tenant_id,
-                    request_id=ctx.get("request_id", "unknown"),
+                    request_id=ctx.get("requestId", "unknown"),
                     byok=byok,
                     connection_id=connection_id,
                     policy=resolve_generation_policy(app_state, x_tenant_id),
@@ -842,7 +842,7 @@ async def generate(
         # can never disagree about what this generation cost.
         usage_detail = build_usage_detail(
             task_id=task.task_id,
-            request_id=ctx.get("request_id"),
+            request_id=ctx.get("requestId"),
             provider=request_body.provider,
             model=model,
             prompt_tokens=prompt_tokens,
@@ -890,7 +890,7 @@ async def generate(
 
         generation_audit.log_generation(
             GenerationAuditEvent(
-                request_id=ctx.get("request_id", "unknown"),
+                request_id=ctx.get("requestId", "unknown"),
                 timestamp=datetime.now(UTC).isoformat(),
                 provider=request_body.provider,
                 model=model,
@@ -987,7 +987,7 @@ async def generate(
 
         generation_audit.log_generation(
             GenerationAuditEvent(
-                request_id=ctx.get("request_id", "unknown"),
+                request_id=ctx.get("requestId", "unknown"),
                 timestamp=datetime.now(UTC).isoformat(),
                 provider=request_body.provider,
                 model=model,
@@ -1033,7 +1033,7 @@ async def generate(
         ).inc()
         generation_audit.log_generation(
             GenerationAuditEvent(
-                request_id=ctx.get("request_id", "unknown"),
+                request_id=ctx.get("requestId", "unknown"),
                 timestamp=datetime.now(UTC).isoformat(),
                 provider=request_body.provider,
                 model=model,
@@ -1120,7 +1120,7 @@ async def generate(
 
         generation_audit.log_generation(
             GenerationAuditEvent(
-                request_id=ctx.get("request_id", "unknown"),
+                request_id=ctx.get("requestId", "unknown"),
                 timestamp=datetime.now(UTC).isoformat(),
                 provider=request_body.provider,
                 model=model,

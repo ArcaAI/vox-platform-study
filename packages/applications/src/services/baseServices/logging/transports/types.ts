@@ -47,6 +47,9 @@ export interface LogEntry {
   /** Tenant ID (if available) */
   tenantId?: string;
 
+  /** Which credential class authenticated the request (`jwt` | `apiKey` | `serviceAccount` | `anonymous`) */
+  credentialClass?: string;
+
   /** Error object (for error logs) */
   error?: Error | Record<string, unknown>;
 

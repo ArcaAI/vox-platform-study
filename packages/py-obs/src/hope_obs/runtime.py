@@ -27,6 +27,7 @@ from hope_obs import tracing
 from hope_obs.config import ObservabilityConfig
 from hope_obs.logging import configure_logging
 from hope_obs.middleware import AccessLogMiddleware, RequestContextMiddleware
+from hope_obs.validation import install_validation_handler
 
 if TYPE_CHECKING:  # pragma: no cover - typing only; never imported at runtime
     from fastapi import FastAPI
@@ -84,7 +85,7 @@ def configure_observability(app: FastAPI, config: ObservabilityConfig) -> None:
     Call it in ``create_app()``, before the app starts serving. Afterwards:
 
     * every log line is JSON on stdout, carrying ``service`` and, inside a
-      request, ``request_id``/``tenant_id`` and ``traceId``/``spanId``;
+      request, ``requestId``/``tenantId`` and ``traceId``/``spanId``;
     * ``X-Request-ID`` is echoed on every response;
     * if — and only if — ``config.otlp_endpoint`` is set, spans are exported to
       the collector and ``app.state.tracer_provider`` holds the provider for
@@ -100,6 +101,12 @@ def configure_observability(app: FastAPI, config: ObservabilityConfig) -> None:
         _install_request_middleware(app, config)
     except Exception as exc:  # noqa: BLE001 - degrade, never crash boot
         _LOGGER.warning("hope_obs.middleware.install_failed: %s", exc)
+
+    try:
+        # PHI: FastAPI's default 422 body echoes the caller's raw input.
+        install_validation_handler(app)
+    except Exception as exc:  # noqa: BLE001 - degrade, never crash boot
+        _LOGGER.warning("hope_obs.validation_handler.install_failed: %s", exc)
 
     app.state.tracer_provider = None
     if not config.tracing_enabled:

@@ -196,7 +196,17 @@ export abstract class BaseService implements IBaseService {
   }
 
   get correlationId(): string | null {
-    return this.clsService.get('correlationId');
+    // The request id is the CLS id (set once at the edge); the legacy key is the fallback.
+    return this.requestIdFromCls() ?? this.clsService.get('correlationId');
+  }
+
+  private requestIdFromCls(): string | undefined {
+    try {
+      const id = this.clsService.getId?.();
+      return typeof id === 'string' && id.length > 0 ? id : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   get requestIp(): string | null {

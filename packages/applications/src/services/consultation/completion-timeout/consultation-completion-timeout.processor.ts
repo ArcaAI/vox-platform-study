@@ -1,8 +1,10 @@
-import { Logger } from '@nestjs/common';
+import { Logger, Optional } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { JobQueue } from '@arcaai/domains';
 import { QUEUE_CONCURRENCY } from '../../baseServices/redis/queue-concurrency';
+import { runJobInContext } from '../../baseServices/observability/job-context';
 import { HarnessInternalService } from '../harness/harness-internal.service';
 import type { ConsultationCompletionTimeoutJob } from './consultation-completion-timeout.scheduler';
 
@@ -15,7 +17,10 @@ import type { ConsultationCompletionTimeoutJob } from './consultation-completion
 export class ConsultationCompletionTimeoutProcessor extends WorkerHost {
   private readonly logger = new Logger(ConsultationCompletionTimeoutProcessor.name);
 
-  constructor(private readonly harnessInternal: HarnessInternalService) {
+  constructor(
+    private readonly harnessInternal: HarnessInternalService,
+    @Optional() private readonly cls?: ClsService,
+  ) {
     super();
   }
 
@@ -25,6 +30,6 @@ export class ConsultationCompletionTimeoutProcessor extends WorkerHost {
       this.logger.error({ message: 'Completion-timeout job without tenantId/consultationId — dropped', jobId: job.id });
       return;
     }
-    await this.harnessInternal.closeOnCompletionTimeout(consultationId, tenantId);
+    await runJobInContext(this.cls, job, () => this.harnessInternal.closeOnCompletionTimeout(consultationId, tenantId));
   }
 }

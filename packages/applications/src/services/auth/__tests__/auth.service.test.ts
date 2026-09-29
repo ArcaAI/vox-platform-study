@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { NotFoundException } from '@nestjs/common';
 import { AuthService } from '../auth.service';
 import { EventTypes } from '@arcaai/domains';
 
@@ -158,7 +159,7 @@ describe('AuthService', () => {
 
     it('should create new user when not found by external ID', async () => {
       const newUser = createMockUserEntity({ id: 'new-user-id' });
-      mockUserService.fetchByExternalId.mockRejectedValue(new Error('Not found'));
+      mockUserService.fetchByExternalId.mockRejectedValue(new NotFoundException('Not found'));
       mockUserService.createExternalUser.mockResolvedValue(newUser);
 
       const result = await service.getOrCreateOidcUser(createOAuthUserRequest);
@@ -299,27 +300,24 @@ describe('AuthService', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle fetchByExternalId errors gracefully in getOrCreateOidcUser', async () => {
+    it('should rethrow a fetchByExternalId outage instead of provisioning a duplicate user', async () => {
       // Reset mocks for this test
       vi.clearAllMocks();
       mockEventEmitter.emit.mockReturnValue(true);
 
-      const newUser = createMockUserEntity();
       mockUserService.fetchByExternalId.mockRejectedValue(new Error('Network error'));
-      mockUserService.createExternalUser.mockResolvedValue(newUser);
 
-      const result = await service.getOrCreateOidcUser({
-        externalId: 'ext-123',
-        email: 'test@example.com',
-      } as any);
-
-      // Should create new user when fetch fails
-      expect(result).toBeDefined();
-      expect(mockUserService.createExternalUser).toHaveBeenCalled();
+      await expect(
+        service.getOrCreateOidcUser({
+          externalId: 'ext-123',
+          email: 'test@example.com',
+        } as any),
+      ).rejects.toThrow('Network error');
+      expect(mockUserService.createExternalUser).not.toHaveBeenCalled();
     });
 
     it('should propagate errors when both fetch and create fail', async () => {
-      mockUserService.fetchByExternalId.mockRejectedValue(new Error('Fetch failed'));
+      mockUserService.fetchByExternalId.mockRejectedValue(new NotFoundException('Fetch failed'));
       mockUserService.createExternalUser.mockResolvedValue(null);
 
       await expect(

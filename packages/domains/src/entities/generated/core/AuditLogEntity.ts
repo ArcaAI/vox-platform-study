@@ -23,6 +23,7 @@ export interface IAuditLogEntity extends IBaseTenantEntity {
   resourceDatabase?: string | null;
   correlationId?: string | null;
   causationId?: string | null;
+  traceId?: string | null;
   action: Enums.AuditAction;
   eventType?: string | null;
   success?: boolean | null;
@@ -49,6 +50,7 @@ export class AuditLogEntity extends BaseTenantEntity {
   private _resourceDatabase?: IAuditLogEntity['resourceDatabase'];
   private _correlationId?: IAuditLogEntity['correlationId'];
   private _causationId?: IAuditLogEntity['causationId'];
+  private _traceId?: IAuditLogEntity['traceId'];
   private _action: IAuditLogEntity['action'];
   private _eventType?: IAuditLogEntity['eventType'];
   private _success?: IAuditLogEntity['success'];
@@ -70,6 +72,7 @@ export class AuditLogEntity extends BaseTenantEntity {
     this._resourceDatabase = init.resourceDatabase;
     this._correlationId = init.correlationId;
     this._causationId = init.causationId;
+    this._traceId = init.traceId;
     this._action = init.action;
     this._eventType = init.eventType;
     this._success = init.success;
@@ -144,6 +147,14 @@ export class AuditLogEntity extends BaseTenantEntity {
 
   set causationId(value: IAuditLogEntity['causationId']) {
     this.setProperty('causationId', value);
+  }
+
+  get traceId(): IAuditLogEntity['traceId'] {
+    return this._traceId;
+  }
+
+  set traceId(value: IAuditLogEntity['traceId']) {
+    this.setProperty('traceId', value);
   }
 
   get action(): IAuditLogEntity['action'] {

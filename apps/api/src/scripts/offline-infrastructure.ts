@@ -16,7 +16,7 @@
  * Node throws on an `'error'` event with NO listener. BullMQ catches that and
  * falls back to `console.error(err)` (`classes/queue-base.js`), which is how a
  * clean, exit-0 emit ended up printing ~200 raw `ECONNREFUSED` stack dumps —
- * on a code path that also bypasses `@arcaai/logger` entirely.
+ * on a code path that also bypasses `LoggingService` entirely.
  *
  * Attaching a listener addresses the actual cause: the connection error IS
  * expected here (the script's whole premise is "no infrastructure"), so this

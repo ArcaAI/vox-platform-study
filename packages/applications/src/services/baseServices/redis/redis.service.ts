@@ -5,6 +5,7 @@ import { Queue } from 'bullmq';
 import { ModuleRef } from '@nestjs/core';
 import { IConfigService } from '../_meta/config';
 import { RedisConfigurationException } from './redis-config.exception';
+import { attachJobTrace } from '../observability/job-context';
 
 @Injectable()
 export class RedisService implements IRedisService, OnModuleInit {
@@ -91,7 +92,7 @@ export class RedisService implements IRedisService, OnModuleInit {
     }
 
     try {
-      await queue.add(jobType as string, data, options);
+      await queue.add(jobType as string, attachJobTrace(data), options);
       this.logger.log({
         message: 'Job added to queue',
         queueName,
@@ -102,7 +103,7 @@ export class RedisService implements IRedisService, OnModuleInit {
         message: 'Failed to add job to queue',
         queueName,
         jobType,
-        error: error instanceof Error ? error.message : String(error),
+        error,
       });
 
       // Check if it's a Redis connection error

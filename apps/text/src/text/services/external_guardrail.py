@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 import httpx
+from hope_obs import outbound_context_headers
 
 from text.core.guardrail_posture import GuardrailPosture, resolve_posture
 from text.core.logging import get_logger
@@ -317,6 +318,7 @@ class ExternalGuardrailClient:
         # provider/model from the DB.
         if tenant_id:
             headers["X-Tenant-Id"] = tenant_id
+        headers.update(outbound_context_headers())
         return headers
 
     async def _post_verdict(

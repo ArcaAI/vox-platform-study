@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { fallbackOnNotFound, isNotFoundError, warnAndFallback } from '../../common/swallow-policy';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -521,7 +522,15 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const report = this.mergePublishGate(baseReport, await this.graphPublishFindings(graph, tenantId, triggerContextSchema));
 
     if (dto.parentVersionId) {
-      const parent = await this.workflowDefinitionRepository.findById(dto.parentVersionId).catch(() => null);
+      const parent = await this.workflowDefinitionRepository
+        .findById(dto.parentVersionId)
+        .catch(
+          fallbackOnNotFound(null, {
+            logger: this.logger,
+            message: 'Parent workflow version lookup failed',
+            meta: { parentVersionId: dto.parentVersionId, tenantId },
+          }),
+        );
       if (!parent || parent.tenantId !== tenantId || parent.slug !== dto.slug) {
         throw new BadRequestException(`Unknown parentVersionId '${dto.parentVersionId}' for slug '${dto.slug}'.`);
       }
@@ -727,7 +736,15 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     return runInTenantContext(this.clsService, targetTenantId, async () => {
       const existing = await this.workflowDefinitionRepository.findMaxVersionNumber(targetTenantId, slug, this.databaseService.baseClient);
       if (existing > 0) {
-        const rows = await this.workflowDefinitionRepository.findAllVersionsBySlug(targetTenantId, slug).catch(() => []);
+        const rows = await this.workflowDefinitionRepository
+          .findAllVersionsBySlug(targetTenantId, slug)
+          .catch(
+            fallbackOnNotFound([] as never[], {
+              logger: this.logger,
+              message: 'Workflow version listing failed',
+              meta: { slug, tenantId: targetTenantId },
+            }),
+          );
         return { definitionId: rows[0]?.id ?? '', created: false };
       }
       const created = await this.clone(
@@ -939,7 +956,11 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         default:
           return null;
       }
-    } catch {
+    } catch (error) {
+      // Export-time key naming is best-effort: an unnameable reference is exported unresolved.
+      if (!isNotFoundError(error)) {
+        this.logger.warn({ message: 'Workflow reference key lookup failed', error, kind: reference.kind, referenceId: reference.id, tenantId });
+      }
       return null;
     }
   }
@@ -1008,7 +1029,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         default:
           return null;
       }
-    } catch {
+    } catch (error) {
+      // Unresolvable is the honest import answer (a vetoed task or a missing row); an
+      // infrastructure failure is the same answer for the caller but must leave a trace.
+      if (!isNotFoundError(error)) {
+        this.logger.warn({ message: 'Workflow import reference lookup failed', error, kind: reference.kind, tenantId });
+      }
       return null;
     }
   }
@@ -1844,7 +1870,15 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       );
     }
 
-    const template = await this.promptTemplateRepository.findById(binding.promptTemplateId).catch(() => null);
+    const template = await this.promptTemplateRepository
+      .findById(binding.promptTemplateId)
+      .catch(
+        fallbackOnNotFound(null, {
+          logger: this.logger,
+          message: 'Prompt template lookup failed',
+          meta: { promptTemplateId: binding.promptTemplateId },
+        }),
+      );
     if (!template || template.tenantId !== entity.tenantId) {
       // A node pinned to a template this tenant does not own is a broken graph,
       // not an authorization decision to explain — 404-over-403.
@@ -2019,7 +2053,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     return Promise.all(
       bindings.map(async (binding) => {
-        const template = await this.promptTemplateRepository!.findById(binding.promptTemplateId).catch(() => null);
+        const template = await this.promptTemplateRepository!.findById(binding.promptTemplateId).catch(
+          fallbackOnNotFound(null, {
+            logger: this.logger,
+            message: 'Prompt template lookup failed',
+            meta: { promptTemplateId: binding.promptTemplateId },
+          }),
+        );
         const owned = template && template.tenantId === entity.tenantId ? template : null;
         const latestVersionNumber = owned ? await this.promptVersionRepository!.findMaxVersionNumber(owned.id) : null;
 
@@ -2222,7 +2262,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
           (typeof pin === 'number'
             ? await this.agentRepository?.findPublishedVisibleBySlugVersion(tenantId, slug, pin)
             : await this.agentRepository?.findPublishedActiveBySlug(tenantId, slug)) ?? null;
-      } catch {
+      } catch (error) {
+        if (!isNotFoundError(error)) {
+          this.logger.warn({ message: 'Agent fact lookup failed', error, agentSlug: slug, tenantId });
+        }
         agent = null;
       }
       if (!agent && inlineTask === null) continue;
@@ -2309,7 +2352,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         binding,
         // A resolution failure is an UNKNOWN capability set, never a failed publish() — the
         // service already contracts not to throw, and this is the belt to that suspenders.
-        capabilities: await this.generationCapabilitiesFor(binding, tenantId).catch(() => undefined),
+        capabilities: await this.generationCapabilitiesFor(binding, tenantId).catch(
+          warnAndFallback(undefined, {
+            logger: this.logger,
+            message: 'Generation capability resolution failed',
+            meta: { nodeId: binding.nodeId, tenantId },
+          }),
+        ),
       })),
     );
 
@@ -2350,7 +2399,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
           : await this.agentRepository.findPublishedActiveBySlug(tenantId, binding.agentRef.slug);
       const modelId = (agent?.compiledConfig as { model?: { id?: unknown } } | null)?.model?.id;
       if (!agent || typeof modelId !== 'string') return undefined;
-      const model = await this.aiModelRepository.findById(modelId).catch(() => null);
+      const model = await this.aiModelRepository
+        .findById(modelId)
+        .catch(warnAndFallback(null, { logger: this.logger, message: 'Agent model lookup failed', meta: { modelId, tenantId } }));
       if (!model) return undefined;
       const meta = asPlainObject(model.metaData) ?? {};
       const caps = asPlainObject(meta.capabilities) ?? meta;
@@ -2378,7 +2429,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    */
   private async resolveContextSchemaVersionId(): Promise<string | null> {
     if (!this.contextSchemaService) return null;
-    const bundle = await this.contextSchemaService.getEffectiveBundle().catch(() => null);
+    const bundle = await this.contextSchemaService
+      .getEffectiveBundle()
+      .catch(warnAndFallback(null, { logger: this.logger, message: 'Context schema bundle lookup failed' }));
     return bundle?.contextSchemaVersionId ?? null;
   }
 

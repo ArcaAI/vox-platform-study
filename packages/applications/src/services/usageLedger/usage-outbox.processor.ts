@@ -1,5 +1,6 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Job, Queue } from 'bullmq';
 
@@ -7,6 +8,7 @@ import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSetti
 import { DrainReport, UsageOutboxDrainer } from './usage-outbox.drainer';
 import { DRAIN_DEFAULTS, DRAIN_ENABLED_KEY, DRAIN_INTERVAL_SECONDS_KEY, USAGE_OUTBOX_DRAIN_JOB, USAGE_OUTBOX_QUEUE } from './usage-ledger.constants';
 import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
+import { runJobInContext } from '../baseServices/observability/job-context';
 
 /**
  * The BullMQ half of the outbox drainer.
@@ -27,13 +29,16 @@ import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
 export class UsageOutboxProcessor extends WorkerHost {
   private readonly logger = new Logger(UsageOutboxProcessor.name);
 
-  constructor(private readonly drainer: UsageOutboxDrainer) {
+  constructor(
+    private readonly drainer: UsageOutboxDrainer,
+    @Optional() private readonly cls?: ClsService,
+  ) {
     super();
   }
 
   async process(job: Job): Promise<DrainReport> {
     this.logger.debug(`Draining usage outbox (job ${job.id})`);
-    return this.drainer.drainBatch();
+    return runJobInContext(this.cls, job, () => this.drainer.drainBatch());
   }
 }
 

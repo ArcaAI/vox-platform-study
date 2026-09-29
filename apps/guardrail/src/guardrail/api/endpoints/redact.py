@@ -293,7 +293,7 @@ async def redact_text(
     except Exception as exc:
         # FAIL-CLOSED: never fall through to a 200 echoing `text` back. PHI-safe:
         # log the error type/count only, never the text.
-        logger.error("guardrail.redact.extract_failed", error=type(exc).__name__)
+        logger.error("guardrail.redact.extract_failed", error_type=type(exc).__name__)
         raise HTTPException(status_code=502, detail="PHI redaction failed") from exc
 
     sanitized_text = _apply_mask(request.text, entities, request.mode)

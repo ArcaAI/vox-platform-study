@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from nlp.api.tenant import TENANT_HEADER, assert_tenant_matches_header
@@ -22,7 +24,11 @@ from nlp.schemas.classification import (
     TopicClassificationRequest,
     TopicClassificationResponse,
 )
-from nlp.services.external_text_client import ExternalTextClient, ExternalTextUnavailableError
+from nlp.services.external_text_client import (
+    ExternalTextClient,
+    ExternalTextRejectedError,
+    ExternalTextUnavailableError,
+)
 from nlp.services.gliner_token_classifier import ExtractorLabelsUnavailable
 from nlp.services.model_cache import ModelUnavailableError
 
@@ -48,7 +54,7 @@ def _require_tenant(tenant_id: str | None, task: str, header_tenant: str | None)
     """
     assert_tenant_matches_header(tenant_id, header_tenant)
     if not (tenant_id or "").strip():
-        logger.error(f"nlp.tenant_header.missing task={task}")
+        logger.warning("nlp.tenant_header.missing", task=task)
         raise HTTPException(
             status_code=428,
             detail=(
@@ -59,23 +65,52 @@ def _require_tenant(tenant_id: str | None, task: str, header_tenant: str | None)
         )
 
 
-def _require_text_selection(provider: str | None, model: str | None, task: str) -> tuple[str, str]:
+def _require_text_selection(
+    provider: str | None,
+    model: str | None,
+    connection: dict[str, Any] | None,
+    task: str,
+) -> tuple[str, str, dict[str, Any]]:
     """TASK-1016 — the delegated generation's provider + model, or a named 503.
 
     `text` has no default provider or model, so a request the gateway sent without the pair
     can only be refused there (422). Refusing it HERE names the real cause — no selection for
     this tenant — instead of letting the client retry a request `text` will always reject.
     Never substituted: provider/model SELECTION is fail-closed platform-wide.
+
+    The CONNECTION is required for the same reason: `text` reads only the
+    `provider_overrides` entry the caller forwards, so a pair without one is a 503
+    PROVIDER_CREDENTIALS_MISSING there.
     """
     resolved_provider = (provider or "").strip()
     resolved_model = (model or "").strip()
-    if not resolved_provider or not resolved_model:
+    if not resolved_provider or not resolved_model or not connection:
         logger.error(f"nlp.{task}.text_model_unselected")
         raise HTTPException(
             status_code=503,
             detail=f"{task.capitalize()} classification model not selected for this tenant",
         )
-    return resolved_provider, resolved_model
+    return resolved_provider, resolved_model, connection
+
+
+def _refusal_http_error(exc: ExternalTextRejectedError, task: str) -> HTTPException:
+    """Map `text`'s deterministic refusal to an honest status (TASK-1016).
+
+    422 is `text` refusing the CONTENT (e.g. a guardrail block) — the caller's request, so it
+    stays 422 and names text's code. Any other 4xx means this service built a request `text`
+    cannot accept (bad body, bad service token, wrong route): an integration defect, 502 —
+    never passed through, since a 401 from a peer is not the end user's authentication failing.
+    Neither is a 503: nothing about it is temporary.
+    """
+    code = exc.error_code or "unknown"
+    if exc.status_code == 422:
+        return HTTPException(
+            status_code=422, detail=f"{task.capitalize()} classification refused by text ({code})"
+        )
+    return HTTPException(
+        status_code=502,
+        detail=f"{task.capitalize()} classification failed: text rejected the request ({code})",
+    )
 
 
 @router.post("/text", response_model=TextClassificationResponse)
@@ -106,17 +141,19 @@ async def classify_text(
             # the model-cache pin longer than necessary.
             async with inference_bound:
                 result = await service.process(request)
-            logger.info(f"Text classified with confidence {result.confidence:.3f}")
+            logger.info("nlp.classify.text_done", confidence=round(result.confidence, 3))
             return result
     except ModelUnavailableError as e:
-        logger.error(f"Text classification model load failed: {str(e)}")
+        logger.error(
+            "nlp.classify.text_model_unavailable", error_type=type(e).__name__, exc_info=True
+        )
         raise HTTPException(
             status_code=503, detail="Text classification model not available"
         ) from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Text classification failed: {str(e)}")
+        logger.error("nlp.classify.text_failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Text classification failed") from e
 
 
@@ -157,14 +194,18 @@ async def classify_text_multi_label(
             )
             return result
     except ModelUnavailableError as e:
-        logger.error(f"Multi-label classification model load failed: {str(e)}")
+        logger.error(
+            "nlp.classify.multi_label_model_unavailable",
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=503, detail="Text classification model not available"
         ) from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Multi-label classification failed: {str(e)}")
+        logger.error("nlp.classify.multi_label_failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Multi-label classification failed") from e
 
 
@@ -194,26 +235,34 @@ async def classify_tokens(
             # Bound concurrent inference.
             async with inference_bound:
                 result = await service.process(request)
-            logger.info(f"Token classification extracted {len(result.entities)} entities")
+            logger.info("nlp.classify.tokens_done", entity_count=len(result.entities))
             return result
     except ExtractorLabelsUnavailable as e:
         # F14 — the MODEL loaded; the caller-resolved taxonomy it needs did not
         # arrive. Unserviceable, so 503 like every other fail-closed selection
         # gap on this router (`/guard/pii`, `/classify/topic`) — and the cause
         # stays legible instead of surfacing as a 500.
-        logger.error(f"Token classification taxonomy unavailable: {str(e)}")
+        logger.error(
+            "nlp.classify.tokens_taxonomy_unavailable",
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=503, detail="Token classification labels not configured for this model"
         ) from e
     except ModelUnavailableError as e:
-        logger.error(f"Token classification model load failed: {str(e)}")
+        logger.error(
+            "nlp.classify.tokens_model_unavailable",
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=503, detail="Token classification model not available"
         ) from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Token classification failed: {str(e)}")
+        logger.error("nlp.classify.tokens_failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Token classification failed") from e
 
 
@@ -272,7 +321,9 @@ async def classify_topic(
     # absent tenant is a CALLER defect and is refused rather than silently
     # delegated to `text` with no tenant.
     _require_tenant(request.tenant_id, "topic", http_request.headers.get(TENANT_HEADER))
-    provider, model = _require_text_selection(request.text_provider, request.text_model, "topic")
+    provider, model, connection = _require_text_selection(
+        request.text_provider, request.text_model, request.text_provider_overrides, "topic"
+    )
     prompt = _build_topic_prompt(request.text, request.instructions)
     try:
         async with peer_call_bound:
@@ -280,7 +331,11 @@ async def classify_topic(
             # This route runs no local model, so that one LLM call (plus the guardrail call it
             # triggered) IS the cost of a topic classification, and it reached nobody before.
             generated = await external_text_client.generate_label_with_usage(
-                prompt, tenant_id=str(request.tenant_id), provider=provider, model=model
+                prompt,
+                tenant_id=str(request.tenant_id),
+                provider=provider,
+                model=model,
+                provider_override=connection,
             )
         return TopicClassificationResponse(
             predicted_topic=generated.label,
@@ -288,13 +343,22 @@ async def classify_topic(
             llm_usage=generated.usage_detail,
             llm_guardrail_usage=generated.guardrail_usage,
         )
+    except ExternalTextRejectedError as e:
+        logger.warning(
+            "nlp.classify.topic_upstream_rejected",
+            status_code=e.status_code,
+            error_code=e.error_code,
+        )
+        raise _refusal_http_error(e, "topic") from e
     except ExternalTextUnavailableError as e:
-        logger.error(f"Topic classification upstream (text) unavailable: {str(e)}")
+        logger.error(
+            "nlp.classify.topic_upstream_unavailable", error_type=type(e).__name__, exc_info=True
+        )
         raise HTTPException(status_code=503, detail="Topic classification is not available") from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Topic classification failed: {str(e)}")
+        logger.error("nlp.classify.topic_failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Topic classification failed") from e
 
 
@@ -326,13 +390,19 @@ async def classify_intent(
 
     # see /topic above.
     _require_tenant(request.tenant_id, "intent", http_request.headers.get(TENANT_HEADER))
-    provider, model = _require_text_selection(request.text_provider, request.text_model, "intent")
+    provider, model, connection = _require_text_selection(
+        request.text_provider, request.text_model, request.text_provider_overrides, "intent"
+    )
     prompt = _build_intent_prompt(request.text, request.instructions)
     try:
         async with peer_call_bound:
             # See /topic above — the delegated generation's own cost rides back with its label.
             generated = await external_text_client.generate_label_with_usage(
-                prompt, tenant_id=str(request.tenant_id), provider=provider, model=model
+                prompt,
+                tenant_id=str(request.tenant_id),
+                provider=provider,
+                model=model,
+                provider_override=connection,
             )
         return IntentClassificationResponse(
             predicted_intent=generated.label,
@@ -340,11 +410,20 @@ async def classify_intent(
             llm_usage=generated.usage_detail,
             llm_guardrail_usage=generated.guardrail_usage,
         )
+    except ExternalTextRejectedError as e:
+        logger.warning(
+            "nlp.classify.intent_upstream_rejected",
+            status_code=e.status_code,
+            error_code=e.error_code,
+        )
+        raise _refusal_http_error(e, "intent") from e
     except ExternalTextUnavailableError as e:
-        logger.error(f"Intent classification upstream (text) unavailable: {str(e)}")
+        logger.error(
+            "nlp.classify.intent_upstream_unavailable", error_type=type(e).__name__, exc_info=True
+        )
         raise HTTPException(status_code=503, detail="Intent classification is not available") from e
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Intent classification failed: {str(e)}")
+        logger.error("nlp.classify.intent_failed", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(status_code=500, detail="Intent classification failed") from e

@@ -33,11 +33,16 @@
  * never a fallback tier.
  */
 
+import { currentRequestId } from '../services/baseServices/observability/job-context';
+
 /** Header carrying the shared internal access token (owner decision D-D). */
 export const SERVICE_TOKEN_HEADER = 'X-Service-Token';
 
 /** Header carrying tenant identity on the gateway↔python-service hops. */
 export const TENANT_ID_HEADER = 'X-Tenant-Id';
+
+/** Header carrying the edge request id (the CLS id) across internal hops. */
+export const REQUEST_ID_HEADER = 'X-Request-Id';
 
 /** Prefix marking a DECLARED tenant-less internal call. Never a UUID. */
 export const TENANTLESS_PREFIX = 'tenantless:';
@@ -95,10 +100,12 @@ export function internalServiceHeaders(options: {
   tenantlessReason: TenantlessReason;
   extra?: Record<string, string>;
 }): Record<string, string> {
+  const requestId = currentRequestId();
   return {
     'Content-Type': 'application/json',
     [SERVICE_TOKEN_HEADER]: options.serviceToken,
     [TENANT_ID_HEADER]: tenantHeaderValue(options.tenantId, options.tenantlessReason),
+    ...(requestId ? { [REQUEST_ID_HEADER]: requestId } : {}),
     ...(options.extra ?? {}),
   };
 }

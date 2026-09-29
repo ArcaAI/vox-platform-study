@@ -122,7 +122,7 @@ async def screen_inbound(request: InboundScreenRequest, http_request: Request) -
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         # FAIL-CLOSED backstop. PHI-safe: the error TYPE, never the screened text.
-        logger.error("guardrail.screen.inbound.failed", error=type(exc).__name__)
+        logger.exception("guardrail.screen.inbound.failed", error_type=type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail="inbound screening failed — refusing to report 'allow'",
@@ -157,7 +157,7 @@ async def screen_outbound(request: OutboundScreenRequest, http_request: Request)
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        logger.error("guardrail.screen.outbound.failed", error=type(exc).__name__)
+        logger.exception("guardrail.screen.outbound.failed", error_type=type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail="outbound screening failed — refusing to report 'allow'",

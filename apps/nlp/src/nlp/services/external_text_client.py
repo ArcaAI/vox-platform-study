@@ -22,19 +22,56 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeGuard
 
 import httpx
+from hope_obs import outbound_context_headers
 
 from nlp.core.config import ExternalTextConfig
 from nlp.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+#: `text` mounts its routers under `/api/v1`; `base_url` is the fleet-wide bare ORIGIN
+#: (`TEXT_URL`, the same value guardrail and harness append their `/api/v1/...` paths to).
+#: TASK-1016: the former bare `/generate` 404'd on every call.
+GENERATE_PATH = "/api/v1/generate"
+
+#: Owner decision (2026-09-29, TASK-1016): open-taxonomy topic/intent labels are not clinical
+#: content — a tenant's topics are things like `billing` and `appointments` — so `text`'s INPUT
+#: medical-relevance gate must not refuse them (it answered 422 CONTENT_BLOCKED_NOT_MEDICAL for a
+#: billing question). `require_medical` is the NARROW knob: the guardrail still screens and the
+#: output gate still runs. `enabled` is deliberately left unset — `False` would switch BOTH gates
+#: off (`GuardrailPolicyOverride` in apps/text), which is not what was decided.
+GUARDRAIL_POLICY = {"require_medical": False}
+
+
+#: 4xx statuses that ARE transient — a timeout and a rate limit clear on their own, so they keep
+#: the bounded retry. Every other 4xx is a deterministic refusal of this exact request.
+_RETRYABLE_4XX = frozenset({408, 429})
+
 
 class ExternalTextUnavailableError(Exception):
     """Raised when `text` is unreachable after the bounded retry budget, or
     returns a response with no usable generated content."""
+
+
+class ExternalTextRejectedError(Exception):
+    """`text` REFUSED this request with a non-retryable 4xx (TASK-1016).
+
+    Distinct from :class:`ExternalTextUnavailableError` because the fix is different: the same
+    request would be refused again (a content-policy block, an invalid body, a bad service token),
+    so it is attempted ONCE and never retried. ``error_code`` is text's machine-readable code
+    (e.g. ``CONTENT_BLOCKED_NOT_MEDICAL``); text's free-text ``detail`` is deliberately not
+    carried, so nothing prompt-derived can ride on the exception.
+    """
+
+    def __init__(self, status_code: int, error_code: str | None) -> None:
+        super().__init__(
+            f"text refused the request: HTTP {status_code} ({error_code or 'no code'})"
+        )
+        self.status_code = status_code
+        self.error_code = error_code
 
 
 @dataclass(frozen=True)
@@ -88,6 +125,7 @@ class ExternalTextClient:
         tenant_id: str,
         provider: str,
         model: str,
+        provider_override: dict[str, Any] | None = None,
     ) -> str:
         """Post `prompt` to `text`'s `/generate` and return the generated
         label (the response's `content`, stripped). Raises
@@ -98,7 +136,12 @@ class ExternalTextClient:
         callers that have no billing plane to feed."""
         return (
             await self.generate_label_with_usage(
-                prompt, system_prompt, tenant_id=tenant_id, provider=provider, model=model
+                prompt,
+                system_prompt,
+                tenant_id=tenant_id,
+                provider=provider,
+                model=model,
+                provider_override=provider_override,
             )
         ).label
 
@@ -110,13 +153,18 @@ class ExternalTextClient:
         tenant_id: str,
         provider: str,
         model: str,
+        provider_override: dict[str, Any] | None = None,
     ) -> GeneratedLabel:
         """The same call as :meth:`generate_label`, also returning what it cost
         (TASK-957 F-7b — see :class:`GeneratedLabel`).
 
         TASK-1016 — ``provider`` + ``model`` are the gateway-injected selection. `text` has no
         default for either (`/generate` answers 422), so a blank one raises HERE, before any
-        call: retrying a request `text` can only refuse would just delay the same failure."""
+        call: retrying a request `text` can only refuse would just delay the same failure.
+
+        ``provider_override`` is the gateway-resolved CONNECTION for ``provider`` (text holds no
+        endpoint or credential of its own). It rides as ``provider_overrides[provider]`` for this
+        one hop and is never logged."""
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
@@ -135,6 +183,7 @@ class ExternalTextClient:
                 "'tenantless:<reason>'. An absent tenant is a caller defect."
             )
         headers["X-Tenant-Id"] = resolved_tenant
+        headers.update(outbound_context_headers())
 
         resolved_provider = (provider or "").strip()
         resolved_model = (model or "").strip()
@@ -149,7 +198,10 @@ class ExternalTextClient:
             "stream": False,
             "provider": resolved_provider,
             "model": resolved_model,
+            "guardrail_policy": dict(GUARDRAIL_POLICY),
         }
+        if provider_override:
+            body["provider_overrides"] = {resolved_provider: provider_override}
         if system_prompt:
             body["system_prompt"] = system_prompt
 
@@ -158,10 +210,11 @@ class ExternalTextClient:
         # exhausts the budget and raises below.
         attempts = self.settings.max_retries + 1
         last_error = ""
+        last_exc: Exception | None = None
         for attempt in range(attempts):
             try:
                 response = await self.http_client.post(
-                    f"{self.base_url}/generate",
+                    f"{self.base_url}{GENERATE_PATH}",
                     json=body,
                     headers=headers,
                     timeout=self.settings.timeout_s,
@@ -181,15 +234,25 @@ class ExternalTextClient:
             except ExternalTextUnavailableError:
                 raise
             except Exception as exc:
-                last_error = str(exc)
+                if _is_refusal(exc):
+                    error_code = _error_code(exc.response)
+                    logger.warning(
+                        "nlp.external_text.rejected",
+                        status_code=exc.response.status_code,
+                        error_code=error_code,
+                        base_url=self.base_url,
+                    )
+                    raise ExternalTextRejectedError(exc.response.status_code, error_code) from exc
+                last_error = type(exc).__name__
+                last_exc = exc
                 is_last = attempt + 1 >= attempts
                 logger.warning(
-                    "external_text.attempt_failed attempt=%d/%d error=%s base_url=%s will_retry=%s",
-                    attempt + 1,
-                    attempts,
-                    last_error,
-                    self.base_url,
-                    not is_last,
+                    "nlp.external_text.attempt_failed",
+                    attempt=attempt + 1,
+                    attempts=attempts,
+                    error_type=type(exc).__name__,
+                    base_url=self.base_url,
+                    will_retry=not is_last,
                 )
                 if is_last:
                     break
@@ -198,14 +261,32 @@ class ExternalTextClient:
                     await asyncio.sleep(backoff_s)
 
         logger.error(
-            "external_text.exhausted attempts=%d error=%s base_url=%s",
-            attempts,
-            last_error,
-            self.base_url,
+            "nlp.external_text.exhausted",
+            attempts=attempts,
+            error_type=last_error,
+            base_url=self.base_url,
         )
         raise ExternalTextUnavailableError(
             f"text unreachable after {attempts} attempt(s): {last_error}"
-        )
+        ) from last_exc
+
+
+def _is_refusal(exc: Exception) -> TypeGuard[httpx.HTTPStatusError]:
+    """A non-retryable 4xx: `text` refused THIS request, and would refuse it again."""
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return False
+    status = exc.response.status_code
+    return 400 <= status < 500 and status not in _RETRYABLE_4XX
+
+
+def _error_code(response: httpx.Response) -> str | None:
+    """Text's machine-readable ``error_code``, or ``None``. Never the free-text ``detail``."""
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    code = payload.get("error_code") if isinstance(payload, dict) else None
+    return code if isinstance(code, str) and code else None
 
 
 def _usage_block(value: Any) -> dict[str, Any] | None:

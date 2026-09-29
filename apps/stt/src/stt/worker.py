@@ -321,6 +321,8 @@ class WorkerHeartbeatMiddleware(dramatiq.Middleware):
 
 
 broker.add_middleware(WorkerHeartbeatMiddleware())
+# Makes the enqueuer's `options.hope_trace` carrier readable inside the actor.
+broker.add_middleware(dramatiq.middleware.CurrentMessage())
 
 
 async def initialize_services() -> None:

@@ -27,6 +27,9 @@ export interface LogMeta {
   /** Tenant ID for multi-tenant logging */
   tenantId?: string;
 
+  /** Credential class that authenticated the request */
+  credentialClass?: string;
+
   /** Error object for error logging */
   error?: Error | Record<string, unknown>;
 

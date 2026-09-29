@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from hope_obs import outbound_context_headers
 
 from harness.sensors.base import NEREntity
 
@@ -116,7 +117,10 @@ class NlpClient:
             body["clinical_taxonomy"] = clinical_taxonomy
         # NLP's ServiceAuthMiddleware requires X-Service-Token whenever NLP_SERVICE_TOKEN
         # is configured — omitted when unset so local dev-bypass keeps working.
-        headers: dict[str, str] = {"X-Tenant-Id": tenant_id.strip()}
+        headers: dict[str, str] = {
+            "X-Tenant-Id": tenant_id.strip(),
+            **outbound_context_headers(),
+        }
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
@@ -150,7 +154,10 @@ class NlpClient:
         body: dict[str, Any] = {"text": text, "language": language, "model_name": model_name}
         if model_path:
             body["model_path"] = model_path
-        headers: dict[str, str] = {"X-Tenant-Id": tenant_id.strip()}
+        headers: dict[str, str] = {
+            "X-Tenant-Id": tenant_id.strip(),
+            **outbound_context_headers(),
+        }
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:

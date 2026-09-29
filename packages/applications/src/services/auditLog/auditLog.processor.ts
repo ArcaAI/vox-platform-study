@@ -8,6 +8,7 @@ import { createWorkerSession } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { AuditLogEncryptionService } from './auditLog-encryption.service';
 import { QUEUE_CONCURRENCY } from '../baseServices/redis/queue-concurrency';
+import { runJobInContext } from '../baseServices/observability/job-context';
 
 // TASK-993 lane D — concurrency is DECLARED, not inherited. Every processor
 // ran at bullmq's default of 1 because no `@Processor` passed options; the
@@ -39,6 +40,7 @@ export class AuditLogProcessor extends WorkerHost {
       previousData,
       metadata,
       correlationId,
+      traceId,
       tenantId,
     } = job.data;
 
@@ -60,7 +62,7 @@ export class AuditLogProcessor extends WorkerHost {
     // an entity by id), so there is nothing to assert against. The factory's
     // required `tenantId` parameter + the fail-closed guard above are the
     // sufficient invariants.
-    await this.cls.run(async () => {
+    await runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ userId: responsibleUserId, tenantId, kind: 'audit' }));
 
@@ -80,6 +82,7 @@ export class AuditLogProcessor extends WorkerHost {
         // lands on the row's plaintext `metadata` JSONB column (non-PHI).
         metadata: metadata ?? null,
         correlationId,
+        traceId,
         tenantId,
       });
 

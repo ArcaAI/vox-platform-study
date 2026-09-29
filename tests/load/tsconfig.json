@@ -33,7 +33,6 @@
             "@arcaai/types": ["../../packages/types/src/index.ts"],
             "@arcaai/types/*": ["../../packages/types/src/*"],
             "@arcaai/utils": ["../../packages/utils/src/index.ts"],
-            "@arcaai/logger": ["../../packages/logger/src/index.ts"],
             "@arcaai/exceptions": ["../../packages/exceptions/src/index.ts"]
         }
     },

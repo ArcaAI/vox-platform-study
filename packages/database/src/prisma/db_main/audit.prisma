@@ -30,6 +30,8 @@ model AuditLog {
   // Event correlation (for distributed tracing)
   correlationId String?
   causationId   String?
+  // OpenTelemetry trace id (32 hex) of the request that raised the event; joins an audit row to its trace.
+  traceId String? @db.VarChar(32)
 
   // Action and event categorization
   action    AuditAction
@@ -89,6 +91,7 @@ model AuditLog {
   @@index([success], name: "AuditLog_success_idx")
   // Distributed tracing
   @@index([correlationId], name: "AuditLog_correlationId_idx")
+  @@index([traceId], name: "AuditLog_traceId_idx")
   // Composite indexes for common query patterns
   @@index([tenantId, createdAt], name: "AuditLog_tenant_createdAt_idx")
   @@index([tenantId, resourceType, createdAt], name: "AuditLog_tenant_resource_time_idx")

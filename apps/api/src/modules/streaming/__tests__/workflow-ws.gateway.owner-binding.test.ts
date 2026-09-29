@@ -13,7 +13,12 @@ import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setOriginEnforcementResolver } from '../../../cors.config';
 import { WORKFLOW_RUN_COMPLETED } from '../../workflows/workflow-run-event';
-import { WORKFLOW_RUN_TICKET_NAMESPACE, WORKFLOW_WS_CLOSE_AUTH_FAILED, WORKFLOW_WS_GENERIC_AUTH_REASON, WorkflowWsGateway } from '../workflow-ws.gateway';
+import {
+  WORKFLOW_RUN_TICKET_NAMESPACE,
+  WORKFLOW_WS_CLOSE_AUTH_FAILED,
+  WORKFLOW_WS_GENERIC_AUTH_REASON,
+  WorkflowWsGateway,
+} from '../workflow-ws.gateway';
 
 const TENANT = '10000000-0000-0000-0000-000000000001';
 const USER = '20000000-0000-0000-0000-000000000002';
@@ -150,6 +155,15 @@ describe('WorkflowWsGateway — owner binding (no-owned-session)', () => {
     expectAuthClose(t.client);
     expect(t.cls.set).toHaveBeenCalledWith('tenantId', TENANT);
     expect(t.exposure.getRunStatus).toHaveBeenCalledWith('discharge', RUN);
+  });
+
+  it('a failed run lookup is no longer swallowed silently: warn with the error name, same generic close', async () => {
+    const lookupError = new Error('Resource not found');
+    lookupError.name = 'NotFoundException';
+    const t = build({ run: lookupError });
+    await t.gateway.handleConnection(t.client as never, req(undefined) as never);
+    expectAuthClose(t.client);
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(expect.objectContaining({ errorName: 'NotFoundException', runId: RUN, tenantId: TENANT }));
   });
 
   it('serves a run the ticket authorises: one snapshot frame under the ticket tenant, then a clean close for a terminal run', async () => {

@@ -27,6 +27,7 @@ import {
 } from '@arcaai/exceptions';
 import { PrismaClientKnownRequestError } from '@arcaai/database';
 import { optimisticLockConflictTotal } from '../../observability/metrics';
+import { readFailureLogContext } from '../../filters/failure-log';
 
 describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412', () => {
   let interceptor: ExceptionInterceptor;
@@ -96,24 +97,30 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412', () =>
     expect(body.metadata).toEqual({ expectedVersion: 7, currentVersion: 9 });
   });
 
-  it('logs at debug level (OCC is a normal client-driven outcome, not an error)', async () => {
+  it('writes no log line itself; hands the OCC detail to the failure line (OCC is a client outcome)', async () => {
     const occ = new OptimisticConcurrencyException('GlobalSetting', 'gs-1', {
       expectedVersion: 7,
       currentVersion: 9,
     });
-    const debugSpy = vi.spyOn((interceptor as any).logger, 'debug').mockImplementation(() => undefined);
     const warnSpy = vi.spyOn((interceptor as any).logger, 'warn').mockImplementation(() => undefined);
     const errorSpy = vi.spyOn((interceptor as any).logger, 'error').mockImplementation(() => undefined);
 
+    let caught: unknown;
     try {
       await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(occ)));
-    } catch {
-      /* expected */
+    } catch (e) {
+      caught = e;
     }
 
-    expect(debugSpy).toHaveBeenCalled();
     expect(warnSpy).not.toHaveBeenCalled();
     expect(errorSpy).not.toHaveBeenCalled();
+    expect(readFailureLogContext(caught)).toMatchObject({
+      model: 'GlobalSetting',
+      entityId: 'gs-1',
+      expectedVersion: 7,
+      currentVersion: 9,
+      error: occ,
+    });
   });
 
   it('still maps a generic BaseException to 500 (verifies the OCC branch is correctly ordered before the generic branch)', async () => {
@@ -184,7 +191,7 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412', () =>
       expect((caught as DataNotFoundException).message).toContain('apikey-1');
     });
 
-    it('logs at debug level (a 404 read is not an error condition)', async () => {
+    it('writes no log line itself (the 404 filter writes the single failure line)', async () => {
       const dnf = new DataNotFoundException('Tenant', 'tenant-42');
       const debugSpy = vi.spyOn((interceptor as any).logger, 'debug').mockImplementation(() => undefined);
       const warnSpy = vi.spyOn((interceptor as any).logger, 'warn').mockImplementation(() => undefined);
@@ -196,11 +203,7 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412', () =>
         /* expected */
       }
 
-      expect(debugSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: 'DataNotFoundException — passing through to global filter',
-        }),
-      );
+      expect(debugSpy).not.toHaveBeenCalled();
       expect(warnSpy).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
     });
@@ -392,7 +395,12 @@ describe('ExceptionInterceptor — Consent & ABAC ', () => {
 
   it('maps ConsentUnavailableException to 503 — a DIFFERENT status from a genuine denial', async () => {
     const caught = await catchHttp(
-      new ConsentUnavailableException('unavailable', { tenantId: 't-1', externalPatientId: 'EHR-A:1', purpose: 'AI_DOCUMENTATION', cause: 'grant_lookup_failed' }),
+      new ConsentUnavailableException('unavailable', {
+        tenantId: 't-1',
+        externalPatientId: 'EHR-A:1',
+        purpose: 'AI_DOCUMENTATION',
+        cause: 'grant_lookup_failed',
+      }),
     );
     expect(caught.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
     expect(caught.getStatus()).not.toBe(HttpStatus.FORBIDDEN);
@@ -665,27 +673,26 @@ describe('Prisma error sanitisation (audit)', () => {
     expect(body.correlationId).toBe('corr-1');
   });
 
-  it('server-side log STILL carries the full err.meta + err.message + errorCode (observability preserved)', async () => {
+  it('the failure line still gets the Prisma code, model, target and first message line (observability preserved)', async () => {
     const err = makePrismaError({
       code: 'P2002',
       meta: { modelName: 'User', target: ['email'] },
       message: 'Unique constraint failed on (`email`)',
     });
-    const errorSpy = vi.spyOn((interceptor as any).logger, 'error').mockImplementation(() => undefined);
 
+    let caught: unknown;
     try {
       await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(err)));
-    } catch {
-      /* expected */
+    } catch (e) {
+      caught = e;
     }
 
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: 'Prisma database error',
-        errorCode: 'P2002',
-        errorMeta: expect.objectContaining({ modelName: 'User', target: ['email'] }),
-      }),
-    );
+    expect(readFailureLogContext(caught)).toMatchObject({
+      prismaCode: 'P2002',
+      modelName: 'User',
+      target: ['email'],
+      prismaMessage: 'Unique constraint failed on (`email`)',
+    });
   });
 });
 

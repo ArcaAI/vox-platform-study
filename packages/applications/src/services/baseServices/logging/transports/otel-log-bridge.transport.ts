@@ -57,7 +57,13 @@ export class OTelLogBridgeTransport extends BaseTransport {
   }
 
   async flush(): Promise<void> {
-    // LoggerProvider's BatchLogRecordProcessor handles flushing via sdk.shutdown()
+    // The global LoggerProvider batches records; on the crash path nothing
+    // else drains it before the process exits. The API-level provider type has
+    // no `forceFlush`, but the SDK provider registered behind it does.
+    const provider = logs.getLoggerProvider() as { forceFlush?: () => Promise<void> };
+    if (typeof provider.forceFlush === 'function') {
+      await provider.forceFlush();
+    }
   }
 
   async shutdown(): Promise<void> {

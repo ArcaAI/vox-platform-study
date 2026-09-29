@@ -1,4 +1,9 @@
-import { AiRoutingPolicyServiceModule, TenantNlpTaskInstructionsServiceModule, UsageLedgerServiceModule } from '@arcaai/applications';
+import {
+  AiProviderConnectionServiceModule,
+  AiRoutingPolicyServiceModule,
+  TenantNlpTaskInstructionsServiceModule,
+  UsageLedgerServiceModule,
+} from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { AiInferenceClient } from './ai-inference.client';
@@ -26,7 +31,15 @@ import { SafetyCheckController } from './safety-check.controller';
  * resolve the tenant's topic/intent instruction content before proxying.
  */
 @Module({
-  imports: [HttpModule, AiRoutingPolicyServiceModule, UsageLedgerServiceModule, TenantNlpTaskInstructionsServiceModule],
+  // TASK-1016 — `AiProviderConnectionServiceModule` supplies `IProviderConnectionService`, the
+  // connection `/topic` and `/intent` forward so `text` can reach the elected provider.
+  imports: [
+    HttpModule,
+    AiRoutingPolicyServiceModule,
+    UsageLedgerServiceModule,
+    TenantNlpTaskInstructionsServiceModule,
+    AiProviderConnectionServiceModule,
+  ],
   controllers: [AiInferenceController, SafetyCheckController],
   providers: [AiInferenceClient],
 })

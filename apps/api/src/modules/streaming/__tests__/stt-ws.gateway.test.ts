@@ -87,7 +87,7 @@ const createMockSessionBinding = () => ({
  */
 const createPinnedSettings = () => ({
   hasSetting: vi.fn((key: string) => key in STT_GATEWAY_DEFAULTS),
-  getValueWithDefault: vi.fn(<T,>(key: string, fallback: T) =>
+  getValueWithDefault: vi.fn(<T>(key: string, fallback: T) =>
     key in STT_GATEWAY_DEFAULTS ? (STT_GATEWAY_DEFAULTS[key as keyof typeof STT_GATEWAY_DEFAULTS] as unknown as T) : fallback,
   ),
 });
@@ -973,6 +973,24 @@ describe('SttWsGateway', () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(client.send).toHaveBeenCalledWith(expect.stringContaining('BRIDGE_ERROR'));
+    });
+
+    it('puts a correlation id on the BRIDGE_ERROR frame that matches the one logged with the Error', async () => {
+      const bridgeError = new Error('redis down');
+      mockBridgeService.writeAudioFrame.mockRejectedValue(bridgeError);
+      const errorSpy = vi.spyOn((gateway as any).logger, 'error').mockImplementation(() => undefined);
+      const client = createMockSocket();
+      setValidTicketFor('sess-corr');
+      await gateway.handleConnection(client as any, buildReq('sess-corr') as any);
+
+      await gateway.handleMessage(client as any, Buffer.from([0x01]) as any, true);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      const frames = (client.send as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => String(c[0])).filter((f: string) => f.includes('BRIDGE_ERROR'));
+      const frame = JSON.parse(frames[0]);
+      expect(typeof frame.correlationId).toBe('string');
+      const line = errorSpy.mock.calls.map((c: unknown[]) => c[0] as Record<string, unknown>).find((f) => f.correlationId === frame.correlationId);
+      expect(line).toMatchObject({ sessionId: 'sess-corr', errorName: 'Error', error: bridgeError });
     });
   });
 

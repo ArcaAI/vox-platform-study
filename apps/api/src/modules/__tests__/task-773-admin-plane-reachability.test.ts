@@ -80,10 +80,19 @@ function principal(overrides: Partial<ServiceAccountPrincipalLike> = {}): Servic
   };
 }
 
+/** The rejection context the guard attaches for the terminal filter's single failure line. */
+function failureLogContext(err: unknown): Record<string, unknown> | undefined {
+  return (err as Record<symbol, Record<string, unknown> | undefined> | null)?.[Symbol.for('hope.failureLogContext')];
+}
+
 describe('admin-plane guard-level reachability (real controllers, real Reflector)', () => {
   let guard: UnifiedAuthGuard;
   let reflector: Reflector;
-  let apiKeyService: { extractApiKeyFromRequest: ReturnType<typeof vi.fn>; authenticateByRawKey: ReturnType<typeof vi.fn>; hasScope: ReturnType<typeof vi.fn> };
+  let apiKeyService: {
+    extractApiKeyFromRequest: ReturnType<typeof vi.fn>;
+    authenticateByRawKey: ReturnType<typeof vi.fn>;
+    hasScope: ReturnType<typeof vi.fn>;
+  };
   let policyEngine: { buildAbility: ReturnType<typeof vi.fn>; buildAbilityFromRules: ReturnType<typeof vi.fn> };
   let clsService: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
   let serviceAccounts: IServiceAccountAuthenticator & { authenticateByToken: ReturnType<typeof vi.fn> };
@@ -139,7 +148,13 @@ describe('admin-plane guard-level reachability (real controllers, real Reflector
    * so the class-level metadata is what decides every case.
    */
   function makeContext(targetClass: Function, handler: Function = function unadornedHandler() {}): ExecutionContext {
-    const request = { headers: { [SERVICE_ACCOUNT_TOKEN_HEADER]: 'opaque-token' }, method: 'GET', url: '/api/v1/admin/x', ip: '127.0.0.1', params: {} };
+    const request = {
+      headers: { [SERVICE_ACCOUNT_TOKEN_HEADER]: 'opaque-token' },
+      method: 'GET',
+      url: '/api/v1/admin/x',
+      ip: '127.0.0.1',
+      params: {},
+    };
     return {
       switchToHttp: () => ({ getRequest: () => request }),
       getHandler: () => handler,
@@ -197,13 +212,15 @@ describe('admin-plane guard-level reachability (real controllers, real Reflector
 
     it('the refusal message names it as a scope shortfall, distinct from the generic route-denied wording', async () => {
       serviceAccounts.authenticateByToken.mockResolvedValue(principal({ scopes: ['svc:admin:tenant:write'] }));
-      await expect(guard.canActivate(makeContext(DepartmentController))).rejects.toThrow(
-        'Service account does not have required scope(s): svc:admin:department:manage',
-      );
-      const call = warnSpy.mock.calls.find((c) => (c[0] as Record<string, unknown>)?.message === 'Service account scope insufficient');
-      expect(call).toBeDefined();
-      expect((call?.[0] as Record<string, unknown>)?.requiredScopes).toEqual(['svc:admin:department:manage']);
-      expect((call?.[0] as Record<string, unknown>)?.heldScopes).toEqual(['svc:admin:tenant:write']);
+      const err = await guard.canActivate(makeContext(DepartmentController)).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ForbiddenException);
+      expect((err as Error).message).toBe('Service account does not have required scope(s): svc:admin:department:manage');
+      // The guard no longer logs its own rejection: the reason rides on the exception
+      // and the terminal filter writes the request's single failure line.
+      const ctx = failureLogContext(err);
+      expect(ctx?.reason).toBe('svc_scope_insufficient');
+      expect(ctx?.requiredScopes).toEqual(['svc:admin:department:manage']);
+      expect(ctx?.heldScopes).toEqual(['svc:admin:tenant:write']);
     });
   });
 
@@ -247,7 +264,8 @@ describe('admin-plane guard-level reachability (real controllers, real Reflector
 
     it('the FORBIDDEN check runs BEFORE the token is even validated — structurally different from a scope check', async () => {
       serviceAccounts.authenticateByToken.mockResolvedValue(principal({ scopes: ['svc:*'] }));
-      await expect(guard.canActivate(makeContext(ServiceAccountController))).rejects.toBeInstanceOf(ForbiddenException);
+      const err = await guard.canActivate(makeContext(ServiceAccountController)).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ForbiddenException);
 
       // `handleServiceAccountAuth` checks `@ForbidServiceAccount()` BEFORE
       // calling `authenticateByToken` — a forbidden route has no principal
@@ -255,9 +273,7 @@ describe('admin-plane guard-level reachability (real controllers, real Reflector
       // be reached AFTER a principal was authenticated.
       expect(serviceAccounts.authenticateByToken).not.toHaveBeenCalled();
 
-      const call = warnSpy.mock.calls.find((c) => (c[0] as Record<string, unknown>)?.reason === 'forbid_service_account');
-      expect(call).toBeDefined();
-      expect((call?.[0] as Record<string, unknown>)?.message).toBe('Service account denied');
+      expect(failureLogContext(err)?.reason).toBe('forbid_service_account');
     });
 
     it('the machine-closed message is IDENTICAL for @ForbidServiceAccount() regardless of held scope, and DIFFERS from a scope-shortfall message', async () => {
@@ -286,8 +302,7 @@ describe('admin-plane guard-level reachability (real controllers, real Reflector
       // even though the client-facing message is deliberately identical (see
       // `SERVICE_ACCOUNT_ROUTE_DENIED_MESSAGE`'s doc comment: a caller must not
       // be able to probe "deliberately closed" vs "simply undeclared").
-      const call = warnSpy.mock.calls.find((c) => (c[0] as Record<string, unknown>)?.reason === 'no_svc_scopes_declared');
-      expect(call).toBeDefined();
+      expect(failureLogContext(await outcome.catch((e: unknown) => e))?.reason).toBe('no_svc_scopes_declared');
       // Unlike a scope carve-out, the token WAS authenticated first — the route is simply
       // not a service-account surface at all, not a deliberate carve-out.
       expect(serviceAccounts.authenticateByToken).toHaveBeenCalled();

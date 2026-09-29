@@ -428,7 +428,7 @@ or moving a mutable tag.
 
 | Concern            | Mechanism                                                                                                                                                                    |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Logging            | `@arcaai/logger` (Winston, file + console) in Node; structlog-style `get_logger` in Python services; request-id propagation (`X-Request-Id`, CLS)                            |
+| Logging            | `LoggingService` (JSON stdout → Alloy → Loki, PHI-redacted) in Node; `hope_obs` structlog in Python; one `X-Request-Id` per request + W3C `traceparent` across HTTP, WS and queues |
 | Metrics            | `/metrics` Prometheus endpoints on the gateway and Python services; platform-metrics module aggregates via `PROMETHEUS_URL`; Grafana dashboards in `infrastructure/grafana/` |
 | Tracing            | OpenTelemetry, opt-in (`OTEL_EXPORTER_OTLP_ENDPOINT` empty by default)                                                                                                       |
 | Secrets            | `SecretsService` provider chain (`SECRETS_PROVIDER=env                                                                                                                       | vault | aws | azure | in-memory`); Vault AppRole auth; rotation worker tails Vault audit log |
