@@ -1,0 +1,251 @@
+"""The vLLM adapter, exercised against a stand-in ``vllm`` module (no GPU, no vllm install).
+
+The stand-in mirrors the vLLM 0.30.0 surface the adapter depends on — verified against
+the v0.30.0 sources: ``AsyncLLM.from_engine_args`` / ``generate(prompt, sampling_params,
+request_id)`` / ``abort`` / ``shutdown``, ``vllm.inputs.ExplicitEncoderDecoderPrompt`` +
+``TextPrompt`` (both TypedDicts), and ``SamplingParams``. What it CANNOT prove is that a
+real engine accepts these objects — that is the GPU run's job (ticket README).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import importlib.machinery
+import sys
+import types
+from collections.abc import AsyncIterator
+from types import SimpleNamespace
+from typing import Any
+
+import numpy as np
+import pytest
+
+from asr_vllm.core.config import Settings
+from asr_vllm.engine.base import DecoderBudgetError, DecodeRequest
+from asr_vllm.engine.vllm_backend import (
+    VllmEngineFactory,
+    build_decoder_prompt,
+    resolve_max_tokens,
+)
+from asr_vllm.spec import ResolvedVllmAsrSpec
+from asr_vllm.tests.conftest import spec_payload
+
+
+class FakeAsyncLLM:
+    created: list[FakeAsyncLLM] = []
+
+    def __init__(self, args: Any) -> None:
+        self.args = args
+        self.calls: list[tuple[Any, Any, str]] = []
+        self.aborted: list[str] = []
+        self.hang = False
+        self.shutdown_called = False
+        self.model_config = SimpleNamespace(max_model_len=448)
+
+    @classmethod
+    def from_engine_args(cls, engine_args: Any) -> FakeAsyncLLM:
+        inst = cls(engine_args)
+        cls.created.append(inst)
+        return inst
+
+    async def generate(
+        self, prompt: Any, sampling_params: Any, request_id: str
+    ) -> AsyncIterator[Any]:
+        self.calls.append((prompt, sampling_params, request_id))
+        yield SimpleNamespace(
+            outputs=[SimpleNamespace(text="partial", finish_reason=None)], metrics=None
+        )
+        if self.hang:
+            await asyncio.sleep(10)
+        yield SimpleNamespace(
+            outputs=[SimpleNamespace(text=" final text ", finish_reason="stop")],
+            metrics=SimpleNamespace(queued_ts=10.0, scheduled_ts=10.25),
+        )
+
+    async def abort(self, request_id: str) -> None:
+        self.aborted.append(request_id)
+
+    def shutdown(self) -> None:
+        self.shutdown_called = True
+
+
+class _Kwargs:
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+
+
+@pytest.fixture
+def fake_vllm(monkeypatch: pytest.MonkeyPatch) -> type[FakeAsyncLLM]:
+    FakeAsyncLLM.created = []
+
+    def module(name: str) -> types.ModuleType:
+        mod = types.ModuleType(name)
+        mod.__spec__ = importlib.machinery.ModuleSpec(name, None)
+        monkeypatch.setitem(sys.modules, name, mod)
+        return mod
+
+    root = module("vllm")
+    root.AsyncEngineArgs = type("AsyncEngineArgs", (_Kwargs,), {})  # type: ignore[attr-defined]
+    root.SamplingParams = type("SamplingParams", (_Kwargs,), {})  # type: ignore[attr-defined]
+    inputs = module("vllm.inputs")
+    inputs.ExplicitEncoderDecoderPrompt = dict  # type: ignore[attr-defined]  # TypedDicts in vLLM
+    inputs.TextPrompt = dict  # type: ignore[attr-defined]
+    module("vllm.v1")
+    module("vllm.v1.engine")
+    async_llm = module("vllm.v1.engine.async_llm")
+    async_llm.AsyncLLM = FakeAsyncLLM  # type: ignore[attr-defined]
+    return FakeAsyncLLM
+
+
+def _count_chars_as_tokens(spec: ResolvedVllmAsrSpec) -> Any:
+    """Stand-in tokenizer: every special token counts 1, i.e. 4 for the bare prompt."""
+    return lambda text: text.count("<|")
+
+
+@pytest.fixture
+def factory(monkeypatch: pytest.MonkeyPatch) -> VllmEngineFactory:
+    monkeypatch.setenv("ASR_VLLM_GPU_MEMORY_UTILIZATION", "0.4")
+    monkeypatch.setenv("ASR_VLLM_MAX_NUM_SEQS", "48")
+    return VllmEngineFactory(Settings(), token_counter_loader=_count_chars_as_tokens)
+
+
+def make_spec(**overrides: object) -> ResolvedVllmAsrSpec:
+    return ResolvedVllmAsrSpec.model_validate(spec_payload(**overrides))
+
+
+def decode_request(**overrides: Any) -> DecodeRequest:
+    fields: dict[str, Any] = {
+        "audio": np.zeros(16_000, dtype=np.float32),
+        "language": "ml",
+        "prompt": None,
+        "temperature": 0.0,
+        "max_tokens": None,
+        "request_id": "req-1",
+    }
+    fields.update(overrides)
+    return DecodeRequest(**fields)
+
+
+# ── pure helpers ────────────────────────────────────────────────────────────
+
+
+def test_decoder_prompt_is_whisper_transcribe_without_timestamps() -> None:
+    assert (
+        build_decoder_prompt("ml", None)
+        == "<|startoftranscript|><|ml|><|transcribe|><|notimestamps|>"
+    )
+
+
+def test_previous_text_uses_whispers_real_startofprev_token() -> None:
+    """vLLM 0.30.0's own server writes `<|prev|>`, which is not a Whisper special token."""
+    assert build_decoder_prompt("en", "fever since monday").startswith(
+        "<|startofprev|>fever since monday<|startoftranscript|><|en|>"
+    )
+
+
+def test_max_tokens_defaults_to_the_remaining_decoder_context() -> None:
+    assert resolve_max_tokens(None, max_model_len=448, prompt_tokens=4) == 444
+
+
+def test_requested_max_tokens_is_clamped_to_the_context() -> None:
+    assert resolve_max_tokens(120, max_model_len=448, prompt_tokens=4) == 120
+    assert resolve_max_tokens(1000, max_model_len=448, prompt_tokens=4) == 444
+
+
+def test_a_prompt_that_fills_the_decoder_context_is_refused() -> None:
+    with pytest.raises(DecoderBudgetError):
+        resolve_max_tokens(None, max_model_len=448, prompt_tokens=448)
+
+
+# ── lazy import + availability ──────────────────────────────────────────────
+
+
+def test_importing_the_adapter_does_not_import_vllm() -> None:
+    assert "vllm" not in sys.modules
+
+
+def test_factory_is_unavailable_when_vllm_is_not_installed() -> None:
+    reason = VllmEngineFactory(Settings()).availability()
+    assert reason is not None and "vllm" in reason
+
+
+def test_factory_is_available_when_vllm_is_importable(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+    assert factory.availability() is None
+
+
+# ── build ───────────────────────────────────────────────────────────────────
+
+
+async def test_build_passes_the_resolved_spec_and_engine_tuning(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+    spec = make_spec(quantization="fp8", maxModelLen=448, computeType="bfloat16")
+    await factory.build(spec)
+
+    (engine,) = fake_vllm.created
+    kwargs = engine.args.kwargs
+    assert kwargs["model"] == "/mnt/models-bucket/hf/whisper-turbo-ml-en-fp16"
+    assert kwargs["revision"] is None  # a local directory has no revision
+    assert kwargs["dtype"] == "bfloat16"
+    assert kwargs["quantization"] == "fp8"
+    assert kwargs["max_model_len"] == 448
+    assert kwargs["gpu_memory_utilization"] == pytest.approx(0.4)
+    assert kwargs["max_num_seqs"] == 48
+    assert kwargs["limit_mm_per_prompt"] == {"audio": 1}
+
+
+async def test_hf_source_is_loaded_at_its_pinned_revision(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+    await factory.build(make_spec(localPath=None, sourceRevision="abc123", computeType=None))
+    kwargs = fake_vllm.created[0].args.kwargs
+    assert kwargs["model"] == "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16"
+    assert kwargs["revision"] == "abc123"
+    assert kwargs["dtype"] == "auto"
+
+
+# ── transcribe ──────────────────────────────────────────────────────────────
+
+
+async def test_transcribe_sends_whispers_encoder_decoder_prompt(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+    engine = await factory.build(make_spec())
+    audio = np.linspace(-0.5, 0.5, 16_000, dtype=np.float32)
+
+    result = await engine.transcribe(decode_request(audio=audio, temperature=0.1, max_tokens=100))
+
+    prompt, params, request_id = fake_vllm.created[0].calls[0]
+    assert prompt["encoder_prompt"]["prompt"] == ""
+    sent_audio, rate = prompt["encoder_prompt"]["multi_modal_data"]["audio"]
+    assert rate == 16_000 and sent_audio is audio
+    assert prompt["decoder_prompt"] == {
+        "prompt": "<|startoftranscript|><|ml|><|transcribe|><|notimestamps|>"
+    }
+    assert params.kwargs["temperature"] == pytest.approx(0.1)
+    assert params.kwargs["max_tokens"] == 100
+    assert params.kwargs["skip_special_tokens"] is True
+    assert request_id == "req-1"
+    assert result.text == "final text"
+    assert result.finish_reason == "stop"
+    assert result.engine_queue_ms == pytest.approx(250.0)
+    assert result.decode_ms >= 0
+
+
+async def test_unset_max_tokens_uses_the_whole_remaining_context(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+    engine = await factory.build(make_spec())
+    await engine.transcribe(decode_request())
+    params = fake_vllm.created[0].calls[0][1]
+    assert params.kwargs["max_tokens"] == 448 - 4  # never vLLM's silent default of 16
+
+
+async def test_a_cancelled_request_is_aborted_inside_the_engine(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+    engine = await factory.build(make_spec())
+    fake_vllm.created[0].hang = True
+
+    task = asyncio.create_task(engine.transcribe(decode_request(request_id="req-cancel")))
+    await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert fake_vllm.created[0].aborted == ["req-cancel"]
+
+
+async def test_shutdown_stops_the_engine(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]
+    engine = await factory.build(make_spec())
+    await engine.shutdown()
+    assert fake_vllm.created[0].shutdown_called is True
