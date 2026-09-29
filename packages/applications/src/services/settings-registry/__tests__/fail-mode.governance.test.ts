@@ -231,6 +231,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'vault.wrappedSecretId': 'VAULT_WRAPPED_SECRET_ID',
     'vault.kvMount': 'VAULT_KV_MOUNT',
     'vault.kvPrefix': 'VAULT_KV_PREFIX',
+    'modelPublisher.stagingDir': 'MODEL_PUBLISHER_STAGING_DIR',
     'vault.dbAdminPass': 'VAULT_DB_ADMIN_PASS',
     secretsProvider: 'SECRETS_PROVIDER',
     // Storage bootstrap fallback, superseded by the SYSTEM TenantStorageConfig row

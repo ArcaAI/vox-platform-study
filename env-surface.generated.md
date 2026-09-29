@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 142 |
-| … of which required (`failMode: closed`) | 27 |
-| … of which secret | 26 |
-| … tier `env` | 111 |
+| Declared keys (distinct) | 145 |
+| … of which required (`failMode: closed`) | 29 |
+| … of which secret | 28 |
+| … tier `env` | 112 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 22 |
+| … tier `vault-kv` | 24 |
 | Python declared fields | 312 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 365 |
-| `turbo.json#globalEnv` entries | 518 |
+| `turbo.json#globalEnv` entries | 521 |
 
 ## Variables — the TypeScript platform surface
 
@@ -89,6 +89,9 @@ disagree with those declarations.
 | `MINIO_REGION` | `env` | no | `us-east-1` | `apps/api` | Region passed to the S3-compatible client. |
 | `MINIO_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | MinIO/S3 secret key for platform object storage. |
 | `MINIO_USE_SSL` | `env` | no | `false` | `apps/api` | Whether the object-storage endpoint is reached over TLS. |
+| `MODEL_PUBLISHER_STAGING_DIR` | `env` | no | — | `apps/api` | Filesystem path under which the model-publisher worker stages each download (streamed to disk, hashed, then multipart-uploaded to `hope-models`). A path on the worker's own filesystem — on the cluster a size-limited emptyDir. Unset falls back to the OS temp dir (`os.tmpdir()`). |
+| `MODEL_STORE_PUBLISHER_ACCESS_KEY_ID` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | S3/MinIO access key the model-publisher worker uses to write, and on unregister delete, model weights in the `hope-models` bucket (`ModelStoreFactory`). Read ONLY by the publisher worker — on the cluster it is fed from the `hope-models-publisher` Secret into that Deployment alone. Absent ⇒ every publish/unregister job fails closed with `MODEL_STORE_CREDENTIAL_MISSING`; it never falls back to the platform storage credential. Endpoint and region come from the platform storage cascade, not from here. |
+| `MODEL_STORE_PUBLISHER_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | S3/MinIO secret key paired with `MODEL_STORE_PUBLISHER_ACCESS_KEY_ID` — the model-publisher worker’s own principal on `hope-models` (write + delete + delete-version). Read only by that worker; fails closed when absent. |
 | `MQTT_HOST` | `env` | no | `localhost` | `apps/api` | MQTT broker host. |
 | `MQTT_PASS` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | MQTT broker password, consumed by `MqttService` via `ConfigService`. |
 | `MQTT_PORT` | `env` | no | `1883` | `apps/api` | MQTT broker port. |

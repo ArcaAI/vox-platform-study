@@ -68,6 +68,14 @@ export const BOOTSTRAP_ENV_SETTINGS: SettingDescriptor[] = [
     'development',
   ),
   envFloor('port', 'number', 'Bootstrap', 'API gateway port', 'HTTP listen port for the NestJS gateway.', 'open-to-default', 8868),
+  envFloor(
+    'modelPublisher.stagingDir',
+    'string',
+    'Bootstrap',
+    'Model publisher staging directory',
+    'Filesystem path under which the model-publisher worker stages each download (streamed to disk, hashed, then multipart-uploaded to `hope-models`). A path on the worker\'s own filesystem — on the cluster a size-limited emptyDir. Unset falls back to the OS temp dir (`os.tmpdir()`).',
+    'open-to-default',
+  ),
 
   // ── Reaching the database (the floor, by definition) ──────────────────────
   {
