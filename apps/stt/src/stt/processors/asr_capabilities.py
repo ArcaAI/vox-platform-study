@@ -134,6 +134,16 @@ register_processor(
     traits=(),
 )
 
+# TASK-1021 — Whisper on the in-cluster `vllm` service. Platform hardware reached
+# over REST, so neither a local device nor a vendor cloud: `remote`.
+register_processor(
+    kind="asr",
+    name="vllm",
+    lazy_target="stt.processors.asr_engines:VllmEngine",
+    capabilities=[Capability(device="remote", streaming=True, batch=True)],
+    traits=("initial_prompt",),
+)
+
 register_processor(
     kind="asr",
     name="azure_foundry",

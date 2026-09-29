@@ -217,3 +217,91 @@ async def vllm_recognize_utterance(
         "response_bytes": len(response.content),
         "byte_source": None,
     }
+
+
+#: The route's hard ceiling (C-3: ``file`` ≤ 30 s). A window never exceeds it.
+MAX_WINDOW_S = 30.0
+
+
+def split_windows(
+    samples: np.ndarray, sample_rate: int, window_s: float | None
+) -> list[tuple[int, int]]:
+    """``[start, end)`` sample spans of at most ``min(window_s, 30 s)``.
+
+    The segmenter is the whisper.cpp one, reused as-is rather than rewritten: it
+    cuts at the quietest 30 ms frame in the back half of each window, which keeps a
+    cut out of the middle of a word. ``_split_spans`` reads no adapter state beyond
+    the static ``_quietest_in_range``, so a bare instance serves it.
+    """
+    from stt.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
+
+    limit = MAX_WINDOW_S if not window_s or window_s <= 0 else min(float(window_s), MAX_WINDOW_S)
+    splitter = WhisperCppAsrAdapter.__new__(WhisperCppAsrAdapter)
+    return splitter._split_spans(np.asarray(samples, dtype=np.float32), sample_rate, limit)
+
+
+async def vllm_recognize_windows(
+    config: VllmAsrConfig,
+    samples: np.ndarray,
+    sample_rate: int,
+    *,
+    window_s: float | None,
+    language: str,
+    prompt: str | None,
+    tenant_id: str,
+    request_id: str | None,
+    service_token: str,
+) -> dict[str, Any]:
+    """Transcribe audio of any length as ≤ 30 s windows, decoded concurrently.
+
+    Windows are cut by :func:`split_windows`, sent together with ``asyncio.gather``
+    (the per-``base_url`` semaphore in :func:`vllm_recognize_utterance` bounds how
+    many are in flight), and reassembled in AUDIO order: one segment per window,
+    its times offset by the window's start. Every window carries the same agent
+    prompt — never the previous window's text (TASK-994).
+    """
+    audio = np.asarray(samples, dtype=np.float32)
+    spans = split_windows(audio, sample_rate, window_s)
+    results = await asyncio.gather(
+        *(
+            vllm_recognize_utterance(
+                config,
+                audio[start:end],
+                sample_rate,
+                language=language,
+                prompt=prompt,
+                tenant_id=tenant_id,
+                request_id=request_id,
+                service_token=service_token,
+            )
+            for start, end in spans
+        )
+    )
+
+    segments: list[dict[str, Any]] = []
+    for (start, end), result in zip(spans, results, strict=True):
+        if result["text"]:
+            segments.append(
+                {
+                    "text": result["text"],
+                    "start": round(start / float(sample_rate), 4),
+                    "end": round(end / float(sample_rate), 4),
+                }
+            )
+    suspected = [
+        r["truncation"]
+        for r in results
+        if isinstance(r.get("truncation"), dict) and r["truncation"].get("suspected")
+    ]
+    return {
+        "text": " ".join(seg["text"] for seg in segments),
+        "word_timestamps": [],
+        "segments": segments,
+        "language": results[0]["language"] if results else None,
+        "truncation": (
+            suspected[0] if suspected else (results[-1]["truncation"] if results else None)
+        ),
+        "request_bytes": sum(int(r["request_bytes"]) for r in results),
+        "response_bytes": sum(int(r["response_bytes"]) for r in results),
+        "byte_source": None,
+    }

@@ -194,6 +194,7 @@ class TestManifestContents:
         "openai",
         "azure_foundry",
         "whisper_cpp",
+        "vllm",
     }
 
     def test_asr_engines_registered(self):

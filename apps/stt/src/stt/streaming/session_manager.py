@@ -3327,6 +3327,10 @@ class SessionManager:
             getattr(pipeline_config, "postprocessing", None), "timestamps", None
         )
         self._pending_want_word_timestamps = bool(getattr(timestamps_cfg, "word_timestamps", False))
+        # TASK-1021 — the SESSION's tenant, for an engine that must name it on the wire
+        # (`vllm`: `X-Tenant-Id` is mandatory). Stashed like the flag above, read
+        # synchronously by `_make_vllm_callable` below.
+        self._pending_tenant_id = tenant_id
 
         # Create the callable ASR pipeline. Built even for a duplex engine: it
         # is what a later engine switch installs on the worker, and it is the
@@ -3830,6 +3834,63 @@ class SessionManager:
             return await openai_recognize_utterance(config, samples, sample_rate, language)
 
         return run_openai_inference
+
+    def _make_vllm_callable(
+        self,
+        loaded_model: Any,
+        inference_config: Any,
+        initial_prompt: str | None = None,
+    ) -> StreamingAsrCallable:
+        """Whisper on the in-cluster `vllm` service — per-utterance REST (TASK-1021).
+
+        ``loaded_model.model`` is the ``VllmAsrConfig`` from ``VllmLoader``. Each
+        utterance is cut into ≤ 30 s windows (the model's ``maxDecodeWindowSec``
+        when the worker sends it) and decoded concurrently.
+
+        The prompt is the agent's ``initial_prompt``, unchanged — empty for the ml-en
+        fine-tune. The callable deliberately declares no ``prompt`` parameter, so the
+        inference worker never hands it prior-transcript context (TASK-994: the
+        fine-tune decodes best with none).
+
+        Refuses to BUILD without the session tenant or a resolved language — both are
+        mandatory on the wire — so the session falls through to its fallback chain
+        instead of failing every utterance.
+        """
+        from stt.streaming.vllm_asr import vllm_recognize_windows
+
+        config = loaded_model.model
+        tenant_id = getattr(self, "_pending_tenant_id", None)
+        language = getattr(inference_config, "language", None)
+        if not isinstance(tenant_id, str) or not tenant_id:
+            raise RuntimeError("vllm ASR needs the session tenant (X-Tenant-Id is mandatory)")
+        if not isinstance(language, str) or not language:
+            raise RuntimeError(
+                "vllm ASR needs a pinned language: the route requires the Whisper language "
+                "token and cannot auto-detect"
+            )
+        service_token = get_settings().internal_access_token.get_secret_value()
+        default_window = getattr(inference_config, "max_decode_window_sec", None)
+
+        async def run_vllm_inference(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            max_decode_window_sec: float | None = None,
+        ) -> dict[str, Any]:
+            window = default_window if max_decode_window_sec is None else max_decode_window_sec
+            return await vllm_recognize_windows(
+                config,
+                samples,
+                sample_rate,
+                window_s=window,
+                language=language,
+                prompt=initial_prompt,
+                tenant_id=tenant_id,
+                request_id=None,
+                service_token=service_token,
+            )
+
+        return run_vllm_inference
 
     def _make_transformers_callable(
         self,

@@ -78,6 +78,8 @@ ASR_FORMAT_TO_NAME: dict[AiModelFormat, str] = {
     AiModelFormat.WHISPER_CPP: "whisper_cpp",
     AiModelFormat.SARVAM: "sarvam",
     AiModelFormat.OPENAI: "openai",
+    # TASK-1021 — Whisper on the in-cluster `vllm` service (stt-side pseudo-format).
+    AiModelFormat.VLLM: "vllm",
 }
 
 
@@ -599,3 +601,47 @@ class AzureFoundryEngine(AsrEngine):
     # handing it the Azure Speech ``ContinuousRecognition`` adapter would open a
     # socket against a service that has none. The inherited ``None`` keeps this
     # engine on the callable path, where its own guard above still refuses.
+
+
+class VllmEngine(AsrEngine):
+    """Whisper on the in-cluster `vllm` service (TASK-1021, contract C-3).
+
+    Streaming decodes each utterance as ≤ 30 s windows over REST; batch cuts the
+    file with the whisper.cpp segmenter and decodes the windows concurrently. Both
+    send the agent's own initial prompt and never prior-transcript context
+    (TASK-994). Transcribe only: the route has no translate task, so no gloss.
+    """
+
+    async def run_batch(
+        self,
+        service: Any,
+        samples: Any,
+        sample_rate: int,
+        model: Any,
+        config: Any,
+        progress_callback: Any = None,
+        *,
+        chunk_callback: Any = None,
+        first_word_hook: Any = None,
+        prompt: str | None = None,
+        initial_prompt: str | None = None,
+    ) -> Any:
+        # `prompt` is the batch path's carry-forward context; deliberately not sent.
+        return await service._run_vllm_inference(
+            samples, sample_rate, model, config, progress_callback, initial_prompt=initial_prompt
+        )
+
+    def make_streaming_callable(
+        self,
+        manager: Any,
+        loaded_model: Any,
+        inference_config: Any,
+        *,
+        initial_prompt: str | None = None,
+        task: str = "transcribe",
+    ) -> Any:
+        if task != "transcribe":
+            raise RuntimeError(f"vllm serves task=transcribe only, not task={task!r}")
+        return manager._make_vllm_callable(
+            loaded_model, inference_config, initial_prompt=initial_prompt
+        )

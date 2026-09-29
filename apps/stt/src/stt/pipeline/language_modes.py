@@ -117,6 +117,10 @@ _CODE_SWITCH_CAPABILITY: dict[AiModelFormat, CodeSwitchCapability] = {
     AiModelFormat.WHISPER_CPP: "prompt",
     # Whisper family: native transcript + English gloss via task=translate.
     **dict.fromkeys(_WHISPER_FAMILY, "gloss"),
+    # TASK-1021 — Whisper on `vllm`: the route REQUIRES a language token (C-3), so a
+    # pair cannot run unpinned the way whisper.cpp does. It pins the primary and the
+    # code-switch fine-tune transcribes the mix itself; no gloss, no priming prompt.
+    AiModelFormat.VLLM: "native",
     # NEMO/Parakeet ignore code_switching; parakeet.cpp has no translate/prompt;
     # OpenAI is single-language; Azure Foundry is batch/preview.
     # (absent => not code-switch capable)

@@ -63,9 +63,9 @@ class TestBindingResolution:
     def test_platform_device_preferences(self):
         from stt.processors.binding import platform_device_preferences
 
-        assert platform_device_preferences("cuda") == ["cuda", "cpu", "cloud"]
-        assert platform_device_preferences("mps") == ["mps", "cpu", "cloud"]
-        assert platform_device_preferences("cpu") == ["cpu", "cloud"]
+        assert platform_device_preferences("cuda") == ["cuda", "cpu", "cloud", "remote"]
+        assert platform_device_preferences("mps") == ["mps", "cpu", "cloud", "remote"]
+        assert platform_device_preferences("cpu") == ["cpu", "cloud", "remote"]
 
     def test_faster_whisper_falls_back_to_cpu_on_mps(self):
         from stt.processors.binding import resolve_engine_binding
@@ -129,6 +129,7 @@ class TestBindingResolution:
             "whisper_cpp",
             "sarvam",
             "openai",
+            "vllm",
         }
         assert payload["asr_engines"]["onnx"]["streaming"] == "unsupported"
         assert payload["asr_engines"]["safetensor"]["batch"]["device"] == "cpu"

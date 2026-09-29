@@ -17,7 +17,6 @@ import httpx
 import numpy as np
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
-from structlog.testing import capture_logs
 
 from stt.core.exceptions import (
     CloudASRAuthError,
@@ -299,7 +298,22 @@ async def test_unbounded_when_max_concurrent_is_none(wire) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_a_suspected_truncation_is_logged_without_the_transcript(wire) -> None:
+class _RecordingLogger:
+    """Stands in for the module logger: structlog may already be configured (and its
+    loggers cached) by an earlier test, which ``capture_logs`` cannot intercept."""
+
+    def __init__(self) -> None:
+        self.events: list[dict[str, Any]] = []
+
+    def _record(self, event: str, **fields: Any) -> None:
+        self.events.append({"event": event, **fields})
+
+    info = warning = error = debug = _record
+
+
+async def test_a_suspected_truncation_is_logged_without_the_transcript(
+    wire, monkeypatch: pytest.MonkeyPatch
+) -> None:
     truncation = {
         "suspected": True,
         "reason": "chars_per_voiced_second",
@@ -307,10 +321,12 @@ async def test_a_suspected_truncation_is_logged_without_the_transcript(wire) -> 
         "chars": 12,
     }
     wire(lambda r: httpx.Response(200, json=_body(truncation)))
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(vllm_asr, "logger", recorder)
 
-    with capture_logs() as logs:
-        result = await _call()
+    result = await _call()
 
+    logs = recorder.events
     events = [e for e in logs if e["event"] == "stt.vllm.truncation_suspected"]
     assert len(events) == 1
     event = events[0]

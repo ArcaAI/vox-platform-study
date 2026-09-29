@@ -50,6 +50,7 @@ from ..models.azure_speech_loader import normalize_language_for_azure
 from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
 from ..models.cloud_asr import resolve_override_key
+from ..models.vllm_loader import is_vllm_served
 from ..models.whisper_kwargs import build_whisper_generate_kwargs
 from ..pipeline.dto import (
     AiModelConfig,
@@ -236,6 +237,13 @@ _OVERRIDE_KEY_BY_FORMAT: dict[AiModelFormat, str] = {
     AiModelFormat.SARVAM: "sarvam",  # sarvam_loader.SARVAM_OVERRIDE_KEY
     AiModelFormat.OPENAI: "openai",  # openai_loader.OPENAI_OVERRIDE_KEY
 }
+
+# The ASR formats whose load bypasses the by-slug cache so ``provider_overrides``
+# reach the loader: the cloud set above, plus TASK-1021's `vllm` — no vendor key, but
+# its connection entry (WHERE to call, per tenant connection) arrives the same way.
+# Kept apart from ``_CLOUD_ASR_OVERRIDE_FORMATS``, which also decides BYOK/CLOUD
+# funding: `vllm` is platform hardware and meters SELF_HOSTED.
+_UNCACHED_OVERRIDE_ASR_FORMATS = _CLOUD_ASR_OVERRIDE_FORMATS | {AiModelFormat.VLLM}
 
 
 def resolve_usage_attribution(
@@ -1131,7 +1139,10 @@ class BatchTranscriptionService:
         _asr_format = asr_ref.inline.engine if asr_ref.is_inline and asr_ref.inline else None
         if _asr_format is None and asr_ref.slug and asr_ref.slug in model_configs:
             _asr_format = getattr(model_configs[asr_ref.slug], "format", None)
-        _asr_cloud_byok = bool(provider_overrides) and _asr_format in _CLOUD_ASR_OVERRIDE_FORMATS
+            # TASK-1021 — a vLLM row keeps its artifact format; its engine is its library.
+            if is_vllm_served(model_configs[asr_ref.slug]):
+                _asr_format = AiModelFormat.VLLM
+        _asr_cloud_byok = bool(provider_overrides) and _asr_format in _UNCACHED_OVERRIDE_ASR_FORMATS
 
         if _asr_cloud_byok:
             # Bypass the by-slug cache so the injected key reaches the loader.
@@ -1145,7 +1156,11 @@ class BatchTranscriptionService:
                 raise TranscriptionError("ASR model is required but not specified")
             # Typed Any: the cloud loaders accept ``provider_overrides`` (the base
             # ``load`` abstractmethod does not declare it — a superset param).
-            _loader: Any = cache._get_loader(_asr_config.format)
+            _loader: Any = (
+                cache.loader_for(_asr_config)
+                if is_vllm_served(_asr_config)
+                else cache._get_loader(_asr_config.format)
+            )
             if _loader is None:
                 raise TranscriptionError(
                     f"No loader available for cloud ASR format {_asr_config.format}"
@@ -2224,6 +2239,67 @@ class BatchTranscriptionService:
             request_bytes=result.get("request_bytes"),
             response_bytes=result.get("response_bytes"),
             byte_source=result.get("byte_source"),
+        )
+
+    async def _run_vllm_inference(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        model: LoadedModel,
+        config: Any,
+        progress_callback: Callable[[float], None] | None = None,
+        *,
+        initial_prompt: str | None = None,
+    ) -> RawTranscription:
+        """Whole-file inference on the in-cluster `vllm` service (TASK-1021).
+
+        ``model.model`` is the ``VllmAsrConfig`` from ``VllmLoader``. The file is cut
+        with the whisper.cpp segmenter into ≤ 30 s windows (the model's
+        ``maxDecodeWindowSec`` when shorter), decoded concurrently under the client's
+        per-``base_url`` semaphore, and reassembled in audio order with each window's
+        offset on its segment. Only the agent's ``initial_prompt`` is sent — never
+        prior-window text (TASK-994).
+
+        The tenant and request id are the JOB's, bound by ``job_context`` from the
+        message (``tenant_id`` is the actor's own argument); a job with no bound
+        tenant is refused rather than sent without ``X-Tenant-Id``.
+        """
+        import structlog
+
+        from ..streaming.vllm_asr import vllm_recognize_windows
+
+        bound = structlog.contextvars.get_contextvars()
+        tenant_id = bound.get("tenantId")
+        if not isinstance(tenant_id, str) or not tenant_id:
+            raise TranscriptionError(
+                "vllm batch transcription needs the job tenant (X-Tenant-Id is mandatory)"
+            )
+        language = getattr(config, "language", None)
+        if not isinstance(language, str) or not language:
+            raise TranscriptionError(
+                "vllm batch transcription needs a pinned language: the route requires "
+                "the Whisper language token and cannot auto-detect"
+            )
+        request_id = bound.get("requestId")
+        result = await vllm_recognize_windows(
+            model.model,
+            samples,
+            sample_rate,
+            window_s=getattr(config, "max_decode_window_sec", None),
+            language=language,
+            prompt=initial_prompt,
+            tenant_id=tenant_id,
+            request_id=request_id if isinstance(request_id, str) else None,
+            service_token=get_settings().internal_access_token.get_secret_value(),
+        )
+        if progress_callback:
+            progress_callback(1.0)
+        # Platform hardware: no third-party bytes (TASK-959 §4.2), so none recorded.
+        return RawTranscription(
+            text=result["text"],
+            language=result.get("language") or language,
+            word_timestamps=[],
+            segments=result["segments"],
         )
 
     async def _run_transformers_inference(
