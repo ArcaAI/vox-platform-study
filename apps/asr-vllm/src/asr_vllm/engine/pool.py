@@ -11,6 +11,10 @@ identical replicas sit behind one Service — any replica can serve any window.
 * **Bounded.** At most ``max_resident`` engines (resident + loading). At the bound the
   least-recently-used IDLE engine is evicted; if every engine is busy the request is
   refused (``EngineCapacityError`` → 503 + Retry-After) — never an eviction mid-decode.
+  The bound is read at EVERY eviction check (``asrVllm.engine.maxResidentEngines`` is a
+  control-plane knob — TASK-1010 OD-6), so a change applies without a restart.
+* **Fresh at build.** ``before_build`` (the control-plane pull) is awaited before every
+  build, so the engine knobs the factory reads next are the platform's current ones.
 * **Fail closed on drift.** One runtime key must always mean one spec. A request that
   reuses a key for different weights is refused rather than served by the wrong model.
 * **Failures are not cached.** A failed load leaves nothing behind; the next request retries.
@@ -20,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
@@ -60,11 +64,15 @@ class EnginePool:
         self,
         factory: EngineFactory,
         *,
-        max_resident: int,
+        max_resident: int | Callable[[], int],
+        before_build: Callable[[], Awaitable[None]] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._factory = factory
-        self._max_resident = max_resident
+        self._max_resident: Callable[[], int] = (
+            max_resident if callable(max_resident) else (lambda: max_resident)
+        )
+        self._before_build = before_build
         self._clock = clock
         self._lock = asyncio.Lock()
         self._resident: dict[str, _Resident] = {}
@@ -92,7 +100,7 @@ class EnginePool:
 
     def snapshot(self) -> dict[str, Any]:
         return {
-            "max_resident": self._max_resident,
+            "max_resident": self._max_resident(),
             "loaded": [
                 {
                     "runtime_key": key,
@@ -128,7 +136,7 @@ class EnginePool:
                     return resident
                 task = self._loading.get(key)
                 if task is None:
-                    if len(self._resident) + len(self._loading) >= self._max_resident:
+                    if len(self._resident) + len(self._loading) >= self._max_resident():
                         victim = self._evict_idle_lru()
                         if victim is None:
                             raise EngineCapacityError(key)
@@ -154,6 +162,8 @@ class EnginePool:
         started = self._clock()
         logger.info("asr_vllm.engine.load_started", runtime_key=key, slug=spec.slug)
         try:
+            if self._before_build is not None:
+                await self._before_build()
             engine = await self._factory.build(spec)
         except BaseException as exc:
             async with self._lock:

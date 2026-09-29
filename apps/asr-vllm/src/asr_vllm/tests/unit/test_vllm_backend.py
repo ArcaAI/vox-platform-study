@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 
 from asr_vllm.core.config import Settings
+from asr_vllm.core.control_plane import apply_control_plane
 from asr_vllm.engine.base import DecoderBudgetError, DecodeRequest
 from asr_vllm.engine.vllm_backend import (
     VllmEngineFactory,
@@ -102,11 +103,24 @@ def _count_chars_as_tokens(spec: ResolvedVllmAsrSpec) -> Any:
     return lambda text: text.count("<|")
 
 
+def serve(settings: Settings, **values: Any) -> None:
+    """Overlay platform values exactly as the effective-config pull would (OD-6)."""
+    apply_control_plane(
+        settings,
+        {"settings": {f"asrVllm.engine.{key}": {"value": v} for key, v in values.items()}},
+    )
+
+
 @pytest.fixture
-def factory(monkeypatch: pytest.MonkeyPatch) -> VllmEngineFactory:
-    monkeypatch.setenv("ASR_VLLM_GPU_MEMORY_UTILIZATION", "0.4")
-    monkeypatch.setenv("ASR_VLLM_MAX_NUM_SEQS", "48")
-    return VllmEngineFactory(Settings(), token_counter_loader=_count_chars_as_tokens)
+def settings() -> Settings:
+    settings = Settings()
+    serve(settings, gpuMemoryUtilization=0.4, maxNumSeqs=48)
+    return settings
+
+
+@pytest.fixture
+def factory(settings: Settings) -> VllmEngineFactory:
+    return VllmEngineFactory(settings, token_counter_loader=_count_chars_as_tokens)
 
 
 def make_spec(**overrides: object) -> ResolvedVllmAsrSpec:
@@ -190,6 +204,21 @@ async def test_build_passes_the_resolved_spec_and_engine_tuning(fake_vllm, facto
     assert kwargs["gpu_memory_utilization"] == pytest.approx(0.4)
     assert kwargs["max_num_seqs"] == 48
     assert kwargs["limit_mm_per_prompt"] == {"audio": 1}
+
+
+async def test_engine_knobs_are_read_when_an_engine_is_built(  # type: ignore[no-untyped-def]
+    fake_vllm, factory, settings
+) -> None:
+    """A resident engine keeps its shape; the NEXT build takes the platform's new values."""
+    await factory.build(make_spec(runtimeKey="first"))
+    serve(settings, gpuMemoryUtilization=0.3, maxNumSeqs=16, enforceEager=True)
+    await factory.build(make_spec(runtimeKey="second"))
+
+    first, second = (engine.args.kwargs for engine in fake_vllm.created)
+    assert (first["gpu_memory_utilization"], first["max_num_seqs"]) == (0.4, 48)
+    assert first["enforce_eager"] is False
+    assert second["gpu_memory_utilization"] == pytest.approx(0.3)
+    assert (second["max_num_seqs"], second["enforce_eager"]) == (16, True)
 
 
 async def test_hf_source_is_loaded_at_its_pinned_revision(fake_vllm, factory) -> None:  # type: ignore[no-untyped-def]

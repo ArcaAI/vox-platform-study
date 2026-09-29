@@ -129,3 +129,38 @@ async def test_close_shuts_down_every_resident_engine() -> None:
 
     assert factory.engines["a"].shut_down and factory.engines["b"].shut_down
     assert pool.snapshot()["loaded"] == []
+
+
+# ── OD-6: residency bound read per eviction check; control plane pulled before a build ──
+
+
+async def test_the_residency_bound_is_read_at_every_eviction_check() -> None:
+    """`asrVllm.engine.maxResidentEngines` applies on the next eviction check, no restart."""
+    bound = {"value": 1}
+    factory = FakeEngineFactory()
+    pool = EnginePool(factory, max_resident=lambda: bound["value"])
+    await pool.warm(make_spec(runtimeKey="a"))
+
+    bound["value"] = 2  # the platform admin raised it
+    await pool.warm(make_spec(runtimeKey="b"))
+    assert factory.engines["a"].shut_down is False
+    assert pool.snapshot()["max_resident"] == 2
+
+    bound["value"] = 1
+    await pool.warm(make_spec(runtimeKey="c"))
+    assert sorted(e["runtime_key"] for e in pool.snapshot()["loaded"]) == ["b", "c"]
+
+
+async def test_the_control_plane_is_pulled_before_every_build_and_only_then() -> None:
+    calls: list[str] = []
+    factory = FakeEngineFactory()
+
+    async def before_build() -> None:
+        calls.append(f"refresh-before-build-{len(factory.builds)}")
+
+    pool = EnginePool(factory, max_resident=2, before_build=before_build)
+    await pool.warm(make_spec(runtimeKey="a"))
+    async with pool.lease(make_spec(runtimeKey="a")):
+        pass
+    await pool.warm(make_spec(runtimeKey="b"))
+    assert calls == ["refresh-before-build-0", "refresh-before-build-1"]

@@ -62,6 +62,16 @@ def transcription_body(**overrides: object) -> dict[str, object]:
     return body
 
 
+@pytest.fixture(autouse=True)
+def _no_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No unit test may reach a real gateway: a blank URL builds no control-plane client.
+
+    Tests that exercise the control plane inject their own client over a mock transport.
+    """
+    monkeypatch.setenv("ASR_VLLM_API_GATEWAY_URL", "")
+    monkeypatch.delenv("REDIS_URL", raising=False)
+
+
 @pytest.fixture
 def settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
     """Explicit settings — local environment, no token configured (auth bypassed)."""
