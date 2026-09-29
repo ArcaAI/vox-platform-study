@@ -35,6 +35,14 @@ import {
   INFERENCE_READINESS_INTERVAL_KEY,
 } from '../../ai-readiness/inference-readiness.constants';
 import { MODEL_INVENTORY_SETTING_KEYS } from '../../ai-model/inventory/model-inventory.cron.service';
+import { MODEL_DOWNLOAD_SETTING_DEFAULTS, MODEL_DOWNLOAD_SETTING_KEYS } from '../../ai-model/lifecycle/model-download-settings';
+
+/** A whole number ≥ 1 — the two download knobs make no sense at 0 or as a fraction. */
+function positiveWholeNumber(label: string) {
+  return (value: unknown): string | void => {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return `${label} must be a whole number of at least 1`;
+  };
+}
 
 export { INFERENCE_READINESS_CLOUD_PROBE_INTERVAL_KEY, INFERENCE_READINESS_ENABLED_KEY, INFERENCE_READINESS_INTERVAL_KEY };
 
@@ -108,5 +116,30 @@ export const AI_READINESS_SETTINGS: SettingDescriptor[] = [
       'Standard five-field cron expression for the inventory sweep. The scheduler re-reads it on every settings-cache ' +
       'refresh, so a change takes effect without a restart.',
     default: '0 * * * *',
+  },
+
+  // ── Model downloads (TASK-1019 D-4) ──────────────────────────────────────
+  {
+    ...PLATFORM_KNOB,
+    key: MODEL_DOWNLOAD_SETTING_KEYS.staleAfterSeconds,
+    dataType: 'number',
+    label: 'Model download stall timeout (seconds)',
+    description:
+      'A download whose worker has not reported progress for this many seconds is shown as failed (STALLED) and may be ' +
+      'started again. The worker reports progress while it transfers, so this only needs to exceed the longest quiet ' +
+      'gap — a crashed or never-started worker is what it catches.',
+    default: MODEL_DOWNLOAD_SETTING_DEFAULTS.staleAfterSeconds,
+    validate: positiveWholeNumber('The stall timeout'),
+  },
+  {
+    ...PLATFORM_KNOB,
+    key: MODEL_DOWNLOAD_SETTING_KEYS.maxAttempts,
+    dataType: 'number',
+    label: 'Model download attempts',
+    description:
+      'How many times the model publisher tries one download before recording it as failed, waiting exponentially ' +
+      'longer between tries (30 s, 60 s, …). A retry skips files already in the bucket at the right size.',
+    default: MODEL_DOWNLOAD_SETTING_DEFAULTS.maxAttempts,
+    validate: positiveWholeNumber('The attempt count'),
   },
 ];
