@@ -24,7 +24,7 @@ import {
   updateModel,
 } from './client';
 import { aiModelKeys } from './keys';
-import { isTransientLifecycle, LIFECYCLE_POLL_MS, listRefetchInterval } from './lifecycle';
+import { editLockReason, isTransientLifecycle, LIFECYCLE_POLL_MS, listRefetchInterval } from './lifecycle';
 import type { AiTaskKind, CreateModelRequest, ModelInventoryReport, RegisterFromHubRequest, UnregisterModelRequest, UpdateModelRequest } from './types';
 
 export function useModels() {
@@ -61,8 +61,20 @@ export function useModelLifecycle(id: string) {
   });
 }
 
+/**
+ * One row + the ETag the edit form PATCHes with. It re-reads every 5 s ONLY
+ * while the row is DOWNLOADING / UNREGISTERING — the form is read-only then
+ * (`editLockReason`, final review I11), so advancing the ETag can never land
+ * under unsaved edits — and stops itself the moment the row settles, leaving
+ * the form the settled row and its current ETag.
+ */
 export function useModel(id: string) {
-  return useQuery({ queryKey: aiModelKeys.detail(id), queryFn: () => getModel(id), enabled: !!id });
+  return useQuery({
+    queryKey: aiModelKeys.detail(id),
+    queryFn: () => getModel(id),
+    enabled: !!id,
+    refetchInterval: (query) => (editLockReason(query.state.data?.data?.lifecycle?.status) ? LIFECYCLE_POLL_MS : false),
+  });
 }
 
 export function useModelBySlug(slug: string) {

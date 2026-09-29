@@ -4,7 +4,7 @@ import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSe
 import { IModelResidencyService } from '../../model-residency/IModelResidencyService';
 import type { IModelResidencyService as ModelResidencyPort } from '../../model-residency/IModelResidencyService';
 import { residencyServiceOf } from '../../model-residency/model-residency.types';
-import { readModelDownloadSettings, type DownloadSettingsSource } from './model-download-settings';
+import { effectiveStaleAfterMs, readModelDownloadSettings, type DownloadSettingsSource } from './model-download-settings';
 import { deriveModelLifecycle, indexResidencyCatalogue, isUnregistering, type LifecycleRow, type ResidencyIndex } from './model-lifecycle.derive';
 import type { ModelLifecycle } from './model-lifecycle.types';
 
@@ -33,7 +33,7 @@ export class ModelLifecycleService {
     const out = new Map<string, ModelLifecycle>();
     if (rows.length === 0) return out;
 
-    const { staleAfterMs } = readModelDownloadSettings(this.appSettings);
+    const staleAfterMs = effectiveStaleAfterMs(readModelDownloadSettings(this.appSettings));
     const residency = rows.some(needsResidency) ? await this.readResidency() : null;
 
     for (const row of rows) out.set(row.id, deriveModelLifecycle(row, residency, { now, staleAfterMs }));

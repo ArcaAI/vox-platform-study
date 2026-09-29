@@ -140,6 +140,11 @@ export class ProviderConnectionProbe {
       const s = v?.trim();
       return s ? s : null;
     };
+    // The key the BODY actually supplies. `apiKey: null` (IsOptional skips it)
+    // and a whitespace key (passes MinLength) both clean to null and fall back
+    // to the stored key exactly like an absent one — so every "did the caller
+    // bring a key" decision below reads THIS, never `dto.apiKey === undefined`.
+    const bodyApiKey = clean(dto.apiKey);
 
     if (needsStored && !row && tenantId !== SYSTEM_TENANT_ID) {
       // The platform fallback is read by the resolved VENDOR, never by the
@@ -151,7 +156,7 @@ export class ProviderConnectionProbe {
       // endpoint field (baseUrl, or region/apiVersion/deploymentName, which are
       // interpolated into the probe URL) would otherwise send the decrypted
       // platform credential to a host the tenant chose.
-      if (row && dto.apiKey === undefined) {
+      if (row && bodyApiKey === null) {
         const overridden = (['baseUrl', 'region', 'apiVersion', 'deploymentName'] as const).filter((field) => {
           const requested = clean(dto[field]);
           return requested !== null && requested !== clean(row?.[field]);
@@ -168,7 +173,7 @@ export class ProviderConnectionProbe {
       }
     }
 
-    let apiKey = clean(dto.apiKey);
+    let apiKey = bodyApiKey;
     if (apiKey === null && row?.encryptedApiKey?.length) {
       if (!this.secretsService) {
         throw new BadRequestException('The stored key cannot be decrypted (no secrets provider); supply `apiKey` to test.');
@@ -181,7 +186,7 @@ export class ProviderConnectionProbe {
     }
 
     // A body that supplies nothing and finds no stored row has nothing to test.
-    const source: TestProviderConnectionResponse['source'] = dto.apiKey !== undefined && dto.baseUrl !== undefined ? 'request' : tier;
+    const source: TestProviderConnectionResponse['source'] = bodyApiKey !== null && dto.baseUrl !== undefined ? 'request' : tier;
 
     return {
       apiKey,

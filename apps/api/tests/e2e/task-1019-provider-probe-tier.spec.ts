@@ -46,14 +46,25 @@ test.describe('TASK-1019 — the platform key never leaves for a tenant-chosen h
     expect(resp.status()).toBe(404);
   });
 
-  test('a cloud probe that would fall back to the platform key refuses a body baseUrl', async ({ request }) => {
-    const resp = await request.post(`${BASE}/llm/openai/test`, { headers: auth(tenantAdminToken), data: { baseUrl: FOREIGN_HOST } });
-    if (resp.status() === 400) {
-      expect(JSON.stringify(await resp.json())).toContain('PLATFORM_KEY_ENDPOINT_LOCKED');
-      return;
-    }
-    expect(resp.status()).toBe(200);
-    const body = await resp.json();
-    expect(body.source, 'the platform key was presented to a caller-chosen host').not.toBe('platform');
-  });
+  // `apiKey: null` passes the validation pipe (IsOptional skips null) and a
+  // whitespace key passes MinLength(1); both clean to "no key" and so fall back
+  // to the platform key exactly like an absent one — they must not unlock the
+  // endpoint either (final review C2).
+  const bodies: Array<[string, Record<string, unknown>]> = [
+    ['no apiKey', { baseUrl: FOREIGN_HOST }],
+    ['apiKey: null', { apiKey: null, baseUrl: FOREIGN_HOST }],
+    ['whitespace apiKey', { apiKey: '   ', baseUrl: FOREIGN_HOST }],
+  ];
+  for (const [label, data] of bodies) {
+    test(`a cloud probe that would fall back to the platform key refuses a body baseUrl (${label})`, async ({ request }) => {
+      const resp = await request.post(`${BASE}/llm/openai/test`, { headers: auth(tenantAdminToken), data });
+      if (resp.status() === 400) {
+        expect(JSON.stringify(await resp.json())).toContain('PLATFORM_KEY_ENDPOINT_LOCKED');
+        return;
+      }
+      expect(resp.status()).toBe(200);
+      const body = await resp.json();
+      expect(body.source, 'the platform key was presented to a caller-chosen host').not.toBe('platform');
+    });
+  }
 });

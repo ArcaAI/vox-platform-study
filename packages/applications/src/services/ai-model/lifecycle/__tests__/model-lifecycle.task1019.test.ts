@@ -209,7 +209,8 @@ describe('ModelLifecycleService.forRows', () => {
     expect(getCatalogue).toHaveBeenCalledTimes(1);
     expect(out.get('m-1')?.status).toBe('SERVING');
     expect(out.get('m-2')?.status).toBe('DOWNLOADED');
-    expect(derivePublishStatus).toHaveBeenCalledWith(null, AiModelAvailability.AVAILABLE, { now: new Date(NOW), staleAfterMs: 60_000 });
+    // 60 s is lifted to the effective window (final review I10a): 30·2^(3−1)+60 = 180 s at the default 3 attempts.
+    expect(derivePublishStatus).toHaveBeenCalledWith(null, AiModelAvailability.AVAILABLE, { now: new Date(NOW), staleAfterMs: 180_000 });
   });
 
   it('a catalogue failure does not fail the list — registry-only status, observedAt null', async () => {
