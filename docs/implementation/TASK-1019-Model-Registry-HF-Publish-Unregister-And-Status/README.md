@@ -1,6 +1,6 @@
 # TASK-1019: Model registry — HF publish, unregister with weight deletion, and one status per model
 
-**Status:** In Progress — owner said go 2026-09-29; executing inline in worktree `../hope-v2-task-1019`
+**Status:** Review — built, reviewed and gated on `task-1019/model-registry`; awaiting owner confirmation to merge into `dev-2.2`, then live proof
 **Type:** feature + bugfix (security) + infrastructure
 **Branch:** `dev-2.2` (lanes in worktrees, merged into `dev-2.2` by the orchestrator); deployment changes in `arca/hope-v2-deployment@main`
 **Base commit at planning:** `628979ba4`
@@ -186,10 +186,48 @@ Merge order: **S** (anytime) → P + R + Y (parallel) → C → orchestrator art
 - FU-3 Bucket quota headroom check before a download (needs the MinIO admin API).
 - FU-4 Retire the out-of-band Job's static TSV lists once `download-missing` has bootstrapped a fresh cluster end to end.
 - FU-5 s3fs stat-cache options (`stat_cache_expire`) so deletes are reflected promptly in every mount.
+- FU-6 The model inventory lists `hope-models` through `IS3Service` (`hope-platform-rw`), which has no rights on that bucket on the cluster (pre-existing since TASK-860): run it through a read-capable principal so `availability` stops reading UNKNOWN.
+- FU-7 `s3://` sources still pass each object through memory (`IS3Service.getFile` has no streaming read).
+- FU-8 Deferred review minors: gateway `weights` estimate vs the worker's repo-dir rule; flat-layout unregister leaves older `<slug>/<version>/` prefixes; prefix comparison without trailing-slash normalisation; repo-id regex accepts `.`/`..` segments; unreadable residency shows DOWNLOADED rather than unknown; a failed re-download hides SERVING; worker gets `JWT_SECRET_KEY` it does not need; UnregisterModelDialog sets state during render; no `libraryName` override in the register sheet; 5 s polling emits `ResourceViewed` audit events; residency failure map unbounded per key; LM Studio failures held per gateway replica; `admin/ai-models/discovery` is now tenantless for a super admin (proxy change).
 
 ## Implementation Summary
 
-_Not started — awaiting go._
+Built on `task-1019/model-registry` (worktree `../hope-v2-task-1019`), which carries `dev-2.2` up to `ff4226a3d` plus every lane.
+The deployment half is on `arca/hope-v2-deployment` branch `task-1019/model-publisher` (worktree `../hope-v2-deployment-task-1019`), not pushed.
+
+| Req | What now exists |
+|---|---|
+| 1 HF token platform-only | The SYSTEM `model-registry/huggingface` connection is the single home. **Lane S** closed the probe leak: platform-only planes are 404 to tenants on `POST admin/providers/:service/:slug/test`, and a platform-key fallback refuses any body endpoint field (`PLATFORM_KEY_ENDPOINT_LOCKED`), including `apiKey: null` / whitespace (fix C2). Deployment: `HF_TOKEN` leaves `hope-secrets`; the out-of-band Job reads the token from `GET /internal/model-registry-credential`. |
+| 2 Registration platform-only | Every registry operation (existing + new, incl. download, download status, inventory) requires a super admin with no working tenant (`lifecycle/platform-admin.ts`). The console BFF proxy treats `admin/ai-models` as platform-wide, except the tenant-scoped `catalogue`. |
+| 3 Register by HF repo id | `GET admin/ai-models/hub/preview`, `POST register-from-hub` (create + enqueue in one call), `POST download-missing`. A separate **model-publisher worker** (`apps/api/src/model-publisher.main.ts`, `AiModelPublisherWorkerModule`) consumes the queue with its own `hope-models` key pair: it streams Hub files to a staging dir while hashing, with a free-space + budget pre-flight, a byte-idle watchdog and per-request S3 timeouts, then multipart-uploads in the two existing layouts, heartbeats progress (progress-based), retries idempotently and ignores superseded jobs. `hope-api` holds only the producer. |
+| 4 Unregister + delete weights | `GET :id/usage` (cross-tenant referrers) and `POST :id/unregister {deleteWeights, purge}`: 409 `MODEL_IN_USE`, residency unload first (409 `MODEL_UNLOAD_FAILED`), then the worker re-checks referrers, deletes the prefix (delete markers; `purge` removes every version), keeps a shared prefix, records the outcome and soft-deletes the row. MinIO publisher policy gains `DeleteObject` / `DeleteObjectVersion`. |
+| 5 Model status | Each registry row carries `lifecycle` (`UNREGISTERING … SERVING … NOT_APPLICABLE`) merged from publish bookkeeping, bucket availability and the residency catalogue, with per-service detail. Failed loads are now a residency state `failed` with code/message/time (Python cache + agent, gateway catalogue, `model_load_failures_total`). The console shows the status column, progress, a Status section, an edit lock while transient, the Register-from-HF sheet and the Unregister dialog. |
+
+### Configuration added
+| Key | Tier | Reader |
+|---|---|---|
+| `MODEL_STORE_PUBLISHER_ACCESS_KEY_ID` / `_SECRET_KEY` | env (secret, fail-closed), excluded from the gateway boot contract (`READ_BY_MODEL_PUBLISHER_ONLY`) | publisher worker only |
+| `MODEL_PUBLISHER_STAGING_DIR`, `MODEL_PUBLISHER_STAGING_MAX_BYTES` | env (topology) | publisher worker |
+| `modelRegistry.download.staleAfterSeconds` (300), `.maxAttempts` (3), `.idleTimeoutSeconds` (120), `.requestTimeoutSeconds` (600) | global-kv, platform-only | gateway / worker |
+
+No Prisma schema change, no migration. The five API artifacts are regenerated (`api:openapi:check`, `api:portal:check`, `vox-node gen:admin:check`: no drift).
+
+### Evidence (single gate on the integration branch, after the fix pass)
+- `@arcaai/applications`: 1008 files / 15496 tests pass; typecheck 0; lint 0 errors.
+- `@arcaai/api`: 357 files / 4676 tests pass; typecheck 0; lint 0 errors.
+- `@arcaai/admin-console`: 396 files / 3812 tests pass; typecheck 0; lint clean (plus the later start-download fix: `features/ai-models` 166/166).
+- `@arcaai/vox-node` 587 tests, typecheck 0; `tests/contracts` 383; `env:sync:check` OK; `py-runtime-models` 135 passed.
+- nlp / stt: the only failures (nlp metrics ×2, stt streaming-sessions ×8 + real-data ×4 errors) fail identically on plain `dev-2.2`; stt CORS ×2 fail only because worktrees lack the primary's untracked `apps/stt/.env`.
+- Worker boot: `node apps/api/dist/model-publisher.main.js` against unreachable Redis/Postgres resolves every provider and stops at `P1001` in `onModuleInit` (after adding `BlobStorageModule.forRoot()`).
+- Deployment repo: all six overlays render; kubeconform strict, config-refs, envfrom-coverage, secret-keys, probes, image-hygiene, capacity, patch-hygiene pass; the rendered `fetch-hf-private` script was executed against a stub `curl`.
+- **Not yet done:** the live proof (plan §Verification 4 and 5), which needs the merge into `dev-2.2`, and for the cluster an image build + deploy.
+
+### Final review (opus) — outcome
+3 Critical + 8 Important findings, all fixed (see Change History); the fix pass itself surfaced two more defects (gateway boot contract, worker DI), both fixed. Deferred minors are listed under Follow-ups.
+
+### Open owner questions
+- **OQ-1 Service accounts on the registry.** The registry routes accept only a human platform admin (as model residency does). The bootstrap script therefore keeps the out-of-band Job for an empty cluster. Should a platform-tier service account (no working tenant, `svc:admin:ai-model:manage`) count as a platform admin here, so bootstrap can call `download-missing`?
+- **OQ-2 Publisher credential home.** The publisher key pair is an env-tier secret delivered by `secretKeyRef` to the publisher pod alone (Vault kv would expose it to hope-api's shared AppRole). A publisher-only Vault AppRole would bring it back into Vault — follow-up or accept?
 
 ## Change History
 
@@ -198,3 +236,5 @@ _Not started — awaiting go._
 | 2026-09-29 | Review of requirements 1–5 (three read-only discovery agents; key claims re-verified by hand: probe fallback + caller `baseUrl`, `hope-platform-rw` has no `hope-models` rights, no default retention). Plan written; owner resolved OD-1…OD-6 with "go with your recommendations". Status Pending — awaiting go. |
 | 2026-09-29 | Owner said go. Renumbered **TASK-1016 → TASK-1019**: a peer session had already merged a different TASK-1016 (text callers name provider and model, `628979ba4`), TASK-1017 is taken, and a peer deployment worktree is named `task-1018`. Status In Progress. |
 | 2026-09-29 | Lane S (probe leak) landed inline (`e3755123a`). Owner asked mid-run for tiered agents: remaining lanes delegated — P opus, R opus, Y sonnet, C sonnet, D sonnet — in worktrees `../hope-v2-task-1019-{pub,reg,res,con}` and `../hope-v2-deployment-task-1019`. Shared contract committed first (`e6150f5e5`: `publisher-job.contract.ts`, `lifecycle/model-lifecycle.types.ts`). Rulings: `ai-model-download.service.ts` moved to Lane R (it is the producer); lifecycle types live in `@arcaai/applications`, not `@arcaai/types`; multipart via `@aws-sdk/client-s3` commands (no new dependency — `pnpm install` is unsafe in worktrees). |
+| 2026-09-29 | Lanes merged into `task-1019/model-registry`: Y (`2c8ff0530`), C (`49c6424dd`), P (`c3a88cbf8`), R (`978ee8173`); orchestrator: env surface (`c17c63ed6`), console proxy platform-wide except `catalogue` (`e92825f5d`), `dev-2.2` merged in (`79f20dedd`, resolved the TASK-1015 `runJobInContext` conflict in the processor), artifacts regenerated (`8daa16dd2`), old controller test arity (`321850115`). |
+| 2026-09-29 | Final review (opus): not ready — C1 lifecycle never injected; C2 probe bypass with `apiKey: null`/whitespace; C3 publisher key pair unreadable under `SECRETS_PROVIDER=vault`; I4 unregister stuck on a non-retryable error; I5 service accounts refused (bootstrap); I6 download-missing ignored UNKNOWN; I7 time-based liveness; I8 staging pre-flight measured node disk; I9 referrers not re-checked in the worker; I10 stale window shorter than retry backoff; I11 heartbeat bumps `_version` (drawer 412). Fix pass B (opus, `217d125eb`): C1, C2, I6, I10a, I11 (+ start-download refresh `2ff2eeb8e`). Fix pass A (opus, `18eccaac0`): C3 (env-tier secret, publisher pod only), I4, I7, I8, I9, I10b. I5 ruled: no service accounts (OQ-1); bootstrap keeps the Job (deployment `11263b8`, `bf4f40e`). Post-fix gate caught two more: the publisher pair entered the gateway boot contract (`1cf8c4823`, `READ_BY_MODEL_PUBLISHER_ONLY`) and the worker lacked `BlobStorageModule` at its root (`883cd346b`, proven by a boot against unreachable infra). Status Review. |
