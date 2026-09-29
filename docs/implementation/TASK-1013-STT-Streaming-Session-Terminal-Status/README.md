@@ -2,7 +2,7 @@
 
 **Status:** Review
 **Type:** bugfix (observability)
-**Branch:** `agent/sharp-hopper-96900a`, branched from `dev-2.2` @ `d211119f6`. Not merged yet.
+**Branch:** `dev-2.2` (merged from `agent/sharp-hopper-96900a`, merge commit `01c154c64`)
 **Related:** TASK-1012 lane W-5 (the static reading that found this), TASK-985 M-19 (which
 added the helper but did not wire it), `arca/hope-v2-deployment` `docs/observability-slos.md`
 
@@ -145,3 +145,4 @@ above from `origin/main` and did not pull.
 | Date | Change |
 |---|---|
 | 2026-09-29 | Ticket opened from the TASK-1012 lane W-5 finding. RED→GREEN, the helper is wired into `remove_session`, three existing test doubles were updated, and the deployment-repo flip list is recorded. Status: Review. |
+| 2026-09-29 | Merged into `dev-2.2` (`01c154c64`, on top of `2e558d2fc`). Gates re-run on the merged tree: ruff clean on the six touched files; every STT test file that references `remove_session` / `_finalize_session` / `_recover_sessions`, plus the two metrics suites, `464 passed`. Stays in Review until it deploys and the SLO doc lines + the `platform.json:882` panel are flipped in the deployment repo. |
