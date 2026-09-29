@@ -54,7 +54,9 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PY_SERVICES = ["stt", "text", "guardrail", "nlp", "harness", "tts", "asr-vllm"]
+PY_SERVICES = ["stt", "text", "guardrail", "nlp", "harness", "tts", "vllm"]
+#: Folder under apps/ -> importable package, where they differ.
+PY_PACKAGES = {"vllm": "hope_vllm"}
 CONDA_PY = Path.home() / "miniconda3/envs/arcaenv/bin/python"
 
 # Extraction runs INSIDE each service's own interpreter/import path, so it is a
@@ -99,16 +101,17 @@ def python_service_keys(svc: str) -> set[str]:
     if not CONDA_PY.exists():
         print(f"  ! conda env python not found at {CONDA_PY}", file=sys.stderr)
         return set()
-    # `svc` is the FOLDER under apps/; the importable package differs only where the
-    # folder has a hyphen (`asr-vllm` -> `asr_vllm`). asr-vllm is deliberately outside
-    # the root uv workspace (TASK-1010 OD-5), so unlike the other six it is not an
-    # editable install in `arcaenv` — its `src/` has to be put on the path explicitly.
+    # `svc` is the FOLDER under apps/; the importable package differs only for
+    # `vllm` -> `hope_vllm` (a bare `vllm` would shadow the engine). apps/vllm is
+    # deliberately outside the root uv workspace (TASK-1010 OD-5), so unlike the other
+    # six it is not an editable install in `arcaenv` — its `src/` has to be put on the
+    # path explicitly.
     res = subprocess.run(
         [
             str(CONDA_PY),
             "-c",
             _EXTRACT,
-            f"{svc.replace('-', '_')}.core.config",
+            f"{PY_PACKAGES.get(svc, svc)}.core.config",
             str(REPO / "apps" / svc / "src"),
         ],
         cwd=REPO / "apps" / svc,

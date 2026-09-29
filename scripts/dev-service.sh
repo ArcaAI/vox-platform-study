@@ -18,7 +18,7 @@
 # model pairing below); anything you export in your shell still wins.
 #
 # USAGE:
-#   ./scripts/dev-service.sh <stt|stt-worker|text|nlp|guardrail|harness|tts|asr-vllm|worker> [--watch] [--print]
+#   ./scripts/dev-service.sh <stt|stt-worker|text|nlp|guardrail|harness|tts|vllm|worker> [--watch] [--print]
 #   ./scripts/dev-service.sh --check-stt-key      # preflight only (used by dev:doctor)
 #
 # FLAGS:
@@ -30,7 +30,8 @@
 #
 # PORT OVERRIDES (for side-by-side verification etc.):
 #   STT_PORT (8861), TEXT_PORT (8862), GUARDRAIL_PORT (8863), NLP_PORT (8864),
-#   HARNESS_PORT (8866), TTS_PORT (8865), ASR_VLLM_PORT (8867)
+#   HARNESS_PORT (8866), TTS_PORT (8865), HOPE_VLLM_PORT (8867 — not VLLM_PORT,
+#   which vLLM itself reads as its distributed-communication port)
 #
 # BIND ADDRESS:
 #   Services bind 127.0.0.1 by default — these are PHI-processing dev
@@ -151,7 +152,7 @@ for arg in "$@"; do
         --watch) WATCH=1 ;;
         --print) PRINT=1 ;;
         --help|-h) usage; exit 0 ;;
-        stt|stt-worker|text|nlp|guardrail|harness|tts|asr-vllm|worker) SERVICE="$arg" ;;
+        stt|stt-worker|text|nlp|guardrail|harness|tts|vllm|worker) SERVICE="$arg" ;;
         *) echo -e "${RED}Unknown argument: $arg${NC}" >&2; usage >&2; exit 2 ;;
     esac
 done
@@ -265,16 +266,17 @@ case "$SERVICE" in
         CMD=(uvicorn tts.main:app --host "$HOST" --port "$TTS_PORT" --app-dir apps/tts/src)
         RELOAD_DIR="apps/tts/src"
         ;;
-    asr-vllm)
-        # TASK-1010. vLLM is Linux + CUDA only and is never installed into arcaenv, so on
-        # a Mac this serves the HTTP shell with /health/ready = 503 ("vllm is not
-        # installed") — enough to exercise auth, validation and the bench plumbing.
-        # Factory form: asr_vllm.main has no module-level app.
-        SERVICE_DIR="apps/asr-vllm"
-        : "${ASR_VLLM_PORT:=8867}"
-        ENV_REPORT+=("HOST=$HOST" "ASR_VLLM_PORT=$ASR_VLLM_PORT")
-        CMD=(uvicorn --factory asr_vllm.main:create_app --host "$HOST" --port "$ASR_VLLM_PORT" --app-dir apps/asr-vllm/src)
-        RELOAD_DIR="apps/asr-vllm/src"
+    vllm)
+        # TASK-1010 / TASK-1021. vLLM is Linux + CUDA only and is never installed into
+        # arcaenv, so on a Mac this serves the HTTP shell with /health/ready = 503 ("vllm
+        # is not installed") — enough to exercise auth, validation and the bench plumbing.
+        # Factory form: hope_vllm.main has no module-level app. The port override is
+        # HOPE_VLLM_PORT, never VLLM_PORT: vLLM reads that name itself.
+        SERVICE_DIR="apps/vllm"
+        : "${HOPE_VLLM_PORT:=8867}"
+        ENV_REPORT+=("HOST=$HOST" "HOPE_VLLM_PORT=$HOPE_VLLM_PORT")
+        CMD=(uvicorn --factory hope_vllm.main:create_app --host "$HOST" --port "$HOPE_VLLM_PORT" --app-dir apps/vllm/src)
+        RELOAD_DIR="apps/vllm/src"
         ;;
     worker)
         SERVICE_DIR="apps/harness"

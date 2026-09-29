@@ -84,12 +84,6 @@ class ServiceSpec:
 # The Python services. A module is listed here because it DEFINES settings
 # classes (`grep -rln BaseSettings apps/*/src`), not because it is important.
 SERVICES: tuple[ServiceSpec, ...] = (
-    # `name` is the FOLDER under `apps/` (`asr-vllm`); the importable package is
-    # `asr_vllm`, so it is `modules` — not `name` — that carries the underscore.
-    # asr-vllm is deliberately outside the root uv workspace (TASK-1010 OD-5), so it
-    # is not an editable install in `arcaenv`; `build()` puts `apps/<name>/src` on
-    # `sys.path`, which is what makes its module importable here.
-    ServiceSpec("asr-vllm", 8867, "Whisper decode on vLLM", ("asr_vllm.core.config",)),
     ServiceSpec("guardrail", 8863, "Safety Engine", ("guardrail.core.config",)),
     ServiceSpec(
         "harness",
@@ -107,6 +101,13 @@ SERVICES: tuple[ServiceSpec, ...] = (
     ServiceSpec("stt", 8861, "Speech-to-Text", ("stt.core.config.settings", "stt.worker")),
     ServiceSpec("text", 8862, "Text Generation & Summarization", ("text.core.config",)),
     ServiceSpec("tts", 8865, "Text-to-Speech", ("tts.core.config",)),
+    # `name` is the FOLDER under `apps/` (`vllm`); the importable package is
+    # `hope_vllm` (a bare `vllm` would shadow the engine itself), so it is `modules`
+    # — not `name` — that names the package. apps/vllm is deliberately outside the
+    # root uv workspace (TASK-1010 OD-5), so it is not an editable install in
+    # `arcaenv`; `build()` puts `apps/<name>/src` on `sys.path`, which is what makes
+    # its module importable here.
+    ServiceSpec("vllm", 8867, "Inference shell on vLLM", ("hope_vllm.core.config",)),
 )
 
 
@@ -206,7 +207,7 @@ def _field_comments(cls: type) -> dict[str, str]:
             if not stripped.startswith("#"):
                 break
             # `#:` is the attribute-doc-comment form (Sphinx / `apps/text`,
-            # `apps/asr-vllm`): the colon is markup, not prose.
+            # `apps/vllm`): the colon is markup, not prose.
             text = stripped.lstrip("#").lstrip(":").strip()
             # A bare rule (`# ────────────`) separates groups and says nothing;
             # a titled rule (`# ── Model weight cache root ────`) is the group's
