@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { UpdateUserPreferencesRequest } from '../dto/update-user-preferences.request';
+import { NERConfigDto, NoiseCancellationConfigDto, STTConfigDto, UpdateUserPreferencesRequest, VADConfigDto } from '../dto/update-user-preferences.request';
 
 async function validateDto(data: Record<string, any>): Promise<{ isValid: boolean; errors: string[] }> {
   const instance = plainToInstance(UpdateUserPreferencesRequest, data);
@@ -210,5 +210,26 @@ describe('UpdateUserPreferencesRequest', () => {
       });
       expect(result.isValid).toBe(true);
     });
+  });
+});
+
+// TASK-1012 L-6 — the four client-AI `modelId`s have no consumer since SDK 4.0.0 removed the browser
+// AI stages. The published SDK still round-trips them, so they stay DECLARED (a 400 would break it)
+// but are documented as deprecated and ignored.
+describe('deprecated client-AI modelIds (TASK-1012 L-6)', () => {
+  it.each([
+    ['noiseCancellation', NoiseCancellationConfigDto],
+    ['stt', STTConfigDto],
+    ['vad', VADConfigDto],
+    ['ner', NERConfigDto],
+  ] as const)('%s.modelId is still accepted, and documented deprecated + ignored', async (_stage, dto) => {
+    const meta = Reflect.getMetadata('swagger/apiModelProperties', dto.prototype, 'modelId') as { deprecated?: boolean; description?: string };
+    expect(meta.deprecated).toBe(true);
+    expect(meta.description).toMatch(/^Ignored/);
+  });
+
+  it('a payload carrying them still validates (the published SDK sends them)', async () => {
+    const result = await validateDto({ localConfig: { stt: { modelId: 'whisper-large-v3' }, ner: { modelId: 'biomedical' } } });
+    expect(result.isValid).toBe(true);
   });
 });

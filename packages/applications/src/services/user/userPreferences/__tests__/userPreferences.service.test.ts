@@ -330,8 +330,8 @@ describe('UserPreferencesService', () => {
       mockUserSettingsRepository.create.mockImplementation((entity: any) => entity);
 
       const localConfig = {
-        stt: { modelId: 'whisper-large-v3' },
-        vad: { modelId: 'silero-vad-v5', sensitivity: 0.7 },
+        noiseCancellation: { level: 'high' },
+        vad: { sensitivity: 0.7 },
       };
 
       await service.updatePreferences({ localConfig });
@@ -368,22 +368,46 @@ describe('UserPreferencesService', () => {
       });
       mockUserSettingsRepository.update.mockImplementation((_id: string, entity: any) => entity);
 
-      // Only update stt.modelId
+      // Only update vad.sensitivity
       await service.updatePreferences({
-        localConfig: { stt: { modelId: 'whisper-large-v3' } },
+        localConfig: { vad: { sensitivity: 0.9 } },
       });
 
-      // Should deep merge: stt updated, noiseCancellation and vad preserved
+      // Should deep merge: vad updated, noiseCancellation and stt preserved
       expect(mockUserSettingsRepository.update).toHaveBeenCalledWith(
         'existing-local-config',
         expect.objectContaining({
           value: JSON.stringify({
             noiseCancellation: { modelId: 'rnnoise', level: 'high' },
-            stt: { modelId: 'whisper-large-v3' },
-            vad: { modelId: 'silero-vad-v5', sensitivity: 0.5 },
+            stt: { modelId: 'whisper-medium' },
+            vad: { modelId: 'silero-vad-v5', sensitivity: 0.9 },
           }),
         }),
       );
+    });
+
+    // TASK-1012 L-6 — `localConfig.{noiseCancellation,stt,vad,ner}.modelId` were client-side model
+    // picks for the browser AI stages SDK 4.0.0 removed. SDK 4.0.0 still round-trips them, so the
+    // fields stay declared (deprecated) but are IGNORED: a write never persists one.
+    it('ignores (never persists) the deprecated client-AI modelIds', async () => {
+      mockUserSettingsRepository.create.mockImplementation((entity: any) => entity);
+
+      await service.updatePreferences({
+        localConfig: {
+          noiseCancellation: { modelId: 'rnnoise', level: 'high' },
+          stt: { modelId: 'whisper-large-v3' },
+          vad: { modelId: 'silero-vad-v5', sensitivity: 0.6 },
+          ner: { modelId: 'biomedical', autoExtract: true },
+        },
+      });
+
+      const stored = mockUserSettingsRepository.create.mock.calls.find(([entity]: any[]) => entity.key === 'localConfig')?.[0];
+      expect(JSON.parse(stored.value)).toEqual({
+        noiseCancellation: { level: 'high' },
+        stt: {},
+        vad: { sensitivity: 0.6 },
+        ner: { autoExtract: true },
+      });
     });
 
     it('should handle partial update with only shared fields', async () => {
@@ -518,7 +542,7 @@ describe('UserPreferencesService', () => {
       mockUserSettingsRepository.create.mockImplementation((entity: any) => entity);
       mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
 
-      const localConfig = { stt: { modelId: 'whisper-large-v3' } };
+      const localConfig = { vad: { sensitivity: 0.4 } };
       await service.updatePreferences({ localConfig });
 
       expect(mockUserSettingsRepository.create).toHaveBeenCalledWith(
