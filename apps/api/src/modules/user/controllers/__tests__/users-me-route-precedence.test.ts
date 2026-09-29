@@ -155,8 +155,11 @@ describe('the fixtures above match the real controllers', () => {
     const { readFileSync } = await import('fs');
     const { join } = await import('path');
     const source = readFileSync(join(__dirname, '..', '..', '..', 'rbac', 'rbac.module.ts'), 'utf-8');
-    const literalAt = source.indexOf('PermissionCheckController,');
-    const byIdAt = source.indexOf('UserPermissionCheckController,');
+    // Word-boundary matches, not `Name,` — the array's last entry carries no comma
+    // (TASK-1012 deleted the redirect shim that used to follow it).
+    const controllers = source.slice(source.indexOf('controllers: ['));
+    const literalAt = controllers.search(/(?<!User)\bPermissionCheckController\b/);
+    const byIdAt = controllers.search(/\bUserPermissionCheckController\b/);
     expect(literalAt).toBeGreaterThan(-1);
     expect(byIdAt).toBeGreaterThan(-1);
     expect(literalAt).toBeLessThan(byIdAt);

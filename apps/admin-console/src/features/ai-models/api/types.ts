@@ -83,7 +83,15 @@ export interface AiModelAsrProfile {
   partialWindowSec?: number;
   decoding?: AiModelAsrProfileDecoding;
   initialPrompt?: string;
+  /** TASK-1010 — how this row's weights are quantised, for a serving engine that must be told (vLLM). */
+  quantization?: AiModelAsrProfileQuantization;
+  /** TASK-1010 — decoder context in tokens a serving engine sizes its cache for (Whisper: 448). */
+  maxModelLen?: number;
 }
+
+/** Mirrors `AI_MODEL_ASR_PROFILE_QUANTIZATIONS` (`@arcaai/types`). */
+export const AI_MODEL_ASR_PROFILE_QUANTIZATIONS = ['none', 'fp8', 'awq', 'gptq', 'int8'] as const;
+export type AiModelAsrProfileQuantization = (typeof AI_MODEL_ASR_PROFILE_QUANTIZATIONS)[number];
 
 interface AsrProfileRange {
   readonly min: number;
