@@ -1,13 +1,25 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 362,
+  "distinctNames": 365,
   "services": {
     "asr-vllm": {
       "port": 8867,
       "title": "Whisper decode on vLLM",
       "fields": [
         {
-          "name": "ASR_VLLM_ENFORCE_EAGER",
+          "name": "ASR_VLLM_API_GATEWAY_URL",
+          "aliases": [],
+          "class": "Settings",
+          "field": "api_gateway_url",
+          "prefix": "ASR_VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": "http://localhost:8868/api/v1",
+          "description": "Where the control plane lives (env `ASR_VLLM_API_GATEWAY_URL`). BOOTSTRAP TRANSPORT \u2014 the address of the config source, not config. Blank \u21d2 no control plane: platform knobs stay at their defaults and HuggingFace pulls fail closed (no registry credential can be resolved)."
+        },
+        {
+          "name": "ASR_VLLM_ENFORCE_EAGER__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "enforce_eager",
@@ -19,7 +31,7 @@
           "description": "Skip CUDA-graph capture (faster cold start, slower steady state)."
         },
         {
-          "name": "ASR_VLLM_GPU_MEMORY_UTILIZATION",
+          "name": "ASR_VLLM_GPU_MEMORY_UTILIZATION__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "gpu_memory_utilization",
@@ -27,11 +39,11 @@
           "required": false,
           "secret": false,
           "dataType": "number",
-          "default": 0.5,
-          "description": "vLLM engine tuning \u2014 SPIKE DEVIATION (see module docstring) Fraction of the WHOLE GPU's memory each engine may claim (weights + KV/encoder cache). A time-sliced GPU has no memory isolation, so on a shared card this is the service's budget share, not \"how much is free\". 0.5 of a 16 GB RTX 2000 Ada holds Whisper-turbo fp16 (~1.6 GB) with cache room for ~64 sequences."
+          "default": 0.2,
+          "description": "vLLM engine capacity \u2014 CONTROL PLANE (`asrVllm.engine.*`), read at engine BUILD. Fraction of the WHOLE GPU's memory each engine may claim (weights + KV/encoder cache). A time-sliced GPU has no memory isolation, so on a shared card this is the service's budget share, not \"how much is free\". 0.20 while ASR shares a 16 GB card (OD-10); raised per environment on the SYSTEM row, never in code."
         },
         {
-          "name": "ASR_VLLM_MAX_NUM_SEQS",
+          "name": "ASR_VLLM_MAX_NUM_SEQS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "max_num_seqs",
@@ -43,7 +55,7 @@
           "description": "vLLM's running-batch cap \u2014 the ceiling on concurrent windows in one engine."
         },
         {
-          "name": "ASR_VLLM_MAX_RESIDENT_ENGINES",
+          "name": "ASR_VLLM_MAX_RESIDENT_ENGINES__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "max_resident_engines",
@@ -52,10 +64,10 @@
           "secret": false,
           "dataType": "number",
           "default": 1,
-          "description": "Engines resident at once (one per runtime key). Each claims `gpu_memory_utilization`, so the product must fit one card (validated below)."
+          "description": "Engines resident at once (one per runtime key), read at every eviction check. Each claims `gpu_memory_utilization`, so the product must fit one card."
         },
         {
-          "name": "ASR_VLLM_TRUNCATION_MIN_CHARS_PER_VOICED_SECOND",
+          "name": "ASR_VLLM_TRUNCATION_MIN_CHARS_PER_VOICED_SECOND__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "truncation_min_chars_per_voiced_second",
@@ -64,10 +76,10 @@
           "secret": false,
           "dataType": "number",
           "default": 3.0,
-          "description": "Truncation heuristic (vllm#53144 hook) \u2014 SPIKE DEVIATION"
+          "description": "Truncation heuristic (vllm#53144 hook) \u2014 CONTROL PLANE (`asrVllm.truncation.*`), read per request."
         },
         {
-          "name": "ASR_VLLM_TRUNCATION_VOICED_DBFS",
+          "name": "ASR_VLLM_TRUNCATION_VOICED_DBFS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "truncation_voiced_dbfs",
@@ -79,6 +91,18 @@
           "description": ""
         },
         {
+          "name": "ASR_VLLM_WEIGHTS_CACHE_DIR",
+          "aliases": [],
+          "class": "Settings",
+          "field": "weights_cache_dir",
+          "prefix": "ASR_VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": null,
+          "description": "Where a `sourceUri` (HuggingFace) pull lands on this pod \u2014 a PVC mount, pod topology. Unset \u21d2 huggingface_hub's own cache (`$HF_HOME/hub`; the image sets HF_HOME). Published weights (`localPath`) are read in place and never copied here."
+        },
+        {
           "name": "INTERNAL_ACCESS_TOKEN",
           "aliases": [],
           "class": "Settings",
@@ -88,7 +112,19 @@
           "secret": true,
           "dataType": "secret",
           "default": null,
-          "description": "Inbound credential (owner decision D-D): the ONE shared internal token, accepted as `X-Service-Token`. Unprefixed on purpose \u2014 it belongs to no single service. Empty \u21d2 auth bypassed, but only when running locally (core/service_auth)."
+          "description": "Inbound AND outbound credential (owner decision D-D): the ONE shared internal token. Accepted inbound as `X-Service-Token`, presented as `X-Service-Token` on the gateway's `/internal/*` routes. Unprefixed on purpose \u2014 it belongs to no single service. Empty \u21d2 inbound auth bypassed, but only when running locally."
+        },
+        {
+          "name": "REDIS_URL",
+          "aliases": [],
+          "class": "Settings",
+          "field": "redis_url",
+          "prefix": "ASR_VLLM_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": "",
+          "description": "The Redis that carries `arca:config:invalidate`. Shared infrastructure, so the bare name every service reads. Blank \u21d2 no push invalidation; the effective-config TTL (60 s \u00b1 10 %) is then the only propagation path."
         }
       ]
     },
@@ -3862,6 +3898,9 @@
     ],
     "HF_HUB_CACHE": [
       "packages/py-runtime-models/src/hope_runtime_models/resolvable.py"
+    ],
+    "HF_HUB_DISABLE_IMPLICIT_TOKEN": [
+      "apps/asr-vllm/src/asr_vllm/main.py"
     ],
     "HF_HUB_OFFLINE": [
       "apps/harness/src/harness/models/source_resolver.py",
