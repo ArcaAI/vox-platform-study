@@ -188,7 +188,7 @@ function hasKeyMaterial(ciphertext: Uint8Array | null | undefined): boolean {
  * extended client (`enforceTenantInData` throws on a `tenantId` mismatch, the
  * CAS `updateMany` matches 0 rows). Registry writes therefore go through the
  * UNSCOPED base client — the same `crossTenantLane` shape
- * `AiTaskDefaultService` and `RbacRoleService` already use — and carry the
+ * `AiRoutingPolicyService` and `RbacRoleService` already use — and carry the
  * explicit SYSTEM filters themselves. Reads stay on the extended client: an
  * explicit `tenantId = SYSTEM` filter is exactly what the shared-read merge
  * admits.

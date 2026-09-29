@@ -484,7 +484,7 @@ const featureModules: any[] = [
   TenantAllowedOriginModule,
   // Tenant-declared consultation context schemas: admin CRUD +
   // publish/pin at /admin/consultation-context-schemas, and the client
-  // discovery bundle at /tenant/me/context-schema.
+  // discovery bundle at /tenants/me/context-schema.
   ConsultationContextSchemaModule,
   // the clinical-document SHAPE catalog: which sections a generated
   // document has, and the strict schema compiled from that shape.
@@ -496,12 +496,12 @@ const featureModules: any[] = [
   AgentPromotionModule,
   DnaWritingStyleModule,
   // /admin/entitlements/* (super-admin matrix/override/kill-switch/downgrade)
-  // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.
+  // + /tenants/me/entitlements (tenant self-snapshot). All entitlements endpoints live here.
   EntitlementsApiModule,
-  // /admin/billing/rate-card + /admin/billing/invoices + /billing/me/* —
+  // /admin/billing/rate-card + /admin/billing/invoices + /tenants/me/{invoices,spend} —
   // SELL rate card (supersede-only) and the invoice engine.
   BillingApiModule,
-  // /admin/usage/* + /usage/me/* — usage-analytics reads over the ledger
+  // /admin/usage/* + /tenants/me/usage-{summary,burndown} — usage-analytics reads over the ledger
   // rollups.
   AdminUsageApiModule,
   // Applies the pre-bootstrap platform knob (`logLevel`, from the settings

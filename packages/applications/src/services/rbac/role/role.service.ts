@@ -92,8 +92,8 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   /**
-   * the cross-tenant WRITE lane (mirrors
-   * `AiTaskDefaultService.crossTenantLane`).
+   * the cross-tenant WRITE lane (same shape as
+   * `AiRoutingPolicyService.crossTenantLane`).
    *
    * `Role` is tenant-scoped, so the extended client pins every write to the
    * caller's CLS tenant. A super admin who has a working tenant W selected and

@@ -17,7 +17,7 @@ export class TenantNlpTaskInstructionsDtoMapper {
   /**
    * Placeholder for a (tenant, taskKey) with no row yet: version 0. The
    * client GETs this, then PUTs with `expectedVersion: 0` (`If-Match: "0"`) to
-   * create the row (mirrors `AiTaskDefaultDtoMapper.placeholder`).
+   * create the row (the same placeholder-at-version-0 shape the retired `AiTaskDefaultDtoMapper` used).
    */
   static placeholder(tenantId: string, taskKey: string): TenantNlpTaskInstructionsResponse {
     return {
