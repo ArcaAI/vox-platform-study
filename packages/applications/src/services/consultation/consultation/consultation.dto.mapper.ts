@@ -1,6 +1,8 @@
 import { ConsultationEntity, ContextItemEntity, UserEntity, DepartmentEntity } from '@arcaai/domains';
 import { ConsultationResponse, DoctorInfo, DepartmentInfo } from './dto';
 import { readSpokenLanguageMode } from './summary-language';
+import { isRecordableConsultationStatus, readExternalRef, resolveVisitTypeKey } from './open-markers';
+import { DEFAULT_VISIT_TYPE_SERVICE } from '../visit-type/visit-type.service';
 import { governingRunOf } from '../governing-engine';
 import { ContextDtoMapper } from '../context/context.dto.mapper';
 
@@ -28,6 +30,12 @@ export class ConsultationDtoMapper {
       appointmentDate: entity.appointmentDate.toISOString().split('T')[0],
       parentConsultationId: entity.parentConsultationId ?? undefined,
       status: entity.status,
+      // TASK-1020 D-7 — derived, never stored: can this row still be recorded, which visit type it
+      // resolves to (the same resolution every prompt/workflow reader uses), and the encounter id
+      // it is keyed on (the column; the TASK-951 marker for a row written before the column).
+      recordable: isRecordableConsultationStatus(entity.status),
+      visitType: resolveVisitTypeKey(DEFAULT_VISIT_TYPE_SERVICE, entity.tenantId, entity.metadata, entity.parentConsultationId),
+      externalRef: entity.externalRef ?? readExternalRef(entity.metadata),
       // TASK-932 §3.7 / TASK-1004 D-3 — read through the ONE reader: the typed
       // `spokenLanguageMode` column first, the legacy `metadata.summaryLanguage` marker for one
       // release after it, so every surface reports the same declaration.

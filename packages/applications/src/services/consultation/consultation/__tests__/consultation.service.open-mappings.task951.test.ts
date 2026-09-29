@@ -18,8 +18,9 @@
  *  2. THE STATED VISIT TYPE OUTRANKS THE PARENT LINK (D-3), alias-matched through the one
  *     platform vocabulary. An unmatchable value is a 400 — quietly documenting the encounter
  *     under the other visit type's prompt is a wrong-prompt clinical failure.
- *  3. THE EXTERNAL REFERENCE IS A LABEL, NOT A KEY (D-4). Folding it into the get-or-create tuple
- *     would turn a re-open into a second consultation the moment a client regenerated its id.
+ *  3. THE EXTERNAL REFERENCE IS RECORDED (D-4) — and, since TASK-1020 D-2, it is the open KEY:
+ *     written to the `externalRef` column as well as the marker, and matched on instead of the
+ *     legacy `(patient, appointmentDate, doctor)` tuple (key semantics: the task1020 test file).
  *  4. WHAT WAS VALIDATED IS PERSISTED (D-5) — one STRUCTURED item per kind, plus one `CASE_NOTE`
  *     per materialized entry, written BEFORE dispatch so the warm-start pre-summary sees them.
  *  5. WHAT WAS VALIDATED REACHES THE GRAPH (D-6). Before this, `trigger.context.*` was empty for
@@ -180,6 +181,10 @@ describe('ConsultationService.getOrCreate — the TASK-951 open-time mappings', 
     vi.clearAllMocks();
     consultationRepository = {
       findByUniqueKey: vi.fn().mockResolvedValue(null),
+      // TASK-1020 — the encounter-key lookup (a payload carrying `event_id` keys on it) and the
+      // same-day parent derivation for a stated `revisit`. Default: nothing found.
+      findByExternalRef: vi.fn().mockResolvedValue([]),
+      findByPatientAndDate: vi.fn().mockResolvedValue([]),
       findWithRelations: vi.fn().mockResolvedValue(null),
       create: vi.fn(async (entity: unknown) => entity),
     };
@@ -371,13 +376,14 @@ describe('ConsultationService.getOrCreate — the TASK-951 open-time mappings', 
 
   // ── 3. External reference (D-4) ───────────────────────────────────────────
 
-  it('records the external reference WITHOUT changing the re-open idempotency key', async () => {
+  it('records the external reference on the marker AND the column, and keys the open on it (TASK-1020 D-2)', async () => {
     await buildService().getOrCreate(openRequest(), null as unknown as string);
 
     expect(writtenMetadata()[CONSULTATION_EXTERNAL_REF_MARKER]).toBe('EVT-88213');
-    // Four arguments, and the event id is not one of them: a client that regenerates its event id
-    // must still re-open the SAME consultation.
-    expect(consultationRepository.findByUniqueKey).toHaveBeenCalledWith(TENANT, 'p-1', expect.any(Date), CLINICIAN);
+    expect((consultationRepository.create.mock.calls[0][0] as any).externalRef).toBe('EVT-88213');
+    // TASK-1020 reversed D-4: the event id IS the encounter key now; the legacy tuple is not consulted.
+    expect(consultationRepository.findByExternalRef).toHaveBeenCalledWith(TENANT, 'EVT-88213');
+    expect(consultationRepository.findByUniqueKey).not.toHaveBeenCalled();
   });
 
   it('preserves caller-supplied metadata alongside every marker', async () => {
@@ -455,7 +461,8 @@ describe('ConsultationService.getOrCreate — the TASK-951 open-time mappings', 
   });
 
   it('persists nothing on a RE-open — get-or-create must not append a second copy', async () => {
-    consultationRepository.findByUniqueKey.mockResolvedValue({
+    // TASK-1020 — the payload carries `event_id`, so the re-open is found by the encounter key.
+    consultationRepository.findByExternalRef.mockResolvedValue([{
       id: 'existing-id',
       tenantId: TENANT,
       doctorId: CLINICIAN,
@@ -464,7 +471,7 @@ describe('ConsultationService.getOrCreate — the TASK-951 open-time mappings', 
       createdAt: new Date(),
       updatedAt: new Date(),
       version: 1,
-    });
+    }]);
 
     await buildService().getOrCreate(openRequest(), null as unknown as string);
 

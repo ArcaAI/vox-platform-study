@@ -16,9 +16,22 @@ const PLATFORM_ID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a
 /**
  * Open Consultation Request
  *
- * Simplified request for opening a consultation session.
- * Uses get-or-create pattern - if consultation exists for (patientId, doctorId, date),
- * returns existing; otherwise creates new.
+ * `POST /consultations/open` is the ONLY entry to a consultation (TASK-1020 D-1): one clinical
+ * ENCOUNTER = one consultation, get-or-create on the encounter key.
+ *
+ * The key (TASK-1020 D-2/D-3):
+ *   - WITH an encounter id (`externalRef` — the schema-marked field of `context`, or
+ *     `metadata.externalRef`): `(patientId, clinician, externalRef)`. The same ref returns the same
+ *     consultation (retries and reconnects are safe); a NEW ref opens a NEW consultation even on a
+ *     day that already has one — that is how a same-day return visit is opened. A ref this tenant
+ *     already used for another patient is 409 `EXTERNAL_REF_CONFLICT`.
+ *   - WITHOUT one: the legacy `(patientId, appointmentDate, clinician)`, newest match. Naming the
+ *     match (or an unrelated consultation) as `parentConsultationId` opens a new follow-up instead.
+ *
+ * A match is returned whatever its status; `recordable: false` on the response says it can no
+ * longer be recorded (SIGNED, CLOSED_COMPLETE, TIMED_OUT, REOPENED). A new consultation whose
+ * visit type is `revisit` and that names no parent is chained to the patient's latest consultation
+ * of the same day (any clinician).
  *
  * Note: doctorId is NOT in request for a HUMAN caller - it comes from the authenticated user
  * (JWT or API key). A SERVICE ACCOUNT has no user, so it names the clinician it acts for with
@@ -32,7 +45,8 @@ export class OpenConsultationRequest {
   patientId: string;
 
   @ApiPropertyOptional({
-    description: 'Appointment date (YYYY-MM-DD). Defaults to today if not provided.',
+    description:
+      "Appointment date (YYYY-MM-DD). Defaults to today in the tenant's time zone (setting `consultation.appointmentDay.timeZone`, UTC unless configured).",
     example: '2026-01-29',
   })
   @IsOptional()
@@ -44,7 +58,10 @@ export class OpenConsultationRequest {
   @IsString()
   departmentId?: string;
 
-  @ApiPropertyOptional({ description: 'Parent consultation ID (for re-visits/referrals)' })
+  @ApiPropertyOptional({
+    description:
+      'The consultation this visit follows (re-visit / referral). Must belong to the same patient (400 `PARENT_PATIENT_MISMATCH`). Without an `externalRef`, naming the consultation the legacy key would return opens a new follow-up instead of returning it. When absent and the visit type resolves to `revisit`, the latest consultation of the same patient and day is linked.',
+  })
   @IsOptional()
   @IsString()
   parentConsultationId?: string;
@@ -70,9 +87,10 @@ export class OpenConsultationRequest {
    * never name a real row is refused at the edge. AMENDED: the node-id
    * grammar this used to reuse admits no hyphen, and every seeded slug has one.
    *
-   * Honoured by `POST /consultations/open` ONLY. Consultation-open dispatch
-   * fires on CREATE, so a revisit (`POST /consultations/:id/revisit`) has no
-   * dispatch to steer; supplying it there is logged and has no effect.
+   * Consultation-open dispatch fires on CREATE only: an `open` that returns an
+   * existing consultation has no dispatch left to steer, so the selection is
+   * logged and has no effect there (`GET /consultations/:id/workflow` reports
+   * what actually governs).
    */
   @ApiPropertyOptional({
     description:
@@ -97,7 +115,7 @@ export class OpenConsultationRequest {
    * the tenant's output-language policy, else the platform default (English) — see
    * `resolveOutputLanguage` in `../summary-language.ts`. Absent means undeclared.
    *
-   * Honoured on `open` and on `revisit`. TASK-1004: re-opening an ALREADY-OPEN consultation with an
+   * TASK-1004: re-opening an ALREADY-OPEN consultation with an
    * explicit, DIFFERENT mode updates the consultation's declaration (audited `ResourceUpdated`);
    * omitting it keeps the declaration the consultation already has.
    */
@@ -211,22 +229,24 @@ export class OpenConsultationRequest {
    * |---|---|---|
    * | `department: { field, by }` | the stated code (default) or name resolves to this tenant's department, and THAT is the consultation's `departmentId` - and the schema every other kind is checked against | 404 `DEPARTMENT_UNKNOWN`, 400 `DEPARTMENT_AMBIGUOUS` (by name, >1 match), 400 `DEPARTMENT_MISMATCH` (disagrees with `departmentId`) |
    * | `visitType: { field }` | alias-matched against the platform vocabulary (`referral` -> `new-visit`, `follow-up` -> `revisit`) and recorded on the row, where it RANKS ABOVE the `parentConsultationId` derivation for prompt and workflow selection | 400 `VISIT_TYPE_INVALID` |
-   * | `externalRef: { field }` | the caller's own encounter id, recorded on the row. NOT part of the re-open idempotency key, which stays `(patientId, appointmentDate, doctorId)` | - |
+   * | `externalRef: { field }` | the caller's own encounter id, recorded on the row (`Consultation.externalRef`) and, since TASK-1020, the open KEY: same ref = same consultation, new ref = new consultation | 409 `EXTERNAL_REF_CONFLICT` (ref already used for another patient) |
    *
    * And the payload IS now persisted (D-5), which it was not under TASK-950: on CREATE, every
    * validated kind becomes a PRE context item carrying its `kindKey`, and a kind the schema marks
    * `materializeAs: 'CASE_NOTE'` additionally becomes one `CASE_NOTE` item per entry - so the
    * warm-start pre-summary sees notes a client sent at open, and an integrator no longer needs a
-   * separate "push the prior notes" loop. On a RE-open (the get-or-create branch) nothing is
-   * persisted again, and the same validated payload is threaded into the governing workflow's
-   * trigger context (D-6).
+   * separate "push the prior notes" loop. The validated payload is also threaded into the
+   * governing workflow's trigger context (D-6) — on CREATE only, since that is the only time a
+   * workflow is dispatched. On a RE-open (an `open` that returns an existing consultation) the
+   * payload is validated and its markers still decide the key, but nothing is persisted again and
+   * nothing is dispatched: the consultation keeps the context and the workflow of its own open.
    *
    * Declared here because it has to be: the gateway's global pipe runs `forbidNonWhitelisted`,
    * so an undeclared field REJECTS THE WHOLE OPEN with a 400 rather than being ignored.
    */
   @ApiPropertyOptional({
     description:
-      "The consultation-context payload as `{ [kindKey]: payload }`, validated against the DEPARTMENT-effective context schema (`departmentId` narrows; the tenant default is the fallback). STRUCTURED kinds only. Violations answer 400 `CONTEXT_SCHEMA_VIOLATION` listing every problem. Fields the schema MARKS are mapped, not just validated: the user-identity field resolves - or provisions - the clinician recorded as `doctorId` for a SERVICE-ACCOUNT caller; a marked department field selects the consultation's department by code or name; a marked visit-type field is recorded and outranks the parent-link derivation; a marked external-reference field is recorded as a label. Every validated kind is also persisted as a PRE context item and threaded into the governing workflow's trigger context.",
+      "The consultation-context payload as `{ [kindKey]: payload }`, validated against the DEPARTMENT-effective context schema (`departmentId` narrows; the tenant default is the fallback). STRUCTURED kinds only. Violations answer 400 `CONTEXT_SCHEMA_VIOLATION` listing every problem. Fields the schema MARKS are mapped, not just validated: the user-identity field resolves - or provisions - the clinician recorded as `doctorId` for a SERVICE-ACCOUNT caller; a marked department field selects the consultation's department by code or name; a marked visit-type field is recorded and outranks the parent-link derivation; a marked external-reference field is recorded and is the open KEY (same ref = same consultation, new ref = new consultation; 409 `EXTERNAL_REF_CONFLICT` when the ref belongs to another patient). On a new consultation every validated kind is also persisted as a PRE context item and threaded into the governing workflow's trigger context.",
     type: 'object',
     additionalProperties: true,
     example: {
