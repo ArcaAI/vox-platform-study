@@ -5,7 +5,7 @@
  * Postgres/Redis/API — and there is no cluster access; this file is authored
  * per the ticket's Task 7 and gated on infra being available). Follows the admin
  * OCC/cross-tenant probe pattern and the ordinary `loginUser`/proxy pattern for the
- * `/ai/nlp/*` calls.
+ * `/text-analyses/*` calls.
  *
  * Covers:
  *  1. (RETIRED by TASK-881) `nlp.sentiment`/`nlp.toxicity` used to be probed
@@ -51,7 +51,9 @@ const RUN_TAG = `${Date.now().toString(36)}${Math.random().toString(36).slice(2,
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 const NLP_INSTRUCTIONS_BASE = '/api/v1/admin/nlp-task-instructions';
-const AI_BASE = '/api/v1/ai';
+// TASK-1012 D-3 deleted the `/ai/nlp/*` redirect shims (their retirement is pinned by
+// `task-760-uri-normalization.spec.ts`); the live routes are `/text-analyses/*`.
+const TEXT_ANALYSES_BASE = '/api/v1/text-analyses';
 
 interface NlpInstructionsRow {
   tenantId: string;
@@ -222,19 +224,21 @@ test.describe('nlp.topic / nlp.intent (open-taxonomy, tenant-writable instructio
       data: { instructionsJson: topics },
     });
 
-    const resp = await request.post(`${AI_BASE}/nlp/topic`, {
+    const resp = await request.post(`${TEXT_ANALYSES_BASE}/topic`, {
       headers: { Authorization: `Bearer ${tenantAdminToken}` },
       data: { text: 'I need help understanding my last invoice, please.' },
     });
-    // Per the file header: this assertion needs a reachable `text` service with
-    // a configured default provider. Neither apps/text nor apps/nlp is part of
-    // this e2e session's infra (API + Postgres/Redis/MinIO/Qdrant/Vault only),
-    // so the gateway fails closed with 503 rather than fabricating a
-    // completion — accept that here rather than hard-failing on missing,
-    // out-of-scope infra. When the provider IS reachable (full local/CI stack),
-    // this still fully verifies the tenant's topic list constrains the result.
-    expect([200, 503], 'POST /text-analyses/topic').toContain(resp.status());
-    if (resp.status() === 200) {
+    // Per the file header: success needs apps/nlp + apps/text + apps/guardrail and a
+    // working provider. Since TASK-1016 that means the SYSTEM `nlp.topic` routing
+    // election is seeded and the SYSTEM `llm/<provider>` connection it resolves to
+    // decrypts. None of that is part of the minimal e2e infra (API + Postgres/Redis/
+    // MinIO/Qdrant/Vault only), so the gateway fails closed with 503 rather than
+    // fabricating a completion — accept that here rather than hard-failing on missing,
+    // out-of-scope infra. When the stack IS up, this still fully verifies the tenant's
+    // topic list constrains the result. Success is 201 (a Nest `@Post` default), and the
+    // non-clinical utterance is served since the TASK-1016 medical-relevance opt-out.
+    expect([201, 503], 'POST /text-analyses/topic').toContain(resp.status());
+    if (resp.status() === 201) {
       const body = (await resp.json()) as { predicted_topic: string; available_topics: string[] };
       // The predicted label must be constrained to the tenant's OWN list — proves
       // the instructions actually reached apps/nlp → text, not just that the
@@ -248,7 +252,7 @@ test.describe('nlp.topic / nlp.intent (open-taxonomy, tenant-writable instructio
     // A freshly-provisioned tenant (or one that never wrote a row) has a
     // version:0 placeholder — the NLP endpoint refuses to guess.
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    const resp = await request.post(`${AI_BASE}/nlp/topic`, {
+    const resp = await request.post(`${TEXT_ANALYSES_BASE}/topic`, {
       headers: { Authorization: `Bearer ${ga!.token}`, 'x-tenant-id': arcaaiTenantId },
       data: { text: 'anything' },
     });
