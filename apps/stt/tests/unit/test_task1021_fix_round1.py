@@ -229,6 +229,59 @@ async def test_a_batch_job_without_a_tenant_is_refused(wire) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 3b — an unfilled CHANGE_ME token is never presented (final review F6)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("token", ["CHANGE_ME", " CHANGE_ME ", ""])
+async def test_the_streaming_callable_never_presents_a_placeholder_token(
+    wire, monkeypatch: pytest.MonkeyPatch, token: str
+) -> None:
+    monkeypatch.setattr(get_settings(), "internal_access_token", SecretStr(token))
+    seen = wire(lambda r: _ok())
+    run = SessionManager._make_asr_callable(
+        _bare_manager(), _loaded(), InferenceConfig(language="ml"), tenant_id="tenant-a"
+    )
+
+    await run(np.zeros(SR, dtype=np.float32), SR)
+
+    assert "X-Service-Token" not in seen[0].headers  # the dev-bypass path, not a bogus credential
+
+
+@pytest.mark.parametrize("token", ["CHANGE_ME", ""])
+async def test_the_batch_path_never_presents_a_placeholder_token(
+    wire, monkeypatch: pytest.MonkeyPatch, token: str
+) -> None:
+    monkeypatch.setattr(get_settings(), "internal_access_token", SecretStr(token))
+    seen = wire(lambda r: _ok())
+    service = BatchTranscriptionService.__new__(BatchTranscriptionService)
+
+    await service._run_inference(
+        np.zeros(SR, dtype=np.float32),
+        SR,
+        _loaded(),
+        InferenceConfig(language="ml"),
+        tenant_id="job-tenant",
+    )
+
+    assert "X-Service-Token" not in seen[0].headers
+
+
+async def test_a_real_token_is_still_presented_on_both_paths(wire) -> None:
+    seen = wire(lambda r: _ok())
+    run = SessionManager._make_asr_callable(
+        _bare_manager(), _loaded(), InferenceConfig(language="ml"), tenant_id="tenant-a"
+    )
+    await run(np.zeros(SR, dtype=np.float32), SR)
+    service = BatchTranscriptionService.__new__(BatchTranscriptionService)
+    await service._run_inference(
+        np.zeros(SR, dtype=np.float32), SR, _loaded(), InferenceConfig(language="ml"), tenant_id="t"
+    )
+
+    assert [r.headers["X-Service-Token"] for r in seen] == ["svc-token", "svc-token"]
+
+
+# ---------------------------------------------------------------------------
 # 4 — 503: capacity retries, everything else fails over
 # ---------------------------------------------------------------------------
 

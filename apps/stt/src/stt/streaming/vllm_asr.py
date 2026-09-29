@@ -129,7 +129,9 @@ def _error_detail(response: httpx.Response) -> str:
 
 
 def _headers(tenant_id: str, request_id: str | None, service_token: str) -> dict[str, str]:
-    headers = {"X-Service-Token": service_token, "X-Tenant-Id": tenant_id}
+    headers = {"X-Tenant-Id": tenant_id}
+    if service_token:  # empty ⇒ dev bypass on the `vllm` side; never send a blank header
+        headers["X-Service-Token"] = service_token
     headers.update(outbound_context_headers())
     if request_id:
         headers["X-Request-Id"] = request_id

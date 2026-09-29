@@ -30,6 +30,7 @@ from azure.cognitiveservices.speech import (
     audio,
     transcription,
 )
+from hope_env import real_secret
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import (
@@ -2293,7 +2294,8 @@ class BatchTranscriptionService:
             prompt=initial_prompt,
             tenant_id=tenant_id,
             request_id=None,
-            service_token=get_settings().internal_access_token.get_secret_value(),
+            # An unfilled CHANGE_ME is no token at all (hope_env.placeholders).
+            service_token=real_secret(get_settings().internal_access_token),
         )
         if progress_callback:
             progress_callback(1.0)

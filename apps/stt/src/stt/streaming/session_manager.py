@@ -30,6 +30,7 @@ from typing import Any
 
 import numpy as np
 import structlog
+from hope_env import real_secret
 from hope_obs import redact_id
 
 from stt.core.api_client.gateway import APIGatewayClient
@@ -3874,7 +3875,9 @@ class SessionManager:
                 "token and cannot auto-detect"
             )
         session_tenant: str = tenant_id
-        service_token = get_settings().internal_access_token.get_secret_value()
+        # `real_secret`: an unfilled CHANGE_ME is the ABSENCE of a token (dev bypass on the
+        # `vllm` side), never a credential to present (hope_env.placeholders).
+        service_token = real_secret(get_settings().internal_access_token)
         default_window = getattr(inference_config, "max_decode_window_sec", None)
 
         async def run_vllm_inference(
