@@ -194,7 +194,9 @@ export function useModelDownloadStatus(id: string, options: { enabled: boolean }
  * row instead of the mid-flight one.
  */
 export function useStartModelDownload() {
-  return useMutation({ mutationFn: (id: string) => startModelDownload(id) });
+  const invalidate = useInvalidateAiModels();
+  // Refresh the model reads so an open drawer sees DOWNLOADING and locks its edit form.
+  return useMutation({ mutationFn: (id: string) => startModelDownload(id), onSuccess: invalidate });
 }
 
 export function useModelRegistryConnectionStatus() {
