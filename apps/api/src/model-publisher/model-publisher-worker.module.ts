@@ -1,4 +1,4 @@
-import { AiModelPublisherWorkerModule, CommonServiceModule, ConfigModule, LoggingServiceModule, SysEventServiceModule } from '@arcaai/applications';
+import { AiModelPublisherWorkerModule, BlobStorageModule, CommonServiceModule, ConfigModule, LoggingServiceModule, SysEventServiceModule } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -32,6 +32,9 @@ import { VaultPrismaFactoryModule } from '../vault-prisma.module';
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
     VaultPrismaFactoryModule,
+    // Global, registered once at the root exactly as AppModule does: a transitively
+    // imported TenantBucketService needs IBlobStorageService.
+    BlobStorageModule.forRoot(),
     TenantContextProviderModule,
     CoreDatabaseModule,
     CommonServiceModule,

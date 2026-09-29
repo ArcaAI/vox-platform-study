@@ -12,7 +12,7 @@
  */
 import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
-import { AiModelDownloadProcessor, AiModelDownloadService, AiModelUnregisterService, ModelStoreFactory, ModelUsageReader } from '@arcaai/applications';
+import { AiModelDownloadProcessor, AiModelDownloadService, AiModelUnregisterService, BlobStorageProviderFactory, ModelStoreFactory, ModelUsageReader } from '@arcaai/applications';
 
 type AnyModule = unknown;
 
@@ -65,6 +65,10 @@ describe('model publisher module graph (P11)', () => {
     expect(providers.has(AiModelUnregisterService)).toBe(true);
     // I9 — the unregister job re-checks referrers itself before deleting anything.
     expect(providers.has(ModelUsageReader)).toBe(true);
+    // Globals the gateway registers once at its root (`AppModule`) must be registered
+    // at the worker's root too, or a transitively imported service (TenantBucketService
+    // via the usage reader) fails dependency resolution at boot.
+    expect(providers.has(BlobStorageProviderFactory)).toBe(true);
     // `PrometheusController` rides in with `ObservabilityModule` (via
     // `CommonServiceModule`); an application context mounts no HTTP server, so
     // it is inert. Nothing from the gateway's own surface may be here.
