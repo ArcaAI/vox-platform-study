@@ -5,8 +5,14 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 
+from hope_vllm.core.serving_spec_client import (
+    ModelNotFound,
+    ModelNotServable,
+    ServingSpecUnavailable,
+)
 from hope_vllm.engine.base import DecodeRequest, DecodeResult
 from hope_vllm.spec import ResolvedServingSpec
+from hope_vllm.tests.payloads import RUNTIME_KEY, SLUG, serving_spec_payload
 
 
 @dataclass
@@ -18,9 +24,11 @@ class FakeEngine:
     finish_reason: str | None = "stop"
     delay_s: float = 0.0
     requests: list[DecodeRequest] = field(default_factory=list)
+    engine_queue_ms: float | None = None
     inflight: int = 0
     max_inflight: int = 0
     shut_down: bool = False
+    aborted: list[str] = field(default_factory=list)
 
     async def transcribe(self, request: DecodeRequest) -> DecodeResult:
         self.requests.append(request)
@@ -29,14 +37,18 @@ class FakeEngine:
         try:
             if self.delay_s:
                 await asyncio.sleep(self.delay_s)
-            return DecodeResult(
-                text=self.text,
-                finish_reason=self.finish_reason,
-                decode_ms=1.0,
-                engine_queue_ms=None,
-            )
+        except asyncio.CancelledError:
+            # What `VllmWhisperEngine` does: free the batch slot for a caller who left.
+            self.aborted.append(request.request_id)
+            raise
         finally:
             self.inflight -= 1
+        return DecodeResult(
+            text=self.text,
+            finish_reason=self.finish_reason,
+            decode_ms=1.0,
+            engine_queue_ms=self.engine_queue_ms,
+        )
 
     async def shutdown(self) -> None:
         self.shut_down = True
@@ -53,6 +65,7 @@ class FakeEngineFactory:
     engine_delay_s: float = 0.0
     engine_text: str = "hello world from the fake engine"
     engine_finish_reason: str | None = "stop"
+    engine_queue_ms: float | None = None
     builds: list[str] = field(default_factory=list)
     engines: dict[str, FakeEngine] = field(default_factory=dict)
 
@@ -70,6 +83,36 @@ class FakeEngineFactory:
             text=self.engine_text,
             finish_reason=self.engine_finish_reason,
             delay_s=self.engine_delay_s,
+            engine_queue_ms=self.engine_queue_ms,
         )
         self.engines[spec.runtime_key] = engine
         return engine
+
+
+@dataclass
+class FakeSpecResolver:
+    """Stands in for `ServingSpecClient`: every slug resolves unless told otherwise.
+
+    The default slug resolves to `serving_spec_payload()` (runtime key `RUNTIME_KEY`);
+    any other slug to the same row under `<slug>:v1`. `specs` overrides a slug's payload,
+    `missing` makes it 404, `not_servable` a 409 with that reason, `fail` a gateway fault.
+    """
+
+    specs: dict[str, dict[str, object]] = field(default_factory=dict)
+    missing: set[str] = field(default_factory=set)
+    not_servable: dict[str, str] = field(default_factory=dict)
+    fail: bool = False
+    calls: list[tuple[str, str]] = field(default_factory=list)
+
+    async def resolve(self, slug: str, tenant_id: str) -> ResolvedServingSpec:
+        self.calls.append((slug, tenant_id))
+        if self.fail:
+            raise ServingSpecUnavailable("gateway down")
+        if slug in self.missing:
+            raise ModelNotFound(slug)
+        if slug in self.not_servable:
+            raise ModelNotServable(self.not_servable[slug])
+        payload = self.specs.get(slug) or serving_spec_payload(
+            slug=slug, runtimeKey=RUNTIME_KEY if slug == SLUG else f"{slug}:v1"
+        )
+        return ResolvedServingSpec.model_validate(payload)

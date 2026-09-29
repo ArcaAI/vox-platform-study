@@ -13,7 +13,6 @@ import sys
 import wave
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 
 import httpx
 import numpy as np
@@ -66,6 +65,7 @@ class FakeServer:
         self.headers.append({k.decode(): v.decode() for k, v in scope["headers"]})
         if scope["path"] == "/api/v1/engines/warm":
             self.warms += 1
+            assert json.loads(body) == {"model": "m"}
             payload = {"runtime_key": "k", "already_resident": False, "load_seconds": 1.5}
             status = 200
         else:
@@ -76,11 +76,13 @@ class FakeServer:
                 await asyncio.sleep(self.delay_s)
             finally:
                 self._inflight -= 1
-            json.loads(body)
+            content_type = dict(scope["headers"]).get(b"content-type", b"")
+            assert content_type.startswith(b"multipart/form-data"), content_type
+            assert b'name="file"' in body and b"RIFF" in body and b'name="model"' in body
             if self.fail_every and self.calls % self.fail_every == 0:
-                status, payload = 503, {"detail": {"code": "ENGINE_CAPACITY"}}
+                status, payload = 503, {"error": {"code": "engine_capacity"}}
             else:
-                status, payload = 200, {"text": "ok", "timings": {"decode_ms": 1.0}}
+                status, payload = 200, {"text": "ok"}
         raw = json.dumps(payload).encode()
         await send(
             {
@@ -147,7 +149,7 @@ async def test_a_fast_server_keeps_up_with_realtime(bench) -> None:  # type: ign
             window_s=0.02,
             hop_s=0.03,
             pcm=pcm,
-            request_template={"spec": {"runtimeKey": "k"}, "language": "ml"},
+            form={"model": "m", "language": "ml"},
             headers={"X-Tenant-Id": "t", "X-Service-Token": "s"},
             commit_bar_s=15.0,
             stagger=False,  # synchronized burst, so overlap is deterministic
@@ -173,7 +175,7 @@ async def test_a_slow_server_falls_behind_realtime(bench) -> None:  # type: igno
             window_s=0.02,
             hop_s=0.02,
             pcm=pcm,
-            request_template={"spec": {"runtimeKey": "k"}, "language": "ml"},
+            form={"model": "m", "language": "ml"},
             headers={},
             commit_bar_s=0.05,
         )
@@ -193,7 +195,7 @@ async def test_errors_are_counted_by_status(bench) -> None:  # type: ignore[no-u
             window_s=0.01,
             hop_s=0.02,
             pcm=pcm,
-            request_template={"spec": {"runtimeKey": "k"}, "language": "ml"},
+            form={"model": "m", "language": "ml"},
             headers={},
             commit_bar_s=15.0,
         )
@@ -205,7 +207,7 @@ async def test_errors_are_counted_by_status(bench) -> None:  # type: ignore[no-u
 async def test_warm_records_the_cold_start(bench) -> None:  # type: ignore[no-untyped-def]
     server = FakeServer()
     async with client_for(server) as client:
-        cold = await bench.warm_engine(client, spec={"runtimeKey": "k"}, headers={})
+        cold = await bench.warm_engine(client, model="m", headers={})
     assert server.warms == 1
     assert cold["load_seconds"] == pytest.approx(1.5)
     assert cold["wall_seconds"] >= 0
@@ -220,18 +222,18 @@ def test_parse_ladder(bench) -> None:  # type: ignore[no-untyped-def]
 async def test_the_bench_body_is_accepted_by_the_real_endpoint(bench, settings) -> None:  # type: ignore[no-untyped-def]
     """Bench ↔ service contract: the same app the tests build, with a fake engine."""
     from hope_vllm.main import create_app
-    from hope_vllm.tests.conftest import TENANT_ID, serving_spec_payload
-    from hope_vllm.tests.fakes import FakeEngineFactory
+    from hope_vllm.tests.conftest import SLUG, TENANT_ID
+    from hope_vllm.tests.fakes import FakeEngineFactory, FakeSpecResolver
 
-    app = create_app(settings, engine_factory=FakeEngineFactory())
+    app = create_app(
+        settings, engine_factory=FakeEngineFactory(), serving_spec_client=FakeSpecResolver()
+    )
     pcm = np.zeros(16_000, dtype="<i2").tobytes()
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://svc"
         ) as client:
-            cold = await bench.warm_engine(
-                client, spec=serving_spec_payload(), headers={"X-Tenant-Id": TENANT_ID}
-            )
+            cold = await bench.warm_engine(client, model=SLUG, headers={"X-Tenant-Id": TENANT_ID})
             summary = await bench.run_step(
                 client,
                 n=3,
@@ -239,11 +241,7 @@ async def test_the_bench_body_is_accepted_by_the_real_endpoint(bench, settings) 
                 window_s=0.5,
                 hop_s=0.01,
                 pcm=pcm,
-                request_template={
-                    "spec": serving_spec_payload(),
-                    "language": "ml",
-                    "temperature": 0.0,
-                },
+                form={"model": SLUG, "language": "ml", "temperature": "0.0"},
                 headers={"X-Tenant-Id": TENANT_ID},
                 commit_bar_s=15.0,
             )
@@ -251,24 +249,28 @@ async def test_the_bench_body_is_accepted_by_the_real_endpoint(bench, settings) 
     assert summary.errors == {} and summary.ok == 6
 
 
-# ── OD-12: selection is a gateway-resolved spec; the bench never names a model ──
+def test_a_window_is_sent_as_a_16k_mono_pcm16_wav(bench) -> None:  # type: ignore[no-untyped-def]
+    import io as _io
+
+    pcm = np.arange(1_000, dtype="<i2").tobytes()
+    with wave.open(_io.BytesIO(bench.wav_file(pcm)), "rb") as w:
+        assert (w.getframerate(), w.getnchannels(), w.getsampwidth()) == (16_000, 1, 2)
+        assert w.readframes(w.getnframes()) == pcm
 
 
-def test_selection_is_a_spec_file_and_no_option_names_a_model(bench) -> None:  # type: ignore[no-untyped-def]
+# ── selection is a registered model slug, resolved by the SHELL for the tenant ──
+
+
+def test_selection_is_a_model_slug_and_no_option_names_weights(bench) -> None:  # type: ignore[no-untyped-def]
     parser = bench._build_parser()
     options = {opt for action in parser._actions for opt in action.option_strings}
-    # Exactly one spec source: a captured spec file, or an ASR Agent the gateway resolves.
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit):  # --model is required
         parser.parse_args(["--base-url", "http://x", "--tenant-id", "t", "--wav", "a.wav"])
-    with pytest.raises(SystemExit):
-        parser.parse_args(
-            ["--base-url", "http://x", "--tenant-id", "t", "--wav", "a.wav"]
-            + ["--spec-file", "s.json", "--agent-slug", "a"]
-        )
+    args = parser.parse_args(
+        ["--base-url", "http://x", "--tenant-id", "t", "--wav", "a.wav", "--model", "m"]
+    )
+    assert args.model == "m"
     forbidden = {
-        "--model",
-        "--model-slug",
-        "--slug",
         "--model-path",
         "--local-path",
         "--source-uri",
@@ -277,75 +279,8 @@ def test_selection_is_a_spec_file_and_no_option_names_a_model(bench) -> None:  #
         "--pipeline-id",
         "--hf-token",
         "--quantization",
+        "--vram-gib",
+        "--spec-file",
+        "--agent-slug",
     }
     assert forbidden.isdisjoint(options)
-
-
-def _legacy_asr_spec() -> dict[str, Any]:
-    """The spike's `ResolvedAsrSpec` shape the bench's `--spec-file` still validates."""
-    return {"runtimeKey": "model-0001:v1", "models": {"asr": {"slug": "x", "format": "SAFETENSOR"}}}
-
-
-def test_the_spec_file_must_be_a_resolved_asr_spec(bench, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
-    good = tmp_path / "spec.json"
-    good.write_text(json.dumps(_legacy_asr_spec()))
-    assert bench.load_spec(good)["runtimeKey"] == "model-0001:v1"
-
-    # The pre-phase-B flat slice (model fields at the top level) is refused up front,
-    # instead of as a 422 on every window of every step.
-    flat = tmp_path / "flat.json"
-    flat.write_text(json.dumps({"runtimeKey": "k", "slug": "x", "format": "SAFETENSOR"}))
-    with pytest.raises(bench.BenchInputError, match="models.asr"):
-        bench.load_spec(flat)
-
-    for body in ("[]", '{"models": {"asr": {}}}', "not json"):
-        bad = tmp_path / "bad.json"
-        bad.write_text(body)
-        with pytest.raises(bench.BenchInputError):
-            bench.load_spec(bad)
-
-
-# ── OD-12: --agent-slug resolves the spec through the gateway's ASR resolver ──
-
-
-async def test_agent_slug_fetches_the_gateway_resolved_spec(bench) -> None:  # type: ignore[no-untyped-def]
-    seen: dict[str, Any] = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen["url"] = str(request.url)
-        seen["headers"] = dict(request.headers)
-        return httpx.Response(200, json=_legacy_asr_spec())
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        spec = await bench.fetch_spec(
-            client,
-            gateway_url="http://gw:8868/api/v1/",
-            agent_slug="realtime-transcription-vllm-spike",
-            tenant_id="50000000-0000-0000-0000-000000000000",
-            token="tok",
-        )
-    assert spec["runtimeKey"] == "model-0001:v1"
-    url = httpx.URL(seen["url"])
-    assert url.path == "/api/v1/internal/agents/asr-spec"
-    assert url.params["service"] == "vllm"
-    assert url.params["agentSlug"] == "realtime-transcription-vllm-spike"
-    assert seen["headers"]["x-service-token"] == "tok"
-    assert seen["headers"]["x-tenant-id"] == "50000000-0000-0000-0000-000000000000"
-
-
-async def test_agent_slug_refuses_a_gateway_error_or_a_non_spec(bench) -> None:  # type: ignore[no-untyped-def]
-    for response in (
-        httpx.Response(503, json={"code": "AGENT_NOT_ASSIGNED"}),
-        httpx.Response(200, json={"models": []}),
-    ):
-        async with httpx.AsyncClient(
-            transport=httpx.MockTransport(lambda _r, r=response: r)
-        ) as client:
-            with pytest.raises(bench.BenchInputError):
-                await bench.fetch_spec(
-                    client,
-                    gateway_url="http://gw/api/v1",
-                    agent_slug="a",
-                    tenant_id="t",
-                    token="tok",
-                )

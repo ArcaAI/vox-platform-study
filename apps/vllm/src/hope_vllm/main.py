@@ -38,6 +38,7 @@ from hope_obs import (
 )
 
 from hope_vllm.api.endpoints.health import SERVICE_NAME, service_version
+from hope_vllm.api.openai_errors import install_openai_error_handlers
 from hope_vllm.core.config import Settings, get_settings
 from hope_vllm.core.effective_config import (
     EffectiveConfigClient,
@@ -152,8 +153,9 @@ def create_app(
         engine_factory = VllmEngineFactory(settings)
 
     app = FastAPI(
-        title="vllm — Whisper decode on vLLM",
-        description="Stateless per-window Whisper transcription on vLLM continuous batching",
+        title="vllm — HOPE inference shell on vLLM",
+        description="OpenAI-compatible Whisper transcription on vLLM continuous batching, "
+        "pool-managed engines resolved per model slug",
         version="0.1.0",
         docs_url="/api/v1/docs",
         redoc_url=None,
@@ -192,17 +194,25 @@ def create_app(
         )
     app.add_middleware(ServiceAuthMiddleware)
 
+    from hope_vllm.api.endpoints.engines import router as engines_router
     from hope_vllm.api.endpoints.health import router as health_router
-    from hope_vllm.api.endpoints.transcriptions import router as transcriptions_router
+    from hope_vllm.api.endpoints.openai_models import router as openai_models_router
+    from hope_vllm.api.endpoints.openai_transcriptions import router as transcriptions_router
 
     app.include_router(health_router, prefix="/api/v1")
-    app.include_router(transcriptions_router, prefix="/api/v1")
+    app.include_router(engines_router, prefix="/api/v1")
+    # The OpenAI surface is mounted at the ROOT: a stock client's `base_url` is `…/v1`.
+    app.include_router(transcriptions_router)
+    app.include_router(openai_models_router)
 
     # Logging, request/tenant context, access log and tracing (TASK-987) — from the app
     # factory, never the lifespan (middleware cannot be added once serving starts).
     configure_observability(
         app, ObservabilityConfig.from_env(SERVICE_NAME, service_version=service_version())
     )
+    # AFTER configure_observability: it installs hope_obs's validation handler, which the
+    # OpenAI one wraps for every path outside `/v1/*`.
+    install_openai_error_handlers(app)
 
     from prometheus_fastapi_instrumentator import Instrumentator
 

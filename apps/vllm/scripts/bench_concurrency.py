@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""TASK-1010 — concurrent-stream bench for vllm.
+"""TASK-1010 / TASK-1021 — concurrent-stream bench for the vllm shell.
 
-Simulates N realtime streams against ``POST /api/v1/transcriptions``. Each stream cuts
-``--window-s`` windows out of a 16 kHz mono PCM16 WAV and posts window *i* at the moment
-its audio would exist in real life (``stream start + window + i × hop``), sequentially per
-stream — a stream never pipelines its own windows, exactly like an STT session. When the
-server is slower than the stream, the next window goes out LATE; that lag is the backlog.
+Simulates N realtime streams against the OpenAI-compatible ``POST /v1/audio/transcriptions``
+(C-3). Each stream cuts ``--window-s`` windows out of a 16 kHz mono PCM16 WAV and posts
+window *i* (as a WAV file, multipart) at the moment its audio would exist in real life
+(``stream start + window + i × hop``), sequentially per stream — a stream never pipelines
+its own windows, exactly like an STT session. When the server is slower than the stream,
+the next window goes out LATE; that lag is the backlog.
 
 Per ladder step (N = 1, 2, 4, 8, 12, 16, 20, 25, 32 by default) it reports:
 
@@ -24,8 +25,7 @@ replica, e.g.::
     python apps/vllm/scripts/bench_concurrency.py \\
         --base-url https://vllm.example/ \\
         --tenant-id 50000000-0000-0000-0000-000000000000 \\
-        --gateway-url https://api.example/api/v1 \\
-        --agent-slug realtime-transcription-vllm-spike \\
+        --model arcaai-whisper-large-ml-en-vllm \\
         --wav "/Users/taphuynh/Desktop/lab/Woodman-2/output_aligned/Probiotic_Foods_Dr_Manoj_Johnson/0001_0.86_12.58/audio.wav" \\
         --language ml --output results.json
 
@@ -34,24 +34,17 @@ by absolute path, never copied into the repo). Before the ladder the script call
 ``POST /api/v1/engines/warm`` once and records the cold start separately (``--no-warm``
 to include it in the first step instead).
 
-SELECTION IS AN AGENT, NEVER A MODEL. ``spec.json`` is the gateway's ``ResolvedAsrSpec``
-(camelCase, exactly as ``buildResolvedAsrSpec`` emits it and STT forwards it): the ASR
-Agent resolved to registry rows. The bench sends it verbatim and has no option that
-names a model, a path, an engine or a quantization — those are facts of the registry
-row the agent binds.
-
-Where the spec comes from (TASK-1010 OD-12). ``--agent-slug`` (with ``--gateway-url``) asks
-the gateway's ``GET /internal/agents/asr-spec`` for the ``ResolvedAsrSpec`` a live session on
-that ASR Agent would get — the same ``AsrAgentResolverService``, so agent → registered model
-is exercised exactly as in production (the token is the same ``INTERNAL_ACCESS_TOKEN``).
-``--spec-file`` replays a spec captured earlier. Exactly one of the two is required.
+SELECTION IS A REGISTERED MODEL SLUG. ``--model`` is what any OpenAI client sends; the
+SHELL resolves it through the gateway for ``--tenant-id`` (tenant row first, then SYSTEM),
+exactly as for STT. The bench has no option that names a path, an engine, a quantization
+or a GPU size — those are facts of the ``AiModel`` row.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import base64
+import io
 import json
 import os
 import sys
@@ -67,7 +60,7 @@ import httpx
 SAMPLE_RATE = 16_000
 BYTES_PER_SAMPLE = 2
 DEFAULT_LADDER: tuple[int, ...] = (1, 2, 4, 8, 12, 16, 20, 25, 32)
-TRANSCRIPTIONS_PATH = "/api/v1/transcriptions"
+TRANSCRIPTIONS_PATH = "/v1/audio/transcriptions"
 WARM_PATH = "/api/v1/engines/warm"
 TOKEN_ENV_VARS = ("VLLM_BENCH_TOKEN", "INTERNAL_ACCESS_TOKEN")
 
@@ -91,53 +84,15 @@ def read_wav_pcm16(path: Path) -> bytes:
         return w.readframes(w.getnframes())
 
 
-def validate_spec(spec: Any, source: str) -> dict[str, Any]:
-    """``spec`` if it is a ``ResolvedAsrSpec`` — refused up front otherwise.
-
-    Checked here, not left to the server, because a wrong shape would otherwise surface
-    as a 422 on every window of every ladder step. Only the slice vllm reads is
-    checked; the server validates it properly.
-    """
-    models = spec.get("models") if isinstance(spec, dict) else None
-    asr = models.get("asr") if isinstance(models, dict) else None
-    if not isinstance(spec, dict) or not spec.get("runtimeKey") or not isinstance(asr, dict):
-        raise BenchInputError(
-            f"{source}: not a ResolvedAsrSpec — it needs a runtimeKey and a models.asr row "
-            "(the gateway's resolved ASR Agent, not a hand-written model slice)"
-        )
-    return spec
-
-
-def load_spec(path: Path) -> dict[str, Any]:
-    """The ``ResolvedAsrSpec`` captured in ``path``."""
-    try:
-        spec = json.loads(path.read_text())
-    except (OSError, ValueError) as exc:
-        raise BenchInputError(f"{path}: not readable JSON ({exc})") from exc
-    return validate_spec(spec, str(path))
-
-
-async def fetch_spec(
-    client: httpx.AsyncClient,
-    *,
-    gateway_url: str,
-    agent_slug: str,
-    tenant_id: str,
-    token: str,
-) -> dict[str, Any]:
-    """The ``ResolvedAsrSpec`` the gateway resolves for ``agent_slug`` in ``tenant_id``."""
-    url = f"{gateway_url.rstrip('/')}/internal/agents/asr-spec"
-    response = await client.get(
-        url,
-        params={"service": "vllm", "agentSlug": agent_slug, "tenantId": tenant_id},
-        headers={"X-Service-Token": token, "X-Tenant-Id": tenant_id},
-    )
-    if response.status_code != 200:
-        raise BenchInputError(
-            f"{url}: gateway answered {response.status_code} for agent '{agent_slug}': "
-            f"{response.text[:300]}"
-        )
-    return validate_spec(response.json(), f"{url} (agent '{agent_slug}')")
+def wav_file(pcm: bytes) -> bytes:
+    """A 16 kHz mono PCM16 window wrapped as a WAV file — the route's ``file``."""
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(BYTES_PER_SAMPLE)
+        out.setframerate(SAMPLE_RATE)
+        out.writeframes(pcm)
+    return buffer.getvalue()
 
 
 def cut_windows(
@@ -273,16 +228,16 @@ async def _stream(
     client: httpx.AsyncClient,
     stream: int,
     *,
-    windows_b64: list[str],
+    windows: list[bytes],
     t0: float,
     offset_s: float,
     window_s: float,
     hop_s: float,
-    request_template: dict[str, Any],
+    form: dict[str, str],
     headers: dict[str, str],
     results: list[WindowResult],
 ) -> None:
-    for index, audio_b64 in enumerate(windows_b64):
+    for index, window in enumerate(windows):
         available_at = t0 + offset_s + window_s + index * hop_s
         delay = available_at - time.perf_counter()
         if delay > 0:
@@ -293,7 +248,8 @@ async def _stream(
         try:
             response = await client.post(
                 TRANSCRIPTIONS_PATH,
-                json={**request_template, "audio_b64": audio_b64},
+                data=form,
+                files={"file": ("window.wav", window, "audio/wav")},
                 headers=headers,
             )
             status = response.status_code
@@ -312,7 +268,7 @@ async def run_step(
     window_s: float,
     hop_s: float,
     pcm: bytes,
-    request_template: dict[str, Any],
+    form: dict[str, str],
     headers: dict[str, str],
     commit_bar_s: float,
     stagger: bool = True,
@@ -323,13 +279,13 @@ async def run_step(
     lock-step in production); ``False`` is the worst-case synchronized burst.
     """
     total_s = len(pcm) / (BYTES_PER_SAMPLE * SAMPLE_RATE)
-    streams: list[list[str]] = []
+    streams: list[list[bytes]] = []
     for s in range(n):
         start = (s * total_s / n) if n else 0.0  # a different slice of the file per stream
         windows = cut_windows(
             pcm, window_s=window_s, hop_s=hop_s, count=windows_per_stream, start_offset_s=start
         )
-        streams.append([base64.b64encode(w).decode("ascii") for w in windows])
+        streams.append([wav_file(w) for w in windows])
     results: list[WindowResult] = []
     t0 = time.perf_counter()
     await asyncio.gather(
@@ -337,12 +293,12 @@ async def run_step(
             _stream(
                 client,
                 s,
-                windows_b64=streams[s],
+                windows=streams[s],
                 t0=t0,
                 offset_s=(s * hop_s / n) if stagger else 0.0,
                 window_s=window_s,
                 hop_s=hop_s,
-                request_template=request_template,
+                form=form,
                 headers=headers,
                 results=results,
             )
@@ -353,11 +309,11 @@ async def run_step(
 
 
 async def warm_engine(
-    client: httpx.AsyncClient, *, spec: dict[str, Any], headers: dict[str, str]
+    client: httpx.AsyncClient, *, model: str, headers: dict[str, str]
 ) -> dict[str, Any]:
     """Load the engine once before the ladder; the cold start is reported, not averaged in."""
     started = time.perf_counter()
-    response = await client.post(WARM_PATH, json={"spec": spec}, headers=headers)
+    response = await client.post(WARM_PATH, json={"model": model}, headers=headers)
     wall = time.perf_counter() - started
     body: dict[str, Any] = response.json() if response.content else {}
     return {
@@ -377,20 +333,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--base-url", required=True, help="vllm base URL (scheme://host[:port])")
     p.add_argument("--tenant-id", required=True, help="sent as X-Tenant-Id")
-    source = p.add_mutually_exclusive_group(required=True)
-    source.add_argument(
-        "--agent-slug",
-        help="ASR Agent under test; its spec is resolved by the gateway (needs --gateway-url)",
-    )
-    source.add_argument(
-        "--spec-file",
-        type=Path,
-        help="a ResolvedAsrSpec captured earlier from the gateway",
-    )
     p.add_argument(
-        "--gateway-url",
-        default=None,
-        help="gateway API base for --agent-slug, e.g. https://api.example/api/v1",
+        "--model",
+        required=True,
+        help="registered AiModel slug under test; the shell resolves it for --tenant-id",
     )
     p.add_argument("--wav", required=True, type=Path, help="16 kHz mono PCM16 WAV")
     p.add_argument("--language", default="ml", help="Whisper language token (default ml)")
@@ -408,7 +354,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout-s", type=float, default=120.0, help="per-request timeout")
     p.add_argument("--pause-s", type=float, default=5.0, help="idle gap between steps")
     p.add_argument("--temperature", type=float, default=0.0)
-    p.add_argument("--max-tokens", type=int, default=None)
     p.add_argument("--no-warm", action="store_true", help="skip the warm-up call")
     p.add_argument("--no-stagger", action="store_true", help="start all streams together")
     p.add_argument("--output", type=Path, default=None, help="write JSON results here")
@@ -429,37 +374,22 @@ async def _main_async(args: argparse.Namespace) -> int:
     headers = {"X-Tenant-Id": args.tenant_id}
     if token:
         headers["X-Service-Token"] = token
-    if args.agent_slug:
-        if not args.gateway_url:
-            raise BenchInputError("--agent-slug needs --gateway-url")
-        if not token:
-            raise BenchInputError(f"--agent-slug needs a service token in {TOKEN_ENV_VARS}")
-        async with httpx.AsyncClient(timeout=args.timeout_s) as gateway:
-            spec = await fetch_spec(
-                gateway,
-                gateway_url=args.gateway_url,
-                agent_slug=args.agent_slug,
-                tenant_id=args.tenant_id,
-                token=token,
-            )
-    else:
-        spec = load_spec(args.spec_file)
     pcm = read_wav_pcm16(args.wav)
     hop_s = args.hop_s or args.window_s
     windows_per_stream = max(1, int(args.duration_s // hop_s))
-    template: dict[str, Any] = {
-        "spec": spec,
+    form = {
+        "model": args.model,
         "language": args.language,
-        "temperature": args.temperature,
+        "temperature": str(args.temperature),
+        "response_format": "json",
     }
-    if args.max_tokens is not None:
-        template["max_tokens"] = args.max_tokens
 
     limits = httpx.Limits(
         max_connections=max(args.ladder) * 2, max_keepalive_connections=max(args.ladder) * 2
     )
     report: dict[str, Any] = {
         "base_url": args.base_url,
+        "model": args.model,
         "wav": str(args.wav),
         "window_s": args.window_s,
         "hop_s": hop_s,
@@ -471,7 +401,7 @@ async def _main_async(args: argparse.Namespace) -> int:
         base_url=args.base_url, timeout=args.timeout_s, limits=limits
     ) as client:
         if not args.no_warm:
-            report["cold_start"] = await warm_engine(client, spec=spec, headers=headers)
+            report["cold_start"] = await warm_engine(client, model=args.model, headers=headers)
             print(f"cold start: {report['cold_start']}")
         print(
             "|   N | ok | lat p50 ms | lat p95 ms | lat p99 ms | commit p99 ms | audio s/s | final lag s | keeps up | bar | errors |"
@@ -487,7 +417,7 @@ async def _main_async(args: argparse.Namespace) -> int:
                 window_s=args.window_s,
                 hop_s=hop_s,
                 pcm=pcm,
-                request_template=template,
+                form=form,
                 headers=headers,
                 commit_bar_s=args.commit_bar_s,
                 stagger=not args.no_stagger,

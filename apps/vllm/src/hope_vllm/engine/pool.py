@@ -24,7 +24,14 @@ platform-admin change applies without a restart.
 * **Lazy + single-flight.** Everything else loads on first use; concurrent first requests
   share ONE load, shielded so a client disconnect never cancels a load others wait on.
 * **Fresh at build.** ``before_build`` (the control-plane pull) is awaited before every build.
-* **Fail closed on drift.** One runtime key must always mean one spec.
+* **Saturation.** A lease beyond ``maxNumSeqs × inflight_factor`` on one engine is refused
+  (``EngineSaturatedError`` → 429 + Retry-After): past that the request would only queue
+  inside vLLM, and the caller can retry against another replica sooner.
+* **Fail closed on drift.** One runtime key must always mean one set of WEIGHTS: a request
+  that reuses a resident key for different weights (path, source, checksum, format,
+  dtype, quantization, context length, owner) is refused. Engine SIZING may differ — a
+  row edit to ``vramGiB`` / ``maxNumSeqs`` that keeps the runtime key is served by the
+  engine already resident, which keeps the shape it was built with until evicted.
 * **Failures are not cached.** A NAMED refusal (``EngineBuildRefused``) keeps its code
   through the pool, so the HTTP layer answers with the reason.
 """
@@ -42,7 +49,12 @@ from hope_obs import get_logger
 
 from hope_vllm.core import metrics
 from hope_vllm.core.serving_spec_client import ModelNotServable
-from hope_vllm.engine.base import EngineBuildRefused, EngineFactory, WhisperEngine
+from hope_vllm.engine.base import (
+    DEFAULT_MAX_NUM_SEQS,
+    EngineBuildRefused,
+    EngineFactory,
+    WhisperEngine,
+)
 from hope_vllm.spec import ResolvedServingSpec
 
 logger = get_logger(__name__)
@@ -73,6 +85,10 @@ class EngineCapacityError(RuntimeError):
     """The new engine does not fit, and evicting every idle unpinned engine would not help."""
 
 
+class EngineSaturatedError(RuntimeError):
+    """The engine already holds ``maxNumSeqs × inflight_factor`` leases."""
+
+
 class EngineLoadError(RuntimeError):
     """The backend failed to build the engine; ``code`` names why (503)."""
 
@@ -83,6 +99,23 @@ class EngineLoadError(RuntimeError):
 
 class RuntimeKeySpecMismatchError(RuntimeError):
     """A runtime key already bound to one spec was requested with another."""
+
+
+def weights_identity(spec: ResolvedServingSpec) -> tuple[object, ...]:
+    """What a runtime key PINS: the weights and how they load — never engine sizing."""
+    return (
+        spec.slug,
+        spec.kind,
+        spec.tenant_id,
+        spec.local_path,
+        spec.source_uri,
+        spec.source_revision,
+        spec.checksum,
+        spec.format,
+        spec.compute_type,
+        spec.quantization,
+        spec.max_model_len,
+    )
 
 
 @dataclass
@@ -112,13 +145,20 @@ class EnginePool:
         self._loading: dict[str, asyncio.Task[_Resident]] = {}
         self._loading_specs: dict[str, ResolvedServingSpec] = {}
         self._pinned: set[str] = set()
+        self._pin_specs: dict[str, ResolvedServingSpec] = {}
 
     # ── public ──────────────────────────────────────────────────────────────
 
     @asynccontextmanager
-    async def lease(self, spec: ResolvedServingSpec) -> AsyncIterator[WhisperEngine]:
-        """Hold the engine for ``spec`` for one decode; it cannot be evicted meanwhile."""
-        resident = await self._acquire(spec)
+    async def lease(
+        self, spec: ResolvedServingSpec, *, enforce_saturation: bool = True
+    ) -> AsyncIterator[WhisperEngine]:
+        """Hold the engine for ``spec`` for one decode; it cannot be evicted meanwhile.
+
+        Raises :class:`EngineSaturatedError` when the engine is already at its lease cap
+        (``enforce_saturation=False`` for a warm, which decodes nothing).
+        """
+        resident = await self._acquire(spec, enforce_saturation)
         try:
             yield resident.engine
         finally:
@@ -128,7 +168,7 @@ class EnginePool:
     async def warm(self, spec: ResolvedServingSpec) -> tuple[float, bool]:
         """Load ``spec`` if needed; returns ``(load_seconds, already_resident)``."""
         already = spec.runtime_key in self._resident
-        async with self.lease(spec):
+        async with self.lease(spec, enforce_saturation=False):
             resident = self._resident[spec.runtime_key]
         return resident.load_seconds, already
 
@@ -140,6 +180,7 @@ class EnginePool:
         for slug in self._pool_config().pins:
             spec = await resolve(slug)
             self._pinned.add(spec.runtime_key)
+            self._pin_specs[spec.runtime_key] = spec
             await self.warm(spec)
             logger.info("vllm.engine.pinned", slug=slug, runtime_key=spec.runtime_key)
 
@@ -147,6 +188,14 @@ class EnginePool:
         """Leases currently held on ``runtime_key`` (0 when not resident)."""
         resident = self._resident.get(runtime_key)
         return resident.inflight if resident is not None else 0
+
+    def pending_pins(self) -> list[tuple[str, str]]:
+        """``(slug, kind)`` of every pin resolved but not (yet) resident."""
+        return [
+            (spec.slug, spec.kind)
+            for key, spec in self._pin_specs.items()
+            if key not in self._resident
+        ]
 
     def resident_specs(self) -> list[tuple[ResolvedServingSpec, bool]]:
         """``(spec, pinned)`` for every resident engine."""
@@ -189,7 +238,7 @@ class EnginePool:
             s.engine.vram_gib for s in self._loading_specs.values()
         )
 
-    async def _acquire(self, spec: ResolvedServingSpec) -> _Resident:
+    async def _acquire(self, spec: ResolvedServingSpec, enforce_saturation: bool) -> _Resident:
         key = spec.runtime_key
         while True:
             victims: list[_Resident] = []
@@ -203,8 +252,14 @@ class EnginePool:
                     )
                 resident = self._resident.get(key)
                 if resident is not None:
-                    if resident.spec != spec:
+                    if weights_identity(resident.spec) != weights_identity(spec):
                         raise RuntimeKeySpecMismatchError(key)
+                    cap = (
+                        resident.spec.engine.max_num_seqs or DEFAULT_MAX_NUM_SEQS
+                    ) * config.inflight_factor
+                    if enforce_saturation and resident.inflight >= cap:
+                        metrics.REJECTIONS_TOTAL.labels(reason="engine_saturated").inc()
+                        raise EngineSaturatedError(key)
                     resident.inflight += 1
                     return resident
                 task = self._loading.get(key)
@@ -213,7 +268,7 @@ class EnginePool:
                     task = asyncio.create_task(self._load(spec))
                     self._loading[key] = task
                     self._loading_specs[key] = spec
-                elif self._loading_specs[key] != spec:
+                elif weights_identity(self._loading_specs[key]) != weights_identity(spec):
                     raise RuntimeKeySpecMismatchError(key)
             for victim in victims:
                 await self._shutdown(victim)

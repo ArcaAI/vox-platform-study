@@ -58,6 +58,7 @@ from hope_obs import get_logger
 from hope_vllm.audio import SAMPLE_RATE
 from hope_vllm.core.config import Settings
 from hope_vllm.engine.base import (
+    DEFAULT_MAX_NUM_SEQS,
     DecoderBudgetError,
     DecodeRequest,
     DecodeResult,
@@ -90,9 +91,6 @@ FP8_MIN_CAPABILITY = (8, 9)
 
 #: ``() -> total memory of the GPU this process runs on, in GiB``.
 DeviceTotalGib = Callable[[], float]
-
-#: vLLM's running-batch cap when the model row declares none.
-DEFAULT_MAX_NUM_SEQS = 64
 
 
 class SourceResolver(Protocol):

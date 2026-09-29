@@ -17,8 +17,8 @@ from hope_vllm.core.effective_config import (
     EffectiveConfigClient,
 )
 from hope_vllm.main import create_app
-from hope_vllm.tests.conftest import TENANT_ID, transcription_body
-from hope_vllm.tests.fakes import FakeEngineFactory
+from hope_vllm.tests.conftest import TENANT_ID, transcription_form
+from hope_vllm.tests.fakes import FakeEngineFactory, FakeSpecResolver
 
 GATEWAY = "http://gateway.test/api/v1"
 
@@ -179,9 +179,11 @@ async def test_the_listener_subscribes_to_the_shared_channel_and_evicts() -> Non
 
 
 async def _post(client: AsyncClient) -> dict[str, Any]:
+    data, files = transcription_form(response_format="verbose_json")
     response = await client.post(
-        "/api/v1/transcriptions",
-        json=transcription_body(),
+        "/v1/audio/transcriptions",
+        data=data,
+        files=files,
         headers={"X-Tenant-Id": TENANT_ID},
     )
     assert response.status_code == 200
@@ -195,12 +197,13 @@ async def test_truncation_knobs_follow_the_control_plane_per_request(settings: S
     app = create_app(
         settings,
         engine_factory=FakeEngineFactory(engine_text="ok"),
+        serving_spec_client=FakeSpecResolver(),
         effective_config_client=client_for(gateway, clock),
     )
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # The first window builds the engine, and a build pulls the control plane first.
-            assert (await _post(client))["truncation"]["suspected"] is False
+            assert (await _post(client))["x_hope"]["truncation"]["suspected"] is False
 
             # A platform admin raises the threshold; the TTL lapses. The next window must
             # not WAIT for the pull (it refreshes in the background) — a later one sees it.
@@ -208,16 +211,20 @@ async def test_truncation_knobs_follow_the_control_plane_per_request(settings: S
             clock.now += 120
             await _post(client)
             await app.state.control_plane_refresh
-            assert (await _post(client))["truncation"]["suspected"] is True
+            assert (await _post(client))["x_hope"]["truncation"]["suspected"] is True
     assert len(gateway.requests) == 2
 
 
 async def test_no_gateway_configured_serves_on_the_bootstrap_values(settings: Settings) -> None:
-    app = create_app(settings, engine_factory=FakeEngineFactory(engine_text="ok"))
+    app = create_app(
+        settings,
+        engine_factory=FakeEngineFactory(engine_text="ok"),
+        serving_spec_client=FakeSpecResolver(),
+    )
     assert app.state.effective_config_client is None
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            assert (await _post(client))["truncation"]["suspected"] is True
+            assert (await _post(client))["x_hope"]["truncation"]["suspected"] is True
 
 
 async def test_a_down_gateway_never_fails_a_window(settings: Settings) -> None:
@@ -225,6 +232,7 @@ async def test_a_down_gateway_never_fails_a_window(settings: Settings) -> None:
     app = create_app(
         settings,
         engine_factory=FakeEngineFactory(),
+        serving_spec_client=FakeSpecResolver(),
         effective_config_client=client_for(gateway),
     )
     async with app.router.lifespan_context(app):

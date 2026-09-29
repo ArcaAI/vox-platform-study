@@ -15,6 +15,9 @@ import numpy.typing as npt
 
 from hope_vllm.spec import ResolvedServingSpec
 
+#: vLLM's running-batch cap when the model row declares none (``engine.maxNumSeqs``).
+DEFAULT_MAX_NUM_SEQS = 64
+
 
 class DecoderBudgetError(ValueError):
     """The decoder prompt leaves no room to generate within the model's context."""

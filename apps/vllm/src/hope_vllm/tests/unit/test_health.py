@@ -7,8 +7,8 @@ from httpx import ASGITransport, AsyncClient
 
 from hope_vllm.core.config import Settings
 from hope_vllm.main import create_app
-from hope_vllm.tests.conftest import TENANT_ID, serving_spec_payload
-from hope_vllm.tests.fakes import FakeEngineFactory
+from hope_vllm.tests.conftest import SLUG, TENANT_ID
+from hope_vllm.tests.fakes import FakeEngineFactory, FakeSpecResolver
 
 
 class ExplodingPool:
@@ -30,7 +30,7 @@ async def test_liveness_is_independent_of_the_engine_pool(client, app) -> None: 
 
 async def test_liveness_answers_while_an_engine_is_loading(settings: Settings) -> None:
     factory = FakeEngineFactory(build_delay_s=0.3)
-    app = create_app(settings, engine_factory=factory)
+    app = create_app(settings, engine_factory=factory, serving_spec_client=FakeSpecResolver())
     import asyncio
 
     async with app.router.lifespan_context(app):
@@ -38,7 +38,7 @@ async def test_liveness_answers_while_an_engine_is_loading(settings: Settings) -
             warm = asyncio.create_task(
                 client.post(
                     "/api/v1/engines/warm",
-                    json={"spec": serving_spec_payload()},
+                    json={"model": SLUG},
                     headers={"X-Tenant-Id": TENANT_ID},
                 )
             )
@@ -87,7 +87,7 @@ async def test_ready_reports_no_engine_yet_as_degraded_but_ready(client) -> None
 async def test_ready_lists_loaded_engines(client) -> None:  # type: ignore[no-untyped-def]
     await client.post(
         "/api/v1/engines/warm",
-        json={"spec": serving_spec_payload()},
+        json={"model": SLUG},
         headers={"X-Tenant-Id": TENANT_ID},
     )
     body = (await client.get("/api/v1/health/ready")).json()
