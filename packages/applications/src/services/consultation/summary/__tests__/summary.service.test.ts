@@ -370,13 +370,17 @@ describe('SummaryService', () => {
       expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize', null);
     });
 
-    it('lets a caller-supplied model win over the resolved default', async () => {
+    // TASK-1012 item 11 — REVERSED: a caller's `options` can no longer pin the engine. The
+    // model is the tenant's TEXT_GENERATION agent; model-selecting keys are dropped.
+    it('never lets a caller-supplied model or provider override the resolved agent', async () => {
       primeGenerateMocks();
 
-      await service.generatePreSummary('c-1', { options: { model: 'caller-pinned' } } as any);
+      await service.generatePreSummary('c-1', { options: { model: 'caller-pinned', textModel: 'caller-pinned', provider: 'openai', textProvider: 'openai' } } as any);
 
       const body = lastTextBody();
-      expect(body.model).toBe('caller-pinned');
+      expect(body.provider).toBe('lm-studio');
+      expect(body.model).toBe('resolved-medgemma');
+      expect(JSON.stringify(body)).not.toContain('caller-pinned');
     });
   });
 

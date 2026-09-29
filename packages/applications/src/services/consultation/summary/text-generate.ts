@@ -88,6 +88,21 @@ function shouldForwardResponseFormat(provider: string | undefined): boolean {
   return normalized !== 'ollama';
 }
 
+/**
+ * TASK-1012 item 11 — the `options` keys {@link buildTextGeneratePayload} reads as an ENGINE
+ * selection. On a caller's opaque `options` bag they are an agent-resolution bypass: the model is
+ * the tenant's TEXT_GENERATION agent, so they are dropped before the resolved pair is merged in.
+ */
+const CALLER_MODEL_SELECTION_KEYS = ['provider', 'textProvider', 'model', 'textModel'] as const;
+
+/** A caller's `options` without the keys that would select the engine (see above). */
+export function withoutCallerModelSelection(options: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!options) return options;
+  const rest = { ...options };
+  for (const key of CALLER_MODEL_SELECTION_KEYS) delete rest[key];
+  return rest;
+}
+
 export function buildTextGeneratePayload(
   assembledPrompt: AssembledPrompt,
   options?: Record<string, unknown>,

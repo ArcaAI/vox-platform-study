@@ -80,7 +80,7 @@ function buildProcessor(generation: Record<string, unknown>) {
   return { processor, httpService };
 }
 
-const job = () =>
+const job = (options: Record<string, unknown> = {}) =>
   ({
     id: 'bull-1',
     timestamp: Date.now(),
@@ -89,7 +89,7 @@ const job = () =>
       consultationId: 'consult-1',
       tenantId: TENANT,
       userId: 'user-1',
-      request: { options: {} },
+      request: { options },
     },
   }) as any;
 
@@ -121,5 +121,23 @@ describe('TASK-891 — PreSummaryProcessor carries the resolved agent`s reasonin
     await processor.process(job());
 
     expect(Object.keys(lastPostBody(httpService))).not.toContain('extra');
+  });
+});
+
+// TASK-1012 item 11 — `POST consultations/:id/summary/pre-summary/async` forwards the caller's
+// opaque `options` bag onto this job. It used to be spread OVER the agent-resolved selection, so
+// `options.textModel` (or `model` / `provider` / `textProvider`) pinned the engine — an
+// agent-resolution bypass. The model is the tenant's TEXT_GENERATION agent, nothing else.
+describe('TASK-1012 — a caller `options` bag cannot pin the pre-summary model', () => {
+  it('model-selecting keys never reach the TEXT call; the resolved agent`s pair does', async () => {
+    const { processor, httpService } = buildProcessor({ temperature: 0.1 });
+
+    await processor.process(job({ textModel: 'caller-pinned', textProvider: 'openai', model: 'caller-model', provider: 'caller-provider', note: 'kept' }));
+
+    const body = lastPostBody(httpService);
+    expect(body).toMatchObject({ provider: 'lm-studio', model: 'resolved-medgemma' });
+    expect(JSON.stringify(body)).not.toMatch(/caller-pinned|caller-model|caller-provider|"openai"/);
+    // Non-selecting options still ride along in the TEXT context.
+    expect((body.context as Record<string, unknown>).note).toBe('kept');
   });
 });
