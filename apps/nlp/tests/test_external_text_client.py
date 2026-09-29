@@ -87,7 +87,7 @@ async def test_posts_to_generate_with_prompt_and_returns_content() -> None:
     )
 
     assert label == "billing"
-    assert http.calls[0]["url"] == "http://text.local/generate"
+    assert http.calls[0]["url"] == "http://text.local/api/v1/generate"
     assert http.calls[0]["json"]["prompt"] == "Which topic does this note discuss?"
     assert http.calls[0]["json"]["stream"] is False
 

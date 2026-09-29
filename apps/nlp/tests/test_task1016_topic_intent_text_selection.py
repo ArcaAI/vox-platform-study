@@ -99,6 +99,22 @@ class TestClientNamesTheSelection:
         assert body["model"] == "gemma-3-12b"
 
     @pytest.mark.asyncio
+    async def test_posts_to_texts_versioned_generate_route(self) -> None:
+        """`TEXT_URL` is the fleet-wide bare ORIGIN (guardrail and harness append `/api/v1/...`);
+        text mounts `/generate` under `/api/v1`. The bare `/generate` path 404'd on every call
+        (found by the TASK-1016 live proof)."""
+        http = _RecordingHttp()
+        client = ExternalTextClient(
+            settings=ExternalTextConfig(base_url="http://localhost:8862"), http_client=http
+        )
+
+        await client.generate_label_with_usage(
+            "Which topic?", tenant_id="t1", provider="lm-studio", model="gemma-3-12b"
+        )
+
+        assert http.calls[0]["url"] == "http://localhost:8862/api/v1/generate"
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(("provider", "model"), [("", "m"), ("p", ""), ("  ", "m")])
     async def test_blank_selection_raises_before_any_call(self, provider: str, model: str) -> None:
         http = _RecordingHttp()

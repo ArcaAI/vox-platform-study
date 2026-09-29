@@ -31,6 +31,11 @@ from nlp.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+#: `text` mounts its routers under `/api/v1`; `base_url` is the fleet-wide bare ORIGIN
+#: (`TEXT_URL`, the same value guardrail and harness append their `/api/v1/...` paths to).
+#: TASK-1016: the former bare `/generate` 404'd on every call.
+GENERATE_PATH = "/api/v1/generate"
+
 
 class ExternalTextUnavailableError(Exception):
     """Raised when `text` is unreachable after the bounded retry budget, or
@@ -161,7 +166,7 @@ class ExternalTextClient:
         for attempt in range(attempts):
             try:
                 response = await self.http_client.post(
-                    f"{self.base_url}/generate",
+                    f"{self.base_url}{GENERATE_PATH}",
                     json=body,
                     headers=headers,
                     timeout=self.settings.timeout_s,
