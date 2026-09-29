@@ -181,8 +181,8 @@ export interface IAiRoutingPolicyService {
 
   /**
    * TASK-862 — the elected default for a NON-AGENT task on the house cascade
-   * (tenant → SYSTEM, widening only on absence). Replaces
-   * `AiTaskDefaultService.getEffective` as the one "default model for task X"
+   * (tenant → SYSTEM, widening only on absence). Replaced the retired
+   * `AiTaskDefaultService.getEffective` (TASK-881) as the one "default model for task X"
    * resolution; agents (TASK-863) bind a model directly and never come here.
    *
    * TASK-872 — widening on ABSENCE means exactly that. A tenant whose own

@@ -33,7 +33,7 @@ import { SellRateDtoMapper } from './sell-rate-card.dto.mapper';
  *
  * // AUTH-NOTE: rate-card mutation is SUPER_ADMIN-ONLY, enforced imperatively
  * // here (`isSuperAdmin`) because the permission decorators cannot express
- * // "super admins only" — the `AiTaskDefault` precedent (rule 05). This is a
+ * // "super admins only" — the same imperative-gate pattern as `AiRoutingPolicyService` (rule 05). This is a
  * // deliberate 403 privilege boundary, NOT the 404-over-403 tenancy posture.
  *
  * The COST plane is refused outright: it is ops-owned (seeds + the future

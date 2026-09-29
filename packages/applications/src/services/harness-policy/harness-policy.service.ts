@@ -710,8 +710,8 @@ export class HarnessPolicyService {
    *
    * Fail-OPEN by contract: `null` — never a throw — when the toggle is off, the chain is empty
    * (the primary IS the platform default), the resolver is un-wired, or the lookup faults. A
-   * `null` means the caller runs no fallback. The per-tenant `text.*.fallback` AiTaskDefault
-   * keys are no longer read.
+   * `null` means the caller runs no fallback. The per-tenant `text.*.fallback` keys of the retired `AiTaskDefault`
+   * facade (TASK-881) are no longer read.
    *
    * TASK-891 — the candidate's OWN `generation` rides along, exactly as on the primary. A
    * fallback exists to survive a provider outage, not to change how hard the engine thinks: one

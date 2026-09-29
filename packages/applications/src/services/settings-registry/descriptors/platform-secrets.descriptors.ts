@@ -33,8 +33,8 @@
 //                             has only `qdrant_url` and `qdrant_timeout_s`). Its one
 //                             reader is the provisioning script
 //                             `infrastructure/docker/scripts/init-qdrant-collections.py:23`,
-//                             which runs outside the application env surface and is
-//                             documented in `infrastructure/docker/env.stt-dev.example`.
+//                             which runs outside the application env surface (its
+//                             former `infrastructure/docker/env.stt-dev.example` doc is gone).
 //                             Left unregistered because the registry catalogs the
 //                             APPLICATION surface, not one-shot infra provisioning.
 //                             (An earlier revision of this comment claimed "no reader

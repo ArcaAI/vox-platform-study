@@ -117,7 +117,7 @@ const REJECTION = {
  * enforced here — a `ForbiddenException` (403), because this is a PRIVILEGE
  * rule on a resource the caller is otherwise addressing legitimately, not the
  * 404-over-403 cross-tenant posture. A cross-tenant ID still returns 404.
- * Same shape as `AiTaskDefaultService`'s `SUPER_ADMIN_ONLY_TASK_PREFIXES` gate.
+ * Gated by `SUPER_ADMIN_ONLY_TASK_PREFIXES` (`./constants`).
  *
  * ## Funding is derived, never stamped
  *
@@ -139,7 +139,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     private readonly aiModelRepository: AiModelRepository,
     @Inject(IProviderConnectionService) private readonly providerConnectionService: IProviderConnectionService,
     // The UNSCOPED base client backs the super-admin cross-tenant lane only —
-    // never a tenant-facing read. Mirrors `AiTaskDefaultService`.
+    // never a tenant-facing read. Same lane as `RbacRoleService`.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     // The DOMAINS `CoreUnitOfWorkService`, not the identically named unwired
     // class under `services/baseServices`. REQUIRED, not optional: the default
@@ -516,7 +516,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       // A compare-and-set with no token cannot be verified. `@RequiresIfMatch()`
       // 428s at the HTTP layer before this, so reaching here means a non-HTTP
       // caller skipped the precondition — surface it as a concurrency error
-      // rather than writing unguarded (the `AiTaskDefaultService` precedent).
+      // rather than writing unguarded (the same posture as `AiProviderConnectionService`).
       throw new OptimisticConcurrencyException(String(ResourceType.AiRoutingPolicy), existing.id, {
         expectedVersion: dto.expectedVersion,
         currentVersion: existing.version,
@@ -1044,7 +1044,8 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
    * Resolve a catalogue slug on the TWO-TIER cascade — the tenant's own row
    * first, the SYSTEM catalogue only on absence.
    *
-   * Identical shape to `AiTaskDefaultService.resolveEnabledModelBySlug`, and
+   * The same cascade the runtime election uses (the retired
+   * `AiTaskDefaultService.resolveEnabledModelBySlug` had this shape), and
    * deliberately so: an import must land on exactly the model the same slug
    * would select at runtime, or the imported configuration would resolve to
    * something the operator did not choose.
@@ -1448,7 +1449,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
    * `target === SYSTEM` needs the lane exactly as a foreign tenant does. When
    * the target is not the CLS tenant, route through the UNSCOPED base client so
    * the query carries ONLY the explicit tenant filters this service builds.
-   * Same lane as `AiTaskDefaultService` and `HarnessPolicyService`.
+   * Same lane as `RbacRoleService` and `McpServerAdminService`.
    *
    * Only reachable behind {@link assertSuperAdmin} — every write asserts it.
    */

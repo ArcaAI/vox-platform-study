@@ -76,7 +76,7 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
    * the descriptor.
    *
    * Nothing read it. Enforcement of D2's floor was the platform-approved-list
-   * half in `AiTaskDefaultService.upsertRow` (a `guardrail.*` binding must name
+   * half in the retired `AiTaskDefaultService.upsertRow` (TASK-881; a `guardrail.*` binding must name
    * a SYSTEM-tenant `AiModel` row), which does not consult this key; wiring the
    * entitlement half needs a `PlanEntitlement` / `TenantEntitlement` COLUMN
    * that does not exist. A descriptor for a column that has not been added is a
