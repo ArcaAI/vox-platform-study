@@ -29,8 +29,9 @@ import { SYSTEM_TENANT_ID } from '../00-constants';
 
 const TARGET_SLUG = 'lms-gemma-4-e2b-it-qat';
 // TASK-881: the three `text.*` elections are gone (text selects through the assigned agent);
-// `harness.judge` is the one text-generation routing election left.
-const TEXT_TASK_KEYS = ['harness.judge'] as const;
+// `harness.judge` was the one text-generation routing election left; TASK-1016 (OD-1a) adds the
+// two open-taxonomy generations `apps/nlp` delegates to `text`.
+const TEXT_TASK_KEYS = ['harness.judge', 'nlp.topic', 'nlp.intent'] as const;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(HERE, '../../migrations');

@@ -29,6 +29,18 @@ const MIGRATION_SQL = join(
 const RETIRED_IN_SQL = ['text.live', 'text.finalize', 'text.test', 'text.live.fallback', 'text.finalize.fallback'] as const;
 
 /**
+ * Keys the migration classified one way and the vocabulary later RECLASSIFIED, with the kind
+ * the SQL recorded. TASK-1016 (OD-1a): `nlp.topic` / `nlp.intent` were backfilled as
+ * TEXT_CLASSIFICATION while they were unregistered; registering them as routing keys made them
+ * TEXT_GENERATION (the route delegates to an LLM). No row carried either key — none could be
+ * written while `assertKnownTaskKey` rejected them — so no data migration follows.
+ */
+const RECLASSIFIED_SINCE_SQL: Record<string, string> = {
+  'nlp.topic': 'TEXT_CLASSIFICATION',
+  'nlp.intent': 'TEXT_CLASSIFICATION',
+};
+
+/**
  * Reads the `CASE` arms of the migration's first backfill UPDATE back into a
  * `taskKey → AiTaskKind` map. Both UPDATE statements carry an identical CASE,
  * which the "both backfills agree" test below pins.
@@ -70,19 +82,19 @@ describe('AI task taxonomy', () => {
     for (const key of RETIRED_IN_SQL) expect(resolveAiTaskKind(key), key).toBeNull();
   });
 
-  it('classifies the two task keys that live outside AI_TASK_KEYS', () => {
-    // `nlp.topic` / `nlp.intent` are declared in tenant-nlp-task-instructions
-    // as instruction-CONTENT keys; their model selection is an open governance
-    // gap `assertKnownTaskKey` still rejects, so the taxonomy accounts for them
-    // without widening the vocabulary.
-    expect(resolveAiTaskKind('nlp.topic')).toBe(AiTaskKind.TEXT_CLASSIFICATION);
-    expect(resolveAiTaskKind('nlp.intent')).toBe(AiTaskKind.TEXT_CLASSIFICATION);
+  it('classifies nlp.topic / nlp.intent as TEXT_GENERATION routing keys (TASK-1016, OD-1a)', () => {
+    // Their selection used to be an open governance gap. The route delegates the label to an
+    // LLM through `text`, so the kind is TEXT_GENERATION — an encoder classifier cannot serve it.
+    expect(AI_TASK_KEYS).toEqual(expect.arrayContaining(['nlp.topic', 'nlp.intent']));
+    expect(resolveAiTaskKind('nlp.topic')).toBe(AiTaskKind.TEXT_GENERATION);
+    expect(resolveAiTaskKind('nlp.intent')).toBe(AiTaskKind.TEXT_GENERATION);
   });
 
-  it('keeps TEXT_GENERATION bound through the judge alone', () => {
-    // The generation plane's only routing-policy key. `text.*` was one KIND
-    // and five SELECTIONS until TASK-881; the kind survives on this key.
-    expect(AI_TASK_KIND_BY_TASK_KEY['harness.judge']).toBe(AiTaskKind.TEXT_GENERATION);
+  it('binds TEXT_GENERATION through the judge and the two delegated NLP generations only', () => {
+    // `text.*` was one KIND and five SELECTIONS until TASK-881; text generation proper selects
+    // through the assigned agent. The routing keys of this kind are the non-agent LLM calls.
+    const generationKeys = AI_TASK_KEYS.filter((k) => AI_TASK_KIND_BY_TASK_KEY[k] === AiTaskKind.TEXT_GENERATION);
+    expect([...generationKeys].sort()).toEqual(['harness.judge', 'nlp.intent', 'nlp.topic']);
   });
 
   it('does not collapse NER and PII, which share a ModelTaskType', () => {
@@ -95,7 +107,7 @@ describe('AI task taxonomy', () => {
     const sql = readFileSync(MIGRATION_SQL, 'utf8');
     const fromSql = parseMigrationCase(sql);
 
-    const fromTs: Record<string, string> = { ...AI_TASK_KIND_BY_TASK_KEY, 'nlp.topic': AiTaskKind.TEXT_CLASSIFICATION, 'nlp.intent': AiTaskKind.TEXT_CLASSIFICATION };
+    const fromTs: Record<string, string> = { ...AI_TASK_KIND_BY_TASK_KEY, ...RECLASSIFIED_SINCE_SQL };
 
     const surviving = Object.fromEntries(Object.entries(fromSql).filter(([key]) => !(RETIRED_IN_SQL as readonly string[]).includes(key)));
     expect(surviving).toEqual(fromTs);
