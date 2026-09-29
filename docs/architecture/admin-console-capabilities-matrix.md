@@ -56,12 +56,12 @@ inventory").
 | 24  | Storage browser (tenant data plane) | `/storage`                  |                                        |
 | 25  | Prompt templates / agents           | `/agents`                   |                                        |
 | 26  | DNA writing style administration    | `/dna-writing-styles`       |                                        |
-| 27  | Audio (ASR) pipelines               | `/audio/pipelines`          |                                        |
+| 27  | Audio (ASR) pipelines               | `/audio/pipelines`          | RETIRED (TASK-1006) — ASR is an Agent |
 | 28  | Transcription jobs (admin view)     | `/audio/transcription-jobs` |                                        |
 | 29  | Harness policy & live config        | `/harness/policy`           | Global-default row is super-admin only |
 | 30  | Harness observability               | `/harness/observability`    |                                        |
 | 31  | Harness workflow operations         | `/harness/workflows`        |                                        |
-| 32  | Realtime pipeline policy (cascade)  | `/harness/pipeline-policy`  |                                        |
+| 32  | Realtime pipeline policy (cascade)  | `/harness/pipeline-policy`  | RETIRED (TASK-882/861) — workflow node flags |
 | 33  | Consultations (admin view)          | `/consultations`            |                                        |
 
 ## Figma Frame Map — allocated frames 01–40
@@ -118,6 +118,12 @@ Frames live in the Figma file `HOPE-Admin-Console`, named per `<NN>[.<sub>][-<de
 | 38    | `38 - Harness Workflows`            | `/harness/workflows`        | 31          |
 | 39    | `39 - Realtime Pipeline Policy`     | `/harness/pipeline-policy`  | 32          |
 | 40    | `40 - Consultations`                | `/consultations`            | 33          |
+
+**Retired frames stay allocated.** Frame 34 (`/audio/pipelines`, matrix row 27) and frame 39
+(`/harness/pipeline-policy`, matrix row 32) belong to screens that no longer exist — the
+`AsrPipeline` plane (TASK-1006) and `PipelinePolicy` (TASK-882) were removed, and ASR selection and the
+realtime toggles now live on Agents and on the nodes of the assigned workflow (`/agents`,
+`/workflow-studio`). A surviving route is a redirect stub. Their numbers are never reused.
 
 **Frames 41+ are not recorded here** — everything shipped after 2026-07-04 (governance-console IA,
 playground, etc.) allocated its own frame numbers directly in Figma without updating this ledger.
