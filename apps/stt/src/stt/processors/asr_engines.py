@@ -78,11 +78,17 @@ ASR_FORMAT_TO_NAME: dict[AiModelFormat, str] = {
     AiModelFormat.WHISPER_CPP: "whisper_cpp",
     AiModelFormat.SARVAM: "sarvam",
     AiModelFormat.OPENAI: "openai",
+    # TASK-1021 — Whisper on the in-cluster `vllm` service (stt-side pseudo-format).
+    AiModelFormat.VLLM: "vllm",
 }
 
 
 class AsrEngine:
-    """Delegation adapter contract for one ASR engine family."""
+    """Delegation adapter contract for one ASR engine family.
+
+    ``tenant_id`` (TASK-1021) is the session's / job's tenant, passed explicitly to
+    every adapter; only an engine that must name it on the wire (`vllm`) reads it.
+    """
 
     async def run_batch(
         self,
@@ -97,6 +103,7 @@ class AsrEngine:
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         raise NotImplementedError
 
@@ -108,6 +115,7 @@ class AsrEngine:
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         raise NotImplementedError
 
@@ -147,6 +155,7 @@ class SafetensorEngine(AsrEngine):
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         return await service._run_transformers_inference(
             samples,
@@ -166,6 +175,7 @@ class SafetensorEngine(AsrEngine):
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         return manager._make_transformers_callable(
             loaded_model,
@@ -194,6 +204,7 @@ class OnnxEngine(AsrEngine):
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         if model.extra.get("optimum") or model.processor is not None:
             return await service._run_optimum_onnx_inference(
@@ -218,6 +229,7 @@ class OnnxEngine(AsrEngine):
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         return manager._make_transformers_callable(
             loaded_model,
@@ -241,6 +253,7 @@ class NemoEngine(AsrEngine):
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         return await service._run_nemo_inference(
             samples, sample_rate, model, config, progress_callback
@@ -254,6 +267,7 @@ class NemoEngine(AsrEngine):
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         return manager._make_nemo_callable(
             loaded_model,
@@ -276,6 +290,7 @@ class FasterWhisperEngine(AsrEngine):
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         # `prompt` first: on the segmented batch path it
         # is compose_prompt(initial_prompt, previous_segment_text), a superset
@@ -298,6 +313,7 @@ class FasterWhisperEngine(AsrEngine):
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         return manager._make_faster_whisper_callable(
             loaded_model,
@@ -320,6 +336,7 @@ class AzureSpeechEngine(AsrEngine):
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         return await service._run_azure_speech_inference(
             samples, sample_rate, model, config, progress_callback
@@ -333,6 +350,7 @@ class AzureSpeechEngine(AsrEngine):
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         return manager._make_azure_callable(loaded_model, inference_config)
 
@@ -375,6 +393,7 @@ class SarvamEngine(AsrEngine):
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         return await service._run_sarvam_inference(
             samples, sample_rate, model, config, progress_callback
@@ -388,6 +407,7 @@ class SarvamEngine(AsrEngine):
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         return manager._make_sarvam_callable(loaded_model, inference_config)
 
@@ -430,6 +450,7 @@ class OpenAIEngine(AsrEngine):
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         return await service._run_openai_inference(
             samples, sample_rate, model, config, progress_callback
@@ -443,6 +464,7 @@ class OpenAIEngine(AsrEngine):
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         return manager._make_openai_callable(loaded_model, inference_config)
 
@@ -500,6 +522,7 @@ class ParakeetCppEngine(AsrEngine):
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         return await service._run_parakeet_cpp_inference(
             samples, sample_rate, model, config, progress_callback
@@ -513,6 +536,7 @@ class ParakeetCppEngine(AsrEngine):
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         return manager._make_parakeet_cpp_callable(loaded_model, inference_config)
 
@@ -534,6 +558,7 @@ class WhisperCppEngine(AsrEngine):
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         return await service._run_whisper_cpp_inference(
             samples,
@@ -552,6 +577,7 @@ class WhisperCppEngine(AsrEngine):
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         return manager._make_whisper_cpp_callable(loaded_model, inference_config)
 
@@ -573,6 +599,7 @@ class AzureFoundryEngine(AsrEngine):
         first_word_hook: Any = None,
         prompt: str | None = None,
         initial_prompt: str | None = None,
+        tenant_id: str | None = None,
     ) -> Any:
         return await service._run_azure_foundry_inference(
             samples, sample_rate, model, config, progress_callback
@@ -586,6 +613,7 @@ class AzureFoundryEngine(AsrEngine):
         *,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> Any:
         raise RuntimeError(
             "Azure Foundry (MAI-Transcribe) is batch-only (decision D4: "
@@ -599,3 +627,55 @@ class AzureFoundryEngine(AsrEngine):
     # handing it the Azure Speech ``ContinuousRecognition`` adapter would open a
     # socket against a service that has none. The inherited ``None`` keeps this
     # engine on the callable path, where its own guard above still refuses.
+
+
+class VllmEngine(AsrEngine):
+    """Whisper on the in-cluster `vllm` service (TASK-1021, contract C-3).
+
+    Streaming decodes each utterance as ≤ 30 s windows over REST; batch cuts the
+    file with the whisper.cpp segmenter and decodes the windows concurrently. Both
+    send the agent's own initial prompt and never prior-transcript context
+    (TASK-994). Transcribe only: the route has no translate task, so no gloss.
+    """
+
+    async def run_batch(
+        self,
+        service: Any,
+        samples: Any,
+        sample_rate: int,
+        model: Any,
+        config: Any,
+        progress_callback: Any = None,
+        *,
+        chunk_callback: Any = None,
+        first_word_hook: Any = None,
+        prompt: str | None = None,
+        initial_prompt: str | None = None,
+        tenant_id: str | None = None,
+    ) -> Any:
+        # `prompt` is the batch path's carry-forward context; deliberately not sent.
+        return await service._run_vllm_inference(
+            samples,
+            sample_rate,
+            model,
+            config,
+            progress_callback,
+            initial_prompt=initial_prompt,
+            tenant_id=tenant_id,
+        )
+
+    def make_streaming_callable(
+        self,
+        manager: Any,
+        loaded_model: Any,
+        inference_config: Any,
+        *,
+        initial_prompt: str | None = None,
+        task: str = "transcribe",
+        tenant_id: str | None = None,
+    ) -> Any:
+        if task != "transcribe":
+            raise RuntimeError(f"vllm serves task=transcribe only, not task={task!r}")
+        return manager._make_vllm_callable(
+            loaded_model, inference_config, initial_prompt=initial_prompt, tenant_id=tenant_id
+        )

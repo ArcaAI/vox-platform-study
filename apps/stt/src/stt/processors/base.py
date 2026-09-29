@@ -39,7 +39,7 @@ STAGE_KINDS: frozenset[str] = frozenset(
 class Capability:
     """One (device × compute × mode) support row declared by a processor."""
 
-    device: str  # "cpu" | "cuda" | "mps" | "cloud"
+    device: str  # "cpu" | "cuda" | "mps" | "cloud" | "remote" (an in-cluster service)
     compute: tuple[str, ...] = ()  # empty = any/none (e.g. cloud engines)
     streaming: bool = True
     batch: bool = True

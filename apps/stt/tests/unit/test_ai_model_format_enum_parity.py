@@ -44,6 +44,12 @@ requires_monorepo = pytest.mark.skipif(
 #: reserved for MLFlow Serve + KServe inference and has no Prisma counterpart.
 AI_MODEL_SOURCE_KNOWN_EXTRAS = {"KSERVE"}
 
+#: The runtime ``AiModelFormat`` is likewise a deliberate SUPERSET: ``vllm``
+#: (TASK-1021, contract C-5) is an stt-side pseudo-format the `vllm` loader stamps on
+#: ``LoadedModel.format``. A vLLM row keeps its artifact format (``SAFETENSOR``) and
+#: selects the engine through ``libraryName``, so no AiModel row ever carries it.
+AI_MODEL_FORMAT_KNOWN_EXTRAS = {"vllm"}
+
 
 def _prisma_enum_values(name: str) -> set[str]:
     """Extract member names from an ``enum <name> { ... }`` block in enums.prisma."""
@@ -76,7 +82,7 @@ DTO_FORMATS = {member.value for member in AiModelFormat}
 
 @requires_monorepo
 def test_runtime_formats_are_db_valid() -> None:
-    leaked = DTO_FORMATS - _prisma_enum_values("AiModelFormat")
+    leaked = DTO_FORMATS - _prisma_enum_values("AiModelFormat") - AI_MODEL_FORMAT_KNOWN_EXTRAS
     assert not leaked, (
         "dto.AiModelFormat carries runtime formats the Prisma enum does not have "
         f"(no AiModel row can ever carry them): {sorted(leaked)}"

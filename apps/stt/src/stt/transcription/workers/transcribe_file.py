@@ -29,7 +29,8 @@ from ...core.initial_prompt import compose_prompt
 from ...core.job_concurrency import get_job_gate, refresh_job_concurrency_limit
 from ...core.messaging.pubsub import TranscriptionEventPublisher
 from ...core.worker_loop import run_on_worker_loop
-from ...pipeline.dto import PipelineConfig
+from ...models.vllm_loader import is_vllm_served
+from ...pipeline.dto import AiModelFormat, PipelineConfig
 from ...pipeline.language_modes import (
     LANGUAGE_MODE_SOURCES,
     LanguageModeSource,
@@ -805,7 +806,9 @@ def _resolve_chain_language(
         c for c in (bundle.spec, *fallback_chain(bundle.spec)) if c.runtime_key == runtime_key
     )
     asr = core.models.asr
-    engine = bundle.model_configs[asr.slug].format
+    model_config = bundle.model_configs[asr.slug]
+    # TASK-1021 — a vLLM row keeps its artifact format; its engine is its library.
+    engine = AiModelFormat.VLLM if is_vllm_served(model_config) else model_config.format
     if mode:
         resolved, receipt = resolve_language(mode, engine, source=source, provider=asr.provider)
         inference.language = resolved.language
