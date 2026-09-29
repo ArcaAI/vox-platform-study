@@ -170,10 +170,12 @@ The `vllm` and `llama-cpp` rows already seed cluster Service DNS (`http://hope-v
 `http://hope-llama-cpp:8080`) and need no correction if those Services exist in the target
 cluster.
 
-**When to do this:** before the first live consultation on a fresh cluster, if the tenant's
-resolved `text.live` / `text.finalize` / `guardrail.validate` `AiTaskDefault` selects one of these
-local engines (check `GET /api/v1/admin/ai-task-defaults` for the winning provider). If every
-resolved task default is a cloud provider with a tenant-supplied key, this section does not apply.
+**When to do this:** before the first live consultation on a fresh cluster, if a model the tenant
+actually runs is served by one of these local engines: the models of the tenant's assigned live /
+finalize Agents (`GET /api/v1/admin/agent-assignments`, then each Agent's model + fallback chain),
+or the elected `guardrail.validate` selection (`GET /api/v1/admin/routing-policies/effective`).
+If every resolved model belongs to a cloud provider with a tenant-supplied key, this section does
+not apply.
 
 **How, as SUPER_ADMIN:**
 

@@ -195,15 +195,18 @@ Rules tab is the only writer.
 
 ## 7. Plan caps vs. what a tenant is provisioned
 
-A plan's **structural** caps (`maxDepartments`, `maxAsrPipelines`) are sized to
-what tenant creation actually provisions — 8 golden departments and the 14 SYSTEM
-ASR pipelines cloned into every new tenant. They are NOT commercial levers.
+A plan's **structural** cap (`maxDepartments`) is sized to what tenant creation
+actually provisions — the 8 golden departments cloned into every new tenant. It is
+NOT a commercial lever. (`maxAsrPipelines` was the second structural cap, sized to
+the 14 SYSTEM ASR pipelines; TASK-1006 removed the pipelines and the cap with them —
+ASR selection is now an Agent, cloned with the rest of the SYSTEM reference set.)
 
 This matters because provisioning writes through the repository and so bypasses
 quota enforcement: a tenant whose structural caps sat below the provisioned
 catalog would be created successfully and then be unable to add anything, showing
 `exceeded` on its own capability snapshot from day one. STARTER was in exactly
-that state (2 departments, 1 pipeline) until TASK-785 raised it.
+that state (2 departments, 1 pipeline) until TASK-785 raised it (the pipeline half
+later disappeared with the pipelines themselves).
 
 **If you change what provisioning creates, re-check the STARTER row** in
 `seed/15-entitlements.ts` AND `entitlements.constants.ts` (the two are parity-
