@@ -15,7 +15,12 @@ import { ModelDownloadStatusResponse, TriggerModelDownloadResponse } from './dto
 import type { DownloadAiModelJobPayload, PublisherJobPayload } from './publisher-job.contract';
 import { DOWNLOAD_STALLED_CODE } from './publisher-job.contract';
 import { assertPlatformRegistryAdmin } from '../lifecycle/platform-admin';
-import { MODEL_DOWNLOAD_BACKOFF_DELAY_MS, readModelDownloadSettings, type DownloadSettingsSource } from '../lifecycle/model-download-settings';
+import {
+  MODEL_DOWNLOAD_BACKOFF_DELAY_MS,
+  effectiveStaleAfterMs,
+  readModelDownloadSettings,
+  type DownloadSettingsSource,
+} from '../lifecycle/model-download-settings';
 import { isUnregistering, publishStatusOf } from '../lifecycle/model-lifecycle.derive';
 
 /** The queue surface the producer needs — `add` only. */
@@ -43,8 +48,9 @@ export async function enqueuePublisherJob(queue: PublisherQueue, payload: Publis
  * up. That closes the race a rapid double-POST would otherwise open. A CAS race
  * surfaces as `409` (the client sent no `If-Match`, so 412's "refetch" framing
  * does not apply). `heartbeatAt` starts at the claim, so a job no worker ever
- * picks up goes STALLED after `staleAfterSeconds` instead of reading DOWNLOADING
- * forever.
+ * picks up goes STALLED after the effective stale window (`effectiveStaleAfterMs`
+ * — `staleAfterSeconds`, never shorter than the longest retry backoff) instead
+ * of reading DOWNLOADING forever.
  */
 export async function claimAndEnqueueDownload(
   deps: { repository: Pick<AiModelRepository, 'updateWithVersion'>; queue: PublisherQueue },
@@ -131,7 +137,7 @@ export class AiModelDownloadService extends BaseService {
     if (isUnregistering(existing.metaData)) {
       throw new ConflictException(`Model ${id} is being unregistered`);
     }
-    if (publishStatusOf(existing, { now: Date.now(), staleAfterMs: settings.staleAfterMs }) === 'DOWNLOADING') {
+    if (publishStatusOf(existing, { now: Date.now(), staleAfterMs: effectiveStaleAfterMs(settings) }) === 'DOWNLOADING') {
       throw new ConflictException(`A download for model ${id} is already in progress`);
     }
 
@@ -152,7 +158,7 @@ export class AiModelDownloadService extends BaseService {
   async getDownloadStatus(id: string): Promise<ModelDownloadStatusResponse> {
     assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'read a model download');
     const existing = await this.findRow(id);
-    const { staleAfterMs } = readModelDownloadSettings(this.appSettings);
+    const staleAfterMs = effectiveStaleAfterMs(readModelDownloadSettings(this.appSettings));
 
     const meta = readDownloadMeta(existing.metaData);
     const status = publishStatusOf(existing, { now: Date.now(), staleAfterMs });

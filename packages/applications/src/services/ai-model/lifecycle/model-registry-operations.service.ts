@@ -57,7 +57,7 @@ import { HuggingFaceModelSourceClient } from '../publish/huggingface-model-sourc
 import { claimAndEnqueueDownload, enqueuePublisherJob } from '../publish/ai-model-download.service';
 import type { UnregisterAiModelJobPayload } from '../publish/publisher-job.contract';
 import { mergeUnregisterMeta } from '../publish/model-download-meta.util';
-import { readModelDownloadSettings, type DownloadSettingsSource } from './model-download-settings';
+import { effectiveStaleAfterMs, readModelDownloadSettings, type DownloadSettingsSource } from './model-download-settings';
 import { buildHubPreview } from './hub-preview.util';
 import { isUnregistering, publishStatusOf } from './model-lifecycle.derive';
 import { ModelUsageReader } from './model-usage.reader';
@@ -201,7 +201,7 @@ export class ModelRegistryOperationsService extends BaseService {
     if (isUnregistering(row.metaData)) {
       throw new ConflictException({ code: 'MODEL_UNREGISTERING', message: `Model '${row.slug}' is already being unregistered.` });
     }
-    if (publishStatusOf(row, { now: Date.now(), staleAfterMs: settings.staleAfterMs }) === 'DOWNLOADING') {
+    if (publishStatusOf(row, { now: Date.now(), staleAfterMs: effectiveStaleAfterMs(settings) }) === 'DOWNLOADING') {
       throw new ConflictException({
         code: 'DOWNLOAD_IN_PROGRESS',
         message: `Model '${row.slug}' is being downloaded; unregister it once the download settles.`,
@@ -291,7 +291,7 @@ export class ModelRegistryOperationsService extends BaseService {
         skip('UNREGISTERING');
         continue;
       }
-      if (publishStatusOf(row, { now, staleAfterMs: settings.staleAfterMs }) === 'DOWNLOADING') {
+      if (publishStatusOf(row, { now, staleAfterMs: effectiveStaleAfterMs(settings) }) === 'DOWNLOADING') {
         skip('DOWNLOADING');
         continue;
       }

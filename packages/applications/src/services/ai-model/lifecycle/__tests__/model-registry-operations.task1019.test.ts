@@ -91,6 +91,7 @@ interface BuildOpts {
   token?: boolean;
   hub?: { getRepoInfo: ReturnType<typeof vi.fn>; listRepoFiles: ReturnType<typeof vi.fn> };
   bySlug?: unknown;
+  settings?: Record<string, unknown>;
 }
 
 function build(opts: BuildOpts = {}) {
@@ -135,7 +136,9 @@ function build(opts: BuildOpts = {}) {
     cls(opts) as never,
     opts.residency as never,
     tokenPort as never,
-    undefined,
+    (opts.settings
+      ? { getValueWithDefault: vi.fn((key: string, fallback: unknown) => (key in opts.settings! ? opts.settings![key] : fallback)) }
+      : undefined) as never,
   );
   return { svc, repo, queue, aiModelService, hub, row };
 }
@@ -580,5 +583,34 @@ describe('R7 — download-missing', () => {
     expect(out.enqueued.map((e) => e.id)).toEqual(['unk-1', 'par-1']);
     expect(out.skipped).toEqual([{ id: 'unr-1', slug: 'r', reason: 'UNREGISTERING' }]);
     expect(queue.add).toHaveBeenCalledTimes(2);
+  });
+
+  // Final review I10a: nothing heartbeats during a BullMQ retry backoff, so a
+  // stale window shorter than that wait would re-enqueue a duplicate download.
+  it('a row inside a retry backoff (heartbeat older than staleAfterSeconds, younger than the effective window) is skipped as DOWNLOADING', async () => {
+    const lastBeat = new Date(Date.now() - 150_000).toISOString();
+    const rows = [
+      modelRow({
+        id: 'bo-1',
+        slug: 'b',
+        availability: AiModelAvailability.MISSING,
+        metaData: { download: { jobId: 'j', startedAt: lastBeat, finishedAt: null, error: null, heartbeatAt: lastBeat } },
+      }),
+    ];
+    const { svc, queue } = build({ rows, settings: { 'modelRegistry.download.staleAfterSeconds': 60, 'modelRegistry.download.maxAttempts': 3 } });
+
+    const out = await svc.downloadMissing();
+
+    expect(out.skipped).toEqual([{ id: 'bo-1', slug: 'b', reason: 'DOWNLOADING' }]);
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('unregister refuses DOWNLOAD_IN_PROGRESS for a row inside a retry backoff', async () => {
+    const lastBeat = new Date(Date.now() - 150_000).toISOString();
+    const row = modelRow({ metaData: { download: { jobId: 'j', startedAt: lastBeat, finishedAt: null, error: null, heartbeatAt: lastBeat } } });
+    const { svc, queue } = build({ row, settings: { 'modelRegistry.download.staleAfterSeconds': 60, 'modelRegistry.download.maxAttempts': 3 } });
+
+    await expect(svc.unregister('m-1')).rejects.toMatchObject({ response: { code: 'DOWNLOAD_IN_PROGRESS' } });
+    expect(queue.add).not.toHaveBeenCalled();
   });
 });

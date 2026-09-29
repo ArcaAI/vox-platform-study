@@ -47,3 +47,20 @@ export function readModelDownloadSettings(source?: DownloadSettingsSource | null
     maxAttempts: read(MODEL_DOWNLOAD_SETTING_KEYS.maxAttempts, MODEL_DOWNLOAD_SETTING_DEFAULTS.maxAttempts),
   };
 }
+
+/** Headroom over the longest retry wait: queue pickup, the retried attempt's first heartbeat. */
+const RETRY_BACKOFF_GRACE_MS = 60_000;
+
+/**
+ * The stale window every caller actually applies (final review I10a).
+ *
+ * Nothing heartbeats while BullMQ waits between attempts (`MODEL_DOWNLOAD_BACKOFF_DELAY_MS`
+ * doubled per attempt). A window shorter than that wait derives a row STALLED
+ * mid-backoff, and a re-trigger then enqueues a DUPLICATE download — so the
+ * knob is lifted to at least the longest backoff plus a grace period:
+ *   max(staleAfterSeconds, 30 · 2^(maxAttempts−1) + 60) seconds.
+ */
+export function effectiveStaleAfterMs(settings: ModelDownloadSettings): number {
+  const longestBackoffMs = MODEL_DOWNLOAD_BACKOFF_DELAY_MS * 2 ** (settings.maxAttempts - 1);
+  return Math.max(settings.staleAfterMs, longestBackoffMs + RETRY_BACKOFF_GRACE_MS);
+}

@@ -4,6 +4,7 @@
  *   R3  platform-admin gate on trigger + status (tenant admin 403, super admin with a working tenant 403)
  *   D-4 payload `kind: 'download'`, BullMQ attempts from `modelRegistry.download.maxAttempts`, exponential backoff
  *   D-4 a STALLED download (stale heartbeat) may be re-triggered; a live one is 409
+ *   I10a the stale window is the EFFECTIVE one — never shorter than the longest retry backoff
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
@@ -129,7 +130,7 @@ describe('AiModelDownloadService — D-4 job shape and retry policy', () => {
     expect(queue.add).not.toHaveBeenCalled();
   });
 
-  it('a STALLED download may be re-triggered — the stale option comes from the descriptor', async () => {
+  it('a STALLED download may be re-triggered — the stale option is the descriptor lifted to the effective window', async () => {
     const stale = entity({
       metaData: { download: { jobId: 'j0', startedAt: '2026-09-29T08:00:00Z', finishedAt: null, error: null, heartbeatAt: '2026-09-29T08:00:10Z' } },
     });
@@ -137,11 +138,27 @@ describe('AiModelDownloadService — D-4 job shape and retry policy', () => {
 
     await svc.triggerDownload('m-1');
 
+    // 120 s is shorter than the longest retry backoff at 3 attempts (30·4+60 = 180 s).
     expect(derivePublishStatus).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'j0' }), AiModelAvailability.MISSING, {
       now: expect.any(Date),
-      staleAfterMs: 120_000,
+      staleAfterMs: 180_000,
     });
     expect(queue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('I10a: a heartbeat older than staleAfterSeconds but inside a retry backoff is still DOWNLOADING — 409, no duplicate job', async () => {
+    const lastBeat = new Date(Date.now() - 150_000).toISOString();
+    const backingOff = entity({
+      metaData: { download: { jobId: 'j0', startedAt: lastBeat, finishedAt: null, error: null, heartbeatAt: lastBeat } },
+    });
+    const { svc, queue } = build({
+      row: backingOff,
+      settings: { 'modelRegistry.download.staleAfterSeconds': 60, 'modelRegistry.download.maxAttempts': 3 },
+    });
+
+    await expect(svc.triggerDownload('m-1')).rejects.toBeInstanceOf(ConflictException);
+    expect(queue.add).not.toHaveBeenCalled();
+    expect((await svc.getDownloadStatus('m-1')).status).toBe('DOWNLOADING');
   });
 
   it('a model being unregistered is 409', async () => {
