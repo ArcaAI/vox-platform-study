@@ -6601,7 +6601,7 @@
               "lmstudio",
               "text",
               "gateway-proxy",
-              "asr-vllm"
+              "vllm"
             ],
             "example": "stt",
             "type": "string"
@@ -14494,7 +14494,7 @@
               "lmstudio",
               "text",
               "gateway-proxy",
-              "asr-vllm"
+              "vllm"
             ],
             "type": "string"
           },
@@ -24132,7 +24132,7 @@
               "lmstudio",
               "text",
               "gateway-proxy",
-              "asr-vllm"
+              "vllm"
             ],
             "type": "string"
           },

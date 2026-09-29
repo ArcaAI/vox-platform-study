@@ -1722,7 +1722,7 @@ export interface CreateModelRequest {
     | 'vllm'
     | 'llama-cpp';
   /** Workload that executes the model. */
-  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'asr-vllm';
+  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'vllm';
   /** URL-friendly unique identifier */
   slug: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only; azure-blob:// is out of scope). */
@@ -3941,7 +3941,7 @@ export interface ModelResponse {
   /** Resource status */
   resourceStatus: 'ENABLED' | 'DISABLED' | 'SUSPENDED' | 'ARCHIVED' | 'DELETED';
   /** Workload that executes the model. */
-  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'asr-vllm';
+  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'vllm';
   /** URL-friendly unique identifier */
   slug: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only). */
@@ -6725,7 +6725,7 @@ export interface UpdateModelRequest {
     | 'vllm'
     | 'llama-cpp';
   /** Workload that executes the model. */
-  servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'asr-vllm';
+  servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'vllm';
   /** URL-friendly unique identifier */
   slug?: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only; azure-blob:// is out of scope). */
