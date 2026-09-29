@@ -40,6 +40,9 @@ model registry / HF org and reference it via ``hf_model_id``.
 
 from __future__ import annotations
 
+import concurrent.futures
+import threading
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -47,6 +50,13 @@ import structlog
 
 from stt.models.base_loader import LoadedModel
 from stt.pipeline.dto import AiModelFormat
+from stt.streaming.cross_stream_batcher import CrossStreamBatcher
+from stt.streaming.faster_whisper_batch_decoder import (
+    FasterWhisperBatchDecoder,
+    FwBatchItem,
+    FwBatchKey,
+    FwDecodedWindow,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -129,6 +139,148 @@ def resolve_ct2_compute_type(compute_type: str | None, device: str) -> str:
     return requested
 
 
+# ---------------------------------------------------------------------------
+# TASK-1009 — cross-stream batching
+# ---------------------------------------------------------------------------
+
+#: ``LoadedModel.extra`` slots: the model's shared batcher, and the limits it
+#: was last configured with.
+_BATCHER_SLOT = "cross_stream_batcher"
+_BATCHING_SLOT = "cross_stream_batching"
+_batcher_guard = threading.Lock()
+
+
+@dataclass(frozen=True)
+class CrossStreamBatching:
+    """Limits for the model's shared :class:`CrossStreamBatcher`."""
+
+    max_batch_size: int
+    max_wait_ms: float
+    max_queue: int
+
+    @classmethod
+    def from_settings(cls, settings: Any) -> CrossStreamBatching | None:
+        """The configured batching, or ``None`` (off) — which is the default.
+
+        A served limit that is not a positive number turns batching OFF for the
+        session with a warning rather than failing it: the per-call path is the
+        known-good fallback, and a bad control-plane write must not stop
+        transcription.
+        """
+        if getattr(settings, "faster_whisper_batch_enabled", False) is not True:
+            return None
+        size = getattr(settings, "faster_whisper_batch_max_batch_size", None)
+        wait = getattr(settings, "faster_whisper_batch_max_wait_ms", None)
+        queue = getattr(settings, "faster_whisper_batch_max_queue", None)
+        numbers = (size, wait, queue)
+        if not all(isinstance(v, int | float) and not isinstance(v, bool) for v in numbers) or not (
+            size >= 1 and wait >= 0 and queue >= 1
+        ):
+            logger.warning(
+                "stt.asr_batch.invalid_limits_batching_off",
+                max_batch_size=size,
+                max_wait_ms=wait,
+                max_queue=queue,
+            )
+            return None
+        return cls(max_batch_size=int(size), max_wait_ms=float(wait), max_queue=int(queue))
+
+
+class _BatchMetrics:
+    """Prometheus observer for one model's batcher."""
+
+    def __init__(self, model: str) -> None:
+        self._model = model
+
+    def batch_decoded(self, *, size: int, queue_waits_s: list[float], decode_s: float) -> None:
+        from stt.core.metrics import record_asr_batch
+
+        record_asr_batch(
+            model=self._model, size=size, queue_waits_s=queue_waits_s, decode_s=decode_s
+        )
+
+    def queue_depth(self, depth: int) -> None:
+        from stt.core.metrics import set_asr_batch_queue_depth
+
+        set_asr_batch_queue_depth(model=self._model, depth=depth)
+
+
+def get_model_batcher(
+    loaded_model: LoadedModel, batching: CrossStreamBatching
+) -> CrossStreamBatcher:
+    """The ONE batcher every session on *loaded_model* shares, created on first use.
+
+    A later session carrying different limits (a control-plane change) re-applies
+    them to the shared batcher; they govern every flush from then on.
+    """
+    with _batcher_guard:
+        batcher = loaded_model.extra.get(_BATCHER_SLOT)
+        if batcher is None:
+            batcher = CrossStreamBatcher(
+                FasterWhisperBatchDecoder(loaded_model.model),
+                max_batch_size=batching.max_batch_size,
+                max_wait_ms=batching.max_wait_ms,
+                max_queue=batching.max_queue,
+                name=loaded_model.model_slug,
+                observer=_BatchMetrics(loaded_model.model_slug),
+            )
+            loaded_model.extra[_BATCHER_SLOT] = batcher
+            loaded_model.extra[_BATCHING_SLOT] = batching
+            logger.info(
+                "stt.asr_batch.enabled",
+                model=loaded_model.model_slug,
+                max_batch_size=batching.max_batch_size,
+                max_wait_ms=batching.max_wait_ms,
+                max_queue=batching.max_queue,
+            )
+        elif loaded_model.extra.get(_BATCHING_SLOT) != batching:
+            batcher.configure(
+                max_batch_size=batching.max_batch_size,
+                max_wait_ms=batching.max_wait_ms,
+                max_queue=batching.max_queue,
+            )
+            loaded_model.extra[_BATCHING_SLOT] = batching
+        return batcher
+
+
+def close_model_batcher(loaded_model: LoadedModel) -> None:
+    """Stop and drop *loaded_model*'s batcher (model unload). No-op without one."""
+    with _batcher_guard:
+        batcher = (loaded_model.extra or {}).pop(_BATCHER_SLOT, None)
+        (loaded_model.extra or {}).pop(_BATCHING_SLOT, None)
+    if batcher is not None:
+        batcher.close()
+
+
+def _chain(inner: concurrent.futures.Future, transform: Any) -> concurrent.futures.Future:
+    """A future for ``transform(inner.result())``; cancelling it cancels *inner*."""
+    outer: concurrent.futures.Future = concurrent.futures.Future()
+
+    def _settle(done: concurrent.futures.Future) -> None:
+        if outer.done():
+            return
+        try:
+            if done.cancelled():
+                outer.cancel()
+            elif done.exception() is not None:
+                outer.set_exception(done.exception())
+            else:
+                outer.set_result(transform(done.result()))
+        except concurrent.futures.InvalidStateError:
+            pass  # the caller cancelled between the check and the set
+        except Exception as exc:  # noqa: BLE001 — a mapping failure is this caller's error
+            if not outer.done():
+                outer.set_exception(exc)
+
+    def _propagate_cancel(done: concurrent.futures.Future) -> None:
+        if done.cancelled():
+            inner.cancel()
+
+    outer.add_done_callback(_propagate_cancel)
+    inner.add_done_callback(_settle)
+    return outer
+
+
 def _resample_to_16k(samples: np.ndarray, sample_rate: int) -> np.ndarray:
     """Linear-resample *samples* to 16 kHz (faster-whisper's expected rate)."""
     if sample_rate == _TARGET_SAMPLE_RATE or len(samples) == 0:
@@ -163,6 +315,11 @@ class FasterWhisperAsrAdapter:
         Per-call batch size for the batched pipeline (from
         ``ExecutionProfile.asr_max_batch_size``). ``None`` uses the
         library default.
+    batching:
+        TASK-1009 — when set, windows this engine can hold as one batch item are
+        decoded through the model's shared :class:`CrossStreamBatcher` together
+        with other sessions' windows. ``None`` (the default) leaves every call
+        on the per-call path, unchanged.
     """
 
     def __init__(
@@ -171,6 +328,7 @@ class FasterWhisperAsrAdapter:
         inference_config: Any,
         batch_size: int | None = None,
         task: str = "transcribe",
+        batching: CrossStreamBatching | None = None,
     ) -> None:
         if loaded_model.format != AiModelFormat.FASTER_WHISPER:
             raise ValueError(
@@ -206,6 +364,17 @@ class FasterWhisperAsrAdapter:
         #: whisper.cpp adapter, so the session layer reads ONE attribute whichever
         #: engine is live.
         self.unsupported_decode_knobs: dict[str, str] = self._unsupported_knobs(inference_config)
+
+        # TASK-1009. Everything that shapes a decode is in the key, so windows
+        # from sessions configured differently never share a batch.
+        self._batch_key = FwBatchKey.build(
+            task=self._task,
+            language=self._language,
+            decode={**self._decode_kwargs, "word_timestamps": True},
+        )
+        self._batcher: CrossStreamBatcher | None = (
+            get_model_batcher(loaded_model, batching) if batching is not None else None
+        )
 
     @staticmethod
     def _build_decode_kwargs(inference_config: Any) -> dict[str, Any]:
@@ -278,6 +447,57 @@ class FasterWhisperAsrAdapter:
             unsupported["entropyThreshold"] = UNSUPPORTED_SOURCE
         return unsupported
 
+    @property
+    def batch_key(self) -> FwBatchKey:
+        """What a window from this session must share with another to batch with it."""
+        return self._batch_key
+
+    def submit(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        *,
+        prompt: str | None = None,
+    ) -> concurrent.futures.Future | None:
+        """Queue this window on the model's cross-stream batch; ``None`` = decode per call.
+
+        ``None`` when batching is off, or for a window one batch item cannot hold.
+        The returned future resolves to the same dict :meth:`__call__` returns.
+        """
+        return self._submit_prepared(self._prepare(samples, sample_rate), prompt)
+
+    @staticmethod
+    def _prepare(samples: np.ndarray, sample_rate: int) -> np.ndarray:
+        audio = np.asarray(samples, dtype=np.float32)
+        return _resample_to_16k(audio, sample_rate)
+
+    def _submit_prepared(
+        self, audio: np.ndarray, prompt: str | None
+    ) -> concurrent.futures.Future | None:
+        if self._batcher is None or not self._batchable(audio):
+            return None
+        inner = self._batcher.submit(self._batch_key, FwBatchItem(audio, prompt or None))
+        return _chain(inner, self._decoded_result)
+
+    def _batchable(self, audio: np.ndarray) -> bool:
+        """Whether *audio* is exactly one batch item on the per-call path.
+
+        Engine-side VAD splits a call into several chunks, and a window of the
+        model's chunk length or more cannot be one chunk without it — the
+        per-call path owns both, as it does an empty window.
+        """
+        if self._decode_kwargs.get("vad_filter"):
+            return False
+        chunk_length = getattr(
+            getattr(self._model, "feature_extractor", None), "chunk_length", None
+        )
+        if isinstance(chunk_length, bool) or not isinstance(chunk_length, int | float):
+            return False
+        return 0 < len(audio) < chunk_length * _TARGET_SAMPLE_RATE
+
+    def _decoded_result(self, decoded: FwDecodedWindow) -> dict[str, Any]:
+        return self._to_result(decoded.segments, decoded.language)
+
     def __call__(
         self,
         samples: np.ndarray,
@@ -285,8 +505,10 @@ class FasterWhisperAsrAdapter:
         *,
         prompt: str | None = None,
     ) -> dict[str, Any]:
-        audio = np.asarray(samples, dtype=np.float32)
-        audio = _resample_to_16k(audio, sample_rate)
+        audio = self._prepare(samples, sample_rate)
+        batched = self._submit_prepared(audio, prompt)
+        if batched is not None:
+            return batched.result()
 
         kwargs: dict[str, Any] = {
             "task": self._task,
@@ -307,6 +529,10 @@ class FasterWhisperAsrAdapter:
         else:
             segments, info = self._model.transcribe(audio, **kwargs)
 
+        return self._to_result(segments, getattr(info, "language", None))
+
+    def _to_result(self, segments: Any, detected_language: str | None) -> dict[str, Any]:
+        """Map engine segments to the ASR-callable result (shared by both paths)."""
         texts: list[str] = []
         word_timestamps: list[dict[str, Any]] = []
         out_segments: list[dict[str, Any]] = []
@@ -342,7 +568,7 @@ class FasterWhisperAsrAdapter:
             word_timestamps.extend(mapped_words)
             out_segments.append(seg_entry)
 
-        language = self._language or getattr(info, "language", None)
+        language = self._language or detected_language
 
         return {
             "text": " ".join(texts).strip(),

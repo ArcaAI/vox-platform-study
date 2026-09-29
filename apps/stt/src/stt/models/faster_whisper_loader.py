@@ -131,6 +131,11 @@ class FasterWhisperLoader(BaseModelLoader):
             from .base_loader import cleanup_accelerator_memory
 
             if loaded_model.extra:
+                # TASK-1009 — stop the model's cross-stream batcher (if one was
+                # started) before the weights it decodes with go away.
+                from stt.streaming.faster_whisper_asr import close_model_batcher
+
+                close_model_batcher(loaded_model)
                 loaded_model.extra.pop("batched_pipeline", None)
             if loaded_model.model is not None:
                 del loaded_model.model

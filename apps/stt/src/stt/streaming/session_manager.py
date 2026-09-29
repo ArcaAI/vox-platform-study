@@ -3578,14 +3578,30 @@ class SessionManager:
         task: str = "transcribe",
     ) -> StreamingAsrCallable:
         """faster-whisper/CTranslate2 per-utterance streaming callable (moved
-        verbatim from the former _make_asr_callable branch)."""
-        from stt.streaming.faster_whisper_asr import FasterWhisperAsrAdapter
+        verbatim from the former _make_asr_callable branch).
+
+        TASK-1009 — with ``stt.fasterWhisper.batch.enabled`` on, a window is
+        queued on the model's cross-stream batcher and AWAITED there, so a
+        session waiting for its batch holds no worker thread; off (the default),
+        every decode runs per call in a worker thread exactly as before. The
+        setting is read here, once per session, so a change applies to sessions
+        started after it.
+        """
+        from stt.streaming.faster_whisper_asr import CrossStreamBatching, FasterWhisperAsrAdapter
+
+        # Same guard as `__init__`'s settings read: a unit-test harness may run
+        # with an incomplete env, and batching is opt-in, so "unreadable" is "off".
+        try:
+            batching = CrossStreamBatching.from_settings(get_settings())
+        except Exception:  # noqa: BLE001
+            batching = None
 
         fw_adapter = FasterWhisperAsrAdapter(
             loaded_model,
             inference_config,
             batch_size=getattr(self._profile, "asr_max_batch_size", None),
             task=task,
+            batching=batching,
         )
 
         async def run_faster_whisper_inference(
@@ -3594,6 +3610,10 @@ class SessionManager:
             *,
             prompt: str | None = None,
         ) -> dict[str, Any]:
+            if batching is not None:
+                queued = fw_adapter.submit(samples, sample_rate, prompt=prompt)
+                if queued is not None:
+                    return await asyncio.wrap_future(queued)
             return await asyncio.to_thread(fw_adapter, samples, sample_rate, prompt=prompt)
 
         return run_faster_whisper_inference

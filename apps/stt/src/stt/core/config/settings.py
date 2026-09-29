@@ -397,6 +397,31 @@ class Settings(BaseSettings):
         default=8,
         description="CPU threads for whisper.cpp inference",
     )
+    # TASK-1009 — cross-stream batching for the faster-whisper (CTranslate2) engine.
+    # OFF by default: with it off every decode takes the per-call path unchanged.
+    faster_whisper_batch_enabled: bool = Field(
+        validation_alias=moved_alias("faster_whisper_batch_enabled"),
+        default=False,
+        description=(
+            "Decode windows from concurrent streaming sessions on one faster-whisper model "
+            "as one batch. Applies to sessions started after the change."
+        ),
+    )
+    faster_whisper_batch_max_batch_size: int = Field(
+        validation_alias=moved_alias("faster_whisper_batch_max_batch_size"),
+        default=8,
+        description="Most windows one cross-stream batch decodes at once.",
+    )
+    faster_whisper_batch_max_wait_ms: int = Field(
+        validation_alias=moved_alias("faster_whisper_batch_max_wait_ms"),
+        default=25,
+        description="Longest a window waits for batch-mates before a partial batch decodes.",
+    )
+    faster_whisper_batch_max_queue: int = Field(
+        validation_alias=moved_alias("faster_whisper_batch_max_queue"),
+        default=256,
+        description="Windows allowed to wait per model; beyond it a decode fails fast.",
+    )
     # TASK-880 — `whisper_cpp_max_audio_seconds` and
     # `whisper_cpp_consultation_prompt_enabled` lived here. The decode window belongs to
     # the MODEL (`AiModel._metadata.asr.maxDecodeWindowSec` -> `InferenceConfig`), and the
