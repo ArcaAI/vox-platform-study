@@ -6,10 +6,11 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '../../backend/application';
+import { BaseException } from '../base.exception';
 
 type Opts = { cause?: unknown; metadata?: Record<string, unknown> };
 
-const factories: Record<string, (message: string, opts?: Opts) => InstanceType<typeof NotFoundException>> = {
+const factories: Record<string, (message: string, opts?: Opts) => BaseException> = {
   NotFoundException: (m, o) => new NotFoundException(m, o),
   ArgumentInvalidException: (m, o) => new ArgumentInvalidException(m, o),
   ConflictException: (m, o) => new ConflictException(m, o),
