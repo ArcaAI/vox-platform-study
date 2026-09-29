@@ -23,6 +23,9 @@ from nlp.core.config import ExternalTextConfig
 from nlp.dependencies import get_external_text_client
 from nlp.services.external_text_client import ExternalTextClient, GeneratedLabel
 
+#: The gateway-resolved connection entry `text` consumes as `provider_overrides[provider]`.
+CONNECTION = {"api_key": "keyless-local", "base_url": "http://localhost:1234/v1"}
+
 
 class _FakeResponse:
     def __init__(self, payload: dict[str, Any]) -> None:
@@ -47,6 +50,7 @@ class _RecordingHttp:
 class _FakeExternalTextClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.overrides: list[dict[str, Any] | None] = []
 
     async def generate_label_with_usage(
         self,
@@ -56,8 +60,10 @@ class _FakeExternalTextClient:
         tenant_id: str,
         provider: str,
         model: str,
+        provider_override: dict[str, Any] | None = None,
     ) -> GeneratedLabel:
         self.calls.append({"tenant_id": tenant_id, "provider": provider, "model": model})
+        self.overrides.append(provider_override)
         return GeneratedLabel(label="billing")
 
 
@@ -77,6 +83,7 @@ def _body(**overrides: Any) -> dict[str, Any]:
         "tenant_id": "t1",
         "text_provider": "lm-studio",
         "text_model": "gemma-3-12b",
+        "text_provider_overrides": CONNECTION,
     }
     body.update(overrides)
     return {k: v for k, v in body.items() if v is not None}
@@ -97,6 +104,26 @@ class TestClientNamesTheSelection:
         body = http.calls[0]["json"]
         assert body["provider"] == "lm-studio"
         assert body["model"] == "gemma-3-12b"
+
+    @pytest.mark.asyncio
+    async def test_the_injected_connection_rides_as_provider_overrides(self) -> None:
+        """`text` holds no endpoint or credential of its own: it reads ONLY
+        `provider_overrides[provider]`. Without it every call is a 503
+        PROVIDER_CREDENTIALS_MISSING (found by the TASK-1016 live proof)."""
+        http = _RecordingHttp()
+        client = ExternalTextClient(
+            settings=ExternalTextConfig(base_url="http://text.local"), http_client=http
+        )
+
+        await client.generate_label_with_usage(
+            "Which topic?",
+            tenant_id="t1",
+            provider="lm-studio",
+            model="gemma-3-12b",
+            provider_override=CONNECTION,
+        )
+
+        assert http.calls[0]["json"]["provider_overrides"] == {"lm-studio": CONNECTION}
 
     @pytest.mark.asyncio
     async def test_posts_to_texts_versioned_generate_route(self) -> None:
@@ -138,9 +165,16 @@ class TestRoutesForwardOrFailClosed:
 
         assert resp.status_code == 200
         assert fake.calls == [{"tenant_id": "t1", "provider": "lm-studio", "model": "gemma-3-12b"}]
+        assert fake.overrides == [CONNECTION]
 
     @pytest.mark.parametrize(
-        "missing", [{"text_provider": None}, {"text_model": None}, {"text_model": "  "}]
+        "missing",
+        [
+            {"text_provider": None},
+            {"text_model": None},
+            {"text_model": "  "},
+            {"text_provider_overrides": None},
+        ],
     )
     def test_missing_selection_fails_closed_503_without_calling_text(
         self, route, path: str, missing: dict[str, Any]

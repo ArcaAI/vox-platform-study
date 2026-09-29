@@ -83,6 +83,8 @@ function build(opts: { upstream?: Record<string, unknown>; computeDevice?: unkno
     ledger as never,
     { getRow: vi.fn(async () => ({ instructionsJson: ['billing', 'clinical'] })) } as never,
     (opts.computeDevice ?? { resolve: vi.fn(async () => 'cuda') }) as never,
+    // TASK-1016 — the connection the delegated topic/intent routes forward to NLP.
+    { resolveTenantCloudOverrides: vi.fn(async () => ({ overrides: { 'lm-studio': { api_key: 'k' } } })) } as never,
   );
   return { controller, client, ledger };
 }

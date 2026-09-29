@@ -252,6 +252,14 @@ class TopicClassificationRequest(BaseModel):
     text_model: str | None = Field(
         default=None, description="Gateway-injected provider-native model id for the generation"
     )
+    # TASK-1016 — the CONNECTION `text` needs for that provider (endpoint + credential): text
+    # holds none of its own and reads only `provider_overrides[provider]`. Gateway-resolved
+    # (tenant → SYSTEM), forwarded ONE hop, never logged or persisted — hence `repr=False`.
+    text_provider_overrides: dict[str, Any] | None = Field(
+        default=None,
+        repr=False,
+        description="Gateway-injected connection entry forwarded to text as provider_overrides",
+    )
 
 
 class TopicClassificationResponse(BaseModel):
@@ -299,6 +307,14 @@ class IntentClassificationRequest(BaseModel):
     )
     text_model: str | None = Field(
         default=None, description="Gateway-injected provider-native model id for the generation"
+    )
+    # TASK-1016 — the CONNECTION `text` needs for that provider (endpoint + credential): text
+    # holds none of its own and reads only `provider_overrides[provider]`. Gateway-resolved
+    # (tenant → SYSTEM), forwarded ONE hop, never logged or persisted — hence `repr=False`.
+    text_provider_overrides: dict[str, Any] | None = Field(
+        default=None,
+        repr=False,
+        description="Gateway-injected connection entry forwarded to text as provider_overrides",
     )
 
 

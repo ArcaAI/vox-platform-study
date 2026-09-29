@@ -127,6 +127,7 @@ class _FakeExternalTextClient:
         tenant_id: str,
         provider: str,
         model: str,
+        provider_override: dict | None = None,
     ):
         from nlp.services.external_text_client import GeneratedLabel
 
@@ -150,6 +151,7 @@ BODY = {
     "tenant_id": "t1",
     "text_provider": "lm-studio",
     "text_model": "gemma",
+    "text_provider_overrides": {"api_key": "keyless-local", "base_url": "http://localhost:1234/v1"},
 }
 
 

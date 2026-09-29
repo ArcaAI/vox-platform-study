@@ -9,6 +9,9 @@ import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiInferenceController } from '../ai-inference.controller';
 import { SafetyCheckController } from '../safety-check.controller';
 
+/** TASK-1016 — the connection entry forwarded to NLP for the elected text provider. */
+const CONNECTION = { api_key: 'keyless-local', base_url: 'http://localhost:1234/v1' };
+
 function makeController(
   routingPolicies?: { resolveDefault: ReturnType<typeof vi.fn> },
   cls?: { get: ReturnType<typeof vi.fn> },
@@ -22,6 +25,9 @@ function makeController(
     cls as never,
     usageLedgerService as never,
     tenantNlpTaskInstructionsService as never,
+    undefined as never,
+    // TASK-1016 — the connection resolver the delegated topic/intent routes need.
+    { resolveTenantCloudOverrides: vi.fn(async () => ({ overrides: { 'lm-studio': CONNECTION } })) } as never,
   );
   return { controller, client };
 }
@@ -373,7 +379,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
   const clsFor = (tenantId?: string) => ({ get: vi.fn((k: string) => (k === 'tenantId' ? tenantId : undefined)) });
   // TASK-1016 (OD-1a) — the SYSTEM nlp.topic / nlp.intent election every delegated call now carries.
   const textElection = () => ({ resolveDefault: vi.fn().mockResolvedValue({ model: { provider: 'lm-studio', wireModelId: 'gemma-4-e2b-it-qat', sourceUri: 'gemma-4-e2b-it-qat', metaData: null } }) });
-  const SELECTION = { text_provider: 'lm-studio', text_model: 'gemma-4-e2b-it-qat' };
+  const SELECTION = { text_provider: 'lm-studio', text_model: 'gemma-4-e2b-it-qat', text_provider_overrides: CONNECTION };
 
   it('classifyTopic FAILS CLOSED with 503 when there is no CLS tenant', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');

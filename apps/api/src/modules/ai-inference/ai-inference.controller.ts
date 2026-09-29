@@ -7,10 +7,12 @@ import {
   derivedLocalPath,
   IActiveUserContext,
   IAiRoutingPolicyService,
+  IProviderConnectionService,
   ITenantNlpTaskInstructionsService,
   IUsageLedgerService,
   parseTextUsageDetail,
   resolveDeployment,
+  TextRequestEnrichmentService,
   textWireProvider,
   toLedgerProvider,
   type ComputeAugmentedBatch,
@@ -139,6 +141,12 @@ export class AiInferenceController {
     // warn-once, and it never raises. @Optional + trailing so every existing positional fixture
     // keeps its arity; absent ⇒ no compute row on a self-hosted leg, never a guessed one.
     @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
+    // TASK-1016 — the CONNECTION `text` needs for the topic/intent election's provider (text holds
+    // no endpoint or credential of its own). Resolved through the SAME shared enrichment the text
+    // proxy uses, so the tenant → SYSTEM cascade, veto and entitlement gate are one code path.
+    // @Optional + trailing so every existing positional fixture keeps its arity; absent ⇒ the
+    // delegated routes refuse with 503 (fail-closed), never an unconnected call.
+    @Optional() @Inject(IProviderConnectionService) private readonly providerConnections?: IProviderConnectionService,
   ) {}
 
   @Post('entities')
@@ -498,12 +506,28 @@ export class AiInferenceController {
    * CLOSED: a missing election, or one whose model names no provider / wire id, is a 503 here and
    * NLP is never called.
    */
-  private async resolveTextSelection(taskKey: 'nlp.topic' | 'nlp.intent'): Promise<{ text_provider: string; text_model: string }> {
+  private async resolveTextSelection(
+    taskKey: 'nlp.topic' | 'nlp.intent',
+  ): Promise<{ text_provider: string; text_model: string; text_provider_overrides: unknown }> {
     const selection = await this.resolveDefaultModelSelection(taskKey);
     if (!selection.provider || !selection.wireModelId) {
       throw new ServiceUnavailableException(`SYSTEM routing election for '${taskKey}' names no text provider / wire model id.`);
     }
-    return { text_provider: textWireProvider(selection.provider), text_model: selection.wireModelId };
+    const provider = textWireProvider(selection.provider);
+    // `text` reads ONLY the `provider_overrides[provider]` entry its caller forwards; a call without
+    // one is a 503 PROVIDER_CREDENTIALS_MISSING there. The credential tier is the JOB tenant's
+    // (BYO wins, SYSTEM default otherwise) — the model election stays platform-only.
+    const connection = this.cls
+      ? (
+          (await new TextRequestEnrichmentService(this.cls, this.providerConnections).applyTenantProviderOverrides({ provider })) as {
+            provider_overrides?: Record<string, unknown>;
+          }
+        ).provider_overrides?.[provider]
+      : undefined;
+    if (!connection) {
+      throw new ServiceUnavailableException(`No provider connection resolved for '${provider}' ('${taskKey}' election).`);
+    }
+    return { text_provider: provider, text_model: selection.wireModelId, text_provider_overrides: connection };
   }
 
   /**

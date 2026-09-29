@@ -93,6 +93,7 @@ class ExternalTextClient:
         tenant_id: str,
         provider: str,
         model: str,
+        provider_override: dict[str, Any] | None = None,
     ) -> str:
         """Post `prompt` to `text`'s `/generate` and return the generated
         label (the response's `content`, stripped). Raises
@@ -103,7 +104,12 @@ class ExternalTextClient:
         callers that have no billing plane to feed."""
         return (
             await self.generate_label_with_usage(
-                prompt, system_prompt, tenant_id=tenant_id, provider=provider, model=model
+                prompt,
+                system_prompt,
+                tenant_id=tenant_id,
+                provider=provider,
+                model=model,
+                provider_override=provider_override,
             )
         ).label
 
@@ -115,13 +121,18 @@ class ExternalTextClient:
         tenant_id: str,
         provider: str,
         model: str,
+        provider_override: dict[str, Any] | None = None,
     ) -> GeneratedLabel:
         """The same call as :meth:`generate_label`, also returning what it cost
         (TASK-957 F-7b — see :class:`GeneratedLabel`).
 
         TASK-1016 — ``provider`` + ``model`` are the gateway-injected selection. `text` has no
         default for either (`/generate` answers 422), so a blank one raises HERE, before any
-        call: retrying a request `text` can only refuse would just delay the same failure."""
+        call: retrying a request `text` can only refuse would just delay the same failure.
+
+        ``provider_override`` is the gateway-resolved CONNECTION for ``provider`` (text holds no
+        endpoint or credential of its own). It rides as ``provider_overrides[provider]`` for this
+        one hop and is never logged."""
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
@@ -155,6 +166,8 @@ class ExternalTextClient:
             "provider": resolved_provider,
             "model": resolved_model,
         }
+        if provider_override:
+            body["provider_overrides"] = {resolved_provider: provider_override}
         if system_prompt:
             body["system_prompt"] = system_prompt
 
