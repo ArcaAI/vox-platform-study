@@ -93,7 +93,7 @@ Research findings (2026-09-29, docs/issues — not measured):
 6. Scale-out probe: 2 vLLM replicas behind a router if hardware allows; streams/GPU, linearity, cold start.
 7. Go/no-go write-up against the pass bar AND the 1,000-stream projection (GPUs needed, cost/stream), side by side with TASK-1009.
 
-## Phase B plan — OD-6 (platform configuration) + OD-7 (registry first) — 2026-09-29, AWAITING GO
+## Phase B plan — OD-6 (platform configuration) + OD-7 (registry first) — 2026-09-29, GO GIVEN (OD-8..OD-12 approved as recommended)
 
 Owner approved the OD-6 shape and asked for it to be planned together with OD-7. Nothing below is
 implemented. Grounded in a code map of the current tree (paths:lines in the change history entry).
@@ -163,7 +163,7 @@ Layer order: types → seed/DB data (no migration: `_metadata` only) → applica
 Owner rule: lanes run only their own RED→GREEN files; one gate pass after both merge (as this round).
 After merge: `pnpm api:route-manifest`/`openapi` are NOT affected (no route changes); `env:sync` + `env:python-surface` re-run for the closed env vars and the new `ASR_VLLM_API_GATEWAY_URL`.
 
-### Decisions needed before go
+### Decisions (all approved by the owner 2026-09-29, as recommended)
 
 | # | Question | Recommendation |
 |---|---|---|
@@ -270,6 +270,7 @@ vllm 0.30.0, torch 2.13.0, fastapi 0.136.3, transformers 5.17.0).
 
 ## Change History
 
+- 2026-09-29 — Owner: OD-8..OD-12 approved as recommended; go for lanes L1 (TS + contract) and L2 (asr-vllm). Owner reminder: v1-compat is gone — selection is agent/workflow only; the vLLM model is reached through an ASR Agent, never a model slug.
 - 2026-09-29 — Phase B plan (OD-6 + OD-7) written, awaiting go; OD-8..OD-12 opened; tts/nlp credential-header defect found and split out.
 - 2026-09-29 — Owner OD round: OD-5 accepted (own lock + vLLM image); OD-7 registry-first (AiModel row + `model-registry:huggingface` credential, no ambient pulls); OD-6 directed to platform configuration, shape proposed. Lanes merged into `dev-2.2` (`cd56ccdba` TASK-1009, `e5337ed9b` TASK-1010).
 - 2026-09-29 — Lane `task-1010/asr-vllm-service`: `apps/asr-vllm` service (decode endpoint, engine pool, lazy vLLM 0.30.0 adapter, warm route, health/metrics), concurrency bench, CUDA Dockerfile (not built), root scripts + launcher target. Workspace lock unsatisfiable with vLLM → standalone lock (V-1). 93 unit tests green on the Mac; no GPU run. Added OD-5..OD-7.
