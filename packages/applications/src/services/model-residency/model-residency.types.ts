@@ -17,6 +17,13 @@ export type ResidencyServiceName = ResidencyControlledService | 'stt-worker';
 
 export type ResidencyMode = 'shadow' | 'enforce';
 export type ResidencyModelState = 'loading' | 'loaded' | 'unloading';
+/**
+ * What a service may REPORT for one model: the three resident states plus
+ * `failed` (TASK-1019) — its last load raised and nothing has cleared it. A
+ * failed model holds no memory, so it never becomes a ledger entry; it is kept
+ * beside them as a {@link ResidencyLoadError}.
+ */
+export type ReportedModelState = ResidencyModelState | 'failed';
 export type ResidencyClassName = 'PINNED' | 'WARM' | 'ON_DEMAND';
 export type ResidencyClassSource = 'policy' | 'implicit-live-path' | 'default';
 export type ResidencyBytesSource = 'measured' | 'unknown';
@@ -26,12 +33,21 @@ export type ResidencyErrorCode =
   'IN_FLIGHT' | 'LOAD_FAILED' | 'LOAD_IN_PROGRESS' | 'MODEL_UNKNOWN' | 'OPTIONS_UNSUPPORTED' | 'OVER_BUDGET' | 'SERVICE_UNREACHABLE';
 export type ResidencyOperationStatus = 'running' | 'succeeded' | 'failed';
 
+/** Why a load failed (TASK-1019). `at` is null when the source (the stt-worker gauge) carries no time. */
+export interface ResidencyLoadError {
+  code: string;
+  message: string;
+  at: string | null;
+}
+
 /** One resident model, in the agent contract's camelCase `gateway` shape. */
 export interface ReportedResidentModel {
   modelRef: string;
   aiModelId: string | null;
   cache: string;
-  state: ResidencyModelState;
+  state: ReportedModelState;
+  /** Present on a `failed` model only; absent from agents that predate TASK-1019. */
+  error?: ResidencyLoadError | null;
   /** The REPORTING service's device id (`cuda:0`, `cpu`, `multi`) — not yet mapped to a physical card. */
   device: string;
   bytes: number | null;
@@ -96,7 +112,7 @@ export function residencyServiceOf(model: ServingIdentity): ResidencyServiceName
 /** The catalogue view's service groups, in their FIXED display order. */
 export const CATALOGUE_SERVICES = ['stt', 'stt-worker', 'lm-studio', 'nlp'] as const satisfies readonly ResidencyServiceName[];
 export type CatalogueRunsOn = 'gpu' | 'cpu';
-export type CatalogueModelStatus = ResidencyModelState | 'not_loaded';
+export type CatalogueModelStatus = ResidencyModelState | 'not_loaded' | 'failed';
 export type CatalogueSizeSource = 'measured' | 'catalogue' | 'unknown';
 export type CatalogueUseRole = 'primary' | 'fallback' | 'routing';
 export type CatalogueKeepPolicyKind = 'always' | 'warm' | 'on_demand';
