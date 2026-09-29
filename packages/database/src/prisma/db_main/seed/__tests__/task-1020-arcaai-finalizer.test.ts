@@ -91,7 +91,11 @@ describe('ArcaAI `casenote-finalization` — the agent `n_finalize` runs', () =>
     ]);
     const [base, sameDay, policy] = fragments();
     expect(base).toEqual({ key: CLINICAL_NOTE_FRAGMENT_KEY, systemPrompt: CASENOTE_FINALIZATION_SYSTEM_PROMPT });
-    expect(sameDay).toEqual({ key: ARCAAI_SAME_DAY_RETURN_FRAGMENT_KEY, promptTemplateId: ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID, when: ARCAAI_SAME_DAY_RETURN_WHEN });
+    expect(sameDay).toEqual({
+      key: ARCAAI_SAME_DAY_RETURN_FRAGMENT_KEY,
+      promptTemplateId: ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID,
+      when: ARCAAI_SAME_DAY_RETURN_WHEN,
+    });
     expect(policy).toEqual({ key: ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID });
   });
 
@@ -121,7 +125,10 @@ describe('ArcaAI `casenote-finalization` — the agent `n_finalize` runs', () =>
         capabilities: { supportedGenerationParams: caps.supportedGenerationParams, label: `${model.provider}/${model.slug}` },
       },
     );
-    expect(problems.filter((problem: { severity: string }) => problem.severity === 'ERROR'), JSON.stringify(problems)).toEqual([]);
+    expect(
+      problems.filter((problem: { severity: string }) => problem.severity === 'ERROR'),
+      JSON.stringify(problems),
+    ).toEqual([]);
   });
 
   /** The durable scope, built as `workflow.py#_publish_context` builds it from a handoff context. */
