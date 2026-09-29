@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, IsObject, IsUUID, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, IsUUID, Min, Max } from 'class-validator';
 import { TranscriptionJobType } from '@arcaai/domains';
 
 export class CreateJobRequest {
@@ -13,28 +13,12 @@ export class CreateJobRequest {
 
   @ApiPropertyOptional({
     description:
-      'TASK-861 — the published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`).',
+      'The published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`).',
   })
   @IsString()
   @IsOptional()
   @IsNotEmpty()
   agentSlug?: string;
-
-  @ApiPropertyOptional({
-    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.',
-  })
-  @IsString()
-  @IsOptional()
-  @IsNotEmpty()
-  agentVersionId?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
-  })
-  @IsObject()
-  @IsOptional()
-  resolvedSpec?: Record<string, unknown>;
 
   @ApiPropertyOptional({
     description: 'Consultation ID to associate the transcription with',
@@ -73,9 +57,13 @@ export class CreateJobRequest {
   @IsOptional()
   language?: string;
 
+  /**
+   * @deprecated TASK-1012 L-7 — ignored since TASK-1004 (the worker takes the language mode from
+   * the resolved agent spec). Still declared so an integration that sends it is not refused.
+   */
   @ApiPropertyOptional({
-    description:
-      'Enable multilingual code-switching. When true, the model will attempt to detect and transcribe multiple languages within the same audio. Overrides the agent default.',
+    deprecated: true,
+    description: 'Ignored — code-switching is the resolved ASR agent`s language mode, not a per-job flag.',
     example: false,
   })
   @IsBoolean()
@@ -85,20 +73,13 @@ export class CreateJobRequest {
 
 export class CreateBatchJobRequest {
   @ApiPropertyOptional({
-    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.',
+    description:
+      'The published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`).',
   })
   @IsString()
   @IsOptional()
   @IsNotEmpty()
-  agentVersionId?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
-  })
-  @IsObject()
-  @IsOptional()
-  resolvedSpec?: Record<string, unknown>;
+  agentSlug?: string;
 
   @ApiProperty({
     description: 'Media ID for batch transcription',
@@ -134,8 +115,13 @@ export class CreateBatchJobRequest {
   @IsOptional()
   language?: string;
 
+  /**
+   * @deprecated TASK-1012 L-7 — ignored since TASK-1004 (the worker takes the language mode from
+   * the resolved agent spec). Still declared so an integration that sends it is not refused.
+   */
   @ApiPropertyOptional({
-    description: 'Enable multilingual code-switching. Overrides the agent default.',
+    deprecated: true,
+    description: 'Ignored — code-switching is the resolved ASR agent`s language mode, not a per-job flag.',
     example: false,
   })
   @IsBoolean()
@@ -145,20 +131,13 @@ export class CreateBatchJobRequest {
 
 export class CreateStreamingJobRequest {
   @ApiPropertyOptional({
-    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`.',
+    description:
+      'The published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`).',
   })
   @IsString()
   @IsOptional()
   @IsNotEmpty()
-  agentVersionId?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
-  })
-  @IsObject()
-  @IsOptional()
-  resolvedSpec?: Record<string, unknown>;
+  agentSlug?: string;
 
   @ApiPropertyOptional({
     description: 'Consultation ID to associate the transcription with',
@@ -186,11 +165,38 @@ export class CreateStreamingJobRequest {
   @IsOptional()
   language?: string;
 
+  /**
+   * @deprecated TASK-1012 L-7 — ignored since TASK-1004 (the worker takes the language mode from
+   * the resolved agent spec). Still declared so an integration that sends it is not refused.
+   */
   @ApiPropertyOptional({
-    description: 'Enable multilingual code-switching. Overrides the agent default.',
+    deprecated: true,
+    description: 'Ignored — code-switching is the resolved ASR agent`s language mode, not a per-job flag.',
     example: false,
   })
   @IsBoolean()
   @IsOptional()
   codeSwitching?: boolean;
 }
+
+/**
+ * TASK-1012 L-7 — the ASR agent a job runs on, as the GATEWAY resolved it (`agentSlug` or the
+ * assignment cascade → `AsrAgentResolverService`). Service input only: the public request DTOs
+ * above deliberately do NOT declare these fields, so a caller can never hand in its own engine
+ * chain (the strict global pipe 400s both).
+ */
+export interface ResolvedAsrJobSelection {
+  /** The ASR Agent VERSION id that runs the job (rows are versions). */
+  agentVersionId: string;
+  /** The resolved `ResolvedAsrSpec` snapshot, persisted so the job is reproducible from its own row. */
+  resolvedSpec: Record<string, unknown>;
+}
+
+/** {@link CreateJobRequest} after the gateway resolved its agent. */
+export type CreateJobInput = Omit<CreateJobRequest, 'agentSlug'> & ResolvedAsrJobSelection;
+
+/** {@link CreateBatchJobRequest} after the gateway resolved its agent. */
+export type CreateBatchJobInput = Omit<CreateBatchJobRequest, 'agentSlug'> & ResolvedAsrJobSelection;
+
+/** {@link CreateStreamingJobRequest} after the gateway resolved its agent. */
+export type CreateStreamingJobInput = Omit<CreateStreamingJobRequest, 'agentSlug'> & ResolvedAsrJobSelection;

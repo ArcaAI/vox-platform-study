@@ -163,12 +163,14 @@ describe('TranscriptionJobController', () => {
     });
   });
 
+  // TASK-1012 L-7 — both routes resolve the ASR agent like `POST /` does; a caller never supplies
+  // `agentVersionId` / `resolvedSpec` (see `transcription-job.caller-spec-refused.task1012.test.ts`).
   describe('POST /batch (create batch job)', () => {
-    it('should delegate to jobService.createBatchJob', async () => {
+    it('should resolve the assigned ASR agent and delegate to jobService.createBatchJob keyed to it', async () => {
       const jobResponse = { id: 'job-2', status: 'QUEUED' };
       mockJobService.createBatchJob.mockResolvedValue(jobResponse);
 
-      const result = await controller.createBatch({ agentVersionId: 'agent-v-1', resolvedSpec: SPEC, mediaId: 'media-1' });
+      const result = await controller.createBatch({ mediaId: 'media-1' });
 
       expect(mockJobService.createBatchJob).toHaveBeenCalledWith({ agentVersionId: 'agent-v-1', resolvedSpec: SPEC, mediaId: 'media-1' });
       expect(result).toEqual(jobResponse);
@@ -176,11 +178,11 @@ describe('TranscriptionJobController', () => {
   });
 
   describe('POST /streaming (create streaming job)', () => {
-    it('should delegate to jobService.createStreamingJob', async () => {
+    it('should resolve the assigned ASR agent and delegate to jobService.createStreamingJob keyed to it', async () => {
       const jobResponse = { id: 'job-3', status: 'QUEUED' };
       mockJobService.createStreamingJob.mockResolvedValue(jobResponse);
 
-      const result = await controller.createStreaming({ agentVersionId: 'agent-v-1', resolvedSpec: SPEC });
+      const result = await controller.createStreaming({});
 
       expect(mockJobService.createStreamingJob).toHaveBeenCalledWith({ agentVersionId: 'agent-v-1', resolvedSpec: SPEC });
       expect(result).toEqual(jobResponse);
@@ -728,12 +730,12 @@ describe('TranscriptionJobController', () => {
     });
 
     it('CreateBatchJobRequest requires mediaId', async () => {
-      const missingMedia = plainToInstance(CreateBatchJobRequest, { agentVersionId: 'agent-v-1', resolvedSpec: {} });
+      const missingMedia = plainToInstance(CreateBatchJobRequest, { agentSlug: 'platform-transcription' });
       expect((await validate(missingMedia)).map((e) => e.property)).toContain('mediaId');
     });
 
-    it('CreateStreamingJobRequest rejects an empty agentVersionId', async () => {
-      const dto = plainToInstance(CreateStreamingJobRequest, { agentVersionId: '' });
+    it('CreateStreamingJobRequest rejects an empty agentSlug', async () => {
+      const dto = plainToInstance(CreateStreamingJobRequest, { agentSlug: '' });
       expect((await validate(dto)).length).toBeGreaterThan(0);
     });
   });
