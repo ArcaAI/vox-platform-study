@@ -116,7 +116,7 @@ SERVICES: tuple[ServiceSpec, ...] = (
 # `_ModelIdentityFilteredSource` (`nlp/core/config.py:30`), which DROPS the
 # model-identity keys so `*_MODEL_NAME` / `*_TOKENIZER_NAME` can no longer select
 # a model from the environment — model identity comes from the DB
-# (`AiTaskDefault` x `AiModel`), per `00-project-context.md` §Configuration
+# (`AiRoutingPolicy` x `AiModel`), per `00-project-context.md` §Configuration
 # Principles. Emitting those names here would document an env knob that the
 # service deliberately ignores, which is the F-03 "operator-facing file that
 # lies" defect in a new costume.
