@@ -1,10 +1,18 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
+import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ClsModule } from 'nestjs-cls';
-import { CoreDatabaseModule } from '@arcaai/domains';
+import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
 import { AiProviderConnectionServiceModule } from '../ai-provider-connection/ai-provider-connection.service.module';
 import { InferenceReadinessServiceModule } from '../ai-readiness/inference-readiness.service.module';
+import { CommonServiceModule } from '../baseServices/common.service.module';
+import { ModelResidencyServiceModule } from '../model-residency/model-residency.service.module';
 import { AiModelService } from './aiModel.service';
+import { ModelLifecycleService } from './lifecycle/model-lifecycle.service';
+import { ModelRegistryOperationsService } from './lifecycle/model-registry-operations.service';
+import { ModelUsageReader } from './lifecycle/model-usage.reader';
+import { HuggingFaceModelSourceClient } from './publish/huggingface-model-source.client';
 
 /**
  * `AiProviderConnectionServiceModule` supplies the ONE thing the TASK-890
@@ -29,8 +37,25 @@ import { AiModelService } from './aiModel.service';
  * `CoreDatabaseModule`.
  */
 @Module({
-  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule, AiProviderConnectionServiceModule, InferenceReadinessServiceModule],
-  providers: [AiModelService],
-  exports: [AiModelService],
+  imports: [
+    CoreDatabaseModule,
+    EventEmitterModule,
+    ClsModule,
+    AiProviderConnectionServiceModule,
+    InferenceReadinessServiceModule,
+    // TASK-1019 — the registry OPERATIONS (register from Hub, usage, unregister,
+    // download-missing) and the lifecycle status on the admin reads:
+    //   · ModelResidencyServiceModule — the per-service load state (and the unload an unregister issues);
+    //   · CommonServiceModule         — `IAppSettingsService`, for the two `modelRegistry.download.*` knobs;
+    //   · HttpModule                  — the Hub client's transport;
+    //   · the publisher queue         — this module PRODUCES download / unregister jobs (the worker consumes them).
+    // No cycle: nothing under the residency module imports this one.
+    ModelResidencyServiceModule,
+    CommonServiceModule,
+    HttpModule,
+    BullModule.registerQueue({ name: JobQueue.DownloadAiModel }),
+  ],
+  providers: [AiModelService, ModelLifecycleService, ModelUsageReader, ModelRegistryOperationsService, HuggingFaceModelSourceClient],
+  exports: [AiModelService, ModelLifecycleService, ModelRegistryOperationsService],
 })
 export class AiModelServiceModule {}
