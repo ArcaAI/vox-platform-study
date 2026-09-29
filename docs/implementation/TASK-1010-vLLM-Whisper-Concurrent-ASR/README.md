@@ -93,7 +93,7 @@ Research findings (2026-09-29, docs/issues — not measured):
 6. Scale-out probe: 2 vLLM replicas behind a router if hardware allows; streams/GPU, linearity, cold start.
 7. Go/no-go write-up against the pass bar AND the 1,000-stream projection (GPUs needed, cost/stream), side by side with TASK-1009.
 
-## Phase B plan — OD-6 (platform configuration) + OD-7 (registry first) — 2026-09-29, GO GIVEN (OD-8..OD-12 approved as recommended)
+## Phase B plan — OD-6 (platform configuration) + OD-7 (registry first) — 2026-09-29, IMPLEMENTED (see Implementation Summary)
 
 Owner approved the OD-6 shape and asked for it to be planned together with OD-7. Nothing below is
 implemented. Grounded in a code map of the current tree (paths:lines in the change history entry).
@@ -174,6 +174,34 @@ After merge: `pnpm api:route-manifest`/`openapi` are NOT affected (no route chan
 | OD-12 | Where the bench gets a registry-built spec from | Dev-only: `GET internal/agents/resolve` with the service token, so the bench exercises the same resolver as production |
 
 ## Implementation Summary
+
+### Phase B — OD-6 + OD-7 (merged into `dev-2.2` 2026-09-29)
+
+| Commit | What |
+|---|---|
+| `ea118678a` (L1 merge) | `AiModelAsrProfile` + `AsrSpecModel` carry `quantization` (`none/fp8/awq/gptq/int8`) and `maxModelLen` (omit when absent); admin `asrProfile` DTO; `servedBy: 'asr-vllm'`; `asr-vllm.descriptors.ts` (6 platform-only `global-kv` keys, defaults per OD-10); `CONSUMING_DEPLOYABLES` + `InternalServiceTokenGuard` know `asr-vllm` (`INTERNAL_ACCESS_TOKEN`); parity fixture case `vllmServingFacts` + STT mirror; seed row `arcaai-whisper-large-ml-en-vllm` (`…0001-000000000026`, `{quantization:'none', maxModelLen:448}`) and Global-only spike ASR agent `realtime-transcription-vllm-spike` (`9c000000-0000-0000-0006-000000000001`, published, never assigned, never cloned) |
+| `53cfc9446` | `GET /api/v1/internal/agents/asr-spec` (OD-12): the `ResolvedAsrSpec` a live session would get for that agent, via `AsrAgentResolverService`; `.spec` only — `providerOverrides` never leave the gateway. Five API artifacts regenerated (they also carried L1's DTO fields, which L1 had judged artifact-neutral); console `SERVED_BY_OPTIONS` += `asr-vllm` |
+| `ef4c4089b` (L2 merge) | asr-vllm: effective-config client + control-plane overlay (engine knobs at build, truncation per request, a decode request never waits on the pull); six `ASR_VLLM_*` tuning vars closed (`__MOVED_TO_CONTROL_PLANE`); request `spec` = the gateway `ResolvedAsrSpec` (`extra="ignore"`, strict on the fields it uses); registry-first loading — `localPath` in place, else HF via the owner-funded registry credential then a LOCAL dir to vLLM, `HF_HUB_DISABLE_IMPLICIT_TOKEN=1`, DENIED/UNAVAILABLE → 503; fp8 below sm_89 → 503; checksum verified where the published manifest names the file |
+| `6ed647da4` | bench `--agent-slug` + `--gateway-url` resolve the spec through `internal/agents/asr-spec`; `--spec-file` kept for replay; exactly one required; no option names a model |
+| `fbd510e0d` | asr-vllm own lock declares `redis` (push invalidation) + `huggingface-hub`; only redis 8.1.0 + async-timeout added |
+| `c7c5c6a3c`, `5a39b9e67` | env surface regenerated; prettier on two L1 lines |
+
+**Finding that amends OD-11:** vLLM has no `int8` quantization method, so asr-vllm refuses an `int8` row
+with 503 `QUANTIZATION_UNSUPPORTED` before any download. `int8` on the registry stays meaningful for
+CTranslate2 (faster-whisper `int8_float16`, TASK-1009); for vLLM the working variants are fp16 and
+(on sm_89+) fp8.
+
+**Gate pass on merged `dev-2.2` (2026-09-29):** asr-vllm 247 passed · ruff/mypy clean; STT unit 4,047
+passed, mypy = the 4 pre-existing errors; contracts py 137 passed + 1 pre-existing skip, TS 124 passed;
+`env:sync:check` + `env:python-surface:check` OK; `@arcaai/types` 102, `@arcaai/applications` 15,141 passed,
+`@arcaai/database` 1,968 passed; api tsc clean, internal suite 116 passed, lint 0 errors; openapi /
+portal / vox-node `gen:admin` checks green; admin-console typecheck clean.
+
+**Still open (need the GPU run or later steps):** docker build; vLLM 0.30.0 platform calls, private-repo
+pull with the registry token, loading the published HF-cache dir, fp8 on sm_89, cold-start cost of
+hashing on the s3fs mount; readiness mapping for `servedBy: asr-vllm` (needs the gateway to know the
+service URL — with the STT → asr-vllm adapter); CI image job, `.github/services.json`, deployment manifests.
+
 
 ### Lane 2026-09-29 — the `apps/asr-vllm` service (code + unit tests; no GPU run yet)
 
@@ -270,6 +298,7 @@ vllm 0.30.0, torch 2.13.0, fastapi 0.136.3, transformers 5.17.0).
 
 ## Change History
 
+- 2026-09-29 — Phase B merged (L1 `ea118678a`, L2 `ef4c4089b`) + orchestrator follow-ups (`internal/agents/asr-spec`, bench `--agent-slug`, redis/hf-hub deps, env regen); one gate pass green; worktrees removed. OD-11 amended: vLLM has no int8.
 - 2026-09-29 — Owner: OD-8..OD-12 approved as recommended; go for lanes L1 (TS + contract) and L2 (asr-vllm). Owner reminder: v1-compat is gone — selection is agent/workflow only; the vLLM model is reached through an ASR Agent, never a model slug.
 - 2026-09-29 — Phase B plan (OD-6 + OD-7) written, awaiting go; OD-8..OD-12 opened; tts/nlp credential-header defect found and split out.
 - 2026-09-29 — Owner OD round: OD-5 accepted (own lock + vLLM image); OD-7 registry-first (AiModel row + `model-registry:huggingface` credential, no ambient pulls); OD-6 directed to platform configuration, shape proposed. Lanes merged into `dev-2.2` (`cd56ccdba` TASK-1009, `e5337ed9b` TASK-1010).
