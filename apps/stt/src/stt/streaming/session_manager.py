@@ -2353,12 +2353,11 @@ class SessionManager:
                         error=str(exc),
                     )
 
-        # The tenant's auto-switch governance. Both values are real
-        # `TenantSttConfig` settings resolved by the gateway, but nothing ever
-        # sent them, so this controller always used its own defaults: a tenant
-        # that turned auto-fallback OFF still got it. `None` (an older gateway
-        # that sends neither) keeps the controller's defaults, so the previous
-        # behaviour is byte-identical.
+        # The auto-switch governance. `create_session` fills both values from the
+        # resolved spec's fallback block (`autoSwitch`, `switchAfterConsecutiveFailures`)
+        # unless the caller passed an explicit one; they must reach the controller, or it
+        # falls back to its own defaults and an agent that turned auto-fallback OFF would
+        # still get it. `None` keeps the controller's defaults.
         governance: dict[str, Any] = {}
         if auto_switch_enabled is not None:
             governance["auto_switch_enabled"] = auto_switch_enabled
