@@ -166,7 +166,11 @@ export interface SttAudioFrame {
   microphoneId?: string;
 }
 
-/** Finalize the current utterance. The session stays open. */
+/**
+ * Finalize the current utterance — and END THE SESSION (`RealtimeSttSocket.finalize`). The gateway
+ * flushes the tail (`status: finalizing`, the last transcripts, `status: closed`); the session
+ * cannot be resumed afterwards. It is not a mid-stream punctuation mark.
+ */
 export interface SttStopMessage {
   type: 'stop';
 }

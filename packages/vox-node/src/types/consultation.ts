@@ -134,6 +134,31 @@ export interface SummaryApprovalResponse {
 // -----------------------------------------------------------------------------
 
 /**
+ * The consultation lifecycle — the Prisma `ConsultationStatus` column, all 12 values.
+ *
+ * - live: `OPEN` → `PRIMED` → `RECORDING` → `DRAINING` (a stop drains the tail, it does not "revert")
+ * - note produced: `DRAFT_PENDING_SENSORS`, `PENDING_REVIEW`, `TIMED_OUT`
+ * - signed / closed: `SIGNED`, `CLOSED_COMPLETE` (after sign-off), `CLOSED_INCOMPLETE` (closed unsigned), `CLOSED` (legacy)
+ * - `REOPENED` — a signed/closed consultation re-opened for amendment
+ *
+ * Only `OPEN`, `PRIMED`, `RECORDING` and `DRAINING` can take a recording; see
+ * {@link ConsultationOpenResponse.recordable} (`./consultation-realtime`).
+ */
+export type ConsultationStatus =
+  | 'OPEN'
+  | 'PRIMED'
+  | 'RECORDING'
+  | 'DRAINING'
+  | 'DRAFT_PENDING_SENSORS'
+  | 'PENDING_REVIEW'
+  | 'SIGNED'
+  | 'TIMED_OUT'
+  | 'CLOSED'
+  | 'REOPENED'
+  | 'CLOSED_COMPLETE'
+  | 'CLOSED_INCOMPLETE';
+
+/**
  * Response body of `GET /api/v1/consultations/:id` (`hope.consultations.get(id)`) — the same
  * PARTIAL VIEW of `ConsultationResponse` as {@link ConsultationOpenResponse} in
  * `./consultation-realtime`, now that this SDK has grown from an id-validation
@@ -157,19 +182,7 @@ export interface ConsultationGetResponse {
    * tracker this field used to derive from is deleted). Defaults to
    * `'OPEN'` server-side for a freshly-created consultation.
    */
-  status?:
-    | 'OPEN'
-    | 'PRIMED'
-    | 'RECORDING'
-    | 'DRAINING'
-    | 'DRAFT_PENDING_SENSORS'
-    | 'PENDING_REVIEW'
-    | 'SIGNED'
-    | 'TIMED_OUT'
-    | 'CLOSED'
-    | 'REOPENED'
-    | 'CLOSED_COMPLETE'
-    | 'CLOSED_INCOMPLETE';
+  status?: ConsultationStatus;
   /** The PRIOR consultation, when this visit is a revisit or a referral — see `OpenConsultationRequest.parentConsultationId`. */
   parentConsultationId?: string;
   /**

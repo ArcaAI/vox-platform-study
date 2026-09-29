@@ -172,6 +172,7 @@ export type {
 export type {
   Consultation,
   ConsultationStatus,
+  LegacyConsultationStatus,
   CreateConsultationInput,
   OpenSessionInput,
   SessionActions,
