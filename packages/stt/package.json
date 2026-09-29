@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/stt",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Audio capture + backend streaming speech-to-text transport for @arcaai/room. The browser never runs a model (TASK-865/TASK-1006) — ASR is selected server-side via the tenant's ASR Agent.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

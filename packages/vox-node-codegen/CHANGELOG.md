@@ -1,5 +1,9 @@
 # @arcaai/vox-node-codegen
 
+## 4.0.1
+
+No changes in this release.
+
 ## 4.0.0
 
 - Version aligned with the SDK fixed group (`@arcaai/vox`, `@arcaai/vox-node`, … at 4.0.0). No functional
