@@ -99,11 +99,62 @@ describe('the same-day-return fragment on the agents', () => {
   });
 });
 
+/**
+ * Live-replay defect D1 (2026-09-29). The fragment was SELECTED on the afternoon revisit — its `when`
+ * reads `trigger.context.same_day_prequel` — yet the model saw "The earlier note(s):. Results
+ * available now:." because the placeholders read `context.*`. On the realtime lane the run context is
+ * `{ trigger: { context } }` (`realtimeRunContext`) and the `context` ALIAS is the unwrapped kind only
+ * when the agent's frozen schema has exactly ONE kind keyed `context`; the scribe schema declares
+ * several, so `context` aliases the whole trigger and `context.same_day_prequel_summary` is absent.
+ * `trigger.context.*` is the one root that resolves on BOTH lanes: realtime publishes the kind there,
+ * and the durable interpreter (`workflow.py#_publish_context`) nests the handoff context under
+ * `trigger.context` as well as flattening it. Both scopes below are built exactly as those two code
+ * paths build theirs, then composed by the REAL `composePrompt` (selection + render over one scope).
+ */
+describe('the fragment renders its two values on BOTH lanes (live-replay D1)', () => {
+  const values = {
+    same_day_prequel: true,
+    same_day_prequel_summary: '### Earlier visit today (21:56 IST, status SIGNED)\nPlan: ECG and troponin ordered.',
+    formatted_test_results: '- Hemoglobin: 10.2 g/dL (ref 13-17) [L]',
+  };
+  const composite = {
+    source: 'composite',
+    fragments: [
+      { key: 'clinical_note', source: 'template', content: 'BASE BODY' },
+      { key: FRAGMENT_KEY, source: 'template', content: ARCAAI_SAME_DAY_RETURN_CONTENT, when: WHEN },
+      { key: ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, source: 'template', content: 'POLICY' },
+    ],
+  };
+
+  it('the scribe schema declares several kinds, so the `context` alias is NOT unwrapped on these agents', () => {
+    expect((ARCAAI_CONSULTATION_SCRIBE_DEFINITION.kinds as unknown[]).length).toBeGreaterThan(1);
+  });
+
+  const scopes: Record<string, Record<string, unknown>> = {
+    // `realtimeRunContext` → `{ trigger: { context }, vars, nodes }`; `buildAgentPromptScope` aliases `context` to the trigger.
+    realtime: { trigger: { context: values }, context: { context: values }, vars: {}, nodes: {}, variables: {} },
+    // `_publish_context` → `{ ...trigger, ...live, context: { ...authored, ...live } }`; `_prompt_scope` aliases `context` to it.
+    durable: (() => {
+      const trigger = { ...values, context: { ...values } };
+      return { trigger, context: trigger, vars: {}, nodes: {}, variables: {} };
+    })(),
+  };
+
+  it.each(Object.entries(scopes))('%s lane: the fragment is selected AND both values appear in the rendered prompt', (_lane, scope) => {
+    const composed = contract.composePrompt(composite, scope);
+    expect(composed.selected).toEqual(['clinical_note', FRAGMENT_KEY, ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY]);
+    expect(composed.prompt).toContain(`The earlier note(s): ${values.same_day_prequel_summary}.`);
+    expect(composed.prompt).toContain(`Results available now: ${values.formatted_test_results}.`);
+    expect(composed.prompt).not.toContain('The earlier note(s):.');
+  });
+});
+
 describe('the same-day-return TEMPLATE', () => {
-  it('states the six rules and names the two placeholders in the one `{{context.*}}` grammar', () => {
+  it('states the six rules and names the two placeholders under `trigger.context.*`, the root its `when` reads', () => {
     expect(ARCAAI_SAME_DAY_RETURN_CONTENT).toContain('SAME-DAY RETURN VISIT.');
-    expect(ARCAAI_SAME_DAY_RETURN_CONTENT).toContain('{{context.same_day_prequel_summary');
-    expect(ARCAAI_SAME_DAY_RETURN_CONTENT).toContain('{{context.formatted_test_results');
+    expect(ARCAAI_SAME_DAY_RETURN_CONTENT).toContain('{{trigger.context.same_day_prequel_summary');
+    expect(ARCAAI_SAME_DAY_RETURN_CONTENT).toContain('{{trigger.context.formatted_test_results');
+    expect(ARCAAI_SAME_DAY_RETURN_CONTENT).not.toMatch(/\{\{\s*context\./);
     expect(ARCAAI_SAME_DAY_RETURN_CONTENT).toContain('Investigations (Previous vs Current)');
     expect(ARCAAI_SAME_DAY_RETURN_CONTENT).toContain('DEFINITIVE plan of care');
     expect(ARCAAI_SAME_DAY_RETURN_CONTENT).toContain('Never invent a result');
