@@ -88,7 +88,7 @@ import { collectCitedSegmentIds } from '../lib/transcript-segments';
 import { generateJsonWithRepair, looksLikeJsonObject, parsesAsJsonObject, type JsonRepairCall } from '../shared/bounded-json-repair';
 import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 import { IWorkflowExposureService } from '../../workflow-exposure/IWorkflowExposureService';
-import { readGoverningEngineMarker } from '../governing-engine';
+import { readGoverningEngineMarker, tenantWorkflowGoverns } from '../governing-engine';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import { IPhiRedactor } from '../../gate-edit-mining/IPhiRedactor';
 import { IGateEditMiningQueue } from '../../gate-edit-mining/IGateEditMiningQueue';
@@ -1151,24 +1151,33 @@ export class SummaryService extends BaseService implements ISummaryService {
     //    harness so it can resolve the workflow's approval wait-condition. The
     //    WORM ATTEST write above is the system-of-record; a signal failure here
     //    MUST NOT block or roll back the (already-committed) sign-off.
-    try {
-      await this.harnessGatewayService?.signalApproval(contextItem.consultationId, {
-        tenantId,
-        contextItemVersionId: versionId,
-        attestationHash,
-        clinicianId: approvedBy,
-      });
-    } catch (error) {
-      this.logger.warn({
-        message: 'Harness approval signal failed (best-effort, sign-off not rolled back)',
-        consultationId: contextItem.consultationId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    //
+    //    TASK-1022 — ONLY for a default-engine consultation. The signal targets
+    //    `harness-doc-<consultationId>` (Substrate A), and a consultation governed by a tenant
+    //    workflow never starts one (its loop is cancelled, not ended), so every such sign-off
+    //    answered "workflow not found". Its review is released by step 4b instead. A missing or
+    //    malformed marker reads as the default engine, the same fail-safe as the loop gate.
+    if (!tenantWorkflowGoverns(consultation?.metadata)) {
+      try {
+        await this.harnessGatewayService?.signalApproval(contextItem.consultationId, {
+          tenantId,
+          contextItemVersionId: versionId,
+          attestationHash,
+          clinicianId: approvedBy,
+        });
+      } catch (error) {
+        this.logger.warn({
+          message: 'Harness approval signal failed (best-effort, sign-off not rolled back)',
+          consultationId: contextItem.consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
-    // 4b. TASK-972 Lane 3 (TASK-933 H3-6) — ALSO release the GOVERNING run's review.
+    // 4b. TASK-972 Lane 3 (TASK-933 H3-6) — release the GOVERNING run's review.
     //
-    //     Step 4 above targets `harness-doc-<consultationId>`, which only exists on Substrate A.
+    //     Step 4 above targets `harness-doc-<consultationId>`, which only exists on Substrate A
+    //     (and, since TASK-1022, is skipped for a governed consultation).
     //     A consultation governed by a tenant workflow runs on Substrate B, where the sign-off
     //     reached nothing at all and the run stayed parked. This releases that run's review
     //     child through the existing decide path. Never throws — see the method.

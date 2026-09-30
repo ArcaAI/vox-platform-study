@@ -29,6 +29,7 @@ from temporalio.common import (
     WorkflowIDConflictPolicy,
 )
 from temporalio.exceptions import WorkflowAlreadyStartedError
+from temporalio.service import RPCError, RPCStatusCode
 
 from harness.core.config import Settings
 from harness.core.logging import get_logger
@@ -359,16 +360,29 @@ async def signal_approve(
     workflow_id = _workflow_id(consultation_id)
 
     handle = client.get_workflow_handle(workflow_id)
-    await handle.signal(
-        HarnessDocWorkflow.approval,
-        ApprovalSignal(
-            tenant_id=body.tenant_id,
-            context_item_version_id=body.context_item_version_id,
-            attestation_hash=body.attestation_hash,
-            clinician_id=body.clinician_id,
-            decision=body.decision,
-        ),
-    )
+    try:
+        await handle.signal(
+            HarnessDocWorkflow.approval,
+            ApprovalSignal(
+                tenant_id=body.tenant_id,
+                context_item_version_id=body.context_item_version_id,
+                attestation_hash=body.attestation_hash,
+                clinician_id=body.clinician_id,
+                decision=body.decision,
+            ),
+        )
+    except RPCError as exc:
+        # A consultation governed by a tenant workflow never starts `harness-doc-<id>`
+        # (TASK-1022), and a finished one has nothing left to signal. Say so as a 404 the
+        # gateway can read, rather than an unhandled 500. Any other RPC failure propagates.
+        if exc.status != RPCStatusCode.NOT_FOUND:
+            raise
+        logger.info(
+            "harness.document.signal_approve_not_found",
+            consultation_id=consultation_id,
+            workflow_id=workflow_id,
+        )
+        raise HTTPException(status_code=404, detail=f"workflow not found: {workflow_id}") from exc
 
     logger.info(
         "harness.document.signal_approve",
