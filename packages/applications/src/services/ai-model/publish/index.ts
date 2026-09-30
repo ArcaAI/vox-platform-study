@@ -15,3 +15,5 @@ export * from './model-publisher.errors';
 export * from './model-publisher-timeouts.settings';
 export * from './model-unregister.service';
 export * from './download-heartbeat';
+export * from './model-publisher-jobs.service';
+export * from './publisher-cancel-flags';
