@@ -1,6 +1,6 @@
 # TASK-1023: Model registry — tenant read-only access + management toggle, three-source simple registration, download-job control
 
-**Status:** In Progress — owner decisions resolved 2026-09-30; lanes running
+**Status:** Review — merged into `dev-2.2` and live-proven on the local stack; deployment branch (models-mount CI check) not pushed
 **Type:** feature (+ one latent bugfix, see §Current State C-7)
 **Branch:** `dev-2.2` (lanes in worktrees off `dev-2.2`, merged by the orchestrator)
 **Base commit at planning:** `9da0206aa`
@@ -211,9 +211,59 @@ Merge order: contract → A, B, J, C, P in parallel (disjoint files) → merge A
 - FU-2 MLflow registration: resolve `models:/<name>@<alias>` → artifact URI → publish into `hope-models`.
 - FU-3 Import HF `generation_config.json` into a model default profile shown on the Advanced defaults tab.
 - FU-4 Harness/guardrail/text bucket mounts (harness MiniCheck currently falls through to `sourceUri`).
+- FU-5 An unregister has no heartbeat: a purge running longer than the stale window reads `UNREGISTER_FAILED` while still running (retry is idempotent).
+- FU-6 "Also remove the registration" on a RUNNING cancel runs the unregister in the worker without the residency unload the route does (the worker still re-checks referrers).
+- FU-7 Jobs drawer shows the starter as a user id; an old unregister job whose row was hard-removed shows no model name.
+- FU-8 The model publisher treats a `CHANGE_ME` key pair as a real credential (MinIO rejects it as `UnknownError`, three retries); it should fail closed as `MODEL_STORE_CREDENTIAL_MISSING`.
+- FU-9 `getById` for a tenantless super admin does not pin `tenantId = SYSTEM` (can read a tenant BYO row by id) — pre-existing, found by Lane A.
+- FU-10 The inventory lists `hf/hub/models--ai4bharat--Cadence-Fast/…` (objects from 2026-09-13) as "in bucket, not registered" while the `cadence-fast` row has no `bucketPrefix` — link it with `register-from-path` or PATCH its prefix.
 
 ## Implementation Summary
-_Not started — awaiting go._
+
+| Req | What now exists |
+|---|---|
+| R1 platform-only management, tenant read-only list | One write gate for the whole registry: every `AiModelService` write and platform read now goes through `assertPlatformRegistryAdmin` (super admin, NO working tenant — previously create/update/delete/platform-default/reads checked super admin only). New `GET admin/ai-models/access` (`{ canManage, tenantManagementEnabled }`) and `GET admin/ai-models/registry` (redacted, paginated: descriptive columns + one-word `lifecycleStatus`, filter/search/sort only on those columns) — both `read:AiModel` + `svc:admin:ai-model:read|manage`, on the catalogue controller. Status comes from a new ungated status-only residency read. Console `/ai-models` moved to `(shared)` (tier 20-29, `read:AiModel`); a non-manager sees the read-only grid only. |
+| R2 toggle | Feature Availability key `modelRegistry.tenantManagement.enabled` (default off, platform-only write, per-tenant override in the `/features` matrix). Reported by `GET access`; grants nothing yet (OD-1). |
+| R3 HF token | Still SYSTEM-only (`'model-registry': []`). The HF client now resolves the credential for the JOB's tenant and never falls back to the SYSTEM token for a non-SYSTEM job (OD-3, pinned by test). |
+| R4 simple registration | One **Register model** sheet: *Hugging Face* (repository id only; derived summary card; "Advanced" with revision/name/slug/served-by, auto-opened when served-by cannot be inferred), *MLflow* ("not available yet"), *Local path* (shared `BucketPathPicker` over `hope-models` + "in the bucket, not registered" suggestions → `GET local/preview` → `POST register-from-path`). A pasted `/mnt/models-bucket/…`, `hope-models/…` or `s3://hope-models/…` path is normalised; the prefix validator now rejects a mount-qualified prefix. Mount root + bucket declared once in `@arcaai/types` (`HOPE_MODELS_MOUNT`, `HOPE_MODELS_BUCKET`), parity-tested; deployment CI job `models-mount` checks every manifest. Registration fields: 26 always / 39 with ASR before → Hugging Face 1 (+4 optional), Local path 0 typed (+6 optional). |
+| R5 no hyperparameters | Registration carries none. vLLM-served rows get a derived `serving.vramGiB = ceil(weightsGiB × 1.25 + 1)` flagged `derived` (dropped when an admin sets it). Edit drawer: name/description/tags editable, identity read-only, *Serving* tab (engine facts), *Advanced defaults* tab (ASR defaults, ASR models only, "tenants tune these per Agent"). |
+| R6 job control | `GET admin/ai-models/jobs`, `POST admin/ai-models/:id/download/cancel {removeRegistration?}`. Queued → removed now; running → Redis flag + row request, the worker aborts (AbortSignal through fetch/staging/multipart), wipes staging, deletes only the keys it uploaded, records `CANCELLED`, no retry. New lifecycle `DOWNLOAD_CANCELLED`, `UNREGISTER_FAILED` (stale unregister, retryable). Console Jobs drawer + cancel dialog + row action. |
+| C-7 | nlp/tts resolve the HF hub cache as `HF_HUB_CACHE` → `HF_HOME/hub` → default (previously `HF_HOME` itself — wrong on the cluster, where it is `/mnt/models-bucket/hf`). |
+
+No Prisma schema change, no migration, no new env var.
+
+### Deviations from the plan
+- `GET registry` is a NEW route rather than opening `GET list/:id/slug` to tenants — the platform routes and their authz stay untouched.
+- `access`/`registry` live on `AiModelCatalogueController`, not the admin controller: the boot audit `auditAdminControllersDeclareCorrectSvcScope` admits the `:read`+`:manage` service-account pair only for `:write` twins, so the gateway refused to start (caught by the live boot, not by unit tests; now pinned by a unit test over every admin-controller route).
+- The unregister-after-cancel for a RUNNING job runs in the worker (Lane J), not as a separate queued job.
+
+### Defects found and fixed during verification
+| Found by | Defect | Fix |
+|---|---|---|
+| Lane B report, verified | `download-missing` queued LOCAL rows with an `s3://hope-models/…` source (fetcher refuses → `DOWNLOAD_FAILED`) | `95d4317a2` |
+| post-merge gate | console hook order (`close` used `hf`/`local` before declaration), unused helpers, controller test arity, prettier | `3624a177e` |
+| orchestrator review | console read `suggestedServedBy` / `serving` — the gateway returns `suggested.servedBy` / `servingFacts` | `df34a37e6` |
+| live boot | svc read+manage pair refused on the admin controller → gateway would not start | `a8ed45f20` |
+| live proof | an earlier cancelled run read `failed` once a retry replaced the bookkeeping | `d7bb49dc7` |
+| live proof | HF snapshot with an `onnx/` export derived as onnxruntime + ONNX (also `formatFor` in the Hub preview) | `1d60ca5dc` |
+| live proof | re-registering an unregistered repo → raw `PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION` (slug unique over deleted/disabled rows; pre-check saw ENABLED only) | `2217f7610` — suggested slugs step to `<slug>-<n>`, a named taken slug is `SLUG_TAKEN` |
+| e2e | registry-view spec matched `metaData` inside a seeded description | `7441a6f94` |
+
+### Evidence
+**Gate 1** (after all five lanes merged, `df34a37e6`): build + the five artifacts + drift checks green; applications **15 965 passed**, api **4 716 passed**, console **3 821 passed**, contracts **386 passed**, vox-node green; applications lint/typecheck 0 errors; console build green. Pre-existing, out of scope: nlp `test_metrics_endpoint_task636.py` ×2 (fails on plain `dev-2.2` since TASK-1019), black on `nlp/api/v1/rest/diagnosis.py` and `tts/tests/test_otel_tracing_task636.py` (untouched). Lane P: nlp 22 passed, tts 25 passed (RED shown first).
+
+**Gate 2** (after the verification fixes, `a186f35d9`): applications **15 978 passed**, api **4 725 passed**, console **3 821 passed**, contracts **386 passed**; lint 0 errors (applications, api, console — the warnings are pre-existing; none in this ticket's files); typecheck 0 (applications, api, console, vox-node); `api:openapi:check`, `api:portal:check`, `gen:admin:check` green.
+
+**e2e (local dev stack, `RESET_DB=false`)**: console `tests/e2e/ai-models.spec.ts` **18/18** (platform admin: registry, HF register by repo id → jobs drawer, MLflow tab, Local path tab, jobs drawer, slim edit, search, sort, axe light+dark on grid/sheet/drawer; tenant admin: read-only grid, nav entry, axe light+dark). API `task-1023-model-registry-access.spec.ts` **5/5** (run with `SKIP_DB_PRECHECK=true` against the dev gateway; one test re-run alone after the login throttle). `task-890-byo-models.spec.ts` (403 expectation changed) and the route-authz matrix need the isolated test stack — **not run**.
+
+**Live proof (local stack, 2026-09-30)**:
+- Tenant admin: `access` → `{canManage:false, tenantManagementEnabled:false}`; `registry` → 34 SYSTEM rows, exactly the 18 view keys, no hidden field; `list`/`inventory`/`jobs`/`local/preview`/`register-from-hub`/`cancel` → 403; `catalogue` → 200.
+- Platform admin (tenantless): `access.canManage:true`; `register-from-hub {repoId:"distilbert/distilbert-base-uncased"}` alone → 202 (FILL_MASK, transformers, nlp, pinned `12040acc…`); **cancel while running → 202 `cancelling`, lifecycle `DOWNLOAD_CANCELLED` within 3 s**; second cancel → same 202; cancel after finish → 409 `JOB_NOT_ACTIVE`; no staging dir or bucket object left; retry → `DOWNLOADING`; cancel with `removeRegistration` → row gone in 3 s.
+- `hf-internal-testing/tiny-random-bert` (no pipeline tag → 400 `SERVED_BY_REQUIRED`, then with `servedBy`) → `DOWNLOADED`, `AVAILABLE`; `local/preview` of the pasted `/mnt/models-bucket/hf/hub/…/snapshots/f171d7ba…/` → normalised prefix, `hf-cache`, sha revision, (after `1d60ca5dc`) transformers + SAFETENSOR; bad path → 400 `PATH_INVALID`; empty → 404 `PATH_EMPTY`; taken slug → 409 `SLUG_TAKEN`; `register-from-path` → 201 `source=LOCAL`, SELF_HOSTED, derived `localPath`; `download-missing` skipped it (`SOURCE_NOT_FETCHABLE`).
+- Cleanup: the LOCAL row unregistered `kept-shared`; the Hub row unregistered with purge → 0 versions under its prefix.
+- Screenshots (headless Playwright): platform grid, Register sheet (HF / MLflow / Local), Download jobs drawer, tenant read-only grid (dark).
+
+**Local environment notes (not code)**: `.env.dev` was rewritten on 2026-09-30 11:44 with `MODEL_STORE_PUBLISHER_*=CHANGE_ME` (MinIO rejects the placeholder); the proof ran the publisher with the local MinIO platform key as host env (the file was not edited). The dev API's login throttle trips on repeated e2e logins. Next dev blocks `127.0.0.1` for its dev resources — use `localhost` for console e2e.
 
 ## Change History
 
@@ -221,3 +271,5 @@ _Not started — awaiting go._
 |---|---|
 | 2026-09-30 | Ticket opened as TASK-1023 (highest existing: TASK-1022 across `dev-2.2`, all branches and every worktree). Three read-only discovery agents (sonnet: backend, console, mount/runtime-params); key claims re-verified by hand (`@Authorize(['manage','all'])` at controller :55, `HOPE_MODELS_MOUNT` constant, `vramGiB` required by the serving spec, `'model-registry': []`, SYSTEM-pinned HF credential, no cancel path, nlp `HF_HOME`→`cache_dir`). Plan + OD-1…OD-10 written. Status Pending — awaiting owner decisions and go. |
 | 2026-09-30 | Owner: TASK-1023 confirmed; OD-1 management disabled for all tenants, every tenant sees the list; OD-2 platform default + per-tenant override; OD-3 no platform-token fallback; OD-4…OD-10 recommendations. Plan refined: one write gate (`assertPlatformRegistryAdmin`) instead of a new policy class, toggle grants nothing yet, HF credential rule moved to Lane J, two empty controllers in the contract so lanes never share a file. Status In Progress. |
+| 2026-09-30 | Lanes A (opus), B (opus), J (opus), C (sonnet), P (sonnet) ran in `../hope-v2-task-1023-{acc,reg,job,con,py}` + `../hope-v2-deployment-task-1023`. A, J, C and P each stalled once (stream watchdog, before writing) and were resumed with the smaller-steps brief. Merged into `dev-2.2`: A `9e900a5ea`, B `16779ac8c`, orchestrator wiring `95d4317a2`, P `3f4f9ac29`, J `ec85a6cb9`, C `1b9674c65`. Gate 1, the live proof and the fixes in "Defects found and fixed" followed. |
+| 2026-09-30 | Side effect during the live proof: one `download-missing` call queued 22 seeded models (multi-GB); all were cancelled within a minute through the new cancel route (21 removed while queued, `cadence-fast` stopped while running, no objects written). Those 22 seeded rows now read `DOWNLOAD_CANCELLED` in the LOCAL dev DB (was `NOT_DOWNLOADED`); Retry re-downloads any of them. |
