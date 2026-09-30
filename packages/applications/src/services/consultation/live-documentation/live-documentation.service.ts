@@ -117,7 +117,13 @@ import type { HarnessLiveAssistProposalDto, HarnessLiveSummaryRequest, HarnessRe
 import { HarnessLiveAssistService } from '../harness/harness-live-assist.service';
 import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from './realtime/parse-findings';
 import { verifyCorrectionProposals } from './realtime/verify-corrections';
-import { buildRunningSummary, buildStructuredSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
+import {
+  buildRunningSummary,
+  buildStructuredSummary,
+  parseDocumentJson,
+  parseDocumentSections,
+  RUNNING_SUMMARY_TITLE,
+} from './document-shape-parser';
 import { repairOutputBudget, resolveOutputBudget } from './output-budget';
 // TASK-943 — the SAME builder the summary path uses, so the two surfaces cannot drift on what an
 // absent clinical variable means.
@@ -998,6 +1004,58 @@ function documentHeadingsContext(headings: readonly string[] | undefined): Recor
   const list = (headings ?? []).filter((title) => typeof title === 'string' && title.trim().length > 0).map((title) => title.trim());
   if (list.length === 0) return {};
   return { document_headings: list.map((title, index) => `${index + 1}. ${title}`).join('\n'), document_heading_list: list };
+}
+
+/**
+ * TASK-1022 OD-1 (b) — the owner's LITERAL body for a template heading nothing was said under.
+ * Same string as the harness `_NOT_DISCUSSED_MARKER` (`apps/harness/.../interpreter/nodes/core.py`).
+ */
+const NOT_DISCUSSED_MARKER = 'Not discussed';
+
+/**
+ * TASK-1022 — a `sections`-carrying live output rendered as headed Markdown, or `null` when it
+ * carries no usable sections (the caller then keeps the flat `text`).
+ *
+ * The SAME rules as the harness `_headed_note` (`nodes/core.py`), so the durable finalizer reads
+ * one rendering whichever side produced it: `## <title>\n<content>` per section in list (template)
+ * order; the literal marker under an empty heading; a single `Running Summary` / untitled section
+ * (the parser fallback, an UNKNOWN partition) as its bare body; `null` when no section has a title
+ * or none has a body — a note made only of markers would hide a live lane that produced nothing.
+ */
+function renderHeadedNoteText(output: Record<string, unknown>): string | null {
+  const raw = output.sections;
+  const entries = (Array.isArray(raw) ? raw : raw == null ? [] : [raw]).filter(
+    (entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null && !Array.isArray(entry),
+  );
+  if (entries.length === 0) return null;
+  const parts = entries.map((entry) => [String(entry.title || '').trim(), String(entry.content || '').trim()] as const);
+  if (parts.length === 1 && (parts[0][0] === '' || parts[0][0] === RUNNING_SUMMARY_TITLE)) return parts[0][1] || null;
+  if (!parts.some(([title]) => title) || !parts.some(([, body]) => body)) return null;
+  const rendered: string[] = [];
+  for (const [title, body] of parts) {
+    if (title) rendered.push(`## ${title}\n${body || NOT_DISCUSSED_MARKER}`);
+    else if (body) rendered.push(body);
+  }
+  return rendered.join('\n\n');
+}
+
+/**
+ * TASK-1022 — the handoff COPY of the live outputs: every summary output (one carrying `sections`)
+ * gets the headed rendering as its `text`; everything else is passed through unchanged.
+ *
+ * Why `text`: the durable finalizer binds a summary node's `out` socket, which the `core.agent`
+ * registry declares as `text` — so `text` is the only field it ever sees, and changing the socket
+ * would be a workflow-vocabulary change. `n_finalize` is the only consumer of a live summary
+ * node's handoff output (seeded graphs `28-*` / `29-*`). New objects only: the session's own
+ * outputs are never mutated, because their `text` is the live lane's NER offset base.
+ */
+function headedHandoffOutputs(outputs: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
+  return Object.fromEntries(
+    Object.entries(outputs).map(([nodeId, output]) => {
+      const headed = output && typeof output === 'object' ? renderHeadedNoteText(output) : null;
+      return [nodeId, headed === null ? output : { ...output, text: headed }];
+    }),
+  );
 }
 
 /** The effective `agentic.context.*` knobs for one resolution. */
@@ -7403,7 +7461,8 @@ return 0`;
     const record: LiveHandoffRecord = {
       endedAt: new Date().toISOString(),
       tenantId: session.tenantId,
-      outputs: session.liveNodeOutputs ?? {},
+      // TASK-1022 — summary outputs carry the HEADED note as `text` (see `headedHandoffOutputs`).
+      outputs: headedHandoffOutputs(session.liveNodeOutputs ?? {}),
       ...(documentHeadings.length > 0 ? { documentHeadings } : {}),
     };
     try {

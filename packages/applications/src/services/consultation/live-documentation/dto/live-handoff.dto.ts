@@ -38,7 +38,7 @@ export class LiveHandoffResponse {
 
   @ApiProperty({
     description:
-      "The live lane's final outputs, keyed by the graph node id that produced them, filtered to the node ids the caller asked about. Each value is that node's own output object (a `core.agent` running the note publishes `{ text, sections, … }`). Legitimately EMPTY for a consultation that never recorded — the finalizer then degrades with its own named reason rather than being handed a fabricated note.",
+      "The live lane's final outputs, keyed by the graph node id that produced them, filtered to the node ids the caller asked about. Each value is that node's own output object (a `core.agent` running the note publishes `{ text, sections, … }`). TASK-1022: on a note output (one carrying `sections`) the handed-off `text` is the HEADED rendering — `## <title>\\n<content>` per section in template order, `Not discussed` under an empty section, the `Running Summary` parser fallback without a heading, the flat text kept when nothing was said — because the finalizer binds the `out` socket, which the `core.agent` registry declares as `text`. The live session's own `text` (the NER offset base) is unchanged. Legitimately EMPTY for a consultation that never recorded — the finalizer then degrades with its own named reason rather than being handed a fabricated note.",
     type: 'object',
     additionalProperties: true,
   })
@@ -57,6 +57,10 @@ export class LiveHandoffResponse {
 export interface LiveHandoffRecord {
   endedAt: string;
   tenantId: string;
+  /**
+   * The session's live outputs, COPIED: every note output (one carrying `sections`) has its `text`
+   * replaced by the HEADED rendering (TASK-1022, `headedHandoffOutputs` in the service).
+   */
   outputs: Record<string, Record<string, unknown>>;
   /**
    * TASK-1022 — the section titles of the document template the live session FROZE, in
