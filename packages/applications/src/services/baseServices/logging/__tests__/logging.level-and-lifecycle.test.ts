@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LoggingService } from '../logging.service';
 import type { ILogTransport, LogEntry, LogLevel, TransportState } from '../transports/types';
+import { hermeticLoggingEnv } from './hermetic-logging-env';
 
 class RecordingTransport implements ILogTransport {
   public logs: LogEntry[] = [];
@@ -35,7 +36,7 @@ describe('LoggingService level gating', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    process.env = { ...originalEnv, LOG_CONSOLE_ENABLED: 'false', LOG_FILE_ENABLED: 'false', LOG_LEVEL: 'info' };
+    process.env = { ...hermeticLoggingEnv(originalEnv), LOG_CONSOLE_ENABLED: 'false', LOG_FILE_ENABLED: 'false', LOG_LEVEL: 'info' };
   });
 
   afterEach(() => {
@@ -111,7 +112,7 @@ describe('LoggingService child construction', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    process.env = { ...originalEnv, LOG_CONSOLE_ENABLED: 'false', LOG_FILE_ENABLED: 'false' };
+    process.env = { ...hermeticLoggingEnv(originalEnv), LOG_CONSOLE_ENABLED: 'false', LOG_FILE_ENABLED: 'false' };
   });
 
   afterEach(() => {
@@ -162,7 +163,7 @@ describe('LoggingService bounded flush', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    process.env = { ...originalEnv, LOG_CONSOLE_ENABLED: 'false', LOG_FILE_ENABLED: 'false' };
+    process.env = { ...hermeticLoggingEnv(originalEnv), LOG_CONSOLE_ENABLED: 'false', LOG_FILE_ENABLED: 'false' };
   });
 
   afterEach(() => {

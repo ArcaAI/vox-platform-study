@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LoggingService } from '../logging.service';
 import type { ILogTransport, LogEntry, LogLevel, TransportState } from '../transports/types';
+import { hermeticLoggingEnv } from './hermetic-logging-env';
 
 // Mock transport for testing
 class MockTransport implements ILogTransport {
@@ -58,7 +59,7 @@ describe('LoggingService', () => {
   beforeEach(() => {
     vi.resetModules();
     process.env = {
-      ...originalEnv,
+      ...hermeticLoggingEnv(originalEnv),
       NODE_ENV: 'test',
       LOG_CONSOLE_ENABLED: 'false', // Disable console transport for cleaner tests
       LOG_FILE_ENABLED: 'false',

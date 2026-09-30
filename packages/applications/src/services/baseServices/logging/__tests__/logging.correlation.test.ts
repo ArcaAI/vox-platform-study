@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoggingService } from '../logging.service';
 import { ConsoleTransport } from '../transports/console.transport';
 import type { ILogTransport, LogEntry, TransportState } from '../transports/types';
+import { hermeticLoggingEnv } from './hermetic-logging-env';
 
 class RecordingTransport implements ILogTransport {
   public logs: LogEntry[] = [];
@@ -57,7 +58,7 @@ describe('LoggingService ambient correlation', () => {
   let t: RecordingTransport;
 
   beforeEach(() => {
-    process.env = { ...originalEnv, LOG_CONSOLE_ENABLED: 'false', LOG_FILE_ENABLED: 'false' };
+    process.env = { ...hermeticLoggingEnv(originalEnv), LOG_CONSOLE_ENABLED: 'false', LOG_FILE_ENABLED: 'false' };
     service = new LoggingService();
     t = new RecordingTransport();
     service.addTransport(t);

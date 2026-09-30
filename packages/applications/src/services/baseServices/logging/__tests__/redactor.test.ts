@@ -12,10 +12,11 @@
  * does not have to hold two mental models.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { redactId } from '../redact-id';
 import { HASHED_ID_KEYS, PHI_KEYS, REDACTED_VALUE, redactEntry, redactValue } from '../redactor';
+import { hermeticLoggingEnv } from './hermetic-logging-env';
 
 // Clinical identifiers are hashed (stable, Python-parity `redactId`) rather
 // than blanked; every other PHI key is blanked.
@@ -150,6 +151,16 @@ describe('redactEntry', () => {
 });
 
 describe('LoggingService dispatch integration', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = hermeticLoggingEnv(originalEnv);
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
   it('redacts before ANY transport sees the entry', async () => {
     const { LoggingService } = await import('../logging.service');
 

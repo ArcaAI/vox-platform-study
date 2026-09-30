@@ -30,8 +30,9 @@ export * from './descriptors/feature-availability.descriptors';
 // the barrel (its `SERVICE_RUNTIME_DEFAULTS` travels a dedicated path), but the
 // gateway's boot-time env schema is built from descriptors and this is the one
 // env-tier key left in that file -- it used to reach `env.schema.ts` inside
-// `FEATURE_FLAG_SETTINGS`, which TASK-932 deleted.
-export { HARNESS_CLAIM_CHECK_ENABLED } from './descriptors/service-runtime.descriptors';
+// `FEATURE_FLAG_SETTINGS`, which TASK-932 deleted. The model-publisher staging
+// pair joined it when TASK-1027 moved it out of the bootstrap floor.
+export { HARNESS_CLAIM_CHECK_ENABLED, MODEL_PUBLISHER_STAGING_SETTINGS } from './descriptors/service-runtime.descriptors';
 // TASK-950 — the three `identity.autoProvision.*` keys. `ContextUserIdentityService`
 // resolves them by KEY through `EffectiveSettingsService`, and the seed writes the SYSTEM
 // role row by the same constant, so both sides name one exported symbol.
