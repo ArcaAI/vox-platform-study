@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from hope_env import hope_settings_sources, load_env, register_settings_cache
+from hope_env import hope_settings_sources, load_env, real_secret, register_settings_cache
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -201,7 +201,9 @@ class Settings(BaseSettings):
         code shape and a fallback credential could be appended without touching
         a call site. Empty ⇒ nothing is configured.
         """
-        shared = self.internal_access_token.get_secret_value()
+        # `real_secret` maps the unfilled-secret sentinel onto "" so a `CHANGE_ME` token is
+        # never ACCEPTED as a credential — see hope_env.placeholders.
+        shared = real_secret(self.internal_access_token)
         return (shared,) if shared else ()
 
     # API Gateway (internal communication)
