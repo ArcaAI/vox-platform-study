@@ -347,8 +347,11 @@ describe('TASK-939 — a JSON-shaped `null` sentinel is not clinical content', (
     expect(writes).toEqual([]);
   });
 
-  it('LEAVES clinical shorthand alone — N/A, None and Nil are things a clinician writes', () => {
-    for (const real of ['N/A', 'None', 'Nil', 'No known allergies']) {
+  // TASK-1022 — `N/A` left this list: a WHOLE-addition `N/A` is now dropped as a "nothing stated"
+  // placeholder (`isNothingStatedPlaceholder`), which the prompt already forbids. `None` and `Nil`
+  // are still clinical answers ("Allergies: None") and still survive.
+  it('LEAVES clinical shorthand alone — None and Nil are things a clinician writes', () => {
+    for (const real of ['None', 'Nil', 'No known allergies']) {
       const turn = parseTurnJson(JSON.stringify({ subjective: { addition: real } }), compiled);
       expect(turn?.subjective?.addition, `"${real}" was wrongly discarded`).toBe(real);
     }

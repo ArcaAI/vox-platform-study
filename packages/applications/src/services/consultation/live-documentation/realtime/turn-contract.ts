@@ -225,9 +225,10 @@ function unfence(raw: string): string {
  * `null` above the one real sentence. The accumulation invariant HELD throughout (it accumulated
  * `"null"` faithfully), which is exactly why the churn metric could not catch it.
  *
- * Deliberately NARROW — only a value whose ENTIRE trimmed text is one of these. `N/A`, `None` and
- * `Nil` are legitimate clinical shorthand; discarding those would lose real content, which is a
- * worse defect than the one this prevents.
+ * Deliberately NARROW — only a value whose ENTIRE trimmed text is one of these. `None` and `Nil`
+ * are legitimate clinical shorthand; discarding those would lose real content, which is a worse
+ * defect than the one this prevents. (TASK-1022: a whole-sentence `N/A` is dropped, but by the
+ * separate placeholder guard in `asContent`, not here.)
  */
 const JSON_NULL_SENTINELS: ReadonlySet<string> = new Set(['null', 'undefined']);
 
@@ -236,6 +237,18 @@ function asText(value: unknown): string | undefined {
   const trimmed = value.trim();
   if (trimmed.length === 0) return undefined;
   return JSON_NULL_SENTINELS.has(trimmed.toLowerCase()) ? undefined : trimmed;
+}
+
+/**
+ * TASK-1022 — the section CONTENT a turn carries (`addition` / `revision`): `asText`, minus every
+ * "nothing stated" placeholder sentence (see `withoutPlaceholderSentences`). `contradiction` is a
+ * reason, not content, and keeps plain `asText`.
+ */
+function asContent(value: unknown): string | undefined {
+  const text = asText(value);
+  if (text === undefined) return undefined;
+  const kept = withoutPlaceholderSentences(text);
+  return kept.length > 0 ? kept : undefined;
 }
 
 /**
@@ -276,8 +289,8 @@ export function parseTurnJson(raw: string, compiled: CompiledDocumentTemplate): 
 
     const entry = value as Record<string, unknown>;
     const section: TurnSection = {
-      ...(asText(entry.addition) ? { addition: asText(entry.addition)! } : {}),
-      ...(asText(entry.revision) ? { revision: asText(entry.revision)! } : {}),
+      ...(asContent(entry.addition) ? { addition: asContent(entry.addition)! } : {}),
+      ...(asContent(entry.revision) ? { revision: asContent(entry.revision)! } : {}),
       ...(asText(entry.contradiction) ? { contradiction: asText(entry.contradiction)! } : {}),
     };
     if (Object.keys(section).length > 0) turn[key] = section;
@@ -715,6 +728,234 @@ export function crossSectionDuplicateAnnotations(sections: readonly DocumentSect
   });
 }
 
+// =================================================================================================
+// TASK-1022 — "nothing stated" placeholders are not content
+// =================================================================================================
+
+/**
+ * A live replay (gemma-4-e2b) answered a section the transcript had not reached with PROSE rather
+ * than `null` — "No new instructions or orders were stated in the current transcript." — and the
+ * fold appended it like any other addition. It then sat beside the real orders for the rest of the
+ * consultation. The prompt already forbids it ("never a placeholder"); this is where it is enforced.
+ *
+ * Deliberately CONSERVATIVE, like `JSON_NULL_SENTINELS`: a sentence is a placeholder only when its
+ * WHOLE normalised text matches one of these anchored patterns, and every pattern describes the
+ * DOCUMENTATION ("not stated", "no orders", "… in the current transcript"), never the PATIENT. A
+ * pertinent negative — "No chest pain reported", "No known drug allergies" — is a finding and does
+ * not match; nor does a bare `None` / `Nil`, which is a legitimate clinical answer ("Allergies:
+ * None"). A subject-bearing "X was not mentioned" matches ONLY with a transcript scope ("… in the
+ * current transcript"), because without one "Fever not reported" can be read as a denial.
+ */
+const PLACEHOLDER_STATE_VERB = '(?:stated|mentioned|discussed|reported|documented|recorded|provided|given|specified|issued|noted|addressed|covered)';
+const PLACEHOLDER_COPULA = '(?:(?:was|were|is|are|has been|have been) )?';
+const PLACEHOLDER_TRANSCRIPT =
+  '(?:in|during|from|by|for) (?:the |this )?(?:current |new |latest |partial )?(?:transcript|turn|segment|update)(?: so far)?';
+const PLACEHOLDER_SCOPE = `(?: ${PLACEHOLDER_TRANSCRIPT})?(?: so far| yet)?`;
+const PLACEHOLDER_QUALIFIER = '(?:(?:new|further|additional|other|specific|relevant) )*';
+const PLACEHOLDER_DOC_NOUN = '(?:instructions?|orders?|information|details?|data|content|updates?)';
+
+export const PLACEHOLDER_SENTENCE_PATTERNS: readonly RegExp[] = [
+  // A bare marker: "N/A", "Not applicable", "None reported", "No data".
+  new RegExp(`^(?:n/a|not applicable|not available|none ${PLACEHOLDER_STATE_VERB}|no data|no information|nothing to report)${PLACEHOLDER_SCOPE}$`),
+  // "Not discussed", "Not mentioned in the current transcript".
+  new RegExp(`^${PLACEHOLDER_COPULA}not (?:yet )?${PLACEHOLDER_STATE_VERB}${PLACEHOLDER_SCOPE}$`),
+  // "No new instructions or orders were stated in the current transcript." — documentation nouns only.
+  new RegExp(
+    `^(?:there (?:was|were|is|are|has been|have been) )?no ${PLACEHOLDER_QUALIFIER}${PLACEHOLDER_DOC_NOUN}` +
+      `(?:(?:,| or| and|/) ?${PLACEHOLDER_QUALIFIER}${PLACEHOLDER_DOC_NOUN})*(?: ${PLACEHOLDER_COPULA}${PLACEHOLDER_STATE_VERB})?${PLACEHOLDER_SCOPE}$`,
+  ),
+  // "Nothing new was reported in this turn."
+  new RegExp(`^nothing(?: new| further| else)?(?: ${PLACEHOLDER_COPULA}${PLACEHOLDER_STATE_VERB})?${PLACEHOLDER_SCOPE}$`),
+  // "Medications were not mentioned in the current transcript." — any subject, transcript scope REQUIRED.
+  new RegExp(`^.{1,80}? ${PLACEHOLDER_COPULA}not ${PLACEHOLDER_STATE_VERB} ${PLACEHOLDER_TRANSCRIPT}$`),
+  // "No chest pain was mentioned in the current transcript." — likewise, transcript scope REQUIRED.
+  new RegExp(`^no .{1,80}? ${PLACEHOLDER_COPULA}${PLACEHOLDER_STATE_VERB} ${PLACEHOLDER_TRANSCRIPT}$`),
+];
+
+/** Comparison-only form: lowercased, bullet and wrapping brackets removed, trailing punctuation stripped. */
+function placeholderForm(sentence: string): string {
+  let form = sentence.toLowerCase().replace(/\s+/g, ' ').trim();
+  form = form.replace(/^[-*•–—]+\s*/, '');
+  form = form.replace(/[.!;:…]+$/, '').trim();
+  form = form.replace(/^[([]\s*(.*?)\s*[)\]]$/, '$1');
+  return form.replace(/[.!;:…]+$/, '').trim();
+}
+
+function isPlaceholderSentence(sentence: string): boolean {
+  const form = placeholderForm(sentence);
+  // A "sentence" of punctuation alone (a stray `-`) carries nothing either.
+  return form.length === 0 || PLACEHOLDER_SENTENCE_PATTERNS.some((pattern) => pattern.test(form));
+}
+
+/**
+ * TASK-1022 — true when EVERY sentence of `text` is a "nothing stated" placeholder. Empty text is
+ * `false`: it is nothing, not a placeholder.
+ */
+export function isNothingStatedPlaceholder(text: string): boolean {
+  const sentences = splitSentences(text);
+  return sentences.length > 0 && sentences.every((sentence) => isPlaceholderSentence(sentence.text));
+}
+
+/**
+ * `text` without its placeholder sentences — every other sentence in its original text, order and
+ * layout. Returns `text` itself (byte-identical) when there is nothing to remove, and `''` when
+ * nothing else is left.
+ */
+function withoutPlaceholderSentences(text: string): string {
+  const sentences = splitSentences(text);
+  const kept = sentences.filter((sentence) => !isPlaceholderSentence(sentence.text));
+  if (kept.length === sentences.length) return text;
+  return kept
+    .map((sentence) => `${sentence.text}${sentence.separator}`)
+    .join('')
+    .trim();
+}
+
+/** A turn with the placeholder sentences removed from every `addition` / `revision` (see `asContent`). */
+function withoutPlaceholders(turn: ParsedTurn): ParsedTurn {
+  const cleaned: Record<string, TurnSection> = {};
+  for (const [key, section] of Object.entries(turn)) {
+    const addition = section.addition === undefined ? undefined : withoutPlaceholderSentences(section.addition.trim());
+    const revision = section.revision === undefined ? undefined : withoutPlaceholderSentences(section.revision.trim());
+    const next: TurnSection = {
+      ...(addition ? { addition } : {}),
+      ...(revision ? { revision } : {}),
+      ...(section.contradiction ? { contradiction: section.contradiction } : {}),
+    };
+    if (next.addition !== undefined || next.revision !== undefined) cleaned[key] = next;
+  }
+  return cleaned;
+}
+
+// =================================================================================================
+// TASK-1022 — one turn, near-identical text in several sections: keep it in ONE
+// =================================================================================================
+
+/** The kind of section a template declares, read from its key AND title (keys vary per template). */
+type RoutableSectionKind = 'plan' | 'follow-up' | 'orders';
+/** The kind of text a turn wrote. */
+type RoutableContentKind = 'plan' | 'orders';
+
+function routableSectionKind(key: string, title: string): RoutableSectionKind | undefined {
+  const words = ` ${`${key} ${title}`.toLowerCase().replace(/[_\-‐‑–]+/g, ' ')} `;
+  if (/\bfollow ?up\b/.test(words)) return 'follow-up';
+  if (/\b(?:instructions?|orders?)\b/.test(words)) return 'orders';
+  // "Treatment History" / "Previous Plan" describe the past, not today's plan.
+  if (/\b(?:plan|treatment|management)\b/.test(words) && !/\b(?:history|previous|prior|past)\b/.test(words)) return 'plan';
+  return undefined;
+}
+
+const ROUTING_DOSE =
+  /\d+(?:\.\d+)?\s*(?:mg|mcg|µg|g|ml|iu|units?|milligrams?|micrograms?|grams?|millilit(?:re|er)s?|tablets?|tabs?|puffs?|drops?)\b/i;
+const ROUTING_FREQUENCY =
+  /\b(?:once|twice|thrice|three times|four times|daily|nightly|weekly|hourly|od|bd|bid|tds|tid|qid|qds|prn|at night|every (?:morning|evening|night|day|\d+ hours?))\b/i;
+const ROUTING_PRESCRIBING = /\b(?:start|starting|prescrib(?:e|ed|ing)|initiat(?:e|ing)|continue|continuing)\b/i;
+const ROUTING_ORDER =
+  /\b(?:come back|return (?:in|after|on|if)|repeat|go to (?:the )?emergency|emergency department|follow[\s-]?up|review (?:in|after|on)|see (?:you|me) (?:in|after|on))\b/i;
+
+/**
+ * A new prescription or plan is a DOSE with a frequency or a prescribing verb ("starting",
+ * "continue", "prescribe") — a dose is required, so "chest pain continues" or a lab value
+ * ("142 mg/dL") is never mistaken for one. An order / instruction is return, repeat, emergency or
+ * follow-up wording. Plan is checked first.
+ */
+function routableContentKind(text: string): RoutableContentKind | undefined {
+  if (ROUTING_DOSE.test(text) && (ROUTING_FREQUENCY.test(text) || ROUTING_PRESCRIBING.test(text))) return 'plan';
+  if (ROUTING_ORDER.test(text)) return 'orders';
+  return undefined;
+}
+
+/**
+ * The live replay's turn wrote one near-identical prescription paragraph into `current_medications`,
+ * `additional_data` AND `instructions_and_orders`, and never into `treatment_plan`. This keeps such
+ * a SAME-TURN repeat in exactly one section:
+ *
+ * - candidates are the turn's `addition`s, and `revision`s on a section with no real content (a
+ *   first write); a contradiction-backed revision is never touched;
+ * - two candidates are the same text by the cross-section flag's own measure (`sentencesMatch` over
+ *   the whole text: Jaccard >= {@link CROSS_SECTION_DUPLICATE_JACCARD}, identical numbers);
+ * - a group is routed only when its text is a PLAN (→ a plan section) or an ORDER (→ a follow-up
+ *   section, else an instructions/orders section). A member of the right kind wins; otherwise the
+ *   template's first section of that kind receives it, appended after its own addition this turn;
+ *   otherwise the first member in template order keeps it. The kept text is the group's LONGEST
+ *   variant (ties: the first), so no member's extra words are lost.
+ * - a group of any OTHER text keeps the TASK-1001 owner decision: written everywhere and FLAGGED.
+ *
+ * A no-op for a template with no plan / follow-up / orders section. Cross-TURN repeats are not
+ * candidates at all: they keep the flag.
+ */
+function routeSameTurnRepeats(turn: ParsedTurn, compiled: CompiledDocumentTemplate, existing: ReadonlyMap<string, string>): ParsedTurn {
+  const titles = new Map(compiled.checklist.map((entry) => [entry.key, entry.title]));
+  const kinds = new Map(compiled.sectionKeys.map((key) => [key, routableSectionKind(key, titles.get(key) ?? key)]));
+  if (![...kinds.values()].some((kind) => kind !== undefined)) return turn;
+
+  interface Candidate {
+    readonly key: string;
+    readonly field: 'addition' | 'revision';
+    readonly text: string;
+    readonly form: MatchForm;
+  }
+  const candidates: Candidate[] = [];
+  for (const key of compiled.sectionKeys) {
+    const section = turn[key];
+    if (!section) continue;
+    let field: Candidate['field'];
+    let text: string | undefined;
+    if (section.revision !== undefined) {
+      const before = existing.get(key) ?? '';
+      if (section.contradiction || (before.trim().length > 0 && !isNothingStatedPlaceholder(before))) continue;
+      field = 'revision';
+      text = section.revision;
+    } else {
+      field = 'addition';
+      text = section.addition;
+    }
+    if (!text || !isEligibleSentence(text)) continue;
+    candidates.push({ key, field, text, form: matchForm(text) });
+  }
+  if (candidates.length < 2) return turn;
+
+  // Connected components over the pairwise match, members kept in template order.
+  const groupOf = candidates.map((_, index) => index);
+  const root = (index: number): number => (groupOf[index] === index ? index : (groupOf[index] = root(groupOf[index]!)));
+  for (let a = 0; a < candidates.length; a += 1) {
+    for (let b = a + 1; b < candidates.length; b += 1) {
+      if (sentencesMatch(candidates[a]!.form, candidates[b]!.form)) groupOf[root(b)] = root(a);
+    }
+  }
+  const groups = new Map<number, Candidate[]>();
+  for (const [index, candidate] of candidates.entries()) {
+    const members = groups.get(root(index)) ?? [];
+    members.push(candidate);
+    groups.set(root(index), members);
+  }
+
+  const next: Record<string, TurnSection> = { ...turn };
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    const kept = members.reduce((longest, member) => (member.text.length > longest.text.length ? member : longest));
+    const contentKind = routableContentKind(kept.text);
+    if (!contentKind) continue;
+
+    const preferred: readonly RoutableSectionKind[] = contentKind === 'plan' ? ['plan'] : ['follow-up', 'orders'];
+    const member = preferred.map((kind) => members.find((m) => kinds.get(m.key) === kind)).find(Boolean);
+    const outsider = member
+      ? undefined
+      : preferred.map((kind) => compiled.sectionKeys.find((key) => kinds.get(key) === kind && turn[key]?.revision === undefined)).find(Boolean);
+    const target = member?.key ?? outsider ?? members[0]!.key;
+
+    for (const m of members) if (m.key !== target) delete next[m.key];
+    const targetMember = members.find((m) => m.key === target);
+    if (targetMember) {
+      next[target] = { ...turn[target], [targetMember.field]: kept.text };
+    } else {
+      const own = next[target]?.addition;
+      next[target] = { ...next[target], addition: own ? `${own}\n\n${kept.text}` : kept.text };
+    }
+  }
+  return next;
+}
+
 /**
  * Fold a turn onto the prior note.
  *
@@ -722,9 +963,13 @@ export function crossSectionDuplicateAnnotations(sections: readonly DocumentSect
  * caller persists the writes and publishes the sections; nothing here touches the store or the
  * wire, which is what makes the rules above testable without a database.
  */
-export function applyTurn(prior: readonly LiveSummarySectionDto[], turn: ParsedTurn, compiled: CompiledDocumentTemplate): AppliedTurn {
+export function applyTurn(prior: readonly LiveSummarySectionDto[], rawTurn: ParsedTurn, compiled: CompiledDocumentTemplate): AppliedTurn {
   const titles = new Map(compiled.checklist.map((entry) => [entry.key, entry.title]));
   const existing = priorByKey(prior, compiled);
+  // TASK-1022 — placeholders out first (a caller may build a turn without `parseTurnJson`), then
+  // same-turn repeats routed to one section. Both are pure rewrites of the TURN; the fold below is
+  // unchanged apart from the placeholder-only cleanup.
+  const turn = routeSameTurnRepeats(withoutPlaceholders(rawTurn), compiled, existing);
 
   const sections: LiveSummarySectionDto[] = [];
   const writes: TurnSectionWrite[] = [];
@@ -766,12 +1011,18 @@ export function applyTurn(prior: readonly LiveSummarySectionDto[], turn: ParsedT
     const before = existing.get(sectionKey) ?? '';
     const contribution = turn[sectionKey];
     let after = before;
+    // TASK-1022 — a body that is ONLY an older turn's "nothing stated" placeholder is not content:
+    // real text REPLACES it (a deterministic cleanup, not a model revision, so no contradiction is
+    // needed) instead of being appended beside it. A clinician-confirmed body is still protected —
+    // the store refuses a machine `replace` on it.
+    const placeholderOnly = isNothingStatedPlaceholder(before);
+    const base = placeholderOnly ? '' : before;
 
     // `revision` wins over `addition` when a turn supplies both: a contradiction is the stronger
     // claim about the same text, and applying the append too would re-add content the revision has
     // just reworded.
     if (contribution?.revision !== undefined) {
-      const hadContent = before.trim().length > 0;
+      const hadContent = base.trim().length > 0;
       if (!hadContent) {
         // Nothing to contradict — on an empty section a "revision" is just the first content.
         after = contribution.revision.trim();
@@ -791,12 +1042,12 @@ export function applyTurn(prior: readonly LiveSummarySectionDto[], turn: ParsedT
       // is the only place it can be enforced. TASK-1001: per SENTENCE, because a restatement that
       // merges, respaces or reorders what is already written is not a substring of it.
       if (addition.length > 0) {
-        const novel = withoutSentencesAlreadyPresent(before, addition);
+        const novel = withoutSentencesAlreadyPresent(base, addition);
         droppedSentenceCount += novel.dropped;
 
         if (novel.text.length > 0) {
-          after = before.trim().length > 0 ? `${before.trim()}\n\n${novel.text}` : novel.text;
-          writes.push(flagged({ sectionKey, title, idx, mode: 'append', content: novel.text }));
+          after = base.trim().length > 0 ? `${base.trim()}\n\n${novel.text}` : novel.text;
+          writes.push(flagged({ sectionKey, title, idx, mode: placeholderOnly ? 'replace' : 'append', content: novel.text }));
         } else {
           // Nothing in the addition was new. No write at all — the section is byte-stable — and the
           // refusal is what makes the pressure countable instead of invisible.
