@@ -166,7 +166,7 @@ Then the orchestrator runs these steps:
 
 Residual model-quality misses in run4, with no deterministic cause: the 2B live model left "ECG and troponin normal" (afternoon) and "no acute distress" (morning) out of the partials. The finalizer can only keep what the partials carry.
 
-### 9.5 Open — owner decisions
+### 9.5 Owner decisions (answered 2026-09-30: governed resume **(a)**, loop ending steps **not needed**)
 1. **Governed resume.** A second recording on a governed, unsigned consultation is still re-finalised by the default `harness-doc` engine (`consultation-event.handler.ts:138-169`), which replaces the governed note. Blocking it would lose the second recording, because the governing run is parked at `n_review` and `n_finalize` does not re-run. Options: (a) the governing graph re-finalises on resume, or (b) accept the default engine as the governed resume writer.
 2. **Loop ending steps on governed consultations.** Now that the loop is cancelled, governed consultations no longer run the loop's ending actions (`session.timeout` block, `summary.finalize` section lock, `feedback.capture`). They previously ran only because of the race. Confirm that the governed path does not need them.
 
@@ -181,6 +181,7 @@ Residual model-quality misses in run4, with no deterministic cause: the 2B live 
 
 | Date | Change |
 |---|---|
+| 2026-09-30 | Owner: governed resume = (a), the governing graph re-finalises on resume; loop ending steps not needed for governed consultations (no change). Lane L-RESUME spawned. |
 | 2026-09-30 | Wave 1 (L-FINAL, L-ROUTE), replay run3 (4 failures), wave 2 (L-HANDOFF, L-SINGLE, L-LIVE), replay run4, L-POLISH; status Review. Owner decisions open in §9.5. |
 | 2026-09-30 | Owner: OD-1 (b) "Not discussed", OD-2 folded in, OD-3 Markdown; go. Phase 2 discovery then lanes. |
 | 2026-09-30 | Ticket opened from TASK-1020 §9.6 with the replay evidence; plan and ODs written. |
