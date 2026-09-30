@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — merged locally on `dev-2.2` (NOT pushed); gates green; live replay run4 passes the structural criteria; two owner decisions open (§9.5); dev-cluster rollout after the push |
+| Status | **Review** — merged locally on `dev-2.2` (NOT pushed); gates green; live replay run4 passes the structural criteria; owner decisions answered and implemented (§9.5, §9.7); dev-cluster rollout after the push |
 | Type | bugfix (note quality; every consultation note) |
 | Branch | `dev-2.2` |
 | Repos | `arca/hope-v2` (harness interpreter, applications live lane, seeds); ALaaS only if OD-3 changes the note contract |
@@ -177,10 +177,32 @@ Residual model-quality misses in run4, with no deterministic cause: the 2B live 
 - Numbers match only as digits in the grounding guard ("ten point two" ≠ "10.2").
 - **Dev-cluster rollout after the push:** `HOPE_BASE_URL=<cluster> HOPE_ADMIN_PASSWORD=… node docs/implementation/TASK-1022-*/rollout.mjs` (run with `DRY_RUN=1` first). The SYSTEM row needs the super admin.
 
+
+### 9.7 Governed resume, owner option (a) (2026-09-30)
+
+| Lane / commit | What |
+|---|---|
+| L-RESUME `c95429f74` | A resumed recording on an unsigned GOVERNED consultation SUPERSEDES the governing run (`supersedeGoverningRun`):<br>1. CAS-claim the marker (`supersededRunId`, `supersedeTriggerId`).<br>2. Start a fresh run of the same definition version (`trigger: 'consultation resume'`).<br>3. Terminate the old run, which closes its review child (parent-close).<br><br>It never calls the default engine. `readLiveHandoff` answers "not yet" while the consultation records or its stop drains, so a stale handoff cannot finalise the first recording's note. No workflow-code change. Non-governed consultations are unchanged; signed notes are never touched. |
+| orchestrator `eccda4464`, `fc1d97b62` | A superseded run's late failure never touches its replacement (`failGovernedRun` checks the marker's run id). The `start_local` harness test is skipped in hermetic CI. `docs/guides/consultation-session-lifecycle.md` §4 describes governed resume. The TASK-1020 handoff tests read a drained row. |
+| L-AUDIT `a1ac31788` | Terminating an already-closed run answers 409/404, not 500, and the gateway reads that as "already closed". A FINISHED superseded run keeps its row (`recordRunSuperseded`; only a running row becomes CANCELED; `_metadata.supersededBy`). An in-place AI re-draft writes a `ContextItemVersion` (`ai_draft_v1` convention, `ai_model`) and advances `currentVersionNumber`, so the latest AI draft is the edit baseline. |
+| orchestrator (loop-cancel) | Loop-cancel on a completed or missing loop answers 409/404, not an unhandled 500. |
+
+Loop ending steps on governed consultations: **not needed** (owner). No change.
+
+**Live run5** (one encounter: record, stop, `note.final`; resume with a second clip; stop; sign after 4 min):
+- Supersede logged R1 → R2; the marker shows `workflowRunId=R2, supersededRunId=R1`; R2 is the same version (`trigger 'consultation resume'`).
+- No `harness-doc` workflow. R2's finalizer user turn was headed and carried BOTH recordings.
+- The note was updated in place (same id, v2) with EXACTLY the template's 10 headings and the facts of both recordings. Its md5 was stable for 4 min; signed == `note.final`.
+- Status path: PENDING_REVIEW → RECORDING → DRAINING → PENDING_REVIEW → CLOSED_COMPLETE.
+- Not exercised live: terminating a PARKED run. ALaaS auto-approves review gates (OD-14), so R1 had already completed at resume. That path is covered by `test_task1022_supersede_parked_run.py` against a real Temporal dev server. In ArcaAI production the old run is always completed at resume.
+
+**Final gates** (after all merges): applications consultation + agent + workflow-run 352 files / 4441 tests; harness unit 2865; typecheck, lint and ruff clean.
+
 ## 10. Change history
 
 | Date | Change |
 |---|---|
+| 2026-09-30 | Governed resume shipped (L-RESUME, L-AUDIT, loop-cancel 409/404); run5 live proof; final gates green. Status stays Review (local only). |
 | 2026-09-30 | Owner: governed resume = (a), the governing graph re-finalises on resume; loop ending steps not needed for governed consultations (no change). Lane L-RESUME spawned. |
 | 2026-09-30 | Wave 1 (L-FINAL, L-ROUTE), replay run3 (4 failures), wave 2 (L-HANDOFF, L-SINGLE, L-LIVE), replay run4, L-POLISH; status Review. Owner decisions open in §9.5. |
 | 2026-09-30 | Owner: OD-1 (b) "Not discussed", OD-2 folded in, OD-3 Markdown; go. Phase 2 discovery then lanes. |
