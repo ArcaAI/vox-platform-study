@@ -130,6 +130,7 @@ import {
   turnInstruction,
   wholeDocumentAsTurn,
   type AppliedTurn,
+  type TurnGrounding,
   type TurnRefusal,
   type TurnSectionWrite,
 } from './realtime/turn-contract';
@@ -660,6 +661,11 @@ interface GraphFlushProjection {
    * write (`TurnSectionWrite.duplicates`) and never dropped. A count, never the text.
    */
   turnCrossSectionDuplicates: number;
+  /**
+   * TASK-1022 (D-GROUND) — sentences dropped from CURRENT-visit sections because only the reference
+   * blocks supported them (`applyTurn`'s grounding guard). A count, never the text.
+   */
+  turnUngroundedSentences: number;
   /** TASK-1001 wave 4 — section writes whose non-English script the translate-only retry repaired / could not. */
   turnScriptRepairs: number;
   turnScriptRepairsUnresolved: number;
@@ -3289,6 +3295,15 @@ return 0`;
     // TASK-1020 — the same-day prequel and lab results, resolved once at start (memoised, never rejects).
     const carry = await (session.carryContextPromise ?? NO_CARRY_CONTEXT);
     const carryBlocks = { sameDayPrequel: carry.sameDayPrequel.summary, testResults: carry.testResults };
+    // TASK-1022 (D-GROUND) — what this turn may be grounded in, for `applyTurn`'s guard: the WHOLE
+    // transcript so far (not the delta) plus the clinician's context notes, against the same two
+    // reference blocks the prompt appends. Built from the same values the prompt is, so the guard
+    // judges exactly what the model was shown.
+    const turnGrounding: TurnGrounding = {
+      transcript: notes ? `${transcript}\n${notes}` : transcript,
+      sameDayPrequel: carryBlocks.sameDayPrequel,
+      testResults: carryBlocks.testResults,
+    };
     // TASK-1001 (owner decision 2026-09-23) — the platform-default OUTPUT language, frozen on the
     // session. Resolved here, before either prompt is built, so both branches state the same one.
     const platformOutputLanguageTag = await this.sessionPlatformOutputLanguage(session);
@@ -3339,6 +3354,8 @@ return 0`;
     // TASK-1001 (wave 2) — runs this turn wrote that another section already carried: flagged, not
     // dropped, and counted here so `repetition_pressure` sees them.
     let turnCrossSectionDuplicates = 0;
+    // TASK-1022 (D-GROUND) — reference-only sentences the grounding guard dropped this turn.
+    let turnUngroundedSentences = 0;
     // TASK-1001 wave 4 — the script guard's counts for this turn (see `guardTurnScript`).
     let turnScriptRepairs = 0;
     let turnScriptRepairsUnresolved = 0;
@@ -3419,6 +3436,7 @@ return 0`;
           isStale,
           priorSections,
           runContext,
+          grounding: turnGrounding,
         })
       : null;
     if (graph === 'stale') return this.dropStale(session);
@@ -3449,6 +3467,7 @@ return 0`;
         turnRefusals = graph.turnRefusals;
         turnDroppedSentences = graph.turnDroppedSentences;
         turnCrossSectionDuplicates = graph.turnCrossSectionDuplicates;
+        turnUngroundedSentences = graph.turnUngroundedSentences;
         turnScriptRepairs = graph.turnScriptRepairs;
         turnScriptRepairsUnresolved = graph.turnScriptRepairsUnresolved;
         turnDegraded = graph.turnDegraded;
@@ -3494,7 +3513,7 @@ return 0`;
           },
           parseStrict: (text) => {
             const turn = parseTurnJson(text, template.compiled);
-            return turn ? applyTurn(priorSections, turn, template.compiled) : null;
+            return turn ? applyTurn(priorSections, turn, template.compiled, turnGrounding) : null;
           },
           parseTolerant: (call) => {
             // DEGRADE. Try the whole-document JSON first, then prose — both are "the model answered
@@ -3555,6 +3574,7 @@ return 0`;
         turnRefusals = applied.refusals;
         turnDroppedSentences = applied.droppedSentenceCount;
         turnCrossSectionDuplicates = applied.crossSectionDuplicateCount;
+        turnUngroundedSentences = applied.ungroundedSentenceCount ?? 0;
         // Advance only over the segments actually sent (C5-04): on a truncated
         // flush `deltaEnd < flushUpTo`, so the carried-forward tail is re-sent next.
         //
@@ -3885,6 +3905,8 @@ return 0`;
       // TASK-1001 (wave 2) — runs flagged as already carried by ANOTHER section. Flagged, never
       // dropped; a count, never the text.
       turnCrossSectionDuplicates,
+      // TASK-1022 (D-GROUND) — reference-only sentences dropped from current-visit sections. Count only.
+      turnUngroundedSentences,
       // TASK-1001 wave 4 — section writes the script guard repaired / left unresolved. Counts only.
       turnScriptRepairs,
       turnScriptRepairsUnresolved,
@@ -4013,6 +4035,8 @@ return 0`;
        * on the first one, so no note was ever produced.
        */
       runContext: Record<string, ExpressionValue>;
+      /** TASK-1022 (D-GROUND) — the turn's grounding input for `applyTurn` (see `runFlush`). */
+      grounding?: TurnGrounding;
     },
   ): Promise<GraphFlushProjection | 'stale' | null> {
     // Honour the session's frozen tool plan on the PLATFORM lane. A tenant graph
@@ -4038,6 +4062,8 @@ return 0`;
     let turnDroppedSentences = 0;
     // TASK-1001 (wave 2) — cross-section runs flagged by the turn contract; see the flush's own local.
     let turnCrossSectionDuplicates = 0;
+    // TASK-1022 (D-GROUND) — see the flush's own local.
+    let turnUngroundedSentences = 0;
     // TASK-1001 wave 4 — the script guard's counts for this turn (see `guardTurnScript`).
     let turnScriptRepairs = 0;
     let turnScriptRepairsUnresolved = 0;
@@ -4126,7 +4152,7 @@ return 0`;
             },
             parseStrict: (text) => {
               const turn = parseTurnJson(text, ctx.template.compiled);
-              return turn ? applyTurn(ctx.priorSections, turn, ctx.template.compiled) : null;
+              return turn ? applyTurn(ctx.priorSections, turn, ctx.template.compiled, ctx.grounding) : null;
             },
             parseTolerant: (call) => {
               // DEGRADE to the pre-ticket whole-document behaviour — see `wholeDocumentAsTurn`.
@@ -4165,6 +4191,7 @@ return 0`;
         turnRefusals = outcome.value.refusals;
         turnDroppedSentences = outcome.value.droppedSentenceCount;
         turnCrossSectionDuplicates = outcome.value.crossSectionDuplicateCount;
+        turnUngroundedSentences = outcome.value.ungroundedSentenceCount ?? 0;
         return {
           text: buildRunningSummary(parsedSections),
           sections: parsedSections,
@@ -4280,6 +4307,7 @@ return 0`;
       turnRefusals: summarize?.status === 'succeeded' ? turnRefusals : [],
       turnDroppedSentences: summarize?.status === 'succeeded' ? turnDroppedSentences : 0,
       turnCrossSectionDuplicates: summarize?.status === 'succeeded' ? turnCrossSectionDuplicates : 0,
+      turnUngroundedSentences: summarize?.status === 'succeeded' ? turnUngroundedSentences : 0,
       turnScriptRepairs: summarize?.status === 'succeeded' ? turnScriptRepairs : 0,
       turnScriptRepairsUnresolved: summarize?.status === 'succeeded' ? turnScriptRepairsUnresolved : 0,
       turnDegraded: summarize?.status === 'succeeded' ? turnDegraded : false,

@@ -139,6 +139,28 @@ export interface AppliedTurn {
    * dropped for them; this is the count `repetition_pressure` adds to its sum.
    */
   readonly crossSectionDuplicateCount: number;
+  /**
+   * TASK-1022 (D-GROUND) — sentences dropped from CURRENT-visit sections because only the reference
+   * blocks (same-day earlier visit, test results) supported them. Absent when no grounding input was
+   * supplied, so every caller that does not pass one keeps its exact pre-existing result shape.
+   */
+  readonly ungroundedSentenceCount?: number;
+}
+
+/**
+ * TASK-1022 (D-GROUND) — what a turn may be grounded in, supplied by the flush that built its prompt.
+ *
+ * `transcript` is everything the encounter has said so far (the whole transcript, not this turn's
+ * delta, plus any clinician context notes): a sentence supported there is grounded whatever else
+ * supports it. The two reference blocks are the texts `buildTextUserPrompt` appends after the
+ * "REFERENCE ONLY" line — the ones a small model was observed copying into today's sections.
+ */
+export interface TurnGrounding {
+  readonly transcript: string;
+  /** The `SAME-DAY EARLIER VISIT(S)` block's body. */
+  readonly sameDayPrequel?: string;
+  /** The `TEST RESULTS` block's body. */
+  readonly testResults?: string;
 }
 
 /**
@@ -956,6 +978,182 @@ function routeSameTurnRepeats(turn: ParsedTurn, compiled: CompiledDocumentTempla
   return next;
 }
 
+// =================================================================================================
+// TASK-1022 (D-GROUND) — a CURRENT-visit section never takes a sentence only the reference supports
+// =================================================================================================
+
+/**
+ * Which sections the grounding guard applies to, read from the key AND title like
+ * `routableSectionKind` (keys vary per template). PRIOR wins: "Investigations (Previous vs Current)"
+ * is a prior section, so the guard never touches it. A section matching neither list (Additional
+ * Data, Presenting Complaints, Reports, Hospital Admissions) is left alone — the guard is
+ * conservative by construction.
+ */
+const GROUNDING_PRIOR_SECTION = /\b(?:previous|last|prior|past|history)\b/;
+const GROUNDING_CURRENT_SECTION = /\b(?:new complaints?|current|exam|examinations?|vitals?|treatment|plan|follow ?up|instructions?|orders?)\b/;
+/** A current section that is ALSO a results section may carry the TEST RESULTS lines unprompted. */
+const GROUNDING_RESULTS_SECTION = /\b(?:investigations?|results?|reports?|labs?|laboratory)\b/;
+
+type GroundingSectionKind = 'current' | 'current-results';
+
+function groundingSectionKind(key: string, title: string): GroundingSectionKind | undefined {
+  const words = ` ${`${key} ${title}`.toLowerCase().replace(/[_\-‐‑–]+/g, ' ')} `;
+  if (GROUNDING_PRIOR_SECTION.test(words)) return undefined;
+  if (!GROUNDING_CURRENT_SECTION.test(words)) return undefined;
+  return GROUNDING_RESULTS_SECTION.test(words) ? 'current-results' : 'current';
+}
+
+/**
+ * Words that carry no clinical content: function words, and the provenance phrasing a model wraps
+ * copied text in ("carried over from the earlier visit"). Excluded from BOTH support measures.
+ */
+const GROUNDING_STOPWORDS: ReadonlySet<string> = new Set(
+  (
+    'the and are was were for with from that this these those have has had been being will would can could should not but ' +
+    'his her hers she him they them their you your our ours its into onto over under also then than some any all per each ' +
+    'other such very most more less which what when where who whom whose there here about after before during while ' +
+    'today morning afternoon evening earlier later visit visits carried patient doctor clinician ref noted stated ' +
+    'reported documented recorded mentioned'
+  ).split(' '),
+);
+
+/**
+ * Words too generic to show on their own that the transcript mentions the SAME fact (units,
+ * frequencies, routine qualifiers). They still count toward reference support; they do not count as
+ * transcript grounding, or "Metformin 500 milligrams twice daily" would ground the morning's
+ * "Aspirin 81 milligrams daily was planned".
+ */
+const GROUNDING_GENERIC: ReadonlySet<string> = new Set(
+  (
+    'milligram milligrams microgram micrograms gram grams millilitre millilitres milliliter milliliters tablet tablets ' +
+    'daily twice once thrice times mouth oral dose doses week weeks day days month months hour hours ' +
+    'plan planned planning start started starting continue continued continuing include included including'
+  ).split(' '),
+);
+
+/** Reference support threshold: the share of a sentence's content tokens the reference carries. */
+const GROUNDING_REFERENCE_COVERAGE = 0.75;
+
+/** A text's content tokens, lower-cased: every number, and every word of 3+ letters not a stopword. */
+function contentTokens(text: string): string[] {
+  return (text.toLowerCase().match(MATCH_TOKEN) ?? []).filter(
+    (token) => NUMBER_TOKEN.test(token) || (token.length >= 3 && !GROUNDING_STOPWORDS.has(token)),
+  );
+}
+
+interface GroundingSource {
+  readonly tokens: ReadonlySet<string>;
+  readonly forms: readonly MatchForm[];
+}
+
+function groundingSource(text: string): GroundingSource {
+  return {
+    tokens: new Set(contentTokens(text)),
+    forms: splitSentences(text)
+      .filter((sentence) => isEligibleSentence(sentence.text))
+      .map((sentence) => matchForm(sentence.text)),
+  };
+}
+
+/** Grounded in the transcript: a shared number, or a shared distinctive (non-generic) word. */
+function groundedInTranscript(tokens: readonly string[], transcript: ReadonlySet<string>): boolean {
+  return tokens.some((token) => transcript.has(token) && (NUMBER_TOKEN.test(token) || !GROUNDING_GENERIC.has(token)));
+}
+
+/**
+ * Supported by a reference text: the same sentence by the cross-section flag's own measure, or a
+ * sentence whose content tokens the reference carries at {@link GROUNDING_REFERENCE_COVERAGE} with
+ * EVERY number present — so a changed value is never "supported" by the old one.
+ */
+function supportedBy(sentence: string, tokens: readonly string[], source: GroundingSource): boolean {
+  const form = matchForm(sentence);
+  if (source.forms.some((candidate) => sentencesMatch(form, candidate))) return true;
+  if (tokens.length === 0) return false;
+  if (tokens.some((token) => NUMBER_TOKEN.test(token) && !source.tokens.has(token))) return false;
+  const covered = tokens.filter((token) => source.tokens.has(token)).length;
+  return covered / tokens.length >= GROUNDING_REFERENCE_COVERAGE;
+}
+
+interface GroundedText {
+  readonly text: string;
+  readonly dropped: number;
+}
+
+/**
+ * `text` without the sentences only the reference supports. A sentence is DROPPED only when all of:
+ * it is eligible (two words or more — the dedup's own rule); it shares no number and no distinctive
+ * word with the transcript; and a reference text supports it. Everything else is kept verbatim, in
+ * its original order and layout. Returns `text` itself when nothing is dropped.
+ */
+function withoutReferenceOnlySentences(text: string, references: readonly GroundingSource[], transcript: ReadonlySet<string>): GroundedText {
+  const sentences = splitSentences(text);
+  let dropped = 0;
+  const kept = sentences.filter((sentence) => {
+    if (!isEligibleSentence(sentence.text)) return true;
+    const tokens = contentTokens(sentence.text);
+    if (tokens.length === 0 || groundedInTranscript(tokens, transcript)) return true;
+    if (!references.some((reference) => supportedBy(sentence.text, tokens, reference))) return true;
+    dropped += 1;
+    return false;
+  });
+  if (dropped === 0) return { text, dropped: 0 };
+  return {
+    text: kept
+      .map((sentence) => `${sentence.text}${sentence.separator}`)
+      .join('')
+      .trim(),
+    dropped,
+  };
+}
+
+/**
+ * Apply the grounding guard to a turn. A no-op (the SAME turn, count 0) without reference text. This
+ * is a GROUNDING rule, not a duplicate rule: the TASK-1001 cross-section "flag, never drop" rule is
+ * unchanged and still runs on whatever survives here.
+ */
+function withoutReferenceOnly(
+  turn: ParsedTurn,
+  compiled: CompiledDocumentTemplate,
+  grounding: TurnGrounding,
+): { readonly turn: ParsedTurn; readonly dropped: number } {
+  const prequel = grounding.sameDayPrequel?.trim() ?? '';
+  const results = grounding.testResults?.trim() ?? '';
+  if (!prequel && !results) return { turn, dropped: 0 };
+
+  const prequelSource = prequel ? groundingSource(prequel) : undefined;
+  const resultsSource = results ? groundingSource(results) : undefined;
+  const transcript = new Set(contentTokens(grounding.transcript));
+  const titles = new Map(compiled.checklist.map((entry) => [entry.key, entry.title]));
+
+  let dropped = 0;
+  const next: Record<string, TurnSection> = {};
+  for (const [key, section] of Object.entries(turn)) {
+    const kind = groundingSectionKind(key, titles.get(key) ?? key);
+    if (!kind) {
+      next[key] = section;
+      continue;
+    }
+    // A results section may carry the TEST RESULTS lines; only the earlier visit is reference there.
+    const references = [prequelSource, kind === 'current' ? resultsSource : undefined].filter(
+      (source): source is GroundingSource => source !== undefined,
+    );
+    if (references.length === 0) {
+      next[key] = section;
+      continue;
+    }
+    const addition = section.addition === undefined ? undefined : withoutReferenceOnlySentences(section.addition, references, transcript);
+    const revision = section.revision === undefined ? undefined : withoutReferenceOnlySentences(section.revision, references, transcript);
+    dropped += (addition?.dropped ?? 0) + (revision?.dropped ?? 0);
+    const cleaned: TurnSection = {
+      ...(addition?.text ? { addition: addition.text } : {}),
+      ...(revision?.text ? { revision: revision.text } : {}),
+      ...(section.contradiction && revision?.text ? { contradiction: section.contradiction } : {}),
+    };
+    if (cleaned.addition !== undefined || cleaned.revision !== undefined) next[key] = cleaned;
+  }
+  return { turn: next, dropped };
+}
+
 /**
  * Fold a turn onto the prior note.
  *
@@ -963,13 +1161,22 @@ function routeSameTurnRepeats(turn: ParsedTurn, compiled: CompiledDocumentTempla
  * caller persists the writes and publishes the sections; nothing here touches the store or the
  * wire, which is what makes the rules above testable without a database.
  */
-export function applyTurn(prior: readonly LiveSummarySectionDto[], rawTurn: ParsedTurn, compiled: CompiledDocumentTemplate): AppliedTurn {
+export function applyTurn(
+  prior: readonly LiveSummarySectionDto[],
+  rawTurn: ParsedTurn,
+  compiled: CompiledDocumentTemplate,
+  grounding?: TurnGrounding,
+): AppliedTurn {
   const titles = new Map(compiled.checklist.map((entry) => [entry.key, entry.title]));
   const existing = priorByKey(prior, compiled);
   // TASK-1022 — placeholders out first (a caller may build a turn without `parseTurnJson`), then
   // same-turn repeats routed to one section. Both are pure rewrites of the TURN; the fold below is
   // unchanged apart from the placeholder-only cleanup.
-  const turn = routeSameTurnRepeats(withoutPlaceholders(rawTurn), compiled, existing);
+  const routed = routeSameTurnRepeats(withoutPlaceholders(rawTurn), compiled, existing);
+  // TASK-1022 (D-GROUND) — then the grounding guard, AFTER routing, because it judges the section a
+  // sentence finally lands in. Only when the caller supplied what the turn may be grounded in.
+  const grounded = grounding ? withoutReferenceOnly(routed, compiled, grounding) : undefined;
+  const turn = grounded?.turn ?? routed;
 
   const sections: LiveSummarySectionDto[] = [];
   const writes: TurnSectionWrite[] = [];
@@ -1063,5 +1270,12 @@ export function applyTurn(prior: readonly LiveSummarySectionDto[], rawTurn: Pars
     }
   }
 
-  return { sections, writes, refusals, droppedSentenceCount, crossSectionDuplicateCount };
+  return {
+    sections,
+    writes,
+    refusals,
+    droppedSentenceCount,
+    crossSectionDuplicateCount,
+    ...(grounded ? { ungroundedSentenceCount: grounded.dropped } : {}),
+  };
 }
