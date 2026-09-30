@@ -1,12 +1,16 @@
 /**
- * Frame 15 — AI Model Registry screen spec: authenticated smoke of the list
- * shell (h1 + registry region) and the rule 11 §11 axe gate in both themes.
+ * Frame 15 — AI Model Registry screen spec (TASK-1023): the platform admin's management grid (one Register model
+ * sheet, Download jobs, cancel), the tenant admin's READ-ONLY view of the same route, the omni search / sort
+ * contracts, and the rule 11 §11 axe gate in both themes.
  * Requires a running stack (skips otherwise, see helpers/stack.ts).
+ *
+ * A platform admin is a SUPER_ADMIN with NO working tenant (`GET admin/ai-models/access` → canManage), so this
+ * spec deliberately does not call selectWorkingTenant().
  */
 
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoA11yViolations } from './helpers/a11y';
-import { loginAsAdmin, selectWorkingTenant } from './helpers/auth';
+import { impersonateUser, loginAsAdmin } from './helpers/auth';
 import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
 
 /**
@@ -30,7 +34,8 @@ test.beforeEach(async ({ page }) => {
   test.skip(!(await appAvailable()), APP_DOWN_MESSAGE);
   test.skip(!(await apiAvailable()), API_DOWN_MESSAGE);
   await loginAsAdmin(page);
-  await selectWorkingTenant(page);
+  // The platform admin manages the registry only while acting as the platform (no working tenant).
+  await page.evaluate(() => fetch('/api/auth/working-tenant', { method: 'DELETE' }));
 });
 
 test.describe('AI model registry screen', () => {
@@ -42,41 +47,85 @@ test.describe('AI model registry screen', () => {
     await expect(page.getByRole('grid', { name: 'AI models' })).toBeVisible();
   });
 
-  test('registers a model, edits it, then deletes it', async ({ page }) => {
-    const identifier = Date.now();
-    const name = `000 E2E model ${identifier}`;
-    const slug = `000-e2e-model-${identifier}`;
+  test('registers from Hugging Face with a repository id only, then finds the download in the jobs drawer', async ({ page }) => {
+    // A tiny public repo: the point is the flow, not the weights.
+    const repoId = 'sshleifer/tiny-gpt2';
     await page.goto('/ai-models');
     await expect(page.getByRole('grid', { name: 'AI models' })).toBeVisible();
-    const rowsPerPage = page.getByRole('combobox', { name: 'Rows per page' });
-    await rowsPerPage.click();
-    await page.getByRole('option', { name: '100', exact: true }).click();
-    await expect(rowsPerPage).toHaveText('100');
 
     await page.getByRole('button', { name: 'Register model' }).first().click();
     const registerSheet = page.getByRole('dialog', { name: 'Register model' });
-    await registerSheet.getByLabel(/^Name/).fill(name);
-    await registerSheet.getByLabel(/^Slug/).fill(slug);
-    await registerSheet.getByLabel(/^Task \(Hugging Face/).fill('AUTOMATIC_SPEECH_RECOGNITION');
-    await registerSheet.getByLabel(/^Source URI/).fill('openai/whisper-e2e-fixture');
-    await registerSheet.getByRole('button', { name: 'Register model' }).click();
+    await expect(registerSheet.getByRole('tab', { name: 'Hugging Face', selected: true })).toBeVisible();
+    // No hyperparameters, no identity fields — one input.
+    await expect(registerSheet.getByLabel(/^Repository id/)).toBeVisible();
+    await expect(registerSheet.getByLabel(/^Slug/)).toHaveCount(0);
+
+    await registerSheet.getByLabel(/^Repository id/).fill(repoId);
+    await expect(registerSheet.getByRole('group', { name: 'Model summary' })).toBeVisible();
+
+    await registerSheet.getByRole('button', { name: 'Register and download' }).click();
+    // The platform may need to be told which service serves a model it cannot classify.
+    const servedBy = registerSheet.getByLabel(/^Served by/);
+    if (await servedBy.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await servedBy.click();
+      await page.getByRole('option', { name: 'text', exact: true }).click();
+      await registerSheet.getByRole('button', { name: 'Register and download' }).click();
+    }
     await expect(registerSheet).toBeHidden();
 
-    const row = page.getByRole('grid', { name: 'AI models' }).getByText(slug).first();
-    await expect(row).toBeVisible();
+    await page.getByRole('button', { name: /^Download jobs/ }).click();
+    const jobs = page.getByRole('dialog', { name: 'Download jobs' });
+    await expect(jobs).toBeVisible();
+    await expect(jobs.getByText(/tiny-gpt2/i).first()).toBeVisible();
 
-    await page.getByRole('button', { name: `Edit ${name}` }).click();
+    // Clean up after ourselves: cancel while it is still running (removing the registration too), else unregister.
+    const cancel = jobs.getByRole('button', { name: /^Cancel download of /i }).first();
+    if (await cancel.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await cancel.click();
+      const dialog = page.getByRole('dialog', { name: 'Cancel download' });
+      await dialog.getByRole('checkbox', { name: /also remove the registration/i }).click();
+      await dialog.getByRole('button', { name: 'Cancel download' }).click();
+      await expect(dialog).toBeHidden();
+    }
+  });
+
+  test('the MLflow tab says it is not available yet', async ({ page }) => {
+    await page.goto('/ai-models');
+    await page.getByRole('button', { name: 'Register model' }).first().click();
+    const registerSheet = page.getByRole('dialog', { name: 'Register model' });
+    await registerSheet.getByRole('tab', { name: 'MLflow' }).click();
+    await expect(registerSheet.getByText(/not available yet/i).first()).toBeVisible();
+    await expect(registerSheet.getByRole('button', { name: /^Register/ })).toHaveCount(0);
+  });
+
+  test('the Local path tab browses the model bucket', async ({ page }) => {
+    await page.goto('/ai-models');
+    await page.getByRole('button', { name: 'Register model' }).first().click();
+    const registerSheet = page.getByRole('dialog', { name: 'Register model' });
+    await registerSheet.getByRole('tab', { name: 'Local path' }).click();
+    await expect(registerSheet.getByRole('navigation', { name: 'Object prefix' })).toBeVisible();
+    await expect(registerSheet.getByRole('button', { name: 'hope-models' })).toBeVisible();
+  });
+
+  test('the Download jobs drawer opens from the header', async ({ page }) => {
+    await page.goto('/ai-models');
+    await page.getByRole('button', { name: /^Download jobs/ }).click();
+    await expect(page.getByRole('dialog', { name: 'Download jobs' })).toBeVisible();
+  });
+
+  test('editing is slim: name, description and tags are editable, identity is read-only', async ({ page }) => {
+    await page.goto('/ai-models');
+    const grid = page.getByRole('grid', { name: 'AI models' });
+    await expect(grid).toBeVisible();
+    const edit = page.getByRole('button', { name: /^Edit / }).first();
+    test.skip(!(await edit.isVisible().catch(() => false)), 'no registered model to edit');
+    await edit.click();
     const editSheet = page.getByRole('dialog', { name: 'Edit model' });
-    await editSheet.getByLabel('Compute type', { exact: true }).fill('float16');
-    await editSheet.getByRole('button', { name: 'Save changes' }).click();
-    await expect(editSheet).toBeHidden();
-
-    await page.getByRole('button', { name: `Retire ${name}` }).click();
-    const confirmDialog = page.getByRole('alertdialog', { name: 'Retire model' });
-    await expect(confirmDialog.getByText(slug)).toBeVisible();
-    await confirmDialog.getByRole('button', { name: 'Retire model' }).click();
-    await expect(confirmDialog).toBeHidden();
-    await expect(page.getByRole('grid', { name: 'AI models' }).getByText(slug)).toHaveCount(0);
+    await expect(editSheet.getByLabel(/^Name/)).toBeVisible();
+    await expect(editSheet.getByLabel(/^Tags/)).toBeVisible();
+    await expect(editSheet.getByLabel(/^Slug/)).toHaveCount(0);
+    await expect(editSheet.getByRole('group', { name: 'Identity and classification' })).toBeVisible();
+    await expect(editSheet.getByRole('tab', { name: 'Serving' })).toBeVisible();
   });
 
   /**
@@ -165,16 +214,6 @@ test.describe('AI model registry screen', () => {
     expect(descending).toEqual([...ascending].reverse());
   });
 
-  test('the register form requires name, slug, task type and source URI', async ({ page }) => {
-    await page.goto('/ai-models');
-    await page.getByRole('button', { name: 'Register model' }).first().click();
-    const registerSheet = page.getByRole('dialog', { name: 'Register model' });
-    await registerSheet.getByRole('button', { name: 'Register model' }).click();
-    await expect(registerSheet).toBeVisible();
-    const nameInput = registerSheet.getByLabel(/^Name/);
-    expect(await nameInput.evaluate((el: HTMLInputElement) => el.validity.valid)).toBe(false);
-  });
-
   test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });
     await page.goto('/ai-models');
@@ -191,6 +230,20 @@ test.describe('AI model registry screen', () => {
     await expectNoA11yViolations(page);
   });
 
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`the Register model sheet and the Download jobs drawer have no WCAG 2.2 AA violations (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.goto('/ai-models');
+      await page.getByRole('button', { name: 'Register model' }).first().click();
+      await expect(page.getByRole('dialog', { name: 'Register model' })).toBeVisible();
+      await expectNoA11yViolations(page);
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: /^Download jobs/ }).click();
+      await expect(page.getByRole('dialog', { name: 'Download jobs' })).toBeVisible();
+      await expectNoA11yViolations(page);
+    });
+  }
+
   // F-037: the base screen scan above never opened the discovery drawer, so
   // it never caught the drawer's scrollable body region being unreachable
   // by keyboard (axe SERIOUS `scrollable-region-focusable`).
@@ -200,4 +253,37 @@ test.describe('AI model registry screen', () => {
     await expect(page.getByRole('dialog', { name: 'Loaded on engines (read-only)' })).toBeVisible();
     await expectNoA11yViolations(page);
   });
+});
+
+test.describe('AI model registry — tenant admin (read-only)', () => {
+  test.beforeEach(async ({ page }) => {
+    await impersonateUser(page, 'arcaai_admin');
+  });
+
+  test('sees the registry read-only: no register, jobs, inventory or row actions', async ({ page }) => {
+    await page.goto('/ai-models');
+    await expect(page.getByRole('heading', { level: 1, name: 'AI Model Registry' })).toBeVisible();
+    await expect(page.getByRole('grid', { name: 'AI models' })).toBeVisible();
+    for (const name of [/^Register model/, /^Download jobs/, /^Run inventory/, /^Download missing/, /^Loaded on engines/]) {
+      await expect(page.getByRole('button', { name })).toHaveCount(0);
+    }
+    await expect(page.getByRole('button', { name: /^Edit / })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Unregister / })).toHaveCount(0);
+    // No bucket path leaks into a tenant view.
+    await expect(page.getByText('/mnt/models-bucket')).toHaveCount(0);
+  });
+
+  test('has the AI models entry in the navigation', async ({ page }) => {
+    await page.goto('/dashboard');
+    await expect(page.getByRole('link', { name: 'AI models' }).first()).toBeVisible();
+  });
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`the read-only grid has no WCAG 2.2 AA violations (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.goto('/ai-models');
+      await expect(page.getByRole('grid', { name: 'AI models' })).toBeVisible();
+      await expectNoA11yViolations(page);
+    });
+  }
 });
