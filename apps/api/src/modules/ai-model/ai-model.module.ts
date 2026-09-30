@@ -55,13 +55,7 @@ import { AiModelRegistrationController } from './ai-model-registration.controlle
   // `GET admin/ai-models/catalogue` is static for the same reason and joins them.
   // TASK-1023: the registration (local path) and job-control controllers carry static
   // paths too, so they also register before the admin controller.
-  controllers: [
-    AiModelDiscoveryController,
-    AiModelCatalogueController,
-    AiModelRegistrationController,
-    AiModelJobsController,
-    AiModelAdminController,
-  ],
+  controllers: [AiModelDiscoveryController, AiModelCatalogueController, AiModelRegistrationController, AiModelJobsController, AiModelAdminController],
   providers: [AiModelDiscoveryService],
 })
 export class AiModelModule {}

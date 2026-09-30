@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import { IconCpu, IconFilterOff } from '@tabler/icons-react';
 import { type ColumnDef, type SortRule } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';

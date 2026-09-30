@@ -30,13 +30,14 @@ export function RegisterModelSheet({ open, onOpenChange, initialTab = 'HUGGINGFA
   const uid = useId();
   const [tab, setTab] = useState<ModelRegistrationSource>(initialLocalPath ? 'LOCAL' : initialTab);
 
+  // The sheet is re-mounted per open (see above), so a successful registration only has to close it.
+  const hf = useHfRegistration(open, () => onOpenChange(false));
+  const local = useLocalRegistration(open, initialLocalPath, () => onOpenChange(false));
   const close = () => {
     hf.reset();
     local.reset();
     onOpenChange(false);
   };
-  const hf = useHfRegistration(open, close);
-  const local = useLocalRegistration(open, initialLocalPath, close);
 
   const pending = hf.isPending || local.isPending;
   const active = tab === 'HUGGINGFACE' ? hf : tab === 'LOCAL' ? local : null;

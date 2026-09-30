@@ -65,7 +65,17 @@ test.describe('TASK-1023 — model registry access', () => {
       expect(typeof item.lifecycleStatus).toBe('string');
     }
     const wire = JSON.stringify(page);
-    for (const hidden of ['bucketPrefix', 'primaryObject', 'localPath', 'checksum', 'manifestDigest', '_metadata', 'metaData', 'referrers', '/mnt/models-bucket']) {
+    for (const hidden of [
+      'bucketPrefix',
+      'primaryObject',
+      'localPath',
+      'checksum',
+      'manifestDigest',
+      '_metadata',
+      'metaData',
+      'referrers',
+      '/mnt/models-bucket',
+    ]) {
       expect(wire, `the registry view must not carry ${hidden}`).not.toContain(hidden);
     }
 

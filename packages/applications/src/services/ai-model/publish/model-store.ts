@@ -290,7 +290,10 @@ function isNotFound(error: unknown): boolean {
  */
 export function assertDeletablePrefix(prefix: string): void {
   if (!prefix || !prefix.endsWith('/') || prefix.startsWith('/') || PROTECTED_PREFIXES.has(prefix)) {
-    throw new ModelPublisherError(MODEL_STORE_PREFIX_REFUSED, `refusing to delete bucket prefix '${prefix}' (must be a non-root directory prefix ending in '/')`);
+    throw new ModelPublisherError(
+      MODEL_STORE_PREFIX_REFUSED,
+      `refusing to delete bucket prefix '${prefix}' (must be a non-root directory prefix ending in '/')`,
+    );
   }
 }
 

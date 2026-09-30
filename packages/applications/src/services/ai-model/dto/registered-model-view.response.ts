@@ -46,7 +46,11 @@ export class RegisteredModelViewResponse {
   @ApiProperty({ description: 'Languages the model supports.', type: [String] })
   languages!: string[];
 
-  @ApiProperty({ description: 'Memory footprint in MB — measured when the platform has observed it, otherwise the estimate.', nullable: true, type: Number })
+  @ApiProperty({
+    description: 'Memory footprint in MB — measured when the platform has observed it, otherwise the estimate.',
+    nullable: true,
+    type: Number,
+  })
   memorySizeMb!: number | null;
 
   @ApiProperty({ description: 'One-word lifecycle status (e.g. `SERVING`, `DOWNLOADED`, `NOT_DOWNLOADED`).', enum: MODEL_LIFECYCLE_STATUSES })

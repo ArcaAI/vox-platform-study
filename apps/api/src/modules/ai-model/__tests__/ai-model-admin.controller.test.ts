@@ -59,7 +59,7 @@ describe('AiModelAdminController delegation', () => {
       { id: 'm2', resourceStatus: 'DISABLED' },
     ]);
     const getAll = vi.fn().mockResolvedValue([]);
-    const controller = new AiModelAdminController({ getAllForAdmin, getAll } as never, {} as never, {} as never, {} as never);
+    const controller = new AiModelAdminController({ getAllForAdmin, getAll } as never, {} as never, {} as never, {} as never, {} as never);
 
     const result = await controller.fetchAll();
 
@@ -76,7 +76,7 @@ describe('AiModelAdminController delegation', () => {
       getBySlug: vi.fn().mockResolvedValue({ id: 'm1' }),
       delete: vi.fn().mockResolvedValue(undefined),
     } as never;
-    const controller = new AiModelAdminController(svc, {} as never, {} as never, {} as never);
+    const controller = new AiModelAdminController(svc, {} as never, {} as never, {} as never, {} as never);
 
     await controller.create({ name: 'x' } as never);
     await controller.fetchById('m1');
@@ -96,7 +96,7 @@ describe('AiModelAdminController delegation', () => {
 describe('AiModelAdminController update — OCC If-Match fold', () => {
   const build = () => {
     const update = vi.fn().mockResolvedValue({ id: 'm1', name: 'Updated', version: 8 });
-    return { controller: new AiModelAdminController({ update } as never, {} as never, {} as never, {} as never), update };
+    return { controller: new AiModelAdminController({ update } as never, {} as never, {} as never, {} as never, {} as never), update };
   };
 
   it('forwards the body unchanged when If-Match header is absent (body wins)', async () => {
@@ -137,7 +137,7 @@ describe('AiModelAdminController download route metadata', () => {
 describe('AiModelAdminController download delegation', () => {
   it('triggerDownload delegates to AiModelDownloadService.triggerDownload and returns its result verbatim', async () => {
     const triggerDownload = vi.fn().mockResolvedValue({ jobId: 'job-1', status: 'DOWNLOADING' });
-    const controller = new AiModelAdminController({} as never, { triggerDownload } as never, {} as never, {} as never);
+    const controller = new AiModelAdminController({} as never, { triggerDownload } as never, {} as never, {} as never, {} as never);
 
     const result = await controller.triggerDownload('m1');
 
@@ -155,7 +155,7 @@ describe('AiModelAdminController download delegation', () => {
       localPath: '/mnt/models-bucket/gemma4-e2b-it-qat/q4-0-451faffb5a16/',
       error: null,
     });
-    const controller = new AiModelAdminController({} as never, { getDownloadStatus } as never, {} as never, {} as never);
+    const controller = new AiModelAdminController({} as never, { getDownloadStatus } as never, {} as never, {} as never, {} as never);
 
     const result = await controller.getDownloadStatus('m1');
 
@@ -176,7 +176,7 @@ describe('AiModelAdminController inventory + platform-default (TASK-860)', () =>
 
     const report = { checkedAt: new Date(), counts: { available: 1, missing: 0, partial: 0, notApplicable: 0 }, rows: [], unregistered: [] };
     const runInventory = vi.fn().mockResolvedValue(report);
-    const controller = new AiModelAdminController({} as never, {} as never, { runInventory } as never, {} as never);
+    const controller = new AiModelAdminController({} as never, {} as never, { runInventory } as never, {} as never, {} as never);
 
     expect(await controller.runInventory()).toBe(report);
     expect(runInventory).toHaveBeenCalledTimes(1);
@@ -187,7 +187,7 @@ describe('AiModelAdminController inventory + platform-default (TASK-860)', () =>
     expect(Reflect.getMetadata(METHOD_METADATA, AiModelAdminController.prototype.setPlatformDefault)).toBe(RequestMethod.PATCH);
 
     const setPlatformDefaultFor = vi.fn().mockResolvedValue({ id: 'm1', isPlatformDefaultFor: ['SPEECH_TO_TEXT'] });
-    const controller = new AiModelAdminController({ setPlatformDefaultFor } as never, {} as never, {} as never, {} as never);
+    const controller = new AiModelAdminController({ setPlatformDefaultFor } as never, {} as never, {} as never, {} as never, {} as never);
 
     const result = await controller.setPlatformDefault('m1', { tasks: ['SPEECH_TO_TEXT'] } as never);
 
@@ -229,7 +229,7 @@ describe('AiModelAdminController list — PaginatedQuery (TASK-983)', () => {
 
   it('forwards the whole query — search, searchFields, filters and sort included — to AiModelService.list', async () => {
     const list = vi.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 3, totalPages: 0 });
-    const controller = new AiModelAdminController({ list } as never, {} as never, {} as never, {} as never);
+    const controller = new AiModelAdminController({ list } as never, {} as never, {} as never, {} as never, {} as never);
 
     const query = { page: 1, limit: 3, search: 'whisper', searchFields: 'name,slug', filters: 'deploymentKind[in]:CLOUD', sort: 'name:desc' };
     await controller.list(query);

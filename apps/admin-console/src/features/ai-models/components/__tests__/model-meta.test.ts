@@ -35,12 +35,6 @@ describe('SOURCE_OPTIONS / SOURCE_LABELS (TASK-1023)', () => {
  */
 const REPO_ROOT = new URL('../../../../../../../', import.meta.url);
 
-function sourceArray(relativePath: string, constName: string): string[] {
-  const source = readFileSync(new URL(relativePath, REPO_ROOT), 'utf8');
-  const body = source.match(new RegExp(`${constName}\\s*=\\s*\\[([\\s\\S]*?)\\]`))?.[1] ?? '';
-  return [...body.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((match) => match[1]);
-}
-
 describe('dropdown vocabularies mirror the gateway DTO', () => {
   it('MODEL_TASK_TYPE_OPTIONS is exactly the ModelTaskType enum', () => {
     const source = readFileSync(new URL('packages/domains/src/enums/generated/ModelTaskType.ts', REPO_ROOT), 'utf8');

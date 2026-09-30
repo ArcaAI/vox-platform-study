@@ -30,7 +30,13 @@ import { publisherCancelFlagsProvider } from './publisher-cancel-flags';
  * required even though `AiModelModule` (apps/api) imports it as well.
  */
 @Module({
-  imports: [HttpModule, CommonServiceModule, CoreDatabaseModule, AiProviderConnectionServiceModule, BullModule.registerQueue({ name: JobQueue.DownloadAiModel })],
+  imports: [
+    HttpModule,
+    CommonServiceModule,
+    CoreDatabaseModule,
+    AiProviderConnectionServiceModule,
+    BullModule.registerQueue({ name: JobQueue.DownloadAiModel }),
+  ],
   // TASK-1023 D-C — job control (cancel + list) and the Redis cancel flag it sets.
   providers: [AiModelDownloadService, HuggingFaceModelSourceClient, ModelPublisherJobsService, publisherCancelFlagsProvider],
   exports: [AiModelDownloadService, HuggingFaceModelSourceClient, ModelPublisherJobsService],

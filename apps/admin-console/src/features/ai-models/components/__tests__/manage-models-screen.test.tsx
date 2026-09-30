@@ -20,14 +20,6 @@ beforeAll(() => {
   }
 });
 
-/** Open a Radix Select trigger and pick an option by its visible label (happy-dom pointer path). */
-async function selectOption(trigger: HTMLElement, optionName: string | RegExp) {
-  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
-  const option = await screen.findByRole('option', { name: optionName });
-  fireEvent.pointerUp(option, { button: 0, ctrlKey: false, pointerType: 'mouse' });
-  fireEvent.click(option);
-}
-
 const MODEL: AiModel = {
   id: 'm-1',
   name: 'ArcaAI Whisper ML-EN (GGUF)',

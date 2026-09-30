@@ -269,8 +269,9 @@ export class AiModelService extends BaseService implements IAiModelService {
     // The explicit `@Inject` is load-bearing: the `Pick<…>` type emits `Object`
     // as its design type, so without it Nest resolves nothing and — the param
     // being optional — silently injects `undefined` (final review C1).
-    @Optional() @Inject(ModelLifecycleService) private readonly lifecycle?: Pick<ModelLifecycleService, 'forRows'> &
-      Partial<Pick<ModelLifecycleService, 'statusForRows'>>,
+    @Optional()
+    @Inject(ModelLifecycleService)
+    private readonly lifecycle?: Pick<ModelLifecycleService, 'forRows'> & Partial<Pick<ModelLifecycleService, 'statusForRows'>>,
   ) {
     super(eventEmitter, clsService, ResourceType.AiModel);
   }
@@ -1202,11 +1203,7 @@ export class AiModelService extends BaseService implements IAiModelService {
 
   /** 400 when the registry-view query names a column the view does not expose. */
   private assertRegistryViewQuery(props: { filters?: unknown; searchFields?: string[]; sort?: Array<Record<string, unknown>> }): void {
-    const named = [
-      ...filterFieldsOf(props.filters),
-      ...(props.searchFields ?? []),
-      ...(props.sort ?? []).flatMap((entry) => Object.keys(entry)),
-    ];
+    const named = [...filterFieldsOf(props.filters), ...(props.searchFields ?? []), ...(props.sort ?? []).flatMap((entry) => Object.keys(entry))];
     const hidden = [...new Set(named.filter((field) => !REGISTRY_VIEW_QUERY_FIELDS.has(field)))];
     if (hidden.length > 0) {
       throw new BadRequestException(`The registry view cannot filter, search or sort on: ${hidden.join(', ')}.`);

@@ -3,7 +3,9 @@ import type { ModelRegistryAccess } from '@arcaai/types';
 
 /** `GET admin/ai-models/access` — what the caller may do on the model registry. */
 export class ModelRegistryAccessResponse implements ModelRegistryAccess {
-  @ApiProperty({ description: 'True only for a platform administrator with no working tenant selected — the only caller who may change the registry.' })
+  @ApiProperty({
+    description: 'True only for a platform administrator with no working tenant selected — the only caller who may change the registry.',
+  })
   canManage!: boolean;
 
   @ApiProperty({

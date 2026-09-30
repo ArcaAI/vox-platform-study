@@ -232,7 +232,12 @@ export class AiModelAdminController {
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (1-based).' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 10).' })
   @ApiQuery({ name: 'search', required: false, type: String, description: 'Free-text term matched against `searchFields`.' })
-  @ApiQuery({ name: 'searchFields', required: false, type: String, description: 'Comma-separated columns the `search` term targets, e.g. `name,slug`.' })
+  @ApiQuery({
+    name: 'searchFields',
+    required: false,
+    type: String,
+    description: 'Comma-separated columns the `search` term targets, e.g. `name,slug`.',
+  })
   @ApiQuery({
     name: 'filters',
     required: false,
@@ -241,7 +246,10 @@ export class AiModelAdminController {
   })
   @ApiQuery({ name: 'sort', required: false, type: String, description: 'Comma-separated `field:asc|desc`. Defaults to `name:asc`.' })
   @ApiOkResponse({ type: PaginatedRegisteredModelViewResponse })
-  @ApiResponse({ status: 400, description: 'Malformed pagination or filter, or a filter, search field or sort naming a column this view does not return.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Malformed pagination or filter, or a filter, search field or sort naming a column this view does not return.',
+  })
   @ApiResponse({ status: 403, description: 'The caller does not hold `read:AiModel`, or presented an API key.' })
   async registry(@Query() query: PaginatedQuery): Promise<PaginatedRegisteredModelViewResponse> {
     return this.aiModelService.listRegistry(query);

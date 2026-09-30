@@ -166,7 +166,11 @@ export function isDownloadStalled(meta: AiModelDownloadMeta | null, opts: Downlo
  * failed" is exactly what an operator is polling for; then measured presence.
  * With no `opts` the behaviour is exactly the pre-TASK-1019 one.
  */
-export function derivePublishStatus(meta: AiModelDownloadMeta | null, availability: string | null | undefined, opts?: DownloadStalenessOptions): ModelPublishStatus {
+export function derivePublishStatus(
+  meta: AiModelDownloadMeta | null,
+  availability: string | null | undefined,
+  opts?: DownloadStalenessOptions,
+): ModelPublishStatus {
   if (isInFlight(meta)) return isDownloadStalled(meta, opts) ? 'DOWNLOAD_FAILED' : 'DOWNLOADING';
   // TASK-1023 D-C — an admin cancel is not a failure: its own word, still ahead
   // of measured presence (the operator asked for THIS outcome to stay visible).
@@ -182,7 +186,10 @@ const UNREGISTER_WEIGHTS: ReadonlySet<string> = new Set<UnregisterWeightsOutcome
  * — the gateway writes the accepted request, the publisher worker completes it.
  * Every other `metaData` key, `download` included, is preserved.
  */
-export function mergeUnregisterMeta(existing: Record<string, unknown> | null | undefined, update: Partial<AiModelUnregisterMeta>): Record<string, unknown> {
+export function mergeUnregisterMeta(
+  existing: Record<string, unknown> | null | undefined,
+  update: Partial<AiModelUnregisterMeta>,
+): Record<string, unknown> {
   const base = existing && typeof existing === 'object' ? existing : {};
   const current = readUnregisterMeta(base);
   const merged: AiModelUnregisterMeta = {
