@@ -24,7 +24,25 @@ export interface AiModelDownloadMeta extends AiModelDownloadProgressMeta {
    * what this bookkeeping is, not a property of the catalogue row.
    */
   sizeMb?: number | null;
+  /**
+   * TASK-1023 D-C — cancel bookkeeping, carried ONLY once written and dropped
+   * whenever a NEW run (a different `jobId`) is claimed, so a retry after a
+   * cancel never inherits it.
+   *
+   *   cancelRequestedAt / cancelRequestedBy   the gateway asked a RUNNING job to stop
+   *   removeRegistrationOnCancel              …and to unregister the row once stopped (OD-5)
+   *   cancelledAt / cancelledBy               the cancel is FINAL (with `finishedAt` and
+   *                                           `error = 'CANCELLED'`) — derives `CANCELLED`
+   */
+  cancelRequestedAt?: string | null;
+  cancelRequestedBy?: string | null;
+  removeRegistrationOnCancel?: boolean | null;
+  cancelledAt?: string | null;
+  cancelledBy?: string | null;
 }
+
+/** `_metadata.download.error` of a cancelled run (D-C). */
+export const DOWNLOAD_CANCELLED_CODE = 'CANCELLED';
 
 type MutableAiModelDownloadMeta = Partial<AiModelDownloadMeta> & { jobId?: string };
 
@@ -33,6 +51,9 @@ type MutableAiModelDownloadMeta = Partial<AiModelDownloadMeta> & { jobId?: strin
  * nobody has published since keeps the exact pre-TASK-1019 shape.
  */
 const PROGRESS_KEYS = ['bytesDone', 'bytesTotal', 'heartbeatAt', 'attempt'] as const;
+
+/** TASK-1023 cancel fields — per RUN: a merge that names a new `jobId` drops them. */
+const CANCEL_KEYS = ['cancelRequestedAt', 'cancelRequestedBy', 'removeRegistrationOnCancel', 'cancelledAt', 'cancelledBy'] as const;
 
 /**
  * Merge a partial download-bookkeeping update onto an entity's existing
@@ -54,6 +75,14 @@ export function mergeDownloadMeta(existing: Record<string, unknown> | null | und
     if (key in update) {
       (merged as unknown as Record<string, unknown>)[key] = update[key] ?? null;
     } else if (currentDownload && key in currentDownload) {
+      (merged as unknown as Record<string, unknown>)[key] = currentDownload[key] ?? null;
+    }
+  }
+  const sameRun = !update.jobId || update.jobId === currentDownload?.jobId;
+  for (const key of CANCEL_KEYS) {
+    if (key in update) {
+      (merged as unknown as Record<string, unknown>)[key] = update[key] ?? null;
+    } else if (sameRun && currentDownload && key in currentDownload) {
       (merged as unknown as Record<string, unknown>)[key] = currentDownload[key] ?? null;
     }
   }
@@ -81,6 +110,10 @@ export function readDownloadMeta(metaData: Record<string, unknown> | null | unde
   if ('bytesTotal' in download) meta.bytesTotal = typeof download.bytesTotal === 'number' ? download.bytesTotal : null;
   if ('heartbeatAt' in download) meta.heartbeatAt = typeof download.heartbeatAt === 'string' ? download.heartbeatAt : null;
   if ('attempt' in download) meta.attempt = typeof download.attempt === 'number' ? download.attempt : null;
+  for (const key of ['cancelRequestedAt', 'cancelRequestedBy', 'cancelledAt', 'cancelledBy'] as const) {
+    if (key in download) meta[key] = typeof download[key] === 'string' ? (download[key] as string) : null;
+  }
+  if ('removeRegistrationOnCancel' in download) meta.removeRegistrationOnCancel = download.removeRegistrationOnCancel === true;
   return meta;
 }
 
@@ -92,7 +125,7 @@ export function readDownloadMeta(metaData: Record<string, unknown> | null | unde
  * value comes from. Declared here rather than imported from `@arcaai/domains`
  * because L2 removes that Prisma enum with the columns.
  */
-export const MODEL_PUBLISH_STATUSES = ['NOT_DOWNLOADED', 'DOWNLOADING', 'DOWNLOADED', 'DOWNLOAD_FAILED'] as const;
+export const MODEL_PUBLISH_STATUSES = ['NOT_DOWNLOADED', 'DOWNLOADING', 'DOWNLOADED', 'DOWNLOAD_FAILED', 'CANCELLED'] as const;
 export type ModelPublishStatus = (typeof MODEL_PUBLISH_STATUSES)[number];
 
 /** Staleness inputs for `derivePublishStatus` / `isDownloadStalled` (TASK-1019 D-4). */
@@ -135,6 +168,9 @@ export function isDownloadStalled(meta: AiModelDownloadMeta | null, opts: Downlo
  */
 export function derivePublishStatus(meta: AiModelDownloadMeta | null, availability: string | null | undefined, opts?: DownloadStalenessOptions): ModelPublishStatus {
   if (isInFlight(meta)) return isDownloadStalled(meta, opts) ? 'DOWNLOAD_FAILED' : 'DOWNLOADING';
+  // TASK-1023 D-C — an admin cancel is not a failure: its own word, still ahead
+  // of measured presence (the operator asked for THIS outcome to stay visible).
+  if (meta?.cancelledAt && meta.finishedAt) return 'CANCELLED';
   if (meta?.error) return 'DOWNLOAD_FAILED';
   return availability === 'AVAILABLE' ? 'DOWNLOADED' : 'NOT_DOWNLOADED';
 }
@@ -163,6 +199,20 @@ export function mergeUnregisterMeta(existing: Record<string, unknown> | null | u
   if (deletedObjects !== undefined) merged.deletedObjects = deletedObjects;
   if (deletedVersions !== undefined) merged.deletedVersions = deletedVersions;
   return { ...base, unregister: merged };
+}
+
+/**
+ * TASK-1023 OD-6 — an unregister the gateway accepted, that no worker finished
+ * or failed, whose `startedAt` is older than the SAME stale window downloads
+ * use. The job was lost (removed, Redis flushed, worker gone): the row derives
+ * `UNREGISTER_FAILED` and the unregister may be retried. `false` with no
+ * `staleAfterMs` — staleness is a policy the caller resolves.
+ */
+export function isUnregisterStale(meta: AiModelUnregisterMeta | null, opts: DownloadStalenessOptions = {}): boolean {
+  if (opts.staleAfterMs === undefined || !meta || meta.finishedAt || meta.error) return false;
+  const startedAt = Date.parse(meta.startedAt);
+  if (Number.isNaN(startedAt)) return false;
+  return (opts.now ?? new Date()).getTime() - startedAt > opts.staleAfterMs;
 }
 
 /** Read `_metadata.unregister`; `null` when absent or malformed. */

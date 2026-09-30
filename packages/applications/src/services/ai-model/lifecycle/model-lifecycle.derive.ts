@@ -4,6 +4,7 @@ import { residencyServiceOf } from '../../model-residency/model-residency.types'
 import {
   derivePublishStatus,
   isDownloadStalled,
+  isUnregisterStale,
   readDownloadMeta,
   readUnregisterMeta,
   type ModelPublishStatus,
@@ -99,7 +100,9 @@ export function publishStatusOf(
  * ONE lifecycle status per registry row (D-9), with the per-service evidence beside it.
  *
  * First match wins:
- *   UNREGISTERING → DOWNLOADING → DOWNLOAD_FAILED (incl. a stalled heartbeat)
+ *   UNREGISTERING → UNREGISTER_FAILED (open past the stale window, TASK-1023 OD-6)
+ *   → DOWNLOADING → DOWNLOAD_FAILED (incl. a stalled heartbeat)
+ *   → DOWNLOAD_CANCELLED (an admin cancelled the run, TASK-1023 D-C)
  *   → NOT_APPLICABLE (not self-hosted: nothing to download or load)
  *   → NOT_DOWNLOADED (the bucket lacks the weights AND no service holds them)
  *   → LOAD_FAILED → LOADING → SERVING (resident on ≥ 1 observed service)
@@ -135,9 +138,14 @@ export function deriveModelLifecycle(
 
   const lifecycle = (status: ModelLifecycleStatus): ModelLifecycle => ({ status, services, download, unregister, observedAt });
 
-  if (isUnregistering(meta)) return lifecycle('UNREGISTERING');
+  // TASK-1023 OD-6 — an open unregister past the download stale window lost its
+  // job: UNREGISTER_FAILED (retryable), in the slot right after UNREGISTERING.
+  if (isUnregistering(meta)) {
+    return lifecycle(isUnregisterStale(unregisterMeta, { now: new Date(opts.now), staleAfterMs: opts.staleAfterMs }) ? 'UNREGISTER_FAILED' : 'UNREGISTERING');
+  }
   if (publish === 'DOWNLOADING') return lifecycle('DOWNLOADING');
   if (publish === 'DOWNLOAD_FAILED') return lifecycle('DOWNLOAD_FAILED');
+  if (publish === 'CANCELLED') return lifecycle('DOWNLOAD_CANCELLED');
   if (row.deploymentKind !== AiDeploymentKind.SELF_HOSTED) return lifecycle('NOT_APPLICABLE');
 
   const resident = services.some((s) => s.state === 'loaded' || s.state === 'unloading');
