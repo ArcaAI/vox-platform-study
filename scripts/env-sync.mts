@@ -101,7 +101,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ADMIN_CONSOLE_ENV_SETTINGS, type AdminConsoleEnvVar } from '../apps/admin-console/src/config/env.descriptors';
-import { API_ENV_DESCRIPTORS, NOT_READ_BY_THIS_PROCESS, READ_BY_MODEL_PUBLISHER_ONLY, VAULT_CONDITIONAL } from '../apps/api/src/config/env.schema';
+import { API_ENV_DESCRIPTORS, NOT_READ_BY_THIS_PROCESS, VAULT_CONDITIONAL } from '../apps/api/src/config/env.schema';
 import { HOPE_SETTINGS_REGISTRY } from '../packages/applications/src/services/settings-registry/registry';
 import { toEnvVarName, type SettingDescriptor } from '../packages/applications/src/services/settings-registry/registry.types';
 
@@ -480,7 +480,6 @@ function exampleValue(v: EnvVar): string {
  */
 function requirementNote(v: EnvVar, verbose: boolean): string {
     if (NOT_READ_BY_THIS_PROCESS.has(v.name)) return ' (Vault provisioning only)';
-    if (READ_BY_MODEL_PUBLISHER_ONLY.has(v.name)) return ' (model-publisher worker only)';
     if (VAULT_CONDITIONAL.has(v.name)) return ' (required with Vault; either form)';
     if (!v.required) return '';
     return verbose ? ' (REQUIRED — boot fails without it)' : ' (REQUIRED)';

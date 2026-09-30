@@ -2,16 +2,17 @@
  * `ModelStore` — the model publisher's own view of the `hope-models` bucket
  * (TASK-1019 lane P, D-2 / D-3 / OD-2).
  *
- * WHY NOT `IS3Service`. `IS3Service` authenticates as the platform storage
- * principal (`hope-platform-rw`), which has NO rights on `hope-models` and must
- * not gain them — every gateway pod holds that key. The publisher writes AND
- * deletes model weights, so it authenticates with its own key pair, read from
- * two ENV secrets (`MODEL_STORE_PUBLISHER_ACCESS_KEY_ID` / `_SECRET_KEY`) that
- * the cluster delivers by `secretKeyRef` to the publisher pod alone. Not
- * `vault-kv`: a kv path is readable by hope-api's shared AppRole, and under
- * `SECRETS_PROVIDER=vault` `SecretsService` has no env fallback (TASK-1019 C3).
- * An absent key pair fails the job closed (`MODEL_STORE_CREDENTIAL_MISSING`);
- * it is never substituted by the platform storage credential.
+ * WHICH PRINCIPAL (TASK-1024). The publisher authenticates as the PLATFORM
+ * storage principal (`hope-platform-rw` on the cluster, which carries
+ * `hope-models` by owner decision), resolved exactly as
+ * `BlobStorageProviderFactory` resolves it: the SYSTEM row's Vault
+ * `credentialsRef` first, the `S3_ACCESS_KEY` / `S3_SECRET_KEY` secrets second,
+ * both through `SecretsService`. This retired the dedicated
+ * `MODEL_STORE_PUBLISHER_*` env pair (TASK-1019 D-2 / C3). An absent key pair
+ * still fails the job closed (`MODEL_STORE_CREDENTIAL_MISSING`).
+ *
+ * WHY NOT `IS3Service`. It has no multipart upload from a local file, no
+ * paginated prefix listing and no version-aware prefix delete.
  *
  * WHAT IT ADDS OVER `IS3Service`. Multipart upload FROM A LOCAL FILE (weights
  * are staged to disk, never held as one Buffer), a paginated prefix listing,
@@ -21,8 +22,8 @@
  *
  * Endpoint and region still come from the platform storage cascade
  * (`resolvePlatformStorageConfig`: SYSTEM row → AppSettings → bootstrap env):
- * the publisher talks to the SAME object store as everything else, as a
- * different principal.
+ * the publisher talks to the SAME object store, as the same principal, as
+ * everything else.
  */
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -44,6 +45,8 @@ import {
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { SYSTEM_TENANT_ID, TenantStorageConfigRepository } from '@arcaai/domains';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
+import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
+import { loadPlatformStorageCredentials } from '../../ai-provider-connection/platform-storage-credential';
 import { minioCertCheckFromEnv, resolvePlatformStorageConfig } from '../../tenant-storage-config/platform-storage-config';
 import { HOPE_MODELS_BUCKET } from '../constants';
 import { MODEL_STORE_CREDENTIAL_MISSING, MODEL_STORE_PREFIX_REFUSED, ModelPublisherError } from './model-publisher.errors';
@@ -301,16 +304,16 @@ export function assertDeletablePrefix(prefix: string): void {
 export type ModelStoreClientFactory = (config: S3ClientConfig) => S3ClientLike;
 export const MODEL_STORE_CLIENT_FACTORY = Symbol('MODEL_STORE_CLIENT_FACTORY');
 
-/** The environment the key pair is read from — `process.env` unless a test injects one. */
+/** The environment the storage cascade's env tier reads — `process.env` unless a test injects one. */
 export type ModelStoreEnv = Readonly<Record<string, string | undefined>>;
 export const MODEL_STORE_ENV = Symbol('MODEL_STORE_ENV');
 
 const defaultClientFactory: ModelStoreClientFactory = (config) => new S3Client(config);
 
 /**
- * Builds a `ModelStore` per job. Credentials are read fresh on every call (a
- * rotated key pair takes effect on the next job without a restart) and are
- * checked FIRST, so a missing credential fails before any storage lookup.
+ * Builds a `ModelStore` per job. Credentials are resolved on every call through
+ * `SecretsService` (its cache and invalidation channel carry a rotation), and a
+ * missing pair fails before any client is built.
  */
 @Injectable()
 export class ModelStoreFactory {
@@ -320,6 +323,7 @@ export class ModelStoreFactory {
   constructor(
     @Optional() private readonly storageConfigRepository?: TenantStorageConfigRepository,
     @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
+    @Optional() @Inject(SecretsService) private readonly secrets?: SecretsService,
     @Optional() @Inject(MODEL_STORE_ENV) env?: ModelStoreEnv,
     @Optional() @Inject(MODEL_STORE_CLIENT_FACTORY) createClient?: ModelStoreClientFactory,
   ) {
@@ -328,16 +332,6 @@ export class ModelStoreFactory {
   }
 
   async create(): Promise<ModelStore> {
-    // Env-tier secrets (`bootstrap-env.descriptors.ts`), set on the publisher pod alone.
-    const accessKeyId = this.env['MODEL_STORE_PUBLISHER_ACCESS_KEY_ID']?.trim();
-    const secretAccessKey = this.env['MODEL_STORE_PUBLISHER_SECRET_KEY']?.trim();
-    if (!accessKeyId || !secretAccessKey) {
-      throw new ModelPublisherError(
-        MODEL_STORE_CREDENTIAL_MISSING,
-        'the model publisher key pair (env MODEL_STORE_PUBLISHER_ACCESS_KEY_ID / MODEL_STORE_PUBLISHER_SECRET_KEY on the publisher pod) is not set; the publisher never falls back to the platform storage credential',
-      );
-    }
-
     const rows = this.storageConfigRepository ? await this.storageConfigRepository.findAllTenantDefaults(SYSTEM_TENANT_ID) : [];
     const config = resolvePlatformStorageConfig({
       systemRow: rows[0] ?? null,
@@ -352,11 +346,19 @@ export class ModelStoreFactory {
       env: this.env,
     });
 
+    const { accessKeyId, secretAccessKey } = await loadPlatformStorageCredentials(this.secrets, config.credentialsRef);
+    if (!accessKeyId?.trim() || !secretAccessKey?.trim()) {
+      throw new ModelPublisherError(
+        MODEL_STORE_CREDENTIAL_MISSING,
+        'the platform storage key pair (the SYSTEM storage row credentialsRef, else the S3_ACCESS_KEY / S3_SECRET_KEY secrets) is not set',
+      );
+    }
+
     const endpoint = config.endpoint.trim();
     const client = this.createClient({
       ...(endpoint ? { endpoint } : {}),
       region: config.region,
-      credentials: { accessKeyId, secretAccessKey },
+      credentials: { accessKeyId: accessKeyId.trim(), secretAccessKey: secretAccessKey.trim() },
       forcePathStyle: config.forcePathStyle,
       // Streamed bodies must not be wrapped in aws-chunked checksum trailers,
       // which S3-compatible stores (MinIO) do not all accept. Operations that

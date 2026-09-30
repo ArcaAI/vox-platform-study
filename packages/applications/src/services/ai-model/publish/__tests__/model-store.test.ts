@@ -63,7 +63,9 @@ describe('S3ModelStore', () => {
         { key: 'm/c', size: 3 },
       ]);
       expect(client.sent.map((s) => s.input.ContinuationToken)).toEqual([undefined, 't1', 't2']);
-      expect(client.sent.every((s) => s.name === ListObjectsV2Command.name && s.input.Bucket === 'hope-models' && s.input.Prefix === 'm/')).toBe(true);
+      expect(client.sent.every((s) => s.name === ListObjectsV2Command.name && s.input.Bucket === 'hope-models' && s.input.Prefix === 'm/')).toBe(
+        true,
+      );
     });
   });
 
@@ -254,73 +256,37 @@ describe('S3ModelStore', () => {
 });
 
 describe('ModelStoreFactory (P8)', () => {
-  const PLATFORM_KEYS = new Set(['S3_ACCESS_KEY', 'S3_SECRET_KEY', 'MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY']);
-
   function appSettings(values: Record<string, unknown>) {
     return { getValueWithDefault: vi.fn((key: string, fallback: unknown) => (key in values ? values[key] : fallback)) };
   }
 
-  // TASK-1019 C3 — the key pair is delivered to the publisher pod ALONE as two
-  // env vars (secretKeyRef); it is never a Vault kv read (under
-  // SECRETS_PROVIDER=vault, SecretsService has no env fallback by design).
-  function build(envValues: Record<string, string | undefined>, settings: Record<string, unknown> = {}) {
-    const storageConfigRepository = { findAllTenantDefaults: vi.fn(async () => []) };
+  // TASK-1024 — the publisher authenticates as the PLATFORM storage principal
+  // (owner decision: `hope-platform-rw` now carries `hope-models`), resolved
+  // exactly as `BlobStorageProviderFactory` does: the SYSTEM row's Vault
+  // `credentialsRef` first, the `S3_ACCESS_KEY` / `S3_SECRET_KEY` secrets second,
+  // both through `SecretsService`. The retired `MODEL_STORE_PUBLISHER_*` env pair
+  // is never read.
+  function build(
+    secretValues: Record<string, string | undefined>,
+    opts: { settings?: Record<string, unknown>; env?: Record<string, string | undefined>; systemRow?: Record<string, unknown> } = {},
+  ) {
+    const storageConfigRepository = { findAllTenantDefaults: vi.fn(async () => (opts.systemRow ? [opts.systemRow] : [])) };
+    const secrets = { getSecretOptional: vi.fn(async (key: string) => secretValues[key]) };
     const createClient = vi.fn((_config: Record<string, unknown>) => ({ send: vi.fn() }));
     const factory = new ModelStoreFactory(
       storageConfigRepository as never,
-      appSettings({ S3_ENDPOINT: 'http://minio.local:9000', S3_REGION: 'eu-west-1', ...settings }) as never,
-      envValues,
+      appSettings({ S3_ENDPOINT: 'http://minio.local:9000', S3_REGION: 'eu-west-1', ...opts.settings }) as never,
+      secrets as never,
+      opts.env ?? {},
       createClient,
     );
-    return { factory, createClient };
+    return { factory, createClient, secrets };
   }
 
-  it('fails closed with MODEL_STORE_CREDENTIAL_MISSING and never builds a client from the platform storage keys', async () => {
-    const env: Record<string, string | undefined> = {
-      S3_ACCESS_KEY: 'platform-rw',
-      S3_SECRET_KEY: 'platform-rw-secret',
-      MINIO_ACCESS_KEY: 'minio',
-      MINIO_SECRET_KEY: 'minio-secret',
-    };
-    const read: string[] = [];
-    const { factory, createClient } = build(
-      new Proxy(env, {
-        get(target, prop: string) {
-          read.push(prop);
-          return target[prop];
-        },
-      }),
-    );
+  const PLATFORM = { S3_ACCESS_KEY: 'platform-rw', S3_SECRET_KEY: 'platform-rw-secret' };
 
-    const failure = await factory.create().catch((e: unknown) => e);
-
-    expect(failure).toBeInstanceOf(ModelPublisherError);
-    expect((failure as ModelPublisherError).code).toBe(MODEL_STORE_CREDENTIAL_MISSING);
-    expect(createClient).not.toHaveBeenCalled();
-    expect(read.some((key) => PLATFORM_KEYS.has(key))).toBe(false);
-  });
-
-  it('reads the key pair from the env (the publisher pod’s own secretKeyRef pair) — no SecretsService / Vault read', async () => {
-    const { factory, createClient } = build({ MODEL_STORE_PUBLISHER_ACCESS_KEY_ID: ' pub ', MODEL_STORE_PUBLISHER_SECRET_KEY: 'pub-secret\n' });
-
-    await factory.create();
-
-    expect(createClient).toHaveBeenCalledWith(expect.objectContaining({ credentials: { accessKeyId: 'pub', secretAccessKey: 'pub-secret' } }));
-  });
-
-  it('fails closed when only one half of the publisher key pair is set', async () => {
-    const { factory, createClient } = build({ MODEL_STORE_PUBLISHER_ACCESS_KEY_ID: 'pub' });
-
-    await expect(factory.create()).rejects.toMatchObject({ code: MODEL_STORE_CREDENTIAL_MISSING });
-    expect(createClient).not.toHaveBeenCalled();
-  });
-
-  it('builds the client from the publisher key pair and the platform storage endpoint/region', async () => {
-    const { factory, createClient } = build({
-      MODEL_STORE_PUBLISHER_ACCESS_KEY_ID: 'pub',
-      MODEL_STORE_PUBLISHER_SECRET_KEY: 'pub-secret',
-      S3_ACCESS_KEY: 'platform-rw',
-    });
+  it('builds the client from the platform storage key pair and the platform storage endpoint/region', async () => {
+    const { factory, createClient } = build(PLATFORM);
 
     const store = await factory.create();
 
@@ -330,14 +296,61 @@ describe('ModelStoreFactory (P8)', () => {
       expect.objectContaining({
         endpoint: 'http://minio.local:9000',
         region: 'eu-west-1',
-        credentials: { accessKeyId: 'pub', secretAccessKey: 'pub-secret' },
+        credentials: { accessKeyId: 'platform-rw', secretAccessKey: 'platform-rw-secret' },
       }),
     );
   });
 
-  describe('per-request timeout (I7) — a half-open S3 socket fails the request instead of hanging the job', () => {
-    const PAIR = { MODEL_STORE_PUBLISHER_ACCESS_KEY_ID: 'pub', MODEL_STORE_PUBLISHER_SECRET_KEY: 'pub-secret' };
+  it('prefers the SYSTEM row credentialsRef over the S3_* bootstrap secrets', async () => {
+    const { factory, createClient, secrets } = build(
+      { ...PLATFORM, 'kv/hope/storage/platform': JSON.stringify({ accessKeyId: 'ref-id', secretAccessKey: 'ref-secret' }) },
+      {
+        systemRow: {
+          provider: 'S3',
+          endpoint: 'http://minio.local:9000',
+          region: 'eu-west-1',
+          forcePathStyle: true,
+          credentialsRef: 'kv/hope/storage/platform',
+        },
+      },
+    );
 
+    await factory.create();
+
+    expect(secrets.getSecretOptional).toHaveBeenCalledWith('kv/hope/storage/platform');
+    expect(createClient).toHaveBeenCalledWith(expect.objectContaining({ credentials: { accessKeyId: 'ref-id', secretAccessKey: 'ref-secret' } }));
+  });
+
+  it('never reads the retired MODEL_STORE_PUBLISHER_* env pair', async () => {
+    const { factory, createClient } = build(PLATFORM, {
+      env: { MODEL_STORE_PUBLISHER_ACCESS_KEY_ID: 'pub', MODEL_STORE_PUBLISHER_SECRET_KEY: 'pub-secret' },
+    });
+
+    await factory.create();
+
+    expect(createClient).toHaveBeenCalledWith(
+      expect.objectContaining({ credentials: { accessKeyId: 'platform-rw', secretAccessKey: 'platform-rw-secret' } }),
+    );
+  });
+
+  it('fails closed with MODEL_STORE_CREDENTIAL_MISSING when the platform key pair is absent', async () => {
+    const { factory, createClient } = build({});
+
+    await expect(factory.create()).rejects.toMatchObject({ code: MODEL_STORE_CREDENTIAL_MISSING });
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when only one half of the platform key pair is set', async () => {
+    const { factory, createClient } = build({ S3_ACCESS_KEY: 'platform-rw' });
+
+    const failure = await factory.create().catch((e: unknown) => e);
+
+    expect(failure).toBeInstanceOf(ModelPublisherError);
+    expect((failure as ModelPublisherError).code).toBe(MODEL_STORE_CREDENTIAL_MISSING);
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  describe('per-request timeout (I7) — a half-open S3 socket fails the request instead of hanging the job', () => {
     async function handlerConfig(createClient: ReturnType<typeof build>['createClient']) {
       const handler = createClient.mock.calls[0][0].requestHandler;
       expect(handler).toBeInstanceOf(NodeHttpHandler);
@@ -346,19 +359,19 @@ describe('ModelStoreFactory (P8)', () => {
     }
 
     it('defaults to modelRegistry.download.requestTimeoutSeconds = 600 s, and THROWS on breach (not a warning)', async () => {
-      const { factory, createClient } = build(PAIR);
+      const { factory, createClient } = build(PLATFORM);
       await factory.create();
       expect(await handlerConfig(createClient)).toMatchObject({ requestTimeout: 600_000, throwOnRequestTimeout: true });
     });
 
     it('reads the configured timeout', async () => {
-      const { factory, createClient } = build(PAIR, { 'modelRegistry.download.requestTimeoutSeconds': 30 });
+      const { factory, createClient } = build(PLATFORM, { settings: { 'modelRegistry.download.requestTimeoutSeconds': 30 } });
       await factory.create();
       expect(await handlerConfig(createClient)).toMatchObject({ requestTimeout: 30_000 });
     });
 
     it('keeps the MINIO_CERT_CHECK relaxation on the same handler', async () => {
-      const { factory, createClient } = build({ ...PAIR, MINIO_CERT_CHECK: 'false' });
+      const { factory, createClient } = build(PLATFORM, { env: { MINIO_CERT_CHECK: 'false' } });
       await factory.create();
       const config = await handlerConfig(createClient);
       expect(config.requestTimeout).toBe(600_000);

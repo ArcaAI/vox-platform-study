@@ -49,9 +49,8 @@
 #                only consumer of the `DownloadAiModel` BullMQ queue (model
 #                downloads + unregister/purge into `hope-models`). Runs the
 #                gateway's TypeScript source through ts-node, so it never
-#                touches apps/api/dist that `pnpm api:dev` rebuilds. Needs the
-#                publisher key pair (MODEL_STORE_PUBLISHER_ACCESS_KEY_ID /
-#                MODEL_STORE_PUBLISHER_SECRET_KEY) in .env.dev / host env (never Vault); stages
+#                touches apps/api/dist that `pnpm api:dev` rebuilds. Writes to
+#                `hope-models` as the platform storage principal (TASK-1024); stages
 #                to MODEL_PUBLISHER_STAGING_DIR (default: the OS temp dir).
 #
 # MACHINE-SPECIFIC MODEL:

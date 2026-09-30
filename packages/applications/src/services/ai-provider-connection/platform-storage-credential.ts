@@ -59,7 +59,7 @@ export interface PlatformStorageCredential {
 }
 
 /** JSON shape stored at a `credentialsRef`. Mirrors `ResolvedStorageCredentials`. */
-interface StorageCredentialsJson {
+export interface StorageCredentialsJson {
   accessKeyId?: string;
   secretAccessKey?: string;
 }
@@ -106,7 +106,7 @@ export async function resolvePlatformStorageCredential(deps: {
     return null;
   }
 
-  const credentials = await loadCredentials(secrets, config.credentialsRef);
+  const credentials = await loadPlatformStorageCredentials(secrets, config.credentialsRef);
   if (!credentials.accessKeyId || !credentials.secretAccessKey) return null;
 
   return {
@@ -121,9 +121,13 @@ export async function resolvePlatformStorageCredential(deps: {
  * The Vault `credentialsRef` first, the bootstrap `S3_*` secrets second — the
  * order and the fallback are `BlobStorageProviderFactory.loadPlatformCredentials`'s,
  * kept identical so the weight fetcher authenticates as the same principal the
- * gateway's own uploads do.
+ * gateway's own uploads do. The model publisher's `ModelStoreFactory` uses it too
+ * (TASK-1024).
  */
-async function loadCredentials(secrets: SecretsService | undefined, credentialsRef: string | null): Promise<StorageCredentialsJson> {
+export async function loadPlatformStorageCredentials(
+  secrets: SecretsService | undefined,
+  credentialsRef: string | null,
+): Promise<StorageCredentialsJson> {
   if (!secrets) return {};
 
   if (credentialsRef) {

@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 146 |
-| … of which required (`failMode: closed`) | 29 |
-| … of which secret | 28 |
-| … tier `env` | 115 |
+| Declared keys (distinct) | 144 |
+| … of which required (`failMode: closed`) | 27 |
+| … of which secret | 26 |
+| … tier `env` | 113 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
 | Python declared fields | 311 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 363 |
-| `turbo.json#globalEnv` entries | 521 |
+| `turbo.json#globalEnv` entries | 519 |
 
 ## Variables — the TypeScript platform surface
 
@@ -91,8 +91,6 @@ disagree with those declarations.
 | `MINIO_USE_SSL` | `env` | no | `false` | `apps/api` | Whether the object-storage endpoint is reached over TLS. |
 | `MODEL_PUBLISHER_STAGING_DIR` | `env` | no | — | `apps/api` | Filesystem path under which the model-publisher worker stages each download (streamed to disk, hashed, then multipart-uploaded to `hope-models`). A path on the worker's own filesystem — on the cluster a size-limited emptyDir. Unset falls back to the OS temp dir (`os.tmpdir()`). |
 | `MODEL_PUBLISHER_STAGING_MAX_BYTES` | `env` | no | — | `apps/api` | The size, in whole bytes, of the model-publisher worker’s staging volume — on the cluster the staging emptyDir’s `sizeLimit`, set by the publisher Deployment (a topology value). The download pre-flight refuses (`STAGING_SPACE_INSUFFICIENT`) a publish that exceeds min(filesystem free space, this budget − bytes already under `MODEL_PUBLISHER_STAGING_DIR`): `statfs` reports the NODE’s disk, not the emptyDir’s limit, so without it a publish that fits the node but not the pod gets the pod evicted mid-download. Unset = no budget (the filesystem free space alone, right for local dev). A value that is not a positive whole number fails the worker at start. Read ONLY by the model-publisher worker. |
-| `MODEL_STORE_PUBLISHER_ACCESS_KEY_ID` | `env` | yes | `CHANGE_ME` | `apps/api` | S3/MinIO access key the model-publisher worker uses to write, and on unregister delete, model weights in the `hope-models` bucket (`ModelStoreFactory`). Read ONLY by the model-publisher worker (`model-publisher.main.ts`) — hope-api never reads it and must not be given it. CLASSIFIED `env`, NOT `vault-kv`, DELIBERATELY: a Vault kv-v2 path would be readable by hope-api’s shared AppRole, so on the cluster the pair is fed from the `hope-models-publisher` Secret by `secretKeyRef` into the publisher Deployment alone. Absent ⇒ every publish/unregister job fails closed with `MODEL_STORE_CREDENTIAL_MISSING`; it never falls back to the platform storage credential. Endpoint and region come from the platform storage cascade, not from here. |
-| `MODEL_STORE_PUBLISHER_SECRET_KEY` | `env` | yes | `CHANGE_ME` | `apps/api` | S3/MinIO secret key paired with `MODEL_STORE_PUBLISHER_ACCESS_KEY_ID` — the model-publisher worker’s own principal on `hope-models` (write + delete + delete-version). Read ONLY by the model-publisher worker — hope-api never reads it and must not be given it. CLASSIFIED `env`, NOT `vault-kv`, for the same reason as its access key: a kv-v2 path would be readable by hope-api’s shared AppRole. Fails closed when absent. |
 | `MQTT_HOST` | `env` | no | `localhost` | `apps/api` | MQTT broker host. |
 | `MQTT_PASS` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | MQTT broker password, consumed by `MqttService` via `ConfigService`. |
 | `MQTT_PORT` | `env` | no | `1883` | `apps/api` | MQTT broker port. |
