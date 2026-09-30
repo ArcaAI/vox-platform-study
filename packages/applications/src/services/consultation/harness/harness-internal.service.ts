@@ -1525,8 +1525,12 @@ export class HarnessInternalService extends BaseService {
         // SIGNED consultation, because the CAS predicate is read fresh here and so always matched.
         const adoptionRefused = existingDraft ? await this.isApprovedHarnessDraft(consultation, existingDraft.id) : false;
         let contextItemId: string;
+        // TASK-1022 — why this delivery's content was NOT applied, if it was not. The closing log line
+        // reads it: a skipped adoption used to be followed by "Harness draft persisted", which is false.
+        let adoptionSkipped: 'approved' | 'empty' | 'occ-drift' | undefined;
         if (existingDraft && adoptionRefused) {
           contextItemId = existingDraft.id;
+          adoptionSkipped = 'approved';
           this.logger.warn({
             message:
               'Harness draft adoption skipped — the note was already approved (signed). A late re-delivery never overwrites signed documentation; ' +
@@ -1557,6 +1561,7 @@ export class HarnessInternalService extends BaseService {
           // branch already takes on OCC drift below, and for the same reason:
           // the content on the row is more trustworthy than what arrived.
           if (!strippedContent) {
+            adoptionSkipped = 'empty';
             this.logger.warn({
               message:
                 'Harness draft adoption skipped — the re-delivered note was empty after citation-marker stripping. ' +
@@ -1588,6 +1593,7 @@ export class HarnessInternalService extends BaseService {
               });
             } catch (error) {
               if (!(error instanceof OptimisticConcurrencyException)) throw error;
+              adoptionSkipped = 'occ-drift';
               // Adoption skipped, not failed: the clinician's edit is
               // authoritative and stays on the row untouched. The workflow
               // itself must not fail loudly over this — degrade and continue so
@@ -1773,9 +1779,11 @@ export class HarnessInternalService extends BaseService {
           const draftTarget = isEarly ? ConsultationStatus.DRAFT_PENDING_SENSORS : ConsultationStatus.PENDING_REVIEW;
           if (!consultation.canTransitionTo(draftTarget)) {
             this.logger.warn({
-              message:
-                'Harness draft persisted WITHOUT advancing the consultation lifecycle — the target state is not reachable from the current one. ' +
-                'The draft is on the consultation; its status is unchanged.',
+              message: adoptionSkipped
+                ? 'Harness draft delivery did not advance the consultation lifecycle — the target state is not reachable from the current one ' +
+                  '(the delivered content was not applied; adoption skipped). Status unchanged.'
+                : 'Harness draft persisted WITHOUT advancing the consultation lifecycle — the target state is not reachable from the current one. ' +
+                  'The draft is on the consultation; its status is unchanged.',
               consultationId,
               contextItemId,
               currentStatus: consultation.status,
@@ -1887,10 +1895,15 @@ export class HarnessInternalService extends BaseService {
         }
 
         this.logger.log({
-          message: isEarly ? 'Harness early draft persisted (assurance pending)' : 'Harness draft persisted',
+          message: adoptionSkipped
+            ? 'Harness draft delivery recorded — the note content was NOT applied (adoption skipped)'
+            : isEarly
+              ? 'Harness early draft persisted (assurance pending)'
+              : 'Harness draft persisted',
           consultationId,
           contextItemId,
           gateDecision: isEarly ? null : (dto.gateDecision ?? null),
+          ...(adoptionSkipped ? { adoptionSkipped } : {}),
         });
         // TASK-1001 wave 6 — READY TO COMPLETE: the final note exists. Start (or, after a resumed
         // recording's re-finalise, restart) the completion window. Never throws.
