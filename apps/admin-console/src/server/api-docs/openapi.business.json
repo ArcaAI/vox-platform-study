@@ -3288,6 +3288,43 @@
         ],
         "type": "object"
       },
+      "CancelModelDownloadRequest": {
+        "properties": {
+          "removeRegistration": {
+            "default": false,
+            "description": "Also unregister the model (and delete any weights) once the download is cancelled. Default false.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "CancelModelDownloadResponse": {
+        "properties": {
+          "jobId": {
+            "description": "The download job being cancelled.",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "`removed` = the job was still queued and is gone (the row reads DOWNLOAD_CANCELLED now); `cancelling` = the worker is stopping it.",
+            "enum": [
+              "removed",
+              "cancelling"
+            ],
+            "type": "string"
+          },
+          "unregisterJobId": {
+            "description": "The unregister job that follows when `removeRegistration` was requested on a queued job; null otherwise (a running job is unregistered by the worker after cleanup).",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "outcome",
+          "unregisterJobId"
+        ],
+        "type": "object"
+      },
       "CapabilityBurndownLine": {
         "properties": {
           "allowance": {
@@ -13054,6 +13091,244 @@
         },
         "type": "object"
       },
+      "LocalModelFileResponse": {
+        "properties": {
+          "key": {
+            "description": "Object key, relative to `bucketPrefix`.",
+            "example": "ggml-large-v3-q5_0.bin",
+            "type": "string"
+          },
+          "size": {
+            "description": "Size in bytes.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "size"
+        ],
+        "type": "object"
+      },
+      "LocalModelPreviewResponse": {
+        "properties": {
+          "bucketPrefix": {
+            "description": "Bucket-relative prefix, with a trailing slash.",
+            "example": "whisper-ml/",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/LocalModelFileResponse"
+            },
+            "type": "array"
+          },
+          "layout": {
+            "description": "`hf-cache` (a Hugging Face cache snapshot), `flat` (a published `<slug>/<version>/` with a manifest) or `files`.",
+            "enum": [
+              "hf-cache",
+              "flat",
+              "files"
+            ],
+            "type": "string"
+          },
+          "localPath": {
+            "description": "The path every serving pod loads.",
+            "example": "/mnt/models-bucket/whisper-ml/ggml-large-v3-q5_0.bin",
+            "type": "string"
+          },
+          "primaryObject": {
+            "description": "The single file a single-file loader opens, relative to `bucketPrefix`; null otherwise.",
+            "nullable": true,
+            "type": "string"
+          },
+          "revision": {
+            "description": "The snapshot commit sha, for an HF cache snapshot.",
+            "nullable": true,
+            "type": "string"
+          },
+          "suggested": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LocalModelSuggestionResponse"
+              }
+            ],
+            "description": "Registry fields derived from the objects; null where nothing could be inferred."
+          },
+          "totalBytes": {
+            "description": "Sum of every object size, in bytes.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "bucketPrefix",
+          "localPath",
+          "primaryObject",
+          "layout",
+          "files",
+          "totalBytes",
+          "revision",
+          "suggested"
+        ],
+        "type": "object"
+      },
+      "LocalModelSuggestionResponse": {
+        "properties": {
+          "architecture": {
+            "description": "`config.json` `architectures[0]`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "computeType": {
+            "description": "`config.json` `torch_dtype`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "SAFETENSOR",
+              "ONNX",
+              "NEMO",
+              "PYTORCH",
+              "CTRANSLATE2",
+              "FASTER_WHISPER",
+              "MLX",
+              "GGUF",
+              "ONNX_OPTIMUM",
+              "AZURE_SPEECH",
+              "AZURE_FOUNDRY",
+              "PARAKEET_CPP",
+              "CLOUD_API",
+              "WHISPER_CPP",
+              "SARVAM",
+              "OPENAI"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "libraryName": {
+            "enum": [
+              "faster-whisper",
+              "whisper.cpp",
+              "ctranslate2",
+              "parakeet.cpp",
+              "nemo",
+              "onnxruntime",
+              "pyrnnoise",
+              "deepfilternet",
+              "speechbrain",
+              "pyannote-audio",
+              "cadence-punctuation",
+              "transformers",
+              "gliner2",
+              "llama.cpp",
+              "kokoro",
+              "parler-tts",
+              "lm-studio",
+              "ollama",
+              "vllm",
+              "azure-speech",
+              "azure-foundry",
+              "azure-openai",
+              "openai",
+              "sarvam",
+              "bedrock",
+              "anthropic",
+              "vertex"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name (the repo or folder name).",
+            "type": "string"
+          },
+          "servedBy": {
+            "enum": [
+              "stt",
+              "stt-worker",
+              "nlp",
+              "tts",
+              "tts-worker",
+              "lmstudio",
+              "text",
+              "gateway-proxy",
+              "vllm"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "slug": {
+            "description": "Registry slug derived from the repo or folder name.",
+            "example": "whisper-ml",
+            "type": "string"
+          },
+          "taskType": {
+            "enum": [
+              "IMAGE_TEXT_TO_TEXT",
+              "VISUAL_QUESTION_ANSWERING",
+              "DOCUMENT_QUESTION_ANSWERING",
+              "VIDEO_TEXT_TO_TEXT",
+              "ANY_TO_ANY",
+              "DEPTH_ESTIMATION",
+              "IMAGE_CLASSIFICATION",
+              "OBJECT_DETECTION",
+              "IMAGE_SEGMENTATION",
+              "TEXT_TO_IMAGE",
+              "IMAGE_TO_TEXT",
+              "IMAGE_TO_IMAGE",
+              "IMAGE_TO_VIDEO",
+              "UNCONDITIONAL_IMAGE_GENERATION",
+              "VIDEO_CLASSIFICATION",
+              "TEXT_TO_VIDEO",
+              "ZERO_SHOT_IMAGE_CLASSIFICATION",
+              "MASK_GENERATION",
+              "ZERO_SHOT_OBJECT_DETECTION",
+              "TEXT_TO_3D",
+              "IMAGE_TO_3D",
+              "IMAGE_FEATURE_EXTRACTION",
+              "KEYPOINT_DETECTION",
+              "TEXT_CLASSIFICATION",
+              "TOKEN_CLASSIFICATION",
+              "TABLE_QUESTION_ANSWERING",
+              "QUESTION_ANSWERING",
+              "ZERO_SHOT_CLASSIFICATION",
+              "TRANSLATION",
+              "SUMMARIZATION",
+              "FEATURE_EXTRACTION",
+              "TEXT_GENERATION",
+              "TEXT2TEXT_GENERATION",
+              "FILL_MASK",
+              "SENTENCE_SIMILARITY",
+              "GUARDRAIL",
+              "TEXT_TO_SPEECH",
+              "TEXT_TO_AUDIO",
+              "AUTOMATIC_SPEECH_RECOGNITION",
+              "AUDIO_TO_AUDIO",
+              "AUDIO_CLASSIFICATION",
+              "VOICE_ACTIVITY_DETECTION",
+              "SPEAKER_DIARIZATION",
+              "SPEAKER_EMBEDDING",
+              "TABULAR_CLASSIFICATION",
+              "TABULAR_REGRESSION",
+              "TIME_SERIES_FORECASTING",
+              "UNKNOWN"
+            ],
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "taskType",
+          "libraryName",
+          "format",
+          "servedBy",
+          "architecture",
+          "computeType"
+        ],
+        "type": "object"
+      },
       "LocalWorkflowConfigDto": {
         "properties": {
           "diarization": {
@@ -13515,7 +13790,8 @@
               "NOT_DOWNLOADED",
               "DOWNLOADING",
               "DOWNLOADED",
-              "DOWNLOAD_FAILED"
+              "DOWNLOAD_FAILED",
+              "CANCELLED"
             ],
             "type": "string"
           }
@@ -13662,8 +13938,10 @@
             "description": "One status per model. In order of precedence: UNREGISTERING, DOWNLOADING, DOWNLOAD_FAILED, NOT_APPLICABLE (cloud), NOT_DOWNLOADED, LOAD_FAILED, LOADING, SERVING, DOWNLOADED (idle), NOT_OBSERVED (served by a workload whose loaded models are not reported).",
             "enum": [
               "UNREGISTERING",
+              "UNREGISTER_FAILED",
               "DOWNLOADING",
               "DOWNLOAD_FAILED",
+              "DOWNLOAD_CANCELLED",
               "NOT_DOWNLOADED",
               "LOAD_FAILED",
               "LOADING",
@@ -13745,6 +14023,23 @@
           "tenantId",
           "id",
           "name"
+        ],
+        "type": "object"
+      },
+      "ModelRegistryAccessResponse": {
+        "properties": {
+          "canManage": {
+            "description": "True only for a platform administrator with no working tenant selected — the only caller who may change the registry.",
+            "type": "boolean"
+          },
+          "tenantManagementEnabled": {
+            "description": "The effective `modelRegistry.tenantManagement.enabled` setting for the caller's tenant. Reported only: it does not let a tenant administrator change the registry.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "canManage",
+          "tenantManagementEnabled"
         ],
         "type": "object"
       },
@@ -15066,6 +15361,16 @@
             ],
             "type": "string"
           },
+          "servingFacts": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModelServingFactsResponse"
+              }
+            ],
+            "description": "Engine sizing facts (`_metadata.serving`) for engine-served rows; null when the row carries no usable `vramGiB`.",
+            "nullable": true,
+            "type": "object"
+          },
           "slug": {
             "description": "URL-friendly unique identifier",
             "type": "string"
@@ -15306,6 +15611,35 @@
         },
         "required": [
           "vramGiB"
+        ],
+        "type": "object"
+      },
+      "ModelServingFactsResponse": {
+        "properties": {
+          "derived": {
+            "description": "True while `vramGiB` is the registration-time estimate rather than a value an administrator set.",
+            "type": "boolean"
+          },
+          "enforceEager": {
+            "description": "Disable CUDA graphs; null = the engine default.",
+            "nullable": true,
+            "type": "boolean"
+          },
+          "maxNumSeqs": {
+            "description": "Maximum concurrent sequences; null = the engine default.",
+            "nullable": true,
+            "type": "number"
+          },
+          "vramGiB": {
+            "description": "GPU memory the engine reserves for this model, in GiB.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "vramGiB",
+          "maxNumSeqs",
+          "enforceEager",
+          "derived"
         ],
         "type": "object"
       },
@@ -16352,6 +16686,40 @@
           "limit",
           "page",
           "data"
+        ],
+        "type": "object"
+      },
+      "PaginatedRegisteredModelViewResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/RegisteredModelViewResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Number of records per page",
+            "type": "number"
+          },
+          "page": {
+            "description": "Current page number",
+            "type": "number"
+          },
+          "total": {
+            "description": "Total number of records",
+            "type": "number"
+          },
+          "totalPages": {
+            "description": "Total number of pages",
+            "type": "number"
+          }
+        },
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
         ],
         "type": "object"
       },
@@ -18617,6 +18985,101 @@
         },
         "type": "object"
       },
+      "PublisherJobErrorView": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "PublisherJobView": {
+        "properties": {
+          "aiModelId": {
+            "type": "string"
+          },
+          "bytesDone": {
+            "nullable": true,
+            "type": "number"
+          },
+          "bytesTotal": {
+            "nullable": true,
+            "type": "number"
+          },
+          "error": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublisherJobErrorView"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "finishedAt": {
+            "description": "ISO timestamp.",
+            "nullable": true,
+            "type": "string"
+          },
+          "jobId": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "download",
+              "unregister"
+            ],
+            "type": "string"
+          },
+          "modelName": {
+            "type": "string"
+          },
+          "modelSlug": {
+            "description": "Empty when the row is gone and the job carried no slug.",
+            "type": "string"
+          },
+          "startedAt": {
+            "description": "ISO timestamp.",
+            "type": "string"
+          },
+          "startedBy": {
+            "description": "User id that started the job, when known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "waiting",
+              "active",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "kind",
+          "aiModelId",
+          "modelSlug",
+          "modelName",
+          "state",
+          "bytesDone",
+          "bytesTotal",
+          "startedAt",
+          "finishedAt",
+          "startedBy",
+          "error"
+        ],
+        "type": "object"
+      },
       "QueueJobCountsResponse": {
         "properties": {
           "active": {
@@ -19566,6 +20029,148 @@
         ],
         "type": "object"
       },
+      "RegisterFromPathRequest": {
+        "properties": {
+          "format": {
+            "enum": [
+              "SAFETENSOR",
+              "ONNX",
+              "NEMO",
+              "PYTORCH",
+              "CTRANSLATE2",
+              "FASTER_WHISPER",
+              "MLX",
+              "GGUF",
+              "ONNX_OPTIMUM",
+              "AZURE_SPEECH",
+              "AZURE_FOUNDRY",
+              "PARAKEET_CPP",
+              "CLOUD_API",
+              "WHISPER_CPP",
+              "SARVAM",
+              "OPENAI"
+            ],
+            "type": "string"
+          },
+          "libraryName": {
+            "enum": [
+              "faster-whisper",
+              "whisper.cpp",
+              "ctranslate2",
+              "parakeet.cpp",
+              "nemo",
+              "onnxruntime",
+              "pyrnnoise",
+              "deepfilternet",
+              "speechbrain",
+              "pyannote-audio",
+              "cadence-punctuation",
+              "transformers",
+              "gliner2",
+              "llama.cpp",
+              "kokoro",
+              "parler-tts",
+              "lm-studio",
+              "ollama",
+              "vllm",
+              "azure-speech",
+              "azure-foundry",
+              "azure-openai",
+              "openai",
+              "sarvam",
+              "bedrock",
+              "anthropic",
+              "vertex"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name. Defaults to the repo or folder name.",
+            "type": "string"
+          },
+          "path": {
+            "description": "A folder or file in the models bucket. Accepted as the mount path (`/mnt/models-bucket/<prefix>`), bucket-qualified (`hope-models/<prefix>`), as an S3 URI (`s3://hope-models/<prefix>`) or bare (`<prefix>`). A file path registers its folder, with the file as the primary object.",
+            "example": "/mnt/models-bucket/whisper-ml/",
+            "type": "string"
+          },
+          "servedBy": {
+            "enum": [
+              "stt",
+              "stt-worker",
+              "nlp",
+              "tts",
+              "tts-worker",
+              "lmstudio",
+              "text",
+              "gateway-proxy",
+              "vllm"
+            ],
+            "type": "string"
+          },
+          "slug": {
+            "description": "Registry slug. Defaults to the repo or folder name in slug form.",
+            "example": "whisper-ml",
+            "type": "string"
+          },
+          "taskType": {
+            "enum": [
+              "IMAGE_TEXT_TO_TEXT",
+              "VISUAL_QUESTION_ANSWERING",
+              "DOCUMENT_QUESTION_ANSWERING",
+              "VIDEO_TEXT_TO_TEXT",
+              "ANY_TO_ANY",
+              "DEPTH_ESTIMATION",
+              "IMAGE_CLASSIFICATION",
+              "OBJECT_DETECTION",
+              "IMAGE_SEGMENTATION",
+              "TEXT_TO_IMAGE",
+              "IMAGE_TO_TEXT",
+              "IMAGE_TO_IMAGE",
+              "IMAGE_TO_VIDEO",
+              "UNCONDITIONAL_IMAGE_GENERATION",
+              "VIDEO_CLASSIFICATION",
+              "TEXT_TO_VIDEO",
+              "ZERO_SHOT_IMAGE_CLASSIFICATION",
+              "MASK_GENERATION",
+              "ZERO_SHOT_OBJECT_DETECTION",
+              "TEXT_TO_3D",
+              "IMAGE_TO_3D",
+              "IMAGE_FEATURE_EXTRACTION",
+              "KEYPOINT_DETECTION",
+              "TEXT_CLASSIFICATION",
+              "TOKEN_CLASSIFICATION",
+              "TABLE_QUESTION_ANSWERING",
+              "QUESTION_ANSWERING",
+              "ZERO_SHOT_CLASSIFICATION",
+              "TRANSLATION",
+              "SUMMARIZATION",
+              "FEATURE_EXTRACTION",
+              "TEXT_GENERATION",
+              "TEXT2TEXT_GENERATION",
+              "FILL_MASK",
+              "SENTENCE_SIMILARITY",
+              "GUARDRAIL",
+              "TEXT_TO_SPEECH",
+              "TEXT_TO_AUDIO",
+              "AUTOMATIC_SPEECH_RECOGNITION",
+              "AUDIO_TO_AUDIO",
+              "AUDIO_CLASSIFICATION",
+              "VOICE_ACTIVITY_DETECTION",
+              "SPEAKER_DIARIZATION",
+              "SPEAKER_EMBEDDING",
+              "TABULAR_CLASSIFICATION",
+              "TABULAR_REGRESSION",
+              "TIME_SERIES_FORECASTING",
+              "UNKNOWN"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
       "RegisterRequest": {
         "properties": {
           "displayName": {
@@ -19624,6 +20229,127 @@
           "userId",
           "tenantId",
           "tenantKey"
+        ],
+        "type": "object"
+      },
+      "RegisteredModelViewResponse": {
+        "properties": {
+          "availability": {
+            "description": "Whether the weights are present in platform storage (`AVAILABLE`, `MISSING`, …).",
+            "type": "string"
+          },
+          "deploymentKind": {
+            "description": "Where the model runs: `SELF_HOSTED` on the platform or a `CLOUD` provider.",
+            "type": "string"
+          },
+          "description": {
+            "description": "What the model is for, when the registry records it.",
+            "nullable": true,
+            "type": "string"
+          },
+          "format": {
+            "description": "Weight format (e.g. `SAFETENSOR`, `GGUF`).",
+            "type": "string"
+          },
+          "gated": {
+            "description": "Whether the source repository is gated (click-through), when known.",
+            "nullable": true,
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Model id.",
+            "type": "string"
+          },
+          "isPlatformDefaultFor": {
+            "description": "Tasks this model is the platform default for.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "languages": {
+            "description": "Languages the model supports.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "libraryName": {
+            "description": "Runtime library that loads the weights (e.g. `transformers`, `whisper.cpp`).",
+            "type": "string"
+          },
+          "license": {
+            "description": "License identifier, when known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "lifecycleStatus": {
+            "description": "One-word lifecycle status (e.g. `SERVING`, `DOWNLOADED`, `NOT_DOWNLOADED`).",
+            "enum": [
+              "UNREGISTERING",
+              "UNREGISTER_FAILED",
+              "DOWNLOADING",
+              "DOWNLOAD_FAILED",
+              "DOWNLOAD_CANCELLED",
+              "NOT_DOWNLOADED",
+              "LOAD_FAILED",
+              "LOADING",
+              "SERVING",
+              "DOWNLOADED",
+              "NOT_OBSERVED",
+              "NOT_APPLICABLE"
+            ],
+            "type": "string"
+          },
+          "memorySizeMb": {
+            "description": "Memory footprint in MB — measured when the platform has observed it, otherwise the estimate.",
+            "nullable": true,
+            "type": "number"
+          },
+          "name": {
+            "description": "Display name.",
+            "type": "string"
+          },
+          "resourceStatus": {
+            "description": "Row status (`ENABLED` / `DISABLED`).",
+            "type": "string"
+          },
+          "servedBy": {
+            "description": "The platform service that serves the model (e.g. `stt`, `nlp`).",
+            "type": "string"
+          },
+          "slug": {
+            "description": "URL-friendly unique identifier.",
+            "type": "string"
+          },
+          "taskType": {
+            "description": "Model task type (e.g. `AUTOMATIC_SPEECH_RECOGNITION`).",
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "Last update, ISO 8601.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "description",
+          "taskType",
+          "libraryName",
+          "format",
+          "servedBy",
+          "deploymentKind",
+          "license",
+          "gated",
+          "languages",
+          "memorySizeMb",
+          "lifecycleStatus",
+          "availability",
+          "isPlatformDefaultFor",
+          "resourceStatus",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -23918,7 +24644,8 @@
               "NOT_DOWNLOADED",
               "DOWNLOADING",
               "DOWNLOADED",
-              "DOWNLOAD_FAILED"
+              "DOWNLOAD_FAILED",
+              "CANCELLED"
             ],
             "type": "string"
           }

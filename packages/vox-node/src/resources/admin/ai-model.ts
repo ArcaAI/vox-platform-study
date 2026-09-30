@@ -12,6 +12,8 @@ import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
 import type {
+  CancelModelDownloadRequest,
+  CancelModelDownloadResponse,
   CreateModelRequest,
   DiscoveryResponse,
   DownloadMissingResponse,
@@ -19,16 +21,21 @@ import type {
   LmStudioRuntimeResponse,
   LoadLmStudioModelRequest,
   LoadLmStudioModelResponse,
+  LocalModelPreviewResponse,
   ModelCatalogueResponse,
   ModelDownloadStatusResponse,
   ModelInventoryReport,
+  ModelRegistryAccessResponse,
   ModelResponse,
   ModelUsageResponse,
   PaginatedModelResponse,
+  PaginatedRegisteredModelViewResponse,
   PaginatedResponse,
+  PublisherJobView,
   RegisterDiscoveredModelRequest,
   RegisterFromHubRequest,
   RegisterFromHubResponse,
+  RegisterFromPathRequest,
   SetPlatformDefaultRequest,
   TriggerModelDownloadResponse,
   UnloadLmStudioModelResponse,
@@ -44,12 +51,12 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * 1 of its route ALSO accepts `svc:admin:ai-model:read`, so a read-only grant reaches
- * it and nothing else here. Those methods name their own accepted scopes in a 403;
+ * 3 of its routes ALSO accept `svc:admin:ai-model:read`, so a read-only grant reaches
+ * them and nothing else here. Those methods name their own accepted scopes in a 403;
  * the scope above is the one that reaches EVERY route.
  *
- * Backed by controllers AiModelAdminController, AiModelCatalogueController, AiModelDiscoveryController, InferenceEnginesController
- * (23 routes). Several controllers sharing one scope share one
+ * Backed by controllers AiModelAdminController, AiModelCatalogueController, AiModelDiscoveryController, AiModelJobsController, AiModelRegistrationController, InferenceEnginesController
+ * (29 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -164,6 +171,23 @@ export class AdminAiModelResource extends AdminResource {
   }
 
   /**
+   * Cancel a model download
+   *
+   * A queued download is removed and the model reads `DOWNLOAD_CANCELLED` at once (`outcome: removed`); a running one is stopped by the publisher worker, which deletes the partial weights and records the cancel (`outcome: cancelling`). Cancelling again while it stops is harmless. `removeRegistration: true` also unregisters the model (weights deleted) once the download is cancelled.
+   *
+   * `POST /api/v1/admin/ai-models/{id}/download/cancel` — `AiModelJobsController.cancelDownload`.
+   */
+  cancelDownload(id: string, body: CancelModelDownloadRequest, options: AdminRequestOptions = {}): Promise<CancelModelDownloadResponse> {
+    return this.request<CancelModelDownloadResponse>({
+      method: 'POST',
+      path: `admin/ai-models/${encodePathSegment(String(id))}/download/cancel`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Elect this row as the platform default for one or more tasks
    *
    * Replaces the row's `isPlatformDefaultFor` with `tasks` and clears each of those tasks from whichever ENABLED row held it, so a task never has two platform defaults. An empty list withdraws the row from every election. Only writes the registry column and emits a sys-event; the SYSTEM routing-policy election it seeds is TASK-862.
@@ -208,6 +232,25 @@ export class AdminAiModelResource extends AdminResource {
     return this.request<ModelUsageResponse>({
       method: 'GET',
       path: `admin/ai-models/${encodePathSegment(String(id))}/usage`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Your access to the model registry
+   *
+   * `canManage` is true only for a platform administrator with no working tenant selected — the only caller who may register, edit, download or unregister models. `tenantManagementEnabled` is the effective `modelRegistry.tenantManagement.enabled` setting for the caller's tenant; it is reported for information and does not let a tenant administrator change the registry.
+   *
+   * `GET /api/v1/admin/ai-models/access` — `AiModelAdminController.access`.
+   *
+   * Reachable with ANY ONE of `svc:admin:ai-model:manage`, `svc:admin:ai-model:read` — the gateway matches required scopes with OR, so the area's `svc:admin:ai-model:manage` still reaches this route and a read-only grant now does too.
+   */
+  access(options: AdminRequestOptions = {}): Promise<ModelRegistryAccessResponse> {
+    return this.request<ModelRegistryAccessResponse>({
+      method: 'GET',
+      path: 'admin/ai-models/access',
+      svcScopes: ['svc:admin:ai-model:manage', 'svc:admin:ai-model:read'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -389,6 +432,23 @@ export class AdminAiModelResource extends AdminResource {
   }
 
   /**
+   * List recent model-publisher jobs
+   *
+   * The recent download and unregister jobs of the model publisher, newest first: BullMQ state merged with the row bookkeeping. A cancelled download reads `cancelled`; a run whose job BullMQ lost is still listed from the row. Platform administrators only, with no working tenant selected.
+   *
+   * `GET /api/v1/admin/ai-models/jobs` — `AiModelJobsController.listJobs`.
+   */
+  listJobs(options: AdminRequestOptions & { query?: { limit?: number } } = {}): Promise<PublisherJobView[]> {
+    return this.request<PublisherJobView[]>({
+      method: 'GET',
+      path: 'admin/ai-models/jobs',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * List the SYSTEM model registry as one paginated page. The whole query object is bound (`search`, `searchFields`, `filters`, `sort`, `page`, `limit`) so the grid's parameters reach the service and undeclared ones are rejected by the global validation pipe; named `@Query('x')` bindings would silently drop everything but the named keys.
    *
    * `GET /api/v1/admin/ai-models/list` — `AiModelAdminController.list`.
@@ -408,6 +468,23 @@ export class AdminAiModelResource extends AdminResource {
   }
 
   /**
+   * Preview a model already in the models bucket
+   *
+   * Reads the objects under a path in the models bucket and returns what registering it would record: the bucket prefix, the path every serving pod loads, the primary file for a single-file loader, the layout (Hugging Face cache snapshot, published folder or plain files), every file with its size, the snapshot commit when there is one, and the registry fields derived from the files and `config.json` (slug, name, task, serving library, format, serving workload, architecture, compute type). The path may be given as the mount path, bucket-qualified, as an `s3://` URI or bare; a file path previews its folder. Nothing is written.
+   *
+   * `GET /api/v1/admin/ai-models/local/preview` — `AiModelRegistrationController.previewLocal`.
+   */
+  previewLocal(options: AdminRequestOptions & { query?: { path: string } } = {}): Promise<LocalModelPreviewResponse> {
+    return this.request<LocalModelPreviewResponse>({
+      method: 'GET',
+      path: 'admin/ai-models/local/preview',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Register a model from a Hugging Face repo and download it
    *
    * Creates a platform model row from the repo (source `hf:<repo>`, pinned to the commit the revision resolves to), with the same validation as registering a model by hand, then starts downloading its weights into the models bucket. Any field in the body overrides what the preview suggests. Answers as soon as the download is queued; poll `GET admin/ai-models/:id/download` for progress.
@@ -419,6 +496,47 @@ export class AdminAiModelResource extends AdminResource {
       method: 'POST',
       path: 'admin/ai-models/register-from-hub',
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Register a model from a path in the models bucket
+   *
+   * Creates a platform model row (source `LOCAL`, self-hosted) for weights already stored in the models bucket — nothing is downloaded. Everything is derived as for the preview; any optional field in the body overrides what was derived. A model served by vLLM gets an estimated GPU memory size (weights × 1.25 + 1 GiB, marked as derived) so it can be served at once.
+   *
+   * `POST /api/v1/admin/ai-models/register-from-path` — `AiModelRegistrationController.registerFromPath`.
+   */
+  registerFromPath(body: RegisterFromPathRequest, options: AdminRequestOptions = {}): Promise<ModelResponse> {
+    return this.request<ModelResponse>({
+      method: 'POST',
+      path: 'admin/ai-models/register-from-path',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List the registered models (read-only)
+   *
+   * One page of the platform model registry as any administrator may see it: name, task, runtime, format, serving service, license, languages, memory footprint, platform-default tasks and a one-word lifecycle status (for example `SERVING` or `DOWNLOADED`). Storage locations, checksums, per-service placement, usage and job errors are not included. Takes the same `page`, `limit`, `search`, `searchFields`, `filters` and `sort` parameters as `GET admin/ai-models/list`, but they may only name the columns this view returns.
+   *
+   * `GET /api/v1/admin/ai-models/registry` — `AiModelAdminController.registry`.
+   *
+   * Reachable with ANY ONE of `svc:admin:ai-model:manage`, `svc:admin:ai-model:read` — the gateway matches required scopes with OR, so the area's `svc:admin:ai-model:manage` still reaches this route and a read-only grant now does too.
+   */
+  registry(
+    options: AdminRequestOptions & {
+      query?: { filters?: string; limit?: number; page?: number; search?: string; searchFields?: string; sort?: string };
+    } = {},
+  ): Promise<PaginatedRegisteredModelViewResponse> {
+    return this.request<PaginatedRegisteredModelViewResponse>({
+      method: 'GET',
+      path: 'admin/ai-models/registry',
+      query: options.query,
+      svcScopes: ['svc:admin:ai-model:manage', 'svc:admin:ai-model:read'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

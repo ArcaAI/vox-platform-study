@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 506 component schemas the generated surface transitively
+ * Only the 518 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -828,6 +828,20 @@ export interface BulkUserActionResponse {
   succeeded: number;
   /** Total ids submitted */
   total: number;
+}
+
+export interface CancelModelDownloadRequest {
+  /** Also unregister the model (and delete any weights) once the download is cancelled. Default false. */
+  removeRegistration?: boolean;
+}
+
+export interface CancelModelDownloadResponse {
+  /** The download job being cancelled. */
+  jobId: string;
+  /** `removed` = the job was still queued and is gone (the row reads DOWNLOAD_CANCELLED now); `cancelling` = the worker is stopping it. */
+  outcome: 'removed' | 'cancelling';
+  /** The unregister job that follows when `removeRegistration` was requested on a queued job; null otherwise (a running job is unregistered by the worker after cleanup). */
+  unregisterJobId: string | null;
 }
 
 export interface CapabilityUsageRow {
@@ -3645,6 +3659,140 @@ export interface LoadModelResidencyRequest {
   service: 'stt' | 'nlp' | 'lm-studio';
 }
 
+export interface LocalModelFileResponse {
+  /** Object key, relative to `bucketPrefix`. */
+  key: string;
+  /** Size in bytes. */
+  size: number;
+}
+
+export interface LocalModelPreviewResponse {
+  /** Bucket-relative prefix, with a trailing slash. */
+  bucketPrefix: string;
+  files: LocalModelFileResponse[];
+  /** `hf-cache` (a Hugging Face cache snapshot), `flat` (a published `<slug>/<version>/` with a manifest) or `files`. */
+  layout: 'hf-cache' | 'flat' | 'files';
+  /** The path every serving pod loads. */
+  localPath: string;
+  /** The single file a single-file loader opens, relative to `bucketPrefix`; null otherwise. */
+  primaryObject: string | null;
+  /** The snapshot commit sha, for an HF cache snapshot. */
+  revision: string | null;
+  /** Registry fields derived from the objects; null where nothing could be inferred. */
+  suggested: LocalModelSuggestionResponse;
+  /** Sum of every object size, in bytes. */
+  totalBytes: number;
+}
+
+export interface LocalModelSuggestionResponse {
+  /** `config.json` `architectures[0]`. */
+  architecture: string | null;
+  /** `config.json` `torch_dtype`. */
+  computeType: string | null;
+  format:
+    | 'SAFETENSOR'
+    | 'ONNX'
+    | 'NEMO'
+    | 'PYTORCH'
+    | 'CTRANSLATE2'
+    | 'FASTER_WHISPER'
+    | 'MLX'
+    | 'GGUF'
+    | 'ONNX_OPTIMUM'
+    | 'AZURE_SPEECH'
+    | 'AZURE_FOUNDRY'
+    | 'PARAKEET_CPP'
+    | 'CLOUD_API'
+    | 'WHISPER_CPP'
+    | 'SARVAM'
+    | 'OPENAI'
+    | null;
+  libraryName:
+    | 'faster-whisper'
+    | 'whisper.cpp'
+    | 'ctranslate2'
+    | 'parakeet.cpp'
+    | 'nemo'
+    | 'onnxruntime'
+    | 'pyrnnoise'
+    | 'deepfilternet'
+    | 'speechbrain'
+    | 'pyannote-audio'
+    | 'cadence-punctuation'
+    | 'transformers'
+    | 'gliner2'
+    | 'llama.cpp'
+    | 'kokoro'
+    | 'parler-tts'
+    | 'lm-studio'
+    | 'ollama'
+    | 'vllm'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'azure-openai'
+    | 'openai'
+    | 'sarvam'
+    | 'bedrock'
+    | 'anthropic'
+    | 'vertex'
+    | null;
+  /** Display name (the repo or folder name). */
+  name: string;
+  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'vllm' | null;
+  /** Registry slug derived from the repo or folder name. */
+  slug: string;
+  taskType:
+    | 'IMAGE_TEXT_TO_TEXT'
+    | 'VISUAL_QUESTION_ANSWERING'
+    | 'DOCUMENT_QUESTION_ANSWERING'
+    | 'VIDEO_TEXT_TO_TEXT'
+    | 'ANY_TO_ANY'
+    | 'DEPTH_ESTIMATION'
+    | 'IMAGE_CLASSIFICATION'
+    | 'OBJECT_DETECTION'
+    | 'IMAGE_SEGMENTATION'
+    | 'TEXT_TO_IMAGE'
+    | 'IMAGE_TO_TEXT'
+    | 'IMAGE_TO_IMAGE'
+    | 'IMAGE_TO_VIDEO'
+    | 'UNCONDITIONAL_IMAGE_GENERATION'
+    | 'VIDEO_CLASSIFICATION'
+    | 'TEXT_TO_VIDEO'
+    | 'ZERO_SHOT_IMAGE_CLASSIFICATION'
+    | 'MASK_GENERATION'
+    | 'ZERO_SHOT_OBJECT_DETECTION'
+    | 'TEXT_TO_3D'
+    | 'IMAGE_TO_3D'
+    | 'IMAGE_FEATURE_EXTRACTION'
+    | 'KEYPOINT_DETECTION'
+    | 'TEXT_CLASSIFICATION'
+    | 'TOKEN_CLASSIFICATION'
+    | 'TABLE_QUESTION_ANSWERING'
+    | 'QUESTION_ANSWERING'
+    | 'ZERO_SHOT_CLASSIFICATION'
+    | 'TRANSLATION'
+    | 'SUMMARIZATION'
+    | 'FEATURE_EXTRACTION'
+    | 'TEXT_GENERATION'
+    | 'TEXT2TEXT_GENERATION'
+    | 'FILL_MASK'
+    | 'SENTENCE_SIMILARITY'
+    | 'GUARDRAIL'
+    | 'TEXT_TO_SPEECH'
+    | 'TEXT_TO_AUDIO'
+    | 'AUTOMATIC_SPEECH_RECOGNITION'
+    | 'AUDIO_TO_AUDIO'
+    | 'AUDIO_CLASSIFICATION'
+    | 'VOICE_ACTIVITY_DETECTION'
+    | 'SPEAKER_DIARIZATION'
+    | 'SPEAKER_EMBEDDING'
+    | 'TABULAR_CLASSIFICATION'
+    | 'TABULAR_REGRESSION'
+    | 'TIME_SERIES_FORECASTING'
+    | 'UNKNOWN'
+    | null;
+}
+
 export interface McpServerListResponse {
   items: McpServerResponse[];
   /** Total number of servers returned */
@@ -3723,7 +3871,7 @@ export interface ModelDownloadStatusResponse {
   sha256?: string | null;
   /** When the most recent download job started. */
   startedAt?: string | null;
-  status: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
+  status: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED' | 'CANCELLED';
 }
 
 export interface ModelInventoryCounts {
@@ -3768,8 +3916,10 @@ export interface ModelLifecycleResponse {
   /** One status per model. In order of precedence: UNREGISTERING, DOWNLOADING, DOWNLOAD_FAILED, NOT_APPLICABLE (cloud), NOT_DOWNLOADED, LOAD_FAILED, LOADING, SERVING, DOWNLOADED (idle), NOT_OBSERVED (served by a workload whose loaded models are not reported). */
   status:
     | 'UNREGISTERING'
+    | 'UNREGISTER_FAILED'
     | 'DOWNLOADING'
     | 'DOWNLOAD_FAILED'
+    | 'DOWNLOAD_CANCELLED'
     | 'NOT_DOWNLOADED'
     | 'LOAD_FAILED'
     | 'LOADING'
@@ -3797,6 +3947,13 @@ export interface ModelReferrerResponse {
   name: string;
   /** The tenant that owns the referrer. */
   tenantId: string;
+}
+
+export interface ModelRegistryAccessResponse {
+  /** True only for a platform administrator with no working tenant selected — the only caller who may change the registry. */
+  canManage: boolean;
+  /** The effective `modelRegistry.tenantManagement.enabled` setting for the caller's tenant. Reported only: it does not let a tenant administrator change the registry. */
+  tenantManagementEnabled: boolean;
 }
 
 export interface ModelResidencyCatalogueDevice {
@@ -4191,6 +4348,8 @@ export interface ModelResponse {
   resourceStatus: 'ENABLED' | 'DISABLED' | 'SUSPENDED' | 'ARCHIVED' | 'DELETED';
   /** Workload that executes the model. */
   servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'vllm';
+  /** Engine sizing facts (`_metadata.serving`) for engine-served rows; null when the row carries no usable `vramGiB`. */
+  servingFacts?: ModelServingFactsResponse;
   /** URL-friendly unique identifier */
   slug: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only). */
@@ -4295,6 +4454,17 @@ export interface ModelServingFactsRequest {
   /** vLLM `max_num_seqs` — the concurrent sequences one engine batches. Omit for the engine default. */
   maxNumSeqs?: number;
   /** GiB of GPU memory one engine of this model claims inside its pool`s `vramBudgetGiB` (`vllm.pools`). Must be greater than 0. */
+  vramGiB: number;
+}
+
+export interface ModelServingFactsResponse {
+  /** True while `vramGiB` is the registration-time estimate rather than a value an administrator set. */
+  derived: boolean;
+  /** Disable CUDA graphs; null = the engine default. */
+  enforceEager: boolean | null;
+  /** Maximum concurrent sequences; null = the engine default. */
+  maxNumSeqs: number | null;
+  /** GPU memory the engine reserves for this model, in GiB. */
   vramGiB: number;
 }
 
@@ -4575,6 +4745,18 @@ export interface PaginatedPromptUsageRecordResponse {
   limit: number;
   /** Page number */
   page: number;
+}
+
+export interface PaginatedRegisteredModelViewResponse {
+  data: RegisteredModelViewResponse[];
+  /** Number of records per page */
+  limit: number;
+  /** Current page number */
+  page: number;
+  /** Total number of records */
+  total: number;
+  /** Total number of pages */
+  totalPages: number;
 }
 
 export interface PaginatedResourceSubscriptionResponse {
@@ -5326,6 +5508,30 @@ export interface PublishWorkflowDefinitionRequest {
   activate?: boolean;
 }
 
+export interface PublisherJobErrorView {
+  code: string;
+  message: string;
+}
+
+export interface PublisherJobView {
+  aiModelId: string;
+  bytesDone: number | null;
+  bytesTotal: number | null;
+  error: PublisherJobErrorView;
+  /** ISO timestamp. */
+  finishedAt: string | null;
+  jobId: string;
+  kind: 'download' | 'unregister';
+  modelName: string;
+  /** Empty when the row is gone and the job carried no slug. */
+  modelSlug: string;
+  /** ISO timestamp. */
+  startedAt: string;
+  /** User id that started the job, when known. */
+  startedBy: string | null;
+  state: 'waiting' | 'active' | 'completed' | 'failed' | 'cancelled';
+}
+
 export interface QueueJobCountsResponse {
   active: number;
   completed: number;
@@ -5639,6 +5845,161 @@ export interface RegisterFromHubResponse {
   jobId: string;
   /** The registered row (SYSTEM tenant, source HUGGINGFACE, pinned to the resolved commit). */
   model: ModelResponse;
+}
+
+export interface RegisterFromPathRequest {
+  format?:
+    | 'SAFETENSOR'
+    | 'ONNX'
+    | 'NEMO'
+    | 'PYTORCH'
+    | 'CTRANSLATE2'
+    | 'FASTER_WHISPER'
+    | 'MLX'
+    | 'GGUF'
+    | 'ONNX_OPTIMUM'
+    | 'AZURE_SPEECH'
+    | 'AZURE_FOUNDRY'
+    | 'PARAKEET_CPP'
+    | 'CLOUD_API'
+    | 'WHISPER_CPP'
+    | 'SARVAM'
+    | 'OPENAI';
+  libraryName?:
+    | 'faster-whisper'
+    | 'whisper.cpp'
+    | 'ctranslate2'
+    | 'parakeet.cpp'
+    | 'nemo'
+    | 'onnxruntime'
+    | 'pyrnnoise'
+    | 'deepfilternet'
+    | 'speechbrain'
+    | 'pyannote-audio'
+    | 'cadence-punctuation'
+    | 'transformers'
+    | 'gliner2'
+    | 'llama.cpp'
+    | 'kokoro'
+    | 'parler-tts'
+    | 'lm-studio'
+    | 'ollama'
+    | 'vllm'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'azure-openai'
+    | 'openai'
+    | 'sarvam'
+    | 'bedrock'
+    | 'anthropic'
+    | 'vertex';
+  /** Display name. Defaults to the repo or folder name. */
+  name?: string;
+  /** A folder or file in the models bucket. Accepted as the mount path (`/mnt/models-bucket/<prefix>`), bucket-qualified (`hope-models/<prefix>`), as an S3 URI (`s3://hope-models/<prefix>`) or bare (`<prefix>`). A file path registers its folder, with the file as the primary object. */
+  path: string;
+  servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'vllm';
+  /** Registry slug. Defaults to the repo or folder name in slug form. */
+  slug?: string;
+  taskType?:
+    | 'IMAGE_TEXT_TO_TEXT'
+    | 'VISUAL_QUESTION_ANSWERING'
+    | 'DOCUMENT_QUESTION_ANSWERING'
+    | 'VIDEO_TEXT_TO_TEXT'
+    | 'ANY_TO_ANY'
+    | 'DEPTH_ESTIMATION'
+    | 'IMAGE_CLASSIFICATION'
+    | 'OBJECT_DETECTION'
+    | 'IMAGE_SEGMENTATION'
+    | 'TEXT_TO_IMAGE'
+    | 'IMAGE_TO_TEXT'
+    | 'IMAGE_TO_IMAGE'
+    | 'IMAGE_TO_VIDEO'
+    | 'UNCONDITIONAL_IMAGE_GENERATION'
+    | 'VIDEO_CLASSIFICATION'
+    | 'TEXT_TO_VIDEO'
+    | 'ZERO_SHOT_IMAGE_CLASSIFICATION'
+    | 'MASK_GENERATION'
+    | 'ZERO_SHOT_OBJECT_DETECTION'
+    | 'TEXT_TO_3D'
+    | 'IMAGE_TO_3D'
+    | 'IMAGE_FEATURE_EXTRACTION'
+    | 'KEYPOINT_DETECTION'
+    | 'TEXT_CLASSIFICATION'
+    | 'TOKEN_CLASSIFICATION'
+    | 'TABLE_QUESTION_ANSWERING'
+    | 'QUESTION_ANSWERING'
+    | 'ZERO_SHOT_CLASSIFICATION'
+    | 'TRANSLATION'
+    | 'SUMMARIZATION'
+    | 'FEATURE_EXTRACTION'
+    | 'TEXT_GENERATION'
+    | 'TEXT2TEXT_GENERATION'
+    | 'FILL_MASK'
+    | 'SENTENCE_SIMILARITY'
+    | 'GUARDRAIL'
+    | 'TEXT_TO_SPEECH'
+    | 'TEXT_TO_AUDIO'
+    | 'AUTOMATIC_SPEECH_RECOGNITION'
+    | 'AUDIO_TO_AUDIO'
+    | 'AUDIO_CLASSIFICATION'
+    | 'VOICE_ACTIVITY_DETECTION'
+    | 'SPEAKER_DIARIZATION'
+    | 'SPEAKER_EMBEDDING'
+    | 'TABULAR_CLASSIFICATION'
+    | 'TABULAR_REGRESSION'
+    | 'TIME_SERIES_FORECASTING'
+    | 'UNKNOWN';
+}
+
+export interface RegisteredModelViewResponse {
+  /** Whether the weights are present in platform storage (`AVAILABLE`, `MISSING`, …). */
+  availability: string;
+  /** Where the model runs: `SELF_HOSTED` on the platform or a `CLOUD` provider. */
+  deploymentKind: string;
+  /** What the model is for, when the registry records it. */
+  description: string | null;
+  /** Weight format (e.g. `SAFETENSOR`, `GGUF`). */
+  format: string;
+  /** Whether the source repository is gated (click-through), when known. */
+  gated: boolean | null;
+  /** Model id. */
+  id: string;
+  /** Tasks this model is the platform default for. */
+  isPlatformDefaultFor: string[];
+  /** Languages the model supports. */
+  languages: string[];
+  /** Runtime library that loads the weights (e.g. `transformers`, `whisper.cpp`). */
+  libraryName: string;
+  /** License identifier, when known. */
+  license: string | null;
+  /** One-word lifecycle status (e.g. `SERVING`, `DOWNLOADED`, `NOT_DOWNLOADED`). */
+  lifecycleStatus:
+    | 'UNREGISTERING'
+    | 'UNREGISTER_FAILED'
+    | 'DOWNLOADING'
+    | 'DOWNLOAD_FAILED'
+    | 'DOWNLOAD_CANCELLED'
+    | 'NOT_DOWNLOADED'
+    | 'LOAD_FAILED'
+    | 'LOADING'
+    | 'SERVING'
+    | 'DOWNLOADED'
+    | 'NOT_OBSERVED'
+    | 'NOT_APPLICABLE';
+  /** Memory footprint in MB — measured when the platform has observed it, otherwise the estimate. */
+  memorySizeMb: number | null;
+  /** Display name. */
+  name: string;
+  /** Row status (`ENABLED` / `DISABLED`). */
+  resourceStatus: string;
+  /** The platform service that serves the model (e.g. `stt`, `nlp`). */
+  servedBy: string;
+  /** URL-friendly unique identifier. */
+  slug: string;
+  /** Model task type (e.g. `AUTOMATIC_SPEECH_RECOGNITION`). */
+  taskType: string;
+  /** Last update, ISO 8601. */
+  updatedAt: string;
 }
 
 export interface RequestVolumePoint {
@@ -6788,7 +7149,7 @@ export interface TriggerModelDownloadResponse {
   /** BullMQ job id for the enqueued download — poll with GET :id/download. */
   jobId: string;
   /** Always DOWNLOADING on a successful trigger. */
-  status: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
+  status: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED' | 'CANCELLED';
 }
 
 export interface UnloadLmStudioModelResponse {

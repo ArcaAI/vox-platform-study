@@ -876,6 +876,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "AiModelJobsController",
+      "handler": "cancelDownload",
+      "method": "POST",
+      "path": "/api/v1/admin/ai-models/{id}/download/cancel",
+      "routePath": "/admin/ai-models/:id/download/cancel",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AiModelAdminController",
       "handler": "setPlatformDefault",
       "method": "PATCH",
@@ -937,6 +960,30 @@
         [
           "manage",
           "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelAdminController",
+      "handler": "access",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-models/access",
+      "routePath": "/admin/ai-models/access",
+      "svcScopes": [
+        "svc:admin:ai-model:manage",
+        "svc:admin:ai-model:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
         ]
       ],
       "isPublic": false,
@@ -1107,11 +1154,57 @@
       "apiExcluded": false
     },
     {
+      "controller": "AiModelJobsController",
+      "handler": "listJobs",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-models/jobs",
+      "routePath": "/admin/ai-models/jobs",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AiModelAdminController",
       "handler": "list",
       "method": "GET",
       "path": "/api/v1/admin/ai-models/list",
       "routePath": "/admin/ai-models/list",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelRegistrationController",
+      "handler": "previewLocal",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-models/local/preview",
+      "routePath": "/admin/ai-models/local/preview",
       "svcScopes": [
         "svc:admin:ai-model:manage"
       ],
@@ -1145,6 +1238,53 @@
         [
           "manage",
           "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelRegistrationController",
+      "handler": "registerFromPath",
+      "method": "POST",
+      "path": "/api/v1/admin/ai-models/register-from-path",
+      "routePath": "/admin/ai-models/register-from-path",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelAdminController",
+      "handler": "registry",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-models/registry",
+      "routePath": "/admin/ai-models/registry",
+      "svcScopes": [
+        "svc:admin:ai-model:manage",
+        "svc:admin:ai-model:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
         ]
       ],
       "isPublic": false,
