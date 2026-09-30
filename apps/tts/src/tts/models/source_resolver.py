@@ -122,6 +122,21 @@ class ModelSourceConfig:
     s3_cert_check: bool = False
 
 
+def _hub_cache_dir(hf_home: str) -> str | None:
+    """The HuggingFace HUB cache directory, by ``huggingface_hub``'s own precedence.
+
+    ``snapshot_download(cache_dir=...)`` names the hub cache itself (the folder
+    that holds ``models--<org>--<repo>/``), NOT ``HF_HOME`` (its parent). The
+    model publisher writes ``$HF_HOME/hub/models--.../snapshots/<sha>/``, so
+    passing ``HF_HOME`` straight through misses every mounted snapshot.
+    ``HF_HUB_CACHE`` wins, else ``<HF_HOME>/hub``, else ``None`` (library default).
+    """
+    explicit = os.environ.get("HF_HUB_CACHE", "").strip()
+    if explicit:
+        return explicit
+    return os.path.join(hf_home, "hub") if hf_home else None
+
+
 def config_from_settings() -> ModelSourceConfig:
     """The CREDENTIAL-FREE part of the resolver config: cache dir only.
 
@@ -132,7 +147,10 @@ def config_from_settings() -> ModelSourceConfig:
     """
     hf_home = os.environ.get("HF_HOME", "").strip()
     cache_dir = hf_home or os.path.expanduser("~/.cache/huggingface/hub")
-    return ModelSourceConfig(cache_dir=cache_dir, hf_cache_dir=hf_home or None)
+    # `cache_dir` stays the HF_HOME root: the `s3/` materialisation dir is a
+    # SIBLING of `hub/`, not part of the hub layout. Only snapshot_download
+    # needs the hub subdirectory.
+    return ModelSourceConfig(cache_dir=cache_dir, hf_cache_dir=_hub_cache_dir(hf_home))
 
 
 async def config_for_model() -> ModelSourceConfig:
