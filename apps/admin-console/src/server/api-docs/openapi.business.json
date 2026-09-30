@@ -11429,7 +11429,7 @@
               "lmstudio",
               "text",
               "gateway-proxy",
-              "asr-vllm"
+              "vllm"
             ],
             "nullable": true,
             "type": "string"
@@ -15282,6 +15282,30 @@
           "inFlight",
           "requestsPerMin",
           "error"
+        ],
+        "type": "object"
+      },
+      "ModelServingFactsRequest": {
+        "properties": {
+          "enforceEager": {
+            "description": "vLLM `enforce_eager` — disable CUDA graphs (less VRAM, slower). Omit for the engine default.",
+            "example": false,
+            "type": "boolean"
+          },
+          "maxNumSeqs": {
+            "description": "vLLM `max_num_seqs` — the concurrent sequences one engine batches. Omit for the engine default.",
+            "example": 64,
+            "minimum": 1,
+            "type": "number"
+          },
+          "vramGiB": {
+            "description": "GiB of GPU memory one engine of this model claims inside its pool`s `vramBudgetGiB` (`vllm.pools`). Must be greater than 0.",
+            "example": 5,
+            "type": "number"
+          }
+        },
+        "required": [
+          "vramGiB"
         ],
         "type": "object"
       },
@@ -19446,7 +19470,7 @@
               "lmstudio",
               "text",
               "gateway-proxy",
-              "asr-vllm"
+              "vllm"
             ],
             "type": "string"
           },
@@ -25081,6 +25105,14 @@
               "vllm"
             ],
             "type": "string"
+          },
+          "serving": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModelServingFactsRequest"
+              }
+            ],
+            "description": "Engine sizing facts for a vLLM-served row (`_metadata.serving`, TASK-1021 D-11): `vramGiB` (required, > 0), and optionally `maxNumSeqs` (whole, >= 1) and `enforceEager`. MERGED into the stored facts — a key the PATCH omits keeps its value, and no other `_metadata` key is touched. Omit the field to leave the facts untouched. A row without `vramGiB` is refused `SERVING_FACTS_MISSING` by the serving-spec route."
           },
           "slug": {
             "description": "URL-friendly unique identifier",

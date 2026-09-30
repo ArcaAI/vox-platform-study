@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 505 component schemas the generated surface transitively
+ * Only the 506 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -3199,7 +3199,7 @@ export interface HubPreviewSuggestionResponse {
     | 'llama-cpp'
     | null;
   /** Workload that would run it. */
-  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'asr-vllm' | null;
+  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'vllm' | null;
 }
 
 export interface ImportAgentRequest {
@@ -4287,6 +4287,15 @@ export interface ModelServiceStatusResponse {
   service: string;
   /** What the service holds right now. */
   state: 'loaded' | 'loading' | 'unloading' | 'not_loaded' | 'failed';
+}
+
+export interface ModelServingFactsRequest {
+  /** vLLM `enforce_eager` — disable CUDA graphs (less VRAM, slower). Omit for the engine default. */
+  enforceEager?: boolean;
+  /** vLLM `max_num_seqs` — the concurrent sequences one engine batches. Omit for the engine default. */
+  maxNumSeqs?: number;
+  /** GiB of GPU memory one engine of this model claims inside its pool`s `vramBudgetGiB` (`vllm.pools`). Must be greater than 0. */
+  vramGiB: number;
 }
 
 export interface ModelUsageResponse {
@@ -5569,7 +5578,7 @@ export interface RegisterFromHubRequest {
   repoId: string;
   /** Branch, tag or commit to register. Defaults to `main`; the row pins the commit it resolves to. */
   revision?: string;
-  servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'asr-vllm';
+  servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'vllm';
   /** Registry slug. Defaults to the repo name in slug form. */
   slug?: string;
   /** Tags. */
@@ -7163,6 +7172,8 @@ export interface UpdateModelRequest {
     | 'llama-cpp';
   /** Workload that executes the model. */
   servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy' | 'vllm';
+  /** Engine sizing facts for a vLLM-served row (`_metadata.serving`, TASK-1021 D-11): `vramGiB` (required, > 0), and optionally `maxNumSeqs` (whole, >= 1) and `enforceEager`. MERGED into the stored facts — a key the PATCH omits keeps its value, and no other `_metadata` key is touched. Omit the field to leave the facts untouched. A row without `vramGiB` is refused `SERVING_FACTS_MISSING` by the serving-spec route. */
+  serving?: ModelServingFactsRequest;
   /** URL-friendly unique identifier */
   slug?: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only; azure-blob:// is out of scope). */
