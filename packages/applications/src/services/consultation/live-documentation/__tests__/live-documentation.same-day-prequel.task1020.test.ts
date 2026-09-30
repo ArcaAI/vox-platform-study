@@ -268,13 +268,17 @@ describe('TASK-1020 — the per-turn prompt appends the prequel the way it appen
 });
 
 describe('TASK-1020 — the live handoff carries the flag to the durable finalize', () => {
+  // The durable run reads the handoff AFTER the stop (DRAINING). A handoff read while the row is
+  // still RECORDING answers "not yet" since TASK-1022 L-RESUME, so the row is drained here.
+  const buildDrained = (wiring: Parameters<typeof buildService>[0] = {}) =>
+    buildService({ ...wiring, row: { status: 'DRAINING', ...(wiring.row ?? {}) } });
   const handoffContext = async (service: LiveDocumentationService, stored: Map<string, string>) => {
     stored.set(`live-doc:handoff:${CID}`, JSON.stringify({ endedAt: '2026-09-29T10:00:00.000Z', tenantId: TENANT, outputs: {} }));
     return (await service.readLiveHandoff(CID)).context as Record<string, unknown>;
   };
 
   it('publishes same_day_prequel = true and the summary for a same-day return', async () => {
-    const { service, stored } = buildService({ parentNotes: MORNING });
+    const { service, stored } = buildDrained({ parentNotes: MORNING });
 
     const context = await handoffContext(service, stored);
 
@@ -284,7 +288,7 @@ describe('TASK-1020 — the live handoff carries the flag to the durable finaliz
   });
 
   it('publishes same_day_prequel = false for a follow-up whose parent is from another day', async () => {
-    const { service, stored } = buildService({ parent: { appointmentDate: new Date('2026-08-01T00:00:00.000Z') }, parentNotes: MORNING });
+    const { service, stored } = buildDrained({ parent: { appointmentDate: new Date('2026-08-01T00:00:00.000Z') }, parentNotes: MORNING });
 
     const context = await handoffContext(service, stored);
 
@@ -293,7 +297,7 @@ describe('TASK-1020 — the live handoff carries the flag to the durable finaliz
   });
 
   it('omits both keys for a FIRST visit (no chain at all) — a fragment `when` over them then excludes, as false would', async () => {
-    const { service, stored, consultationRepository } = buildService({ row: { parentConsultationId: null } });
+    const { service, stored, consultationRepository } = buildDrained({ row: { parentConsultationId: null } });
 
     const context = await handoffContext(service, stored);
 
@@ -303,7 +307,7 @@ describe('TASK-1020 — the live handoff carries the flag to the durable finaliz
   });
 
   it('publishes formatted_test_results from the investigations kind', async () => {
-    const { service, stored } = buildService({ row: { parentConsultationId: null }, investigations: { results: [{ name: 'Hb', value: '9.8' }] } });
+    const { service, stored } = buildDrained({ row: { parentConsultationId: null }, investigations: { results: [{ name: 'Hb', value: '9.8' }] } });
 
     const context = await handoffContext(service, stored);
 
@@ -318,7 +322,7 @@ describe('TASK-1020 — the live handoff carries the flag to the durable finaliz
    * fragment reads exactly those three paths.
    */
   it('a same-day return with investigations carries the flag, the prequel AND the results, and they resolve under trigger.context', async () => {
-    const { service, stored } = buildService({ parentNotes: MORNING, investigations: { results: [{ name: 'Troponin', value: '0.01', unit: 'ng/mL' }] } });
+    const { service, stored } = buildDrained({ parentNotes: MORNING, investigations: { results: [{ name: 'Troponin', value: '0.01', unit: 'ng/mL' }] } });
 
     const context = await handoffContext(service, stored);
 
