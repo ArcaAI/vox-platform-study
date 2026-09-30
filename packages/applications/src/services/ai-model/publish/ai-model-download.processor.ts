@@ -260,7 +260,7 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
       const store = await this.modelStoreFactory.create();
 
       // A LOCAL row never reaches the Hub (TASK-960 D1); the fetcher refuses it.
-      const hub = model.source === AiModelSource.LOCAL ? null : await this.resolveHubInfo(model.sourceUri, model.sourceRevision ?? null);
+      const hub = model.source === AiModelSource.LOCAL ? null : await this.resolveHubInfo(model.sourceUri, model.sourceRevision ?? null, tenantId);
 
       stagingDir = await createStagingDir(this.stagingBaseDir);
       heartbeat = new DownloadHeartbeat((snapshot) => this.writeHeartbeat(aiModelId, jobId, snapshot), {
@@ -277,6 +277,7 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
         stagingDir,
         revision: hub?.sha,
         idleTimeoutMs,
+        tenantId,
         onPlanned: (total) => liveHeartbeat.setTotal(total),
         onBytes: (bytes) => liveHeartbeat.addBytes(bytes),
       });
@@ -467,12 +468,14 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
   private async resolveHubInfo(
     sourceUri: string,
     revision: string | null,
+    tenantId: string,
   ): Promise<{ sha: string; repoPrefix: string; snapshotPrefix: string } | null> {
     const match = sourceUri.match(HF_REPO_RE);
     if (!match) return null;
     const [, org, repo] = match;
     try {
-      const info = await this.hfClient.getRepoInfo(`${org}/${repo}`, revision || 'main');
+      // TASK-1023 OD-3 — the JOB's tenant's credential (a SYSTEM job: the platform token).
+      const info = await this.hfClient.getRepoInfo(`${org}/${repo}`, revision || 'main', { tenantId });
       if (!info.sha) return null;
       const repoPrefix = `hf/hub/models--${org}--${repo}/`;
       return { sha: info.sha, repoPrefix, snapshotPrefix: `${repoPrefix}snapshots/${info.sha}/` };
