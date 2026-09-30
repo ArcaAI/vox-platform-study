@@ -24,6 +24,7 @@ import {
   FEATURE_AVAILABILITY_KEYS,
   LIVE_DOC_GROUNDEDNESS_ENABLED_KEY,
   LOCAL_RAW_CAPTURE_ENABLED_KEY,
+  MODEL_REGISTRY_TENANT_MANAGEMENT_ENABLED_KEY,
   REGISTRATION_SELF_SIGNUP_ENABLED_KEY,
   TENANT_IDP_GOOGLE_DIRECTORY_ENABLED_KEY,
   TENANT_IDP_MS_GRAPH_ENABLED_KEY,
@@ -67,6 +68,8 @@ describe('Feature Availability category', () => {
         // credentials separately, so "enabled" is never one answer for both.
         TENANT_IDP_GOOGLE_DIRECTORY_ENABLED_KEY,
         TENANT_IDP_MS_GRAPH_ENABLED_KEY,
+        // TASK-1023 OD-2 — tenant model-registry management; recorded, grants nothing yet.
+        MODEL_REGISTRY_TENANT_MANAGEMENT_ENABLED_KEY,
       ].sort(),
     );
   });
@@ -103,6 +106,16 @@ describe('Feature Availability category', () => {
     for (const key of FEATURE_AVAILABILITY_KEYS.filter((k) => !systemScoped.includes(k))) {
       expect(byKey[key]!.maxScope, key).toBe('tenant');
     }
+  });
+
+  it('model-registry tenant management ships OFF, per-tenant, platform-written only (TASK-1023 OD-1/OD-2)', () => {
+    expect(MODEL_REGISTRY_TENANT_MANAGEMENT_ENABLED_KEY).toBe('modelRegistry.tenantManagement.enabled');
+    const row = featureRows().find((d) => d.key === MODEL_REGISTRY_TENANT_MANAGEMENT_ENABLED_KEY);
+    expect(row).toBeDefined();
+    expect(row!.default).toBe(false);
+    expect(row!.maxScope).toBe('tenant');
+    expect(row!.globalOnly).toBe(true);
+    expect(row!.editableBy).toBe('GlobalSetting');
   });
 
   it('keeps the migrated keys and their defaults byte for byte', () => {

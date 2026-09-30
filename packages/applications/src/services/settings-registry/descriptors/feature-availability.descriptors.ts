@@ -65,6 +65,10 @@ export const LIVE_DOC_GROUNDEDNESS_ENABLED_KEY = 'liveDoc.groundedness.enabled';
 // registration), so "enabled" is never one answer for both.
 export const TENANT_IDP_GOOGLE_DIRECTORY_ENABLED_KEY = 'tenantIdp.googleDirectory.enabled';
 export const TENANT_IDP_MS_GRAPH_ENABLED_KEY = 'tenantIdp.msGraph.enabled';
+// TASK-1023 OD-2 — whether a tenant admin may manage the model registry. Read by
+// `ModelRegistryAccessService` and reported by `GET admin/ai-models/access`; it
+// grants NO write today (OD-1) — it is the seam a later ticket flips.
+export const MODEL_REGISTRY_TENANT_MANAGEMENT_ENABLED_KEY = 'modelRegistry.tenantManagement.enabled';
 
 /**
  * TASK-932 S2-4 — the two legacy `feature-flags` `GlobalSetting` keys that were
@@ -229,6 +233,14 @@ const FEATURES: FeatureSpec[] = [
       'Allows this tenant to pre-provision users by pulling its Microsoft Entra ID directory over Graph. The tenant supplies its own Azure AD app registration — distinct from the OIDC login-time client — with admin-consented application permissions (`User.Read.All`, `GroupMember.Read.All`); this gate decides whether the platform will act on that. MIGRATED from `TENANT_IDP_MS_GRAPH_ENABLED`, a platform-wide env var frozen in the provider constructor. Checked at enqueue AND in the worker. Ships OFF, for the same reason as its Google sibling — and gated independently from it, because the two credentials are provisioned independently.',
     default: false,
     envOverride: ['TENANT_IDP_MS_GRAPH_ENABLED'],
+  },
+  // ── TASK-1023 OD-1 / OD-2 — tenant model-registry management ────────────────
+  {
+    key: MODEL_REGISTRY_TENANT_MANAGEMENT_ENABLED_KEY,
+    label: 'Tenant model-registry management',
+    description:
+      'Records whether this tenant’s admins may manage the model registry (register, edit, unregister, download jobs). It grants NOTHING yet: registry management is platform-admin only for every tenant, and tenant admins see the registered models read-only whatever this says. The value is reported by `GET admin/ai-models/access` so the console and a later release can act on it. Ships OFF; a platform-wide default with a per-tenant override.',
+    default: false,
   },
 ];
 

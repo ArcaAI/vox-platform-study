@@ -25,7 +25,7 @@ function makeCls(roles: string[] = ['SUPER_ADMIN']) {
   return {
     get: vi.fn((key: string) => {
       if (key === 'user') return { id: 'user-1', roles };
-      if (key === 'tenantId') return 'tenant-working';
+      if (key === 'tenantId') return null; // a tenant-LESS platform admin
       return null;
     }),
     set: vi.fn(),

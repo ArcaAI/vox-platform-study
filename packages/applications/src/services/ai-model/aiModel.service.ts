@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, Inject, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Injectable, BadRequestException, Inject, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { warnAndFallback } from '../../common/swallow-policy';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -32,6 +32,7 @@ import {
   ModelResponse,
   ModelServingFactsRequest,
   PaginatedModelResponse,
+  PaginatedRegisteredModelViewResponse,
   SetPlatformDefaultRequest,
   UpdateModelRequest,
 } from './dto';
@@ -75,8 +76,10 @@ import {
   type FilterFieldTypeMap,
 } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
+import { assertPlatformRegistryAdmin } from './lifecycle/platform-admin';
 import { IActiveUserContext } from '../../interfaces';
 import { ModelLifecycleService } from './lifecycle/model-lifecycle.service';
+import type { ModelLifecycleStatus } from './lifecycle/model-lifecycle.types';
 
 /**
  * How a `filters` token coerces on the ADMIN registry grid (TASK-983 R1/R4).
@@ -111,6 +114,46 @@ const AI_MODEL_FILTER_FIELD_TYPES: FilterFieldTypeMap = {
   metaData: 'json',
   availabilityDetail: 'json',
 };
+
+/**
+ * The columns the read-only registry view exposes — the ONLY columns its query
+ * may filter, search or sort on. Anything else (bucket identity, checksums,
+ * `_metadata`, `availabilityDetail`, …) would let a non-manager probe a hidden
+ * value through the query even though the response never carries it.
+ */
+const REGISTRY_VIEW_QUERY_FIELDS: ReadonlySet<string> = new Set([
+  'id',
+  'slug',
+  'name',
+  'description',
+  'taskType',
+  'libraryName',
+  'format',
+  'servedBy',
+  'deploymentKind',
+  'license',
+  'gated',
+  'languages',
+  'memorySizeMb',
+  'availability',
+  'isPlatformDefaultFor',
+  'resourceStatus',
+  'updatedAt',
+]);
+const FILTER_GROUP_KEYS: ReadonlySet<string> = new Set(['AND', 'OR', 'NOT']);
+
+/** Every column a deserialized filter tree names (group keys recursed, not returned). */
+function filterFieldsOf(filters: unknown, out: string[] = []): string[] {
+  if (Array.isArray(filters)) {
+    for (const part of filters) filterFieldsOf(part, out);
+  } else if (filters && typeof filters === 'object') {
+    for (const [key, value] of Object.entries(filters)) {
+      if (FILTER_GROUP_KEYS.has(key)) filterFieldsOf(value, out);
+      else out.push(key);
+    }
+  }
+  return out;
+}
 
 /** One `(service, provider)` pair's connection facts, resolved once per catalogue read. */
 interface ConnectionFacts {
@@ -226,7 +269,8 @@ export class AiModelService extends BaseService implements IAiModelService {
     // The explicit `@Inject` is load-bearing: the `Pick<…>` type emits `Object`
     // as its design type, so without it Nest resolves nothing and — the param
     // being optional — silently injects `undefined` (final review C1).
-    @Optional() @Inject(ModelLifecycleService) private readonly lifecycle?: Pick<ModelLifecycleService, 'forRows'>,
+    @Optional() @Inject(ModelLifecycleService) private readonly lifecycle?: Pick<ModelLifecycleService, 'forRows'> &
+      Partial<Pick<ModelLifecycleService, 'statusForRows'>>,
   ) {
     super(eventEmitter, clsService, ResourceType.AiModel);
   }
@@ -234,7 +278,7 @@ export class AiModelService extends BaseService implements IAiModelService {
   /**
    * The TENANT-facing catalogue read (TASK-890 §3.7).
    *
-   * A READ, not an admin surface: no `assertPlatformAdmin`. It answers the one
+   * A READ, not an admin surface: no `assertPlatformRegistryAdmin`. It answers the one
    * question an author has when binding a model — "what may I pick, and will it
    * work" — in two groups: the tenant's OWN provider connections first, then the
    * single "Hope provider" standing for everything the platform serves (OD-A,
@@ -357,7 +401,10 @@ export class AiModelService extends BaseService implements IAiModelService {
   private mergeServingFacts(metaData: Record<string, unknown> | undefined, serving: ModelServingFactsRequest): Record<string, unknown> {
     const current = metaData?.serving;
     const stored = current !== null && typeof current === 'object' && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
-    return { ...(metaData ?? {}), serving: { ...stored, ...JSON.parse(JSON.stringify(serving)) } };
+    // `derived: true` marks the registration-time ESTIMATE of `vramGiB`. A PATCH always states
+    // `vramGiB` (the DTO requires it), so it replaces the estimate and the flag must not survive.
+    const { derived: _estimate, ...kept } = stored;
+    return { ...(metaData ?? {}), serving: { ...kept, ...JSON.parse(JSON.stringify(serving)) } };
   }
 
   private mergeAsrProfile(
@@ -384,7 +431,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * Register a catalogue row. SYSTEM tenant, super admin only.
    */
   async create(dto: CreateModelRequest): Promise<ModelResponse> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'register a model');
     const userId = this.requestUserId;
     const tx = this.writeLane();
 
@@ -456,7 +503,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * `ExceptionInterceptor` maps to `412 Precondition Failed`.
    */
   async update(id: string, dto: UpdateModelRequest): Promise<ModelResponse> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'edit a registered model');
     const userId = this.requestUserId;
     const tx = this.writeLane();
 
@@ -542,7 +589,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * a task never has two defaults. Only an ENABLED row may be elected.
    */
   async setPlatformDefaultFor(id: string, dto: SetPlatformDefaultRequest): Promise<ModelResponse> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'set a platform default model');
     const userId = this.requestUserId;
     const tx = this.writeLane();
 
@@ -597,7 +644,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    */
   /** Get model by ID — the ADMIN registry read. */
   async getById(id: string): Promise<ModelResponse | null> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'read the model registry');
     const model = await this.aiModelRepository.findById(id);
     if (!model) return null;
 
@@ -610,7 +657,7 @@ export class AiModelService extends BaseService implements IAiModelService {
 
   /** Get model by slug — the ADMIN registry read (TASK-932 OD-4). */
   async getBySlug(slug: string): Promise<ModelResponse | null> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'read the model registry');
     const model = await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug);
     if (!model) return null;
 
@@ -646,7 +693,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * so it runs under an elevated CLS principal and is unaffected.
    */
   async getAllForAdmin(): Promise<ModelResponse[]> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'read the model registry');
     const models = await this.aiModelRepository.findAll({
       filters: {
         tenantId: SYSTEM_TENANT_ID,
@@ -682,7 +729,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * widen to another tenant's rows.
    */
   async list(query: PaginatedQuery = {}): Promise<PaginatedModelResponse> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'read the model registry');
 
     const findProps = withFormattedPaginatedProps(query, AI_MODEL_FILTER_FIELD_TYPES);
     const countProps = withFormattedCountProps(query, AI_MODEL_FILTER_FIELD_TYPES);
@@ -709,6 +756,49 @@ export class AiModelService extends BaseService implements IAiModelService {
 
     return {
       data: await this.withLifecycle(models),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * The read-only registry view — SYSTEM rows, readable by ANY admin (OD-1).
+   *
+   * Same {@link PaginatedQuery} contract and SYSTEM pin as {@link list}, but each
+   * row is redacted to descriptive columns + a one-word lifecycle status
+   * (`RegisteredModelViewResponse`), derived through the UNGATED status-only
+   * residency read so a tenant admin never needs the platform-gated catalogue.
+   * No row-level gate: the route's `read:AiModel` ability is the boundary, and
+   * the redaction is what makes it safe. Deleted rows never appear (the
+   * extended client's soft-delete filter). Filters, search fields and sorts may
+   * name only visible columns (400 otherwise).
+   */
+  async listRegistry(query: PaginatedQuery = {}): Promise<PaginatedRegisteredModelViewResponse> {
+    const findProps = withFormattedPaginatedProps(query, AI_MODEL_FILTER_FIELD_TYPES);
+    const countProps = withFormattedCountProps(query, AI_MODEL_FILTER_FIELD_TYPES);
+    this.assertRegistryViewQuery(findProps);
+    const page = findProps.page ?? DEFAULT_PAGE;
+    const limit = findProps.limit ?? DEFAULT_PAGE_SIZE;
+
+    const models = await this.aiModelRepository.findAll({
+      ...findProps,
+      page,
+      limit,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the repository filter type is narrower than the Prisma `where` it forwards
+      filters: { ...(findProps.filters ?? {}), tenantId: SYSTEM_TENANT_ID } as any,
+      sort: findProps.sort ?? [{ name: 'asc' }],
+    });
+    const total = await this.aiModelRepository.count({
+      ...countProps,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the repository filter type is narrower than the Prisma `where` it forwards
+      filters: { ...(countProps.filters ?? {}), tenantId: SYSTEM_TENANT_ID } as any,
+    });
+
+    const statuses = await this.statusesFor(models);
+    return {
+      data: models.map((model) => AiModelDtoMapper.toRegisteredModelView(model, statuses.get(model.id) ?? 'NOT_OBSERVED')),
       total,
       page,
       limit,
@@ -755,7 +845,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * Retire (soft delete) a catalogue row — super admin only.
    */
   async delete(id: string): Promise<void> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'retire a registered model');
     const userId = this.requestUserId;
     const tx = this.writeLane();
 
@@ -1091,15 +1181,41 @@ export class AiModelService extends BaseService implements IAiModelService {
     }
   }
 
-  private assertPlatformAdmin(): void {
-    if (!isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('The model registry is managed by platform administrators only.');
+  /**
+   * One-word statuses for the registry view. Advisory like {@link withLifecycle}:
+   * a derivation failure never fails the read; the row reports `NOT_OBSERVED`.
+   */
+  private async statusesFor(models: AiModelEntity[]): Promise<Map<string, ModelLifecycleStatus>> {
+    if (!this.lifecycle?.statusForRows || models.length === 0) return new Map();
+    try {
+      return await this.lifecycle.statusForRows(models);
+    } catch (error) {
+      // swallow-ok: the status is advisory — the registry view never fails on it; logged with the row count.
+      this.logger.warn({
+        message: 'ai_model.registry_view.status_failed',
+        rows: models.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return new Map();
+    }
+  }
+
+  /** 400 when the registry-view query names a column the view does not expose. */
+  private assertRegistryViewQuery(props: { filters?: unknown; searchFields?: string[]; sort?: Array<Record<string, unknown>> }): void {
+    const named = [
+      ...filterFieldsOf(props.filters),
+      ...(props.searchFields ?? []),
+      ...(props.sort ?? []).flatMap((entry) => Object.keys(entry)),
+    ];
+    const hidden = [...new Set(named.filter((field) => !REGISTRY_VIEW_QUERY_FIELDS.has(field)))];
+    if (hidden.length > 0) {
+      throw new BadRequestException(`The registry view cannot filter, search or sort on: ${hidden.join(', ')}.`);
     }
   }
 
   /**
    * The UNSCOPED base client for SYSTEM writes — see the class doc. Only ever
-   * reached AFTER `assertPlatformAdmin`, so the lane is never open to a tenant
+   * reached AFTER `assertPlatformRegistryAdmin`, so the lane is never open to a tenant
    * admin. When CLS already carries the SYSTEM tenant the extended client
    * would work too; using the lane unconditionally keeps one write path.
    */

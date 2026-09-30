@@ -320,17 +320,21 @@ const mockModelRepository = {
 describe('AiModelService', () => {
   let service: AiModelService;
 
+  // The registry is a platform-admin plane: SUPER_ADMIN in a tenant-LESS
+  // context (a working tenant is a 403). The shared-read picker tests below
+  // elevate a working tenant, which is what that read is about.
+  let clsTenantId: string | null = null;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    clsTenantId = null;
 
     mockClsService.get.mockImplementation((key: string) => {
       switch (key) {
         case 'user':
-          // TASK-860: the registry is a SUPER_ADMIN plane; the default caller
-          // in this harness is one, with a WORKING tenant elevated into CLS.
           return { id: 'current-user-id', roles: ['SUPER_ADMIN'] };
         case 'tenantId':
-          return 'tenant-1';
+          return clsTenantId;
         case 'correlationId':
           return 'corr-123';
         default:
@@ -648,6 +652,10 @@ describe('AiModelService', () => {
   // preferring the caller-tenant row.
   describe('getByTaskTypeSharedRead', () => {
     const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+    beforeEach(() => {
+      clsTenantId = 'tenant-1';
+    });
 
     it('uses the shared-read query and de-duplicates by slug preferring the caller-tenant row', async () => {
       const systemDupe = createBehavioralModelEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID, slug: 'medical-ner' });

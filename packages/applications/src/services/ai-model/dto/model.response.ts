@@ -14,6 +14,21 @@ import type { AiModelAsrProfile } from '@arcaai/types';
 import { AI_MODEL_LIBRARIES, AI_MODEL_SERVED_BY } from '../constants';
 import { ModelLifecycleResponse } from './model-lifecycle.response';
 
+/** The engine sizing facts on `_metadata.serving`, as the Serving tab shows them. */
+export class ModelServingFactsResponse {
+  @ApiProperty({ description: 'GPU memory the engine reserves for this model, in GiB.' })
+  vramGiB!: number;
+
+  @ApiProperty({ description: 'Maximum concurrent sequences; null = the engine default.', nullable: true, type: Number })
+  maxNumSeqs!: number | null;
+
+  @ApiProperty({ description: 'Disable CUDA graphs; null = the engine default.', nullable: true, type: Boolean })
+  enforceEager!: boolean | null;
+
+  @ApiProperty({ description: 'True while `vramGiB` is the registration-time estimate rather than a value an administrator set.' })
+  derived!: boolean;
+}
+
 export class ModelResponse {
   @ApiProperty({ description: 'Model ID' })
   id: string;
@@ -127,6 +142,13 @@ export class ModelResponse {
     nullable: true,
   })
   asrProfile?: AiModelAsrProfile | null;
+
+  @ApiPropertyOptional({
+    description: 'Engine sizing facts (`_metadata.serving`) for engine-served rows; null when the row carries no usable `vramGiB`.',
+    type: ModelServingFactsResponse,
+    nullable: true,
+  })
+  servingFacts?: ModelServingFactsResponse | null;
 
   @ApiPropertyOptional({
     description:

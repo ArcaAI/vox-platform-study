@@ -3,7 +3,7 @@
  *
  *   - every write is platform-admin only (403, a privilege boundary — not 404)
  *   - every write lands in the SYSTEM tenant through the UNSCOPED base-client
- *     lane, whatever working tenant the caller has elevated into CLS
+ *     lane (a platform admin works tenant-LESS; a working tenant is a 403)
  *   - `localPath` is DERIVED from `bucketPrefix` (+ `primaryObject`), never typed
  *   - the platform-default election clears the previous holder of each task
  *   - the DTOs do not accept `localPath` (the global pipe rejects it)
@@ -22,7 +22,7 @@ const BASE_CLIENT = { __lane: 'base' };
 
 function makeCls(opts: { roles?: string[]; tenantId?: string | null } = {}) {
   const roles = opts.roles ?? ['SUPER_ADMIN'];
-  const tenantId = opts.tenantId === undefined ? 'tenant-working' : opts.tenantId;
+  const tenantId = opts.tenantId === undefined ? null : opts.tenantId;
   return {
     get: vi.fn((key: string) => {
       if (key === 'user') return { id: 'user-1', roles };
@@ -190,8 +190,8 @@ describe('AiModelService — platform-admin only (403)', () => {
 });
 
 describe('AiModelService — SYSTEM pin through the base-client lane', () => {
-  it('create lands the row in the SYSTEM tenant via the base client even when a working tenant is elevated', async () => {
-    const { service, repo } = makeService(makeCls({ tenantId: 'tenant-working' }));
+  it('create lands the row in the SYSTEM tenant via the base client (tenantless platform admin)', async () => {
+    const { service, repo } = makeService(makeCls({ tenantId: null }));
 
     const result = await service.create(CREATE);
 

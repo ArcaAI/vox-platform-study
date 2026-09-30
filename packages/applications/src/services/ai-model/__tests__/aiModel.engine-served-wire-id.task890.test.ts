@@ -23,7 +23,7 @@ import type { CreateModelRequest } from '../dto';
 const BASE_CLIENT = { $lane: 'unscoped' };
 
 function makeCls(user: Record<string, unknown> = { id: 'u1', roles: ['SUPER_ADMIN'], isSuperAdmin: true }) {
-  return { get: vi.fn((k: string) => (k === 'user' ? user : k === 'tenantId' ? SYSTEM_TENANT_ID : undefined)) };
+  return { get: vi.fn((k: string) => (k === 'user' ? user : k === 'tenantId' ? null : undefined)) };
 }
 
 function makeService() {

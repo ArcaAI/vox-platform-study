@@ -72,7 +72,7 @@ const BASE_CLIENT = { $lane: 'unscoped' };
 const SUPER_ADMIN = { id: 'u1', roles: ['SUPER_ADMIN'], isSuperAdmin: true };
 
 function makeService(user: Record<string, unknown> = SUPER_ADMIN) {
-  const cls = { get: (k: string) => (k === 'user' ? user : k === 'tenantId' ? SYSTEM_TENANT_ID : undefined) };
+  const cls = { get: (k: string) => (k === 'user' ? user : k === 'tenantId' ? null : undefined) };
   const calls: { id: string; expectedVersion: number }[] = [];
   const repo = {
     findById: async (_id: string) => null as any,

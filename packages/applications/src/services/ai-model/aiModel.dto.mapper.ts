@@ -1,9 +1,38 @@
 import { AiModelEntity } from '@arcaai/domains';
-import { ModelResponse } from './dto';
+import { ModelResponse, ModelServingFactsResponse, RegisteredModelViewResponse } from './dto';
+import type { ModelLifecycleStatus } from './lifecycle/model-lifecycle.types';
 import { MODEL_TASK_TYPE_TO_PIPELINE_TAG, derivedLocalPath } from './constants';
 import { asrProfileOf } from './asr-profile.util';
 
 export class AiModelDtoMapper {
+  /**
+   * The read-only registry view (any admin): descriptive columns + a one-word
+   * status. Built field by field from an allow-list — never by spreading the
+   * full response — so a column added to the row later cannot leak through it.
+   */
+  static toRegisteredModelView(entity: AiModelEntity, lifecycleStatus: ModelLifecycleStatus): RegisteredModelViewResponse {
+    return {
+      id: entity.id,
+      slug: entity.slug,
+      name: entity.name,
+      description: entity.description ?? null,
+      taskType: entity.taskType,
+      libraryName: entity.libraryName,
+      format: entity.format,
+      servedBy: entity.servedBy,
+      deploymentKind: entity.deploymentKind,
+      license: entity.license ?? null,
+      gated: entity.gated ?? null,
+      languages: [...(entity.languages ?? [])],
+      memorySizeMb: entity.observedMemoryMb ?? entity.memorySizeMb ?? null,
+      lifecycleStatus,
+      availability: entity.availability,
+      isPlatformDefaultFor: [...(entity.isPlatformDefaultFor ?? [])],
+      resourceStatus: entity.resourceStatus,
+      updatedAt: new Date(entity.updatedAt).toISOString(),
+    };
+  }
+
   static toResponse(entity: AiModelEntity): ModelResponse {
     return {
       id: entity.id,
@@ -39,6 +68,7 @@ export class AiModelDtoMapper {
       memorySizeMb: entity.memorySizeMb,
       computeType: entity.computeType,
       asrProfile: asrProfileOf(entity),
+      servingFacts: servingFactsOf(entity.metaData),
       // DERIVED from the bucket identity (TASK-890 §3.11): the stored column is
       // gone, and with it the fallback that used to read it. The three download
       // bookkeeping fields left the DTO with their columns — a publish job's
@@ -55,4 +85,20 @@ export class AiModelDtoMapper {
       updatedBy: entity.updatedBy,
     };
   }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** `_metadata.serving` as the platform row shows it — the same validity rules the serving-spec builder applies. */
+function servingFactsOf(metaData: unknown): ModelServingFactsResponse | null {
+  const serving = isRecord(metaData) ? metaData.serving : undefined;
+  if (!isRecord(serving)) return null;
+  const { vramGiB, maxNumSeqs, enforceEager, derived } = serving;
+  if (typeof vramGiB !== 'number' || !Number.isFinite(vramGiB) || vramGiB <= 0) return null;
+  return {
+    vramGiB,
+    maxNumSeqs: typeof maxNumSeqs === 'number' && Number.isInteger(maxNumSeqs) && maxNumSeqs >= 1 ? maxNumSeqs : null,
+    enforceEager: typeof enforceEager === 'boolean' ? enforceEager : null,
+    derived: derived === true,
+  };
 }
