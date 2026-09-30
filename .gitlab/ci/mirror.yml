@@ -1,0 +1,53 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# mirror-images — insurance copy of pinned third-party images (TASK-1029, D-2)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Why: upstream `minio/minio` and `minio/mc` vanished from Docker Hub after the
+# project was archived, and a pinned digest that can no longer be pulled is an
+# outage waiting for the next node rebuild. We now pin the `pgsty/minio` fork;
+# this job keeps a byte-identical copy (SAME digest — `crane copy` does not
+# re-encode) in our own registry, at
+#   $REGISTRY/$CI_PROJECT_PATH/mirror/<name>:<tag>
+# so a consumer can repoint from Docker Hub to the mirror by changing only the
+# repository part of the `image:` — the `@sha256:` pin stays.
+#
+# What is mirrored lives in ONE file: .gitlab/ci/mirror-images.list. Adding
+# another third-party image is a one-line change there.
+#
+# When it runs — NEVER on a plain push, tag, or merge request:
+#   - MANUAL   on dev-*/staging-*/main/cicd branch pipelines (the play button),
+#   - SCHEDULED when a pipeline schedule sets MIRROR_IMAGES=true.
+# `allow_failure: true` on the manual rule so an un-played job never blocks or
+# reddens a pipeline. It is idempotent (an already-mirrored digest is skipped),
+# so running it twice, or on a schedule, is harmless.
+#
+# To run by hand: CI/CD -> Pipelines -> pick the branch pipeline -> `mirror-images`
+# -> play. Or Run pipeline with variable MIRROR_IMAGES=true on a schedule.
+#
+# Tool image: crane, pinned by digest (resolved 2026-10-01 with
+# `crane digest gcr.io/go-containerregistry/crane:debug`; the `debug` variant is
+# the one that ships a shell, which GitLab needs). Bump both together, on purpose.
+
+mirror-images:
+  stage: publish
+  tags: [build]
+  image:
+    name: gcr.io/go-containerregistry/crane:debug@sha256:e78770b31258a3846f878036d9c1f63fbe4c871f9f56990bf77fd95c013e3c1b
+    entrypoint: [""]
+  needs: []
+  interruptible: false
+  resource_group: mirror-images
+  timeout: 30m
+  retry:
+    max: 1
+    when: [runner_system_failure, stuck_or_timeout_failure]
+  script:
+    - sh .gitlab/ci/mirror-images.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $MIRROR_IMAGES == "true"
+      when: on_success
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH && $PIPELINE_TYPE =~ /^(dev|staging|main|cicd)$/
+      when: manual
+      allow_failure: true
