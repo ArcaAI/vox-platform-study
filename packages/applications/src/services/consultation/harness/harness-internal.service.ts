@@ -1584,9 +1584,15 @@ export class HarnessInternalService extends BaseService {
               contextItemId,
             });
           } else {
+            // TASK-1022 A3 — a re-draft that REPLACES the content is a new revision of the note, and
+            // the history must say so: the counter advances in the SAME CAS write as the content,
+            // and the AI-draft snapshot for that number follows once the write lands (below). An
+            // identical re-delivery is not a revision — no counter bump, no version row.
+            const redraftVersionNumber = existingDraft.content !== strippedContent ? ((existingDraft.currentVersionNumber as number) ?? 0) + 1 : null;
             existingDraft.content = strippedContent;
             existingDraft.dnaWritingStyleId = dto.dnaStyleId ?? existingDraft.dnaWritingStyleId;
             existingDraft.updatedBy = userId;
+            if (redraftVersionNumber !== null) existingDraft.currentVersionNumber = redraftVersionNumber;
             await this.encryptBestEffort('ContextItem content', () =>
               this.contextItemRepository.encryptContentIntoEntity(existingDraft, this.secretsService!),
             );
@@ -1604,7 +1610,10 @@ export class HarnessInternalService extends BaseService {
                 message: 'Harness draft re-delivered — existing note updated in place (no second row)',
                 consultationId,
                 contextItemId,
+                redraftVersionNumber,
               });
+              // After the CAS, never before: a drifted write (below) must leave no orphan version row.
+              if (redraftVersionNumber !== null) await this.captureAiDraftSnapshot(existingDraft, redraftVersionNumber);
             } catch (error) {
               if (!(error instanceof OptimisticConcurrencyException)) throw error;
               adoptionSkipped = 'occ-drift';
@@ -1647,10 +1656,9 @@ export class HarnessInternalService extends BaseService {
           // edit-capture corpus is populated regardless of which path generated the
           // draft. Best-effort: a snapshot failure must never roll back the draft.
           //
-          // Deliberately NOT re-run on the update branch above: `ContextItemVersion`
-          // rows are immutable history and `captureAiDraftSnapshot` always writes
-          // versionNumber 1, so calling it again would add a SECOND v1 for the same
-          // note. `v1` keeps its definition — the AI draft as FIRST delivered.
+          // The update branch above writes its own snapshot (TASK-1022 A3) under the NEXT
+          // version number, never a second v1: `v1` keeps its definition — the AI draft as
+          // FIRST delivered.
           await this.captureAiDraftSnapshot(savedContext ?? contextItem);
         }
 
@@ -2614,19 +2622,34 @@ export class HarnessInternalService extends BaseService {
    * No-op when the version repository is unwired (legacy fixtures); best-effort
    * otherwise — a snapshot failure is logged and swallowed so it never rolls back
    * the committed draft.
+   *
+   * TASK-1022 A3 — an in-place AI RE-draft (a resumed recording re-finalised, by the default engine
+   * or the governing graph) snapshots under the SAME reason and author at `versionNumber`, the
+   * number the content write already advanced `currentVersionNumber` to. Keeping the reason is
+   * deliberate: every reader (`SummaryService.resolveAiDraftBaseline`, the gate-edit miner, the
+   * DNA processor) takes the NEWEST `ai_draft_v1` row (`versionNumber desc`) as the AI draft the
+   * clinician edited, which after a re-draft is this one, not the first.
    */
-  private async captureAiDraftSnapshot(savedContext: ContextItemEntity): Promise<void> {
+  private async captureAiDraftSnapshot(savedContext: ContextItemEntity, versionNumber = 1): Promise<void> {
     if (!this.contextItemVersionRepository) return;
     try {
-      const snapshot = ContextItemVersionFactory.CreateFromContextItem(savedContext, 1, 'ai_draft_v1', 'system', 'ai_model', 'AI draft v1 snapshot');
+      const snapshot = ContextItemVersionFactory.CreateFromContextItem(
+        savedContext,
+        versionNumber,
+        'ai_draft_v1',
+        'system',
+        'ai_model',
+        versionNumber === 1 ? 'AI draft v1 snapshot' : `AI re-draft snapshot (v${versionNumber})`,
+      );
       await this.encryptBestEffort('ContextItemVersion', () =>
         this.contextItemVersionRepository!.encryptFieldsIntoEntity(snapshot, this.secretsService!),
       );
       await this.contextItemVersionRepository.create(snapshot);
     } catch (error) {
       this.logger.warn({
-        message: 'AI-draft v1 snapshot capture failed (best-effort, draft not rolled back)',
+        message: 'AI-draft snapshot capture failed (best-effort, draft not rolled back)',
         contextItemId: savedContext.id,
+        versionNumber,
         error: error instanceof Error ? error.message : String(error),
       });
     }

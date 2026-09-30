@@ -325,3 +325,113 @@ describe('TASK-1022 — a skipped adoption is never logged as "Harness draft per
     expect(final).not.toHaveProperty('adoptionSkipped');
   });
 });
+
+describe('TASK-1022 A3 — an in-place AI re-draft appends a ContextItemVersion', () => {
+  // Measured (TASK-1022 replay run5): the governed resume re-finalised the note in place —
+  // `_version` 1→2, content changed — but wrote no version row, so `currentVersionNumber` stayed 1
+  // and version 1 (the FIRST AI draft) no longer matched the note. After sign the trail read
+  // v1 ai_model (first draft) → v2 doctor_edit → v3 attestation: the second AI draft was nowhere.
+  const REDRAFT = 'RESUMED VISIT — the governing graph re-finalised the whole visit';
+  const draftDto = { tenantId: TENANT, userId: 'harness', content: REDRAFT, modelName: 'm', modelVersion: 'v' } as never;
+  const ownDraft = (content = 'FIRST AI DRAFT', currentVersionNumber = 1) => [
+    {
+      id: 'ctx-draft-1',
+      tenantId: TENANT,
+      version: 1,
+      currentVersionNumber,
+      content,
+      metaData: { subType: 'HARNESS_DRAFT' },
+      createdAt: new Date('2026-09-30T04:01:48.000Z'),
+    },
+  ];
+  type VersionRow = { versionNumber: number; changeReason: string; changedBy: string; changeSource: string; content: string; contextItemId: string };
+
+  it('different content → a new version row with the AI-draft convention, numbered currentVersionNumber + 1, and the counter advanced', async () => {
+    const order: string[] = [];
+    const { service, contextItemRepository, contextItemVersionRepository } = build({
+      child: { parentConsultationId: null, status: ConsultationStatus.DRAINING },
+      ownDrafts: ownDraft(),
+      approvedVersions: [],
+    });
+    contextItemRepository.updateWithVersion.mockImplementation(async (id: string, entity: Record<string, unknown>) => {
+      order.push('content');
+      return { ...entity, id };
+    });
+    contextItemVersionRepository.create.mockImplementation(async () => {
+      order.push('version');
+      return { id: 'ver-2' };
+    });
+
+    await service.persistDraft(CID, draftDto);
+
+    expect(contextItemVersionRepository.create).toHaveBeenCalledOnce();
+    const [row] = contextItemVersionRepository.create.mock.calls[0]! as unknown as [VersionRow];
+    expect(row.contextItemId).toBe('ctx-draft-1');
+    expect(row.versionNumber).toBe(2);
+    expect(row.changeReason).toBe('ai_draft_v1');
+    expect(row.changedBy).toBe('system');
+    expect(row.changeSource).toBe('ai_model');
+    // The snapshot is the AI draft AS DELIVERED — the same thing version 1 holds for the first draft.
+    expect(row.content).toBe(REDRAFT);
+    const [, written] = contextItemRepository.updateWithVersion.mock.calls[0]!;
+    expect((written as { currentVersionNumber?: number }).currentVersionNumber).toBe(2);
+    // The counter moves in the content write; the history row follows it (never an orphan on OCC drift).
+    expect(order).toEqual(['content', 'version']);
+  });
+
+  it('numbers from the CURRENT counter — a draft the clinician already edited (v2) gets v3', async () => {
+    const { service, contextItemVersionRepository } = build({
+      child: { parentConsultationId: null, status: ConsultationStatus.PENDING_REVIEW },
+      ownDrafts: ownDraft('FIRST AI DRAFT, edited', 2),
+      approvedVersions: [],
+    });
+
+    await service.persistDraft(CID, draftDto);
+
+    const [row] = contextItemVersionRepository.create.mock.calls[0]! as unknown as [VersionRow];
+    expect(row.versionNumber).toBe(3);
+  });
+
+  it('identical content → no version row, counter unchanged', async () => {
+    const { service, contextItemRepository, contextItemVersionRepository } = build({
+      child: { parentConsultationId: null, status: ConsultationStatus.DRAINING },
+      ownDrafts: ownDraft(REDRAFT),
+      approvedVersions: [],
+    });
+
+    await service.persistDraft(CID, draftDto);
+
+    expect(contextItemVersionRepository.create).not.toHaveBeenCalled();
+    const [, written] = contextItemRepository.updateWithVersion.mock.calls[0]!;
+    expect((written as { currentVersionNumber?: number }).currentVersionNumber).toBe(1);
+  });
+
+  it('an approved note → the existing guard skips, and no version row is written', async () => {
+    const { service, contextItemRepository, contextItemVersionRepository } = build({
+      child: { parentConsultationId: null, status: ConsultationStatus.SIGNED },
+      ownDrafts: ownDraft(),
+      approvedVersions: [{ id: 'ver-approved', changeReason: 'approved' }],
+    });
+
+    await service.persistDraft(CID, draftDto);
+
+    expect(contextItemRepository.updateWithVersion).not.toHaveBeenCalled();
+    expect(contextItemVersionRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('OCC drift (a clinician edited meanwhile) → the adoption is skipped and no version row is written', async () => {
+    const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+    const { service, contextItemRepository, contextItemVersionRepository } = build({
+      child: { parentConsultationId: null, status: ConsultationStatus.PENDING_REVIEW },
+      ownDrafts: ownDraft(),
+      approvedVersions: [],
+    });
+    contextItemRepository.updateWithVersion.mockRejectedValueOnce(
+      new OptimisticConcurrencyException('ContextItem', 'ctx-draft-1', { expectedVersion: 1, currentVersionNumber: 2 } as never),
+    );
+
+    await service.persistDraft(CID, draftDto);
+
+    expect(contextItemVersionRepository.create).not.toHaveBeenCalled();
+  });
+});
