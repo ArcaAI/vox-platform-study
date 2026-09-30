@@ -19,6 +19,7 @@ import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mi
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
+import { ConsultationWorkflowDispatchServiceModule } from '../workflow-dispatch/consultation-workflow-dispatch.service.module';
 
 @Module({
   imports: [
@@ -51,6 +52,12 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
     // It injects it `@Optional()`, so without this import the job would still write English (the
     // code default) and a platform admin's write would be silently dead on this path.
     EffectiveSettingsModule,
+    // TASK-1022 L-RESUME — supplies `IConsultationWorkflowDispatchService`, through which
+    // `ConsultationEventHandler` re-finalises a GOVERNED consultation's resumed recording by
+    // superseding its governing run. Injected `@Optional()`; without it a governed resume is
+    // reported as not re-finalised (never handed to the default engine). No cycle: the dispatch
+    // module's imports reach neither this module nor the harness-internal one.
+    ConsultationWorkflowDispatchServiceModule,
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
     // `GenerateSummary`/`ExtractNamedEntities` (the legacy

@@ -34,6 +34,9 @@ import { createWorkerSession, isSttAggregateTranscript } from '../../../common';
 import { HARNESS_DRAFT_SUBTYPE } from '../harness/harness-draft.constants';
 import { IActiveUserContext } from '../../../interfaces';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
+import { tenantWorkflowGoverns } from '../governing-engine';
+import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/IConsultationWorkflowDispatchService';
+import { contextItemDecryptor } from '../context/client-clinical-context';
 import {
   ConsultationPipelineEvent,
   TranscriptionCreatedPayload,
@@ -81,6 +84,10 @@ export class ConsultationEventHandler {
     // TASK-1001 wave 4 (OD-14, D-4) — reads whether the harness draft carries a clinician sign-off.
     // Optional + trailing like every dependency above; absent ⇒ only the consultation status speaks.
     @Optional() @Inject(ContextItemVersionRepository) private readonly contextItemVersionRepository?: ContextItemVersionRepository,
+    // TASK-1022 L-RESUME — re-finalises a GOVERNED consultation's resumed recording through its
+    // governing graph (supersede the parked run). Optional + trailing like every dependency above;
+    // absent ⇒ a governed resume is REPORTED as not re-finalised, never handed to the default engine.
+    @Optional() @Inject(IConsultationWorkflowDispatchService) private readonly workflowDispatch?: IConsultationWorkflowDispatchService,
   ) {
     this.logger.log('ConsultationEventHandler initialized — auto-pipeline enabled');
   }
@@ -143,6 +150,19 @@ export class ConsultationEventHandler {
             contextItemId,
             correlationId,
           });
+          return;
+        }
+        if (resumed?.kind === 'stale') {
+          this.logger.log({
+            message: 'Resumed recording transcript is not the newest recording of this governed consultation — the newest one re-finalises',
+            consultationId,
+            contextItemId,
+            correlationId,
+          });
+          return;
+        }
+        if (resumed?.kind === 'governed') {
+          await this.refinaliseGovernedResume(consultationId, tenantId, payload.userId, contextItemId, correlationId);
           return;
         }
         if (resumed?.kind === 'supersede') {
@@ -453,12 +473,21 @@ export class ConsultationEventHandler {
    *  - `signed` — the draft carries a clinician sign-off, or the consultation is signed (D-4).
    *  - `supersede` — re-finalise over EVERY session's aggregate, oldest first.
    *
+   * TASK-1022 L-RESUME (owner decision 2026-09-30) — a consultation GOVERNED by a tenant workflow is
+   * re-finalised by its governing graph, never by the default engine:
+   *
+   *  - `governed` — supersede the governing run. Needs no draft: the governing run owns the note, and
+   *    a run that has not finalised yet is superseded just the same (its replacement reads the
+   *    whole-visit handoff).
+   *  - `stale` — `contextItemId` is not the NEWEST recording's aggregate: a newer stop re-finalises,
+   *    and superseding here would only start a run that is replaced a moment later.
+   *
    * Best-effort: a read failure answers `null`, i.e. today's behaviour — never a lost first note.
    */
   private async resumedSessionPlan(
     consultationId: string,
     contextItemId: string,
-  ): Promise<{ kind: 'signed' } | { kind: 'supersede'; transcriptText: string; sessions: number } | null> {
+  ): Promise<{ kind: 'signed' } | { kind: 'supersede'; transcriptText: string; sessions: number } | { kind: 'governed' } | { kind: 'stale' } | null> {
     if (!this.contextItemRepository) return null;
     try {
       const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
@@ -470,13 +499,18 @@ export class ConsultationEventHandler {
       const drafts = (await this.contextItemRepository.findByType(consultationId, ContextItemType.RAW_SUMMARY)).filter(
         (row) => (row.metaData as Record<string, unknown> | undefined)?.subType === HARNESS_DRAFT_SUBTYPE,
       );
-      if (drafts.length === 0) return null;
-      const draft = drafts.reduce((a, b) => (new Date(a.createdAt ?? 0).getTime() >= new Date(b.createdAt ?? 0).getTime() ? a : b));
+      const draft =
+        drafts.length === 0 ? null : drafts.reduce((a, b) => (new Date(a.createdAt ?? 0).getTime() >= new Date(b.createdAt ?? 0).getTime() ? a : b));
 
       const consultation = await this.consultationRepository.findById(consultationId);
+      const governed = tenantWorkflowGoverns(consultation?.metadata);
+      if (!draft && !governed) return null;
+
       const signedStatuses: readonly string[] = [ConsultationStatus.SIGNED, ConsultationStatus.CLOSED_COMPLETE];
-      const approvals = (await this.contextItemVersionRepository?.getVersionsByChangeReason(draft.id, 'approved')) ?? [];
+      const approvals = draft ? ((await this.contextItemVersionRepository?.getVersionsByChangeReason(draft.id, 'approved')) ?? []) : [];
       if (signedStatuses.includes(String(consultation?.status)) || approvals.length > 0) return { kind: 'signed' };
+
+      if (governed) return aggregates[aggregates.length - 1]?.id === contextItemId ? { kind: 'governed' } : { kind: 'stale' };
 
       const transcriptText = aggregates
         .map((item) => item.content?.trim())
@@ -488,6 +522,113 @@ export class ConsultationEventHandler {
         message: 'Resumed-recording check failed — continuing on the first-session path',
         consultationId,
         contextItemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * TASK-1022 L-RESUME — re-finalise a GOVERNED consultation after a resumed recording, through its
+   * governing graph (`IConsultationWorkflowDispatchService.supersedeGoverningRun`).
+   *
+   * Never the default engine, whatever happens: handing a governed consultation to `harness-doc`
+   * replaces the tenant's note shape with the default one (TASK-1022 replay run3). A supersede that
+   * did not happen is therefore REPORTED (`PipelineStepFailed`) and the note stays what the governing
+   * run last wrote. `duplicate` is not a failure — the same stop was already handled.
+   */
+  private async refinaliseGovernedResume(
+    consultationId: string,
+    tenantId: string,
+    userId: string | undefined,
+    contextItemId: string,
+    correlationId: string | undefined,
+  ): Promise<void> {
+    const reportFailure = (error: string): void => {
+      this.logger.error({
+        message: 'Governed resume NOT re-finalised — the note still covers only the earlier recordings',
+        consultationId,
+        contextItemId,
+        correlationId,
+        error,
+      });
+      this.emitPipelineStepFailed({
+        consultationId,
+        tenantId,
+        userId,
+        correlationId,
+        failedStep: 'summary',
+        contextItemId,
+        error,
+        willContinue: false,
+      });
+    };
+
+    if (!this.workflowDispatch?.supersedeGoverningRun) {
+      reportFailure('The governing-workflow dispatcher is not wired — a governed consultation is never re-finalised by the default engine');
+      return;
+    }
+
+    const result = await this.workflowDispatch.supersedeGoverningRun({
+      consultationId,
+      tenantId,
+      userId,
+      triggerId: contextItemId,
+      authoredContext: await this.authoredContextOf(consultationId),
+    });
+    if (!result.superseded && result.skippedReason !== 'duplicate') {
+      reportFailure(`Governing run not superseded (${result.skippedReason ?? 'unknown'}${result.reason ? `: ${result.reason}` : ''})`);
+      return;
+    }
+    this.logger.log({
+      message: result.superseded
+        ? 'Resumed recording — the governing graph re-finalises the note over the whole visit (governing run superseded)'
+        : 'Resumed recording — already re-finalised by the governing graph for this recording',
+      consultationId,
+      contextItemId,
+      runId: result.runId,
+      supersededRunId: result.supersededRunId,
+      correlationId,
+    });
+  }
+
+  /**
+   * The client's authored context as the `{ [kindKey]: payload }` envelope the governing trigger
+   * validates, rebuilt from the consultation's persisted STRUCTURED kinds — newest item per kind.
+   *
+   * The open-time payload is not kept anywhere else: `open` persists every validated kind as a
+   * STRUCTURED item carrying its `kindKey` (TASK-951 §D-5) and hands the same values to the first run
+   * (§D-6). A kind added later through the context plane was validated against the same schema, and
+   * the newest statement is the one the note should reflect. Best-effort: an unreadable item is
+   * skipped, and nothing readable means `null` — the run starts without a payload.
+   */
+  private async authoredContextOf(consultationId: string): Promise<Record<string, unknown> | null> {
+    if (!this.contextItemRepository) return null;
+    try {
+      const items = await this.contextItemRepository.findByType(consultationId, ContextItemType.STRUCTURED);
+      const newest = new Map<string, (typeof items)[number]>();
+      for (const item of items) {
+        if (!item.kindKey) continue;
+        const current = newest.get(item.kindKey);
+        if (!current || new Date(item.createdAt ?? 0).getTime() >= new Date(current.createdAt ?? 0).getTime()) newest.set(item.kindKey, item);
+      }
+      const decrypt = contextItemDecryptor(this.contextItemRepository, this.secretsService as never);
+      const authored: Record<string, unknown> = {};
+      for (const [kindKey, item] of newest) {
+        try {
+          const raw = await decrypt(item);
+          const parsed: unknown = raw ? JSON.parse(raw) : null;
+          if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) authored[kindKey] = parsed;
+        } catch {
+          // swallow-ok: an unreadable or non-JSON kind is simply not carried (PHI-free: nothing of
+          // the body is logged); the trigger validates what remains, exactly as an open without it.
+        }
+      }
+      return Object.keys(authored).length > 0 ? authored : null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Authored context could not be rebuilt for the governed resume — the superseding run starts without it',
+        consultationId,
         error: error instanceof Error ? error.message : String(error),
       });
       return null;

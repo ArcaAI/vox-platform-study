@@ -169,6 +169,44 @@ export interface GoverningWorkflowPreview {
   readonly boundSchemaVersion: number | null;
 }
 
+/**
+ * TASK-1022 L-RESUME — re-finalise a GOVERNED consultation after a resumed recording.
+ *
+ * The governing run is parked at its `core.humanReview` and its `n_finalize` never re-runs, so a
+ * recording made after the first stop would never reach the note. The owner decided (2026-09-30)
+ * that the GOVERNING graph re-finalises it — never the default `harness-doc` engine.
+ */
+export interface SupersedeGoverningRunInput {
+  readonly consultationId: string;
+  readonly tenantId: string;
+  /**
+   * The resumed session's aggregate transcript id. The IDEMPOTENCE key: recorded on the marker, so a
+   * second delivery of the same resumed stop — in this process or another — starts nothing.
+   */
+  readonly triggerId: string;
+  /** Fallback clinician when the row carries none. The row's `doctorId` wins, as it does at open. */
+  readonly userId?: string | null;
+  /**
+   * The context the client authored, as the `{ [kindKey]: payload }` envelope the trigger validates.
+   * Rebuilt by the caller from the consultation's persisted kinds (the open-time payload is not kept
+   * anywhere else). Omitted ⇒ the run starts with no payload, exactly as an open without context did.
+   */
+  readonly authoredContext?: Record<string, unknown> | null;
+}
+
+export interface SupersedeGoverningRunResult {
+  /** True only when a fresh governing run was started AND now owns the marker. */
+  readonly superseded: boolean;
+  /** The run that governs the consultation after this call (the new one, or the one left in place). */
+  readonly runId: string | null;
+  /** The run that was replaced, when one was. */
+  readonly supersededRunId: string | null;
+  /** Why nothing was superseded. `duplicate` is a SUCCESS for the caller: the same stop was already handled. */
+  readonly skippedReason?: 'not-governed' | 'duplicate' | 'failed';
+  /** PHI-free detail for `failed`. */
+  readonly reason?: string;
+}
+
 export interface IConsultationWorkflowDispatchService {
   /**
    * Resolve the tenant's `consultation`-palette assignment and, when one exists, start a
@@ -231,6 +269,18 @@ export interface IConsultationWorkflowDispatchService {
    * the open proceed exactly as it does today, ungoverned. Only a conclusive answer may refuse.
    */
   previewGoverningWorkflow(input: PreviewGoverningWorkflowInput): Promise<GoverningWorkflowPreview | null>;
+
+  /**
+   * TASK-1022 L-RESUME — SUPERSEDE the consultation's governing run: start a fresh run of the SAME
+   * workflow definition version through the same dispatch path, move the governing-engine marker to
+   * it with provenance (`supersededRunId`, `supersedeTriggerId`), then terminate the parked run and
+   * its review child.
+   *
+   * Single-flight per consultation, and idempotent on `triggerId`. NEVER throws: every failure is a
+   * `superseded: false` result with a reason, and a failed START leaves the marker and the parked run
+   * exactly as they were. Optional so a test double or an older composition need not implement it.
+   */
+  supersedeGoverningRun?(input: SupersedeGoverningRunInput): Promise<SupersedeGoverningRunResult>;
 }
 
 export const IConsultationWorkflowDispatchService = Symbol('IConsultationWorkflowDispatchService');
