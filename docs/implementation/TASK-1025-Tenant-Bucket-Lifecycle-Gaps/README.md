@@ -1,6 +1,6 @@
 # TASK-1025: Tenant bucket lifecycle gaps — silent provision failures, no cleanup on tenant delete, quota not enforced
 
-**Status:** Review
+**Status:** Review — merged into `dev-2.2` (`d16ff8ec5`), post-merge gates run; not pushed; cluster needs a `minio-bootstrap` re-run for `s3:DeleteBucket`
 **Type:** bugfix
 **Branch:** `task-1025-tenant-bucket-lifecycle` (worktree `hope-v2-task-1025`), based on `dev-2.2` @ `14b7eb776`; target `dev-2.2`
 **Related:** TASK-1024 (found while scoping), TASK-847 (`hope-platform` identity + tenant-bucket policy)
@@ -157,9 +157,33 @@ Unchanged by design: `suspend` / `archive` of a TENANT do not touch its bucket r
 
 Final re-run after formatting: applications 9 files `Tests  242 passed (242)`; domains `Tests  3 passed (3)`; database `Tests  4 passed (4)`. `npx tsc --noEmit -p packages/applications` → exit 0, no output.
 
+## Post-merge verification (orchestrator, 2026-09-30)
+
+Merged `task-1025-tenant-bucket-lifecycle` into `dev-2.2` as `d16ff8ec5` (clean). Then:
+- `52c7119e9` regenerated OpenAPI, the portal specs and the vox-node admin SDK (restore-route and quota doc text). The route manifest did not change.
+- `afee3fe67` updated `platform-consumption-aggregates.task414.test.ts`, which still asserted the old SUM aggregate.
+- Deployment repo `0c62acb`: `s3:DeleteBucket` on `hope-attachments-*` / `hope-recordings-*` in `hope-platform-rw` (lane risk 1).
+
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/domains test` | 179 files / 2006 passed (after `afee3fe67`) |
+| `pnpm --filter @arcaai/applications test` | 1065 files / 16052 passed, 4 skipped |
+| `pnpm --filter @arcaai/database test` | 110 files / 2013 passed |
+| `pnpm test:unit` (root workspace) | 28550 passed / 47 failed. **Pre-existing:** 46 are in `baseServices/logging/__tests__` (fail only in the full root run; pass in isolation and in the package run) and 1 is the env-sync bootstrap-size check. The same logging failures reproduce on the pre-change baseline `3e918afc8` (46 failed there). |
+| lint domains / applications / api, `api` typecheck | exit 0 (`@arcaai/database` has no lint script) |
+| `api:openapi:check`, `api:portal:check`, `vox-node gen:admin:check`, `env:sync:check` | exit 0 |
+| `pnpm --filter @arcaai/api build` (turbo, 11 tasks) | exit 0 |
+
+Not run: API e2e (needs the test stack) and a live check against a real MinIO.
+
+**Still open for the owner** (lane risks 2 and 5):
+- Quota enforcement is live on deploy (`entitlements.enabled` is ON), so any tenant already over its plan across both buckets gets 409 on new gateway uploads.
+- A tenant restored after its purge comes back with no system buckets. Re-provisioning is refused because the purged rows still hold the bucket names.
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-30 | Ticket opened from the TASK-1024 scoping (gaps 1–3). |
 | 2026-09-30 | Owner decisions OD-1/2/3 recorded; G1 (`0263e7088`), G2 (`490bf9d4e`), G3 (`013951b86`) implemented on `task-1025-tenant-bucket-lifecycle`; status Review. |
+| 2026-09-30 | Merged into `dev-2.2` (`d16ff8ec5`); artifacts regenerated (`52c7119e9`); TASK-414 aggregate test aligned (`afee3fe67`); deployment `s3:DeleteBucket` (`0c62acb`); post-merge gate evidence recorded. |
