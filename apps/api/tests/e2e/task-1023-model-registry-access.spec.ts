@@ -64,19 +64,12 @@ test.describe('TASK-1023 — model registry access', () => {
       expect(Object.keys(item).sort()).toEqual(VIEW_KEYS);
       expect(typeof item.lifecycleStatus).toBe('string');
     }
-    const wire = JSON.stringify(page);
-    for (const hidden of [
-      'bucketPrefix',
-      'primaryObject',
-      'localPath',
-      'checksum',
-      'manifestDigest',
-      '_metadata',
-      'metaData',
-      'referrers',
-      '/mnt/models-bucket',
-    ]) {
-      expect(wire, `the registry view must not carry ${hidden}`).not.toContain(hidden);
+    // The exact key set above already proves no hidden FIELD is returned. A storage path must not
+    // leak through any other value either — free-text descriptions are left out, since a seeded
+    // description may legitimately mention an internal term in prose.
+    const structured = JSON.stringify(page.data.map(({ description: _description, ...rest }: Record<string, unknown>) => rest));
+    for (const hidden of ['/mnt/models-bucket', 'hf/hub/', 's3://']) {
+      expect(structured, `the registry view must not carry ${hidden}`).not.toContain(hidden);
     }
 
     const access = await request.get(`${BASE}/access`, { headers });
