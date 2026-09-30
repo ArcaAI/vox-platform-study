@@ -298,6 +298,14 @@ export interface CancelWorkflowRunResult {
   status: string;
 }
 
+/** Acknowledgement of `POST /harness/workflows/{workflowId}/terminate` (harness `admin.py`). */
+export interface TerminateWorkflowRunResult {
+  workflowId?: string;
+  runId?: string | null;
+  action?: string;
+  status?: string;
+}
+
 /**
  * Response of `GET /workflow-runs/{runId}/gate` — the live state of a run's HITL gate, read
  * from the CHILD workflow's own `state` query.
@@ -597,6 +605,31 @@ export class HarnessGatewayService {
     const response = await this.httpService.axiosRef.post(url, {}, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
     this.logger.log({ message: 'Harness workflow run cancel requested', runId });
     return response.data as CancelWorkflowRunResult;
+  }
+
+  /**
+   * TASK-1022 L-RESUME — TERMINATE an interpreter run, non-cooperatively.
+   *
+   * `cancelWorkflowRun` only sets the interpreter's `_cancelled` flag, which the walk reads BETWEEN
+   * stages: a run parked on a `core.humanReview` is awaiting its `ReviewGateWorkflow` child and
+   * would stay parked until the review timed out. Terminating closes the run at once, and its
+   * review child with it (Temporal's default parent-close policy, TERMINATE — `_run_review`
+   * sets none). It emits no `workflow.run.completed`, so no terminal handler reacts to it; the
+   * caller records the outcome it chose.
+   *
+   * Addressed through the harness admin route by the interpreter's deterministic workflow id —
+   * the same id `WorkflowRun` joins on (`INTERPRETER_WORKFLOW_ID_PREFIX`).
+   */
+  async terminateWorkflowRun(runId: string, input: { tenantId: string; reason: string }): Promise<TerminateWorkflowRunResult> {
+    const workflowId = `workflow-interpreter-${runId}`;
+    const url = `${this.harnessUrl}/api/v1/internal/harness/workflows/${encodeURIComponent(workflowId)}/terminate`;
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { tenantId: input.tenantId, reason: input.reason },
+      { headers: await this.buildHeaders(input.tenantId), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS },
+    );
+    this.logger.log({ message: 'Harness workflow run terminated', runId });
+    return response.data as TerminateWorkflowRunResult;
   }
 
   /** Live gate state for a run. See `WorkflowRunGateState` — `exists: false` is a normal 200. */

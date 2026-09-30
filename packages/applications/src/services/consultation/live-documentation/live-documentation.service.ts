@@ -7566,8 +7566,15 @@ return 0`;
     // coming, and a run must not wait two hours for a record that a non-owner stop never wrote.
     // The one exception is a stop still draining in the background: its record IS
     // coming, and the pending marker says so until it lands.
+    //
+    // TASK-1022 L-RESUME — both "not yet" answers hold EVEN WITH a record in place. The record is
+    // keyed by consultation and outlives its recording (2h), so on a RESUMED consultation it is the
+    // EARLIER recording's handoff: while the consultation records again, or while the resumed stop
+    // still drains, the handoff that matters has not been written yet. A governed resume starts a
+    // fresh run at that stop, and with the old `!record &&` guard its first poll finalised the
+    // first recording's note on the spot.
     const stillLive = consultation !== null && LIVE_CAPTURE_STATUSES.has(String(consultation.status ?? ''));
-    if (!record && (stillLive || (await this.isHandoffPending(consultationId)))) return { ended: false, outputs: {}, context: {} };
+    if (stillLive || (await this.isHandoffPending(consultationId))) return { ended: false, outputs: {}, context: {} };
 
     const requested = new Set(nodeIds);
     const outputs = Object.fromEntries(Object.entries(record?.outputs ?? {}).filter(([nodeId]) => requested.size === 0 || requested.has(nodeId)));

@@ -1,5 +1,6 @@
 import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConsultationRepository, generateId, WorkflowDefinitionRepository } from '@arcaai/domains';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { IWorkflowRunCompletionPort } from '../../workflow-run/IWorkflowRunCompletionPort';
 import { IWorkflowRunService } from '../../workflow-run/IWorkflowRunService';
@@ -9,7 +10,7 @@ import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
 import { effectiveTriggerConfig, triggerContextBinding } from '../../workflow-exposure/effective-trigger-schema';
 import { EffectiveTriggerSchemaService } from '../../workflow-exposure/effective-trigger-schema.service';
-import { withGoverningEngineMarker } from '../governing-engine';
+import { type GoverningEngineMarker, readGoverningEngineMarker, withGoverningEngineMarker } from '../governing-engine';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import { CORE_PALETTE_KEY } from '@arcaai/workflow-contract';
 import { consultationSelectionViolation } from './consultation-selection-policy';
@@ -20,7 +21,14 @@ import {
   GoverningWorkflowPreview,
   IConsultationWorkflowDispatchService,
   PreviewGoverningWorkflowInput,
+  SupersedeGoverningRunInput,
+  SupersedeGoverningRunResult,
 } from './IConsultationWorkflowDispatchService';
+
+/** TASK-1022 L-RESUME — the `WorkflowRun.trigger` of a run that re-finalises a resumed consultation. */
+const CONSULTATION_RESUME_TRIGGER = 'consultation resume';
+/** Compare-and-set attempts on the marker before a supersede gives up on a row other writers keep moving. */
+const SUPERSEDE_CLAIM_ATTEMPTS = 3;
 
 /**
  * Dispatches a tenant-authored `consultation`-palette workflow at consultation open,
@@ -30,6 +38,8 @@ import {
 @Injectable()
 export class ConsultationWorkflowDispatchService implements IConsultationWorkflowDispatchService {
   private readonly logger = new Logger(ConsultationWorkflowDispatchService.name);
+  /** TASK-1022 L-RESUME — one supersede at a time per consultation, in this process. */
+  private readonly supersedesInFlight = new Map<string, Promise<SupersedeGoverningRunResult>>();
 
   constructor(
     @Inject(IWorkflowAssignmentService) private readonly assignments: IWorkflowAssignmentService,
@@ -310,6 +320,234 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       const reason = error instanceof Error ? error.message : String(error);
       this.logger.warn({ message: 'Consultation workflow dispatch failed — falling back to the default loop', consultationId, reason });
       return notDispatched(reason);
+    }
+  }
+
+  /**
+   * TASK-1022 L-RESUME — see `IConsultationWorkflowDispatchService.supersedeGoverningRun`.
+   *
+   * ## Why supersede, and not a signal to the parked run
+   *
+   * The parked run cannot re-finalise: `n_finalize` ran before its `core.humanReview`, and the
+   * interpreter's signal surface is `cancel`-only by design. Teaching it to loop back would be
+   * workflow code (a `workflow.patched` gate and a replay fixture). A FRESH run of the same graph
+   * needs none: its live phase polls `readLiveHandoff`, which answers `ended: true` at once with the
+   * handoff the resumed stop wrote (its record covers the whole visit — the live lane resumed from
+   * the persisted sections), and its `n_finalize` → `persistDraft` ADOPTS the existing unsigned
+   * `RAW_SUMMARY` in place (same summary id, a new version), moves the consultation to
+   * `PENDING_REVIEW` and restarts the completion window.
+   *
+   * ## Order, and what each failure leaves behind
+   *
+   *   1. CLAIM the marker by compare-and-set, before anything starts. Two deliveries of one stop
+   *      (or two instances) race here and exactly one wins; the loser re-reads, finds its own
+   *      `supersedeTriggerId` and starts nothing.
+   *   2. Anchor the `WorkflowRun` row and START the run. A failure puts the old marker back and
+   *      leaves the parked run untouched — the consultation keeps its first note.
+   *   3. Only then TERMINATE the parked run (its review child goes with it) and close its row as
+   *      `CANCELED`. Best-effort: a run that is already gone, or cannot be reached, costs nothing
+   *      but a log line, because the marker already names the new run and every consultation
+   *      surface (sign-off review release, completion stamping) follows the marker.
+   */
+  supersedeGoverningRun(input: SupersedeGoverningRunInput): Promise<SupersedeGoverningRunResult> {
+    const previous = this.supersedesInFlight.get(input.consultationId);
+    const run: Promise<SupersedeGoverningRunResult> = (previous ?? Promise.resolve())
+      // swallow-ok: ordering only — `runSupersede` never rejects and logs its own failures.
+      .catch(() => undefined)
+      .then(() => this.runSupersede(input))
+      .finally(() => {
+        if (this.supersedesInFlight.get(input.consultationId) === run) this.supersedesInFlight.delete(input.consultationId);
+      });
+    this.supersedesInFlight.set(input.consultationId, run);
+    return run;
+  }
+
+  private async runSupersede(input: SupersedeGoverningRunInput): Promise<SupersedeGoverningRunResult> {
+    const { consultationId, tenantId, triggerId } = input;
+    const failed = (reason: string, runId: string | null): SupersedeGoverningRunResult => {
+      this.logger.error({
+        message: 'Governed resume NOT re-finalised — the governing run could not be superseded; the note still covers only the earlier recordings',
+        consultationId,
+        runId,
+        triggerId,
+        reason,
+      });
+      return { superseded: false, runId, supersededRunId: null, skippedReason: 'failed', reason };
+    };
+
+    try {
+      let consultation = await this.consultationRepository.findById(consultationId);
+      if (!consultation) return failed('consultation not found', null);
+      let marker = readGoverningEngineMarker(consultation.metadata);
+      if (!marker) return { superseded: false, runId: null, supersededRunId: null, skippedReason: 'not-governed' };
+      if (marker.supersedeTriggerId === triggerId) return this.duplicate(consultationId, triggerId, marker);
+
+      // The version the parked run EXECUTED, not whatever is published now: a re-finalisation must
+      // produce the note the same graph would have produced, not a different graph's.
+      const governing = await this.workflowRunService.getRun(tenantId, marker.workflowRunId);
+      const definition = await this.definitionRepository.findById(governing.workflowVersionId);
+      if (!definition?.compiledConfig) return failed('the governing definition version has no compiled configuration', marker.workflowRunId);
+      if (!this.s3Service) return failed('no claim-check storage backend is configured', marker.workflowRunId);
+
+      const effective = await this.effectiveTriggerConfigFor(tenantId, definition.compiledConfig, definition.contextSchemaFollowsLatest);
+      const configRef = await mintCompiledConfigClaimCheckRef(effective.config, CLAIM_CHECK_BUCKET, (b, key, data, contentType) =>
+        this.s3Service!.putFile(b, key, data, contentType),
+      );
+
+      const runId = generateId();
+      const sessionId = consultationDispatchSessionId(runId);
+
+      // 1. CLAIM.
+      let previousMarker: GoverningEngineMarker | null = null;
+      for (let attempt = 0; attempt < SUPERSEDE_CLAIM_ATTEMPTS && previousMarker === null; attempt++) {
+        if (attempt > 0) {
+          consultation = await this.consultationRepository.findById(consultationId);
+          marker = readGoverningEngineMarker(consultation?.metadata);
+          if (!consultation || !marker) return failed('the governing marker disappeared while superseding', null);
+          if (marker.supersedeTriggerId === triggerId) return this.duplicate(consultationId, triggerId, marker);
+        }
+        const expectedVersion = consultation.version;
+        const claimed = marker;
+        consultation.metadata = withGoverningEngineMarker(consultation.metadata, {
+          workflowRunId: runId,
+          workflowDefinitionSlug: definition.slug,
+          supersededRunId: claimed.workflowRunId,
+          supersedeTriggerId: triggerId,
+        });
+        try {
+          await this.consultationRepository.updateWithVersion(consultationId, consultation, expectedVersion);
+          previousMarker = claimed;
+        } catch (error) {
+          if (!(error instanceof OptimisticConcurrencyException)) throw error;
+        }
+      }
+      if (!previousMarker) return failed('the consultation row kept changing — the governing marker could not be claimed', marker.workflowRunId);
+      const supersededRunId = previousMarker.workflowRunId;
+
+      // 2. START — the same anchor-then-start order as `dispatchForConsultation`.
+      try {
+        await this.workflowRunService.recordRunStarted({
+          tenantId,
+          workflowVersionId: definition.id,
+          workflowSlug: definition.slug,
+          workflowVersionNumber: definition.versionNumber,
+          definitionName: definition.name,
+          sessionId,
+          runId,
+          trigger: CONSULTATION_RESUME_TRIGGER,
+          isSandbox: false,
+        });
+        await this.harnessGateway.startWorkflowRun({
+          runId,
+          sessionId,
+          workflowVersionId: definition.id,
+          tenantId,
+          configRef,
+          sandbox: false,
+          subject: {
+            consultationId,
+            userId: consultation.doctorId ?? input.userId ?? undefined,
+            externalPatientId: consultation.patientId ?? undefined,
+          },
+          ...(input.authoredContext && Object.keys(input.authoredContext).length > 0 ? { payload: input.authoredContext } : {}),
+        });
+      } catch (error) {
+        await this.restoreMarker(consultationId, runId, previousMarker);
+        return failed(error instanceof Error ? error.message : String(error), supersededRunId);
+      }
+
+      try {
+        this.runCompletion?.watch(tenantId, runId, consultationId);
+      } catch (error) {
+        this.logger.warn({
+          message: 'Superseding run started but its completion watcher could not be attached — the terminal status waits for a reader',
+          consultationId,
+          runId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      // 3. RETIRE the parked run.
+      await this.retireSupersededRun(tenantId, consultationId, supersededRunId, runId);
+
+      this.logger.log({
+        message: 'Governed resume — the governing run was superseded; the new run re-finalises the whole visit',
+        consultationId,
+        runId,
+        supersededRunId,
+        triggerId,
+        slug: definition.slug,
+        workflowVersionId: definition.id,
+      });
+      return { superseded: true, runId, supersededRunId };
+    } catch (error) {
+      return failed(error instanceof Error ? error.message : String(error), null);
+    }
+  }
+
+  private duplicate(consultationId: string, triggerId: string, marker: GoverningEngineMarker): SupersedeGoverningRunResult {
+    this.logger.log({
+      message: 'Governed resume already re-finalised for this recording — nothing started',
+      consultationId,
+      triggerId,
+      runId: marker.workflowRunId,
+    });
+    return { superseded: false, runId: marker.workflowRunId, supersededRunId: marker.supersededRunId ?? null, skippedReason: 'duplicate' };
+  }
+
+  /** Put the marker back after a start that failed — only if it still names the run that never started. */
+  private async restoreMarker(consultationId: string, runId: string, previous: GoverningEngineMarker): Promise<void> {
+    try {
+      const consultation = await this.consultationRepository.findById(consultationId);
+      if (!consultation || readGoverningEngineMarker(consultation.metadata)?.workflowRunId !== runId) return;
+      const expectedVersion = consultation.version;
+      const metadata = { ...(consultation.metadata as Record<string, unknown>) };
+      // Rebuilt from the previous marker ALONE, so the claim's provenance fields do not survive it.
+      delete metadata.governingEngine;
+      consultation.metadata = withGoverningEngineMarker(metadata, previous);
+      await this.consultationRepository.updateWithVersion(consultationId, consultation, expectedVersion);
+    } catch (error) {
+      this.logger.error({
+        message: 'Superseding run failed to start AND the governing marker could not be restored — the marker names a run that never started',
+        consultationId,
+        runId,
+        previousRunId: previous.workflowRunId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Terminate the parked run (and its review child) and close its row. Best-effort, both halves. */
+  private async retireSupersededRun(tenantId: string, consultationId: string, supersededRunId: string, runId: string): Promise<void> {
+    const reason = `superseded by ${runId} (resumed recording re-finalised by the governing graph)`;
+    try {
+      await this.harnessGateway.terminateWorkflowRun(supersededRunId, { tenantId, reason });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Superseded governing run could not be terminated (already closed, or unreachable) — the marker already names the new run',
+        consultationId,
+        supersededRunId,
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    try {
+      await this.workflowRunService.recordRunFinished({
+        tenantId,
+        sessionId: consultationDispatchSessionId(supersededRunId),
+        runId: supersededRunId,
+        status: 'CANCELED',
+        endedAt: new Date(),
+        terminalReason: reason,
+        consultationId,
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Superseded governing run row could not be closed as CANCELED',
+        consultationId,
+        supersededRunId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

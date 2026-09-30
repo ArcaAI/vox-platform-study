@@ -463,4 +463,21 @@ describe('HarnessGatewayService', () => {
       expect(result.status).toBe('cancel_requested');
     });
   });
+
+  describe('terminateWorkflowRun (TASK-1022 L-RESUME)', () => {
+    it('POSTs the harness admin terminate route for the interpreter workflow id, with tenant and reason', async () => {
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { workflowId: 'workflow-interpreter-run-1', action: 'terminate' } });
+      const service = build('http://harness:8866', 'tok');
+
+      const result = await service.terminateWorkflowRun('run-1', { tenantId: 't-1', reason: 'superseded by run-2' });
+
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+      const [url, body, options] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(url).toBe('http://harness:8866/api/v1/internal/harness/workflows/workflow-interpreter-run-1/terminate');
+      expect(body).toEqual({ tenantId: 't-1', reason: 'superseded by run-2' });
+      expect(options.headers['X-Service-Token']).toBe('tok');
+      expect(options.timeout).toBe(15_000);
+      expect(result.action).toBe('terminate');
+    });
+  });
 });

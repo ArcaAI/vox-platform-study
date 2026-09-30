@@ -80,6 +80,17 @@ export interface GoverningEngineMarker {
   readonly terminalReason?: string;
   /** When the run ended, ISO-8601. */
   readonly endedAt?: string;
+  /**
+   * TASK-1022 L-RESUME — the run THIS one replaced, when a resumed recording re-finalised the
+   * consultation through its governing graph (`ConsultationWorkflowDispatchService.supersedeGoverningRun`).
+   * Absent on a run started at open.
+   */
+  readonly supersededRunId?: string;
+  /**
+   * TASK-1022 L-RESUME — the resumed session's aggregate transcript id that caused the supersede.
+   * The idempotence key: a second delivery of the same resumed stop finds it here and starts nothing.
+   */
+  readonly supersedeTriggerId?: string;
 }
 
 /** The persisted run vocabulary. Never `SUCCEEDED`/`DEGRADED` — those are interpreter words. */
@@ -136,6 +147,8 @@ export function readGoverningEngineMarker(metadata: unknown): GoverningEngineMar
     ...(marker.degraded === true ? { degraded: true } : {}),
     ...(typeof marker.terminalReason === 'string' ? { terminalReason: marker.terminalReason } : {}),
     ...(typeof marker.endedAt === 'string' ? { endedAt: marker.endedAt } : {}),
+    ...(typeof marker.supersededRunId === 'string' ? { supersededRunId: marker.supersededRunId } : {}),
+    ...(typeof marker.supersedeTriggerId === 'string' ? { supersedeTriggerId: marker.supersedeTriggerId } : {}),
   };
 }
 
@@ -194,6 +207,8 @@ export function withGoverningEngineMarker(metadata: unknown, marker: GoverningEn
       ...(marker.degraded === true ? { degraded: true } : {}),
       ...(marker.terminalReason ? { terminalReason: marker.terminalReason } : {}),
       ...(marker.endedAt ? { endedAt: marker.endedAt } : {}),
+      ...(marker.supersededRunId ? { supersededRunId: marker.supersededRunId } : {}),
+      ...(marker.supersedeTriggerId ? { supersedeTriggerId: marker.supersedeTriggerId } : {}),
     },
   };
 }
