@@ -78,7 +78,12 @@ const REVISIT_TEMPLATE = {
 describe('TASK-1022 — the frozen template headings on the live handoff', () => {
   it('stores the checklist titles, in template order, on the record', async () => {
     const { service, stored } = buildService();
-    const session: SessionShape = { consultationId: CID, tenantId: TENANT, liveNodeOutputs: { n_summary: { text: 'x' } }, templateSnapshot: REVISIT_TEMPLATE };
+    const session: SessionShape = {
+      consultationId: CID,
+      tenantId: TENANT,
+      liveNodeOutputs: { n_summary: { text: 'x' } },
+      templateSnapshot: REVISIT_TEMPLATE,
+    };
 
     await stop(service, session);
 
