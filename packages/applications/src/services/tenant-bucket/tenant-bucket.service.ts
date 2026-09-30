@@ -3,13 +3,14 @@ import {
   ResourceType,
   SYSTEM_TENANT_ID,
   SysEventType,
+  TenantBucketEntity,
   TenantBucketFactory,
   TenantBucketPurpose,
   TenantBucketRepository,
   TenantPlan,
   TenantRepository,
 } from '@arcaai/domains';
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService, isSuperAdmin } from '../../common';
@@ -332,45 +333,36 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       return [];
     }
 
-    const created: TenantBucketResponse[] = [];
-    for (const bucket of toCreate) {
-      try {
-        await this.blobStorage.createBucket(bucket.name);
-      } catch (error) {
-        this.logger.warn({
-          message: 'Bucket may already exist, continuing with DB record',
-          bucketName: bucket.name,
-          error: error instanceof Error ? error.message : String(error),
-        });
+    // TASK-1025 G1 (owner decision OD-1) — FAIL AND ROLL BACK. Every physical
+    // bucket is made BEFORE any row is written, so a registry row can never
+    // name a bucket that does not exist. A storage failure raises; whatever
+    // this attempt made is undone first — the rows it wrote (hard delete: they
+    // were never live, and a soft delete would keep the unique `name` held
+    // against the retry) and the buckets it CREATED (best effort). A bucket that
+    // already existed is adopted and never removed: it may hold data.
+    const createdBuckets: string[] = [];
+    const savedRows: TenantBucketEntity[] = [];
+    try {
+      for (const bucket of toCreate) {
+        if (await this.ensurePhysicalSystemBucket(bucket.name)) {
+          createdBuckets.push(bucket.name);
+        }
+        await this.applyTenantIsolationPolicyBestEffort(bucket.name, tenantId);
       }
-
-      // Best-effort S3/MinIO tenant-isolation policy on the SHARED store. No-op
-      // for tenants on a DEDICATED Azure/S3 provider (no global bucket to target);
-      // failures are swallowed below.
-      try {
-        await this.s3Service.setBucketPolicy(bucket.name, {
-          Version: '2012-10-17',
-          Statement: [
-            {
-              Effect: 'Allow',
-              Principal: { AWS: ['*'] },
-              Action: ['s3:GetObject', 's3:PutObject', 's3:ListBucket'],
-              Resource: [`arn:aws:s3:::${bucket.name}`, `arn:aws:s3:::${bucket.name}/*`],
-              Condition: { StringEquals: { 'aws:PrincipalTag/tenantId': tenantId } },
-            },
-          ],
-        });
-      } catch (error) {
-        this.logger.warn({
-          message: 'Failed to set bucket policy, continuing',
-          bucketName: bucket.name,
-          error: error instanceof Error ? error.message : String(error),
-        });
+      for (const bucket of toCreate) {
+        savedRows.push(await this.tenantBucketRepository.create(bucket));
       }
-
-      const saved = await this.tenantBucketRepository.create(bucket);
-      created.push(TenantBucketDtoMapper.toResponse(saved));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      await this.rollbackSystemBucketProvisioning(tenantId, savedRows, createdBuckets);
+      this.logger.error({ message: 'System bucket provisioning failed; rolled back', tenantId, error: reason });
+      throw new ServiceUnavailableException(
+        `Could not provision the system storage buckets (${toCreate.map((b) => b.name).join(', ')}) for tenant ${tenantId}: ${reason}. ` +
+          'Nothing from this attempt was kept; fix the storage backend and retry.',
+      );
     }
+
+    const created = savedRows.map(TenantBucketDtoMapper.toResponse);
 
     this.logger.log({
       message: 'System buckets provisioned',
@@ -379,6 +371,91 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     });
 
     return created;
+  }
+
+  /**
+   * TASK-1025 G1 — make sure the physical bucket exists. Returns `true` only
+   * when THIS call created it (so a rollback knows what it may remove). An
+   * existence-check failure is NOT swallowed: storage we cannot even reach is a
+   * provisioning failure, not "probably fine". Losing a create race to
+   * ourselves (`BucketAlreadyOwnedByYou`) is the one tolerated create error —
+   * the bucket is ours either way, and not ours to remove.
+   */
+  private async ensurePhysicalSystemBucket(bucketName: string): Promise<boolean> {
+    if (await this.blobStorage.bucketExists(bucketName)) return false;
+    try {
+      await this.blobStorage.createBucket(bucketName);
+      return true;
+    } catch (error) {
+      if ((error as { name?: string })?.name === 'BucketAlreadyOwnedByYou') return false;
+      throw error;
+    }
+  }
+
+  /**
+   * S3/MinIO tenant-isolation policy on the SHARED store — BEST EFFORT BY
+   * DESIGN, deliberately left so by TASK-1025 G1 (see the ticket README,
+   * "OD-1 — the bucket policy"). The in-cluster `hope-platform` identity is not
+   * granted `s3:PutBucketPolicy` on tenant buckets, and the
+   * `aws:PrincipalTag/tenantId` condition has no effect in MinIO, so making this
+   * step fatal would fail every tenant creation without protecting anything.
+   * Tenant isolation is enforced by the gateway (tenant-scoped bucket rows,
+   * 404-over-403) and the `hope-platform` prefix policy.
+   */
+  private async applyTenantIsolationPolicyBestEffort(bucketName: string, tenantId: string): Promise<void> {
+    try {
+      await this.s3Service.setBucketPolicy(bucketName, {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: { AWS: ['*'] },
+            Action: ['s3:GetObject', 's3:PutObject', 's3:ListBucket'],
+            Resource: [`arn:aws:s3:::${bucketName}`, `arn:aws:s3:::${bucketName}/*`],
+            Condition: { StringEquals: { 'aws:PrincipalTag/tenantId': tenantId } },
+          },
+        ],
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to set bucket policy, continuing (best effort by design)',
+        bucketName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * TASK-1025 G1 — undo a failed provisioning attempt. Rows first (they are the
+   * registry's claim that a bucket exists), then the buckets this attempt
+   * created. Every step is best effort and logged: the caller is already
+   * raising the original failure, and a rollback error must not mask it.
+   */
+  private async rollbackSystemBucketProvisioning(tenantId: string, savedRows: TenantBucketEntity[], createdBuckets: string[]): Promise<void> {
+    for (const row of savedRows) {
+      try {
+        await this.tenantBucketRepository.delete(row.id);
+      } catch (error) {
+        this.logger.error({
+          message: 'Rollback could not remove a system bucket row',
+          tenantId,
+          bucketName: row.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    for (const bucketName of createdBuckets) {
+      try {
+        await this.blobStorage.deleteBucket(bucketName);
+      } catch (error) {
+        this.logger.warn({
+          message: 'Rollback could not remove a bucket created by the failed attempt; it is empty and will be adopted on retry',
+          tenantId,
+          bucketName,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   /**

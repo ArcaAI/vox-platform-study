@@ -1483,6 +1483,7 @@ describe('TenantService', () => {
         workflowAssignment: { deleteMany: deleteManySpy('workflowAssignment') },
         workflowDefinition: { deleteMany: deleteManySpy('workflowDefinition') },
         department: { deleteMany: deleteManySpy('department') },
+        tenantBucket: { deleteMany: deleteManySpy('tenantBucket') },
         tenant: {
           delete: vi.fn().mockImplementation(async () => {
             callOrder.push('tenant');
@@ -1567,6 +1568,8 @@ describe('TenantService', () => {
       expect(tx.agent.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
       expect(tx.workflowDefinition.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
       expect(tx.department.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
+      // TASK-1025 G1 — the bucket registry rows go too (unique `name` would block the retry).
+      expect(tx.tenantBucket.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
     });
 
     it('refuses to purge the reserved system tenant', async () => {
@@ -1877,13 +1880,16 @@ describe('TenantService', () => {
       expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
     });
 
-    it('does not block tenant creation when bucket provisioning fails (mirrors existing behaviour)', async () => {
+    // TASK-1025 G1 (owner decision OD-1) — REVERSED: a tenant whose system
+    // buckets cannot be provisioned is rolled back and the error is raised.
+    // Full coverage: `tenant.service.provision-failure.task1025.test.ts`.
+    it('fails tenant creation when bucket provisioning fails (TASK-1025 G1)', async () => {
       const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
       mockTenantRepository.create.mockResolvedValue(newTenant);
-      mockTenantBucketService.provisionSystemBuckets.mockRejectedValue(new Error('s3 down'));
+      mockTenantBucketService.provisionSystemBuckets.mockRejectedValueOnce(new Error('s3 down'));
       mockTenantRepository.findFirst.mockResolvedValue(null);
 
-      await expect(service.create({ key: 'NEW_TENANT', name: 'New Tenant' })).resolves.toEqual(expect.objectContaining({ id: 'new-tenant-id' }));
+      await expect(service.create({ key: 'NEW_TENANT', name: 'New Tenant' })).rejects.toThrow('s3 down');
     });
   });
 

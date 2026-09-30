@@ -152,14 +152,31 @@ export class TenantService extends BaseService implements ITenantService {
       data: tenant.toObject() as object,
     });
 
+    // TASK-1025 G1 (owner decision OD-1) — the two system buckets are NOT
+    // best-effort like the steps below: a tenant whose storage does not exist
+    // is not a tenant, it is a support ticket waiting for its first upload.
+    // `provisionSystemBuckets` undoes its own rows and buckets; here the tenant
+    // row written a moment ago is hard-purged (releasing its key for a retry)
+    // and the provisioning error is raised to the caller. The purge is itself
+    // best effort — its failure is logged and the ORIGINAL error still wins.
     try {
       await this.tenantBucketService.provisionSystemBuckets(tenant.id);
     } catch (error) {
-      this.logger.warn({
-        message: 'Failed to provision system storage buckets for new tenant',
+      this.logger.error({
+        message: 'Failed to provision system storage buckets for new tenant; rolling the tenant back',
         tenantId: tenant.id,
         error: error instanceof Error ? error.message : String(error),
       });
+      try {
+        await this.purgeFailedProvisioning(tenant.id, 'System storage buckets could not be provisioned; tenant creation rolled back (TASK-1025 G1)');
+      } catch (purgeError) {
+        this.logger.error({
+          message: 'Rolling back a tenant whose storage buckets could not be provisioned also failed; the tenant row may remain',
+          tenantId: tenant.id,
+          error: purgeError instanceof Error ? purgeError.message : String(purgeError),
+        });
+      }
+      throw error;
     }
 
     // Write the plan's storageQuotaBytes onto the primary
@@ -753,7 +770,10 @@ export class TenantService extends BaseService implements ITenantService {
    * not leave the sweep half-done (see `.claude/rules/04-application-services.md`
    * §Transactions).
    */
-  async purgeFailedProvisioning(tenantId: EntityId): Promise<void> {
+  async purgeFailedProvisioning(
+    tenantId: EntityId,
+    purgeReason = 'Provisioning failed before an admin was attached; compensating purge (W2-8)',
+  ): Promise<void> {
     const existing = await this.tenantRepository.findById(tenantId);
     this.assertNotSystemTenant(existing, 'purged');
 
@@ -772,6 +792,11 @@ export class TenantService extends BaseService implements ITenantService {
       // Department catalog clone — last of the content, now that nothing
       // left standing still holds an FK into it.
       await tx.department.deleteMany({ where: { tenantId } });
+      // TASK-1025 G1 — the tenant's bucket REGISTRY rows. `TenantBucket.name`
+      // is globally unique, so a row left behind here made the identical retry
+      // fail on bucket provisioning. Only the rows go: the physical buckets are
+      // empty (nobody could log in to write to them) and the retry adopts them.
+      await tx.tenantBucket.deleteMany({ where: { tenantId } });
       // The tenant row itself, released so an identical retry (same `key`)
       // can succeed — a soft delete would leave the unique constraint held.
       await tx.tenant.delete({ where: { id: tenantId } });
@@ -779,7 +804,7 @@ export class TenantService extends BaseService implements ITenantService {
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: tenantId,
-      data: { ...(existing.toObject() as object), purgeReason: 'Provisioning failed before an admin was attached; compensating purge (W2-8)' },
+      data: { ...(existing.toObject() as object), purgeReason },
     });
   }
 

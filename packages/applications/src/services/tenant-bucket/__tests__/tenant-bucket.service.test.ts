@@ -521,6 +521,9 @@ describe('TenantBucketService', () => {
       mockTenantRepository.findById.mockResolvedValue(mockTenant);
       mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([]);
       mockTenantBucketRepository.create.mockImplementation((entity: any) => entity);
+      // TASK-1025 G1 — provisioning checks existence first and only creates a
+      // bucket that is not there yet.
+      mockBlobStorage.bucketExists.mockResolvedValue(false);
       mockBlobStorage.createBucket.mockResolvedValue(undefined);
 
       const result = await service.provisionSystemBuckets('tenant-1');
@@ -541,6 +544,7 @@ describe('TenantBucketService', () => {
       // `recordings` is already provisioned — only `attachments` should be created.
       mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([createMockBucketEntity({ slug: 'recordings' })]);
       mockTenantBucketRepository.create.mockImplementation((entity: any) => entity);
+      mockBlobStorage.bucketExists.mockResolvedValue(false);
       mockBlobStorage.createBucket.mockResolvedValue(undefined);
 
       const result = await service.provisionSystemBuckets('tenant-1');
