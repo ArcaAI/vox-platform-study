@@ -451,3 +451,47 @@ export const HARNESS_CLAIM_CHECK_ENABLED: SettingDescriptor = {
     'Turning it off is a deliberate acceptance of unbounded Temporal history, exactly as the harness startup validator states.',
   default: true,
 };
+
+/**
+ * The model-publisher worker's download staging — its path and its budget.
+ *
+ * Both stay `tier: 'env'`: one is a path on the worker's own filesystem, the
+ * other the size of the volume behind it (on the cluster the staging emptyDir's
+ * `sizeLimit`, set by the publisher Deployment) — topology, fixed for the
+ * process lifetime, with no admin write path. But neither is needed to REACH
+ * the database or to AUTHENTICATE to Vault, so they are NOT the bootstrap floor
+ * (TASK-1027: declared there by TASK-1019, they pushed the floor past its
+ * 60-line target). They sit with the other single-worker runtime key above and,
+ * like it, are spread into the gateway's boot-time env schema: one shared env
+ * file means one shared contract.
+ */
+export const MODEL_PUBLISHER_STAGING_SETTINGS: SettingDescriptor[] = [
+  {
+    key: 'modelPublisher.stagingDir',
+    tier: 'env',
+    dataType: 'string',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: EDITABLE_BY_NONE,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'Model publisher staging directory',
+    description:
+      "Filesystem path under which the model-publisher worker stages each download (streamed to disk, hashed, then multipart-uploaded to `hope-models`). A path on the worker's own filesystem — on the cluster a size-limited emptyDir. Unset falls back to the OS temp dir (`os.tmpdir()`).",
+  },
+  {
+    key: 'modelPublisher.stagingMaxBytes',
+    tier: 'env',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: EDITABLE_BY_NONE,
+    failMode: 'open-to-default',
+    category: 'Service Runtime',
+    label: 'Model publisher staging budget (bytes)',
+    description:
+      'The size, in whole bytes, of the model-publisher worker’s staging volume — on the cluster the staging emptyDir’s `sizeLimit`, set by the publisher Deployment (a topology value). ' +
+      'The download pre-flight refuses (`STAGING_SPACE_INSUFFICIENT`) a publish that exceeds min(filesystem free space, this budget − bytes already under `MODEL_PUBLISHER_STAGING_DIR`): `statfs` reports the NODE’s disk, not the emptyDir’s limit, so without it a publish that fits the node but not the pod gets the pod evicted mid-download. ' +
+      'Unset = no budget (the filesystem free space alone, right for local dev). A value that is not a positive whole number fails the worker at start. Read ONLY by the model-publisher worker.',
+  },
+];

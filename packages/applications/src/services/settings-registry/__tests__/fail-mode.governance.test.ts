@@ -229,11 +229,12 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'vault.wrappedSecretId': 'VAULT_WRAPPED_SECRET_ID',
     'vault.kvMount': 'VAULT_KV_MOUNT',
     'vault.kvPrefix': 'VAULT_KV_PREFIX',
+    'vault.dbAdminPass': 'VAULT_DB_ADMIN_PASS',
+    secretsProvider: 'SECRETS_PROVIDER',
+    // ── env (service runtime, beyond the floor — TASK-1027) ──
     'modelPublisher.stagingDir': 'MODEL_PUBLISHER_STAGING_DIR',
     // TASK-1019 I8 — the staging emptyDir's size, so the pre-flight measures the pod's budget.
     'modelPublisher.stagingMaxBytes': 'MODEL_PUBLISHER_STAGING_MAX_BYTES',
-    'vault.dbAdminPass': 'VAULT_DB_ADMIN_PASS',
-    secretsProvider: 'SECRETS_PROVIDER',
     // Storage bootstrap fallback, superseded by the SYSTEM TenantStorageConfig row
     // once seeded.
     'minio.endpoint': 'MINIO_ENDPOINT',

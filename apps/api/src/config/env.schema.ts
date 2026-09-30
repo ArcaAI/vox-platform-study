@@ -40,6 +40,7 @@
 import {
   BOOTSTRAP_ENV_SETTINGS,
   HARNESS_CLAIM_CHECK_ENABLED,
+  MODEL_PUBLISHER_STAGING_SETTINGS,
   PLATFORM_KNOB_SETTINGS,
   toEnvVarName,
   type SettingDescriptor,
@@ -92,6 +93,9 @@ export const API_ENV_DESCRIPTORS: SettingDescriptor[] = [
   // one shared env file means one shared contract, so a typo in a downstream
   // service's flag fails the gateway's boot instead of silently doing nothing.
   HARNESS_CLAIM_CHECK_ENABLED,
+  // The model-publisher worker's staging path and budget (TASK-1027): `env`, not
+  // the floor, and read by a different process — declared for the same reason.
+  ...MODEL_PUBLISHER_STAGING_SETTINGS,
   ...API_PLATFORM_ENV_SETTINGS,
 ].filter((d) => !NOT_READ_BY_THIS_PROCESS.has(toEnvVarName(d.key)));
 

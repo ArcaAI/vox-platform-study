@@ -42,7 +42,7 @@ import {
 import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
 import { PLATFORM_SECRET_SETTINGS } from './descriptors/platform-secrets.descriptors';
 import { SECURITY_POLICY_SETTINGS } from './descriptors/security-policy.descriptors';
-import { HARNESS_CLAIM_CHECK_ENABLED, SERVICE_RUNTIME_SETTINGS } from './descriptors/service-runtime.descriptors';
+import { HARNESS_CLAIM_CHECK_ENABLED, MODEL_PUBLISHER_STAGING_SETTINGS, SERVICE_RUNTIME_SETTINGS } from './descriptors/service-runtime.descriptors';
 import { TEXT_PROVIDER_CONNECTION_SETTINGS } from './descriptors/text-provider-connections.descriptors';
 import { TEXT_GENERATION_SETTINGS } from './descriptors/text-generation.descriptors';
 import { TEXT_GUARDRAIL_POLICY_SETTINGS } from './descriptors/text-guardrail-policy.descriptors';
@@ -139,6 +139,9 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // pydantic-settings inside the worker), re-categorised out of the dissolved
   // "Feature Flags" bucket — see the descriptor.
   HARNESS_CLAIM_CHECK_ENABLED,
+  // The model-publisher worker's staging path and budget. `env`, but beyond the
+  // bootstrap floor — see the descriptor.
+  ...MODEL_PUBLISHER_STAGING_SETTINGS,
   // The rest of stt's runtime tuning — VAD, streaming geometry and timeouts,
   // transcription chunking, punctuation, semantic endpointing, worker/threading
   // and the non-secret halves of the cloud engine connections. All were

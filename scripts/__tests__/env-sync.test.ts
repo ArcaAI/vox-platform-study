@@ -111,6 +111,17 @@ describe('env:sync — the bootstrap floor (.env.sample first section) carries o
     }
   });
 
+  it('keeps worker-only runtime keys out of the floor, in the platform surface (TASK-1027)', () => {
+    // The model-publisher staging path and budget are `env`-tier (a worker's own
+    // filesystem and pod size), but neither reaches the DB nor authenticates to
+    // Vault — so they belong beyond the floor, still declared for the gateway.
+    const apiKeys = keysOf(artifact('apps/api/.env.sample'));
+    for (const name of ['MODEL_PUBLISHER_STAGING_DIR', 'MODEL_PUBLISHER_STAGING_MAX_BYTES']) {
+      expect(rootKeys, name).not.toContain(name);
+      expect(apiKeys, name).toContain(name);
+    }
+  });
+
   it('stays within the size target (≤ 60 lines)', () => {
     expect(getBootstrapFloorContent().split('\n').length).toBeLessThanOrEqual(60);
   });
