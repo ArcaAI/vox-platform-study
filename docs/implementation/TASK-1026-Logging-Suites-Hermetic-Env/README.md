@@ -1,6 +1,6 @@
 # TASK-1026: Logging unit suites fail under `pnpm test:unit` (ambient `.env.test` logging config)
 
-**Status:** Review
+**Status:** Review — merged into `dev-2.2` (`6f31d9c2e`), post-merge gates green; not pushed
 **Type:** bugfix (tests only — no production code changed)
 **Branch:** `agent/jovial-sinoussi-9321d5` (worktree `sharp-hopper-96900a`), based on `dev-2.2` @ `ad3ffdaea`; target `dev-2.2`
 
@@ -109,3 +109,4 @@ were not reformatted, to keep the diff small.
 | Date | Change |
 |---|---|
 | 2026-09-30 | Root cause found (ambient `.env.test` logging config, not a cross-file leak); suites made hermetic; status Review |
+| 2026-09-30 | Merged into `dev-2.2` from the primary checkout (`6f31d9c2e`, `--no-ff`, with TASK-1026/1027 together). Post-merge gates in the primary: `pnpm --filter @arcaai/applications build` ✓, `pnpm --filter @arcaai/api typecheck` ✓, full root `pnpm test:unit` **exit 0** — root 1947 files / 28598 tests passed (0 logging failures), vox 3298/3298, admin-console 3821/3821. Worktree `sharp-hopper-96900a` and branch `agent/jovial-sinoussi-9321d5` removed after the merge. Not pushed. |

@@ -1,6 +1,6 @@
 # TASK-1027: Model-publisher staging keys are not the bootstrap floor (env-sync floor size test)
 
-**Status:** Review
+**Status:** Review — merged into `dev-2.2` (`6f31d9c2e`), post-merge gates green; not pushed
 **Type:** bugfix (config classification + regenerated env samples)
 **Branch:** `agent/jovial-sinoussi-9321d5` (worktree `sharp-hopper-96900a`), on top of TASK-1026 (`06c1ce322`), based on `dev-2.2` @ `ad3ffdaea`; target `dev-2.2`
 **Related:** TASK-1019 (declared the keys), TASK-1026 (found this while proving `pnpm test:unit`)
@@ -110,3 +110,4 @@ ESLint 0 problems on the changed source files, Prettier clean on every changed s
 | Date | Change |
 |---|---|
 | 2026-09-30 | Found the real cause (TASK-1019's staging keys in the floor, not TASK-1024); moved to service runtime; samples regenerated; status Review |
+| 2026-09-30 | Merged into `dev-2.2` from the primary checkout (`6f31d9c2e`, `--no-ff`, with TASK-1026/1027 together). Post-merge gates in the primary: `pnpm --filter @arcaai/applications build` ✓, `pnpm --filter @arcaai/api typecheck` ✓, `pnpm env:sync --check` OK (after rebuilding `@arcaai/applications` dist; the first run used the primary's stale dist without the new export). full root `pnpm test:unit` **exit 0** — root 1947 files / 28598 tests passed (0 logging failures), vox 3298/3298, admin-console 3821/3821. Worktree `sharp-hopper-96900a` and branch `agent/jovial-sinoussi-9321d5` removed after the merge. Not pushed. |
