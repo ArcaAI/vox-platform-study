@@ -302,7 +302,9 @@ export class ModelRegistryOperationsService extends BaseService {
     const out: DownloadMissingResponse = { enqueued: [], skipped: [] };
     for (const row of rows) {
       const skip = (reason: DownloadMissingResponse['skipped'][number]['reason']) => out.skipped.push({ id: row.id, slug: row.slug, reason });
-      if (row.source !== AiModelSource.HUGGINGFACE && !S3_SOURCE.test(row.sourceUri ?? '')) {
+      // A LOCAL row's weights are already in the bucket (its `s3://hope-models/…` sourceUri names
+      // where, not where to fetch from) — the fetcher refuses it, so never queue one.
+      if (row.source === AiModelSource.LOCAL || (row.source !== AiModelSource.HUGGINGFACE && !S3_SOURCE.test(row.sourceUri ?? ''))) {
         skip('SOURCE_NOT_FETCHABLE');
         continue;
       }

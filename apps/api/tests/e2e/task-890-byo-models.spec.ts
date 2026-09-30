@@ -229,17 +229,18 @@ test.describe('TASK-890 — declaring a BYO connection’s models', () => {
 
     // A tenant admin cannot reach `GET /admin/ai-models/:id` at all — the registry is
     // super-admin-only since L1 (OD-B) — so the honest cross-tenant proof from a TENANT admin is
-    // the catalogue absence above. The 404-over-403 posture is asserted from the tier that CAN
-    // read the route: a super admin acting in the stranger's working tenant.
+    // the catalogue absence above.
     const byIdAsTenantAdmin = await request.get(`${REGISTRY}/${modelId}`, { headers: auth(stranger) });
     expect([403, 404], `registry by-id from a tenant admin (${byIdAsTenantAdmin.status()})`).toContain(byIdAsTenantAdmin.status());
 
+    // TASK-1023: every registry read is a platform-admin read with NO working tenant, so a super
+    // admin acting in a working tenant is refused by that row-independent gate (403) before any
+    // row is looked up — the same answer for every id, so it leaks nothing about the foreign row.
     const platform = await superAdminToken(request);
     const byIdCrossTenant = await request.get(`${REGISTRY}/${modelId}`, {
       headers: { ...auth(platform), 'X-Tenant-Id': STRANGER_TENANT_ID },
     });
-    // 404-over-403: a foreign row is ABSENT, never forbidden.
-    expect(byIdCrossTenant.status(), await byIdCrossTenant.text()).toBe(404);
+    expect(byIdCrossTenant.status(), await byIdCrossTenant.text()).toBe(403);
   });
 
   test('the platform registry is unchanged — a tenant declaration never enters /admin/ai-models (REQ-5)', async ({ request }) => {

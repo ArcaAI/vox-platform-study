@@ -589,6 +589,19 @@ describe('R7 — download-missing', () => {
     expect(queue.add.mock.calls.map((c) => c[1].kind)).toEqual(['download', 'download']);
   });
 
+  // TASK-1023: register-from-path gives a LOCAL row an `s3://hope-models/…` sourceUri. Its weights
+  // are already in the bucket, so it must never be queued (the fetcher refuses LOCAL).
+  it('a LOCAL row with an s3:// source is skipped as SOURCE_NOT_FETCHABLE, never enqueued', async () => {
+    const rows = [modelRow({ id: 'loc-s3', slug: 'l', source: AiModelSource.LOCAL, sourceUri: 's3://hope-models/l/v1/', availability: AiModelAvailability.UNKNOWN })];
+    const { svc, queue } = build({ rows });
+
+    const out = await svc.downloadMissing();
+
+    expect(out.enqueued).toEqual([]);
+    expect(out.skipped).toEqual([{ id: 'loc-s3', slug: 'l', reason: 'SOURCE_NOT_FETCHABLE' }]);
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
   // Final review I6: a freshly registered row defaults to UNKNOWN and the cluster
   // inventory cannot write MISSING, so a MISSING-only query enqueued nothing.
   it('a never-measured (UNKNOWN) or half-fetched (PARTIAL) row is downloaded; an UNREGISTERING one is skipped', async () => {

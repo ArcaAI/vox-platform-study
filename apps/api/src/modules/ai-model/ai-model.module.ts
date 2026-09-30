@@ -4,6 +4,8 @@ import {
   AiProviderConnectionServiceModule,
   CommonServiceModule,
   ModelInventoryServiceModule,
+  ModelPathRegistrationServiceModule,
+  ModelRegistryAccessServiceModule,
 } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
@@ -39,6 +41,8 @@ import { AiModelRegistrationController } from './ai-model-registration.controlle
     AiModelServiceModule,
     AiModelDownloadProducerModule,
     ModelInventoryServiceModule,
+    ModelRegistryAccessServiceModule,
+    ModelPathRegistrationServiceModule,
     AiProviderConnectionServiceModule,
     CommonServiceModule,
     HttpModule,
