@@ -1,6 +1,12 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CancelModelDownloadRequest, CancelModelDownloadResponse, ListPublisherJobsQuery, ModelPublisherJobsService, PublisherJobView } from '@arcaai/applications';
+import {
+  CancelModelDownloadRequest,
+  CancelModelDownloadResponse,
+  ListPublisherJobsQuery,
+  ModelPublisherJobsService,
+  PublisherJobView,
+} from '@arcaai/applications';
 import { Authorize, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**

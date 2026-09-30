@@ -32,7 +32,10 @@ function modelRow(over: Record<string, unknown> = {}) {
     provider: 'built-in',
     availability: AiModelAvailability.MISSING,
     bucketPrefix: null as string | null,
-    metaData: { download: { jobId: 'job-1', startedAt: FRESH(), finishedAt: null, error: null, heartbeatAt: FRESH() } } as Record<string, unknown> | null,
+    metaData: { download: { jobId: 'job-1', startedAt: FRESH(), finishedAt: null, error: null, heartbeatAt: FRESH() } } as Record<
+      string,
+      unknown
+    > | null,
     version: 5,
     updatedBy: null as string | null,
     ...over,
@@ -143,7 +146,9 @@ describe('J2 — cancel an ACTIVE download', () => {
 
 describe('J3 — refusals and idempotency', () => {
   it('no in-flight download → 409 JOB_NOT_ACTIVE, nothing touched', async () => {
-    const { svc, repo, queue } = build({ row: modelRow({ metaData: { download: { jobId: 'job-1', startedAt: FRESH(), finishedAt: FRESH(), error: null } } }) });
+    const { svc, repo, queue } = build({
+      row: modelRow({ metaData: { download: { jobId: 'job-1', startedAt: FRESH(), finishedAt: FRESH(), error: null } } }),
+    });
     const error = await svc.cancelDownload('m-1', {}).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConflictException);
     expect((error as ConflictException).getResponse()).toMatchObject({ code: 'JOB_NOT_ACTIVE' });
@@ -153,14 +158,26 @@ describe('J3 — refusals and idempotency', () => {
 
   it('an already CANCELLED run → 409 JOB_NOT_ACTIVE', async () => {
     const { svc } = build({
-      row: modelRow({ metaData: { download: { jobId: 'job-1', startedAt: FRESH(), finishedAt: FRESH(), error: 'CANCELLED', cancelledAt: FRESH() } } }),
+      row: modelRow({
+        metaData: { download: { jobId: 'job-1', startedAt: FRESH(), finishedAt: FRESH(), error: 'CANCELLED', cancelledAt: FRESH() } },
+      }),
     });
     await expect(svc.cancelDownload('m-1', {})).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('a second cancel while the worker is stopping the job → 202 cancelling again, nothing re-written', async () => {
     const row = modelRow({
-      metaData: { download: { jobId: 'job-1', startedAt: FRESH(), finishedAt: null, error: null, heartbeatAt: FRESH(), cancelRequestedAt: FRESH(), cancelRequestedBy: 'admin-1' } },
+      metaData: {
+        download: {
+          jobId: 'job-1',
+          startedAt: FRESH(),
+          finishedAt: null,
+          error: null,
+          heartbeatAt: FRESH(),
+          cancelRequestedAt: FRESH(),
+          cancelRequestedBy: 'admin-1',
+        },
+      },
     });
     const { svc, repo, flags } = build({ row, job: bullJob('active') });
     await expect(svc.cancelDownload('m-1', {})).resolves.toEqual({ jobId: 'job-1', outcome: 'cancelling', unregisterJobId: null });
@@ -239,7 +256,11 @@ describe('J5 — GET jobs merges BullMQ with the row bookkeeping', () => {
     return Object.assign(job, { __state: state });
   }
 
-  function buildList(opts: { jobs: Array<ReturnType<typeof bullJob> & { __state?: string }>; rows: Array<ReturnType<typeof modelRow>>; deleted?: Array<ReturnType<typeof modelRow>> }) {
+  function buildList(opts: {
+    jobs: Array<ReturnType<typeof bullJob> & { __state?: string }>;
+    rows: Array<ReturnType<typeof modelRow>>;
+    deleted?: Array<ReturnType<typeof modelRow>>;
+  }) {
     const built = build({ rows: opts.rows });
     built.queue.getJobs.mockImplementation(async (types: string[]) => opts.jobs.filter((j) => types.includes(j.__state ?? 'waiting')));
     built.repo.findAll.mockImplementation(async (props: { filters?: Record<string, unknown> }) =>
@@ -250,14 +271,48 @@ describe('J5 — GET jobs merges BullMQ with the row bookkeeping', () => {
 
   it('lists download + unregister jobs newest first, with model slug/name, progress, state and starter', async () => {
     const running = modelRow({
-      metaData: { download: { jobId: 'job-1', startedAt: '2026-09-30T09:30:00.000Z', finishedAt: null, error: null, bytesDone: 5, bytesTotal: 50, heartbeatAt: FRESH(), attempt: 1 } },
+      metaData: {
+        download: {
+          jobId: 'job-1',
+          startedAt: '2026-09-30T09:30:00.000Z',
+          finishedAt: null,
+          error: null,
+          bytesDone: 5,
+          bytesTotal: 50,
+          heartbeatAt: FRESH(),
+          attempt: 1,
+        },
+      },
     });
-    const other = modelRow({ id: 'm-2', slug: 'whisper', name: 'Whisper', metaData: { unregister: { jobId: 'u-1', startedAt: '2026-09-30T09:40:00.000Z', finishedAt: '2026-09-30T09:41:00.000Z', error: null, weights: 'deleted' } } });
+    const other = modelRow({
+      id: 'm-2',
+      slug: 'whisper',
+      name: 'Whisper',
+      metaData: {
+        unregister: { jobId: 'u-1', startedAt: '2026-09-30T09:40:00.000Z', finishedAt: '2026-09-30T09:41:00.000Z', error: null, weights: 'deleted' },
+      },
+    });
     const { svc } = buildList({
       rows: [running, other],
       jobs: [
         withState('active', bullJob('active')),
-        withState('completed', bullJob('completed', { id: 'u-1', data: { kind: 'unregister', jobId: 'u-1', aiModelId: 'm-2', tenantId: SYSTEM_TENANT_ID, userId: 'admin-2', deleteWeights: true, purge: false }, timestamp: Date.parse('2026-09-30T09:40:00Z'), finishedOn: Date.parse('2026-09-30T09:41:00Z') })),
+        withState(
+          'completed',
+          bullJob('completed', {
+            id: 'u-1',
+            data: {
+              kind: 'unregister',
+              jobId: 'u-1',
+              aiModelId: 'm-2',
+              tenantId: SYSTEM_TENANT_ID,
+              userId: 'admin-2',
+              deleteWeights: true,
+              purge: false,
+            },
+            timestamp: Date.parse('2026-09-30T09:40:00Z'),
+            finishedOn: Date.parse('2026-09-30T09:41:00Z'),
+          }),
+        ),
       ],
     });
 
@@ -278,26 +333,66 @@ describe('J5 — GET jobs merges BullMQ with the row bookkeeping', () => {
       startedBy: 'admin-2',
       error: null,
     });
-    expect(views[1]).toMatchObject({ jobId: 'job-1', kind: 'download', modelSlug: 'medical-ner', state: 'active', bytesDone: 5, bytesTotal: 50, startedBy: 'admin-1', finishedAt: null, error: null });
+    expect(views[1]).toMatchObject({
+      jobId: 'job-1',
+      kind: 'download',
+      modelSlug: 'medical-ner',
+      state: 'active',
+      bytesDone: 5,
+      bytesTotal: 50,
+      startedBy: 'admin-1',
+      finishedAt: null,
+      error: null,
+    });
   });
 
   it('a download the worker cancelled (BullMQ failed) reads `cancelled`, not failed', async () => {
-    const row = modelRow({ metaData: { download: { jobId: 'job-1', startedAt: '2026-09-30T09:30:00.000Z', finishedAt: '2026-09-30T09:31:00.000Z', error: 'CANCELLED', cancelledAt: '2026-09-30T09:31:00.000Z' } } });
-    const { svc } = buildList({ rows: [row], jobs: [withState('failed', bullJob('failed', { failedReason: 'CANCELLED', finishedOn: Date.parse('2026-09-30T09:31:00Z') }))] });
+    const row = modelRow({
+      metaData: {
+        download: {
+          jobId: 'job-1',
+          startedAt: '2026-09-30T09:30:00.000Z',
+          finishedAt: '2026-09-30T09:31:00.000Z',
+          error: 'CANCELLED',
+          cancelledAt: '2026-09-30T09:31:00.000Z',
+        },
+      },
+    });
+    const { svc } = buildList({
+      rows: [row],
+      jobs: [withState('failed', bullJob('failed', { failedReason: 'CANCELLED', finishedOn: Date.parse('2026-09-30T09:31:00Z') }))],
+    });
     const [view] = await svc.listJobs();
     expect(view).toMatchObject({ state: 'cancelled', error: { code: 'CANCELLED' }, finishedAt: '2026-09-30T09:31:00.000Z' });
   });
 
   it('a genuinely failed job carries its reason', async () => {
-    const row = modelRow({ metaData: { download: { jobId: 'job-1', startedAt: '2026-09-30T09:30:00.000Z', finishedAt: '2026-09-30T09:31:00.000Z', error: 'HTTP 404' } } });
+    const row = modelRow({
+      metaData: { download: { jobId: 'job-1', startedAt: '2026-09-30T09:30:00.000Z', finishedAt: '2026-09-30T09:31:00.000Z', error: 'HTTP 404' } },
+    });
     const { svc } = buildList({ rows: [row], jobs: [withState('failed', bullJob('failed', { failedReason: 'HTTP 404' }))] });
     const [view] = await svc.listJobs();
     expect(view).toMatchObject({ state: 'failed', error: { code: 'FAILED', message: 'HTTP 404' } });
   });
 
   it('a queued cancel (job removed from BullMQ) and a LOST in-flight job are still listed from the row', async () => {
-    const cancelled = modelRow({ metaData: { download: { jobId: 'job-c', startedAt: '2026-09-30T09:30:00.000Z', finishedAt: '2026-09-30T09:31:00.000Z', error: 'CANCELLED', cancelledAt: '2026-09-30T09:31:00.000Z' } } });
-    const lost = modelRow({ id: 'm-2', slug: 'whisper', name: 'Whisper', metaData: { download: { jobId: 'job-l', startedAt: FRESH(), finishedAt: null, error: null, heartbeatAt: FRESH(), attempt: 1 } } });
+    const cancelled = modelRow({
+      metaData: {
+        download: {
+          jobId: 'job-c',
+          startedAt: '2026-09-30T09:30:00.000Z',
+          finishedAt: '2026-09-30T09:31:00.000Z',
+          error: 'CANCELLED',
+          cancelledAt: '2026-09-30T09:31:00.000Z',
+        },
+      },
+    });
+    const lost = modelRow({
+      id: 'm-2',
+      slug: 'whisper',
+      name: 'Whisper',
+      metaData: { download: { jobId: 'job-l', startedAt: FRESH(), finishedAt: null, error: null, heartbeatAt: FRESH(), attempt: 1 } },
+    });
     const idle = modelRow({ id: 'm-3', slug: 'idle', metaData: null });
     const { svc } = buildList({ rows: [cancelled, lost, idle], jobs: [] });
 
@@ -311,7 +406,11 @@ describe('J5 — GET jobs merges BullMQ with the row bookkeeping', () => {
 
   it('a superseded download is shown as such (completed, error SUPERSEDED)', async () => {
     const row = modelRow({ metaData: { download: { jobId: 'job-new', startedAt: FRESH(), finishedAt: null, error: null, heartbeatAt: FRESH() } } });
-    const old = bullJob('completed', { id: 'job-old', data: { kind: 'download', jobId: 'job-old', aiModelId: 'm-1', tenantId: SYSTEM_TENANT_ID }, returnvalue: { superseded: true } });
+    const old = bullJob('completed', {
+      id: 'job-old',
+      data: { kind: 'download', jobId: 'job-old', aiModelId: 'm-1', tenantId: SYSTEM_TENANT_ID },
+      returnvalue: { superseded: true },
+    });
     const { svc } = buildList({ rows: [row], jobs: [withState('completed', old)] });
     const views = await svc.listJobs();
     expect(views.find((v) => v.jobId === 'job-old')).toMatchObject({ state: 'completed', error: { code: 'SUPERSEDED' } });
@@ -319,7 +418,10 @@ describe('J5 — GET jobs merges BullMQ with the row bookkeeping', () => {
 
   it('a job whose row is soft-deleted still names the model (deleted rows are read back by id)', async () => {
     const gone = modelRow({ id: 'm-9', slug: 'retired', name: 'Retired' });
-    const job = bullJob('completed', { id: 'u-9', data: { kind: 'unregister', jobId: 'u-9', aiModelId: 'm-9', tenantId: SYSTEM_TENANT_ID, deleteWeights: true, purge: false } });
+    const job = bullJob('completed', {
+      id: 'u-9',
+      data: { kind: 'unregister', jobId: 'u-9', aiModelId: 'm-9', tenantId: SYSTEM_TENANT_ID, deleteWeights: true, purge: false },
+    });
     const { svc } = buildList({ rows: [], deleted: [gone], jobs: [withState('completed', job)] });
     const [view] = await svc.listJobs();
     expect(view).toMatchObject({ modelSlug: 'retired', modelName: 'Retired' });
@@ -327,7 +429,18 @@ describe('J5 — GET jobs merges BullMQ with the row bookkeeping', () => {
 
   it('caps the list at `limit` (default 50, max 200)', async () => {
     const rows = Array.from({ length: 5 }, (_, i) =>
-      modelRow({ id: `m-${i}`, metaData: { download: { jobId: `j-${i}`, startedAt: new Date(Date.parse('2026-09-30T09:00:00Z') + i * 1000).toISOString(), finishedAt: '2026-09-30T09:30:00Z', error: 'CANCELLED', cancelledAt: '2026-09-30T09:30:00Z' } } }),
+      modelRow({
+        id: `m-${i}`,
+        metaData: {
+          download: {
+            jobId: `j-${i}`,
+            startedAt: new Date(Date.parse('2026-09-30T09:00:00Z') + i * 1000).toISOString(),
+            finishedAt: '2026-09-30T09:30:00Z',
+            error: 'CANCELLED',
+            cancelledAt: '2026-09-30T09:30:00Z',
+          },
+        },
+      }),
     );
     const { svc, queue } = buildList({ rows, jobs: [] });
     expect(await svc.listJobs(2)).toHaveLength(2);

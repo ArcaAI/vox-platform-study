@@ -114,7 +114,15 @@ export async function acceptUnregisterAfterCancel(
   });
   if (opts.userId) entity.updatedBy = opts.userId;
   await deps.repository.updateWithVersion(entity.id, entity, entity.version);
-  return { kind: 'unregister', jobId, aiModelId: entity.id, tenantId: entity.tenantId, userId: opts.userId ?? undefined, deleteWeights: true, purge: false };
+  return {
+    kind: 'unregister',
+    jobId,
+    aiModelId: entity.id,
+    tenantId: entity.tenantId,
+    userId: opts.userId ?? undefined,
+    deleteWeights: true,
+    purge: false,
+  };
 }
 
 /**

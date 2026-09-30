@@ -15,7 +15,8 @@ export class CancelModelDownloadResponse implements CancelModelDownloadResponseC
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'The unregister job that follows when `removeRegistration` was requested on a queued job; null otherwise (a running job is unregistered by the worker after cleanup).',
+    description:
+      'The unregister job that follows when `removeRegistration` was requested on a queued job; null otherwise (a running job is unregistered by the worker after cleanup).',
   })
   unregisterJobId: string | null;
 }

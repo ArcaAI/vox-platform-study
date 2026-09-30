@@ -149,7 +149,9 @@ describe('AiModelDownloadProcessor — cancel (TASK-1023)', () => {
       return untilAborted(opts.signal);
     });
 
-    const error = await processorWith().process(job()).catch((e: unknown) => e);
+    const error = await processorWith()
+      .process(job())
+      .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect(store.uploadFile.mock.calls[1][2]).toMatchObject({ signal: expect.any(AbortSignal) });
@@ -164,51 +166,74 @@ describe('AiModelDownloadProcessor — cancel (TASK-1023)', () => {
 
   it('OD-6 — a row that was AVAILABLE from an earlier download keeps its weights: nothing is deleted', async () => {
     row = entity({ availability: 'AVAILABLE' });
-    fetcher.fetch.mockImplementation(async (_s: string, _u: string, _q: unknown, opts: { stagingDir: string }) => [await stageFile(opts.stagingDir, 'a.gguf', 4)]);
+    fetcher.fetch.mockImplementation(async (_s: string, _u: string, _q: unknown, opts: { stagingDir: string }) => [
+      await stageFile(opts.stagingDir, 'a.gguf', 4),
+    ]);
     store.uploadFile.mockImplementationOnce(async () => {
       flag = true;
     });
-    const error = await processorWith().process(job()).catch((e: unknown) => e);
+    const error = await processorWith()
+      .process(job())
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect(store.deleteKeys).not.toHaveBeenCalled();
     expect(readDownloadMeta(row.metaData)).toMatchObject({ error: 'CANCELLED' });
   });
 
   it("the row's cancelRequestedAt alone (no Redis flag provider) stops the job at the next heartbeat", async () => {
-    fetcher.fetch.mockImplementation(async (_s: string, _u: string, _q: unknown, opts: { stagingDir: string; signal: AbortSignal; onBytes: (n: number) => void }) => {
-      const ticker = setInterval(() => opts.onBytes(1), INTERVAL / 2);
-      setTimeout(() => {
-        (row.metaData.download as Record<string, unknown>).cancelRequestedAt = new Date().toISOString();
-        (row.metaData.download as Record<string, unknown>).cancelRequestedBy = 'admin-9';
-      }, INTERVAL);
-      try {
-        return await untilAborted(opts.signal);
-      } finally {
-        clearInterval(ticker);
-      }
-    });
-    const error = await processorWith(false).process(job()).catch((e: unknown) => e);
+    fetcher.fetch.mockImplementation(
+      async (_s: string, _u: string, _q: unknown, opts: { stagingDir: string; signal: AbortSignal; onBytes: (n: number) => void }) => {
+        const ticker = setInterval(() => opts.onBytes(1), INTERVAL / 2);
+        setTimeout(() => {
+          (row.metaData.download as Record<string, unknown>).cancelRequestedAt = new Date().toISOString();
+          (row.metaData.download as Record<string, unknown>).cancelRequestedBy = 'admin-9';
+        }, INTERVAL);
+        try {
+          return await untilAborted(opts.signal);
+        } finally {
+          clearInterval(ticker);
+        }
+      },
+    );
+    const error = await processorWith(false)
+      .process(job())
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect(readDownloadMeta(row.metaData)).toMatchObject({ error: 'CANCELLED', cancelledBy: 'admin-9' });
   });
 
   it('a cancel already requested when the attempt starts ends it before anything is fetched', async () => {
     (row.metaData.download as Record<string, unknown>).cancelRequestedAt = new Date().toISOString();
-    const error = await processorWith().process(job()).catch((e: unknown) => e);
+    const error = await processorWith()
+      .process(job())
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect(fetcher.fetch).not.toHaveBeenCalled();
     expect(readDownloadMeta(row.metaData)).toMatchObject({ error: 'CANCELLED' });
   });
 
   it('J4 — removeRegistrationOnCancel: after cleanup the worker unregisters the row, weights deleted', async () => {
-    Object.assign(row.metaData.download as Record<string, unknown>, { cancelRequestedAt: new Date().toISOString(), cancelRequestedBy: 'admin-1', removeRegistrationOnCancel: true });
+    Object.assign(row.metaData.download as Record<string, unknown>, {
+      cancelRequestedAt: new Date().toISOString(),
+      cancelRequestedBy: 'admin-1',
+      removeRegistrationOnCancel: true,
+    });
 
-    const error = await processorWith().process(job()).catch((e: unknown) => e);
+    const error = await processorWith()
+      .process(job())
+      .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect(unregister.execute).toHaveBeenCalledTimes(1);
     const [payload, opts] = unregister.execute.mock.calls[0];
-    expect(payload).toMatchObject({ kind: 'unregister', aiModelId: 'model-id-1', tenantId: 'tenant-1', userId: 'admin-1', deleteWeights: true, purge: false });
+    expect(payload).toMatchObject({
+      kind: 'unregister',
+      aiModelId: 'model-id-1',
+      tenantId: 'tenant-1',
+      userId: 'admin-1',
+      deleteWeights: true,
+      purge: false,
+    });
     expect(opts).toEqual({ finalAttempt: true });
     const unregisterMeta = readUnregisterMeta(row.metaData)!;
     expect(unregisterMeta).toMatchObject({ jobId: payload.jobId, deleteWeights: true, finishedAt: null, error: null });
@@ -217,9 +242,14 @@ describe('AiModelDownloadProcessor — cancel (TASK-1023)', () => {
   });
 
   it('J4 — a failing unregister after the cancel does not change the job outcome (still CANCELLED, no retry)', async () => {
-    Object.assign(row.metaData.download as Record<string, unknown>, { cancelRequestedAt: new Date().toISOString(), removeRegistrationOnCancel: true });
+    Object.assign(row.metaData.download as Record<string, unknown>, {
+      cancelRequestedAt: new Date().toISOString(),
+      removeRegistrationOnCancel: true,
+    });
     unregister.execute.mockRejectedValueOnce(new Error('MODEL_IN_USE'));
-    const error = await processorWith().process(job()).catch((e: unknown) => e);
+    const error = await processorWith()
+      .process(job())
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect(readDownloadMeta(row.metaData)).toMatchObject({ error: 'CANCELLED' });
   });

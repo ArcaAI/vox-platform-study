@@ -30,7 +30,14 @@ describe('ModelSourceFetcherService — tenant + cancel signal (TASK-1023)', () 
     const signal = new AbortController().signal;
     await service.fetch(AiModelSource.HUGGINGFACE, 'org/repo', null, { stagingDir: dir, tenantId: 't-1', signal });
     expect(hf.listRepoFiles).toHaveBeenCalledWith('org/repo', 'main', { tenantId: 't-1' });
-    expect(hf.downloadFileTo).toHaveBeenCalledWith('org/repo', 'a.safetensors', 'main', expect.any(String), undefined, expect.objectContaining({ tenantId: 't-1', signal }));
+    expect(hf.downloadFileTo).toHaveBeenCalledWith(
+      'org/repo',
+      'a.safetensors',
+      'main',
+      expect.any(String),
+      undefined,
+      expect.objectContaining({ tenantId: 't-1', signal }),
+    );
   });
 
   it('a cancel during the first file stops before the next one starts, rejecting with the cancel reason', async () => {

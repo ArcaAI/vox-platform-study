@@ -208,7 +208,11 @@ export class ModelPublisherJobsService extends BaseService {
       } else if (status === 'DOWNLOADING') {
         views.push({ ...view, state: download.attempt != null ? 'active' : 'waiting', error: null });
       } else if (!download.finishedAt && !download.error) {
-        views.push({ ...view, state: 'failed', error: { code: DOWNLOAD_STALLED_CODE, message: 'No heartbeat within the stale window; the job was lost.' } });
+        views.push({
+          ...view,
+          state: 'failed',
+          error: { code: DOWNLOAD_STALLED_CODE, message: 'No heartbeat within the stale window; the job was lost.' },
+        });
       }
     }
     const unregister = readUnregisterMeta(row.metaData);

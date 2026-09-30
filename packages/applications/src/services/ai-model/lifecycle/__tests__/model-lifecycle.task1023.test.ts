@@ -64,7 +64,14 @@ describe('publish status CANCELLED (J1)', () => {
 
   it('a cancel REQUESTED on a running job is still DOWNLOADING until the worker finishes it', () => {
     const meta = readDownloadMeta({
-      download: { jobId: 'd-1', startedAt: '2026-09-30T09:59:00Z', finishedAt: null, error: null, heartbeatAt: '2026-09-30T09:59:55Z', cancelRequestedAt: '2026-09-30T09:59:58Z' },
+      download: {
+        jobId: 'd-1',
+        startedAt: '2026-09-30T09:59:00Z',
+        finishedAt: null,
+        error: null,
+        heartbeatAt: '2026-09-30T09:59:55Z',
+        cancelRequestedAt: '2026-09-30T09:59:58Z',
+      },
     });
     expect(derivePublishStatus(meta, 'MISSING', { now: new Date(NOW), staleAfterMs: 300_000 })).toBe('DOWNLOADING');
   });
@@ -126,7 +133,12 @@ describe('stale unregister → UNREGISTER_FAILED (J6, OD-6)', () => {
     const meta = readUnregisterMeta({ unregister: unregister('2026-09-30T09:00:00.000Z') });
     expect(isUnregisterStale(meta)).toBe(false);
     expect(isUnregisterStale(meta, { now: new Date(NOW), staleAfterMs: 300_000 })).toBe(true);
-    expect(isUnregisterStale(readUnregisterMeta({ unregister: unregister('2026-09-30T09:00:00.000Z', { error: 'boom' }) }), { now: new Date(NOW), staleAfterMs: 1 })).toBe(false);
+    expect(
+      isUnregisterStale(readUnregisterMeta({ unregister: unregister('2026-09-30T09:00:00.000Z', { error: 'boom' }) }), {
+        now: new Date(NOW),
+        staleAfterMs: 1,
+      }),
+    ).toBe(false);
     expect(
       isUnregisterStale(readUnregisterMeta({ unregister: unregister('2026-09-30T09:00:00.000Z', { finishedAt: '2026-09-30T09:01:00Z' }) }), {
         now: new Date(NOW),

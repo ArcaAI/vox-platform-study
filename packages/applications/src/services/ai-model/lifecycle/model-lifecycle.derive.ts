@@ -141,7 +141,8 @@ export function deriveModelLifecycle(
   // TASK-1023 OD-6 — an open unregister past the download stale window lost its
   // job: UNREGISTER_FAILED (retryable), in the slot right after UNREGISTERING.
   if (isUnregistering(meta)) {
-    return lifecycle(isUnregisterStale(unregisterMeta, { now: new Date(opts.now), staleAfterMs: opts.staleAfterMs }) ? 'UNREGISTER_FAILED' : 'UNREGISTERING');
+    const stale = isUnregisterStale(unregisterMeta, { now: new Date(opts.now), staleAfterMs: opts.staleAfterMs });
+    return lifecycle(stale ? 'UNREGISTER_FAILED' : 'UNREGISTERING');
   }
   if (publish === 'DOWNLOADING') return lifecycle('DOWNLOADING');
   if (publish === 'DOWNLOAD_FAILED') return lifecycle('DOWNLOAD_FAILED');

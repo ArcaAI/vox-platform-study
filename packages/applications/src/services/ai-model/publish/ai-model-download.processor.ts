@@ -477,13 +477,20 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
         await ctx.store.deleteKeys(ctx.written);
       } catch (error) {
         // swallow-ok: the cancel still stands; the orphans show up in the next inventory.
-        this.logger.warn({ message: 'Cancelled download: partial objects not deleted', jobId, aiModelId, keys: ctx.written.length, error: String(error) });
+        this.logger.warn({
+          message: 'Cancelled download: partial objects not deleted',
+          jobId,
+          aiModelId,
+          keys: ctx.written.length,
+          error: String(error),
+        });
       }
     }
 
     let removeRegistration = false;
     let cancelledBy: string | null = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
+      // swallow-ok: a row that cannot be read gets no CANCELLED write; the job still ends without retry.
       const fresh = await this.aiModelRepository.findById(aiModelId).catch(() => null);
       if (!fresh || isSupersededBy(fresh.metaData, jobId)) break;
       const meta = readDownloadMeta(fresh.metaData);
@@ -509,8 +516,14 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
         }
       }
     }
+    // swallow-ok: an uncleared flag expires with its TTL and names a job that no longer runs.
     await this.cancelFlags?.clear(jobId).catch(() => undefined);
-    this.logger.log({ message: 'AiModel download cancelled', jobId, aiModelId, partialObjectsDeleted: ctx.availableAtStart ? 0 : ctx.written.length });
+    this.logger.log({
+      message: 'AiModel download cancelled',
+      jobId,
+      aiModelId,
+      partialObjectsDeleted: ctx.availableAtStart ? 0 : ctx.written.length,
+    });
 
     if (removeRegistration) await this.unregisterAfterCancel(aiModelId, cancelledBy ?? ctx.userId ?? null);
   }
@@ -523,7 +536,11 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
       await this.unregisterService.execute(payload, { finalAttempt: true });
     } catch (error) {
       // swallow-ok: the unregister service records its own failure on the row (UNREGISTER bookkeeping).
-      this.logger.warn({ message: 'Unregister after a cancelled download failed', aiModelId, error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn({
+        message: 'Unregister after a cancelled download failed',
+        aiModelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

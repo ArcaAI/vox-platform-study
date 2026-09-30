@@ -21,7 +21,15 @@ function build(unregisterStartedAt: string) {
     bucketPrefix: null,
     resourceStatus: ResourceStatusType.ENABLED,
     metaData: {
-      unregister: { jobId: 'u-old', startedAt: unregisterStartedAt, deleteWeights: true, purge: false, finishedAt: null, error: null, weights: 'deleting' },
+      unregister: {
+        jobId: 'u-old',
+        startedAt: unregisterStartedAt,
+        deleteWeights: true,
+        purge: false,
+        finishedAt: null,
+        error: null,
+        weights: 'deleting',
+      },
     } as Record<string, unknown>,
     version: 3,
     updatedBy: null,

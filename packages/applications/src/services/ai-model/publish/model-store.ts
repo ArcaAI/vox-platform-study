@@ -135,7 +135,10 @@ export class S3ModelStore implements ModelStore {
       return;
     }
 
-    const created = await this.client.send(new CreateMultipartUploadCommand({ Bucket: this.bucket, Key: key, ContentType: opts.contentType }), sendOpts);
+    const created = await this.client.send(
+      new CreateMultipartUploadCommand({ Bucket: this.bucket, Key: key, ContentType: opts.contentType }),
+      sendOpts,
+    );
     const uploadId = String(created?.UploadId ?? '');
     if (!uploadId) throw new Error(`CreateMultipartUpload returned no UploadId for '${key}'`);
 

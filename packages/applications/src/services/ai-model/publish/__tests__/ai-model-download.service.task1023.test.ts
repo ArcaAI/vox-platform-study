@@ -7,7 +7,16 @@ import { AiModelDownloadService } from '../ai-model-download.service';
 import { readDownloadMeta } from '../model-download-meta.util';
 
 function row(metaData: Record<string, unknown>) {
-  return { id: 'm-1', tenantId: 'sys', slug: 'medical-ner', version: 4, source: 'HUGGINGFACE', availability: 'MISSING', metaData, updatedBy: null as string | null };
+  return {
+    id: 'm-1',
+    tenantId: 'sys',
+    slug: 'medical-ner',
+    version: 4,
+    source: 'HUGGINGFACE',
+    availability: 'MISSING',
+    metaData,
+    updatedBy: null as string | null,
+  };
 }
 
 describe('AiModelDownloadService.triggerDownload — TASK-1023 J8', () => {

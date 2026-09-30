@@ -96,7 +96,9 @@ describe('HuggingFaceModelSourceClient — credential per job tenant (J7)', () =
   it('D-C — an already-aborted signal makes no request', async () => {
     const controller = new AbortController();
     controller.abort(new Error('CANCELLED'));
-    await expect(client.downloadFileTo('org/repo', 'w.bin', 'main', join(dir, 'w.bin'), undefined, { signal: controller.signal })).rejects.toThrow('CANCELLED');
+    await expect(client.downloadFileTo('org/repo', 'w.bin', 'main', join(dir, 'w.bin'), undefined, { signal: controller.signal })).rejects.toThrow(
+      'CANCELLED',
+    );
     expect(axiosRef.get).not.toHaveBeenCalled();
   });
 });

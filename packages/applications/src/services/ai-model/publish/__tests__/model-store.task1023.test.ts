@@ -7,7 +7,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, DeleteObjectsCommand, PutObjectCommand, UploadPartCommand } from '@aws-sdk/client-s3';
+import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  DeleteObjectsCommand,
+  PutObjectCommand,
+  UploadPartCommand,
+} from '@aws-sdk/client-s3';
 import { S3ModelStore } from '../model-store';
 
 type Sent = { name: string; input: Record<string, unknown>; opts?: { abortSignal?: AbortSignal } };
@@ -78,7 +84,9 @@ describe('S3ModelStore — cancel (TASK-1023)', () => {
     const client = fakeClient(() => ({ Deleted: [] }));
     const keys = Array.from({ length: 1001 }, (_, i) => `p/k${i}`);
     await expect(new S3ModelStore(client, 'hope-models').deleteKeys(keys)).resolves.toBe(1001);
-    const batches = client.sent.filter((s) => s.name === DeleteObjectsCommand.name).map((s) => (s.input.Delete as { Objects: unknown[] }).Objects.length);
+    const batches = client.sent
+      .filter((s) => s.name === DeleteObjectsCommand.name)
+      .map((s) => (s.input.Delete as { Objects: unknown[] }).Objects.length);
     expect(batches).toEqual([1000, 1]);
   });
 
