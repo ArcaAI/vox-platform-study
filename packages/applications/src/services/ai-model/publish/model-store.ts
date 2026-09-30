@@ -53,8 +53,12 @@ export { MODEL_STORE_CREDENTIAL_MISSING, ModelPublisherError } from './model-pub
 
 export interface ModelStore {
   headObject(key: string): Promise<{ size: number } | null>;
-  /** Upload a staged file; multipart at or above the part size. */
-  uploadFile(key: string, localPath: string, opts?: { contentType?: string }): Promise<void>;
+  /**
+   * Upload a staged file; multipart at or above the part size. `signal`
+   * (TASK-1023 D-C) aborts it: checked before every part, carried on every
+   * request, and an open multipart upload is aborted on the way out.
+   */
+  uploadFile(key: string, localPath: string, opts?: { contentType?: string; signal?: AbortSignal }): Promise<void>;
   putSmall(key: string, body: Buffer | string): Promise<void>;
   /** Every CURRENT object under `prefix`, across all ListObjectsV2 pages. */
   listPrefix(prefix: string): AsyncIterable<{ key: string; size: number }>;
@@ -64,12 +68,17 @@ export interface ModelStore {
    * `purge: true` deletes every version and every delete marker now.
    */
   deletePrefix(prefix: string, opts: { purge: boolean }): Promise<{ objects: number; versions: number }>;
+  /**
+   * TASK-1023 OD-6 — delete exactly these CURRENT keys (the partial objects a
+   * cancelled download wrote); returns how many were asked for.
+   */
+  deleteKeys(keys: string[]): Promise<number>;
 }
 
 /** The slice of `S3Client` the store uses — a fake in tests. */
 export interface S3ClientLike {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the SDK's `send` is overloaded per command; the store narrows each response itself
-  send(command: any): Promise<any>;
+  send(command: any, options?: { abortSignal?: AbortSignal }): Promise<any>;
 }
 
 /**
@@ -106,39 +115,54 @@ export class S3ModelStore implements ModelStore {
     }
   }
 
-  async uploadFile(key: string, localPath: string, opts: { contentType?: string } = {}): Promise<void> {
+  async uploadFile(key: string, localPath: string, opts: { contentType?: string; signal?: AbortSignal } = {}): Promise<void> {
+    const { signal } = opts;
+    signal?.throwIfAborted();
+    const sendOpts = signal ? { abortSignal: signal } : undefined;
     const { size } = await stat(localPath);
     const partSize = Math.max(this.partSizeBytes, Math.ceil(size / MAX_PARTS));
 
     if (size < partSize) {
       const body = createReadStream(localPath);
       try {
-        await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentLength: size, ContentType: opts.contentType }));
+        await this.client.send(
+          new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentLength: size, ContentType: opts.contentType }),
+          sendOpts,
+        );
       } finally {
         body.destroy();
       }
       return;
     }
 
-    const created = await this.client.send(new CreateMultipartUploadCommand({ Bucket: this.bucket, Key: key, ContentType: opts.contentType }));
+    const created = await this.client.send(
+      new CreateMultipartUploadCommand({ Bucket: this.bucket, Key: key, ContentType: opts.contentType }),
+      sendOpts,
+    );
     const uploadId = String(created?.UploadId ?? '');
     if (!uploadId) throw new Error(`CreateMultipartUpload returned no UploadId for '${key}'`);
 
     try {
       const parts: Array<{ PartNumber: number; ETag: string }> = [];
       for (let offset = 0, partNumber = 1; offset < size; offset += partSize, partNumber++) {
+        signal?.throwIfAborted();
         const length = Math.min(partSize, size - offset);
         const body = createReadStream(localPath, { start: offset, end: offset + length - 1 });
         try {
           const uploaded = await this.client.send(
             new UploadPartCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId, PartNumber: partNumber, Body: body, ContentLength: length }),
+            sendOpts,
           );
           parts.push({ PartNumber: partNumber, ETag: String(uploaded?.ETag ?? '') });
         } finally {
           body.destroy();
         }
       }
-      await this.client.send(new CompleteMultipartUploadCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId, MultipartUpload: { Parts: parts } }));
+      signal?.throwIfAborted();
+      await this.client.send(
+        new CompleteMultipartUploadCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId, MultipartUpload: { Parts: parts } }),
+        sendOpts,
+      );
     } catch (error) {
       // An abandoned multipart upload holds its parts' bytes (and the bucket
       // quota) until aborted; the original error is the one worth reporting.
@@ -228,6 +252,13 @@ export class S3ModelStore implements ModelStore {
 
     await flush();
     return { objects, versions };
+  }
+
+  async deleteKeys(keys: string[]): Promise<number> {
+    for (let i = 0; i < keys.length; i += DELETE_BATCH) {
+      await this.deleteBatch(keys.slice(i, i + DELETE_BATCH).map((Key) => ({ Key })));
+    }
+    return keys.length;
   }
 
   private async deleteBatch(objects: Array<{ Key: string; VersionId?: string }>): Promise<void> {

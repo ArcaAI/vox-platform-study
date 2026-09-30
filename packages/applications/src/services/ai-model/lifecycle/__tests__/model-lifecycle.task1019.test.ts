@@ -59,7 +59,8 @@ describe('deriveModelLifecycle — D-9 table', () => {
         metaData: {
           unregister: {
             jobId: 'j',
-            startedAt: '2026-09-29T09:00:00Z',
+            // TASK-1023 OD-6: inside the stale window — an older open unregister is UNREGISTER_FAILED.
+            startedAt: '2026-09-29T09:58:00Z',
             deleteWeights: true,
             purge: false,
             finishedAt: null,

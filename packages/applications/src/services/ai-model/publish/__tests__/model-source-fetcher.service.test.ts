@@ -98,7 +98,7 @@ describe('ModelSourceFetcherService', () => {
 
       await service.fetch(AiModelSource.HUGGINGFACE, 'hf:google/gemma-4-e2b-it-qat-q4_0-gguf', null, opts());
 
-      expect(mockHfClient.listRepoFiles).toHaveBeenCalledWith('google/gemma-4-e2b-it-qat-q4_0-gguf', 'main');
+      expect(mockHfClient.listRepoFiles).toHaveBeenCalledWith('google/gemma-4-e2b-it-qat-q4_0-gguf', 'main', { tenantId: undefined });
     });
 
     it('filters GGUF files to a quant substring when one is supplied, but keeps companions regardless', async () => {
@@ -158,11 +158,16 @@ describe('ModelSourceFetcherService', () => {
 
       const files = await service.fetch(AiModelSource.HUGGINGFACE, 'org/repo', null, { stagingDir, revision: 'abc123', onBytes, onPlanned, idleTimeoutMs: 45_000 });
 
-      expect(mockHfClient.listRepoFiles).toHaveBeenCalledWith('org/repo', 'abc123');
+      expect(mockHfClient.listRepoFiles).toHaveBeenCalledWith('org/repo', 'abc123', { tenantId: undefined });
       // The byte-idle watchdog bound rides through to every Hub download (I7).
-      expect(mockHfClient.downloadFileTo).toHaveBeenCalledWith('org/repo', 'onnx/model.onnx', 'abc123', join(stagingDir, 'onnx/model.onnx'), onBytes, {
-        idleTimeoutMs: 45_000,
-      });
+      expect(mockHfClient.downloadFileTo).toHaveBeenCalledWith(
+        'org/repo',
+        'onnx/model.onnx',
+        'abc123',
+        join(stagingDir, 'onnx/model.onnx'),
+        onBytes,
+        expect.objectContaining({ idleTimeoutMs: 45_000 }),
+      );
       expect(onPlanned).toHaveBeenCalledWith(26);
       expect(onBytes).toHaveBeenCalledTimes(2);
       expect(files.map((f) => f.localPath)).toEqual([join(stagingDir, 'onnx/model.onnx'), join(stagingDir, 'config.json')]);

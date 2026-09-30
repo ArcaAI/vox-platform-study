@@ -37,6 +37,10 @@ export interface FetchStagingOptions {
   onBytes?: (bytes: number) => void;
   /** A Hub download receiving no byte for this long is aborted (`DOWNLOAD_IDLE_TIMEOUT`, I7). */
   idleTimeoutMs?: number;
+  /** TASK-1023 D-C — an admin cancel: checked between files and threaded into each Hub download. */
+  signal?: AbortSignal;
+  /** TASK-1023 OD-3 — the JOB's tenant, whose HF credential is used (default SYSTEM). */
+  tenantId?: string;
 }
 
 const HF_REPO_RE = /^(?:hf:)?([\w.-]+\/[\w.-]+)$/;
@@ -111,7 +115,7 @@ export class ModelSourceFetcherService {
 
   private async fetchFromHuggingFace(repo: string, quantFilter: string | null, opts: FetchStagingOptions): Promise<StagedModelFile[]> {
     const revision = opts.revision ?? 'main';
-    const entries = await this.hfClient.listRepoFiles(repo, revision);
+    const entries = await this.hfClient.listRepoFiles(repo, revision, { tenantId: opts.tenantId });
     const relevant = entries.filter((entry) => isRelevantModelSourceFile(entry.path));
     const selected = quantFilter ? relevant.filter((entry) => matchesQuantOrIsCompanion(entry.path, quantFilter)) : relevant;
 
@@ -128,8 +132,11 @@ export class ModelSourceFetcherService {
 
     const files: StagedModelFile[] = [];
     for (const { entry, localPath } of planned) {
+      opts.signal?.throwIfAborted();
       const { size, sha256 } = await this.hfClient.downloadFileTo(repo, entry.path, revision, localPath, opts.onBytes, {
         idleTimeoutMs: opts.idleTimeoutMs,
+        signal: opts.signal,
+        tenantId: opts.tenantId,
       });
       files.push({ path: entry.path, localPath, size, sha256 });
     }
@@ -161,6 +168,7 @@ export class ModelSourceFetcherService {
 
     const files: StagedModelFile[] = [];
     for (const { item, path, localPath } of planned) {
+      opts.signal?.throwIfAborted();
       const data = await this.s3Service.getFile(bucket, item.key);
       await mkdir(dirname(localPath), { recursive: true });
       await writeFile(localPath, data);

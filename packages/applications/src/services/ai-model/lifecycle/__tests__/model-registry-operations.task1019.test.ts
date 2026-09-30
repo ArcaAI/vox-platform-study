@@ -531,7 +531,8 @@ describe('R5 — unregister unloads first, then marks and enqueues', () => {
 
   it('a model already UNREGISTERING → 409', async () => {
     const row = modelRow({
-      metaData: { unregister: { jobId: 'u0', startedAt: '2026-09-29T09:00:00Z', finishedAt: null, error: null, weights: 'deleting' } },
+      // TASK-1023 OD-6: a FRESH open unregister — a stale one may be retried.
+      metaData: { unregister: { jobId: 'u0', startedAt: new Date().toISOString(), finishedAt: null, error: null, weights: 'deleting' } },
     });
     const { svc, queue } = build({ row, residency: { getCatalogue: vi.fn(), unload: vi.fn() } });
     const error = await svc.unregister('m-1').catch((e: unknown) => e);

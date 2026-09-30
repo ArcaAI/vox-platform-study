@@ -6,6 +6,8 @@ import { CommonServiceModule } from '../../baseServices';
 import { AiProviderConnectionServiceModule } from '../../ai-provider-connection/ai-provider-connection.service.module';
 import { AiModelDownloadService } from './ai-model-download.service';
 import { HuggingFaceModelSourceClient } from './huggingface-model-source.client';
+import { ModelPublisherJobsService } from './model-publisher-jobs.service';
+import { publisherCancelFlagsProvider } from './publisher-cancel-flags';
 
 /**
  * AiModelDownloadProducerModule — the PRODUCER half of the model publisher
@@ -29,8 +31,9 @@ import { HuggingFaceModelSourceClient } from './huggingface-model-source.client'
  */
 @Module({
   imports: [HttpModule, CommonServiceModule, CoreDatabaseModule, AiProviderConnectionServiceModule, BullModule.registerQueue({ name: JobQueue.DownloadAiModel })],
-  providers: [AiModelDownloadService, HuggingFaceModelSourceClient],
-  exports: [AiModelDownloadService, HuggingFaceModelSourceClient],
+  // TASK-1023 D-C — job control (cancel + list) and the Redis cancel flag it sets.
+  providers: [AiModelDownloadService, HuggingFaceModelSourceClient, ModelPublisherJobsService, publisherCancelFlagsProvider],
+  exports: [AiModelDownloadService, HuggingFaceModelSourceClient, ModelPublisherJobsService],
 })
 export class AiModelDownloadProducerModule {}
 

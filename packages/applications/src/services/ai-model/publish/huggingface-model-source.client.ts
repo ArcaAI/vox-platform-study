@@ -25,6 +25,12 @@ export interface HuggingFaceFileEntry {
  * `sha` (the HF-cache snapshot directory name and `AiModel.hfRevision`), the
  * licence, whether the repo is gated, and the two taxonomy facets.
  */
+/** Per-call options for the Hub calls (TASK-1023 OD-3). */
+export interface HuggingFaceCallOptions {
+  /** The JOB's tenant — whose HF credential is used. Default SYSTEM (platform registrations). */
+  tenantId?: string;
+}
+
 export interface HuggingFaceRepoInfo {
   sha: string;
   gated: boolean;
@@ -78,9 +84,9 @@ export class HuggingFaceModelSourceClient {
   ) {}
 
   /** List every FILE (not directory) entry in `repo`'s tree, recursively. */
-  async listRepoFiles(repo: string, revision = 'main'): Promise<HuggingFaceFileEntry[]> {
+  async listRepoFiles(repo: string, revision = 'main', opts: HuggingFaceCallOptions = {}): Promise<HuggingFaceFileEntry[]> {
     const url = `https://huggingface.co/api/models/${repo}/tree/${revision}?recursive=1`;
-    const headers = await this.resolveAuthHeaders();
+    const headers = await this.resolveAuthHeaders(opts.tenantId);
 
     try {
       const response = await this.httpService.axiosRef.get(url, { timeout: LIST_TIMEOUT_MS, headers });
@@ -100,9 +106,9 @@ export class HuggingFaceModelSourceClient {
    * Read the repo's metadata at `revision` — commit sha + the card facts.
    * Same auth + error posture as the other two calls.
    */
-  async getRepoInfo(repo: string, revision = 'main'): Promise<HuggingFaceRepoInfo> {
+  async getRepoInfo(repo: string, revision = 'main', opts: HuggingFaceCallOptions = {}): Promise<HuggingFaceRepoInfo> {
     const url = `https://huggingface.co/api/models/${repo}?revision=${encodeURIComponent(revision)}`;
-    const headers = await this.resolveAuthHeaders();
+    const headers = await this.resolveAuthHeaders(opts.tenantId);
 
     try {
       const response = await this.httpService.axiosRef.get(url, { timeout: LIST_TIMEOUT_MS, headers });
@@ -148,11 +154,12 @@ export class HuggingFaceModelSourceClient {
     revision: string,
     destPath: string,
     onBytes?: (bytes: number) => void,
-    opts: { idleTimeoutMs?: number } = {},
+    opts: HuggingFaceCallOptions & { idleTimeoutMs?: number; signal?: AbortSignal } = {},
   ): Promise<{ size: number; sha256: string }> {
     const url = `https://huggingface.co/${repo}/resolve/${revision}/${path}`;
     const idleTimeoutMs = opts.idleTimeoutMs ?? MODEL_PUBLISHER_TIMEOUT_DEFAULTS.idleTimeoutSeconds * 1000;
-    const headers = await this.resolveAuthHeaders();
+    opts.signal?.throwIfAborted();
+    const headers = await this.resolveAuthHeaders(opts.tenantId);
     // Before the request: once the body stream exists, nothing may be awaited
     // until `pipeline` owns it, or an early socket error has no listener.
     await mkdir(dirname(destPath), { recursive: true });
@@ -174,13 +181,27 @@ export class HuggingFaceModelSourceClient {
       timer.unref?.();
     };
 
+    // TASK-1023 D-C — an admin cancel aborts the request / body exactly like the
+    // idle watchdog does, and the call rejects with the CANCEL reason.
+    const external = opts.signal;
+    const onExternalAbort = () => {
+      controller.abort(external?.reason);
+      body?.destroy(external?.reason instanceof Error ? external.reason : new Error('aborted'));
+    };
+    external?.addEventListener('abort', onExternalAbort, { once: true });
+
     arm();
     try {
       try {
         const response = await this.httpService.axiosRef.get(url, { responseType: 'stream', headers, signal: controller.signal });
         body = response.data as Readable;
       } catch (error) {
+        if (external?.aborted) throw external.reason;
         throw idle ?? this.toRepoError(repo, error);
+      }
+      if (external?.aborted) {
+        body.destroy();
+        throw external.reason;
       }
       if (idle) {
         body.destroy(idle);
@@ -201,11 +222,13 @@ export class HuggingFaceModelSourceClient {
       try {
         await pipeline(body, meter, createWriteStream(destPath));
       } catch (error) {
+        if (external?.aborted) throw external.reason;
         throw idle ?? error;
       }
       return { size, sha256: hash.digest('hex') };
     } finally {
       if (timer) clearTimeout(timer);
+      external?.removeEventListener('abort', onExternalAbort);
     }
   }
 
@@ -217,11 +240,31 @@ export class HuggingFaceModelSourceClient {
    * are hard failures here; only HuggingFace's own 401/403 is (see
    * `toRepoError`).
    */
-  private async resolveAuthHeaders(): Promise<Record<string, string>> {
+  private async resolveAuthHeaders(tenantId: string = SYSTEM_TENANT_ID): Promise<Record<string, string>> {
     if (!this.providerConnections) return {};
+
+    if (tenantId !== SYSTEM_TENANT_ID) return this.resolveTenantOnlyAuthHeaders(tenantId);
 
     const resolved = await this.providerConnections.resolveCredential('model-registry', 'huggingface', SYSTEM_TENANT_ID);
     if (resolved.outcome !== 'resolved' || !resolved.apiKey) return {};
+
+    return { Authorization: `Bearer ${resolved.apiKey}` };
+  }
+
+  /**
+   * TASK-1023 OD-3 — a DELIBERATE exception to tenant → SYSTEM: a non-SYSTEM
+   * job's download never uses the platform token (it can reach repos the
+   * platform licensed). `resolveCredential` cascades to SYSTEM on absence, so
+   * it is only asked once the tenant's OWN default row is known to be enabled
+   * and keyed — then the tenant wins and SYSTEM is not consulted — and a
+   * result that still reads platform-funded is dropped anyway.
+   */
+  private async resolveTenantOnlyAuthHeaders(tenantId: string): Promise<Record<string, string>> {
+    const own = await this.providerConnections?.findDefaultRow?.('model-registry', 'huggingface', tenantId);
+    if (!own || !own.enabled || !own.encryptedApiKey) return {};
+
+    const resolved = await this.providerConnections!.resolveCredential('model-registry', 'huggingface', tenantId);
+    if (resolved.outcome !== 'resolved' || !resolved.apiKey || resolved.funding !== 'tenant') return {};
 
     return { Authorization: `Bearer ${resolved.apiKey}` };
   }
