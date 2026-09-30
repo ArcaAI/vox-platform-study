@@ -30,6 +30,7 @@ import {
   ModelCatalogueFilter,
   ModelCatalogueResponse,
   ModelResponse,
+  ModelServingFactsRequest,
   PaginatedModelResponse,
   SetPlatformDefaultRequest,
   UpdateModelRequest,
@@ -348,6 +349,17 @@ export class AiModelService extends BaseService implements IAiModelService {
    * weights it describes (R-3), so any other `taskType` — including a clear
    * attempt — is a 400 naming the field, not a silent no-op.
    */
+  /**
+   * TASK-1021 (D-11) — merge the engine sizing facts onto `_metadata.serving`: a key the
+   * PATCH omits keeps its stored value, and every other `_metadata` key is untouched.
+   * Plain-JSON round-trip drops `undefined` members, as `mergeAsrProfile` does.
+   */
+  private mergeServingFacts(metaData: Record<string, unknown> | undefined, serving: ModelServingFactsRequest): Record<string, unknown> {
+    const current = metaData?.serving;
+    const stored = current !== null && typeof current === 'object' && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
+    return { ...(metaData ?? {}), serving: { ...stored, ...JSON.parse(JSON.stringify(serving)) } };
+  }
+
   private mergeAsrProfile(
     taskType: ModelTaskType,
     metaData: Record<string, unknown> | undefined,
@@ -490,6 +502,12 @@ export class AiModelService extends BaseService implements IAiModelService {
     // PATCH cannot also pick up a profile in the same write.
     if (dto.asrProfile !== undefined) {
       existing.metaData = this.mergeAsrProfile(existing.taskType, existing.metaData, dto.asrProfile);
+    }
+
+    // TASK-1021 (D-11) — engine sizing facts, MERGED into `_metadata.serving` (the
+    // DTO already refused anything but the three declared keys).
+    if (dto.serving !== undefined) {
+      existing.metaData = this.mergeServingFacts(existing.metaData, dto.serving);
     }
 
     // The bucket IDENTITY is the only thing stored; `localPath` is derived from

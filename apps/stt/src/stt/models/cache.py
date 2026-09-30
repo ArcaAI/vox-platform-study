@@ -50,6 +50,7 @@ from .onnx_loader import ONNXLoader
 from .openai_loader import OpenAILoader
 from .parakeet_cpp_loader import ParakeetCppLoader
 from .sarvam_loader import SarvamLoader
+from .vllm_loader import VllmLoader
 from .whisper_cpp_loader import WhisperCppLoader
 
 logger = logging.getLogger(__name__)
@@ -351,6 +352,7 @@ class ModelCache(SharedModelCache[LoadedModel]):
         whisper_cpp = WhisperCppLoader()
         sarvam = SarvamLoader()
         openai = OpenAILoader()
+        vllm = VllmLoader()
 
         self._loaders: dict[AiModelFormat, BaseModelLoader] = {
             AiModelFormat.SAFETENSOR: huggingface,
@@ -370,6 +372,8 @@ class ModelCache(SharedModelCache[LoadedModel]):
             # Cloud BYOK speech engines (REST).
             AiModelFormat.SARVAM: sarvam,
             AiModelFormat.OPENAI: openai,
+            # TASK-1021 — Whisper on the in-cluster `vllm` service (REST, no weights).
+            AiModelFormat.VLLM: vllm,
         }
 
         # Keys are `AiModel.libraryName` values, validated platform-side against
@@ -388,6 +392,7 @@ class ModelCache(SharedModelCache[LoadedModel]):
             "azure-foundry": azure_foundry,
             "sarvam": sarvam,
             "openai": openai,
+            "vllm": vllm,
         }
 
     # ── legacy internal spellings ───────────────────────────────────────────

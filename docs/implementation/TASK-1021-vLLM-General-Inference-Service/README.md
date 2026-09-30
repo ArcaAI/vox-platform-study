@@ -488,7 +488,7 @@ Fixture (exact content):
 
 **C-4 · Settings.**
 - `vllm.descriptors.ts` replaces `asr-vllm.descriptors.ts`, with `consumedBy: ['vllm']` and `failMode: 'open-to-default'`. It declares:
-  - `vllm.pools` (JSON). Default `{"default":{"acceptedKinds":["asr"],"pins":[],"vramBudgetGiB":6,"maxResidentEngines":1,"inflightFactor":2}}`. Each pool: `acceptedKinds` ⊆ `asr|llm|tts`; `pins` = array of slugs; `vramBudgetGiB` > 0; `maxResidentEngines` ≥ 1; `inflightFactor` ≥ 1 (optional, default 2). Validator pattern: `metering-compute.descriptors.ts:104`.
+  - `vllm.pools` (JSON). Default `{"default":{"acceptedKinds":["asr"],"pins":[],"vramBudgetGiB":6,"maxResidentEngines":1,"inflightFactor":2},"asr":{…same…}}` — the `asr` entry was added by the final-review fix round (F1) because the dev overlay runs `VLLM_POOL=asr`; both sides are pinned to `tests/contracts/vllm-default-pools.fixture.json`. Each pool: `acceptedKinds` ⊆ `asr|llm|tts`; `pins` = array of slugs; `vramBudgetGiB` > 0; `maxResidentEngines` ≥ 1; `inflightFactor` ≥ 1 (optional, default 2). Validator pattern: `metering-compute.descriptors.ts:104`.
   - `vllm.truncation.minCharsPerVoicedSecond` and `vllm.truncation.voicedDbfs`: same defaults as the `asrVllm.*` keys they replace.
 - Pool identity: env `VLLM_POOL` (default `default`), declared in `turbo.json#globalEnv`.
 
@@ -944,15 +944,61 @@ Verify every step with `kustomize build deployment/k8s/overlays/{dev,staging,pro
   - `pnpm lint`
   - `git grep -n -i "asr-vllm\|asr_vllm\|ASR_VLLM\|asrVllm"` returns only `docs/archive/**` and this README
 - [ ] Docs: `.claude/rules/09-infrastructure-devops.md` + `.cursor` twin, `docs/operations/inference/README.md`, and TASK-1010's README (a Change History entry: superseded by TASK-1021).
-- [ ] Check the model is on the mount: `stat /mnt/models-bucket/<localPath>` from an existing s3fs pod (Rancher exec). If it is absent, publish it with the TASK-1019 publisher before rollout.
-- [ ] Rollout: push `dev-2.2` → pipeline builds `vllm` → `promote-dev` pins the digest → Argo syncs. Then:
-  - set `vllm.pools` for the dev pool `asr` through the admin settings API: `vramBudgetGiB: 6`, `pins: ["arcaai-whisper-large-ml-en-vllm"]`;
-  - re-seed only the connection and model rows via the admin API (a deploy never refreshes seed data — memory note).
+- [ ] Check the model is on the mount. The layout is whatever the row's `bucketPrefix` names — FLAT
+  (`<slug>/<version>/`, what a re-publish writes now that `libraryName` is `vllm`, which is not an
+  HF-cache library) or HF-cache (`hf/hub/models--<org>--<repo>/snapshots/<sha>`, what an older publish
+  left). Read the row first (`GET admin/ai-models/<id>` → `bucketPrefix`), then
+  `stat /mnt/models-bucket/<bucketPrefix>` (and `ls` it: `config.json` + `*.safetensors` must be there)
+  from an existing s3fs pod (Rancher exec). `localPath` = `/mnt/models-bucket/<bucketPrefix>` with no
+  trailing slash — a DIRECTORY, never `primaryObject`. If it is absent, publish it with the TASK-1019
+  publisher before rollout.
+- [ ] **Gates BEFORE flipping the dev replicas `0 → 1`** (`overlays/dev/vllm-asr` ships `replicas: 0`):
+  - (a) **Write the config the pod needs through the admin API first**, platform admin, working tenant unset:
+    - `PUT admin/settings/registry/vllm.pools` with `{"scope":"system","value":{…}}` — the map is applied
+      WHOLE, so write every pool, and it MUST keep the `asr` entry (a map that drops the pod's own pool is
+      refused by the pod and logged `vllm.control_plane.pool_missing_refused`):
+      `{"default":{"acceptedKinds":["asr"],"pins":[],"vramBudgetGiB":6,"maxResidentEngines":1,"inflightFactor":2},"asr":{"acceptedKinds":["asr"],"pins":["arcaai-whisper-large-ml-en-vllm"],"vramBudgetGiB":6,"maxResidentEngines":1,"inflightFactor":2}}`.
+    - `PATCH admin/ai-models/80000000-0000-0000-0001-000000000026` with `If-Match: "<_version>"` and
+      `{"serving":{"vramGiB":5,"maxNumSeqs":64},"wireModelId":"arcaai-whisper-large-ml-en-vllm","expectedVersion":<_version>}`.
+      Both fields in ONE write: the live row predates `_metadata.serving` (so the serving-spec route
+      answers 409 `SERVING_FACTS_MISSING`) AND predates `wireModelId` — `vllm` is an ENGINE_SERVED
+      provider, so a PATCH without `wireModelId` is refused 400 whatever else it carries.
+    - Verify: `GET /api/v1/internal/models/arcaai-whisper-large-ml-en-vllm/serving-spec?service=vllm`
+      with `X-Service-Token` + `X-Tenant-Id: 00000000-0000-0000-0000-000000000000` answers 200 with
+      `engine.vramGiB: 5` (not 409).
+  - (b) **The live dev agent keeps its OLD slug.** The agent seed is create-only by id, so a seeded
+    database still has `realtime-transcription-vllm-spike`, not `realtime-transcription-vllm`. Proof
+    step 4 (and the bench's `--agent`) uses whichever slug `GET admin/agents?task=SPEECH_TO_TEXT` shows
+    in Global; renaming it is optional and is an admin edit, not a re-seed.
+  - (c) **Vault must be up for any re-seed.** The SYSTEM `stt/vllm` connection gets its placeholder key
+    only when Vault Transit is reachable at seed time; seeded without it the row is keyless, the
+    credential fold drops it, and `stt` gets no `provider_overrides.vllm` (no `base_url`) — the session
+    then fails over as if the engine were down. Check `GET admin/providers/stt` shows `vllm` enabled and
+    keyed before the proof.
+  - (d) **Clean up the stale `asrVllm.*` rows.** Any `GlobalSetting` written under the retired
+    `asrVllm.*` keys (TASK-1010) is now an unknown key: nothing reads it and the registry routes 404 it.
+    List `GET admin/settings/tenant/00000000-0000-0000-0000-000000000000`, and soft-delete each
+    `asrVllm.*` row with `DELETE admin/settings/<id>`.
+  - (e) **No Redis path for the vllm pod.** The pool Deployment sets no `REDIS_URL`, so the
+    `app-settings:invalidate` push never reaches it: a `vllm.pools` / `vllm.truncation.*` edit lands
+    on the next effective-config poll (60 s TTL). Wait a minute (or restart the pod) after an edit;
+    do not read a stale answer inside that window as a failed write.
+- [ ] Rollout: push `dev-2.2` → pipeline builds `vllm` → `promote-dev` pins the digest → Argo syncs
+  (still `replicas: 0`). Run the (a)–(e) gates. Then flip `overlays/dev/vllm-asr` to `replicas: 1`
+  in the deployment repo (Git, never `kubectl scale`).
+- [ ] **GPU smoke** (from the `hope-stt` pod or a Rancher exec into `hope-vllm-asr`):
+  - `curl -s :8867/api/v1/health/startup` → 200 once the pin is resident; `curl -s :8867/v1/models`
+    lists the slug with `resident: true`.
+  - `curl -s :8867/metrics | grep -E 'vllm:(kv_cache_usage_perc|num_requests_running)'` — both
+    series present, labelled `model_name` (vLLM V1 names; the alert `VllmKvCacheFull` and the
+    dashboard read exactly these). Absent means vLLM's registry is not served from the shell's
+    `/metrics` and the upstream panels stay empty.
+  - `curl -s :8867/metrics | grep hope_vllm_engine_loads_total` shows `result="loaded"`.
 - [ ] Proof, pasted into §5:
   1. `/health/startup` goes green with the pin resident. `GET /v1/models` lists it.
   2. A stock `openai` SDK call from inside the `hope-stt` pod returns Malayalam text.
   3. The bench: `apps/vllm/scripts/bench_concurrency.py` at 25 concurrent streams, commit p99 ≤ 15 s (the TASK-1010 target). Record GPU memory with `nvidia-smi` from the GPU exporter.
-  4. A live consultation in the admin playground on the renamed `realtime-transcription-vllm` agent, with the transcript flowing.
+  4. A live consultation in the admin playground on the vLLM ASR agent — `realtime-transcription-vllm` on a fresh seed, `realtime-transcription-vllm-spike` on the live dev DB (gate (b)) — with the transcript flowing.
   5. The Grafana `hope-vllm` dashboard populated, and one Tempo trace spanning gateway → stt → vllm.
   6. `kubectl logs` show no transcript text.
 - [ ] Set status to Review and fill in §5. The worktrees are removed only after their merge commits exist.
@@ -977,5 +1023,6 @@ _Not started — awaiting spec review, plan, and go._
 
 | Date | Change |
 |---|---|
+| 2026-09-30 | Final whole-branch review fix round (F1–F8). F1 `vllm.pools` default declares `asr` on both sides (shared fixture). F2 `VllmEngineLoadFailing` matches `result="failed"`. F3 KV-cache alert + dashboard on vLLM V1 `vllm:kv_cache_usage_perc` / `model_name`. F4 `PATCH admin/ai-models/:id` takes `serving` (merged into `_metadata.serving`); the vllm seed row names `wireModelId`. F5 `stt` retries a vllm 503 only for `engine_capacity` / `draining` / `serving_spec_unavailable`. F6 `stt` never presents a `CHANGE_ME` token. F7 pool env `HF_MODULES_CACHE`, `VLLM_NO_USAGE_STATS`. F8 L5 pre-flip gates (a)–(e) and GPU smoke. |
 | 2026-09-29 | Owner approved the spec and narrowed Phase 1 to Whisper ASR on vLLM (LLM/TTS later). Plan §4 written with decisions D-7…D-13 (ASR route over the spike engine because upstream 0.30.0 uses `<|prev|>` and max_tokens=16; truncation stays in the shell; engine facts on the model row). |
 | 2026-09-29 | Ticket created. Discovery (two read-only agents over `hope-v2` and `hope-v2-deployment`), upstream research (vLLM STT, vLLM-Omni speech API, OmniVoice), design approved section by section in conversation (D-1…D-6). Spec written; status Pending. |

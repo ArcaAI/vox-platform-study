@@ -246,14 +246,16 @@ describe('AsrAgentResolverService.resolveProviderOverrides — the batch-worker 
     credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
       if (provider === 'azure-speech') return binding('tenant', { api_key: 'k-azure', region: 'eastus' });
       if (provider === 'sarvam') return binding('platform', { api_key: 'k-sarvam', base_url: 'https://api.sarvam.ai', model: 'saarika:v2' });
-      return null; // azure-foundry, openai: no row at either tier
+      return null; // azure-foundry, openai, vllm: no row at either tier
     });
     const out = await make().resolveProviderOverrides(TENANT);
+    // TASK-1021 — the platform's self-host engine (`vllm`) is pulled too, after the cloud vendors.
     expect(credentials.resolve.mock.calls).toEqual([
       ['stt', 'azure-speech', TENANT],
       ['stt', 'azure-foundry', TENANT],
       ['stt', 'sarvam', TENANT],
       ['stt', 'openai', TENANT],
+      ['stt', 'vllm', TENANT],
     ]);
     expect(out).toEqual({
       'azure-speech': { api_key: 'k-azure', funding: 'tenant', region: 'eastus' },
@@ -270,8 +272,8 @@ describe('AsrAgentResolverService.resolveProviderOverrides — the batch-worker 
       return binding('platform', { api_key: `k-${provider}` });
     });
     const out = await make().resolveProviderOverrides(TENANT);
-    expect(Object.keys(out).sort()).toEqual(['azure-speech', 'openai']);
-    expect(credentials.resolve).toHaveBeenCalledTimes(4);
+    expect(Object.keys(out).sort()).toEqual(['azure-speech', 'openai', 'vllm']);
+    expect(credentials.resolve).toHaveBeenCalledTimes(5);
   });
 
   it('an entitlement refusal of the platform default leaves that provider out — never a substituted credential', async () => {
@@ -283,7 +285,7 @@ describe('AsrAgentResolverService.resolveProviderOverrides — the batch-worker 
       return binding('tenant', { api_key: `k-${provider}` });
     });
     const out = await make().resolveProviderOverrides(TENANT);
-    expect(Object.keys(out).sort()).toEqual(['azure-speech', 'sarvam']);
+    expect(Object.keys(out).sort()).toEqual(['azure-speech', 'sarvam', 'vllm']);
   });
 
   it('a backend fault propagates — it is never disguised as "no credential"', async () => {

@@ -150,7 +150,7 @@ describe('SttInternalController.getProviderOverrides', () => {
     credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
       if (provider === 'azure-speech') return binding('tenant', { api_key: 'k-tenant', region: 'eastus' });
       if (provider === 'sarvam') return binding('platform', { api_key: 'k-platform', base_url: 'https://api.sarvam.ai', model: 'saarika:v2' });
-      return null; // azure-foundry, openai: no row at either tier
+      return null; // azure-foundry, openai, vllm: no row at either tier
     });
 
     const result = await controller.getProviderOverrides(request, TENANT);
@@ -162,6 +162,8 @@ describe('SttInternalController.getProviderOverrides', () => {
       ['stt', 'azure-foundry', TENANT],
       ['stt', 'sarvam', TENANT],
       ['stt', 'openai', TENANT],
+      // TASK-1021 — the platform's self-host engine is pulled too, after the cloud vendors.
+      ['stt', 'vllm', TENANT],
     ]);
     // The tenant's own row → `tenant`; the SYSTEM platform default → `platform`;
     // no row anywhere → no key (the BYOK-only STT loader then fails closed).
@@ -182,10 +184,11 @@ describe('SttInternalController.getProviderOverrides', () => {
 
     const result = await controller.getProviderOverrides(request, TENANT);
 
-    expect(Object.keys(result).sort()).toEqual(['azure-speech', 'openai']);
+    expect(Object.keys(result).sort()).toEqual(['azure-speech', 'openai', 'vllm']);
     expect(result.sarvam).toBeUndefined();
-    // A veto on one provider does not block the pull for the others (four providers since TASK-880).
-    expect(credentials.resolve).toHaveBeenCalledTimes(4);
+    // A veto on one provider does not block the pull for the others (four cloud providers since
+    // TASK-880, plus the self-host `vllm` engine since TASK-1021).
+    expect(credentials.resolve).toHaveBeenCalledTimes(5);
   });
 
   it('an unentitled platform default is a refusal for that provider only (absent) — never a substituted credential', async () => {
@@ -197,7 +200,7 @@ describe('SttInternalController.getProviderOverrides', () => {
       return binding('tenant', { api_key: `k-${provider}` });
     });
     const result = await controller.getProviderOverrides(request, TENANT);
-    expect(Object.keys(result).sort()).toEqual(['azure-speech', 'sarvam']);
+    expect(Object.keys(result).sort()).toEqual(['azure-speech', 'sarvam', 'vllm']);
   });
 
   it('a backend fault propagates — it is never disguised as "no credential"', async () => {

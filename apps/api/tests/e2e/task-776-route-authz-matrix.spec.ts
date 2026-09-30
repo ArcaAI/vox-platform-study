@@ -391,6 +391,10 @@ test.describe(' route authorization conformance matrix', () => {
     // an unrelated container, so the test Postgres never started). The `assertAll` above runs
     // FIRST and passed for all 35, so every one of them IS service-token-gated; only the inventory
     // was stale. Re-pinned 2026-09-22 after verifying that, not by taking the new count on trust.
-    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(35);
+    // TASK-1010 added the 36th without re-pinning (GET /internal/agents/asr-spec, AgentInternalController),
+    // and TASK-1021 the 37th: GET /internal/models/{slug}/serving-spec (ModelServingInternalController),
+    // `@Public()` behind InternalServiceTokenGuard like its siblings. Counted from the regenerated
+    // `route-manifest.json` (isPublic && path under /api/v1/internal/) = 37.
+    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(37);
   });
 });

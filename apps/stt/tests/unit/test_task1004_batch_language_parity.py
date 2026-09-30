@@ -109,7 +109,12 @@ async def _streaming(spec: dict[str, Any], mode: str) -> tuple[tuple[Any, ...], 
     mgr._warm_and_pin_pipeline_models = AsyncMock(return_value=[])
     captured: dict[str, Any] = {}
 
-    def _spy(asr_model: Any, inference_config: Any, initial_prompt: str | None = None) -> Any:
+    def _spy(
+        asr_model: Any,
+        inference_config: Any,
+        initial_prompt: str | None = None,
+        tenant_id: str | None = None,
+    ) -> Any:
         captured["config"] = inference_config
         return AsyncMock()
 

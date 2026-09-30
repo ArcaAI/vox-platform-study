@@ -866,12 +866,13 @@ export const GLOBAL_AGENT_ASSIGNMENTS: SeedAgentAssignment[] = assignmentsFor(SE
 // ----------------------------------------------------------------------------------------------
 
 /**
- * TASK-1010 (OD-12) — the lineage key of the vLLM Whisper spike agent.
+ * TASK-1010 (OD-12) — the lineage key of the vLLM Whisper agent. TASK-1021 dropped its `-spike`
+ * suffix when `apps/asr-vllm` became `apps/vllm`; it is still playground-only.
  *
- * Owner rule: model selection is ALWAYS through an agent — the bench and `apps/asr-vllm` reach the
+ * Owner rule: model selection is ALWAYS through an agent — the bench and `apps/vllm` reach the
  * vLLM registry row (`arcaai-whisper-large-ml-en-vllm`) by `agentSlug`, never by a model slug.
  */
-export const VLLM_SPIKE_AGENT_SLUG = 'realtime-transcription-vllm-spike';
+export const VLLM_ASR_AGENT_SLUG = 'realtime-transcription-vllm';
 
 const playgroundOnly = (n: number) => `9c000000-0000-0000-0006-${String(n).padStart(12, '0')}`;
 
@@ -890,10 +891,10 @@ export const GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS: SeedAgentSpec[] = [
   {
     id: playgroundOnly(1),
     tenantId: SEED_TENANT_ID,
-    slug: VLLM_SPIKE_AGENT_SLUG,
-    name: 'Realtime transcription — vLLM spike (ML/EN)',
+    slug: VLLM_ASR_AGENT_SLUG,
+    name: 'Realtime transcription — vLLM (ML/EN)',
     description:
-      'TASK-1010 spike: the in-house Malayalam/English Whisper fine-tune (fp16) on the vLLM decode backend (`apps/asr-vllm`, continuous batching across streams). Playground-only: never promoted, never assigned — reached only by naming this agent.',
+      'The in-house Malayalam/English Whisper fine-tune (fp16) on the vLLM inference service (`apps/vllm`, continuous batching across streams). Playground-only: never promoted, never assigned — reached only by naming this agent.',
     task: 'SPEECH_TO_TEXT',
     modelSlug: 'arcaai-whisper-large-ml-en-vllm',
     // No fallback chain: the spike measures ONE engine, and a silent failover to another runtime

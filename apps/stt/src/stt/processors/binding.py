@@ -38,11 +38,12 @@ _PLATFORM_DEVICE_PREFS: dict[str, list[str]] = {
 def platform_device_preferences(platform: str | None = None) -> list[str]:
     """Device preference order for the (detected) platform.
 
-    ``cloud`` is always appended — cloud engines are host-independent.
+    ``cloud`` and ``remote`` are always appended — a vendor cloud engine and an
+    in-cluster inference service (TASK-1021 `vllm`) are both host-independent.
     """
     plat = platform or detect_platform().value
     devices = list(_PLATFORM_DEVICE_PREFS.get(plat, ["cpu"]))
-    devices.append("cloud")
+    devices.extend(("cloud", "remote"))
     return devices
 
 

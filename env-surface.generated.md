@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 115 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
-| Python declared fields | 312 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 365 |
-| `turbo.json#globalEnv` entries | 522 |
+| Python declared fields | 311 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 363 |
+| `turbo.json#globalEnv` entries | 521 |
 
 ## Variables — the TypeScript platform surface
 
@@ -188,14 +188,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `API_GATEWAY_URL` | `apps/stt` | no | no | `http://localhost:8868/api/v1` | commented | — |
 | `APP_NAME__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `stt` | commented | — |
 | `APP_VERSION__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `2.0.0` | commented | — |
-| `ASR_VLLM_API_GATEWAY_URL` | `apps/asr-vllm` | no | no | `http://localhost:8868/api/v1` | commented | — |
-| `ASR_VLLM_ENFORCE_EAGER__MOVED_TO_CONTROL_PLANE` | `apps/asr-vllm` | no | no | `false` | commented | — |
-| `ASR_VLLM_GPU_MEMORY_UTILIZATION__MOVED_TO_CONTROL_PLANE` | `apps/asr-vllm` | no | no | `0.2` | commented | — |
-| `ASR_VLLM_MAX_NUM_SEQS__MOVED_TO_CONTROL_PLANE` | `apps/asr-vllm` | no | no | `64` | commented | — |
-| `ASR_VLLM_MAX_RESIDENT_ENGINES__MOVED_TO_CONTROL_PLANE` | `apps/asr-vllm` | no | no | `1` | commented | — |
-| `ASR_VLLM_TRUNCATION_MIN_CHARS_PER_VOICED_SECOND__MOVED_TO_CONTROL_PLANE` | `apps/asr-vllm` | no | no | `3` | commented | — |
-| `ASR_VLLM_TRUNCATION_VOICED_DBFS__MOVED_TO_CONTROL_PLANE` | `apps/asr-vllm` | no | no | `-40` | commented | — |
-| `ASR_VLLM_WEIGHTS_CACHE_DIR` | `apps/asr-vllm` | no | no | — | commented | — |
 | `AZURE_STORAGE_ACCOUNT` | `apps/stt` | no | no | `` | commented | — |
 | `AZURE_STORAGE_ACCOUNT_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `AZURE_STORAGE_CONNECTION_STRING` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
@@ -335,14 +327,15 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_TEXT_PROVIDER` | `apps/harness` | no | no | — | commented | — |
 | `HARNESS_TEXT_TIMEOUT_S` | `apps/harness` | no | no | `120` | commented | — |
 | `HF_HOME` | `apps/nlp` | no | no | `` | live | `NLP_HF_HOME` |
+| `HF_HUB_OFFLINE` | `apps/vllm` | no | no | `false` | commented | — |
 | `HUGGINGFACE_CACHE_DIR` | `apps/stt` | no | no | `<home>/.cache/huggingface/hub` | commented | — |
-| `INTERNAL_ACCESS_TOKEN` | `apps/asr-vllm` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/guardrail` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/nlp` | no | yes | `CHANGE_ME` | live | `NLP_INTERNAL_ACCESS_TOKEN` |
 | `INTERNAL_ACCESS_TOKEN` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/text` | no | yes | `CHANGE_ME` | live | `TOKEN` |
 | `INTERNAL_ACCESS_TOKEN` | `apps/tts` | no | yes | `CHANGE_ME` | live | — |
+| `INTERNAL_ACCESS_TOKEN` | `apps/vllm` | no | yes | `CHANGE_ME` | live | — |
 | `MEDICAL_SUGGESTER_USE_GPU` | `apps/nlp` | no | no | `true` | commented | — |
 | `METRICS_ENABLED` | `apps/stt` | no | no | `true` | commented | — |
 | `MINIO_ACCESS_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
@@ -403,8 +396,8 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `PUNCTUATION_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `auto` | commented | — |
 | `PUNCTUATION_MAX_LENGTH__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `300` | commented | — |
 | `PUNCTUATION_MODEL_CACHE_DIR__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | — | commented | — |
-| `REDIS_URL` | `apps/asr-vllm` | no | no | `` | commented | — |
 | `REDIS_URL` | `apps/stt` | no | no | `redis://localhost:6379/0` | commented | — |
+| `REDIS_URL` | `apps/vllm` | no | no | `` | commented | — |
 | `SECURITY_CORS_ALLOW_CREDENTIALS` | `apps/nlp` | no | no | `false` | commented | — |
 | `SECURITY_CORS_METHODS` | `apps/nlp` | no | no | `["GET", "POST", "PUT", "DELETE", "OPTIONS"]` | commented | — |
 | `SECURITY_CORS_ORIGINS` | `apps/nlp` | no | no | `["*"]` | commented | — |
@@ -491,6 +484,12 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `VAD_MIN_SILENCE_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `500` | commented | — |
 | `VAD_MIN_SPEECH_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `100` | commented | — |
 | `VAD_THRESHOLD__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.5` | commented | — |
+| `VLLM_API_GATEWAY_URL` | `apps/vllm` | no | no | `http://localhost:8868/api/v1` | commented | — |
+| `VLLM_POOL` | `apps/vllm` | no | no | `default` | commented | — |
+| `VLLM_POOLS__MOVED_TO_CONTROL_PLANE` | `apps/vllm` | no | no | `{"default": {"acceptedKinds": ["asr"], "pins": [], "vramBudgetGiB": 6, "maxResidentEngines": 1, "inflightFactor": 2}, "asr": {"acceptedKinds": ["asr"], "pins": [], "vramBudgetGiB": 6, "maxResidentEngines": 1, "inflightFactor": 2}}` | commented | — |
+| `VLLM_TRUNCATION_MIN_CHARS_PER_VOICED_SECOND__MOVED_TO_CONTROL_PLANE` | `apps/vllm` | no | no | `3` | commented | — |
+| `VLLM_TRUNCATION_VOICED_DBFS__MOVED_TO_CONTROL_PLANE` | `apps/vllm` | no | no | `-40` | commented | — |
+| `VLLM_WEIGHTS_CACHE_DIR` | `apps/vllm` | no | no | — | commented | — |
 | `WHISPER_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `8` | commented | — |
 | `WORKER_MAX_RETRIES__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `3` | commented | — |
 | `WORKER_POLL_TIMEOUT_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `1000` | commented | — |
@@ -506,7 +505,7 @@ promotion into its service’s `BaseSettings`.
 | Variable | Read by |
 |---|---|
 | `DATABASE_URL` | `apps/harness/src/harness/eval/judge/selection.py` |
-| `DEPLOYMENT_ENVIRONMENT` | `apps/asr-vllm/src/asr_vllm/core/service_auth.py`, `apps/guardrail/src/guardrail/main.py`, `apps/harness/src/harness/core/config.py`, `apps/stt/src/stt/core/service_auth.py`, `apps/stt/src/stt/main.py`, `apps/stt/src/stt/worker.py`, `apps/tts/src/tts/core/config.py`, `apps/tts/src/tts/core/service_auth.py`, `packages/py-obs/src/hope_obs/config.py` |
+| `DEPLOYMENT_ENVIRONMENT` | `apps/guardrail/src/guardrail/main.py`, `apps/harness/src/harness/core/config.py`, `apps/stt/src/stt/core/service_auth.py`, `apps/stt/src/stt/main.py`, `apps/stt/src/stt/worker.py`, `apps/tts/src/tts/core/config.py`, `apps/tts/src/tts/core/service_auth.py`, `apps/vllm/src/hope_vllm/core/service_auth.py`, `packages/py-obs/src/hope_obs/config.py` |
 | `EXPORTER_INTERVAL_SECONDS` | `infrastructure/gpu-process-exporter/exporter.py` |
 | `EXPORTER_PORT` | `infrastructure/gpu-process-exporter/exporter.py` |
 | `HARNESS_GOLDEN_SET_PATH` | `apps/harness/eval/promptfoo/tests.py` |
@@ -521,8 +520,7 @@ promotion into its service’s `BaseSettings`.
 | `HARNESS_PROMPTFOO_MODEL` | `apps/harness/eval/promptfoo/provider.py` |
 | `HARNESS_VERDICT_CACHE_HMAC_KEY` | `apps/harness/src/harness/sensors/inferential/verdict_cache.py` |
 | `HF_HUB_CACHE` | `packages/py-runtime-models/src/hope_runtime_models/resolvable.py` |
-| `HF_HUB_DISABLE_IMPLICIT_TOKEN` | `apps/asr-vllm/src/asr_vllm/main.py` |
-| `HF_HUB_OFFLINE` | `apps/harness/src/harness/models/source_resolver.py`, `apps/nlp/src/nlp/models/source_resolver.py`, `apps/stt/src/stt/models/source_resolver.py`, `apps/tts/src/tts/models/source_resolver.py` |
+| `HF_HUB_DISABLE_IMPLICIT_TOKEN` | `apps/vllm/src/hope_vllm/main.py` |
 | `HOPE_SECRETS_DIR` | `packages/py-env/src/hope_env/settings_sources.py` |
 | `HOPE_STT_APP_DIR` | `apps/stt/scripts/mlen_chunk_sweep.py` |
 | `HOSTNAME` | `packages/py-env/src/hope_env/service_registration.py`, `packages/py-runtime-models/src/hope_runtime_models/residency_agent.py` |

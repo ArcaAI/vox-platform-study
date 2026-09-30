@@ -237,8 +237,10 @@ class TestLoadAsrPipeline:
         mock_cache = AsyncMock()
         mock_cache.get_or_load_from_ref = AsyncMock(return_value=mock_model)
 
-        mgr._make_asr_callable = lambda asr_model, inference_config, initial_prompt=None: AsyncMock(
-            return_value="ok"
+        mgr._make_asr_callable = (
+            lambda asr_model, inference_config, initial_prompt=None, tenant_id=None: AsyncMock(
+                return_value="ok"
+            )
         )
 
         with patch.dict(
@@ -271,7 +273,7 @@ class TestLoadAsrPipeline:
         # Capture the inference_config that _make_asr_callable receives
         captured = {}
 
-        def spy_make_asr(asr_model, inference_config, initial_prompt=None):
+        def spy_make_asr(asr_model, inference_config, initial_prompt=None, tenant_id=None):
             captured["model"] = asr_model
             captured["config"] = inference_config
             return AsyncMock(return_value="text")

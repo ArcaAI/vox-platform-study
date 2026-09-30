@@ -13848,6 +13848,22 @@
       "apiExcluded": true
     },
     {
+      "controller": "ModelServingInternalController",
+      "handler": "servingSpec",
+      "method": "GET",
+      "path": "/api/v1/internal/models/{slug}/serving-spec",
+      "routePath": "/internal/models/:slug/serving-spec",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
       "controller": "ServiceReleaseInternalController",
       "handler": "register",
       "method": "POST",

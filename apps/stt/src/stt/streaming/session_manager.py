@@ -30,6 +30,7 @@ from typing import Any
 
 import numpy as np
 import structlog
+from hope_env import real_secret
 from hope_obs import redact_id
 
 from stt.core.api_client.gateway import APIGatewayClient
@@ -48,6 +49,7 @@ from stt.core.metrics import (
     streaming_session_finished,
     streaming_session_started,
 )
+from stt.models.vllm_loader import is_vllm_served
 from stt.models.whisper_kwargs import build_whisper_generate_kwargs
 from stt.pipeline.dto import AiModelConfig, AiModelFormat, DualCaptureConfig, EndpointConfig
 from stt.pipeline.language_modes import (
@@ -199,6 +201,9 @@ _CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
         AiModelFormat.AZURE_FOUNDRY,
         AiModelFormat.SARVAM,
         AiModelFormat.OPENAI,
+        # TASK-1021 — not a vendor key, but the `vllm` connection entry (WHERE to
+        # call, per tenant connection) reaches the loader only on this path.
+        AiModelFormat.VLLM,
     }
 )
 
@@ -3139,7 +3144,12 @@ class SessionManager:
         else:
             raise RuntimeError("Cloud ASR ref has neither an inline definition nor a DB config")
 
-        loader = model_cache._get_loader(model_config.format)
+        # TASK-1021 — a vLLM row is selected by its library, not its artifact format.
+        loader = (
+            model_cache.loader_for(model_config)
+            if is_vllm_served(model_config)
+            else model_cache._get_loader(model_config.format)
+        )
         if loader is None:
             return await model_cache.get_or_load_from_ref(
                 model_ref=asr_ref,
@@ -3212,6 +3222,9 @@ class SessionManager:
             asr_format = asr_ref.inline.engine
         elif db_model_config is not None:
             asr_format = getattr(db_model_config, "format", None)
+            # TASK-1021 — a vLLM row keeps its artifact format; its engine is its library.
+            if is_vllm_served(db_model_config):
+                asr_format = AiModelFormat.VLLM
 
         if provider_overrides and asr_format in _CLOUD_ASR_OVERRIDE_FORMATS:
             asr_model = await self._load_cloud_asr_uncached(
@@ -3323,6 +3336,9 @@ class SessionManager:
             asr_model,
             inference_config,
             initial_prompt=initial_prompt,
+            # TASK-1021 — the SESSION's tenant, for an engine that names it on the
+            # wire (`vllm`: `X-Tenant-Id` is mandatory). Explicit, never manager state.
+            tenant_id=tenant_id,
         )
 
         if probe_duplex:
@@ -3521,6 +3537,7 @@ class SessionManager:
         inference_config: Any,
         initial_prompt: str | None = None,
         task: str = "transcribe",
+        tenant_id: str | None = None,
     ) -> StreamingAsrCallable:
         """Create a standalone callable ASR pipeline for streaming inference.
 
@@ -3566,6 +3583,7 @@ class SessionManager:
             inference_config,
             initial_prompt=initial_prompt,
             task=task,
+            tenant_id=tenant_id,
         )
         return callable_
 
@@ -3818,6 +3836,73 @@ class SessionManager:
             return await openai_recognize_utterance(config, samples, sample_rate, language)
 
         return run_openai_inference
+
+    def _make_vllm_callable(
+        self,
+        loaded_model: Any,
+        inference_config: Any,
+        initial_prompt: str | None = None,
+        tenant_id: str | None = None,
+    ) -> StreamingAsrCallable:
+        """Whisper on the in-cluster `vllm` service — per-utterance REST (TASK-1021).
+
+        ``loaded_model.model`` is the ``VllmAsrConfig`` from ``VllmLoader``. Each
+        utterance is cut into ≤ 30 s windows (the model's ``maxDecodeWindowSec``
+        when the worker sends it) and decoded concurrently.
+
+        The prompt is the agent's ``initial_prompt``, unchanged — empty for the ml-en
+        fine-tune. The callable deliberately declares no ``prompt`` parameter, so the
+        inference worker never hands it prior-transcript context (TASK-994: the
+        fine-tune decodes best with none).
+
+        ``tenant_id`` is the SESSION's, passed explicitly by the caller; nothing is
+        read from manager state, so one session's tenant can never reach another's
+        callable. Refuses to BUILD without it or a resolved language — both are
+        mandatory on the wire — with ``VllmSessionContextError``, so the session falls
+        through to its fallback chain instead of failing every utterance.
+        """
+        from stt.streaming.vllm_asr import VllmSessionContextError, vllm_recognize_windows
+
+        config = loaded_model.model
+        language = getattr(inference_config, "language", None)
+        if not isinstance(tenant_id, str) or not tenant_id:
+            raise VllmSessionContextError(
+                "vllm ASR needs the session tenant (X-Tenant-Id is mandatory)"
+            )
+        if not isinstance(language, str) or not language:
+            raise VllmSessionContextError(
+                "vllm ASR needs a pinned language: the route requires the Whisper language "
+                "token and cannot auto-detect"
+            )
+        session_tenant: str = tenant_id
+        # `real_secret`: an unfilled CHANGE_ME is the ABSENCE of a token (dev bypass on the
+        # `vllm` side), never a credential to present (hope_env.placeholders).
+        service_token = real_secret(get_settings().internal_access_token)
+        default_window = getattr(inference_config, "max_decode_window_sec", None)
+
+        async def run_vllm_inference(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            max_decode_window_sec: float | None = None,
+        ) -> dict[str, Any]:
+            window = default_window if max_decode_window_sec is None else max_decode_window_sec
+            return await vllm_recognize_windows(
+                config,
+                samples,
+                sample_rate,
+                window_s=window,
+                language=language,
+                prompt=initial_prompt,
+                tenant_id=session_tenant,
+                request_id=None,
+                service_token=service_token,
+            )
+
+        # The missing `prompt` parameter is deliberate (see above): tell the inference
+        # worker's signature probe not to warn that this session "decodes unconditioned".
+        run_vllm_inference.declines_carry_forward_prompt = True  # type: ignore[attr-defined]
+        return run_vllm_inference
 
     def _make_transformers_callable(
         self,

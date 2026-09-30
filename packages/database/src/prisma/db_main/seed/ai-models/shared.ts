@@ -1,5 +1,5 @@
 import type { ResourceStatusType } from '../../../../generated/core-prisma-client/client.js';
-import type { AiModelAsrProfile, AiModelServingProfile } from '@arcaai/types';
+import type { AiModelAsrProfile, AiModelEngineServingFacts, AiModelServingProfile } from '@arcaai/types';
 
 /**
  * Shared enum mirrors + row shape for the AI-model seed catalog.
@@ -158,8 +158,8 @@ export const AI_MODEL_SERVED_BY = [
   'lmstudio',
   'text',
   'gateway-proxy',
-  // TASK-1010 (OD-9) — `apps/asr-vllm`, the vLLM Whisper decode backend.
-  'asr-vllm',
+  // TASK-1010 (OD-9) — the vLLM inference service (`apps/vllm`; `asr-vllm` until TASK-1021).
+  'vllm',
 ] as const;
 
 export type AiModelServedBy = (typeof AI_MODEL_SERVED_BY)[number];
@@ -541,8 +541,12 @@ export interface AiModelSeed {
      * settings registry (`lmStudio.serving.*`), resolved by
      * `resolveServingProfile` — configuration cascades and widens only on
      * absence. Nothing here is ever cloned into a tenant.
+     *
+     * TASK-1021 (D-11) — a vLLM-served row declares its ENGINE sizing on the same
+     * key (`AiModelEngineServingFacts`: `vramGiB`, `maxNumSeqs`, `enforceEager`),
+     * also by reference.
      */
-    serving?: AiModelServingProfile;
+    serving?: AiModelServingProfile & AiModelEngineServingFacts;
   };
   /** Only set when a row must seed in a non-default status (indic-f5). */
   resourceStatus?: ResourceStatusType;
