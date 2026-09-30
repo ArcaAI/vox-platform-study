@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Pending** — spec approved 2026-09-29; Phase 1 (Whisper ASR) plan written (§4); awaiting owner review of the plan and **go** |
+| Status | **In Progress** — Phase 1 (Whisper ASR) merged into local `dev-2.2` (`2a82092a1` + `8a8bcc9b9`), gates run; NOT pushed; deployment branch `task-1021/vllm-asr` unmerged; cluster rollout + GPU proof (L5) pending owner go |
 | Type | feature + infrastructure |
 | Branch | `dev-2.2` |
 | Repos | `arca/hope-v2` (this repo) and `arca/hope-v2-deployment` |
@@ -1015,14 +1015,49 @@ Verify every step with `kustomize build deployment/k8s/overlays/{dev,staging,pro
 
 ## 5. Implementation Summary
 
-_Not started — awaiting spec review, plan, and go._
+### 5.1 What shipped (Phase 1 — Whisper ASR), merged into local `dev-2.2`
 
----
+| Lane | Branch / range | Delivered |
+|---|---|---|
+| L1 contracts | `task-1021/l1` `dd23901a9..2c7fb29ae` | `ResolvedServingSpec` (`packages/types/src/serving-spec.ts`) + fixture; `buildResolvedServingSpec`; `ModelServingSpecService`; internal route `GET /api/v1/internal/models/:slug/serving-spec?service=vllm` (service-token guard, tenant → SYSTEM, 404/409); `servedBy: 'vllm'`; `PLATFORM_SELF_HOST_PROVIDERS.stt = ['vllm']` with engine-served classification kept first; ASR resolver + batch credential pull deliver `provider_overrides.vllm`; `vllm.*` descriptors (pools, truncation) replace `asrVllm.*`; seed: model row `provider/libraryName/servedBy = vllm`, `_metadata.serving`, SYSTEM `stt/vllm` connection → `http://hope-vllm-asr:8867/v1`, agent renamed `realtime-transcription-vllm` |
+| L2 shell | `task-1021/l2` `dd23901a9..63028f542` | `apps/asr-vllm` → `apps/vllm` (`hope_vllm`); OpenAI `POST /v1/audio/transcriptions` (json/text/verbose_json + `x_hope`) and `GET /v1/models`; plain-ASGI auth (`X-Service-Token` or Bearer, `X-Tenant-Id`); `ServingSpecClient` (tenant-keyed, bounded, single-flight); pool with GiB admission, victims released before the next build, pins by slug re-resolved per refresh, kind gating, in-flight cap → 429; `served_model_name = slug`; drain; `hope_vllm_*` + residency metrics |
+| L3 stt | `task-1021/l3` `dd23901a9..620fbb8a3` | `VllmLoader` (SELF_HOSTED), stt-side `AiModelFormat.VLLM`, `VllmEngine`; REST client with per-base_url semaphore, retry only 429 / capacity-class 503; tenant threaded explicitly; batch windows ≤ 30 s via the whisper.cpp segmenter under `TaskGroup`; ml-en → language `ml` (live check pending) |
+| L4 deploy + CI | hope-v2 `caeee6d98`; deployment `task-1021/vllm-asr` `ada789e..6a59eeb` | `build-vllm` job + services.json + promote list; `vllm-pool` Kustomize template (s3fs sidecar uid 10001, probes, port-only egress, `part-of` label), Service `hope-vllm-asr`, dev pool at **replicas 0**; alerts `VllmPoolDown/AdmissionRejected/Saturated/EngineLoadFailing/KvCacheFull/AsrSlow` with promtool tests; `vllm.json` dashboard; `s3fs-argv` CI gate; envfrom/probe/capacity gates |
+| Final fix wave | `ef7eb8547..def414764` (+ deployment `480baf6..6a59eeb`) | `asr` in the default pools map; alert label `failed`; vLLM V1 metric names; model update DTO `serving` facts (platform-admin, If-Match unchanged); retry scope; placeholder-aware outbound token; HF_MODULES_CACHE / VLLM_NO_USAGE_STATS; L5 gates in this README |
+
+Review trail: every lane passed a task review (spec + quality) after 1–2 fix rounds; a whole-branch cross-lane review found 5 Important issues, all fixed and re-reviewed "Ready to merge".
+
+### 5.2 Gate pass after merge (2026-09-30, primary `dev-2.2` @ `8a8bcc9b9` + docs)
+
+| Gate | Result |
+|---|---|
+| `@arcaai/types` test, `@arcaai/database` test | pass |
+| `@arcaai/applications` build + test | pass |
+| `api:openapi:check`, `api:portal:check`, `vox-node gen:admin:check`, `env:sync --check` | pass (artifacts regenerated in `8a8bcc9b9`) |
+| admin-console `model-meta` | pass |
+| `apps/vllm` pytest / ruff / black / mypy (`--config-file apps/vllm/pyproject.toml`) | pass / clean / clean / "no issues in 31 files" |
+| `apps/stt` unit pytest; ruff on changed files | pass; clean |
+| `apps/stt` mypy | 4 errors, all pre-existing in files this ticket did not touch (`azure_continuous_asr`, `openai_realtime_asr`, `preprocessor`, `sarvam_realtime_asr`) |
+| `apps/stt` black | 2 files (`session_manager.py`, `transcribe_file.py`) already unformatted at `5466ab56c` — pre-existing drift |
+| Python contracts | pass |
+| `pnpm lint` | pass |
+| `pnpm test:unit` | 28,099 pass / 49 fail: 3 `env-sync.test.ts` failures reproduce on pre-merge `dev-2.2` `5466ab56c` (TASK-1019 bootstrap-floor keys); 46 logging-suite failures pass in isolation and as a directory (17 files / 405 tests) — full-run ordering flake in files this ticket did not touch |
+
+### 5.3 Not done yet (needs owner go)
+
+1. Push `dev-2.2` → CI builds `vllm`, `promote-dev` pins the digest.
+2. Merge + push `hope-v2-deployment` `task-1021/vllm-asr` (pool ships at replicas 0).
+3. L5 gates (a)–(g) and the GPU proof (§4 L5): admin writes (`vllm.pools.asr` pins; model row `serving` + `wireModelId`), flip replicas → 1, 25-stream bench, live consultation, dashboard, trace.
+
+### 5.4 Follow-ups recorded
+
+Phase 2 (LLM/TTS, text-gen `hope-vllm` retirement); `increase()` first-sample blind spot on two alerts; SBOM/sign jobs for `vllm`; `/v1/models` lists a tenant-disabled SYSTEM model; `vllm:*` series of an earlier engine vanish when a second starts; a vllm agent with `streaming_english_gloss` fails at gloss load; `WhisperCppAsrAdapter._split_spans` → staticmethod; httpx client per request in the stt vLLM client; `serving` PATCH cannot null optional fields; `.claude/rules/00-project-context.md` monorepo map lacks `apps/vllm`.
 
 ## 6. Change History
 
 | Date | Change |
 |---|---|
+| 2026-09-30 | Phase 1 built in four parallel lanes (worktrees), each task-reviewed; cross-lane final review + one fix wave; merged into local `dev-2.2` (owner: "merge + gates, no push"); artifacts regenerated; gate pass recorded in §5.2; docs (rule 09, inference ops, overview, TASK-1010 superseded). |
 | 2026-09-30 | Final whole-branch review fix round (F1–F8). F1 `vllm.pools` default declares `asr` on both sides (shared fixture). F2 `VllmEngineLoadFailing` matches `result="failed"`. F3 KV-cache alert + dashboard on vLLM V1 `vllm:kv_cache_usage_perc` / `model_name`. F4 `PATCH admin/ai-models/:id` takes `serving` (merged into `_metadata.serving`); the vllm seed row names `wireModelId`. F5 `stt` retries a vllm 503 only for `engine_capacity` / `draining` / `serving_spec_unavailable`. F6 `stt` never presents a `CHANGE_ME` token. F7 pool env `HF_MODULES_CACHE`, `VLLM_NO_USAGE_STATS`. F8 L5 pre-flip gates (a)–(e) and GPU smoke. |
 | 2026-09-29 | Owner approved the spec and narrowed Phase 1 to Whisper ASR on vLLM (LLM/TTS later). Plan §4 written with decisions D-7…D-13 (ASR route over the spike engine because upstream 0.30.0 uses `<|prev|>` and max_tokens=16; truncation stays in the shell; engine facts on the model row). |
 | 2026-09-29 | Ticket created. Discovery (two read-only agents over `hope-v2` and `hope-v2-deployment`), upstream research (vLLM STT, vLLM-Omni speech API, OmniVoice), design approved section by section in conversation (D-1…D-6). Spec written; status Pending. |

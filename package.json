@@ -215,7 +215,7 @@
     "tts:typecheck": "conda run -n arcaenv --no-capture-output mypy --config-file apps/tts/pyproject.toml apps/tts/src/",
     "tts:format": "conda run -n arcaenv --no-capture-output black apps/tts/src/",
     "tts:format:check": "conda run -n arcaenv --no-capture-output black --check apps/tts/src/",
-    "── ASR-VLLM — Python service (TASK-1010 spike; vLLM itself is Linux+CUDA only, never in arcaenv) ──": "",
+    "── VLLM — Python service (TASK-1021; vLLM itself is Linux+CUDA only, never in arcaenv) ──": "",
     "vllm:dev": "./scripts/dev-service.sh vllm",
     "vllm:dev:watch": "./scripts/dev-service.sh vllm --watch",
     "vllm:test": "conda run -n arcaenv --no-capture-output pytest apps/vllm/src/hope_vllm/tests/ -v --tb=short",

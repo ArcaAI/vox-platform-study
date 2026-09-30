@@ -1,6 +1,6 @@
 # TASK-1010 — vLLM Whisper with continuous batching for 25 concurrent streams (spike)
 
-**Status:** In Progress (service code landed on `task-1010/asr-vllm-service`; GPU run pending OD-1/OD-4)
+**Status:** Completed — superseded by TASK-1021
 **Type:** infrastructure (measurement spike → go/no-go)
 **Branch:** `dev-2.2`
 **Sibling:** TASK-1009 (faster-whisper arm). Pass bar and ladder are shared — see TASK-1009.
@@ -298,6 +298,7 @@ vllm 0.30.0, torch 2.13.0, fastapi 0.136.3, transformers 5.17.0).
 
 ## Change History
 
+- 2026-09-30 — Superseded by TASK-1021 Phase 1: `apps/asr-vllm` was renamed `apps/vllm` (OpenAI wire, model resolved from the `AiModel` row, pools via `vllm.pools`). This ticket's open items — the STT adapter (`stt` `vllm` engine), the CI image job, the deployment manifests (`vllm-pool` template, `hope-vllm-asr`) and the readiness mapping — were absorbed by TASK-1021 Phase 1; nothing remains open here.
 - 2026-09-29 — Phase B merged (L1 `ea118678a`, L2 `ef4c4089b`) + orchestrator follow-ups (`internal/agents/asr-spec`, bench `--agent-slug`, redis/hf-hub deps, env regen); one gate pass green; worktrees removed. OD-11 amended: vLLM has no int8.
 - 2026-09-29 — Owner: OD-8..OD-12 approved as recommended; go for lanes L1 (TS + contract) and L2 (asr-vllm). Owner reminder: v1-compat is gone — selection is agent/workflow only; the vLLM model is reached through an ASR Agent, never a model slug.
 - 2026-09-29 — Phase B plan (OD-6 + OD-7) written, awaiting go; OD-8..OD-12 opened; tts/nlp credential-header defect found and split out.

@@ -14,6 +14,12 @@
 > **LM Studio + vLLM as the serving tiers**; treat this runbook as authoritative
 > for cluster deployment and that page as authoritative for engine tuning.
 
+> **Scope note (2026-09-30, TASK-1021 Phase 1).** This runbook covers the text-generation `hope-vllm`
+> (`base/vllm.yaml`, `vllm/vllm-openai`, replicas 0), which Phase 1 leaves untouched. The Whisper ASR
+> tier is a different workload: `apps/vllm` (renamed from the TASK-1010 `asr-vllm` spike), deployed as
+> the `vllm-pool` template with Service `hope-vllm-asr`, dev pool at `replicas: 0` until its first
+> digest is promoted. Its operating note is in `docs/operations/inference/README.md` §"vLLM ASR pool".
+
 ---
 
 ## 1. What you are deploying, and what will actually run

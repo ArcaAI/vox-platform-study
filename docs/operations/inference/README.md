@@ -16,6 +16,7 @@ TTL/Auto-Evict, `*.modelCache.*` settings) is covered in the companion
 |---|---|
 | `README.md` | This file — engine wiring and local-dev serving |
 | `serving-tier-cluster-deployment.md` | Authoritative runbook for deploying `hope-lmstudio`/`hope-vllm` into the `hope-v2-dev` k3s namespace — MinIO weight staging, network policy, the LM Studio Service cutover |
+| (this file) §vLLM ASR pool | Operating note for `apps/vllm` / `hope-vllm-asr` (TASK-1021 Phase 1, the successor of the TASK-1010 `asr-vllm` spike) |
 | `model-retention.md` | When a model loads, how long it stays resident, and how to change that at runtime without a redeploy |
 
 ## Commands
@@ -101,6 +102,59 @@ llama.cpp accepts a `json_schema` field or a raw GBNF grammar via `context.gramm
   the node's GPUs are time-sliced with no VRAM isolation — a serving tier scaled up without
   accounting for co-tenants (STT, STT worker) risks a CUDA OOM whose victim is decided by
   allocation order, not by which workload is "supposed" to win.
+
+## vLLM ASR pool (`apps/vllm`, TASK-1021 Phase 1)
+
+`apps/vllm` (package `hope_vllm`, port **8867**, settings prefix `VLLM_`) is the OpenAI-compatible
+Whisper ASR tier. It is the renamed TASK-1010 spike `apps/asr-vllm`, and it is a different thing from
+the text-generation `hope-vllm` above (`vllm/vllm-openai`, `base/vllm.yaml`, replicas 0), which Phase 1
+does not touch and Phase 2 retires with LLM/TTS. `apps/stt` calls it through its `vllm` engine
+(`libraryName: 'vllm'`), selected by the SYSTEM `AiProviderConnection(stt, vllm)` →
+`http://hope-vllm-asr:8867/v1`. The shell serves `POST /v1/audio/transcriptions` and `GET /v1/models`
+(auth `X-Service-Token` or `Authorization: Bearer`; `X-Tenant-Id` mandatory) and resolves
+`model=<AiModel slug>` through the gateway route
+`GET /api/v1/internal/models/:slug/serving-spec?service=vllm`. Full API and error table:
+`apps/vllm/README.md`.
+
+In the cluster it is a `vllm-pool` Kustomize template in `arca/hope-v2-deployment` (Service
+`hope-vllm-asr`, pool identity `VLLM_POOL=asr`). The dev pool ships at `replicas: 0` until the first
+image digest is promoted; flip it to `replicas: 1` in Git (never `kubectl scale`). Flipped, it takes
+**1 time-sliced GPU unit** of the 2 free (see the GPU budget in
+`.claude/rules/09-infrastructure-devops.md`) and there is no VRAM isolation from LM Studio/STT.
+
+**Pin a model.** Pools come from the platform setting `vllm.pools` (platform admin,
+`PUT admin/settings/registry/vllm.pools`, `scope: "system"`); default entries `default` and `asr`.
+Add the model's slug to `vllm.pools.<pool>.pins`. The map is applied WHOLE, so write every pool, and it
+must keep the pod's own pool (a map that drops it is refused and logged
+`vllm.control_plane.pool_missing_refused`). Pins load at startup, are never evicted, and
+`/api/v1/health/startup` stays 503 until every pin is resident. A change lands on the next effective-config
+poll (about 60 s; the pool pod has no Redis, so wait a minute or restart it).
+
+**Size a model.** Engine sizing lives on the `AiModel` row, not in settings or env:
+`_metadata.serving.vramGiB` (required — a row without it is 409 `SERVING_FACTS_MISSING`), plus optional
+`maxNumSeqs` and `enforceEager`. Write it with `PATCH admin/ai-models/:id` and `If-Match`, using the
+update DTO's `serving` field. `vramGiB` is GiB, converted at load into vLLM's
+`gpu_memory_utilization` from the device's total memory, and admission is
+`Σ resident vramGiB + new ≤ pool vramBudgetGiB`. The `asrVllm.*` settings no longer exist: soft-delete
+any leftover `asrVllm.*` `GlobalSetting` rows; `vllm.truncation.*` replaces the truncation keys.
+
+**Health paths.** `/api/v1/health` (always 200) · `/api/v1/health/live` (never fails because the replica
+is busy or loading) · `/api/v1/health/ready` (503 when vLLM is absent or while draining) ·
+`/api/v1/health/startup` (503 until every pin is resident). `GET /v1/models` lists resident engines and
+pins (`resident: false` while a pin is still loading), `GET /api/v1/engines` is the pool snapshot, and
+`/metrics` carries `hope_vllm_*` plus vLLM's own `vllm:*` series.
+
+**`503 MODEL_NOT_PUBLISHED`.** Cluster pods run `HF_HUB_OFFLINE=1`, so a model whose weights are not on the
+mounted models bucket (`/mnt/models-bucket/<bucketPrefix>`, a directory holding `config.json` and
+`*.safetensors`) is refused with this code and is never pulled from Hugging Face. Publish the model to the
+bucket (the TASK-1019 publisher), then retry; build failures are not cached, so the next request
+re-evaluates.
+
+**A failed pin warm-up is recovered by a restart.** A pin that fails to load at startup (slug
+unresolvable, model not published, build failed) is not retried in-process: `/health/startup` stays 503
+and the kubelet's startup probe restarts the pod. Fix the row, the pool or the bucket, then let the restart
+happen (or delete the pod). Once running, a pin that fails to re-resolve on a refresh keeps the current
+engine and is retried on the next refresh (`vllm.pins.refresh_failed`).
 
 ## Related
 
