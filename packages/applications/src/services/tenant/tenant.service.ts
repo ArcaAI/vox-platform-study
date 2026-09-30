@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -33,6 +33,13 @@ import { scrubLockedForAudit } from './scrubbing';
 import { generateUniqueTenantKey } from './tenantKey';
 import { ITenantReferenceSetService } from './reference-set/ITenantReferenceSetService';
 import { IBillingService } from '../billing/IBillingService';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
+import {
+  TENANT_STORAGE_RETENTION_BOUNDS,
+  TENANT_STORAGE_RETENTION_DAYS_KEY,
+  TENANT_STORAGE_RETENTION_DEFAULTS,
+  isWholeNumberWithin,
+} from '../tenant-bucket/tenant-bucket-lifecycle.constants';
 // W2-7 — the pure resolver behind `EntitlementsService.resolveForTenant`. Importing the
 // leaf file (never the `../entitlements` barrel) is deliberate: the barrel also re-exports
 // `entitlements.service.module.ts`, which imports `TenantServiceModule` — going through it
@@ -105,6 +112,12 @@ export class TenantService extends BaseService implements ITenantService {
      */
     @Optional() private readonly planEntitlementRepository?: PlanEntitlementRepository,
     @Optional() private readonly tenantEntitlementRepository?: TenantEntitlementRepository,
+    /**
+     * TASK-1025 OD-4 — reads `storage.tenantDeletion.retentionDays`, the window
+     * inside which a deleted tenant is restorable. Trailing + `@Optional()` like
+     * the ones above; absent, the code default (45 days) applies.
+     */
+    @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Tenant);
   }
@@ -899,25 +912,28 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * TASK-1025 G2 — bring a soft-deleted tenant back. Its retained (ARCHIVED)
-   * buckets are re-enabled. Buckets the purge job has started on or finished
-   * are NOT: their objects are gone, and the audit event says so
-   * (`storagePurged: true`) rather than handing back empty buckets as if they
-   * held the tenant's data. Fresh storage for such a tenant is an explicit,
-   * separate decision — see the TASK-1025 README.
+   * TASK-1025 G2 + OD-4 (owner, 2026-09-30) — bring a soft-deleted tenant back
+   * WITH all its data, or not at all. Restorable only inside the retention
+   * window (`storage.tenantDeletion.retentionDays`, default 45, measured from
+   * the deletion) AND only while none of its system buckets has been purged.
+   * Both are checked BEFORE anything is written: past the window the tenant is
+   * unrestorable even if the nightly purge has not reached it yet.
    */
   private async restoreDeletedTenant(deleted: TenantEntity): Promise<TenantEntity> {
+    const retentionDays = this.resolveRetentionDays();
+    const deletedAt = deleted.resourceStatusUpdatedAt ?? null;
+    const expired = !deletedAt || Date.now() >= deletedAt.getTime() + retentionDays * 86_400_000;
+    const purged = expired ? 0 : await this.runForTenant(deleted.id, () => this.tenantBucketService.countPurgedForTenantDeletion(deleted.id));
+    if (expired || purged > 0) {
+      throw new ConflictException({
+        code: 'TENANT_RESTORE_WINDOW_EXPIRED',
+        message: `A deleted tenant can be restored only within ${retentionDays} days of its deletion, while its storage still exists; this tenant is past that point and cannot be restored.`,
+      });
+    }
+
     const previousData = deleted.toObject();
     const restored = await this.tenantRepository.restore(deleted.id, this.requestUser?.id);
     const storage = await this.runForTenant(deleted.id, () => this.tenantBucketService.releaseTenantDeletionRetention(deleted.id));
-
-    if (storage.purged > 0) {
-      this.logger.warn({
-        message: 'Restored a deleted tenant whose storage was already purged; its data cannot be recovered',
-        tenantId: deleted.id,
-        purgedBuckets: storage.purged,
-      });
-    }
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: restored.id,
@@ -925,11 +941,18 @@ export class TenantService extends BaseService implements ITenantService {
         resourceStatus: ResourceStatusType.ENABLED,
         restoredFromDeletion: true,
         storageRestoredBuckets: storage.restored,
-        storagePurged: storage.purged > 0,
       },
       previousData,
     });
     return restored;
+  }
+
+  /** The restore window in days; an unset or out-of-bounds value falls back to the code default. */
+  private resolveRetentionDays(): number {
+    const value = this.appSettings?.getValueWithDefault<unknown>(TENANT_STORAGE_RETENTION_DAYS_KEY, TENANT_STORAGE_RETENTION_DEFAULTS.retentionDays);
+    return isWholeNumberWithin(value, TENANT_STORAGE_RETENTION_BOUNDS.minDays, TENANT_STORAGE_RETENTION_BOUNDS.maxDays)
+      ? value
+      : TENANT_STORAGE_RETENTION_DEFAULTS.retentionDays;
   }
 
   /**

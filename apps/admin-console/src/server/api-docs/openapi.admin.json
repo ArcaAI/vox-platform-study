@@ -56891,7 +56891,7 @@
     },
     "/api/v1/admin/tenants/{id}/restore": {
       "post": {
-        "description": "A deleted tenant is restorable too (TASK-1025). Inside the deleted-tenant storage retention window (`storage.tenantDeletion.retentionDays`) its retained buckets are given back; once the purge has run, the tenant is restored WITHOUT its storage and the audit event records `storagePurged: true`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant:write`).\n\n**Abilities** — `manage:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "A deleted tenant is restorable too (TASK-1025), with all the data in its buckets, but only inside the deleted-tenant retention window (`storage.tenantDeletion.retentionDays`, default 45 days from deletion). After that window, or once any of its buckets has been purged, the tenant cannot be restored and the request answers 409 `TENANT_RESTORE_WINDOW_EXPIRED`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant:write`).\n\n**Abilities** — `manage:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantController_restore",
         "parameters": [
           {
@@ -56917,6 +56917,9 @@
           },
           "404": {
             "description": "Tenant not found"
+          },
+          "409": {
+            "description": "Deleted tenant is past its retention window (or its storage was purged) and cannot be restored"
           }
         },
         "security": [

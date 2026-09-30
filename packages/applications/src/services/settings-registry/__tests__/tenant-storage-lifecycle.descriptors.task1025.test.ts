@@ -11,14 +11,14 @@ import {
 /**
  * TASK-1025 G2 (owner decision OD-2) — the retention window between a tenant's
  * deletion and the purge of its buckets is a PLATFORM setting: global-kv,
- * SYSTEM scope only, platform-admin only, 30 days by default, bounded.
+ * SYSTEM scope only, platform-admin only, 45 days by default (OD-4), bounded.
  */
 describe('tenant-storage lifecycle descriptors (TASK-1025)', () => {
   const validate = (key: string, value: unknown) => HOPE_SETTINGS_REGISTRY.get(key)?.validate?.(value);
 
-  it('registers the retention window (default 30 days) and the purge schedule', () => {
-    expect(HOPE_SETTINGS_REGISTRY.get(TENANT_STORAGE_RETENTION_DAYS_KEY)?.default).toBe(30);
-    expect(TENANT_STORAGE_RETENTION_DEFAULTS.retentionDays).toBe(30);
+  it('registers the retention window (default 45 days, OD-4) and the purge schedule', () => {
+    expect(HOPE_SETTINGS_REGISTRY.get(TENANT_STORAGE_RETENTION_DAYS_KEY)?.default).toBe(45);
+    expect(TENANT_STORAGE_RETENTION_DEFAULTS.retentionDays).toBe(45);
     expect(HOPE_SETTINGS_REGISTRY.get(TENANT_STORAGE_PURGE_CRON_KEY)?.default).toBe(TENANT_STORAGE_RETENTION_DEFAULTS.purgeCron);
   });
 

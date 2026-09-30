@@ -1,6 +1,7 @@
 /**
- * TASK-1025 G2 (owner decision OD-2) — deleting a tenant RETAINS its buckets
- * with access cut; restoring it inside the retention window gives them back.
+ * TASK-1025 G2 (owner decisions OD-2 + OD-4) — deleting a tenant RETAINS its buckets
+ * with access cut; restoring it inside the retention window gives them back; a
+ * tenant with any purged bucket is not restorable.
  *
  * Row states (no schema change): ENABLED → ARCHIVED on tenant delete (objects
  * kept, every data-plane path refuses the row) → ENABLED on tenant restore.
@@ -112,6 +113,27 @@ describe('TenantBucketService — TASK-1025 G2 tenant-deletion retention', () =>
       expect(outcome).toEqual({ restored: 0, purged: 2 });
       expect(repo.update).not.toHaveBeenCalled();
       expect(repo.findAll).toHaveBeenCalledWith({ filters: { tenantId: 'tenant-1', resourceStatus: ResourceStatusType.DELETED } });
+    });
+  });
+
+  describe('countPurgedForTenantDeletion (OD-4)', () => {
+    it('counts SYSTEM buckets the purge has started on (SUSPENDED) or finished (DELETED), and nothing else', async () => {
+      repo.findAllByTenant.mockResolvedValue([
+        row('attachments', ResourceStatusType.ARCHIVED),
+        row('recordings', ResourceStatusType.SUSPENDED),
+        row('scans', ResourceStatusType.SUSPENDED, false),
+      ]);
+      repo.findAll.mockResolvedValue([row('recordings', ResourceStatusType.ENABLED), row('extra', ResourceStatusType.ENABLED, false)]);
+
+      await expect(service.countPurgedForTenantDeletion('tenant-1')).resolves.toBe(2);
+      expect(repo.findAll).toHaveBeenCalledWith({ filters: { tenantId: 'tenant-1', resourceStatus: ResourceStatusType.DELETED } });
+    });
+
+    it('is zero for a tenant whose buckets are only retained, and writes nothing', async () => {
+      repo.findAllByTenant.mockResolvedValue([row('attachments', ResourceStatusType.ARCHIVED), row('recordings', ResourceStatusType.ARCHIVED)]);
+
+      await expect(service.countPurgedForTenantDeletion('tenant-1')).resolves.toBe(0);
+      expect(repo.update).not.toHaveBeenCalled();
     });
   });
 

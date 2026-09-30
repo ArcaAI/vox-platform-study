@@ -167,7 +167,7 @@ export class AdminTenantResource extends AdminResource {
   /**
    * Restore a suspended, archived or deleted tenant to ENABLED
    *
-   * A deleted tenant is restorable too (TASK-1025). Inside the deleted-tenant storage retention window (`storage.tenantDeletion.retentionDays`) its retained buckets are given back; once the purge has run, the tenant is restored WITHOUT its storage and the audit event records `storagePurged: true`.
+   * A deleted tenant is restorable too (TASK-1025), with all the data in its buckets, but only inside the deleted-tenant retention window (`storage.tenantDeletion.retentionDays`, default 45 days from deletion). After that window, or once any of its buckets has been purged, the tenant cannot be restored and the request answers 409 `TENANT_RESTORE_WINDOW_EXPIRED`.
    *
    * `POST /api/v1/admin/tenants/{id}/restore` — `TenantController.restore`.
    */

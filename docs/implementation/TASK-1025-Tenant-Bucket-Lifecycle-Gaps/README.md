@@ -176,9 +176,24 @@ Merged `task-1025-tenant-bucket-lifecycle` into `dev-2.2` as `d16ff8ec5` (clean)
 
 Not run: API e2e (needs the test stack) and a live check against a real MinIO.
 
-**Still open for the owner** (lane risks 2 and 5):
-- Quota enforcement is live on deploy (`entitlements.enabled` is ON), so any tenant already over its plan across both buckets gets 409 on new gateway uploads.
-- A tenant restored after its purge comes back with no system buckets. Re-provisioning is refused because the purged rows still hold the bucket names.
+**Owner decisions on the open items (2026-09-30):**
+- **Quota at deploy:** enforce from deploy; no usage pre-check per tenant.
+- **OD-4, restore after deletion:**
+  - A deleted tenant's buckets and every object in them are destroyed 45 days after the deletion, so `storage.tenantDeletion.retentionDays` defaults to **45** (was 30).
+  - Within those 45 days a platform admin can restore the tenant with all its data.
+  - After 45 days there is no way to restore it.
+  - Implemented in `TenantService.restoreDeletedTenant`. Before anything is written, it refuses with **409 `TENANT_RESTORE_WINDOW_EXPIRED`** when `now ≥ deletedAt + retentionDays`, even if the nightly purge has not run yet, or when any system bucket is already purging or purged. The purged count comes from `ITenantBucketService.countPurgedForTenantDeletion`.
+  - The previous "restore without storage (`storagePurged: true`)" path is removed.
+  - Tests:
+    - `tenant.service.tenant-deletion.task1025.test.ts`: RED 3 failed / 7 passed → GREEN 10 passed.
+    - `tenant-bucket.service.tenant-deletion.task1025.test.ts`: 10 passed, with 2 new cases.
+    - Descriptor and purge tests updated to the 45-day default.
+  - Re-gated:
+    - `@arcaai/applications` test: 1065 files / 16056 passed.
+    - applications and api lint: exit 0. api typecheck: exit 0.
+    - `apps/api/src/modules/tenant`: 138 passed.
+    - openapi, portal, `gen:admin` and env-sync checks: exit 0.
+    - OpenAPI, portal specs and the vox-node SDK were regenerated (restore route: 409 plus description).
 
 ## Change History
 
@@ -187,3 +202,4 @@ Not run: API e2e (needs the test stack) and a live check against a real MinIO.
 | 2026-09-30 | Ticket opened from the TASK-1024 scoping (gaps 1–3). |
 | 2026-09-30 | Owner decisions OD-1/2/3 recorded; G1 (`0263e7088`), G2 (`490bf9d4e`), G3 (`013951b86`) implemented on `task-1025-tenant-bucket-lifecycle`; status Review. |
 | 2026-09-30 | Merged into `dev-2.2` (`d16ff8ec5`); artifacts regenerated (`52c7119e9`); TASK-414 aggregate test aligned (`afee3fe67`); deployment `s3:DeleteBucket` (`0c62acb`); post-merge gate evidence recorded. |
+| 2026-09-30 | OD-4: 45-day retention default; a deleted tenant is restorable with all data only inside the window, 409 `TENANT_RESTORE_WINDOW_EXPIRED` after it or once any bucket is purged. Quota enforced from deploy (no pre-check). |

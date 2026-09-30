@@ -1,6 +1,6 @@
 /**
  * TASK-1025 G2 (owner decision OD-2) — the scheduled purge of a deleted
- * tenant's buckets once the retention window (default 30 days) has passed.
+ * tenant's buckets once the retention window (default 45 days) has passed.
  *
  * Pinned here: which tenants and rows it takes, the ARCHIVED → SUSPENDED →
  * DELETED progression, that a failure part-way leaves the row SUSPENDED for
@@ -96,14 +96,14 @@ describe('TenantStoragePurgeService — TASK-1025 G2', () => {
     vi.restoreAllMocks();
   });
 
-  it('selects tenants soft-deleted more than the retention window (default 30 days) ago', async () => {
+  it('selects tenants soft-deleted more than the retention window (default 45 days) ago', async () => {
     bucketRepo.findAllByTenant.mockResolvedValue([]);
 
     const result = await service.purgeExpired();
 
-    expect(result.retentionDays).toBe(30);
+    expect(result.retentionDays).toBe(45);
     expect(tenantRepo.findAll).toHaveBeenCalledWith({
-      filters: { resourceStatus: ResourceStatusType.DELETED, resourceStatusUpdatedAt: { lt: new Date(NOW.getTime() - 30 * DAY) } },
+      filters: { resourceStatus: ResourceStatusType.DELETED, resourceStatusUpdatedAt: { lt: new Date(NOW.getTime() - 45 * DAY) } },
     });
   });
 
@@ -135,7 +135,7 @@ describe('TenantStoragePurgeService — TASK-1025 G2', () => {
       expect.objectContaining({
         resourceId: row.id,
         tenantId: 'tenant-dead',
-        data: expect.objectContaining({ reason: 'tenant-deletion-retention-expired', objectsDeleted: 1, bucketRemoved: true, retentionDays: 30 }),
+        data: expect.objectContaining({ reason: 'tenant-deletion-retention-expired', objectsDeleted: 1, bucketRemoved: true, retentionDays: 45 }),
       }),
     );
   });

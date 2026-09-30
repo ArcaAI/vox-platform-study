@@ -33,8 +33,8 @@ export const TENANT_STORAGE_RETENTION_DAYS_KEY = 'storage.tenantDeletion.retenti
 export const TENANT_STORAGE_PURGE_CRON_KEY = 'storage.tenantDeletion.purgeCron';
 
 export const TENANT_STORAGE_RETENTION_DEFAULTS = {
-  /** Owner decision OD-2: 30 days. */
-  retentionDays: 30,
+  /** Owner decision OD-4 (2026-09-30): 45 days — restorable with all data inside, never after. */
+  retentionDays: 45,
   /** Daily, 04:15 UTC — off the hour and clear of the 02:15 storage snapshot and 03:00 audit retention. */
   purgeCron: '15 4 * * *',
 } as const;

@@ -45,9 +45,9 @@ export const TENANT_STORAGE_LIFECYCLE_SETTINGS: SettingDescriptor[] = [
     dataType: 'number',
     label: 'Deleted-tenant storage retention (days)',
     description:
-      "How long a deleted tenant's storage buckets are kept before they are purged. Deleting a tenant cuts access to its " +
-      'buckets at once but keeps every object; restoring the tenant inside this window gives them back. Once the window has ' +
-      'passed, the nightly purge removes every object and the buckets themselves, and the data cannot be recovered.',
+      'How long a deleted tenant stays restorable. Deleting a tenant cuts access to its buckets at once but keeps every ' +
+      'object; a platform admin can restore the tenant with all its data inside this window. Once the window has passed the ' +
+      'tenant can no longer be restored, and the nightly purge destroys every object and the buckets themselves.',
     default: TENANT_STORAGE_RETENTION_DEFAULTS.retentionDays,
     validate: (value: unknown) =>
       isWholeNumberWithin(value, TENANT_STORAGE_RETENTION_BOUNDS.minDays, TENANT_STORAGE_RETENTION_BOUNDS.maxDays)

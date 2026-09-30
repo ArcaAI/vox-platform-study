@@ -564,6 +564,14 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     return { restored, purged };
   }
 
+  /** TASK-1025 OD-4 — see `ITenantBucketService.countPurgedForTenantDeletion`. */
+  async countPurgedForTenantDeletion(tenantId: string): Promise<number> {
+    const rows = await this.tenantBucketRepository.findAllByTenant(tenantId, { includeDisabled: true });
+    const purging = rows.filter((row) => row.isSystemBucket && row.resourceStatus === TENANT_STORAGE_PURGING_STATUS).length;
+    const deletedRows = await this.tenantBucketRepository.findAll({ filters: { tenantId, resourceStatus: ResourceStatusType.DELETED } });
+    return purging + deletedRows.filter((row) => row.isSystemBucket).length;
+  }
+
   /**
    * TASK-1025 G2 — a bucket retained after its tenant was deleted, or one the
    * purge is working on, is not reachable. 404 (not 403): to every caller it

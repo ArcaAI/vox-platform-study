@@ -325,13 +325,14 @@ export class TenantController {
   @ApiOperation({
     summary: 'Restore a suspended, archived or deleted tenant to ENABLED',
     description:
-      'A deleted tenant is restorable too (TASK-1025). Inside the deleted-tenant storage retention window ' +
-      '(`storage.tenantDeletion.retentionDays`) its retained buckets are given back; once the purge has run, the tenant ' +
-      'is restored WITHOUT its storage and the audit event records `storagePurged: true`.',
+      'A deleted tenant is restorable too (TASK-1025), with all the data in its buckets, but only inside the deleted-tenant ' +
+      'retention window (`storage.tenantDeletion.retentionDays`, default 45 days from deletion). After that window, or once ' +
+      'any of its buckets has been purged, the tenant cannot be restored and the request answers 409 `TENANT_RESTORE_WINDOW_EXPIRED`.',
   })
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 200, description: 'Tenant restored', type: TenantResponse })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
+  @ApiResponse({ status: 409, description: 'Deleted tenant is past its retention window (or its storage was purged) and cannot be restored' })
   async restore(@Param('id') id: string): Promise<TenantResponse> {
     this.assertTenantInScope(id);
     const result = await this.tenantService.restore(id);

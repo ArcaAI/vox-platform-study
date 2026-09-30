@@ -1,12 +1,14 @@
 /**
- * TASK-1025 G2 (owner decision OD-2) — deleting a tenant RETAINS its storage
- * (access cut immediately, objects kept); restoring it inside the retention
- * window restores access; after the purge, a restore must not pretend the data
- * exists.
+ * TASK-1025 G2 (owner decisions OD-2 + OD-4, 2026-09-30) — deleting a tenant
+ * RETAINS its storage (access cut immediately, objects kept) for the retention
+ * window (default 45 days). Inside the window a platform admin can restore the
+ * tenant WITH all its data; once the window has passed — or any of its buckets
+ * has been purged — the tenant can no longer be restored at all (409).
  */
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { ResourceStatusType, SysEventType, TenantFactory, type TenantEntity } from '@arcaai/domains';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConflictException } from '@nestjs/common';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TenantService } from '../tenant.service';
 
 const tenantRepository = {
@@ -19,7 +21,13 @@ const tenantRepository = {
 const tenantBucketService = {
   retainForTenantDeletion: vi.fn(),
   releaseTenantDeletionRetention: vi.fn(),
+  countPurgedForTenantDeletion: vi.fn(),
 };
+let retentionSetting: unknown = undefined;
+const appSettings = {
+  getValueWithDefault: vi.fn((_key: string, fallback: unknown) => (retentionSetting === undefined ? fallback : retentionSetting)),
+};
+const DAY_MS = 86_400_000;
 let clsTenant: string | null = 'working-tenant';
 const cls = {
   get: vi.fn((key: string) => (key === 'user' ? { id: 'admin-1', roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? clsTenant : null)),
@@ -31,7 +39,21 @@ const events = { emit: vi.fn() };
 const stub = {} as never;
 
 function build(): TenantService {
-  return new TenantService(tenantRepository as never, stub, stub, stub, stub, tenantBucketService as never, events as never, cls as never);
+  return new TenantService(
+    tenantRepository as never,
+    stub,
+    stub,
+    stub,
+    stub,
+    tenantBucketService as never,
+    events as never,
+    cls as never,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    appSettings as never,
+  );
 }
 
 function tenant(): TenantEntity {
@@ -111,12 +133,35 @@ describe('TenantService — TASK-1025 G2 tenant deletion retains storage', () =>
       return t;
     }
 
-    it('restores the tenant row and its retained buckets inside the retention window', async () => {
+    const T0 = new Date('2026-09-01T00:00:00Z');
+
+    function deletedAt(daysAgo: number): TenantEntity {
+      vi.setSystemTime(new Date(T0.getTime() - daysAgo * DAY_MS));
       const t = deletedTenant();
+      vi.setSystemTime(T0);
+      return t;
+    }
+
+    function arrange(t: TenantEntity, purged = 0): void {
       tenantRepository.findById.mockRejectedValue(new DataNotFoundException('tenant', t.id));
       tenantRepository.findAll.mockResolvedValue([t]);
       tenantRepository.restore.mockImplementation(async () => t.enable());
+      tenantBucketService.countPurgedForTenantDeletion.mockResolvedValue(purged);
       tenantBucketService.releaseTenantDeletionRetention.mockResolvedValue({ restored: 2, purged: 0 });
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(T0);
+      retentionSetting = undefined;
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('restores the tenant row and ALL its retained buckets inside the retention window', async () => {
+      const t = deletedAt(44);
+      arrange(t);
 
       await service.restore(t.id);
 
@@ -125,23 +170,36 @@ describe('TenantService — TASK-1025 G2 tenant deletion retains storage', () =>
       expect(tenantBucketService.releaseTenantDeletionRetention).toHaveBeenCalledWith(t.id);
       expect(events.emit).toHaveBeenCalledWith(
         SysEventType.ResourceUpdated,
-        expect.objectContaining({ data: expect.objectContaining({ restoredFromDeletion: true, storageRestoredBuckets: 2, storagePurged: false }) }),
+        expect.objectContaining({ data: expect.objectContaining({ restoredFromDeletion: true, storageRestoredBuckets: 2 }) }),
       );
     });
 
-    it('after the purge, restores the tenant but says its storage is gone (no bucket is brought back)', async () => {
-      const t = deletedTenant();
-      tenantRepository.findById.mockRejectedValue(new DataNotFoundException('tenant', t.id));
-      tenantRepository.findAll.mockResolvedValue([t]);
-      tenantRepository.restore.mockImplementation(async () => t.enable());
-      tenantBucketService.releaseTenantDeletionRetention.mockResolvedValue({ restored: 0, purged: 2 });
+    it('refuses (409) once the 45-day default window has passed, even before the purge job has run', async () => {
+      const t = deletedAt(45);
+      arrange(t, 0);
+
+      await expect(service.restore(t.id)).rejects.toBeInstanceOf(ConflictException);
+      expect(tenantRepository.restore).not.toHaveBeenCalled();
+      expect(tenantBucketService.releaseTenantDeletionRetention).not.toHaveBeenCalled();
+    });
+
+    it('reads the window from storage.tenantDeletion.retentionDays', async () => {
+      retentionSetting = 60;
+      const t = deletedAt(50);
+      arrange(t);
 
       await service.restore(t.id);
 
-      expect(events.emit).toHaveBeenCalledWith(
-        SysEventType.ResourceUpdated,
-        expect.objectContaining({ data: expect.objectContaining({ storagePurged: true, storageRestoredBuckets: 0 }) }),
-      );
+      expect(appSettings.getValueWithDefault).toHaveBeenCalledWith('storage.tenantDeletion.retentionDays', 45);
+      expect(tenantRepository.restore).toHaveBeenCalled();
+    });
+
+    it('refuses (409) inside the window when any of its buckets has already been purged', async () => {
+      const t = deletedAt(10);
+      arrange(t, 1);
+
+      await expect(service.restore(t.id)).rejects.toBeInstanceOf(ConflictException);
+      expect(tenantRepository.restore).not.toHaveBeenCalled();
     });
 
     it('still 404s an id that is neither live nor deleted', async () => {

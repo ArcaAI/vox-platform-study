@@ -69,7 +69,7 @@ function errorClass(error: unknown): string {
  * Deleting a tenant moves its bucket rows to ARCHIVED (access cut, objects
  * kept; see `TenantBucketService.retainForTenantDeletion`). This job purges
  * them once the tenant has been deleted for longer than the platform setting
- * `storage.tenantDeletion.retentionDays` (default 30):
+ * `storage.tenantDeletion.retentionDays` (default 45, owner decision OD-4):
  *
  *   ARCHIVED ─(job starts)→ SUSPENDED ─(objects + bucket removed)→ DELETED
  *

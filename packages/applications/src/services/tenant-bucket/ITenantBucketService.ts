@@ -66,6 +66,12 @@ export abstract class ITenantBucketService {
    * or finished are NOT restored; `purged` counts them so the caller can say so.
    */
   abstract releaseTenantDeletionRetention(tenantId: string): Promise<{ restored: number; purged: number }>;
+  /**
+   * TASK-1025 OD-4 — read-only: how many of the deleted tenant's SYSTEM buckets
+   * the purge has started on (SUSPENDED) or finished (DELETED). Any purged
+   * bucket makes the tenant unrestorable. Run under the TARGET tenant's CLS context.
+   */
+  abstract countPurgedForTenantDeletion(tenantId: string): Promise<number>;
   abstract getPresignedUrl(bucketId: string, fileKey: string): Promise<{ url: string }>;
   /** Read the tenant's current default bucket per purpose. */
   abstract getDefaultBuckets(): Promise<TenantBucketDefaultsResponse>;
