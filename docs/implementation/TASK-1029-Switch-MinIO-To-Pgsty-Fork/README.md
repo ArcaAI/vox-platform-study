@@ -1,0 +1,99 @@
+# TASK-1029: Switch MinIO to the pgsty community fork (both repos) and pin/mirror the image
+
+**Status:** In Progress
+**Type:** infrastructure
+**Branch:** `dev-2.2` (hope-v2) · `main` (hope-v2-deployment)
+**Related:** TASK-1024 / TASK-1025 (the MinIO policy work that surfaced the problem), `e166603` + `4929e2f` in hope-v2-deployment (the `minio/mc` stop-gap). TASK-1028 is reserved by another session ("Replace MinIO with Alarik", empty directory as of 2026-10-01), so this ticket is not TASK-1028.
+
+## Requirement Analysis
+
+Owner request (2026-10-01): open a ticket to switch to `pgsty/minio`, migrate both `hope-v2` and `hope-v2-deployment`, and update all documentation.
+
+Our blob-store expectations, which the fork must keep meeting:
+1. Full S3 compatibility.
+2. The s3fs sidecar keeps working.
+3. A console GUI for bucket management and access control.
+
+### Why
+
+Upstream MinIO Community Edition is dead:
+
+| Date | Event |
+|---|---|
+| May 2025 | The community console is reduced to an object browser (admin features moved to paid AIStor). |
+| Oct 2025 | Binaries and Docker images are no longer published. |
+| 2025-12-03 | Maintenance mode. |
+| 2026-04-25 | Repository archived. |
+
+Our cluster runs `RELEASE.2025-04-22T22-12-26Z` (verified in `hope-minio-0`, 2026-10-01).
+- **Console:** still the full one, because this release predates the reduction.
+- **CVEs:** unpatched ones published since, including an OIDC JWT algorithm confusion flaw and a signature verification bypass; those fixes ship only in AIStor or the forks.
+- **Images:** we can no longer pull them. The pinned `minio/mc` digest already fails ("repository does not exist"), and the local-dev compose pins both `minio/minio` and `minio/mc` by tag.
+
+`pgsty/minio` (AGPL-3.0, <https://github.com/pgsty/minio>) is the only option that is a drop-in:
+- the same on-disk format and admin API, so `mc admin`, `mc quota` and `minio-policy-sync` keep working;
+- the full console restored;
+- CVE backports;
+- published images.
+
+Its known risk is that it has a single maintainer and ships no new features. A trial of a real successor (SeaweedFS, RustFS) is a separate follow-up.
+
+### Verified facts about the image (2026-10-01, `crane`)
+
+| Item | Value |
+|---|---|
+| Release pinned | `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` (newest tag; `latest` points to it) |
+| OCI index digest | `sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372` (amd64 + arm64) |
+| linux/amd64 manifest | `sha256:2b36182f3479c58b5cba920f20479738ee85ce218de0596a244f9a1368268db9` |
+| Base / entrypoint | UBI9-micro. `/usr/bin/docker-entrypoint.sh`, default cmd `minio`, same semantics as upstream. |
+| Bundled tools | `/usr/bin/minio`, **`/usr/bin/mc`**, `sh`, `bash`, `od`, `head`, `tr`, `sleep`, `curl`. This covers every `mc` script in the deployment repo, so one image replaces both `minio/minio` and `minio/mc`. |
+| Separate client image | `pgsty/mc:RELEASE.2026-09-16T00-00-00Z` exists (`sha256:cfc83108…`), but is not needed. |
+
+## Decisions (orchestrator defaults, taken to keep the migration moving; owner may override)
+
+| # | Decision |
+|---|---|
+| D-1 | **One image for server and `mc` steps:** `pgsty/minio@sha256:b6bfe723…` (index digest, so it resolves per architecture). Tag comments name the release. No `minio/minio` or `minio/mc` reference is left anywhere, in either repo, outside history and docs that explain the switch. |
+| D-2 | **Mirror into our registry, by CI:** a hope-v2 GitLab CI job copies the pinned index (`crane copy`, which keeps the digest) to `${CI_REGISTRY_IMAGE}/mirror/minio`. The local registry token is dead, so this cannot be done by hand. Whether the dev overlay pulls from the mirror or from Docker Hub is decided by the deployment lane after reading `promote.sh` (the `images:` transformer is CI-owned for hope images). Default: base pins the public digest, which is portable; the mirror is insurance, and the lane documents how to repoint. |
+| D-3 | **Local dev and test compose** use the same pinned image for the server and for the bucket-init container (`mc` is inside). |
+| D-4 | **No data migration:** the fork reads the existing data directory. The upgrade is forward-only (a newer MinIO rewrites metadata), so the cluster rollout needs a backup of the MinIO PVC or a recent `hope-backups` object copy first. That is an owner-run rollout step, not a lane task. |
+| D-5 | **`minio` Python client (`minio>=7.2.20` in apps/stt):** out of scope. It is a pure S3 client and still works against the fork. The lane only reports whether upstream `minio-py` is archived. |
+
+## Implementation Plan
+
+Two lanes in parallel, in disjoint repositories. The orchestrator merges both, runs the gates and handles the rollout.
+
+**Lane H — hope-v2** (worktree `../hope-v2-task-1029`, branch `task-1029-pgsty-minio`)
+1. Local-dev and test infra:
+   - `infrastructure/docker/docker-compose.yml`: replace `minio/minio` and `minio/mc`;
+   - `tests/docker-compose.test.yml` and any other compose file or script that pulls a MinIO image.
+2. The CI mirror job from D-2 in `.gitlab/ci/*.yml`: manual or scheduled, idempotent, uses `crane` or `skopeo`, and pins its own tool image by digest. It runs `pnpm`-free and never rebuilds.
+3. Documentation: every doc that names the image, describes the console or states MinIO's licence or support status. That covers `infrastructure/README.md`, `docs/**` (excluding `docs/archive/**`), `.claude/rules/00-project-context.md` and `09-infrastructure-devops.md` (the "MinIO" data-plane lines), `.cursor/rules/*` where they mirror those rules, and `packages/applications/src/services/baseServices/storage/s3/*.md`.
+4. Proof: `docker compose config` on each changed compose file; `validate_ci_lint` if available, otherwise YAML parse.
+
+**Lane D — hope-v2-deployment** (worktree `../hope-v2-deployment-task-1029`, branch `task-1029-pgsty-minio`)
+1. `deployment/k8s/base/minio.yaml`: image switched to the D-1 digest. Check that args, env, UID 1000, probes and the console port 9001 still hold for the fork.
+2. Out-of-band manifests: every `mc` step (`minio-bootstrap.yaml`, `hope-models-publish.yaml`, `pgbackrest-bootstrap.yaml`, `minio-policy-sync.yaml`) moves to the same digest. Replace the `e166603` stop-gap comment with the TASK-1029 rationale.
+3. D-2 overlay decision, then make CI hygiene gates (`image-hygiene` etc.) accept the pin.
+4. Documentation: README, `docs/model-bucket-and-serving.md`, `docs/deploying-to-any-kubernetes.md`, `docs/aws-eks/*`, `docs/database-backup-restore.md`, and any runbook that names the image or the console. Add a rollout runbook section: back up, bump, verify console + `mc admin info` + s3fs sidecars + policy sync.
+5. Proof: `kubectl kustomize deployment/k8s/overlays/dev` (and the other overlays) renders, YAML parse of `out-of-band/*`, `bash -n` on scripts, and `git grep` shows no remaining `minio/minio` or `minio/mc` pins.
+
+**Orchestrator after merge:**
+1. Merge each lane into its repo's active branch.
+2. Run the gates.
+3. Ask the owner before pushing: pushing the deployment repo makes Argo roll MinIO.
+4. Rollout per the runbook (backup first), then verify:
+   - the console is reachable with user/policy pages;
+   - `mc admin info` works;
+   - the s3fs sidecars in `stt`, `nlp`, `tts-v2`, `lmstudio` and `vllm` remount;
+   - an app upload and a presigned GET work.
+
+## Implementation Summary
+
+_In progress._
+
+## Change History
+
+| Date | Change |
+|---|---|
+| 2026-10-01 | Ticket opened after the MinIO fitness research (upstream CE archived; `pgsty/minio` chosen as the drop-in bridge). Image facts verified with `crane`; lanes H and D planned. |
