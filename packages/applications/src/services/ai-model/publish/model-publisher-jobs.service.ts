@@ -165,6 +165,12 @@ export class ModelPublisherJobsService extends BaseService {
     let startedAt = iso(job.timestamp) ?? new Date(0).toISOString();
     let finishedAt = iso(job.finishedOn);
     let error: PublisherJobView['error'] = bullState === 'failed' ? { code: 'FAILED', message: job.failedReason ?? 'failed' } : null;
+    // The worker ends a cancelled run with a `CANCELLED…` failure. Once a retry replaces the row's
+    // bookkeeping, that reason is the only record left that this run was cancelled, not failed.
+    if (bullState === 'failed' && job.failedReason?.startsWith(DOWNLOAD_CANCELLED_CODE)) {
+      state = 'cancelled';
+      error = { code: DOWNLOAD_CANCELLED_CODE, message: 'Cancelled by an administrator.' };
+    }
 
     if (base.kind === 'download') {
       const meta = readDownloadMeta(row?.metaData ?? null);

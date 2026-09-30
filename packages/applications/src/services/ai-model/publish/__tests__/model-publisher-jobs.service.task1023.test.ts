@@ -366,6 +366,17 @@ describe('J5 — GET jobs merges BullMQ with the row bookkeeping', () => {
     expect(view).toMatchObject({ state: 'cancelled', error: { code: 'CANCELLED' }, finishedAt: '2026-09-30T09:31:00.000Z' });
   });
 
+  it('an EARLIER cancelled run whose bookkeeping a retry replaced still reads `cancelled` (from the worker failedReason)', async () => {
+    // The row's bookkeeping now names the retry (job-2); job-1 is only known to BullMQ.
+    const row = modelRow({ metaData: { download: { jobId: 'job-2', startedAt: '2026-09-30T09:40:00.000Z', finishedAt: null, error: null } } });
+    const { svc } = buildList({
+      rows: [row],
+      jobs: [withState('failed', bullJob('failed', { failedReason: 'CANCELLED: download job job-1 was cancelled', finishedOn: Date.parse('2026-09-30T09:31:00Z') }))],
+    });
+    const views = await svc.listJobs();
+    expect(views.find((view) => view.jobId === 'job-1')).toMatchObject({ state: 'cancelled', error: { code: 'CANCELLED' } });
+  });
+
   it('a genuinely failed job carries its reason', async () => {
     const row = modelRow({
       metaData: { download: { jobId: 'job-1', startedAt: '2026-09-30T09:30:00.000Z', finishedAt: '2026-09-30T09:31:00.000Z', error: 'HTTP 404' } },
