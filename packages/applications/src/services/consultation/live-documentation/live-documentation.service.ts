@@ -980,6 +980,26 @@ interface LiveSession {
  */
 const LIVE_CAPTURE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'PRIMED', 'RECORDING', 'REOPENED']);
 
+/**
+ * TASK-1022 — the section titles of the template a live session FROZE, in checklist order,
+ * trimmed, blank titles dropped. `[]` when the session froze none.
+ */
+function frozenDocumentHeadings(template: ResolvedDocumentTemplate | undefined): string[] {
+  const checklist = template?.compiled?.checklist ?? [];
+  return checklist.map((entry) => (typeof entry?.title === 'string' ? entry.title.trim() : '')).filter((title) => title.length > 0);
+}
+
+/**
+ * TASK-1022 — the handoff `context` keys the finalizer prompt binds: `document_headings` (a numbered
+ * plain-text list, `1. New Complaints\n2. …`) and `document_heading_list` (the same titles). ABSENT,
+ * never `''` / `[]`, when there are none, so the prompt's own `default("")` applies.
+ */
+function documentHeadingsContext(headings: readonly string[] | undefined): Record<string, unknown> {
+  const list = (headings ?? []).filter((title) => typeof title === 'string' && title.trim().length > 0).map((title) => title.trim());
+  if (list.length === 0) return {};
+  return { document_headings: list.map((title, index) => `${index + 1}. ${title}`).join('\n'), document_heading_list: list };
+}
+
 /** The effective `agentic.context.*` knobs for one resolution. */
 export interface AgenticContextKnobs {
   liveDeltaMaxChars: number;
@@ -7368,10 +7388,14 @@ return 0`;
    * a consultation that was simply silent.
    */
   private async persistLiveHandoff(session: LiveSession): Promise<void> {
+    // TASK-1022 — the headings the session FROZE (`ensureTemplateResolved`), captured while the
+    // snapshot still exists: the durable finalizer is told to use exactly these, in this order.
+    const documentHeadings = frozenDocumentHeadings(session.templateSnapshot);
     const record: LiveHandoffRecord = {
       endedAt: new Date().toISOString(),
       tenantId: session.tenantId,
       outputs: session.liveNodeOutputs ?? {},
+      ...(documentHeadings.length > 0 ? { documentHeadings } : {}),
     };
     try {
       await this.cacheService.setex(this.handoffKey(session.consultationId), this.HANDOFF_TTL, JSON.stringify(record));
@@ -7424,7 +7448,9 @@ return 0`;
       ended: true,
       ...(record ? { endedAt: record.endedAt } : {}),
       outputs,
-      context: await this.resolveHandoffContext(consultation),
+      // TASK-1022 — the headings ride the RECORD, not the consultation row, so they are published
+      // whenever the live session froze a template, even if the row itself cannot be read.
+      context: { ...(await this.resolveHandoffContext(consultation)), ...documentHeadingsContext(record?.documentHeadings) },
     };
   }
 
