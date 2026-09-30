@@ -10,6 +10,7 @@ const DOWNLOAD_STATUS_META: Record<AiModelDownloadStatus, { label: string; role:
   DOWNLOADING: { label: 'Downloading', role: 'info', pulse: true },
   DOWNLOADED: { label: 'Downloaded', role: 'success' },
   DOWNLOAD_FAILED: { label: 'Download failed', role: 'destructive' },
+  CANCELLED: { label: 'Cancelled', role: 'warning' },
 };
 
 /** At-a-glance chip for "whether the weights are downloaded" + the download state. */

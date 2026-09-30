@@ -10,7 +10,7 @@ export type AiModelFormat = 'SAFETENSOR' | 'ONNX' | 'NEMO' | 'PYTORCH' | 'CTRANS
  * COLUMN of this name; the job endpoint's frozen contract still reports it, so
  * the type stays for `ModelDownloadState` / `StartModelDownloadResponse` only.
  */
-export type AiModelDownloadStatus = 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
+export type AiModelDownloadStatus = 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED' | 'CANCELLED';
 /** Large gateway enum (46 values) — keep open for forward compatibility. */
 export type ModelTaskType = string;
 /** The one `ModelTaskType` value the ASR decode profile (below) applies to. */
@@ -419,8 +419,10 @@ export interface DiscoveryResponse {
 
 export const MODEL_LIFECYCLE_STATUSES = [
   'UNREGISTERING',
+  'UNREGISTER_FAILED',
   'DOWNLOADING',
   'DOWNLOAD_FAILED',
+  'DOWNLOAD_CANCELLED',
   'NOT_DOWNLOADED',
   'LOAD_FAILED',
   'LOADING',
