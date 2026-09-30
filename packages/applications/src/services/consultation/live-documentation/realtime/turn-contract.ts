@@ -888,19 +888,42 @@ function routableContentKind(text: string): RoutableContentKind | undefined {
 }
 
 /**
- * The live replay's turn wrote one near-identical prescription paragraph into `current_medications`,
- * `additional_data` AND `instructions_and_orders`, and never into `treatment_plan`. This keeps such
- * a SAME-TURN repeat in exactly one section:
+ * The subject + verb a model puts in front of the same prescription line in different sections —
+ * "Start X", "Patient is starting X", "I am starting X", "Continue X" — and the bullet marker before
+ * it. Stripped for the ROUTING comparison only (never written, never used by the flag): the verb
+ * says how the line was phrased, not what was prescribed. Narrow on purpose — the number multiset
+ * and the Jaccard threshold still decide everything that follows it.
+ */
+const ROUTING_LEAD = /^(?:(?:the )?patient (?:is|was) |i am |i'm |we are |we're )?(?:start(?:ing|ed)?|continu(?:e|ing))\s+/i;
+const ROUTING_BULLET = /^[\s\-*•–—]+/;
+
+function routingText(sentence: string): string {
+  const unbulleted = sentence.replace(ROUTING_BULLET, '');
+  return unbulleted.replace(ROUTING_LEAD, '');
+}
+
+/**
+ * The live replays' turns wrote the same prescription into several sections at once: run 1 put one
+ * near-identical paragraph into `current_medications`, `additional_data` AND
+ * `instructions_and_orders` and never into `treatment_plan`; run 4 wrote the plan's bullet lines
+ * into `current_medications` and one of them, reworded ("Patient is starting …"), into
+ * `additional_data`. This keeps each such SAME-TURN repeat in exactly one section, per SENTENCE /
+ * bullet line (the whole additions differ, so grouping whole additions misses run 4):
  *
  * - candidates are the turn's `addition`s, and `revision`s on a section with no real content (a
- *   first write); a contradiction-backed revision is never touched;
- * - two candidates are the same text by the cross-section flag's own measure (`sentencesMatch` over
- *   the whole text: Jaccard >= {@link CROSS_SECTION_DUPLICATE_JACCARD}, identical numbers);
+ *   first write); a contradiction-backed revision is never touched. Each candidate is split with
+ *   the dedup's own splitter, and only ELIGIBLE sentences (two words or more) take part;
+ * - two sentences are the same by the cross-section flag's own measure (`sentencesMatch`: Jaccard
+ *   >= {@link CROSS_SECTION_DUPLICATE_JACCARD}, identical number multiset) after the leading bullet
+ *   and subject/verb (`routingText`) are stripped; a group must span at least two sections;
  * - a group is routed only when its text is a PLAN (→ a plan section) or an ORDER (→ a follow-up
  *   section, else an instructions/orders section). A member of the right kind wins; otherwise the
  *   template's first section of that kind receives it, appended after its own addition this turn;
- *   otherwise the first member in template order keeps it. The kept text is the group's LONGEST
- *   variant (ties: the first), so no member's extra words are lost.
+ *   otherwise the first member in template order keeps it. The group's sentence is REMOVED from
+ *   every other section's text, whose remaining sentences stay verbatim; a section left with
+ *   nothing writes nothing;
+ * - the kept variant loses no words: the one whose stripped form is longest. On a tie a member
+ *   target keeps its OWN wording, and an outside target receives the longest raw variant;
  * - a group of any OTHER text keeps the TASK-1001 owner decision: written everywhere and FLAGGED.
  *
  * A no-op for a template with no plan / follow-up / orders section. Cross-TURN repeats are not
@@ -914,10 +937,17 @@ function routeSameTurnRepeats(turn: ParsedTurn, compiled: CompiledDocumentTempla
   interface Candidate {
     readonly key: string;
     readonly field: 'addition' | 'revision';
-    readonly text: string;
+    readonly sentences: readonly Sentence[];
+  }
+  interface Member {
+    readonly candidate: number;
+    readonly sentence: number;
     readonly form: MatchForm;
+    /** Length of the stripped comparison text — what "loses no words" is measured on. */
+    readonly weight: number;
   }
   const candidates: Candidate[] = [];
+  const members: Member[] = [];
   for (const key of compiled.sectionKeys) {
     const section = turn[key];
     if (!section) continue;
@@ -932,48 +962,98 @@ function routeSameTurnRepeats(turn: ParsedTurn, compiled: CompiledDocumentTempla
       field = 'addition';
       text = section.addition;
     }
-    if (!text || !isEligibleSentence(text)) continue;
-    candidates.push({ key, field, text, form: matchForm(text) });
+    if (!text) continue;
+    const sentences = splitSentences(text);
+    const candidate = candidates.length;
+    candidates.push({ key, field, sentences });
+    for (const [index, sentence] of sentences.entries()) {
+      if (!isEligibleSentence(sentence.text)) continue;
+      const stripped = routingText(sentence.text);
+      if (!isEligibleSentence(stripped)) continue;
+      members.push({ candidate, sentence: index, form: matchForm(stripped), weight: normaliseForComparison(stripped).length });
+    }
   }
   if (candidates.length < 2) return turn;
 
-  // Connected components over the pairwise match, members kept in template order.
-  const groupOf = candidates.map((_, index) => index);
+  // Connected components over the pairwise match, members kept in template-then-sentence order.
+  const groupOf = members.map((_, index) => index);
   const root = (index: number): number => (groupOf[index] === index ? index : (groupOf[index] = root(groupOf[index]!)));
-  for (let a = 0; a < candidates.length; a += 1) {
-    for (let b = a + 1; b < candidates.length; b += 1) {
-      if (sentencesMatch(candidates[a]!.form, candidates[b]!.form)) groupOf[root(b)] = root(a);
+  for (let a = 0; a < members.length; a += 1) {
+    for (let b = a + 1; b < members.length; b += 1) {
+      if (members[a]!.candidate === members[b]!.candidate) continue;
+      if (sentencesMatch(members[a]!.form, members[b]!.form)) groupOf[root(b)] = root(a);
     }
   }
-  const groups = new Map<number, Candidate[]>();
-  for (const [index, candidate] of candidates.entries()) {
-    const members = groups.get(root(index)) ?? [];
-    members.push(candidate);
-    groups.set(root(index), members);
+  const groups = new Map<number, Member[]>();
+  for (const [index, member] of members.entries()) {
+    const group = groups.get(root(index)) ?? [];
+    group.push(member);
+    groups.set(root(index), group);
   }
 
-  const next: Record<string, TurnSection> = { ...turn };
-  for (const members of groups.values()) {
-    if (members.length < 2) continue;
-    const kept = members.reduce((longest, member) => (member.text.length > longest.text.length ? member : longest));
-    const contentKind = routableContentKind(kept.text);
+  const textOf = (member: Member): string => candidates[member.candidate]!.sentences[member.sentence]!.text;
+  const keyOf = (member: Member): string => candidates[member.candidate]!.key;
+  /** Per candidate: sentence index → replacement text (a member target's kept variant) or null (removed). */
+  const edits = candidates.map(() => new Map<number, string | null>());
+  /** Per outside target: the kept variants it receives, with the separator that followed each. */
+  const received = new Map<string, { text: string; separator: string }[]>();
+
+  for (const group of groups.values()) {
+    if (new Set(group.map(keyOf)).size < 2) continue;
+    const longestRaw = group.reduce((longest, m) => (textOf(m).length > textOf(longest).length ? m : longest));
+    const contentKind = routableContentKind(textOf(longestRaw));
     if (!contentKind) continue;
 
     const preferred: readonly RoutableSectionKind[] = contentKind === 'plan' ? ['plan'] : ['follow-up', 'orders'];
-    const member = preferred.map((kind) => members.find((m) => kinds.get(m.key) === kind)).find(Boolean);
+    const member = preferred.map((kind) => group.find((m) => kinds.get(keyOf(m)) === kind)).find(Boolean);
     const outsider = member
       ? undefined
       : preferred.map((kind) => compiled.sectionKeys.find((key) => kinds.get(key) === kind && turn[key]?.revision === undefined)).find(Boolean);
-    const target = member?.key ?? outsider ?? members[0]!.key;
+    const target = member ? keyOf(member) : (outsider ?? keyOf(group[0]!));
+    const own = member ?? group.find((m) => keyOf(m) === target);
 
-    for (const m of members) if (m.key !== target) delete next[m.key];
-    const targetMember = members.find((m) => m.key === target);
-    if (targetMember) {
-      next[target] = { ...turn[target], [targetMember.field]: kept.text };
-    } else {
-      const own = next[target]?.addition;
-      next[target] = { ...next[target], addition: own ? `${own}\n\n${kept.text}` : kept.text };
+    const heaviest = Math.max(...group.map((m) => m.weight));
+    const kept =
+      own && own.weight === heaviest
+        ? own
+        : group.filter((m) => m.weight === heaviest).reduce((a, b) => (textOf(b).length > textOf(a).length ? b : a));
+
+    for (const m of group) {
+      if (keyOf(m) !== target) edits[m.candidate]!.set(m.sentence, null);
     }
+    if (own) {
+      if (kept !== own) edits[own.candidate]!.set(own.sentence, textOf(kept));
+    } else {
+      const separator = candidates[kept.candidate]!.sentences[kept.sentence]!.separator;
+      const list = received.get(target) ?? [];
+      list.push({ text: textOf(kept), separator });
+      received.set(target, list);
+    }
+  }
+
+  const next: Record<string, TurnSection> = { ...turn };
+  for (const [index, candidate] of candidates.entries()) {
+    const edit = edits[index]!;
+    if (edit.size === 0) continue;
+    const text = candidate.sentences
+      .flatMap((sentence, at) => {
+        const replacement = edit.get(at);
+        if (replacement === null) return [];
+        return [`${replacement ?? sentence.text}${sentence.separator}`];
+      })
+      .join('')
+      .trim();
+    if (text.length === 0) delete next[candidate.key];
+    else next[candidate.key] = { ...turn[candidate.key], [candidate.field]: text };
+  }
+  for (const [target, list] of received) {
+    // Re-joined in the authors' own layout; a variant that ended its source text gets a line break.
+    const block = list
+      .map(({ text, separator }, at) => (at === list.length - 1 ? text : `${text}${separator.length > 0 ? separator : '\n'}`))
+      .join('')
+      .trim();
+    const own = next[target]?.addition;
+    next[target] = { ...next[target], addition: own ? `${own}\n\n${block}` : block };
   }
   return next;
 }
