@@ -750,6 +750,13 @@ interface LiveSession {
   inFlight?: boolean;
   /** TASK-891 B3 — a flush was requested mid-generation; run one trailing re-run on completion. */
   coalescedFlush?: boolean;
+  /**
+   * TASK-1022 (D-FLUSH) — set by `runStop` before its drain. From then on only the drain's forced
+   * flushes may run a generation: a non-forced flush, a trailing coalesced re-run and every
+   * idle/throttle timer are refused, because any of them claims a newer generation and so
+   * supersedes (`isStale()` → `dropStale` → `null`) the stop flush that carries the last transcript.
+   */
+  stopping?: boolean;
   /** Aborts the in-flight TEXT/NLP HTTP calls when a newer flush supersedes them. */
   abortController?: AbortController;
   /** How many `transcriptParts` have already been folded into `lastPayload` (incremental prompt cursor, P0-B). */
@@ -2732,6 +2739,19 @@ return 0`;
     let finalPayload: LiveSummaryEventDto | null = null;
 
     if (session) {
+      // TASK-1022 (D-FLUSH) — fence the session BEFORE draining. Replay1020 run3: a non-forced
+      // generation was in flight at stop with a coalesced re-run pending; the drain's forced flush
+      // aborted it, its `finally` scheduled the trailing re-run, and 8 s later that timer claimed a
+      // newer generation and superseded the stop flush. The closing frame carried an empty note and
+      // the follow-up plan spoken last never reached a section. With the fence nothing but the
+      // drain below can claim a generation, and the pending timers are cancelled here.
+      session.stopping = true;
+      session.coalescedFlush = false;
+      this.clearTimer(session);
+      if (session.throttleTimer) {
+        clearTimeout(session.throttleTimer);
+        session.throttleTimer = undefined;
+      }
       // Drain the WHOLE backlog before the final snapshot (I-2): one flush is capped
       // at MAX_DELTA_CHARS, so a > 12k un-flushed backlog at stop would keep only the
       // head and drop the most-recent transcript (assessment/plan/closing). Flush
@@ -2739,8 +2759,11 @@ return 0`;
       // over — break as soon as a flush makes no forward progress (cursor stuck, e.g.
       // TEXT down / nothing new), and a hard iteration cap as a final safety net so a
       // non-advancing cursor can never loop forever.
-      const maxDrainIterations = session.transcriptParts.length + 1;
-      for (let i = 0; i < maxDrainIterations; i++) {
+      //
+      // TASK-1022 (D-FLUSH) — the cap is re-read every pass: a final the STT finalize delivers
+      // DURING the drain is appended to `transcriptParts` (ingest keeps accepting it; only its
+      // flush trigger is fenced) and must still get its pass.
+      for (let i = 0; i < session.transcriptParts.length + 1; i++) {
         const cursorBefore = session.flushedTranscriptCount;
         finalPayload = await this.flush(consultationId, { force: true }).catch((error) => {
           this.logger.warn({ message: 'Final flush failed on stop', consultationId, error: error instanceof Error ? error.message : String(error) });
@@ -2947,6 +2970,10 @@ return 0`;
 
     if (opts?.force) return this.runFlush(consultationId, opts);
 
+    // TASK-1022 (D-FLUSH) — once `stop()` drains, only its forced flushes may claim a generation.
+    // A timer or ingest-triggered flush here would supersede the drain's generation.
+    if (session.stopping) return session.lastPayload ?? null;
+
     if (session.inFlight) {
       session.coalescedFlush = true;
       // The last published note, not null: this is a caller asking for the current
@@ -2970,9 +2997,11 @@ return 0`;
       session.lastFlushAt = Date.now();
       if (session.coalescedFlush) {
         session.coalescedFlush = false;
+        // TASK-1022 (D-FLUSH) — never schedule the trailing re-run into a stopping session: the
+        // stop drain owns every remaining generation, and this timer was what superseded it.
         // Only for a session that still exists: a `stop()` racing the completion must
         // not leave a timer behind.
-        if (this.sessions.get(consultationId) === session) this.scheduleThrottledFlush(session);
+        if (this.sessions.get(consultationId) === session && !session.stopping) this.scheduleThrottledFlush(session);
       }
     }
   }
@@ -5374,6 +5403,7 @@ return 0`;
 
   private scheduleFlush(session: LiveSession): void {
     if (session.timer) return; // a flush is already pending
+    if (session.stopping) return; // TASK-1022 (D-FLUSH) — the stop drain owns every remaining flush
     session.timer = setTimeout(() => {
       session.timer = undefined;
       void this.flush(session.consultationId);
@@ -5386,6 +5416,7 @@ return 0`;
    */
   private scheduleThrottledFlush(session: LiveSession): void {
     if (session.throttleTimer) return; // already pending
+    if (session.stopping) return; // TASK-1022 (D-FLUSH) — the stop drain owns every remaining flush
     const delay = Math.max(0, this.lastAgenticContext.minIntervalMs - (Date.now() - session.lastFlushAt));
     session.throttleTimer = setTimeout(() => {
       session.throttleTimer = undefined;
