@@ -90,6 +90,7 @@ describe('AiModelsScreen — access driven (TASK-1023)', () => {
     renderWithProviders(<AiModelsScreen />);
 
     expect(await screen.findByRole('button', { name: /register model/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /download jobs/i })).toBeDefined();
     expect(await screen.findByRole('button', { name: 'Edit Whisper ML-EN' })).toBeDefined();
     const urls = calls.map((call) => call.url);
     expect(urls.some((url) => url.includes('admin/ai-models/list'))).toBe(true);

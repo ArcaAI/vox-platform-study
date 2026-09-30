@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { IconCloudDownload, IconCpu, IconDatabaseSearch, IconFilterOff, IconPencil, IconPlus, IconRadar, IconStar, IconTrash } from '@tabler/icons-react';
+import { IconCloudDownload, IconCpu, IconDatabaseSearch, IconFilterOff, IconListDetails, IconPencil, IconPlayerStop, IconPlus, IconRadar, IconStar, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { type ColumnDef, type FilterRule, type SortRule } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -19,10 +19,13 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
-import { useDownloadMissingModels, useLastInventoryReport, useModelsPaginated, useRunModelInventory } from '../api/hooks';
+import { useDownloadMissingModels, useLastInventoryReport, useModelsPaginated, usePublisherJobs, useRunModelInventory } from '../api/hooks';
+import { isActiveJob } from '../api/lifecycle';
 import { MODEL_LIFECYCLE_STATUSES, type AiModel, type ModelLifecycleStatus, type UnregisteredBucketPrefix } from '../api/types';
 import { AvailabilityBadge, AVAILABILITY_META } from './availability-badge';
+import { CancelDownloadDialog, type CancelDownloadTarget } from './cancel-download-dialog';
 import { DiscoveryDrawer } from './discovery-drawer';
+import { DownloadJobsDrawer } from './download-jobs-drawer';
 import { LIFECYCLE_META, LifecycleCell } from './lifecycle-badge';
 import { ModelFormSheet } from './model-form-sheet';
 import {
@@ -78,14 +81,21 @@ function ModelRowActions({
   onEdit,
   onPlatformDefault,
   onDelete,
+  onCancelDownload,
 }: {
   model: AiModel;
   onEdit: () => void;
   onPlatformDefault: () => void;
   onDelete: () => void;
+  onCancelDownload: () => void;
 }) {
   return (
     <span className="flex w-full items-center justify-end gap-1">
+      {model.lifecycle?.status === 'DOWNLOADING' ? (
+        <Button variant="ghost" size="icon-sm" aria-label={`Cancel download of ${model.name}`} onClick={onCancelDownload}>
+          <IconPlayerStop aria-hidden />
+        </Button>
+      ) : null}
       <Button variant="ghost" size="icon-sm" aria-label={`Edit ${model.name}`} onClick={onEdit}>
         <IconPencil aria-hidden />
       </Button>
@@ -147,6 +157,9 @@ export function ManageModelsScreen() {
   const [registerLocalPath, setRegisterLocalPath] = useState('');
   const [unregisterTarget, setUnregisterTarget] = useState<AiModel | null>(null);
   const [defaultTarget, setDefaultTarget] = useState<AiModel | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<CancelDownloadTarget | null>(null);
+  const [jobsOpen, setJobsOpen] = useState(false);
+  const activeJobCount = (usePublisherJobs().data ?? []).filter(isActiveJob).length;
   const downloadMissing = useDownloadMissingModels();
   const inventoryMutation = useRunModelInventory();
   const lastInventory = useLastInventoryReport();
@@ -336,11 +349,12 @@ export function ManageModelsScreen() {
             }}
             onPlatformDefault={() => setDefaultTarget(row.original)}
             onDelete={() => setUnregisterTarget(row.original)}
+            onCancelDownload={() => setCancelTarget({ id: row.original.id, name: row.original.name })}
           />
         ),
       },
     ],
-    [setUnregisterTarget, setDefaultTarget, setEditingId, setSheetOpen],
+    [setUnregisterTarget, setDefaultTarget, setEditingId, setSheetOpen, setCancelTarget],
   );
 
   return (
@@ -367,6 +381,11 @@ export function ManageModelsScreen() {
             }
             actions={
               <>
+                <Button variant="outline" onClick={() => setJobsOpen(true)}>
+                  <IconListDetails aria-hidden />
+                  Download jobs
+                  {activeJobCount > 0 ? <Badge variant="secondary">{activeJobCount}</Badge> : null}
+                </Button>
                 <Button variant="outline" onClick={() => setDiscoveryOpen(true)}>
                   <IconRadar aria-hidden />
                   Loaded on engines
@@ -453,6 +472,8 @@ export function ManageModelsScreen() {
         />
       </ScreenTemplate>
       <DiscoveryDrawer open={discoveryOpen} onOpenChange={setDiscoveryOpen} />
+      <DownloadJobsDrawer open={jobsOpen} onOpenChange={setJobsOpen} />
+      <CancelDownloadDialog target={cancelTarget} open={cancelTarget !== null} onOpenChange={(open) => !open && setCancelTarget(null)} />
       <UnregisteredPrefixesDrawer
         open={unregisteredOpen}
         onOpenChange={setUnregisteredOpen}

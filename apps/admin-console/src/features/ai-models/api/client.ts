@@ -182,8 +182,10 @@ export function registerFromPath(body: RegisterFromPathRequest): Promise<AiModel
 }
 
 /** Recent model-publisher jobs, newest first. */
-export function listPublisherJobs(limit = 50): Promise<PublisherJobView[]> {
-  return getJson(`${BASE}/jobs`, { limit });
+export async function listPublisherJobs(limit = 50): Promise<PublisherJobView[]> {
+  const jobs = await getJson<PublisherJobView[] | null>(`${BASE}/jobs`, { limit });
+  // A feed that is not a list (an older gateway, an empty body) is "no jobs", never a crash of the whole registry.
+  return Array.isArray(jobs) ? jobs : [];
 }
 
 /** 202; 409 `JOB_NOT_ACTIVE` = the download already finished. */
