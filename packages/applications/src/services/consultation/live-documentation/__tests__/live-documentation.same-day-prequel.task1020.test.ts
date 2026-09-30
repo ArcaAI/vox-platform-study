@@ -322,7 +322,10 @@ describe('TASK-1020 — the live handoff carries the flag to the durable finaliz
    * fragment reads exactly those three paths.
    */
   it('a same-day return with investigations carries the flag, the prequel AND the results, and they resolve under trigger.context', async () => {
-    const { service, stored } = buildDrained({ parentNotes: MORNING, investigations: { results: [{ name: 'Troponin', value: '0.01', unit: 'ng/mL' }] } });
+    const { service, stored } = buildDrained({
+      parentNotes: MORNING,
+      investigations: { results: [{ name: 'Troponin', value: '0.01', unit: 'ng/mL' }] },
+    });
 
     const context = await handoffContext(service, stored);
 
