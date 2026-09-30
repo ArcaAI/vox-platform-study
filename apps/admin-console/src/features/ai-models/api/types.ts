@@ -483,6 +483,11 @@ export interface HubPreview {
   suggestedName: string;
   suggestedFormat: AiModelFormat | null;
   layout: HubLayout;
+  /**
+   * TASK-1023 (assumed, optional): the workload the gateway would pick. Explicit `null` means it has no
+   * suggestion, which opens "Advanced" so the admin can choose one before submitting.
+   */
+  suggestedServedBy?: string | null;
 }
 
 /**

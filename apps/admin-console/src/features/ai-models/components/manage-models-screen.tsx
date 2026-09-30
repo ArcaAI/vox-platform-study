@@ -24,7 +24,7 @@ import { MODEL_LIFECYCLE_STATUSES, type AiModel, type ModelLifecycleStatus, type
 import { AvailabilityBadge, AVAILABILITY_META } from './availability-badge';
 import { DiscoveryDrawer } from './discovery-drawer';
 import { LIFECYCLE_META, LifecycleCell } from './lifecycle-badge';
-import { ModelFormSheet, type ModelFormSeed } from './model-form-sheet';
+import { ModelFormSheet } from './model-form-sheet';
 import {
   AVAILABILITY_OPTIONS,
   DEPLOYMENT_KIND_LABELS,
@@ -35,7 +35,7 @@ import {
   pipelineTagRank,
 } from './model-meta';
 import { PlatformDefaultDialog } from './platform-default-dialog';
-import { RegisterFromHubSheet } from './register-from-hub-sheet';
+import { RegisterModelSheet } from './register-model-sheet';
 import { UnregisteredPrefixesDrawer } from './unregistered-prefixes-drawer';
 import { UnregisterModelDialog } from './unregister-model-dialog';
 
@@ -138,11 +138,13 @@ export function ManageModelsScreen() {
   const totalCount = lifecycleRules.length > 0 ? rows.length : (total ?? 0);
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetSeed, setSheetSeed] = useState<ModelFormSeed | undefined>(undefined);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [unregisteredOpen, setUnregisteredOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [hubOpen, setHubOpen] = useState(false);
+  // The Register model sheet is remounted per open (`registerKey`) so every open starts from a clean form.
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [registerKey, setRegisterKey] = useState(0);
+  const [registerLocalPath, setRegisterLocalPath] = useState('');
   const [unregisterTarget, setUnregisterTarget] = useState<AiModel | null>(null);
   const [defaultTarget, setDefaultTarget] = useState<AiModel | null>(null);
   const downloadMissing = useDownloadMissingModels();
@@ -155,10 +157,10 @@ export function ManageModelsScreen() {
   // not the same answer as zero, so neither renders a badge.
   const unassignedProviderCount = useModelCatalogue().data?.unassignedProviderCount ?? 0;
 
-  const openCreate = (seed?: ModelFormSeed) => {
-    setEditingId(null);
-    setSheetSeed(seed);
-    setSheetOpen(true);
+  const openRegister = (localPath = '') => {
+    setRegisterLocalPath(localPath);
+    setRegisterKey((key) => key + 1);
+    setRegisterOpen(true);
   };
 
   const clearFilters = useCallback(() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] }), [query]);
@@ -189,7 +191,7 @@ export function ManageModelsScreen() {
 
   function registerFromBucket(prefix: UnregisteredBucketPrefix) {
     setUnregisteredOpen(false);
-    openCreate({ slug: prefix.slug ?? '', name: prefix.slug ?? '', bucketPrefix: prefix.bucketPrefix });
+    openRegister(prefix.bucketPrefix);
   }
 
   const columns = useMemo<ColumnDef<AiModel>[]>(
@@ -330,7 +332,6 @@ export function ManageModelsScreen() {
             model={row.original}
             onEdit={() => {
               setEditingId(row.original.id);
-              setSheetSeed(undefined);
               setSheetOpen(true);
             }}
             onPlatformDefault={() => setDefaultTarget(row.original)}
@@ -339,7 +340,7 @@ export function ManageModelsScreen() {
         ),
       },
     ],
-    [setUnregisterTarget, setDefaultTarget, setEditingId, setSheetOpen, setSheetSeed],
+    [setUnregisterTarget, setDefaultTarget, setEditingId, setSheetOpen],
   );
 
   return (
@@ -392,11 +393,7 @@ export function ManageModelsScreen() {
                   {downloadMissing.isPending ? <Spinner /> : <IconCloudDownload aria-hidden />}
                   Download missing
                 </Button>
-                <Button variant="outline" onClick={() => setHubOpen(true)}>
-                  <IconPlus aria-hidden />
-                  Register from Hugging Face
-                </Button>
-                <Button onClick={() => openCreate()}>
+                <Button onClick={() => openRegister()}>
                   <IconPlus aria-hidden />
                   Register model
                 </Button>
@@ -433,7 +430,7 @@ export function ManageModelsScreen() {
               title="No models registered yet"
               description="Agents and workflows fall back to platform defaults until a model is registered."
               action={
-                <Button onClick={() => openCreate()}>
+                <Button onClick={() => openRegister()}>
                   <IconPlus aria-hidden />
                   Register model
                 </Button>
@@ -466,15 +463,11 @@ export function ManageModelsScreen() {
         open={sheetOpen}
         onOpenChange={(open) => {
           setSheetOpen(open);
-          if (!open) {
-            setEditingId(null);
-            setSheetSeed(undefined);
-          }
+          if (!open) setEditingId(null);
         }}
         modelId={editingId}
-        seed={sheetSeed}
       />
-      <RegisterFromHubSheet open={hubOpen} onOpenChange={setHubOpen} />
+      <RegisterModelSheet key={registerKey} open={registerOpen} onOpenChange={setRegisterOpen} initialLocalPath={registerLocalPath} />
       <PlatformDefaultDialog
         model={defaultTarget}
         open={defaultTarget !== null}
