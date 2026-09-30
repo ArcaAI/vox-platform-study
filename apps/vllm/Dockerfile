@@ -51,11 +51,32 @@ RUN python3 -m pip list --format=freeze > /tmp/image-constraints.txt
 COPY packages/py-env/pyproject.toml ./packages/py-env/pyproject.toml
 COPY packages/py-obs/pyproject.toml ./packages/py-obs/pyproject.toml
 COPY apps/vllm/pyproject.toml ./apps/vllm/pyproject.toml
+# OpenTelemetry is the one family the shared `py-obs` floors ahead of this image (py-obs asks
+# for >=1.44 / instrumentation >=0.65b0; vLLM 0.30.0 ships 1.40.0 / semconv 0.61b0, and its
+# own lmcache caps the API at <=1.40). Upgrading it here would half-upgrade the image's
+# exporter packages, so every `opentelemetry-*` requirement is pinned to the image's own
+# family instead: a package the image ships keeps its version, an instrumentation it lacks
+# takes the image's semantic-conventions version. `hope_obs` runs unchanged on 1.40
+# (TASK-1021: configure_observability + tracing verified inside this base image).
 RUN python3 - > /tmp/service-requirements.txt <<'PY'
 import re
 import tomllib
 
 LOCAL = {"hope-env", "hope-obs"}
+
+
+def canon(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+image = {}
+with open("/tmp/image-constraints.txt") as fh:
+    for line in fh:
+        if "==" in line:
+            name, version = line.strip().split("==", 1)
+            image[canon(name)] = version
+semconv = image["opentelemetry-semantic-conventions"]
+
 for path in (
     "apps/vllm/pyproject.toml",
     "packages/py-env/pyproject.toml",
@@ -63,7 +84,12 @@ for path in (
 ):
     with open(path, "rb") as fh:
         for dep in tomllib.load(fh)["project"]["dependencies"]:
-            if re.split(r"[\[<>=!~;\s]", dep, maxsplit=1)[0] not in LOCAL:
+            name = canon(re.split(r"[\[<>=!~;\s]", dep, maxsplit=1)[0])
+            if name in LOCAL:
+                continue
+            if name.startswith("opentelemetry-"):
+                print(f"{name}=={image.get(name, semconv)}")
+            else:
                 print(dep)
 PY
 RUN --mount=type=cache,target=/root/.cache/pip \
