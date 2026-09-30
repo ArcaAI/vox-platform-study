@@ -1,6 +1,6 @@
 # TASK-1029: Switch MinIO to the pgsty community fork (both repos) and pin/mirror the image
 
-**Status:** Review — both lanes merged locally (hope-v2 `92e030d35`, deployment `526d1c7`); not pushed. The cluster rollout is forward-only and waits on the owner (backup first, see deployment `docs/deployment-runbook.md` §2).
+**Status:** Review — cluster migrated side by side and the upstream MinIO removed (2026-10-01); one owner step left: delete PVC `data-hope-minio-0`
 **Type:** infrastructure
 **Branch:** `dev-2.2` (hope-v2) · `main` (hope-v2-deployment)
 **Related:** TASK-1024 / TASK-1025 (the MinIO policy work that surfaced the problem), `e166603` + `4929e2f` in hope-v2-deployment (the `minio/mc` stop-gap). TASK-1028 is reserved by another session ("Replace MinIO with Alarik", empty directory as of 2026-10-01), so this ticket is not TASK-1028.
@@ -169,6 +169,31 @@ _In progress._
 
 **Other finding (D-5).** Upstream `minio-py` is NOT archived (pushed 2026-09-28) but has had no release since 7.2.20 (2025-11-27). No dependency change was made.
 
+### Cluster migration — side by side, no backup (owner request 2026-10-01)
+
+The owner asked to migrate the data rather than back up and upgrade in place. Lane D's in-place image bump was therefore replaced before anything reached the cluster:
+
+| Step | Deployment repo | Result |
+|---|---|---|
+| Phase A | `50cc745` — `hope-minio` StatefulSet back on its original (cached) image; new `base/silo.yaml` (StatefulSet + Service `hope-silo`, own 300Gi PVC, same root pair and TLS leaf); `out-of-band/silo-migrate.yaml` | `hope-silo-0` Running / Ready on `pgsty/silo@sha256:635197cb…` |
+| Pass 1 | Job `hope-silo-migrate-pass1` (old = `https://hope-minio:9000`, new via hostAlias → `hope-silo` ClusterIP; TLS verified both sides) | IAM: 5 users, 10 policies, 5 service accounts. 31/31 buckets' metadata imported. ~47 GB copied (`hope-models` 30 GiB / 152 objects identical). Only live-write deltas (1 in `hope-backups`, 2 in `hope-loki-logs`) |
+| Phase B | `66d8e84` — `hope-minio` Service → `app: hope-silo`; egress policies allow both pod sets while connections drain | Endpoints `hope-minio` → `hope-silo-0` |
+| Pass 2 | Job `hope-silo-migrate-pass2` (old via hostAlias → old pod IP, new = `hope-minio`), STRICT | Every PHI, model, claim-check and mlflow bucket identical. Remaining differences only in `hope-backups` / `hope-loki-logs` / `hope-tempo-traces`, whose writers (pgBackRest WAL, Loki, Tempo) now write to SILO; `mc mirror` correctly refused to overwrite SILO's newer tempo index |
+| Phase C | `5eb773c` — StatefulSet `hope-minio` removed from Git (Argo prune is ON, so it went live), egress narrowed to `app: hope-silo`, `eks/components/scale-30-users` patch retargeted to `hope-silo` (the old target broke the `aws-prod` render), `bootstrap-cluster.sh` waits for `sts/hope-silo` | StatefulSet gone; PVC `data-hope-minio-0` retained |
+
+The migration script was rehearsed locally first, against the same old image digest and the pinned SILO. The rehearsal covered:
+- IAM, including a login with a migrated service account;
+- object lock, versioning, ILM and quota;
+- an incremental second pass with strict verify;
+- refusal when the source and target are swapped.
+
+Post-removal verification:
+- all s3fs mounts (`stt`, `stt-worker`, `tts`, `nlp`, `lmstudio`) list and read model files from SILO;
+- no storage errors in `hope-api`, Loki or Tempo;
+- the Service endpoints resolve to `hope-silo-0`.
+
+**Left to the owner:** `kubectl -n hope-v2-dev delete pvc data-hope-minio-0` to delete the old data. It is irreversible; `local-path` reclaims the directory and frees about 47 GB. Rancher MCP has no delete verb.
+
 ## Change History
 
 | Date | Change |
@@ -177,3 +202,4 @@ _In progress._
 | 2026-10-01 | Lane H (hope-v2): all MinIO images moved to the pinned pgsty/minio digest; `mirror-images` CI job added; docs updated. Found that the fork repo was renamed to `pgsty/silo` and Docker Hub `pgsty/minio` is frozen at the pinned release. |
 | 2026-10-01 | Lane H follow-up: re-pinned from `pgsty/minio` (frozen at 2026-08-04) to `pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb…`; mirror name is now `silo`; docs updated (binary is `silo`, `mc` bundled). |
 | 2026-10-01 | Re-pinned to `pgsty/silo` RELEASE.2026-09-16 (fork renamed); lanes H and D merged locally (hope-v2 `92e030d35`, deployment `526d1c7`); live `mc` check against the pinned image; post-merge gates green; status Review, awaiting the owner's backup and rollout. |
+| 2026-10-01 | Cluster migrated side by side (no backup): hope-silo deployed, two copy passes, `hope-minio` Service cut over, upstream StatefulSet removed (deployment `50cc745`, `66d8e84`, `5eb773c`). Rule 09 updated: side-by-side record; Argo `prune` is ON. |
