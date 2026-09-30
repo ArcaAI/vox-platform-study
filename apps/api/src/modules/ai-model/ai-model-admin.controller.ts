@@ -9,11 +9,14 @@ import {
   ModelDownloadStatusResponse,
   ModelInventoryReport,
   ModelInventoryService,
+  ModelRegistryAccessResponse,
+  ModelRegistryAccessService,
   ModelRegistryOperationsService,
   ModelResponse,
   ModelUsageResponse,
   PaginatedModelResponse,
   PaginatedQuery,
+  PaginatedRegisteredModelViewResponse,
   RegisterFromHubRequest,
   RegisterFromHubResponse,
   SetPlatformDefaultRequest,
@@ -23,7 +26,7 @@ import {
   UpdateModelRequest,
 } from '@arcaai/applications';
 import { Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
@@ -46,6 +49,12 @@ import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey,
  * working tenant (403 otherwise), the model-residency shape. They publish to
  * or delete from the bucket every tenant's workloads load from, and read
  * referrers across every tenant.
+ *
+ * AUTH-NOTE: two routes are NOT platform-only — `GET access` and `GET registry`
+ * override the class-level `manage:all` with a METHOD-level `read:AiModel`
+ * (the guards resolve `getAllAndOverride([handler, class])`), because every
+ * tenant admin may see the registered models read-only. `registry` returns a
+ * REDACTED row (descriptive columns + a one-word status), never the full one.
  */
 @ApiBearerAuth()
 @ApiTags('admin-ai-models')
@@ -59,6 +68,7 @@ export class AiModelAdminController {
     private readonly aiModelDownloadService: AiModelDownloadService,
     private readonly modelInventoryService: ModelInventoryService,
     private readonly registryOperations: ModelRegistryOperationsService,
+    private readonly registryAccess: ModelRegistryAccessService,
   ) {}
 
   /**
@@ -181,6 +191,60 @@ export class AiModelAdminController {
   @ApiResponse({ status: 403, description: 'Platform administrators only, with no working tenant selected.' })
   async downloadMissing(): Promise<DownloadMissingResponse> {
     return this.registryOperations.downloadMissing();
+  }
+
+  /**
+   * What the caller may do on the model registry: whether they may manage it,
+   * and whether tenant management is switched on for their tenant.
+   */
+  @Get('access')
+  @Authorize(['read', 'AiModel'])
+  @RequiredSvcScopes('svc:admin:ai-model:read', 'svc:admin:ai-model:manage')
+  @ApiOperation({
+    summary: 'Your access to the model registry',
+    description:
+      '`canManage` is true only for a platform administrator with no working tenant selected — the only caller who may register, ' +
+      'edit, download or unregister models. `tenantManagementEnabled` is the effective `modelRegistry.tenantManagement.enabled` ' +
+      "setting for the caller's tenant; it is reported for information and does not let a tenant administrator change the registry.",
+  })
+  @ApiOkResponse({ type: ModelRegistryAccessResponse })
+  @ApiResponse({ status: 403, description: 'The caller does not hold `read:AiModel`, or presented an API key.' })
+  async access(): Promise<ModelRegistryAccessResponse> {
+    return this.registryAccess.getAccess();
+  }
+
+  /**
+   * The registered platform models, read-only: descriptive columns and a
+   * one-word status per model. Any administrator may read it.
+   */
+  @Get('registry')
+  @Authorize(['read', 'AiModel'])
+  @RequiredSvcScopes('svc:admin:ai-model:read', 'svc:admin:ai-model:manage')
+  @ApiOperation({
+    summary: 'List the registered models (read-only)',
+    description:
+      'One page of the platform model registry as any administrator may see it: name, task, runtime, format, serving service, ' +
+      'license, languages, memory footprint, platform-default tasks and a one-word lifecycle status (for example `SERVING` or ' +
+      '`DOWNLOADED`). Storage locations, checksums, per-service placement, usage and job errors are not included. Takes the same ' +
+      '`page`, `limit`, `search`, `searchFields`, `filters` and `sort` parameters as `GET admin/ai-models/list`, but they may only ' +
+      'name the columns this view returns.',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (1-based).' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 10).' })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Free-text term matched against `searchFields`.' })
+  @ApiQuery({ name: 'searchFields', required: false, type: String, description: 'Comma-separated columns the `search` term targets, e.g. `name,slug`.' })
+  @ApiQuery({
+    name: 'filters',
+    required: false,
+    type: String,
+    description: "';'-separated `field[op]:value` tokens over this view's columns, e.g. `taskType[equals]:AUTOMATIC_SPEECH_RECOGNITION`.",
+  })
+  @ApiQuery({ name: 'sort', required: false, type: String, description: 'Comma-separated `field:asc|desc`. Defaults to `name:asc`.' })
+  @ApiOkResponse({ type: PaginatedRegisteredModelViewResponse })
+  @ApiResponse({ status: 400, description: 'Malformed pagination or filter, or a filter, search field or sort naming a column this view does not return.' })
+  @ApiResponse({ status: 403, description: 'The caller does not hold `read:AiModel`, or presented an API key.' })
+  async registry(@Query() query: PaginatedQuery): Promise<PaginatedRegisteredModelViewResponse> {
+    return this.aiModelService.listRegistry(query);
   }
 
   @ApiEndpoint({

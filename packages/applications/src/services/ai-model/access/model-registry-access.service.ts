@@ -1,7 +1,7 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
-import type { ModelRegistryAccess } from '@arcaai/types';
+import { ModelRegistryAccessResponse } from './model-registry-access.response';
 import { isSuperAdmin } from '../../../common/tenant-guards';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { MODEL_REGISTRY_TENANT_MANAGEMENT_ENABLED_KEY } from '../../settings-registry/descriptors/feature-availability.descriptors';
@@ -25,7 +25,7 @@ export class ModelRegistryAccessService {
     @Optional() private readonly effectiveSettings?: EffectiveSettingsService,
   ) {}
 
-  async getAccess(): Promise<ModelRegistryAccess> {
+  async getAccess(): Promise<ModelRegistryAccessResponse> {
     const user = this.clsService.get('user');
     const workingTenantId: string | null = this.clsService.get('tenantId') || null;
     return {
