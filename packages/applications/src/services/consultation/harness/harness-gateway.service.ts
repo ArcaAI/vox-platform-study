@@ -304,6 +304,11 @@ export interface TerminateWorkflowRunResult {
   runId?: string | null;
   action?: string;
   status?: string;
+  /**
+   * TASK-1022 A1 — `true` when the harness answered that there was nothing to terminate: 409 (the
+   * run had already completed) or 404 (no such workflow). An expected outcome, not a failure.
+   */
+  alreadyClosed?: boolean;
 }
 
 /**
@@ -623,11 +628,22 @@ export class HarnessGatewayService {
   async terminateWorkflowRun(runId: string, input: { tenantId: string; reason: string }): Promise<TerminateWorkflowRunResult> {
     const workflowId = `workflow-interpreter-${runId}`;
     const url = `${this.harnessUrl}/api/v1/internal/harness/workflows/${encodeURIComponent(workflowId)}/terminate`;
-    const response = await this.httpService.axiosRef.post(
-      url,
-      { tenantId: input.tenantId, reason: input.reason },
-      { headers: await this.buildHeaders(input.tenantId), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS },
-    );
+    let response;
+    try {
+      response = await this.httpService.axiosRef.post(
+        url,
+        { tenantId: input.tenantId, reason: input.reason },
+        { headers: await this.buildHeaders(input.tenantId), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS },
+      );
+    } catch (error) {
+      // TASK-1022 A1 — the run being superseded may already have finished on its own (409) or be
+      // unknown to Temporal (404). Either way there is nothing left to stop: an expected outcome,
+      // logged at info. Anything else (5xx, transport) still rejects.
+      const status = (error as { response?: { status?: unknown } } | null)?.response?.status;
+      if (status !== 404 && status !== 409) throw error;
+      this.logger.log({ message: 'Harness workflow run already closed — nothing to terminate', runId, status });
+      return { workflowId, action: 'terminate', alreadyClosed: true };
+    }
     this.logger.log({ message: 'Harness workflow run terminated', runId });
     return response.data as TerminateWorkflowRunResult;
   }

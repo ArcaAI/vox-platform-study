@@ -6,6 +6,7 @@ import {
   ListWorkflowRunsOptions,
   RecordRunFinishedInput,
   RecordRunStartedInput,
+  RecordRunSupersededInput,
   RunTraceResponse,
   WorkflowRunResponse,
 } from './dto';
@@ -41,6 +42,13 @@ export interface IWorkflowRunService {
 
   /** Idempotent on `(tenantId, sessionId, runId)`. Emits NO sys-event. */
   recordRunFinished(input: RecordRunFinishedInput): Promise<WorkflowRunResponse>;
+
+  /**
+   * TASK-1022 A2 — close the row of a run another run superseded, without rewriting history: a
+   * `RUNNING` row becomes `CANCELED` (ended now, with the run-finished sys-event); a terminal row
+   * keeps its status and `endedAt`. Both record `_metadata.supersededBy`. Missing row → 404.
+   */
+  recordRunSuperseded(input: RecordRunSupersededInput): Promise<WorkflowRunResponse>;
 
   /**
    * Live HITL-gate state for a run. Cross-tenant id throws

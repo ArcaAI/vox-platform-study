@@ -479,5 +479,38 @@ describe('HarnessGatewayService', () => {
       expect(options.timeout).toBe(15_000);
       expect(result.action).toBe('terminate');
     });
+
+    // TASK-1022 A1 — a governed resume supersedes a governing run that may have finished on its own.
+    // The harness answers 409 (already completed) or 404 (unknown id); both mean "nothing left to
+    // stop", which is an expected outcome logged at INFO, not a warning and not a failure.
+    it.each([
+      [409, 'workflow already closed: workflow-interpreter-run-1'],
+      [404, 'workflow not found: workflow-interpreter-run-1'],
+    ])('treats a harness %i as an already-closed run — resolves, logs at info, never warns', async (status, detail) => {
+      const error = Object.assign(new Error(`Request failed with status code ${status}`), {
+        isAxiosError: true,
+        response: { status, data: { detail } },
+      });
+      mockHttpService.axiosRef.post.mockRejectedValue(error);
+      const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const service = build('http://harness:8866', 'tok');
+
+      const result = await service.terminateWorkflowRun('run-1', { tenantId: 't-1', reason: 'superseded by run-2' });
+
+      expect(result).toEqual({ workflowId: 'workflow-interpreter-run-1', action: 'terminate', alreadyClosed: true });
+      expect(warn).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('already closed'), runId: 'run-1', status }));
+    });
+
+    it('still rejects on any other harness failure (500, transport)', async () => {
+      const error = Object.assign(new Error('Request failed with status code 500'), { isAxiosError: true, response: { status: 500, data: {} } });
+      mockHttpService.axiosRef.post.mockRejectedValueOnce(error);
+      const service = build('http://harness:8866', 'tok');
+      await expect(service.terminateWorkflowRun('run-1', { tenantId: 't-1', reason: 'r' })).rejects.toBe(error);
+
+      mockHttpService.axiosRef.post.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      await expect(service.terminateWorkflowRun('run-1', { tenantId: 't-1', reason: 'r' })).rejects.toThrow('ECONNREFUSED');
+    });
   });
 });

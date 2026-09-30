@@ -99,6 +99,9 @@ class _FakeHandle:
         self._client.actions.append(("cancel", self.id, kw))
 
     async def terminate(self, *args: Any, reason: str | None = None, **kw: Any) -> None:
+        error = self._client.terminate_errors.get(self.id)
+        if error is not None:
+            raise error
         self._client.actions.append(("terminate", self.id, reason))
 
     async def signal(self, signal: Any, arg: Any = None, **kw: Any) -> None:
@@ -117,6 +120,7 @@ class _FakeClient:
         self.actions: list[tuple] = []
         self.list_queries: list[dict[str, Any]] = []
         self.raise_on_sa = False
+        self.terminate_errors: dict[str, RPCError] = {}
 
     def list_workflows(
         self,
@@ -310,6 +314,40 @@ class TestWorkflowActions:
         assert data["status"] == "TERMINATED"
         assert data["requested"] is True
         assert client.actions[0] == ("terminate", "harness-doc-c-1", "abort")
+
+    @pytest.mark.asyncio
+    async def test_terminate_of_an_already_completed_run_is_409_not_500(self, admin_app):
+        # TASK-1022 A1: a governed resume supersedes a governing run that has already
+        # finished. Temporal answers NOT_FOUND "workflow execution already completed";
+        # that is a closed workflow, not a server fault.
+        http, client = admin_app
+        wid = "workflow-interpreter-01a0f078"
+        client.terminate_errors[wid] = RPCError(
+            "workflow execution already completed", RPCStatusCode.NOT_FOUND, b""
+        )
+        resp = await http.post(f"{_BASE}/workflows/{wid}/terminate", json={"reason": "superseded"})
+        assert resp.status_code == 409
+        assert resp.json() == {"detail": f"workflow already closed: {wid}"}
+        assert client.actions == []
+
+    @pytest.mark.asyncio
+    async def test_terminate_of_an_unknown_workflow_is_404(self, admin_app):
+        http, client = admin_app
+        wid = "workflow-interpreter-missing"
+        client.terminate_errors[wid] = RPCError(
+            "workflow not found for ID: " + wid, RPCStatusCode.NOT_FOUND, b""
+        )
+        resp = await http.post(f"{_BASE}/workflows/{wid}/terminate", json={})
+        assert resp.status_code == 404
+        assert resp.json() == {"detail": f"workflow not found: {wid}"}
+
+    @pytest.mark.asyncio
+    async def test_terminate_propagates_any_other_rpc_failure(self, admin_app):
+        http, client = admin_app
+        wid = "workflow-interpreter-x"
+        client.terminate_errors[wid] = RPCError("boom", RPCStatusCode.UNAVAILABLE, b"")
+        with pytest.raises(RPCError):
+            await http.post(f"{_BASE}/workflows/{wid}/terminate", json={})
 
     @pytest.mark.asyncio
     async def test_signal_forwards_name_and_payload(self, admin_app):
