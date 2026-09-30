@@ -1281,7 +1281,7 @@ export interface ConsumptionRollupResponse {
   consultations: ConsumptionConsultations;
   /** When this payload was computed (ISO-8601). */
   refreshedAt: string;
-  /** Configured storage quota = SUM(TenantBucket.quotaBytes); null when none set. */
+  /** Configured storage quota = per-tenant MAX(TenantBucket.quotaBytes), summed across tenants (the plan quota is one ceiling shared by both system buckets); null when none set. */
   storageQuotaBytes: number | null;
   /** Accounted storage bytes = SUM(Media.size). */
   storageUsedBytes: number;

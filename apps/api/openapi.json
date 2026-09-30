@@ -5085,7 +5085,7 @@
             "type": "string"
           },
           "storageQuotaBytes": {
-            "description": "Configured storage quota = SUM(TenantBucket.quotaBytes); null when none set.",
+            "description": "Configured storage quota = per-tenant MAX(TenantBucket.quotaBytes), summed across tenants (the plan quota is one ceiling shared by both system buckets); null when none set.",
             "nullable": true,
             "type": "number"
           },
@@ -51268,6 +51268,7 @@
     },
     "/api/v1/admin/tenants/{id}/restore": {
       "post": {
+        "description": "A deleted tenant is restorable too (TASK-1025). Inside the deleted-tenant storage retention window (`storage.tenantDeletion.retentionDays`) its retained buckets are given back; once the purge has run, the tenant is restored WITHOUT its storage and the audit event records `storagePurged: true`.",
         "operationId": "TenantController_restore",
         "parameters": [
           {
@@ -51303,7 +51304,7 @@
             "service-account": []
           }
         ],
-        "summary": "Restore a suspended/archived tenant to ENABLED",
+        "summary": "Restore a suspended, archived or deleted tenant to ENABLED",
         "tags": [
           "admin-tenants"
         ]
