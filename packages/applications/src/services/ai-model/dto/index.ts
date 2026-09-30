@@ -10,3 +10,4 @@ export * from './model-catalogue.query';
 export * from './model-lifecycle.response';
 export * from './model-registry-operations.dto';
 export * from './registered-model-view.response';
+export * from './model-path-registration.dto';

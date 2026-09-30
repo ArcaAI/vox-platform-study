@@ -134,7 +134,8 @@ function libraryFor(hubLibrary: string | null, task: ModelTaskType | null, files
   return null;
 }
 
-function formatFor(library: string | null, files: HuggingFaceFileEntry[]): AiModelFormat | null {
+/** The artifact format a file list implies (the Hub card and a local bucket path share it). */
+export function formatFor(library: string | null, files: Array<Pick<HuggingFaceFileEntry, 'path'>>): AiModelFormat | null {
   const paths = files.map((f) => ext(f.path));
   if (paths.some((p) => p.endsWith('.gguf'))) return AiModelFormat.GGUF;
   if (library === 'whisper.cpp') return AiModelFormat.WHISPER_CPP;
