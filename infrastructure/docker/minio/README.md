@@ -450,8 +450,10 @@ under time pressure.
 
 ### Measured MinIO behaviours — things this file used to assert
 
-Run 2026-08-30 against `minio/minio:RELEASE.2025-04-08T15-41-24Z` (4-drive
-erasure set) and `minio/mc:RELEASE.2025-04-16T18-13-26Z`, in a throwaway
+Run 2026-08-30 against upstream MinIO `RELEASE.2025-04-08T15-41-24Z` (4-drive
+erasure set) and upstream `mc` `RELEASE.2025-04-16T18-13-26Z` (both images have
+since been retired — TASK-1029 moved everything to the pgsty fork, which is the
+same code line and admin API), in a throwaway
 Kubernetes namespace, using **the committed policy documents verbatim**.
 Evidence is in the ticket README section 7.
 

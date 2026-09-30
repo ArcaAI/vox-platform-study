@@ -58,7 +58,10 @@ def minio_container():
     try:
         from testcontainers.minio import MinioContainer
 
-        with MinioContainer("minio/minio:RELEASE.2025-04-22T22-12-26Z") as minio:
+        with MinioContainer(
+            # TASK-1029: pgsty community fork (upstream minio/minio is archived)
+            "pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372"
+        ) as minio:
             yield {
                 "endpoint": f"{minio.get_container_host_ip()}:{minio.get_exposed_port(9000)}",
                 "access_key": "minioadmin",
