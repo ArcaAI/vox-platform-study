@@ -9,6 +9,7 @@
  * in `@arcaai/applications` (`services/ai-model/constants.ts`).
  */
 
+import { HOPE_MODELS_BUCKET, HOPE_MODELS_MOUNT } from '@arcaai/types';
 import type { AiDeploymentKind, AiModelAvailability, AiModelFormat, AiModelSource, AiTaskKind, ModelCategory, ModelType } from '../api/types';
 
 export const SOURCE_LABELS: Record<AiModelSource, string> = {
@@ -209,8 +210,9 @@ export function humanizeEnum(value: string): string {
   return value.replaceAll('_', ' ').toLowerCase();
 }
 
-/** The mount every serving pod reads the bucket at — the gateway derives `localPath` from it the same way. */
-export const HOPE_MODELS_MOUNT = '/mnt/models-bucket';
+// The mount every serving pod reads the bucket at, and the bucket itself — declared once in
+// `@arcaai/types` (TASK-1023 OD-8); the gateway derives `localPath` from the same constant.
+export { HOPE_MODELS_BUCKET, HOPE_MODELS_MOUNT };
 
 /** Mirror of the gateway's `deriveLocalPath`, for the read-only preview in the drawer. */
 export function deriveLocalPath(bucketPrefix: string, primaryObject?: string | null): string {
@@ -218,9 +220,6 @@ export function deriveLocalPath(bucketPrefix: string, primaryObject?: string | n
   const base = `${HOPE_MODELS_MOUNT}/${prefix}/`;
   return primaryObject ? `${base}${primaryObject.replace(/^\/+/, '')}` : base;
 }
-
-/** The bucket `HOPE_MODELS_MOUNT` is mounted from — used to derive a LOCAL row's `sourceUri` from its `bucketPrefix` (TASK-960). */
-export const HOPE_MODELS_BUCKET = 'hope-models';
 
 /**
  * `s3://hope-models/<bucketPrefix>` for a LOCAL row — DERIVED, never typed by

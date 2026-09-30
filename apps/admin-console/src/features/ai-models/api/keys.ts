@@ -19,6 +19,14 @@ export const aiModelKeys = {
   lifecycle: (id: string) => [...aiModelKeys.root, 'lifecycle', id] as const,
   /** Read-only status of the SYSTEM `model-registry`/`s3` provider connection. */
   modelRegistryConnection: () => [...aiModelKeys.root, 'model-registry-connection'] as const,
+  /** `GET admin/ai-models/access` — what the caller may do; shared by every consumer. */
+  access: () => [...aiModelKeys.root, 'access'] as const,
+  /** Read-only registry view (non-managers). */
+  registry: (params?: ListParams) => [...aiModelKeys.root, 'registry', params ?? {}] as const,
+  /** Publisher jobs (the Download jobs drawer). */
+  jobs: () => [...aiModelKeys.root, 'jobs'] as const,
+  /** Bucket-path preview for the Local tab. */
+  localPreview: (path: string) => [...aiModelKeys.root, 'local-preview', path] as const,
   /** The most recent inventory report (written by the run mutation, read by the unregistered panel). */
   inventory: () => [...aiModelKeys.root, 'inventory'] as const,
 };

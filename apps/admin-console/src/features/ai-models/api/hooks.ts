@@ -3,17 +3,23 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListParams } from '@/shared/api';
 import {
+  cancelModelDownload,
   createModel,
   deleteModel,
   discoverModels,
   downloadMissingModels,
   getModel,
+  getModelAccess,
   getModelBySlug,
   getLastModelInventory,
   getModelDownloadState,
   getModelRegistryConnectionStatus,
   getModelUsage,
   listModels,
+  listPublisherJobs,
+  listRegistryPaginated,
+  previewLocalPath,
+  registerFromPath,
   listModelsPaginated,
   previewHubRepo,
   registerFromHub,
@@ -24,8 +30,8 @@ import {
   updateModel,
 } from './client';
 import { aiModelKeys } from './keys';
-import { editLockReason, isTransientLifecycle, LIFECYCLE_POLL_MS, listRefetchInterval } from './lifecycle';
-import type { AiTaskKind, CreateModelRequest, ModelInventoryReport, RegisterFromHubRequest, UnregisterModelRequest, UpdateModelRequest } from './types';
+import { editLockReason, hasActiveJobs, isTransientLifecycle, LIFECYCLE_POLL_MS, listRefetchInterval } from './lifecycle';
+import type { AiTaskKind, CancelModelDownloadRequest, CreateModelRequest, RegisterFromPathRequest, ModelInventoryReport, RegisterFromHubRequest, UnregisterModelRequest, UpdateModelRequest } from './types';
 
 export function useModels() {
   return useQuery({ queryKey: aiModelKeys.all(), queryFn: listModels });
@@ -255,4 +261,60 @@ export function useUnregisterModel() {
 export function useDownloadMissingModels() {
   const invalidate = useInvalidateAiModels();
   return useMutation({ mutationFn: () => downloadMissingModels(), onSuccess: invalidate });
+}
+
+
+// =============================================================================
+// TASK-1023 — access, read-only registry, local-path registration, jobs
+// =============================================================================
+
+/** Which grid to render. Shared key: every consumer reads the same cached answer. */
+export function useModelAccess() {
+  return useQuery({ queryKey: aiModelKeys.access(), queryFn: getModelAccess, staleTime: 60_000, retry: false });
+}
+
+/** The tenant admin's read-only registry; polls like the management list while a row is mid-flight. */
+export function useRegistryPaginated(params: ListParams | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: aiModelKeys.registry(params),
+    queryFn: () => listRegistryPaginated(params),
+    enabled,
+    placeholderData: keepPreviousData,
+    refetchInterval: (query) => ((query.state.data?.data ?? []).some((row) => isTransientLifecycle(row.lifecycleStatus)) ? LIFECYCLE_POLL_MS : false),
+  });
+}
+
+/** Bucket-path preview — `enabled` is the caller's "a path is selected" gate; 400/404 are real answers. */
+export function useLocalPreview(path: string, enabled: boolean) {
+  return useQuery({
+    queryKey: aiModelKeys.localPreview(path),
+    queryFn: () => previewLocalPath(path),
+    enabled: enabled && path !== '',
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+export function useRegisterFromPath() {
+  const invalidate = useInvalidateAiModels();
+  return useMutation({ mutationFn: (body: RegisterFromPathRequest) => registerFromPath(body), onSuccess: invalidate });
+}
+
+/** The jobs feed; polls every 5 s while any job is waiting/active. `enabled` gates it to the open drawer (plus the header badge). */
+export function usePublisherJobs(enabled = true) {
+  return useQuery({
+    queryKey: aiModelKeys.jobs(),
+    queryFn: () => listPublisherJobs(),
+    enabled,
+    retry: false,
+    refetchInterval: (query) => (hasActiveJobs(query.state.data) ? LIFECYCLE_POLL_MS : false),
+  });
+}
+
+export function useCancelModelDownload() {
+  const invalidate = useInvalidateAiModels();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & CancelModelDownloadRequest) => cancelModelDownload(id, body),
+    onSuccess: invalidate,
+  });
 }

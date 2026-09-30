@@ -5,6 +5,13 @@ import type { ListParams, WithEtag } from '@/shared/api';
 import { SYSTEM_TENANT_ID } from '@/shared/catalog';
 import type {
   AiModel,
+  CancelModelDownloadRequest,
+  CancelModelDownloadResponse,
+  LocalModelPreview,
+  ModelRegistryAccess,
+  PaginatedRegistryModels,
+  PublisherJobView,
+  RegisterFromPathRequest,
   AiTaskKind,
   CreateModelRequest,
   DiscoveryResponse,
@@ -148,4 +155,38 @@ export function unregisterModel(id: string, body: UnregisterModelRequest): Promi
 /** Enqueues a download for every SYSTEM self-hosted row whose weights are missing. */
 export function downloadMissingModels(): Promise<DownloadMissingResponse> {
   return postJson(`${BASE}/download-missing`);
+}
+
+// =============================================================================
+// TASK-1023 — access, read-only registry, local-path registration, jobs
+// =============================================================================
+
+/** What the caller may do on the registry — readable by EVERY admin. */
+export function getModelAccess(): Promise<ModelRegistryAccess> {
+  return getJson(`${BASE}/access`);
+}
+
+/** The read-only registry view a tenant admin sees (same paging envelope as `/list`). */
+export function listRegistryPaginated(params?: ListParams): Promise<PaginatedRegistryModels> {
+  return getJson(`${BASE}/registry`, params);
+}
+
+/** What a bucket path holds — 400 `PATH_INVALID`, 404 `PATH_EMPTY`. */
+export function previewLocalPath(path: string): Promise<LocalModelPreview> {
+  return getJson(`${BASE}/local/preview`, { path });
+}
+
+/** Registers weights already in the bucket. 409 = slug taken; 400 `SERVED_BY_REQUIRED`. */
+export function registerFromPath(body: RegisterFromPathRequest): Promise<AiModel> {
+  return postJson(`${BASE}/register-from-path`, body);
+}
+
+/** Recent model-publisher jobs, newest first. */
+export function listPublisherJobs(limit = 50): Promise<PublisherJobView[]> {
+  return getJson(`${BASE}/jobs`, { limit });
+}
+
+/** 202; 409 `JOB_NOT_ACTIVE` = the download already finished. */
+export function cancelModelDownload(id: string, body: CancelModelDownloadRequest): Promise<CancelModelDownloadResponse> {
+  return postJson(`${BASE}/${encodeURIComponent(id)}/download/cancel`, body);
 }
