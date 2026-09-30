@@ -48,6 +48,7 @@ import type {
   ModelResidencyPolicyResponse,
   ModelResidencyRecommendation,
   ModelResidencyUnloadResponse,
+  ModelResidencyUsage,
   ModelResidencyViewResponse,
   PinModelResidencyRequest,
   UnloadModelResidencyRequest,
@@ -55,7 +56,7 @@ import type {
 } from './dto';
 import { ImplicitLivePathReader, type LivePathModel } from './implicit-live-path';
 import type { IModelResidencyService, ModelResidencyLoadResult } from './IModelResidencyService';
-import { ModelUsageIndexReader } from './model-usage-index';
+import { ModelUsageIndexReader, type ModelResidencyUsageIndex } from './model-usage-index';
 import {
   type ReportedResidentModel,
   type ResidencyBytesSource,
@@ -131,6 +132,20 @@ import {
  */
 
 /** The decision loop's cadence (plan §5.3) — also the view's bounded staleness. */
+/**
+ * The status-only residency read (`ModelResidencyService.getLifecycleStates`):
+ * per service, which model it holds and in what state. Identity + state only —
+ * it is read on behalf of callers who may not see the full catalogue.
+ */
+export interface ModelResidencyStateSnapshot {
+  reportedAt: string | null;
+  services: Array<{ service: string; models: Array<{ aiModelId: string | null; slug: string | null; state: string }> }>;
+}
+
+/** The usage index the status-only read passes: it never reads cross-tenant usage. */
+const EMPTY_RESIDENCY_USAGE: ModelResidencyUsage = { agentCount: 0, tenantCount: 0, liveConsultation: false, uses: [] };
+const NO_USAGE: ModelResidencyUsageIndex = { get: () => EMPTY_RESIDENCY_USAGE };
+
 export const RESIDENCY_TICK_MS = 10_000;
 /** A service whose last good report is older than this is `stale` (admin fixture). */
 const STALE_AFTER_MS = 30_000;
@@ -524,6 +539,39 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
    */
   async getCatalogue(): Promise<ModelResidencyCatalogueResponse> {
     this.assertPlatformAdmin('read the model catalogue');
+    const view = await this.buildCatalogueView({ withUsage: true });
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: { surface: 'model-residency.catalogue', models: view.services.reduce((sum, s) => sum + s.models.length, 0) },
+    });
+    return view;
+  }
+
+  /**
+   * Which service holds which SYSTEM model, and in what state — NOTHING else.
+   *
+   * Deliberately UNGATED: the tenant-visible registry list derives each row's
+   * one-word lifecycle status from it, and a tenant admin may read that list.
+   * What makes that safe is the projection, not a gate: no placement (device,
+   * bytes, in-flight, request rates), no load errors, and no usage — the
+   * cross-tenant usage index is never even read on this path. The full view
+   * stays behind `getCatalogue` and its platform-admin gate.
+   */
+  async getLifecycleStates(): Promise<ModelResidencyStateSnapshot> {
+    const view = await this.buildCatalogueView({ withUsage: false });
+    return {
+      reportedAt: view.reportedAt ?? null,
+      services: view.services.map((group) => ({
+        service: String(group.service),
+        models: group.models.map((model) => ({
+          aiModelId: model.aiModelId ?? null,
+          slug: model.slug ?? null,
+          state: String(model.status),
+        })),
+      })),
+    };
+  }
+
+  private async buildCatalogueView(opts: { withUsage: boolean }): Promise<ModelResidencyCatalogueResponse> {
     const now = Date.now();
     const [settings, ledger, rows] = await Promise.all([
       this.readSettings(),
@@ -538,12 +586,14 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       }),
     ]);
     const catalogue = rows.filter((row) => residencyServiceOf(row) !== null);
-    const usage = await this.usage.read(
-      catalogue.map((row) => row.id),
-      now,
-    );
+    const usage = opts.withUsage
+      ? await this.usage.read(
+          catalogue.map((row) => row.id),
+          now,
+        )
+      : NO_USAGE;
 
-    const view = buildResidencyCatalogue({
+    return buildResidencyCatalogue({
       now,
       mode: settings.enforce ? 'enforce' : 'shadow',
       reportedAt: iso(ledger.at),
@@ -563,11 +613,6 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
         (service === 'lm-studio' ? this.lmsFootprint.get(modelRef)?.loadSeconds : undefined) ?? model?.observedLoadSeconds ?? null,
       recommendations: this.recommendations,
     });
-
-    this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: { surface: 'model-residency.catalogue', models: view.services.reduce((sum, s) => sum + s.models.length, 0) },
-    });
-    return view;
   }
 
   async load(request: LoadModelResidencyRequest): Promise<ModelResidencyLoadResult> {
