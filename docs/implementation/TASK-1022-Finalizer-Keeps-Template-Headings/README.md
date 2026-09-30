@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — owner answered the ODs and said **go** (2026-09-30) |
+| Status | **Review** — merged locally on `dev-2.2` (NOT pushed); gates green; live replay run4 passes the structural criteria; two owner decisions open (§9.5); dev-cluster rollout after the push |
 | Type | bugfix (note quality; every consultation note) |
 | Branch | `dev-2.2` |
 | Repos | `arca/hope-v2` (harness interpreter, applications live lane, seeds); ALaaS only if OD-3 changes the note contract |
@@ -128,11 +128,59 @@ Then the orchestrator runs these steps:
 
 ## 9. Implementation summary
 
-_Not started — awaiting go._
+### 9.1 Lanes and merges (all on `dev-2.2`, not pushed)
+
+| Lane (tier) | Merge | What it fixed |
+|---|---|---|
+| L-FINAL (opus) | `821d1d57f` | The harness renderer `_render_input_for_generation` (`## title`, `Not discussed`); `document_headings` on the live handoff; the finalizer prompt binds `{{trigger.context.document_headings}}` (every heading exactly once, in order; `Not discussed` when empty; the diagnosis as stated, including updates); `TASK-1022/rollout.mjs` |
+| L-ROUTE (opus) | `a8cc4f3b1` | The placeholder guard (anchored pattern set; a placeholder-only body is replaced); same-turn plan/orders repeats kept in one section; "REFERENCE ONLY" framing of the reference blocks |
+| L-HANDOFF (opus) | `8ccef1479` | **Replay run3 found the renderer never ran:** the `core.agent` `out` socket binds `text` (`registry.py:78`). `persistLiveHandoff` now writes the HEADED note as each summary node's handoff `text`. The only consumer is `n_finalize` (proved from the graphs and the harness readers). The live session's own `text` (the NER offset base) is untouched. No workflow or registry change |
+| L-SINGLE (opus) | `847419746` | **The signed note was not `note.final`.** A race at open: context signals preceded the governance marker, and the negative cache let `consultation-ending` through, so the default engine's `HarnessDocWorkflow` overwrote the governed note about 2.5 min later. Governed loops are now CANCELLED, never ended, and a cached "ungoverned" answer is re-read at stop. The "persisted" log after a skipped adoption is corrected |
+| L-LIVE (opus) | `3eb2373e2` | **The stop flush was superseded** (pre-existing): an 8 s throttled timer flush claimed a newer generation and the stop drain returned null, so the follow-up was lost. The session is now fenced at stop. A **deterministic grounding guard** drops a reference-only sentence from a current-visit section unless the transcript supports it (keyword classes for prior vs current sections; results allowed in investigations sections) |
+| L-POLISH (opus) | `6d0c53d91` | Same-turn plan/orders routing works PER SENTENCE (leading "start / patient is starting / continue" normalised); no `harness-doc` approval signal for a governed consultation; the harness answers 404, not 500, for a missing workflow |
+
+### 9.2 Gates (after the full merge)
+- database 109 files / 2009 tests
+- applications consultation + agent 339 files / 4334 tests
+- harness unit 2857 passed
+- applications typecheck and lint clean
+- final gate after L-POLISH (`6d0c53d91`): applications 341 files / 4342 tests; harness unit 2858 passed; typecheck, lint and ruff clean
+
+### 9.3 Local rollout
+`TASK-1022/rollout.mjs` republished `casenote-finalization`: ArcaAI v3, Global v2, SYSTEM v2 (promoted from Global). Each body is frozen.
+
+### 9.4 Live replay (two visits, same patient; morning new-visit + sign, afternoon revisit with investigations + sign)
+
+| Criterion | run3 (wave 1) | run4 (wave 2) |
+|---|---|---|
+| Finalizer user turn headed; `document_headings` in the system prompt | FAIL (flat input) | PASS, both visits |
+| Morning `note.final` headings == template, in order; empty sections read `Not discussed` | PASS | PASS (10/10) |
+| Afternoon headings == revisit template (11), in order | FAIL (10/11) | PASS (11/11) |
+| Prescriptions under Treatment Plan; follow-up under Follow-up Plan; diagnosis as stated | FAIL | PASS ("Breathlessness is most likely from the anemia") |
+| No placeholder line | PASS | PASS |
+| No same-turn 3-way duplicate | PASS (narrow) | FAIL, then fixed by L-POLISH (unit-proven on the exact run4 frames) |
+| Turn 1 does not fill current sections from reference blocks | FAIL (6 sections) | PASS (prior sections only; 6 sentences dropped) |
+| Stop flush ran; closing snapshot non-empty | FAIL | PASS |
+| Single writer: note hash unchanged for 5 min, no `harness-doc`, signed == `note.final` | FAIL | PASS |
+| Morning C1 unchanged | PASS | PASS |
+
+Residual model-quality misses in run4, with no deterministic cause: the 2B live model left "ECG and troponin normal" (afternoon) and "no acute distress" (morning) out of the partials. The finalizer can only keep what the partials carry.
+
+### 9.5 Open — owner decisions
+1. **Governed resume.** A second recording on a governed, unsigned consultation is still re-finalised by the default `harness-doc` engine (`consultation-event.handler.ts:138-169`), which replaces the governed note. Blocking it would lose the second recording, because the governing run is parked at `n_review` and `n_finalize` does not re-run. Options: (a) the governing graph re-finalises on resume, or (b) accept the default engine as the governed resume writer.
+2. **Loop ending steps on governed consultations.** Now that the loop is cancelled, governed consultations no longer run the loop's ending actions (`session.timeout` block, `summary.finalize` section lock, `feedback.capture`). They previously ran only because of the race. Confirm that the governed path does not need them.
+
+### 9.6 Other follow-ups
+- The open sequence emits context signals before the governance marker is written. Writing the marker first, or cancelling the loop at dispatch, would remove the race at its origin.
+- The two empty sections in ALaaS `note.final` carry slug keys (`general-examination-vitals`) instead of template keys (pre-existing; ALaaS live-plane never re-keys a section no patch named).
+- The morning live turn 1 intermittently degrades with `text_unavailable` (503).
+- Numbers match only as digits in the grounding guard ("ten point two" ≠ "10.2").
+- **Dev-cluster rollout after the push:** `HOPE_BASE_URL=<cluster> HOPE_ADMIN_PASSWORD=… node docs/implementation/TASK-1022-*/rollout.mjs` (run with `DRY_RUN=1` first). The SYSTEM row needs the super admin.
 
 ## 10. Change history
 
 | Date | Change |
 |---|---|
+| 2026-09-30 | Wave 1 (L-FINAL, L-ROUTE), replay run3 (4 failures), wave 2 (L-HANDOFF, L-SINGLE, L-LIVE), replay run4, L-POLISH; status Review. Owner decisions open in §9.5. |
 | 2026-09-30 | Owner: OD-1 (b) "Not discussed", OD-2 folded in, OD-3 Markdown; go. Phase 2 discovery then lanes. |
 | 2026-09-30 | Ticket opened from TASK-1020 §9.6 with the replay evidence; plan and ODs written. |
