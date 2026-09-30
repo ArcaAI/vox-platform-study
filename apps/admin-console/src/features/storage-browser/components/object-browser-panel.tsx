@@ -1,114 +1,26 @@
 'use client';
 
 import { useMemo } from 'react';
-import { IconChevronRight, IconCircleDot, IconFilterOff, IconFolder, IconFolderOpen, IconUpload } from '@tabler/icons-react';
+import { IconCircleDot, IconFilterOff, IconFolder, IconFolderOpen, IconUpload } from '@tabler/icons-react';
 import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { cx } from '@/shared/cx';
 import { formatBytes, formatNumber, formatRelativeTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
-import type { StorageObject } from '../api/types';
+import { deriveEntries, sortEntries, type BrowserEntry, type FileEntry, type FolderEntry } from '@/shared/bucket-path-picker/entries';
+import { PrefixChips } from '@/shared/bucket-path-picker/prefix-chips';
 import { fileTypeIcon, guessContentType } from './file-meta';
 
-export interface FolderEntry {
-  kind: 'folder';
-  name: string;
-  /** Prefix to navigate into (current prefix + name + '/'). */
-  prefix: string;
-  count: number;
-}
-
-export interface FileEntry {
-  kind: 'file';
-  /** Display name relative to the current prefix. */
-  name: string;
-  /** Full object key as the gateway lists it. */
-  key: string;
-  size: number;
-  lastModified?: string;
-}
-
-export type BrowserEntry = FolderEntry | FileEntry;
-
-/**
- * Groups the flat key listing under the current prefix into folder rows +
- * file rows (the gateway returns keys, not delimiter-based CommonPrefixes).
- */
-export function deriveEntries(objects: StorageObject[], prefix: string): BrowserEntry[] {
-  const folders = new Map<string, number>();
-  const files: FileEntry[] = [];
-  for (const object of objects) {
-    const rest = object.key.startsWith(prefix) ? object.key.slice(prefix.length) : object.key;
-    const slash = rest.indexOf('/');
-    if (slash === -1) {
-      if (rest) files.push({ kind: 'file', name: rest, key: object.key, size: object.size, lastModified: object.lastModified });
-    } else {
-      const folder = rest.slice(0, slash);
-      folders.set(folder, (folders.get(folder) ?? 0) + 1);
-    }
-  }
-  const folderEntries: FolderEntry[] = [...folders.entries()].map(([name, count]) => ({
-    kind: 'folder',
-    name,
-    prefix: `${prefix}${name}/`,
-    count,
-  }));
-  return [...folderEntries, ...files];
-}
-
-/** Client-side sort ("field:asc|desc"): folders always group before files. */
-export function sortEntries(entries: BrowserEntry[], sort: string): BrowserEntry[] {
-  const [field, direction] = sort.split(':');
-  const sign = direction === 'desc' ? -1 : 1;
-  const folders = entries.filter((entry): entry is FolderEntry => entry.kind === 'folder');
-  const files = entries.filter((entry): entry is FileEntry => entry.kind === 'file');
-  folders.sort((a, b) => sign * a.name.localeCompare(b.name));
-  files.sort((a, b) => {
-    if (field === 'size') return sign * (a.size - b.size);
-    if (field === 'modified') {
-      const aTime = a.lastModified ? Date.parse(a.lastModified) : 0;
-      const bTime = b.lastModified ? Date.parse(b.lastModified) : 0;
-      return sign * (aTime - bTime);
-    }
-    return sign * a.name.localeCompare(b.name);
-  });
-  return [...folders, ...files];
-}
+// The pure listing helpers and the breadcrumb moved to `@/shared/bucket-path-picker` (TASK-1023) so the
+// AI-models register sheet can reuse them; re-exported here so the storage screens keep their imports.
+export { deriveEntries, PrefixChips, sortEntries };
+export type { BrowserEntry, FileEntry, FolderEntry };
 
 /** Best-effort type label for the grid `type` column. */
 function entryTypeLabel(entry: BrowserEntry): string {
   if (entry.kind === 'folder') return 'Folder';
   return guessContentType(entry.name) ?? 'File';
-}
-
-/**
- * Breadcrumb path bar over the current prefix (frame 31): the root chip is the
- * bucket name; each segment navigates into that prefix. Rendered in the screen
- * toolbar, above the fill-height grid.
- */
-export function PrefixChips({ bucketName, prefix, onNavigate }: { bucketName: string; prefix: string; onNavigate: (prefix: string) => void }) {
-  const segments = prefix.split('/').filter(Boolean);
-  return (
-    <nav aria-label="Object prefix" className="flex flex-wrap items-center gap-1">
-      <Button variant={segments.length === 0 ? 'secondary' : 'ghost'} size="sm" className="font-mono text-xs" onClick={() => onNavigate('')}>
-        {bucketName}
-      </Button>
-      {segments.map((segment, index) => (
-        <span key={`${segment}-${index}`} className="flex items-center gap-1">
-          <IconChevronRight aria-hidden className="text-muted-foreground size-3.5" />
-          <Button
-            variant={index === segments.length - 1 ? 'secondary' : 'ghost'}
-            size="sm"
-            className="font-mono text-xs"
-            onClick={() => onNavigate(`${segments.slice(0, index + 1).join('/')}/`)}
-          >
-            {segment}
-          </Button>
-        </span>
-      ))}
-    </nav>
-  );
 }
 
 /**

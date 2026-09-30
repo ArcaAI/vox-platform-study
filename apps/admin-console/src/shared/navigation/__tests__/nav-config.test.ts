@@ -39,6 +39,8 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
   { action: 'read', subject: 'TenantTelemetry' },
   { action: 'read,update', subject: 'Tenant' },
   { action: 'read', subject: 'Role' },
+  // TASK-1023 — every admin reads the AI-model registry (read-only for a tenant admin).
+  { action: 'read', subject: 'AiModel' },
 ];
 
 /** Every platform-wide feature gate resolved `true` — the "nothing is hidden by the matrix" baseline most ability-only tests want. */
@@ -53,11 +55,13 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
   // minus one, plus the new tier-10-19 entry: 58 total, 25/9/19/5 by tier
   // (was 24/9/20/5; `/ai-configuration` was tier 30-49, `/features` is
   // tier 10-19). TASK-954 re-tiered the three Overview screens (Dashboard,
-  // Monitoring, Releases) from 10-19 to 20-29: 22/12/19/5.
+  // Monitoring, Releases) from 10-19 to 20-29: 22/12/19/5. TASK-1023 moved
+  // AI models from 10-19 to 20-29 (shared, read-only for a tenant admin): 22/13/19/5
+  // (the prose above predates the later additions; the asserts below are current).
   it('covers the full 58-route rail map across the four tiers', () => {
     expect(NAV_ENTRIES).toHaveLength(59);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(12);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(13);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(19);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     // The two routes moved to the user menu, plus the new /developer/invoke
@@ -123,10 +127,10 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
     expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-operations/reconciliation')).toBe(false);
   });
 
-  it('re-tiers AI models to super-admin only and folds frontend config into the tenant detail', () => {
+  it('shares AI models with every admin (tier 20-29, read:AiModel) and folds frontend config into the tenant detail', () => {
     const aiModels = NAV_ENTRIES.find((entry) => entry.route === '/ai-models');
-    expect(aiModels?.tier).toBe('10-19');
-    expect(aiModels?.required).toEqual([['manage', 'all']]);
+    expect(aiModels?.tier).toBe('20-29');
+    expect(aiModels?.required).toEqual([['read', 'AiModel']]);
     expect(NAV_ENTRIES.some((entry) => entry.route === '/tenants/frontend-config')).toBe(false);
   });
 
@@ -267,9 +271,8 @@ describe('visibleNavEntries', () => {
     expect(visible).toContain('/dashboard');
     expect(visible).toContain('/monitoring');
     expect(visible).toContain('/releases');
-    // Still super-admin only (manage:all) — now visible to super admins,
-    // never to tenant admins.
-    expect(visible).not.toContain('/ai-models');
+    // TASK-1023 — the registry is shared (read-only for a tenant admin).
+    expect(visible).toContain('/ai-models');
     // TASK-954 — tier 10-19 is hidden from a non-elevated role even when the
     // ability gate is satisfied: the `(global)` route group would 404 the click.
     for (const route of ['/tenants', '/tenants/storage', '/audit-logs', '/entitlements', '/billing']) {
@@ -498,18 +501,18 @@ const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
   ],
   // AI Platform — narrowed to tiers 10-19/20-29 now that the sole tier-30-49
   // member (`/ai-configuration`) is gone.
-  ['/ai-models', 'ai-platform', '10-19', 1, [['manage', 'all']]],
-  ['/ai-services', 'ai-platform', '10-19', 2, [['manage', 'all']]],
-  ['/ai-services/lm-studio', 'ai-platform', '10-19', 3, [['manage', 'all']]],
-  ['/ai-services/vllm', 'ai-platform', '10-19', 4, [['manage', 'all']]],
-  ['/ai-services/ollama', 'ai-platform', '10-19', 5, [['manage', 'all']]],
-  ['/ai-services/llama-cpp', 'ai-platform', '10-19', 6, [['manage', 'all']]],
-  ['/model-residency', 'ai-platform', '10-19', 7, [['manage', 'all']]],
+  ['/ai-services', 'ai-platform', '10-19', 1, [['manage', 'all']]],
+  ['/ai-services/lm-studio', 'ai-platform', '10-19', 2, [['manage', 'all']]],
+  ['/ai-services/vllm', 'ai-platform', '10-19', 3, [['manage', 'all']]],
+  ['/ai-services/ollama', 'ai-platform', '10-19', 4, [['manage', 'all']]],
+  ['/ai-services/llama-cpp', 'ai-platform', '10-19', 5, [['manage', 'all']]],
+  ['/model-residency', 'ai-platform', '10-19', 6, [['manage', 'all']]],
+  ['/ai-models', 'ai-platform', '20-29', 1, [['read', 'AiModel']]],
   [
     '/ai-providers',
     'ai-platform',
     '20-29',
-    1,
+    2,
     [
       ['read', 'GlobalSetting'],
       ['manage', 'GlobalSetting'],
@@ -949,8 +952,8 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
         '30-49': ['Storage browser'],
       },
       'ai-platform': {
-        '10-19': ['AI models', 'AI services', 'LM Studio', 'vLLM', 'Ollama', 'llama.cpp', 'Model residency'],
-        '20-29': ['AI providers'],
+        '10-19': ['AI services', 'LM Studio', 'vLLM', 'Ollama', 'llama.cpp', 'Model residency'],
+        '20-29': ['AI models', 'AI providers'],
       },
       'knowledge-agents': {
         '30-49': [
@@ -997,7 +1000,7 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
       overview: { '20-29': ['Dashboard', 'Monitoring', 'Releases'] },
       tenancy: { '20-29': ['Tenant profile'], '30-49': ['Departments'] },
       'platform-ops': { '20-29': ['Settings registry', 'Settings rows & secrets'], '30-49': ['Storage browser'] },
-      'ai-platform': { '20-29': ['AI providers'] },
+      'ai-platform': { '20-29': ['AI models', 'AI providers'] },
       'knowledge-agents': { '30-49': ['Prompt templates'] },
       'identity-access': { '20-29': ['Users', 'Roles'], '30-49': ['Allowed origins'] },
       playground: {

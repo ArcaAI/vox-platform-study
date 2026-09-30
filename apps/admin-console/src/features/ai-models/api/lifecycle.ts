@@ -1,4 +1,4 @@
-import type { AiModel, ModelLifecycleStatus, PaginatedModels } from './types';
+import type { AiModel, ModelLifecycleStatus, PaginatedModels, PublisherJobView } from './types';
 
 /** How often the registry re-reads while any row is mid-flight (OD-5). */
 export const LIFECYCLE_POLL_MS = 5_000;
@@ -31,4 +31,13 @@ export function editLockReason(status: ModelLifecycleStatus | undefined | null):
   if (status === 'DOWNLOADING') return 'Editing is unavailable while the model is downloading.';
   if (status === 'UNREGISTERING') return 'Editing is unavailable while the model is being unregistered.';
   return null;
+}
+
+/** A publisher job that is still running or queued — the only kind worth polling for or cancelling. */
+export function isActiveJob(job: Pick<PublisherJobView, 'state'>): boolean {
+  return job.state === 'waiting' || job.state === 'active';
+}
+
+export function hasActiveJobs(jobs: readonly PublisherJobView[] | undefined | null): boolean {
+  return (jobs ?? []).some(isActiveJob);
 }

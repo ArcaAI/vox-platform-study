@@ -1,4 +1,8 @@
+import type { CancelModelDownloadRequest, CancelModelDownloadResponse, LocalModelPreview, ModelRegistryAccess, PublisherJobView, RegisterFromPathRequest } from '@arcaai/types';
 import type { ResourceStatus } from '@/shared/api';
+
+/** TASK-1023 wire contract — canonical in `@arcaai/types` (`model-registry.ts`), re-exported so the feature has one import path. */
+export type { CancelModelDownloadRequest, CancelModelDownloadResponse, LocalModelPreview, ModelRegistryAccess, PublisherJobView, RegisterFromPathRequest };
 
 export type ModelCategory = 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
 export type ModelType = 'BASE_MODEL' | 'FINETUNED_MODEL' | 'QUANTIZED_MODEL' | 'UNKNOWN';
@@ -10,7 +14,7 @@ export type AiModelFormat = 'SAFETENSOR' | 'ONNX' | 'NEMO' | 'PYTORCH' | 'CTRANS
  * COLUMN of this name; the job endpoint's frozen contract still reports it, so
  * the type stays for `ModelDownloadState` / `StartModelDownloadResponse` only.
  */
-export type AiModelDownloadStatus = 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
+export type AiModelDownloadStatus = 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED' | 'CANCELLED';
 /** Large gateway enum (46 values) — keep open for forward compatibility. */
 export type ModelTaskType = string;
 /** The one `ModelTaskType` value the ASR decode profile (below) applies to. */
@@ -232,6 +236,20 @@ export interface AiModel {
    * treats an absent value as "no lifecycle known" rather than a status.
    */
   lifecycle?: ModelLifecycle | null;
+  /**
+   * TASK-1023 (optional): the engine sizing facts (`_metadata.serving`) when the gateway exposes them.
+   * `derived: true` = the gateway estimated them rather than an admin entering them. Absent on gateways
+   * that do not serve it — every reader treats absence as "nothing to prefill".
+   */
+  serving?: ModelServingFacts | null;
+}
+
+/** Engine sizing facts for a vLLM-served row (`PATCH :id { serving }`). `vramGiB` is required and > 0. */
+export interface ModelServingFacts {
+  vramGiB?: number;
+  maxNumSeqs?: number;
+  enforceEager?: boolean;
+  derived?: boolean;
 }
 
 /** GET /admin/ai-models/list envelope — CUSTOM (not the platform standard). */
@@ -299,6 +317,8 @@ export interface UpdateModelRequest extends Partial<ModelRegistryFields> {
   tags?: string[];
   /** ASR-only; `null` clears the stored profile. Omit to leave it untouched. */
   asrProfile?: AiModelAsrProfile | null;
+  /** Merged into the stored sizing facts (TASK-1021 D-11); `vramGiB` required, > 0. */
+  serving?: { vramGiB: number; maxNumSeqs?: number; enforceEager?: boolean };
 }
 
 /** PATCH /admin/ai-models/:id/platform-default body. */
@@ -419,8 +439,10 @@ export interface DiscoveryResponse {
 
 export const MODEL_LIFECYCLE_STATUSES = [
   'UNREGISTERING',
+  'UNREGISTER_FAILED',
   'DOWNLOADING',
   'DOWNLOAD_FAILED',
+  'DOWNLOAD_CANCELLED',
   'NOT_DOWNLOADED',
   'LOAD_FAILED',
   'LOADING',
@@ -477,14 +499,23 @@ export interface HubPreview {
   suggestedName: string;
   suggestedFormat: AiModelFormat | null;
   layout: HubLayout;
+  /**
+   * TASK-1023 (assumed, optional): the workload the gateway would pick. Explicit `null` means it has no
+   * suggestion, which opens "Advanced" so the admin can choose one before submitting.
+   */
+  suggestedServedBy?: string | null;
 }
 
-/** POST admin/ai-models/register-from-hub — the create form's optional fields ride along. */
+/**
+ * POST admin/ai-models/register-from-hub. TASK-1023: `repoId` alone is enough — the
+ * gateway derives revision, name, slug and served-by from the preview; everything
+ * else is an override the admin changed on purpose.
+ */
 export interface RegisterFromHubRequest {
   repoId: string;
   revision?: string;
-  slug: string;
-  name: string;
+  slug?: string;
+  name?: string;
   taskType?: ModelTaskType;
   format?: AiModelFormat;
   computeType?: string;
@@ -538,3 +569,43 @@ export interface DownloadMissingResponse {
   enqueued: { id: string; slug: string; jobId: string }[];
   skipped: { id: string; slug: string; reason: string }[];
 }
+
+// =============================================================================
+// Read-only registry view (TASK-1023) — GET admin/ai-models/registry
+// =============================================================================
+
+/** One row of the tenant-admin read-only registry: no bucket path, no per-service detail, no job errors. */
+export interface RegistryModelRow {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  taskType: ModelTaskType;
+  libraryName: string;
+  format: AiModelFormat;
+  servedBy: string;
+  deploymentKind: AiDeploymentKind;
+  license: string | null;
+  gated: boolean | null;
+  languages: string[];
+  memorySizeMb: number | null;
+  lifecycleStatus: ModelLifecycleStatus;
+  availability: AiModelAvailability;
+  isPlatformDefaultFor: string[];
+  resourceStatus: ResourceStatus;
+  updatedAt: string;
+}
+
+export interface PaginatedRegistryModels {
+  data: RegistryModelRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+/** Gateway error codes the register sheets react to (carried in the error body). */
+export const SERVED_BY_REQUIRED = 'SERVED_BY_REQUIRED';
+export const PATH_INVALID = 'PATH_INVALID';
+export const PATH_EMPTY = 'PATH_EMPTY';
+export const JOB_NOT_ACTIVE = 'JOB_NOT_ACTIVE';

@@ -51,6 +51,7 @@ export function useModelDownload(model: AiModel): UseModelDownloadResult {
     if (previousStatus.current === 'DOWNLOADING' && status !== 'DOWNLOADING') {
       if (status === 'DOWNLOADED') toast.success(`${model.name} published to the bucket`);
       else if (status === 'DOWNLOAD_FAILED') toast.error(poll.data?.error || `${model.name} failed to publish`);
+      else if (status === 'CANCELLED') toast.success(`The download of ${model.name} was cancelled`);
       invalidateModels();
       setPolling(false);
     }
@@ -92,7 +93,7 @@ export function useModelDownload(model: AiModel): UseModelDownloadResult {
 export function ModelDownloadPanel({ model }: { model: AiModel }) {
   const { status, detail, start, isStarting, disabledReason } = useModelDownload(model);
   const busy = status === 'DOWNLOADING' || isStarting;
-  const label = status === 'DOWNLOADED' ? 'Re-publish' : status === 'DOWNLOAD_FAILED' ? 'Retry publish' : 'Publish to bucket';
+  const label = status === 'DOWNLOADED' ? 'Re-publish' : status === 'DOWNLOAD_FAILED' || status === 'CANCELLED' ? 'Retry publish' : 'Publish to bucket';
   const reasonId = 'model-download-disabled-reason';
 
   return (

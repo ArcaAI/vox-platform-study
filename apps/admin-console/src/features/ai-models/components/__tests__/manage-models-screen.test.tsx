@@ -11,7 +11,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { AiModel, ModelInventoryReport, PaginatedModels } from '../../api/types';
-import { AiModelsScreen } from '../ai-models-screen';
+import { ManageModelsScreen as AiModelsScreen } from '../manage-models-screen';
 
 // Radix Select scrolls the highlighted item into view on open; happy-dom has no layout engine.
 beforeAll(() => {
@@ -193,7 +193,9 @@ describe('AiModelsScreen — the HF-organised catalogue grid', () => {
 
   it('surfaces a block error with retry and refetches the list', async () => {
     let attempt = 0;
-    stubFetch(() => {
+    stubFetch((url) => {
+      // Only the LIST read fails first — other mount-time reads (inventory) must not consume the failure.
+      if (!url.includes('/admin/ai-models/list')) return Response.json(null);
       attempt += 1;
       return attempt === 1 ? Response.json({ message: 'boom' }, { status: 500 }) : Response.json(envelope([MODEL]));
     });
@@ -205,70 +207,7 @@ describe('AiModelsScreen — the HF-organised catalogue grid', () => {
 });
 
 describe('AiModelsScreen — register / edit / unregister', () => {
-  it('registers a model by POSTing the registry payload — library, served-by and deployment kind travel; localPath never does', async () => {
-    // TASK-983 R1: the registered row must appear WITHOUT a page reload. The
-    // create mutation invalidates the `['ai-models']` prefix, so the list GET
-    // replays; this stub answers the replay with the new row, exactly as the
-    // gateway does once `list` honours the grid's sort/search/filters. Before
-    // the fix the server answered name-sorted page 1 regardless of the grid's
-    // state, so the row could land off-screen and the admin had to go looking
-    // for it — which is what "must refresh the page" was.
-    const REGISTERED: AiModel = { ...MODEL, id: 'm-9', name: 'Medical NER', slug: 'medical-ner' };
-    let registered = false;
-    const calls = stubFetch((url, method) => {
-      if (method === 'POST') {
-        registered = true;
-        return Response.json(REGISTERED);
-      }
-      return Response.json(envelope(registered ? [REGISTERED] : []));
-    });
-    renderWithProviders(<AiModelsScreen />);
-    await screen.findByText('No models registered yet');
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Register model' })[0]);
-    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
-    fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: 'Medical NER' } });
-    fireEvent.change(within(dialog).getByLabelText(/^slug/i), { target: { value: 'medical-ner' } });
-    await selectOption(within(dialog).getByLabelText(/^task \(hugging face/i), 'token-classification');
-    fireEvent.change(within(dialog).getByLabelText(/^source uri/i), { target: { value: 'blaze999/Medical-NER' } });
-    await selectOption(within(dialog).getByLabelText(/^serving library/i), 'transformers');
-    await selectOption(within(dialog).getByLabelText(/^served by/i), 'nlp');
-    fireEvent.change(within(dialog).getByLabelText(/^licence/i), { target: { value: 'apache-2.0' } });
-    fireEvent.change(within(dialog).getByLabelText(/^languages/i), { target: { value: 'en' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Register model' }));
-
-    await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
-    const post = calls.find((call) => call.method === 'POST');
-    expect(post?.url).toBe('/api/hope/admin/ai-models');
-    expect(post?.body).toEqual({
-      name: 'Medical NER',
-      slug: 'medical-ner',
-      category: 'UNKNOWN',
-      taskType: 'TOKEN_CLASSIFICATION',
-      modelType: 'BASE_MODEL',
-      source: 'HUGGINGFACE',
-      sourceUri: 'blaze999/Medical-NER',
-      format: 'SAFETENSOR',
-      libraryName: 'transformers',
-      servedBy: 'nlp',
-      deploymentKind: 'SELF_HOSTED',
-      license: 'apache-2.0',
-      languages: ['en'],
-    });
-    expect(post?.body).not.toHaveProperty('localPath');
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-
-    // No reload, no remount: the invalidated list refetches and the row renders
-    // in the SAME mounted screen.
-    expect(await screen.findByText('Medical NER')).toBeDefined();
-    expect(screen.getByText('medical-ner')).toBeDefined();
-    expect(screen.queryByText('No models registered yet')).toBeNull();
-    // ...and it got there through a REFETCH, not an optimistic client-side push.
-    const listCalls = calls.filter((call) => call.method === 'GET' && call.url.includes('/admin/ai-models/list'));
-    expect(listCalls.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('edits a model with an If-Match PATCH derived from the read ETag, carrying the registry fields', async () => {
+  it('edits a model with an If-Match PATCH derived from the read ETag, carrying only what changed', async () => {
     const calls = stubFetch((url, method) => {
       if (method === 'PATCH') return Response.json({ ...MODEL, name: 'Renamed', version: 5 }, { headers: { etag: '"5"' } });
       if (url.endsWith('/admin/ai-models/m-1')) return Response.json(MODEL, { headers: { etag: '"4"' } });
@@ -286,14 +225,8 @@ describe('AiModelsScreen — register / edit / unregister', () => {
     await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
     const patch = calls.find((call) => call.method === 'PATCH')!;
     expect(patch.headers.get('if-match')).toBe('"4"');
-    expect(patch.body).toMatchObject({
-      name: 'Renamed',
-      expectedVersion: 4,
-      libraryName: 'whisper.cpp',
-      servedBy: 'stt',
-      bucketPrefix: MODEL.bucketPrefix,
-    });
-    expect(patch.body).not.toHaveProperty('localPath');
+    // TASK-1023: the drawer is edit-only and slim — identity and registry fields are never re-sent.
+    expect(patch.body).toEqual({ name: 'Renamed', expectedVersion: 4 });
   });
 
   it('shows the OCC conflict alert when the PATCH returns 412', async () => {
@@ -365,10 +298,10 @@ describe('AiModelsScreen — inventory + "in bucket, not registered"', () => {
     expect(within(panel).getByText('orphan-model/q4-0-123456789abc/')).toBeDefined();
     fireEvent.click(within(panel).getByRole('button', { name: 'Register orphan-model/q4-0-123456789abc/' }));
 
+    // TASK-1023: the hand-off opens the ONE Register sheet on the Local tab with the prefix preselected.
     const form = await screen.findByRole('dialog', { name: 'Register model' });
-    expect((within(form).getByLabelText(/^slug/i) as HTMLInputElement).value).toBe('orphan-model');
-    expect((within(form).getByLabelText(/^bucket prefix/i) as HTMLInputElement).value).toBe('orphan-model/q4-0-123456789abc/');
-    expect(within(form).getByTestId('derived-local-path').textContent).toBe('/mnt/models-bucket/orphan-model/q4-0-123456789abc/');
+    expect(within(form).getByRole('tab', { name: 'Local path', selected: true })).toBeDefined();
+    expect(await within(form).findByText('/mnt/models-bucket/orphan-model/q4-0-123456789abc/')).toBeDefined();
   });
 
   // AMENDED by TASK-890 J1 MINOR-7. The clause was "no expensive work on page

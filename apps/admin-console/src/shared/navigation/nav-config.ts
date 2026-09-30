@@ -503,18 +503,6 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // ---------------------------------------------------------------------
   // AI Platform — tiers 10-19, 20-29.
   // ---------------------------------------------------------------------
-  // Super-admin only per the 2026-07-04 review. The screen is the AI-models
-  // HUB (registry grid + live LM Studio/Ollama discovery + register).
-  {
-    route: '/ai-models',
-    domain: 'ai-platform',
-    label: 'AI models',
-    tier: '10-19',
-    icon: IconBrain,
-    required: [['manage', 'all']],
-    implemented: true,
-    order: 1,
-  },
   // `/prompt-studio` retired — prompt governance folded into the elevated-only
   // Governance tab of the prompt-template surface (one authoritative surface
   // per resource). `/ai-services` took its freed slot, surfacing the
@@ -527,7 +515,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconServerCog,
     required: [['manage', 'all']],
     implemented: true,
-    order: 2,
+    order: 1,
   },
   // The four PLATFORM AI BACKENDS as separate rail entries rather than tabs of
   // `/ai-services`, because the rail IS the inventory — an operator should be
@@ -541,7 +529,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconCpu2,
     required: [['manage', 'all']],
     implemented: true,
-    order: 3,
+    order: 2,
   },
   {
     route: '/ai-services/vllm',
@@ -551,7 +539,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconRocket,
     required: [['manage', 'all']],
     implemented: true,
-    order: 4,
+    order: 3,
   },
   {
     route: '/ai-services/ollama',
@@ -561,7 +549,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconServerBolt,
     required: [['manage', 'all']],
     implemented: true,
-    order: 5,
+    order: 4,
   },
   {
     route: '/ai-services/llama-cpp',
@@ -571,7 +559,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconBinaryTree,
     required: [['manage', 'all']],
     implemented: true,
-    order: 6,
+    order: 5,
   },
   // TASK-1005 — the platform-admin load/unload/pin/policy control plane over
   // stt, text, nlp and LM Studio (D-11: platform-admin only, no tenant scope,
@@ -584,7 +572,21 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconServer2,
     required: [['manage', 'all']],
     implemented: true,
-    order: 7,
+    order: 6,
+  },
+  // TASK-1023 — the AI-models registry, tier 20-29: EVERY admin reads it, but only
+  // a platform admin manages it. `GET admin/ai-models/access` decides which grid
+  // the screen renders (full management grid vs read-only registry view), so the
+  // nav ability is the read one (`ModelController` `CanRead('AiModel')`).
+  {
+    route: '/ai-models',
+    domain: 'ai-platform',
+    label: 'AI models',
+    tier: '20-29',
+    icon: IconBrain,
+    required: [['read', 'AiModel']],
+    implemented: true,
+    order: 1,
   },
   // TASK-862 (README §3.4): the ONE AI provider screen. Tier 20-29 because it
   // renders cross-tenant for a super admin and tenant-scoped for a tenant
@@ -603,7 +605,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['manage', 'GlobalSetting'],
     ],
     implemented: true,
-    order: 1,
+    order: 2,
   },
 
   // ---------------------------------------------------------------------
