@@ -141,6 +141,70 @@ def _texts(value: Any) -> list[str]:
     return out
 
 
+#: TASK-1022 OD-1 (b) — the owner's LITERAL body for a template heading nothing was said under.
+#: The finalizer's system prompt names the same string; the model is told never to paraphrase it.
+_NOT_DISCUSSED_MARKER = "Not discussed"
+#: The live lane's parser fallback (`document-shape-parser.ts#RUNNING_SUMMARY_TITLE`): an UNKNOWN
+#: partition, not a section by that name — so it is rendered without a heading.
+_RUNNING_SUMMARY_TITLE = "Running Summary"
+
+
+def _headed_note(item: dict[str, Any]) -> str | None:
+    """A ``sections``-carrying note as headed Markdown, or ``None`` when it carries no usable
+    sections (the caller then reads ``text``, exactly as ``_texts`` does).
+
+    Mirrors ``buildStructuredSummary`` (`document-shape-parser.ts`) for the parser fallback, and
+    departs from it on purpose for empty sections: the owner chose a literal marker (OD-1 (b)) so
+    the finalizer sees every heading and has nothing to invent a body for.
+    """
+    sections = [entry for entry in _as_list(item.get("sections")) if isinstance(entry, dict)]
+    if not sections:
+        return None
+    parts = [
+        (
+            str(entry.get("title") or "").strip(),
+            str(entry.get("content") or "").strip(),
+        )
+        for entry in sections
+    ]
+    if len(parts) == 1 and parts[0][0] in ("", _RUNNING_SUMMARY_TITLE):
+        return parts[0][1] or None
+    # No heading to show, or nothing said at all: the flat text is the honest rendering (and a
+    # note made only of markers would hide a live lane that produced nothing).
+    if not any(title for title, _ in parts) or not any(body for _, body in parts):
+        return None
+    rendered: list[str] = []
+    for title, body in parts:
+        if title:
+            rendered.append(f"## {title}\n{body or _NOT_DISCUSSED_MARKER}")
+        elif body:
+            rendered.append(body)
+    return "\n\n".join(rendered)
+
+
+def _render_input_for_generation(value: Any) -> list[str]:
+    """TASK-1022 — the ``in`` port of a text-generation ``core.agent``, as user-turn parts.
+
+    A note carrying ``sections`` (the live summary node's ``{ text, sections, … }``) renders as
+    ``## <title>\\n<content>`` per section, in list order — the live lane emits template order.
+    Every other item renders exactly as :func:`_texts` renders it, so non-note inputs are
+    byte-identical to before. ``text`` itself is never altered: it is the NER offset base, and
+    ``_texts``'s other callers (classify, speech, NER) keep reading it.
+
+    Pure and deterministic — the same bound value always yields the same bytes (prompt caching,
+    and an activity that is safe to retry).
+    """
+    out: list[str] = []
+    for item in _as_list(value):
+        if isinstance(item, dict):
+            headed = _headed_note(item)
+            if headed:
+                out.append(headed)
+                continue
+        out.extend(_texts([item]))
+    return out
+
+
 def _schema_violation(schema: Any, value: Any) -> str | None:
     """Validate ``value`` against a tenant-authored JSON Schema (TIER 3). Never raises."""
     if not isinstance(schema, dict) or not schema:
@@ -1271,7 +1335,8 @@ async def _run_text_generation(
     """
     config = _config(payload)
     bound = _bound(payload)
-    prompt_parts = _texts(bound.get("in"))
+    # TASK-1022 — a bound note keeps its headings; see `_render_input_for_generation`.
+    prompt_parts = _render_input_for_generation(bound.get("in"))
     context_values = [value for value in _as_list(bound.get("context")) if value is not None]
     if context_values:
         prompt_parts.append(
