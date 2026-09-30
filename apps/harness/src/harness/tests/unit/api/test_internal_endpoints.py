@@ -293,6 +293,37 @@ class TestSignalApprove:
         assert resp.json() == {"detail": "workflow not found: harness-doc-c-1"}
 
     @pytest.mark.asyncio
+    async def test_loop_cancel_answers_409_when_the_loop_already_completed(self, harness):
+        # TASK-1022: a governed consultation's loop may already have completed when the gateway
+        # cancels it. Temporal answers NOT_FOUND "already completed"; that is a 409, not a 500.
+        from temporalio.service import RPCError, RPCStatusCode
+
+        http, client, handle, _settings = harness
+        handle.signal.side_effect = RPCError(
+            "workflow execution already completed", RPCStatusCode.NOT_FOUND, b""
+        )
+        resp = await http.post(
+            "/api/v1/internal/workflows/c-1/signal/loop-cancel",
+            headers=_HEADERS,
+            json={"reason": "substrate-exclusivity"},
+        )
+        assert resp.status_code == 409
+        assert "already closed" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_loop_cancel_answers_404_when_the_loop_does_not_exist(self, harness):
+        from temporalio.service import RPCError, RPCStatusCode
+
+        http, client, handle, _settings = harness
+        handle.signal.side_effect = RPCError("workflow not found", RPCStatusCode.NOT_FOUND, b"")
+        resp = await http.post(
+            "/api/v1/internal/workflows/c-1/signal/loop-cancel",
+            headers=_HEADERS,
+            json={"reason": "substrate-exclusivity"},
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
     async def test_signal_rejects_bad_token(self, harness):
         http, client, handle, _settings = harness
         resp = await http.post(

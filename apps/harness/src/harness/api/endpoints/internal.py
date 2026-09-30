@@ -602,7 +602,25 @@ async def signal_loop_cancel(
     workflow_id = _loop_workflow_id(consultation_id)
 
     handle = client.get_workflow_handle(workflow_id)
-    await handle.signal(ConsultationLoopWorkflow.cancel, CancelLoopSignal(reason=body.reason))
+    try:
+        await handle.signal(ConsultationLoopWorkflow.cancel, CancelLoopSignal(reason=body.reason))
+    except RPCError as exc:
+        # TASK-1022: a governed consultation's loop may already have completed (or never
+        # started) when the gateway cancels it. 409 / 404, never an unhandled 500.
+        if exc.status != RPCStatusCode.NOT_FOUND:
+            raise
+        closed = "already completed" in str(exc)
+        logger.info(
+            "harness.loop.signal_loop_cancel_not_running",
+            consultation_id=consultation_id,
+            workflow_id=workflow_id,
+            already_closed=closed,
+        )
+        if closed:
+            raise HTTPException(
+                status_code=409, detail=f"workflow already closed: {workflow_id}"
+            ) from exc
+        raise HTTPException(status_code=404, detail=f"workflow not found: {workflow_id}") from exc
 
     logger.info(
         "harness.loop.signal_loop_cancel",
