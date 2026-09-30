@@ -6040,6 +6040,14 @@ return 0`;
     // the patient's EARLIER visits today (dated, attributed blocks from `same-day-prequel.ts`).
     const testResultsBlock = carry?.testResults?.trim() ? `\n\nTEST RESULTS:\n${carry.testResults.trim()}` : '';
     const sameDayPrequelBlock = carry?.sameDayPrequel?.trim() ? `\n\nSAME-DAY EARLIER VISIT(S):\n${carry.sameDayPrequel.trim()}` : '';
+    // TASK-1022 — the three blocks above are REFERENCE, not dictation. A live replay's turn 1 ("Your
+    // reports are back.") copied them into today's sections on its own. One rule line, stated once
+    // before the first of them; absent when none is present, so such a prompt stays byte-identical.
+    // `Recent Vitals` stays outside the frame: the templates' VITALS rule already governs it.
+    const referenceRuleBlock =
+      clientPreviousVisitsBlock || testResultsBlock || sameDayPrequelBlock
+        ? "\n\nREFERENCE ONLY — the blocks below are reference, not dictation: record from them only what the clinician refers to in the current transcript (or what a section's own SOURCE rule takes from the prior record); do not copy them into today's sections on their own."
+        : '';
 
     return (
       stablePrefix +
@@ -6049,6 +6057,7 @@ return 0`;
       deltaInstruction +
       notesBlock +
       clientVitalsBlock +
+      referenceRuleBlock +
       clientPreviousVisitsBlock +
       testResultsBlock +
       sameDayPrequelBlock +
