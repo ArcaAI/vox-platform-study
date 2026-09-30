@@ -92,8 +92,34 @@ Two lanes in parallel, in disjoint repositories. The orchestrator merges both, r
 
 _In progress._
 
+### Lane H — hope-v2 (branch `task-1029-pgsty-minio`)
+
+**Images.** Every `minio/minio` and `minio/mc` reference is replaced by `pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe723…` (OCI index):
+- `infrastructure/docker/docker-compose.yml`: `minio` and `minio-setup` (the init container overrides `entrypoint`, so the image's `docker-entrypoint.sh` is bypassed and `/usr/bin/mc` is used).
+- `tests/docker-compose.test.yml`: `minio-test` and `minio-createbuckets`.
+- `apps/stt/tests/e2e/conftest.py`: the testcontainers `MinioContainer`.
+- Docs and snippets that pinned the old tag: `packages/applications/src/services/baseServices/storage/s3/{MINIO,SETUP}.md`, `examples/minio-example.ts`, `docs/research/configs/minio/docker-compose.yml`, `docs/research/deployments/deploy-vm402-minio.md`.
+- `docker-compose.dev.yml` has no MinIO image (it only points at `http://minio:9000`), so it is unchanged.
+
+**CI mirror (D-2).** Job `mirror-images` (`.gitlab/ci/mirror.yml`, included from `.gitlab-ci.yml`; logic in `.gitlab/ci/mirror-images.sh`; the list is `.gitlab/ci/mirror-images.list`, one line per image):
+- Never runs on a plain push, tag or MR. It is `when: manual` (`allow_failure: true`) on `dev|staging|main|cicd` branch pipelines, or runs on a pipeline schedule that sets `MIRROR_IMAGES=true`.
+- To run it: CI/CD, Pipelines, open the branch pipeline, play `mirror-images`.
+- Copies to `$REGISTRY/$CI_PROJECT_PATH/mirror/minio:RELEASE.2026-08-04T00-00-00Z` with `crane copy` (digest preserved, verified after the copy), skips when the destination already has the digest, and refuses a list line without `@sha256:`.
+- Tool image: `gcr.io/go-containerregistry/crane:debug@sha256:e78770b3…`. Auth: `crane auth login "$REGISTRY"` with `$CI_REGISTRY_USER` / `$CI_REGISTRY_PASSWORD`.
+- The destination follows the repo convention (`$REGISTRY/$CI_PROJECT_PATH/…`, the LAN registry the build jobs push to), not the public `${CI_REGISTRY_IMAGE}` host. Same registry, different host name.
+- Untested against the real registry: only `DRY_RUN=true` (source-digest check) was run locally, and the runner must be able to pull `gcr.io` and read Docker Hub.
+
+**Docs.** The fork, why, the pinned release, the restored console and the mirror job are stated in `.claude/rules/00-project-context.md` and `09-infrastructure-devops.md` (new "Object store image" section), their `.cursor/rules` mirrors, `README.md`, `infrastructure/README.md`, `infrastructure/docker/{README.md,minio/README.md}`, `docs/architecture/overview.md`, `docs/development-guide.md`, `docs/operations/testing/environment-setup.md`, `docs/operations/storage/minio-phi-backup.md` (release row annotated, the audit itself is dated evidence), `scripts/README.md`, `tests/README.md`. `docs/archive/**` untouched.
+
+**Findings for the orchestrator (decide before pushing).**
+1. **The fork has been renamed.** `github.com/pgsty/minio` now 301-redirects to `github.com/pgsty/silo` ("SILO", AGPL-3.0, not archived, pushed 2026-09-30). Docker Hub `pgsty/minio` has been frozen at `RELEASE.2026-08-04T00-00-00Z` (our pin), while `pgsty/silo` carries newer releases (`RELEASE.2026-09-03T13-18-01Z`, `RELEASE.2026-09-16T00-00-00Z`, a security and correctness release covering auth, policy and IAM revocation fixes). Whether to pin `pgsty/silo` instead (and whether its env vars, entrypoint and bundled `mc` still match) was not evaluated here; the docs say the pin is `pgsty/minio` and mention the rename.
+2. **D-5:** upstream `minio-py` is NOT archived (pushed 2026-09-28) but has had no release since 7.2.20 (2025-11-27). No dependency change was made.
+
+**Evidence.** See the change-history row; commands were run in the worktree with `docker compose ... config -q` (exit 0 for both files and all six dev profiles) and a Python YAML parse of `.gitlab-ci.yml` and `.gitlab/ci/mirror.yml`.
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-10-01 | Ticket opened after the MinIO fitness research (upstream CE archived; `pgsty/minio` chosen as the drop-in bridge). Image facts verified with `crane`; lanes H and D planned. |
+| 2026-10-01 | Lane H (hope-v2): all MinIO images moved to the pinned pgsty/minio digest; `mirror-images` CI job added; docs updated. Found that the fork repo was renamed to `pgsty/silo` and Docker Hub `pgsty/minio` is frozen at the pinned release. |
