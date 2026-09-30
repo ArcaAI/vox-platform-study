@@ -82,6 +82,9 @@ import { HarnessGatewayService, type HarnessConsultationEndingSignal, type Harne
  * content arrived" (a re-emit with fresh content carries a new `timestamp`, so
  * it is correctly treated as a NEW signal, not a duplicate).
  */
+/** The loop-cancel reason sent when a tenant-authored workflow governs the consultation (TASK-1022). */
+export const LOOP_CANCEL_REASON_SUBSTRATE_EXCLUSIVITY = 'substrate-exclusivity';
+
 @Injectable()
 export class LoopContextSignalService {
   private readonly logger = new Logger(LoopContextSignalService.name);
@@ -94,9 +97,10 @@ export class LoopContextSignalService {
    * Bounded, per-consultation cache of the DETERMINATE governing-engine answer
    * `TRANSCRIPT` is on the `ContextAdded` bus, so `handleContextAdded`
    * runs roughly per utterance; without this the gate would add a row read to every
-   * one of them. Caching is sound because the decision is written ONCE, at open,
-   * before the consultation id has even been returned to the client — so no signal
-   * can precede it and a cached answer can never go stale.
+   * one of them. The decision is written ONCE, at open, before the consultation id is
+   * returned to the client — but AFTER the open-time context items are emitted, so a
+   * signal CAN precede it (TASK-1022, measured). A cached "governed" is therefore final,
+   * while a cached "ungoverned" may be stale: the ending and cancel paths re-read past it.
    *
    * INDETERMINATE answers (a throwing read) are deliberately NOT cached: a DB blip
    * must not pin a consultation to the wrong engine for the rest of its life.
@@ -166,11 +170,16 @@ export class LoopContextSignalService {
    * running and this read fails, both engines write for that window. That is the
    * lesser of the two harms, and it is the direction the owner brief names.
    */
-  private async standDownForTenantWorkflow(consultationId: string): Promise<boolean> {
+  private async standDownForTenantWorkflow(consultationId: string, options: { fresh?: boolean } = {}): Promise<boolean> {
     if (!this.consultationRepository) return false;
 
+    // TASK-1022 — only a POSITIVE answer is final. The marker is written once and never removed,
+    // but it is written at the END of the open request, AFTER the open-time context items have
+    // already been emitted on this bus — so the first read of a governed consultation can
+    // legitimately answer "ungoverned". `fresh` re-reads past a cached negative; the ending and
+    // cancel paths ask for it, because that is the one decision that must not rest on the race.
     const cached = this.governedByTenantWorkflow.get(consultationId);
-    if (cached !== undefined) return cached;
+    if (cached === true || (cached === false && !options.fresh)) return cached;
 
     let governs: boolean;
     try {
@@ -206,14 +215,27 @@ export class LoopContextSignalService {
    * an unentitled tenant never pays for a row read.
    */
   private async loopAllowedFor(tenantId: string | null | undefined, consultationId: string): Promise<boolean> {
-    if (this.emergencyStopEngaged) return false;
+    return (await this.loopGate(tenantId, consultationId)) === 'signal';
+  }
+
+  /**
+   * The same composition as {@link loopAllowedFor}, keeping the GOVERNED answer distinct from a
+   * denial: the ending and cancel paths must act on it (TASK-1022), where a context signal simply
+   * stops.
+   */
+  private async loopGate(
+    tenantId: string | null | undefined,
+    consultationId: string,
+    options: { fresh?: boolean } = {},
+  ): Promise<'signal' | 'deny' | 'governed'> {
+    if (this.emergencyStopEngaged) return 'deny';
 
     if (!tenantId) {
       this.logger.warn({
         message: 'Loop signal suppressed — no tenant identity, so the subscription entitlement cannot be resolved',
         consultationId,
       });
-      return false;
+      return 'deny';
     }
 
     if (!this.entitlements) {
@@ -222,7 +244,7 @@ export class LoopContextSignalService {
         consultationId,
         tenantId,
       });
-      return false;
+      return 'deny';
     }
 
     let entitled: boolean;
@@ -235,11 +257,11 @@ export class LoopContextSignalService {
         tenantId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return false;
+      return 'deny';
     }
-    if (!entitled) return false;
+    if (!entitled) return 'deny';
 
-    return !(await this.standDownForTenantWorkflow(consultationId));
+    return (await this.standDownForTenantWorkflow(consultationId, options)) ? 'governed' : 'signal';
   }
 
   /** The request tenant, when this call is running inside a CLS-scoped request. */
@@ -289,7 +311,24 @@ export class LoopContextSignalService {
    * payload has no tenant field of its own.
    */
   async signalConsultationEnding(consultationId: string, payload: HarnessConsultationEndingSignal = {}): Promise<void> {
-    if (!(await this.loopAllowedFor(this.contextTenantId, consultationId))) return;
+    const gate = await this.loopGate(this.contextTenantId, consultationId, { fresh: true });
+    if (gate === 'governed') {
+      // TASK-1022 — the governing run's finalizer is the ONLY writer of this consultation's note.
+      // `consultation-ending` would run the loop's ending actions, whose `harness.finalize` starts
+      // `HarnessDocWorkflow` — a second writer that replaced the governed note (TASK-1020 replay,
+      // run 3). A loop can exist here although the gate stands Substrate A down: the open-time
+      // context items are signalled before the governance marker is written. So the loop is
+      // CANCELLED (no ending actions) instead of ended; a cancel to no loop is a harmless miss.
+      this.logger.log({
+        message:
+          'Loop consultation-ending NOT sent — a tenant-authored workflow governs this consultation, so the default engine must not finalize a ' +
+          'second note. A loop-cancel was sent instead, to stop any loop started before the governance marker was written.',
+        consultationId,
+      });
+      await this.sendLoopCancel(consultationId, { reason: LOOP_CANCEL_REASON_SUBSTRATE_EXCLUSIVITY });
+      return;
+    }
+    if (gate !== 'signal') return;
 
     try {
       await this.harnessGatewayService.signalConsultationEnding(consultationId, payload);
@@ -307,8 +346,13 @@ export class LoopContextSignalService {
    * consultation was abandoned). Same gate + best-effort posture.
    */
   async signalLoopCancel(consultationId: string, payload: HarnessLoopCancelSignal = {}): Promise<void> {
-    if (!(await this.loopAllowedFor(this.contextTenantId, consultationId))) return;
+    // TASK-1022 — a GOVERNED consultation is cancelled too: a cancel runs no ending actions, so it
+    // can never start a second writer, and it reaps a loop the open race started.
+    if ((await this.loopGate(this.contextTenantId, consultationId, { fresh: true })) === 'deny') return;
+    await this.sendLoopCancel(consultationId, payload);
+  }
 
+  private async sendLoopCancel(consultationId: string, payload: HarnessLoopCancelSignal): Promise<void> {
     try {
       await this.harnessGatewayService.signalLoopCancel(consultationId, payload);
     } catch (error) {

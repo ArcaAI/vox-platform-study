@@ -121,11 +121,78 @@ describe('Substrate exclusivity — LoopContextSignalService stands down for a t
       expect(harnessGatewayService.signalConsultationEnding).not.toHaveBeenCalled();
     });
 
-    it('suppresses the loop-cancel signal too when Substrate B governs', async () => {
+    it('still SENDS the loop-cancel when Substrate B governs — stopping a Substrate A loop is always safe (TASK-1022)', async () => {
+      // A cancel runs NO ending actions, so it can never start the second writer. Sending it for a
+      // governed consultation reaps any loop an open-time context signal started before the
+      // governance marker existed (see the TASK-1022 suite below).
       const { service, harnessGatewayService } = buildDeps({ row: governedRow() });
 
-      await service.signalLoopCancel(CONSULTATION, {});
+      await service.signalLoopCancel(CONSULTATION, { reason: 'abandoned' });
 
+      expect(harnessGatewayService.signalLoopCancel).toHaveBeenCalledWith(CONSULTATION, { reason: 'abandoned' });
+    });
+  });
+
+  describe('TASK-1022 — the governing run is the ONLY writer: a loop the open race started never finalizes', () => {
+    // Measured (TASK-1020 replay run 3, consultation C2): the open-time context items were signalled
+    // at 09:20:27.097 / .134, BEFORE `ConsultationWorkflowDispatchService` wrote the governance marker
+    // at .180. The gate read "ungoverned", CACHED it, started the loop, and at recording stop let
+    // `consultation-ending` through; the loop's `harness.finalize` ran `HarnessDocWorkflow`, whose
+    // draft replaced the governed `n_finalize` note at 09:27:35 — the note the clinician then signed.
+    it('does NOT send consultation-ending when the marker landed after an earlier ungoverned read, and cancels the loop instead', async () => {
+      let row: unknown = ungovernedRow();
+      const findById = vi.fn(async () => row);
+      const { service, harnessGatewayService } = buildDeps();
+      (service as unknown as { consultationRepository: { findById: typeof findById } }).consultationRepository = { findById };
+
+      await service.handleContextAdded(payload());
+      expect(harnessGatewayService.signalContextAdded).toHaveBeenCalledTimes(1); // the open race: a loop now exists
+
+      row = governedRow(); // dispatch wrote the marker
+      await service.signalConsultationEnding(CONSULTATION, { reason: 'recording_stopped' });
+
+      expect(harnessGatewayService.signalConsultationEnding).not.toHaveBeenCalled();
+      expect(harnessGatewayService.signalLoopCancel).toHaveBeenCalledTimes(1);
+      expect(harnessGatewayService.signalLoopCancel).toHaveBeenCalledWith(CONSULTATION, { reason: 'substrate-exclusivity' });
+    });
+
+    it('cancels (never ends) the loop of a governed consultation at recording stop', async () => {
+      const { service, harnessGatewayService } = buildDeps({ row: governedRow() });
+
+      await service.signalConsultationEnding(CONSULTATION, { reason: 'recording_stopped' });
+
+      expect(harnessGatewayService.signalConsultationEnding).not.toHaveBeenCalled();
+      expect(harnessGatewayService.signalLoopCancel).toHaveBeenCalledWith(CONSULTATION, { reason: 'substrate-exclusivity' });
+    });
+
+    it('leaves a NON-governed consultation exactly as before: consultation-ending sent, no cancel', async () => {
+      const { service, harnessGatewayService } = buildDeps({ row: ungovernedRow() });
+
+      await service.handleContextAdded(payload());
+      await service.signalConsultationEnding(CONSULTATION, { reason: 'recording_stopped' });
+
+      expect(harnessGatewayService.signalConsultationEnding).toHaveBeenCalledWith(CONSULTATION, { reason: 'recording_stopped' });
+      expect(harnessGatewayService.signalLoopCancel).not.toHaveBeenCalled();
+    });
+
+    it('re-reads the marker at the ending even when an ungoverned answer is cached (one extra read per consultation)', async () => {
+      const { service, findById } = buildDeps({ row: ungovernedRow() });
+
+      await service.handleContextAdded(payload());
+      await service.signalConsultationEnding(CONSULTATION, {});
+
+      expect(findById).toHaveBeenCalledTimes(2);
+    });
+
+    it('still honours the emergency stop and the entitlement at the ending — a denied loop gets neither signal', async () => {
+      const { service, harnessGatewayService } = buildDeps({ row: governedRow() });
+      (service as unknown as { entitlements: { isFeatureEnabled: () => Promise<boolean> } }).entitlements = {
+        isFeatureEnabled: async () => false,
+      };
+
+      await service.signalConsultationEnding(CONSULTATION, {});
+
+      expect(harnessGatewayService.signalConsultationEnding).not.toHaveBeenCalled();
       expect(harnessGatewayService.signalLoopCancel).not.toHaveBeenCalled();
     });
   });

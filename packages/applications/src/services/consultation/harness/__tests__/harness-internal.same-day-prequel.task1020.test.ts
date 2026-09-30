@@ -279,3 +279,49 @@ describe('TASK-1020 probe — persistDraft never overwrites an APPROVED (signed)
     expect((entity as { content?: string }).content).toBe('LATE RE-DELIVERY — regenerated note');
   });
 });
+
+describe('TASK-1022 — a skipped adoption is never logged as "Harness draft persisted"', () => {
+  // Measured (TASK-1020 replay run 3, C1, 09:22:05): "adoption skipped — already approved" was
+  // followed by "Harness draft persisted WITHOUT advancing…" and then "Harness draft persisted" for
+  // the SAME request, although no note content was written.
+  const draftDto = { tenantId: TENANT, userId: 'harness', content: 'LATE RE-DELIVERY', modelName: 'm', modelVersion: 'v' } as never;
+  const ownDraft = () => [
+    { id: 'ctx-draft-1', version: 4, content: 'THE SIGNED NOTE', metaData: { subType: 'HARNESS_DRAFT' }, createdAt: new Date('2026-09-29T05:00:00.000Z') },
+  ];
+  const messagesOf = (spy: ReturnType<typeof vi.spyOn>) =>
+    spy.mock.calls.map(([entry]) => (typeof entry === 'object' && entry !== null ? String((entry as { message?: unknown }).message) : String(entry)));
+
+  it('logs the delivery as NOT applied when adoption was refused (signed note)', async () => {
+    const { service } = build({
+      child: { parentConsultationId: null, status: ConsultationStatus.CLOSED_COMPLETE },
+      ownDrafts: ownDraft(),
+      approvedVersions: [{ id: 'ver-approved', changeReason: 'approved' }],
+    });
+    const logger = (service as unknown as { logger: { log: (...a: unknown[]) => void; warn: (...a: unknown[]) => void } }).logger;
+    const log = vi.spyOn(logger, 'log');
+    const warn = vi.spyOn(logger, 'warn');
+
+    await service.persistDraft(CID, draftDto);
+
+    const all = [...messagesOf(log), ...messagesOf(warn)];
+    expect(all.some((m) => m.startsWith('Harness draft persisted'))).toBe(false);
+    const final = log.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(final.message).toBe('Harness draft delivery recorded — the note content was NOT applied (adoption skipped)');
+    expect(final.adoptionSkipped).toBe('approved');
+  });
+
+  it('keeps "Harness draft persisted" when the content WAS applied (adoption of an unapproved draft)', async () => {
+    const { service } = build({
+      child: { parentConsultationId: null, status: ConsultationStatus.DRAINING },
+      ownDrafts: ownDraft(),
+      approvedVersions: [],
+    });
+    const log = vi.spyOn((service as unknown as { logger: { log: (...a: unknown[]) => void } }).logger, 'log');
+
+    await service.persistDraft(CID, draftDto);
+
+    const final = log.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(final.message).toBe('Harness draft persisted');
+    expect(final).not.toHaveProperty('adoptionSkipped');
+  });
+});
