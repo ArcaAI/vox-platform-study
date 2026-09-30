@@ -60,6 +60,7 @@ function build(opts: { roles?: string[]; tenantId?: string | null; bucket?: Buck
   const row = { id: 'm-1', tenantId: SYSTEM_TENANT_ID, slug: 'x', metaData: undefined as Record<string, unknown> | undefined, version: 1 };
   const repo = {
     findBySlug: vi.fn(async () => opts.bySlug ?? null),
+    findAll: vi.fn(async () => (opts.bySlug ? [opts.bySlug] : [])),
     findById: vi.fn(async () => row),
     updateWithVersion: vi.fn(async (_id: string, e: unknown) => e),
   };
@@ -229,9 +230,9 @@ describe('B3 — registerFromPath', () => {
     expect(aiModelService.create.mock.calls[0][0]).toMatchObject({ slug: 'whisper-ml-en', name: 'Whisper ML', servedBy: 'stt-worker' });
   });
 
-  it('a taken slug → 409 SLUG_TAKEN, nothing created', async () => {
-    const { svc, aiModelService } = build({ bySlug: { id: 'other' } });
-    await expect(svc.registerFromPath({ path: 'whisper-ml/' })).rejects.toMatchObject({ status: 409, response: { code: 'SLUG_TAKEN' } });
+  it('a slug the admin names that is taken → 409 SLUG_TAKEN, nothing created', async () => {
+    const { svc, aiModelService } = build({ bySlug: { id: 'other', slug: 'taken' } });
+    await expect(svc.registerFromPath({ path: 'whisper-ml/', slug: 'taken' })).rejects.toMatchObject({ status: 409, response: { code: 'SLUG_TAKEN' } });
     expect(aiModelService.create).not.toHaveBeenCalled();
   });
 

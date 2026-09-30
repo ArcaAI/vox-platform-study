@@ -9,3 +9,4 @@ export * from './platform-admin';
 export * from './local-model-preview';
 export * from './model-path-registration.service';
 export * from './model-path-registration.service.module';
+export * from './registration-slug';

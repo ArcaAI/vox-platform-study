@@ -274,7 +274,8 @@ test.describe('AI model registry — tenant admin (read-only)', () => {
   });
 
   test('has the AI models entry in the navigation', async ({ page }) => {
-    await page.goto('/dashboard');
+    // The sidebar shows one domain panel at a time; on the AI models route it is the AI platform domain's.
+    await page.goto('/ai-models');
     await expect(page.getByRole('link', { name: 'AI models' }).first()).toBeVisible();
   });
 

@@ -29,6 +29,7 @@ function build(opts: { pipelineTag?: string | null; libraryName?: string | null;
   const repo = {
     findById: vi.fn(async () => row),
     findBySlug: vi.fn(async () => null),
+    findAll: vi.fn(async () => []),
     updateWithVersion: vi.fn(async (_id: string, e: unknown) => e),
   };
   const queue = { add: vi.fn().mockResolvedValue(undefined) };

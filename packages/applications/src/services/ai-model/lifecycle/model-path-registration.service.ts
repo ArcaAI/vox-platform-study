@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { plainToInstance } from 'class-transformer';
@@ -12,7 +12,6 @@ import {
   ModelTaskType,
   ModelType,
   ResourceType,
-  SYSTEM_TENANT_ID,
   SysEventType,
 } from '@arcaai/domains';
 import { BaseService } from '../../../common';
@@ -23,6 +22,7 @@ import { AiModelService } from '../aiModel.service';
 import { HOPE_MODELS_BUCKET, normaliseBucketPath, SINGLE_FILE_LIBRARIES } from '../constants';
 import { CreateModelRequest, LocalModelPreviewResponse, ModelResponse, RegisterFromPathRequest } from '../dto';
 import { withDerivedServingFacts } from '../serving-spec/derive-serving-facts';
+import { resolveRegistrationSlug } from './registration-slug';
 import { categoryOf, providerFor, servedByFor } from './hub-preview.util';
 import {
   buildLocalModelPreview,
@@ -82,10 +82,7 @@ export class ModelPathRegistrationService extends BaseService {
     const { preview, namedFile } = await this.inspect(request.path);
     const s = preview.suggested;
 
-    const slug = request.slug ?? s.slug;
-    if (await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug)) {
-      throw new ConflictException({ code: 'SLUG_TAKEN', message: `A model with slug '${slug}' is already registered.` });
-    }
+    const slug = await resolveRegistrationSlug(this.aiModelRepository, request.slug, s.slug);
 
     const taskType = (request.taskType ?? s.taskType ?? null) as ModelTaskType | null;
     const libraryName = request.libraryName ?? s.libraryName;

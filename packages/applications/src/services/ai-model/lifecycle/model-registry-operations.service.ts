@@ -57,6 +57,7 @@ import { HuggingFaceModelSourceClient } from '../publish/huggingface-model-sourc
 import { claimAndEnqueueDownload, enqueuePublisherJob } from '../publish/ai-model-download.service';
 import type { UnregisterAiModelJobPayload } from '../publish/publisher-job.contract';
 import { isUnregisterStale, mergeUnregisterMeta, readUnregisterMeta } from '../publish/model-download-meta.util';
+import { resolveRegistrationSlug } from './registration-slug';
 import { effectiveStaleAfterMs, readModelDownloadSettings, type DownloadSettingsSource } from './model-download-settings';
 import { buildHubPreview, categoryOf, providerFor, servedByFor } from './hub-preview.util';
 import { isUnregistering, publishStatusOf } from './model-lifecycle.derive';
@@ -127,10 +128,7 @@ export class ModelRegistryOperationsService extends BaseService {
     const preview = await this.readHub(request.repoId, request.revision ?? 'main');
     const s = preview.suggested;
 
-    const slug = request.slug ?? preview.suggestedSlug;
-    if (await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug)) {
-      throw new ConflictException({ code: 'SLUG_TAKEN', message: `A model with slug '${slug}' is already registered.` });
-    }
+    const slug = await resolveRegistrationSlug(this.aiModelRepository, request.slug, preview.suggestedSlug);
 
     const format = request.format ?? preview.suggestedFormat;
     if (!format) throw new BadRequestException(`The artifact format of '${request.repoId}' could not be inferred from its files; pass 'format'.`);

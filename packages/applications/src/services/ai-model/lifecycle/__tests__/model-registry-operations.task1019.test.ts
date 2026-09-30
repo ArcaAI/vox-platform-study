@@ -103,6 +103,7 @@ function build(opts: BuildOpts = {}) {
     }),
     findBySlug: vi.fn(async () => opts.bySlug ?? null),
     findAll: vi.fn(async (props: { filters: Record<string, unknown> }) => {
+      if ('slug' in props.filters) return opts.bySlug ? [opts.bySlug] : [];
       if ('bucketPrefix' in props.filters) return opts.sharing ?? [];
       return opts.rows ?? [];
     }),
@@ -292,7 +293,9 @@ describe('R2 — register from hub', () => {
       languages: ['en'],
       tags: ['ner'],
     });
-    expect(repo.findBySlug).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'medical-ner');
+    expect(repo.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ filters: expect.objectContaining({ tenantId: SYSTEM_TENANT_ID, slug: { in: expect.arrayContaining(['medical-ner']) } }) }),
+    );
     expect(queue.add).toHaveBeenCalledTimes(1);
     const [name, payload, jobOpts] = queue.add.mock.calls[0];
     expect(name).toBe(JobQueue.DownloadAiModel);
@@ -345,9 +348,9 @@ describe('R2 — register from hub', () => {
     expect(queue.add).not.toHaveBeenCalled();
   });
 
-  it('a slug collision → 409 and nothing is created or enqueued', async () => {
-    const { svc, aiModelService, queue } = build({ bySlug: modelRow() });
-    const error = await svc.registerFromHub({ repoId: 'blaze999/Medical-NER' }).catch((e: unknown) => e);
+  it('a slug the admin names that is taken → 409 and nothing is created or enqueued', async () => {
+    const { svc, aiModelService, queue } = build({ bySlug: modelRow({ slug: 'medical-ner' }) });
+    const error = await svc.registerFromHub({ repoId: 'blaze999/Medical-NER', slug: 'medical-ner' }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConflictException);
     expect((error as ConflictException).getResponse()).toMatchObject({ code: 'SLUG_TAKEN' });
     expect(aiModelService.create).not.toHaveBeenCalled();
