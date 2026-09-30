@@ -37,6 +37,9 @@ export * from './tts-spec.js';
 // TASK-1021 — the gateway-resolved engine-build contract for one `AiModel` row (gateway → apps/vllm).
 export * from './serving-spec.js';
 
+// TASK-1023 — the model-registry contract (bucket + mount, access, publisher jobs, local-path registration).
+export * from './model-registry.js';
+
 // The consultation-context contract: open refusal codes and the governing-run summary shape,
 // shared by the gateway, both SDKs, and codegen.
 export * from './consultation-context.js';

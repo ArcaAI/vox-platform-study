@@ -11,6 +11,8 @@ import { AiModelAdminController } from './ai-model-admin.controller';
 import { AiModelCatalogueController } from './ai-model-catalogue.controller';
 import { AiModelDiscoveryController } from './ai-model-discovery.controller';
 import { AiModelDiscoveryService } from './ai-model-discovery.service';
+import { AiModelJobsController } from './ai-model-jobs.controller';
+import { AiModelRegistrationController } from './ai-model-registration.controller';
 
 /**
  * Wires the admin AI model controller to the
@@ -47,7 +49,15 @@ import { AiModelDiscoveryService } from './ai-model-discovery.service';
   // discovery controller's static paths must register BEFORE the `:id` family
   // (same static-route-wins rule as the settings registry). TASK-890's
   // `GET admin/ai-models/catalogue` is static for the same reason and joins them.
-  controllers: [AiModelDiscoveryController, AiModelCatalogueController, AiModelAdminController],
+  // TASK-1023: the registration (local path) and job-control controllers carry static
+  // paths too, so they also register before the admin controller.
+  controllers: [
+    AiModelDiscoveryController,
+    AiModelCatalogueController,
+    AiModelRegistrationController,
+    AiModelJobsController,
+    AiModelAdminController,
+  ],
   providers: [AiModelDiscoveryService],
 })
 export class AiModelModule {}

@@ -1,5 +1,6 @@
 import { ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
 import { ModelTaskType } from '@arcaai/domains';
+import { HOPE_MODELS_BUCKET, HOPE_MODELS_MOUNT } from '@arcaai/types';
 
 /**
  * Model-registry vocabularies (TASK-860). Declared ONCE here for the
@@ -153,10 +154,9 @@ export const MODEL_TASK_TYPE_TO_PIPELINE_TAG: Record<ModelTaskType, string> = Ob
  * MinIO credentials/endpoint — the part that actually varies per environment —
  * resolve through the existing `IS3Service`, never a new env var here.
  */
-export const HOPE_MODELS_BUCKET = 'hope-models';
-
-/** Mount point of the s3fs sidecar that serves `hope-models` inside every serving pod. */
-export const HOPE_MODELS_MOUNT = '/mnt/models-bucket';
+// TASK-1023 OD-8: declared once in `@arcaai/types` (shared with the console); re-exported here so
+// existing call sites keep their import path.
+export { HOPE_MODELS_BUCKET, HOPE_MODELS_MOUNT };
 
 /**
  * `localPath` is DERIVED (TASK-860 D-2): the mount + the bucket prefix, plus

@@ -2,14 +2,17 @@
  * One lifecycle status per registered model — the word the `/ai-models` grid
  * shows. First match wins, in this order (TASK-1019 D-9):
  *
- *   UNREGISTERING → DOWNLOADING → DOWNLOAD_FAILED → NOT_DOWNLOADED (availability ≠ AVAILABLE)
+ *   UNREGISTERING → UNREGISTER_FAILED (TASK-1023: stale, no live job) → DOWNLOADING → DOWNLOAD_FAILED
+ *   → DOWNLOAD_CANCELLED (TASK-1023: an admin cancelled the job) → NOT_DOWNLOADED (availability ≠ AVAILABLE)
  *   → LOAD_FAILED → LOADING → SERVING (loaded on ≥ 1 observed service) → DOWNLOADED (idle, loadable)
  *   → NOT_OBSERVED (served by a service outside the residency ledger) → NOT_APPLICABLE (cloud rows)
  */
 export const MODEL_LIFECYCLE_STATUSES = [
   'UNREGISTERING',
+  'UNREGISTER_FAILED',
   'DOWNLOADING',
   'DOWNLOAD_FAILED',
+  'DOWNLOAD_CANCELLED',
   'NOT_DOWNLOADED',
   'LOAD_FAILED',
   'LOADING',
