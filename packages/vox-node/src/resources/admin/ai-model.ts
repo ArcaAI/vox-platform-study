@@ -242,7 +242,7 @@ export class AdminAiModelResource extends AdminResource {
    *
    * `canManage` is true only for a platform administrator with no working tenant selected — the only caller who may register, edit, download or unregister models. `tenantManagementEnabled` is the effective `modelRegistry.tenantManagement.enabled` setting for the caller's tenant; it is reported for information and does not let a tenant administrator change the registry.
    *
-   * `GET /api/v1/admin/ai-models/access` — `AiModelAdminController.access`.
+   * `GET /api/v1/admin/ai-models/access` — `AiModelCatalogueController.access`.
    *
    * Reachable with ANY ONE of `svc:admin:ai-model:manage`, `svc:admin:ai-model:read` — the gateway matches required scopes with OR, so the area's `svc:admin:ai-model:manage` still reaches this route and a read-only grant now does too.
    */
@@ -523,7 +523,7 @@ export class AdminAiModelResource extends AdminResource {
    *
    * One page of the platform model registry as any administrator may see it: name, task, runtime, format, serving service, license, languages, memory footprint, platform-default tasks and a one-word lifecycle status (for example `SERVING` or `DOWNLOADED`). Storage locations, checksums, per-service placement, usage and job errors are not included. Takes the same `page`, `limit`, `search`, `searchFields`, `filters` and `sort` parameters as `GET admin/ai-models/list`, but they may only name the columns this view returns.
    *
-   * `GET /api/v1/admin/ai-models/registry` — `AiModelAdminController.registry`.
+   * `GET /api/v1/admin/ai-models/registry` — `AiModelCatalogueController.registry`.
    *
    * Reachable with ANY ONE of `svc:admin:ai-model:manage`, `svc:admin:ai-model:read` — the gateway matches required scopes with OR, so the area's `svc:admin:ai-model:manage` still reaches this route and a read-only grant now does too.
    */
