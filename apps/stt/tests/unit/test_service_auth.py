@@ -78,6 +78,23 @@ def test_accepted_tokens_empty_when_nothing_configured_so_dev_bypass_survives():
     assert _settings().accepted_service_tokens == ()
 
 
+def test_an_unfilled_placeholder_is_not_an_accepted_token(monkeypatch):
+    """`CHANGE_ME` is the unfilled-secret sentinel, never a credential — the
+    other five services map it onto "" through `hope_env.real_secret`."""
+    monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", "CHANGE_ME")
+    assert _settings().accepted_service_tokens == ()
+
+
+@pytest.mark.asyncio
+async def test_a_placeholder_token_is_rejected_in_a_deployed_environment(monkeypatch):
+    """A deployment that left the token unfilled must not accept the sentinel
+    from any caller — it fails closed exactly like an unset token."""
+    monkeypatch.setenv("NODE_ENV", "production")
+    transport = ASGITransport(app=_app(shared="CHANGE_ME", monkeypatch=monkeypatch))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        assert (await c.post(DRAIN, headers={"X-Service-Token": "CHANGE_ME"})).status_code == 401
+
+
 # ── 2. inbound enforcement ────────────────────────────────────────────────────
 
 
