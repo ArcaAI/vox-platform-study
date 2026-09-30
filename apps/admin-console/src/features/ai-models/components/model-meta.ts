@@ -10,7 +10,7 @@
  */
 
 import { HOPE_MODELS_BUCKET, HOPE_MODELS_MOUNT } from '@arcaai/types';
-import type { AiDeploymentKind, AiModelAvailability, AiModelFormat, AiModelSource, AiTaskKind, ModelCategory, ModelType } from '../api/types';
+import type { AiDeploymentKind, AiModelAvailability, AiModelFormat, AiModelSource, AiTaskKind } from '../api/types';
 
 export const SOURCE_LABELS: Record<AiModelSource, string> = {
   HUGGINGFACE: 'Hugging Face',
@@ -20,11 +20,8 @@ export const SOURCE_LABELS: Record<AiModelSource, string> = {
   S3: 'S3 bucket',
 };
 
-export const SOURCE_OPTIONS: AiModelSource[] = ['HUGGINGFACE', 'GITHUB', 'MLFLOW', 'LOCAL', 'S3'];
-
-export const CATEGORY_OPTIONS: ModelCategory[] = ['MULTI_MODAL', 'VISION', 'NLP', 'AUDIO', 'TABULAR', 'UNKNOWN'];
-
-export const MODEL_TYPE_OPTIONS: ModelType[] = ['BASE_MODEL', 'FINETUNED_MODEL', 'QUANTIZED_MODEL', 'UNKNOWN'];
+/** The sources a model can be REGISTERED from (TASK-1023). GITHUB and S3 rows keep their display label in `SOURCE_LABELS`. */
+export const SOURCE_OPTIONS: AiModelSource[] = ['HUGGINGFACE', 'MLFLOW', 'LOCAL'];
 
 export const FORMAT_OPTIONS: AiModelFormat[] = [
   'SAFETENSOR',
@@ -37,23 +34,6 @@ export const FORMAT_OPTIONS: AiModelFormat[] = [
   'GGUF',
   'WHISPER_CPP',
 ];
-
-/** Canonical runtime provider ids (mirrors AI_MODEL_PROVIDERS in @arcaai/applications). */
-export const RUNTIME_PROVIDER_OPTIONS = [
-  'ollama',
-  'lm-studio',
-  'azure',
-  'bedrock',
-  'built-in',
-  'sarvam',
-  'openai',
-  'azure-speech',
-  'azure-foundry',
-  'anthropic',
-  'vertex',
-  'vllm',
-  'llama-cpp',
-] as const;
 
 /**
  * Every `ModelTaskType` the gateway DTO accepts (`@IsEnum(ModelTaskType)`), in
@@ -213,35 +193,3 @@ export function humanizeEnum(value: string): string {
 // The mount every serving pod reads the bucket at, and the bucket itself — declared once in
 // `@arcaai/types` (TASK-1023 OD-8); the gateway derives `localPath` from the same constant.
 export { HOPE_MODELS_BUCKET, HOPE_MODELS_MOUNT };
-
-/** Mirror of the gateway's `deriveLocalPath`, for the read-only preview in the drawer. */
-export function deriveLocalPath(bucketPrefix: string, primaryObject?: string | null): string {
-  const prefix = bucketPrefix.replace(/^\/+/, '').replace(/\/+$/, '');
-  const base = `${HOPE_MODELS_MOUNT}/${prefix}/`;
-  return primaryObject ? `${base}${primaryObject.replace(/^\/+/, '')}` : base;
-}
-
-/**
- * `s3://hope-models/<bucketPrefix>` for a LOCAL row — DERIVED, never typed by
- * hand, so `sourceUri` and `bucketPrefix` can never disagree (TASK-960 D3c).
- * The Python resolver falls back to `sourceUri` scheme dispatch when
- * `local_path` is absent, so keeping this honest keeps that fallback honest
- * too. Empty until a bucket prefix is entered.
- */
-export function deriveLocalSourceUri(bucketPrefix: string): string {
-  const prefix = bucketPrefix.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-  return prefix ? `s3://${HOPE_MODELS_BUCKET}/${prefix}` : '';
-}
-
-/**
- * `true` when a bucket prefix redundantly repeats the bucket itself
- * (`hope-models/…` or `s3://hope-models/…`). `HOPE_MODELS_MOUNT` already IS
- * that bucket, so the segment would double into a path that does not exist.
- * Mirrors the gateway's server-side DTO validation (TASK-960 Lane B) so an
- * admin is corrected here rather than by a 400.
- */
-export function isBucketPrefixRedundant(bucketPrefix: string): boolean {
-  const trimmed = bucketPrefix.trim().replace(/^\/+/, '');
-  const lower = trimmed.toLowerCase();
-  return lower === HOPE_MODELS_BUCKET || lower.startsWith(`${HOPE_MODELS_BUCKET}/`) || lower === `s3://${HOPE_MODELS_BUCKET}` || lower.startsWith(`s3://${HOPE_MODELS_BUCKET}/`);
-}

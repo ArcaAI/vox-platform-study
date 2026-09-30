@@ -236,6 +236,20 @@ export interface AiModel {
    * treats an absent value as "no lifecycle known" rather than a status.
    */
   lifecycle?: ModelLifecycle | null;
+  /**
+   * TASK-1023 (optional): the engine sizing facts (`_metadata.serving`) when the gateway exposes them.
+   * `derived: true` = the gateway estimated them rather than an admin entering them. Absent on gateways
+   * that do not serve it — every reader treats absence as "nothing to prefill".
+   */
+  serving?: ModelServingFacts | null;
+}
+
+/** Engine sizing facts for a vLLM-served row (`PATCH :id { serving }`). `vramGiB` is required and > 0. */
+export interface ModelServingFacts {
+  vramGiB?: number;
+  maxNumSeqs?: number;
+  enforceEager?: boolean;
+  derived?: boolean;
 }
 
 /** GET /admin/ai-models/list envelope — CUSTOM (not the platform standard). */
@@ -303,6 +317,8 @@ export interface UpdateModelRequest extends Partial<ModelRegistryFields> {
   tags?: string[];
   /** ASR-only; `null` clears the stored profile. Omit to leave it untouched. */
   asrProfile?: AiModelAsrProfile | null;
+  /** Merged into the stored sizing facts (TASK-1021 D-11); `vramGiB` required, > 0. */
+  serving?: { vramGiB: number; maxNumSeqs?: number; enforceEager?: boolean };
 }
 
 /** PATCH /admin/ai-models/:id/platform-default body. */

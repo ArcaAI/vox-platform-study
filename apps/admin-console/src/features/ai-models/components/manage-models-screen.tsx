@@ -27,7 +27,7 @@ import { CancelDownloadDialog, type CancelDownloadTarget } from './cancel-downlo
 import { DiscoveryDrawer } from './discovery-drawer';
 import { DownloadJobsDrawer } from './download-jobs-drawer';
 import { LIFECYCLE_META, LifecycleCell } from './lifecycle-badge';
-import { ModelFormSheet } from './model-form-sheet';
+import { ModelEditSheet } from './model-edit-sheet';
 import {
   AVAILABILITY_OPTIONS,
   DEPLOYMENT_KIND_LABELS,
@@ -480,7 +480,7 @@ export function ManageModelsScreen() {
         report={lastInventory.data}
         onRegister={registerFromBucket}
       />
-      <ModelFormSheet
+      <ModelEditSheet
         open={sheetOpen}
         onOpenChange={(open) => {
           setSheetOpen(open);

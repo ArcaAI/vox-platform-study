@@ -4,7 +4,6 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import type { ListParams } from '@/shared/api';
 import {
   cancelModelDownload,
-  createModel,
   deleteModel,
   discoverModels,
   downloadMissingModels,
@@ -13,7 +12,6 @@ import {
   getModelBySlug,
   getLastModelInventory,
   getModelDownloadState,
-  getModelRegistryConnectionStatus,
   getModelUsage,
   listModels,
   listPublisherJobs,
@@ -31,7 +29,7 @@ import {
 } from './client';
 import { aiModelKeys } from './keys';
 import { editLockReason, hasActiveJobs, isTransientLifecycle, LIFECYCLE_POLL_MS, listRefetchInterval } from './lifecycle';
-import type { AiTaskKind, CancelModelDownloadRequest, CreateModelRequest, RegisterFromPathRequest, ModelInventoryReport, RegisterFromHubRequest, UnregisterModelRequest, UpdateModelRequest } from './types';
+import type { AiTaskKind, CancelModelDownloadRequest, RegisterFromPathRequest, ModelInventoryReport, RegisterFromHubRequest, UnregisterModelRequest, UpdateModelRequest } from './types';
 
 export function useModels() {
   return useQuery({ queryKey: aiModelKeys.all(), queryFn: listModels });
@@ -92,11 +90,6 @@ export function useInvalidateAiModels() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: aiModelKeys.root });
 }
-export function useCreateModel() {
-  const invalidate = useInvalidateAiModels();
-  return useMutation({ mutationFn: (body: CreateModelRequest) => createModel(body), onSuccess: invalidate });
-}
-
 export function useUpdateModel() {
   const invalidate = useInvalidateAiModels();
   return useMutation({
@@ -203,10 +196,6 @@ export function useStartModelDownload() {
   const invalidate = useInvalidateAiModels();
   // Refresh the model reads so an open drawer sees DOWNLOADING and locks its edit form.
   return useMutation({ mutationFn: (id: string) => startModelDownload(id), onSuccess: invalidate });
-}
-
-export function useModelRegistryConnectionStatus() {
-  return useQuery({ queryKey: aiModelKeys.modelRegistryConnection(), queryFn: getModelRegistryConnectionStatus });
 }
 
 

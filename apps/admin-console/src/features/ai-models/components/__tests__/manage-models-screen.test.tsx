@@ -207,7 +207,7 @@ describe('AiModelsScreen — the HF-organised catalogue grid', () => {
 });
 
 describe('AiModelsScreen — register / edit / unregister', () => {
-  it('edits a model with an If-Match PATCH derived from the read ETag, carrying the registry fields', async () => {
+  it('edits a model with an If-Match PATCH derived from the read ETag, carrying only what changed', async () => {
     const calls = stubFetch((url, method) => {
       if (method === 'PATCH') return Response.json({ ...MODEL, name: 'Renamed', version: 5 }, { headers: { etag: '"5"' } });
       if (url.endsWith('/admin/ai-models/m-1')) return Response.json(MODEL, { headers: { etag: '"4"' } });
@@ -225,14 +225,8 @@ describe('AiModelsScreen — register / edit / unregister', () => {
     await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
     const patch = calls.find((call) => call.method === 'PATCH')!;
     expect(patch.headers.get('if-match')).toBe('"4"');
-    expect(patch.body).toMatchObject({
-      name: 'Renamed',
-      expectedVersion: 4,
-      libraryName: 'whisper.cpp',
-      servedBy: 'stt',
-      bucketPrefix: MODEL.bucketPrefix,
-    });
-    expect(patch.body).not.toHaveProperty('localPath');
+    // TASK-1023: the drawer is edit-only and slim — identity and registry fields are never re-sent.
+    expect(patch.body).toEqual({ name: 'Renamed', expectedVersion: 4 });
   });
 
   it('shows the OCC conflict alert when the PATCH returns 412', async () => {
