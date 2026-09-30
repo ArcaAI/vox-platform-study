@@ -233,7 +233,7 @@ describe('AiModelDownloadProcessor', () => {
     expect(versionedPrefix).toMatch(/^gemma4-e2b-it-qat\/q4-0-[0-9a-f]{12}\/$/);
     expect(keys.every((k) => k.startsWith(versionedPrefix))).toBe(true);
     // Weights go through the multipart-capable upload FROM DISK; the two small files through putSmall.
-    expect(store.uploadFile).toHaveBeenCalledWith(weightsKey, expect.stringContaining(stagingBaseDir));
+    expect(store.uploadFile).toHaveBeenCalledWith(weightsKey, expect.stringContaining(stagingBaseDir), { signal: expect.any(AbortSignal) });
 
     // Row written back: the bucket identity + the MEASURED availability, and
     // `sourceUri` UNCHANGED (the Hub identity stays; the bucket location is

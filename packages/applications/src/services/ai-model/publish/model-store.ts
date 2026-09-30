@@ -78,7 +78,7 @@ export interface ModelStore {
 /** The slice of `S3Client` the store uses — a fake in tests. */
 export interface S3ClientLike {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the SDK's `send` is overloaded per command; the store narrows each response itself
-  send(command: any): Promise<any>;
+  send(command: any, options?: { abortSignal?: AbortSignal }): Promise<any>;
 }
 
 /**

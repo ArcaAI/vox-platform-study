@@ -8,7 +8,11 @@ import { assertEqualTenants, createWorkerSession } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { HF_CACHE_LIBRARIES, HOPE_MODELS_BUCKET, SINGLE_FILE_LIBRARIES, deriveLocalPath } from '../constants';
 import { DownloadHeartbeat, DownloadHeartbeatSnapshot } from './download-heartbeat';
-import { mergeDownloadMeta, readDownloadMeta } from './model-download-meta.util';
+import { DOWNLOAD_CANCELLED_CODE, mergeDownloadMeta, readDownloadMeta } from './model-download-meta.util';
+import { acceptUnregisterAfterCancel } from './ai-model-download.service';
+import { PUBLISHER_CANCEL_FLAGS, type PublisherCancelFlags } from './publisher-cancel-flags';
+import { PublisherCancelWatch, PublisherJobCancelledError } from './publisher-cancel-watch';
+import type { ModelStore } from './model-store';
 import { buildAiModelManifest } from './model-manifest.util';
 import { ModelPublisherError, isNonRetryablePublisherError } from './model-publisher.errors';
 import { ModelSourceFetcherService } from './model-source-fetcher.service';
@@ -150,6 +154,9 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
     // The `modelRegistry.download.*` knobs the WORKER reads (I7) — the gateway
     // reads `maxAttempts` / `staleAfterSeconds` the same way.
     @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
+    // TASK-1023 D-C — the gateway's cancel flag. Optional so a worker without it
+    // still stops on the row's `cancelRequestedAt` (read at every heartbeat).
+    @Optional() @Inject(PUBLISHER_CANCEL_FLAGS) private readonly cancelFlags?: PublisherCancelFlags,
   ) {
     super();
     this.stagingBaseDir = options?.stagingBaseDir ?? resolveStagingBaseDir();
@@ -237,8 +244,23 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
 
     let stagingDir: string | null = null;
     let heartbeat: DownloadHeartbeat | null = null;
+    // TASK-1023 D-C — cancel state for this attempt.
+    const cancelWatch = new PublisherCancelWatch(jobId, this.cancelFlags, {
+      intervalMs: this.heartbeatIntervalMs,
+      onError: (error) => this.logger.warn({ message: 'Download cancel-flag read failed', jobId, aiModelId, error: error.message }),
+    });
+    // A row that already held weights from an earlier download keeps them on a cancel (OD-6).
+    const availableAtStart = model.availability === AiModelAvailability.AVAILABLE;
+    let store: ModelStore | null = null;
+    /** Keys THIS job put in the bucket — the partial objects a cancel deletes. */
+    const written: string[] = [];
 
     try {
+      // A cancel requested before this attempt began (a retry picked up after the
+      // gateway flagged it) ends it before anything is fetched.
+      if (readDownloadMeta(model.metaData)?.cancelRequestedAt) cancelWatch.trigger();
+      await cancelWatch.check();
+
       // This attempt is now the live one: clear a previous attempt's outcome,
       // restart the byte counter, stamp liveness.
       const startedAt = readDownloadMeta(model.metaData)?.startedAt ?? this.isoNow();
@@ -257,18 +279,20 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
       await job.updateProgress(5);
 
       // Credential first: without it nothing below may run (D-2, fail closed).
-      const store = await this.modelStoreFactory.create();
+      store = await this.modelStoreFactory.create();
+      const liveStore = store;
 
       // A LOCAL row never reaches the Hub (TASK-960 D1); the fetcher refuses it.
       const hub = model.source === AiModelSource.LOCAL ? null : await this.resolveHubInfo(model.sourceUri, model.sourceRevision ?? null, tenantId);
 
       stagingDir = await createStagingDir(this.stagingBaseDir);
-      heartbeat = new DownloadHeartbeat((snapshot) => this.writeHeartbeat(aiModelId, jobId, snapshot), {
+      heartbeat = new DownloadHeartbeat((snapshot) => this.writeHeartbeat(aiModelId, jobId, snapshot, () => cancelWatch.trigger()), {
         intervalMs: this.heartbeatIntervalMs,
         now: this.now,
         onError: (error) => this.logger.warn({ message: 'Download heartbeat write failed', jobId, aiModelId, error: error.message }),
       });
       heartbeat.start();
+      cancelWatch.start();
       const liveHeartbeat = heartbeat;
 
       const quantHint = model.computeType ?? null;
@@ -278,6 +302,7 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
         revision: hub?.sha,
         idleTimeoutMs,
         tenantId,
+        signal: cancelWatch.signal,
         onPlanned: (total) => liveHeartbeat.setTotal(total),
         onBytes: (bytes) => liveHeartbeat.addBytes(bytes),
       });
@@ -311,25 +336,37 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
       // Every bucket request runs inside `during()`: the heartbeat keeps the row
       // alive while one is in flight (each is bounded by the store's request
       // timeout), and stops beating once nothing moves (I7).
+      // A put the cancel may have to take back: recorded once it landed.
+      const put = async (key: string, body: Buffer) => {
+        await cancelWatch.check();
+        await liveHeartbeat.during(liveStore.putSmall(key, body));
+        written.push(key);
+      };
       for (const file of files) {
         const key = `${prefix}${file.path}`;
+        // File boundary: a cancel stops here before the next upload starts.
+        await cancelWatch.check();
         // Retry-safe: an object a previous attempt already published whole is
         // not sent again; a truncated or different one is replaced.
-        const existing = await liveHeartbeat.during(store.headObject(key));
+        const existing = await liveHeartbeat.during(liveStore.headObject(key));
         if (!existing || existing.size !== file.size) {
-          await liveHeartbeat.during(store.uploadFile(key, file.localPath));
+          await liveHeartbeat.during(liveStore.uploadFile(key, file.localPath, { signal: cancelWatch.signal }));
+          written.push(key);
         }
         liveHeartbeat.beat();
       }
-      await liveHeartbeat.during(store.putSmall(`${prefix}SHA256SUMS`, Buffer.from(sha256sumsContent, 'utf8')));
-      await liveHeartbeat.during(store.putSmall(`${prefix}manifest.json`, manifestBytes));
+      await put(`${prefix}SHA256SUMS`, Buffer.from(sha256sumsContent, 'utf8'));
+      await put(`${prefix}manifest.json`, manifestBytes);
       if (cacheLayout) {
         // `refs/main` is what `hf_hub_download` resolves a revision through
         // when offline; without it the snapshot is invisible to the loader.
         // The body is the bare sha — no trailing newline.
-        await liveHeartbeat.during(store.putSmall(`${cacheLayout.repoPrefix}refs/main`, Buffer.from(cacheLayout.sha, 'utf8')));
+        await put(`${cacheLayout.repoPrefix}refs/main`, Buffer.from(cacheLayout.sha, 'utf8'));
       }
 
+      // Last chance: a cancel that arrived during the final puts still wins.
+      await cancelWatch.check();
+      cancelWatch.stop();
       await heartbeat.stop();
       await job.updateProgress(90);
 
@@ -384,7 +421,12 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
 
       return { aiModelId, sourceUri: model.sourceUri, bucketPrefix: prefix, localPath, fileSizeMb, sha256: primarySha256 };
     } catch (error) {
+      cancelWatch.stop();
       await heartbeat?.stop();
+      if (cancelWatch.cancelled || error instanceof PublisherJobCancelledError) {
+        await this.finishCancelled({ aiModelId, jobId, userId, store, written, availableAtStart });
+        throw new UnrecoverableError(`${DOWNLOAD_CANCELLED_CODE}: download job ${jobId} was cancelled`);
+      }
       const message = error instanceof Error ? error.message : String(error);
       const recordFailure = finalAttempt || isNonRetryablePublisherError(error);
       this.logger.error({ message: 'AiModel publish failed', jobId, aiModelId, attempt, willRetry: !recordFailure, error: message });
@@ -410,6 +452,81 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
     }
   }
 
+  /**
+   * TASK-1023 D-C / OD-6 — everything a cancel leaves behind, in order:
+   *   1. the partial objects THIS job wrote are deleted (no resume) — unless the
+   *      row was AVAILABLE when the job started: those weights are left alone;
+   *   2. the run is recorded CANCELLED (a superseded job records nothing);
+   *   3. the Redis flag is cleared;
+   *   4. with `removeRegistrationOnCancel` (OD-5) the row is unregistered, weights
+   *      deleted, through the existing unregister flow — a failure there is
+   *      recorded on the unregister bookkeeping and never changes the cancel.
+   * The staging dir is wiped by the caller's `finally`. Nothing here throws.
+   */
+  private async finishCancelled(ctx: {
+    aiModelId: string;
+    jobId: string;
+    userId?: string;
+    store: ModelStore | null;
+    written: string[];
+    availableAtStart: boolean;
+  }): Promise<void> {
+    const { aiModelId, jobId } = ctx;
+    if (!ctx.availableAtStart && ctx.store && ctx.written.length > 0) {
+      try {
+        await ctx.store.deleteKeys(ctx.written);
+      } catch (error) {
+        // swallow-ok: the cancel still stands; the orphans show up in the next inventory.
+        this.logger.warn({ message: 'Cancelled download: partial objects not deleted', jobId, aiModelId, keys: ctx.written.length, error: String(error) });
+      }
+    }
+
+    let removeRegistration = false;
+    let cancelledBy: string | null = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const fresh = await this.aiModelRepository.findById(aiModelId).catch(() => null);
+      if (!fresh || isSupersededBy(fresh.metaData, jobId)) break;
+      const meta = readDownloadMeta(fresh.metaData);
+      removeRegistration = meta?.removeRegistrationOnCancel === true;
+      cancelledBy = meta?.cancelRequestedBy ?? null;
+      const now = this.isoNow();
+      fresh.metaData = mergeDownloadMeta(fresh.metaData, {
+        jobId,
+        finishedAt: now,
+        error: DOWNLOAD_CANCELLED_CODE,
+        cancelledAt: now,
+        cancelledBy,
+        heartbeatAt: now,
+      });
+      try {
+        await this.aiModelRepository.updateWithVersion(aiModelId, fresh, fresh.version);
+        break;
+      } catch (error) {
+        if (!(error instanceof OptimisticConcurrencyException) || attempt === 3) {
+          this.logger.error({ message: 'Cancelled download: CANCELLED not recorded', jobId, aiModelId, error: String(error) });
+          removeRegistration = false;
+          break;
+        }
+      }
+    }
+    await this.cancelFlags?.clear(jobId).catch(() => undefined);
+    this.logger.log({ message: 'AiModel download cancelled', jobId, aiModelId, partialObjectsDeleted: ctx.availableAtStart ? 0 : ctx.written.length });
+
+    if (removeRegistration) await this.unregisterAfterCancel(aiModelId, cancelledBy ?? ctx.userId ?? null);
+  }
+
+  /** OD-5 — the existing unregister job kind, run in place on this worker. */
+  private async unregisterAfterCancel(aiModelId: string, userId: string | null): Promise<void> {
+    try {
+      const fresh = await this.aiModelRepository.findById(aiModelId);
+      const payload = await acceptUnregisterAfterCancel({ repository: this.aiModelRepository }, fresh, { userId });
+      await this.unregisterService.execute(payload, { finalAttempt: true });
+    } catch (error) {
+      // swallow-ok: the unregister service records its own failure on the row (UNREGISTER bookkeeping).
+      this.logger.warn({ message: 'Unregister after a cancelled download failed', aiModelId, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   private superseded(aiModelId: string, jobId: string, metaData: Record<string, unknown> | null | undefined): SupersededDownloadResult {
     this.logger.warn({
       message: 'Download job superseded by a newer one — exiting without writing',
@@ -425,10 +542,12 @@ export class AiModelDownloadProcessor extends WorkerHost implements OnModuleInit
    * bookkeeping. Skipped when the row has moved on (another job, or this one
    * already finished); an OCC clash is dropped — the next beat retries.
    */
-  private async writeHeartbeat(aiModelId: string, jobId: string, snapshot: DownloadHeartbeatSnapshot): Promise<void> {
+  private async writeHeartbeat(aiModelId: string, jobId: string, snapshot: DownloadHeartbeatSnapshot, onCancelRequested?: () => void): Promise<void> {
     const fresh = await this.aiModelRepository.findById(aiModelId);
     const meta = readDownloadMeta(fresh?.metaData);
     if (!fresh || meta?.jobId !== jobId || meta.finishedAt || meta.error) return;
+    // TASK-1023 D-C — the gateway recorded a cancel on the row: stop, whatever Redis says.
+    if (meta.cancelRequestedAt) onCancelRequested?.();
     fresh.metaData = mergeDownloadMeta(fresh.metaData, {
       bytesDone: snapshot.bytesDone,
       bytesTotal: snapshot.bytesTotal,

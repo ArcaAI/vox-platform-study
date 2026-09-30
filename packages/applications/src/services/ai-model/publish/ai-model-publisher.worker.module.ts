@@ -9,6 +9,7 @@ import { HuggingFaceModelSourceClient } from './huggingface-model-source.client'
 import { ModelSourceFetcherService } from './model-source-fetcher.service';
 import { ModelStoreFactory } from './model-store';
 import { AiModelUnregisterService } from './model-unregister.service';
+import { publisherCancelFlagsProvider } from './publisher-cancel-flags';
 import { ModelUsageReader } from '../lifecycle/model-usage.reader';
 
 /**
@@ -44,6 +45,8 @@ import { ModelUsageReader } from '../lifecycle/model-usage.reader';
     ModelStoreFactory,
     AiModelUnregisterService,
     ModelUsageReader,
+    // TASK-1023 D-C — the cancel flag the processor polls (same Redis as the queue).
+    publisherCancelFlagsProvider,
   ],
 })
 export class AiModelPublisherWorkerModule {}

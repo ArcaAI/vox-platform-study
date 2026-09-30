@@ -9,10 +9,10 @@ import { AiModelEntity, AiModelRepository, AiModelSource, JobQueue, ResourceType
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
-import { mergeDownloadMeta, readDownloadMeta } from './model-download-meta.util';
+import { mergeDownloadMeta, mergeUnregisterMeta, readDownloadMeta } from './model-download-meta.util';
 import { derivedLocalPath } from '../constants';
 import { ModelDownloadStatusResponse, TriggerModelDownloadResponse } from './dto';
-import type { DownloadAiModelJobPayload, PublisherJobPayload } from './publisher-job.contract';
+import type { DownloadAiModelJobPayload, PublisherJobPayload, UnregisterAiModelJobPayload } from './publisher-job.contract';
 import { DOWNLOAD_STALLED_CODE } from './publisher-job.contract';
 import { assertPlatformRegistryAdmin } from '../lifecycle/platform-admin';
 import {
@@ -87,6 +87,34 @@ export async function claimAndEnqueueDownload(
   };
   await enqueuePublisherJob(deps.queue, payload, opts.maxAttempts);
   return { jobId, updated };
+}
+
+/**
+ * TASK-1023 OD-5 — ACCEPT an unregister of a row whose download was cancelled
+ * with "also remove the registration": write `_metadata.unregister` (the row
+ * reads UNREGISTERING) and return the payload of the existing unregister job
+ * kind. The caller runs it — the gateway ENQUEUES it, the worker EXECUTES it
+ * in place — and the worker's unregister re-checks referrers (MODEL_IN_USE is
+ * recorded, nothing deleted). Weights are always deleted (`deleteWeights`).
+ */
+export async function acceptUnregisterAfterCancel(
+  deps: { repository: Pick<AiModelRepository, 'updateWithVersion'> },
+  entity: AiModelEntity,
+  opts: { userId?: string | null; now?: Date },
+): Promise<UnregisterAiModelJobPayload> {
+  const jobId = uuidv7();
+  entity.metaData = mergeUnregisterMeta(entity.metaData, {
+    jobId,
+    startedAt: (opts.now ?? new Date()).toISOString(),
+    deleteWeights: true,
+    purge: false,
+    finishedAt: null,
+    error: null,
+    weights: 'deleting',
+  });
+  if (opts.userId) entity.updatedBy = opts.userId;
+  await deps.repository.updateWithVersion(entity.id, entity, entity.version);
+  return { kind: 'unregister', jobId, aiModelId: entity.id, tenantId: entity.tenantId, userId: opts.userId ?? undefined, deleteWeights: true, purge: false };
 }
 
 /**

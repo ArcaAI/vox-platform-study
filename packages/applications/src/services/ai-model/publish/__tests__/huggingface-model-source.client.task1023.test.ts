@@ -77,4 +77,26 @@ describe('HuggingFaceModelSourceClient — credential per job tenant (J7)', () =
     await client.getRepoInfo('org/repo', 'main', { tenantId: TENANT });
     expect(authOf(0)).toBeUndefined();
   });
+
+  it('D-C — an external cancel signal aborts a streaming download with the CANCEL reason (not the idle error)', async () => {
+    resolveCredential.mockResolvedValue({ outcome: 'absent' });
+    const controller = new AbortController();
+    const reason = new Error('CANCELLED');
+    const body = new Readable({ read() {} });
+    body.push(Buffer.from('partial'));
+    axiosRef.get.mockResolvedValueOnce({ data: body });
+    const pending = client.downloadFileTo('org/repo', 'w.bin', 'main', join(dir, 'w.bin'), () => controller.abort(reason), {
+      signal: controller.signal,
+      idleTimeoutMs: 60_000,
+    });
+    await expect(pending).rejects.toBe(reason);
+    expect((axiosRef.get.mock.calls[0][1] as { signal: AbortSignal }).signal.aborted).toBe(true);
+  });
+
+  it('D-C — an already-aborted signal makes no request', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('CANCELLED'));
+    await expect(client.downloadFileTo('org/repo', 'w.bin', 'main', join(dir, 'w.bin'), undefined, { signal: controller.signal })).rejects.toThrow('CANCELLED');
+    expect(axiosRef.get).not.toHaveBeenCalled();
+  });
 });
