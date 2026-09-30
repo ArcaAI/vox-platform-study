@@ -41,7 +41,7 @@ non-dev ports with tmpfs-backed storage. Nothing persists; `--stop`/`down` also 
 |---|---|---|---|
 | PostgreSQL | `hope-postgres-test` | **5433** (5432) | `timescale/timescaledb-ha:pg18-all` (pgvector/vectorscale present); durability off for speed; DB `hope_test`, user/pass `test`/`test` |
 | Redis | `hope-redis-test` | **6380** (6379) | password `test_redis_pass`, no persistence |
-| MinIO | `hope-minio-test` | **9002** API / **9003** console (9000/9001) | `minio-createbuckets` init container creates standard buckets |
+| MinIO | `hope-minio-test` | **9002** API / **9003** console (9000/9001) | `pgsty/minio` community fork, same digest as dev (TASK-1029); `minio-createbuckets` init container (same image, provides `mc`) creates standard buckets |
 | Qdrant | `hope-qdrant-test` | **6335** HTTP / **6336** gRPC (6333/6334) | `qdrant-init-test` init container creates collections |
 
 The two init containers (`minio-createbuckets`, `qdrant-init-test`) **exit 0 after doing their

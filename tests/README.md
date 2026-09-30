@@ -51,7 +51,7 @@ and tmpfs-backed storage (no volumes persist; `--stop` also removes volumes), ma
 |---|---|---|---|
 | PostgreSQL | `hope-postgres-test` | 5433 (5432) | `timescale/timescaledb-ha:pg18-all` — same image as dev; durability off for speed; DB `hope_test`, user/password `test`/`test` |
 | Redis | `hope-redis-test` | 6380 (6379) | password `test_redis_pass`, no persistence |
-| MinIO | `hope-minio-test` | 9002 API / 9003 console (9000/9001) | `minio-createbuckets` init container creates the standard buckets |
+| MinIO | `hope-minio-test` | 9002 API / 9003 console (9000/9001) | `pgsty/minio` community fork, same digest as dev (TASK-1029); `minio-createbuckets` init container (same image, provides `mc`) creates the standard buckets |
 | Qdrant | `hope-qdrant-test` | 6335 HTTP / 6336 gRPC (6333/6334) | `qdrant-init-test` init container creates collections via `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | Vault | `hope-vault-test` | 8201 (8200) | Dev-mode, in-memory, isolated from dev's `hope-vault`. `vault-init-test` init container provisions kv-v2 + transit (`hope-globalsetting`, `hope-phi`) + the `hope-app` AppRole |
 

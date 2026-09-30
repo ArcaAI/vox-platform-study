@@ -4,6 +4,8 @@ This directory holds the IAM policy documents mounted into the `minio-setup` boo
 of `infrastructure/docker/docker-compose.yml`, plus the convention that governs the `hope-models`
 bucket in **every** environment.
 
+> **Which MinIO (TASK-1029).** Upstream `minio/minio` is archived and no longer publishes images, so every environment runs the `pgsty/minio` community fork (AGPL-3.0, same on-disk format and admin API, full web console restored, CVE backports), pinned `RELEASE.2026-08-04T00-00-00Z` by OCI-index digest. The same image serves both the server and the `mc` bootstrap steps (it bundles `/usr/bin/mc`). A CI job (`mirror-images`) keeps a same-digest copy in our registry.
+
 > **Two init paths, and only one of them is in this repo.**
 >
 > | Path | Who bootstraps it | Where |
