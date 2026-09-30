@@ -61,6 +61,7 @@ import { effectiveStaleAfterMs, readModelDownloadSettings, type DownloadSettings
 import { buildHubPreview, categoryOf, providerFor, servedByFor } from './hub-preview.util';
 import { isUnregistering, publishStatusOf } from './model-lifecycle.derive';
 import { ModelUsageReader } from './model-usage.reader';
+import { withDerivedServingFacts } from '../serving-spec/derive-serving-facts';
 import { assertPlatformRegistryAdmin } from './platform-admin';
 
 type ResidencyPort = Pick<ModelResidencyPort, 'getCatalogue' | 'unload'>;
@@ -185,6 +186,9 @@ export class ModelRegistryOperationsService extends BaseService {
 
     const settings = readModelDownloadSettings(this.appSettings);
     const row = await this.findRegistryRow(model.id);
+    // OD-9 — a vLLM-served row is servable at once: the derived `vramGiB` default rides on the
+    // same update that claims the download (never overwriting a value already there).
+    row.metaData = withDerivedServingFacts(row.metaData, { servedBy, weightBytes: preview.totalBytes }) ?? undefined;
     const { jobId } = await claimAndEnqueueDownload({ repository: this.aiModelRepository, queue: this.publisherQueue }, row, {
       userId: this.requestUserId,
       maxAttempts: settings.maxAttempts,

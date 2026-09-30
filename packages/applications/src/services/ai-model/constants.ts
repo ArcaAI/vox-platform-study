@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
 import { ModelTaskType } from '@arcaai/domains';
 import { HOPE_MODELS_BUCKET, HOPE_MODELS_MOUNT } from '@arcaai/types';
@@ -196,16 +197,51 @@ export class BucketRelativePrefixConstraint implements ValidatorConstraintInterf
     if (typeof value !== 'string' || value === '') return true;
     if (/^s3:\/\//i.test(value)) return false;
     const normalized = BucketRelativePrefixConstraint.normalize(value);
+    // The mount path is REJECTED, not rewritten: this validator answers "is this bucket-relative?",
+    // and a stored `/mnt/models-bucket/x` would derive `/mnt/models-bucket/mnt/models-bucket/x`.
+    // Callers that accept a pasted path normalise it first (`normaliseBucketPath`).
+    const mount = `${HOPE_MODELS_MOUNT.replace(/^\/+/, '')}/`;
+    if (normalized === mount || normalized.startsWith(mount)) return false;
     return normalized !== `${HOPE_MODELS_BUCKET}/` && !normalized.startsWith(`${HOPE_MODELS_BUCKET}/`);
   }
 
   defaultMessage(): string {
     return (
       `bucketPrefix must be a path relative to the '${HOPE_MODELS_BUCKET}' bucket root — do not repeat the bucket ` +
-      `name or use an 's3://' scheme. The bucket is already mounted at '${HOPE_MODELS_MOUNT}', so a bucket-qualified ` +
-      `value resolves to a path that does not exist.`
+      `name or the mount path, or use an 's3://' scheme. The bucket is already mounted at '${HOPE_MODELS_MOUNT}', so a ` +
+      `bucket-qualified value resolves to a path that does not exist.`
     );
   }
+}
+
+/**
+ * A path in the models bucket, however it was pasted, as the bucket-relative prefix it names —
+ * with ONE trailing slash. Accepts the mount a serving pod sees (`/mnt/models-bucket/x`), a
+ * bucket-qualified path (`hope-models/x`), an S3 URI (`s3://hope-models/x`) or a bare prefix
+ * (`x`); each of those is stripped ONCE, in that order.
+ *
+ * Throws 400 `PATH_INVALID` for an empty result (the bucket root is not a model), a `.` or `..`
+ * segment, or an S3 URI naming another bucket.
+ */
+export function normaliseBucketPath(input: string): string {
+  const invalid = (reason: string) =>
+    new BadRequestException({ code: 'PATH_INVALID', message: `'${input}' is not a path in the models bucket: ${reason}` });
+
+  let path = (input ?? '').trim();
+  const s3 = /^s3:\/\/([^/]*)(\/|$)/i.exec(path);
+  if (s3) {
+    if (s3[1] !== HOPE_MODELS_BUCKET) throw invalid(`only the '${HOPE_MODELS_BUCKET}' bucket holds models.`);
+    path = path.slice(s3[0].length);
+  }
+  const mount = HOPE_MODELS_MOUNT.replace(/\/+$/, '');
+  if (path === mount || path.startsWith(`${mount}/`)) path = path.slice(mount.length);
+  path = path.replace(/^\/+/, '');
+  if (path === HOPE_MODELS_BUCKET || path.startsWith(`${HOPE_MODELS_BUCKET}/`)) path = path.slice(HOPE_MODELS_BUCKET.length);
+
+  const segments = path.split('/').filter((segment) => segment.length > 0);
+  if (segments.length === 0) throw invalid('choose a folder or a file inside the bucket.');
+  if (segments.some((segment) => segment === '.' || segment === '..')) throw invalid("'.' and '..' segments are not allowed.");
+  return `${segments.join('/')}/`;
 }
 
 /**
