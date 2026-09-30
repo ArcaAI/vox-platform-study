@@ -56,7 +56,7 @@ import {
 import { HuggingFaceModelSourceClient } from '../publish/huggingface-model-source.client';
 import { claimAndEnqueueDownload, enqueuePublisherJob } from '../publish/ai-model-download.service';
 import type { UnregisterAiModelJobPayload } from '../publish/publisher-job.contract';
-import { mergeUnregisterMeta } from '../publish/model-download-meta.util';
+import { isUnregisterStale, mergeUnregisterMeta, readUnregisterMeta } from '../publish/model-download-meta.util';
 import { effectiveStaleAfterMs, readModelDownloadSettings, type DownloadSettingsSource } from './model-download-settings';
 import { buildHubPreview, categoryOf, providerFor, servedByFor } from './hub-preview.util';
 import { isUnregistering, publishStatusOf } from './model-lifecycle.derive';
@@ -213,7 +213,9 @@ export class ModelRegistryOperationsService extends BaseService {
     const settings = readModelDownloadSettings(this.appSettings);
 
     const row = await this.findRegistryRow(id);
-    if (isUnregistering(row.metaData)) {
+    // TASK-1023 OD-6 — an open unregister whose job was lost (past the download
+    // stale window: UNREGISTER_FAILED) may be retried; a live one is refused.
+    if (isUnregistering(row.metaData) && !this.unregisterWentStale(row.metaData, settings)) {
       throw new ConflictException({ code: 'MODEL_UNREGISTERING', message: `Model '${row.slug}' is already being unregistered.` });
     }
     if (publishStatusOf(row, { now: Date.now(), staleAfterMs: effectiveStaleAfterMs(settings) }) === 'DOWNLOADING') {
@@ -272,6 +274,11 @@ export class ModelRegistryOperationsService extends BaseService {
       data: { action: 'unregister', slug: row.slug, jobId, weights, purge },
     });
     return { jobId, weights };
+  }
+
+  /** OD-6 — the unregister bookkeeping went stale (same window as downloads). */
+  private unregisterWentStale(metaData: Record<string, unknown> | null | undefined, settings: ReturnType<typeof readModelDownloadSettings>): boolean {
+    return isUnregisterStale(readUnregisterMeta(metaData ?? null), { now: new Date(), staleAfterMs: effectiveStaleAfterMs(settings) });
   }
 
   // ── Bootstrap: download every missing model ────────────────────────────────
