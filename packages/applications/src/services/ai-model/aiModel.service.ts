@@ -32,6 +32,7 @@ import {
   ModelResponse,
   ModelServingFactsRequest,
   PaginatedModelResponse,
+  PaginatedRegisteredModelViewResponse,
   SetPlatformDefaultRequest,
   UpdateModelRequest,
 } from './dto';
@@ -78,6 +79,7 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { assertPlatformRegistryAdmin } from './lifecycle/platform-admin';
 import { IActiveUserContext } from '../../interfaces';
 import { ModelLifecycleService } from './lifecycle/model-lifecycle.service';
+import type { ModelLifecycleStatus } from './lifecycle/model-lifecycle.types';
 
 /**
  * How a `filters` token coerces on the ADMIN registry grid (TASK-983 R1/R4).
@@ -112,6 +114,46 @@ const AI_MODEL_FILTER_FIELD_TYPES: FilterFieldTypeMap = {
   metaData: 'json',
   availabilityDetail: 'json',
 };
+
+/**
+ * The columns the read-only registry view exposes — the ONLY columns its query
+ * may filter, search or sort on. Anything else (bucket identity, checksums,
+ * `_metadata`, `availabilityDetail`, …) would let a non-manager probe a hidden
+ * value through the query even though the response never carries it.
+ */
+const REGISTRY_VIEW_QUERY_FIELDS: ReadonlySet<string> = new Set([
+  'id',
+  'slug',
+  'name',
+  'description',
+  'taskType',
+  'libraryName',
+  'format',
+  'servedBy',
+  'deploymentKind',
+  'license',
+  'gated',
+  'languages',
+  'memorySizeMb',
+  'availability',
+  'isPlatformDefaultFor',
+  'resourceStatus',
+  'updatedAt',
+]);
+const FILTER_GROUP_KEYS: ReadonlySet<string> = new Set(['AND', 'OR', 'NOT']);
+
+/** Every column a deserialized filter tree names (group keys recursed, not returned). */
+function filterFieldsOf(filters: unknown, out: string[] = []): string[] {
+  if (Array.isArray(filters)) {
+    for (const part of filters) filterFieldsOf(part, out);
+  } else if (filters && typeof filters === 'object') {
+    for (const [key, value] of Object.entries(filters)) {
+      if (FILTER_GROUP_KEYS.has(key)) filterFieldsOf(value, out);
+      else out.push(key);
+    }
+  }
+  return out;
+}
 
 /** One `(service, provider)` pair's connection facts, resolved once per catalogue read. */
 interface ConnectionFacts {
@@ -227,7 +269,8 @@ export class AiModelService extends BaseService implements IAiModelService {
     // The explicit `@Inject` is load-bearing: the `Pick<…>` type emits `Object`
     // as its design type, so without it Nest resolves nothing and — the param
     // being optional — silently injects `undefined` (final review C1).
-    @Optional() @Inject(ModelLifecycleService) private readonly lifecycle?: Pick<ModelLifecycleService, 'forRows'>,
+    @Optional() @Inject(ModelLifecycleService) private readonly lifecycle?: Pick<ModelLifecycleService, 'forRows'> &
+      Partial<Pick<ModelLifecycleService, 'statusForRows'>>,
   ) {
     super(eventEmitter, clsService, ResourceType.AiModel);
   }
@@ -718,6 +761,49 @@ export class AiModelService extends BaseService implements IAiModelService {
   }
 
   /**
+   * The read-only registry view — SYSTEM rows, readable by ANY admin (OD-1).
+   *
+   * Same {@link PaginatedQuery} contract and SYSTEM pin as {@link list}, but each
+   * row is redacted to descriptive columns + a one-word lifecycle status
+   * (`RegisteredModelViewResponse`), derived through the UNGATED status-only
+   * residency read so a tenant admin never needs the platform-gated catalogue.
+   * No row-level gate: the route's `read:AiModel` ability is the boundary, and
+   * the redaction is what makes it safe. Deleted rows never appear (the
+   * extended client's soft-delete filter). Filters, search fields and sorts may
+   * name only visible columns (400 otherwise).
+   */
+  async listRegistry(query: PaginatedQuery = {}): Promise<PaginatedRegisteredModelViewResponse> {
+    const findProps = withFormattedPaginatedProps(query, AI_MODEL_FILTER_FIELD_TYPES);
+    const countProps = withFormattedCountProps(query, AI_MODEL_FILTER_FIELD_TYPES);
+    this.assertRegistryViewQuery(findProps);
+    const page = findProps.page ?? DEFAULT_PAGE;
+    const limit = findProps.limit ?? DEFAULT_PAGE_SIZE;
+
+    const models = await this.aiModelRepository.findAll({
+      ...findProps,
+      page,
+      limit,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the repository filter type is narrower than the Prisma `where` it forwards
+      filters: { ...(findProps.filters ?? {}), tenantId: SYSTEM_TENANT_ID } as any,
+      sort: findProps.sort ?? [{ name: 'asc' }],
+    });
+    const total = await this.aiModelRepository.count({
+      ...countProps,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the repository filter type is narrower than the Prisma `where` it forwards
+      filters: { ...(countProps.filters ?? {}), tenantId: SYSTEM_TENANT_ID } as any,
+    });
+
+    const statuses = await this.statusesFor(models);
+    return {
+      data: models.map((model) => AiModelDtoMapper.toRegisteredModelView(model, statuses.get(model.id) ?? 'NOT_OBSERVED')),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
    * Get ENABLED catalogue rows by task type
    */
   async getByTaskType(taskType: ModelTaskType): Promise<ModelResponse[]> {
@@ -1089,6 +1175,38 @@ export class AiModelService extends BaseService implements IAiModelService {
       throw new BadRequestException(
         `Provider '${provider}' serves its own model store, so the row needs a wireModelId — the id the engine answers to on the wire.`,
       );
+    }
+  }
+
+  /**
+   * One-word statuses for the registry view. Advisory like {@link withLifecycle}:
+   * a derivation failure never fails the read; the row reports `NOT_OBSERVED`.
+   */
+  private async statusesFor(models: AiModelEntity[]): Promise<Map<string, ModelLifecycleStatus>> {
+    if (!this.lifecycle?.statusForRows || models.length === 0) return new Map();
+    try {
+      return await this.lifecycle.statusForRows(models);
+    } catch (error) {
+      // swallow-ok: the status is advisory — the registry view never fails on it; logged with the row count.
+      this.logger.warn({
+        message: 'ai_model.registry_view.status_failed',
+        rows: models.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return new Map();
+    }
+  }
+
+  /** 400 when the registry-view query names a column the view does not expose. */
+  private assertRegistryViewQuery(props: { filters?: unknown; searchFields?: string[]; sort?: Array<Record<string, unknown>> }): void {
+    const named = [
+      ...filterFieldsOf(props.filters),
+      ...(props.searchFields ?? []),
+      ...(props.sort ?? []).flatMap((entry) => Object.keys(entry)),
+    ];
+    const hidden = [...new Set(named.filter((field) => !REGISTRY_VIEW_QUERY_FIELDS.has(field)))];
+    if (hidden.length > 0) {
+      throw new BadRequestException(`The registry view cannot filter, search or sort on: ${hidden.join(', ')}.`);
     }
   }
 
