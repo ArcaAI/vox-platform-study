@@ -100,6 +100,14 @@ describe('RegisterModelSheet — Hugging Face tab', () => {
     expect(post.body).toEqual({ repoId: 'org/whisper-ml-en' });
   });
 
+  it('opens Advanced with served-by when the preview has no suggestion (suggested.servedBy null)', async () => {
+    routes((url) => (url.includes('/admin/ai-models/hub/preview') ? Response.json({ ...PREVIEW, suggested: { servedBy: null } }) : undefined));
+    const dialog = await openSheet();
+    await typeRepoId(dialog, 'org/unknown-task');
+    await within(dialog).findByRole('group', { name: 'Model summary' });
+    await waitFor(() => expect(within(dialog).getByLabelText(/served by/i)).toBeDefined());
+  });
+
   it('sends only the overrides the admin changed under Advanced', async () => {
     const calls = routes();
     const dialog = await openSheet();

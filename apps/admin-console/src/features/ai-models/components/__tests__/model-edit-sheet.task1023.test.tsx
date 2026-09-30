@@ -159,7 +159,7 @@ describe('ModelEditSheet — Serving tab', () => {
   });
 
   it('marks facts the gateway derived as "Estimated" when the row exposes them', async () => {
-    serve({ ...ASR_ROW, serving: { vramGiB: 4.5, derived: true } });
+    serve({ ...ASR_ROW, servingFacts: { vramGiB: 4.5, derived: true } });
     const dialog = await openEdit(ASR_ROW);
     openTab(dialog, 'Serving');
     expect(await within(dialog).findByText('Estimated')).toBeDefined();

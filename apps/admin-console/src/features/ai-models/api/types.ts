@@ -237,11 +237,11 @@ export interface AiModel {
    */
   lifecycle?: ModelLifecycle | null;
   /**
-   * TASK-1023 (optional): the engine sizing facts (`_metadata.serving`) when the gateway exposes them.
-   * `derived: true` = the gateway estimated them rather than an admin entering them. Absent on gateways
-   * that do not serve it — every reader treats absence as "nothing to prefill".
+   * TASK-1023: the engine sizing facts (`_metadata.serving`), `null` when the row has none.
+   * `derived: true` = the gateway estimated them rather than an admin entering them. Optional on the
+   * type because an older gateway does not serve it — readers treat absence as "nothing to prefill".
    */
-  serving?: ModelServingFacts | null;
+  servingFacts?: ModelServingFacts | null;
 }
 
 /** Engine sizing facts for a vLLM-served row (`PATCH :id { serving }`). `vramGiB` is required and > 0. */
@@ -500,10 +500,10 @@ export interface HubPreview {
   suggestedFormat: AiModelFormat | null;
   layout: HubLayout;
   /**
-   * TASK-1023 (assumed, optional): the workload the gateway would pick. Explicit `null` means it has no
-   * suggestion, which opens "Advanced" so the admin can choose one before submitting.
+   * Registry fields the gateway prefilled from the card (`null` where nothing could be inferred).
+   * `servedBy: null` means it has no suggestion, which opens "Advanced" so the admin can choose one.
    */
-  suggestedServedBy?: string | null;
+  suggested?: { servedBy: string | null };
 }
 
 /**

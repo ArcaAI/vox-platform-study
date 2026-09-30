@@ -48,9 +48,9 @@ function toValues(model?: AiModel): EditValues {
     name: model?.name ?? '',
     description: model?.description ?? '',
     tags: model?.tags.join(', ') ?? '',
-    vramGiB: model?.serving?.vramGiB != null ? String(model.serving.vramGiB) : '',
-    maxNumSeqs: model?.serving?.maxNumSeqs != null ? String(model.serving.maxNumSeqs) : '',
-    enforceEager: model?.serving?.enforceEager ?? false,
+    vramGiB: model?.servingFacts?.vramGiB != null ? String(model.servingFacts.vramGiB) : '',
+    maxNumSeqs: model?.servingFacts?.maxNumSeqs != null ? String(model.servingFacts.maxNumSeqs) : '',
+    enforceEager: model?.servingFacts?.enforceEager ?? false,
     asr: asrValuesFromProfile(model?.asrProfile),
   };
 }
@@ -328,7 +328,7 @@ export function ModelEditSheet({ open, onOpenChange, modelId }: { open: boolean;
                   <p className="text-muted-foreground text-xs">
                     Engine sizing for a vLLM-served model. Saving merges these facts into the stored ones; a field left blank keeps its value.
                   </p>
-                  {model.serving?.derived ? (
+                  {model.servingFacts?.derived ? (
                     <div>
                       <Badge variant="secondary" title="The platform estimated these facts; saving your own replaces them.">
                         Estimated

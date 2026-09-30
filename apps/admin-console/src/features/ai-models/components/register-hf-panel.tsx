@@ -54,7 +54,7 @@ function HubSummary({ preview }: { preview: HubPreview }) {
         { label: 'Task', value: preview.taskType ? humanizeEnum(preview.taskType.replaceAll('-', '_')) : '—' },
         { label: 'Library', value: <span className="font-mono">{preview.libraryName ?? '—'}</span> },
         { label: 'Format', value: preview.suggestedFormat ? humanizeEnum(preview.suggestedFormat) : '—' },
-        { label: 'Served by', value: preview.suggestedServedBy ?? 'Chosen by the platform' },
+        { label: 'Served by', value: preview.suggested?.servedBy ?? 'Chosen by the platform' },
         {
           label: 'Size',
           value: `${preview.totalBytes != null ? formatBytes(preview.totalBytes) : 'Unknown'} · ${preview.fileCount} ${preview.fileCount === 1 ? 'file' : 'files'}`,
@@ -89,7 +89,7 @@ export function useHfRegistration(open: boolean, onRegistered: () => void) {
   const seedKey = previewData ? `${previewData.repoId}@${previewData.commitSha}` : null;
   if (seedKey !== seededFor) {
     setSeededFor(seedKey);
-    if (previewData && previewData.suggestedServedBy === null) setAdvancedOpen(true);
+    if (previewData && previewData.suggested?.servedBy === null) setAdvancedOpen(true);
   }
 
   const canSubmit = previewData !== undefined && typedMatchesPreview;
@@ -178,7 +178,7 @@ export type HfRegistration = ReturnType<typeof useHfRegistration>;
 
 export function RegisterHfPanel({ hf, formId }: { hf: HfRegistration; formId: string }) {
   const uid = useId();
-  const servedByNeeded = hf.servedByRequired || hf.previewData?.suggestedServedBy === null;
+  const servedByNeeded = hf.servedByRequired || hf.previewData?.suggested?.servedBy === null;
   return (
     <form
       id={formId}
