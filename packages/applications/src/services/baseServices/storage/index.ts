@@ -6,5 +6,7 @@ export * from './providers';
 export * from './IBlobStorageService';
 export * from './blob-storage.service';
 export * from './blob-storage.module';
+// TASK-1025 — tenant-bucket lifecycle checks on every object operation.
+export * from './tenant-bucket-storage.gate';
 // (thumbnails) — real downscaled image derivatives + by-convention key.
 export * from './image-thumbnail.service';

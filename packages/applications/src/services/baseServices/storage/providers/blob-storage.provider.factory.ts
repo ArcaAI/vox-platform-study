@@ -336,7 +336,7 @@ export class BlobStorageProviderFactory {
     // Per-bucket override: map the physical bucket name → its TenantBucket id,
     // then look for a bucket-scoped config row.
     if (bucketName && this.bucketRepo) {
-      const bucket = await this.bucketRepo.findByName(bucketName);
+      const bucket = (await this.bucketRepo.findByName(bucketName)) ?? (await this.findRetainedBucket(bucketName));
       if (bucket && bucket.tenantId === tenantId) {
         const forBucket = await this.configRepo.findForBucket(tenantId, bucket.id);
         if (forBucket) return forBucket;
@@ -344,6 +344,22 @@ export class BlobStorageProviderFactory {
     }
 
     return this.configRepo.findTenantDefault(tenantId);
+  }
+
+  /**
+   * TASK-1025 G2 — `findByName` answers ENABLED rows only, but the purge job
+   * resolves the provider of a deleted tenant's ARCHIVED/SUSPENDED buckets. It
+   * must see their per-bucket override too, or it would empty the wrong store.
+   * Access to such a bucket is refused by `TenantBucketStorageGate`, not here.
+   * A lookup failure degrades to the tenant default, like a miss.
+   */
+  private async findRetainedBucket(bucketName: string): Promise<{ id: string; tenantId: string } | null> {
+    try {
+      const rows = await this.bucketRepo?.findAll({ filters: { name: bucketName } });
+      return rows?.[0] ?? null;
+    } catch {
+      return null;
+    }
   }
 
   private async buildFromEntity(config: TenantStorageConfigEntity): Promise<IBlobStorageProvider> {

@@ -27,6 +27,12 @@ const mockEventEmitter = { emit: vi.fn() };
 
 const stub = {} as never;
 
+// TASK-1025 G2 — `deleteById` retains the tenant's buckets before the soft delete.
+const mockTenantBucketService = {
+  retainForTenantDeletion: vi.fn().mockResolvedValue(0),
+  releaseTenantDeletionRetention: vi.fn().mockResolvedValue({ restored: 0, purged: 0 }),
+};
+
 function buildService(): TenantService {
   return new TenantService(
     mockTenantRepository as never,
@@ -34,7 +40,7 @@ function buildService(): TenantService {
     stub, // departmentRepository
     stub, // promptTemplateRepository
     stub, // databaseService
-    stub, // tenantBucketService
+    mockTenantBucketService as never, // tenantBucketService
     mockEventEmitter as never,
     mockClsService as never,
     stub, // departmentAgentRepository

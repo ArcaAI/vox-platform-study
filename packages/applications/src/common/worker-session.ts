@@ -48,7 +48,10 @@ export type WorkerSessionKind =
   // TASK-864: background watcher that records a workflow run's terminal
   // status (and emits the run-completed sys-event) after the caller has
   // disconnected. One context PER RUN — the watch is started per invoke.
-  | 'workflow-run-completion';
+  | 'workflow-run-completion'
+  // TASK-1025: scheduled purge of a deleted tenant's retained buckets once the
+  // retention window has passed. One context PER TENANT — the tenant query spans all.
+  | 'tenant-storage-purge';
 
 /**
  * Init shape for `createWorkerSession`.

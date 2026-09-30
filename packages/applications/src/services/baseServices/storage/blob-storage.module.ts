@@ -4,6 +4,7 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { BlobStorageService } from './blob-storage.service';
 import { IBlobStorageService } from './IBlobStorageService';
 import { BlobStorageProviderFactory } from './providers/blob-storage.provider.factory';
+import { TenantBucketStorageGate } from './tenant-bucket-storage.gate';
 
 /**
  * BlobStorageModule — registers the provider-agnostic blob-storage stack:
@@ -34,12 +35,14 @@ export class BlobStorageModule {
       imports: [CoreDatabaseModule],
       providers: [
         BlobStorageProviderFactory,
+        // TASK-1025 — tenant-bucket lifecycle checks applied by BlobStorageService.
+        TenantBucketStorageGate,
         {
           provide: IBlobStorageService,
           useClass: BlobStorageService,
         },
       ],
-      exports: [IBlobStorageService, BlobStorageProviderFactory],
+      exports: [IBlobStorageService, BlobStorageProviderFactory, TenantBucketStorageGate],
     };
   }
 }

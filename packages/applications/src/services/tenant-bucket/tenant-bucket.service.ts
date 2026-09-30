@@ -1,5 +1,6 @@
 import {
   isPlatformBucket,
+  ResourceStatusType,
   ResourceType,
   SYSTEM_TENANT_ID,
   SysEventType,
@@ -35,6 +36,7 @@ import {
   TenantBucketTreeResponse,
 } from './dto';
 import { TenantBucketDtoMapper } from './tenant-bucket.dto.mapper';
+import { TENANT_BUCKET_INACCESSIBLE_STATUSES, TENANT_DELETION_RETAINED_STATUS, TENANT_STORAGE_PURGING_STATUS } from './tenant-bucket-lifecycle.constants';
 
 /** Lifetime of presigned download URLs (mirrors the S3 service default). */
 const PRESIGNED_GET_EXPIRY_SECONDS = 3600;
@@ -174,6 +176,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     if (!bucket) {
       throw new NotFoundException(`Bucket ${id} not found`);
     }
+    this.assertBucketAccessible(bucket);
 
     const tenantId = this.tenantId;
     if (tenantId && bucket.tenantId !== tenantId) {
@@ -484,6 +487,82 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
 
     primary.quotaBytes = BigInt(storageQuotaBytes);
     await this.tenantBucketRepository.update(primary.id, primary);
+  }
+
+  /**
+   * TASK-1025 G2 (owner decision OD-2) — RETAIN on tenant deletion. Every
+   * ENABLED bucket row of the tenant moves to ARCHIVED: every data-plane path
+   * (this service's and `BlobStorageService`'s) refuses an ARCHIVED row, so
+   * access is cut the moment this returns, while the objects stay where they
+   * are until the retention window passes and the purge job removes them.
+   *
+   * A row that is not ENABLED (an admin-DISABLED bucket) is left exactly as it
+   * is, so a later restore cannot switch on something that was off.
+   */
+  async retainForTenantDeletion(tenantId: string): Promise<number> {
+    const rows = await this.tenantBucketRepository.findAllByTenant(tenantId, { includeDisabled: true });
+    let retained = 0;
+    for (const row of rows) {
+      if (row.resourceStatus !== ResourceStatusType.ENABLED) continue;
+      row.archive(this.requestUserId ?? undefined);
+      await this.tenantBucketRepository.update(row.id, row);
+      retained += 1;
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: row.id,
+        data: { name: row.name, slug: row.slug, resourceStatus: TENANT_DELETION_RETAINED_STATUS, reason: 'tenant-deleted' },
+      });
+    }
+    this.logger.log({ message: 'Retained the buckets of a deleted tenant (access cut, objects kept)', tenantId, retained });
+    return retained;
+  }
+
+  /**
+   * TASK-1025 G2 — undo {@link retainForTenantDeletion} when the tenant is
+   * restored inside the retention window. Only ARCHIVED rows come back. A row
+   * the purge job has STARTED on (SUSPENDED) or finished (DELETED) stays as it
+   * is: its objects are partly or wholly gone, and handing it back would
+   * present an emptied bucket as the tenant's data. `purged` counts those so the
+   * restore can say the storage did not survive.
+   */
+  async releaseTenantDeletionRetention(tenantId: string): Promise<{ restored: number; purged: number }> {
+    const rows = await this.tenantBucketRepository.findAllByTenant(tenantId, { includeDisabled: true });
+    let restored = 0;
+    let purged = 0;
+    for (const row of rows) {
+      if (row.resourceStatus === TENANT_STORAGE_PURGING_STATUS) {
+        purged += 1;
+        continue;
+      }
+      if (row.resourceStatus !== TENANT_DELETION_RETAINED_STATUS) continue;
+      row.enable(this.requestUserId ?? undefined);
+      await this.tenantBucketRepository.update(row.id, row);
+      restored += 1;
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: row.id,
+        data: { name: row.name, slug: row.slug, resourceStatus: ResourceStatusType.ENABLED, reason: 'tenant-restored' },
+      });
+    }
+    // DELETED rows are invisible to the default reads; ask for them explicitly.
+    // A SYSTEM bucket can never be deleted by hand (403), so a DELETED system
+    // row of this tenant is one the purge job removed.
+    const deletedRows = await this.tenantBucketRepository.findAll({ filters: { tenantId, resourceStatus: ResourceStatusType.DELETED } });
+    purged += deletedRows.filter((row) => row.isSystemBucket).length;
+
+    if (purged > 0) {
+      this.logger.warn({ message: 'Restored tenant had storage purged after its retention window; those buckets are not restored', tenantId, purged });
+    }
+    return { restored, purged };
+  }
+
+  /**
+   * TASK-1025 G2 — a bucket retained after its tenant was deleted, or one the
+   * purge is working on, is not reachable. 404 (not 403): to every caller it
+   * must look exactly like a bucket that does not exist.
+   */
+  private assertBucketAccessible(bucket: { id: string; resourceStatus?: string | null }): void {
+    if (bucket.resourceStatus && TENANT_BUCKET_INACCESSIBLE_STATUSES.has(bucket.resourceStatus)) {
+      throw new NotFoundException(`Bucket ${bucket.id} not found`);
+    }
   }
 
   async createCustomBucket(dto: CreateTenantBucketRequest): Promise<TenantBucketResponse> {
@@ -846,6 +925,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     if (!bucket) {
       throw new NotFoundException(`Bucket ${bucketId} not found`);
     }
+    this.assertBucketAccessible(bucket);
 
     const tenantId = this.tenantId;
     if (tenantId && bucket.tenantId !== tenantId) {
@@ -873,6 +953,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     if (!bucket) {
       throw new NotFoundException(`Bucket ${bucketId} not found`);
     }
+    this.assertBucketAccessible(bucket);
 
     const tenantId = this.tenantId;
     if (tenantId && bucket.tenantId !== tenantId) {
@@ -906,6 +987,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     if (!bucket) {
       throw new NotFoundException(`Bucket ${bucketId} not found`);
     }
+    this.assertBucketAccessible(bucket);
 
     const tenantId = this.tenantId;
     if (tenantId && bucket.tenantId !== tenantId) {
@@ -937,6 +1019,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     if (!bucket) {
       throw new NotFoundException(`Bucket ${bucketId} not found`);
     }
+    this.assertBucketAccessible(bucket);
 
     const tenantId = this.tenantId;
     if (tenantId && bucket.tenantId !== tenantId) {

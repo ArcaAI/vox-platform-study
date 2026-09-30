@@ -33,6 +33,8 @@ import {
   RedisServiceModule,
   StorageSnapshotServiceModule,
   SysEventServiceModule,
+  // TASK-1025 G2 — scheduled purge of deleted tenants' retained buckets.
+  TenantStoragePurgeServiceModule,
   UnifiedAuthGuard,
   UsageLedgerServiceModule,
 } from '@arcaai/applications';
@@ -360,6 +362,7 @@ const common = [
   ObservabilityModule,
   AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
   AuditRetentionServiceModule, // scheduled AuditLog retention purge (bounds growth)
+  TenantStoragePurgeServiceModule, // TASK-1025 G2 — purge deleted tenants' buckets after the retention window
   AgentTrajectoryRetentionServiceModule, // scheduled AgentTrajectoryStep hard-retention prune (opt-in)
   //  — scheduled session-timeout sweep:
   // transitions stale PRIMED/DRAINING/DRAFT_PENDING_SENSORS/TIMED_OUT/REOPENED

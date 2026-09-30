@@ -5,6 +5,7 @@ import { ClsService } from 'nestjs-cls';
 import { IActiveUserContext } from '../../../interfaces';
 import { IBlobStorageService } from './IBlobStorageService';
 import { BlobStorageProviderFactory } from './providers/blob-storage.provider.factory';
+import { TenantBucketStorageGate } from './tenant-bucket-storage.gate';
 import {
   DeleteObjectParams,
   GetObjectParams,
@@ -37,6 +38,9 @@ export class BlobStorageService implements IBlobStorageService {
     // Optional so W1 direct-construction tests keep working; when absent there
     // is no tenant context, so resolution uses the global/shared provider.
     @Optional() private readonly clsService?: ClsService<IActiveUserContext>,
+    // TASK-1025 — tenant-bucket lifecycle checks on every object operation.
+    // Optional so direct-construction tests and DB-less graphs keep working.
+    @Optional() private readonly gate?: TenantBucketStorageGate,
   ) {}
 
   private tenantId(): string | null | undefined {
@@ -49,30 +53,37 @@ export class BlobStorageService implements IBlobStorageService {
   }
 
   async putObject(params: PutObjectParams): Promise<void> {
+    await this.gate?.assertAccessible(params.bucket);
     return (await this.provider(params.bucket)).putObject(params);
   }
 
   async getObject(params: GetObjectParams): Promise<Buffer> {
+    await this.gate?.assertAccessible(params.bucket);
     return (await this.provider(params.bucket)).getObject(params);
   }
 
   async getObjectStream(params: GetObjectParams): Promise<Readable> {
+    await this.gate?.assertAccessible(params.bucket);
     return (await this.provider(params.bucket)).getObjectStream(params);
   }
 
   async deleteObject(params: DeleteObjectParams): Promise<void> {
+    await this.gate?.assertAccessible(params.bucket);
     return (await this.provider(params.bucket)).deleteObject(params);
   }
 
   async listObjects(params: ListObjectsParams): Promise<ListObjectsResult> {
+    await this.gate?.assertAccessible(params.bucket);
     return (await this.provider(params.bucket)).listObjects(params);
   }
 
   async presignGet(params: PresignGetParams): Promise<string> {
+    await this.gate?.assertAccessible(params.bucket);
     return (await this.provider(params.bucket)).presignGet(params);
   }
 
   async presignPut(params: PresignPutParams): Promise<string> {
+    await this.gate?.assertAccessible(params.bucket);
     return (await this.provider(params.bucket)).presignPut(params);
   }
 

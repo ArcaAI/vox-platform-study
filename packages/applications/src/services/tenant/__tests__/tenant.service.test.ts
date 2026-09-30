@@ -120,6 +120,9 @@ const mockTenantBucketService = {
   provisionSystemBuckets: vi.fn(),
   // Plan storageQuotaBytes -> primary bucket quotaBytes.
   applyPlanStorageQuota: vi.fn(),
+  // TASK-1025 G2 — tenant delete retains (ARCHIVED) / restore releases the buckets.
+  retainForTenantDeletion: vi.fn().mockResolvedValue(0),
+  releaseTenantDeletionRetention: vi.fn().mockResolvedValue({ restored: 0, purged: 0 }),
 };
 
 // Mock TenantReferenceSetService (TASK-890 §3.4) — the LAST provisioning step

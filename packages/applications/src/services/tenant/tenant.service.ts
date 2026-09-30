@@ -18,6 +18,7 @@ import {
   TenantPlan,
   PlanEntitlementRepository,
   TenantEntitlementRepository,
+  ResourceStatusType,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
 import { ITenantService } from './ITenantService';
@@ -729,11 +730,33 @@ export class TenantService extends BaseService implements ITenantService {
     const existing = await this.tenantRepository.findById(id);
     this.assertNotSystemTenant(existing);
 
-    const tenant = await this.tenantRepository.softDelete(id);
+    // TASK-1025 G2 (owner decision OD-2) — RETAIN, THEN PURGE ON SCHEDULE.
+    // The tenant's buckets are cut off FIRST (their rows move to ARCHIVED and
+    // every data-plane path refuses them) and only then is the tenant deleted,
+    // so there is no moment where the tenant is gone but its PHI still
+    // reachable. Objects stay until the retention window passes and the
+    // `TenantStoragePurgeService` job removes them. Run under the TARGET
+    // tenant's CLS context (the bucket rows are tenant-scoped).
+    const storageRetainedBuckets = await this.runForTenant(id, () => this.tenantBucketService.retainForTenantDeletion(id));
+
+    let tenant: TenantEntity;
+    try {
+      tenant = await this.tenantRepository.softDelete(id);
+    } catch (error) {
+      // The tenant stays live, so its storage must too.
+      await this.runForTenant(id, () => this.tenantBucketService.releaseTenantDeletionRetention(id)).catch((releaseError: unknown) =>
+        this.logger.error({
+          message: 'Tenant delete failed AND its buckets could not be re-enabled; they stay retained (ARCHIVED) until restored',
+          tenantId: id,
+          error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+        }),
+      );
+      throw error;
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: tenant.id,
-      data: tenant.toObject() as object,
+      data: { ...(tenant.toObject() as object), storageRetainedBuckets },
     });
     return tenant;
   }
@@ -855,7 +878,58 @@ export class TenantService extends BaseService implements ITenantService {
    * a non-enabled state, but restoring it is harmless).
    */
   async restore(id: EntityId): Promise<TenantEntity> {
+    try {
+      await this.tenantRepository.findById(id);
+    } catch (error) {
+      // TASK-1025 G2 — a soft-DELETED tenant is invisible to `findById`. It is
+      // restorable too: inside the retention window its storage comes back.
+      if (error instanceof DataNotFoundException) {
+        const deleted = await this.findDeletedTenant(id);
+        if (deleted) return this.restoreDeletedTenant(deleted);
+      }
+      throw error;
+    }
     return this.transitionLifecycle(id, (tenant) => tenant.enable(this.requestUser?.id), { guardSystem: false });
+  }
+
+  /** TASK-1025 G2 — the soft-deleted row, asked for explicitly (the soft-delete extension honours an explicit DELETED filter). */
+  private async findDeletedTenant(id: EntityId): Promise<TenantEntity | null> {
+    const rows = await this.tenantRepository.findAll({ filters: { id, resourceStatus: ResourceStatusType.DELETED } });
+    return rows[0] ?? null;
+  }
+
+  /**
+   * TASK-1025 G2 — bring a soft-deleted tenant back. Its retained (ARCHIVED)
+   * buckets are re-enabled. Buckets the purge job has started on or finished
+   * are NOT: their objects are gone, and the audit event says so
+   * (`storagePurged: true`) rather than handing back empty buckets as if they
+   * held the tenant's data. Fresh storage for such a tenant is an explicit,
+   * separate decision — see the TASK-1025 README.
+   */
+  private async restoreDeletedTenant(deleted: TenantEntity): Promise<TenantEntity> {
+    const previousData = deleted.toObject();
+    const restored = await this.tenantRepository.restore(deleted.id, this.requestUser?.id);
+    const storage = await this.runForTenant(deleted.id, () => this.tenantBucketService.releaseTenantDeletionRetention(deleted.id));
+
+    if (storage.purged > 0) {
+      this.logger.warn({
+        message: 'Restored a deleted tenant whose storage was already purged; its data cannot be recovered',
+        tenantId: deleted.id,
+        purgedBuckets: storage.purged,
+      });
+    }
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: restored.id,
+      data: {
+        resourceStatus: ResourceStatusType.ENABLED,
+        restoredFromDeletion: true,
+        storageRestoredBuckets: storage.restored,
+        storagePurged: storage.purged > 0,
+      },
+      previousData,
+    });
+    return restored;
   }
 
   /**

@@ -54,6 +54,18 @@ export abstract class ITenantBucketService {
    * no-op that leaves `quotaBytes` null.
    */
   abstract applyPlanStorageQuota(tenantId: string, plan: TenantPlan | null): Promise<void>;
+  /**
+   * TASK-1025 G2 — the tenant is being soft-deleted: move each of its ENABLED
+   * bucket rows to ARCHIVED (access cut, objects kept). Returns how many rows
+   * were retained. Run under the TARGET tenant's CLS context.
+   */
+  abstract retainForTenantDeletion(tenantId: string): Promise<number>;
+  /**
+   * TASK-1025 G2 — the deleted tenant is being restored inside the retention
+   * window: ARCHIVED rows go back to ENABLED. Buckets the purge has started on
+   * or finished are NOT restored; `purged` counts them so the caller can say so.
+   */
+  abstract releaseTenantDeletionRetention(tenantId: string): Promise<{ restored: number; purged: number }>;
   abstract getPresignedUrl(bucketId: string, fileKey: string): Promise<{ url: string }>;
   /** Read the tenant's current default bucket per purpose. */
   abstract getDefaultBuckets(): Promise<TenantBucketDefaultsResponse>;
