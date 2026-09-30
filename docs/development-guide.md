@@ -200,7 +200,7 @@ Support commands:
 | Admin console (`apps/admin-console`)         | 5176 (dev)              | Next.js 16 App Router — operator UI                                         |
 | PostgreSQL 18                                | 5432                    | `hope-postgres` (TimescaleDB image, pgvector available)                     |
 | Redis 8                                      | 6379                    | BullMQ DB 0, cache DB 1, STT streams DB 2, Text streams DB 3, Dramatiq DB 5 |
-| MinIO                                        | 9000 API / 9001 console | `pgsty/minio` community fork (TASK-1029); buckets: `recordings`, `generated-audio`, `documents`, `backups` |
+| MinIO                                        | 9000 API / 9001 console | `pgsty/silo` community fork (TASK-1029); buckets: `recordings`, `generated-audio`, `documents`, `backups` |
 | Qdrant                                       | 6333 HTTP / 6334 gRPC   | speaker embeddings, RAG knowledge chunks                                    |
 | Vault                                        | 8200                    | dev-mode, `vault` profile                                                   |
 | Temporal                                     | 7233 gRPC / 8233 UI     | `temporal` profile; shares hope-postgres                                    |

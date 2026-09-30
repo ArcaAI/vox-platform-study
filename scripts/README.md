@@ -120,7 +120,7 @@ TEST application ports are **DEV + 100**, so both stacks can run at the same tim
 | **dev** | 8868 | 8861 | 8862 | 8863 | 8864 | 8865 | 8866 | 5176 | 9229 |
 | **test** | 8968 | 8961 | 8962 | 8963 | 8964 | 8965 | 8966 | 5276 | 9329 |
 
-Infra ports already differ: Postgres 5432/5433, Redis 6379/6380, MinIO 9000/9002, Qdrant 6333/6335. (MinIO in both stacks is the digest-pinned `pgsty/minio` community fork — TASK-1029.)
+Infra ports already differ: Postgres 5432/5433, Redis 6379/6380, MinIO 9000/9002, Qdrant 6333/6335. (MinIO in both stacks is the digest-pinned `pgsty/silo` community fork — TASK-1029.)
 
 Every script reads these from `.env.test` rather than hardcoding them, and `pnpm stack:test:doctor`
 fails if any test port has drifted back onto its dev counterpart — that drift is what would let a

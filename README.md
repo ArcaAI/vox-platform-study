@@ -124,7 +124,7 @@ See [scripts/README.md](scripts/README.md) for the complete script reference.
 | Python Services | FastAPI, Python 3.11 (conda `arcaenv` + uv workspace lock) |
 | Database | PostgreSQL 18, Prisma 7 |
 | Cache/Queue | Redis 8, BullMQ |
-| Object Storage | MinIO (`pgsty/minio` community fork) |
+| Object Storage | MinIO (SILO, the `pgsty/silo` community fork) |
 | Vector DB | Qdrant |
 | Workflows | Temporal (clinical documentation harness) |
 | Speech | TTS (Azure Speech + local Kokoro/Indic Parler); STT (multi-model ASR) |

@@ -41,7 +41,7 @@ one motherboard, one room stands between this platform and total, unrecoverable 
 | Property | Value | How verified |
 |---|---|---|
 | Host | Proxmox VM 402, `10.10.1.102`, Ubuntu 24.04, Docker | `qm list`, guest exec |
-| MinIO release | `RELEASE.2025-04-22T22-12-26Z` (upstream; as audited 2026-08-08 — the fleet moves to the `pgsty/minio` fork under TASK-1029, since upstream is archived and unpublished) | `mc admin info` |
+| MinIO release | `RELEASE.2025-04-22T22-12-26Z` (upstream; as audited 2026-08-08 — the fleet moves to the `pgsty/silo` fork under TASK-1029, since upstream is archived and unpublished) | `mc admin info` |
 | Topology | **Single-Node Single-Drive**, 1 pool / 1 drive / `EC:0` / erasure stripe size 1 | `mc admin info` |
 | Capacity | 293 GB filesystem, **217 GB used, 64 GB free (78%)** | `df -h` |
 | Contents | 200 GiB used, **31 buckets, 103,994 objects** | `mc admin info` |
