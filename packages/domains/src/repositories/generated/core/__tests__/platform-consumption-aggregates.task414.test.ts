@@ -9,8 +9,9 @@
  *   • AudioRecordingRepository.sumDurationForTenant → aggregate _sum.duration
  *   • SummaryMetaRepository.countGeneratedSince     → count generatedAt >= since
  *   • MediaRepository.sumSizeForTenant              → aggregate _sum.size
- *   • TenantBucketRepository.sumConfiguredQuotaBytes→ aggregate _sum.quotaBytes
- *                                                     over rows with a quota set
+ *   • TenantBucketRepository.sumConfiguredQuotaBytes→ per-tenant _max.quotaBytes
+ *                                                     over rows with a quota set,
+ *                                                     summed across tenants (TASK-1025)
  *
  * All four scope by tenantId ONLY when one is supplied (`null` = platform-wide
  * roll-up: `where` carries no tenant filter). Raw `_sum` values are returned
@@ -122,34 +123,39 @@ describe('MediaRepository.sumSizeForTenant', () => {
 });
 
 describe('TenantBucketRepository.sumConfiguredQuotaBytes', () => {
+  // TASK-1025 G3 — the plan quota is ONE tenant-wide ceiling stamped on BOTH
+  // system buckets, so the aggregate is MAX per tenant (summed across tenants
+  // for the platform-wide roll-up), not a SUM over bucket rows.
   let delegate: any;
   let repo: any;
 
   beforeEach(async () => {
-    delegate = { aggregate: vi.fn() };
+    delegate = { groupBy: vi.fn() };
     const { TenantBucketRepository } = await import('../TenantBucketRepository');
     repo = new TenantBucketRepository(makeUow({ tenantBucket: delegate }) as never);
   });
 
-  it('sums quotaBytes over buckets with a quota configured, scoped to the tenant', async () => {
-    delegate.aggregate.mockResolvedValue({ _sum: { quotaBytes: 5000n } });
+  it('takes the per-tenant MAX of quotaBytes over buckets with a quota configured, scoped to the tenant', async () => {
+    delegate.groupBy.mockResolvedValue([{ _max: { quotaBytes: 5000n } }]);
 
     const result = await repo.sumConfiguredQuotaBytes('tenant-1');
 
-    expect(delegate.aggregate).toHaveBeenCalledWith({
-      _sum: { quotaBytes: true },
+    expect(delegate.groupBy).toHaveBeenCalledWith({
+      by: ['tenantId'],
+      _max: { quotaBytes: true },
       where: { tenantId: 'tenant-1', quotaBytes: { not: null } },
     });
     expect(result).toBe(5000n);
   });
 
-  it('returns the raw null sum when no bucket has a quota (platform-wide)', async () => {
-    delegate.aggregate.mockResolvedValue({ _sum: { quotaBytes: null } });
+  it('returns null when no bucket has a quota (platform-wide)', async () => {
+    delegate.groupBy.mockResolvedValue([]);
 
     const result = await repo.sumConfiguredQuotaBytes(null);
 
-    expect(delegate.aggregate).toHaveBeenCalledWith({
-      _sum: { quotaBytes: true },
+    expect(delegate.groupBy).toHaveBeenCalledWith({
+      by: ['tenantId'],
+      _max: { quotaBytes: true },
       where: { quotaBytes: { not: null } },
     });
     expect(result).toBeNull();
