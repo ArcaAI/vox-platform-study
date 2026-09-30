@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeFilters } from '@/shared/data/grid-url-state';
 import { renderWithProviders } from '@/test/render';
 import { MODEL_LIFECYCLE_STATUSES, type ModelLifecycleStatus } from '../../api/types';
-import { AiModelsScreen } from '../ai-models-screen';
+import { ManageModelsScreen as AiModelsScreen } from '../manage-models-screen';
 import { LIFECYCLE_META } from '../lifecycle-badge';
 import { envelope, modelWith, stubFetch } from './fixtures.task1019';
 

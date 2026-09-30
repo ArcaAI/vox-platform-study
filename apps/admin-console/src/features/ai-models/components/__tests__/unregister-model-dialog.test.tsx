@@ -7,7 +7,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import { AiModelsScreen } from '../ai-models-screen';
+import { ManageModelsScreen as AiModelsScreen } from '../manage-models-screen';
 import { UnregisterModelDialog } from '../unregister-model-dialog';
 import { BASE_MODEL, envelope, stubFetch } from './fixtures.task1019';
 

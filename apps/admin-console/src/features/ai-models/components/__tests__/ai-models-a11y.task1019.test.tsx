@@ -5,7 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import { MODEL_LIFECYCLE_STATUSES } from '../../api/types';
-import { AiModelsScreen } from '../ai-models-screen';
+import { ManageModelsScreen as AiModelsScreen } from '../manage-models-screen';
 import { RegisterFromHubSheet } from '../register-from-hub-sheet';
 import { UnregisterModelDialog } from '../unregister-model-dialog';
 import { BASE_MODEL, PREVIEW, envelope, modelWith, stubFetch } from './fixtures.task1019';

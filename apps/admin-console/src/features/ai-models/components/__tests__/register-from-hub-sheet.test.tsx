@@ -8,7 +8,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import { AiModelsScreen } from '../ai-models-screen';
+import { ManageModelsScreen as AiModelsScreen } from '../manage-models-screen';
 import { RegisterFromHubSheet } from '../register-from-hub-sheet';
 import { PREVIEW, envelope, modelWith, stubFetch } from './fixtures.task1019';
 

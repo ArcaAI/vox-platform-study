@@ -11,7 +11,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { AiModel, ModelInventoryReport, PaginatedModels } from '../../api/types';
-import { AiModelsScreen } from '../ai-models-screen';
+import { ManageModelsScreen as AiModelsScreen } from '../manage-models-screen';
 
 // Radix Select scrolls the highlighted item into view on open; happy-dom has no layout engine.
 beforeAll(() => {
