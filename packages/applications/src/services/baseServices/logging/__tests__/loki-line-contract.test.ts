@@ -23,6 +23,7 @@
 import { ConsoleTransport } from '../transports/console.transport';
 import { LoggingService } from '../logging.service';
 import type { LogEntry } from '../types';
+import { hermeticLoggingEnv } from './hermetic-logging-env';
 
 const ANSI = /\[\d+m/;
 
@@ -104,7 +105,7 @@ describe('Loki line contract', () => {
   });
 
   describe('format selection', () => {
-    const saved = { ...process.env };
+    const saved = hermeticLoggingEnv();
     const savedTty = process.stdout.isTTY;
 
     afterEach(() => {
@@ -150,7 +151,7 @@ describe('Loki line contract', () => {
   });
 
   describe('a NestJS Logger call that passes an object', () => {
-    const saved = { ...process.env };
+    const saved = hermeticLoggingEnv();
 
     afterEach(() => {
       process.env = { ...saved };
@@ -209,7 +210,7 @@ describe('Loki line contract', () => {
 });
 
 describe('identity of the emitting service', () => {
-  const saved = { ...process.env };
+  const saved = hermeticLoggingEnv();
 
   afterEach(() => {
     process.env = { ...saved };
