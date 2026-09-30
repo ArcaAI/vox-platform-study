@@ -79,6 +79,7 @@ function makeDeps() {
       getRun: vi.fn().mockResolvedValue({ runId: OLD_RUN, workflowVersionId: governedVersion.id }),
       recordRunStarted: vi.fn().mockResolvedValue({}),
       recordRunFinished: vi.fn().mockResolvedValue({}),
+      recordRunSuperseded: vi.fn().mockResolvedValue({}),
     },
     harnessGateway: {
       startWorkflowRun: vi.fn().mockResolvedValue({ status: 'RUNNING' }),
@@ -193,9 +194,18 @@ describe('ConsultationWorkflowDispatchService.supersedeGoverningRun (TASK-1022 L
       OLD_RUN,
       expect.objectContaining({ tenantId: TENANT, reason: expect.stringContaining(String(result.runId)) }),
     );
-    expect(deps.workflowRunService.recordRunFinished).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: TENANT, runId: OLD_RUN, sessionId: `wf-${OLD_RUN}`, status: 'CANCELED', consultationId: CONSULTATION }),
+    // TASK-1022 A2 — the row is closed through `recordRunSuperseded`, which cancels only a row that
+    // is still RUNNING; a finished run keeps its terminal status and `endedAt`.
+    expect(deps.workflowRunService.recordRunSuperseded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT,
+        runId: OLD_RUN,
+        sessionId: `wf-${OLD_RUN}`,
+        supersededBy: result.runId,
+        consultationId: CONSULTATION,
+      }),
     );
+    expect(deps.workflowRunService.recordRunFinished).not.toHaveBeenCalled();
   });
 
   it('two deliveries of the same resumed stop start ONE run (single-flight + the marker’s trigger id)', async () => {

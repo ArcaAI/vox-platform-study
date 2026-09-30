@@ -344,8 +344,8 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
    *      `supersedeTriggerId` and starts nothing.
    *   2. Anchor the `WorkflowRun` row and START the run. A failure puts the old marker back and
    *      leaves the parked run untouched — the consultation keeps its first note.
-   *   3. Only then TERMINATE the parked run (its review child goes with it) and close its row as
-   *      `CANCELED`. Best-effort: a run that is already gone, or cannot be reached, costs nothing
+   *   3. Only then TERMINATE the parked run (its review child goes with it) and close its row
+   *      (`CANCELED` if still running; a finished row keeps its status). Best-effort: a run that is already gone, or cannot be reached, costs nothing
    *      but a log line, because the marker already names the new run and every consultation
    *      surface (sign-off review release, completion stamping) follows the marker.
    */
@@ -517,14 +517,22 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     }
   }
 
-  /** Terminate the parked run (and its review child) and close its row. Best-effort, both halves. */
+  /**
+   * Terminate the parked run (and its review child) and close its row. Best-effort, both halves.
+   *
+   * TASK-1022 A2 — the row is closed through `recordRunSuperseded`, never `recordRunFinished`: the
+   * run being superseded may already have FINISHED on its own (COMPLETED at `n_finalize`, then
+   * closed), and its terminal status and `endedAt` are facts the supersede must not rewrite. Only a
+   * row still RUNNING becomes CANCELED; every row gets `_metadata.supersededBy`.
+   */
   private async retireSupersededRun(tenantId: string, consultationId: string, supersededRunId: string, runId: string): Promise<void> {
     const reason = `superseded by ${runId} (resumed recording re-finalised by the governing graph)`;
     try {
+      // An already-closed run resolves with `alreadyClosed: true` (logged at info by the gateway).
       await this.harnessGateway.terminateWorkflowRun(supersededRunId, { tenantId, reason });
     } catch (error) {
       this.logger.warn({
-        message: 'Superseded governing run could not be terminated (already closed, or unreachable) — the marker already names the new run',
+        message: 'Superseded governing run could not be terminated (harness unreachable or failed) — the marker already names the new run',
         consultationId,
         supersededRunId,
         runId,
@@ -532,18 +540,17 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       });
     }
     try {
-      await this.workflowRunService.recordRunFinished({
+      await this.workflowRunService.recordRunSuperseded({
         tenantId,
         sessionId: consultationDispatchSessionId(supersededRunId),
         runId: supersededRunId,
-        status: 'CANCELED',
-        endedAt: new Date(),
+        supersededBy: runId,
         terminalReason: reason,
         consultationId,
       });
     } catch (error) {
       this.logger.warn({
-        message: 'Superseded governing run row could not be closed as CANCELED',
+        message: 'Superseded governing run row could not be closed (CANCELED if still running, provenance otherwise)',
         consultationId,
         supersededRunId,
         error: error instanceof Error ? error.message : String(error),

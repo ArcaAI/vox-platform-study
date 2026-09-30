@@ -65,3 +65,21 @@ export interface RecordRunFinishedInput {
   /** TASK-864 — the consultation the run was bound to, when it was. An id, never content. */
   consultationId?: string | null;
 }
+
+/**
+ * TASK-1022 A2 — close the row of a run another run SUPERSEDED (a governed resume).
+ *
+ * Unlike `RecordRunFinishedInput` it names no status: the supersede does not know how the run
+ * ended. A row still `RUNNING` becomes `CANCELED`, ended now; a row that already reached a
+ * terminal status keeps it and its `endedAt`. Every row records `_metadata.supersededBy`.
+ */
+export interface RecordRunSupersededInput {
+  tenantId: string;
+  sessionId: string;
+  runId: string;
+  /** The run that replaced this one. An id, never content. */
+  supersededBy: string;
+  /** Why — used only when the row is still running and is cancelled here. PHI-free. */
+  terminalReason?: string | null;
+  consultationId?: string | null;
+}

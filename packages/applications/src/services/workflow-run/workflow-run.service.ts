@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { ResourceType, SysEventType, WorkflowRunEntity, WorkflowRunFactory, WorkflowRunRepository, WorkflowRunStatus } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { buildCursorFindAllProps, clampCursorLimit, CursorPage, decodeCursor, MAX_CURSOR_LIMIT, toCursorPage } from '../../common/cursorPagination';
@@ -15,6 +16,7 @@ import {
   ListWorkflowRunsOptions,
   RecordRunFinishedInput,
   RecordRunStartedInput,
+  RecordRunSupersededInput,
   RunNodeRollupResponse,
   RunGateStateResponse,
   RunTraceResponse,
@@ -30,6 +32,9 @@ import { WorkflowRunDtoMapper } from './workflow-run.dto.mapper';
  * join key onto `AgentTrajectoryStep`.
  */
 export const INTERPRETER_WORKFLOW_ID_PREFIX = 'workflow-interpreter-';
+
+/** `recordRunSuperseded` re-reads after an OCC conflict at most this many times in total. */
+const SUPERSEDE_WRITE_ATTEMPTS = 3;
 export function interpreterSessionId(runId: string): string {
   return `${INTERPRETER_WORKFLOW_ID_PREFIX}${runId}`;
 }
@@ -407,23 +412,74 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     // (`webhook-delivery.processor.ts`), and this is the second layer of that rule.
     // `recordRunStarted` still emits nothing; `resourceType` is set explicitly so this service's
     // other events (gate approvals, on the definition) are unaffected.
+    this.broadcastRunFinished(saved, input.tenantId, endedAt, input.terminalReason ?? null, input.consultationId ?? null);
+    return WorkflowRunDtoMapper.toResponse(saved);
+  }
+
+  async recordRunSuperseded(input: RecordRunSupersededInput): Promise<WorkflowRunResponse> {
+    for (let attempt = 0; ; attempt++) {
+      const entity =
+        (await this.workflowRunRepository.findByRunKey(input.tenantId, input.sessionId, input.runId)) ??
+        (await this.findRunByConventionalSessionKeys(input.tenantId, input.runId));
+      if (!entity) {
+        throw new NotFoundException(`WorkflowRun for run ${input.runId} not found`);
+      }
+
+      // Only a row the run has not closed yet is the supersede's to close. A terminal row's status
+      // and `endedAt` are what actually happened (e.g. COMPLETED before the resume) and stay.
+      const cancelling = entity.status === WorkflowRunStatus.RUNNING;
+      const endedAt = new Date();
+      if (cancelling) {
+        entity.status = WorkflowRunStatus.CANCELED;
+        entity.endedAt = endedAt;
+        entity.durationMs = Math.max(0, endedAt.getTime() - entity.startedAt.getTime());
+      }
+      // Merged, like `skippedNodeCount`, so `actingUserId` and the rest of the bag survive.
+      if (entity.metaData?.supersededBy !== input.supersededBy) {
+        entity.metaData = { ...(entity.metaData ?? {}), supersededBy: input.supersededBy };
+      }
+      if (!entity.hasChanges) {
+        return WorkflowRunDtoMapper.toResponse(entity);
+      }
+
+      try {
+        const saved = await this.workflowRunRepository.updateWithVersion(entity.id, entity, entity.version);
+        if (cancelling) {
+          this.broadcastRunFinished(saved, input.tenantId, endedAt, input.terminalReason ?? null, input.consultationId ?? null);
+        }
+        return WorkflowRunDtoMapper.toResponse(saved);
+      } catch (error) {
+        // The run's own completion watcher may write its terminal status between the read and this
+        // write. Re-read and decide again, so a run that just finished is not turned into CANCELED.
+        if (!(error instanceof OptimisticConcurrencyException) || attempt >= SUPERSEDE_WRITE_ATTEMPTS - 1) throw error;
+      }
+    }
+  }
+
+  /** The `workflow.run.completed` sys-event — see `recordRunFinished`. PHI-free by construction. */
+  private broadcastRunFinished(
+    saved: WorkflowRunEntity,
+    tenantId: string,
+    endedAt: Date,
+    terminalReason: string | null,
+    consultationId: string | null,
+  ): void {
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: saved.id,
       resourceType: ResourceType.WorkflowRun,
-      tenantId: input.tenantId,
+      tenantId,
       data: {
         action: 'runFinished',
         runId: saved.runId,
         slug: saved.workflowSlug,
         workflowVersionNumber: saved.workflowVersionNumber,
         status: saved.status,
-        terminalReason: input.terminalReason ?? null,
+        terminalReason,
         startedAt: saved.startedAt.toISOString(),
         endedAt: endedAt.toISOString(),
-        consultationId: input.consultationId ?? null,
+        consultationId,
       },
     });
-    return WorkflowRunDtoMapper.toResponse(saved);
   }
 
   /**
