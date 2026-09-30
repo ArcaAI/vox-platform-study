@@ -16,6 +16,7 @@
       --accent-blue: #38bdf8;
       --accent-emerald: #34d399;
       --accent-purple: #a855f7;
+      --accent-amber: #fbbf24;
     }
     * {
       box-sizing: border-box;
@@ -102,6 +103,7 @@
     .tag-blue { color: var(--accent-blue); }
     .tag-emerald { color: var(--accent-emerald); }
     .tag-purple { color: var(--accent-purple); }
+    .tag-amber { color: var(--accent-amber); }
     .card h2 {
       font-size: 1.35rem;
       font-weight: 600;
@@ -193,6 +195,19 @@
       <div class="card-footer">
         <span>Launch Interactive Diagram</span>
         <span>11 Components</span>
+      </div>
+    </a>
+
+    <!-- NLP Subsystem -->
+    <a class="card" href="architecture/diagrams/nlp/nlp-service.html">
+      <div>
+        <div class="card-tag tag-amber">Entity &amp; Clinical NLP</div>
+        <h2>NLP Subsystem <span class="arrow">&rarr;</span></h2>
+        <p>Clinical Named Entity Recognition (MedNER), assertion status detection, medical ontology linking (SNOMED-CT / ICD-10), and vitals extraction pipeline.</p>
+      </div>
+      <div class="card-footer">
+        <span>Launch Interactive Diagram</span>
+        <span>Interactive Diagram</span>
       </div>
     </a>
   </div>

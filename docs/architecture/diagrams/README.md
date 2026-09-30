@@ -19,6 +19,9 @@ diagrams/
 │   ├── stt-subsystem-architecture.visual-check.2048x1320.dark.png
 │   └── stt-subsystem-architecture.visual-check.2048x1320.light.png
 │
+├── nlp/                                         # Clinical NLP & Entity Extraction Subsystem
+│   └── nlp-service.html                         # Interactive standalone HTML diagram
+│
 └── text/                                        # Text Generation & Summarization Subsystem
     ├── text-subsystem-architecture.html         # Interactive standalone HTML diagram
     ├── text-subsystem-architecture.json         # Archify architecture IR specification
@@ -35,6 +38,7 @@ diagrams/
 | **Platform Overview** | [`platform/hope-architecture.html`](platform/hope-architecture.html) | [`platform/hope-architecture.json`](platform/hope-architecture.json) | High-level system topology, Gateway, Async Engine Workers, Storage (Postgres/Redis/MinIO), Identity & KMS |
 | **STT Subsystem** | [`stt/stt-subsystem-architecture.html`](stt/stt-subsystem-architecture.html) | [`stt/stt-subsystem-architecture.json`](stt/stt-subsystem-architecture.json) | Fast/Slow RabbitMQ Queues, ASR Worker Pool, Engine Routing (Deepgram / Whisper / Azure), Engine API (`:8860`), Audio Storage |
 | **Text Subsystem** | [`text/text-subsystem-architecture.html`](text/text-subsystem-architecture.html) | [`text/text-subsystem-architecture.json`](text/text-subsystem-architecture.json) | SOAP note synthesis, Multi-Provider LLM Routing, Per-Provider Circuit Breakers, Fail-Closed Guardrail Screening (`:8863`), Redis Task Manager & SSE Streaming |
+| **NLP Subsystem** | [`nlp/nlp-service.html`](nlp/nlp-service.html) | — | Clinical Named Entity Recognition (MedNER), assertion status detection, medical ontology linking (SNOMED-CT / ICD-10), and vitals extraction pipeline |
 
 ## How to View
 
@@ -43,6 +47,7 @@ Open any `.html` file directly in your web browser:
 open docs/architecture/diagrams/platform/hope-architecture.html
 open docs/architecture/diagrams/stt/stt-subsystem-architecture.html
 open docs/architecture/diagrams/text/text-subsystem-architecture.html
+open docs/architecture/diagrams/nlp/nlp-service.html
 ```
 
 Or view the deployed interactive showcase on GitHub Pages:
