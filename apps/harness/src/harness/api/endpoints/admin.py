@@ -348,7 +348,31 @@ async def terminate_workflow(
 ) -> dict[str, Any]:
     """Terminate a workflow immediately (non-cooperative), recording the reason."""
     client = await _temporal_client(request)
-    await client.get_workflow_handle(workflow_id).terminate(reason=body.reason)
+    try:
+        await client.get_workflow_handle(workflow_id).terminate(reason=body.reason)
+    except RPCError as exc:
+        # Temporal answers NOT_FOUND both for an unknown id and for a run that has already
+        # closed ("workflow execution already completed"). A governed resume supersedes a
+        # governing run that may have finished on its own (TASK-1022), so a closed run is a
+        # 409 the gateway reads as "nothing left to stop", and an unknown one a 404 — never
+        # an unhandled 500. Any other RPC failure propagates.
+        if exc.status != RPCStatusCode.NOT_FOUND:
+            raise
+        if "already completed" in str(exc).lower():
+            logger.info(
+                "harness.admin.terminate_already_closed",
+                workflow_id=workflow_id,
+                tenant_id=body.tenant_id,
+            )
+            raise HTTPException(
+                status_code=409, detail=f"workflow already closed: {workflow_id}"
+            ) from exc
+        logger.info(
+            "harness.admin.terminate_not_found",
+            workflow_id=workflow_id,
+            tenant_id=body.tenant_id,
+        )
+        raise HTTPException(status_code=404, detail=f"workflow not found: {workflow_id}") from exc
     logger.info(
         "harness.admin.terminate",
         workflow_id=workflow_id,
