@@ -48,7 +48,7 @@ describe('AiModelCatalogueController delegation', () => {
   it('passes the validated query through as the service filter and returns the payload verbatim', async () => {
     const payload = { providers: [], models: [] };
     const getCatalogue = vi.fn().mockResolvedValue(payload);
-    const controller = new AiModelCatalogueController({ getCatalogue } as never);
+    const controller = new AiModelCatalogueController({ getCatalogue } as never, {} as never);
 
     const result = await controller.catalogue({ taskType: 'TEXT_GENERATION', providerGroup: 'hope', usableOnly: true } as never);
 
@@ -58,7 +58,7 @@ describe('AiModelCatalogueController delegation', () => {
 
   it('sends an EMPTY filter when no query is supplied', async () => {
     const getCatalogue = vi.fn().mockResolvedValue({ providers: [], models: [] });
-    const controller = new AiModelCatalogueController({ getCatalogue } as never);
+    const controller = new AiModelCatalogueController({ getCatalogue } as never, {} as never);
 
     await controller.catalogue({} as never);
 

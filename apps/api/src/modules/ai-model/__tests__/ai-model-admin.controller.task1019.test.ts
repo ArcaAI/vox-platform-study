@@ -21,7 +21,7 @@ const ROUTES: Array<{ method: string; verb: RequestMethod; path: string; code?: 
 ];
 
 function controllerWith(ops: Record<string, unknown>) {
-  return new AiModelAdminController({} as never, {} as never, {} as never, ops as never, {} as never);
+  return new AiModelAdminController({} as never, {} as never, {} as never, ops as never);
 }
 
 describe('AiModelAdminController — TASK-1019 route metadata', () => {
