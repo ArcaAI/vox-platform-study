@@ -96,6 +96,20 @@ describe('HarnessInternalService.failGovernedRun (TASK-946 OD-4)', () => {
     consultation = consultationFixture({ status: ConsultationStatus.DRAINING });
   });
 
+  it('ignores the failure of a SUPERSEDED run — the marker names a newer governing run (TASK-1022 resume)', async () => {
+    const superseded = consultationFixture({
+      status: ConsultationStatus.DRAINING,
+      metadata: { governingEngine: { engine: 'tenant-workflow', workflowRunId: 'run-new', workflowDefinitionSlug: 'wf', supersededRunId: RUN_ID } },
+    });
+    const { service, consultationRepository } = build(superseded);
+
+    const result = await service.failGovernedRun(CONSULTATION, failedRun);
+
+    expect(result).toEqual({ transitioned: false, status: ConsultationStatus.DRAINING });
+    expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+    expect(superseded.status).toBe(ConsultationStatus.DRAINING);
+  });
+
   it('closes a DRAINING consultation as CLOSED_INCOMPLETE and stamps the terminal reason', async () => {
     const { service, consultationRepository } = build(consultation);
 

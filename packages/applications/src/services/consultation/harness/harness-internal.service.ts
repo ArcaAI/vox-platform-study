@@ -930,6 +930,20 @@ export class HarnessInternalService extends BaseService {
         throw new NotFoundException('Resource not found');
       }
 
+      // TASK-1022 — a resumed recording SUPERSEDES the governing run. A late failure from the
+      // superseded run must not close, or stamp an outcome on, the run that replaced it.
+      const governingRunId = readGoverningEngineMarker(consultation.metadata)?.workflowRunId;
+      if (governingRunId && governingRunId !== input.runId) {
+        this.logger.log({
+          message: 'Superseded governing run ended — ignored, a newer run governs this consultation',
+          consultationId,
+          runId: input.runId,
+          runStatus: input.status,
+          governingRunId,
+        });
+        return { transitioned: false, status: consultation.status };
+      }
+
       if (consultation.status !== ConsultationStatus.DRAINING) {
         // The run failed while the clinician is still working - the common case for a TRIGGER
         // failure, which happens seconds after `open`. There is nothing to close (the default

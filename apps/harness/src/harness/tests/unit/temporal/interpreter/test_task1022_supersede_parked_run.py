@@ -19,6 +19,7 @@ already pinned by `test_task932_live_handoff.py::test_a_live_owned_node_s_persis
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from typing import Any
 
@@ -97,6 +98,10 @@ class TestRetiringAParkedGoverningRun:
                 await handle.terminate(reason="test cleanup")
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        bool(os.environ.get("CI")),
+        reason="downloads the Temporal dev server (start_local); the harness CI suite is hermetic",
+    )
     async def test_terminating_the_parked_run_closes_its_review_child_too(self):
         # A REAL (local dev) server, deliberately: the time-skipping Java test server does not
         # enforce the parent-close policy — measured 2026-09-30, the child stayed RUNNING after its

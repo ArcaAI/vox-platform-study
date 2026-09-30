@@ -160,6 +160,11 @@ A consultation is not finished just because the clinician stopped once.
   **re-generates the final note over the whole visit** — every recording so far, in order — and
   replaces the unsigned draft in place (the same summary id). The completion window **starts
   again** from that moment.
+- **Who re-generates it.** For a consultation governed by the tenant's workflow, the resumed
+  stop SUPERSEDES the governing run: the parked run (and its review) is ended, and a fresh run of
+  the same workflow version finalises the whole visit in the template's shape, then opens a new
+  review. For a consultation on the default engine, the default engine re-finalises it. Either
+  way the note is updated in place, so `waitForFinalNote({ since })` resolves on the new version.
 - **Resume after the timeout.** A `CLOSED_INCOMPLETE` consultation can be resumed the same way:
   `recording.start()` moves it to `RECORDING`, and the next stop re-finalises and restarts the window.
 - **Continue without recording.** Adding context, editing the summary and approving all work on a
