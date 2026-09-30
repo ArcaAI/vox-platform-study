@@ -18,6 +18,7 @@ import {
   TenantPlan,
   PlanEntitlementRepository,
   TenantEntitlementRepository,
+  ResourceStatusType,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
 import { ITenantService } from './ITenantService';
@@ -152,14 +153,31 @@ export class TenantService extends BaseService implements ITenantService {
       data: tenant.toObject() as object,
     });
 
+    // TASK-1025 G1 (owner decision OD-1) — the two system buckets are NOT
+    // best-effort like the steps below: a tenant whose storage does not exist
+    // is not a tenant, it is a support ticket waiting for its first upload.
+    // `provisionSystemBuckets` undoes its own rows and buckets; here the tenant
+    // row written a moment ago is hard-purged (releasing its key for a retry)
+    // and the provisioning error is raised to the caller. The purge is itself
+    // best effort — its failure is logged and the ORIGINAL error still wins.
     try {
       await this.tenantBucketService.provisionSystemBuckets(tenant.id);
     } catch (error) {
-      this.logger.warn({
-        message: 'Failed to provision system storage buckets for new tenant',
+      this.logger.error({
+        message: 'Failed to provision system storage buckets for new tenant; rolling the tenant back',
         tenantId: tenant.id,
         error: error instanceof Error ? error.message : String(error),
       });
+      try {
+        await this.purgeFailedProvisioning(tenant.id, 'System storage buckets could not be provisioned; tenant creation rolled back (TASK-1025 G1)');
+      } catch (purgeError) {
+        this.logger.error({
+          message: 'Rolling back a tenant whose storage buckets could not be provisioned also failed; the tenant row may remain',
+          tenantId: tenant.id,
+          error: purgeError instanceof Error ? purgeError.message : String(purgeError),
+        });
+      }
+      throw error;
     }
 
     // Write the plan's storageQuotaBytes onto the primary
@@ -712,11 +730,33 @@ export class TenantService extends BaseService implements ITenantService {
     const existing = await this.tenantRepository.findById(id);
     this.assertNotSystemTenant(existing);
 
-    const tenant = await this.tenantRepository.softDelete(id);
+    // TASK-1025 G2 (owner decision OD-2) — RETAIN, THEN PURGE ON SCHEDULE.
+    // The tenant's buckets are cut off FIRST (their rows move to ARCHIVED and
+    // every data-plane path refuses them) and only then is the tenant deleted,
+    // so there is no moment where the tenant is gone but its PHI still
+    // reachable. Objects stay until the retention window passes and the
+    // `TenantStoragePurgeService` job removes them. Run under the TARGET
+    // tenant's CLS context (the bucket rows are tenant-scoped).
+    const storageRetainedBuckets = await this.runForTenant(id, () => this.tenantBucketService.retainForTenantDeletion(id));
+
+    let tenant: TenantEntity;
+    try {
+      tenant = await this.tenantRepository.softDelete(id);
+    } catch (error) {
+      // The tenant stays live, so its storage must too.
+      await this.runForTenant(id, () => this.tenantBucketService.releaseTenantDeletionRetention(id)).catch((releaseError: unknown) =>
+        this.logger.error({
+          message: 'Tenant delete failed AND its buckets could not be re-enabled; they stay retained (ARCHIVED) until restored',
+          tenantId: id,
+          error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+        }),
+      );
+      throw error;
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: tenant.id,
-      data: tenant.toObject() as object,
+      data: { ...(tenant.toObject() as object), storageRetainedBuckets },
     });
     return tenant;
   }
@@ -753,7 +793,10 @@ export class TenantService extends BaseService implements ITenantService {
    * not leave the sweep half-done (see `.claude/rules/04-application-services.md`
    * §Transactions).
    */
-  async purgeFailedProvisioning(tenantId: EntityId): Promise<void> {
+  async purgeFailedProvisioning(
+    tenantId: EntityId,
+    purgeReason = 'Provisioning failed before an admin was attached; compensating purge (W2-8)',
+  ): Promise<void> {
     const existing = await this.tenantRepository.findById(tenantId);
     this.assertNotSystemTenant(existing, 'purged');
 
@@ -772,6 +815,11 @@ export class TenantService extends BaseService implements ITenantService {
       // Department catalog clone — last of the content, now that nothing
       // left standing still holds an FK into it.
       await tx.department.deleteMany({ where: { tenantId } });
+      // TASK-1025 G1 — the tenant's bucket REGISTRY rows. `TenantBucket.name`
+      // is globally unique, so a row left behind here made the identical retry
+      // fail on bucket provisioning. Only the rows go: the physical buckets are
+      // empty (nobody could log in to write to them) and the retry adopts them.
+      await tx.tenantBucket.deleteMany({ where: { tenantId } });
       // The tenant row itself, released so an identical retry (same `key`)
       // can succeed — a soft delete would leave the unique constraint held.
       await tx.tenant.delete({ where: { id: tenantId } });
@@ -779,7 +827,7 @@ export class TenantService extends BaseService implements ITenantService {
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: tenantId,
-      data: { ...(existing.toObject() as object), purgeReason: 'Provisioning failed before an admin was attached; compensating purge (W2-8)' },
+      data: { ...(existing.toObject() as object), purgeReason },
     });
   }
 
@@ -830,7 +878,58 @@ export class TenantService extends BaseService implements ITenantService {
    * a non-enabled state, but restoring it is harmless).
    */
   async restore(id: EntityId): Promise<TenantEntity> {
+    try {
+      await this.tenantRepository.findById(id);
+    } catch (error) {
+      // TASK-1025 G2 — a soft-DELETED tenant is invisible to `findById`. It is
+      // restorable too: inside the retention window its storage comes back.
+      if (error instanceof DataNotFoundException) {
+        const deleted = await this.findDeletedTenant(id);
+        if (deleted) return this.restoreDeletedTenant(deleted);
+      }
+      throw error;
+    }
     return this.transitionLifecycle(id, (tenant) => tenant.enable(this.requestUser?.id), { guardSystem: false });
+  }
+
+  /** TASK-1025 G2 — the soft-deleted row, asked for explicitly (the soft-delete extension honours an explicit DELETED filter). */
+  private async findDeletedTenant(id: EntityId): Promise<TenantEntity | null> {
+    const rows = await this.tenantRepository.findAll({ filters: { id, resourceStatus: ResourceStatusType.DELETED } });
+    return rows[0] ?? null;
+  }
+
+  /**
+   * TASK-1025 G2 — bring a soft-deleted tenant back. Its retained (ARCHIVED)
+   * buckets are re-enabled. Buckets the purge job has started on or finished
+   * are NOT: their objects are gone, and the audit event says so
+   * (`storagePurged: true`) rather than handing back empty buckets as if they
+   * held the tenant's data. Fresh storage for such a tenant is an explicit,
+   * separate decision — see the TASK-1025 README.
+   */
+  private async restoreDeletedTenant(deleted: TenantEntity): Promise<TenantEntity> {
+    const previousData = deleted.toObject();
+    const restored = await this.tenantRepository.restore(deleted.id, this.requestUser?.id);
+    const storage = await this.runForTenant(deleted.id, () => this.tenantBucketService.releaseTenantDeletionRetention(deleted.id));
+
+    if (storage.purged > 0) {
+      this.logger.warn({
+        message: 'Restored a deleted tenant whose storage was already purged; its data cannot be recovered',
+        tenantId: deleted.id,
+        purgedBuckets: storage.purged,
+      });
+    }
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: restored.id,
+      data: {
+        resourceStatus: ResourceStatusType.ENABLED,
+        restoredFromDeletion: true,
+        storageRestoredBuckets: storage.restored,
+        storagePurged: storage.purged > 0,
+      },
+      previousData,
+    });
+    return restored;
   }
 
   /**
@@ -1153,8 +1252,10 @@ export class TenantService extends BaseService implements ITenantService {
    * need. All aggregates read `databaseService.client` directly (house
    * precedent) and are scoped by the explicit `tenantId` argument:
    *   - storageUsedBytes = SUM(Media.size)
-   *   - storageQuotaBytes = SUM(TenantBucket.quotaBytes) over configured
-   *                          buckets, else null ("no quota configured")
+   *   - storageQuotaBytes = MAX(TenantBucket.quotaBytes) over configured
+   *                          buckets, else null ("no quota configured") —
+   *                          MAX, not SUM: the plan quota is ONE tenant-wide
+   *                          ceiling stamped on BOTH system buckets (TASK-1025 G3)
    *   - transcriptionMinutes = SUM(AudioRecording.duration ms)/60000
    *   - summaries24h = COUNT(SummaryMeta WHERE generatedAt >= now-24h)
    *   - totalConsultations = COUNT(Consultation)
@@ -1186,14 +1287,14 @@ export class TenantService extends BaseService implements ITenantService {
         this.departmentRepository.count({ where: { tenantId } }),
         this.promptTemplateRepository.count({ where: { tenantId } }),
         client.media.aggregate({ _sum: { size: true }, where: { tenantId } }),
-        client.tenantBucket.aggregate({ _sum: { quotaBytes: true }, where: { tenantId, quotaBytes: { not: null } } }),
+        client.tenantBucket.aggregate({ _max: { quotaBytes: true }, where: { tenantId, quotaBytes: { not: null } } }),
         client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId } }),
         client.summaryMeta.count({ where: { tenantId, generatedAt: { gte: since24h } } }),
         client.consultation.count({ where: { tenantId } }),
       ]);
 
     const durationMs = durationAgg._sum.duration ?? 0;
-    const quotaSum = quotaAgg._sum.quotaBytes;
+    const quotaSum = quotaAgg._max.quotaBytes;
 
     return {
       totalUsers: distinctUserAssignments.length,
@@ -1253,8 +1354,8 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * TASK-986 (owner ruling D-7) — (re-)derive the primary system bucket's quota
-   * from the tenant's plan. Previously called only at creation, which left an
+   * TASK-986 (owner ruling D-7) — (re-)derive the system buckets' quota stamp
+   * (both of them since TASK-1025 G3) from the tenant's plan. Previously called only at creation, which left an
    * upgraded tenant on its old storage ceiling. Best-effort for the same reason
    * as {@link recordPlanChangeBestEffort}.
    */

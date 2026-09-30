@@ -94,7 +94,7 @@ const mockTxClient = { __tx: true } as const;
 const mockExtendedClient = {
   userRoleAssignment: { findMany: vi.fn().mockResolvedValue([]) },
   media: { aggregate: vi.fn().mockResolvedValue({ _sum: { size: null } }) },
-  tenantBucket: { aggregate: vi.fn().mockResolvedValue({ _sum: { quotaBytes: null } }) },
+  tenantBucket: { aggregate: vi.fn().mockResolvedValue({ _max: { quotaBytes: null } }) },
   audioRecording: { aggregate: vi.fn().mockResolvedValue({ _sum: { duration: null } }) },
   summaryMeta: { count: vi.fn().mockResolvedValue(0) },
   consultation: { count: vi.fn().mockResolvedValue(0) },
@@ -120,6 +120,9 @@ const mockTenantBucketService = {
   provisionSystemBuckets: vi.fn(),
   // Plan storageQuotaBytes -> primary bucket quotaBytes.
   applyPlanStorageQuota: vi.fn(),
+  // TASK-1025 G2 — tenant delete retains (ARCHIVED) / restore releases the buckets.
+  retainForTenantDeletion: vi.fn().mockResolvedValue(0),
+  releaseTenantDeletionRetention: vi.fn().mockResolvedValue({ restored: 0, purged: 0 }),
 };
 
 // Mock TenantReferenceSetService (TASK-890 §3.4) — the LAST provisioning step
@@ -1483,6 +1486,7 @@ describe('TenantService', () => {
         workflowAssignment: { deleteMany: deleteManySpy('workflowAssignment') },
         workflowDefinition: { deleteMany: deleteManySpy('workflowDefinition') },
         department: { deleteMany: deleteManySpy('department') },
+        tenantBucket: { deleteMany: deleteManySpy('tenantBucket') },
         tenant: {
           delete: vi.fn().mockImplementation(async () => {
             callOrder.push('tenant');
@@ -1567,6 +1571,8 @@ describe('TenantService', () => {
       expect(tx.agent.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
       expect(tx.workflowDefinition.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
       expect(tx.department.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
+      // TASK-1025 G1 — the bucket registry rows go too (unique `name` would block the retry).
+      expect(tx.tenantBucket.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 'doomed-tenant-id' } });
     });
 
     it('refuses to purge the reserved system tenant', async () => {
@@ -1877,13 +1883,16 @@ describe('TenantService', () => {
       expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
     });
 
-    it('does not block tenant creation when bucket provisioning fails (mirrors existing behaviour)', async () => {
+    // TASK-1025 G1 (owner decision OD-1) — REVERSED: a tenant whose system
+    // buckets cannot be provisioned is rolled back and the error is raised.
+    // Full coverage: `tenant.service.provision-failure.task1025.test.ts`.
+    it('fails tenant creation when bucket provisioning fails (TASK-1025 G1)', async () => {
       const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
       mockTenantRepository.create.mockResolvedValue(newTenant);
-      mockTenantBucketService.provisionSystemBuckets.mockRejectedValue(new Error('s3 down'));
+      mockTenantBucketService.provisionSystemBuckets.mockRejectedValueOnce(new Error('s3 down'));
       mockTenantRepository.findFirst.mockResolvedValue(null);
 
-      await expect(service.create({ key: 'NEW_TENANT', name: 'New Tenant' })).resolves.toEqual(expect.objectContaining({ id: 'new-tenant-id' }));
+      await expect(service.create({ key: 'NEW_TENANT', name: 'New Tenant' })).rejects.toThrow('s3 down');
     });
   });
 
@@ -2470,7 +2479,7 @@ describe('TenantService', () => {
       mockExtendedClient.audioRecording.aggregate.mockResolvedValue({ _sum: { duration: 180_000 } }); // 3 min
       mockExtendedClient.summaryMeta.count.mockResolvedValue(7);
       mockExtendedClient.consultation.count.mockResolvedValue(42);
-      mockExtendedClient.tenantBucket.aggregate.mockResolvedValue({ _sum: { quotaBytes: null } });
+      mockExtendedClient.tenantBucket.aggregate.mockResolvedValue({ _max: { quotaBytes: null } });
 
       const result = await service.getUsageStats('tenant-1');
 
@@ -2487,12 +2496,18 @@ describe('TenantService', () => {
       expect(result.storageQuotaBytes).toBeNull();
     });
 
-    it('returns the summed bucket quota (BigInt→number) when configured', async () => {
-      mockExtendedClient.tenantBucket.aggregate.mockResolvedValue({ _sum: { quotaBytes: 1_073_741_824n } });
+    // TASK-1025 G3 — the plan quota is ONE ceiling stamped on BOTH system
+    // buckets, so the tenant's quota is the MAX of its stamps, never their SUM.
+    it('returns the tenant-wide bucket quota (MAX of the stamps, BigInt→number) when configured', async () => {
+      mockExtendedClient.tenantBucket.aggregate.mockResolvedValue({ _max: { quotaBytes: 1_073_741_824n } });
 
       const result = await service.getUsageStats('tenant-1');
 
       expect(result.storageQuotaBytes).toBe(1_073_741_824);
+      expect(mockExtendedClient.tenantBucket.aggregate).toHaveBeenCalledWith({
+        _max: { quotaBytes: true },
+        where: { tenantId: 'tenant-1', quotaBytes: { not: null } },
+      });
     });
 
     it('only counts summaries generated within the last 24h', async () => {

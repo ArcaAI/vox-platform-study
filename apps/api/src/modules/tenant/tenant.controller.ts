@@ -322,7 +322,13 @@ export class TenantController {
   @Post(':id/restore')
   @HttpCode(200)
   @CanManage('Tenant')
-  @ApiOperation({ summary: 'Restore a suspended/archived tenant to ENABLED' })
+  @ApiOperation({
+    summary: 'Restore a suspended, archived or deleted tenant to ENABLED',
+    description:
+      'A deleted tenant is restorable too (TASK-1025). Inside the deleted-tenant storage retention window ' +
+      '(`storage.tenantDeletion.retentionDays`) its retained buckets are given back; once the purge has run, the tenant ' +
+      'is restored WITHOUT its storage and the audit event records `storagePurged: true`.',
+  })
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 200, description: 'Tenant restored', type: TenantResponse })
   @ApiResponse({ status: 404, description: 'Tenant not found' })

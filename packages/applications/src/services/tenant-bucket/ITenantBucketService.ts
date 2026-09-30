@@ -47,13 +47,25 @@ export abstract class ITenantBucketService {
   abstract deleteObject(bucketId: string, fileKey: string): Promise<DeleteTenantBucketObjectResponse>;
   abstract provisionSystemBuckets(tenantId: string): Promise<TenantBucketResponse[]>;
   /**
-   * Writes the plan's `PlanEntitlement.storageQuotaBytes` onto the tenant's
-   * primary (AUDIO) system bucket as `TenantBucket.quotaBytes`.
-   * Idempotent — only writes when the bucket's `quotaBytes` is currently
-   * null; a `null` plan or a `null` storageQuotaBytes (unlimited tier) is a
-   * no-op that leaves `quotaBytes` null.
+   * Stamps the plan's `storageQuotaBytes` — ONE tenant-wide ceiling shared by
+   * both system buckets (TASK-1025 G3) — onto the attachments AND recordings
+   * rows as `TenantBucket.quotaBytes`, re-deriving any stamp that no longer
+   * matches the plan; an unlimited plan clears it, a `null` plan is a no-op.
+   * Display only: upload enforcement resolves the quota from the entitlements.
    */
   abstract applyPlanStorageQuota(tenantId: string, plan: TenantPlan | null): Promise<void>;
+  /**
+   * TASK-1025 G2 — the tenant is being soft-deleted: move each of its ENABLED
+   * bucket rows to ARCHIVED (access cut, objects kept). Returns how many rows
+   * were retained. Run under the TARGET tenant's CLS context.
+   */
+  abstract retainForTenantDeletion(tenantId: string): Promise<number>;
+  /**
+   * TASK-1025 G2 — the deleted tenant is being restored inside the retention
+   * window: ARCHIVED rows go back to ENABLED. Buckets the purge has started on
+   * or finished are NOT restored; `purged` counts them so the caller can say so.
+   */
+  abstract releaseTenantDeletionRetention(tenantId: string): Promise<{ restored: number; purged: number }>;
   abstract getPresignedUrl(bucketId: string, fileKey: string): Promise<{ url: string }>;
   /** Read the tenant's current default bucket per purpose. */
   abstract getDefaultBuckets(): Promise<TenantBucketDefaultsResponse>;

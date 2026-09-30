@@ -110,17 +110,21 @@ export class TenantBucketRepository extends Repository<TenantBucketEntity, Tenan
   }
 
   /**
-   * SUM(quotaBytes) over buckets that have a quota configured
-   * (`quotaBytes IS NOT NULL`), for the platform consumption roll-up
-   * ("storage quota"). `tenantId = null` means platform-wide
-   * (no tenant filter). Returns the raw nullable BigInt sum — the caller
-   * owns the null-vs-Number presentation.
+   * The configured storage quota for the platform consumption roll-up
+   * ("storage quota"): per tenant the MAX of its buckets' `quotaBytes`, summed
+   * across tenants. MAX, not SUM (TASK-1025 G3): the plan quota is ONE
+   * tenant-wide ceiling stamped on BOTH system buckets, so summing rows would
+   * double it. `tenantId = null` means platform-wide (no tenant filter).
+   * Returns `null` when no bucket has a quota configured — the caller owns the
+   * null-vs-Number presentation.
    */
   async sumConfiguredQuotaBytes(tenantId: string | null): Promise<bigint | null> {
-    const result = await (this as any).db.aggregate({
-      _sum: { quotaBytes: true },
+    const groups: Array<{ _max: { quotaBytes: bigint | null } }> = await (this as any).db.groupBy({
+      by: ['tenantId'],
+      _max: { quotaBytes: true },
       where: { ...(tenantId ? { tenantId } : {}), quotaBytes: { not: null } },
     });
-    return result._sum.quotaBytes;
+    if (groups.length === 0) return null;
+    return groups.reduce((total, group) => total + (group._max.quotaBytes ?? 0n), 0n);
   }
 }
