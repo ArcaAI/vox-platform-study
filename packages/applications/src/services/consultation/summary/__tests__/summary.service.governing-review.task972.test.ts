@@ -144,9 +144,9 @@ describe('approveSummary — releasing the GOVERNING run`s review (TASK-933 H3-6
 
     expect(result.approvalStatus).toBe('APPROVED');
     expect(m.workflowExposure.decideReview).toHaveBeenCalledWith(SLUG, RUN, 'n_review', { decision: 'approved' });
-    // Substrate A is still signalled — a consultation may legitimately be on either substrate,
-    // and this lane ADDS a target rather than replacing one.
-    expect(m.harnessGateway.signalApproval).toHaveBeenCalledTimes(1);
+    // TASK-1022 — a governed consultation never starts `harness-doc`, so Substrate A is no longer
+    // signalled for it (the signal only ever answered "workflow not found").
+    expect(m.harnessGateway.signalApproval).not.toHaveBeenCalled();
   });
 
   it('releases EVERY review node the governing graph declares', async () => {

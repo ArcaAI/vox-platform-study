@@ -274,6 +274,25 @@ class TestSignalApprove:
         assert payload.attestation_hash == "h-1"
 
     @pytest.mark.asyncio
+    async def test_signal_answers_404_when_the_workflow_does_not_exist(self, harness):
+        # TASK-1022: a consultation governed by a tenant workflow never starts
+        # `harness-doc-<id>`. Temporal answers NOT_FOUND; the route must say so as a 404
+        # with a clear body, not an unhandled ASGI 500.
+        from temporalio.service import RPCError, RPCStatusCode
+
+        http, client, handle, _settings = harness
+        handle.signal.side_effect = RPCError(
+            "workflow not found for ID: harness-doc-c-1", RPCStatusCode.NOT_FOUND, b""
+        )
+        resp = await http.post(
+            "/api/v1/internal/workflows/c-1/signal/approve",
+            headers=_HEADERS,
+            json={"decision": "SIGNED", "clinicianId": "doc-1"},
+        )
+        assert resp.status_code == 404
+        assert resp.json() == {"detail": "workflow not found: harness-doc-c-1"}
+
+    @pytest.mark.asyncio
     async def test_signal_rejects_bad_token(self, harness):
         http, client, handle, _settings = harness
         resp = await http.post(
