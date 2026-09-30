@@ -42,12 +42,20 @@ export function isHfRepoDirPrefix(prefix: string): boolean {
 
 const has = (files: LocalModelFile[], pattern: RegExp) => files.some((f) => pattern.test(f.key));
 
-/** The serving library the files imply. `config.json` with `architectures` + torch weights = transformers. */
+const TORCH_WEIGHTS = /\.(safetensors|bin|pt|pth)$/i;
+const TOP_LEVEL_TORCH_WEIGHTS = /^[^/]+\.(safetensors|bin|pt|pth)$/i;
+
+/**
+ * The serving library the files imply. `config.json` with `architectures` + torch weights, or a
+ * top-level `config.json` beside top-level torch weights (an HF snapshot whose config names no
+ * architecture), = transformers — an `onnx/` export shipped beside them does not make it ONNX.
+ */
 export function localLibraryFor(files: LocalModelFile[], config: Record<string, unknown> | null): string | null {
   if (has(files, SINGLE_FILE_PATTERN['llama.cpp'])) return 'llama.cpp';
   if (has(files, SINGLE_FILE_PATTERN['whisper.cpp'])) return 'whisper.cpp';
   if (has(files, /\.nemo$/i)) return 'nemo';
-  if (architectureOf(config) && has(files, /\.(safetensors|bin|pt|pth)$/i)) return 'transformers';
+  if (architectureOf(config) && has(files, TORCH_WEIGHTS)) return 'transformers';
+  if (config !== null && has(files, TOP_LEVEL_TORCH_WEIGHTS)) return 'transformers';
   if (has(files, SINGLE_FILE_PATTERN.onnxruntime)) return 'onnxruntime';
   return null;
 }

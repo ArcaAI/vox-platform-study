@@ -142,6 +142,11 @@ export function formatFor(library: string | null, files: Array<Pick<HuggingFaceF
   if (library === 'ctranslate2') return AiModelFormat.CTRANSLATE2;
   if (library === 'faster-whisper') return AiModelFormat.FASTER_WHISPER;
   if (paths.some((p) => p.endsWith('.nemo'))) return AiModelFormat.NEMO;
+  // A transformers repo often ships an `onnx/` export beside its torch weights; it loads the weights.
+  if (library === 'transformers') {
+    if (paths.some((p) => p.endsWith('.safetensors'))) return AiModelFormat.SAFETENSOR;
+    if (paths.some((p) => p.endsWith('.bin') || p.endsWith('.pt') || p.endsWith('.pth'))) return AiModelFormat.PYTORCH;
+  }
   if (paths.some((p) => p.endsWith('.onnx'))) return AiModelFormat.ONNX;
   if (paths.some((p) => p.endsWith('.safetensors'))) return AiModelFormat.SAFETENSOR;
   if (paths.some((p) => p.endsWith('.bin') || p.endsWith('.pt') || p.endsWith('.pth'))) return AiModelFormat.PYTORCH;
