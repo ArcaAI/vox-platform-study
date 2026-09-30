@@ -17,8 +17,10 @@ from typing import Any
 
 import pytest
 
+from harness.temporal.interpreter.compiled_config import CompiledNode
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import core
+from harness.temporal.interpreter.workflow import WorkflowInterpreter
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
 _RUN = "018f3a7c-5b84-7d19-9e63-0a2c8d5f7b43"
@@ -229,3 +231,114 @@ async def test_the_finalizer_user_turn_carries_the_headings(
         "## Investigations\nNot discussed\n\n"
         "## Current Diagnosis\nAnaemia (Hb 10.2 g/dL)."
     )
+
+
+# ---------------------------------------------------------------------------------------------
+# THROUGH the socket threading: what the finalizer actually receives from the live handoff.
+#
+# The `core.agent` registry entry declares `out -> "text"`, so `_resolve_bound_inputs` binds the
+# summary output's `text` STRING into `n_finalize.in` — never the `{ text, sections }` object, so
+# `_render_input_for_generation`'s sections branch is not reached on this path. The gateway's
+# `persistLiveHandoff` therefore writes the HEADED rendering as the handoff `text` (same rules);
+# these tests pin that the headings survive the threading into the user turn.
+# ---------------------------------------------------------------------------------------------
+
+_HEADED_HANDOFF_TEXT = (
+    "## New Complaints\nBreathless on stairs.\n\n"
+    "## Investigations\nNot discussed\n\n"
+    "## Current Diagnosis\nAnaemia (Hb 10.2 g/dL)."
+)
+
+
+def _compiled(node_id: str, inputs: list[tuple[str, str, str]]) -> CompiledNode:
+    return CompiledNode.model_validate(
+        {
+            "nodeId": node_id,
+            "type": "core.agent",
+            "activity": "interpreter.core_agent",
+            "config": {},
+            "timeoutSeconds": 30,
+            "retry": {"maximumAttempts": 1, "initialIntervalSeconds": 1, "backoffCoefficient": 2},
+            "inputs": [{"fromNodeId": f, "fromPort": fp, "toPort": tp} for (f, fp, tp) in inputs],
+            "onError": "degrade",
+            "emitsTrajectory": True,
+        }
+    )
+
+
+def _finalize_bound_from_handoff(summary_output: dict[str, Any]) -> dict[str, Any]:
+    """The seeded ArcaAI fragment — both visit-type summaries feed `n_finalize.in` — with the
+    live handoff seeded into the walk's cache exactly as `_await_live_outputs` does (only the
+    branch that ran is present), resolved through the REAL registry's declared sockets."""
+    wf = WorkflowInterpreter()
+    wf._node_types.update(
+        {
+            "n_summary_new": "core.agent",
+            "n_summary_revisit": "core.agent",
+            "n_finalize": "core.agent",
+        }
+    )
+    for node_id in ("n_summary_new", "n_summary_revisit"):
+        wf._nodes_by_id[node_id] = _compiled(node_id, [])
+    wf._node_outputs["n_summary_new"] = summary_output
+    finalize = _compiled(
+        "n_finalize", [("n_summary_new", "out", "in"), ("n_summary_revisit", "out", "in")]
+    )
+    return wf._resolve_bound_inputs(finalize)
+
+
+def _handoff_output(text: str) -> dict[str, Any]:
+    return _note(
+        ("New Complaints", "Breathless on stairs."),
+        ("Investigations", ""),
+        ("Current Diagnosis", "Anaemia (Hb 10.2 g/dL)."),
+        text=text,
+    )
+
+
+class TestTheHandoffTextReachesTheFinalizer:
+    def test_the_registry_binds_the_summary_text_string_not_the_object(self) -> None:
+        bound = _finalize_bound_from_handoff(_handoff_output(_HEADED_HANDOFF_TEXT))
+
+        assert bound == {"in": _HEADED_HANDOFF_TEXT}
+
+    def test_a_flat_handoff_text_reaches_the_finalizer_headingless(self) -> None:
+        """The defect this ticket's handoff fix closes (replay run3 ``p10.txt``): with the flat
+        body join as ``text``, the sections never reach the prompt."""
+        flat = "Breathless on stairs.\n\nAnaemia (Hb 10.2 g/dL)."
+        bound = _finalize_bound_from_handoff(_handoff_output(flat))
+
+        assert core._render_input_for_generation(bound.get("in")) == [flat]
+
+
+@pytest.mark.asyncio
+async def test_the_finalizer_user_turn_starts_with_a_heading_through_the_socket_threading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _noop(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    text = _Text()
+    monkeypatch.setattr(core, "record_and_flush", _noop)
+    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
+    monkeypatch.setattr(core, "_api_client", lambda _settings: _Api())
+    monkeypatch.setattr(core, "_text_client", lambda _settings: text)
+
+    bound = _finalize_bound_from_handoff(_handoff_output(_HEADED_HANDOFF_TEXT))
+    result = await core.interpreter_core_agent(
+        NodeActivityInput(
+            node_id="n_finalize",
+            node_type="core.agent",
+            config={"agentRef": {"slug": "casenote-finalization"}},
+            tenant_id=_TENANT,
+            sandbox=False,
+            bound_inputs=bound,
+            run_payload={},
+            run_id=_RUN,
+        )
+    )
+
+    assert result.status == "SUCCEEDED"
+    prompt = text.calls[0]["prompt"]
+    assert prompt.startswith("## ")
+    assert prompt == _HEADED_HANDOFF_TEXT
