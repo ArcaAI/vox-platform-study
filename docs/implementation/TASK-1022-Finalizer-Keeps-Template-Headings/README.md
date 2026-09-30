@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Pending** — plan written, awaiting owner answers (§6) and **go** |
+| Status | **In Progress** — owner answered the ODs and said **go** (2026-09-30) |
 | Type | bugfix (note quality; every consultation note) |
 | Branch | `dev-2.2` |
 | Repos | `arca/hope-v2` (harness interpreter, applications live lane, seeds); ALaaS only if OD-3 changes the note contract |
@@ -93,6 +93,12 @@ The morning new-visit note had the same invented shape, so the defect is not tie
 | **OD-2** | Include the live section-routing symptom (`treatment_plan` never patched, the plan duplicated across three sections) in this ticket? | **No, open a separate ticket.** It is a different mechanism (live per-turn section patching). Fixing the finalizer already removes the duplication from the signed note, because the finalizer merges |
 | **OD-3** | Keep a Markdown `case_note` (recommended), or move to a structured `sections[]` output keyed by `sectionKey`? | **Keep Markdown now.** Structured output changes the contract for ALaaS, the console and EMR copy; revisit it separately if headings still drift after this fix |
 
+### 6.1 Owner answers (2026-09-30)
+
+- **OD-1: (b).** A template heading with nothing said keeps the heading with the fixed marker **"Not discussed"**. The marker is a literal the prompt names; the model never paraphrases it.
+- **OD-2: folded in.** The live section routing (`treatment_plan` never patched, the plan duplicated across three sections, a stale "No new instructions…" line surviving) is fixed in this ticket.
+- **OD-3: keep Markdown.**
+
 ## 7. Implementation plan (on go)
 
 | Lane | Tier | Owns | Tests (RED first) |
@@ -128,4 +134,5 @@ _Not started — awaiting go._
 
 | Date | Change |
 |---|---|
+| 2026-09-30 | Owner: OD-1 (b) "Not discussed", OD-2 folded in, OD-3 Markdown; go. Phase 2 discovery then lanes. |
 | 2026-09-30 | Ticket opened from TASK-1020 §9.6 with the replay evidence; plan and ODs written. |
