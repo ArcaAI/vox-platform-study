@@ -8,7 +8,7 @@ MLflow, GGUF servers). Not used by CI or the cluster deployment.
 
 | Path | Purpose |
 |---|---|
-| `docker-compose.yml` | Core services always required for local dev (Postgres, Redis, MinIO) |
+| `docker-compose.yml` | Core services always required for local dev (Postgres, Redis, MinIO — the `pgsty/silo` community fork, digest-pinned; it also provides `mc` for `minio-setup`) |
 | `docker-compose.dev.yml` | Optional extensions (Vault, Temporal, Qdrant, reranker, observability, inference, MLflow, GGUF) — opt-in via Compose profiles, except Qdrant which is unprofiled |
 | `configs/vault/` | Vault dev-mode bootstrap (`dev-init.sh`, `test-init.sh`, `policies/*.hcl`) |
 | `configs/temporal/`, `configs/prometheus/`, `configs/grafana/` | Per-profile service config, mounted read-only |

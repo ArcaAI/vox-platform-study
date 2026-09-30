@@ -35,7 +35,7 @@ See [scripts/README.md](../scripts/README.md) for the full script reference.
 | Service | Container | Ports | Notes |
 |---|---|---|---|
 | PostgreSQL 18 | `hope-postgres` | 5432 | `timescale/timescaledb-ha:pg18-all` (pgvector/vectorscale available), named volume `hope-postgres-data-pg18` |
-| MinIO | `hope-minio` | 9000 API / 9001 console | `minio-setup` init container creates buckets (`mlflow`, `hope-models`, `recordings`, `generated-audio`, `documents`, `backups`, `harness-claim-check`) and the `hope-models-reader`/`hope-models-publisher` service-account identities |
+| MinIO | `hope-minio` | 9000 API / 9001 console | `pgsty/silo` community fork (renamed from `pgsty/minio`) pinned by digest (upstream `minio/minio` is archived and no longer published — TASK-1029; the same image also runs the `mc` init step); `minio-setup` init container creates buckets (`mlflow`, `hope-models`, `recordings`, `generated-audio`, `documents`, `backups`, `harness-claim-check`) and the `hope-models-reader`/`hope-models-publisher` service-account identities |
 | Redis 8 | `hope-redis` | 6379 | persistence disabled by design (PHI posture) |
 
 ### `docker-compose.dev.yml` (project `hope-infra-dev`) — extensions, mostly profile-gated

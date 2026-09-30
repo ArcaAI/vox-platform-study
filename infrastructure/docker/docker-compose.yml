@@ -89,7 +89,12 @@ services:
 
     minio:
         container_name: hope-minio
-        image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+        # TASK-1029: SILO, the pgsty community fork of MinIO (renamed from pgsty/minio;
+        # upstream minio/minio is archived and no longer published). The server binary is
+        # /usr/bin/silo; the image entrypoint maps `server ...` to it, so `command:` and the
+        # /minio/health/* healthcheck are unchanged. One image for the server AND the `mc`
+        # init container (it bundles /usr/bin/mc). Pinned by OCI-index digest; mirrored by the `mirror-images` CI job.
+        image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
         networks:
             - hope-network
         restart: unless-stopped
@@ -122,7 +127,9 @@ services:
     # MinIO Bucket Setup
     minio-setup:
         container_name: hope-minio-setup
-        image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+        # Same pgsty/silo image as the server: it carries /usr/bin/mc, and the
+        # entrypoint below replaces the image entrypoint (docker-entrypoint.sh).
+        image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
         networks:
             - hope-network
         depends_on:

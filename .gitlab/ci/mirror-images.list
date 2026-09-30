@@ -1,0 +1,17 @@
+# Third-party images mirrored into our own registry by the `mirror-images` job
+# (.gitlab/ci/mirror.yml, script mirror-images.sh).
+#
+# One image per line:   <name>  <source ref, pinned by tag AND sha256 digest>
+#
+# The job copies each ref to  $REGISTRY/$CI_PROJECT_PATH/mirror/<name>:<tag>
+# with `crane copy`, which keeps the digest byte-identical, so a consumer can
+# pin  <registry>/<project>/mirror/<name>@sha256:<digest>  and get exactly what
+# this list names. A line without `@sha256:` is refused. To add an image: add a
+# line here — nothing else changes.
+#
+# TASK-1029: upstream minio/minio and minio/mc are archived and no longer
+# published. pgsty/silo ("SILO", the pgsty MinIO community fork; renamed from
+# pgsty/minio, which is frozen at RELEASE.2026-08-04) is the one image for the
+# server AND every `mc` step (it bundles /usr/bin/mc; the server binary is
+# /usr/bin/silo). The digest is the OCI INDEX (amd64 + arm64).
+silo pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46

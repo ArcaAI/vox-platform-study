@@ -201,7 +201,7 @@ docker run -d \
   -p 9001:9001 \
   -e MINIO_ROOT_USER=minioadmin \
   -e MINIO_ROOT_PASSWORD=minioadmin \
-  minio/minio server /data --console-address ":9001"
+  pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 ```
 
 Then access the MinIO console at `http://localhost:9001` to create buckets.

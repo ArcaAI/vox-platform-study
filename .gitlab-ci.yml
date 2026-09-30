@@ -241,4 +241,5 @@ include:
   - local: .gitlab/ci/scan.yml
   - local: .gitlab/ci/publish.yml
   - local: .gitlab/ci/deploy.yml
+  - local: .gitlab/ci/mirror.yml
   - local: .gitlab/ci/notify.yml

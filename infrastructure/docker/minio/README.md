@@ -4,6 +4,8 @@ This directory holds the IAM policy documents mounted into the `minio-setup` boo
 of `infrastructure/docker/docker-compose.yml`, plus the convention that governs the `hope-models`
 bucket in **every** environment.
 
+> **Which MinIO (TASK-1029).** Upstream `minio/minio` is archived and no longer publishes images, so every environment runs SILO, the `pgsty/silo` community fork of MinIO (renamed from `pgsty/minio`, which is frozen at `RELEASE.2026-08-04`; AGPL-3.0, same on-disk format and admin API, full web console restored, CVE backports), pinned to the `RELEASE.2026-09-16T00-00-00Z` security release by OCI-index digest. The server binary is `/usr/bin/silo` (the image entrypoint maps `server ...` to it); the same image serves both the server and the `mc` bootstrap steps (it bundles `/usr/bin/mc`). A CI job (`mirror-images`) keeps a same-digest copy in our registry.
+
 > **Two init paths, and only one of them is in this repo.**
 >
 > | Path | Who bootstraps it | Where |
@@ -450,8 +452,10 @@ under time pressure.
 
 ### Measured MinIO behaviours — things this file used to assert
 
-Run 2026-08-30 against `minio/minio:RELEASE.2025-04-08T15-41-24Z` (4-drive
-erasure set) and `minio/mc:RELEASE.2025-04-16T18-13-26Z`, in a throwaway
+Run 2026-08-30 against upstream MinIO `RELEASE.2025-04-08T15-41-24Z` (4-drive
+erasure set) and upstream `mc` `RELEASE.2025-04-16T18-13-26Z` (both images have
+since been retired — TASK-1029 moved everything to the pgsty fork, which is the
+same code line and admin API), in a throwaway
 Kubernetes namespace, using **the committed policy documents verbatim**.
 Evidence is in the ticket README section 7.
 

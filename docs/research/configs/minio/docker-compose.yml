@@ -15,7 +15,8 @@
 
 services:
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # TASK-1029: upstream minio/minio is archived and no longer published; pgsty SILO fork, renamed from pgsty/minio (same format/admin API).
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     container_name: minio
     restart: unless-stopped
     command: server /data --console-address ":9001"

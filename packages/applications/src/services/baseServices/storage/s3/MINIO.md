@@ -2,6 +2,8 @@
 
 This document provides comprehensive guidance for using the S3 service module with MinIO, an open-source object storage server compatible with Amazon S3.
 
+> **Which MinIO (TASK-1029).** Upstream `minio/minio` was archived in April 2026 and no longer publishes images. HOPE runs SILO, the `pgsty/silo` community fork of MinIO (renamed from `pgsty/minio`; AGPL-3.0, same on-disk format and admin API, full web console restored, CVE backports), pinned to the `RELEASE.2026-09-16T00-00-00Z` security release. Everything below applies to it unchanged, except that the server binary is `silo` (the image entrypoint maps `server ...` to it, but a Kubernetes `command:` bypasses the entrypoint, so call `silo` there). See `infrastructure/docker/docker-compose.yml` for the digest-pinned reference.
+
 ## Overview
 
 The S3 service module is fully compatible with MinIO and includes specific optimizations and configurations for MinIO deployments. MinIO is automatically detected based on endpoint patterns, and the service adjusts its configuration accordingly.
@@ -70,7 +72,8 @@ UPDATE global_settings SET value = 'true' WHERE key = 'S3_REJECT_UNAUTHORIZED';
 version: '3.8'
 services:
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # pgsty community fork of MinIO (upstream is archived; TASK-1029) — pin by digest in real deployments
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     container_name: minio
     ports:
       - '9000:9000'
@@ -110,7 +113,7 @@ spec:
     spec:
       containers:
         - name: minio
-          image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+          image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z
           ports:
             - containerPort: 9000
             - containerPort: 9001
@@ -123,7 +126,7 @@ spec:
             - /bin/bash
             - -c
           args:
-            - minio server /data --console-address :9001
+            - silo server /data --console-address :9001
           volumeMounts:
             - name: storage
               mountPath: /data

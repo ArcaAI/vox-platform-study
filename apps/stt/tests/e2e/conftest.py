@@ -58,7 +58,12 @@ def minio_container():
     try:
         from testcontainers.minio import MinioContainer
 
-        with MinioContainer("minio/minio:RELEASE.2025-04-22T22-12-26Z") as minio:
+        with MinioContainer(
+            # TASK-1029: SILO, the pgsty MinIO community fork (upstream minio/minio is archived).
+            # MinioContainer runs `server /data --address :9000` and waits on /minio/health/live;
+            # the image entrypoint maps `server` to /usr/bin/silo, and MINIO_ACCESS_KEY/SECRET_KEY are still read.
+            "pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46"
+        ) as minio:
             yield {
                 "endpoint": f"{minio.get_container_host_ip()}:{minio.get_exposed_port(9000)}",
                 "access_key": "minioadmin",
