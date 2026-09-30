@@ -1,6 +1,6 @@
 # TASK-1029: Switch MinIO to the pgsty community fork (both repos) and pin/mirror the image
 
-**Status:** In Progress
+**Status:** Review — both lanes merged locally (hope-v2 `92e030d35`, deployment `526d1c7`); not pushed. The cluster rollout is forward-only and waits on the owner (backup first, see deployment `docs/deployment-runbook.md` §2).
 **Type:** infrastructure
 **Branch:** `dev-2.2` (hope-v2) · `main` (hope-v2-deployment)
 **Related:** TASK-1024 / TASK-1025 (the MinIO policy work that surfaced the problem), `e166603` + `4929e2f` in hope-v2-deployment (the `minio/mc` stop-gap). TASK-1028 is reserved by another session ("Replace MinIO with Alarik", empty directory as of 2026-10-01), so this ticket is not TASK-1028.
@@ -90,6 +90,60 @@ Two lanes in parallel, in disjoint repositories. The orchestrator merges both, r
 
 ## Implementation Summary
 
+### Orchestrator summary (2026-10-01)
+
+**Pin change during implementation.** The fork was renamed: `github.com/pgsty/minio` now redirects to `pgsty/silo` ("SILO"). Docker Hub `pgsty/minio` is frozen at `RELEASE.2026-08-04`, and the `RELEASE.2026-09-16` security release (auth, policy and IAM revocation fixes) exists only as `pgsty/silo`. Both repos therefore pin **`pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46`** (OCI index, amd64 + arm64). This supersedes the `pgsty/minio` digest named in the plan above; D-1 to D-5 otherwise stand.
+
+The server binary is `/usr/bin/silo` (there is no `minio` binary). The entrypoint maps `minio …` and `server …` to `silo …`, so any manifest that runs `minio` directly with `command:` must say `silo`. `MINIO_*` env vars, `/minio/health/*`, `/minio/v2/metrics` and `--console-address` are unchanged. `mc` is bundled.
+
+**Live image check (orchestrator, local OrbStack, `silo` running as uid 1000 on a writable `/data`):**
+- The banner reads `Version: RELEASE.2026-09-16T00-00-00Z`; `/minio/health/live` returns 200 and the console on `:9001` returns 200.
+- `mc admin info` works.
+- Bucket features: `mb --with-lock` (versioning enabled), `quota set 1GiB`, `ilm rule add --noncurrent-expire-days 30 --expire-delete-marker` and `retention info`.
+- IAM: `admin user add`, `admin policy attach`, `admin user svcacct add`, then `svcacct edit --secret-key` (rotation).
+- Objects: `cp` (PUT) and `share download` (presigned URL).
+
+Every `mc` operation the deployment bootstrap, policy-sync and publish scripts use works against the pinned image. The image has no `grep`, `sed`, `awk` or `jq`, which the scripts already avoid.
+
+**Lane H (hope-v2):** `9f7003564`, `6e50a90b2`, `211f43d65`, `0eb8ec24b`, `a988d28e8`, `08f43e8f5`. Details are in the Lane H subsection.
+
+**Lane D (hope-v2-deployment):** `8d89f10`, `ad17f1f`, `481c92a`, `cc5b202`.
+- Pins: `base/minio.yaml` plus every out-of-band `mc` step (`minio-bootstrap`, `minio-policy-sync`, `pgbackrest-bootstrap`, and the `hope-models-publish` probe and publish steps).
+- D-2 mirror repoint: documented, not applied. The mirror is not populated yet, and an unresolvable ref on a single-replica StatefulSet would take the object store down.
+- Rollout runbook: `docs/deployment-runbook.md` §2 (back up → deploy → verify → rollback caveat).
+- Reversed decision: `docs/aws-eks/07` recorded an owner decision to FREEZE the MinIO image; it is now marked superseded by TASK-1029.
+
+**Post-merge gates (orchestrator):**
+
+| Repo | Gate | Result |
+|---|---|---|
+| hope-v2 | `docker compose config -q` on `infrastructure/docker/docker-compose.yml`, on it plus `docker-compose.dev.yml` with every profile, and on `tests/docker-compose.test.yml` | exit 0, exit 0, exit 0 |
+| hope-v2 | CI YAML parse (`.gitlab-ci.yml`, `.gitlab/ci/mirror.yml`) | ok |
+| hope-v2 | `sh -n .gitlab/ci/mirror-images.sh` | ok |
+| hope-v2 | `py_compile apps/stt/tests/e2e/conftest.py` | ok |
+| hope-v2 | `tsc --noEmit -p packages/applications` | ok |
+| hope-v2 | any `image:` line naming `minio/minio` or `minio/mc` | none |
+| deployment | `kubectl kustomize`: dev / staging / prod / standalone / `eks/overlays/aws-dev` / `eks/overlays/aws-prod` | 0 each; each renders only `pgsty/silo@sha256:635197cb…` |
+| deployment | YAML parse of every `out-of-band/*.yaml` | ok |
+
+**Owner rollout (not done; forward-only):**
+1. **Back up first.** Take a cold PVC copy or a Proxmox snapshot of VM 200's MinIO data, or `mc mirror` the non-regenerable buckets to storage OUTSIDE this MinIO; `hope-backups` lives on the same server and does not count.
+2. **Keep the rollback image cached.** Docker Hub now refuses anonymous pulls of `minio/minio` as well, so rollback is only possible while VM 200's image cache still holds the old digest. Do not prune it until the rollout is verified.
+3. **Run the mirror (optional).** Play the hope-v2 `mirror-images` job to populate `registry.taphuynh.dev/arca/hope-v2/mirror/silo`. Repointing the dev overlay to the mirror (runbook §2) is best done in the same commit as the image bump, to avoid a second restart.
+4. **Deploy.** Push `hope-v2-deployment` and Argo rolls MinIO.
+5. **Verify** per runbook §2 (c):
+   - the console's Users, Policies and Access Keys pages;
+   - `mc admin info`;
+   - a `minio-policy-sync` run;
+   - the s3fs sidecars in `stt`, `stt-worker`, `nlp`, `tts-v2`, `lmstudio` and `vllm`;
+   - an app upload plus a presigned GET;
+   - fresh `minio_*` metrics.
+
+**Follow-ups:**
+- `minio-py` is not archived, but has had no release since 7.2.20 (2025-11-27); keep watching it.
+- Trial a real successor (SeaweedFS or RustFS): the fork has a single maintainer.
+- Deployment `README.md:99` wrongly says `components/data-tier` holds MinIO (it is Redis only).
+
 _In progress._
 
 ### Lane H — hope-v2 (branch `task-1029-pgsty-minio`)
@@ -122,3 +176,4 @@ _In progress._
 | 2026-10-01 | Ticket opened after the MinIO fitness research (upstream CE archived; `pgsty/minio` chosen as the drop-in bridge). Image facts verified with `crane`; lanes H and D planned. |
 | 2026-10-01 | Lane H (hope-v2): all MinIO images moved to the pinned pgsty/minio digest; `mirror-images` CI job added; docs updated. Found that the fork repo was renamed to `pgsty/silo` and Docker Hub `pgsty/minio` is frozen at the pinned release. |
 | 2026-10-01 | Lane H follow-up: re-pinned from `pgsty/minio` (frozen at 2026-08-04) to `pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb…`; mirror name is now `silo`; docs updated (binary is `silo`, `mc` bundled). |
+| 2026-10-01 | Re-pinned to `pgsty/silo` RELEASE.2026-09-16 (fork renamed); lanes H and D merged locally (hope-v2 `92e030d35`, deployment `526d1c7`); live `mc` check against the pinned image; post-merge gates green; status Review, awaiting the owner's backup and rollout. |
