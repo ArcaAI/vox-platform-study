@@ -36,7 +36,11 @@ import {
   TenantBucketTreeResponse,
 } from './dto';
 import { TenantBucketDtoMapper } from './tenant-bucket.dto.mapper';
-import { TENANT_BUCKET_INACCESSIBLE_STATUSES, TENANT_DELETION_RETAINED_STATUS, TENANT_STORAGE_PURGING_STATUS } from './tenant-bucket-lifecycle.constants';
+import {
+  TENANT_BUCKET_INACCESSIBLE_STATUSES,
+  TENANT_DELETION_RETAINED_STATUS,
+  TENANT_STORAGE_PURGING_STATUS,
+} from './tenant-bucket-lifecycle.constants';
 
 /** Lifetime of presigned download URLs (mirrors the S3 service default). */
 const PRESIGNED_GET_EXPIRY_SECONDS = 3600;
@@ -462,31 +466,33 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
   }
 
   /**
-   * Writes the plan's `storageQuotaBytes` onto the tenant's
-   * primary (AUDIO) system bucket as `TenantBucket.quotaBytes`, so
-   * `getUsageStats`'s `SUM(TenantBucket.quotaBytes)` reflects the plan's
-   * capacity. Best-effort/idempotent: a `null` plan (ungated/system tenant),
-   * a missing AUDIO bucket, an already-quota'd bucket, or a `null`
-   * (unlimited-tier) `storageQuotaBytes` are all safe no-ops.
+   * TASK-1025 G3 (owner decision OD-3) — the plan's `storageQuotaBytes` is ONE
+   * tenant-wide ceiling shared by BOTH system buckets (attachments +
+   * recordings), so it is stamped on both rows as `TenantBucket.quotaBytes`.
+   * The stamp is DERIVED: every call rewrites a row whose stamp no longer
+   * matches the plan (so an upgrade/downgrade moves it — the old rule only
+   * wrote an unset stamp, and a plan change never reached it), and an
+   * unlimited plan clears it. A `null` plan (ungated/system tenant) is a no-op.
+   *
+   * Display only: the upload check (`TenantBucketStorageGate`) resolves the
+   * quota from the entitlements layers, tenant override included. Because both
+   * rows carry the same shared figure, readers take the tenant's MAX, not the
+   * SUM (`TenantService.getUsageStats`, `TenantBucketRepository.sumConfiguredQuotaBytes`).
    */
   async applyPlanStorageQuota(tenantId: string, plan: TenantPlan | null): Promise<void> {
     if (!plan) {
       return;
     }
 
-    const systemBuckets = await this.tenantBucketRepository.findSystemBuckets(tenantId);
-    const primary = systemBuckets.find((b) => b.purpose === TenantBucketPurpose.AUDIO) ?? systemBuckets[0];
-    if (!primary || primary.quotaBytes != null) {
-      return;
-    }
-
     const storageQuotaBytes = PLAN_ENTITLEMENT_DEFAULTS[plan]?.storageQuotaBytes;
-    if (storageQuotaBytes == null) {
-      return;
-    }
+    const target = storageQuotaBytes == null ? null : BigInt(storageQuotaBytes);
 
-    primary.quotaBytes = BigInt(storageQuotaBytes);
-    await this.tenantBucketRepository.update(primary.id, primary);
+    const systemBuckets = await this.tenantBucketRepository.findSystemBuckets(tenantId);
+    for (const bucket of systemBuckets) {
+      if ((bucket.quotaBytes ?? null) === target) continue;
+      bucket.quotaBytes = target;
+      await this.tenantBucketRepository.update(bucket.id, bucket);
+    }
   }
 
   /**
@@ -549,7 +555,11 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     purged += deletedRows.filter((row) => row.isSystemBucket).length;
 
     if (purged > 0) {
-      this.logger.warn({ message: 'Restored tenant had storage purged after its retention window; those buckets are not restored', tenantId, purged });
+      this.logger.warn({
+        message: 'Restored tenant had storage purged after its retention window; those buckets are not restored',
+        tenantId,
+        purged,
+      });
     }
     return { restored, purged };
   }

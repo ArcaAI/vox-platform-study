@@ -94,7 +94,7 @@ const mockTxClient = { __tx: true } as const;
 const mockExtendedClient = {
   userRoleAssignment: { findMany: vi.fn().mockResolvedValue([]) },
   media: { aggregate: vi.fn().mockResolvedValue({ _sum: { size: null } }) },
-  tenantBucket: { aggregate: vi.fn().mockResolvedValue({ _sum: { quotaBytes: null } }) },
+  tenantBucket: { aggregate: vi.fn().mockResolvedValue({ _max: { quotaBytes: null } }) },
   audioRecording: { aggregate: vi.fn().mockResolvedValue({ _sum: { duration: null } }) },
   summaryMeta: { count: vi.fn().mockResolvedValue(0) },
   consultation: { count: vi.fn().mockResolvedValue(0) },
@@ -2479,7 +2479,7 @@ describe('TenantService', () => {
       mockExtendedClient.audioRecording.aggregate.mockResolvedValue({ _sum: { duration: 180_000 } }); // 3 min
       mockExtendedClient.summaryMeta.count.mockResolvedValue(7);
       mockExtendedClient.consultation.count.mockResolvedValue(42);
-      mockExtendedClient.tenantBucket.aggregate.mockResolvedValue({ _sum: { quotaBytes: null } });
+      mockExtendedClient.tenantBucket.aggregate.mockResolvedValue({ _max: { quotaBytes: null } });
 
       const result = await service.getUsageStats('tenant-1');
 
@@ -2496,12 +2496,18 @@ describe('TenantService', () => {
       expect(result.storageQuotaBytes).toBeNull();
     });
 
-    it('returns the summed bucket quota (BigInt→number) when configured', async () => {
-      mockExtendedClient.tenantBucket.aggregate.mockResolvedValue({ _sum: { quotaBytes: 1_073_741_824n } });
+    // TASK-1025 G3 — the plan quota is ONE ceiling stamped on BOTH system
+    // buckets, so the tenant's quota is the MAX of its stamps, never their SUM.
+    it('returns the tenant-wide bucket quota (MAX of the stamps, BigInt→number) when configured', async () => {
+      mockExtendedClient.tenantBucket.aggregate.mockResolvedValue({ _max: { quotaBytes: 1_073_741_824n } });
 
       const result = await service.getUsageStats('tenant-1');
 
       expect(result.storageQuotaBytes).toBe(1_073_741_824);
+      expect(mockExtendedClient.tenantBucket.aggregate).toHaveBeenCalledWith({
+        _max: { quotaBytes: true },
+        where: { tenantId: 'tenant-1', quotaBytes: { not: null } },
+      });
     });
 
     it('only counts summaries generated within the last 24h', async () => {

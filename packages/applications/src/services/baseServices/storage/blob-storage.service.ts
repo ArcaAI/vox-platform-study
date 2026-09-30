@@ -53,8 +53,9 @@ export class BlobStorageService implements IBlobStorageService {
   }
 
   async putObject(params: PutObjectParams): Promise<void> {
-    await this.gate?.assertAccessible(params.bucket);
-    return (await this.provider(params.bucket)).putObject(params);
+    const gated = await this.gate?.assertCanWrite(params.bucket, params.body.byteLength);
+    await (await this.provider(params.bucket)).putObject(params);
+    await this.gate?.recordWrite(gated ?? null, params.body.byteLength);
   }
 
   async getObject(params: GetObjectParams): Promise<Buffer> {
@@ -68,8 +69,9 @@ export class BlobStorageService implements IBlobStorageService {
   }
 
   async deleteObject(params: DeleteObjectParams): Promise<void> {
-    await this.gate?.assertAccessible(params.bucket);
-    return (await this.provider(params.bucket)).deleteObject(params);
+    const gated = await this.gate?.assertAccessible(params.bucket);
+    await (await this.provider(params.bucket)).deleteObject(params);
+    await this.gate?.recordDelete(gated ?? null);
   }
 
   async listObjects(params: ListObjectsParams): Promise<ListObjectsResult> {
@@ -83,7 +85,8 @@ export class BlobStorageService implements IBlobStorageService {
   }
 
   async presignPut(params: PresignPutParams): Promise<string> {
-    await this.gate?.assertAccessible(params.bucket);
+    // The upload size is unknown when the URL is issued: refuse once the tenant is AT its quota.
+    await this.gate?.assertCanWrite(params.bucket, 1);
     return (await this.provider(params.bucket)).presignPut(params);
   }
 

@@ -31,7 +31,11 @@ const LOCK_TTL_SECONDS = 6 * 60 * 60;
 const MAX_EMPTY_PASSES = 3;
 
 /** Row statuses the purge takes: retained (ARCHIVED), already started (SUSPENDED), and admin-DISABLED rows, which hold data too. Never ENABLED. */
-const PURGEABLE_STATUSES: ReadonlySet<string> = new Set([TENANT_DELETION_RETAINED_STATUS, TENANT_STORAGE_PURGING_STATUS, ResourceStatusType.DISABLED]);
+const PURGEABLE_STATUSES: ReadonlySet<string> = new Set([
+  TENANT_DELETION_RETAINED_STATUS,
+  TENANT_STORAGE_PURGING_STATUS,
+  ResourceStatusType.DISABLED,
+]);
 
 export interface TenantStoragePurgeResult {
   /** Set when the run did nothing on purpose. */
@@ -147,7 +151,10 @@ export class TenantStoragePurgeService extends BaseService implements OnModuleIn
 
   /** One purge pass over every tenant deleted longer ago than the retention window. */
   async purgeExpired(): Promise<TenantStoragePurgeResult> {
-    const retentionDays = this.appSettings.getValueWithDefault<unknown>(TENANT_STORAGE_RETENTION_DAYS_KEY, TENANT_STORAGE_RETENTION_DEFAULTS.retentionDays);
+    const retentionDays = this.appSettings.getValueWithDefault<unknown>(
+      TENANT_STORAGE_RETENTION_DAYS_KEY,
+      TENANT_STORAGE_RETENTION_DEFAULTS.retentionDays,
+    );
     const result: TenantStoragePurgeResult = { retentionDays, cutoff: null, tenants: 0, bucketsPurged: 0, bucketsFailed: 0, objectsDeleted: 0 };
 
     // Refuse, never clamp: a window that reached the job out of bounds (a row

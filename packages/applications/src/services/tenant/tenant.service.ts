@@ -1252,8 +1252,10 @@ export class TenantService extends BaseService implements ITenantService {
    * need. All aggregates read `databaseService.client` directly (house
    * precedent) and are scoped by the explicit `tenantId` argument:
    *   - storageUsedBytes = SUM(Media.size)
-   *   - storageQuotaBytes = SUM(TenantBucket.quotaBytes) over configured
-   *                          buckets, else null ("no quota configured")
+   *   - storageQuotaBytes = MAX(TenantBucket.quotaBytes) over configured
+   *                          buckets, else null ("no quota configured") —
+   *                          MAX, not SUM: the plan quota is ONE tenant-wide
+   *                          ceiling stamped on BOTH system buckets (TASK-1025 G3)
    *   - transcriptionMinutes = SUM(AudioRecording.duration ms)/60000
    *   - summaries24h = COUNT(SummaryMeta WHERE generatedAt >= now-24h)
    *   - totalConsultations = COUNT(Consultation)
@@ -1285,14 +1287,14 @@ export class TenantService extends BaseService implements ITenantService {
         this.departmentRepository.count({ where: { tenantId } }),
         this.promptTemplateRepository.count({ where: { tenantId } }),
         client.media.aggregate({ _sum: { size: true }, where: { tenantId } }),
-        client.tenantBucket.aggregate({ _sum: { quotaBytes: true }, where: { tenantId, quotaBytes: { not: null } } }),
+        client.tenantBucket.aggregate({ _max: { quotaBytes: true }, where: { tenantId, quotaBytes: { not: null } } }),
         client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId } }),
         client.summaryMeta.count({ where: { tenantId, generatedAt: { gte: since24h } } }),
         client.consultation.count({ where: { tenantId } }),
       ]);
 
     const durationMs = durationAgg._sum.duration ?? 0;
-    const quotaSum = quotaAgg._sum.quotaBytes;
+    const quotaSum = quotaAgg._max.quotaBytes;
 
     return {
       totalUsers: distinctUserAssignments.length,
@@ -1352,8 +1354,8 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * TASK-986 (owner ruling D-7) — (re-)derive the primary system bucket's quota
-   * from the tenant's plan. Previously called only at creation, which left an
+   * TASK-986 (owner ruling D-7) — (re-)derive the system buckets' quota stamp
+   * (both of them since TASK-1025 G3) from the tenant's plan. Previously called only at creation, which left an
    * upgraded tenant on its old storage ceiling. Best-effort for the same reason
    * as {@link recordPlanChangeBestEffort}.
    */

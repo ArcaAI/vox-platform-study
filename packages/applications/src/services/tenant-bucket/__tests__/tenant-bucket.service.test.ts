@@ -1130,20 +1130,24 @@ describe('TenantBucketService', () => {
       quotaBytes,
     });
 
-    it('writes the STARTER plan storageQuotaBytes (5 GiB) onto the AUDIO system bucket when unset', async () => {
+    // TASK-1025 G3 (owner decision OD-3) — the quota covers BOTH system
+    // buckets and the stamp is re-derived from the plan; full coverage in
+    // `tenant-bucket.service.plan-quota.task1025.test.ts`.
+    it('writes the STARTER plan storageQuotaBytes (5 GiB) onto BOTH system buckets when unset', async () => {
       mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([attachmentsBucket(), recordingsBucket()]);
       mockTenantBucketRepository.update.mockImplementation((id: string, entity: any) => entity);
 
       await service.applyPlanStorageQuota('tenant-1', 'STARTER' as any);
 
-      expect(mockTenantBucketRepository.update).toHaveBeenCalledTimes(1);
-      const [updatedId, updatedEntity] = mockTenantBucketRepository.update.mock.calls[0];
-      expect(updatedId).toBe('bucket-recordings');
-      expect(updatedEntity.quotaBytes).toBe(BigInt(5 * 1024 ** 3));
+      expect(mockTenantBucketRepository.update).toHaveBeenCalledTimes(2);
+      expect(mockTenantBucketRepository.update.mock.calls.map(([id]: [string]) => id)).toEqual(['bucket-attachments', 'bucket-recordings']);
+      for (const [, entity] of mockTenantBucketRepository.update.mock.calls) {
+        expect(entity.quotaBytes).toBe(BigInt(5 * 1024 ** 3));
+      }
     });
 
-    it('is idempotent — does not overwrite a bucket that already has a quota', async () => {
-      mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([recordingsBucket(BigInt(1024))]);
+    it('is idempotent — does not rewrite a bucket whose stamp already matches the plan', async () => {
+      mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([recordingsBucket(BigInt(5 * 1024 ** 3))]);
 
       await service.applyPlanStorageQuota('tenant-1', 'STARTER' as any);
 

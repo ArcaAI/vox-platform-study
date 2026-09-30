@@ -24,8 +24,24 @@ vi.mock('@arcaai/domains', async (importOriginal) => {
     ...actual,
     TenantBucketFactory: {
       CreateDefaultSystemBuckets: vi.fn((tenantId: string, tenantKey: string) => [
-        { id: 'row-attachments', tenantId, name: `hope-attachments-${tenantKey}`, slug: 'attachments', bucketType: 'SYSTEM', createdAt: new Date(), updatedAt: new Date() },
-        { id: 'row-recordings', tenantId, name: `hope-recordings-${tenantKey}`, slug: 'recordings', bucketType: 'SYSTEM', createdAt: new Date(), updatedAt: new Date() },
+        {
+          id: 'row-attachments',
+          tenantId,
+          name: `hope-attachments-${tenantKey}`,
+          slug: 'attachments',
+          bucketType: 'SYSTEM',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: 'row-recordings',
+          tenantId,
+          name: `hope-recordings-${tenantKey}`,
+          slug: 'recordings',
+          bucketType: 'SYSTEM',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
       ]),
     },
   };

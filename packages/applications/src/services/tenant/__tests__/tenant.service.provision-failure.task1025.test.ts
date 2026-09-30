@@ -69,7 +69,9 @@ describe('TenantService.create — TASK-1025 G1 bucket provisioning failure', ()
     vi.clearAllMocks();
     tenantRepository.create.mockResolvedValue(tenant);
     tenantRepository.findById.mockResolvedValue(tenant);
-    tenantBucketService.provisionSystemBuckets.mockRejectedValue(new ServiceUnavailableException('Could not provision hope-recordings-acme: AccessDenied'));
+    tenantBucketService.provisionSystemBuckets.mockRejectedValue(
+      new ServiceUnavailableException('Could not provision hope-recordings-acme: AccessDenied'),
+    );
     service = build();
   });
 

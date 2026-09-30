@@ -24,7 +24,12 @@ export class ConsumptionRollupResponse {
   @ApiProperty({ description: 'Accounted storage bytes = SUM(Media.size).' })
   storageUsedBytes!: number;
 
-  @ApiProperty({ nullable: true, type: Number, description: 'Configured storage quota = SUM(TenantBucket.quotaBytes); null when none set.' })
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'Configured storage quota = per-tenant MAX(TenantBucket.quotaBytes), summed across tenants (the plan quota is one ceiling shared by both system buckets); null when none set.',
+  })
   storageQuotaBytes!: number | null;
 
   @ApiProperty({ type: ConsumptionConsultations })

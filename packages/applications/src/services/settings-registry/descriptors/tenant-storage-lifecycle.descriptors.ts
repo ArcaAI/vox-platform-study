@@ -1,5 +1,9 @@
 // TASK-1025 — tenant bucket lifecycle knobs.
 //
+// G3 (owner decision OD-3): the upload quota check measures a tenant's usage
+// across its two system buckets by listing them; the usage-cache window below
+// bounds how often that listing runs.
+//
 // G2 (owner decision OD-2): when a tenant is soft-deleted its buckets are
 // RETAINED (access cut, objects kept) for a platform-set window, then a
 // scheduled job purges them. The window and the job's schedule live here.
@@ -18,6 +22,9 @@ import {
   TENANT_STORAGE_RETENTION_BOUNDS,
   TENANT_STORAGE_RETENTION_DAYS_KEY,
   TENANT_STORAGE_RETENTION_DEFAULTS,
+  TENANT_STORAGE_QUOTA_DEFAULTS,
+  TENANT_STORAGE_USAGE_CACHE_BOUNDS,
+  TENANT_STORAGE_USAGE_CACHE_SECONDS_KEY,
   isWholeNumberWithin,
 } from '../../tenant-bucket/tenant-bucket-lifecycle.constants';
 
@@ -58,5 +65,21 @@ export const TENANT_STORAGE_LIFECYCLE_SETTINGS: SettingDescriptor[] = [
       'retention window. The scheduler re-reads it on every settings-cache refresh, so a change takes effect without a restart. ' +
       'Re-running it is safe: a bucket already purged is skipped.',
     default: TENANT_STORAGE_RETENTION_DEFAULTS.purgeCron,
+  },
+  {
+    ...PLATFORM_KNOB,
+    key: TENANT_STORAGE_USAGE_CACHE_SECONDS_KEY,
+    dataType: 'number',
+    label: 'Storage quota usage cache (seconds)',
+    description:
+      "How long the upload quota check reuses a tenant's measured storage usage (the sum of its attachments and " +
+      'recordings buckets) before listing the buckets again. Uploads made through the gateway are added to the cached ' +
+      'figure at once, so this only bounds how late bytes written outside the gateway (the speech-to-text worker) are ' +
+      'counted. 0 measures on every upload.',
+    default: TENANT_STORAGE_QUOTA_DEFAULTS.usageCacheSeconds,
+    validate: (value: unknown) =>
+      isWholeNumberWithin(value, TENANT_STORAGE_USAGE_CACHE_BOUNDS.minSeconds, TENANT_STORAGE_USAGE_CACHE_BOUNDS.maxSeconds)
+        ? undefined
+        : `The usage cache window must be a whole number of seconds between ${TENANT_STORAGE_USAGE_CACHE_BOUNDS.minSeconds} and ${TENANT_STORAGE_USAGE_CACHE_BOUNDS.maxSeconds}.`,
   },
 ];

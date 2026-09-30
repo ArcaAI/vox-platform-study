@@ -66,7 +66,9 @@ describe('provisionTenantBuckets (05b) — TASK-1025 G1 failure reporting', () =
 
     expect(result.created).toEqual([]);
     expect(result.failed.map((f) => f.name)).toEqual(rows.map((r) => r.name));
-    const createCalls = send.mock.calls.filter(([command]) => (command as { constructor: { name: string } }).constructor.name === 'CreateBucketCommand');
+    const createCalls = send.mock.calls.filter(
+      ([command]) => (command as { constructor: { name: string } }).constructor.name === 'CreateBucketCommand',
+    );
     expect(createCalls).toHaveLength(0);
   });
 
