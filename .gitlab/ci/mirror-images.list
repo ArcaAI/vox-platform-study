@@ -10,7 +10,8 @@
 # line here — nothing else changes.
 #
 # TASK-1029: upstream minio/minio and minio/mc are archived and no longer
-# published. pgsty/minio (community fork) is the one image for the server AND
-# every `mc` step (it bundles /usr/bin/mc). The digest is the OCI INDEX
-# (amd64 + arm64).
-minio pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+# published. pgsty/silo ("SILO", the pgsty MinIO community fork; renamed from
+# pgsty/minio, which is frozen at RELEASE.2026-08-04) is the one image for the
+# server AND every `mc` step (it bundles /usr/bin/mc; the server binary is
+# /usr/bin/silo). The digest is the OCI INDEX (amd64 + arm64).
+silo pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46

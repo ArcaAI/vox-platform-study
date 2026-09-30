@@ -4,10 +4,10 @@
 #
 # Why: upstream `minio/minio` and `minio/mc` vanished from Docker Hub after the
 # project was archived, and a pinned digest that can no longer be pulled is an
-# outage waiting for the next node rebuild. We now pin the `pgsty/minio` fork;
+# outage waiting for the next node rebuild. We now pin the `pgsty/silo` fork (the renamed pgsty/minio);
 # this job keeps a byte-identical copy (SAME digest — `crane copy` does not
 # re-encode) in our own registry, at
-#   $REGISTRY/$CI_PROJECT_PATH/mirror/<name>:<tag>
+#   $REGISTRY/$CI_PROJECT_PATH/mirror/<name>:<tag>   (e.g. .../mirror/silo:RELEASE.2026-09-16T00-00-00Z)
 # so a consumer can repoint from Docker Hub to the mirror by changing only the
 # repository part of the `image:` — the `@sha256:` pin stays.
 #

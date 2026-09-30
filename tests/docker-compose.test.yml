@@ -118,8 +118,9 @@ services:
   # MinIO Test Storage (Minimal Resources)
   # ==========================================================================
   minio-test:
-    # TASK-1029: pgsty community fork (upstream minio/minio is archived); pinned by OCI-index digest.
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    # TASK-1029: SILO, the pgsty MinIO community fork (renamed from pgsty/minio; upstream is archived); pinned by OCI-index digest.
+    # Server binary is /usr/bin/silo; the entrypoint maps `server ...` to it.
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
     container_name: hope-minio-test
     ports:
       - '9002:9000'
@@ -146,8 +147,8 @@ services:
           memory: 64M
 
   minio-createbuckets:
-    # Same pgsty/minio image as minio-test: it bundles /usr/bin/mc; the entrypoint below replaces the image entrypoint.
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    # Same pgsty/silo image as minio-test: it bundles /usr/bin/mc; the entrypoint below replaces the image entrypoint.
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
     container_name: hope-minio-createbuckets
     depends_on:
       minio-test:

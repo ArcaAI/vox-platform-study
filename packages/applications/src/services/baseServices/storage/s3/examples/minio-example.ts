@@ -215,7 +215,7 @@ export const MINIO_DOCKER_COMPOSE = `
 version: '3.8'
 services:
   minio:
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     container_name: minio
     ports:
       - "9000:9000"

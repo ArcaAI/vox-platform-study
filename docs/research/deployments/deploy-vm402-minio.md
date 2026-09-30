@@ -2,7 +2,7 @@
 
 **Status**: BUILT — MinIO is live and operational; confirmed in vault-ha-deployment 2026-08-07 as the storage destination for Vault HA backup snapshots (daily age-encrypted backups, 30-day ILM retention).
 
-> **Image note (TASK-1029, 2026-10-01).** This record was written against upstream `RELEASE.2025-04-22T22-12-26Z`, whose images can no longer be pulled (upstream MinIO Community Edition was archived in April 2026). Every `image:` below now names the `pgsty/minio` community fork; VM 402 itself still runs whatever it was built with (see [minio-phi-backup.md](../../operations/storage/minio-phi-backup.md)).
+> **Image note (TASK-1029, 2026-10-01).** This record was written against upstream `RELEASE.2025-04-22T22-12-26Z`, whose images can no longer be pulled (upstream MinIO Community Edition was archived in April 2026). Every `image:` below now names the `pgsty/silo` community fork (renamed from `pgsty/minio`); VM 402 itself still runs whatever it was built with (see [minio-phi-backup.md](../../operations/storage/minio-phi-backup.md)).
 
 **Date**: 2026-03-16
 **VM**: 402 | **IP**: 10.10.1.102 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk
@@ -125,7 +125,7 @@ scp docs/research/configs/minio/docker-compose.yml hope@10.10.1.102:~/minio/
 cat > ~/minio/docker-compose.yml <<'COMPOSE'
 services:
   minio:
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     container_name: minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -571,7 +571,7 @@ Edit `~/minio/docker-compose.yml` — add the certs volume mount and `--certs-di
 ```yaml
 services:
   minio:
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     container_name: minio
     restart: unless-stopped
     command: server /data --console-address ":9001" --certs-dir /certs
