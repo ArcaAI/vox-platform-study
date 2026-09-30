@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, Inject, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Injectable, BadRequestException, Inject, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { warnAndFallback } from '../../common/swallow-policy';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -75,6 +75,7 @@ import {
   type FilterFieldTypeMap,
 } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
+import { assertPlatformRegistryAdmin } from './lifecycle/platform-admin';
 import { IActiveUserContext } from '../../interfaces';
 import { ModelLifecycleService } from './lifecycle/model-lifecycle.service';
 
@@ -234,7 +235,7 @@ export class AiModelService extends BaseService implements IAiModelService {
   /**
    * The TENANT-facing catalogue read (TASK-890 §3.7).
    *
-   * A READ, not an admin surface: no `assertPlatformAdmin`. It answers the one
+   * A READ, not an admin surface: no `assertPlatformRegistryAdmin`. It answers the one
    * question an author has when binding a model — "what may I pick, and will it
    * work" — in two groups: the tenant's OWN provider connections first, then the
    * single "Hope provider" standing for everything the platform serves (OD-A,
@@ -384,7 +385,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * Register a catalogue row. SYSTEM tenant, super admin only.
    */
   async create(dto: CreateModelRequest): Promise<ModelResponse> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'register a model');
     const userId = this.requestUserId;
     const tx = this.writeLane();
 
@@ -456,7 +457,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * `ExceptionInterceptor` maps to `412 Precondition Failed`.
    */
   async update(id: string, dto: UpdateModelRequest): Promise<ModelResponse> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'edit a registered model');
     const userId = this.requestUserId;
     const tx = this.writeLane();
 
@@ -542,7 +543,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * a task never has two defaults. Only an ENABLED row may be elected.
    */
   async setPlatformDefaultFor(id: string, dto: SetPlatformDefaultRequest): Promise<ModelResponse> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'set a platform default model');
     const userId = this.requestUserId;
     const tx = this.writeLane();
 
@@ -597,7 +598,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    */
   /** Get model by ID — the ADMIN registry read. */
   async getById(id: string): Promise<ModelResponse | null> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'read the model registry');
     const model = await this.aiModelRepository.findById(id);
     if (!model) return null;
 
@@ -610,7 +611,7 @@ export class AiModelService extends BaseService implements IAiModelService {
 
   /** Get model by slug — the ADMIN registry read (TASK-932 OD-4). */
   async getBySlug(slug: string): Promise<ModelResponse | null> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'read the model registry');
     const model = await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug);
     if (!model) return null;
 
@@ -646,7 +647,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * so it runs under an elevated CLS principal and is unaffected.
    */
   async getAllForAdmin(): Promise<ModelResponse[]> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'read the model registry');
     const models = await this.aiModelRepository.findAll({
       filters: {
         tenantId: SYSTEM_TENANT_ID,
@@ -682,7 +683,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * widen to another tenant's rows.
    */
   async list(query: PaginatedQuery = {}): Promise<PaginatedModelResponse> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'read the model registry');
 
     const findProps = withFormattedPaginatedProps(query, AI_MODEL_FILTER_FIELD_TYPES);
     const countProps = withFormattedCountProps(query, AI_MODEL_FILTER_FIELD_TYPES);
@@ -755,7 +756,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * Retire (soft delete) a catalogue row — super admin only.
    */
   async delete(id: string): Promise<void> {
-    this.assertPlatformAdmin();
+    assertPlatformRegistryAdmin(this.requestUser, this.tenantId, 'retire a registered model');
     const userId = this.requestUserId;
     const tx = this.writeLane();
 
@@ -1091,15 +1092,9 @@ export class AiModelService extends BaseService implements IAiModelService {
     }
   }
 
-  private assertPlatformAdmin(): void {
-    if (!isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('The model registry is managed by platform administrators only.');
-    }
-  }
-
   /**
    * The UNSCOPED base client for SYSTEM writes — see the class doc. Only ever
-   * reached AFTER `assertPlatformAdmin`, so the lane is never open to a tenant
+   * reached AFTER `assertPlatformRegistryAdmin`, so the lane is never open to a tenant
    * admin. When CLS already carries the SYSTEM tenant the extended client
    * would work too; using the lane unconditionally keeps one write path.
    */

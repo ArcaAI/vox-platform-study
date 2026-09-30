@@ -139,7 +139,7 @@ describe('AsrProfileRequest / AsrProfileDecodingRequest validation (TASK-934)', 
 const BASE_CLIENT = { $lane: 'unscoped' };
 
 function makeCls(user: Record<string, unknown> = { id: 'u1', roles: ['SUPER_ADMIN'], isSuperAdmin: true }) {
-  return { get: (k: string) => (k === 'user' ? user : k === 'tenantId' ? SYSTEM_TENANT_ID : undefined) };
+  return { get: (k: string) => (k === 'user' ? user : k === 'tenantId' ? null : undefined) };
 }
 
 function makeService() {
