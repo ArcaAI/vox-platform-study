@@ -190,8 +190,49 @@ describe('J3 — refusals and idempotency', () => {
   });
 });
 
-// Keep the helper referenced for the J4 block.
-void readUnregisterMeta;
+describe('J4 — removeRegistration (OD-5)', () => {
+  it('queued: the unregister is accepted and ENQUEUED now, deleteWeights true; its id is returned', async () => {
+    const { svc, queue, row } = build({ job: bullJob('waiting') });
+
+    const out = await svc.cancelDownload('m-1', { removeRegistration: true });
+
+    expect(out.outcome).toBe('removed');
+    expect(out.unregisterJobId).toEqual(expect.any(String));
+    expect(queue.add).toHaveBeenCalledTimes(1);
+    const [, payload, opts] = queue.add.mock.calls[0];
+    expect(payload).toEqual({
+      kind: 'unregister',
+      jobId: out.unregisterJobId,
+      aiModelId: 'm-1',
+      tenantId: SYSTEM_TENANT_ID,
+      userId: 'admin-1',
+      deleteWeights: true,
+      purge: false,
+    });
+    expect(opts).toMatchObject({ jobId: out.unregisterJobId });
+    // The row reads CANCELLED for the download and UNREGISTERING for the unregister that follows.
+    expect(readDownloadMeta(row!.metaData)).toMatchObject({ error: 'CANCELLED' });
+    expect(readUnregisterMeta(row!.metaData)).toMatchObject({ jobId: out.unregisterJobId, deleteWeights: true, finishedAt: null, error: null });
+    expect(deriveModelLifecycle(row as never, null, OPTS).status).toBe('UNREGISTERING');
+  });
+
+  it('active: the intent is recorded for the worker; nothing enqueued, unregisterJobId null', async () => {
+    const { svc, queue, row } = build({ job: bullJob('active') });
+    const out = await svc.cancelDownload('m-1', { removeRegistration: true });
+    expect(out).toEqual({ jobId: 'job-1', outcome: 'cancelling', unregisterJobId: null });
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(readDownloadMeta(row!.metaData)).toMatchObject({ removeRegistrationOnCancel: true });
+  });
+
+  it('a second cancel that ADDS removeRegistration while cancelling records the intent', async () => {
+    const row = modelRow({
+      metaData: { download: { jobId: 'job-1', startedAt: FRESH(), finishedAt: null, error: null, heartbeatAt: FRESH(), cancelRequestedAt: FRESH() } },
+    });
+    const { svc } = build({ row, job: bullJob('active') });
+    await svc.cancelDownload('m-1', { removeRegistration: true });
+    expect(readDownloadMeta(row.metaData)).toMatchObject({ removeRegistrationOnCancel: true });
+  });
+});
 
 describe('J5 — GET jobs merges BullMQ with the row bookkeeping', () => {
   function withState(state: string, job: ReturnType<typeof bullJob>) {

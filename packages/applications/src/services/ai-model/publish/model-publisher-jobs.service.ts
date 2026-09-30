@@ -16,6 +16,7 @@ import { CancelModelDownloadRequest, CancelModelDownloadResponse, PublisherJobVi
 import { DOWNLOAD_CANCELLED_CODE, isUnregisterStale, mergeDownloadMeta, readDownloadMeta, readUnregisterMeta } from './model-download-meta.util';
 import { DOWNLOAD_STALLED_CODE, isUnregisterJob, type PublisherJobPayload } from './publisher-job.contract';
 import { PUBLISHER_CANCEL_FLAGS, type PublisherCancelFlags } from './publisher-cancel-flags';
+import { acceptUnregisterAfterCancel, enqueuePublisherJob } from './ai-model-download.service';
 
 /** BullMQ states in which a job has not started: it can simply be removed. */
 const QUEUED_STATES: ReadonlySet<string> = new Set(['waiting', 'delayed', 'prioritized', 'paused', 'waiting-children']);
@@ -255,10 +256,29 @@ export class ModelPublisherJobsService extends BaseService {
     return { jobId, outcome: 'removed', unregisterJobId };
   }
 
-  /** J4 — filled in with the unregister flow. */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private async unregisterAfterCancel(_id: string): Promise<string | null> {
-    return null;
+  /**
+   * OD-5 — "also remove the registration" for a job that never ran: accept the
+   * unregister (the row reads UNREGISTERING) and enqueue the existing unregister
+   * job kind with `deleteWeights: true`. The worker re-checks referrers itself.
+   */
+  private async unregisterAfterCancel(id: string): Promise<string> {
+    const settings = readModelDownloadSettings(this.appSettings);
+    const fresh = await this.findRow(id);
+    let payload;
+    try {
+      payload = await acceptUnregisterAfterCancel({ repository: this.aiModelRepository }, fresh, { userId: this.requestUserId });
+    } catch (error) {
+      if (error instanceof OptimisticConcurrencyException) {
+        throw new ConflictException({ code: 'MODEL_CHANGED', message: `Model '${fresh.slug}' changed while it was being unregistered; try again.` });
+      }
+      throw error;
+    }
+    await enqueuePublisherJob(this.publisherQueue, payload, settings.maxAttempts);
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { action: 'unregister', slug: fresh.slug, jobId: payload.jobId, weights: 'deleting', purge: false, after: 'download.cancel' },
+    });
+    return payload.jobId;
   }
 
   /** `job.remove()`; `false` when BullMQ refuses because a worker holds the job's lock. */
