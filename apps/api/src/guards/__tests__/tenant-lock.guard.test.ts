@@ -17,7 +17,7 @@ const httpContext = (req: Record<string, unknown> = { url: '/api/v1/admin/depart
     getType: () => type,
     getHandler: () => () => undefined,
     getClass: () => class {},
-    switchToHttp: () => ({ getRequest: () => req }),
+    switchToHttp: () => ({ getRequest: () => req, getResponse: () => ({ setHeader: vi.fn() }) }),
   }) as unknown as ExecutionContext;
 
 describe('TenantLockGuard', () => {
