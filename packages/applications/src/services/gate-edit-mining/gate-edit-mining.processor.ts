@@ -147,7 +147,7 @@ export class GateEditMiningProcessor extends WorkerHost {
       throw new Error(`Gate-edit mining job ${job.id} is missing required tenantId`);
     }
 
-    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId);
+    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId, ['CLINICAL']);
     // Rebind CLS so the tenant-scope Prisma extension sees the right context —
     // the queue worker has no request context of its own.
     return runJobInContext(this.cls, job, async () => {

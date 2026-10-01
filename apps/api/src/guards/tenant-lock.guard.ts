@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/commo
 import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
 import { ITenantLockService, TENANT_LOCK_RETRY_AFTER_SECONDS, assertTenantNotLocked } from '@arcaai/applications';
+import { isInternalPath } from './internal-path';
 import { TENANT_LOCK_EXEMPT_KEY } from '../decorators/tenant-lock-exempt.decorator';
 
 const TENANT_HEADER = 'x-tenant-id';
@@ -36,8 +37,7 @@ export class TenantLockGuard implements CanActivate {
     if (!tenantId) return true;
 
     // Service-to-service routes get the retryable 503; user-facing routes keep 423.
-    const req = context.switchToHttp().getRequest<{ originalUrl?: string; url?: string }>();
-    const internal = (req?.originalUrl ?? req?.url ?? '').includes('/internal/');
+    const internal = isInternalPath(context.switchToHttp().getRequest());
     try {
       await assertTenantNotLocked(this.lock, tenantId, { internal });
     } catch (error) {
@@ -60,8 +60,7 @@ export class TenantLockGuard implements CanActivate {
       if (typeof fromUser === 'string' && fromUser.length > 0) return fromUser;
     }
     const req = context.switchToHttp().getRequest<{ originalUrl?: string; url?: string; headers?: Record<string, string | string[] | undefined> }>();
-    const url = req?.originalUrl ?? req?.url ?? '';
-    if (!url.includes('/internal/')) return null;
+    if (!isInternalPath(req)) return null;
     const header = req.headers?.[TENANT_HEADER];
     const value = Array.isArray(header) ? header[0] : header;
     return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;

@@ -19,6 +19,17 @@ describe('ConsultationCompletionTimeoutProcessor — tenant lock', () => {
     expect(harness.closeOnCompletionTimeout).not.toHaveBeenCalled();
   });
 
+  it('conflicts with CLINICAL only: a CONFIG_CONTENT / USERS_ACCESS restore does not postpone it', async () => {
+    const harness = { closeOnCompletionTimeout: vi.fn().mockResolvedValue(undefined) };
+    const lock = { state: vi.fn().mockResolvedValue({ locked: true, restoreId: 'R', categories: ['CONFIG_CONTENT', 'USERS_ACCESS'] }), publishChange: vi.fn() };
+    const processor = new ConsultationCompletionTimeoutProcessor(harness as never, lock as never);
+    await processor.process(job() as never, 'tok');
+    expect(harness.closeOnCompletionTimeout).toHaveBeenCalledWith('C', 'T');
+
+    lock.state.mockResolvedValue({ locked: true, restoreId: 'R', categories: ['CLINICAL'] });
+    await expect(processor.process(job() as never, 'tok')).rejects.toBeInstanceOf(DelayedError);
+  });
+
   it('closes the consultation when unlocked', async () => {
     const harness = { closeOnCompletionTimeout: vi.fn().mockResolvedValue(undefined) };
     const lock = { state: vi.fn().mockResolvedValue({ locked: false }), publishChange: vi.fn() };

@@ -1,6 +1,6 @@
 import { DelayedError } from 'bullmq';
-import type { ITenantLockService } from '../services/tenant-checkpoint/contracts';
-import { lockBlocksMachineCallers } from '../services/tenant-checkpoint/lock/assert-tenant-not-locked';
+import type { ITenantLockService, RestorableCategory } from '../services/tenant-checkpoint/contracts';
+import { lockConflicts } from '../services/tenant-checkpoint/lock/assert-tenant-not-locked';
 import { TenantLockedError } from '../services/tenant-checkpoint/lock/tenant-locked.error';
 
 /** How long a postponed job waits before the queue offers it to a worker again. */
@@ -13,13 +13,18 @@ export interface PostponableJob {
 
 /**
  * Refuse to start tenant work while the tenant is locked by a restore. Call it BEFORE the job
- * body binds CLS / touches data. Absent lock service (a graph that does not wire it) is a no-op;
+ * body binds CLS / touches data. `conflictsWith` declares the restore categories the job writes into: it is
+ * held back only while the active restore's categories intersect that set (unknown categories block). Absent lock service (a graph that does not wire it) is a no-op;
  * an unreadable lock state propagates, so the job fails and the queue's own retry takes over.
  */
-export async function assertTenantUnlocked(lock: ITenantLockService | undefined, tenantId: string | undefined | null): Promise<void> {
+export async function assertTenantUnlocked(
+  lock: ITenantLockService | undefined,
+  tenantId: string | undefined | null,
+  conflictsWith: readonly RestorableCategory[],
+): Promise<void> {
   if (!lock || !tenantId) return;
   const state = await lock.state(tenantId);
-  if (lockBlocksMachineCallers(state)) throw new TenantLockedError(tenantId, state.restoreId);
+  if (lockConflicts(state, conflictsWith)) throw new TenantLockedError(tenantId, state.restoreId);
 }
 
 /**
@@ -32,9 +37,10 @@ export async function postponeIfTenantLocked(
   job: PostponableJob,
   token: string | undefined,
   tenantId: string | undefined | null,
+  conflictsWith: readonly RestorableCategory[],
 ): Promise<void> {
   try {
-    await assertTenantUnlocked(lock, tenantId);
+    await assertTenantUnlocked(lock, tenantId, conflictsWith);
   } catch (error) {
     if (!(error instanceof TenantLockedError)) throw error;
     await job.moveToDelayed(Date.now() + TENANT_LOCK_POSTPONE_MS, token);

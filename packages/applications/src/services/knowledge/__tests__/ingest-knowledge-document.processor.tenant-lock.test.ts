@@ -2,7 +2,7 @@ import { DelayedError } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
 import { IngestKnowledgeDocumentProcessor } from '../ingest-knowledge-document.processor';
 
-function build(lockState: { locked: boolean; restoreId?: string }) {
+function build(lockState: { locked: boolean; restoreId?: string; categories?: string[] }) {
   const knowledgeDocumentRepository = { findById: vi.fn(), update: vi.fn() };
   const cls = { run: vi.fn(async (fn: () => unknown) => fn()), set: vi.fn() };
   const tenantLock = { state: vi.fn().mockResolvedValue(lockState), publishChange: vi.fn() };
@@ -35,6 +35,16 @@ describe('IngestKnowledgeDocumentProcessor — tenant lock', () => {
     expect(j.moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'tok');
     expect(cls.run).not.toHaveBeenCalled();
     expect(knowledgeDocumentRepository.findById).not.toHaveBeenCalled();
+  });
+
+  it('conflicts with CONFIG_CONTENT only: postponed by it, not by a USERS_ACCESS / CLINICAL-only restore', async () => {
+    const held = build({ locked: true, restoreId: 'R', categories: ['USERS_ACCESS', 'CONFIG_CONTENT'] });
+    await expect(held.processor.process(job() as never, 'tok')).rejects.toBeInstanceOf(DelayedError);
+
+    const free = build({ locked: true, restoreId: 'R', categories: ['USERS_ACCESS', 'CLINICAL'] });
+    const j = job();
+    await free.processor.process(j as never, 'tok').catch(() => undefined); // swallow-ok: the body may fail on bare mocks; only the postponement matters
+    expect(j.moveToDelayed).not.toHaveBeenCalled();
   });
 
   it('runs the body when the tenant is unlocked', async () => {

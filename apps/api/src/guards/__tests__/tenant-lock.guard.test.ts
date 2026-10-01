@@ -39,6 +39,32 @@ describe('TenantLockGuard — categories', () => {
   });
 });
 
+describe('TenantLockGuard — internal classification is by parsed PATH only (N-1)', () => {
+  const config = { T: { locked: true, restoreId: 'R', categories: ['CONFIG_CONTENT'] } as never };
+
+  it('a query string naming /internal/ does NOT make a user route internal: still 423', async () => {
+    const guard = new TenantLockGuard(reflectorReturning(false), clsWith({ tenantId: 'T' }), lockService(config));
+    const req = { originalUrl: '/api/v1/admin/x?y=/internal/', url: '/api/v1/admin/x?y=/internal/', headers: {} };
+    await expect(guard.canActivate(httpContext(req))).rejects.toMatchObject({ status: 423 });
+  });
+
+  it('nor does it let a query-string trick pull the tenant from X-Tenant-Id', async () => {
+    const lock = lockService(config);
+    const guard = new TenantLockGuard(reflectorReturning(false), clsWith({}), lock);
+    const req = { originalUrl: '/api/v1/auth/login?z=/internal/', headers: { 'x-tenant-id': 'T' } };
+    await expect(guard.canActivate(httpContext(req))).resolves.toBe(true);
+    expect(lock.state).not.toHaveBeenCalled();
+  });
+
+  it('a real /api/v1/internal/ path passes a CONFIG_CONTENT lock and 503s under CLINICAL', async () => {
+    const req = { originalUrl: '/api/v1/internal/stt/transcripts', headers: { 'x-tenant-id': 'T' } };
+    const open = new TenantLockGuard(reflectorReturning(false), clsWith({}), lockService(config));
+    await expect(open.canActivate(httpContext(req))).resolves.toBe(true);
+    const shut = new TenantLockGuard(reflectorReturning(false), clsWith({}), lockService({ T: { locked: true, categories: ['CLINICAL'] } as never }));
+    await expect(shut.canActivate(httpContext(req))).rejects.toMatchObject({ status: 503 });
+  });
+});
+
 describe('TenantLockGuard', () => {
   it('423s a request whose CLS tenant is locked', async () => {
     const guard = new TenantLockGuard(reflectorReturning(false), clsWith({ tenantId: 'T' }), lockService({ T: { locked: true, restoreId: 'R' } }));

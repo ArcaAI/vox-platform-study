@@ -113,7 +113,7 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
       throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
     }
 
-    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId);
+    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId, ['CONFIG_CONTENT']);
     return runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ userId, tenantId, kind: 'ingest-knowledge' }));
