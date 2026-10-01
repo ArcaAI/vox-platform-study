@@ -46,6 +46,7 @@ test.describe('Tenant checkpoints — cross-tenant ownership', () => {
   let superHeaders: Record<string, string>;
   let adminHeaders: Record<string, string>;
   let arcaaiCheckpointId: string;
+  let createdByUs = false;
 
   test.beforeAll(async ({ request }) => {
     const sa = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
@@ -55,16 +56,26 @@ test.describe('Tenant checkpoints — cross-tenant ownership', () => {
     expect(ta, 'tenant_admin login (__GLOBAL__) failed').toBeTruthy();
     adminHeaders = { Authorization: `Bearer ${ta!.token}` };
 
-    // A real ARCAAI row. It exists as soon as the create call answers 202; no worker is needed.
+    // A real ARCAAI row, created at most once: the service refuses a second export (409
+    // TENANT_CHECKPOINT_BUSY) while one is PENDING/RUNNING, so reuse an existing one when there is one.
+    const list = await request.get(base(ARCAAI_TENANT_ID), { headers: superHeaders });
+    expect(list.status(), 'super_admin lists ARCAAI checkpoints').toBe(200);
+    const existing = ((await list.json()) as { data: { id: string }[] }).data[0];
+    if (existing) {
+      arcaaiCheckpointId = existing.id;
+      return;
+    }
     const created = await request.post(base(ARCAAI_TENANT_ID), {
       headers: superHeaders,
       data: { label: `cross-tenant probe ${Date.now()}`, includesMedia: false },
     });
     expect(created.status(), 'super_admin creates an ARCAAI checkpoint').toBe(202);
     arcaaiCheckpointId = ((await created.json()) as { id: string }).id;
+    createdByUs = true;
   });
 
   test.afterAll(async ({ request }) => {
+    if (!createdByUs) return; // never delete a row this file did not create
     await request.post(`${base(ARCAAI_TENANT_ID)}/${arcaaiCheckpointId}/cancel`, { headers: superHeaders }).catch(() => undefined);
     await request.delete(`${base(ARCAAI_TENANT_ID)}/${arcaaiCheckpointId}`, { headers: superHeaders }).catch(() => undefined);
   });

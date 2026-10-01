@@ -54,8 +54,16 @@ test.describe('Tenant checkpoints — depth', () => {
   let tenantName: string;
   const created: { tenantId: string; id: string }[] = [];
 
-  /** A READY checkpoint of the Global tenant, or a skip when no worker produced one. */
-  async function readyCheckpoint(request: APIRequestContext, tenantId = GLOBAL_TENANT_ID): Promise<Checkpoint> {
+  // ONE export per tenant for the whole file: the service refuses a create (409 TENANT_CHECKPOINT_BUSY)
+  // while another export is PENDING/RUNNING, so tests share this row instead of creating their own.
+  let shared: Checkpoint | undefined;
+
+  async function ensureCheckpoint(request: APIRequestContext, tenantId = GLOBAL_TENANT_ID): Promise<Checkpoint> {
+    const list = await request.get(base(tenantId), { headers: auth(superAdminToken) });
+    expect(list.status()).toBe(200);
+    const rows = ((await list.json()) as { data: Checkpoint[] }).data;
+    const reusable = rows.find((c) => c.status === 'READY') ?? rows.find((c) => c.status === 'PENDING' || c.status === 'RUNNING');
+    if (reusable) return reusable;
     const response = await request.post(base(tenantId), {
       headers: auth(superAdminToken),
       data: { label: `e2e depth ${Date.now()}`, includesMedia: false },
@@ -63,7 +71,18 @@ test.describe('Tenant checkpoints — depth', () => {
     expect(response.status()).toBe(202);
     const row = (await response.json()) as Checkpoint;
     created.push({ tenantId, id: row.id });
-    const settled = await waitForStatus(request, superAdminToken, tenantId, row.id, (s) => s === 'READY' || s === 'FAILED' || s === 'CANCELLED');
+    return row;
+  }
+
+  /** The shared checkpoint, settled; skips the calling test (with the observed status) unless READY. */
+  async function readyCheckpoint(request: APIRequestContext): Promise<Checkpoint> {
+    const settled = await waitForStatus(
+      request,
+      superAdminToken,
+      GLOBAL_TENANT_ID,
+      (shared as Checkpoint).id,
+      (s) => s === 'READY' || s === 'FAILED' || s === 'CANCELLED',
+    );
     test.skip(settled.status !== 'READY', `no READY checkpoint (status ${settled.status}) — is the checkpoint worker running?`);
     return settled;
   }
@@ -79,6 +98,8 @@ test.describe('Tenant checkpoints — depth', () => {
     const tenant = await request.get(`/api/v1/admin/tenants/${GLOBAL_TENANT_ID}`, { headers: auth(superAdminToken) });
     expect(tenant.status()).toBe(200);
     tenantName = ((await tenant.json()) as { name: string }).name;
+
+    shared = await ensureCheckpoint(request);
   });
 
   test.afterAll(async ({ request }) => {
@@ -126,7 +147,7 @@ test.describe('Tenant checkpoints — depth', () => {
 
     test('break-glass: 428 missing password, 401 wrong password, 400 wrong tenant name', async ({ request }) => {
       test.setTimeout(180_000);
-      const checkpoint = await readyCheckpoint(request);
+      const checkpoint = shared as Checkpoint; // checks 1-2 run before the READY check, so any existing row will do
       const url = `${base(GLOBAL_TENANT_ID)}/${checkpoint.id}/restore`;
 
       const missing = await request.post(url, { headers: auth(tenantAdminToken), data: restoreBody({ password: undefined }) });
@@ -141,7 +162,7 @@ test.describe('Tenant checkpoints — depth', () => {
       request,
     }) => {
       test.setTimeout(180_000);
-      const checkpoint = await readyCheckpoint(request);
+      const checkpoint = shared as Checkpoint; // checks 1-2 run before the READY check, so any existing row will do
       const response = await request.post(`${base(GLOBAL_TENANT_ID)}/${checkpoint.id}/restore`, {
         headers: auth(tenantAdminToken),
         data: restoreBody({ categories: ['CONFIG_CONTENT', 'CLINICAL'] }),
@@ -153,7 +174,7 @@ test.describe('Tenant checkpoints — depth', () => {
 
     test('a wrong password outranks the CLINICAL 403 (the checks run in order)', async ({ request }) => {
       test.setTimeout(180_000);
-      const checkpoint = await readyCheckpoint(request);
+      const checkpoint = shared as Checkpoint; // checks 1-2 run before the READY check, so any existing row will do
       const response = await request.post(`${base(GLOBAL_TENANT_ID)}/${checkpoint.id}/restore`, {
         headers: auth(tenantAdminToken),
         data: restoreBody({ categories: ['CLINICAL'], password: 'definitely-not-it' }),
@@ -165,7 +186,7 @@ test.describe('Tenant checkpoints — depth', () => {
   test.describe('a foreign archive', () => {
     test('an archive made for tenant A and uploaded into tenant B ends FAILED / WRONG_TENANT', async ({ request }) => {
       test.setTimeout(300_000);
-      const source = await readyCheckpoint(request, GLOBAL_TENANT_ID);
+      const source = await readyCheckpoint(request);
 
       const urlResponse = await request.post(`${base(GLOBAL_TENANT_ID)}/${source.id}/download-url`, { headers: auth(superAdminToken) });
       expect(urlResponse.status()).toBe(200);
