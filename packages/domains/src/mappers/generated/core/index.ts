@@ -97,3 +97,5 @@ export * from './WorkflowAssignmentEntityMapper';
 export * from './WorkflowAssignmentChangeEntityMapper';
 export * from './WorkflowInvariantRuleEntityMapper';
 export * from './WorkflowWebhookSecretEntityMapper';
+export * from './TenantCheckpointEntityMapper';
+export * from './TenantCheckpointRestoreEntityMapper';

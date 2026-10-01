@@ -10,6 +10,8 @@ import { AiProviderConnectionRepository } from '../../../repositories/generated/
 import { WorkflowWebhookSecretRepository } from '../../../repositories/generated/core/WorkflowWebhookSecretRepository';
 import { ServiceAccountRepository } from '../../../repositories/generated/core/ServiceAccountRepository';
 import { AiRoutingPolicyRepository } from '../../../repositories/generated/core/AiRoutingPolicyRepository';
+import { TenantCheckpointRepository } from '../../../repositories/generated/core/TenantCheckpointRepository';
+import { TenantCheckpointRestoreRepository } from '../../../repositories/generated/core/TenantCheckpointRestoreRepository';
 import { ModelResidencyPolicyRepository } from '../../../repositories/generated/core/ModelResidencyPolicyRepository';
 import { RateLimitRuleRepository } from '../../../repositories/generated/core/RateLimitRuleRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
@@ -301,6 +303,9 @@ const repositories = [
   // precedence chain. Tenant-scoped but NOT a SYSTEM_SHARED_READ_MODEL; see
   // tenant-scope.ts and RateLimitRuleRepository for why.
   RateLimitRuleRepository,
+  // Tenant checkpoint job rows — tenant-scoped, not shared-read.
+  TenantCheckpointRepository,
+  TenantCheckpointRestoreRepository,
 ];
 
 @Module({

@@ -97,3 +97,5 @@ export * from './AiRoutingPolicyEntity';
 export * from './WorkflowWebhookSecretEntity';
 export * from './TenantGuardrailPolicyEntity';
 export * from './ModelResidencyPolicyEntity';
+export * from './TenantCheckpointEntity';
+export * from './TenantCheckpointRestoreEntity';
