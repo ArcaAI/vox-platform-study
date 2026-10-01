@@ -1,5 +1,7 @@
 /**
- * Reconcile SQL — pure builders, one statement per (model, phase). Every statement carries the
+ * Reconcile SQL — pure builders, one statement per (model, phase). Every timestamp they write is
+ * `clock_timestamp()`: under REPEATABLE READ `now()` is the transaction START, possibly minutes old.
+ * Every statement carries the
  * descriptor's tenant scope with `$1` = the tenant id; `$2`, when present, is the restore actor.
  *
  * The live table is aliased `l`, the staging table (the checkpoint's rows) `s`. Column lists are
@@ -88,7 +90,7 @@ function distinct(columns: readonly string[]): string {
 
 function stamps(columns: readonly string[], present: ReadonlySet<string> = new Set()): string[] {
   const out: string[] = [];
-  if (columns.includes('updatedAt') && !present.has('updatedAt')) out.push(`"updatedAt" = now()`);
+  if (columns.includes('updatedAt') && !present.has('updatedAt')) out.push(`"updatedAt" = clock_timestamp()`);
   if (columns.includes('updatedBy') && !present.has('updatedBy')) out.push(`"updatedBy" = $2`);
   if (columns.includes('_version') && !present.has('_version')) out.push(`"_version" = l."_version" + 1`);
   return out;
@@ -139,7 +141,7 @@ export function retireSql(d: CheckpointModelDescriptor, ctx: { columns: readonly
       return `DELETE FROM ${table} l WHERE ${scope}${frozen} AND ${absent}`;
     case 'softDelete': {
       const set = [`"resourceStatus" = 'DELETED'`];
-      if (cols.includes('resourceStatusUpdatedAt')) set.push(`"resourceStatusUpdatedAt" = now()`);
+      if (cols.includes('resourceStatusUpdatedAt')) set.push(`"resourceStatusUpdatedAt" = clock_timestamp()`);
       if (cols.includes('resourceStatusUpdatedBy')) set.push(`"resourceStatusUpdatedBy" = $2`);
       if (cols.includes('isActive')) set.push(`"isActive" = false`);
       set.push(...retireClears(d, cols, new Set(['isActive'])));
@@ -150,7 +152,7 @@ export function retireSql(d: CheckpointModelDescriptor, ctx: { columns: readonly
       const parsed = parseSetSql(d.retire.setSql);
       const present = new Set(parsed.map((p) => p.column));
       const guard = parsed
-        .filter((p) => !/^now\(\)$/i.test(p.expr))
+        .filter((p) => !/^(now|clock_timestamp)\(\)$/i.test(p.expr))
         .map((p) => `l.${q(p.column)} IS DISTINCT FROM ${p.expr}`)
         .join(' OR ');
       const set = [d.retire.setSql.trim(), ...stamps(cols, present)];
@@ -321,7 +323,8 @@ export function crossCategoryReferencedSql(d: CheckpointModelDescriptor, edges: 
   const refs = edges.map((e) => {
     const c = descriptorFor(e.child);
     const live = c.softDelete ? ` AND c."resourceStatus" <> 'DELETED'` : '';
-    return `EXISTS (SELECT 1 FROM ${tableName(c)} c WHERE c.${q(e.column)} = l.${q(e.parentColumn ?? 'id')}${live})`;
+    // The child is read within the tenant ($1): never a scan of every tenant's rows.
+    return `EXISTS (SELECT 1 FROM ${tableName(c)} c WHERE ${scopePredicate(c, 'c')} AND c.${q(e.column)} = l.${q(e.parentColumn ?? 'id')}${live})`;
   });
   return `SELECT l."id"::text AS id FROM ${tableName(d)} l WHERE ${retireCandidates(d)} AND (${refs.join(' OR ')})`;
 }

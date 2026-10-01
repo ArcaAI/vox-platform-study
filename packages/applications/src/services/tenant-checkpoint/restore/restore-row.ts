@@ -48,8 +48,8 @@ export async function patchRestore(
  * `$2` = safety checkpoint id. No row back ⇒ the sweeper ended the restore: roll back.
  */
 export const CLAIM_POST_COMMIT_SQL =
-  `UPDATE core."TenantCheckpointRestore" SET "status" = 'POST_COMMIT', "safetyCheckpointId" = $2, "heartbeatAt" = now(), ` +
-  `"updatedAt" = now(), "_version" = "_version" + 1 WHERE "id" = $1 AND "status" = 'RECONCILING' AND "resourceStatus" <> 'DELETED' RETURNING "id"`;
+  `UPDATE core."TenantCheckpointRestore" SET "status" = 'POST_COMMIT', "safetyCheckpointId" = $2, "heartbeatAt" = clock_timestamp(), ` +
+  `"updatedAt" = clock_timestamp(), "_version" = "_version" + 1 WHERE "id" = $1 AND "status" = 'RECONCILING' AND "resourceStatus" <> 'DELETED' RETURNING "id"`;
 
 /** `application_name` of the reconcile connection — the sweeper's liveness probe while the heartbeat is paused. */
 export function restoreBackendName(restoreId: string): string {
