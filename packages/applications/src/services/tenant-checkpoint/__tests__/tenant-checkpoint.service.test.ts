@@ -226,3 +226,22 @@ describe('TenantCheckpointService — sys-events', () => {
     expect(props).toMatchObject({ page: 2, limit: 5, search: 'nightly', searchFields: ['label'], where: { tenantId: TENANT_A, kind: 'SAFETY' } });
   });
 });
+
+describe('TenantCheckpointService — audit attribution', () => {
+  it('a super admin with no CLS tenant downloading for tenant B is audited against tenant B, force-audited', async () => {
+    const f = buildService({ roles: ['SUPER_ADMIN'] });
+    f.cls.get.mockImplementation((key: string) => (key === 'user' ? { id: 'sa-1', roles: ['SUPER_ADMIN'] } : undefined));
+    const row = checkpointEntity({ tenantId: TENANT_B, objectKey: `${TENANT_B}/o.hcp` });
+    f.checkpoints.findByIdOrNull.mockResolvedValue(row);
+    await f.service.downloadUrl(TENANT_B, row.id);
+    const event = f.eventEmitter.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceViewed)?.[1];
+    expect(event).toMatchObject({ tenantId: TENANT_B, forceAuditLog: true, resourceId: row.id, responsibleEntityId: 'sa-1' });
+  });
+
+  it('every mutation event carries the target tenant, whatever the CLS tenant is', async () => {
+    const f = buildService({ roles: ['SUPER_ADMIN'] });
+    f.cls.get.mockImplementation((key: string) => (key === 'user' ? { id: 'sa-1', roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? TENANT_B : undefined));
+    await f.service.create(TENANT_A, { label: 'x', includesMedia: false });
+    expect(f.eventEmitter.emit.mock.calls.every((c) => (c[1] as { tenantId: string }).tenantId === TENANT_A)).toBe(true);
+  });
+});

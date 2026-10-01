@@ -15,6 +15,7 @@ import {
   TenantCheckpointKind,
   TenantCheckpointOrigin,
   TenantCheckpointRepository,
+  generateId,
   TenantCheckpointRestoreFactory,
   TenantCheckpointRestoreRepository,
   TenantCheckpointRestoreStatus,
@@ -113,6 +114,27 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
     super(eventEmitter, clsService, ResourceType.TenantCheckpoint);
+  }
+
+
+  /**
+   * Broadcast a sys-event attributed to the TARGET tenant (`:tenantId`), not the request's CLS tenant.
+   * `BaseService.broadcastSysEvent` deliberately pins attribution to CLS (anti-spoofing), which would
+   * audit a platform admin's cross-tenant action — a PHI download above all — against SYSTEM or their
+   * working tenant. Here the tenant is the route's, already pinned by the controller and the service,
+   * so it is safe to stamp explicitly (same direct-emit shape as the break-glass audit).
+   */
+  private emitFor(tenantId: string, type: SysEventType, data: Record<string, unknown>): void {
+    this.eventEmitter.emit(type, {
+      id: generateId(),
+      type,
+      ...(this.requestServiceAccount ? { responsibleServiceAccountId: this.requestServiceAccount.id } : { responsibleEntityId: this.requestUser?.id }),
+      responsibleIp: this.requestIp,
+      resourceType: this.resourceType,
+      correlationId: this.correlationId,
+      ...data,
+      tenantId,
+    });
   }
 
   // ── guards & loaders ────────────────────────────────────────────────────────
@@ -240,7 +262,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       throw new ServiceUnavailableException({ code: 'CHECKPOINT_QUEUE_UNAVAILABLE', message: 'The checkpoint could not be queued; try again shortly.' });
     }
 
-    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+    this.emitFor(tenantId, SysEventType.ResourceCreated, {
       resourceId: saved.id,
       data: { tenantId, label, kind: saved.kind, includesMedia: saved.includesMedia, passphraseProtected: saved.passphraseProtected },
     });
@@ -319,7 +341,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       row.finishedAt = now;
     }
     const saved = await this.transition(row);
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+    this.emitFor(tenantId, SysEventType.ResourceUpdated, {
       resourceId: saved.id,
       data: { tenantId, action: 'cancel', status: saved.status },
     });
@@ -337,7 +359,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     const url = await this.store.presignDownload(row.objectKey, filename, CHECKPOINT_DOWNLOAD_TTL_SECONDS);
     const expiresAt = new Date(Date.now() + CHECKPOINT_DOWNLOAD_TTL_SECONDS * 1000).toISOString();
     // Every issuance is audited, whatever the caller's role: this is a PHI-bearing archive leaving the platform.
-    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+    this.emitFor(tenantId, SysEventType.ResourceViewed, {
       resourceId: row.id,
       forceAuditLog: true,
       data: { tenantId, action: 'CHECKPOINT_DOWNLOAD_URL_ISSUED', filename, expiresAt },
@@ -357,7 +379,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     }
     if (row.objectKey) await this.store.delete(row.objectKey);
     await this.checkpoints.softDelete(row.id, this.requestUserId ?? undefined);
-    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+    this.emitFor(tenantId, SysEventType.ResourceDeleted, {
       resourceId: row.id,
       data: { tenantId, label: row.label, kind: row.kind },
     });
@@ -401,7 +423,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       throw error;
     }
 
-    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+    this.emitFor(tenantId, SysEventType.ResourceCreated, {
       resourceId: saved.id,
       data: { tenantId, action: 'upload-init', filename: request.filename, sizeBytes: request.sizeBytes, partCount },
     });
@@ -445,7 +467,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       await this.failEnqueue(saved, error);
       throw new ServiceUnavailableException({ code: 'CHECKPOINT_QUEUE_UNAVAILABLE', message: 'The upload could not be queued for verification; try again shortly.' });
     }
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+    this.emitFor(tenantId, SysEventType.ResourceUpdated, {
       resourceId: saved.id,
       data: { tenantId, action: 'upload-complete', sizeBytes },
     });
@@ -463,7 +485,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     row.uploadId = null;
     row.finishedAt = new Date();
     const saved = await this.transition(row);
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+    this.emitFor(tenantId, SysEventType.ResourceUpdated, {
       resourceId: saved.id,
       data: { tenantId, action: 'upload-abort' },
     });
@@ -545,7 +567,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       throw new ServiceUnavailableException({ code: 'CHECKPOINT_QUEUE_UNAVAILABLE', message: 'The restore could not be queued; try again shortly.' });
     }
 
-    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+    this.emitFor(tenantId, SysEventType.ResourceCreated, {
       resourceId: saved.id,
       resourceType: ResourceType.TenantCheckpointRestore,
       forceAuditLog: true,

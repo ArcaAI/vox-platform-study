@@ -99,7 +99,7 @@ export function buildService(actor: Actor = TENANT_ADMIN) {
     eventEmitter as never,
     cls as never,
   );
-  return { service, checkpoints, restores, tenants, users, crypto, sealing, store, settings, queryRawUnsafe, exportQueue, restoreQueue, eventEmitter, tenant, dataKey };
+  return { service, cls, checkpoints, restores, tenants, users, crypto, sealing, store, settings, queryRawUnsafe, exportQueue, restoreQueue, eventEmitter, tenant, dataKey };
 }
 
 export { TenantCheckpointRestoreFactory };
