@@ -7,6 +7,7 @@ import { TenantCheckpointKind, TenantCheckpointOrigin, TenantCheckpointStatus } 
 import { generateId } from '../../../utils';
 
 export interface CreateTenantCheckpointProps extends BaseEntityFactoryCreateProps {
+  tenantId: ITenantCheckpointEntity['tenantId'];
   label: ITenantCheckpointEntity['label'];
   kind?: ITenantCheckpointEntity['kind'];
   origin?: ITenantCheckpointEntity['origin'];
@@ -49,6 +50,8 @@ export class TenantCheckpointFactory {
       updatedAt: props.updatedAt || now,
       createdBy: props.createdBy ?? null,
       updatedBy: props.updatedBy || null,
+
+      tenantId: props.tenantId,
 
       label: props.label,
       kind: props.kind ?? TenantCheckpointKind.MANUAL,
