@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
-import { ITenantLockService, assertTenantNotLocked } from '@arcaai/applications';
+import { ITenantLockService, TENANT_LOCK_RETRY_AFTER_SECONDS, assertTenantNotLocked } from '@arcaai/applications';
 import { TENANT_LOCK_EXEMPT_KEY } from '../decorators/tenant-lock-exempt.decorator';
 
 const TENANT_HEADER = 'x-tenant-id';
@@ -35,7 +35,20 @@ export class TenantLockGuard implements CanActivate {
     const tenantId = this.resolveTenantId(context);
     if (!tenantId) return true;
 
-    await assertTenantNotLocked(this.lock, tenantId);
+    // Service-to-service routes get the retryable 503; user-facing routes keep 423.
+    const req = context.switchToHttp().getRequest<{ originalUrl?: string; url?: string }>();
+    const internal = (req?.originalUrl ?? req?.url ?? '').includes('/internal/');
+    try {
+      await assertTenantNotLocked(this.lock, tenantId, { internal });
+    } catch (error) {
+      if (internal) {
+        context.switchToHttp().getResponse<{ setHeader?: (name: string, value: string) => void }>()?.setHeader?.(
+          'Retry-After',
+          String(TENANT_LOCK_RETRY_AFTER_SECONDS),
+        );
+      }
+      throw error;
+    }
     return true;
   }
 

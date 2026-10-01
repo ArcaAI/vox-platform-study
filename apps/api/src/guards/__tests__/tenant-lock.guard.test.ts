@@ -67,7 +67,7 @@ describe('TenantLockGuard', () => {
   it('falls back to X-Tenant-Id on internal routes that have no CLS tenant yet', async () => {
     const guard = new TenantLockGuard(reflectorReturning(false), clsWith({}), lockService({ T: { locked: true, restoreId: 'R' } }));
     const req = { url: '/api/v1/internal/harness/policy', headers: { 'x-tenant-id': 'T' } };
-    await expect(guard.canActivate(httpContext(req))).rejects.toMatchObject({ status: 423 });
+    await expect(guard.canActivate(httpContext(req))).rejects.toMatchObject({ status: 503, response: { code: 'TENANT_RESTORE_IN_PROGRESS', restoreId: 'R' } });
   });
 
   it('does not trust X-Tenant-Id on non-internal routes', async () => {
