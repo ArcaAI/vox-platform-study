@@ -20,6 +20,25 @@ const httpContext = (req: Record<string, unknown> = { url: '/api/v1/admin/depart
     switchToHttp: () => ({ getRequest: () => req, getResponse: () => ({ setHeader: vi.fn() }) }),
   }) as unknown as ExecutionContext;
 
+describe('TenantLockGuard — categories', () => {
+  it.each([[['CONFIG_CONTENT']], [['CONFIG_CONTENT', 'CLINICAL']]])('still 423s human traffic for a %j lock', async (categories) => {
+    const guard = new TenantLockGuard(
+      reflectorReturning(false),
+      clsWith({ tenantId: 'T' }),
+      lockService({ T: { locked: true, restoreId: 'R', categories } as never }),
+    );
+    await expect(guard.canActivate(httpContext())).rejects.toMatchObject({ status: 423 });
+  });
+
+  it('lets /internal/ callers through a CONFIG_CONTENT lock (503 only with CLINICAL)', async () => {
+    const req = { url: '/api/v1/internal/stt/transcripts', headers: { 'x-tenant-id': 'T' } };
+    const open = new TenantLockGuard(reflectorReturning(false), clsWith({}), lockService({ T: { locked: true, categories: ['CONFIG_CONTENT'] } as never }));
+    await expect(open.canActivate(httpContext(req))).resolves.toBe(true);
+    const shut = new TenantLockGuard(reflectorReturning(false), clsWith({}), lockService({ T: { locked: true, categories: ['CLINICAL'] } as never }));
+    await expect(shut.canActivate(httpContext(req))).rejects.toMatchObject({ status: 503 });
+  });
+});
+
 describe('TenantLockGuard', () => {
   it('423s a request whose CLS tenant is locked', async () => {
     const guard = new TenantLockGuard(reflectorReturning(false), clsWith({ tenantId: 'T' }), lockService({ T: { locked: true, restoreId: 'R' } }));

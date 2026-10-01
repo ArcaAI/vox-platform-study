@@ -161,6 +161,8 @@ export const ICheckpointStore = Symbol('ICheckpointStore');
 export interface TenantLockState {
   locked: boolean;
   restoreId?: string;
+  /** Categories of the active restore. Absent = unknown, treated as including CLINICAL. */
+  categories?: RestorableCategory[];
 }
 export interface ITenantLockService {
   state(tenantId: string): Promise<TenantLockState>;

@@ -22,6 +22,7 @@ import {
   injectTraceCarrier,
   isMetadataObject,
   ITenantLockService,
+  lockBlocksMachineCallers,
   jsonSchemaValueProblems,
   metadataByteLength,
   setMetadataAt,
@@ -999,8 +1000,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     if (this.tenantLock && stored.tenantId) {
       try {
         const lock = await this.tenantLock.state(stored.tenantId);
-        if (lock.locked) {
-          this.logger.warn({ message: 'WS handshake refused — tenant is locked by a restore', sessionId, tenantId: stored.tenantId, restoreId: lock.restoreId });
+        if (lockBlocksMachineCallers(lock)) {
+          this.logger.warn({
+            message: 'WS handshake refused — tenant is locked by a restore',
+            sessionId,
+            tenantId: stored.tenantId,
+            restoreId: lock.restoreId,
+          });
           client.close(WS_CLOSE_CODES.TENANT_LOCKED, WS_TENANT_LOCKED_REASON);
           return;
         }

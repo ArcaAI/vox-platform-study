@@ -58,7 +58,13 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
   private async read(tenantId: string, emitOnUnlock: boolean): Promise<TenantLockState> {
     const active = await this.restores.findActiveByTenant(tenantId);
     const locked = !!active && (TENANT_LOCKING_STATUSES as readonly string[]).includes(active.status);
-    const state: TenantLockState = locked ? { locked: true, restoreId: active!.id } : { locked: false };
+    const state: TenantLockState = locked
+      ? {
+          locked: true,
+          restoreId: active!.id,
+          categories: active!.categories?.length ? ([...active!.categories] as TenantLockState['categories']) : undefined,
+        }
+      : { locked: false };
     this.cache.set(tenantId, { state, expiresAt: Date.now() + TENANT_LOCK_CACHE_TTL_MS });
     this.noteTransition(tenantId, locked, emitOnUnlock);
     return state;
