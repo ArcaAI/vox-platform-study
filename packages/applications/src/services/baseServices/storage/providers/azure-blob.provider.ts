@@ -188,6 +188,28 @@ export class AzureBlobProvider implements IBlobStorageProvider {
     );
   }
 
+  // Streaming put + browser multipart back tenant checkpoints, which live in the S3/MinIO platform
+  // bucket only. Refused loudly rather than half-implemented.
+  async putObjectStream(): Promise<{ sizeBytes: number }> {
+    throw new Error('checkpoint multipart is S3-only');
+  }
+
+  async createMultipartUpload(): Promise<{ uploadId: string }> {
+    throw new Error('checkpoint multipart is S3-only');
+  }
+
+  async presignUploadPart(): Promise<string> {
+    throw new Error('checkpoint multipart is S3-only');
+  }
+
+  async completeMultipartUpload(): Promise<{ sizeBytes: number }> {
+    throw new Error('checkpoint multipart is S3-only');
+  }
+
+  async abortMultipartUpload(): Promise<void> {
+    throw new Error('checkpoint multipart is S3-only');
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       await this.client.getProperties();
