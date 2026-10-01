@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { IconArchive, IconArrowLeft, IconLock, IconPlayerPause, IconRestore, IconTrash } from '@tabler/icons-react';
+import { IconArchive, IconArrowLeft, IconDatabaseExport, IconLock, IconPlayerPause, IconRestore, IconTrash } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
@@ -165,6 +165,16 @@ export function TenantDetailScreen({ id }: { id: string }) {
                 </span>
               ) : (
                 <>
+                  {session.data?.workingTenantId === tenant.id ? (
+                    // Checkpoints is a tier 30-49 screen scoped to the working tenant,
+                    // so the link is offered only while this tenant IS the working one.
+                    <Button variant="outline" asChild>
+                      <a href="/checkpoints">
+                        <IconDatabaseExport aria-hidden />
+                        Checkpoints
+                      </a>
+                    </Button>
+                  ) : null}
                   {isElevated ? (
                     <Button variant="outline" onClick={() => setPlanOpen(true)}>
                       Change plan
