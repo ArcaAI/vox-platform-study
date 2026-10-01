@@ -195,7 +195,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
   }
 
   async process(job: Job<GenerateDnaReportJobPayload>, token?: string): Promise<DnaReportJobResult> {
-    await postponeIfTenantLocked(this.tenantLock, job, token, job.data.tenantId);
+    await postponeIfTenantLocked(this.tenantLock, job, token, job.data.tenantId, ['CLINICAL']);
     return runJobInContext(this.clsService, job, async () => {
       return this.processWithContext(job);
     });

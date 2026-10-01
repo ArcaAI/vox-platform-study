@@ -32,7 +32,7 @@ export class ConsultationCompletionTimeoutProcessor extends WorkerHost {
       this.logger.error({ message: 'Completion-timeout job without tenantId/consultationId — dropped', jobId: job.id });
       return;
     }
-    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId);
+    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId, ['CLINICAL']);
     // Cross-tenant system job: restore the trace but open NO CLS scope. The tenant-scope
     // extension passes a query through only outside a CLS scope; a tenant-less scope makes it refuse.
     await runJobInContext(undefined, job, () => this.harnessInternal.closeOnCompletionTimeout(consultationId, tenantId));

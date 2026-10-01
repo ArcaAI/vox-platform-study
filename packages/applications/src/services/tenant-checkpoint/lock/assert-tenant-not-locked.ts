@@ -1,5 +1,5 @@
 import { HttpException, Logger, ServiceUnavailableException } from '@nestjs/common';
-import type { ITenantLockService, TenantLockState } from '../contracts';
+import type { ITenantLockService, RestorableCategory, TenantLockState } from '../contracts';
 
 const logger = new Logger('assertTenantNotLocked');
 
@@ -21,7 +21,15 @@ export const TENANT_LOCK_RETRY_AFTER_SECONDS = 30;
  * USERS_ACCESS restore leaves them running. Unknown categories fail closed (treated as CLINICAL).
  */
 export function lockBlocksMachineCallers(state: TenantLockState): boolean {
-  return state.locked && (state.categories === undefined || state.categories.includes('CLINICAL'));
+  return lockConflicts(state, ['CLINICAL']);
+}
+
+/**
+ * True when the lock is held by a restore whose categories intersect `conflictsWith` — the restore
+ * categories a piece of work writes into. Unknown categories fail closed (they block).
+ */
+export function lockConflicts(state: TenantLockState, conflictsWith: readonly RestorableCategory[]): boolean {
+  return state.locked && (state.categories === undefined || state.categories.some((c) => conflictsWith.includes(c)));
 }
 
 export async function assertTenantNotLocked(lock: ITenantLockService, tenantId: string, options: { internal?: boolean } = {}): Promise<void> {

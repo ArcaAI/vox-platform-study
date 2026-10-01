@@ -113,7 +113,7 @@ export class PreSummaryProcessor extends WorkerHost {
     if (!tenantId) {
       throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
     }
-    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId);
+    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId, ['CLINICAL']);
     // Rebind tenantId + user into a fresh CLS scope so the
     // tenantScope Prisma extension sees the correct context.
     return runJobInContext(this.cls, job, async () => {
