@@ -25,13 +25,16 @@ function stubSecrets() {
       calls.push({ op: 'sign', args: [key, data] });
       return 'vault:v1:c2ln';
     }),
+    // Vault picks the key version from the `vault:vN:` prefix; the stub accepts any version.
     verify: vi.fn(async (key: string, data: Buffer, sig: string) => {
       calls.push({ op: 'verify', args: [key, data, sig] });
-      return sig === 'vault:v1:c2ln';
+      return /^vault:v\d+:c2ln$/.test(sig);
     }),
-    publicKey: vi.fn(async (key: string) => {
-      calls.push({ op: 'publicKey', args: [key] });
-      return 'MCowBQYDK2VwAyEAPUBLICKEY';
+    /** Transit key versions; `latest` moves on rotation. */
+    versions: { latest: 1, keys: { 1: 'MCowBQYDK2VwAyEAPUBLICKEY' } as Record<number, string> },
+    publicKey: vi.fn(async (key: string, version?: number) => {
+      calls.push({ op: 'publicKey', args: [key, version] });
+      return stub.versions.keys[version ?? stub.versions.latest];
     }),
   };
   return stub;
@@ -98,7 +101,31 @@ describe('CheckpointSealing', () => {
     expect(await sealing.deploymentId()).toBe(expected);
     expect(await sealing.deploymentId()).toBe(expected);
     expect(s.publicKey).toHaveBeenCalledTimes(1);
-    expect(s.publicKey).toHaveBeenCalledWith(CHECKPOINT_SIGN_KEY);
+    expect(s.publicKey).toHaveBeenCalledWith(CHECKPOINT_SIGN_KEY, 1);
+  });
+
+  it('a Transit key rotation never changes deploymentId; signatures of the new version still verify', async () => {
+    const s = stubSecrets();
+    const before = await sealingWith(s).deploymentId();
+    s.versions.keys[2] = 'MCowBQYDK2VwAyEAROTATEDKEY';
+    s.versions.latest = 2;
+    const after = await sealingWith(s).deploymentId(); // fresh instance — no memo involved
+    expect(after).toBe(before);
+    expect(await sealingWith(s).verify(Buffer.alloc(32, 9), 'vault:v2:c2ln')).toBe(true);
+    expect(s.verify).toHaveBeenLastCalledWith(CHECKPOINT_SIGN_KEY, Buffer.alloc(32, 9), 'vault:v2:c2ln');
+  });
+
+  it('SecretsService.publicKey: a trimmed version → SEALING_UNAVAILABLE naming the version', async () => {
+    const provider = Object.assign(new InMemorySecretsProvider(), {
+      sign: vi.fn(),
+      verify: vi.fn(),
+      publicKey: vi.fn(async () => null),
+    });
+    const secrets = new SecretsService(provider);
+    const err = await secrets.publicKey(CHECKPOINT_SIGN_KEY, 1).catch((e: unknown) => e);
+    expect(err).toMatchObject({ reason: 'SEALING_UNAVAILABLE' });
+    expect((err as Error).message).toMatch(/hope-checkpoint-sign.*version 1/);
+    expect(provider.publicKey).toHaveBeenCalledWith(CHECKPOINT_SIGN_KEY, 1);
   });
 
   it('deploymentId() does not memoise a failure', async () => {

@@ -487,7 +487,7 @@ export class SecretsService implements OnModuleDestroy {
   private signingProvider(): {
     sign: (k: string, d: Buffer) => Promise<string>;
     verify: (k: string, d: Buffer, s: string) => Promise<boolean>;
-    publicKey: (k: string) => Promise<string>;
+    publicKey: (k: string, v?: number) => Promise<string | null>;
   } {
     if (!this.supportsSigning()) {
       throw new CheckpointError('SEALING_UNAVAILABLE', 'Transit signing requires the Vault secrets provider (SECRETS_PROVIDER=vault)');
@@ -505,9 +505,20 @@ export class SecretsService implements OnModuleDestroy {
     return this.signingProvider().verify(keyName, data, signature);
   }
 
-  /** Public key of the latest version of `<keyName>` (`transit/keys/<keyName>`). */
-  async publicKey(keyName: string): Promise<string> {
-    return this.signingProvider().publicKey(keyName);
+  /**
+   * Public key of `<keyName>` (`transit/keys/<keyName>`): `keys[version]` when `version` is given,
+   * otherwise the latest. A missing version (trimmed key) is SEALING_UNAVAILABLE.
+   */
+  async publicKey(keyName: string, version?: number): Promise<string> {
+    const pk = await this.signingProvider().publicKey(keyName, version);
+    if (!pk) {
+      throw new CheckpointError(
+        'SEALING_UNAVAILABLE',
+        `Transit key '${keyName}' has no public key for version ${version ?? 'latest'} (was the key trimmed?)`,
+        { keyName, version: version ?? 'latest' },
+      );
+    }
+    return pk;
   }
 
   /**

@@ -665,17 +665,20 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     }
   }
 
-  /** Public key of the LATEST version of a named asymmetric Transit key. */
-  async publicKey(keyName: string): Promise<string> {
+  /**
+   * Public key of a named asymmetric Transit key — `version` when given, otherwise the latest.
+   * Returns null when that version is absent (trimmed below `min_available_version`) or exposes no
+   * public key; the caller decides what a missing key means.
+   */
+  async publicKey(keyName: string, version?: number): Promise<string | null> {
     this.ensureBooted();
     const res = (await this.client.read(`${this.config.transitMount}/keys/${keyName}`)) as {
       data?: { latest_version?: number; keys?: Record<string, { public_key?: string } | number> };
     };
-    const latest = res?.data?.latest_version;
-    const entry = latest !== undefined ? res?.data?.keys?.[String(latest)] : undefined;
+    const v = version ?? res?.data?.latest_version;
+    const entry = v !== undefined ? res?.data?.keys?.[String(v)] : undefined;
     const pk = typeof entry === 'object' && entry ? entry.public_key : undefined;
-    if (!pk) throw new Error(`VaultSecretsProvider.publicKey: transit key '${keyName}' exposes no public key`);
-    return pk;
+    return pk || null;
   }
 
   // ---------- DB Secrets Engine ----------

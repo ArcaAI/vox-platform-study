@@ -76,9 +76,20 @@ describe('VaultSecretsProvider transit signing', () => {
     expect(read).toHaveBeenCalledWith('transit/keys/hope-checkpoint-sign');
   });
 
-  it('publicKey throws when the key exposes no public key', async () => {
-    const p = provider({ read: vi.fn().mockResolvedValue({ data: { latest_version: 1, keys: { '1': 1700000000 } } }) });
+  it('publicKey(key, version) returns that version, not the latest', async () => {
+    const read = vi.fn().mockResolvedValue({
+      data: { latest_version: 2, keys: { '1': { public_key: 'OLD' }, '2': { public_key: 'NEW' } } },
+    });
+    const p = provider({ read });
     await p.boot();
-    await expect(p.publicKey('hope-checkpoint')).rejects.toThrow(/no public key/);
+    expect(await p.publicKey('hope-checkpoint-sign', 1)).toBe('OLD');
+  });
+
+  it('publicKey returns null when the requested version is absent (trimmed) or has no public key', async () => {
+    const read = vi.fn().mockResolvedValue({ data: { latest_version: 3, min_available_version: 2, keys: { '2': { public_key: 'B' }, '3': 1700000000 } } });
+    const p = provider({ read });
+    await p.boot();
+    expect(await p.publicKey('hope-checkpoint-sign', 1)).toBeNull();
+    expect(await p.publicKey('hope-checkpoint-sign')).toBeNull();
   });
 });

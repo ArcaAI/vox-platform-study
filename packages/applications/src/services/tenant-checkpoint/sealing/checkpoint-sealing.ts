@@ -2,7 +2,8 @@
  * Checkpoint sealing over Vault Transit:
  *   - the per-checkpoint data key is wrapped by `hope-checkpoint` (aes256-gcm96, non-exportable),
  *   - the archive digest is signed by `hope-checkpoint-sign` (ed25519, public key exportable),
- *   - the deployment identity is the hex sha256 of that signing key's public key,
+ *   - the deployment identity is the hex sha256 of VERSION 1 of that signing key's public key — so a
+ *     Transit rotation (new signatures carry `vault:v2:`, still verified by Vault) never changes it,
  *   - an optional passphrase wrap (Argon2id) lets the owner open the file offline.
  *
  * Fail closed: on a non-Vault secrets provider every Vault-backed operation raises
@@ -16,6 +17,8 @@ import { CHECKPOINT_SIGN_KEY, CHECKPOINT_WRAP_KEY, CheckpointError, type ICheckp
 import { unwrapDataKeyWithPassphrase, wrapDataKeyWithPassphrase } from './passphrase';
 
 const DATA_KEY_BYTES = 32;
+/** The signing-key version the deployment identity is pinned to; must never be trimmed in Vault. */
+const DEPLOYMENT_ID_KEY_VERSION = 1;
 
 @Injectable()
 export class CheckpointSealing implements ICheckpointSealing {
@@ -65,7 +68,7 @@ export class CheckpointSealing implements ICheckpointSealing {
     this.assertAvailable();
     if (!this.deploymentIdPromise) {
       this.deploymentIdPromise = this.secrets
-        .publicKey(CHECKPOINT_SIGN_KEY)
+        .publicKey(CHECKPOINT_SIGN_KEY, DEPLOYMENT_ID_KEY_VERSION)
         .then((pk) => createHash('sha256').update(pk, 'utf8').digest('hex'))
         .catch((e: unknown) => {
           this.deploymentIdPromise = null;
