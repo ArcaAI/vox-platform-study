@@ -28,6 +28,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { BlobStorageProviderFactory } from '../../baseServices/storage/providers/blob-storage.provider.factory';
 import { TENANT_CHECKPOINT_RETENTION_DAYS_KEY } from '../../settings-registry/descriptors/tenant-checkpoint.descriptors';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
+import { CLAIM_CHECK_BUCKET } from '../../workflow-exposure/claim-check';
 import { createArchiveWriter, tableEntryName } from '../archive';
 import {
   CheckpointError,
@@ -51,9 +52,9 @@ import { CHECKPOINT_DB_CONNECTOR, type CheckpointDbConnector, type CheckpointDbS
 import { CsvRecordCounter } from './csv-record-counter';
 
 const UUID = /^[0-9a-f-]{36}$/;
+/** `pg_export_snapshot()` output, e.g. `00000003-0000001B-1`. */
+const SNAPSHOT_ID = /^[0-9A-Fa-f]+(-[0-9A-Fa-f]+)+$/;
 const DAY_MS = 86_400_000;
-/** Fallback for a ref that omits its bucket — the harness claim-check bucket (refs normally name it). */
-const CLAIM_CHECK_BUCKET = 'harness-claim-check';
 const CIPHERTEXT_COLUMN = /^encrypted|Encrypted$|Ciphertext$/;
 
 /** COPY takes no bind parameters: inline the (already validated) tenant id as a quoted literal. */
@@ -85,6 +86,22 @@ interface MediaRef {
   uri: string;
 }
 
+/** Options of one export run. */
+export interface CheckpointExportRunOptions {
+  /**
+   * Read the snapshot another open transaction exported with `pg_export_snapshot()` instead of a
+   * fresh one (`SET TRANSACTION SNAPSHOT`). The restore uses it so its SAFETY checkpoint sees exactly
+   * what its reconcile transaction sees. The exporting transaction must stay open until this returns.
+   */
+  snapshotId?: string;
+}
+
+/** SELECT list of one table: a redacted column is exported as NULL under its own name. */
+export function exportSelectList(d: CheckpointModelDescriptor, cols: readonly string[]): string {
+  const redacted = new Set(d.redactColumns ?? []);
+  return cols.map((c) => (redacted.has(c) ? `NULL AS ${quoteIdent(c)}` : `s.${quoteIdent(c)}`)).join(', ');
+}
+
 interface Progress {
   phase: 'tables' | 'media' | 'finishing';
   tablesDone: number;
@@ -112,10 +129,10 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
     super(eventEmitter, clsService, ResourceType.TenantCheckpoint);
   }
 
-  async run(checkpointId: string): Promise<void> {
+  async run(checkpointId: string, options: CheckpointExportRunOptions = {}): Promise<void> {
     const row = await findCheckpoint(this.checkpoints, checkpointId);
     if (!row || row.status !== TenantCheckpointStatus.PENDING) return; // re-delivered job: idempotent
-    await this.inTenantContext(row.tenantId, () => this.export(row));
+    await this.inTenantContext(row.tenantId, () => this.export(row, options));
   }
 
   private async inTenantContext(tenantId: string, work: () => Promise<void>): Promise<void> {
@@ -128,7 +145,7 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
     else await this.clsService.run(body);
   }
 
-  private async export(initial: TenantCheckpointEntity): Promise<void> {
+  private async export(initial: TenantCheckpointEntity, options: CheckpointExportRunOptions): Promise<void> {
     const id = initial.id;
     const tenantId = initial.tenantId;
     const descriptors = CHECKPOINT_REGISTRY.filter((d) => d.policy !== 'EXCLUDED');
@@ -147,6 +164,9 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
 
     try {
       if (!UUID.test(tenantId)) throw new CheckpointError('EXPORT_FAILED', 'The tenant id is not a UUID');
+      if (options.snapshotId !== undefined && !SNAPSHOT_ID.test(options.snapshotId)) {
+        throw new CheckpointError('EXPORT_FAILED', 'The snapshot id is malformed');
+      }
       const objectKey = this.store.objectKey(tenantId, id);
       const started = this.now();
       const running = await patchCheckpoint(this.checkpoints, id, (row) => {
@@ -168,6 +188,7 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
       session = await this.db.connect();
       const q = session.query;
       await q('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      if (options.snapshotId) await q(`SET TRANSACTION SNAPSHOT '${options.snapshotId}'`);
       const fingerprint = await schemaFingerprint(q);
       const [tenant] = await q<{ t: Record<string, unknown> }>('SELECT row_to_json(t) AS t FROM core."Tenant" t WHERE t."id" = $1', [tenantId]);
       if (!tenant?.t) throw new CheckpointError('EXPORT_FAILED', 'The tenant row was not found');
@@ -204,7 +225,7 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
           notCaptured.push(`table:${d.model}:MISSING`);
           continue;
         }
-        const select = `SELECT ${cols.map((c) => `s.${quoteIdent(c)}`).join(', ')} FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`;
+        const select = `SELECT ${exportSelectList(d, cols)} FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`;
         const counter = new CsvRecordCounter();
         const source = session.copyOut(inlineTenant(`COPY (${select}) TO STDOUT (FORMAT csv, HEADER)`, tenantId));
         const gz = pipeline(source, counter, createGzip(), () => undefined);
@@ -261,6 +282,11 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
         await this.checkCancel(id, cancel);
         if (ref.store !== 's3') {
           notCaptured.push(`claimcheck:${ref.key}:UNSUPPORTED_STORE`);
+          continue;
+        }
+        // Platform credentials read this object: never follow a bucket named in DB JSON (R1 M-5).
+        if (ref.bucket !== CLAIM_CHECK_BUCKET) {
+          notCaptured.push(`claimcheck:${ref.key}:FOREIGN_BUCKET`);
           continue;
         }
         const body = await this.openObject(() => this.blobs.getProvider(), ref.bucket, ref.key);
