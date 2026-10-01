@@ -178,3 +178,5 @@ export * from './workflow-sandbox-run';
 // and the super-admin load/unload surface over the shared GPU serving engine.
 export * from './inference-engine';
 export * from './model-residency';
+// Tenant checkpoints — sealed per-tenant backups, offline download/upload, and the locked restore.
+export * from './tenant-checkpoint';
