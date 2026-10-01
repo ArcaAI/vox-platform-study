@@ -56,6 +56,9 @@ export class TenantCheckpointEntity extends BaseTenantEntity {
   private _expiresAt?: ITenantCheckpointEntity['expiresAt'];
   private _failureReason?: ITenantCheckpointEntity['failureReason'];
   private _failureDetail?: ITenantCheckpointEntity['failureDetail'];
+  // `IBaseEntity.metaData` is not wired on `BaseEntity`; implemented locally
+  // (same as `AiModelEntity`) so the `_metadata` JSON survives the round-trip.
+  private _metaData?: ITenantCheckpointEntity['metaData'];
 
   constructor(init: ITenantCheckpointEntity) {
     super(init);
@@ -82,6 +85,15 @@ export class TenantCheckpointEntity extends BaseTenantEntity {
     this._expiresAt = init.expiresAt;
     this._failureReason = init.failureReason;
     this._failureDetail = init.failureDetail;
+    this._metaData = init.metaData;
+  }
+
+  get metaData(): ITenantCheckpointEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: ITenantCheckpointEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   get label(): ITenantCheckpointEntity['label'] {

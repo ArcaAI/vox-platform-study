@@ -28,6 +28,11 @@ export type WorkerSessionKind =
   | 'gate-edit-mining'
   // Admin-triggered tenant external-IdP directory pull (MS Graph / Google Directory).
   | 'directory-sync'
+  // Tenant checkpoint export / verify / restore runners and the stuck-job sweeper.
+  | 'tenant-checkpoint-export'
+  | 'tenant-checkpoint-verify'
+  | 'tenant-checkpoint-restore'
+  | 'tenant-checkpoint-sweeper'
   // Webhook delivery: SysEvent → matching Webhook fan-out, and the signed
   // per-webhook HTTP POST.
   | 'webhook-delivery'
