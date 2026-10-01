@@ -51,3 +51,9 @@ describe('isPlatformBucket', () => {
     expect(isPlatformBucket(derived)).toBe(true);
   });
 });
+
+describe('tenant checkpoint bucket', () => {
+  it('is a platform bucket and never tenant-ownable', () => {
+    expect(isPlatformBucket('hope-tenant-checkpoints')).toBe(true);
+  });
+});

@@ -196,6 +196,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // MonitoringController + ApiHealthController `/services` gates accept
       // `read:TenantTelemetry`). SUPER_ADMIN is covered by `manage:all`.
       { action: 'read', subject: 'TenantTelemetry', conditions: { tenantId: '${context.tenantId}' } },
+      { action: 'manage', subject: 'TenantCheckpoint', conditions: { tenantId: '${context.tenantId}' } },
       // Clinical documentation harness — tenant admins
       // self-serve their own tenant's harness: tune the policy + drive the
       // gate/Temporal workflow ops, and read the WORM audit trail + eval
