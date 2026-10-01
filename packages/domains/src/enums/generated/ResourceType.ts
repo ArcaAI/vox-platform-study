@@ -172,4 +172,6 @@ export enum ResourceType {
   // from under a live clinical session. Parity with audit.prisma; see
   // resourceType.enum-parity.test.ts.
   ModelResidencyPolicy = 'ModelResidencyPolicy',
+  TenantCheckpoint = 'TenantCheckpoint',
+  TenantCheckpointRestore = 'TenantCheckpointRestore',
 }

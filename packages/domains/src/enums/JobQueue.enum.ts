@@ -52,4 +52,11 @@ export enum JobQueue {
   // without ever re-delivering to webhooks that already succeeded — see
   // webhook-delivery.processor.ts for the split rationale.
   WebhookDelivery = 'WebhookDelivery',
+
+  // Tenant checkpoints — consumed ONLY by the separate checkpoint-worker
+  // process. Export carries two job kinds (create, verify-upload); restore
+  // holds the tenant lock for its whole run. Both stream through their own
+  // `pg` connection, so neither is DB-bound on the shared Prisma pool.
+  TenantCheckpointExport = 'TenantCheckpointExport',
+  TenantCheckpointRestore = 'TenantCheckpointRestore',
 }

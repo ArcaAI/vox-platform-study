@@ -1042,3 +1042,51 @@ enum ModelResidencyClass {
 
   @@schema("core")
 }
+
+// tenant checkpoints — backup/restore of one tenant
+enum TenantCheckpointKind {
+  MANUAL
+  SAFETY
+
+  @@schema("core")
+}
+
+enum TenantCheckpointOrigin {
+  CREATED
+  UPLOADED
+
+  @@schema("core")
+}
+
+enum TenantCheckpointStatus {
+  PENDING
+  UPLOADING
+  RUNNING
+  READY
+  FAILED
+  CANCELLED
+
+  @@schema("core")
+}
+
+enum TenantCheckpointCategory {
+  CONFIG_CONTENT
+  USERS_ACCESS
+  CLINICAL
+
+  @@schema("core")
+}
+
+enum TenantCheckpointRestoreStatus {
+  PENDING
+  LOCKING
+  SAFETY_CHECKPOINT
+  VERIFYING
+  RECONCILING
+  POST_COMMIT
+  COMPLETED
+  COMPLETED_WITH_WARNINGS
+  FAILED
+
+  @@schema("core")
+}

@@ -424,5 +424,11 @@ enum ResourceType {
   // `AiRoutingPolicy` above.
   ModelResidencyPolicy
 
+  // Tenant checkpoints — a sealed backup of one tenant, and a restore from one.
+  // Creation, download (a PHI export) and every restore are audited; a restore
+  // rewrites a tenant's configuration, access or clinical rows in one move.
+  TenantCheckpoint
+  TenantCheckpointRestore
+
   @@schema("core")
 }

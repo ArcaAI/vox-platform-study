@@ -208,6 +208,14 @@ export const QUEUE_CONCURRENCY: Record<string, number> = {
    * waste and would multiply lock contention".
    */
   [JobQueue.AiUsageOutboxDrain]: 1,
+  /**
+   * Tenant checkpoints: one export and one restore at a time per worker
+   * process. Each job streams a whole tenant (possibly GBs) through its own
+   * `pg` connection, and a restore holds the tenant lock — parallelism buys
+   * contention, not throughput.
+   */
+  [JobQueue.TenantCheckpointExport]: 1,
+  [JobQueue.TenantCheckpointRestore]: 1,
 };
 
 /** Sum across every queue — the number of jobs that may run at once in-process. */

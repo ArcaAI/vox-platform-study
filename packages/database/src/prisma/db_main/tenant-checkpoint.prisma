@@ -1,0 +1,98 @@
+/// One sealed backup of one tenant. Object bytes live in the platform bucket
+/// `hope-tenant-checkpoints`; this row is the durable job state (Redis is not durable).
+model TenantCheckpoint {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+  // multi tenant fields
+  tenantId String
+  // core (business) fields
+  label               String
+  kind                TenantCheckpointKind   @default(MANUAL)
+  origin              TenantCheckpointOrigin @default(CREATED)
+  status              TenantCheckpointStatus @default(PENDING)
+  includesMedia       Boolean                @default(true)
+  passphraseProtected Boolean                @default(false)
+  /// { platform: <Vault hope-checkpoint ciphertext>, passphrase?: PassphraseWrap } — ciphertext only
+  keyEnvelope         Json?                  @db.JsonB
+  objectKey           String?
+  uploadId            String?
+  sizeBytes           BigInt?
+  manifestDigest      String?
+  /// { tables: [{ model, columns, rowCount }] } — lets the API answer SCHEMA_INCOMPATIBLE synchronously
+  manifestSummary     Json?                  @db.JsonB
+  schemaFingerprint   String?
+  sourceDeploymentId  String?
+  formatVersion       Int                    @default(1)
+  /// { phase, tablesDone, tablesTotal, bytesWritten }
+  progress            Json?                  @db.JsonB
+  heartbeatAt         DateTime?
+  cancelRequestedAt   DateTime?
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  expiresAt           DateTime?
+  failureReason       String?
+  failureDetail       String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // relations
+  restores TenantCheckpointRestore[] @relation("TenantCheckpointRestoreSource")
+
+  @@index([tenantId], name: "TenantCheckpoint_tenantId_idx")
+  @@index([tenantId, status], name: "TenantCheckpoint_tenantId_status_idx")
+  @@index([status, heartbeatAt], name: "TenantCheckpoint_status_heartbeatAt_idx")
+  @@schema("core")
+}
+
+/// One restore of a tenant from a checkpoint. While its status is between LOCKING and a terminal
+/// state, the tenant is locked (423) — this row IS the lock.
+model TenantCheckpointRestore {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+  // multi tenant fields
+  tenantId String
+  // core (business) fields
+  checkpointId       String
+  categories         TenantCheckpointCategory[]
+  reason             String
+  status             TenantCheckpointRestoreStatus @default(PENDING)
+  safetyCheckpointId String?
+  /// [{ model, inserted, updated, retired }]
+  counts             Json?                         @db.JsonB
+  /// [{ code, message, detail? }]
+  warnings           Json?                         @db.JsonB
+  requestedBy        String
+  heartbeatAt        DateTime?
+  lockAcquiredAt     DateTime?
+  lockReleasedAt     DateTime?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  failureReason      String?
+  failureDetail      String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // relations
+  checkpoint TenantCheckpoint @relation("TenantCheckpointRestoreSource", fields: [checkpointId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId], name: "TenantCheckpointRestore_tenantId_idx")
+  @@index([checkpointId], name: "TenantCheckpointRestore_checkpointId_idx")
+  @@index([tenantId, status], name: "TenantCheckpointRestore_tenantId_status_idx")
+  @@schema("core")
+}

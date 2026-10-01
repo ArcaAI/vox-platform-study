@@ -74,6 +74,8 @@ export * from './SummaryMetaModel';
 export * from './TagModel';
 export * from './TenantAllowedOriginModel';
 export * from './TenantBucketModel';
+export * from './TenantCheckpointModel';
+export * from './TenantCheckpointRestoreModel';
 export * from './TenantEntitlementModel';
 export * from './TenantFrontendConfigModel';
 export * from './TenantGuardrailPolicyModel';
