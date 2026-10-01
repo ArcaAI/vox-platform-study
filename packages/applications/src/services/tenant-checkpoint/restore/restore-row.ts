@@ -42,10 +42,25 @@ export async function patchRestore(
   }
 }
 
+/**
+ * R2 I-5: the restore row's RECONCILING → POST_COMMIT compare-and-set, run as the LAST statement of
+ * the reconcile transaction, so the status and the data commit together. `$1` = restore id,
+ * `$2` = safety checkpoint id. No row back ⇒ the sweeper ended the restore: roll back.
+ */
+export const CLAIM_POST_COMMIT_SQL =
+  `UPDATE core."TenantCheckpointRestore" SET "status" = 'POST_COMMIT', "safetyCheckpointId" = $2, "heartbeatAt" = now(), ` +
+  `"updatedAt" = now(), "_version" = "_version" + 1 WHERE "id" = $1 AND "status" = 'RECONCILING' AND "resourceStatus" <> 'DELETED' RETURNING "id"`;
+
+/** `application_name` of the reconcile connection — the sweeper's liveness probe while the heartbeat is paused. */
+export function restoreBackendName(restoreId: string): string {
+  return `hope-restore:${restoreId}`;
+}
+
 /** Interval runner that never overlaps itself and never lets a failed beat escape. */
 export class Heartbeat {
   private timer?: NodeJS.Timeout;
   private inFlight = false;
+  private current: Promise<void> | null = null;
 
   constructor(
     private readonly intervalMs: number,
@@ -58,10 +73,11 @@ export class Heartbeat {
     this.timer = setInterval(() => {
       if (this.inFlight) return;
       this.inFlight = true;
-      this.beat()
+      this.current = this.beat()
         .catch(this.onError)
         .finally(() => {
           this.inFlight = false;
+          this.current = null;
         });
     }, this.intervalMs);
     this.timer.unref?.();
@@ -70,6 +86,12 @@ export class Heartbeat {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+  }
+
+  /** Stop, and wait for a beat already in flight to land (no write may follow). */
+  async pause(): Promise<void> {
+    this.stop();
+    await this.current;
   }
 }
 

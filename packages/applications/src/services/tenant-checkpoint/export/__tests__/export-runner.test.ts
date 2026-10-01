@@ -154,4 +154,62 @@ describe('CheckpointExportRunner', () => {
     expect(s.repo.writes).toHaveLength(0);
     expect(s.db.statements).toHaveLength(0);
   });
+
+  it('exports redacted credential columns as NULL — the column stays in the header and the manifest', async () => {
+    const s = await setup({ db: { columns: { User: ['id', 'username', 'password', 'secret1', 'secret2'], ApiKey: ['id', 'tenantId', 'keyHash'] } } });
+    await s.runner.run(s.row.id);
+
+    expect(s.repo.get(s.row.id).status).toBe('READY');
+    const userCopy = s.db.copies.find((c) => /FROM core\."User" s WHERE/.test(c))!;
+    expect(userCopy).toContain('NULL AS "password"');
+    expect(userCopy).toContain('NULL AS "secret1"');
+    expect(userCopy).toContain('NULL AS "secret2"');
+    expect(userCopy).not.toContain('s."password"');
+    expect(userCopy).toContain('s."username"');
+    expect(s.db.copies.find((c) => /FROM core\."ApiKey" s WHERE/.test(c))).toContain('NULL AS "keyHash"');
+    const { manifest } = await readEntries(s.store.objects.get(`${TENANT_A}/${s.row.id}.hcp`)!, s.dataKey);
+    expect(manifest.tables.find((t) => t.model === 'User')!.columns).toEqual(['id', 'username', 'password', 'secret1', 'secret2']);
+  });
+
+  it('reads claim-check blobs from the platform claim-check bucket only — a ref naming another bucket is not followed', async () => {
+    const s = await setup({
+      db: {
+        refs: [
+          { store: 's3', bucket: 'hope-tenant-checkpoints', key: 'other-tenant/archive.hcp' },
+          { store: 's3', bucket: 'harness-claim-check', key: 'ok1' },
+          { store: 's3', key: 'ok2' },
+        ],
+      },
+      objects: {
+        'hope-tenant-checkpoints/other-tenant/archive.hcp': Buffer.from('secret'),
+        'harness-claim-check/ok1': Buffer.from('1'),
+        'harness-claim-check/ok2': Buffer.from('2'),
+      },
+    });
+    await s.runner.run(s.row.id);
+
+    expect(s.blobs.reads).toEqual(['harness-claim-check/ok1', 'harness-claim-check/ok2']);
+    const { manifest } = await readEntries(s.store.objects.get(`${TENANT_A}/${s.row.id}.hcp`)!, s.dataKey);
+    expect(manifest.notCaptured).toContain('claimcheck:other-tenant/archive.hcp:FOREIGN_BUCKET');
+    expect(manifest.claimChecks.map((c) => c.contentKey)).toEqual(['ok1', 'ok2']);
+  });
+
+  it('imported-snapshot mode: the export reads the snapshot another transaction exported (SET TRANSACTION SNAPSHOT)', async () => {
+    const s = await setup();
+    await s.runner.run(s.row.id, { snapshotId: '00000003-0000001B-1' });
+
+    expect(s.repo.get(s.row.id).status).toBe('READY');
+    expect(s.db.statements.slice(0, 2)).toEqual(['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY', `SET TRANSACTION SNAPSHOT '00000003-0000001B-1'`]);
+  });
+
+  it('normal mode never imports a snapshot; a malformed snapshot id is refused before anything is read', async () => {
+    const plain = await setup();
+    await plain.runner.run(plain.row.id);
+    expect(plain.db.statements.some((q) => /SET TRANSACTION SNAPSHOT/.test(q))).toBe(false);
+
+    const bad = await setup();
+    await bad.runner.run(bad.row.id, { snapshotId: "1'; DROP TABLE x; --" });
+    expect(bad.repo.get(bad.row.id)).toMatchObject({ status: 'FAILED', failureReason: 'EXPORT_FAILED' });
+    expect(bad.db.copies).toHaveLength(0);
+  });
 });

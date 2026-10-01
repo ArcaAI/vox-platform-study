@@ -131,8 +131,17 @@ export class CheckpointVerifyRunner extends BaseService implements ICheckpointVe
         row.finishedAt = this.now();
       });
       // The object is untrusted bytes nothing can use; a retry is a fresh upload.
-      await this.store.delete(key).catch(() => undefined);
-      this.broadcastSysEvent(SysEventType.ResourceUpdated, { resourceId: id, data: { status: TenantCheckpointStatus.FAILED, failureReason: reason } });
+      await this.store.delete(key).catch((e) =>
+        this.logger.warn({
+          message: 'Deleting a refused checkpoint upload failed',
+          checkpointId: id,
+          error: e instanceof Error ? e.name : 'Error',
+        }),
+      );
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: id,
+        data: { status: TenantCheckpointStatus.FAILED, failureReason: reason },
+      });
     } finally {
       heartbeat.stop();
     }

@@ -1,11 +1,14 @@
 /**
- * The restore worker: lock → safety checkpoint → verify → media → reconcile (ONE transaction) →
- * post-commit → settle → unlock. The `TenantCheckpointRestore` row is the lock and the durable job
- * state; a heartbeat keeps it alive every 15 s so the sweeper can tell a dead worker from a slow one.
+ * The restore worker: lock → verify → media → BEGIN REPEATABLE READ → export that snapshot →
+ * SAFETY checkpoint from it (second connection) → reconcile → compare-and-set the row to
+ * POST_COMMIT → COMMIT → post-commit → settle → unlock. The `TenantCheckpointRestore` row is the
+ * lock and the durable job state; a heartbeat keeps it alive every 15 s so the sweeper can tell a
+ * dead worker from a slow one — except inside the reconcile transaction, where any write to the row
+ * would break the snapshot, and the sweeper probes the reconcile connection instead.
  *
  * Failure before the commit: the transaction rolls back, the lock is released, the row ends FAILED
- * and the tenant's data is exactly what it was. Failure after the commit: the data stays restored
- * and the row ends COMPLETED_WITH_WARNINGS.
+ * and the tenant's data is exactly what it was. The POST_COMMIT status is written BY the commit, so
+ * a committed restore is never recorded FAILED: failure after it ends COMPLETED_WITH_WARNINGS.
  */
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -27,20 +30,38 @@ import { BaseService } from '../../../common/base.service';
 import { createWorkerSession } from '../../../common/worker-session';
 import { IActiveUserContext } from '../../../interfaces';
 import { openArchive, verifyArchive } from '../archive';
+import type { OpenedArchive } from '../archive/reader';
 import {
   CheckpointError,
   ICheckpointExportRunner,
   ICheckpointSealing,
   ICheckpointStore,
   ITenantLockService,
+  type CheckpointArchiveReader,
   type RestorableCategory,
   type RestoreWarning,
   type VerifiedArchive,
 } from '../contracts';
+import type { CheckpointExportRunOptions } from '../export/export-runner';
 import { CheckpointMediaRestorer } from './media-restorer';
 import { CheckpointRestorePostCommit } from './post-commit';
 import { CheckpointReconciler, type ReconcileResult } from './reconciler';
-import { CHECKPOINT_RESTORE_DB, describeRestoreFailure, findRestore, Heartbeat, patchRestore, realClock, RESTORE_CLOCK, type RestoreClock, type RestoreDb } from './restore-row';
+import {
+  CHECKPOINT_RESTORE_DB,
+  CLAIM_POST_COMMIT_SQL,
+  describeRestoreFailure,
+  findRestore,
+  Heartbeat,
+  patchRestore,
+  realClock,
+  RESTORE_CLOCK,
+  restoreBackendName,
+  type RestoreClock,
+  type RestoreDb,
+} from './restore-row';
+
+/** The export runner, with its imported-snapshot mode (the contract's `run` takes the id only). */
+type SnapshotExportRunner = ICheckpointExportRunner & { run(checkpointId: string, options?: CheckpointExportRunOptions): Promise<void> };
 
 /**
  * How long the lock is held after the commit, so every in-process cache over a restored table
@@ -89,7 +110,10 @@ export class CheckpointRestoreRunner extends BaseService {
     if (!row || row.status !== TenantCheckpointRestoreStatus.PENDING) return; // re-delivered job: idempotent
     const work = async () => {
       this.clsService.set('tenantId', row.tenantId);
-      this.clsService.set('user', createWorkerSession({ tenantId: row.tenantId, userId: row.requestedBy, kind: 'tenant-checkpoint-restore' }) as never);
+      this.clsService.set(
+        'user',
+        createWorkerSession({ tenantId: row.tenantId, userId: row.requestedBy, kind: 'tenant-checkpoint-restore' }) as never,
+      );
       await this.restore(row);
     };
     if (this.clsService.isActive()) await work();
@@ -131,34 +155,35 @@ export class CheckpointRestoreRunner extends BaseService {
       heartbeat.start();
       await this.clock.sleep(LOCK_DRAIN_MS);
 
-      // 2. SAFETY_CHECKPOINT --------------------------------------------------------------------
-      await this.setStatus(id, TenantCheckpointRestoreStatus.SAFETY_CHECKPOINT);
-      safetyCheckpointId = await this.safetyCheckpoint(initial, categories);
-      await this.setStatus(id, null, (row) => {
-        row.safetyCheckpointId = safetyCheckpointId;
-      });
-
-      // 3. VERIFYING ----------------------------------------------------------------------------
+      // 2. VERIFYING ----------------------------------------------------------------------------
       await this.setStatus(id, TenantCheckpointRestoreStatus.VERIFYING);
-      const source = await this.checkpoints.findById(initial.checkpointId).catch(() => null);
+      const source = await this.checkpoints.findById(initial.checkpointId).catch((error: unknown) => {
+        this.logger.warn({ message: 'Source checkpoint lookup failed', restoreId: id, checkpointId: initial.checkpointId, error: errorName(error) });
+        return null;
+      });
       if (!source || source.tenantId !== tenantId || source.status !== TenantCheckpointStatus.READY || !source.objectKey) {
         throw new CheckpointError('RESTORE_FAILED', 'The source checkpoint is no longer available', { checkpointId: initial.checkpointId });
       }
       const objectKey = source.objectKey;
       const verified = await verifyArchive({ open: () => this.store.openReadStream(objectKey), expectTenantId: tenantId, sealing: this.sealing });
 
-      // 4. media bytes missing from their buckets ----------------------------------------------
+      // 3. media bytes missing from their buckets ----------------------------------------------
       if (categories.includes('CLINICAL') && verified.header.includesMedia && verified.manifest.media?.length) {
         const media = await this.withReader(verified, objectKey, (reader) => this.media.reupload(tenantId, verified.manifest, reader, this.db.query));
         mediaWarnings.push(...media.warnings);
       }
       this.throwIfAborted(aborted);
 
-      // 5. RECONCILING — one transaction ------------------------------------------------------
+      // 4. RECONCILING — ONE REPEATABLE READ transaction; the SAFETY checkpoint reads its snapshot --
+      // Nothing else writes this restore row until COMMIT: a write after the snapshot would make the
+      // compare-and-set below a serialization failure. The sweeper sees the worker alive through the
+      // reconcile connection's application_name instead of the paused heartbeat.
       await this.setStatus(id, TenantCheckpointRestoreStatus.RECONCILING);
+      await heartbeat.pause();
       const client = await this.db.connect();
       let clientError: Error | undefined;
       try {
+        await client.query(`SELECT set_config('application_name', $1, false)`, [restoreBackendName(id)]);
         result = await this.withReader(verified, objectKey, (reader) =>
           this.reconciler.reconcile(client, {
             tenantId,
@@ -166,18 +191,29 @@ export class CheckpointRestoreRunner extends BaseService {
             reader,
             actorId: initial.requestedBy,
             restoreId: id,
-            beforeCommit: async () => {
+            platformAdmin: initial.metaData?.requestedByPlatformAdmin === true,
+            onBegin: async (query) => {
+              const [{ id: snapshotId }] = await query<{ id: string }>('SELECT pg_export_snapshot() AS id');
+              safetyCheckpointId = await this.safetyCheckpoint(initial, categories, snapshotId);
+            },
+            beforeCommit: async (query) => {
               this.throwIfAborted(aborted);
-              const row = await findRestore(this.restores, id);
-              if (!row || row.status !== TenantCheckpointRestoreStatus.RECONCILING) {
-                throw new CheckpointError('RESTORE_FAILED', 'The restore was ended by the sweeper before it could commit');
+              await this.assertSignedBytes(reader);
+              let claimed: unknown[];
+              try {
+                claimed = await query(CLAIM_POST_COMMIT_SQL, [id, safetyCheckpointId]);
+              } catch (error) {
+                if ((error as { code?: string } | null)?.code !== '40001') throw error;
+                claimed = []; // the row was written after our snapshot — only the sweeper does that
               }
+              if (!claimed.length) throw new CheckpointError('RESTORE_FAILED', 'The restore was ended by the sweeper before it could commit');
             },
           }),
         );
         committedAt = this.clock.now();
+        await client.query('RESET application_name');
       } catch (error) {
-        clientError = error instanceof Error ? error : undefined;
+        clientError = error instanceof Error ? error : new Error('restore reconcile failed');
         throw error;
       } finally {
         client.release(clientError);
@@ -188,15 +224,16 @@ export class CheckpointRestoreRunner extends BaseService {
       return;
     }
 
-    // 6. POST_COMMIT — never undoes the restore ---------------------------------------------------
+    // 5. POST_COMMIT (status written by the commit itself) — never undoes the restore ----------
+    heartbeat.start();
     const done = result!;
     const warnings: RestoreWarning[] = [...mediaWarnings, ...done.warnings];
     try {
-      await this.setStatus(id, TenantCheckpointRestoreStatus.POST_COMMIT);
       warnings.push(
         ...(await this.postCommit.run({ tenantId, restoreId: id, actorId: initial.requestedBy, categories, result: done, query: this.db.query })),
       );
     } catch (error) {
+      this.logger.warn({ message: 'Restore post-commit steps failed', restoreId: id, error: errorName(error) });
       warnings.push({ code: 'POST_COMMIT_FAILED', message: 'Post-commit steps did not complete', detail: { error: errorName(error) } });
     }
 
@@ -206,11 +243,12 @@ export class CheckpointRestoreRunner extends BaseService {
 
     // 7. unlock --------------------------------------------------------------------------------
     heartbeat.stop();
-    const status = warnings.length ? TenantCheckpointRestoreStatus.COMPLETED_WITH_WARNINGS : TenantCheckpointRestoreStatus.COMPLETED;
-    await this.finish(initial, status, (row) => {
-      row.counts = done.counts as never;
-      row.warnings = warnings as never;
-    }).catch((error) => this.logger.error({ message: 'Could not record the restore outcome', restoreId: id, error: errorName(error) }));
+    let status = warnings.length ? TenantCheckpointRestoreStatus.COMPLETED_WITH_WARNINGS : TenantCheckpointRestoreStatus.COMPLETED;
+    await this.finishCommitted(initial, status, done.counts, warnings)
+      .then((recorded) => {
+        if (recorded) status = recorded;
+      })
+      .catch((error) => this.logger.error({ message: 'Could not record the restore outcome', restoreId: id, error: errorName(error) }));
     await this.lock.publishChange(tenantId);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
@@ -229,8 +267,15 @@ export class CheckpointRestoreRunner extends BaseService {
     });
   }
 
-  /** A full SAFETY checkpoint of the tenant, run inline; its row must end READY. */
-  private async safetyCheckpoint(restore: TenantCheckpointRestoreEntity, categories: readonly RestorableCategory[]): Promise<string> {
+  /**
+   * A full SAFETY checkpoint of the tenant, run inline from the reconcile transaction's exported
+   * snapshot (so it holds every row that transaction can retire); its row must end READY.
+   */
+  private async safetyCheckpoint(
+    restore: TenantCheckpointRestoreEntity,
+    categories: readonly RestorableCategory[],
+    snapshotId: string,
+  ): Promise<string> {
     const key = await this.sealing.generateDataKey();
     key.plaintext.fill(0);
     const entity = TenantCheckpointFactory.CreateTenantCheckpoint({
@@ -242,8 +287,16 @@ export class CheckpointRestoreRunner extends BaseService {
       createdBy: restore.requestedBy,
     });
     const created = await this.checkpoints.create(entity);
-    await this.exportRunner.run(created.id);
-    const done = await this.checkpoints.findById(created.id).catch(() => null);
+    await (this.exportRunner as SnapshotExportRunner).run(created.id, { snapshotId });
+    const done = await this.checkpoints.findById(created.id).catch((error: unknown) => {
+      this.logger.warn({
+        message: 'Safety checkpoint lookup failed',
+        restoreId: restore.id,
+        safetyCheckpointId: created.id,
+        error: errorName(error),
+      });
+      return null;
+    });
     if (!done || done.status !== TenantCheckpointStatus.READY) {
       throw new CheckpointError('RESTORE_FAILED', 'The safety checkpoint did not complete; nothing was restored', {
         safetyCheckpointId: created.id,
@@ -253,8 +306,28 @@ export class CheckpointRestoreRunner extends BaseService {
     return created.id;
   }
 
+  /**
+   * R1 M-1: the bytes the reconcile read are the bytes the gate vouched for — the reader checked
+   * them against the trailer digest; the trailer's signature must verify for this deployment.
+   */
+  private async assertSignedBytes(reader: CheckpointArchiveReader): Promise<void> {
+    const opened = reader as Partial<OpenedArchive>;
+    let ok = false;
+    try {
+      ok = !!opened.digest && !!opened.signature && (await this.sealing.verify(opened.digest(), opened.signature()));
+    } catch (error) {
+      this.logger.warn({ message: 'Checkpoint re-read signature check failed', error: errorName(error) });
+      ok = false;
+    }
+    if (!ok) throw new CheckpointError('SIGNATURE_INVALID', 'The checkpoint changed after it was verified');
+  }
+
   /** Opens the verified object again; the header must be the one the gate vouched for. */
-  private async withReader<T>(verified: VerifiedArchive, objectKey: string, work: (reader: Awaited<ReturnType<typeof openArchive>>) => Promise<T>): Promise<T> {
+  private async withReader<T>(
+    verified: VerifiedArchive,
+    objectKey: string,
+    work: (reader: Awaited<ReturnType<typeof openArchive>>) => Promise<T>,
+  ): Promise<T> {
     const dataKey = await this.sealing.unwrapPlatform(verified.header.keys.platform);
     try {
       const reader = await openArchive(await this.store.openReadStream(objectKey), dataKey);
@@ -273,6 +346,7 @@ export class CheckpointRestoreRunner extends BaseService {
     await this.finish(restore, TenantCheckpointRestoreStatus.FAILED, (row) => {
       row.failureReason = reason;
       row.failureDetail = detail;
+      if (safetyCheckpointId) row.safetyCheckpointId = safetyCheckpointId;
     }).catch((e) => this.logger.error({ message: 'Could not record the restore failure', restoreId: restore.id, error: errorName(e) }));
     await this.lock.publishChange(restore.tenantId);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -292,7 +366,11 @@ export class CheckpointRestoreRunner extends BaseService {
   }
 
   /** Terminal write: status, lock released, finished. Skipped if the sweeper already ended the row. */
-  private async finish(restore: TenantCheckpointRestoreEntity, status: TenantCheckpointRestoreStatus, edit: (row: TenantCheckpointRestoreEntity) => void): Promise<void> {
+  private async finish(
+    restore: TenantCheckpointRestoreEntity,
+    status: TenantCheckpointRestoreStatus,
+    edit: (row: TenantCheckpointRestoreEntity) => void,
+  ): Promise<void> {
     const now = this.date();
     await patchRestore(this.restores, restore.id, (row) => {
       if (TERMINAL.has(row.status)) return false;
@@ -304,7 +382,42 @@ export class CheckpointRestoreRunner extends BaseService {
     });
   }
 
-  private async setStatus(id: string, status: TenantCheckpointRestoreStatus | null, edit?: (row: TenantCheckpointRestoreEntity) => void): Promise<void> {
+  /**
+   * Terminal write after a COMMIT. The sweeper may already have ended a committed restore
+   * (COMPLETED_WITH_WARNINGS, lock released) — then this run's counts and warnings are merged in and
+   * that status is kept. Returns the status recorded.
+   */
+  private async finishCommitted(
+    restore: TenantCheckpointRestoreEntity,
+    status: TenantCheckpointRestoreStatus,
+    counts: unknown,
+    warnings: RestoreWarning[],
+  ): Promise<TenantCheckpointRestoreStatus | null> {
+    const now = this.date();
+    let recorded: TenantCheckpointRestoreStatus | null = null;
+    await patchRestore(this.restores, restore.id, (row) => {
+      row.counts = counts as never;
+      if (TERMINAL.has(row.status)) {
+        const prior = Array.isArray(row.warnings) ? (row.warnings as unknown as RestoreWarning[]) : [];
+        row.warnings = [...prior, ...warnings] as never;
+        row.status = TenantCheckpointRestoreStatus.COMPLETED_WITH_WARNINGS;
+      } else {
+        row.status = status;
+        row.warnings = warnings as never;
+        row.lockReleasedAt = now;
+        row.finishedAt = now;
+      }
+      row.heartbeatAt = now;
+      recorded = row.status as TenantCheckpointRestoreStatus;
+    });
+    return recorded;
+  }
+
+  private async setStatus(
+    id: string,
+    status: TenantCheckpointRestoreStatus | null,
+    edit?: (row: TenantCheckpointRestoreEntity) => void,
+  ): Promise<void> {
     const written = await patchRestore(this.restores, id, (row) => {
       if (TERMINAL.has(row.status)) return false;
       if (status) row.status = status;

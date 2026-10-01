@@ -13,13 +13,7 @@ import { pipeline, type Readable } from 'node:stream';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import {
-  ResourceType,
-  SysEventType,
-  TenantCheckpointRepository,
-  TenantCheckpointStatus,
-  type TenantCheckpointEntity,
-} from '@arcaai/domains';
+import { ResourceType, SysEventType, TenantCheckpointRepository, TenantCheckpointStatus, type TenantCheckpointEntity } from '@arcaai/domains';
 
 import { BaseService } from '../../../common/base.service';
 import { parseStorageUri } from '../../../common/storage-uri';
@@ -28,6 +22,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { BlobStorageProviderFactory } from '../../baseServices/storage/providers/blob-storage.provider.factory';
 import { TENANT_CHECKPOINT_RETENTION_DAYS_KEY } from '../../settings-registry/descriptors/tenant-checkpoint.descriptors';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
+import { CLAIM_CHECK_BUCKET } from '../../workflow-exposure/claim-check';
 import { createArchiveWriter, tableEntryName } from '../archive';
 import {
   CheckpointError,
@@ -51,9 +46,9 @@ import { CHECKPOINT_DB_CONNECTOR, type CheckpointDbConnector, type CheckpointDbS
 import { CsvRecordCounter } from './csv-record-counter';
 
 const UUID = /^[0-9a-f-]{36}$/;
+/** `pg_export_snapshot()` output, e.g. `00000003-0000001B-1`. */
+const SNAPSHOT_ID = /^[0-9A-Fa-f]+(-[0-9A-Fa-f]+)+$/;
 const DAY_MS = 86_400_000;
-/** Fallback for a ref that omits its bucket — the harness claim-check bucket (refs normally name it). */
-const CLAIM_CHECK_BUCKET = 'harness-claim-check';
 const CIPHERTEXT_COLUMN = /^encrypted|Encrypted$|Ciphertext$/;
 
 /** COPY takes no bind parameters: inline the (already validated) tenant id as a quoted literal. */
@@ -85,6 +80,22 @@ interface MediaRef {
   uri: string;
 }
 
+/** Options of one export run. */
+export interface CheckpointExportRunOptions {
+  /**
+   * Read the snapshot another open transaction exported with `pg_export_snapshot()` instead of a
+   * fresh one (`SET TRANSACTION SNAPSHOT`). The restore uses it so its SAFETY checkpoint sees exactly
+   * what its reconcile transaction sees. The exporting transaction must stay open until this returns.
+   */
+  snapshotId?: string;
+}
+
+/** SELECT list of one table: a redacted column is exported as NULL under its own name. */
+export function exportSelectList(d: CheckpointModelDescriptor, cols: readonly string[]): string {
+  const redacted = new Set(d.redactColumns ?? []);
+  return cols.map((c) => (redacted.has(c) ? `NULL AS ${quoteIdent(c)}` : `s.${quoteIdent(c)}`)).join(', ');
+}
+
 interface Progress {
   phase: 'tables' | 'media' | 'finishing';
   tablesDone: number;
@@ -112,10 +123,10 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
     super(eventEmitter, clsService, ResourceType.TenantCheckpoint);
   }
 
-  async run(checkpointId: string): Promise<void> {
+  async run(checkpointId: string, options: CheckpointExportRunOptions = {}): Promise<void> {
     const row = await findCheckpoint(this.checkpoints, checkpointId);
     if (!row || row.status !== TenantCheckpointStatus.PENDING) return; // re-delivered job: idempotent
-    await this.inTenantContext(row.tenantId, () => this.export(row));
+    await this.inTenantContext(row.tenantId, () => this.export(row, options));
   }
 
   private async inTenantContext(tenantId: string, work: () => Promise<void>): Promise<void> {
@@ -128,7 +139,7 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
     else await this.clsService.run(body);
   }
 
-  private async export(initial: TenantCheckpointEntity): Promise<void> {
+  private async export(initial: TenantCheckpointEntity, options: CheckpointExportRunOptions): Promise<void> {
     const id = initial.id;
     const tenantId = initial.tenantId;
     const descriptors = CHECKPOINT_REGISTRY.filter((d) => d.policy !== 'EXCLUDED');
@@ -147,6 +158,9 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
 
     try {
       if (!UUID.test(tenantId)) throw new CheckpointError('EXPORT_FAILED', 'The tenant id is not a UUID');
+      if (options.snapshotId !== undefined && !SNAPSHOT_ID.test(options.snapshotId)) {
+        throw new CheckpointError('EXPORT_FAILED', 'The snapshot id is malformed');
+      }
       const objectKey = this.store.objectKey(tenantId, id);
       const started = this.now();
       const running = await patchCheckpoint(this.checkpoints, id, (row) => {
@@ -168,10 +182,14 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
       session = await this.db.connect();
       const q = session.query;
       await q('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      if (options.snapshotId) await q(`SET TRANSACTION SNAPSHOT '${options.snapshotId}'`);
       const fingerprint = await schemaFingerprint(q);
       const [tenant] = await q<{ t: Record<string, unknown> }>('SELECT row_to_json(t) AS t FROM core."Tenant" t WHERE t."id" = $1', [tenantId]);
       if (!tenant?.t) throw new CheckpointError('EXPORT_FAILED', 'The tenant row was not found');
-      const columns = await currentColumns(q, descriptors.map((d) => d.model));
+      const columns = await currentColumns(
+        q,
+        descriptors.map((d) => d.model),
+      );
 
       const header: Omit<CheckpointHeader, 'magic' | 'formatVersion' | 'noncePrefix'> = {
         checkpointId: id,
@@ -204,7 +222,7 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
           notCaptured.push(`table:${d.model}:MISSING`);
           continue;
         }
-        const select = `SELECT ${cols.map((c) => `s.${quoteIdent(c)}`).join(', ')} FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`;
+        const select = `SELECT ${exportSelectList(d, cols)} FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`;
         const counter = new CsvRecordCounter();
         const source = session.copyOut(inlineTenant(`COPY (${select}) TO STDOUT (FORMAT csv, HEADER)`, tenantId));
         const gz = pipeline(source, counter, createGzip(), () => undefined);
@@ -218,7 +236,9 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
       let refs: unknown[] = [];
       if (running.includesMedia) {
         const m = descriptorFor('Media');
-        media = await q<MediaRef>(`SELECT s."id", s."bucketId", s."uri" FROM ${tableName(m)} s WHERE ${scopePredicate(m, 's')} ORDER BY s."id"`, [tenantId]);
+        media = await q<MediaRef>(`SELECT s."id", s."bucketId", s."uri" FROM ${tableName(m)} s WHERE ${scopePredicate(m, 's')} ORDER BY s."id"`, [
+          tenantId,
+        ]);
         refs = await this.claimCheckRefs(q, tenantId);
       }
       await q('COMMIT');
@@ -263,6 +283,11 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
           notCaptured.push(`claimcheck:${ref.key}:UNSUPPORTED_STORE`);
           continue;
         }
+        // Platform credentials read this object: never follow a bucket named in DB JSON (R1 M-5).
+        if (ref.bucket !== CLAIM_CHECK_BUCKET) {
+          notCaptured.push(`claimcheck:${ref.key}:FOREIGN_BUCKET`);
+          continue;
+        }
         const body = await this.openObject(() => this.blobs.getProvider(), ref.bucket, ref.key);
         if (!body) {
           notCaptured.push(`claimcheck:${ref.key}:MISSING`);
@@ -305,12 +330,15 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
     } catch (error) {
       heartbeat.stop();
       if (session) {
+        // swallow-ok: a failed ROLLBACK means the connection is gone; it is released with the error and destroyed
         await session.query('ROLLBACK').catch(() => undefined);
         session.release(error instanceof Error ? error : undefined);
         session = undefined;
       }
-      await writer?.abort(error instanceof Error ? error : new Error('checkpoint export failed')).catch(() => undefined);
-      await upload?.abort().catch(() => undefined);
+      await writer
+        ?.abort(error instanceof Error ? error : new Error('checkpoint export failed'))
+        .catch((e) => this.logger.warn({ message: 'Checkpoint archive writer abort failed', checkpointId: id, error: errorName(e) }));
+      await upload?.abort().catch((e) => this.logger.warn({ message: 'Checkpoint upload abort failed', checkpointId: id, error: errorName(e) }));
       await this.recordFailure(id, error);
     } finally {
       heartbeat.stop();
@@ -350,7 +378,9 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
     const cipher = cols.filter((c) => CIPHERTEXT_COLUMN.test(c));
     if (cipher.length === 0) return {};
     const selects = cipher.map((c, i) => `max(substring(s.${quoteIdent(c)}::text from 'vault:v([0-9]+):')::int) AS "v${i}"`);
-    const [row] = await q<Record<string, number | null>>(`SELECT ${selects.join(', ')} FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`, [tenantId]);
+    const [row] = await q<Record<string, number | null>>(`SELECT ${selects.join(', ')} FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`, [
+      tenantId,
+    ]);
     const out: Record<string, number> = {};
     cipher.forEach((c, i) => {
       const v = row?.[`v${i}`];
@@ -371,7 +401,11 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
   }
 
   /** Opens an object; a missing object resolves `null` (recorded as not captured), any other failure throws. */
-  private async openObject(provider: () => Promise<{ getObjectStream(p: { bucket: string; key: string }): Promise<Readable> }>, bucket: string, key: string): Promise<Readable | null> {
+  private async openObject(
+    provider: () => Promise<{ getObjectStream(p: { bucket: string; key: string }): Promise<Readable> }>,
+    bucket: string,
+    key: string,
+  ): Promise<Readable | null> {
     try {
       return await (await provider()).getObjectStream({ bucket, key });
     } catch (error) {

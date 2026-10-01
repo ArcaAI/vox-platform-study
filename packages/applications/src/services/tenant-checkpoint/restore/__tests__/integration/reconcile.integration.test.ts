@@ -14,6 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Pool, type PoolClient } from 'pg';
 
@@ -23,6 +24,7 @@ import { loadFkEdges } from '../../../registry/order';
 import { CHECKPOINT_REGISTRY, tableName } from '../../../registry/registry';
 import { scopePredicate } from '../../../registry/scope';
 import { CheckpointReconciler, type ReconcileArgs, type ReconcileResult } from '../../reconciler';
+import { CLAIM_POST_COMMIT_SQL, restoreBackendName } from '../../restore-row';
 import { checkpointOf, fingerprintRows, type TestCheckpoint } from './test-exporter';
 
 const A = '1032a000-0000-4000-8000-000000001032';
@@ -60,6 +62,7 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
   let c: PoolClient;
   let modelId: string;
   let installedGuards = false;
+  const installedIndexes: string[] = [];
   let seeded: Record<string, Seeded>;
   let before: { a: Record<string, string>; b: Record<string, string> };
   const reconciler = new CheckpointReconciler();
@@ -87,6 +90,8 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
       for (const d of userScoped) await run(`DELETE FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`, [t]);
       for (const d of tenantScoped) await run(`DELETE FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`, [t]);
     }
+    await run(`DELETE FROM core."TenantCheckpointRestore" WHERE "tenantId" = ANY($1)`, [[A, B]]);
+    await run(`DELETE FROM core."TenantCheckpoint" WHERE "tenantId" = ANY($1)`, [[A, B]]);
     await run(`DELETE FROM core."User" WHERE username LIKE 'l6b-%'`);
     await run(`DELETE FROM core."Role" WHERE name LIKE 'l6b-%'`);
     await run('COMMIT');
@@ -155,11 +160,22 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
     installedGuards = true;
   }
 
+  /** The hand-written partial unique indexes of the migrations (the test DB is `db push`-managed). */
+  const PARTIAL_INDEXES: Record<string, string> = {
+    AiRoutingPolicy_tenant_task_default_unique: `CREATE UNIQUE INDEX "AiRoutingPolicy_tenant_task_default_unique" ON core."AiRoutingPolicy" ("tenantId", "taskKey") WHERE "isDefault" = true AND "resourceStatus" != 'DELETED'`,
+    Consultation_encounterKey_uq: `CREATE UNIQUE INDEX "Consultation_encounterKey_uq" ON core."Consultation" ("tenantId", "patientId", "doctorId", "externalRef") WHERE "externalRef" IS NOT NULL`,
+  };
+
   beforeAll(async () => {
     pool = new Pool({ connectionString: process.env.DATABASE_URL!.split('?')[0], max: 4 });
     c = await pool.connect();
     modelId = (await one<{ id: string }>(`SELECT id FROM core."AiModel" WHERE "tenantId" = $1 ORDER BY id LIMIT 1`, [SYSTEM])).id;
     await ensureGuards();
+    for (const [name, sql] of Object.entries(PARTIAL_INDEXES)) {
+      if ((await one<{ i: string | null }>(`SELECT to_regclass('core."${name}"')::text AS i`)).i) continue;
+      await run(sql);
+      installedIndexes.push(name);
+    }
   });
 
   afterAll(async () => {
@@ -172,6 +188,7 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
       await run(`DROP FUNCTION IF EXISTS core."agent_immutability_guard"()`);
       await run(`DROP INDEX IF EXISTS core."Agent_tenant_slug_active_unique"`);
     }
+    for (const name of installedIndexes) await run(`DROP INDEX IF EXISTS core."${name}"`);
     c.release();
     await pool.end();
   });
@@ -200,8 +217,8 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
     const edges = await loadFkEdges(sqlQueryOver(c));
     expect(edges).toEqual(
       expect.arrayContaining([
-        { child: 'Consultation', parent: 'Consultation', column: 'parentConsultationId' },
-        { child: 'ContextItem', parent: 'Consultation', column: 'consultationId' },
+        { child: 'Consultation', parent: 'Consultation', column: 'parentConsultationId', parentColumn: 'id' },
+        { child: 'ContextItem', parent: 'Consultation', column: 'consultationId', parentColumn: 'id' },
       ]),
     );
   });
@@ -330,7 +347,9 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
     expect(keys).toEqual({ [s.key0]: 'ACTIVE', [s.key1]: 'REVOKED', [key2]: 'REVOKED' });
     expect(await one(`SELECT u::text AS row FROM core."User" u WHERE id = $1`, [s.user1])).toEqual(user1Row);
     expect(await one(`SELECT p::text AS row FROM core."UserProfile" p WHERE "userId" = $1`, [s.user1])).toEqual(profileRow);
-    expect((await one(`SELECT password FROM core."User" WHERE id = $1`, [s.user2])).password).toBe('hash-original');
+    // R1 I-1: the checkpoint never carries a password hash; a re-created user must reset it
+    expect((await one(`SELECT password FROM core."User" WHERE id = $1`, [s.user2])).password).toBe('!checkpoint-restore:password-reset-required');
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'USER_REQUIRES_PASSWORD_RESET', detail: { userIds: [s.user2] } }));
     expect((await one(`SELECT count(*)::int AS n FROM core."UserRoleAssignment" WHERE "userId" = $1 AND "tenantId" = $2 AND "roleId" = $3`, [s.user2, A, s.role])).n).toBe(1);
     expect(res.touchedUserIds).toEqual([s.user2]);
   });
@@ -390,9 +409,10 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
     await run(`UPDATE core."Department" SET name = 'Renamed' WHERE id = $1`, [s.dept]);
     await mark();
 
-    await restore(cp, A, ['CONFIG_CONTENT']);
+    const res = await restore(cp, A, ['CONFIG_CONTENT']);
 
     expect((await one(`SELECT name FROM core."Department" WHERE id = $1`, [s.dept])).name).toBe('Cardiology');
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'COLUMN_DROPPED', detail: { model: 'Department', columns: ['ghostColumn'] } }));
   });
 
   it("10b — a staged row carrying another tenant's id aborts with RESTORE_FAILED and changes nothing", async () => {
@@ -417,20 +437,334 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
     expect(await fingerprintRows(c, A, CAPTURED)).toEqual(before.a);
   });
 
-  it('a full unique key held by a row created after the checkpoint fails closed, naming model and constraint', async () => {
+  it('R2 I-2 — a non-partial unique key held by a row created after the checkpoint: the live row is kept, the claimant (and its child) skipped with a warning', async () => {
     const s = seeded[A];
     const cp = await checkpointOf(c, A);
     await run(`DELETE FROM core."PromptVersion" WHERE "promptTemplateId" = $1`, [s.tmpl]);
     await run(`DELETE FROM core."PromptTemplate" WHERE id = $1`, [s.tmpl]);
-    await run(`INSERT INTO core."PromptTemplate" (id, "tenantId", name, content, category, "updatedAt") VALUES ($1, $2, 'greeting', 'Hi', 'CUSTOM', now())`, [randomUUID(), A]);
+    const holder = randomUUID();
+    await run(`INSERT INTO core."PromptTemplate" (id, "tenantId", name, content, category, "updatedAt") VALUES ($1, $2, 'greeting', 'Hi', 'CUSTOM', now())`, [holder, A]);
     await mark();
 
-    const err = await restore(cp, A, ['CONFIG_CONTENT']).catch((e) => e);
+    const res = await restore(cp, A, ['CONFIG_CONTENT']);
+
+    expect((await one(`SELECT "resourceStatus", content FROM core."PromptTemplate" WHERE id = $1`, [holder]))).toEqual({ resourceStatus: 'ENABLED', content: 'Hi' });
+    expect((await one(`SELECT count(*)::int AS n FROM core."PromptTemplate" WHERE id = $1`, [s.tmpl])).n).toBe(0);
+    expect((await one(`SELECT count(*)::int AS n FROM core."PromptVersion" WHERE id = $1`, [s.tmplVer])).n).toBe(0);
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'UNIQUE_SLOT_HELD', detail: { model: 'PromptTemplate', ids: [s.tmpl] } }));
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'PARENT_NOT_RESTORED', detail: { model: 'PromptVersion', ids: [s.tmplVer] } }));
+  });
+
+  it('R2 I-2 — a fallback chain replaced after the checkpoint (draft agent): the new row is hard-deleted and the checkpoint row returns', async () => {
+    const s = seeded[A];
+    const f1 = randomUUID();
+    await run(`INSERT INTO core."AgentModelFallback" (id, "tenantId", "agentId", priority, "modelId", "updatedAt") VALUES ($1, $2, $3, 1, $4, now())`, [f1, A, s.agentDraft, modelId]);
+    const cp = await checkpointOf(c, A);
+    await run(`DELETE FROM core."AgentModelFallback" WHERE id = $1`, [f1]);
+    const f3 = randomUUID();
+    await run(`INSERT INTO core."AgentModelFallback" (id, "tenantId", "agentId", priority, "modelId", "updatedAt") VALUES ($1, $2, $3, 1, $4, now())`, [f3, A, s.agentDraft, modelId]);
+    await mark();
+
+    const res = await restore(cp, A, ['CONFIG_CONTENT']);
+
+    const rows = (await run(`SELECT id, priority, "resourceStatus" FROM core."AgentModelFallback" WHERE "agentId" = $1`, [s.agentDraft])).rows;
+    expect(rows).toEqual([{ id: f1, priority: 1, resourceStatus: 'ENABLED' }]);
+    expect(res.counts.find((x) => x.model === 'AgentModelFallback')).toMatchObject({ retired: 1, inserted: 1 });
+  });
+
+  it('R2 C-2 — a fallback is never inserted under an agent published after the checkpoint', async () => {
+    const s = seeded[A];
+    const f1 = randomUUID();
+    await run(`INSERT INTO core."AgentModelFallback" (id, "tenantId", "agentId", priority, "modelId", "updatedAt") VALUES ($1, $2, $3, 1, $4, now())`, [f1, A, s.agentDraft, modelId]);
+    const cp = await checkpointOf(c, A);
+    await run(`DELETE FROM core."AgentModelFallback" WHERE id = $1`, [f1]);
+    await run(`UPDATE core."Agent" SET instruction = '{"draft":2}', status = 'PUBLISHED', "publishedAt" = now() WHERE id = $1`, [s.agentDraft]);
+    await mark();
+
+    const res = await restore(cp, A, ['CONFIG_CONTENT']);
+
+    expect((await one(`SELECT count(*)::int AS n FROM core."AgentModelFallback" WHERE "agentId" = $1`, [s.agentDraft])).n).toBe(0);
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'IMMUTABLE_DIVERGED', detail: { model: 'AgentModelFallback', ids: [f1] } }));
+  });
+
+  it('R2 I-1 — draft-then-publish: the diverged new version keeps the active slot; the old version is skipped (SLOT_HELD_BY_DIVERGED), no 23505', async () => {
+    const s = seeded[A];
+    const v2 = randomUUID();
+    await run(
+      `INSERT INTO core."Agent" (id, "tenantId", slug, name, task, "versionNumber", status, "isActive", "modelId", instruction, "updatedAt")
+       VALUES ($1, $2, 'triage', 'Triage', 'TEXT_GENERATION', 2, 'DRAFT', false, $3, '{"v":2}', now())`,
+      [v2, A, modelId],
+    );
+    const cp = await checkpointOf(c, A);
+    await run(`UPDATE core."Agent" SET "isActive" = false, status = 'DEPRECATED' WHERE id = $1`, [s.agentPub]);
+    await run(`UPDATE core."Agent" SET instruction = '{"v":"2b"}', status = 'PUBLISHED', "publishedAt" = now(), "isActive" = true WHERE id = $1`, [v2]);
+    await mark();
+
+    const res = await restore(cp, A, ['CONFIG_CONTENT']);
+
+    const rows = (await run(`SELECT id, "isActive", status FROM core."Agent" WHERE "tenantId" = $1 AND slug = 'triage' ORDER BY "versionNumber"`, [A])).rows;
+    expect(rows).toEqual([
+      { id: s.agentPub, isActive: false, status: 'DEPRECATED' },
+      { id: v2, isActive: true, status: 'PUBLISHED' },
+    ]);
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'SLOT_HELD_BY_DIVERGED', detail: { model: 'Agent', ids: [s.agentPub] } }));
+  });
+
+  it('R2 I-1 — default swaps are order-independent: AiRoutingPolicy.isDefault and AiProviderConnection.defaultForProvider', async () => {
+    const [p1, p2, c1, c2] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    // p2 sorts before p1 so the main pass meets the new default first
+    const [first, second] = [p1, p2].sort();
+    await run(`INSERT INTO core."AiRoutingPolicy" (id, "tenantId", "taskKey", "isDefault", "updatedAt") VALUES ($1, $2, 'text.summary', true, now()), ($3, $2, 'text.summary', false, now())`, [second, A, first]);
+    await run(
+      `INSERT INTO core."AiProviderConnection" (id, "tenantId", provider, slug, "defaultForProvider", "updatedAt") VALUES ($1, $2, 'openai', 'one', 'openai', now()), ($3, $2, 'openai', 'two', NULL, now())`,
+      [c1, A, c2],
+    );
+    const cp = await checkpointOf(c, A);
+    await run(`UPDATE core."AiRoutingPolicy" SET "isDefault" = false WHERE id = $1`, [second]);
+    await run(`UPDATE core."AiRoutingPolicy" SET "isDefault" = true WHERE id = $1`, [first]);
+    await run(`UPDATE core."AiProviderConnection" SET "defaultForProvider" = NULL WHERE id = $1`, [c1]);
+    await run(`UPDATE core."AiProviderConnection" SET "defaultForProvider" = 'openai' WHERE id = $1`, [c2]);
+    await mark();
+
+    await restore(cp, A, ['CONFIG_CONTENT']);
+
+    const policies = Object.fromEntries((await run(`SELECT id, "isDefault" FROM core."AiRoutingPolicy" WHERE "tenantId" = $1`, [A])).rows.map((r) => [r.id, r.isDefault]));
+    expect(policies).toEqual({ [second]: true, [first]: false });
+    const conns = Object.fromEntries((await run(`SELECT id, "defaultForProvider" AS d FROM core."AiProviderConnection" WHERE "tenantId" = $1`, [A])).rows.map((r) => [r.id, r.d]));
+    expect(conns).toEqual({ [c1]: 'openai', [c2]: null });
+  });
+
+  it('R2 I-6 — a retired consultation frees its encounter key; the original is kept in _metadata, the visit can be opened again', async () => {
+    const s = seeded[A];
+    const cp = await checkpointOf(c, A);
+    const c2 = randomUUID();
+    await run(
+      `INSERT INTO core."Consultation" (id, "tenantId", "patientId", "appointmentDate", "doctorId", "externalRef", "_metadata", "updatedAt") VALUES ($1, $2, 'P-9', '2026-10-02', $3, 'VISIT-X', '{"source":"emr"}', now())`,
+      [c2, A, s.user1],
+    );
+    await mark();
+
+    await restore(cp, A, ['CLINICAL']);
+
+    expect(await one(`SELECT "resourceStatus", "externalRef", "_metadata" AS m FROM core."Consultation" WHERE id = $1`, [c2])).toEqual({
+      resourceStatus: 'DELETED',
+      externalRef: null,
+      m: { source: 'emr', retiredExternalRef: 'VISIT-X' },
+    });
+    await run(
+      `INSERT INTO core."Consultation" (id, "tenantId", "patientId", "appointmentDate", "doctorId", "externalRef", "updatedAt") VALUES ($1, $2, 'P-9', '2026-10-02', $3, 'VISIT-X', now())`,
+      [randomUUID(), A, s.user1],
+    );
+  });
+
+  it('R2 I-7 — a CONFIG_CONTENT restore never retires a bucket that live clinical media still points into', async () => {
+    const cp = await checkpointOf(c, A);
+    const b2 = randomUUID();
+    await run(`INSERT INTO core."TenantBucket" (id, "tenantId", name, slug, "bucketType", "updatedAt") VALUES ($1, $2, $3, 'later', 'CUSTOM', now())`, [b2, A, `l6b-1032a-later`]);
+    await run(
+      `INSERT INTO core."Media" (id, "tenantId", name, uri, extension, "mimeType", size, hash, "bucketId", "updatedAt") VALUES ($1, $2, 'b.wav', 'audio/b.wav', 'wav', 'audio/wav', 3, 'h', $3, now())`,
+      [randomUUID(), A, b2],
+    );
+    await mark();
+
+    const res = await restore(cp, A, ['CONFIG_CONTENT']);
+
+    expect((await one(`SELECT "resourceStatus" FROM core."TenantBucket" WHERE id = $1`, [b2])).resourceStatus).toBe('ENABLED');
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'CROSS_CATEGORY_REFERENCE', detail: { model: 'TenantBucket', ids: [b2] } }));
+  });
+
+  it('R1 I-2 — a SUPER_ADMIN assignment is never revived nor retired, even by a platform admin', async () => {
+    const s = seeded[A];
+    const superAdmin = (await one(`SELECT id FROM core."Role" WHERE name = 'SUPER_ADMIN'`)).id;
+    const revoked = randomUUID();
+    await run(`INSERT INTO core."UserRoleAssignment" (id, "tenantId", "userId", "roleId", "updatedAt") VALUES ($1, $2, $3, $4, now())`, [revoked, A, s.user1, superAdmin]);
+    const cp = await checkpointOf(c, A);
+    await run(`UPDATE core."UserRoleAssignment" SET "resourceStatus" = 'DELETED' WHERE id = $1`, [revoked]);
+    const granted = randomUUID();
+    await run(`INSERT INTO core."UserRoleAssignment" (id, "tenantId", "userId", "roleId", "updatedAt") VALUES ($1, $2, $3, $4, now())`, [granted, A, s.user2, superAdmin]);
+    await mark();
+
+    const res = await restore(cp, A, ['USERS_ACCESS'], { platformAdmin: true });
+
+    const status = Object.fromEntries((await run(`SELECT id, "resourceStatus" FROM core."UserRoleAssignment" WHERE id = ANY($1)`, [[revoked, granted]])).rows.map((r) => [r.id, r.resourceStatus]));
+    expect(status).toEqual({ [revoked]: 'DELETED', [granted]: 'ENABLED' });
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'ELEVATED_ROLE_UNTOUCHED', detail: { model: 'UserRoleAssignment', ids: [granted, revoked].sort() } }));
+  });
+
+  it('R1 I-2 — platform-governed rows (RateLimitRule) are left alone unless a platform admin requested the restore', async () => {
+    const cp = await checkpointOf(c, A);
+    const rule = randomUUID();
+    await run(`INSERT INTO core."RateLimitRule" (id, "tenantId", "routeMatch", "limitValue", "windowMs", active, "updatedAt") VALUES ($1, $2, '/x', 10, 1000, false, now())`, [rule, A]);
+    await mark();
+
+    const res = await restore(cp, A, ['CONFIG_CONTENT']);
+    expect((await one(`SELECT "resourceStatus" FROM core."RateLimitRule" WHERE id = $1`, [rule])).resourceStatus).toBe('ENABLED');
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'PLATFORM_GOVERNED_SKIPPED', detail: { model: 'RateLimitRule', ids: [rule] } }));
+
+    await restore(cp, A, ['CONFIG_CONTENT'], { platformAdmin: true });
+    expect((await one(`SELECT "resourceStatus" FROM core."RateLimitRule" WHERE id = $1`, [rule])).resourceStatus).toBe('DELETED');
+    before = undefined as never; // two restores in one case: the per-case invariants were checked by the first mark
+  });
+
+  it('R1 M-6 — secrets never travel back in time: a rotated key is kept; a NOT NULL secret row is not re-created', async () => {
+    const conn = randomUUID();
+    const wh = randomUUID();
+    await run(`INSERT INTO core."AiProviderConnection" (id, "tenantId", provider, slug, name, "encryptedApiKey", "keyVersion", "updatedAt") VALUES ($1, $2, 'openai', 'k', 'before', 'vault:v1:old', 1, now())`, [conn, A]);
+    await run(`INSERT INTO core."WorkflowWebhookSecret" (id, "tenantId", "workflowSlug", "encryptedSecret", "updatedAt") VALUES ($1, $2, 'wf', 'vault:v1:s', now())`, [wh, A]);
+    const cp = await checkpointOf(c, A);
+    await run(`UPDATE core."AiProviderConnection" SET name = 'after', "encryptedApiKey" = 'vault:v2:new', "keyVersion" = 2 WHERE id = $1`, [conn]);
+    await run(`DELETE FROM core."WorkflowWebhookSecret" WHERE id = $1`, [wh]);
+    await mark();
+
+    const res = await restore(cp, A, ['CONFIG_CONTENT']);
+
+    expect(await one(`SELECT name, convert_from("encryptedApiKey", 'UTF8') AS k, "keyVersion" AS v FROM core."AiProviderConnection" WHERE id = $1`, [conn])).toEqual({
+      name: 'before',
+      k: 'vault:v2:new',
+      v: 2,
+    });
+    expect((await one(`SELECT count(*)::int AS n FROM core."WorkflowWebhookSecret" WHERE id = $1`, [wh])).n).toBe(0);
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'SECRET_REQUIRES_REENTRY', detail: { model: 'WorkflowWebhookSecret', ids: [wh], columns: ['encryptedSecret'] } }));
+  });
+
+  it('R2 I-3 — the safety checkpoint is taken from the reconcile snapshot: a row written after it is neither retired nor lost; a retired row is in the safety archive', async () => {
+    const s = seeded[A];
+    const cp = await checkpointOf(c, A);
+    const tNew = randomUUID();
+    await run(`INSERT INTO core."PromptTemplate" (id, "tenantId", name, content, category, "updatedAt") VALUES ($1, $2, 'later', 'x', 'CUSTOM', now())`, [tNew, A]);
+    const lateDept = randomUUID();
+    let safety: Awaited<ReturnType<typeof checkpointOf>> | undefined;
+    await mark();
+
+    await restore(cp, A, ['CONFIG_CONTENT'], {
+      onBegin: async (q) => {
+        const [{ id }] = await q<{ id: string }>('SELECT pg_export_snapshot() AS id');
+        // a concurrent writer commits after the snapshot
+        await run(`INSERT INTO core."Department" (id, "tenantId", name, code, "updatedAt") VALUES ($1, $2, 'Late', 'LATE', now())`, [lateDept, A]);
+        const sc = await pool.connect();
+        try {
+          safety = await checkpointOf(sc, A, { snapshot: id });
+        } finally {
+          sc.release();
+        }
+      },
+    });
+
+    expect((await one(`SELECT "resourceStatus" FROM core."PromptTemplate" WHERE id = $1`, [tNew])).resourceStatus).toBe('DELETED');
+    expect((await one(`SELECT "resourceStatus" FROM core."Department" WHERE id = $1`, [lateDept])).resourceStatus).toBe('ENABLED');
+    expect((await one(`SELECT name FROM core."Department" WHERE id = $1`, [s.dept])).name).toBe('Cardiology');
+    const reader = await safety!.open();
+    const tables: Record<string, string> = {};
+    for await (const e of reader.entries()) tables[e.name] = gunzipSync(Buffer.concat(await e.body.toArray())).toString('utf8');
+    expect(tables['db/PromptTemplate.csv.gz']).toContain(tNew);
+    expect(tables['db/Department.csv.gz']).not.toContain(lateDept);
+    before = undefined as never; // the concurrent writer changed tenant A on purpose
+  });
+
+  it('R2 I-3 — a concurrent update of a row the restore rewrites fails it as retryable (40001), changing nothing', async () => {
+    const s = seeded[A];
+    const cp = await checkpointOf(c, A);
+    await run(`UPDATE core."Department" SET name = 'Renamed' WHERE id = $1`, [s.dept]);
+
+    const err = await restore(cp, A, ['CONFIG_CONTENT'], {
+      onBegin: async (q) => {
+        await q('SELECT 1'); // the snapshot is taken
+        await run(`UPDATE core."Department" SET name = 'Concurrent' WHERE id = $1`, [s.dept]);
+      },
+    }).catch((e) => e);
 
     expect(err).toBeInstanceOf(CheckpointError);
-    expect(err.reason).toBe('RESTORE_FAILED');
-    expect(err.detail).toMatchObject({ model: 'PromptTemplate', constraint: 'PromptTemplate_tenantId_name_key' });
-    expect(err.message).not.toContain('greeting');
-    expect(await fingerprintRows(c, A, CAPTURED)).toEqual(before.a);
+    expect(err).toMatchObject({ reason: 'RESTORE_FAILED', message: 'concurrent write — retry', detail: { model: 'Department', code: '40001' } });
+    expect((await one(`SELECT name FROM core."Department" WHERE id = $1`, [s.dept])).name).toBe('Concurrent');
+  });
+
+  it('R2 M-1 — a membership restored for a user whose account is deleted is reported', async () => {
+    const s = seeded[A];
+    const cp = await checkpointOf(c, A);
+    await run(`DELETE FROM core."UserRoleAssignment" WHERE "userId" = $1`, [s.user2]);
+    await run(`UPDATE core."User" SET "resourceStatus" = 'DELETED' WHERE id = $1`, [s.user2]);
+    await mark();
+
+    const res = await restore(cp, A, ['USERS_ACCESS']);
+
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'USER_DELETED_MEMBERSHIP_RESTORED', detail: { userIds: [s.user2] } }));
+  });
+
+  it('R2 M-3 — a restored Media row whose bytes are not in the checkpoint is reported', async () => {
+    const s = seeded[A];
+    const cp = await checkpointOf(c, A);
+    await run(`UPDATE core."Media" SET "resourceStatus" = 'DELETED' WHERE id = $1`, [s.media]);
+    await mark();
+
+    const res = await restore(cp, A, ['CLINICAL']);
+
+    expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'MEDIA_NOT_CAPTURED', detail: { mediaIds: [s.media] } }));
+  });
+
+  /** A TenantCheckpointRestore row of tenant A in `status`. */
+  async function restoreRow(status: string): Promise<string> {
+    const cpId = randomUUID();
+    const id = randomUUID();
+    await run(`INSERT INTO core."TenantCheckpoint" (id, "tenantId", label, "updatedAt") VALUES ($1, $2, 'src', now())`, [cpId, A]);
+    await run(
+      `INSERT INTO core."TenantCheckpointRestore" (id, "tenantId", "checkpointId", reason, "requestedBy", status, "updatedAt") VALUES ($1, $2, $3, 'test restore', $4, $5, now())`,
+      [id, A, cpId, ACTOR, status],
+    );
+    return id;
+  }
+
+  it('R2 I-5 — the RECONCILING → POST_COMMIT compare-and-set commits atomically with the data; the reconcile connection is visible to the liveness probe', async () => {
+    const s = seeded[A];
+    const id = await restoreRow('RECONCILING');
+    const cp = await checkpointOf(c, A);
+    await run(`UPDATE core."Department" SET name = 'Renamed' WHERE id = $1`, [s.dept]);
+    await mark();
+    const seen: Record<string, unknown> = {};
+
+    const client = await pool.connect();
+    try {
+      await client.query(`SELECT set_config('application_name', $1, false)`, [restoreBackendName(id)]);
+      await reconciler.reconcile(client, {
+        tenantId: A,
+        categories: ['CONFIG_CONTENT'],
+        reader: await cp.open(),
+        actorId: ACTOR,
+        restoreId: id,
+        beforeCommit: async (q) => {
+          seen.claimed = (await q(CLAIM_POST_COMMIT_SQL, [id, null])).length;
+          seen.outside = (await one(`SELECT status FROM core."TenantCheckpointRestore" WHERE id = $1`, [id])).status;
+          seen.alive = (await one(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name = $1`, [restoreBackendName(id)])).n;
+        },
+      });
+      await client.query('RESET application_name');
+    } finally {
+      client.release();
+    }
+
+    expect(seen).toEqual({ claimed: 1, outside: 'RECONCILING', alive: 1 });
+    expect((await one(`SELECT status FROM core."TenantCheckpointRestore" WHERE id = $1`, [id])).status).toBe('POST_COMMIT');
+    expect((await one(`SELECT name FROM core."Department" WHERE id = $1`, [s.dept])).name).toBe('Cardiology');
+  });
+
+  it('R2 I-5 — a restore row the sweeper ended after the snapshot makes the compare-and-set fail (40001): nothing commits', async () => {
+    const s = seeded[A];
+    const id = await restoreRow('RECONCILING');
+    const cp = await checkpointOf(c, A);
+    await run(`UPDATE core."Department" SET name = 'Renamed' WHERE id = $1`, [s.dept]);
+    await mark();
+
+    const err = await restore(cp, A, ['CONFIG_CONTENT'], {
+      onBegin: async (q) => {
+        await q('SELECT 1');
+        await run(`UPDATE core."TenantCheckpointRestore" SET status = 'FAILED', "_version" = "_version" + 1 WHERE id = $1`, [id]); // the sweeper
+      },
+      beforeCommit: async (q) => {
+        await q(CLAIM_POST_COMMIT_SQL, [id, null]);
+      },
+    }).catch((e) => e);
+
+    expect(err).toMatchObject({ reason: 'RESTORE_FAILED', detail: { code: '40001' } });
+    expect((await one(`SELECT status FROM core."TenantCheckpointRestore" WHERE id = $1`, [id])).status).toBe('FAILED');
+    expect((await one(`SELECT name FROM core."Department" WHERE id = $1`, [s.dept])).name).toBe('Renamed');
   });
 });

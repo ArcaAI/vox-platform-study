@@ -92,18 +92,27 @@ export class CheckpointRestorePostCommit {
       for (const userId of ctx.result.touchedUserIds) {
         await this.jwtRevocation.revokeAllForUser(userId).catch(() => failed.push(userId));
       }
-      if (failed.length) warnings.push({ code: 'USER_SESSION_REVOKE_FAILED', message: 'Sessions of some members could not be revoked', detail: { userIds: failed } });
+      if (failed.length)
+        warnings.push({ code: 'USER_SESSION_REVOKE_FAILED', message: 'Sessions of some members could not be revoked', detail: { userIds: failed } });
     }
     if (ctx.categories.includes('USERS_ACCESS') && this.policyEngine) {
-      await step('ABILITY_CACHE_INVALIDATION_FAILED', 'Cached permissions of the tenant could not be dropped; they expire within 5 minutes', async () => {
-        await this.policyEngine!.invalidateTenant(ctx.tenantId);
-      });
+      await step(
+        'ABILITY_CACHE_INVALIDATION_FAILED',
+        'Cached permissions of the tenant could not be dropped; they expire within 5 minutes',
+        async () => {
+          await this.policyEngine!.invalidateTenant(ctx.tenantId);
+        },
+      );
     }
 
     if (ctx.result.retiredServiceAccountIds.length) {
-      await step('SERVICE_ACCOUNT_TOKEN_PURGE_FAILED', 'Live tokens of retired service accounts could not be purged; they expire on their own TTL', async () => {
-        await this.purgeServiceAccountTokens(new Set(ctx.result.retiredServiceAccountIds));
-      });
+      await step(
+        'SERVICE_ACCOUNT_TOKEN_PURGE_FAILED',
+        'Live tokens of retired service accounts could not be purged; they expire on their own TTL',
+        async () => {
+          await this.purgeServiceAccountTokens(new Set(ctx.result.retiredServiceAccountIds));
+        },
+      );
     }
 
     const { reingest, retired } = ctx.result.knowledge;
@@ -138,7 +147,7 @@ export class CheckpointRestorePostCommit {
       try {
         if (accountIds.has((JSON.parse(raw) as { serviceAccountId?: string }).serviceAccountId ?? '')) doomed.push(key);
       } catch {
-        /* a malformed entry is not ours; its TTL clears it */
+        // swallow-ok: a malformed entry is not ours; its TTL clears it
       }
     }
     if (doomed.length) await this.redis.delMany(doomed);

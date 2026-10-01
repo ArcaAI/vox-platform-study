@@ -5,25 +5,33 @@ export interface FkEdge {
   child: string;
   parent: string;
   column: string;
+  /** The referenced column (`id` for every registry model); absent on a multi-column key. */
+  parentColumn?: string;
 }
 
-const FK_SQL = `SELECT c.conrelid::regclass::text AS child, c.confrelid::regclass::text AS parent, a.attname AS column
+const FK_SQL = `SELECT c.conrelid::regclass::text AS child, c.confrelid::regclass::text AS parent, a.attname AS column,
+       CASE WHEN cardinality(c.conkey) = 1 THEN pa.attname END AS "parentColumn"
 FROM pg_constraint c
 JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+LEFT JOIN pg_attribute pa ON pa.attrelid = c.confrelid AND pa.attnum = c.confkey[1]
 WHERE c.contype = 'f' AND c.connamespace = 'core'::regnamespace`;
 
 /** `core."ContextItem"` / `core.rounds` / `"ContextItem"` (core on the search_path) → bare table name. */
 function bareTable(regclass: string): string {
-  return regclass.replace(/^"?core"?\./, '').replace(/^"(.*)"$/, '$1').replace(/""/g, '"');
+  return regclass
+    .replace(/^"?core"?\./, '')
+    .replace(/^"(.*)"$/, '$1')
+    .replace(/""/g, '"');
 }
 
 /** Foreign keys between tables of schema core, as model names. */
 export async function loadFkEdges(query: SqlQuery): Promise<FkEdge[]> {
-  const rows = await query<{ child: string; parent: string; column: string }>(FK_SQL);
+  const rows = await query<{ child: string; parent: string; column: string; parentColumn: string | null }>(FK_SQL);
   return rows.map((r) => ({
     child: modelForTable(bareTable(r.child)),
     parent: modelForTable(bareTable(r.parent)),
     column: r.column,
+    ...(r.parentColumn ? { parentColumn: r.parentColumn } : {}),
   }));
 }
 

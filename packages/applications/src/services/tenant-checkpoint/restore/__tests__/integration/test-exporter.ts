@@ -2,7 +2,8 @@
  * Test-only checkpoint exporter for the restore integration suite: the registry's scope
  * predicates + a direct `COPY … TO STDOUT` per table inside one REPEATABLE READ snapshot, written
  * through the real archive writer with the fake sealing. It mirrors the production exporter's
- * naming (`db/<Model>.csv.gz`, `media/<bucketId | bucket name>/<Media.uri>`) without depending on it.
+ * naming (`db/<Model>.csv.gz`, `media/<bucketId | bucket name>/<Media.uri>`) and its redaction (redacted
+ * columns exported as NULL) without depending on it. `snapshot` imports an exported snapshot.
  *
  * `edit` may rewrite one table's CSV before it is sealed — that is how the suite builds
  * checkpoints with schema drift or a foreign tenant id inside a validly signed archive.
@@ -37,7 +38,7 @@ async function copyOut(client: PoolClient, sql: string): Promise<Buffer> {
 export async function checkpointOf(
   client: PoolClient,
   tenantId: string,
-  opts: { edit?: Record<string, (csv: string) => string>; media?: { entry: string; bytes: Buffer }[] } = {},
+  opts: { edit?: Record<string, (csv: string) => string>; media?: { entry: string; bytes: Buffer }[]; snapshot?: string } = {},
 ): Promise<TestCheckpoint> {
   if (!UUID.test(tenantId)) throw new Error('tenant id must be a UUID');
   const sealing = fakeSealing();
@@ -48,6 +49,7 @@ export async function checkpointOf(
 
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
   try {
+    if (opts.snapshot) await client.query(`SET TRANSACTION SNAPSHOT '${opts.snapshot}'`);
     const fingerprint = await schemaFingerprint(query);
     const writer = createArchiveWriter({
       header: {
@@ -76,7 +78,7 @@ export async function checkpointOf(
       if (!columns.length) continue;
       const where = scopePredicate(d, 's').replace(/\$1/g, literal);
       let csv = (
-        await copyOut(client, `COPY (SELECT ${columns.map((c) => `s."${c}"`).join(', ')} FROM ${tableName(d)} s WHERE ${where} ORDER BY s."id") TO STDOUT (FORMAT csv, HEADER)`)
+        await copyOut(client, `COPY (SELECT ${columns.map((c) => ((d.redactColumns ?? []).includes(c) ? `NULL AS "${c}"` : `s."${c}"`)).join(', ')} FROM ${tableName(d)} s WHERE ${where} ORDER BY s."id") TO STDOUT (FORMAT csv, HEADER)`)
       ).toString('utf8');
       const edit = opts.edit?.[d.model];
       if (edit) csv = edit(csv);
