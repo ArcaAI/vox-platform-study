@@ -18,7 +18,7 @@
 # model pairing below); anything you export in your shell still wins.
 #
 # USAGE:
-#   ./scripts/dev-service.sh <stt|stt-worker|text|nlp|guardrail|harness|tts|vllm|worker|publisher> [--watch] [--print]
+#   ./scripts/dev-service.sh <stt|stt-worker|text|nlp|guardrail|harness|tts|vllm|worker|publisher|checkpoint-worker> [--watch] [--print]
 #   ./scripts/dev-service.sh --check-stt-key      # preflight only (used by dev:doctor)
 #
 # FLAGS:
@@ -52,6 +52,11 @@
 #                touches apps/api/dist that `pnpm api:dev` rebuilds. Writes to
 #                `hope-models` as the platform storage principal (TASK-1024); stages
 #                to MODEL_PUBLISHER_STAGING_DIR (default: the OS temp dir).
+#   checkpoint-worker  the tenant-checkpoint worker — a NODE process, the only
+#                consumer of the `TenantCheckpointExport` / `TenantCheckpointRestore`
+#                BullMQ queues (create / verify / restore tenant checkpoints in
+#                `hope-tenant-checkpoints`). ts-node over the gateway source, like
+#                `publisher`.
 #
 # MACHINE-SPECIFIC MODEL:
 #   LM_STUDIO_MODEL (default: gemma-4-e2b-it-qat — the catalogue's platform default) feeds both the TEXT default
@@ -159,7 +164,7 @@ for arg in "$@"; do
         --watch) WATCH=1 ;;
         --print) PRINT=1 ;;
         --help|-h) usage; exit 0 ;;
-        stt|stt-worker|text|nlp|guardrail|harness|tts|vllm|worker|publisher) SERVICE="$arg" ;;
+        stt|stt-worker|text|nlp|guardrail|harness|tts|vllm|worker|publisher|checkpoint-worker) SERVICE="$arg" ;;
         *) echo -e "${RED}Unknown argument: $arg${NC}" >&2; usage >&2; exit 2 ;;
     esac
 done
@@ -167,6 +172,28 @@ done
 if [ -z "$SERVICE" ]; then
     usage >&2
     exit 2
+fi
+
+# ----------------------------------------------------------------------------
+# checkpoint-worker — a NODE target, like `publisher`: execs before the
+# Python-only machinery below; configuration from the gateway's own loader.
+# ----------------------------------------------------------------------------
+if [ "$SERVICE" = "checkpoint-worker" ]; then
+    : "${NODE_ENV:=development}"
+    export NODE_ENV
+    if [ "$WATCH" = "1" ]; then
+        echo -e "${YELLOW}--watch is not supported for the checkpoint worker (a restart would abandon an in-flight export or restore); ignoring.${NC}" >&2
+    fi
+    CHECKPOINT_CMD=(pnpm --filter @arcaai/api exec ts-node --transpile-only src/checkpoint-worker.main.ts)
+    if [ "$PRINT" = "1" ]; then
+        echo "service: checkpoint-worker"
+        echo "  NODE_ENV=$NODE_ENV"
+        echo "command:"
+        printf '  %s\n' "${CHECKPOINT_CMD[*]}"
+        exit 0
+    fi
+    echo -e "${GREEN}Starting checkpoint-worker →${NC} ${CHECKPOINT_CMD[*]}"
+    exec "${CHECKPOINT_CMD[@]}"
 fi
 
 # ----------------------------------------------------------------------------

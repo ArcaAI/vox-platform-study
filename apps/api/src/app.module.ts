@@ -37,6 +37,7 @@ import {
   TenantStoragePurgeServiceModule,
   UnifiedAuthGuard,
   UsageLedgerServiceModule,
+  TenantLockModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
 import { Global, Module } from '@nestjs/common';
@@ -121,6 +122,8 @@ import { StorageModule } from './modules/storage/storage.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { SpeechModule } from './modules/speech/speech.module';
 import { TenantBucketModule } from './modules/tenant-bucket/tenant-bucket.module';
+import { TenantCheckpointModule } from './modules/tenant-checkpoint/tenant-checkpoint.module';
+import { TenantLockGuard } from './guards/tenant-lock.guard';
 import { TenantFrontendConfigModule } from './modules/tenant-frontend-config/tenant-frontend-config.module';
 import { GuardrailAvailabilityModule } from './modules/guardrail-availability/guardrail-availability.module';
 import { TenantStorageConfigModule } from './modules/tenant-storage-config/tenant-storage-config.module';
@@ -203,6 +206,15 @@ const guards = [
   {
     provide: APP_GUARD,
     useClass: UnifiedAuthGuard,
+  },
+  // Tenant restore lock. MUST run AFTER UnifiedAuthGuard (it reads the
+  // resolved CLS tenant) and before anything that could write: while a
+  // TenantCheckpointRestore holds the tenant, every request in that tenant's
+  // context is 423 TENANT_RESTORE_IN_PROGRESS except handlers marked
+  // @TenantLockExempt(). Fails closed (503) when the lock state is unreadable.
+  {
+    provide: APP_GUARD,
+    useClass: TenantLockGuard,
   },
   // Consent & ABAC. MUST run AFTER UnifiedAuthGuard (needs the
   // resolved CLS tenant/user) and BEFORE RequiresIfMatchGuard (a consent
@@ -530,6 +542,8 @@ const featureModules: any[] = [
   AiModelModule,
   TenantModule,
   TenantBucketModule,
+  TenantCheckpointModule,
+  TenantLockModule,
   GuardrailAvailabilityModule,
   TenantStorageConfigModule,
   TenantFrontendConfigModule,

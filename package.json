@@ -250,6 +250,8 @@
     "worker:dev": "./scripts/dev-service.sh worker",
     "── PUBLISHER — model-publisher worker (Node) ─────": "",
     "publisher:dev": "./scripts/dev-service.sh publisher",
+    "── CHECKPOINT — tenant-checkpoint worker (Node) ──": "",
+    "checkpoint:dev": "./scripts/dev-service.sh checkpoint-worker",
     "── STACKS — full app stack + readiness doctors ───": "",
     "stack:dev": "./scripts/dev-stack.sh",
     "stack:dev:observability": "./scripts/dev-stack.sh --observability",

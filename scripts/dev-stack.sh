@@ -55,8 +55,8 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-DEFAULT_SERVICES=(api stt stt-worker text guardrail nlp harness worker admin)
-ALL_SERVICES=(api stt stt-worker text nlp harness worker admin guardrail tts)
+DEFAULT_SERVICES=(api stt stt-worker text guardrail nlp harness worker checkpoint-worker admin)
+ALL_SERVICES=(api stt stt-worker text nlp harness worker checkpoint-worker admin guardrail tts)
 
 port_for() {
     case "$1" in
