@@ -4,7 +4,10 @@ import { vi } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import { InternalTenantLockGuard } from '../internal-tenant-lock.guard';
 
-const lockService = (locked: boolean) => ({ state: vi.fn().mockResolvedValue(locked ? { locked: true, restoreId: 'R' } : { locked: false }), publishChange: vi.fn() });
+const lockService = (locked: boolean, categories?: string[]) => ({
+  state: vi.fn().mockResolvedValue(locked ? { locked: true, restoreId: 'R', ...(categories ? { categories } : {}) } : { locked: false }),
+  publishChange: vi.fn(),
+});
 const setHeader = vi.fn();
 const ctx = (req: Record<string, unknown>, type = 'http') =>
   ({ getType: () => type, switchToHttp: () => ({ getRequest: () => req, getResponse: () => ({ setHeader }) }) }) as unknown as ExecutionContext;
@@ -29,6 +32,12 @@ describe('InternalTenantLockGuard', () => {
   ])('resolves the tenant from %s', async (_name, req) => {
     const guard = new InternalTenantLockGuard(lockService(true));
     await expect(guard.canActivate(ctx(req))).rejects.toMatchObject({ status: 503, response: { code: 'TENANT_RESTORE_IN_PROGRESS' } });
+  });
+
+  it('passes machine callbacks for a CONFIG_CONTENT / USERS_ACCESS-only lock and 503s when CLINICAL is included', async () => {
+    const write = ctx({ method: 'POST', body: { tenantId: 'T' }, query: {}, headers: {} });
+    await expect(new InternalTenantLockGuard(lockService(true, ['CONFIG_CONTENT', 'USERS_ACCESS'])).canActivate(write)).resolves.toBe(true);
+    await expect(new InternalTenantLockGuard(lockService(true, ['CONFIG_CONTENT', 'CLINICAL'])).canActivate(write)).rejects.toMatchObject({ status: 503 });
   });
 
   it('lets reads through without querying the lock', async () => {

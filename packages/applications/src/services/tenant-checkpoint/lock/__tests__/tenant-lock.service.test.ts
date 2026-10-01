@@ -31,6 +31,11 @@ describe('TenantLockService', () => {
     await expect(service.state('T')).resolves.toEqual({ locked: true, restoreId: 'R1' });
   });
 
+  it('carries the active restore categories on the locked state', async () => {
+    repo.findActiveByTenant.mockResolvedValue({ id: 'R1', status: 'RECONCILING', categories: ['CONFIG_CONTENT'] });
+    await expect(service.state('T')).resolves.toEqual({ locked: true, restoreId: 'R1', categories: ['CONFIG_CONTENT'] });
+  });
+
   it('does not lock a PENDING restore or a tenant with none', async () => {
     repo.findActiveByTenant.mockResolvedValueOnce({ id: 'R1', status: 'PENDING' });
     await expect(service.state('T')).resolves.toEqual({ locked: false });

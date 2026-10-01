@@ -1,5 +1,6 @@
 import { DelayedError } from 'bullmq';
 import type { ITenantLockService } from '../services/tenant-checkpoint/contracts';
+import { lockBlocksMachineCallers } from '../services/tenant-checkpoint/lock/assert-tenant-not-locked';
 import { TenantLockedError } from '../services/tenant-checkpoint/lock/tenant-locked.error';
 
 /** How long a postponed job waits before the queue offers it to a worker again. */
@@ -18,7 +19,7 @@ export interface PostponableJob {
 export async function assertTenantUnlocked(lock: ITenantLockService | undefined, tenantId: string | undefined | null): Promise<void> {
   if (!lock || !tenantId) return;
   const state = await lock.state(tenantId);
-  if (state.locked) throw new TenantLockedError(tenantId, state.restoreId);
+  if (lockBlocksMachineCallers(state)) throw new TenantLockedError(tenantId, state.restoreId);
 }
 
 /**
