@@ -147,3 +147,20 @@ describe('stale unregister → UNREGISTER_FAILED (J6, OD-6)', () => {
     ).toBe(false);
   });
 });
+
+// Cluster finding (2026-10-01): `download-missing` used to queue LOCAL rows; the lost job left
+// `radiology-asr-en` reading DOWNLOAD_FAILED/STALLED forever although its weights were in the bucket
+// all along — and a LOCAL row can never be re-downloaded, so nothing could clear it.
+describe('a LOCAL row is never "downloading" — its download bookkeeping does not decide the status', () => {
+  const stalled = { jobId: 'd-1', startedAt: '2026-09-30T07:45:17.000Z', finishedAt: null, error: null, heartbeatAt: '2026-09-30T07:45:17.000Z' };
+
+  it('stale download bookkeeping on an AVAILABLE LOCAL row reads from the bucket, not DOWNLOAD_FAILED', () => {
+    const lc = deriveModelLifecycle(row({ source: 'LOCAL', availability: AiModelAvailability.AVAILABLE, metaData: { download: stalled } }), null, OPTS);
+    expect(lc.status).toBe('DOWNLOADED');
+  });
+
+  it('the same bookkeeping on a Hub row is still DOWNLOAD_FAILED', () => {
+    const lc = deriveModelLifecycle(row({ source: 'HUGGINGFACE', availability: AiModelAvailability.MISSING, metaData: { download: stalled } }), null, OPTS);
+    expect(lc.status).toBe('DOWNLOAD_FAILED');
+  });
+});

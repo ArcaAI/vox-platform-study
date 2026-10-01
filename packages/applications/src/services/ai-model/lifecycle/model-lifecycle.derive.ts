@@ -1,4 +1,4 @@
-import { AiDeploymentKind, AiModelAvailability } from '@arcaai/domains';
+import { AiDeploymentKind, AiModelAvailability, AiModelSource } from '@arcaai/domains';
 import type { ModelResidencyCatalogueResponse } from '../../model-residency/dto';
 import { residencyServiceOf } from '../../model-residency/model-residency.types';
 import {
@@ -21,6 +21,8 @@ export interface LifecycleRow {
   deploymentKind: string;
   servedBy?: string | null;
   provider?: string | null;
+  /** `AiModelSource`. A LOCAL row is never downloaded, so its download bookkeeping never decides its status. */
+  source?: string | null;
 }
 
 /** Per-model residency detail, indexed once per request by `aiModelId` and by `slug`. */
@@ -119,9 +121,12 @@ export function deriveModelLifecycle(
 ): ModelLifecycle {
   const meta = rec(row.metaData);
   const unregisterMeta = readUnregisterMeta(meta);
-  const rawDownload = rec(meta?.download);
-  const downloadMeta = readDownloadMeta(meta);
-  const publish = publishStatusOf(row, opts);
+  // A LOCAL row's weights are staged by hand and never downloaded: any download bookkeeping on it
+  // (e.g. from a job queued before download-missing skipped LOCAL rows) is stale and is ignored.
+  const local = row.source === AiModelSource.LOCAL;
+  const rawDownload = local ? null : rec(meta?.download);
+  const downloadMeta = local ? null : readDownloadMeta(meta);
+  const publish = local ? null : publishStatusOf(row, opts);
 
   const download = rawDownload
     ? {
