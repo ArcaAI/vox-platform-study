@@ -47,6 +47,20 @@ vault write transit/keys/hope-phi/config \
   deletion_allowed=false \
   exportable=false 2>/dev/null || true
 
+# Tenant checkpoints: AES wrap key for each archive's data key, and an Ed25519
+# key that signs every archive header so a tampered or foreign file is refused.
+echo "[vault-init-test] creating transit key 'hope-checkpoint'"
+vault write -f transit/keys/hope-checkpoint 2>/dev/null || true
+vault write transit/keys/hope-checkpoint/config \
+  min_decryption_version=1 \
+  deletion_allowed=false \
+  exportable=false 2>/dev/null || true
+
+echo "[vault-init-test] creating transit key 'hope-checkpoint-sign'"
+vault write transit/keys/hope-checkpoint-sign type=ed25519 2>/dev/null || true
+vault write transit/keys/hope-checkpoint-sign/config \
+  deletion_allowed=false 2>/dev/null || true
+
 echo "[vault-init-test] enabling AppRole auth"
 vault auth enable approle 2>/dev/null || true
 

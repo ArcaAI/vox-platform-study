@@ -222,6 +222,8 @@ services:
             # put a double-quote character anywhere in this block — comments included.
             # The only two in the whole entrypoint are the opening and closing delimiter.)
             /usr/bin/mc mb minio/harness-claim-check --ignore-existing;
+            # tenant checkpoint archives; the worker also creates it at boot.
+            /usr/bin/mc mb minio/hope-tenant-checkpoints --ignore-existing;
             echo 'Setting bucket policies...';
             /usr/bin/mc policy set public minio/recordings;
             /usr/bin/mc policy set public minio/generated-audio;

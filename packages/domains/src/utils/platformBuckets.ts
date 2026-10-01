@@ -44,6 +44,8 @@ export const PLATFORM_BUCKET_NAMES = [
    */
   'hope-audio',
   'hope-audio-chunks',
+  /** Tenant checkpoint archives (`<tenantId>/<checkpointId>.hcp`) — created by the checkpoint worker at boot. */
+  'hope-tenant-checkpoints',
 ] as const;
 
 export type PlatformBucketName = (typeof PLATFORM_BUCKET_NAMES)[number];

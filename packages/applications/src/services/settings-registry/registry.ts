@@ -48,6 +48,7 @@ import { TEXT_GENERATION_SETTINGS } from './descriptors/text-generation.descript
 import { TEXT_GUARDRAIL_POLICY_SETTINGS } from './descriptors/text-guardrail-policy.descriptors';
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { TENANT_STORAGE_LIFECYCLE_SETTINGS } from './descriptors/tenant-storage-lifecycle.descriptors';
+import { TENANT_CHECKPOINT_SETTINGS } from './descriptors/tenant-checkpoint.descriptors';
 import { STT_GATEWAY_SETTINGS } from './descriptors/stt-gateway.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
@@ -63,6 +64,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...STORAGE_SETTINGS,
   // TASK-1025 — deleted-tenant bucket retention + purge schedule.
   ...TENANT_STORAGE_LIFECYCLE_SETTINGS,
+  ...TENANT_CHECKPOINT_SETTINGS,
   // `TTS_SETTINGS` was spread here — one key, `tts.defaultVoiceEn`. TASK-879
   // deleted the file: a tenant's default voice is `Agent.parameters.voice` on the
   // TEXT_TO_SPEECH agent the assignment cascade selects, and the gateway pushes it

@@ -29,6 +29,24 @@ path "transit/decrypt/hope-phi" {
   capabilities = ["update"]
 }
 
+# Tenant checkpoints: wrap/unwrap the per-archive data key, sign/verify the
+# archive header. The sign key's public half (read) identifies the deployment.
+path "transit/encrypt/hope-checkpoint" {
+  capabilities = ["update"]
+}
+path "transit/decrypt/hope-checkpoint" {
+  capabilities = ["update"]
+}
+path "transit/sign/hope-checkpoint-sign" {
+  capabilities = ["update"]
+}
+path "transit/verify/hope-checkpoint-sign" {
+  capabilities = ["update"]
+}
+path "transit/keys/hope-checkpoint-sign" {
+  capabilities = ["read"]
+}
+
 # Dynamic PostgreSQL credentials (Phase 5)
 path "database/creds/hope-app-role" {
   capabilities = ["read"]
