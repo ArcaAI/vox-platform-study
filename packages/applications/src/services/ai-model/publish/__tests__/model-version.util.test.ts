@@ -70,6 +70,24 @@ describe('isRelevantModelSourceFile', () => {
   });
 });
 
+describe('TASK-1030 — DeepFilterNet3 release files', () => {
+  // The official release ships `config.ini` + `checkpoints/model_120.ckpt.best`; neither
+  // matched, so an S3-sourced publish of the official weights found "no downloadable files".
+  it('accepts the DeepFilterNet3 checkpoint and its config as model source files', () => {
+    expect(isRelevantModelSourceFile('checkpoints/model_120.ckpt.best')).toBe(true);
+    expect(isRelevantModelSourceFile('config.ini')).toBe(true);
+  });
+
+  it('counts the checkpoint, not the config, as a WEIGHT file', () => {
+    expect(isModelWeightFile('deepfilternet3/abc/checkpoints/model_120.ckpt.best')).toBe(true);
+    expect(isModelWeightFile('deepfilternet3/abc/config.ini')).toBe(false);
+  });
+
+  it('does not widen to every .ini file name', () => {
+    expect(isRelevantModelSourceFile('setup.ini')).toBe(false);
+  });
+});
+
 describe('buildSha256SumsContent', () => {
   it('renders one `<sha256>  <path>` line per file, matching `shasum -a 256` output', () => {
     const content = buildSha256SumsContent([

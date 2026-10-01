@@ -635,8 +635,14 @@ class DenoiseConfig:
     strength: float = 0.5
     scope: str = "vad_only"  # vad_only | full
     # Denoise engine selector. "rnnoise" (default, unchanged behavior) or
-    # "deepfilternet3" (DeepFilterNet3, full-band 48kHz DNN).
+    # "deepfilternet3" (DeepFilterNet3, full-band 48kHz DNN). TASK-1030 —
+    # "unknown:<library>" when the bound row names no engine: nothing runs and the
+    # degrade is reported (never RNNoise in its place).
     engine: str = "rnnoise"
+    # TASK-1030 (OD-3) — the bound row's weights directory (`models.denoise.local_path`,
+    # the models bucket). DeepFilterNet3 loads from it and NEVER downloads; RNNoise
+    # ignores it (its coefficients are compiled into the wheel).
+    model_path: str | None = None
 
 
 @dataclass

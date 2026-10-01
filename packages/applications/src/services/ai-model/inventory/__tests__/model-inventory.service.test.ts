@@ -102,6 +102,16 @@ describe('ModelInventoryService.runInventory', () => {
     expect(report.counts.notApplicable).toBe(2);
   });
 
+  it('TASK-1030 — a deepfilternet row is NOT weight-less: its checkpoint lives in the bucket', async () => {
+    s3.listFiles.mockResolvedValue([]);
+    const dfn = row({ id: 'd', slug: 'deepfilternet3', libraryName: 'deepfilternet' });
+    repo.findAll.mockResolvedValue([dfn]);
+
+    await service.runInventory();
+
+    expect(dfn.markAvailability).toHaveBeenCalledWith(AiModelAvailability.MISSING, expect.anything(), expect.any(Date));
+  });
+
   it('a self-hosted row with no bucketPrefix, or whose manifest is not in the bucket, is MISSING', async () => {
     s3.listFiles.mockResolvedValue([{ key: 'other/abc/manifest.json' }]);
     const unpublished = row({ id: 'u', slug: 'nemotron' });

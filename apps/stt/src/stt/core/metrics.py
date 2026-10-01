@@ -87,6 +87,15 @@ STT_PROVIDER_SWITCH_TOTAL = Counter(
     ["tenant", "from", "to", "reason"],
 )
 
+# TASK-1030 (OD-2) — a denoise engine that could not run. The session/job carries
+# on WITHOUT denoise (never breaks the ASR task); this counter is what keeps that
+# degrade from being silent. `reason` is one of `stt.streaming.denoise_report.REASONS`.
+STT_DENOISE_DEGRADED_TOTAL = Counter(
+    "stt_denoise_degraded_total",
+    "Denoise engine unavailable; audio processed without denoise",
+    ["engine", "reason"],
+)
+
 # ---------------------------------------------------------------------------
 # Streaming session metrics
 # ---------------------------------------------------------------------------

@@ -1,7 +1,8 @@
 """Unit tests for DeepFilterNet3StreamingDenoiser.
 
 Tests:
-- initialize() FAILS CLOSED (ModelLoadError) when `deepfilternet` is not installed (TASK-860)
+- initialize() degrades, never raises, and loads from the bound weights dir:
+  see test_task1030_denoise_fail_open.py (TASK-1030 reversed TASK-860's fail-closed)
 - process() passes audio through unmodified before initialize() succeeded
 - process() passes audio through unmodified while a block is still filling
 - process() emits enhanced audio once a block completes
@@ -9,50 +10,12 @@ Tests:
 - reset() clears buffers
 """
 
-import sys
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
-
-from stt.core.exceptions import ModelLoadError
 
 
 class TestDeepFilterNet3StreamingDenoiserInit:
-    def test_initialize_fails_closed_without_deepfilternet(self):
-        """TASK-860 R-5: a SELECTED engine whose package is absent raises a
-        named error instead of silently passing audio through."""
-        from stt.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser
-
-        denoiser = DeepFilterNet3StreamingDenoiser(input_sr=16000, strength=1.0)
-        with patch.dict(sys.modules, {"df": None, "df.enhance": None}):
-            with pytest.raises(ModelLoadError) as exc_info:
-                denoiser.initialize()
-        assert "deepfilternet3" in str(exc_info.value)
-        assert "deepfilternet" in str(exc_info.value)
-        assert denoiser.is_available is False
-
-    def test_initialize_fails_closed_when_checkpoint_load_raises(self):
-        from stt.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser
-
-        fake_df = MagicMock()
-        fake_df.enhance.init_df.side_effect = RuntimeError("checkpoint missing")
-        denoiser = DeepFilterNet3StreamingDenoiser(input_sr=16000, strength=1.0)
-        with patch.dict(sys.modules, {"df": fake_df, "df.enhance": fake_df.enhance}):
-            with pytest.raises(ModelLoadError, match="checkpoint missing"):
-                denoiser.initialize()
-        assert denoiser.is_available is False
-
-    def test_initialize_succeeds_with_package(self):
-        from stt.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser
-
-        fake_df = MagicMock()
-        fake_df.enhance.init_df.return_value = (MagicMock(), MagicMock(), None, None)
-        denoiser = DeepFilterNet3StreamingDenoiser(input_sr=16000, strength=1.0)
-        with patch.dict(sys.modules, {"df": fake_df, "df.enhance": fake_df.enhance}):
-            assert denoiser.initialize() is True
-        assert denoiser.is_available is True
-
     def test_process_passthrough_before_initialize(self):
         from stt.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser
 

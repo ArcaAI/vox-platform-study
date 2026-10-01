@@ -1149,19 +1149,24 @@ class TestApplyDenoiseDeepFilterNet3:
         assert result_sr == 16000
 
     @pytest.mark.asyncio
-    async def test_denoise_applies_model_output(self, preprocessor):
+    async def test_denoise_applies_model_output(self, preprocessor, tmp_path):
         """A successful enhance() call blends the DF3 output at 48kHz."""
         import torch
 
         samples = np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32)
+        # TASK-1030 — weights come from the bound row's bucket directory.
+        (tmp_path / "checkpoints").mkdir()
+        (tmp_path / "config.ini").write_text("[train]\n")
+        (tmp_path / "checkpoints" / "model_120.ckpt.best").write_bytes(b"x")
 
         mock_df_module = MagicMock()
-        mock_df_module.init_df.return_value = (MagicMock(), MagicMock(), "suffix", 1)
+        # The real 0.5.6 shape: (DfNet, DF, suffix) — three values.
+        mock_df_module.init_df.return_value = (MagicMock(), MagicMock(), "DeepFilterNet3")
         mock_df_module.enhance.return_value = torch.zeros((1, 48000))
 
         with patch.dict("sys.modules", {"df.enhance": mock_df_module}):
             result_samples, result_sr = await preprocessor._apply_denoise_deepfilternet3(
-                samples, 16000, 1.0
+                samples, 16000, 1.0, model_dir=str(tmp_path)
             )
 
         assert result_sr == 48000

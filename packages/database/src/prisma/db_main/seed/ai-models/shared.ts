@@ -15,6 +15,8 @@ export const AiModelSource = {
   GITHUB: 'GITHUB',
   MLFLOW: 'MLFLOW',
   LOCAL: 'LOCAL',
+  // TASK-1030 — deepfilternet3 publishes from an internal s3:// copy of its release.
+  S3: 'S3',
 } as const;
 
 export const AiModelFormat = {

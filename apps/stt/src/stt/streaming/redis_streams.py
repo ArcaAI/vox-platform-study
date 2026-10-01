@@ -589,6 +589,30 @@ class ResultPublisher:
         )
         return entry_id.decode() if isinstance(entry_id, bytes) else entry_id
 
+    async def publish_denoise_degraded(self, *, engine: str, reason: str, detail: str = "") -> str:
+        """Publish a ``denoise_degraded`` status result (TASK-1030, OD-2).
+
+        The session's selected denoise engine could not run, so it transcribes
+        WITHOUT denoise. Rides the existing ``status`` result type — the gateway
+        relays it as a ``status`` WS frame with zero protocol change — so the
+        client can see that its audio is not being denoised and why.
+        """
+        fields: dict[str, str] = {
+            "type": "status",
+            "status": "denoise_degraded",
+            "engine": engine,
+            "reason": reason,
+            "detail": detail,
+        }
+        key = result_stream_key(self._session_id)
+        entry_id = await self._redis.xadd(
+            key,
+            self._with_trace(fields),
+            maxlen=self._resolve_maxlen(),
+            approximate=True,
+        )
+        return entry_id.decode() if isinstance(entry_id, bytes) else entry_id
+
     async def publish_provider_switched(
         self,
         *,

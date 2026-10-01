@@ -22,17 +22,31 @@ from __future__ import annotations
 
 import logging
 from math import gcd
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
 
-from ..core.exceptions import ModelLoadError
+from .denoise_report import DegradeReason, DenoiseDegraded, report_denoise_degraded
 
 logger = logging.getLogger(__name__)
 
 _DF_SR = 48000
 _BLOCK_SECONDS = 1.0
 _EMPTY_F32 = np.empty(0, dtype=np.float32)
+
+
+def _missing_weights(model_dir: str | None) -> str:
+    """What is missing from a DeepFilterNet3 weights directory, or ``""`` when complete."""
+    if not model_dir:
+        return "no weights directory bound (the deepfilternet3 model row is not published)"
+    base = Path(model_dir)
+    if not (base / "config.ini").is_file():
+        return f"{base}/config.ini not found"
+    checkpoints = base / "checkpoints"
+    if not checkpoints.is_dir() or not any(checkpoints.iterdir()):
+        return f"{base}/checkpoints/ has no checkpoint"
+    return ""
 
 
 class DeepFilterNet3StreamingDenoiser:
@@ -46,12 +60,19 @@ class DeepFilterNet3StreamingDenoiser:
         Blend factor between original (0.0) and denoised (1.0).
     """
 
-    def __init__(self, input_sr: int = 16000, strength: float = 1.0) -> None:
+    def __init__(
+        self, input_sr: int = 16000, strength: float = 1.0, model_dir: str | None = None
+    ) -> None:
         self._input_sr = input_sr
         self._strength = max(0.0, min(1.0, strength))
+        # TASK-1030 (OD-3) — the bound `deepfilternet3` row's weights directory in the
+        # models bucket (`models.denoise.local_path`): `config.ini` + `checkpoints/`.
+        self._model_dir = model_dir
         self._model: Any = None
         self._df_state: Any = None
         self._available = False
+        self._degraded: DenoiseDegraded | None = None
+        self._enhance_failure_reported = False
 
         g = gcd(_DF_SR, input_sr)
         self._up_factor = _DF_SR // g
@@ -62,34 +83,47 @@ class DeepFilterNet3StreamingDenoiser:
         self._output_queue: np.ndarray = _EMPTY_F32.copy()
 
     def initialize(self) -> bool:
-        """Load the DeepFilterNet3 model. FAILS CLOSED (TASK-860 R-5).
+        """Load DeepFilterNet3 from the bound weights directory. NEVER raises.
 
-        A pipeline that SELECTED ``deepfilternet3`` must never silently pass
-        un-denoised audio through because the ``deepfilternet`` package is
-        absent or its checkpoint failed to load — that is a wrong answer
-        delivered quietly. Raises ``ModelLoadError`` naming the engine and the
-        fix; returns ``True`` on success (the ``bool`` return is kept so the
-        RNNoise-shaped call site reads the same for both engines).
+        TASK-1030 (owner decision OD-2, reversing TASK-860 R-5): an engine that
+        cannot run must not break the ASR task. Every failure — package absent,
+        no weights directory, a directory without the checkpoint, a checkpoint
+        that fails to load — returns ``False`` with ``degraded`` set and the
+        degrade REPORTED; the caller runs the session without denoise.
+
+        ``df``'s own downloader is never reached: without ``model_dir`` the load
+        is refused rather than letting ``init_df`` fetch from GitHub at session
+        time.
         """
         try:
             from df.enhance import init_df
-        except ImportError as exc:
-            self._available = False
-            raise ModelLoadError(
-                "denoise engine 'deepfilternet3' was selected but the `deepfilternet` "
-                "package is not installed in this image — install it (numpy-2 "
-                "compatible build) or select `rnnoise`."
-            ) from exc
+        except ImportError:
+            return self._degrade("package_missing", "the `deepfilternet` package is not installed")
+
+        missing = _missing_weights(self._model_dir)
+        if missing:
+            return self._degrade("weights_unavailable", missing)
+
         try:
-            self._model, self._df_state, _, _ = init_df(default_model="DeepFilterNet3")
-        except Exception as exc:
-            self._available = False
-            raise ModelLoadError(
-                f"denoise engine 'deepfilternet3' failed to initialise its checkpoint: {exc}"
-            ) from exc
+            # 0.5.6 returns (DfNet, DF, suffix) — THREE values.
+            loaded = init_df(model_base_dir=self._model_dir, log_level="ERROR", log_file=None)
+            self._model, self._df_state = loaded[0], loaded[1]
+        except Exception as exc:  # noqa: BLE001 — any load failure degrades, never raises
+            return self._degrade("init_failed", f"checkpoint failed to load: {exc}")
         self._available = True
-        logger.info("DeepFilterNet3StreamingDenoiser initialized")
+        logger.info("DeepFilterNet3StreamingDenoiser initialized from %s", self._model_dir)
         return True
+
+    def _degrade(self, reason: DegradeReason, detail: str) -> bool:
+        self._available = False
+        self._model = None
+        self._degraded = report_denoise_degraded("deepfilternet3", reason, detail)
+        return False
+
+    @property
+    def degraded(self) -> DenoiseDegraded | None:
+        """Why this engine is not running (``None`` when it initialised)."""
+        return self._degraded
 
     @property
     def in_fade_in(self) -> bool:
@@ -169,8 +203,12 @@ class DeepFilterNet3StreamingDenoiser:
                     enhanced_in = np.pad(enhanced_in, (0, target_len - len(enhanced_in)))
                 return cast(np.ndarray, enhanced_in)
             return cast(np.ndarray, enhanced_48k)
-        except Exception:
-            logger.warning("DeepFilterNet3 enhance() failed, passing through", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 — a failed block passes through, never raises
+            if not self._enhance_failure_reported:
+                self._enhance_failure_reported = True
+                self._degraded = report_denoise_degraded(
+                    "deepfilternet3", "enhance_failed", f"enhance() raised: {exc}"
+                )
             return None
 
     def reset(self) -> None:

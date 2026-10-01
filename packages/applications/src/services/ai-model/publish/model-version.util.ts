@@ -49,6 +49,7 @@ const WEIGHT_EXTENSIONS = [
   '.pt', // torch checkpoints (kokoro voices)
   '.pth',
   '.model', // sentencepiece (spm.model)
+  '.ckpt.best', // DeepFilterNet3 (`checkpoints/model_120.ckpt.best`, TASK-1030)
 ] as const;
 
 /**
@@ -81,6 +82,7 @@ const RELEVANT_BASENAMES = new Set([
   'preprocessor_config.json', // whisper / feature-extractor models
   'model.safetensors.index.json', // sharded safetensors manifest
   'pytorch_model.bin.index.json', // sharded legacy manifest
+  'config.ini', // DeepFilterNet3 model config, read by `df.enhance.init_df` (TASK-1030)
 ]);
 
 /**

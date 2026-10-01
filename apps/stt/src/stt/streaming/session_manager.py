@@ -65,8 +65,7 @@ from stt.pipeline.spec import ResolvedSpecBundle, bundle_from_resolved, fallback
 from stt.storage.blob_service import BlobService
 from stt.streaming.capacity_guard import CapacityGuard
 from stt.streaming.commit_policy import LocalAgreementPolicy, normalize_for_comparison
-from stt.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser
-from stt.streaming.denoiser import StreamingDenoiser
+from stt.streaming.denoise_selection import build_streaming_denoiser
 from stt.streaming.duplex_asr import (
     DuplexAsrSession,
     DuplexEndpointing,
@@ -1061,29 +1060,30 @@ class SessionManager:
             else sample_rate
         )
 
-        denoiser = None
         # TASK-977 — denoise is the AGENT's to enable, never the machine's. No pipeline
         # config is no agent opinion, which resolves OFF: the hardware profile used to
         # switch it on here (`ExecutionProfile.denoise_enabled_default`), and is gone.
-        denoise_enabled = bool(pipeline_config and pipeline_config.preprocessing.denoise.enabled)
-        if denoise_enabled:
-            strength = pipeline_config.preprocessing.denoise.strength
-            denoise_engine_name = getattr(
-                pipeline_config.preprocessing.denoise, "engine", "rnnoise"
-            )
-            # Engine selector (rnnoise = legacy default). RNNoise degrades to
-            # no denoise when its package is absent (returns False);
-            # DeepFilterNet3 FAILS CLOSED — `initialize()` raises
-            # `ModelLoadError` (TASK-860 R-5), which propagates and fails the
-            # session: a selected denoiser that silently passes audio through
-            # is a wrong answer, not a degraded one.
-            denoiser = (
-                DeepFilterNet3StreamingDenoiser(input_sr=target_sr, strength=strength)
-                if denoise_engine_name == "deepfilternet3"
-                else StreamingDenoiser(input_sr=target_sr, strength=strength)
-            )
-            if not denoiser.initialize():
-                denoiser = None  # rnnoise unavailable, degrade gracefully
+        #
+        # TASK-1030 (owner decision OD-2, reversing TASK-860 R-5) — an engine that
+        # cannot run NEVER breaks the ASR task. `build_streaming_denoiser` returns no
+        # denoiser and the degrade; the session transcribes without denoise and the
+        # degrade is published to the client as a `denoise_degraded` status frame.
+        denoiser, denoise_degraded = build_streaming_denoiser(
+            pipeline_config.preprocessing.denoise if pipeline_config else None,
+            input_sr=target_sr,
+            session_id=session_id,
+        )
+        if denoise_degraded is not None:
+            try:
+                await publisher.publish_denoise_degraded(
+                    engine=denoise_degraded.engine,
+                    reason=denoise_degraded.reason,
+                    detail=denoise_degraded.detail,
+                )
+            except Exception as exc:  # noqa: BLE001 — a status frame never fails the session
+                logger.warning(
+                    "stt.denoise.degraded_publish_failed", session_id=session_id, error=str(exc)
+                )
 
         normalize = pipeline_config.preprocessing.normalize if pipeline_config else False
 
@@ -2277,9 +2277,7 @@ class SessionManager:
                         )
                     worker._uses_cadence_fast = worker._resolve_uses_cadence_fast()
                     worker._republish_punctuated = (
-                        getattr(
-                            worker._punctuation_config, "republish_after_publish", False
-                        )
+                        getattr(worker._punctuation_config, "republish_after_publish", False)
                         is True
                     )
                     worker._gloss_callable = binding.gloss_callable
@@ -4227,9 +4225,7 @@ class SessionManager:
                     # could never reach it even once the empty decodes started
                     # raising. Raises at the streak, inside this `try`, so the
                     # classifier below sees it like any other engine failure.
-                    empty_with_speech = self._note_decode_outcome(
-                        session.session_id, utt, result
-                    )
+                    empty_with_speech = self._note_decode_outcome(session.session_id, utt, result)
                     # A clean utterance resets the consecutive-failure
                     # run that arms the threshold auto-switch.
                     controller = self._switch_controllers.get(session.session_id)
@@ -5220,9 +5216,7 @@ class SessionManager:
                         # that re-armed the local front end created one after
                         # this closure was already bound. Without it the
                         # re-armed session would drop every utterance silently.
-                        queue = inference_queue or self._inference_queues.get(
-                            session.session_id
-                        )
+                        queue = inference_queue or self._inference_queues.get(session.session_id)
                         if queue is not None:
                             # F-08: bounded wait, not a blocking put. This runs on the
                             # single ingestion dispatch loop — a full queue must never
@@ -6888,9 +6882,7 @@ class SessionManager:
                     # warm VAD state. Deferred — VAD starts cold but
                     # stabilizes within 1-2 s of new audio.
 
-                    self._register_inference_runtime(
-                        session, inference_worker, publisher=publisher
-                    )
+                    self._register_inference_runtime(session, inference_worker, publisher=publisher)
 
                     # Wire up consumers — the audio consumer
                     # group persists its own cursor in Redis, so on recovery the

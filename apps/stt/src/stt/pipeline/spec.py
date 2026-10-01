@@ -78,10 +78,6 @@ class UnsupportedAsrSpecError(ValueError):
     """The spec names something this runtime cannot execute (fail closed)."""
 
 
-class UnsupportedDenoiseEngineError(UnsupportedAsrSpecError):
-    """A bound denoise row whose serving library names no denoise engine (fail closed)."""
-
-
 class _Wire(BaseModel):
     """Base for every wire model: camelCase aliases, strict field set, immutable.
 
@@ -788,23 +784,18 @@ def _denoise_engine(model: AsrSpecModel | None) -> str | None:
 
     TASK-977 — both engines are runtime-owned and chosen by NAME, so the row's declared
     ``library_name`` is the only thing that can carry the agent's choice. No row is a
-    legitimate state (an engine that ships in its wheel needs none) and keeps the
-    ``DenoiseConfig`` default. A row whose library names no denoise engine — including a
-    row that declares none, since ``format`` cannot tell the two engines apart — FAILS
-    CLOSED: running RNNoise in place of the engine the admin bound is a wrong answer.
+    legitimate state and keeps the ``DenoiseConfig`` default.
+
+    A row whose library names no denoise engine — including one that declares none,
+    since ``format`` cannot tell the two engines apart — maps to ``unknown:<library>``.
+    TASK-1030 (owner decision OD-2) changed this from a spec REFUSAL: an engine that
+    cannot run never breaks the ASR task. Session assembly runs NO denoiser for it and
+    reports the degrade — it still never guesses RNNoise in place of the bound engine.
     """
     if model is None:
         return None
     library = (model.library_name or "").strip()
-    engine = DENOISE_ENGINE_BY_LIBRARY.get(library)
-    if engine is None:
-        declared = f"serving library '{library}'" if library else "no serving library"
-        raise UnsupportedDenoiseEngineError(
-            f"Denoise model '{model.slug}' declares {declared}, which names no denoise "
-            "engine this runtime runs. Known denoise libraries: "
-            f"{sorted(DENOISE_ENGINE_BY_LIBRARY)}. The engine is never guessed."
-        )
-    return engine
+    return DENOISE_ENGINE_BY_LIBRARY.get(library) or f"unknown:{library or 'undeclared'}"
 
 
 def _endpoint_config(core: AsrSpecCore) -> EndpointConfig:
@@ -882,6 +873,8 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
     denoise_engine = _denoise_engine(models.denoise)
     if denoise_engine is not None:
         denoise_kwargs["engine"] = denoise_engine
+    if models.denoise is not None and models.denoise.local_path:
+        denoise_kwargs["model_path"] = models.denoise.local_path
     preprocessing = PreprocessingConfig(
         normalize=afe.normalize,
         resample_enabled=afe.resample,
@@ -1109,7 +1102,6 @@ __all__ = [
     "ResolvedAsrSpec",
     "ResolvedSpecBundle",
     "UnsupportedAsrSpecError",
-    "UnsupportedDenoiseEngineError",
     "bundle_from_resolved",
     "fallback_chain",
     "pipeline_config_from_bundle",

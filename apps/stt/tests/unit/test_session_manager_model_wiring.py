@@ -889,13 +889,14 @@ class TestRecoverSessionsModelWiring:
         pipeline_cfg.preprocessing.target_sample_rate = 16000
         pipeline_cfg.preprocessing.denoise.enabled = True
         pipeline_cfg.preprocessing.denoise.strength = 0.7
+        pipeline_cfg.preprocessing.denoise.engine = "rnnoise"
 
         mgr._load_pipeline_config = AsyncMock(return_value=pipeline_cfg)
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
         mgr._load_asr_pipeline = AsyncMock(return_value=(AsyncMock(), None))
 
         with (
-            patch("stt.streaming.session_manager.StreamingDenoiser") as MockDenoiser,
+            patch("stt.streaming.denoise_selection.StreamingDenoiser") as MockDenoiser,
             patch("stt.streaming.session_manager.IngestionConsumer") as MockConsumer,
             patch("stt.streaming.session_manager.ControlListener") as MockListener,
             patch("stt.streaming.session_manager.ResultPublisher"),

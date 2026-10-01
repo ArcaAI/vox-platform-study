@@ -18,7 +18,7 @@ import dataclasses
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -26,8 +26,6 @@ from stt.models.cache import DENOISE_ENGINE_BY_LIBRARY, RUNTIME_OWNED_LIBRARIES
 from stt.pipeline.dto import DenoiseConfig
 from stt.pipeline.spec import (
     ResolvedAsrSpec,
-    UnsupportedAsrSpecError,
-    UnsupportedDenoiseEngineError,
     pipeline_spec_from_resolved,
 )
 from stt.streaming.execution_profile import ExecutionProfile
@@ -119,23 +117,23 @@ class TestTheBoundDenoiseRowChoosesTheEngine:
         assert config.engine == "deepfilternet3"
 
     @pytest.mark.parametrize("library", ["transformers", "onnxruntime", "speechbrain"])
-    def test_a_library_that_names_no_denoise_engine_fails_closed(self, library: str) -> None:
-        """Never a silent RNNoise: a selection the admin made that quietly does something
-        else is a wrong answer, not a degraded one."""
-        with pytest.raises(UnsupportedDenoiseEngineError, match=library) as raised:
-            _denoise_config(_wire(row={**DEEPFILTERNET3_ROW, "libraryName": library}))
+    def test_a_library_that_names_no_denoise_engine_is_named_not_guessed(
+        self, library: str
+    ) -> None:
+        """Never a silent RNNoise. TASK-1030 (OD-2) changed the outcome from a spec
+        refusal to `unknown:<library>`: the session runs NO denoiser and reports it,
+        because an engine that cannot run must never break the ASR task."""
+        config = _denoise_config(_wire(row={**DEEPFILTERNET3_ROW, "libraryName": library}))
 
-        assert "deepfilternet3" in str(raised.value)  # the offending row is named
-        # It is a spec-mapping refusal, so it rides the existing fail-closed handling.
-        assert isinstance(raised.value, UnsupportedAsrSpecError)
+        assert config.engine == f"unknown:{library}"
+        assert config.engine != DenoiseConfig().engine
 
-    def test_a_row_that_declares_no_library_fails_closed(self) -> None:
+    def test_a_row_that_declares_no_library_is_named_not_guessed(self) -> None:
         """`format` cannot tell the two engines apart (both rows are PYTORCH), so an
         undeclared library is not a known engine either."""
         row = {key: value for key, value in DEEPFILTERNET3_ROW.items() if key != "libraryName"}
 
-        with pytest.raises(UnsupportedDenoiseEngineError, match="deepfilternet3"):
-            _denoise_config(_wire(row=row))
+        assert _denoise_config(_wire(row=row)).engine == "unknown:undeclared"
 
     def test_every_denoise_library_is_runtime_owned(self) -> None:
         """The engine map lives beside the runtime-owned-library knowledge and must not
@@ -193,15 +191,15 @@ class TestTheStreamingSessionRunsTheAgentsEngine:
         df3.initialize.return_value = True
         with (
             patch(
-                "stt.streaming.session_manager.DeepFilterNet3StreamingDenoiser", return_value=df3
+                "stt.streaming.denoise_selection.DeepFilterNet3StreamingDenoiser", return_value=df3
             ) as df3_cls,
-            patch("stt.streaming.session_manager.StreamingDenoiser") as rnnoise_cls,
+            patch("stt.streaming.denoise_selection.StreamingDenoiser") as rnnoise_cls,
             patch("stt.streaming.session_manager.StreamingPreprocessor") as pp_cls,
             patch("stt.streaming.session_manager.ResultPublisher"),
         ):
             runtime = await _assemble(mgr, pipeline_config)
 
-        df3_cls.assert_called_once_with(input_sr=16000, strength=0.8)
+        df3_cls.assert_called_once_with(input_sr=16000, strength=0.8, model_dir=ANY)
         rnnoise_cls.assert_not_called()
         df3.initialize.assert_called_once()
         assert pp_cls.call_args.kwargs.get("denoiser") is df3
@@ -227,8 +225,8 @@ class TestTheHardwareProfileCannotEnableDenoise:
         mgr = _assembly_manager(profile=MagicMock())
 
         with (
-            patch("stt.streaming.session_manager.DeepFilterNet3StreamingDenoiser") as df3_cls,
-            patch("stt.streaming.session_manager.StreamingDenoiser") as rnnoise_cls,
+            patch("stt.streaming.denoise_selection.DeepFilterNet3StreamingDenoiser") as df3_cls,
+            patch("stt.streaming.denoise_selection.StreamingDenoiser") as rnnoise_cls,
             patch("stt.streaming.session_manager.StreamingPreprocessor") as pp_cls,
             patch("stt.streaming.session_manager.ResultPublisher"),
         ):

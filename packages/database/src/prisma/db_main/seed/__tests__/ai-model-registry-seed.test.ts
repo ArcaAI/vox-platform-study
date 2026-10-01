@@ -185,8 +185,15 @@ describe('the platform model catalogue (34 SYSTEM rows)', () => {
     expect(bySlug('rnnoise')?.availability).toBe('NOT_APPLICABLE');
     expect(bySlug('rnnoise')?.sourceUri).toBe('pypi:pyrnnoise');
     expect(bySlug('rnnoise')?.libraryName).toBe('pyrnnoise');
-    expect(bySlug('deepfilternet3')?.availability).toBe('NOT_APPLICABLE');
-    expect(bySlug('deepfilternet3')?.libraryName).toBe('deepfilternet');
+  });
+
+  it('TASK-1030 — deepfilternet3 is NOT weight-less: it publishes the official checkpoint from an internal S3 copy', () => {
+    const dfn = bySlug('deepfilternet3');
+    expect(dfn?.libraryName).toBe('deepfilternet');
+    expect(dfn?.source).toBe('S3');
+    expect(dfn?.sourceUri).toBe('s3://hope-models/sources/deepfilternet3/0.5.6/');
+    // Measured by the inventory once published; never claimed up front.
+    expect(dfn?.availability).not.toBe('NOT_APPLICABLE');
   });
 
   it('serves Cadence punctuation IN-PROCESS by stt while keeping the HF token-classification task (D-4)', () => {

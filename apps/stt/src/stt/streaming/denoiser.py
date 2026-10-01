@@ -23,6 +23,8 @@ from typing import Any, cast
 
 import numpy as np
 
+from .denoise_report import DegradeReason, DenoiseDegraded, report_denoise_degraded
+
 logger = logging.getLogger(__name__)
 
 _RNNOISE_SR = 48000
@@ -49,6 +51,7 @@ class StreamingDenoiser:
         self._strength = max(0.0, min(1.0, strength))
         self._rnnoise: Any = None
         self._available = False
+        self._degraded: DenoiseDegraded | None = None
 
         self._ring_48k = _EMPTY_F32.copy()
         self._denoised_48k = _EMPTY_F32.copy()
@@ -68,7 +71,12 @@ class StreamingDenoiser:
         self._prev_frame_16k: np.ndarray | None = None
 
     def initialize(self) -> bool:
-        """Create RNNoise instance. Returns False if pyrnnoise unavailable."""
+        """Create the RNNoise instance. Returns False if pyrnnoise is unavailable.
+
+        Never raises (TASK-1030, OD-2): the session runs without denoise. The
+        degrade used to be a bare log line; it is now REPORTED (counter + status
+        frame) and kept on ``degraded``.
+        """
         try:
             import pyrnnoise
 
@@ -77,18 +85,20 @@ class StreamingDenoiser:
             logger.info("StreamingDenoiser initialized (pyrnnoise available)")
             return True
         except ImportError:
-            logger.warning("pyrnnoise not installed -- denoise disabled")
-            self._available = False
-            self._rnnoise = None
-            return False
-        except Exception:
-            logger.error(
-                "pyrnnoise initialization failed -- denoise disabled",
-                exc_info=True,
-            )
-            self._available = False
-            self._rnnoise = None
-            return False
+            return self._degrade("package_missing", "the `pyrnnoise` package is not installed")
+        except Exception as exc:  # noqa: BLE001 — any init failure degrades, never raises
+            return self._degrade("init_failed", f"pyrnnoise initialisation failed: {exc}")
+
+    def _degrade(self, reason: DegradeReason, detail: str) -> bool:
+        self._available = False
+        self._rnnoise = None
+        self._degraded = report_denoise_degraded("rnnoise", reason, detail)
+        return False
+
+    @property
+    def degraded(self) -> DenoiseDegraded | None:
+        """Why RNNoise is not running (``None`` when it initialised)."""
+        return self._degraded
 
     @property
     def in_fade_in(self) -> bool:
@@ -147,11 +157,12 @@ class StreamingDenoiser:
             if self._consecutive_failures <= 3:
                 logger.warning("RNNoise denoise_chunk failed, passing through", exc_info=True)
             elif self._consecutive_failures == _MAX_CONSECUTIVE_FAILURES:
-                logger.error(
-                    "RNNoise failed %d consecutive times -- auto-disabling denoiser",
-                    self._consecutive_failures,
-                )
                 self._available = False
+                self._degraded = report_denoise_degraded(
+                    "rnnoise",
+                    "enhance_failed",
+                    f"denoise_chunk failed {self._consecutive_failures} consecutive times — auto-disabled",
+                )
             self._total_input_samples += n_in
             self._prev_frame_16k = frame_16k.copy()
             return frame_16k

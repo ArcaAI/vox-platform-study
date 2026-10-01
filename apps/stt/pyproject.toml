@@ -160,16 +160,12 @@ ml = [
     # whisper.cpp ASR engine. Prebuilt manylinux + macOS wheels,
     # no torch dependency. Lazy-imported in stt.models.whisper_cpp_loader.
     "pywhispercpp>=1.5.0",
-    # NOTE: DeepFilterNet3 (deepfilternet) is intentionally NOT installed.
-    # Its latest release (0.5.6) hard-pins numpy>=1.22,<2.0 and packaging<24.0,
-    # which are incompatible with this stack's numpy 2.x (torch 2.8, scipy 1.17,
-    # librosa) — pip cannot resolve it and it has no numpy-2.x release upstream.
-    # rnnoise (pyrnnoise, above) is the frame-accurate default denoise engine.
-    # Since TASK-860 the `deepfilternet3` engine option FAILS CLOSED when the
-    # package is absent (streaming/deepfilternet_denoiser.py raises
-    # ModelLoadError) — a selected denoiser never silently no-ops. Add a
-    # numpy-2.x compatible build (git ref or vendored `df` runtime) here to
-    # make the registry row `deepfilternet3` serviceable.
+    # NOTE: DeepFilterNet3 (`deepfilternet`) is NOT declared here because its last
+    # release (0.5.6) hard-pins numpy<2 / packaging<24, which no resolve of this
+    # stack can satisfy. The pins are stale: TASK-1030 installs it `--no-deps` in
+    # `docker/Dockerfile` (ml-builder) behind a build gate, and its weights come
+    # from the models bucket via the `deepfilternet3` AiModel row. An engine that
+    # cannot run degrades the session to no denoise and reports it (OD-2).
 ]
 
 nemo = [

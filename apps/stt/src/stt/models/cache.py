@@ -90,8 +90,8 @@ RUNTIME_OWNED_LIBRARIES: dict[str, str] = {
         "wheel, so there are no published weights to cache"
     ),
     "deepfilternet": (
-        "stt.streaming.deepfilternet_denoiser — `df.enhance.init_df` ships the "
-        "DeepFilterNet3 checkpoint inside the `deepfilternet` wheel"
+        "stt.streaming.deepfilternet_denoiser — `df.enhance.init_df` reads the "
+        "DeepFilterNet3 checkpoint from the row's bucket directory (`local_path`) itself"
     ),
     "cadence-punctuation": (
         "the punctuation service, which loads its own model; `models.punctuation` "

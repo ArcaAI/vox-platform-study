@@ -1018,7 +1018,8 @@ export class AiModelService extends BaseService implements IAiModelService {
       //
       // `NOT_APPLICABLE` counts as the bucket having it: the inventory stamps it
       // when the library ships its weights INSIDE the Python package
-      // (`pyrnnoise`, `deepfilternet`), i.e. there is nothing to fetch at all.
+      // (`pyrnnoise`), i.e. there is nothing to fetch at all. `deepfilternet`
+      // left that set in TASK-1030: its checkpoint is published to the bucket.
       const measured = entity.availability;
       const bucketHasIt = measured === AiModelAvailability.AVAILABLE || measured === AiModelAvailability.NOT_APPLICABLE;
       return bucketHasIt || readiness === 'ready' ? USABLE : { usable: false, reason: 'weights-not-available' };

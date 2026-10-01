@@ -671,30 +671,32 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tags: ['noise-reduction', 'real-time', 'lightweight', 'cpu-friendly'],
   },
   {
-    // DeepFilterNet3 — the checkpoint is package-resolved (`df.enhance.init_df`
-    // ships the DeepFilterNet3 model inside the `deepfilternet` wheel), so
-    // there is nothing in the bucket either. Selecting this engine without the
-    // package installed now RAISES (TASK-860) instead of silently passing audio
-    // through.
+    // DeepFilterNet3 — TASK-1030. The `deepfilternet` wheel does NOT carry the
+    // checkpoint (`df.enhance.init_df` downloads it from GitHub at first use), so
+    // the row is published like any self-hosted model: the official release's
+    // `config.ini` + `checkpoints/model_120.ckpt.best` are staged once under
+    // `s3://hope-models/sources/deepfilternet3/0.5.6/` and published from there.
+    // `apps/stt` loads from the published prefix (`local_path`) and never downloads.
+    // An engine that cannot run (unpublished weights, missing package) degrades the
+    // session to no denoise and reports it — never a failed ASR task (OD-2).
     id: '80000000-0000-0000-0003-000000000004',
     tenantId: SYSTEM_TENANT_ID,
     name: 'DeepFilterNet3',
     slug: 'deepfilternet3',
     description:
-      'DeepFilterNet3 — full-band (48kHz) deep-filtering noise suppression. Stronger suppression than RNNoise at higher compute cost; block-processed (~1s latency) in streaming. Package-resolved checkpoint.',
+      'DeepFilterNet3 — full-band (48kHz) deep-filtering noise suppression. Stronger suppression than RNNoise at higher compute cost; block-processed (~1s latency) in streaming. Official checkpoint published to the models bucket.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUDIO_TO_AUDIO,
     modelType: ModelType.BASE_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'github:Rikorose/DeepFilterNet#DeepFilterNet3',
-    sourceRevision: 'main',
+    source: AiModelSource.S3,
+    sourceUri: 's3://hope-models/sources/deepfilternet3/0.5.6/',
+    sourceRevision: 'v0.5.6',
     format: AiModelFormat.PYTORCH,
     libraryName: 'deepfilternet',
     servedBy: 'stt',
     deploymentKind: AiDeploymentKind.SELF_HOSTED,
     license: 'mit',
     languages: [],
-    availability: AiModelAvailability.NOT_APPLICABLE,
     provider: 'built-in',
     architecture: 'deepfilternet',
     memorySizeMb: 128,

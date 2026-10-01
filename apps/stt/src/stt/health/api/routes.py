@@ -20,6 +20,7 @@ from hope_env import BuildInfoReader
 
 from stt.core.config.settings import get_settings
 from stt.core.storage.minio_client import get_minio_client
+from stt.streaming.denoise_selection import denoise_engine_status
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -121,6 +122,10 @@ async def health_check() -> dict[str, Any]:
     checks["streaming"] = streaming_info
 
     checks["processors"] = _check_processors()
+
+    # TASK-1030 (OD-2) — visibility only. An unavailable denoise engine never changes
+    # `status` or readiness: a session that selected it transcribes without denoise.
+    checks["denoise"] = denoise_engine_status()
 
     uptime = (datetime.utcnow() - _startup_time).total_seconds()
 

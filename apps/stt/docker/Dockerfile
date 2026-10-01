@@ -231,6 +231,40 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --override /tmp/cuda-overrides.txt \
         "./apps/stt[ml-gpu]"
 
+# TASK-1030 — DeepFilterNet3, the second denoise engine. Upstream is frozen at 0.5.6
+# (2023-08-31) and `deepfilternet` hard-pins numpy<2 / packaging<24, so it CANNOT go
+# through the `[ml-gpu]` resolve above. The pins are stale, not real: 0.5.6 was proven
+# on numpy 2.4.6 + torch 2.8 (SNR 1.4 → 16.5 dB on a 2 s sample). So the Rust core
+# `deepfilterlib` (which only asks numpy>=1.22) installs normally, its two genuinely
+# missing runtime deps are named, and `deepfilternet` itself goes in --no-deps.
+# The gate below is what makes that safe: if a future numpy/torch breaks it, the
+# build fails here — never a session at runtime.
+# Weights are NOT in this image: the `deepfilternet3` AiModel row publishes them to
+# the models bucket and stt loads them from `local_path` (never `init_df`'s download).
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv/bin/python \
+        "deepfilterlib==0.5.6" "loguru>=0.5,<1" "appdirs>=1.4,<2" \
+    && uv pip install --python /opt/venv/bin/python --no-deps "deepfilternet==0.5.6"
+
+# TASK-1030 build gate — BOTH denoise engines must actually process audio in this
+# venv. RNNoise denoises 1 s of noise end to end; DeepFilterNet3 runs its Rust STFT
+# analysis/synthesis (libdf) and imports the torch-side enhance module. The DFN3
+# network itself needs the bucket checkpoint, which the cluster verification covers.
+RUN /opt/venv/bin/python - <<'PY'
+import numpy as np
+import pyrnnoise
+noise = (np.random.default_rng(0).standard_normal((1, 48000)) * 3000).astype(np.int16)
+frames = list(pyrnnoise.RNNoise(sample_rate=48000).denoise_chunk(noise))
+assert frames, "pyrnnoise produced no frames"
+from libdf import DF
+import df.enhance  # noqa: F401 — the module stt imports at session start
+state = DF(sr=48000, fft_size=960, hop_size=480, nb_bands=32, min_nb_erb_freqs=2)
+spec = state.analysis(np.random.default_rng(1).standard_normal((1, 48000)).astype(np.float32))
+out = state.synthesis(spec)
+assert out.shape[-1] == 48000, out.shape
+print(f"denoise build gate OK: rnnoise frames={len(frames)}, libdf roundtrip={out.shape}, numpy={np.__version__}")
+PY
+
 # `./apps/stt[nemo]` USED TO BE INSTALLED HERE, into this same venv, with an
 # additional `transformers==5.5.4` override. Both are gone — TASK-944.
 #

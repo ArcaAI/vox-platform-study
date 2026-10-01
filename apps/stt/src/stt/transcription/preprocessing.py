@@ -28,13 +28,17 @@ Uses the pipeline-defined VAD model when available, falling back to the
 dedicated Silero VAD v5 ONNX singleton service for backward compatibility.
 """
 
+import functools
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 import numpy as np
 
 from ..models.base_loader import LoadedModel
 from ..pipeline.dto import PreprocessingConfig
+from ..streaming.deepfilternet_denoiser import _missing_weights
+from ..streaming.denoise_report import report_denoise_degraded
 from .audio_decode import decode_audio
 from .dto import AudioSegment, ProcessedAudio
 
@@ -114,11 +118,19 @@ class AudioPreprocessor:
         vad_branch: np.ndarray | None = None
         denoise_scope = getattr(config.denoise, "scope", "full")
         denoise_engine_name = getattr(config.denoise, "engine", "rnnoise")
-        denoise_fn = (
-            self._apply_denoise_deepfilternet3
-            if denoise_engine_name == "deepfilternet3"
-            else self._apply_denoise
-        )
+        # TASK-1030 (OD-2) — an engine this runtime does not run ("unknown:<library>")
+        # or one that cannot initialise returns the ORIGINAL audio and reports the
+        # degrade: the job always completes with a transcript.
+        denoise_model_dir = getattr(config.denoise, "model_path", None)
+        denoise_fn: Callable[[np.ndarray, int, float], Awaitable[tuple[np.ndarray, int]]]
+        if denoise_engine_name == "deepfilternet3":
+            denoise_fn = functools.partial(
+                self._apply_denoise_deepfilternet3, model_dir=denoise_model_dir
+            )
+        elif denoise_engine_name == "rnnoise":
+            denoise_fn = self._apply_denoise
+        else:
+            denoise_fn = functools.partial(self._skip_unknown_denoise, engine=denoise_engine_name)
         if config.denoise.enabled:
             if denoise_scope == "full":
                 logger.debug(
@@ -563,20 +575,30 @@ class AudioPreprocessor:
             return denoised_48k.astype(np.float32), _RNNOISE_SAMPLE_RATE
 
         except ImportError:
-            logger.warning(
-                "pyrnnoise not installed — skipping denoising. "
-                "Install with: pip install pyrnnoise"
+            report_denoise_degraded(
+                "rnnoise", "package_missing", "the `pyrnnoise` package is not installed"
             )
             return samples, sample_rate
-        except Exception as e:
-            logger.warning("RNNoise denoising failed: %s, returning original audio", e)
+        except Exception as e:  # noqa: BLE001 — the job continues on the original audio
+            report_denoise_degraded("rnnoise", "enhance_failed", f"RNNoise denoising failed: {e}")
             return samples, sample_rate
+
+    async def _skip_unknown_denoise(
+        self, samples: np.ndarray, sample_rate: int, strength: float, *, engine: str
+    ) -> tuple[np.ndarray, int]:
+        """The bound row names no engine this runtime runs: original audio, degrade reported."""
+        report_denoise_degraded(
+            engine, "unknown_engine", f"no denoise engine named '{engine}' in this runtime"
+        )
+        return samples, sample_rate
 
     async def _apply_denoise_deepfilternet3(
         self,
         samples: np.ndarray,
         sample_rate: int,
         strength: float,
+        *,
+        model_dir: str | None = None,
     ) -> tuple[np.ndarray, int]:
         """Apply DeepFilterNet3 noise suppression.
 
@@ -597,6 +619,13 @@ class AudioPreprocessor:
         if strength <= 0.0:
             return samples, sample_rate
 
+        # TASK-1030 — weights come from the bound row's bucket directory; `init_df`
+        # without one would download from GitHub mid-job, so it is never called.
+        missing = _missing_weights(model_dir)
+        if missing:
+            report_denoise_degraded("deepfilternet3", "weights_unavailable", missing)
+            return samples, sample_rate
+
         try:
             import torch
             from df.enhance import enhance, init_df
@@ -607,7 +636,9 @@ class AudioPreprocessor:
                 else samples.copy()
             )
 
-            model, df_state, _, _ = init_df(default_model="DeepFilterNet3")
+            # 0.5.6 returns (DfNet, DF, suffix) — THREE values.
+            loaded = init_df(model_base_dir=model_dir, log_level="ERROR", log_file=None)
+            model, df_state = loaded[0], loaded[1]
             audio_tensor = torch.from_numpy(samples_48k.astype(np.float32)).unsqueeze(0)
             enhanced_tensor = enhance(model, df_state, audio_tensor)
             denoised_48k = enhanced_tensor.squeeze(0).cpu().numpy().astype(np.float32)
@@ -629,13 +660,14 @@ class AudioPreprocessor:
             return denoised_48k.astype(np.float32), _RNNOISE_SAMPLE_RATE
 
         except ImportError:
-            logger.warning(
-                "deepfilternet not installed — skipping denoising. "
-                "Install with: pip install deepfilternet"
+            report_denoise_degraded(
+                "deepfilternet3", "package_missing", "the `deepfilternet` package is not installed"
             )
             return samples, sample_rate
-        except Exception as e:
-            logger.warning("DeepFilterNet3 denoising failed: %s, returning original audio", e)
+        except Exception as e:  # noqa: BLE001 — the job continues on the original audio
+            report_denoise_degraded(
+                "deepfilternet3", "init_failed", f"DeepFilterNet3 denoising failed: {e}"
+            )
             return samples, sample_rate
 
     def _merge_segments(

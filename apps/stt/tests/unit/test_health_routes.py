@@ -331,3 +331,58 @@ class TestComponentHealth:
         d = _component_to_dict(comp)
         assert d["status"] == "unhealthy"
         assert d["message"] == "Connection refused"
+
+
+class TestDenoiseEngineStatusTask1030:
+    """TASK-1030 (OD-2) — each denoise engine's status is VISIBLE in the health body,
+    and an unavailable engine never makes the service unhealthy or not-ready: a
+    session that selected it transcribes without denoise."""
+
+    def _deps_ok(self):
+        from stt.health.api.routes import ComponentHealth, HealthStatus
+
+        redis_ok = ComponentHealth(name="redis", status=HealthStatus.HEALTHY, latency_ms=0.1)
+        return (
+            patch(
+                "stt.health.api.routes.get_minio_client",
+                return_value=MagicMock(health_check=MagicMock(return_value=True)),
+            ),
+            patch(
+                "stt.health.api.routes._check_redis", new_callable=AsyncMock, return_value=redis_ok
+            ),
+        )
+
+    def test_health_body_reports_each_engine_without_changing_the_status(self, client):
+        status = {
+            "rnnoise": {"status": "ok", "detail": ""},
+            "deepfilternet3": {
+                "status": "unavailable",
+                "detail": "package `df.enhance` not importable",
+            },
+        }
+        minio, redis = self._deps_ok()
+        with (
+            minio,
+            redis,
+            patch("stt.health.api.routes.denoise_engine_status", return_value=status),
+        ):
+            resp = client.get("/api/v1/health")
+
+        data = resp.json()
+        assert data["checks"]["denoise"] == status
+        assert data["status"] == "healthy"
+
+    def test_an_unavailable_engine_keeps_the_pod_ready(self, client):
+        status = {
+            "rnnoise": {"status": "unavailable", "detail": "x"},
+            "deepfilternet3": {"status": "unavailable", "detail": "y"},
+        }
+        minio, redis = self._deps_ok()
+        with (
+            minio,
+            redis,
+            patch("stt.health.api.routes.denoise_engine_status", return_value=status),
+        ):
+            resp = client.get("/api/v1/health/ready")
+
+        assert resp.status_code == 200

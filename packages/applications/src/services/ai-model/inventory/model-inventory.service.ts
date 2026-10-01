@@ -23,8 +23,12 @@ import type { ModelInventoryReport, ModelInventoryRow, UnregisteredBucketPrefix 
  * Libraries whose weights ship inside the Python package (nothing in the
  * bucket to inventory). Kept next to `HF_CACHE_LIBRARIES` in spirit; small
  * enough to live here.
+ *
+ * TASK-1030 — `deepfilternet` is NOT one of them: its wheel carries no
+ * checkpoint (`init_df` would download it at session time), so its row is
+ * published to the bucket like any other self-hosted model and inventoried.
  */
-const WEIGHTLESS_LIBRARIES: ReadonlySet<string> = new Set(['pyrnnoise', 'deepfilternet']);
+const WEIGHTLESS_LIBRARIES: ReadonlySet<string> = new Set(['pyrnnoise']);
 
 const MANIFEST_OBJECT = 'manifest.json';
 const FLAT_PREFIX_RE = /^([^/]+)\/([^/]+)\/$/;
