@@ -24,6 +24,7 @@ import { loadFkEdges } from '../../../registry/order';
 import { CHECKPOINT_REGISTRY, tableName } from '../../../registry/registry';
 import { scopePredicate } from '../../../registry/scope';
 import { CheckpointReconciler, type ReconcileArgs, type ReconcileResult } from '../../reconciler';
+import { CLAIM_POST_COMMIT_SQL, restoreBackendName } from '../../restore-row';
 import { checkpointOf, fingerprintRows, type TestCheckpoint } from './test-exporter';
 
 const A = '1032a000-0000-4000-8000-000000001032';
@@ -89,6 +90,8 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
       for (const d of userScoped) await run(`DELETE FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`, [t]);
       for (const d of tenantScoped) await run(`DELETE FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`, [t]);
     }
+    await run(`DELETE FROM core."TenantCheckpointRestore" WHERE "tenantId" = ANY($1)`, [[A, B]]);
+    await run(`DELETE FROM core."TenantCheckpoint" WHERE "tenantId" = ANY($1)`, [[A, B]]);
     await run(`DELETE FROM core."User" WHERE username LIKE 'l6b-%'`);
     await run(`DELETE FROM core."Role" WHERE name LIKE 'l6b-%'`);
     await run('COMMIT');
@@ -696,5 +699,72 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
     const res = await restore(cp, A, ['CLINICAL']);
 
     expect(res.warnings).toContainEqual(expect.objectContaining({ code: 'MEDIA_NOT_CAPTURED', detail: { mediaIds: [s.media] } }));
+  });
+
+  /** A TenantCheckpointRestore row of tenant A in `status`. */
+  async function restoreRow(status: string): Promise<string> {
+    const cpId = randomUUID();
+    const id = randomUUID();
+    await run(`INSERT INTO core."TenantCheckpoint" (id, "tenantId", label, "updatedAt") VALUES ($1, $2, 'src', now())`, [cpId, A]);
+    await run(
+      `INSERT INTO core."TenantCheckpointRestore" (id, "tenantId", "checkpointId", reason, "requestedBy", status, "updatedAt") VALUES ($1, $2, $3, 'test restore', $4, $5, now())`,
+      [id, A, cpId, ACTOR, status],
+    );
+    return id;
+  }
+
+  it('R2 I-5 — the RECONCILING → POST_COMMIT compare-and-set commits atomically with the data; the reconcile connection is visible to the liveness probe', async () => {
+    const s = seeded[A];
+    const id = await restoreRow('RECONCILING');
+    const cp = await checkpointOf(c, A);
+    await run(`UPDATE core."Department" SET name = 'Renamed' WHERE id = $1`, [s.dept]);
+    await mark();
+    const seen: Record<string, unknown> = {};
+
+    const client = await pool.connect();
+    try {
+      await client.query(`SELECT set_config('application_name', $1, false)`, [restoreBackendName(id)]);
+      await reconciler.reconcile(client, {
+        tenantId: A,
+        categories: ['CONFIG_CONTENT'],
+        reader: await cp.open(),
+        actorId: ACTOR,
+        restoreId: id,
+        beforeCommit: async (q) => {
+          seen.claimed = (await q(CLAIM_POST_COMMIT_SQL, [id, null])).length;
+          seen.outside = (await one(`SELECT status FROM core."TenantCheckpointRestore" WHERE id = $1`, [id])).status;
+          seen.alive = (await one(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name = $1`, [restoreBackendName(id)])).n;
+        },
+      });
+      await client.query('RESET application_name');
+    } finally {
+      client.release();
+    }
+
+    expect(seen).toEqual({ claimed: 1, outside: 'RECONCILING', alive: 1 });
+    expect((await one(`SELECT status FROM core."TenantCheckpointRestore" WHERE id = $1`, [id])).status).toBe('POST_COMMIT');
+    expect((await one(`SELECT name FROM core."Department" WHERE id = $1`, [s.dept])).name).toBe('Cardiology');
+  });
+
+  it('R2 I-5 — a restore row the sweeper ended after the snapshot makes the compare-and-set fail (40001): nothing commits', async () => {
+    const s = seeded[A];
+    const id = await restoreRow('RECONCILING');
+    const cp = await checkpointOf(c, A);
+    await run(`UPDATE core."Department" SET name = 'Renamed' WHERE id = $1`, [s.dept]);
+    await mark();
+
+    const err = await restore(cp, A, ['CONFIG_CONTENT'], {
+      onBegin: async (q) => {
+        await q('SELECT 1');
+        await run(`UPDATE core."TenantCheckpointRestore" SET status = 'FAILED', "_version" = "_version" + 1 WHERE id = $1`, [id]); // the sweeper
+      },
+      beforeCommit: async (q) => {
+        await q(CLAIM_POST_COMMIT_SQL, [id, null]);
+      },
+    }).catch((e) => e);
+
+    expect(err).toMatchObject({ reason: 'RESTORE_FAILED', detail: { code: '40001' } });
+    expect((await one(`SELECT status FROM core."TenantCheckpointRestore" WHERE id = $1`, [id])).status).toBe('FAILED');
+    expect((await one(`SELECT name FROM core."Department" WHERE id = $1`, [s.dept])).name).toBe('Renamed');
   });
 });
