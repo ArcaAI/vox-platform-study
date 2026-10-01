@@ -1,6 +1,7 @@
 import { HttpModule } from '@nestjs/axios';
 import { BullModule } from '@nestjs/bullmq';
 import { DynamicModule, Module, type ModuleMetadata } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
 
 import { JwtRevocationModule } from '../../auth/jwt-revocation.module';
@@ -39,6 +40,8 @@ const metadata: ModuleMetadata = {
     TenantLockModule,
     JwtRevocationModule,
     HttpModule,
+    // KnowledgeVectorCleanupClient reads @nestjs/config's ConfigService (HARNESS_URL).
+    ConfigModule,
     BullModule.registerQueue({ name: JobQueue.TenantCheckpointRestore }, { name: JobQueue.IngestKnowledgeDocument }),
   ],
   providers: [
