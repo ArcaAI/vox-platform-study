@@ -127,7 +127,14 @@ export interface ICheckpointStore {
   openReadStream(key: string): Promise<Readable>;
   presignDownload(key: string, filename: string, ttlSeconds: number): Promise<string>;
   createUpload(key: string): Promise<{ uploadId: string }>;
-  presignUploadParts(key: string, uploadId: string, partCount: number, ttlSeconds: number): Promise<{ partNumber: number; url: string }[]>;
+  /** With `sizing`, every part URL is signed for its exact length (full parts, last = remainder). */
+  presignUploadParts(
+    key: string,
+    uploadId: string,
+    partCount: number,
+    ttlSeconds: number,
+    sizing?: { sizeBytes: number; partSizeBytes: number },
+  ): Promise<{ partNumber: number; url: string }[]>;
   completeUpload(key: string, uploadId: string, parts: { partNumber: number; etag: string }[]): Promise<{ sizeBytes: number }>;
   abortUpload(key: string, uploadId: string): Promise<void>;
   delete(key: string): Promise<void>;

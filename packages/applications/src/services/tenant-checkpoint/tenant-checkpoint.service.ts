@@ -417,7 +417,10 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     let parts: { partNumber: number; url: string }[];
     try {
       saved = await this.checkpoints.create(entity);
-      parts = await this.store.presignUploadParts(objectKey, uploadId, partCount, CHECKPOINT_UPLOAD_TTL_SECONDS);
+      parts = await this.store.presignUploadParts(objectKey, uploadId, partCount, CHECKPOINT_UPLOAD_TTL_SECONDS, {
+        sizeBytes: request.sizeBytes,
+        partSizeBytes: CHECKPOINT_UPLOAD_PART_BYTES,
+      });
     } catch (error) {
       await this.store.abortUpload(objectKey, uploadId).catch(() => undefined);
       throw error;
@@ -455,6 +458,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       }
       throw error;
     }
+    await this.assertUploadedSize(row, tenantId, sizeBytes);
     // The row stays UPLOADING: the verify runner picks up UPLOADING (or PENDING) rows and moves it to
     // RUNNING itself, with a heartbeat. The multipart upload is finished, so its id is dropped — a
     // repeated `complete` is then 409 and the idle-upload sweeper has nothing to abort.
@@ -472,6 +476,33 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       data: { tenantId, action: 'upload-complete', sizeBytes },
     });
     return TenantCheckpointDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * The presigned parts are length-bound, but the stored object is the authority: refuse an object
+   * that is not exactly the declared size or exceeds the tenant's limit, delete its bytes and cancel
+   * the row so nothing past the limit is ever kept or verified.
+   */
+  private async assertUploadedSize(row: TenantCheckpointEntity, tenantId: string, actualBytes: number): Promise<void> {
+    const limitGb = this.settings.resolve<number>(TENANT_CHECKPOINT_MAX_UPLOAD_GB_KEY, tenantId).value ?? TENANT_CHECKPOINT_DEFAULTS.maxUploadSizeGb;
+    const tooLarge = actualBytes > limitGb * BYTES_PER_GB;
+    const mismatch = actualBytes !== row.sizeBytes;
+    if (!tooLarge && !mismatch) return;
+    if (row.objectKey) await this.store.delete(row.objectKey);
+    row.status = TenantCheckpointStatus.CANCELLED;
+    row.uploadId = null;
+    row.finishedAt = new Date();
+    await this.transition(row);
+    if (tooLarge) {
+      throw new PayloadTooLargeException({
+        code: 'CHECKPOINT_TOO_LARGE',
+        message: `A checkpoint upload may be at most ${limitGb} GB.`,
+      });
+    }
+    throw new BadRequestException({
+      code: 'UPLOAD_SIZE_MISMATCH',
+      message: 'The uploaded object does not match the size declared when the upload was started.',
+    });
   }
 
   async abortUpload(tenantId: string, uploadRef: string): Promise<TenantCheckpointResponse> {

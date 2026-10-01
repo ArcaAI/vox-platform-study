@@ -104,6 +104,10 @@ describe('CheckpointStore', () => {
     expect(urls).toEqual([1, 2, 3].map((n) => ({ partNumber: n, url: `https://signed/part/${n}` })));
     expect(p.presignUploadPart).toHaveBeenCalledWith({ bucket: CHECKPOINT_BUCKET, key: 't/c.hcp', uploadId: 'up-1', partNumber: 2, expiresInSeconds: 600 });
     await expect(s.presignUploadParts('t/c.hcp', 'up-1', 0, 600)).rejects.toThrow();
+    // exact signed ContentLength per part: full parts, then the remainder
+    p.presignUploadPart.mockClear();
+    await s.presignUploadParts('t/c.hcp', 'up-1', 3, 600, { sizeBytes: 250, partSizeBytes: 100 });
+    expect(p.presignUploadPart.mock.calls.map(([a]) => (a as { contentLength: number }).contentLength)).toEqual([100, 100, 50]);
     await expect(s.presignUploadParts('t/c.hcp', 'up-1', 10001, 600)).rejects.toThrow();
   });
 

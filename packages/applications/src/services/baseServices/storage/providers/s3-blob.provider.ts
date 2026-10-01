@@ -363,7 +363,13 @@ export class S3BlobProvider implements IBlobStorageProvider {
   async presignUploadPart(params: PresignUploadPartParams): Promise<string> {
     return getSignedUrl(
       this.presignClient,
-      new UploadPartCommand({ Bucket: params.bucket, Key: params.key, UploadId: params.uploadId, PartNumber: params.partNumber }),
+      new UploadPartCommand({
+        Bucket: params.bucket,
+        Key: params.key,
+        UploadId: params.uploadId,
+        PartNumber: params.partNumber,
+        ...(params.contentLength !== undefined ? { ContentLength: params.contentLength } : {}),
+      }),
       { expiresIn: params.expiresInSeconds },
     );
   }

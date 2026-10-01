@@ -99,7 +99,13 @@ export class CheckpointStore implements ICheckpointStore {
     return multipart(p, 'createMultipartUpload')({ bucket: CHECKPOINT_BUCKET, key, contentType: 'application/octet-stream' });
   }
 
-  async presignUploadParts(key: string, uploadId: string, partCount: number, ttlSeconds: number): Promise<{ partNumber: number; url: string }[]> {
+  async presignUploadParts(
+    key: string,
+    uploadId: string,
+    partCount: number,
+    ttlSeconds: number,
+    sizing?: { sizeBytes: number; partSizeBytes: number },
+  ): Promise<{ partNumber: number; url: string }[]> {
     if (!Number.isInteger(partCount) || partCount < 1 || partCount > MAX_UPLOAD_PARTS) {
       throw new Error(`partCount must be an integer in 1..${MAX_UPLOAD_PARTS}`);
     }
@@ -107,7 +113,11 @@ export class CheckpointStore implements ICheckpointStore {
     const presign = multipart(p, 'presignUploadPart');
     const out: { partNumber: number; url: string }[] = [];
     for (let partNumber = 1; partNumber <= partCount; partNumber++) {
-      out.push({ partNumber, url: await presign({ bucket: CHECKPOINT_BUCKET, key, uploadId, partNumber, expiresInSeconds: ttlSeconds }) });
+      const contentLength = sizing ? Math.min(sizing.partSizeBytes, sizing.sizeBytes - (partNumber - 1) * sizing.partSizeBytes) : undefined;
+      out.push({
+        partNumber,
+        url: await presign({ bucket: CHECKPOINT_BUCKET, key, uploadId, partNumber, expiresInSeconds: ttlSeconds, ...(contentLength !== undefined ? { contentLength } : {}) }),
+      });
     }
     return out;
   }
