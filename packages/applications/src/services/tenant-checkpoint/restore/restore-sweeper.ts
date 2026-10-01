@@ -12,10 +12,10 @@
  */
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ClsService } from 'nestjs-cls';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   generateId,
-  ResourceStatusType,
   ResourceType,
   SysEventType,
   TenantCheckpointRestoreRepository,
@@ -23,6 +23,8 @@ import {
   type TenantCheckpointRestoreEntity,
 } from '@arcaai/domains';
 
+import { createWorkerSession } from '../../../common/worker-session';
+import { IActiveUserContext } from '../../../interfaces';
 import { TENANT_CHECKPOINT_MAX_LOCK_MINUTES_KEY } from '../../settings-registry/descriptors/tenant-checkpoint.descriptors';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { ITenantLockService, type CheckpointFailureReason } from '../contracts';
@@ -54,6 +56,7 @@ export class CheckpointRestoreSweeper {
     @Inject(ITenantLockService) private readonly lock: ITenantLockService,
     private readonly settings: TenantSettingsService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(RESTORE_CLOCK) private readonly clock: RestoreClock = realClock,
     @Optional() @Inject(CHECKPOINT_RESTORE_DB) private readonly db?: RestoreDb,
   ) {}
@@ -64,13 +67,16 @@ export class CheckpointRestoreSweeper {
     this.running = true;
     try {
       const now = this.clock.now();
-      const active = await this.restores.findAll({
-        where: { resourceStatus: { not: ResourceStatusType.DELETED }, status: { notIn: TERMINAL_RESTORE_STATUSES } } as never,
-      });
+      // Cross-tenant scan: the repository's sanctioned unscoped read. Each row is judged and ended
+      // inside ITS tenant's worker session (the scoped client needs a tenant for every write).
+      const active = await this.restores.findActiveAnyTenant();
       let ended = 0;
       for (const row of active) {
-        const reason = await this.verdict(row, now);
-        if (reason && (await this.end(row.id, reason, now))) ended++;
+        const done = await this.asTenant(row.tenantId, async () => {
+          const reason = await this.verdict(row, now);
+          return !!reason && (await this.end(row.id, reason, now));
+        });
+        if (done) ended++;
       }
       return ended;
     } catch (error) {
@@ -120,6 +126,19 @@ export class CheckpointRestoreSweeper {
         error: error instanceof Error ? error.name : 'Error',
       });
     }
+  }
+
+  private async asTenant(tenantId: string, work: () => Promise<boolean>): Promise<boolean> {
+    return this.cls.run({ ifNested: 'override' }, async () => {
+      this.cls.set('tenantId', tenantId);
+      this.cls.set('user', createWorkerSession({ tenantId, kind: 'tenant-checkpoint-sweeper' }) as never);
+      try {
+        return await work();
+      } catch (error) {
+        this.logger.error({ message: 'Stale restore sweep step failed', tenantId, error: error instanceof Error ? error.name : 'Error' });
+        return false;
+      }
+    });
   }
 
   private maxLockMinutes(tenantId: string): number {

@@ -105,19 +105,18 @@ export class CheckpointRestoreRunner extends BaseService {
     super(eventEmitter, clsService, ResourceType.TenantCheckpointRestore);
   }
 
+  /** Call inside the tenant's worker session (the processor binds the job tenant before this reads the row). */
   async run(restoreId: string): Promise<void> {
     const row = await findRestore(this.restores, restoreId);
     if (!row || row.status !== TenantCheckpointRestoreStatus.PENDING) return; // re-delivered job: idempotent
-    const work = async () => {
+    await this.clsService.run({ ifNested: 'inherit' }, async () => {
       this.clsService.set('tenantId', row.tenantId);
       this.clsService.set(
         'user',
         createWorkerSession({ tenantId: row.tenantId, userId: row.requestedBy, kind: 'tenant-checkpoint-restore' }) as never,
       );
       await this.restore(row);
-    };
-    if (this.clsService.isActive()) await work();
-    else await this.clsService.run(work);
+    });
   }
 
   private async restore(initial: TenantCheckpointRestoreEntity): Promise<void> {

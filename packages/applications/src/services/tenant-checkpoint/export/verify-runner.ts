@@ -51,13 +51,12 @@ export class CheckpointVerifyRunner extends BaseService implements ICheckpointVe
   async run(checkpointId: string): Promise<void> {
     const row = await findCheckpoint(this.checkpoints, checkpointId);
     if (!row || !AWAITING_VERIFICATION.includes(row.status)) return; // re-delivered job: idempotent
-    const body = async () => {
+    // Read in the caller's (processor's) tenant session; the verification runs in a nested session of its own.
+    await this.clsService.run({ ifNested: 'inherit' }, async () => {
       this.clsService.set('tenantId', row.tenantId);
       this.clsService.set('user', createWorkerSession({ tenantId: row.tenantId, kind: 'tenant-checkpoint-verify' }) as never);
       await this.verify(row);
-    };
-    if (this.clsService.isActive()) await body();
-    else await this.clsService.run(body);
+    });
   }
 
   private async verify(initial: TenantCheckpointEntity): Promise<void> {

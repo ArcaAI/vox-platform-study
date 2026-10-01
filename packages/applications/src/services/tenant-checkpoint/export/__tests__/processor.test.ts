@@ -10,11 +10,11 @@ describe('CheckpointExportProcessor', () => {
     const exportRunner = { run: vi.fn(async () => undefined) };
     const verifyRunner = { run: vi.fn(async () => undefined) };
     const p = new CheckpointExportProcessor(exportRunner, verifyRunner, cls);
-    await p.process({ id: '1', data: { kind: 'create', checkpointId: 'c1', tenantId: 't' } } as any);
-    await p.process({ id: '2', data: { kind: 'verify-upload', checkpointId: 'c2', tenantId: 't' } } as any);
+    await p.process({ id: '1', data: { kind: 'create', checkpointId: 'c1', tenantId: '01900000-0000-7000-8000-00000000000a' } } as any);
+    await p.process({ id: '2', data: { kind: 'verify-upload', checkpointId: 'c2', tenantId: '01900000-0000-7000-8000-00000000000a' } } as any);
     expect(exportRunner.run).toHaveBeenCalledWith('c1');
     expect(verifyRunner.run).toHaveBeenCalledWith('c2');
-    await expect(p.process({ id: '3', data: { kind: 'restore', checkpointId: 'c3', tenantId: 't' } } as any)).rejects.toThrow('unknown checkpoint job kind');
+    await expect(p.process({ id: '3', data: { kind: 'restore', checkpointId: 'c3', tenantId: '01900000-0000-7000-8000-00000000000a' } } as any)).rejects.toThrow('unknown checkpoint job kind');
     expect(CheckpointExportModule).toBeDefined();
   });
 });

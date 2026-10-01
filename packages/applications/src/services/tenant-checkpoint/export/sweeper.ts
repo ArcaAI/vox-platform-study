@@ -14,7 +14,6 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { ClsService } from 'nestjs-cls';
 import {
-  ResourceStatusType,
   ResourceType,
   SysEventType,
   TenantCheckpointKind,
@@ -67,6 +66,7 @@ export class CheckpointSweeper extends BaseService {
 
   async sweepStaleExports(): Promise<void> {
     const cutoff = new Date(this.now().getTime() - STALE_HEARTBEAT_MS);
+    // Cross-tenant scan (unscoped read); each row is failed in its own tenant session.
     for (const stale of await this.checkpoints.findStale(cutoff)) {
       await this.asTenant(stale.tenantId, async () => {
         const failed = await patchCheckpoint(this.checkpoints, stale.id, (row) => {
@@ -95,9 +95,8 @@ export class CheckpointSweeper extends BaseService {
 
   async sweepIdleUploads(): Promise<void> {
     const cutoff = new Date(this.now().getTime() - IDLE_UPLOAD_MS);
-    const idle = await this.checkpoints.findAll({
-      where: { status: TenantCheckpointStatus.UPLOADING, updatedAt: { lt: cutoff }, resourceStatus: { not: ResourceStatusType.DELETED } } as never,
-    });
+    // Cross-tenant scan: the repository's sanctioned unscoped read; each row is handled in its own tenant session.
+    const idle = await this.checkpoints.findIdleUploads(cutoff);
     for (const upload of idle) {
       await this.asTenant(upload.tenantId, async () => {
         if (upload.uploadId && upload.objectKey) {
@@ -128,9 +127,8 @@ export class CheckpointSweeper extends BaseService {
       return;
     }
     try {
-      const ready = await this.checkpoints.findAll({
-        where: { status: TenantCheckpointStatus.READY, resourceStatus: { not: ResourceStatusType.DELETED } } as never,
-      });
+      // Cross-tenant scan (unscoped read); each tenant's deletions run in that tenant's session.
+      const ready = await this.checkpoints.findReadyAnyTenant();
       const byTenant = new Map<string, TenantCheckpointEntity[]>();
       for (const row of ready) byTenant.set(row.tenantId, [...(byTenant.get(row.tenantId) ?? []), row]);
       for (const [tenantId, rows] of byTenant) {
