@@ -7,6 +7,7 @@ import { BlobStorageProviderFactory } from '../../../baseServices/storage/provid
 import { TextAgentResolverService } from '../../../agent/text-agent-resolver.service';
 import { AppSettingsService } from '../../../baseServices/_meta/appSettings/appSettings.service';
 import { ConsultationConsentService } from '../../../consent/consultation-consent.service';
+import { PolicyEngine } from '../../../../authorization/policy.engine';
 import { EntitlementsService } from '../../../entitlements/entitlements.service';
 
 /** A service instance without running its (heavy) constructor; tests set only the fields they read. */
@@ -73,5 +74,11 @@ describe('tenant-restore.completed handlers', () => {
     const svc = bare(ConsultationConsentService, { cache });
     (svc as any).onTenantRestoreCompleted(payload);
     expect([...cache.keys()]).toEqual(['U::p::a']);
+  });
+
+  it('PolicyEngine drops the tenant\'s cached permissions', async () => {
+    const svc = bare(PolicyEngine, { invalidateTenant: vi.fn().mockResolvedValue(undefined) });
+    await (svc as any).onTenantRestoreCompleted(payload);
+    expect((svc as any).invalidateTenant).toHaveBeenCalledWith('T');
   });
 });

@@ -1,7 +1,9 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { createPrismaAbility, accessibleBy, type PrismaQueryOf, type PrismaTypeMap } from '@casl/prisma';
 import { Ability, subject as tagSubjectType } from '@casl/ability';
+import { OnEvent } from '@nestjs/event-emitter';
 import { Counter, register } from 'prom-client';
+import { TENANT_RESTORE_COMPLETED_EVENT } from '../services/tenant-checkpoint/lock/tenant-restore-events';
 import { CoreDatabaseService, ResourceStatusType } from '@arcaai/domains';
 import { IRedisCacheService } from '../services/baseServices/redis';
 
@@ -796,6 +798,16 @@ export class PolicyEngine {
       policyId,
       rolesAffected: rolePolicies.length,
     });
+  }
+
+  /**
+   * A restore rewrote this tenant's roles, policies and assignments from another process; drop
+   * every user's cached abilities for it. The cache is shared Redis, so running on each node is
+   * redundant but idempotent.
+   */
+  @OnEvent(TENANT_RESTORE_COMPLETED_EVENT)
+  async onTenantRestoreCompleted(payload: { tenantId: string }): Promise<void> {
+    await this.invalidateTenant(payload.tenantId);
   }
 
   /**
