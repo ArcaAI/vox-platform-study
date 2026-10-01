@@ -185,6 +185,53 @@ export interface EffectiveModelWeight {
   checksum: string | null;
 }
 
+/** A KV-cache element-type pair; a member absent from the resolved profile is omitted. */
+export interface EffectiveLmStudioKvCacheQuant {
+  k?: string;
+  v?: string;
+}
+
+/**
+ * TASK-1031 — the platform LM Studio serving defaults (`lmStudio.serving.*`), as the pod
+ * applies them to any model without its own `_metadata.serving` opinion.
+ */
+export interface EffectiveLmStudioServingDefaults {
+  contextLength: number;
+  /** Decode slots per loaded model — also apps/text's lm-studio concurrency. */
+  parallel: number;
+  /** GPU index for a model that declares no `gpuSplit` (the summarization role). */
+  gpu: number;
+  flashAttention: boolean | null;
+  kvCacheQuant: EffectiveLmStudioKvCacheQuant | null;
+}
+
+/**
+ * TASK-1031 — one model LM Studio loads at boot, its profile resolved model -> platform.
+ * Exactly one of `gpuSplit` / `gpu` is non-null: a model that declares a placement owns it;
+ * one that does not is placed on the platform GPU.
+ */
+export interface EffectiveLmStudioPreload {
+  /** The LM Studio model key (the AiModel row's `sourceUri`) — what the pod loads. */
+  slug: string;
+  contextLength: number;
+  parallel: number;
+  flashAttention: boolean | null;
+  gpuSplit: { strategy: string; priority?: number[]; disabledGpus?: number[]; customRatio?: number[] } | null;
+  gpu: number | null;
+  kvCacheQuant: EffectiveLmStudioKvCacheQuant | null;
+}
+
+/** Served to `lmstudio` — the boot plan the LM Studio pod applies. */
+export interface EffectiveLmStudioServingPlan {
+  defaults: EffectiveLmStudioServingDefaults;
+  preload: EffectiveLmStudioPreload[];
+}
+
+/** Served to `text` — the one number its lm-studio lanes (user + judge) are sized by. */
+export interface EffectiveLmStudioServingConcurrency {
+  parallel: number;
+}
+
 export interface EffectiveConfigResponse {
   service: string;
   /** ISO-8601. Lets a client log how stale its cached snapshot is. */
@@ -214,6 +261,11 @@ export interface EffectiveConfigResponse {
    * process; omitted (never empty) when there are none.
    */
   modelWeights?: Record<string, EffectiveModelWeight>;
+  /**
+   * TASK-1031 — `lmstudio`: the full boot serving plan; `text`: `{ parallel }` only.
+   * Omitted for every other service.
+   */
+  lmStudioServing?: EffectiveLmStudioServingPlan | EffectiveLmStudioServingConcurrency;
 }
 
 export const IEffectiveConfigService = Symbol('IEffectiveConfigService');

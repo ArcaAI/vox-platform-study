@@ -50,6 +50,9 @@ export const CONSUMING_DEPLOYABLES = [
   // TASK-1010 (OD-6) — the vLLM inference service (`apps/vllm`; `asr-vllm` until TASK-1021);
   // authenticates with the ONE shared `INTERNAL_ACCESS_TOKEN` (`InternalServiceTokenGuard`).
   'vllm',
+  // TASK-1031 (D-10) — the LM Studio pod (`infrastructure/docker/lmstudio`) pulls its serving plan
+  // (`lmStudioServing`) at boot; same ONE shared `INTERNAL_ACCESS_TOKEN` as vllm.
+  'lmstudio',
 ] as const;
 
 export type ConsumingDeployable = (typeof CONSUMING_DEPLOYABLES)[number];

@@ -28,13 +28,17 @@
 // substituted — when they do not match.
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { AiModelRepository } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
+import type { AiModelServingProfile } from '@arcaai/types';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
 import type { AiProviderConnectionResponse } from '../ai-provider-connection/dto';
 import { AI_TASK_KEYS, type AiTaskKey } from '../ai-routing-policy/constants';
 import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicyService';
 import type { AiModelService } from '../ai-model/aiModel.service';
 import { derivedLocalPath } from '../ai-model/constants';
+import { declaredContextLengthOf, platformServingProfileFrom, resolveServingProfile, servingProfileOf } from '../ai-model/serving-profile.util';
+import { LM_STUDIO_SERVING_DEFAULTS, type LmStudioServingKey } from '../settings-registry/descriptors/lmstudio-serving.descriptors';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { MODEL_WEIGHT_SERVICES } from '../settings-registry/descriptors/service-runtime.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from '../settings-registry/registry';
@@ -47,6 +51,9 @@ import {
   EffectiveConfigSource,
   EffectiveExternalGuardrail,
   EffectiveGeneration,
+  EffectiveLmStudioPreload,
+  EffectiveLmStudioServingConcurrency,
+  EffectiveLmStudioServingPlan,
   EffectiveModelWeight,
   EffectiveRedaction,
   EffectiveRetention,
@@ -63,6 +70,9 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
  * `env-fallback` on the wire. Everything else means a stored row won.
  */
 const NON_DB_SOURCE_SCOPES = new Set(['code-default', 'env-bootstrap']);
+
+/** The `AiModel.provider` of the rows LM Studio serves (TASK-1031 preload). */
+const LM_STUDIO_PROVIDER = 'lm-studio';
 
 /**
  * The services served `runtimeProfiles`, and the `AiProviderConnection`
@@ -156,6 +166,10 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     // what they saw before the block existed).
     @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicies?: IAiRoutingPolicyService,
     @Optional() private readonly aiModels?: AiModelService,
+    // TASK-1031 — the SYSTEM `AiModel` rows behind `lmStudio.serving.preload`. Read through the
+    // repository, not `AiModelService`, whose reads are super-admin-gated and this route has no
+    // human caller. Optional: unwired = an empty preload, never a failed pull.
+    @Optional() private readonly aiModelRepository?: AiModelRepository,
   ) {}
 
   async resolveForService(service: string): Promise<EffectiveConfigResponse> {
@@ -169,9 +183,10 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     const resolved = await this.resolveDeclaredKeys(service);
 
     const profileSource = RUNTIME_PROFILE_SERVICES[service];
-    const [runtimeProfiles, modelWeights] = await Promise.all([
+    const [runtimeProfiles, modelWeights, lmStudioServing] = await Promise.all([
       profileSource === undefined ? Promise.resolve(undefined) : this.listProfiles(profileSource),
       this.resolveModelWeights(service),
+      this.lmStudioServingView(service),
     ]);
 
     return {
@@ -184,6 +199,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       ...this.externalGuardrailView(resolved),
       ...this.generationView(resolved),
       ...(modelWeights ? { modelWeights } : {}),
+      ...(lmStudioServing ? { lmStudioServing } : {}),
       settings: toWire(resolved),
     };
   }
@@ -432,6 +448,120 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     );
 
     return Object.keys(weights).length > 0 ? weights : undefined;
+  }
+
+  /**
+   * TASK-1031 — `lmStudioServing`: the ONE governed LM Studio capacity number, and for the
+   * LM Studio pod the whole boot plan.
+   *
+   *  - `text` gets `{ parallel }` — the effective `lmStudio.serving.parallel`, which sizes its
+   *    lm-studio user lane AND internal judge lane (D-1/D-3).
+   *  - `lmstudio` gets the platform defaults plus every `lmStudio.serving.preload` model, its
+   *    profile resolved model `_metadata.serving` -> platform default (D-8/D-9). A model that
+   *    declares no `gpuSplit` is placed on `defaults.gpu`; one that does owns its placement.
+   *
+   * Served as a hand-shaped view, not via `consumedBy`, because the pod needs RESOLVED
+   * per-model profiles, which no flat key carries.
+   *
+   * These keys are `open-to-default`, so an unresolved one (a backend error, a mistyped row)
+   * answers with the family's declared default — the pod and TEXT always receive a number.
+   * A preload slug with no SYSTEM LM Studio row, or whose lookup throws, is SKIPPED with a
+   * warning: one bad entry must not cost the pod the rest of its plan.
+   */
+  private async lmStudioServingView(
+    service: EffectiveConfigServiceName,
+  ): Promise<EffectiveLmStudioServingPlan | EffectiveLmStudioServingConcurrency | undefined> {
+    if (service === 'text') {
+      return { parallel: (await this.lmStudioValue('lmStudio.serving.parallel')) as number };
+    }
+    if (service !== 'lmstudio') return undefined;
+
+    const keys = Object.keys(LM_STUDIO_SERVING_DEFAULTS).filter((key) => key.startsWith('lmStudio.serving.')) as LmStudioServingKey[];
+    const values = Object.fromEntries(await Promise.all(keys.map(async (key) => [key, await this.lmStudioValue(key)] as const))) as Record<
+      LmStudioServingKey,
+      unknown
+    >;
+
+    // The platform profile WITHOUT its gpuSplit strategy: placement for a model that declares
+    // none is the single `gpu` index, never a platform-wide split.
+    const { gpuSplit: platformSplit, ...platform } = platformServingProfileFrom(values);
+    const platformStrategy = platformSplit?.strategy ?? LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.gpuSplitStrategy'];
+    const gpu = values['lmStudio.serving.gpu'] as number;
+
+    const defaults = {
+      contextLength: platform.contextLength ?? LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.contextLength'],
+      parallel: platform.parallel ?? LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.parallel'],
+      gpu,
+      flashAttention: platform.flashAttention ?? null,
+      kvCacheQuant: platform.kvCacheQuant ?? null,
+    };
+
+    const preload: EffectiveLmStudioPreload[] = [];
+    const seen = new Set<string>();
+    for (const requested of values['lmStudio.serving.preload'] as string[]) {
+      const entry = await this.resolvePreload(requested, platform, defaults, gpu, platformStrategy);
+      if (entry && !seen.has(entry.slug)) {
+        seen.add(entry.slug);
+        preload.push(entry);
+      }
+    }
+
+    return { defaults, preload };
+  }
+
+  /** One `lmStudio.serving.*` key, falling back to its declared default when unresolved. */
+  private async lmStudioValue(key: LmStudioServingKey): Promise<unknown> {
+    const resolved = await this.resolveKey(HOPE_SETTINGS_REGISTRY.getOrThrow(key));
+    const fallback: unknown = LM_STUDIO_SERVING_DEFAULTS[key];
+    return resolved.value === null ? (Array.isArray(fallback) ? [...fallback] : fallback) : resolved.value;
+  }
+
+  private async resolvePreload(
+    requested: string,
+    platform: AiModelServingProfile,
+    defaults: { contextLength: number; parallel: number },
+    gpu: number,
+    platformStrategy: string,
+  ): Promise<EffectiveLmStudioPreload | null> {
+    if (!this.aiModelRepository) return null;
+    try {
+      // By catalogue slug first, then by LM Studio model key (`sourceUri`) — the two differ
+      // for `lms-gemma-4-e2b-it-qat` / `gemma-4-e2b-it-qat`.
+      const bySlug = await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, requested);
+      const row =
+        bySlug && bySlug.provider === LM_STUDIO_PROVIDER
+          ? bySlug
+          : await this.aiModelRepository.findByProviderAndSourceUri(SYSTEM_TENANT_ID, LM_STUDIO_PROVIDER, requested);
+      if (!row) {
+        this.logger.warn({ message: 'LM Studio preload slug has no SYSTEM lm-studio AiModel row — skipped', slug: requested });
+        return null;
+      }
+
+      const model = servingProfileOf(row);
+      const { profile, problems } = resolveServingProfile(model, platform, { declaredContextLength: declaredContextLengthOf(row) });
+      if (problems.length > 0) {
+        this.logger.warn({ message: 'LM Studio preload profile is incoherent — served as resolved', slug: requested, problems });
+      }
+
+      // A model-declared split that names no strategy takes the platform strategy.
+      const gpuSplit = model?.gpuSplit ? { ...structuredClone(model.gpuSplit), strategy: model.gpuSplit.strategy ?? platformStrategy } : null;
+      return {
+        slug: row.sourceUri,
+        contextLength: profile.contextLength ?? defaults.contextLength,
+        parallel: profile.parallel ?? defaults.parallel,
+        flashAttention: profile.flashAttention ?? null,
+        gpuSplit,
+        gpu: gpuSplit ? null : gpu,
+        kvCacheQuant: profile.kvCacheQuant ?? null,
+      };
+    } catch (error) {
+      this.logger.warn({
+        message: 'LM Studio preload resolution failed — the entry is skipped',
+        slug: requested,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   /**
