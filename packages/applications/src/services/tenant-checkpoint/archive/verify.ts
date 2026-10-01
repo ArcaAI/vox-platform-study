@@ -78,7 +78,12 @@ async function passOne(source: Readable, sealing: ICheckpointSealing): Promise<P
   }
 }
 
-function checkManifest(manifest: CheckpointManifest, header: CheckpointHeader, entries: Map<string, { sha256: string; size: number }>, dupes: string[]): void {
+function checkManifest(
+  manifest: CheckpointManifest,
+  header: CheckpointHeader,
+  entries: Map<string, { sha256: string; size: number }>,
+  dupes: string[],
+): void {
   const mismatch = (message: string, detail?: Record<string, unknown>) => new CheckpointError('MANIFEST_MISMATCH', message, detail);
   if (dupes.length) throw mismatch('The archive holds the same entry more than once', { entries: dupes });
   if (manifest.formatVersion !== header.formatVersion) throw mismatch('Manifest format version differs from the header');

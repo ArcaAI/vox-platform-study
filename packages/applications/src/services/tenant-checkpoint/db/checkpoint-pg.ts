@@ -9,5 +9,5 @@ export function createCheckpointPool(env: NodeJS.ProcessEnv = process.env): Pool
 }
 
 export function sqlQueryOver(client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> }): SqlQuery {
-  return async <T,>(sql: string, params: readonly unknown[] = []) => (await client.query(sql, [...params])).rows as T[];
+  return async <T>(sql: string, params: readonly unknown[] = []) => (await client.query(sql, [...params])).rows as T[];
 }

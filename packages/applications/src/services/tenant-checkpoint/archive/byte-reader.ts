@@ -79,21 +79,21 @@ export class ByteReader {
 
   /** Everything not yet read, as a stream. */
   remainder(): Readable {
-    const self = this;
-    async function* gen() {
-      while (self.chunks.length) {
-        const c = self.chunks.shift()!;
-        self.buffered -= c.length;
-        yield c;
-      }
-      if (self.eof) return;
-      for (;;) {
-        const r = await self.it.next();
-        if (r.done) return;
-        yield r.value;
-      }
+    return Readable.from(this.drain(), { objectMode: false });
+  }
+
+  private async *drain(): AsyncGenerator<Buffer> {
+    while (this.chunks.length) {
+      const c = this.chunks.shift()!;
+      this.buffered -= c.length;
+      yield c;
     }
-    return Readable.from(gen(), { objectMode: false });
+    if (this.eof) return;
+    for (;;) {
+      const r = await this.it.next();
+      if (r.done) return;
+      yield r.value;
+    }
   }
 
   destroy(error?: Error): void {
