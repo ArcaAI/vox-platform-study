@@ -107,7 +107,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     @Inject(ICheckpointSealing) private readonly sealing: ICheckpointSealing,
     @Inject(ICheckpointStore) private readonly store: ICheckpointStore,
     private readonly settings: TenantSettingsService,
-    private readonly databaseService: CoreDatabaseService,
+    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     @InjectQueue(JobQueue.TenantCheckpointExport) private readonly exportQueue: Queue,
     @InjectQueue(JobQueue.TenantCheckpointRestore) private readonly restoreQueue: Queue,
     protected override readonly eventEmitter: EventEmitter2,
