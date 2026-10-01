@@ -115,6 +115,28 @@ describe('ModelSourceFetcherService', () => {
       expect(paths).toEqual(['config.json', 'model-Q4_K_M.gguf', 'model-mmproj.gguf']);
     });
 
+    // Cluster finding (TASK-1023, 2026-10-01): pyannote/wespeaker-voxceleb-resnet34-LM ships a plain
+    // `pytorch_model.bin`; the row's computeType 'float32' was applied as a filename quant filter and
+    // matched nothing ("No downloadable files … matching quant 'float32'").
+    it('a plain checkpoint .bin is not a quantised file — a dtype computeType never filters it out', async () => {
+      mockHfClient.listRepoFiles.mockResolvedValue([
+        { path: 'pytorch_model.bin', size: 1 },
+        { path: 'config.yaml', size: 1 },
+      ]);
+      const files = await service.fetch(AiModelSource.HUGGINGFACE, 'pyannote/wespeaker-voxceleb-resnet34-LM', 'float32', opts());
+      expect(files.map((f) => f.path)).toContain('pytorch_model.bin');
+    });
+
+    it('whisper.cpp ggml-*.bin files are still filtered to the requested quant', async () => {
+      mockHfClient.listRepoFiles.mockResolvedValue([
+        { path: 'ggml-model-q5_0.bin', size: 1 },
+        { path: 'ggml-model-f16.bin', size: 1 },
+        { path: 'config.json', size: 1 },
+      ]);
+      const files = await service.fetch(AiModelSource.HUGGINGFACE, 'org/whisper-ggml', 'q5_0', opts());
+      expect(files.map((f) => f.path).sort()).toEqual(['config.json', 'ggml-model-q5_0.bin']);
+    });
+
     it('throws when nothing in the repo matches', async () => {
       mockHfClient.listRepoFiles.mockResolvedValue([{ path: 'README.md', size: 1 }]);
       await expect(service.fetch(AiModelSource.HUGGINGFACE, 'org/empty-repo', null, opts())).rejects.toThrow();

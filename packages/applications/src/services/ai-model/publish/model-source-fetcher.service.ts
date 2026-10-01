@@ -200,6 +200,9 @@ const QUANTISABLE_WEIGHT_EXTENSIONS = ['.gguf', '.bin'] as const;
 function matchesQuantOrIsCompanion(path: string, quantFilter: string): boolean {
   const base = (path.split('/').pop() ?? path).toLowerCase();
   if (!QUANTISABLE_WEIGHT_EXTENSIONS.some((ext) => base.endsWith(ext))) return true;
+  // `.bin` is quantised only as a whisper.cpp `ggml-*` file; a plain checkpoint (`pytorch_model.bin`)
+  // is the repo's only weights, and a dtype computeType ('float32') must never filter it out.
+  if (base.endsWith('.bin') && !base.startsWith('ggml')) return true;
   if (base.includes('mmproj')) return true;
   const normalizedFilter = quantFilter.toLowerCase().replace(/[^a-z0-9]+/g, '');
   const normalizedBase = base.replace(/[^a-z0-9]+/g, '');
