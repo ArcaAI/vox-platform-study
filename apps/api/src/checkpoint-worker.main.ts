@@ -63,7 +63,11 @@ async function bootstrap(): Promise<void> {
   process.once('SIGTERM', (signal) => void shutdown(signal));
   process.once('SIGINT', (signal) => void shutdown(signal));
 
-  loggingService.info('Checkpoint worker started — consuming the TenantCheckpointExport and TenantCheckpointRestore queues', undefined, 'CheckpointWorker');
+  loggingService.info(
+    'Checkpoint worker started — consuming the TenantCheckpointExport and TenantCheckpointRestore queues',
+    undefined,
+    'CheckpointWorker',
+  );
 }
 
 void bootstrap().catch((error: unknown) => {

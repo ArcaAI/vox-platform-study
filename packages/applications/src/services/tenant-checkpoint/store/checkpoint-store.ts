@@ -58,7 +58,10 @@ export class CheckpointStore implements ICheckpointStore {
     const controller = new AbortController();
     const done = (async () => {
       const p = await this.provider();
-      return multipart(p, 'putObjectStream')({
+      return multipart(
+        p,
+        'putObjectStream',
+      )({
         bucket: CHECKPOINT_BUCKET,
         key,
         body: stream,
@@ -76,7 +79,7 @@ export class CheckpointStore implements ICheckpointStore {
       abort: async () => {
         controller.abort();
         if (!stream.destroyed) stream.destroy();
-        await done.catch(() => undefined);
+        await done.catch(() => undefined); // swallow-ok: the upload's own failure is reported through `done` to the writer
       },
     };
   }
@@ -116,7 +119,14 @@ export class CheckpointStore implements ICheckpointStore {
       const contentLength = sizing ? Math.min(sizing.partSizeBytes, sizing.sizeBytes - (partNumber - 1) * sizing.partSizeBytes) : undefined;
       out.push({
         partNumber,
-        url: await presign({ bucket: CHECKPOINT_BUCKET, key, uploadId, partNumber, expiresInSeconds: ttlSeconds, ...(contentLength !== undefined ? { contentLength } : {}) }),
+        url: await presign({
+          bucket: CHECKPOINT_BUCKET,
+          key,
+          uploadId,
+          partNumber,
+          expiresInSeconds: ttlSeconds,
+          ...(contentLength !== undefined ? { contentLength } : {}),
+        }),
       });
     }
     return out;

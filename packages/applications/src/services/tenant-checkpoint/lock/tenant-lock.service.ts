@@ -41,8 +41,7 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
       const messages$ = await this.redisSubscriber.subscribeToChannel(TENANT_LOCK_CHANNEL);
       messages$.subscribe({
         next: (message) => this.handleMessage(message),
-        error: (error) =>
-          this.logger.warn({ message: 'Tenant lock subscription errored — falling back to the cache TTL', error: String(error) }),
+        error: (error) => this.logger.warn({ message: 'Tenant lock subscription errored — falling back to the cache TTL', error: String(error) }),
       });
     } catch (error) {
       this.logger.warn({ message: 'Tenant lock subscription failed — falling back to the cache TTL', error: String(error) });
@@ -111,7 +110,7 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
         return;
       }
     } catch {
-      // fall through — an unreadable message is treated as "anything may have changed"
+      // swallow-ok: an unreadable message is treated as "anything may have changed" (every tenant refreshed below)
     }
     for (const tenantId of [...this.seenLocked]) this.refresh(tenantId);
     this.cache.clear();

@@ -42,10 +42,10 @@ export class TenantLockGuard implements CanActivate {
       await assertTenantNotLocked(this.lock, tenantId, { internal });
     } catch (error) {
       if (internal) {
-        context.switchToHttp().getResponse<{ setHeader?: (name: string, value: string) => void }>()?.setHeader?.(
-          'Retry-After',
-          String(TENANT_LOCK_RETRY_AFTER_SECONDS),
-        );
+        context
+          .switchToHttp()
+          .getResponse<{ setHeader?: (name: string, value: string) => void }>()
+          ?.setHeader?.('Retry-After', String(TENANT_LOCK_RETRY_AFTER_SECONDS));
       }
       throw error;
     }

@@ -15,11 +15,7 @@ const logger = new Logger('assertTenantNotLocked');
  */
 export const TENANT_LOCK_RETRY_AFTER_SECONDS = 30;
 
-export async function assertTenantNotLocked(
-  lock: ITenantLockService,
-  tenantId: string,
-  options: { internal?: boolean } = {},
-): Promise<void> {
+export async function assertTenantNotLocked(lock: ITenantLockService, tenantId: string, options: { internal?: boolean } = {}): Promise<void> {
   let state;
   try {
     state = await lock.state(tenantId);

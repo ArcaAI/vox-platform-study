@@ -248,7 +248,10 @@ export class TenantCheckpointController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @CanDelete('TenantCheckpoint')
-  @ApiOperation({ summary: 'Delete a checkpoint', description: 'Deletes the archive and soft-deletes the row. A checkpoint still being written cannot be deleted.' })
+  @ApiOperation({
+    summary: 'Delete a checkpoint',
+    description: 'Deletes the archive and soft-deletes the row. A checkpoint still being written cannot be deleted.',
+  })
   @ApiParam(TENANT_PARAM)
   @ApiParam({ name: 'id', description: 'Checkpoint id', type: String })
   @ApiResponse({ status: 204, description: 'Deleted.' })
