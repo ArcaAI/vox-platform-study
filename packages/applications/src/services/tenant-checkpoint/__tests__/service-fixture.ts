@@ -14,7 +14,7 @@ export const TENANT_B = '1032b000-0000-4000-8000-000000001032';
 export const SYSTEM = '00000000-0000-0000-0000-000000000000';
 export const USER_ID = 'user-1';
 
-export type Actor = { roles: string[] };
+export type Actor = { roles: string[]; impersonatedBy?: string };
 export const TENANT_ADMIN: Actor = { roles: ['TENANT_ADMIN'] };
 export const SUPER_ADMIN: Actor = { roles: ['SUPER_ADMIN'] };
 
@@ -78,7 +78,7 @@ export function buildService(actor: Actor = TENANT_ADMIN) {
   const eventEmitter = { emit: vi.fn() };
   const cls = {
     get: vi.fn((key: string) => {
-      if (key === 'user') return { id: USER_ID, tenantId: TENANT_A, roles: actor.roles };
+      if (key === 'user') return { id: USER_ID, tenantId: TENANT_A, roles: actor.roles, ...(actor.impersonatedBy ? { impersonatedBy: actor.impersonatedBy } : {}) };
       if (key === 'tenantId') return TENANT_A;
       return undefined;
     }),

@@ -133,8 +133,15 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       resourceType: this.resourceType,
       correlationId: this.correlationId,
       ...data,
+      ...this.impersonationMeta(),
       tenantId,
     });
+  }
+
+  /** Same attribution `BaseService.broadcastSysEvent` adds: an impersonating admin is named in `metaData`. */
+  private impersonationMeta(): { metaData?: { impersonatedBy: unknown } } {
+    const impersonatedBy = this.requestUser?.impersonatedBy;
+    return impersonatedBy ? { metaData: { impersonatedBy } } : {};
   }
 
   // ── guards & loaders ────────────────────────────────────────────────────────
@@ -576,6 +583,9 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       status: TenantCheckpointRestoreStatus.PENDING,
       requestedBy: this.requestUserId as string,
       createdBy: this.requestUserId,
+      // The runner decides platform-governed rows (RateLimitRule, super-admin routing/settings keys) from
+      // THIS, never from the job payload: it is the elevation the requester held when they asked.
+      metaData: { requestedByPlatformAdmin: isSuperAdmin(this.requestUser) },
     });
     let saved: TenantCheckpointRestoreEntity;
     try {
@@ -635,6 +645,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       resourceId: checkpoint.id,
       tenantId: checkpoint.tenantId,
       forceAuditLog: true,
+      ...this.impersonationMeta(),
       data: {
         action: TENANT_RESTORE_BREAK_GLASS_AUDIT_ACTION,
         outcome,
