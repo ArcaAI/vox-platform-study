@@ -156,6 +156,32 @@ describe('InternalServiceTokenGuard', () => {
     });
   });
 
+  describe('lmstudio (TASK-1031 D-10)', () => {
+    // The LM Studio pod fetches its serving plan at boot with the ONE shared token, exactly like
+    // vllm. It must be a KNOWN service so another peer's private token cannot read its subset.
+    it('admits service=lmstudio with the shared INTERNAL_ACCESS_TOKEN', async () => {
+      const guard = guardWith();
+      await expect(guard.canActivate(makeContext({ 'x-service-token': 'shared-token' }, { service: 'lmstudio' }))).resolves.toBe(true);
+    });
+
+    it.each([['nlp-token'], ['harness-token'], ['stt-key'], ['garbage']])(
+      'rejects any other token (%s) for service=lmstudio — it is a known service, not an unknown-name pass-through',
+      async (token) => {
+        const guard = guardWith();
+        await expect(guard.canActivate(makeContext({ 'x-service-token': token }, { service: 'lmstudio' }))).rejects.toBeInstanceOf(
+          UnauthorizedException,
+        );
+      },
+    );
+
+    it('does not accept the stt alternate header for service=lmstudio', async () => {
+      const guard = guardWith();
+      await expect(guard.canActivate(makeContext({ 'x-internal-service-key': 'shared-token' }, { service: 'lmstudio' }))).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+  });
+
   describe('unknown service name', () => {
     // An AUTHENTICATED caller naming a bad service deserves the contract's 400
     // from the controller, so the guard lets a recognised token through and lets

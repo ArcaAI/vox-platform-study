@@ -53,6 +53,9 @@ export class InternalServiceTokenGuard implements CanActivate {
     // per-service secret to retire. TASK-1021 renamed it from `asr-vllm` when it stopped being
     // ASR-only (it also reads `/internal/models/:slug/serving-spec`).
     vllm: 'INTERNAL_ACCESS_TOKEN',
+    // TASK-1031 — the LM Studio pod fetches its serving plan at boot (`lmStudioServing`) on the
+    // ONE shared token, exactly like vllm; it never had a per-service secret.
+    lmstudio: 'INTERNAL_ACCESS_TOKEN',
   };
 
   /** The ONE shared internal token every peer may present (owner rule: one token for all internal calls). */

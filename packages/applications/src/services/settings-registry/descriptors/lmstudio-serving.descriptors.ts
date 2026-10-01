@@ -72,11 +72,18 @@ const CATEGORY = 'Service Runtime';
  */
 export const LM_STUDIO_SERVING_DEFAULTS = {
   'lmStudio.serving.contextLength': 65536,
-  'lmStudio.serving.parallel': 4,
+  // TASK-1031 (owner, 2026-10-01): 4 -> 10. ONE governed number for LM Studio's
+  // per-model decode slots AND apps/text's lm-studio concurrency (user + judge lane).
+  'lmStudio.serving.parallel': 10,
   'lmStudio.serving.flashAttention': true,
   'lmStudio.serving.kvCacheQuantK': 'f16',
   'lmStudio.serving.kvCacheQuantV': 'f16',
   'lmStudio.serving.gpuSplitStrategy': 'evenly',
+  // TASK-1031 (D-8) — the platform defaults ARE the summarization role's layout:
+  // a model with no `_metadata.serving.gpuSplit` of its own is placed on GPU 1.
+  'lmStudio.serving.gpu': 1,
+  // TASK-1031 (D-9) — what the LM Studio pod loads at boot (AiModel slugs / LM Studio ids).
+  'lmStudio.serving.preload': ['gemma-4-e2b-it-qat', 'granite-guardian-4.1-8b'] as readonly string[],
   'lmStudio.jit.defaultContextLength': 8192,
   'lmStudio.jit.modelTtlSeconds': 3600,
 } as const;
@@ -108,6 +115,13 @@ const wholeNumberBetween = (min: number, max: number, what: string) => (value: u
   }
 };
 
+/** A list of distinct, non-blank model identifiers. */
+const distinctModelIds = (what: string) => (value: unknown) => {
+  if (!Array.isArray(value)) return `${what} must be a list of model slugs.`;
+  if (value.some((entry) => typeof entry !== 'string' || entry.trim() === '')) return `${what} entries must be non-empty model slugs.`;
+  if (new Set(value).size !== value.length) return `${what} entries must be unique.`;
+};
+
 export const LM_STUDIO_SERVING_SETTINGS: SettingDescriptor[] = [
   // ── The platform fallback serving profile ────────────────────────────────
   {
@@ -136,9 +150,9 @@ export const LM_STUDIO_SERVING_SETTINGS: SettingDescriptor[] = [
     globalOnly: true,
     failMode: 'open-to-default',
     category: CATEGORY,
-    label: 'Default decode slots (parallel)',
+    label: 'LM Studio concurrent requests per model',
     description:
-      'Concurrent decode slots LM Studio loads a model with (`--parallel`), for any model whose `_metadata.serving` declares none. This is a RESIDENCY decision before it is a throughput one: each slot is given the FULL context window, so VRAM scales linearly with it. Raising it on a card that also hosts the STT models is how both workloads meet a CUDA OOM — GPU time-slicing gives no memory isolation.',
+      'How many requests LM Studio serves at once PER LOADED MODEL (default 10). It is BOTH LM Studio`s decode slots per loaded model (`--parallel`, for any model whose `_metadata.serving` declares none) AND apps/text`s concurrency for provider `lm-studio` — the user lane and the internal guardrail judge lane each get this many permits. Applies on the next LM Studio restart (the pod reads it at boot). This is a RESIDENCY decision before it is a throughput one: each slot is given the FULL context window, so VRAM scales linearly with it. Raising it on a card that also hosts the STT models is how both workloads meet a CUDA OOM — GPU time-slicing gives no memory isolation.',
     default: LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.parallel'],
     validate: wholeNumberBetween(1, 64, 'Decode slots'),
   },
@@ -204,6 +218,42 @@ export const LM_STUDIO_SERVING_SETTINGS: SettingDescriptor[] = [
       'How LM Studio spreads a model over the visible GPUs when its own `_metadata.serving.gpuSplit` says nothing. `evenly` is the engine default and is what produced the measured 4,996 / 8,908 MiB two-card split — every decoded token then pays a PCIe hop. Note that the Deployment`s `nvidia.com/gpu` request is capacity bookkeeping only and pins nothing: placement is entirely this decision. Confining a SPECIFIC model to a SPECIFIC card is a per-model choice (`disabledGpus` / `priority` on the model row), which is why those arrays are deliberately not platform-wide keys.',
     default: LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.gpuSplitStrategy'],
     validate: oneOf(GPU_SPLIT_STRATEGIES, 'GPU split strategy'),
+  },
+
+  // ── Placement + preload (TASK-1031, D-8/D-9) ─────────────────────────────
+  // Served to the LM Studio pod at boot as a resolved plan
+  // (`GET /internal/effective-config?service=lmstudio` -> `lmStudioServing`).
+  {
+    key: 'lmStudio.serving.gpu',
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: CATEGORY,
+    label: 'Default GPU for models without a placement',
+    description:
+      'The GPU index LM Studio places a model on when its own `_metadata.serving.gpuSplit` declares no placement — the summarization role (default GPU 1). A guardrail/safety model carries its own `gpuSplit` and is not affected. Applies on the next LM Studio restart.',
+    default: LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.gpu'],
+    validate: wholeNumberBetween(0, 15, 'GPU index'),
+  },
+  {
+    key: 'lmStudio.serving.preload',
+    tier: 'global-kv',
+    dataType: 'string[]',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: CATEGORY,
+    label: 'Models LM Studio preloads at boot',
+    description:
+      'AiModel slugs LM Studio loads (and pins) when it starts, each with its resolved serving profile (model `_metadata.serving` -> these platform defaults). A preloaded model never pays a cold JIT load on its first request after a restart. An unknown slug is skipped, never fatal. Applies on the next LM Studio restart.',
+    default: [...LM_STUDIO_SERVING_DEFAULTS['lmStudio.serving.preload']],
+    validate: distinctModelIds('Preloaded models'),
   },
 
   // ── JIT defaults (owner decision D-4) ────────────────────────────────────

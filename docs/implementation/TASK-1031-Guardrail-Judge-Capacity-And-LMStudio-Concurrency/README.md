@@ -104,7 +104,14 @@ TDD for every code lane (failing test first).
 Runtime proof after deploy: no `lms log stream` prompt lines in Loki for the new pod; `lms ps` shows gemma + granite at parallel 10; a 20-request judge burst returns no `CONCURRENCY_LIMIT`; `DCGM_FI_DEV_FB_USED` on GPU 0 recorded under the burst.
 
 ## 6. Implementation summary
-_(filled in after go)_
+
+### Lane L-GW (gateway: registry, effective config, guard, seeds)
+
+- `lmStudio.serving.parallel` default **4 → 10**, relabelled "LM Studio concurrent requests per model" (decode slots per loaded model AND apps/text's lm-studio user + judge lane; applies on the next LM Studio restart). Validate 1..64 unchanged.
+- New descriptors (global-kv, `globalOnly`, `maxScope: system`, `open-to-default`, category Service Runtime): `lmStudio.serving.gpu` (number, default **1**, whole 0..15) and `lmStudio.serving.preload` (string[], default `['gemma-4-e2b-it-qat','granite-guardian-4.1-8b']`, non-empty + unique).
+- `lmstudio` added to `CONSUMING_DEPLOYABLES` and to `InternalServiceTokenGuard` on the ONE shared `INTERNAL_ACCESS_TOKEN` (mirrors vllm).
+- Effective config serves `lmStudioServing`: `text` → `{ parallel }`; `lmstudio` → `{ defaults: {contextLength, parallel, gpu, flashAttention, kvCacheQuant}, preload: [...] }`. Each preload entry resolves SYSTEM `AiModel._metadata.serving` → platform defaults; `gpuSplit` is the model's own (else `null`) and `gpu` is `defaults.gpu` only when the model declares no `gpuSplit`. A slug is matched by catalogue slug, then by LM Studio key (`sourceUri`) among `lm-studio` rows; the entry's `slug` is the row's `sourceUri` (the key the pod loads). Unknown / non-LM-Studio / throwing / duplicate entries are skipped with a warning. Unresolved keys fall back to the family's declared defaults (`open-to-default`). The preload rows are read through `AiModelRepository` (`CoreDatabaseModule` now imported by `EffectiveConfigServiceModule`), not `AiModelService`, whose reads are super-admin-gated.
+- Seeds (`seed/ai-models/llm.ts`), REVERSING the TASK-996 layout: `lms-gemma-4-e2b-it-qat` 65536 × 10 on GPU 1; `granite-guardian-4.1-8b` 16384 × 10 on GPU 0 with q8_0 K/V **and `flashAttention: true`** (a quantized V-cache requires it — without it the row fails `checkAiModelServingProfile`). `LM_STUDIO_PARALLEL` 4 → 10. `lms-gemma-4-e4b` left without a profile (inherits defaults → GPU 1). `seed/11-global-setting.ts` seeds no `lmStudio.serving.*` rows, so nothing to update there.
 
 ## 7. Change history
 | Date | Change |

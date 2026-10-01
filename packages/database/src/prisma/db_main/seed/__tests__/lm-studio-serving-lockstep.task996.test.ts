@@ -75,3 +75,43 @@ describe('the JIT-loaded LM Studio rows', () => {
     expect(e4b?.metaData?.contextLength).toBeUndefined();
   });
 });
+
+/**
+ * TASK-1031 (owner, 2026-10-01) — the serving layout is a rule for the ROLE, and it REVERSES
+ * the TASK-996 one (summarization was GPU 0, guardrail GPU 1):
+ *
+ *   summarization  65536 ctx · 10 concurrent · GPU 1
+ *   guardrail      16384 ctx · 10 concurrent · GPU 0 · q8_0 KV (fits beside STT)
+ */
+describe('TASK-1031 — the owner serving layout', () => {
+  const bySlug = (slug: string) => LLM_AI_MODELS.find((model) => model.slug === slug);
+
+  it('serves the summarization model at 65536 x 10 on GPU 1 only', () => {
+    expect(bySlug('lms-gemma-4-e2b-it-qat')?.metaData?.serving).toEqual({
+      contextLength: 65536,
+      parallel: 10,
+      gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
+    });
+  });
+
+  it('serves every guardrail/safety LM Studio model at 16384 x 10 on GPU 0 only, with a q8_0 KV cache', () => {
+    const guardrail = LLM_AI_MODELS.filter(
+      (model) => model.provider === 'lm-studio' && (model.tags ?? []).some((tag) => tag === 'guardrail' || tag === 'safety'),
+    );
+    expect(guardrail.map((model) => model.slug)).toEqual(['granite-guardian-4.1-8b']);
+    for (const model of guardrail) {
+      expect(model.metaData?.serving, model.slug).toEqual({
+        contextLength: 16384,
+        parallel: 10,
+        // A quantized V-cache REQUIRES flash attention; declared so the row is coherent alone.
+        flashAttention: true,
+        gpuSplit: { strategy: 'priorityOrder', priority: [0], disabledGpus: [1] },
+        kvCacheQuant: { k: 'q8_0', v: 'q8_0' },
+      });
+    }
+  });
+
+  it('leaves the other summarization-class LM Studio rows on the platform defaults (no placement of their own)', () => {
+    expect(bySlug('lms-gemma-4-e4b')?.metaData?.serving).toBeUndefined();
+  });
+});

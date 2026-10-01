@@ -132,13 +132,16 @@ const LM_STUDIO_CONTEXT_LENGTH = 65536;
 
 /**
  * Decode slots the preloaded row is SERVED with — `LMS_PARALLEL` -> `lms load --parallel`,
- * lowered 10 -> 4 alongside the context window above.
+ * lowered 10 -> 4 alongside the context window above, and raised back 4 -> 10 by TASK-1031
+ * (owner, 2026-10-01: "at least 10" concurrent requests per model; the summarization model
+ * now owns GPU 1 alone, so its 65536 x 10 KV cache no longer shares a card with STT). It
+ * matches the platform default `lmStudio.serving.parallel`.
  *
  * Declared here, beside the context window, because the two are ONE residency decision: each
  * slot gets the full window, so VRAM scales with their product and reading either number
  * alone tells you nothing about whether the model fits the card.
  */
-const LM_STUDIO_PARALLEL = 4;
+const LM_STUDIO_PARALLEL = 10;
 
 /**
  * text-generation catalogue (TASK-860 — the owner's catalogue, exactly): the
@@ -227,17 +230,22 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // nobody chose (`GuardrailPolicy.require_number`).
     metaData: {
       hubArtifact: 'mradermacher/granite-guardian-4.1-8b-GGUF',
-      // ── gpuSplit: PINNED TO GPU 1 (owner directive 2026-09-21) ──────────────
-      // The other half of the one-model-per-card layout documented on the gemma
-      // row above. This model is JIT-loaded rather than preloaded (no LMS_LOAD),
-      // and came up split 3,618 MiB / 3,078 MiB across both cards; at ~6.7 GB
-      // resident (5.12 GB weights, ctx 8192 x parallel 4) it fits GPU 1 alone.
+      // ── TASK-1031 owner layout (2026-10-01) — the GUARDRAIL role: GPU 0 ──────
+      // REVERSES the TASK-996 layout (this row was pinned to GPU 1). Every
+      // guardrail/safety LM Studio model now carries this profile: 16384 ctx x 10
+      // concurrent on GPU 0, beside STT and NLP. It is PRELOADED
+      // (`lmStudio.serving.preload`), so context and parallel are real load values.
       //
-      // Only `gpuSplit` is declared. Context and parallel stay on the JIT
-      // defaults (`lmStudio.jit.*`) because nothing preloads this model, so a
-      // contextLength here would describe a load that never happens.
+      // q8_0 KV: at f16, 16384 x 10 is ~7.9 GB of KV on top of ~5.1 GB weights and
+      // the ~4 GB STT pair — over a 16 GB card. q8_0 roughly halves it (~4 GB).
+      // `flashAttention: true` is declared because a quantized V-cache requires it.
+      // The row deliberately declares no catalogue `contextLength` (under-claim).
       serving: {
-        gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
+        contextLength: 16384,
+        parallel: 10,
+        flashAttention: true,
+        gpuSplit: { strategy: 'priorityOrder', priority: [0], disabledGpus: [1] },
+        kvCacheQuant: { k: 'q8_0', v: 'q8_0' },
       },
       policy: {
         judgeTemperature: 0.05,
@@ -293,29 +301,18 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
       // `flashAttention` and `kvCacheQuant` are deliberately ABSENT: this row
       // inherits them from the platform default (`lmStudio.serving.*`).
       //
-      // ── gpuSplit: PINNED TO GPU 0 (owner directive 2026-09-21) ────────────────
-      // Measured on the live pod, BOTH resident models were layer-split across
-      // BOTH cards (§2.9): gemma held 2,668 MiB on GPU0 + 4,814 MiB on GPU1, and
-      // granite-guardian 3,618 + 3,078. Nobody chose that — `gpuSplitConfig`
-      // defaults to `evenly`, so llama.cpp spreads a model that fits one card.
-      // The cost is a cross-device hop per token AND two models contending for
-      // the SMs of both GPUs instead of owning one each.
-      //
-      // gemma is ~7.5 GB resident at 65536 x 4 against a 16,380 MiB card, so it
-      // fits GPU0 with ~8.8 GB to spare for the STT models that share it.
-      //
-      // ⚠️ THIS IS HALF A LAYOUT ON ITS OWN. granite-guardian is pinned to GPU 1
-      // in the same commit; leaving it on `evenly` would spread it back onto
-      // GPU 0 and re-create exactly the contention this removes. The two rows
-      // are one decision — change them together or not at all.
-      //
-      // The CARDS ARE IDENTICAL (both RTX 2000 Ada, 16,380 MiB). GPU 0 is not
-      // "the bigger card"; it is simply the one this model owns. What buys the
-      // performance is DEDICATION, not capacity.
+      // ── TASK-1031 owner layout (2026-10-01) — the SUMMARIZATION role: GPU 1 ──
+      // REVERSES the TASK-996 layout (this row was pinned to GPU 0, granite to
+      // GPU 1). Summarization now owns GPU 1 alone (65536 x 10); GPU 0 carries the
+      // guardrail model, STT and NLP. The two rows are still ONE decision — change
+      // them together or not at all; leaving either on `evenly` re-creates the
+      // cross-card split TASK-996 measured. These values equal the platform
+      // defaults (`lmStudio.serving.*`, GPU 1), declared here so the preloaded row
+      // states its own load.
       serving: {
         contextLength: LM_STUDIO_CONTEXT_LENGTH,
         parallel: LM_STUDIO_PARALLEL,
-        gpuSplit: { strategy: 'priorityOrder', priority: [0], disabledGpus: [1] },
+        gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
       },
     },
   },

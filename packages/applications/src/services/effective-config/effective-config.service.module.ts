@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CoreDatabaseModule } from '@arcaai/domains';
 import { AiProviderConnectionServiceModule } from '../ai-provider-connection/ai-provider-connection.service.module';
 import { AiRoutingPolicyServiceModule } from '../ai-routing-policy/ai-routing-policy.service.module';
 import { AiModelServiceModule } from '../ai-model/aiModel.service.module';
@@ -12,9 +13,11 @@ import { IEffectiveConfigService } from './IEffectiveConfigService';
  * supplies the registry override lane, `AiProviderConnectionServiceModule` the
  * profile rows, and the `AiRoutingPolicy` election + `AiModel` pair the `modelWeights`
  * block (which slug a task selects, and where that model's weights come from).
+ * `CoreDatabaseModule` supplies `AiModelRepository` for the TASK-1031 `lmStudioServing`
+ * preload plan (read without a human caller, so not via `AiModelService`).
  */
 @Module({
-  imports: [EffectiveSettingsModule, AiProviderConnectionServiceModule, AiRoutingPolicyServiceModule, AiModelServiceModule],
+  imports: [CoreDatabaseModule, EffectiveSettingsModule, AiProviderConnectionServiceModule, AiRoutingPolicyServiceModule, AiModelServiceModule],
   providers: [
     EffectiveConfigService,
     {

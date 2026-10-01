@@ -28,7 +28,7 @@ import { resolveServingProfile, shippedPlatformServingProfile } from '../../ai-m
 const ALL_KEYS = Object.keys(LM_STUDIO_SERVING_DEFAULTS) as LmStudioServingKey[];
 
 describe('LM Studio serving descriptors', () => {
-  it('registers all eight keys — the six-field platform profile plus the two JIT defaults', () => {
+  it('registers all ten keys — the six-field platform profile, the placement + preload pair (TASK-1031), and the two JIT defaults', () => {
     expect(ALL_KEYS).toEqual([
       'lmStudio.serving.contextLength',
       'lmStudio.serving.parallel',
@@ -36,6 +36,8 @@ describe('LM Studio serving descriptors', () => {
       'lmStudio.serving.kvCacheQuantK',
       'lmStudio.serving.kvCacheQuantV',
       'lmStudio.serving.gpuSplitStrategy',
+      'lmStudio.serving.gpu',
+      'lmStudio.serving.preload',
       'lmStudio.jit.defaultContextLength',
       'lmStudio.jit.modelTtlSeconds',
     ]);
@@ -63,7 +65,7 @@ describe('LM Studio serving descriptors', () => {
 
   it('declares the engine defaults it ships with, so registering them changed no behaviour', () => {
     for (const key of ALL_KEYS) {
-      expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key).default, key).toBe(LM_STUDIO_SERVING_DEFAULTS[key]);
+      expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key).default, key).toEqual(LM_STUDIO_SERVING_DEFAULTS[key]);
     }
     // Flash attention off + an unquantized KV cache is exactly what the live
     // `llama-server` cmdline shows. Turning them on is a MEASURED change an
@@ -132,7 +134,49 @@ describe('LM Studio serving descriptors — what is deliberately NOT registered'
     for (const key of ALL_KEYS) expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key).platformTierKey, key).toBeUndefined();
   });
 
-  it('is not pushed onto the internal effective-config pull route — no Python service loads models', () => {
+  // TASK-1031 — these keys DO reach the pull route, but as the hand-shaped
+  // `lmStudioServing` view (service=lmstudio / service=text), never through the
+  // generic `consumedBy` settings map.
+  it('is not on the generic consumedBy settings map — the lmStudioServing view serves it instead', () => {
     for (const key of ALL_KEYS) expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key).consumedBy, key).toBeUndefined();
+  });
+});
+
+describe('TASK-1031 — governed LM Studio concurrency, placement and preload', () => {
+  const validate = (key: LmStudioServingKey, value: unknown) => HOPE_SETTINGS_REGISTRY.getOrThrow(key).validate?.(value);
+
+  it('ships 10 concurrent requests per model, named as such, applying on the next LM Studio restart', () => {
+    const d = HOPE_SETTINGS_REGISTRY.getOrThrow('lmStudio.serving.parallel');
+    expect(d.default).toBe(10);
+    expect(d.label).toBe('LM Studio concurrent requests per model');
+    expect(d.description).toMatch(/decode slots/);
+    expect(d.description).toMatch(/apps\/text/);
+    expect(d.description).toMatch(/judge/);
+    expect(d.description).toMatch(/next LM Studio restart/);
+    expect(validate('lmStudio.serving.parallel', 64)).toBeUndefined();
+    expect(validate('lmStudio.serving.parallel', 65)).toMatch(/whole number/);
+  });
+
+  it('places a model with no gpuSplit of its own on GPU 1 by default (the summarization role)', () => {
+    const d = HOPE_SETTINGS_REGISTRY.getOrThrow('lmStudio.serving.gpu');
+    expect(d.dataType).toBe('number');
+    expect(d.default).toBe(1);
+    expect(validate('lmStudio.serving.gpu', 0)).toBeUndefined();
+    expect(validate('lmStudio.serving.gpu', 15)).toBeUndefined();
+    expect(validate('lmStudio.serving.gpu', 16)).toMatch(/whole number/);
+    expect(validate('lmStudio.serving.gpu', -1)).toMatch(/whole number/);
+    expect(validate('lmStudio.serving.gpu', 0.5)).toMatch(/whole number/);
+  });
+
+  it('preloads the summarization and guardrail models by default, refusing blanks and duplicates', () => {
+    const d = HOPE_SETTINGS_REGISTRY.getOrThrow('lmStudio.serving.preload');
+    expect(d.dataType).toBe('string[]');
+    expect(d.default).toEqual(['gemma-4-e2b-it-qat', 'granite-guardian-4.1-8b']);
+    expect(validate('lmStudio.serving.preload', [])).toBeUndefined();
+    expect(validate('lmStudio.serving.preload', ['a', 'b'])).toBeUndefined();
+    expect(validate('lmStudio.serving.preload', ['a', 'a'])).toMatch(/unique/);
+    expect(validate('lmStudio.serving.preload', ['a', '  '])).toMatch(/non-empty/);
+    expect(validate('lmStudio.serving.preload', 'a')).toMatch(/list/);
+    expect(validate('lmStudio.serving.preload', [3])).toMatch(/non-empty/);
   });
 });
