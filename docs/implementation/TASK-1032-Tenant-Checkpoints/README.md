@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending — spec approved (OD-1 hash-wasm, OD-2 unquoted bucket, OD-3 no global user status restore); plan written (§6), awaiting owner review |
+| **Status** | Review — implemented and verified on `dev-2.2` (not pushed); cluster rollout awaits owner go (§7.4) |
 | **Type** | feature (full-stack: database → domain → services → API → console → infra) |
 | **Branch** | `dev-2.2` (active) |
 | **Rules** | 00, 01, 02, 03, 04, 05, 09, 13 (+07/10/11), 14 |
@@ -1519,7 +1519,63 @@ Findings are data: the orchestrator verifies each against the code before acting
 
 ## 7. Implementation Summary
 
-_Pending — filled in after implementation._
+Implemented on `dev-2.2` by the orchestrator plus 11 lane/fix agents (W0–W4 per §4/§6), merged through
+`merge(task-1032): …` commits; feature range `b0ddb7436..HEAD`. **Not pushed.** The deployment-repo
+branch `task-1032/checkpoint-worker` (worktree `../hope-v2-deployment-task-1032`) is **not merged and not
+pushed** — it waits for the owner's rollout go.
+
+### 7.1 What shipped
+
+| Area | Where |
+|---|---|
+| Schema | `tenant-checkpoint.prisma` (`TenantCheckpoint`, `TenantCheckpointRestore`), 5 enums, 2 `ResourceType` values, migration `20261001151400_task_1032_tenant_checkpoint` (+ partial unique `TenantCheckpointRestore_one_active_per_tenant`) |
+| Domain | `TenantCheckpoint*` / `TenantCheckpointRestore*` entity/factory/mapper/repository (cross-tenant scans read through `baseClient`) |
+| Engine | `packages/applications/src/services/tenant-checkpoint/` — `contracts.ts`, `registry/` (all 105 models classified; completeness, trigger-parity, soft-delete, unique-key tests), `archive/` (framed entry stream, chunked AES-256-GCM, signed trailer, C-13 gate), `sealing/` (Vault wrap + Ed25519 sign from key **v1**, Argon2id passphrase), `store/` (S3 multipart, length-signed presigned parts), `export/` (snapshot COPY export, verify-upload, sweepers), `restore/` (staging + set-wise reconcile in ONE `REPEATABLE READ` transaction; safety checkpoint exported from that transaction's snapshot), `lock/` (tenant lock, `tenant-restore.completed` cache invalidation), the service + DTOs |
+| API | `admin/tenants/:tenantId/checkpoints` (12 routes, JWT-only, tag `tenant-checkpoints`), `TenantLockGuard` (423, after `UnifiedAuthGuard`), `InternalTenantLockGuard` (503 + `Retry-After`, CLINICAL restores only), STT WS open check |
+| Worker | `apps/api/src/checkpoint-worker.main.ts` + `checkpoint-worker/` module; `pnpm checkpoint:dev`; in `stack:dev` |
+| Console | `(console)/(tenant)/checkpoints` — list, create (dialog), upload (browser multipart), download, restore (break-glass + categories; Clinical for super admins only), restore history, 423 banner |
+| Platform | Vault keys `hope-checkpoint`, `hope-checkpoint-sign` (dev-init, test-init, `hope-app.hcl`), bucket `hope-tenant-checkpoints` (platformBuckets, compose, test compose; created by the worker at boot), 4 settings, CASL `manage:TenantCheckpoint` for tenant admins, `pnpm checkpoint:open` offline opener, env `HOPE_CHECKPOINT_PASSPHRASE` (CLI only) |
+| Artifacts | route manifest, OpenAPI, portal, vox-node admin regenerated (the controller is listed as machine-unreachable) |
+
+### 7.2 Decisions taken during implementation (rulings; full log `.superpowers/sdd/TASK-1032/progress.md`)
+
+- C-14 `ConsentGrant` is INSERT_ONLY (a withdrawn consent is never revived); `FederatedIdentity` INSERT_ONLY; `UserMedia` scoped via `Media`.
+- Secret columns are never exported (User `password`/`secret1`/`secret2`, credential hashes/verifiers): a user re-created by a restore gets an unusable password and must reset it (narrows D-11).
+- Secrets never travel back in time: live secret columns are preserved on update; a re-inserted row comes back without its secret (`SECRET_REQUIRES_REENTRY`).
+- SUPER_ADMIN role assignments are never touched; platform-governed rows (rate-limit rules, super-admin routing keys, `globalOnly` settings, platform harness keys) are skipped unless a platform admin requested the restore.
+- Unique-slot conflicts no longer fail a restore: the claimant is skipped with `UNIQUE_SLOT_HELD`; a published row whose content diverged is left fully untouched (`IMMUTABLE_DIVERGED`).
+- Rows referenced by a live row of an UNSELECTED category are not retired (`CROSS_CATEGORY_REFERENCE`); a retired consultation frees its encounter key (`_metadata.retiredExternalRef`).
+- The internal (machine) lock blocks only CLINICAL restores, with 503 + `Retry-After`; the public API keeps the hard 423 for every category (D-10).
+- Media in platform fallback buckets is re-uploaded put-if-absent only.
+- Parked (accepted, documented): retention-purged PHI can return with a clinical restore (R2 M-5, owner policy question); WORM change logs are not appended by a restore (the restore audit event records it); `revokeAllForUser` signs a member out in every tenant.
+
+### 7.3 Evidence (final, on `dev-2.2@0ad683ea0`, 2026-10-02)
+
+| Check | Result |
+|---|---|
+| Builds `database`, `domains`, `applications`, `api`; `gen:model/entity/factory:check` | green |
+| `@arcaai/database` / `@arcaai/domains` / `@arcaai/applications` tests | green — applications 1098 files passed |
+| `pnpm test:unit` | **1989 files, 29 035 tests passed, 0 failed** |
+| `pnpm lint:all` | green |
+| Console build, lint, unit tests | green (401 files) |
+| `pnpm typecheck:all` | TS green; **4 mypy errors in `apps/stt` streaming files this ticket never touched — pre-existing, out of scope** |
+| Restore integration suite (own config, isolated test DB) | **29 passed** |
+| API e2e: route authz matrix (730 routes) + checkpoint depth + cross-tenant, live worker, parallel workers | **45 passed, 0 failed, 0 skipped** (API reported version `0ad683ea`) |
+| Console e2e: axe light + dark (0 violations), create → READY → download → restore → history | **4 passed, 0 skipped** |
+| Live proof on a **migrated** DB (triggers present), real API + worker + Vault | create → READY → download → offline open (password column empty) → CONFIG restore (config back, newer consultation kept) → CLINICAL restore (consultation retired) → safety-checkpoint restore (consultation back); audit rows written. Script + output kept in the session scratchpad |
+| Reviews | security (R1: 3 Important), data integrity (R2: 2 Critical, 7 Important), completeness (R3: 2 ❌) → fix wave FX-A/FX-B → scoped re-review: 20 addressed, 2 partial, 7 parked by ruling, 2 new Important (N-1 lock bypass via query string, N-2 job scope) → fixed in a narrow round 3 |
+
+Known residuals (parked, documented): no per-tenant cap on concurrent uploads (each is size-bounded); media objects are re-uploaded (put-if-absent) before the restore's own signature re-check; retention-purged PHI can return with a clinical restore; WORM change logs are not appended by a restore; password hashes already present in `AuditLog.data` (pre-existing, already readable through the audit API) travel inside the sealed archive. Test-infra note: the isolated test Postgres runs on a 512 MB tmpfs that repeated integration runs can fill ("No space left on device").
+
+Pre-existing gap found on the way: `pnpm test:db:reset` seeds nothing unless `RUN_SEED=all` is set (`.env.test` does not set it).
+
+### 7.4 Rollout (cluster) — owner go required
+
+1. Push `dev-2.2` (CI builds the api image carrying `checkpoint-worker.main.js`; promote-dev pins it).
+2. Rebase `task-1032/checkpoint-worker` onto the deployment repo's current `origin/main` (it was cut from a local `main` carrying an unrelated unpushed TASK-1031 commit), merge, push → Argo syncs `hope-checkpoint-worker`.
+3. Vault (live, manual — provisioning only runs at first init): `vault write -f transit/keys/hope-checkpoint`; `vault write transit/keys/hope-checkpoint-sign type=ed25519` (**never trim version 1** — the deployment id derives from it); `vault policy write hope-app` from the updated `hope-vault-policies` ConfigMap; verify encrypt/sign/read-key with a hope-app AppRole login.
+4. MinIO: apply only the updated `hope-minio-bootstrap` ConfigMap (policy `hope-platform-rw` gains the bucket), run `out-of-band/minio-policy-sync.yaml` under a fresh Job name — **never re-run `minio-bootstrap`**. The worker creates the bucket at boot. Confirm MinIO CORS exposes `ETag` to the console origin (browser multipart needs it).
+5. Verify: rollout status, worker logs, one checkpoint create → READY from the console.
 
 ## 8. Change History
 
