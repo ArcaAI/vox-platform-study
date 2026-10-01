@@ -636,6 +636,48 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     });
   }
 
+  /**
+   * Transit SIGN with a named asymmetric key (e.g. the ed25519 `hope-checkpoint-sign`). The input
+   * is signed as given (no prehash); returns the `vault:vN:<b64>` signature string.
+   */
+  async sign(keyName: string, data: Buffer): Promise<string> {
+    this.ensureBooted();
+    const path = `${this.config.transitMount}/sign/${keyName}`;
+    const res = await this.client.write(path, { input: data.toString('base64') });
+    const sig = (res as { data?: { signature?: string } })?.data?.signature;
+    if (!sig) throw new Error('VaultSecretsProvider.sign: empty signature from transit');
+    return sig;
+  }
+
+  /**
+   * Transit VERIFY. A 400 is Vault refusing a malformed signature or input — that is a "not valid"
+   * answer about the signature, not an outage; every other failure propagates.
+   */
+  async verify(keyName: string, data: Buffer, signature: string): Promise<boolean> {
+    this.ensureBooted();
+    const path = `${this.config.transitMount}/verify/${keyName}`;
+    try {
+      const res = await this.client.write(path, { input: data.toString('base64'), signature });
+      return (res as { data?: { valid?: boolean } })?.data?.valid === true;
+    } catch (err) {
+      if ((err as { response?: { statusCode?: number } })?.response?.statusCode === 400) return false;
+      throw err;
+    }
+  }
+
+  /** Public key of the LATEST version of a named asymmetric Transit key. */
+  async publicKey(keyName: string): Promise<string> {
+    this.ensureBooted();
+    const res = (await this.client.read(`${this.config.transitMount}/keys/${keyName}`)) as {
+      data?: { latest_version?: number; keys?: Record<string, { public_key?: string } | number> };
+    };
+    const latest = res?.data?.latest_version;
+    const entry = latest !== undefined ? res?.data?.keys?.[String(latest)] : undefined;
+    const pk = typeof entry === 'object' && entry ? entry.public_key : undefined;
+    if (!pk) throw new Error(`VaultSecretsProvider.publicKey: transit key '${keyName}' exposes no public key`);
+    return pk;
+  }
+
   // ---------- DB Secrets Engine ----------
   async issueDbCredential(role: string): Promise<{
     username: string;
