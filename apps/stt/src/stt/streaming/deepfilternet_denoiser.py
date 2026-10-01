@@ -105,8 +105,11 @@ class DeepFilterNet3StreamingDenoiser:
             return self._degrade("weights_unavailable", missing)
 
         try:
-            # 0.5.6 returns (DfNet, DF, suffix) — THREE values.
-            loaded = init_df(model_base_dir=self._model_dir, log_level="ERROR", log_file=None)
+            # 0.5.6 returns (DfNet, DF, suffix) — THREE values. `log_level="NONE"` skips
+            # df's logger setup, which shells out to `git` (absent from the runtime image,
+            # where it raised FileNotFoundError); `log_file=None` keeps it from writing
+            # `enhance.log` into the read-only bucket dir.
+            loaded = init_df(model_base_dir=self._model_dir, log_level="NONE", log_file=None)
             self._model, self._df_state = loaded[0], loaded[1]
         except Exception as exc:  # noqa: BLE001 — any load failure degrades, never raises
             return self._degrade("init_failed", f"checkpoint failed to load: {exc}")

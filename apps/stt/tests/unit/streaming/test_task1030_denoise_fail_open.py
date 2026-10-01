@@ -74,6 +74,9 @@ class TestDeepFilterNet3LoadsFromTheBucket:
         assert kwargs["model_base_dir"] == str(weights)
         # `init_df` writes `enhance.log` INTO the weights dir by default — never into the bucket.
         assert kwargs["log_file"] is None
+        # Any level but NONE runs df's logger setup, which shells out to `git` — absent from
+        # the runtime image (cluster: "No such file or directory: 'git'" → init_failed).
+        assert kwargs["log_level"] == "NONE"
 
     def test_no_weights_dir_degrades_and_never_downloads(self):
         """`init_df()` without `model_base_dir` downloads from GitHub — never at session time."""
@@ -294,6 +297,7 @@ class TestBatchDeepFilterNet3:
         assert sr == 48000
         assert fake.enhance.init_df.call_args.kwargs["model_base_dir"] == str(weights)
         assert fake.enhance.init_df.call_args.kwargs["log_file"] is None
+        assert fake.enhance.init_df.call_args.kwargs["log_level"] == "NONE"
 
     @pytest.mark.asyncio
     async def test_batch_without_weights_returns_the_original_audio_and_reports(self):
