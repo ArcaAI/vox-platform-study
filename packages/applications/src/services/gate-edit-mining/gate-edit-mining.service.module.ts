@@ -9,6 +9,7 @@ import { IGateEditExemplarRetriever } from './IGateEditExemplarRetriever';
 import { IGateEditMiningQueue } from './IGateEditMiningQueue';
 import { VisitTypeServiceModule } from '../consultation/visit-type/visit-type.service.module';
 import { ConfigResolver } from '../config-resolver/config-resolver.service';
+import { TenantLockModule } from '../tenant-checkpoint/lock/tenant-lock.module';
 
 /**
  * GateEditMiningService DI module.
@@ -39,6 +40,7 @@ import { ConfigResolver } from '../config-resolver/config-resolver.service';
   // EffectiveSettingsModule resolves the @Optional EffectiveSettingsService that
   // governs `agentic.fewshot.curationMode` (F-24). Unwired ⇒ the gate stays off.
   imports: [
+    TenantLockModule,
     VisitTypeServiceModule,
     CoreDatabaseModule,
     EffectiveSettingsModule,

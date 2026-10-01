@@ -19,9 +19,11 @@ import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.mo
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { BillingServiceModule } from '../billing/billing.service.module';
 import { MetricsServiceModule } from '../baseServices/metrics/metrics.service.module';
+import { TenantLockModule } from '../tenant-checkpoint/lock/tenant-lock.module';
 
 @Module({
   imports: [
+    TenantLockModule,
     CommonServiceModule,
     CoreDatabaseModule,
     HttpModule,

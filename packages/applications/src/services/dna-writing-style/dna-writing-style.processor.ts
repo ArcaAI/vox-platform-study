@@ -4,6 +4,8 @@ import { Inject, Logger, Optional, ServiceUnavailableException } from '@nestjs/c
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
+import { ITenantLockService } from '../tenant-checkpoint/contracts';
+import { postponeIfTenantLocked } from '../../common/worker-session-lock';
 import { Job } from 'bullmq';
 import {
   AiDeploymentKind,
@@ -184,13 +186,16 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // identically-named unwired class under `services/baseServices`.
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
     @Optional() @Inject(IMetricsService) metrics?: IMetricsService,
+    // Postpones the job while a restore holds the tenant's lock. Optional + trailing so positional fixtures keep their arity.
+    @Optional() @Inject(ITenantLockService) private readonly tenantLock?: ITenantLockService,
   ) {
     super();
     this.emissionFailedCounter = DnaWritingStyleProcessor.registerEmissionFailedCounter(metrics, this.logger);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
-  async process(job: Job<GenerateDnaReportJobPayload>): Promise<DnaReportJobResult> {
+  async process(job: Job<GenerateDnaReportJobPayload>, token?: string): Promise<DnaReportJobResult> {
+    await postponeIfTenantLocked(this.tenantLock, job, token, job.data.tenantId);
     return runJobInContext(this.clsService, job, async () => {
       return this.processWithContext(job);
     });

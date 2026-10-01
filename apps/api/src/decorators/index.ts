@@ -9,6 +9,7 @@ export * from './expectedVersion.decorator';
 export * from './requiresIfMatch.decorator';
 export * from './requiresIfMatch.guard';
 export * from './noOptimisticConcurrency.decorator';
+export * from './tenant-lock-exempt.decorator';
 
 // Auth decorators — re-exported from @arcaai/applications
 export {

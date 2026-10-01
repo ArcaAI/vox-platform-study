@@ -20,9 +20,11 @@ import { TextRequestServiceModule } from '../../text-request/text-request.servic
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { ConsultationWorkflowDispatchServiceModule } from '../workflow-dispatch/consultation-workflow-dispatch.service.module';
+import { TenantLockModule } from '../../tenant-checkpoint/lock/tenant-lock.module';
 
 @Module({
   imports: [
+    TenantLockModule,
     VisitTypeServiceModule,
     ConfigModule,
     HttpModule,

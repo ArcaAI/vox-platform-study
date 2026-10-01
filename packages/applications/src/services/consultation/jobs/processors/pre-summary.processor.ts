@@ -1,5 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger, Optional } from '@nestjs/common';
+import { ITenantLockService } from '../../../tenant-checkpoint/contracts';
+import { postponeIfTenantLocked } from '../../../../common/worker-session-lock';
 import { Job } from 'bullmq';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -89,6 +91,8 @@ export class PreSummaryProcessor extends WorkerHost {
     // language the pre-summary is WRITTEN in. Optional + trailing so the positional fixtures keep
     // their arity; unwired ⇒ the descriptor's code default (English).
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // Postpones the job while a restore holds the tenant's lock. Optional + trailing so positional fixtures keep their arity.
+    @Optional() @Inject(ITenantLockService) private readonly tenantLock?: ITenantLockService,
   ) {
     super();
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -103,12 +107,13 @@ export class PreSummaryProcessor extends WorkerHost {
     await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
-  async process(job: Job<GeneratePreSummaryJobPayload>): Promise<PreSummaryJobResult> {
+  async process(job: Job<GeneratePreSummaryJobPayload>, token?: string): Promise<PreSummaryJobResult> {
     const { jobId, consultationId, tenantId, userId } = job.data;
     // Fail-closed when tenantId is missing.
     if (!tenantId) {
       throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
     }
+    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId);
     // Rebind tenantId + user into a fresh CLS scope so the
     // tenantScope Prisma extension sees the correct context.
     return runJobInContext(this.cls, job, async () => {

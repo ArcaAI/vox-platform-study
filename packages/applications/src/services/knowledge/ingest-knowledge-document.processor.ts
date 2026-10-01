@@ -1,5 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger, Optional } from '@nestjs/common';
+import { ITenantLockService } from '../tenant-checkpoint/contracts';
+import { postponeIfTenantLocked } from '../../common/worker-session-lock';
 import { Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -89,6 +91,8 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
     // enforced: a tenant could ingest a corpus of any size and meet the number
     // afterwards. Optional + trailing like the two above; absent ⇒ ungated.
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // Postpones the job while a restore holds the tenant's lock. Optional + trailing so positional fixtures keep their arity.
+    @Optional() @Inject(ITenantLockService) private readonly tenantLock?: ITenantLockService,
   ) {
     super();
   }
@@ -102,13 +106,14 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
     await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
-  async process(job: Job<IngestKnowledgeDocumentJobPayload>): Promise<IngestKnowledgeDocumentResult> {
+  async process(job: Job<IngestKnowledgeDocumentJobPayload>, token?: string): Promise<IngestKnowledgeDocumentResult> {
     const { jobId, knowledgeDocumentId, tenantId, userId, text } = job.data;
     // Fail-closed when tenantId is missing (guards legacy / poisoned queue entries).
     if (!tenantId) {
       throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
     }
 
+    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId);
     return runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ userId, tenantId, kind: 'ingest-knowledge' }));

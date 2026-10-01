@@ -33,3 +33,4 @@ export * from './language';
 export * from './transcript-provenance';
 export * from './typed-event-emitter';
 export * from './worker-session';
+export * from './worker-session-lock';
