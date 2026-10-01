@@ -657,6 +657,27 @@ sign-nlp:
     - !reference [.image-signing-guard, rules]
     - !reference [.rules-nlp, rules]
 
+# --- NLP (CUDA variant, TASK-1031) ---
+sbom-nlp-gpu:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-nlp-gpu
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-nlp, rules]
+
+sign-nlp-gpu:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-nlp-gpu
+      artifacts: true
+    - job: sbom-nlp-gpu
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-nlp, rules]
+
 # --- Guardrail ---
 sbom-guardrail:
   extends: .cyclonedx-sbom

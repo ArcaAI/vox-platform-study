@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 363,
+  "distinctNames": 364,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -1773,6 +1773,18 @@
           "dataType": "secret",
           "default": null,
           "description": "CANONICAL internal credential (owner decision D-D, 2026-08-17) ONE shared access token for ALL internal service-to-service communication, identical across every HOPE service, set by the DevOps engineer, internal use only. Unprefixed on purpose (`validation_alias` bypasses the env_prefix) \u2014 it belongs to no single service. This is what the service ACCEPTS inbound as `X-Service-Token` and PRESENTS on every outbound peer call. It is the ONLY accepted credential on this service \u2014 the legacy per-service `NLP_SERVICE_TOKEN` was REMOVED (see the note below), so a peer that presents anything else is answered 401. Empty \u21d2 auth bypassed (dev / CI). Guardrail presents this same value via `peer_service_token()`."
+        },
+        {
+          "name": "NLP_ENTAILMENT_N_GPU_LAYERS",
+          "aliases": [],
+          "class": "NLPServiceConfig",
+          "field": "entailment_n_gpu_layers",
+          "prefix": "NLP_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 0,
+          "description": "llama.cpp layer offload for the MiniCheck entailment scorer (TASK-1031). A HOST fact like `inference_device` (which build of llama.cpp this image carries), so env-tier and kept off the control plane. 0 = every layer on CPU (the only value correct on every host); -1 = offload all layers. A CPU-only llama.cpp build ignores it, and the metered `device` says so."
         },
         {
           "name": "NLP_ENVIRONMENT",
@@ -3885,6 +3897,8 @@
       "apps/harness/src/harness/sensors/inferential/verdict_cache.py"
     ],
     "HF_HUB_CACHE": [
+      "apps/nlp/src/nlp/models/source_resolver.py",
+      "apps/tts/src/tts/models/source_resolver.py",
       "packages/py-runtime-models/src/hope_runtime_models/resolvable.py"
     ],
     "HF_HUB_DISABLE_IMPLICIT_TOKEN": [

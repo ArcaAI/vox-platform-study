@@ -19,8 +19,8 @@ disagree with those declarations.
 | … tier `env` | 113 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
-| Python declared fields | 311 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 363 |
+| Python declared fields | 312 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 364 |
 | `turbo.json#globalEnv` entries | 519 |
 
 ## Variables — the TypeScript platform surface
@@ -346,6 +346,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `MINIO_SECURE` | `apps/stt` | no | no | `false` | commented | — |
 | `MODEL_CACHE_MAX_MODELS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `5` | commented | — |
 | `MODEL_CACHE_TTL_SECONDS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `3600` | commented | — |
+| `NLP_ENTAILMENT_N_GPU_LAYERS` | `apps/nlp` | no | no | `0` | commented | — |
 | `NLP_ENVIRONMENT` | `apps/nlp` | no | no | `development` | commented | — |
 | `NLP_EXTERNAL_TEXT_MAX_RETRIES` | `apps/nlp` | no | no | `2` | commented | — |
 | `NLP_EXTERNAL_TEXT_RETRY_BACKOFF_MS` | `apps/nlp` | no | no | `100` | commented | — |
@@ -517,7 +518,7 @@ promotion into its service’s `BaseSettings`.
 | `HARNESS_PROMPTFOO_BASE_URL` | `apps/harness/eval/promptfoo/provider.py` |
 | `HARNESS_PROMPTFOO_MODEL` | `apps/harness/eval/promptfoo/provider.py` |
 | `HARNESS_VERDICT_CACHE_HMAC_KEY` | `apps/harness/src/harness/sensors/inferential/verdict_cache.py` |
-| `HF_HUB_CACHE` | `packages/py-runtime-models/src/hope_runtime_models/resolvable.py` |
+| `HF_HUB_CACHE` | `apps/nlp/src/nlp/models/source_resolver.py`, `apps/tts/src/tts/models/source_resolver.py`, `packages/py-runtime-models/src/hope_runtime_models/resolvable.py` |
 | `HF_HUB_DISABLE_IMPLICIT_TOKEN` | `apps/vllm/src/hope_vllm/main.py` |
 | `HOPE_SECRETS_DIR` | `packages/py-env/src/hope_env/settings_sources.py` |
 | `HOPE_STT_APP_DIR` | `apps/stt/scripts/mlen_chunk_sweep.py` |
