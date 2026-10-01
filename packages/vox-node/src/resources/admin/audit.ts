@@ -123,7 +123,9 @@ export class AdminAuditResource extends AdminResource {
           | 'AgentAssignment'
           | 'WorkflowRun'
           | 'TenantGuardrailPolicy'
-          | 'ModelResidencyPolicy';
+          | 'ModelResidencyPolicy'
+          | 'TenantCheckpoint'
+          | 'TenantCheckpointRestore';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -250,7 +252,9 @@ export class AdminAuditResource extends AdminResource {
           | 'AgentAssignment'
           | 'WorkflowRun'
           | 'TenantGuardrailPolicy'
-          | 'ModelResidencyPolicy';
+          | 'ModelResidencyPolicy'
+          | 'TenantCheckpoint'
+          | 'TenantCheckpointRestore';
         to?: string;
         userId?: string;
       };
@@ -359,7 +363,9 @@ export class AdminAuditResource extends AdminResource {
           | 'AgentAssignment'
           | 'WorkflowRun'
           | 'TenantGuardrailPolicy'
-          | 'ModelResidencyPolicy';
+          | 'ModelResidencyPolicy'
+          | 'TenantCheckpoint'
+          | 'TenantCheckpointRestore';
         search?: string;
         searchFields?: string;
         sort?: string;

@@ -3894,6 +3894,55 @@
         ],
         "type": "object"
       },
+      "CheckpointDownloadUrlResponse": {
+        "properties": {
+          "expiresAt": {
+            "description": "ISO-8601",
+            "type": "string"
+          },
+          "filename": {
+            "example": "acme-20261001-1200-0a1b2c3d.hcp",
+            "type": "string"
+          },
+          "url": {
+            "description": "Presigned GET URL; valid for 15 minutes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expiresAt",
+          "filename"
+        ],
+        "type": "object"
+      },
+      "CheckpointProgressResponse": {
+        "properties": {
+          "bytesWritten": {
+            "example": 1048576,
+            "type": "number"
+          },
+          "phase": {
+            "example": "tables",
+            "type": "string"
+          },
+          "tablesDone": {
+            "example": 12,
+            "type": "number"
+          },
+          "tablesTotal": {
+            "example": 140,
+            "type": "number"
+          }
+        },
+        "required": [
+          "phase",
+          "tablesDone",
+          "tablesTotal",
+          "bytesWritten"
+        ],
+        "type": "object"
+      },
       "CitedSegmentResponse": {
         "properties": {
           "charEnd": {
@@ -4124,6 +4173,21 @@
         },
         "type": "object"
       },
+      "CompleteCheckpointUploadRequest": {
+        "properties": {
+          "parts": {
+            "description": "Every uploaded part, ascending by part number with no gaps",
+            "items": {
+              "$ref": "#/components/schemas/CompletedUploadPart"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "parts"
+        ],
+        "type": "object"
+      },
       "CompletePasswordResetRequest": {
         "properties": {
           "newPassword": {
@@ -4157,6 +4221,27 @@
         },
         "required": [
           "success"
+        ],
+        "type": "object"
+      },
+      "CompletedUploadPart": {
+        "properties": {
+          "etag": {
+            "description": "The ETag response header the object store returned for this part",
+            "example": "\"9b2cf535f27731c974343645a3985328\"",
+            "type": "string"
+          },
+          "partNumber": {
+            "description": "One-based part number",
+            "example": 1,
+            "maximum": 10000,
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "partNumber",
+          "etag"
         ],
         "type": "object"
       },
@@ -5971,6 +6056,32 @@
           "title",
           "summary",
           "body"
+        ],
+        "type": "object"
+      },
+      "CreateCheckpointRequest": {
+        "properties": {
+          "includesMedia": {
+            "description": "Capture media bytes (audio, documents) in addition to database rows",
+            "example": true,
+            "type": "boolean"
+          },
+          "label": {
+            "description": "Human-readable label shown in the checkpoint list",
+            "example": "Before the October agent rewrite",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "passphrase": {
+            "description": "Optional passphrase (12-256 characters) that lets the archive be opened offline. Used only inside this request to wrap the archive key — it is never stored and cannot be recovered.",
+            "maxLength": 256,
+            "minLength": 12,
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "includesMedia"
         ],
         "type": "object"
       },
@@ -11669,6 +11780,60 @@
         ],
         "type": "object"
       },
+      "InitCheckpointUploadRequest": {
+        "properties": {
+          "filename": {
+            "description": "Name of the .hcp file being uploaded; becomes the checkpoint label",
+            "example": "acme-20261001-1200-0a1b2c3d.hcp",
+            "maxLength": 255,
+            "type": "string"
+          },
+          "sizeBytes": {
+            "description": "Size of the file in bytes; bounded by the tenant upload size limit",
+            "example": 734003200,
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "filename",
+          "sizeBytes"
+        ],
+        "type": "object"
+      },
+      "InitCheckpointUploadResponse": {
+        "properties": {
+          "checkpoint": {
+            "$ref": "#/components/schemas/TenantCheckpointResponse"
+          },
+          "expiresAt": {
+            "description": "ISO-8601; the part URLs stop working at this time",
+            "type": "string"
+          },
+          "partSizeBytes": {
+            "description": "Slice the file into parts of exactly this size (the last may be smaller)",
+            "type": "number"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/UploadPartTargetResponse"
+            },
+            "type": "array"
+          },
+          "uploadId": {
+            "description": "Multipart upload id; accepted by the complete and abort routes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkpoint",
+          "uploadId",
+          "partSizeBytes",
+          "parts",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "InvokeWorkflowRequest": {
         "properties": {
           "input": {
@@ -16879,6 +17044,70 @@
         ],
         "type": "object"
       },
+      "PaginatedTenantCheckpointResponse": {
+        "properties": {
+          "count": {
+            "description": "Total number of items",
+            "example": 1234,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TenantCheckpointResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Number of items per page",
+            "example": 10,
+            "type": "number"
+          },
+          "page": {
+            "description": "Page number",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "limit",
+          "page",
+          "data"
+        ],
+        "type": "object"
+      },
+      "PaginatedTenantCheckpointRestoreResponse": {
+        "properties": {
+          "count": {
+            "description": "Total number of items",
+            "example": 1234,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TenantCheckpointRestoreResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Number of items per page",
+            "example": 10,
+            "type": "number"
+          },
+          "page": {
+            "description": "Page number",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "limit",
+          "page",
+          "data"
+        ],
+        "type": "object"
+      },
       "PaginatedTenantConfigResponse": {
         "properties": {
           "count": {
@@ -20689,6 +20918,87 @@
         ],
         "type": "object"
       },
+      "RestoreCheckpointRequest": {
+        "properties": {
+          "categories": {
+            "description": "What to restore. CLINICAL is restricted to platform administrators.",
+            "example": [
+              "CONFIG_CONTENT"
+            ],
+            "items": {
+              "enum": [
+                "CONFIG_CONTENT",
+                "USERS_ACCESS",
+                "CLINICAL"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "confirmationName": {
+            "description": "The tenant's current name, typed to confirm",
+            "type": "string"
+          },
+          "password": {
+            "description": "Caller's CURRENT password (step-up re-authentication; never logged)",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why this restore is being done; recorded in the audit trail",
+            "maxLength": 1000,
+            "minLength": 10,
+            "type": "string"
+          }
+        },
+        "required": [
+          "categories",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "RestoreCountResponse": {
+        "properties": {
+          "inserted": {
+            "type": "number"
+          },
+          "model": {
+            "type": "string"
+          },
+          "retired": {
+            "type": "number"
+          },
+          "updated": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "model",
+          "inserted",
+          "updated",
+          "retired"
+        ],
+        "type": "object"
+      },
+      "RestoreWarningResponse": {
+        "properties": {
+          "code": {
+            "example": "IMMUTABLE_DIVERGED",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
       "RevealGlobalSettingRequest": {
         "properties": {
           "password": {
@@ -23399,6 +23709,215 @@
         "required": [
           "key",
           "size"
+        ],
+        "type": "object"
+      },
+      "TenantCheckpointResponse": {
+        "properties": {
+          "createdAt": {
+            "description": "ISO-8601",
+            "type": "string"
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "ISO-8601",
+            "nullable": true,
+            "type": "string"
+          },
+          "failureDetail": {
+            "nullable": true,
+            "type": "string"
+          },
+          "failureReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "heartbeatAt": {
+            "description": "ISO-8601",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "includesMedia": {
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "MANUAL",
+              "SAFETY"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "CREATED",
+              "UPLOADED"
+            ],
+            "type": "string"
+          },
+          "passphraseProtected": {
+            "type": "boolean"
+          },
+          "progress": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CheckpointProgressResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "sizeBytes": {
+            "nullable": true,
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "UPLOADING",
+              "RUNNING",
+              "READY",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "version": {
+            "description": "Row version (also the ETag)",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "label",
+          "kind",
+          "origin",
+          "status",
+          "includesMedia",
+          "passphraseProtected",
+          "sizeBytes",
+          "progress",
+          "createdAt",
+          "createdBy",
+          "expiresAt",
+          "heartbeatAt",
+          "failureReason",
+          "failureDetail",
+          "version"
+        ],
+        "type": "object"
+      },
+      "TenantCheckpointRestoreResponse": {
+        "properties": {
+          "categories": {
+            "items": {
+              "enum": [
+                "CONFIG_CONTENT",
+                "USERS_ACCESS",
+                "CLINICAL"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "checkpointId": {
+            "type": "string"
+          },
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/RestoreCountResponse"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "createdAt": {
+            "description": "ISO-8601",
+            "type": "string"
+          },
+          "failureDetail": {
+            "nullable": true,
+            "type": "string"
+          },
+          "failureReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lockAcquiredAt": {
+            "description": "ISO-8601",
+            "nullable": true,
+            "type": "string"
+          },
+          "lockReleasedAt": {
+            "description": "ISO-8601",
+            "nullable": true,
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requestedBy": {
+            "type": "string"
+          },
+          "safetyCheckpointId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "LOCKING",
+              "SAFETY_CHECKPOINT",
+              "VERIFYING",
+              "RECONCILING",
+              "POST_COMMIT",
+              "COMPLETED",
+              "COMPLETED_WITH_WARNINGS",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "Row version (also the ETag)",
+            "type": "number"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/RestoreWarningResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "checkpointId",
+          "categories",
+          "reason",
+          "status",
+          "safetyCheckpointId",
+          "counts",
+          "warnings",
+          "requestedBy",
+          "createdAt",
+          "lockAcquiredAt",
+          "lockReleasedAt",
+          "failureReason",
+          "failureDetail",
+          "version"
         ],
         "type": "object"
       },
@@ -26949,6 +27468,23 @@
         },
         "required": [
           "expectedVersion"
+        ],
+        "type": "object"
+      },
+      "UploadPartTargetResponse": {
+        "properties": {
+          "partNumber": {
+            "minimum": 1,
+            "type": "number"
+          },
+          "url": {
+            "description": "Presigned PUT URL for this part",
+            "type": "string"
+          }
+        },
+        "required": [
+          "partNumber",
+          "url"
         ],
         "type": "object"
       },

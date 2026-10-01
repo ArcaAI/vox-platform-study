@@ -3894,6 +3894,55 @@
         ],
         "type": "object"
       },
+      "CheckpointDownloadUrlResponse": {
+        "properties": {
+          "expiresAt": {
+            "description": "ISO-8601",
+            "type": "string"
+          },
+          "filename": {
+            "example": "acme-20261001-1200-0a1b2c3d.hcp",
+            "type": "string"
+          },
+          "url": {
+            "description": "Presigned GET URL; valid for 15 minutes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expiresAt",
+          "filename"
+        ],
+        "type": "object"
+      },
+      "CheckpointProgressResponse": {
+        "properties": {
+          "bytesWritten": {
+            "example": 1048576,
+            "type": "number"
+          },
+          "phase": {
+            "example": "tables",
+            "type": "string"
+          },
+          "tablesDone": {
+            "example": 12,
+            "type": "number"
+          },
+          "tablesTotal": {
+            "example": 140,
+            "type": "number"
+          }
+        },
+        "required": [
+          "phase",
+          "tablesDone",
+          "tablesTotal",
+          "bytesWritten"
+        ],
+        "type": "object"
+      },
       "CitedSegmentResponse": {
         "properties": {
           "charEnd": {
@@ -4124,6 +4173,21 @@
         },
         "type": "object"
       },
+      "CompleteCheckpointUploadRequest": {
+        "properties": {
+          "parts": {
+            "description": "Every uploaded part, ascending by part number with no gaps",
+            "items": {
+              "$ref": "#/components/schemas/CompletedUploadPart"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "parts"
+        ],
+        "type": "object"
+      },
       "CompletePasswordResetRequest": {
         "properties": {
           "newPassword": {
@@ -4157,6 +4221,27 @@
         },
         "required": [
           "success"
+        ],
+        "type": "object"
+      },
+      "CompletedUploadPart": {
+        "properties": {
+          "etag": {
+            "description": "The ETag response header the object store returned for this part",
+            "example": "\"9b2cf535f27731c974343645a3985328\"",
+            "type": "string"
+          },
+          "partNumber": {
+            "description": "One-based part number",
+            "example": 1,
+            "maximum": 10000,
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "partNumber",
+          "etag"
         ],
         "type": "object"
       },
@@ -5971,6 +6056,32 @@
           "title",
           "summary",
           "body"
+        ],
+        "type": "object"
+      },
+      "CreateCheckpointRequest": {
+        "properties": {
+          "includesMedia": {
+            "description": "Capture media bytes (audio, documents) in addition to database rows",
+            "example": true,
+            "type": "boolean"
+          },
+          "label": {
+            "description": "Human-readable label shown in the checkpoint list",
+            "example": "Before the October agent rewrite",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "passphrase": {
+            "description": "Optional passphrase (12-256 characters) that lets the archive be opened offline. Used only inside this request to wrap the archive key — it is never stored and cannot be recovered.",
+            "maxLength": 256,
+            "minLength": 12,
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "includesMedia"
         ],
         "type": "object"
       },
@@ -11669,6 +11780,60 @@
         ],
         "type": "object"
       },
+      "InitCheckpointUploadRequest": {
+        "properties": {
+          "filename": {
+            "description": "Name of the .hcp file being uploaded; becomes the checkpoint label",
+            "example": "acme-20261001-1200-0a1b2c3d.hcp",
+            "maxLength": 255,
+            "type": "string"
+          },
+          "sizeBytes": {
+            "description": "Size of the file in bytes; bounded by the tenant upload size limit",
+            "example": 734003200,
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "filename",
+          "sizeBytes"
+        ],
+        "type": "object"
+      },
+      "InitCheckpointUploadResponse": {
+        "properties": {
+          "checkpoint": {
+            "$ref": "#/components/schemas/TenantCheckpointResponse"
+          },
+          "expiresAt": {
+            "description": "ISO-8601; the part URLs stop working at this time",
+            "type": "string"
+          },
+          "partSizeBytes": {
+            "description": "Slice the file into parts of exactly this size (the last may be smaller)",
+            "type": "number"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/UploadPartTargetResponse"
+            },
+            "type": "array"
+          },
+          "uploadId": {
+            "description": "Multipart upload id; accepted by the complete and abort routes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkpoint",
+          "uploadId",
+          "partSizeBytes",
+          "parts",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "InvokeWorkflowRequest": {
         "properties": {
           "input": {
@@ -16879,6 +17044,70 @@
         ],
         "type": "object"
       },
+      "PaginatedTenantCheckpointResponse": {
+        "properties": {
+          "count": {
+            "description": "Total number of items",
+            "example": 1234,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TenantCheckpointResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Number of items per page",
+            "example": 10,
+            "type": "number"
+          },
+          "page": {
+            "description": "Page number",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "limit",
+          "page",
+          "data"
+        ],
+        "type": "object"
+      },
+      "PaginatedTenantCheckpointRestoreResponse": {
+        "properties": {
+          "count": {
+            "description": "Total number of items",
+            "example": 1234,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TenantCheckpointRestoreResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Number of items per page",
+            "example": 10,
+            "type": "number"
+          },
+          "page": {
+            "description": "Page number",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "limit",
+          "page",
+          "data"
+        ],
+        "type": "object"
+      },
       "PaginatedTenantConfigResponse": {
         "properties": {
           "count": {
@@ -20689,6 +20918,87 @@
         ],
         "type": "object"
       },
+      "RestoreCheckpointRequest": {
+        "properties": {
+          "categories": {
+            "description": "What to restore. CLINICAL is restricted to platform administrators.",
+            "example": [
+              "CONFIG_CONTENT"
+            ],
+            "items": {
+              "enum": [
+                "CONFIG_CONTENT",
+                "USERS_ACCESS",
+                "CLINICAL"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "confirmationName": {
+            "description": "The tenant's current name, typed to confirm",
+            "type": "string"
+          },
+          "password": {
+            "description": "Caller's CURRENT password (step-up re-authentication; never logged)",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why this restore is being done; recorded in the audit trail",
+            "maxLength": 1000,
+            "minLength": 10,
+            "type": "string"
+          }
+        },
+        "required": [
+          "categories",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "RestoreCountResponse": {
+        "properties": {
+          "inserted": {
+            "type": "number"
+          },
+          "model": {
+            "type": "string"
+          },
+          "retired": {
+            "type": "number"
+          },
+          "updated": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "model",
+          "inserted",
+          "updated",
+          "retired"
+        ],
+        "type": "object"
+      },
+      "RestoreWarningResponse": {
+        "properties": {
+          "code": {
+            "example": "IMMUTABLE_DIVERGED",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
       "RevealGlobalSettingRequest": {
         "properties": {
           "password": {
@@ -23399,6 +23709,215 @@
         "required": [
           "key",
           "size"
+        ],
+        "type": "object"
+      },
+      "TenantCheckpointResponse": {
+        "properties": {
+          "createdAt": {
+            "description": "ISO-8601",
+            "type": "string"
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "ISO-8601",
+            "nullable": true,
+            "type": "string"
+          },
+          "failureDetail": {
+            "nullable": true,
+            "type": "string"
+          },
+          "failureReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "heartbeatAt": {
+            "description": "ISO-8601",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "includesMedia": {
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "MANUAL",
+              "SAFETY"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "CREATED",
+              "UPLOADED"
+            ],
+            "type": "string"
+          },
+          "passphraseProtected": {
+            "type": "boolean"
+          },
+          "progress": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CheckpointProgressResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "sizeBytes": {
+            "nullable": true,
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "UPLOADING",
+              "RUNNING",
+              "READY",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "version": {
+            "description": "Row version (also the ETag)",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "label",
+          "kind",
+          "origin",
+          "status",
+          "includesMedia",
+          "passphraseProtected",
+          "sizeBytes",
+          "progress",
+          "createdAt",
+          "createdBy",
+          "expiresAt",
+          "heartbeatAt",
+          "failureReason",
+          "failureDetail",
+          "version"
+        ],
+        "type": "object"
+      },
+      "TenantCheckpointRestoreResponse": {
+        "properties": {
+          "categories": {
+            "items": {
+              "enum": [
+                "CONFIG_CONTENT",
+                "USERS_ACCESS",
+                "CLINICAL"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "checkpointId": {
+            "type": "string"
+          },
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/RestoreCountResponse"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "createdAt": {
+            "description": "ISO-8601",
+            "type": "string"
+          },
+          "failureDetail": {
+            "nullable": true,
+            "type": "string"
+          },
+          "failureReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lockAcquiredAt": {
+            "description": "ISO-8601",
+            "nullable": true,
+            "type": "string"
+          },
+          "lockReleasedAt": {
+            "description": "ISO-8601",
+            "nullable": true,
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requestedBy": {
+            "type": "string"
+          },
+          "safetyCheckpointId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "LOCKING",
+              "SAFETY_CHECKPOINT",
+              "VERIFYING",
+              "RECONCILING",
+              "POST_COMMIT",
+              "COMPLETED",
+              "COMPLETED_WITH_WARNINGS",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "Row version (also the ETag)",
+            "type": "number"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/RestoreWarningResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "checkpointId",
+          "categories",
+          "reason",
+          "status",
+          "safetyCheckpointId",
+          "counts",
+          "warnings",
+          "requestedBy",
+          "createdAt",
+          "lockAcquiredAt",
+          "lockReleasedAt",
+          "failureReason",
+          "failureDetail",
+          "version"
         ],
         "type": "object"
       },
@@ -26949,6 +27468,23 @@
         },
         "required": [
           "expectedVersion"
+        ],
+        "type": "object"
+      },
+      "UploadPartTargetResponse": {
+        "properties": {
+          "partNumber": {
+            "minimum": 1,
+            "type": "number"
+          },
+          "url": {
+            "description": "Presigned PUT URL for this part",
+            "type": "string"
+          }
+        },
+        "required": [
+          "partNumber",
+          "url"
         ],
         "type": "object"
       },
@@ -35995,7 +36531,9 @@
                 "AgentAssignment",
                 "WorkflowRun",
                 "TenantGuardrailPolicy",
-                "ModelResidencyPolicy"
+                "ModelResidencyPolicy",
+                "TenantCheckpoint",
+                "TenantCheckpointRestore"
               ],
               "type": "string"
             }
@@ -36245,7 +36783,9 @@
                 "AgentAssignment",
                 "WorkflowRun",
                 "TenantGuardrailPolicy",
-                "ModelResidencyPolicy"
+                "ModelResidencyPolicy",
+                "TenantCheckpoint",
+                "TenantCheckpointRestore"
               ],
               "type": "string"
             }
@@ -36496,7 +37036,9 @@
                 "AgentAssignment",
                 "WorkflowRun",
                 "TenantGuardrailPolicy",
-                "ModelResidencyPolicy"
+                "ModelResidencyPolicy",
+                "TenantCheckpoint",
+                "TenantCheckpointRestore"
               ],
               "type": "string"
             }
@@ -57209,6 +57751,855 @@
         ]
       }
     },
+    "/api/v1/admin/tenants/{tenantId}/checkpoints": {
+      "get": {
+        "description": "Newest first; optionally narrowed by kind and a label search.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_list",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page number, one-based",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Items per page",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Only checkpoints of this kind",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "enum": [
+                "MANUAL",
+                "SAFETY"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive match against the checkpoint label",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedTenantCheckpointResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid query parameter."
+          },
+          "404": {
+            "description": "Tenant not found, or not yours."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List a tenant's checkpoints",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "read:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      },
+      "post": {
+        "description": "Queues an export of the tenant and returns the PENDING checkpoint. An optional passphrase lets the archive be opened offline; it is used only inside this request and cannot be recovered.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `create:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_create",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCheckpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCheckpointResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid label or passphrase."
+          },
+          "404": {
+            "description": "Tenant not found, or not yours."
+          },
+          "409": {
+            "description": "TENANT_CHECKPOINT_BUSY: an export or restore is already running."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a checkpoint",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "create:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/tenants/{tenantId}/checkpoints/restores": {
+      "get": {
+        "description": "Newest first. Stays readable while a restore is running so the console can show its progress.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_listRestores",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page number, one-based",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Items per page",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedTenantCheckpointRestoreResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The platform (SYSTEM) tenant cannot be checkpointed."
+          },
+          "404": {
+            "description": "Tenant not found, or not yours."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List a tenant's checkpoint restores",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "read:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/tenants/{tenantId}/checkpoints/restores/{restoreId}": {
+      "get": {
+        "description": "Status, per-model counts and warnings of a restore.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_getRestore",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restore id",
+            "in": "path",
+            "name": "restoreId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCheckpointRestoreResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The platform (SYSTEM) tenant cannot be checkpointed."
+          },
+          "404": {
+            "description": "Restore not found, or not yours."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one checkpoint restore",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "read:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/tenants/{tenantId}/checkpoints/uploads": {
+      "post": {
+        "description": "Creates an UPLOADING checkpoint and returns presigned part URLs. The browser PUTs each part straight to the object store, then calls the complete route with the ETags. Only a file this deployment produced for this tenant passes verification.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `create:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_initUpload",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitCheckpointUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitCheckpointUploadResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid filename or size."
+          },
+          "404": {
+            "description": "Tenant not found, or not yours."
+          },
+          "413": {
+            "description": "CHECKPOINT_TOO_LARGE: the file exceeds the upload size limit."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start a checkpoint upload",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "create:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/tenants/{tenantId}/checkpoints/uploads/{id}/abort": {
+      "post": {
+        "description": "Discards the uploaded parts; the checkpoint becomes CANCELLED.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `create:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_abortUpload",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Multipart upload id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCheckpointResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Upload not found, or not yours."
+          },
+          "409": {
+            "description": "UPLOAD_NOT_IN_PROGRESS."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Abort a checkpoint upload",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "create:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/tenants/{tenantId}/checkpoints/uploads/{id}/complete": {
+      "post": {
+        "description": "Finishes the multipart upload and queues verification. `:id` is the multipart upload id from the start route.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `create:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_completeUpload",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Multipart upload id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteCheckpointUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCheckpointResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "UPLOAD_PARTS_INVALID: parts missing, duplicated or out of order."
+          },
+          "404": {
+            "description": "Upload not found, or not yours."
+          },
+          "409": {
+            "description": "UPLOAD_NOT_IN_PROGRESS."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Complete a checkpoint upload",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "create:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/tenants/{tenantId}/checkpoints/{id}": {
+      "delete": {
+        "description": "Deletes the archive and soft-deletes the row. A checkpoint still being written cannot be deleted.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `delete:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_remove",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Checkpoint id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "description": "Checkpoint not found, or not yours."
+          },
+          "409": {
+            "description": "CHECKPOINT_IN_PROGRESS or TENANT_CHECKPOINT_BUSY."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a checkpoint",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "delete:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      },
+      "get": {
+        "description": "Status and export progress.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_get",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Checkpoint id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCheckpointResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Checkpoint not found, or not yours."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one checkpoint",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "read:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/tenants/{tenantId}/checkpoints/{id}/cancel": {
+      "post": {
+        "description": "A running export notices the request between tables and stops.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `update:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_cancel",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Checkpoint id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCheckpointResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Checkpoint not found, or not yours."
+          },
+          "409": {
+            "description": "CHECKPOINT_NOT_CANCELLABLE: only a running export can be cancelled."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cancel a running checkpoint export",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "update:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/tenants/{tenantId}/checkpoints/{id}/download-url": {
+      "post": {
+        "description": "A presigned URL valid for 15 minutes. Every issuance is force-audited.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_downloadUrl",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Checkpoint id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointDownloadUrlResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Checkpoint not found, or not yours."
+          },
+          "409": {
+            "description": "CHECKPOINT_NOT_READY."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Issue a download URL",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "read:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/tenants/{tenantId}/checkpoints/{id}/restore": {
+      "post": {
+        "description": "Re-enter your current password and type the tenant name (break-glass). Locks the tenant read-only, takes a safety checkpoint, then reconciles the chosen categories in one transaction. Clinical data is restricted to platform administrators.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:TenantCheckpoint`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantCheckpointController_restore",
+        "parameters": [
+          {
+            "description": "The tenant the checkpoints belong to",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Checkpoint id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreCheckpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCheckpointRestoreResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Wrong confirmation name, or invalid categories or reason."
+          },
+          "401": {
+            "description": "Wrong password."
+          },
+          "403": {
+            "description": "CLINICAL_RESTORE_REQUIRES_PLATFORM_ADMIN."
+          },
+          "404": {
+            "description": "Checkpoint not found, or not yours."
+          },
+          "409": {
+            "description": "CHECKPOINT_NOT_READY, TENANT_CHECKPOINT_BUSY or SCHEMA_INCOMPATIBLE."
+          },
+          "428": {
+            "description": "Break-glass confirmation missing."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Restore a tenant from a checkpoint",
+        "tags": [
+          "tenant-checkpoints"
+        ],
+        "x-hope-abilities": [
+          "manage:TenantCheckpoint"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
     "/api/v1/admin/text-generations/generate": {
       "post": {
         "description": "The platform LLM playground path: the same text-generation pipeline as `POST text-generations/generate` (sync or streaming), with the caller-pinned `provider` and `model` forwarded untouched. The business route refuses both fields (`MODEL_PINNING_NOT_ALLOWED`) because a business caller selects a model only through an Agent. Omitting `model` resolves the working tenant's TEXT_GENERATION agent. Platform administrators only.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:all`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -75441,6 +76832,10 @@
     {
       "description": "Service health roll-up and dependency probes.",
       "name": "monitoring"
+    },
+    {
+      "description": "Sealed per-tenant backups: create, download, upload, and the locked restore.",
+      "name": "tenant-checkpoints"
     },
     {
       "description": "Per-tenant bucket administration.",

@@ -78,6 +78,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
  * - `GuardrailAvailabilityController` (4 routes)
  * - `MonitoringController` (4 routes)
  * - `ServiceAccountController` (7 routes)
+ * - `TenantCheckpointController` (12 routes)
  * - `TextGenerationAdminController` (2 routes)
  * - `WorkflowInvariantRuleController` (5 routes)
  * - `WorkflowRunController` (1 route)

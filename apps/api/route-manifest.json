@@ -8534,6 +8534,258 @@
       "apiExcluded": false
     },
     {
+      "controller": "TenantCheckpointController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints",
+      "routePath": "/admin/tenants/:tenantId/checkpoints",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "create",
+      "method": "POST",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints",
+      "routePath": "/admin/tenants/:tenantId/checkpoints",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "create",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "remove",
+      "method": "DELETE",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints/{id}",
+      "routePath": "/admin/tenants/:tenantId/checkpoints/:id",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "delete",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "get",
+      "method": "GET",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints/{id}",
+      "routePath": "/admin/tenants/:tenantId/checkpoints/:id",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "cancel",
+      "method": "POST",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints/{id}/cancel",
+      "routePath": "/admin/tenants/:tenantId/checkpoints/:id/cancel",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "update",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "downloadUrl",
+      "method": "POST",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints/{id}/download-url",
+      "routePath": "/admin/tenants/:tenantId/checkpoints/:id/download-url",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "restore",
+      "method": "POST",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints/{id}/restore",
+      "routePath": "/admin/tenants/:tenantId/checkpoints/:id/restore",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "listRestores",
+      "method": "GET",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints/restores",
+      "routePath": "/admin/tenants/:tenantId/checkpoints/restores",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "getRestore",
+      "method": "GET",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints/restores/{restoreId}",
+      "routePath": "/admin/tenants/:tenantId/checkpoints/restores/:restoreId",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "initUpload",
+      "method": "POST",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints/uploads",
+      "routePath": "/admin/tenants/:tenantId/checkpoints/uploads",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "create",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "abortUpload",
+      "method": "POST",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints/uploads/{id}/abort",
+      "routePath": "/admin/tenants/:tenantId/checkpoints/uploads/:id/abort",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "create",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "TenantCheckpointController",
+      "handler": "completeUpload",
+      "method": "POST",
+      "path": "/api/v1/admin/tenants/{tenantId}/checkpoints/uploads/{id}/complete",
+      "routePath": "/admin/tenants/:tenantId/checkpoints/uploads/:id/complete",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "create",
+          "TenantCheckpoint"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "TenantController",
       "handler": "fetchByCodeName",
       "method": "GET",
