@@ -57,6 +57,7 @@ import { HuggingFaceModelSourceClient } from '../publish/huggingface-model-sourc
 import { claimAndEnqueueDownload, enqueuePublisherJob } from '../publish/ai-model-download.service';
 import type { UnregisterAiModelJobPayload } from '../publish/publisher-job.contract';
 import { isUnregisterStale, mergeUnregisterMeta, readUnregisterMeta } from '../publish/model-download-meta.util';
+import { lmStudioWireModelId } from '../serving-spec/lm-studio-wire-id';
 import { resolveRegistrationSlug } from './registration-slug';
 import { effectiveStaleAfterMs, readModelDownloadSettings, type DownloadSettingsSource } from './model-download-settings';
 import { buildHubPreview, categoryOf, providerFor, servedByFor } from './hub-preview.util';
@@ -147,6 +148,9 @@ export class ModelRegistryOperationsService extends BaseService {
     }
     const category = request.category ?? s.category ?? categoryOf(taskType);
     const provider = request.provider ?? s.provider ?? providerFor(servedBy);
+    // A GGUF is published flat at `<slug>/<version>/`, which is the directory LM Studio's link-models
+    // names the model after — so an LM Studio row's wire id follows from its slug.
+    const wireModelId = lmStudioWireModelId(provider, slug, taskType);
 
     // The SAME create path and validation as `POST admin/ai-models`: the DTO is
     // validated with the pipe's own options, then `AiModelService.create` runs.
@@ -169,6 +173,7 @@ export class ModelRegistryOperationsService extends BaseService {
       ...(preview.baseModel ? { baseModel: preview.baseModel } : {}),
       languages: preview.languages,
       ...(provider ? { provider } : {}),
+      ...(wireModelId ? { wireModelId } : {}),
       ...(request.architecture !== undefined ? { architecture: request.architecture } : {}),
       ...(request.computeType !== undefined ? { computeType: request.computeType } : {}),
       ...(request.memorySizeMb !== undefined ? { memorySizeMb: request.memorySizeMb } : {}),

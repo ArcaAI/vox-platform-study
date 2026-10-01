@@ -61,7 +61,8 @@ function build(opts: { roles?: string[]; tenantId?: string | null; bucket?: Buck
   const repo = {
     findBySlug: vi.fn(async () => opts.bySlug ?? null),
     findAll: vi.fn(async () => (opts.bySlug ? [opts.bySlug] : [])),
-    findById: vi.fn(async () => row),
+    // The real repository returns the row `create` just wrote.
+    findById: vi.fn(async () => Object.assign(row, created)),
     updateWithVersion: vi.fn(async (_id: string, e: unknown) => e),
   };
   const aiModelService = {
@@ -264,6 +265,46 @@ describe('B3 — registerFromPath', () => {
 
     const stt = build();
     await stt.svc.registerFromPath({ path: 'vllm-asr/' });
-    expect(stt.repo.updateWithVersion).not.toHaveBeenCalled();
+    // One write still happens (availability, FU-12) — but it carries no serving facts.
+    const sttWritten = stt.repo.updateWithVersion.mock.calls[0][1] as { metaData?: Record<string, unknown> };
+    expect(sttWritten.metaData?.serving).toBeUndefined();
+  });
+});
+
+// ─── Cluster e2e findings (2026-10-01) ───────────────────────────────────────
+describe('registerFromPath — LM Studio wire id (FU-11) and availability (FU-12)', () => {
+  it('a GGUF served by LM Studio derives wireModelId the way link-models names the directory', async () => {
+    const { svc, aiModelService } = build();
+    await svc.registerFromPath({ path: 'qwen3-4b/0123abcd/' });
+    expect(aiModelService.create).toHaveBeenCalledWith(expect.objectContaining({ servedBy: 'lmstudio', wireModelId: 'qwen3-4b' }));
+  });
+
+  it('strips the -gguf suffix of the bucket directory', async () => {
+    const bucket = { 'gemma-4-e2b-it-qat-gguf/q4-0-451faffb5a16/gemma.gguf': { size: 10 } };
+    const { svc, aiModelService } = build({ bucket });
+    await svc.registerFromPath({ path: '/mnt/models-bucket/gemma-4-e2b-it-qat-gguf/q4-0-451faffb5a16/' });
+    expect(aiModelService.create).toHaveBeenCalledWith(expect.objectContaining({ wireModelId: 'gemma-4-e2b-it-qat' }));
+  });
+
+  it('an embedding model gets the text-embedding- prefix LM Studio adds back', async () => {
+    const bucket = { 'text-embedding-embeddinggemma-300m-qat-gguf/v1/e.gguf': { size: 10 } };
+    const { svc, aiModelService } = build({ bucket });
+    await svc.registerFromPath({ path: 'text-embedding-embeddinggemma-300m-qat-gguf/v1/', taskType: 'FEATURE_EXTRACTION' });
+    expect(aiModelService.create).toHaveBeenCalledWith(expect.objectContaining({ wireModelId: 'text-embedding-embeddinggemma-300m-qat' }));
+  });
+
+  it('a row not served by LM Studio gets no wireModelId', async () => {
+    const { svc, aiModelService } = build();
+    await svc.registerFromPath({ path: 'whisper-ml/' });
+    expect(aiModelService.create.mock.calls[0][0]).not.toHaveProperty('wireModelId');
+  });
+
+  it('the files were just listed, so the row is AVAILABLE at once (not UNKNOWN until the hourly inventory)', async () => {
+    const { svc, repo } = build();
+    await svc.registerFromPath({ path: 'whisper-ml/' });
+    expect(repo.updateWithVersion).toHaveBeenCalledTimes(1);
+    const saved = repo.updateWithVersion.mock.calls[0][1] as { availability?: string; availabilityCheckedAt?: Date };
+    expect(saved.availability).toBe('AVAILABLE');
+    expect(saved.availabilityCheckedAt).toBeInstanceOf(Date);
   });
 });

@@ -5,6 +5,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import {
   AiDeploymentKind,
+  AiModelAvailability,
   AiModelFormat,
   AiModelRepository,
   AiModelSource,
@@ -22,6 +23,7 @@ import { AiModelService } from '../aiModel.service';
 import { HOPE_MODELS_BUCKET, normaliseBucketPath, SINGLE_FILE_LIBRARIES } from '../constants';
 import { CreateModelRequest, LocalModelPreviewResponse, ModelResponse, RegisterFromPathRequest } from '../dto';
 import { withDerivedServingFacts } from '../serving-spec/derive-serving-facts';
+import { lmStudioWireModelId } from '../serving-spec/lm-studio-wire-id';
 import { resolveRegistrationSlug } from './registration-slug';
 import { categoryOf, providerFor, servedByFor } from './hub-preview.util';
 import {
@@ -117,6 +119,8 @@ export class ModelPathRegistrationService extends BaseService {
 
     const quantized = format === AiModelFormat.GGUF || format === AiModelFormat.WHISPER_CPP;
     const provider = providerFor(servedBy);
+    // An LM Studio row must name the id LM Studio answers to; it is the bucket directory link-models links.
+    const wireModelId = lmStudioWireModelId(provider, preview.bucketPrefix.split('/')[0], taskType);
     const createDto = plainToInstance(CreateModelRequest, {
       name: request.name ?? s.name,
       slug,
@@ -133,6 +137,7 @@ export class ModelPathRegistrationService extends BaseService {
       ...(primaryObject ? { primaryObject } : {}),
       ...(preview.revision ? { hfRevision: preview.revision } : {}),
       ...(provider ? { provider } : {}),
+      ...(wireModelId ? { wireModelId } : {}),
       ...(s.architecture ? { architecture: s.architecture } : {}),
       ...(s.computeType ? { computeType: s.computeType } : {}),
     });
@@ -144,18 +149,23 @@ export class ModelPathRegistrationService extends BaseService {
 
     const model = await this.aiModelService.create(createDto);
 
-    // OD-9 — a vLLM-served row is servable at once: the derived `vramGiB` default, never overwriting.
+    // The files were listed a moment ago, so the row is AVAILABLE now rather than UNKNOWN until the
+    // hourly inventory; and OD-9 — a vLLM-served row is servable at once (derived `vramGiB`, never
+    // overwriting). One write for both.
     const row = await this.aiModelRepository.findById(model.id);
     const metaData = withDerivedServingFacts(row.metaData, { servedBy, weightBytes: preview.totalBytes });
-    if (metaData === row.metaData) return model;
-
-    row.metaData = metaData ?? undefined;
+    const servingDerived = metaData !== row.metaData;
+    if (servingDerived) row.metaData = metaData ?? undefined;
+    row.availability = AiModelAvailability.AVAILABLE;
+    row.availabilityCheckedAt = new Date();
     if (this.requestUserId) row.updatedBy = this.requestUserId;
     const updated = await this.aiModelRepository.updateWithVersion(row.id, row, row.version);
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: row.id,
-      data: { action: 'serving-facts-derived', slug: row.slug, vramGiB: (metaData as { serving: { vramGiB: number } }).serving.vramGiB },
-    });
+    if (servingDerived) {
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: row.id,
+        data: { action: 'serving-facts-derived', slug: row.slug, vramGiB: (metaData as { serving: { vramGiB: number } }).serving.vramGiB },
+      });
+    }
     return AiModelDtoMapper.toResponse(updated);
   }
 

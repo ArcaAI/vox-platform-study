@@ -125,3 +125,22 @@ describe('B5 — the derived vramGiB default on a Hub registration', () => {
     expect(written.metaData.serving).toBeUndefined();
   });
 });
+
+// ─── Cluster e2e finding FU-11 (2026-10-01) ──────────────────────────────────
+describe('register-from-hub — an LM Studio GGUF gets the wire id link-models will give it', () => {
+  const ggufFiles = [{ path: 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', size: 1_100_000_000 }];
+
+  it('a GGUF repo served by LM Studio: wireModelId = the slug (its flat bucket directory) without -gguf', async () => {
+    const { svc, aiModelService } = build({ pipelineTag: 'text-generation', libraryName: 'gguf', files: ggufFiles });
+    await svc.registerFromHub({ repoId: 'Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF', servedBy: 'lmstudio' });
+    const dto = aiModelService.create.mock.calls[0][0] as { slug: string; wireModelId?: string; provider?: string };
+    expect(dto.provider).toBe('lm-studio');
+    expect(dto.wireModelId).toBe(dto.slug.replace(/-gguf$/, ''));
+  });
+
+  it('a row not served by LM Studio gets no wireModelId', async () => {
+    const { svc, aiModelService } = build();
+    await svc.registerFromHub({ repoId: 'openai/whisper-large-v3' });
+    expect(aiModelService.create.mock.calls[0][0]).not.toHaveProperty('wireModelId');
+  });
+});
