@@ -296,3 +296,48 @@ class TestWorkerProcessWithoutFastapi:
         )
 
         assert "WORKER-IMPORT-OK" in result.stdout, result.stderr
+
+
+class TestFastApiNativeTelemetryIsSwitchedOff:
+    """FastAPI >= 0.142 ships its own telemetry, which by default reads
+    ``OTEL_EXPORTER_OTLP_ENDPOINT`` at lifespan startup and adds an OTLP
+    **HTTP** exporter to it. hope_obs exports over gRPC to that same endpoint
+    (the collector's 4317), so the second exporter POSTs HTTP at a gRPC port,
+    gets ``Connection reset by peer`` on every batch, and floods the service log
+    — observed live on hope-stt, whose GPU image resolves FastAPI outside the
+    lock. hope_obs owns export, so FastAPI's must be off.
+
+    The installed FastAPI is the locked one (no native telemetry), so the
+    per-app ``_telemetry`` dict FastAPI 0.142 reads at startup is simulated.
+    """
+
+    def test_auto_configure_and_native_signals_are_disabled(self) -> None:
+        app = FastAPI()
+        app._telemetry = {"auto_configure": True, "tracing": True, "metrics": True, "logs": True}  # type: ignore[attr-defined]
+
+        configure_observability(app, ObservabilityConfig(service_name="stt"))
+
+        assert app._telemetry == {  # type: ignore[attr-defined]
+            "auto_configure": False,
+            "tracing": False,
+            "metrics": False,
+            "logs": False,
+        }
+
+    def test_disabled_even_when_tracing_is_on(self) -> None:
+        app = FastAPI()
+        app._telemetry = {"auto_configure": True}  # type: ignore[attr-defined]
+
+        configure_observability(
+            app, ObservabilityConfig(service_name="stt", otlp_endpoint=UNROUTABLE)
+        )
+
+        assert app._telemetry["auto_configure"] is False  # type: ignore[attr-defined]
+        shutdown_observability(app)
+
+    def test_fastapi_without_native_telemetry_is_left_alone(self) -> None:
+        app = FastAPI()
+
+        configure_observability(app, ObservabilityConfig(service_name="stt"))
+
+        assert not hasattr(app, "_telemetry")

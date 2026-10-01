@@ -79,6 +79,21 @@ def _install_request_middleware(app: FastAPI, config: ObservabilityConfig) -> No
     app.add_middleware(RequestContextMiddleware)
 
 
+def _disable_fastapi_native_telemetry(app: FastAPI) -> None:
+    """Switch off FastAPI's built-in telemetry (FastAPI >= 0.142).
+
+    By default it reads ``OTEL_EXPORTER_OTLP_ENDPOINT`` at lifespan startup and
+    adds an OTLP *HTTP* exporter, while hope_obs exports over gRPC to that same
+    endpoint — so every batch hit the collector's gRPC port and was reset, and
+    the native request spans would duplicate ``FastAPIInstrumentor``'s anyway.
+    FastAPI reads this per-app dict at startup, i.e. after this runs. Older
+    FastAPI has no such attribute and is left alone.
+    """
+    native = getattr(app, "_telemetry", None)
+    if isinstance(native, dict):
+        native.update(auto_configure=False, tracing=False, metrics=False, logs=False)
+
+
 def configure_observability(app: FastAPI, config: ObservabilityConfig) -> None:
     """Configure logging, request context and tracing for a FastAPI service.
 
@@ -107,6 +122,8 @@ def configure_observability(app: FastAPI, config: ObservabilityConfig) -> None:
         install_validation_handler(app)
     except Exception as exc:  # noqa: BLE001 - degrade, never crash boot
         _LOGGER.warning("hope_obs.validation_handler.install_failed: %s", exc)
+
+    _disable_fastapi_native_telemetry(app)
 
     app.state.tracer_provider = None
     if not config.tracing_enabled:
