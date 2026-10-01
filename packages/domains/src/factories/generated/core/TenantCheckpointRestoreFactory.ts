@@ -7,6 +7,7 @@ import { TenantCheckpointCategory, TenantCheckpointRestoreStatus } from '../../.
 import { generateId } from '../../../utils';
 
 export interface CreateTenantCheckpointRestoreProps extends BaseEntityFactoryCreateProps {
+  tenantId: ITenantCheckpointRestoreEntity['tenantId'];
   checkpointId: ITenantCheckpointRestoreEntity['checkpointId'];
   categories?: ITenantCheckpointRestoreEntity['categories'];
   reason: ITenantCheckpointRestoreEntity['reason'];
@@ -41,6 +42,8 @@ export class TenantCheckpointRestoreFactory {
       updatedAt: props.updatedAt || now,
       createdBy: props.createdBy ?? null,
       updatedBy: props.updatedBy || null,
+
+      tenantId: props.tenantId,
 
       checkpointId: props.checkpointId,
       categories: props.categories ?? [],

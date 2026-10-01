@@ -11,7 +11,7 @@ describe('TenantCheckpointRestore mapper', () => {
       requestedBy: 'u-1',
       categories: ['AGENTS', 'SETTINGS'] as never,
     });
-    const row = TenantCheckpointRestoreEntityMapper.getInstance().toPersistence(entity) as Record<string, unknown>;
+    const row = TenantCheckpointRestoreEntityMapper.getInstance().toPersistence(entity) as unknown as Record<string, unknown>;
     expect(row).not.toHaveProperty('version');
     expect(row.categories).toEqual(['AGENTS', 'SETTINGS']);
     const back = TenantCheckpointRestoreEntityMapper.getInstance().toDomainEntity({ ...row, version: 2 } as never);
