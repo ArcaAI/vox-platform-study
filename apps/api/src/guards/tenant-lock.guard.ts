@@ -1,7 +1,7 @@
-import { CanActivate, ExecutionContext, HttpException, Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
-import { ITenantLockService } from '@arcaai/applications';
+import { ITenantLockService, assertTenantNotLocked } from '@arcaai/applications';
 import { TENANT_LOCK_EXEMPT_KEY } from '../decorators/tenant-lock-exempt.decorator';
 
 const TENANT_HEADER = 'x-tenant-id';
@@ -20,8 +20,6 @@ const TENANT_HEADER = 'x-tenant-id';
  */
 @Injectable()
 export class TenantLockGuard implements CanActivate {
-  private readonly logger = new Logger(TenantLockGuard.name);
-
   constructor(
     private readonly reflector: Reflector,
     private readonly cls: ClsService,
@@ -37,28 +35,8 @@ export class TenantLockGuard implements CanActivate {
     const tenantId = this.resolveTenantId(context);
     if (!tenantId) return true;
 
-    let state;
-    try {
-      state = await this.lock.state(tenantId);
-    } catch (error) {
-      this.logger.error({ message: 'Tenant lock state unreadable — refusing request', tenantId, error: String(error) });
-      throw new ServiceUnavailableException({
-        statusCode: 503,
-        code: 'TENANT_LOCK_UNAVAILABLE',
-        message: 'Tenant lock state could not be determined',
-      });
-    }
-    if (!state.locked) return true;
-
-    throw new HttpException(
-      {
-        statusCode: 423,
-        code: 'TENANT_RESTORE_IN_PROGRESS',
-        message: 'This tenant is being restored from a checkpoint and is read-only until the restore finishes',
-        restoreId: state.restoreId,
-      },
-      423,
-    );
+    await assertTenantNotLocked(this.lock, tenantId);
+    return true;
   }
 
   private resolveTenantId(context: ExecutionContext): string | null {

@@ -1,4 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { vi } from 'vitest';
+
+// `@arcaai/applications` resolves to its built dist, which predates the lock exports until the
+// package is rebuilt; bridge the new runtime export to source so the test exercises the real helper.
+vi.mock('@arcaai/applications', async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  const helper = await import('../../../../../packages/applications/src/services/tenant-checkpoint/lock/assert-tenant-not-locked');
+  return { ...original, assertTenantNotLocked: helper.assertTenantNotLocked, ITenantLockService: Symbol.for('ITenantLockService') };
+});
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { TenantLockGuard } from '../tenant-lock.guard';

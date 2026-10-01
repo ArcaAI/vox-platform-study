@@ -3,3 +3,4 @@ export * from './oidcauth.guard';
 export * from './origin-tenant-binding.guard';
 export * from './patient-consent.guard';
 export * from './tenant-lock.guard';
+export * from './internal-tenant-lock.guard';

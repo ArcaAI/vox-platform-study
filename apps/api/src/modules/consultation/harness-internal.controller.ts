@@ -90,6 +90,7 @@ import { ClsService } from 'nestjs-cls';
 import { uuidv7 } from 'uuidv7';
 import { Public } from '../../decorators';
 import { HarnessServiceTokenGuard } from './harness-service-token.guard';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 /**
  * the harness batch-trigger activity's request/response shapes.
@@ -448,7 +449,7 @@ class ResolvedPromptTemplateResponse {
  */
 @ApiExcludeController()
 @Public()
-@UseGuards(HarnessServiceTokenGuard)
+@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal/harness')
 export class HarnessInternalController {
   constructor(

@@ -8,6 +8,7 @@ import {
   SttInternalServiceModule,
   StreamingSessionServiceModule,
 } from '@arcaai/applications';
+import { TenantLockModule } from '@arcaai/applications';
 import { Module } from '@nestjs/common';
 import { AgentInternalController } from './agent-internal.controller';
 import { EffectiveConfigController } from './effective-config.controller';
@@ -26,6 +27,7 @@ import { SttInternalController } from './stt-internal.controller';
   // and the superseded STT-specific one on `SttInternalController` — the
   // weight fetcher's route to the HF token and the model-store S3 pair.
   imports: [
+    TenantLockModule,
     SttInternalServiceModule,
     EffectiveConfigServiceModule,
     AsrAgentResolverServiceModule,
